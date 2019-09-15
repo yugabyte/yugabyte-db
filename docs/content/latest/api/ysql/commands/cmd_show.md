@@ -1,7 +1,7 @@
 ---
 title: SHOW
 linkTitle: SHOW
-summary: Display values of a system or session variable
+summary: Display the value of a run-time parameter.
 description: SHOW
 menu:
   latest:
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`SHOW` command displays the value of specified parameters.
+Use the `SHOW` statement to display the value of a run-time parameter.
 
 ## Syntax
 
@@ -43,16 +43,19 @@ showAsideToc: true
   </div>
 </div>
 
-Where
-
-- `name` specifies the name of the parameter to be showed.
-
 ## Semantics
 
-- Although the values of a parameter can be set, showed, and reset, the effect of these parameters are not yet supported in YugaByte. The factory-settings or default behaviors will be used for the moment.
+- Although the values of a parameter can be set, displayed, and reset, the effect of these parameters are not yet supported in YugaByte. The factory-settings or default behaviors will be used for the moment.
+
+### *configuration_parameter*
+
+Specify the name of the parameter to be displayed.
+
+### ALL
+
+Show the values of all configuration parameters, with descriptions.
 
 ## See also
 
-[`SET`](../cmd_set)
-[`RESET`](../cmd_reset)
-[Other YSQL Statements](..)
+- [`SET`](../cmd_set)
+- [`RESET`](../cmd_reset)

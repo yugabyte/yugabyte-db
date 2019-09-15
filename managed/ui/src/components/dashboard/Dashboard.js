@@ -9,6 +9,10 @@ import './stylesheets/Dashboard.scss';
 import { isAvailable, showOrRedirect } from 'utils/LayoutUtils';
 
 export default class Dashboard extends Component {
+  componentDidMount() {
+    this.props.fetchUniverseList();
+  }
+
   render() {
     const { customer : { currentCustomer }} = this.props;
     showOrRedirect(currentCustomer.data.features, "menu.dashboard");

@@ -43,6 +43,9 @@ if should_use_virtual_env; then
 fi
 
 pip_install -r "$FROZEN_REQUIREMENTS_FILE"
+# Shorten the length of the shebang so it doesn't crash in our Jenkins pipeline.
+find $virtualenv_dir/bin -type f -exec sed -i \
+  -e "s|${virtualenv_dir}/bin/python|/usr/bin/env python|" {} \;
 
 log "Installing ybops package"
 install_ybops_package

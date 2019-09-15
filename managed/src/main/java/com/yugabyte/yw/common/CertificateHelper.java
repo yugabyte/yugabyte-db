@@ -131,6 +131,21 @@ public class CertificateHelper {
 
   }
 
+  public static String createEncryptionKeyFile(UUID customerUUID, UUID universeUUID,
+                                             byte[] key, String storagePath) throws IOException{
+    String certPath = String.format("%s/certs/%s/universe.%s.key", storagePath, customerUUID.toString(), universeUUID.toString());
+    File certfile = new File(certPath);
+    certfile.getParentFile().mkdirs();
+    Files.write(certfile.toPath(), key);
+    return certPath;
+  }
+
+  public static String getEncryptionFile(UUID customerUUID, UUID universeUUID, String storagePath) {
+    String certPath = String.format("%s/certs/%s/universe.%s.key", storagePath, customerUUID.toString(), universeUUID.toString());
+    File certFile = new File(certPath);
+    return certFile.exists() ? certPath : null;
+  }
+
   public static String getCertPEM(UUID rootCA){
     CertificateInfo cert = CertificateInfo.get(rootCA);
     String certPEM = FileUtils.readFileToString(new File(cert.certificate));

@@ -1,7 +1,7 @@
 ---
-title: Commands
-description: Commands
-summary: Commands
+title: Statements
+description: Statements
+summary: Statements
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -14,18 +14,20 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following table lists the commands in YSQL.
+The following SQL statements are supported by the YugaByte Structured Query Language (YSQL).
 
 | Statement | Description |
 |-----------|-------------|
-| [`ABORT`](txn_abort) | Rollback a transaction |
-| [`ALTER DOMAIN`](ddl_alter_domain) | Alter a domain |
+| [`ABORT`](txn_abort) | Rolls back a transaction |
+| [`ALTER DATABASE`](ddl_alter_db) | Changes database definition |
+| [`ALTER DOMAIN`](ddl_alter_domain) | Alters a domain |
 | [`ALTER GROUP`](dcl_alter_group) | Alter a group |
 | [`ALTER ROLE`](dcl_alter_role) | Alter a role |
+| [`ALTER TABLE`](ddl_alter_table) | Changes table definition |
 | [`ALTER USER`](dcl_alter_user) | Alter a user (role) |
-| [`ALTER TABLE`](ddl_alter_table) | Change table definition |
-| [`BEGIN TRANSACTION`](txn_begin) | Start a transaction |
-| [`COMMIT`](txn_commit) | Commit a transaction |
+| [`BEGIN`](txn_begin) | Starts a transaction |
+| [`COMMENT`](ddl_comment) | Adds a comment on a database object |
+| [`COMMIT`](txn_commit) | Commits a transaction |
 | [`COPY`](cmd_copy) | Copy data between tables and files |
 | [`CREATE DATABASE`](ddl_create_database) | Create a new database |
 | [`CREATE DOMAIN`](ddl_create_domain) | Create a new domain |
@@ -37,20 +39,28 @@ The following table lists the commands in YSQL.
 | [`CREATE SEQUENCE`](ddl_create_sequence) | Create a new sequence generator |
 | [`CREATE TABLE`](ddl_create_table) | Create a new table |
 | [`CREATE TABLE AS`](ddl_create_table_as) | Create a new table |
+| [`CREATE TYPE`](ddl_create_type) | Create a new type |
 | [`CREATE USER`](dcl_create_user) | Create a new user (role) |
 | [`CREATE VIEW`](ddl_create_view) | Create a new view |
 | [`DEALLOCATE`](perf_deallocate) | Deallocate a prepared statement |
 | [`DELETE`](dml_delete) | Delete rows from a table |
+| [`DO`](commands/cmd_doc) | Execute an anonymous code block |
 | [`DROP DATABASE`](ddl_drop_database) | Delete a database from the system |
 | [`DROP DOMAIN`](ddl_drop_domain) | Delete a domain |
+| [`DROP GROUP`](dcl_drop_group) | Delete a group (role) |
+| [`DROP ROLE`](dcl_drop_role) | Delete a role (user or group) |
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
-| [`DROP TABLE`](ddl_drop_table) | Delete a table from a database |
-| [`END TRANSACTION`](txn_end) | Commit a transaction |
+| [`DROP TABLE`](ddl_drop_table) | Deletes a table from a database |
+| [`DROP TYPE`](ddl_drop_type) | Delete a user-defined type |
+| [`DROP USER`](dcl_drop_user) | Delete a user (role) |
+| [`END`](txn_end) | Commit a transaction |
 | [`EXECUTE`](perf_execute) | Execute a prepared statement |
 | [`EXPLAIN`](perf_explain) | Display execution plan for a statement |
 | [`INSERT`](dml_insert) | Insert rows into a table |
+| [`LOCK`](txn_lock) | Locks a table |
 | [`PREPARE`](perf_prepare) | Prepare a statement |
 | [`RESET`](cmd_reset) | Reset a parameter to factory settings |
+| [`REVOKE`](dcl_revoke) | Remove access privileges |
 | [`ROLLBACK`](txn_rollback) | Rollback a transaction |
 | [`SELECT`](dml_select) | Select rows from a table |
 | [`SET`](cmd_set) | Set a system, session, or transactional parameter |

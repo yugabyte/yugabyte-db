@@ -17,15 +17,9 @@ If you like sports statistics, you can install the PostgreSQL-compatible version
 
 [SportsDB](http://www.sportsdb.org/sd) is a sample sports statistics dataset compiled from multiple sources and encompassing a variety of sports, including football, baseball, basketball, ice hockey, and soccer. It also cross-references many different types of content media. It is capable of supporting queries for the most intense of sports data applications, yet is simple enough for use by those with minimal database experience. The database includes over 100 tables and just as many sequences, unique constraints, foreign keys, and indexes. The dataset also includes almost 80,000 rows of data. It has been ported to MySQL, SQL Server and PostgreSQL.
 
-If you like details, check out the detailed entity relationship (ER) diagram.
+If you like details, check out this detailed entity relationship (ER) diagram.
 
-<details>
-
-<summary>SportsDB E-R diagram</summary>
-
-![SportsDB E-R diagram](/images/datasets/sportsdb/sportsdb-er-diagram.jpeg)
-
-</details>
+![SportsDB ER diagram](/images/sample-data/sportsdb/sportsdb-er-diagram.jpg)
 
 ## Install the SportsDB sample database
 

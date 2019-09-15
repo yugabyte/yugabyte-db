@@ -95,7 +95,7 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   CHECKED_STATUS WaitInited();
 
   CHECKED_STATUS Start();
-  void Shutdown();
+  virtual void Shutdown();
 
   std::string ToString() const override;
 

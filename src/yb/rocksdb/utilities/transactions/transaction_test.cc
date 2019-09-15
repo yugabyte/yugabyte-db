@@ -2395,7 +2395,7 @@ TEST_F(TransactionTest, TimeoutTest) {
   // txn2 has a smaller lock timeout than txn1's expiration, so it will time out
   s = txn2->Delete("asdf");
   ASSERT_TRUE(s.IsTimedOut());
-  ASSERT_EQ("Timed out: Timeout waiting to lock key (error 2)", s.ToString(false));
+  ASSERT_EQ("Timed out: Timeout waiting to lock key (timeout 1)", s.ToString(false));
 
   s = txn1->Commit();
   ASSERT_OK(s);

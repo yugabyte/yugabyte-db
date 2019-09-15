@@ -18,6 +18,8 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metrics.h"
 
+#include "yb/tserver/tserver_error.h"
+
 namespace yb {
 namespace tserver {
 
@@ -42,7 +44,7 @@ void SetupErrorAndRespond(TabletServerErrorPB* error,
 void SetupErrorAndRespond(TabletServerErrorPB* error,
                           const Status& s,
                           rpc::RpcContext* context) {
-  SetupErrorAndRespond(error, s, static_cast<TabletServerErrorPB::Code>(s.error_code()), context);
+  SetupErrorAndRespond(error, s, TabletServerError(s).value(), context);
 }
 
 Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer) {
@@ -62,10 +64,11 @@ Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer) {
       case LeaderStatus::LEADER_BUT_NO_MAJORITY_REPLICATED_LEASE:
         // We are returning a NotTheLeader as opposed to LeaderNotReady, because there is a chance
         // that we're a partitioned-away leader, and the client needs to do another leader lookup.
-        return status.CloneAndChangeErrorCode(TabletServerErrorPB::NOT_THE_LEADER);
+        return status.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::NOT_THE_LEADER));
       case LeaderStatus::LEADER_BUT_NO_OP_NOT_COMMITTED: FALLTHROUGH_INTENDED;
       case LeaderStatus::LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE:
-        return status.CloneAndChangeErrorCode(TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE);
+        return status.CloneAndAddErrorCode(TabletServerError(
+            TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE));
       case LeaderStatus::LEADER_AND_READY:
         LOG(FATAL) << "Unexpected status: " << to_underlying(leader_state.status);
     }

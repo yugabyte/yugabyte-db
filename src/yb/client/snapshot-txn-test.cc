@@ -37,16 +37,17 @@ namespace client {
 YB_DEFINE_ENUM(BankAccountsOption, (kTimeStrobe)(kStepDown)(kTimeJump));
 typedef EnumBitSet<BankAccountsOption> BankAccountsOptions;
 
-class SnapshotTxnTest : public TransactionTestBase {
+class SnapshotTxnTest : public TransactionCustomLogSegmentSizeTest<0, TransactionTestBase> {
  protected:
+  void SetUp() override {
+    SetIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
+    TransactionTestBase::SetUp();
+  }
+
   void TestBankAccounts(BankAccountsOptions options, CoarseDuration duration,
                         int minimal_updates_per_second);
   void TestBankAccountsThread(
      int accounts, std::atomic<bool>* stop, std::atomic<int64_t>* updates, TransactionPool* pool);
-
-  IsolationLevel GetIsolationLevel() override {
-    return IsolationLevel::SNAPSHOT_ISOLATION;
-  }
 };
 
 void SnapshotTxnTest::TestBankAccountsThread(

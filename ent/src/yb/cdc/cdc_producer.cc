@@ -72,7 +72,7 @@ Status CDCProducer::GetChanges(const std::string& stream_id,
   }
 
   ReplicateMsgs messages;
-  RETURN_NOT_OK(tablet_peer->consensus()->ReadReplicatedMessages(from_op_id, &messages));
+  RETURN_NOT_OK(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(from_op_id, &messages));
 
   TxnStatusMap txn_map = VERIFY_RESULT(BuildTxnStatusMap(
       messages, tablet_peer->Now(), txn_participant));
@@ -267,10 +267,19 @@ Status CDCProducer::PopulateWriteRecord(const ReplicateMsgPtr& msg,
     if (prev_key != key_hash) {
       // Write pair contains record for different row. Create a new CDCRecord in this case.
       record = resp->add_records();
-      Slice sub_doc_key = write_pair.key();
+      Slice sub_doc_key = key;
       docdb::SubDocKey decoded_key;
       RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, docdb::HybridTimeRequired::kFalse));
-      AddPrimaryKey(decoded_key, schema, record);
+
+      if (metadata.record_format == CDCRecordFormat::WAL) {
+        // For 2DC, populate serialized data from WAL, to avoid unnecessary deserializing on
+        // producer and re-serializing on consumer.
+        auto kv_pair = record->add_key();
+        kv_pair->set_key(std::to_string(decoded_key.doc_key().hash()));
+        kv_pair->mutable_value()->set_binary_value(write_pair.key());
+      } else {
+        AddPrimaryKey(decoded_key, schema, record);
+      }
 
       // Check whether operation is WRITE or DELETE.
       if (decoded_value.value_type() == docdb::ValueType::kTombstone &&
@@ -291,7 +300,11 @@ Status CDCProducer::PopulateWriteRecord(const ReplicateMsgPtr& msg,
     prev_key = key_hash;
     DCHECK(record);
 
-    if (record->operation() == CDCRecordPB_OperationType_WRITE) {
+    if (metadata.record_format == CDCRecordFormat::WAL) {
+      auto kv_pair = record->add_changes();
+      kv_pair->set_key(write_pair.key());
+      kv_pair->mutable_value()->set_binary_value(write_pair.value());
+    } else if (record->operation() == CDCRecordPB_OperationType_WRITE) {
       PrimitiveValue column_id;
       Slice key_column = write_pair.key().data() + key_sizes.second;
       RETURN_NOT_OK(PrimitiveValue::DecodeKey(&key_column, &column_id));
@@ -299,7 +312,7 @@ Status CDCProducer::PopulateWriteRecord(const ReplicateMsgPtr& msg,
         ColumnSchema col = VERIFY_RESULT(schema.column_by_id(column_id.GetColumnId()));
         AddColumnToMap(col, decoded_value.primitive_value(), record->add_changes());
       } else if (column_id.value_type() != docdb::ValueType::kSystemColumnId) {
-        LOG(DFATAL) << "Unexpected value type in key: "<< column_id.value_type();
+        LOG(DFATAL) << "Unexpected value type in key: " << column_id.value_type();
       }
     }
   }

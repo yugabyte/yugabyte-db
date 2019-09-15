@@ -1,7 +1,8 @@
 ---
 title: ABORT
-description: ABORT command
-summary: Overview of the ABORT command.
+linkTitle: ABORT
+description: ABORT
+summary: Overview of the ABORT statement
 menu:
   latest:
     identifier: api-ysql-commands-txn-abort
@@ -14,10 +15,9 @@ showAsideToc: true
 
 ## Synopsis
 
-`ABORT` command rolls back the current transaction and discards all updates by the transaction.
+Use the `ABORT` statement to roll back the current transaction and discards all updates by the transaction.
 
 ## Syntax
-
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -44,6 +44,18 @@ showAsideToc: true
 </div>
 
 ## Semantics
+
+### *abort*
+
+#### ABORT [ TRANSACTION | WORK ]
+
+##### WORK
+
+Add optional keyword — has no effect.
+
+##### TRANSACTION
+
+Add optional keyword — has no effect.
 
 - The `SERIALIZABLE` isolation level not yet supported. (This is currently in progress).
 - Currently YugaByte DB will always use the snapshot isolation level internally. For more information, see [Isolation levels](../../../architecture/transactions/isolation-levels/).
@@ -145,6 +157,6 @@ postgres=# SELECT * FROM sample; -- run in second shell.
 
 ## See also
 
-[`INSERT`](../dml_insert)
-[`SELECT`](../dml_select)
-[Other YSQL Statements](..)
+- [`BEGIN`](../txn_begin)
+- [`COMMIT`](../txn_commit)
+- [`ROLLBACK`](../txn_rollback)

@@ -1818,18 +1818,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   if (num_tablets <= 0) {
     // Use default as client could have gotten the value before any tserver had heartbeated
     // to (a new) master leader.
-    if (IsSystemNamespace(ns->name())) {
-      num_tablets = 1;
-      LOG(INFO) << "Setting default tablets to " << num_tablets << " for table in system namespace";
-    } else {
-      TSDescriptorVector ts_descs;
-      master_->ts_manager()->GetAllLiveDescriptorsInCluster(
-          &ts_descs, replication_info.live_replicas().placement_uuid(), blacklistState.tservers_);
-      num_tablets = ts_descs.size() * (is_pg_table ? FLAGS_ysql_num_shards_per_tserver
-                                                   : FLAGS_yb_num_shards_per_tserver);
-      LOG(INFO) << "Setting default tablets to " << num_tablets << " with "
-                << ts_descs.size() << " primary servers";
-    }
+    TSDescriptorVector ts_descs;
+    master_->ts_manager()->GetAllLiveDescriptorsInCluster(
+        &ts_descs, replication_info.live_replicas().placement_uuid(), blacklistState.tservers_);
+    num_tablets = ts_descs.size() * (is_pg_table ? FLAGS_ysql_num_shards_per_tserver
+                                                 : FLAGS_yb_num_shards_per_tserver);
+    LOG(INFO) << "Setting default tablets to " << num_tablets << " with "
+              << ts_descs.size() << " primary servers";
   }
 
   // Create partitions.
@@ -4200,6 +4195,15 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
     table->AbortTasks();
   }
 
+  // Batch remove all CDC streams subscribed to the newly DELETING tables.
+  TRACE("Deleting CDC streams on table");
+  vector<TableId> id_list;
+  id_list.reserve(user_tables.size());
+  for (auto &table_and_lock : user_tables) {
+    id_list.push_back(table_and_lock.first->id());
+  }
+  RETURN_NOT_OK(DeleteCDCStreamsForTables(id_list));
+
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
   for (auto &table_and_lock : user_tables) {
     auto &table = table_and_lock.first;
@@ -4536,6 +4540,11 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
 Status CatalogManager::DeleteCDCStreamsForTable(const TableId& table) {
   return Status::OK();
 }
+
+Status CatalogManager::DeleteCDCStreamsForTables(const vector<TableId>& table_ids) {
+  return Status::OK();
+}
+
 
 bool CatalogManager::CDCStreamExistsUnlocked(const CDCStreamId& stream_id) {
   return false;

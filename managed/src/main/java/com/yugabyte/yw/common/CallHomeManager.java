@@ -121,8 +121,12 @@ public class CallHomeManager {
       // Collect Even More Stuff
     }
     Map<String, Object> ywMetadata = configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata);
-    payload.put("yugaware_uuid", ywMetadata.get("yugaware_uuid").toString());
-    payload.put("version", ywMetadata.get("version").toString());
+    if (ywMetadata.get("yugaware_uuid") != null) {
+      payload.put("yugaware_uuid", ywMetadata.get("yugaware_uuid").toString());
+    }
+    if (ywMetadata.get("version") != null) {
+      payload.put("version", ywMetadata.get("version").toString());
+    }
     payload.put("timestamp", clock.instant().getEpochSecond());
     payload.set("errors", errors);
     return payload;

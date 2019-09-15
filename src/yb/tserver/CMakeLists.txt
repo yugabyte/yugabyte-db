@@ -162,6 +162,7 @@ set(TSERVER_SRCS
   tablet_server.cc
   tablet_server_options.cc
   tablet_service.cc
+  tserver_error.cc
   ts_tablet_manager.cc
   tserver-path-handlers.cc
   ${TSERVER_SRCS_EXTENSIONS})

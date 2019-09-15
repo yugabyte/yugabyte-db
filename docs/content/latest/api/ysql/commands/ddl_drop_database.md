@@ -1,5 +1,6 @@
 ---
 title: DROP DATABASE
+linkTitle: DROP DATABASE
 summary: Remove a database
 description: DROP DATABASE
 menu:
@@ -14,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `DROP DATABASE` command removes a database and all of its associated objects from the system. This is an irreversible command. A currently-open connection to the database will be invalidated and then closed as soon as a command is executed via that connection.
+Use the `DROP DATABASE` statement to remove a database and all of its associated objects from the system. This is an irreversible stement. A currently-open connection to the database will be invalidated and then closed as soon as the statement is executed using that connection.
 
 ## Syntax
 
@@ -42,17 +43,18 @@ The `DROP DATABASE` command removes a database and all of its associated objects
   </div>
 </div>
 
-Where
-
-- `database_name` is a qualified name.
-
 ## Semantics
 
-- An error is raised if the specified `database_name` does not exist.
-- All objects that are associated with `database_name` such as tables will be invalidated after the drop statement is completed.
-- All connections to the dropped database would be invalidated and eventually disconnected.
+### *drop_database*
+
+#### DROP DATABASE [ IF EXISTS ] *database_name*
+
+Remove a database and all associated objects. All objects that are associated with `database_name` such as tables will be invalidated after the drop statement is completed. All connections to the dropped database would be invalidated and eventually disconnected.
+
+### *database_name*
+
+Specify the name of the database.
 
 ## See also
 
-[`CREATE DATABASE`](../ddl_create_database)
-[Other YSQL Statements](..)
+- [`CREATE DATABASE`](../ddl_create_database)

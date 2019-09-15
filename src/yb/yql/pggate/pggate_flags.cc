@@ -55,6 +55,9 @@ DEFINE_int32(ysql_session_max_batch_size, 512,
              "Maximum batch size for buffered writes between PostgreSQL server and YugaByte DocDB "
              "services");
 
+DEFINE_bool(ysql_non_txn_copy, false,
+            "Execute COPY inserts non-transactionally.");
+
 // Top-level flag to enable all YSQL beta features.
 DEFINE_bool(ysql_beta_features, true,
             "Whether to enable all ysql beta features");

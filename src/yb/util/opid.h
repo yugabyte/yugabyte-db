@@ -29,6 +29,14 @@ struct OpId {
   OpId() noexcept : term(0), index(0) {}
   OpId(int64_t term_, int64_t index_) noexcept : term(term_), index(index_) {}
 
+  static OpId Invalid() {
+    return OpId(kUnknownTerm, -1);
+  }
+
+  bool valid() const {
+    return term >= 0 && index >= 0;
+  }
+
   bool empty() const {
     return term == 0 && index == 0;
   }

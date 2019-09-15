@@ -236,6 +236,44 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "add_read_replica_placement_info", " <placement_info> <replication_factor>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 4) {
+          UsageAndExit(args[0]);
+        }
+        int rf = boost::lexical_cast<int>(args[3]);
+        RETURN_NOT_OK_PREPEND(client->AddReadReplicaPlacementInfo(args[2], rf),
+                              Substitute("Unable to add read replica placement info."));
+        return Status::OK();
+      });
+
+  Register(
+      "modify_read_replica_placement_info",
+      " <placement_info> <replication_factor> [placement_uuid]",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 4 && args.size() != 5) {
+          UsageAndExit(args[0]);
+        }
+        int rf = boost::lexical_cast<int>(args[3]);
+        string placement_uuid = args.size() == 5 ? args[4] : "";
+        RETURN_NOT_OK_PREPEND(client->ModifyReadReplicaPlacementInfo(placement_uuid, args[2], rf),
+                              Substitute("Unable to modify read replica placement info."));
+        return Status::OK();
+      });
+
+  Register(
+      "delete_read_replica_placement_info", " <placement_uuid>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 2 && args.size() != 3) {
+          UsageAndExit(args[0]);
+        }
+        string placement_uuid = args.size() == 3 ? args[2] : "";
+        RETURN_NOT_OK_PREPEND(client->DeleteReadReplicaPlacementInfo(placement_uuid),
+                              Substitute("Unable to delete read replica placement info."));
+        return Status::OK();
+      });
+
+  Register(
       "delete_table", " <keyspace> <table_name>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 4) {

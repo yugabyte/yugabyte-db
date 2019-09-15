@@ -1105,6 +1105,10 @@ const ClientId& YBClient::id() const {
   return data_->id_;
 }
 
+const CloudInfoPB& YBClient::cloud_info() const {
+  return data_->cloud_info_pb_;
+}
+
 std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinRunningRequestId(
     const TabletId& tablet_id) {
   std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);

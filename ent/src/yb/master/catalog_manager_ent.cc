@@ -1391,9 +1391,22 @@ Status CatalogManager::IsCdcStateTableCreated(IsCreateTableDoneResponsePB* resp)
 }
 
 Status CatalogManager::DeleteCDCStreamsForTable(const TableId& table_id) {
-  LOG(INFO) << "Deleting CDC streams for table: " << table_id;
+  return DeleteCDCStreamsForTables({table_id});
+}
 
-  auto streams = FindCDCStreamsForTable(table_id);
+Status CatalogManager::DeleteCDCStreamsForTables(const vector<TableId>& table_ids) {
+  std::ostringstream tid_stream;
+  for (const auto& tid : table_ids) {
+    tid_stream << " " << tid;
+  }
+  LOG(INFO) << "Deleting CDC streams for tables:" << tid_stream.str();
+
+  std::vector<scoped_refptr<CDCStreamInfo>> streams;
+  for (const auto& tid : table_ids) {
+    auto newstreams = FindCDCStreamsForTable(tid);
+    streams.insert(streams.end(), newstreams.begin(), newstreams.end());
+  }
+
   if (streams.empty()) {
     return Status::OK();
   }
@@ -1857,10 +1870,17 @@ void CatalogManager::GetTableSchemaCallback(
   // TODO: This does not work for situation where tables in different YSQL schemas have the same
   // name. This will be fixed as part of #1476.
   for (const auto& t : list_resp.tables()) {
-    if (t.namespace_().name() == info->table_name.namespace_name()) {
+    if (t.name() == info->table_name.table_name() &&
+        t.namespace_().name() == info->table_name.namespace_name()) {
       table->set_table_id(t.id());
       break;
     }
+  }
+
+  if (!table->has_table_id()) {
+    LOG(ERROR) << "Could not find matching table for " << info->table_name.ToString();
+    MarkUniverseReplicationFailed(universe);
+    return;
   }
 
   status = GetTableSchema(&req, &resp);
@@ -1873,7 +1893,9 @@ void CatalogManager::GetTableSchemaCallback(
   auto result = info->schema.Equals(resp.schema());
   if (!result.ok() || !*result) {
     LOG(ERROR) << "Source and target schemas don't match: Source: " << info->table_id
-               << ", Target: " << resp.identifier().table_id();
+               << ", Target: " << resp.identifier().table_id()
+               << ", Source schema: " << info->schema.ToString()
+               << ", Target schema: " << resp.schema().DebugString();
     MarkUniverseReplicationFailed(universe);
     return;
   }
@@ -1967,47 +1989,30 @@ void CatalogManager::CreateCDCStreamCallback(
   auto map = l->mutable_data()->pb.mutable_table_streams();
   (*map)[table_id] = *stream_id;
 
-  bool subscriber_error = false;
   if (l->mutable_data()->pb.table_streams_size() == l->data().pb.tables_size()) {
     // Register CDC consumers for all tables and start replication.
-    LOG(INFO) << "Registering CDC subscribers for universe " << universe->id();
+    LOG(INFO) << "Registering CDC consumers for universe " << universe->id();
 
-    // TODO: Enable after #1481
-    #if 0
-    auto resolved_tables = l->data().pb.resolved_tables();
     auto validated_tables = l->data().pb.validated_tables();
-    for (const auto& table : tables) {
-      RegisterSubscriberRequestPB req;
-      RegisterSubscriberResponsePB resp;
 
-      std::vector<HostPort> hp;
-      HostPortsFromPBs(l->data().pb.producer_master_addresses(), &hp);
-      req.set_master_addrs(HostPort::ToCommaSeparatedString(hp));
-      const auto& rpair = table.second;
-
-      auto* producer = req.mutable_producer_table();
-      producer->set_table_id(table.first);
-      producer->set_table_name(resolved_tables[table.first].table_name());
-      producer->mutable_namespace_()->set_name(resolved_tables[table.first].namespace_().name());
-
-      auto* consumer = req.mutable_consumer_table();
-      consumer->set_table_id(table.second);
-      consumer->set_table_name(resolved_tables[table.first].table_name());
-      consumer->mutable_namespace_()->set_name(resolved_tables[table.first].namespace_().name());
-
-      universe->GetStreamForTable(table.first, req.mutable_stream_id());
-
-      Status s = RegisterSubscriber(&req, &resp);
-      if (!s.ok() || resp.has_error()) {
-        LOG(ERROR) << "Error registering subscriber: " << resp.DebugString() << " : "
-                   << s.message();
-        subscriber_error = true;
-        break;
-      }
+    std::vector<CDCConsumerStreamInfo> consumer_info;
+    consumer_info.reserve(l->data().pb.tables_size());
+    for (const auto& table : validated_tables) {
+      CDCConsumerStreamInfo info;
+      info.producer_table_id = table.first;
+      info.consumer_table_id = table.second;
+      info.stream_id = (*map)[info.producer_table_id];
+      consumer_info.push_back(info);
     }
-    #endif
 
-    if (subscriber_error) {
+    std::vector<HostPort> hp;
+    HostPortsFromPBs(l->data().pb.producer_master_addresses(), &hp);
+
+    Status s = InitCDCConsumer(consumer_info, HostPort::ToCommaSeparatedString(hp),
+                               l->data().pb.producer_id());
+
+    if (!s.ok()) {
+      LOG(ERROR) << "Error registering subscriber: " << s.ToString();
       l->mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
     } else {
       l->mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::ACTIVE);

@@ -76,3 +76,5 @@ This is a list of people who have contributed code to the [YugaByte DB](https://
 * [JackDavidson](https://github.com/JackDavidson)
 * [IslamAbdelRahman](https://github.com/IslamAbdelRahman)
 * [0xflotus](https://github.com/0xflotus)
+* [vishal-biyani](https://github.com/vishal-biyani)
+* [samkulkarni20](https://github.com/samkulkarni20)

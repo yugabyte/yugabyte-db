@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableSet;
 
+import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
@@ -30,6 +31,8 @@ import com.yugabyte.yw.common.NodeManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import play.Configuration;
+
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
@@ -39,6 +42,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -75,6 +79,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     REDISSERVER,
     EITHER
   }
+
+  private Configuration appConfig;
 
   // Constants needed for parsing a templated node name tag (for AWS).
   public static final String NODE_NAME_KEY = "Name";
@@ -502,6 +508,22 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Runs task for enabling encryption-at-rest key file on master
+   */
+  public SubTaskGroup createEnableEncryptionAtRestTask(String file) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("EnableEncryptionAtRest", executor);
+    EnableEncryptionAtRest task = new EnableEncryptionAtRest();
+    EnableEncryptionAtRest.Params params = new EnableEncryptionAtRest.Params();
+    params.universeUUID = taskParams().universeUUID;
+    // Add encryption file path
+    params.encryptionKeyFilePath = file;
+    task.initialize(params);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
    * Creates a task list to wait for a minimum number of tservers to heartbeat
    * to the master leader.
    */
@@ -600,6 +622,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.rootCA = taskParams().rootCA;
       
       UUID custUUID = Customer.get(Universe.get(taskParams().universeUUID).customerId).uuid;
+
+      params.encryptionKeyFilePath = taskParams().encryptionKeyFilePath;
+
       params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
       // Set if updating master addresses only.
       params.updateMasterAddrsOnly = updateMasterAddrsOnly;

@@ -60,14 +60,13 @@ DEFAULT_TSERVER_PORT = 9100
 DEFAULT_YSQL_PORT = 5433
 DEFAULT_YCQL_PORT = 9042
 # TODO: Bug where webserver must be initiated with port 9000.
-DEFAULT_WEBSERVER_PORT = 9000
-# TODO: Add api port options in yugaware. It has to be 9000 no matter what right now.
-DEFAULT_API_PORT = 9000
+DEFAULT_WEBSERVER_PORT = 7200
 VERSION_METADATA_PATH = os.path.join(YUGABYTE_DIR, "version_metadata.json")
 YUGABYTE_API_CLIENT_PROGRAMS = {
     "ysql": "ysqlsh",
     "ycql": "cqlsh",
 }
+YSQL_NUM_SHARDS_PER_TSERVER = 2
 
 # YugaWare configs. These have their own separate subdirectory to preserve our itest flow.
 YUGAWARE_DIR = os.path.join(YUGABYTE_DIR, "ui")
@@ -89,6 +88,7 @@ class YugabyteProcessManager(object):
     def start(self):
         self.validate_resources()
         Output.print_and_log("Starting Yugabyte DB...")
+        self.set_env_vars()
         self.set_signals(self.kill_yugabyte)
         atexit.register(self.kill_yugabyte)
         self.install_yb()
@@ -276,7 +276,14 @@ class YugabyteProcessManager(object):
              "--replication_factor", "1",
              "--use_initial_sys_catalog_snapshot",
              "--server_dump_info_path",
-             os.path.join(self.configs.saved_data.get("data_dir"), "master-info"),]
+             os.path.join(self.configs.saved_data.get("data_dir"), "master-info"),
+             "--master_enable_metrics_snapshotter=true",
+             "--metrics_snapshotter_tserver_metrics_whitelist="
+                "handler_latency_yb_tserver_TabletServerService_Read_count,"
+                "handler_latency_yb_tserver_TabletServerService_Write_count,"
+                "handler_latency_yb_tserver_TabletServerService_Read_sum,"
+                "handler_latency_yb_tserver_TabletServerService_Write_sum",
+             "--ysql_num_shards_per_tserver", YSQL_NUM_SHARDS_PER_TSERVER]
         if self.configs.saved_data.get("master_flags"):
             yb_master_cmd.extend(
                 ["--{}".format(flag) for flag in \
@@ -292,7 +299,15 @@ class YugabyteProcessManager(object):
              "--start_pgsql_proxy", "--pgsql_proxy_bind_address",
              "127.0.0.1:{}".format(self.configs.saved_data.get("ysql_port")),
              "--server_dump_info_path",
-             os.path.join(self.configs.saved_data.get("data_dir"), "tserver-info"),]
+             os.path.join(self.configs.saved_data.get("data_dir"), "tserver-info"),
+             "--tserver_enable_metrics_snapshotter=true",
+             "--metrics_snapshotter_tserver_metrics_whitelist="
+                "handler_latency_yb_tserver_TabletServerService_Read_count,"
+                "handler_latency_yb_tserver_TabletServerService_Write_count,"
+                "handler_latency_yb_tserver_TabletServerService_Read_sum,"
+                "handler_latency_yb_tserver_TabletServerService_Write_sum",
+             "--metrics_snapshotter_interval_ms", "11000",
+             "--ysql_num_shards_per_tserver", YSQL_NUM_SHARDS_PER_TSERVER]
         if self.configs.saved_data.get("tserver_flags"):
             yb_tserver_cmd.extend(
                 ["--{}".format(flag) for flag in \
@@ -301,7 +316,7 @@ class YugabyteProcessManager(object):
         yw_cmd = [
             os.path.join(YUGAWARE_BIN_DIR, "yugaware"), "-Dconfig.file={}".format(YUGAWARE_CONF),
             "-Dplay.evolutions.db.default.autoApply=true",
-            "-Dhttp.port={}".format(self.configs.saved_data.get("api_port")),
+            "-Dhttp.port={}".format(self.configs.saved_data.get("webserver_port")),
         ]
 
         self.processes = {
@@ -363,7 +378,7 @@ class YugabyteProcessManager(object):
                 # https://github.com/Yugabyte/yugabyte-db/issues/1199.
                 if self.configs.saved_data.get("webserver_enabled"):
                     yw_process = self.processes.get("yugaware")
-                    yw_proxy = YugaWareProxy(self.configs.saved_data.get("api_port"))
+                    yw_proxy = YugaWareProxy(self.configs.saved_data.get("webserver_port"))
                     if not self.is_yw_initialized() and self.set_isolation_level():
                         Output.log("Initiating webserver...")
                         if not self.init_yw():
@@ -418,6 +433,7 @@ class YugabyteProcessManager(object):
                         Output.print_out(status)
 
                         callhome_thread = Thread(target=self.callhome_loop)
+                        callhome_thread.daemon = True
                         callhome_thread.start()
                         is_first_run = False
 
@@ -429,6 +445,11 @@ class YugabyteProcessManager(object):
         # Stop callhome. Useful in future if we do anything after quitting.
         self.stop_callhome = True
         callhome_thread.join()
+
+    # Sets env variables needed for yugabyte-db start.
+    def set_env_vars(self):
+        # Sets YW metrics to use local database.
+        os.environ["USE_NATIVE_METRICS"] = "true"
 
     # Runs post_install script for linux computers.
     def install_yb(self):
@@ -609,25 +630,25 @@ class YugabyteProcessManager(object):
         initial_interval = 60
         final_interval = 3600
         while not self.stop_callhome:
-            # Sometimes our callhome server returns a malformed response (raises BadStatusLine).
-            try:
-                self.callhome()
-            except Exception as e:
-                Output.log("Failed to send callhome: {}".format(e), logging.ERROR)
+            self.callhome()
             num_times_called += 1
             # Send callhome data more often in initial hour.
             time.sleep(initial_interval if num_times_called < 60 else final_interval)
 
     # Collects callhome data and sends it.
     def callhome(self):
-        url = "http://diagnostics.yugabyte.com"
-        headers = {
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla",
-        }
-        data = Diagnostics(self.configs).get_data(self.processes)
-        req = Request(url, headers=headers, data=data.encode('utf8'))
-        resp = urlopen(req)
+        try:
+            url = "http://diagnostics.yugabyte.com"
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla",
+            }
+            data = Diagnostics(self.configs).get_data(self.processes)
+            req = Request(url, headers=headers, data=data.encode('utf8'))
+            resp = urlopen(req)
+        except Exception as e:
+            # Callhome failures do not matter and should not be displayed/logged.
+            pass
 
     # Calls func after receiving certain exit signals.
     def set_signals(self, func):
@@ -823,8 +844,6 @@ class YugabyteProcessManager(object):
                 "--tserver_port", help="Port on which yb-tserver will run.")
             cur_parser.add_argument(
                 "--webserver_port", help="Port on which webserver will run.")
-            cur_parser.add_argument(
-                "--api_port", help="Port on which webserver API will run.")
 
             group = cur_parser.add_mutually_exclusive_group()
             group.add_argument(
@@ -866,7 +885,6 @@ class Configs(object):
             "ysql_port": DEFAULT_YSQL_PORT,
             "ycql_port": DEFAULT_YCQL_PORT,
             "webserver_port": DEFAULT_WEBSERVER_PORT,
-            "api_port": DEFAULT_API_PORT,
             "universe_uuid": "",
             "polling_interval": "5",
             "webserver_enabled": True,
@@ -1243,11 +1261,11 @@ class LogAnalyzer(object):
 
 # Manages API calls to YW.
 class YugaWareProxy(object):
-    def __init__(self, api_port, univ_name="local-universe"):
+    def __init__(self, webserver_port, univ_name="local-universe"):
         self.univ_name = univ_name
         self.api_token = ""
         self.cust_uuid = ""
-        self.url = "http://localhost:{}/api/v1".format(api_port)
+        self.url = "http://localhost:{}/api/v1".format(webserver_port)
 
     # Retrieves permanent api_token. Returns error, if any.
     def login(self):

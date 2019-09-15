@@ -1453,17 +1453,21 @@ drop table pp, cc;
 create temp table t1 (a integer primary key, b text);
 create temp table t2 (a integer primary key, b integer references t1);
 create rule r1 as on delete to t1 do delete from t2 where t2.b = old.a;
-ERROR:  CREATE RULE not supported yet
-LINE 1: create rule r1 as on delete to t1 do delete from t2 where t2...
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+-- TODO(jason): fix expected output when issue #2220 is closed or closing.
 explain (costs off) delete from t1 where a = 1;
-       QUERY PLAN
--------------------------
+          QUERY PLAN
+-------------------------------
+ Delete on t2
+   ->  Nested Loop
+         ->  Seq Scan on t2
+               Filter: (b = 1)
+         ->  Seq Scan on t1
+               Filter: (a = 1)
+
  Delete on t1
    ->  Seq Scan on t1
          Filter: (a = 1)
-(3 rows)
+(10 rows)
 
 delete from t1 where a = 1;
 -- Test a primary key with attributes located in later attnum positions

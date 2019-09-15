@@ -523,9 +523,9 @@ Oid YBCExecuteInsert(Relation rel,
 	                                false /* is_single_row_txn */);
 }
 
-Oid YBCExecuteSingleRowTxnInsert(Relation rel,
-                                 TupleDesc tupleDesc,
-                                 HeapTuple tuple)
+Oid YBCExecuteNonTxnInsert(Relation rel,
+						   TupleDesc tupleDesc,
+						   HeapTuple tuple)
 {
 	return YBCExecuteInsertInternal(rel,
 	                                tupleDesc,
@@ -552,7 +552,7 @@ Oid YBCHeapInsert(TupleTableSlot *slot,
 		 * single row (i.e. single-row-modify txn), and there are no indices
 		 * or triggers on the target table.
 		 */
-		return YBCExecuteSingleRowTxnInsert(resultRelationDesc, slot->tts_tupleDescriptor, tuple);
+		return YBCExecuteNonTxnInsert(resultRelationDesc, slot->tts_tupleDescriptor, tuple);
 	}
 	else
 	{

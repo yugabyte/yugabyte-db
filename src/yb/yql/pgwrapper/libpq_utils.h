@@ -47,15 +47,15 @@ Result<int64_t> GetInt64(PGresult* result, int row, int column);
 
 Result<std::string> GetString(PGresult* result, int row, int column);
 
-Result<int32_t> GetValueImpl(PGresult* result, int row, int column, int32_t*) {
+inline Result<int32_t> GetValueImpl(PGresult* result, int row, int column, int32_t*) {
   return GetInt32(result, row, column);
 }
 
-Result<int64_t> GetValueImpl(PGresult* result, int row, int column, int64_t*) {
+inline Result<int64_t> GetValueImpl(PGresult* result, int row, int column, int64_t*) {
   return GetInt64(result, row, column);
 }
 
-Result<std::string> GetValueImpl(PGresult* result, int row, int column, std::string*) {
+inline Result<std::string> GetValueImpl(PGresult* result, int row, int column, std::string*) {
   return GetString(result, row, column);
 }
 

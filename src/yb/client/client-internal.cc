@@ -947,13 +947,11 @@ Status ClientMasterRpc::HandleFinished(const Status& status, const Response& res
   if (new_status.ok() && resp.has_error()) {
     if (resp.error().code() == MasterErrorPB::NOT_THE_LEADER ||
         resp.error().code() == MasterErrorPB::CATALOG_MANAGER_NOT_INITIALIZED) {
-      if (client_->IsMultiMaster()) {
-        LOG(WARNING) << "Leader Master has changed ("
-                     << client_->data_->leader_master_hostport().ToString()
-                     << " is no longer the leader), re-trying...";
-        ResetLeaderMasterAndRetry();
-        return new_status;
-      }
+      LOG(WARNING) << "Leader Master has changed ("
+                   << client_->data_->leader_master_hostport().ToString()
+                   << " is no longer the leader), re-trying...";
+      ResetLeaderMasterAndRetry();
+      return new_status;
     }
 
     if (resp.error().status().code() == AppStatusPB::LEADER_NOT_READY_TO_SERVE ||
@@ -970,13 +968,11 @@ Status ClientMasterRpc::HandleFinished(const Status& status, const Response& res
 
   if (new_status.IsTimedOut()) {
     if (CoarseMonoClock::Now() < retrier().deadline()) {
-      if (client_->IsMultiMaster()) {
-        LOG(WARNING) << "Leader Master ("
-            << client_->data_->leader_master_hostport().ToString()
-            << ") timed out, re-trying...";
-        ResetLeaderMasterAndRetry();
-        return new_status;
-      }
+      LOG(WARNING) << "Leader Master ("
+          << client_->data_->leader_master_hostport().ToString()
+          << ") timed out, re-trying...";
+      ResetLeaderMasterAndRetry();
+      return new_status;
     } else {
       // Operation deadline expired during this latest RPC.
       new_status = new_status.CloneAndPrepend(
@@ -985,13 +981,11 @@ Status ClientMasterRpc::HandleFinished(const Status& status, const Response& res
   }
 
   if (new_status.IsNetworkError()) {
-    if (client_->IsMultiMaster()) {
-      LOG(WARNING) << "Encountered a network error from the Master("
-                   << client_->data_->leader_master_hostport().ToString() << "): "
-                   << new_status.ToString() << ", retrying...";
-      ResetLeaderMasterAndRetry();
-      return new_status;
-    }
+    LOG(WARNING) << "Encountered a network error from the Master("
+                 << client_->data_->leader_master_hostport().ToString() << "): "
+                 << new_status.ToString() << ", retrying...";
+    ResetLeaderMasterAndRetry();
+    return new_status;
   }
 
   *finished = true;
@@ -1539,7 +1533,6 @@ Status YBClient::Data::ReinitializeMasterAddresses() {
 
 // Remove a given master from the list of master_server_addrs_.
 Status YBClient::Data::RemoveMasterAddress(const HostPort& addr) {
-  vector<HostPort> new_list;
 
   {
     auto str = addr.ToString();
@@ -1549,8 +1542,6 @@ Status YBClient::Data::RemoveMasterAddress(const HostPort& addr) {
       master_server_addrs_.erase(it);
     }
   }
-
-  RETURN_NOT_OK(SetMasterAddresses(HostPort::ToCommaSeparatedString(new_list)));
 
   return Status::OK();
 }

@@ -313,13 +313,14 @@ class PeerMessageQueue {
   }
 
   // Read replicated log records starting from the OpId immediately after last_op_id.
-  CHECKED_STATUS ReadReplicatedMessages(const OpId& last_op_id, ReplicateMsgs *msgs);
+  CHECKED_STATUS ReadReplicatedMessagesForCDC(const OpId& last_op_id, ReplicateMsgs *msgs);
 
   size_t LogCacheSize();
   size_t EvictLogCache(size_t bytes_to_evict);
 
  private:
   FRIEND_TEST(ConsensusQueueTest, TestQueueAdvancesCommittedIndex);
+  FRIEND_TEST(ConsensusQueueTest, TestReadReplicatedMessagesForCDC);
 
   // Mode specifies how the queue currently behaves:
   //

@@ -69,7 +69,7 @@ public class TestPgConfiguration extends BasePgSQLTest {
       assertQuery(
           statement,
           "SELECT setting, source FROM pg_settings WHERE name='max_connections'",
-          new Row("100", "configuration file")
+          new Row("300", "configuration file")
       );
 
       // Default value determined by the GUC.
@@ -132,7 +132,7 @@ public class TestPgConfiguration extends BasePgSQLTest {
 
     // Can connect as superuser.
     try (Connection ignored = newConnectionBuilder().setTServer(tserver)
-        .setUser("postgres").connect()) {
+        .setUser("yugabyte").connect()) {
       // No-op.
     }
   }
@@ -155,7 +155,7 @@ public class TestPgConfiguration extends BasePgSQLTest {
 
     // Can connect as other users without password.
     try (Connection ignored = newConnectionBuilder().setTServer(tserver)
-        .setUser("postgres").connect()) {
+        .setUser("yugabyte").connect()) {
       // No-op.
     }
 
@@ -189,7 +189,7 @@ public class TestPgConfiguration extends BasePgSQLTest {
 
     // Can connect as superuser without password.
     try (Connection ignored = newConnectionBuilder().setTServer(tserver)
-        .setUser("postgres").connect()) {
+        .setUser("yugabyte").connect()) {
       // No-op.
     }
   }

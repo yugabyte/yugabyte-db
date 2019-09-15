@@ -337,9 +337,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS WaitForFlush();
 
-  // Synchronously perform a full compaction on both regular and intents RocksDBs.
-  CHECKED_STATUS CompactSync();
-
   // Prepares the transaction context for the alter schema operation.
   // An error will be returned if the specified schema is invalid (e.g.
   // key mismatch, or missing IDs)
@@ -404,7 +401,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Returns the maximum persistent op id from all SSTables in RocksDB.
   // First for regular records and second for intents.
-  Result<DocDbOpIds> MaxPersistentOpId() const;
+  // When invalid_if_no_new_data is true then function would return invalid op id when no new
+  // data is present in corresponding db.
+  Result<DocDbOpIds> MaxPersistentOpId(bool invalid_if_no_new_data = false) const;
 
   // Returns the maximum persistent hybrid_time across all SSTables in RocksDB.
   Result<HybridTime> MaxPersistentHybridTime() const;
@@ -469,13 +468,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const google::protobuf::RepeatedPtrField<QLReadRequestPB>& ql_batch,
       const google::protobuf::RepeatedPtrField<PgsqlReadRequestPB>& pgsql_batch,
       docdb::KeyValueWriteBatchPB* out);
-
-  // Returns last committed write index.
-  // The main purpose of this method is to make correct log cleanup when tablet does not have
-  // writes.
-  int64_t last_committed_write_index() const {
-    return last_committed_write_index_.load(std::memory_order_acquire);
-  }
 
   uint64_t GetCurrentVersionSstFilesSize() const;
   uint64_t GetCurrentVersionSstFilesUncompressedSize() const;
@@ -546,6 +538,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Scans the intent db. Potentially takes a long time. Used for testing/debugging.
   Result<int64_t> CountIntents();
+
+  // Flushed intents db if necessary.
+  void FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id);
 
  protected:
   friend class Iterator;

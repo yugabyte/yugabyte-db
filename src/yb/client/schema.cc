@@ -535,5 +535,9 @@ void YBSchema::GetPrimaryKeyColumnIndexes(vector<int>* indexes) const {
   }
 }
 
+string YBSchema::ToString() const {
+  return schema_->ToString();
+}
+
 } // namespace client
 } // namespace yb

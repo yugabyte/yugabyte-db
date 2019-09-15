@@ -851,34 +851,41 @@ TEST_F(ConsensusQueueTest, TestTriggerRemoteBootstrapIfTabletNotFound) {
             rb_req.source_private_addr()[0].ShortDebugString());
 }
 
-// Tests that ReadReplicatedMessages() only reads messages until the last known
+// Tests that ReadReplicatedMessagesForCDC() only reads messages until the last known
 // committed index.
-TEST_F(ConsensusQueueTest, TestReadReplicatedMessages) {
+TEST_F(ConsensusQueueTest, TestReadReplicatedMessagesForCDC) {
   queue_->Init(MinimumOpId());
   queue_->SetLeaderMode(MinimumOpId(), MinimumOpId().term(), BuildRaftConfigPBForTests(2));
+  queue_->TrackPeer(kPeerUuid);
+
   AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, kNumMessages);
 
   // Wait for the local peer to append all messages.
   WaitForLocalPeerToAckIndex(kNumMessages);
 
+  // Since only the local log might have ACKed at this point,
+  // the committed_index should be MinimumOpId().
+  queue_->raft_pool_observers_token_->Wait();
+  ASSERT_OPID_EQ(queue_->GetCommittedIndexForTests(), MinimumOpId());
+
   ConsensusResponsePB response;
-  response.set_responder_uuid(kLeaderUuid);
+  response.set_responder_uuid(kPeerUuid);
   bool more_pending = false;
 
   int last_committed_index = kNumMessages - 20;
-  // Peer already has some messages, last one being index last_committed_index.
+  // Ack last_committed_index messages.
   SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(last_committed_index));
   queue_->ResponseFromPeer(response.responder_uuid(), response, &more_pending);
   ASSERT_TRUE(more_pending);
 
   ReplicateMsgs msgs;
-  ASSERT_OK(queue_->ReadReplicatedMessages(MakeOpIdForIndex(0), &msgs));
+  ASSERT_OK(queue_->ReadReplicatedMessagesForCDC(MakeOpIdForIndex(0), &msgs));
   ASSERT_EQ(last_committed_index, msgs.size());
   msgs.clear();
 
   // Read from some index > 0
   int start = 10;
-  ASSERT_OK(queue_->ReadReplicatedMessages(MakeOpIdForIndex(start), &msgs));
+  ASSERT_OK(queue_->ReadReplicatedMessagesForCDC(MakeOpIdForIndex(start), &msgs));
   ASSERT_EQ(last_committed_index - start, msgs.size());
 }
 

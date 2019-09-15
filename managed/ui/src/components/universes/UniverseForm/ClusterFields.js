@@ -62,7 +62,6 @@ const initialState = {
   enableClientToNodeEncrypt: false
 };
 
-
 export default class ClusterFields extends Component {
 
   constructor(props) {
@@ -84,6 +83,7 @@ export default class ClusterFields extends Component {
     this.toggleEnableYSQL = this.toggleEnableYSQL.bind(this);
     this.toggleEnableNodeToNodeEncrypt = this.toggleEnableNodeToNodeEncrypt.bind(this);
     this.toggleEnableClientToNodeEncrypt = this.toggleEnableClientToNodeEncrypt.bind(this);
+    this.toggleEnableEncryptionAtRest = this.toggleEnableEncryptionAtRest.bind(this);
     this.numNodesChangedViaAzList = this.numNodesChangedViaAzList.bind(this);
     this.replicationFactorChanged = this.replicationFactorChanged.bind(this);
     this.softwareVersionChanged = this.softwareVersionChanged.bind(this);
@@ -147,6 +147,7 @@ export default class ClusterFields extends Component {
           enableYSQL: userIntent.enableYSQL,
           enableNodeToNodeEncrypt: userIntent.enableNodeToNodeEncrypt,
           enableClientToNodeEncrypt: userIntent.enableClientToNodeEncrypt,
+          enableEncryptionAtRest: userIntent.enableEncryptionAtRest,
           accessKeyCode: userIntent.accessKeyCode,
           deviceInfo: userIntent.deviceInfo,
           storageType: storageType,
@@ -530,6 +531,14 @@ export default class ClusterFields extends Component {
     }
   }
 
+  toggleEnableEncryptionAtRest(event) {
+    const { updateFormField, clusterType } = this.props;
+    if (clusterType === "primary") {
+      updateFormField('primary.enableEncryptionAtRest', event.target.checked);
+      this.setState({enableEncryptionAtRest: event.target.checked});
+    }
+  }
+
   replicationFactorChanged = value => {
     const {updateFormField, clusterType, universe: {currentUniverse: {data}}} = this.props;
     const clusterExists = isDefinedNotNull(data.universeDetails) ? isEmptyObject(getClusterByType(data.universeDetails.clusters, clusterType)) : null;
@@ -894,6 +903,7 @@ export default class ClusterFields extends Component {
     let enableNodeToNodeEncrypt = <span />;
     let enableClientToNodeEncrypt = <span />;
     let selectTlsCert = <span />;
+    let enableEncryptionAtRest = <span />;
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
 
     if (isDefinedNotNull(currentProvider) &&
@@ -909,12 +919,6 @@ export default class ClusterFields extends Component {
           label="Enable YSQL"
           subLabel="Whether or not to enable YSQL."/>
       );
-    }
-
-    if (isDefinedNotNull(currentProvider) &&
-       (currentProvider.code === "aws" || currentProvider.code === "gcp" ||
-        currentProvider.code === "onprem" || currentProvider.code === "kubernetes")){
-      const disableOnChange = clusterType !== "primary";
       enableNodeToNodeEncrypt = (
         <Field name={`${clusterType}.enableNodeToNodeEncrypt`}
           component={YBToggle} isReadOnly={isFieldReadOnly}
@@ -924,12 +928,6 @@ export default class ClusterFields extends Component {
           label="Enable Node-to-Node TLS"
           subLabel="Whether or not to enable TLS Encryption for node to node communication."/>
       );
-    }
-
-    if (isDefinedNotNull(currentProvider) &&
-       (currentProvider.code === "aws" || currentProvider.code === "gcp" ||
-        currentProvider.code === "onprem" || currentProvider.code === "kubernetes")){
-      const disableOnChange = clusterType !== "primary";
       enableClientToNodeEncrypt = (
         <Field name={`${clusterType}.enableClientToNodeEncrypt`}
           component={YBToggle} isReadOnly={isFieldReadOnly}
@@ -938,6 +936,16 @@ export default class ClusterFields extends Component {
           onToggle={this.toggleEnableClientToNodeEncrypt}
           label="Enable Client-to-Node TLS"
           subLabel="Whether or not to enable TLS encryption for client to node communication."/>
+      );
+      enableEncryptionAtRest = (
+        <Field name={`${clusterType}.enableEncryptionAtRest`}
+          component={YBToggle} isReadOnly={isFieldReadOnly}
+          disableOnChange={disableOnChange}
+          checkedVal={this.state.enableEncryptionAtRest}
+          onToggle={this.toggleEnableEncryptionAtRest}
+          label="Enable Encryption at Rest"
+          title="Upload encryption key file"
+          subLabel="Enable encryption for data stored on tablet servers."/>
       );
     }
 
@@ -1199,6 +1207,7 @@ export default class ClusterFields extends Component {
                 {enableYSQL}
                 {enableNodeToNodeEncrypt}
                 {enableClientToNodeEncrypt}
+                {enableEncryptionAtRest}
                 <Field name={`${clusterType}.mountPoints`} component={YBTextInput}  type="hidden"/>
               </div>
             </Col>

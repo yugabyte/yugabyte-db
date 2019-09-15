@@ -1,6 +1,7 @@
 ---
 title: EXPLAIN
-description: EXPLAIN Command
+linkTitle: EXPLAIN
+description: EXPLAIN
 summary: EXPLAIN
 menu:
   latest:
@@ -14,10 +15,9 @@ showAsideToc: true
 
 ## Synopsis
 
-The `EXPLAIN` command shows the execution plan for an statement. If the `ANALYZE` option is used, the statement will be executed, rather than just planned. In that case, execution information (rather than just the planner's estimates) is added to the `EXPLAIN` result.
+Use the `EXPLAIN` statement to show the execution plan for an statement. If the `ANALYZE` option is used, the statement will be executed, rather than just planned. In that case, execution information (rather than just the planner's estimates) is added to the `EXPLAIN` result.
 
 ## Syntax
-
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -43,23 +43,29 @@ The `EXPLAIN` command shows the execution plan for an statement. If the `ANALYZE
   </div>
 </div>
 
+## Semantics
+
 Where statement is the target statement (see more [here](../dml)).
+
+### ANALYZE
+
+Execute the statement and show actual run times and other statistics.
 
 ## Examples
 
-- Create a sample table.
+Create a sample table.
 
 ```sql
 postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
 
-- Insert some rows.
+Insert some rows.
 
 ```sql
 postgres=# INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
 
-- Check the execution plan for simple select (condition will get pushed down).
+Check the execution plan for simple select (condition will get pushed down).
 
 ```sql
 postgres=# EXPLAIN SELECT * FROM sample WHERE k1 = 1;
@@ -86,7 +92,7 @@ postgres=# EXPLAIN SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;
 (2 rows)
 ```
 
-- Check execution with `ANALYZE` option.
+Check execution with `ANALYZE` option.
 
 ```sql
 postgres=# EXPLAIN ANALYZE SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;
@@ -103,5 +109,5 @@ postgres=# EXPLAIN ANALYZE SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5)
 
 ## See also
 
-[`SELECT`](../dml_select)
-[Other YSQL Statements](..)
+- [`INSERT`](../dml_insert)
+- [`SELECT`](../dml_select)

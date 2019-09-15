@@ -18,12 +18,16 @@
 // under the License.
 //
 
-#ifndef STORAGE_ROCKSDB_UNIVERSAL_COMPACTION_OPTIONS_H
-#define STORAGE_ROCKSDB_UNIVERSAL_COMPACTION_OPTIONS_H
+#ifndef YB_ROCKSDB_UNIVERSAL_COMPACTION_H
+#define YB_ROCKSDB_UNIVERSAL_COMPACTION_H
 
 #include <stdint.h>
 #include <climits>
 #include <vector>
+
+#include "yb/util/size_literals.h"
+
+using yb::operator"" _MB;
 
 namespace rocksdb {
 
@@ -43,6 +47,9 @@ class CompactionOptionsUniversal {
   // size is 1% smaller than the next file's size, then include next file into
   // this candidate set. // Default: 1
   unsigned int size_ratio;
+
+  // Always include files with size less or equal to always_include_threshold into candidate set.
+  size_t always_include_size_threshold = 0;
 
   // The minimum number of files in a single compaction run. Default: 2
   unsigned int min_merge_width;
@@ -102,4 +109,4 @@ class CompactionOptionsUniversal {
 
 }  // namespace rocksdb
 
-#endif  // STORAGE_ROCKSDB_UNIVERSAL_COMPACTION_OPTIONS_H
+#endif  // YB_ROCKSDB_UNIVERSAL_COMPACTION_H

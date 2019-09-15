@@ -19,9 +19,9 @@ showAsideToc: true
 
 ## Introduction
 
-YSQL is a distributed SQL API that is compatible with the SQL dialect of PostgreSQL. Currently, the compatibility is with 11.2 version of PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys).
+The YugaByte Structured Query Language (YSQL) is the distributed SQL API for YugaByte DB and is compatible with the SQL dialect of PostgreSQL. Currently, YSQL is compatible with PostgreSQL 11.2 version. YugaByte DB and YSQL are optimized for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features, such as JOINs, distributed transactions, and referential integrity (such as foreign keys).
 
-The main components of YSQL are data definition language (DDL), data manipulation language (DML), and data control language (DCL). A number of elements are used to construct these components including data types, database objects, names and qualifiers, expressions, and comments. Several other components are also provided for different purposes such as system control, transaction control, and performance tuning.
+The main components of YSQL include the data definition language (DDL), the data manipulation language (DML), and the data control language (DCL). A number of elements are used to construct these components, including data types, database objects, names and qualifiers, expressions, and comments. Other components are also provided for different purposes such as system control, transaction control, and performance tuning.
 
 ## Quick Start
 
@@ -29,7 +29,7 @@ You can explore the basics of the YSQL API using the [Quick Start](../../quick-s
 
 ## Data definition language (DDL)
 
-DDL commands define structures in the database, change their definitions, as well as remove them by using CREATE, ALTER, and DROP commands respectively.
+DDL statements define the structures in a database, change their definitions, as well as remove them by using CREATE, ALTER, and DROP commands respectively.
 
 | Statement | Description |
 |-----------|-------------|
@@ -41,15 +41,17 @@ DDL commands define structures in the database, change their definitions, as wel
 | [`CREATE SEQUENCE`](commands/ddl_create_sequence) | Create a new sequence generator |
 | [`CREATE TABLE`](commands/ddl_create_table) | Create a new table |
 | [`CREATE TABLE AS`](commands/ddl_create_table_as) | Create a new table |
+| [`CREATE TYPE`](commands/ddl_create_type) | Create a new type |
 | [`CREATE VIEW`](commands/ddl_create_view) | Create a new view |
 | [`DROP DATABASE`](commands/ddl_drop_database) | Delete a database from the system |
 | [`DROP SEQUENCE`](commands/ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP TABLE`](commands/ddl_drop_table) | Delete a table from a database |
+| [`DROP TYPE`](commands/ddl_drop_type) | Delete a user-defined type |
 | [`TRUNCATE`](commands/ddl_truncate) | Clear all rows from a table |
 
 ## Data manipulation language (DML)
 
-DML commands modify the contents of the database.
+DML statements modify the contents of a database.
 
 | Statement | Description |
 |-----------|-------------|
@@ -60,7 +62,7 @@ DML commands modify the contents of the database.
 
 ## Data control language (DCL)
 
-DCL commands protect and prevent the database from corruptions.
+DCL statements protect and prevent the database from corruptions.
 
 | Statement | Description |
 |-----------|-------------|
@@ -70,25 +72,26 @@ DCL commands protect and prevent the database from corruptions.
 | [`CREATE GROUP`](commands/dcl_create_group) | Create a new group (role) |
 | [`CREATE ROLE`](commands/dcl_create_role) | Create a new role (user or group) |
 | [`CREATE USER`](commands/dcl_create_user) | Create a new user (role) |
+| [`DROP GROUP`](commands/dcl_drop_group) | Drop a group |
+| [`DROP ROLE`](commands/dcl_drop_role) | Drop a role (user or group) |
+| [`DROP USER`](commands/dcl_drop_user) | Drop a user |
 | [`GRANT`](commands/dcl_grant) | Grant permissions |
 | [`REVOKE`](commands/dcl_revoke) | Revoke permissions |
 
 ## Transaction control language (TCL)
 
-TCL commands manage transactions of operations on the database.
+TCL statements manage transactions of operations on the database.
 
 | Statement | Description |
 |-----------|-------------|
-| [`ABORT`](commands/txn_abort) | Rollback a transaction |
-| [`BEGIN TRANSACTION`](commands/txn_begin) | Start a transaction |
+| [`ABORT`](commands/txn_abort) | Roll back a transaction |
+| [`BEGIN`](commands/txn_begin) | Start a transaction |
 | [`COMMIT`](commands/txn_commit) | Commit a transaction |
-| [`END TRANSACTION`](commands/txn_end) | Commit a transaction |
-| [`ROLLBACK`](commands/txn_rollback) | Rollback a transaction |
+| [`END`](commands/txn_end) | Commit a transaction |
+| [`ROLLBACK`](commands/txn_rollback) | Roll back a transaction |
 | [`SET CONSTRAINTS`](commands/txn_set_constraints) | Set constraints on current transaction|
 | [`SET TRANSACTION`](commands/txn_set) | Set transaction behaviors |
 | [`SHOW TRANSACTION`](commands/txn_show) | Show properties of a transaction |
-
-Note that Serializable isolation level for multi-key transactions was added in [v1.2.6](../../releases/v1.2.6/).
 
 ## Session and system control
 
@@ -107,11 +110,12 @@ Note that Serializable isolation level for multi-key transactions was added in [
 | [`EXPLAIN`](commands/perf_explain) | Explain an execution plan for a statement |
 | [`PREPARE`](commands/perf_prepare) | Prepare a statement |
 
-## Other commands
+## Other statements
 
 | Statement | Description |
 |-----------|-------------|
 | [`COPY`](commands/cmd_copy) | Copy data between tables and files |
+| [`DO`](commands/cmd_doc) | Execute an anonymous code block |
 
 ## Language elements
 

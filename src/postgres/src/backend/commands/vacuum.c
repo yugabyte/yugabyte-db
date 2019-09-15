@@ -89,12 +89,6 @@ ExecVacuum(VacuumStmt *vacstmt, bool isTopLevel)
 {
 	VacuumParams params;
 
-	/* No need for vacuming in YB mode. */
-	if (IsYugaByteEnabled()) 
-	{
-		return;
-	}
-
 	/* sanity checks on options */
 	Assert(vacstmt->options & (VACOPT_VACUUM | VACOPT_ANALYZE));
 	Assert((vacstmt->options & VACOPT_VACUUM) ||
@@ -178,6 +172,16 @@ vacuum(int options, List *relations, VacuumParams *params,
 	const char *stmttype;
 	volatile bool in_outer_xact,
 				use_own_xacts;
+
+	/*
+	 * VACUUM currently not supported for Yugabyte.
+	 */
+	if (options & VACOPT_VACUUM)
+	{
+		ereport(WARNING,
+				(errmsg("VACUUM will be ignored")));
+		return;
+	}
 
 	Assert(params != NULL);
 

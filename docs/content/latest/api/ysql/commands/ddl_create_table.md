@@ -15,10 +15,9 @@ showAsideToc: true
 
 ## Synopsis
 
-The `CREATE TABLE` command creates a new table in a database. It defines the table name, column names and types, primary key, and table properties.
+Use the `CREATE TABLE` statement to create a new table in a database. It defines the table name, column names and types, primary key, and table properties.
 
 ## Syntax
-
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -37,79 +36,104 @@ The `CREATE TABLE` command creates a new table in a database. It defines the tab
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameter.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameters,storage_parameter,index_parameters.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameter.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameters,storage_parameter,index_parameters.diagram.md" /%}}
   </div>
 </div>
 
-Where
-
-- `qualified_name` and `name` are identifiers (`qualified_name` can be a qualified name).
-- `expression` for DEFAULT keyword must be of the same type as the column it modifies. It must be of type boolean for CHECK constraints.
-- `param_name` and `param_value` represent storage parameters [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS)
-
 ## Semantics
 
-- An error is raised if `qualified_name` already exists in the specified database.
-- Storage parameters through the `WITH` clause are accepted [for PostgreSQL compatibility](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), but they will be ignored. The exceptions are `oids=true` and `user_catalog_table=true`, which are explicitly disallowed and will result in an error being thrown.
+### *create_table*
 
-### PRIMARY KEY
+#### CREATE TABLE [ IF NOT EXISTS ] *table_name*
+
+Create a table with *table_name*. An error is raised if `qualified_name` already exists in the specified database.
+
+### *table_elem*
+
+### *column_constraint*
+
+#### CONSTRAINT *constraint_name*
+
+Specify the name of the constraint.
+
+### *table_constraint*
+
+#### CONSTRAINT *constraint_name*
+
+##### NOT NULL | NULL | CHECK ( *expression* ) | DEFAULT *expression* | UNIQUE index_parameters | PRIMARY KEY | *references_clause*
+
+###### PRIMARY KEY
 
 - Currently defining a primary key is required.
-- Primary key can be defined in either `column_constraint` or `table_constraint` but not in both of them.
-- Each row in a table is uniquely identified by its primary key. 
+- Primary key can be defined in either `column_constraint` or `table_constraint`, but not in both.
+- Each row in a table is uniquely identified by its primary key.
 
-### FOREIGN KEY
+###### FOREIGN KEY
 
 Foreign keys are supported starting v1.2.10.
 
+### *storage_parameter*
+
+Represent storage parameters [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS).
+
+#### *name* | *name* = *value*
+
+For DEFAULT keyword must be of the same type as the column it modifies. It must be of type boolean for CHECK constraints.
+
 ## Examples
 
-Table with primary key
+### Table with primary key
 
 ```sql
-postgres=# CREATE TABLE sample(k1 int, 
-                               k2 int, 
-                               v1 int, 
-                               v2 text, 
+postgres=# CREATE TABLE sample(k1 int,
+                               k2 int,
+                               v1 int,
+                               v2 text,
                                PRIMARY KEY (k1, k2));
 ```
 
-Table with check constraint
+### Table with check constraint
 
 ```sql
-postgres=# CREATE TABLE student_grade (student_id int, 
-                                       class_id int, 
-                                       term_id int, 
-                                       grade int CHECK (grade >= 0 AND grade <= 10), 
-                                       PRIMARY KEY (student_id, class_id, term_id));
+postgres=# CREATE TABLE student_grade(student_id int,
+                                      class_id int,
+                                      term_id int,
+                                      grade int CHECK (grade >= 0 AND grade <= 10),
+                                      PRIMARY KEY (student_id, class_id, term_id));
 ```
 
-Table with default value
+### Table with default value
 
 ```sql
-postgres=# CREATE TABLE cars (id int PRIMARY KEY, 
-                              brand text CHECK (brand in ('X', 'Y', 'Z')), 
-                              model text NOT NULL, 
-                              color text NOT NULL DEFAULT 'WHITE' CHECK (color in ('RED', 'WHITE', 'BLUE')));
+postgres=# CREATE TABLE cars(id int PRIMARY KEY,
+                             brand text CHECK (brand in ('X', 'Y', 'Z')),
+                             model text NOT NULL,
+                             color text NOT NULL DEFAULT 'WHITE' CHECK (color in ('RED', 'WHITE', 'BLUE')));
 ```
 
-Table with foreign key constraint
+### Table with foreign key constraint
 
 ```sql
-postgres=# create table products(id int primary key, 
+postgres=# CREATE TABLE products(id int PRIMARY KEY,
                                  descr text);
-postgres=# create table orders(id int primary key, 
-                               pid int references products(id) ON DELETE CASCADE, 
+postgres=# CREATE TABLE orders(id int PRIMARY KEY,
+                               pid int REFERENCES products(id) ON DELETE CASCADE,
                                amount int);
+```
+
+### Table with unique constraint
+
+```sql
+postgres=# CREATE TABLE translations(message_id int UNIQUE,
+                                     message_txt text);
 ```
 
 ## See also
 
-[`DROP TABLE`](../ddl_drop_table)
-[`ALTER TABLE`](../ddl_alter_table)
-[`INSERT`](../dml_insert)
-[`SELECT`](../dml_select)
-[Other YSQL Statements](..)
+- [`ALTER TABLE`](../ddl_alter_table)
+- [`CREATE TABLE AS`](../ddl_create_table_as)
+- [`CREATE TABLESPACE`](../ddl_create_tablespace)
+- [`DROP TABLE`](../ddl_drop_table)

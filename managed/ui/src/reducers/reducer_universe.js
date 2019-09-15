@@ -10,7 +10,8 @@ import { FETCH_UNIVERSE_INFO, RESET_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_RESPONSE,
   CONFIGURE_UNIVERSE_RESOURCES, CONFIGURE_UNIVERSE_RESOURCES_RESPONSE, ROLLING_UPGRADE,
   ROLLING_UPGRADE_RESPONSE, RESET_ROLLING_UPGRADE, SET_UNIVERSE_METRICS, SET_PLACEMENT_STATUS,
   RESET_UNIVERSE_CONFIGURATION, FETCH_UNIVERSE_METADATA, GET_UNIVERSE_PER_NODE_STATUS,
-  GET_UNIVERSE_PER_NODE_STATUS_RESPONSE, GET_MASTER_LEADER, GET_MASTER_LEADER_RESPONSE, RESET_MASTER_LEADER,
+  GET_UNIVERSE_PER_NODE_STATUS_RESPONSE, GET_UNIVERSE_PER_NODE_METRICS,
+  GET_UNIVERSE_PER_NODE_METRICS_RESPONSE, GET_MASTER_LEADER, GET_MASTER_LEADER_RESPONSE, RESET_MASTER_LEADER,
   PERFORM_UNIVERSE_NODE_ACTION, PERFORM_UNIVERSE_NODE_ACTION_RESPONSE, FETCH_UNIVERSE_BACKUPS,
   FETCH_UNIVERSE_BACKUPS_RESPONSE, RESET_UNIVERSE_BACKUPS, GET_HEALTH_CHECK,
   GET_HEALTH_CHECK_RESPONSE, ADD_READ_REPLICA, ADD_READ_REPLICA_RESPONSE, EDIT_READ_REPLICA,
@@ -38,6 +39,7 @@ const INITIAL_STATE = {
   deleteReadReplica: getInitialState([]),
   universeTasks: getInitialState([]),
   universePerNodeStatus: getInitialState({}),
+  universePerNodeMetrics: getInitialState({}),
   universeMasterLeader: getInitialState({}),
   rollingUpgrade: getInitialState({}),
   universeNodeAction: getInitialState({}),
@@ -98,6 +100,10 @@ export default function(state = INITIAL_STATE, action) {
       return setLoadingState(state, "universePerNodeStatus", {});
     case GET_UNIVERSE_PER_NODE_STATUS_RESPONSE:
       return setPromiseResponse(state, "universePerNodeStatus", action);
+    case GET_UNIVERSE_PER_NODE_METRICS:
+      return setLoadingState(state, "universePerNodeMetrics", {});
+    case GET_UNIVERSE_PER_NODE_METRICS_RESPONSE:
+      return setPromiseResponse(state, "universePerNodeMetrics", action);
     case GET_MASTER_LEADER:
       return setLoadingState(state, "universeMasterLeader", {});
     case GET_MASTER_LEADER_RESPONSE:

@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`SET` command updates a run-time control parameter.
+Use the `SET` statement to update a run-time control parameter.
 
 ## Syntax
 
@@ -43,22 +43,27 @@ showAsideToc: true
   </div>
 </div>
 
-Where
-
-- `SESSION` option specifies that the command affects only the current session.
-
-- `LOCAL` option specifies that the command affect only the current transaction. After COMMIT or ROLLBACK, the session-level setting takes effect again.
-
-- `configuration_parameter` specifies the name of a mutable run-time parameter.
-
-- `value` specifies new value of parameter.
-
 ## Semantics
 
-- Although the values of a parameter can be set, showed, and reset, the effect of these parameters are not yet supported in YugaByte. The factory-settings or default behaviors will be used for the moment.
+Although the values of a parameter can be set, displayed, and reset, the effect of these parameters are not yet supported in YugaByte DB. The default settings and behaviors will be used for the moment.
+
+### SESSION
+
+Specify that the command affects only the current session.
+
+### LOCAL
+
+Specify that the command affects only the current transaction. After `COMMIT` or `ROLLBACK`, the session-level setting takes effect again.
+
+### *configuration_parameter*
+
+Specify the name of a mutable run-time parameter.
+
+### value
+
+Specify the new value of parameter.
 
 ## See also
 
-[`SHOW`](../cmd_show)
-[`RESET`](../cmd_reset)
-[Other YSQL Statements](..)
+- [`SHOW`](../cmd_show)
+- [`RESET`](../cmd_reset)

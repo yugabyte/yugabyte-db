@@ -16,14 +16,19 @@
 #include "yb/cdc/cdc_service.service.h"
 
 #include "yb/cdc/cdc_producer.h"
+#include "yb/cdc/cdc_service.proxy.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/metrics.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/service_util.h"
 
 namespace yb {
 namespace cdc {
+
+typedef std::unordered_map<HostPort, std::shared_ptr<CDCServiceProxy>, HostPortHash>
+    CDCServiceProxyMap;
 
 static const char* const kRecordType = "record_type";
 static const char* const kRecordFormat = "record_format";
@@ -60,7 +65,7 @@ class CDCServiceImpl : public CDCServiceIf {
   bool CheckOnline(const ReqType* req, RespType* resp, rpc::RpcContext* rpc);
 
   template <class RespType>
-  Result<std::shared_ptr<tablet::TabletPeer>> GetLeaderTabletPeer(
+  Result<std::shared_ptr<tablet::TabletPeer>> GetTabletPeer(
       const std::string& tablet_id, RespType* resp, rpc::RpcContext* rpc);
 
   Result<OpIdPB> GetLastCheckpoint(const std::string& stream_id,
@@ -87,6 +92,16 @@ class CDCServiceImpl : public CDCServiceIf {
   CHECKED_STATUS CheckTabletValidForStream(const std::string& stream_id,
                                            const std::string& tablet_id);
 
+  void TabletLeaderGetChanges(const GetChangesRequestPB* req,
+                              GetChangesResponsePB* resp,
+                              rpc::RpcContext* context);
+  void TabletLeaderGetCheckpoint(const GetCheckpointRequestPB* req,
+                                 GetCheckpointResponsePB* resp,
+                                 rpc::RpcContext* context);
+
+  Result<client::internal::RemoteTabletServer *> GetLeaderTServer(const TabletId& tablet_id);
+  std::shared_ptr<CDCServiceProxy> GetCDCServiceProxy(client::internal::RemoteTabletServer* ts);
+
   tserver::TSTabletManager* tablet_manager_;
 
   boost::optional<yb::client::AsyncClientInitialiser> async_client_init_;
@@ -101,6 +116,10 @@ class CDCServiceImpl : public CDCServiceIf {
   // TODO: Add cache invalidation after tablet splitting is implemented (#1004).
   // Map of stream ID -> [tablet IDs].
   std::unordered_map<std::string, std::shared_ptr<std::unordered_set<std::string>>> stream_tablets_;
+
+  // Map of HostPort -> CDCServiceProxy. This is used to redirect requests to tablet leader's
+  // CDC service proxy.
+  CDCServiceProxyMap cdc_service_map_;
 };
 
 }  // namespace cdc

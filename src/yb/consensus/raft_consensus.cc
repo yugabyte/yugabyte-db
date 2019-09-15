@@ -2920,8 +2920,8 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
   return Status::OK();
 }
 
-Status RaftConsensus::ReadReplicatedMessages(const OpId& from, ReplicateMsgs* msgs) {
-  return queue_->ReadReplicatedMessages(from, msgs);
+Status RaftConsensus::ReadReplicatedMessagesForCDC(const OpId& from, ReplicateMsgs* msgs) {
+  return queue_->ReadReplicatedMessagesForCDC(from, msgs);
 }
 
 void RaftConsensus::RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg,

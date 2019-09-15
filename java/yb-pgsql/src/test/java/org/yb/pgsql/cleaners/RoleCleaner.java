@@ -42,6 +42,7 @@ public class RoleCleaner implements ClusterCleaner {
       ResultSet resultSet = statement.executeQuery(
           "SELECT rolname FROM pg_roles" +
               " WHERE rolname <> 'postgres'" +
+              " AND rolname <> 'yugabyte'" +
               " AND rolname <> '" + BasePgSQLTest.TEST_PG_USER + "'" +
               " AND rolname NOT LIKE 'pg_%'");
 

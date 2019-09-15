@@ -247,7 +247,11 @@ class OutboundCall : public RpcCall {
   void SetQueued();
 
   // Update the call state to show that the request has been sent.
+  // Could be called on already finished call in case it was already timed out.
   void SetSent();
+
+  // Outbound call could be moved to final state only once,
+  // so only one of SetFinished/SetTimedOut/SetFailed/SetResponse can be called.
 
   // Update the call state to show that the call has finished.
   void SetFinished();
@@ -260,13 +264,14 @@ class OutboundCall : public RpcCall {
   // Mark the call as timed out. This also triggers the callback to notify
   // the caller.
   void SetTimedOut();
+
+  // Fill in the call response.
+  void SetResponse(CallResponse&& resp);
+
   bool IsTimedOut() const;
 
   // Is the call finished?
   bool IsFinished() const override final;
-
-  // Fill in the call response.
-  void SetResponse(CallResponse&& resp);
 
   std::string ToString() const override;
 
@@ -313,8 +318,9 @@ class OutboundCall : public RpcCall {
   ConnectionId conn_id_;
   const std::string* hostname_;
   MonoTime start_;
-  RpcController* const controller_;
+  RpcController* controller_;
   // Pointer for the protobuf where the response should be written.
+  // Can be used only while callback_ object is alive.
   google::protobuf::Message* response_;
 
  private:

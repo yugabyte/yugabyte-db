@@ -2847,7 +2847,14 @@ CopyFrom(CopyState cstate)
 						/* OK, store the tuple and create index entries for it */
 						if (IsYBRelation(resultRelInfo->ri_RelationDesc))
 						{
-							YBCExecuteInsert(cstate->rel, tupDesc, tuple);
+							if (YBCIsEnvVarTrue("FLAGS_ysql_non_txn_copy"))
+							{
+								YBCExecuteNonTxnInsert(cstate->rel, tupDesc, tuple);
+							}
+							else
+							{
+								YBCExecuteInsert(cstate->rel, tupDesc, tuple);
+							}
 						}
 						else if (resultRelInfo->ri_FdwRoutine != NULL)
 						{

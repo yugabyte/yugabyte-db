@@ -34,14 +34,11 @@ using rpc::RpcController;
 
 class CDCServiceTxnTest : public TransactionTestBase {
  protected:
-  IsolationLevel GetIsolationLevel() override {
-    return IsolationLevel::SERIALIZABLE_ISOLATION;
-  }
-
   void SetUp() override {
     mini_cluster_opt_.num_masters = 1;
     mini_cluster_opt_.num_tablet_servers = 1;
     create_table_ = false;
+    SetIsolationLevel(IsolationLevel::SERIALIZABLE_ISOLATION);
     TransactionTestBase::SetUp();
     client::KeyValueTableTest::CreateTable(
         client::Transactional::kTrue, 1 /* num tablets */, client_.get(), &table_);

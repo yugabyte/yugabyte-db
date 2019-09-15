@@ -1,9 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import { browserHistory } from 'react-router';
-import { YBFormSelect } from '../../common/forms/fields';
+import { YBFormSelect, YBFormToggle } from '../../common/forms/fields';
 import { isNonEmptyObject, isDefinedNotNull } from 'utils/ObjectUtils';
 import { Field } from 'formik';
 import { YBModalForm } from '../../common/forms';
@@ -29,11 +29,12 @@ export default class CreateBackup extends Component {
         "storageConfigUUID": values.storageConfigUUID,
         "actionType": "CREATE",
         "tableName": backupTable.tableName,
-        "keyspace": backupTable.keySpace
+        "keyspace": backupTable.keySpace,
+        "sse": values.enableSSE,
       };
       createTableBackup(universeUUID, backupTable.tableUUID, payload);
       onHide();
-      browserHistory.push('/universes/' + universeUUID + "?tab=backups");
+      browserHistory.push('/universes/' + universeUUID + "/backups");
     }
   };
 
@@ -78,16 +79,22 @@ export default class CreateBackup extends Component {
                     .required('Backup Table is Required'),
                     storageConfigUUID: Yup.string()
                     .required('Storage Config is Required'),
+                    enableSSE: Yup.bool(),
                   })
-                }>
-          <Field name="storageConfigUUID" component={YBFormSelect}
-                 label={"Storage"}
-                 onInputChanged={this.storageConfigChanged}
-                 options={storageOptions}  />
-          <Field name="backupTableUUID" component={YBFormSelect}
-                 label={"Table"} options={tableOptions}
-                 onInputChanged={this.backupTableChanged} />
-        </YBModalForm>
+                }
+          render={props => (
+            <Fragment>
+              <Field name="storageConfigUUID" component={YBFormSelect}
+                    label={"Storage"}
+                    onInputChanged={this.storageConfigChanged}
+                    options={storageOptions}  />
+              <Field name="backupTableUUID" component={YBFormSelect}
+                    label={"Table"} options={tableOptions}
+                    onInputChanged={this.backupTableChanged} />
+              <Field name="enableSSE" component={YBFormToggle}
+                    label={"Enable Server-Side Encryption"} />
+            </Fragment>)}
+        />
       </div>
     );
   }

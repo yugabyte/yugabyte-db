@@ -58,6 +58,8 @@ DECLARE_bool(suicide_on_eio);
 
 namespace yb {
 
+Status IOError(const std::string& context, int err_number, const char* file, int line);
+
 namespace {
 
 // A wrapper for fadvise, if the platform doesn't support fadvise, it will simply return
@@ -68,26 +70,6 @@ int Fadvise(int fd, off_t offset, size_t len, int advice) {
 #else
   return 0;  // simply do nothing.
 #endif
-}
-
-static Status IOError(const std::string& context, int err_number, const char* file, int line) {
-  switch (err_number) {
-    case ENOENT:
-      return Status(Status::kNotFound, file, line, context, ErrnoToString(err_number), err_number);
-    case EEXIST:
-      return Status(Status::kAlreadyPresent, file, line, context, ErrnoToString(err_number),
-                    err_number);
-    case EOPNOTSUPP:
-      return Status(Status::kNotSupported, file, line, context, ErrnoToString(err_number),
-                    err_number);
-    case EIO:
-      if (FLAGS_suicide_on_eio) {
-        // TODO: This is very, very coarse-grained. A more comprehensive
-        // approach is described in KUDU-616.
-        LOG(FATAL) << "Fatal I/O error, context: " << context;
-      }
-  }
-  return Status(Status::kIOError, file, line, context, ErrnoToString(err_number), err_number);
 }
 
 #define STATUS_IO_ERROR(context, err_number) IOError(context, err_number, __FILE__, __LINE__)
