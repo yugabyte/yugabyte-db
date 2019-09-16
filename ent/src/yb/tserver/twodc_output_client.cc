@@ -20,8 +20,10 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/tserver/cdc_rpc.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 
 DEFINE_test_flag(bool, twodc_write_hybrid_time_override, false,
@@ -34,8 +36,6 @@ namespace tserver {
 namespace enterprise {
 
 using rpc::Rpc;
-
-class WriteAsyncRpc;
 
 class TwoDCOutputClient : public cdc::CDCOutputClient {
  public:
@@ -57,21 +57,16 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
 
   CHECKED_STATUS ApplyChanges(const cdc::GetChangesResponsePB* resp) override;
 
-  void HandleWriteRpcResponse(const Status& s,
-      const cdc::CDCRecordPB& record,
-      std::unique_ptr<WriteResponsePB> resp);
-  void RegisterRpc(rpc::RpcCommandPtr call, rpc::Rpcs::Handle* handle);
+  rpc::Rpcs::Handle RegisterRpc(rpc::RpcCommandPtr call);
   rpc::RpcCommandPtr UnregisterRpc(rpc::Rpcs::Handle* handle);
 
-  rpc::Rpcs::Handle InvalidRpcHandle() {
-    return rpcs_.InvalidHandle();
-  }
+  void WriteCDCRecordDone(
+      const Status& status, const WriteResponsePB& response, const size_t record_idx);
 
  private:
   void TabletLookupCallback(
-      const cdc::GetChangesResponsePB* resp,
-      const cdc::CDCRecordPB& record,
-      const Result<client::internal::RemoteTabletPtr>& tablet);
+      const size_t record_idx, const Result<client::internal::RemoteTabletPtr>& tablet);
+  void SendCDCWriteToTablet(const size_t record_idx);
 
   void IncProcessedRecordCount();
 
@@ -92,14 +87,22 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
 
   std::atomic<uint32_t> processed_record_count_{0};
   std::atomic<uint32_t> record_count_{0};
+
+  // Map of CDCRecord index -> RemoteTablet.
+  std::unordered_map<size_t, client::internal::RemoteTablet*> records_;
+
+  const cdc::GetChangesResponsePB* resp_;
 };
 
 Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
   // ApplyChanges is called in a single threaded manner.
-  // For all the changes in GetChangesResponsePB, it fans out applying the changes.
+  // For all the changes in GetChangesResponsePB, we first fan out and find the tablet for
+  // every record key.
+  // Then we apply the records in the same order in which we received them.
   // Once all changes have been applied (successfully or not), we invoke the callback which will
   // then either poll for next set of changes (in case of successful application) or will try to
   // re-apply.
+  resp_ = resp;
   processed_record_count_.store(0, std::memory_order_release);
   record_count_.store(resp->records_size(), std::memory_order_release);
   DCHECK(resp->has_checkpoint());
@@ -143,8 +146,7 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
           PartitionSchema::EncodeMultiColumnHashValue(
               boost::lexical_cast<uint16_t>(resp->records(i).key(0).key())),
           CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_cdc_rpc_timeout_ms),
-          std::bind(&TwoDCOutputClient::TabletLookupCallback, this, resp, resp->records(i),
-                    std::placeholders::_1));
+          std::bind(&TwoDCOutputClient::TabletLookupCallback, this, i, std::placeholders::_1));
       records_to_process = true;
     }
   }
@@ -156,20 +158,8 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
   return Status::OK();
 }
 
-void TwoDCOutputClient::HandleWriteRpcResponse(
-    const Status& status, const cdc::CDCRecordPB& record, std::unique_ptr<WriteResponsePB> resp ) {
-  if (!status.ok()) {
-    HandleError(status, record);
-  } else if (resp->has_error()) {
-    HandleError(StatusFromPB(resp->error().status()), record);
-  } else {
-    IncProcessedRecordCount();
-    HandleResponse();
-  }
-}
-
-void TwoDCOutputClient::RegisterRpc(rpc::RpcCommandPtr call, rpc::Rpcs::Handle* handle) {
-  rpcs_.Register(call, handle);
+rpc::Rpcs::Handle TwoDCOutputClient::RegisterRpc(rpc::RpcCommandPtr call) {
+  return rpcs_.Register(call);
 }
 
 rpc::RpcCommandPtr TwoDCOutputClient::UnregisterRpc(rpc::Rpcs::Handle* handle) {
@@ -177,35 +167,80 @@ rpc::RpcCommandPtr TwoDCOutputClient::UnregisterRpc(rpc::Rpcs::Handle* handle) {
 }
 
 void TwoDCOutputClient::TabletLookupCallback(
-    const cdc::GetChangesResponsePB* resp,
-    const cdc::CDCRecordPB& record,
+    const size_t record_idx,
     const Result<client::internal::RemoteTabletPtr>& tablet) {
   if (!tablet.ok()) {
-    HandleError(tablet.status(), record);
+    IncProcessedRecordCount();
+    HandleError(tablet.status(), resp_->records(record_idx));
     return;
   }
 
-  auto ts = tablet->get()->LeaderTServer();
-  if (ts == nullptr) {
-    HandleError(STATUS_FORMAT(IllegalState,
-        "Cannot find leader tserver for tablet $0", tablet->get()->tablet_id()), record);
-    return;
+  {
+    std::lock_guard<rw_spinlock> l(lock_);
+    records_.emplace(record_idx, tablet->get());
   }
 
-  Status s = ts->InitProxy(client_.get());
-  if (!s.ok()) {
-    HandleError(s, record);
-    return;
+  IncProcessedRecordCount();
+  if (processed_record_count_.load(std::memory_order_acquire) ==
+      record_count_.load(std::memory_order_acquire)) {
+    // Found tablets for all records, now we should write the records.
+    SendCDCWriteToTablet(0);
+  }
+}
+
+void TwoDCOutputClient::SendCDCWriteToTablet(const size_t record_idx) {
+  client::internal::RemoteTablet* tablet;
+  {
+    std::shared_lock<rw_spinlock> l(lock_);
+    tablet = records_[record_idx];
+  }
+
+  WriteRequestPB req;
+  req.set_tablet_id(tablet->tablet_id());
+  if (PREDICT_FALSE(FLAGS_twodc_write_hybrid_time_override)) {
+    // Used only for testing external hybrid time.
+    req.set_external_hybrid_time(yb::kInitialHybridTimeValue);
+  } else {
+    req.set_external_hybrid_time(resp_->records(record_idx).time());
+  }
+  for (const auto& kv_pair : resp_->records(record_idx).changes()) {
+    auto* write_pair = req.mutable_write_batch()->add_write_pairs();
+    write_pair->set_key(kv_pair.key());
+    write_pair->set_value(kv_pair.value().binary_value());
   }
 
   auto deadline = CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_rpc_timeout_ms);
-  auto write_rpc = rpc::StartRpc<WriteAsyncRpc>(
-      deadline, client_->messenger(), &client_->proxy_cache(), ts->proxy(),
-      tablet->get()->tablet_id(), record, this);
+  auto write_rpc = WriteCDCRecord(
+      deadline,
+      tablet,
+      client_.get(),
+      std::bind(&TwoDCOutputClient::RegisterRpc, this, std::placeholders::_1),
+      std::bind(&TwoDCOutputClient::UnregisterRpc, this, std::placeholders::_1),
+      &req,
+      std::bind(&TwoDCOutputClient::WriteCDCRecordDone, this,
+                std::placeholders::_1, std::placeholders::_2, record_idx));
+}
+
+void TwoDCOutputClient::WriteCDCRecordDone(
+    const Status& status, const WriteResponsePB& response, size_t record_idx) {
+  VLOG(1) << "Wrote CDC record: " << status << ": " << response.DebugString();
+  if (!status.ok()) {
+    HandleError(status, resp_->records(record_idx));
+    return;
+  } else if (response.has_error()) {
+    HandleError(StatusFromPB(response.error().status()), resp_->records(record_idx));
+    return;
+  }
+
+  if (record_idx == resp_->records_size() - 1) {
+    // Last record, return response to caller.
+    HandleResponse();
+  } else {
+    SendCDCWriteToTablet(record_idx + 1);
+  }
 }
 
 void TwoDCOutputClient::HandleError(const Status& s, const cdc::CDCRecordPB& bad_record) {
-  IncProcessedRecordCount();
   LOG(ERROR) << "Error while applying replicated record for " << bad_record.DebugString()
              << ": " << s.ToString();
   {
@@ -241,91 +276,6 @@ std::unique_ptr<cdc::CDCOutputClient> CreateTwoDCOutputClient(
     std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk) {
   return std::make_unique<TwoDCOutputClient>(
       consumer_tablet_info, client, std::move(apply_changes_clbk));
-}
-
-class WriteAsyncRpc : public Rpc {
- public:
-  WriteAsyncRpc(
-      CoarseTimePoint deadline,
-      rpc::Messenger* messenger,
-      rpc::ProxyCache* proxy_cache,
-      const std::shared_ptr<TabletServerServiceProxy>& proxy,
-      const TabletId& tablet_id,
-      const cdc::CDCRecordPB& record,
-      TwoDCOutputClient* twodc_client) :
-      Rpc(deadline, messenger, proxy_cache),
-      proxy_(proxy),
-      tablet_id_(tablet_id),
-      record_(record),
-      resp_(std::make_unique<WriteResponsePB>()),
-      twodc_client_(twodc_client),
-      retained_self_(twodc_client->InvalidRpcHandle()) {}
-
-  void SendRpc() override;
-
-  string ToString() const override;
-
-  virtual ~WriteAsyncRpc() = default;
-
- private:
-  void Finished(const Status& status) override;
-
-  std::shared_ptr<TabletServerServiceProxy> proxy_;
-  TabletId tablet_id_;
-  cdc::CDCRecordPB record_;
-  std::unique_ptr<WriteResponsePB> resp_;
-  TwoDCOutputClient* twodc_client_;
-  rpc::Rpcs::Handle retained_self_;
-};
-
-void WriteAsyncRpc::SendRpc() {
-  twodc_client_->RegisterRpc(shared_from_this(), &retained_self_);
-
-  auto now = CoarseMonoClock::Now();
-  if (retrier().deadline() < now) {
-    Finished(STATUS(TimedOut, "WriteAsyncRpc timed out after deadline expired"));
-    return;
-  }
-
-  auto rpc_deadline = now + MonoDelta::FromMilliseconds(FLAGS_cdc_rpc_timeout_ms);
-  mutable_retrier()->mutable_controller()->set_deadline(
-      std::min(rpc_deadline, retrier().deadline()));
-
-  WriteRequestPB req;
-  req.set_tablet_id(tablet_id_);
-  if (FLAGS_twodc_write_hybrid_time_override) {
-    // Used only for testing external hybrid time.
-    req.set_external_hybrid_time(yb::kInitialHybridTimeValue);
-  } else {
-    req.set_external_hybrid_time(record_.time());
-  }
-  for (const auto& kv_pair : record_.changes()) {
-    auto* write_pair = req.mutable_write_batch()->add_write_pairs();
-    write_pair->set_key(kv_pair.key());
-    write_pair->set_value(kv_pair.value().binary_value());
-  }
-
-  proxy_->WriteAsync(
-      req, resp_.get(), mutable_retrier()->mutable_controller(),
-      std::bind(&WriteAsyncRpc::Finished, this, Status::OK()));
-}
-
-string WriteAsyncRpc::ToString() const {
-  return strings::Substitute("WriteAsyncRpc(tablet_id: $0, num_attempts: $1)",
-                             tablet_id_, num_attempts());
-}
-
-void WriteAsyncRpc::Finished(const Status& status) {
-  Status new_status = status;
-  if (new_status.ok() &&
-      mutable_retrier()->HandleResponse(this, &new_status, rpc::RetryWhenBusy::kFalse)) {
-    return;
-  }
-  if (new_status.ok() && resp_->has_error()) {
-    new_status = StatusFromPB(resp_->error().status());
-  }
-  auto retained_self = twodc_client_->UnregisterRpc(&retained_self_);
-  twodc_client_->HandleWriteRpcResponse(new_status, record_, std::move(resp_));
 }
 
 } // namespace enterprise

@@ -1,6 +1,7 @@
 build
 logs
 target
+devops/yb_pyenv
 .idea
 .idea_modules
 /.classpath
