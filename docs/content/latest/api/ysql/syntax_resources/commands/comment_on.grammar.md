@@ -1,5 +1,5 @@
 ```
-comment_on ::= COMMENT ON  
+comment_on ::= COMMENT ON 
                { ACCESS METHOD object_name
                  | AGGREGATE aggregate_name ( aggregate_signature )
                  | CAST ( source_type AS target_type )
@@ -45,10 +45,5 @@ comment_on ::= COMMENT ON
                  | TRANSFORM FOR type_name LANGUAGE lang_name
                  | TRIGGER trigger_name ON table_name
                  | TYPE object_name
-                 | VIEW object_name }  IS { '<Text Literal>' | NULL }
-
-aggregate_signature ::= * | [ argmode ] [ argname ] argtype [ , ... ]
-                        | [ [ argmode ] [ argname ] argtype [ , ... ] ] 
-                          ORDER BY [ argmode ] [ argname ] argtype 
-                          [ , ... ]
+                 | VIEW object_name } IS { '<Text Literal>' | NULL }
 ```
