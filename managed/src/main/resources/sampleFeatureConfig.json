@@ -33,6 +33,7 @@
         "demo": "enabled",
         "editGFlags": "disabled",
         "readReplica": "disabled",
+        "metricsInterval": 15000,
         "deleteUniverse": "disabled"
       }
     },
