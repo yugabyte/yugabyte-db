@@ -4,11 +4,11 @@ linkTitle: Change data capture (CDC)
 description: Change data capture (CDC)
 menu:
   latest:
-    parent: cdc
+    parent: change-data-capture
     identifier: cdc-architecture
     weight: 651
 type: page
-isTocNested: false
+isTocNested: true
 showAsideToc: true
 ---
 

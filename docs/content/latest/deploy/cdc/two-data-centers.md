@@ -1,18 +1,42 @@
 ---
 title: Two data centers
 linkTitle: Two data centers
-description: Deploy to two data centers
+description: Two data center deployment with change data capture
 menu:
   latest:
-    parent: cdc
+    parent: change-data-capture
     identifier: two-data-centers
     weight: 652
 type: page
-isTocNested: false
+isTocNested: true
 showAsideToc: true
 ---
 
 YugaByte DB supports two data center (2DC) deployments, which is built on top of [Change Data Capture (CDC)](../cdc).
+
+{{< note title="Note" >}}
+
+In this design document, the terms "cluster" and "universe" will be used interchangeably. While not a requirement in the final design, we assume here that each YugaByte DB universe is deployed in a single data center for simplicity purposes.
+
+{{< /note >}}
+
+This feature will support the following:
+
+* Since replication across data centers is done at the DocDB level, replication works across the YSQL and YCQL APIs.
+
+* Supports replication of single-key updates as well as multi-key, distributed transactions.
+
+* Schema changes are run on both universes independently. This will eventually be automated to the extent possible. Note that some combinations of schema changes and update operations are inherently unsafe. Identifying all of these cases and making the database safe in all scenarios (by throwing a user facing error out or through some other such mechanism) will be a follow on task to harden this feature.
+
+* Supports active-active replication, with both data centers accepting writes and replicating them to the other data center.
+
+* Replication can be performed to multiple target clusters. Consume replicated data from multiple source clusters.
+
+* Updates are timeline consistent. The target data center will receive updates for a row in the same order in which they occurred on the source.
+
+* Transactions are applied atomically on the consumer. That is, either all changes in a transaction should be visible or none.
+
+* Target data center will know the data consistency timestamp. Since YB data is distributed across multiple nodes, (and data is replicated from multiple nodes), target data center should be able to tell that all tablets have received data at least until timestamp x, that is, it has received all the writes that happened at source data centers until timestamp x.
 
 ### Watch an example video (less than 2 mins)
 
@@ -20,43 +44,21 @@ YugaByte DB supports two data center (2DC) deployments, which is built on top of
   <img src="http://img.youtube.com/vi/2quaIAKBATk/0.jpg" alt="YugaByte DB 2DC deployment" width="240" height="180" border="10" />
 </a>
 
-## Features
-
-> **Note:** In this design document, the terms "cluster" and "universe" will be used interchangeably. While not a requirement in the final design, we assume here that each YugaByte DB universe is deployed in a single data center for simplicity purposes.
-
-This feature will support the following:
-
-* Replication across data centers is done at the DocDB level. This means that replication will work across the YSQL and YCQL APIs.
-
-* The design is general enough to support replication of single-key updates as well as multi-key/distributed transactions.
-
-* In the initial version, we assume that schema changes are run on both the universes independently. This will eventually be automated to the extent possible. Note that some combinations of schema changes and update operations are inherently unsafe. Identifying all of these cases and making the database safe in all scenarios (by throwing a user facing error out or through some other such mechanism) will be a follow on task to harden this feature.
-
-* Design will support active-active replication, with both data centers accepting writes and replicating them to the other data center.
-
-* Note that it will be possible to perform replication to multiple target clusters. Similarly, it will be possible to consume replicated data from multiple source clusters.
-
-* Updates will be timeline consistent. That is, target data center will receive updates for a row in the same order in which they occurred on the source.
-
-* Transactions will be applied atomically on the consumer. That is, either all changes in a transaction should be visible or none.
-
-* Target data center will know the data consistency timestamp. Since YB data is distributed across multiple nodes, (and data is replicated from multiple nodes), target data center should be able to tell that all tablets have received data at least until timestamp x, that is, it has received all the writes that happened at source data center(s) until timestamp x.
-
 ## Supported deployment scenarios
 
-The following 2-DC scenarios will be supported:
+The following 2DC scenarios are supported:
 
-### Master-Slave with *asynchronous replication
+### Master-slave with asynchronous replication
 
 The replication could be unidirectional from a **source cluster** (aka the *master* cluster) to one or more **sink clusters** (aka *slave* clusters). The sink clusters, typically located in data centers or regions that are different from the source cluster, are *passive* because they do not not take writes from the higher layer services. Such deployments are typically used for serving low latency reads from the slave clusters as well as for disaster recovery purposes.
 
-The source-sink deployment architecture is shown in the diagram below:
+The source-sink deployment architecture is shown in the following diagram:
 
-![2DC source-sink deployment](https://github.com/YugaByte/yugabyte-db/raw/master/architecture/design/images/2DC-source-sink-deployment.png)
+![2DC source-sink deployment](/images/deploy/cdc/2DC-source-sink-deployment.png)
 
-### Multi-Master with *last writer wins (LWW)* semantics
+### Multi-master with last-writer-wins (LWW) semantics
 
-The replication of data can be bi-directional between two clusters. In this case, both clusters can perform reads and writes. Writes to any cluster is asynchronously replicated to the other cluster with a timestamp for the update. If the same key is updated in both clusters at a similar time window, this will result in the write with the larger timestamp becoming the latest write. Thus, in this case, the clusters are all *active* and this deployment mode is called **multi-master deployments** or **active-active deployments**).
+The replication of data can be bidirectional between two clusters. In this case, both clusters can perform reads and writes. Writes to any cluster is asynchronously replicated to the other cluster with a timestamp for the update. If the same key is updated in both clusters in a similar time window, this will result in the write with the larger timestamp becoming the latest write. In this case, the clusters are all *active* and the deployment mode is called **multi-master deployments** or **active-active deployments**.
 
 > **NOTE:** The multi-master deployment is built internally using two master-slave unidirectional replication streams as a building block. Special care is taken to ensure that the timestamps are assigned to ensure last writer wins semantics and the data arriving from the replication stream is not re-replicated. Since master-slave is the core building block, we will focus the rest of this design document on that.
 
