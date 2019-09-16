@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `REVOKE` statement to remove access privileges.
+The `REVOKE` statement is used to remove access privileges from one or more roles.
 
 ## Syntax
 
@@ -36,54 +36,42 @@ Use the `REVOKE` statement to remove access privileges.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/revoke.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/revoke_table,revoke_table_col,revoke_seq,revoke_db,revoke_domain,revoke_schema,revoke_type,revoke_role.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/revoke.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/revoke_table,revoke_table_col,revoke_seq,revoke_db,revoke_domain,revoke_schema,revoke_type,revoke_role.diagram.md" /%}}
   </div>
 </div>
 
 ## Semantics
 
-Not all `REVOKE` options are supported yet in YSQL, but the following `REVOKE` option is supported.
+Any role has the sum of all privileges assigned to it. So, if `REVOKE` is used to revoke `SELECT` from `PUBLIC`, then it does not mean that all roles have lost `SELECT` privilege.
+If a role had `SELECT` granted directly to it or inherited it via a group, then it can continue to hold the `SELECT` privilege.
 
-```
-REVOKE ALL ON DATABASE name FROM name;
-```
+If `GRANT OPTION FOR` is specified, only the grant option for the privilege is revoked, not the privilege itself. Otherwise, both the privilege and the grant option are revoked.
 
-For the list of possible *privileges* or *privilege_target* settings, see `GRANT` in the PostgreSQL documentation.
+Similarly, while revoking a role, if `ADMIN OPTION FOR` is specified, then only the admin option for the privilege is revoked.
 
-### REVOKE
+If a user holds a privilege with grant option and has granted it to other users, then revoking the privilege from the first user will also revoke it from dependent users
+if `CASCADE` is specified. Otherwise, the `REVOKE` will fail.
 
-Remove privileges on a database object or a membership in a role.
-
-### *privileges*
-
-Specify the privileges.
-
-#### ALL
-
-Specify all of the available privileges.
-
-### *privilege_target*
-
-### *name*
-
-Specify the name of the role.
-
-### CASCADE
-
-### RESTRICT
+When revoking privileges on a table, the corresponding column privileges (if any) are automatically revoked on each column of the table, as well. On the other hand, if a role has been granted privileges on a table, then revoking the same privileges from individual columns will have no effect.
 
 ## Examples
 
-- Remove John's privileges from the `postgres` database.
+- Revoke SELECT privilege for PUBLIC on table 'stores'
 
 ```sql
-postgres=# REVOKE ALL ON DATABASE postgres FROM John;
+yugabyte=# REVOKE SELECT ON stores FROM PUBLIC;
+```
+
+- Remove user John from SysAdmins group.
+
+```sql
+yugabyte=# REVOKE SysAdmins FROM John;
 ```
 
 ## See also
 
-- [`CREATE USER`](../dcl_create_user)
-- [`REVOKE`](../dcl_revoke)
+- [`CREATE ROLE`](../dcl_create_role)
+- [`GRANT`](../dcl_grant)

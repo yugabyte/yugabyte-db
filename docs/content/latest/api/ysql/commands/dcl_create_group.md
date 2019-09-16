@@ -1,20 +1,20 @@
-title: COMMENT
-linkTitle: COMMENT
-summary: COMMENT
-description: COMMENT
+---
+title: CREATE GROUP
+description: Groups and roles
+summary: Groups and roles
 menu:
   latest:
-    identifier: api-ysql-commands-comment
+    identifier: api-ysql-commands-create-group
     parent: api-ysql-commands
 aliases:
-  - /latest/api/ysql/commands/ddl_comment
+  - /latest/api/ysql/commands/dcl_create_group
 isTocNested: true
 showAsideToc: true
 ---
 
 ## Synopsis
 
-Use the `COMMENT` statement to set, update, or remove a comment on a database object.
+`CREATE GROUP` is an alias for [`CREATE ROLE`](../dcl_create_role) and is used to create a group role.
 
 ## Syntax
 
@@ -35,37 +35,27 @@ Use the `COMMENT` statement to set, update, or remove a comment on a database ob
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/comment_on.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_group,role_option.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/comment_on.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_group,role_option.diagram.md" /%}}
   </div>
 </div>
 
-## Semantics
 
-To remove a comment, set the value to `NULL`.
-
-### *comment_on*
-
-#### COMMMENT ON
-
-Add or change a comment about a database object. To remove a comment, set the value to `NULL`.
-
-### *aggregate_signature*
+See [`CREATE ROLE`](../dcl_create_role) for more details.
 
 ## Examples
 
-### Add a comment
+- Create a sample group that can manage databases and roles.
 
-```
-COMMENT ON DATABASE postgres IS 'Default database';
-```
-
-```
-COMMENT ON INDEX index_name IS 'Special index';
+```sql
+postgres=# CREATE GROUP SysAdmin WITH CREATEDB CREATEROLE;
 ```
 
-### Remove a comment
+## See also
 
-COMMENT ON TABLE some_table IS NULL;
+[`CREATE ROLE`](../dcl_create_role)
+[`GRANT`](../dcl_grant)
+[`REVOKE`](../dcl_revoke)
+[Other YSQL Statements](..)
