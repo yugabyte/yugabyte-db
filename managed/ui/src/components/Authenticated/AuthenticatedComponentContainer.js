@@ -15,7 +15,7 @@ import { fetchColumnTypes, fetchColumnTypesSuccess, fetchColumnTypesFailure }
 import { fetchSoftwareVersions, fetchSoftwareVersionsSuccess,
   fetchSoftwareVersionsFailure, fetchYugaWareVersion, fetchYugaWareVersionResponse,
   fetchCustomerConfigs, fetchCustomerConfigsResponse, getTlsCertificates,
-  getTlsCertificatesResponse, insecureLogin, insecureLoginResponse, setSecurityLevel }
+  getTlsCertificatesResponse, insecureLogin, insecureLoginResponse }
   from 'actions/customers';
 import {fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure} from '../../actions/tasks';
 import {setUniverseMetrics} from '../../actions/universe';
@@ -129,12 +129,10 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
-    // Check whether insecure login and, if so, set the security level
     fetchInsecureLogin: () => {
       dispatch(insecureLogin()).then((response) => {
         if (response.payload.status === 200) {
           dispatch(insecureLoginResponse(response));
-          dispatch(setSecurityLevel({ level: 'insecure' }));
         }
       });
     },
