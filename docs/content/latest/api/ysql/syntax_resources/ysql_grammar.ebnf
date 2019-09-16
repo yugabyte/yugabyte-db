@@ -107,7 +107,7 @@ comment_on = 'COMMENT' 'ON' (
   'EVENT' 'TRIGGER' object_name |
   'FOREIGN' 'DATA' 'WRAPPER' object_name |
   'FOREIGN' 'TABLE' object_name |
-  'FUNCTION' function_name [ '(' [ [ argmode ] [ argname ] argtype { ',' argtype } ] ')' ] |
+  'FUNCTION' function_name [ '(' function_signature ')' ] |
   'INDEX' object_name |
   'LARGE' 'OBJECT' large_object_oid |
   'MATERIALIZED' 'VIEW' object_name |
@@ -461,7 +461,6 @@ returning_expression ::= output_expression [ [ 'AS' ] output_name ] ;
 do = 'DO' [ 'LANGUAGE' lang_name ] code ;
 
 (* 'DROP' 'AGGREGATE' *)
-
 drop_aggregate = 'DROP' 'AGGREGATE' [ 'IF' 'EXISTS' ] aggregate_name '(' aggregate_signature ')'
                  { ',' aggregate_name '(' aggregate_signature ')' }
                  [ 'CASCADE' | 'RESTRICT' ] ;
@@ -470,6 +469,9 @@ aggregate_signature = '*'
                     | aggregate_arg { ',' aggregate_arg }
                     | [ aggregate_arg { ',' aggregate_arg } ]
                       'ORDER' 'BY' aggregate_arg { ',' aggregate_arg } ;
+
+(* 'DROP' 'CAST' *)
+drop_cast = 'DROP' 'CAST' [ 'IF' 'EXISTS' ] '(' cast_signature ')' [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'DATABASE' *)
 drop_database ::= 'DROP' 'DATABASE' [ 'IF' 'EXISTS' ] database_name ;

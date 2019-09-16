@@ -49,6 +49,7 @@ The following SQL statements are supported by the YugaByte Structured Query Lang
 | [`DELETE`](dml_delete) | Delete rows from a table |
 | [`DO`](cmd_do) | Execute an anonymous code block |
 | [`DROP AGGREGATE`](ddl_drop_aggregate) | Delete an aggregate |
+| [`DROP CAST`](ddl_drop_cast) | Delete a cast |
 | [`DROP DATABASE`](ddl_drop_database) | Delete a database from the system |
 | [`DROP DOMAIN`](ddl_drop_domain) | Delete a domain |
 | [`DROP GROUP`](dcl_drop_group) | Delete a group (role) |
