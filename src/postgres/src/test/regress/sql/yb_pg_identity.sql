@@ -114,7 +114,7 @@ ALTER TABLE itest4 ALTER COLUMN a DROP IDENTITY IF EXISTS;  -- noop
 INSERT INTO itest4 DEFAULT VALUES;  -- fails because NOT NULL is not dropped
 ALTER TABLE itest4 ALTER COLUMN a DROP NOT NULL;
 INSERT INTO itest4 DEFAULT VALUES;
-SELECT * FROM itest4;
+SELECT * FROM itest4 ORDER BY a;
 
 -- check that sequence is removed
 SELECT sequence_name FROM itest4_a_seq;
