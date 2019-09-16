@@ -26,7 +26,7 @@ aggregate_normal_option ::= SSPACE = state_data_size
                             | FINALFUNC = ffunc
                             | FINALFUNC_EXTRA
                             | FINALFUNC_MODIFY = 
-                              [ READ_ONLY | SHAREABLE | READ_WRITE [ ... ] ]
+                              { READ_ONLY | SHAREABLE | READ_WRITE }
                             | COMBINEFUNC = combinefunc
                             | SERIALFUNC = serialfunc
                             | DESERIALFUNC = deserialfunc
@@ -38,27 +38,27 @@ aggregate_normal_option ::= SSPACE = state_data_size
                             | MFINALFUNC = mffunc
                             | MFINALFUNC_EXTRA
                             | MFINALFUNC_MODIFY = 
-                              [ READ_ONLY | SHAREABLE | READ_WRITE [ ... ] ]
+                              { READ_ONLY | SHAREABLE | READ_WRITE }
                             | MINITCOND = minitial_condition
                             | SORTOP = sort_operator
                             | PARALLEL = 
-                              [ SAFE | RESTRICTED | UNSAFE [ ... ] ]
+                              { SAFE | RESTRICTED | UNSAFE }
 
 aggregate_order_by_option ::= SSPACE = state_data_size
                               | FINALFUNC = ffunc
                               | FINALFUNC_EXTRA
                               | FINALFUNC_MODIFY = 
-                                [ READ_ONLY | SHAREABLE | READ_WRITE [ ... ] ]
+                                { READ_ONLY | SHAREABLE | READ_WRITE }
                               | INITCOND = initial_condition
                               | PARALLEL = 
-                                [ SAFE | RESTRICTED | UNSAFE [ ... ] ]
+                                { SAFE | RESTRICTED | UNSAFE }
                               | HYPOTHETICAL
 
 aggregate_old_option ::= SSPACE = state_data_size
                          | FINALFUNC = ffunc
                          | FINALFUNC_EXTRA
                          | FINALFUNC_MODIFY = 
-                           [ READ_ONLY | SHAREABLE | READ_WRITE [ ... ] ]
+                           { READ_ONLY | SHAREABLE | READ_WRITE }
                          | COMBINEFUNC = combinefunc
                          | SERIALFUNC = serialfunc
                          | DESERIALFUNC = deserialfunc
@@ -70,7 +70,7 @@ aggregate_old_option ::= SSPACE = state_data_size
                          | MFINALFUNC = mffunc
                          | MFINALFUNC_EXTRA
                          | MFINALFUNC_MODIFY = 
-                           [ READ_ONLY | SHAREABLE | READ_WRITE [ ... ] ]
+                           { READ_ONLY | SHAREABLE | READ_WRITE }
                          | MINITCOND = minitial_condition
                          | SORTOP = sort_operator
 ```

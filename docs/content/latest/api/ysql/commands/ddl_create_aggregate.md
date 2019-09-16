@@ -1,7 +1,7 @@
 ---
 title: CREATE AGGREGATE
 linkTitle: CREATE AGGREGATE
-summary: Create a new type in a database
+summary: Create a new aggregate
 description: CREATE AGGREGATE
 menu:
   latest:
