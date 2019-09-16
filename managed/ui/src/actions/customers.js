@@ -18,8 +18,6 @@ export const LOGIN_RESPONSE = 'LOGIN_RESPONSE';
 export const INSECURE_LOGIN = 'INSECURE_LOGIN';
 export const INSECURE_LOGIN_RESPONSE = 'INSECURE_LOGIN_RESPONSE';
 
-export const SET_SECURITY_LEVEL = 'SET_SECURITY_LEVEL';
-
 export const RESET_CUSTOMER = 'RESET_CUSTOMER';
 
 // log out Customer
@@ -154,15 +152,6 @@ export function insecureLoginResponse(response) {
   return {
     type: INSECURE_LOGIN_RESPONSE,
     payload: response.payload
-  };
-}
-
-export function setSecurityLevel(values) {
-  const cUUID = localStorage.getItem("customerId");
-  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/security`, values);
-  return {
-    type: SET_SECURITY_LEVEL,
-    payload: request
   };
 }
 
