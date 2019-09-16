@@ -36,10 +36,10 @@ showAsideToc: true
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_user,role_option,role_name,password,timestamp,connlimit,uid.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_user,role_option.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_user,role_option,role_name,password,timestamp,connlimit,uid.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_user,role_option.diagram.md" /%}}
   </div>
 </div>
 

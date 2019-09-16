@@ -36,10 +36,10 @@ showAsideToc: true
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/drop_group,role_name.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/drop_group.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/drop_group,role_name.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/drop_group.diagram.md" /%}}
   </div>
 </div>
 

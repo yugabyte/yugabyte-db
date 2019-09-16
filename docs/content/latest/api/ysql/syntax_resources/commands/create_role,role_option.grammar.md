@@ -22,14 +22,4 @@ role_option ::= SUPERUSER
                 | ADMIN role_name [ , ... ]
                 | USER role_name [ , ... ]
                 | SYSID uid
-
-role_name ::= '<Text Literal>'
-
-password ::= '<Text Literal>'
-
-timestamp ::= '<DateTime Literal>'
-
-connlimit ::= '<Integer Literal>'
-
-uid ::= '<Text Literal>'
 ```

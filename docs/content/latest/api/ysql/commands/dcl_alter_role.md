@@ -38,10 +38,10 @@ Other roles can only change their own password.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/alter_role,alter_role_option,role_specification,alter_role_rename,new_role_name,alter_role_config,config_setting,config_param,config_value.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/alter_role,alter_role_option,role_specification,alter_role_rename,alter_role_config,config_setting.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/alter_role,alter_role_option,role_specification,alter_role_rename,new_role_name,alter_role_config,config_setting,config_param,config_value.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/alter_role,alter_role_option,role_specification,alter_role_rename,alter_role_config,config_setting.diagram.md" /%}}
   </div>
 </div>
 
@@ -61,6 +61,8 @@ Without INHERIT, membership in another role only grants the ability to SET ROLE 
 If no password is specified, the password will be set to null and password authentication will always fail for that user.
 Note that password is always stored encrypted in system catalogs and the optional keyword ENCRYPTED is only present for compatibility with Postgres.
 - `VALID UNTIL` sets a date and time after which the role's password is no longer valid.
+
+- `config_param` and `config_value` are the name and value of configuration parameters being set.
 
 `ALTER ROLE role_name RENAME TO` can be used to change the name of the role. Note that current session role cannot be renamed.
 Because MD5-encrypted passwords use the role name as cryptographic salt, renaming a role clears its password if the password is MD5-encrypted.

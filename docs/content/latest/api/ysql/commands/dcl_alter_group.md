@@ -36,10 +36,10 @@ This is added for compatibility with Postgres. Its usage is discouraged. [`ALTER
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/alter_group,role_specification,alter_group_rename,role_name,new_role_name.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/alter_group,role_specification,alter_group_rename.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/alter_group,role_specification,alter_group_rename,role_name,new_role_name.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/alter_group,role_specification,alter_group_rename.diagram.md" /%}}
   </div>
 </div>
 

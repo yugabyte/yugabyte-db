@@ -35,10 +35,10 @@ showAsideToc: true
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/alter_user,alter_role_option,role_specification,alter_user_rename,new_role_name,alter_user_config,config_setting,config_param,config_value.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/alter_user,alter_role_option,role_specification,alter_user_rename,alter_user_config,config_setting.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/alter_user,alter_role_option,role_specification,alter_user_rename,new_role_name,alter_user_config,config_setting,config_param,config_value.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/alter_user,alter_role_option,role_specification,alter_user_rename,alter_user_config,config_setting.diagram.md" /%}}
   </div>
 </div>
 

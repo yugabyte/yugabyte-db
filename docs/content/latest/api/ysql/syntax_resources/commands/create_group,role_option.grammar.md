@@ -1,6 +1,6 @@
 ```
-create_user ::= CREATE USER role_name 
-                [ [ WITH ] role_option [ , ... ] ]
+create_group ::= CREATE GROUP role_name 
+                 [ [ WITH ] role_option [ , ... ] ]
 
 role_option ::= SUPERUSER
                 | NOSUPERUSER
@@ -22,14 +22,4 @@ role_option ::= SUPERUSER
                 | ADMIN role_name [ , ... ]
                 | USER role_name [ , ... ]
                 | SYSID uid
-
-role_name ::= '<Text Literal>'
-
-password ::= '<Text Literal>'
-
-timestamp ::= '<DateTime Literal>'
-
-connlimit ::= '<Integer Literal>'
-
-uid ::= '<Text Literal>'
 ```

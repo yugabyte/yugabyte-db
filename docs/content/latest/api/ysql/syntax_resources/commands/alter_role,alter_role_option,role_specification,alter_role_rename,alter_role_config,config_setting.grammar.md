@@ -21,8 +21,6 @@ role_specification ::= role_name | CURRENT_USER | SESSION_USER
 
 alter_role_rename ::= ALTER ROLE role_name RENAME TO new_role_name
 
-new_role_name ::= '<Text Literal>'
-
 alter_role_config ::= ALTER ROLE { role_specification | ALL } 
                       [ IN DATABASE database_name ] config_setting
 
@@ -31,8 +29,4 @@ config_setting ::= SET config_param { TO | = }
                    | SET config_param FROM CURRENT
                    | RESET config_param
                    | RESET ALL
-
-config_param ::= '<Text Literal>'
-
-config_value ::= '<Text Literal>'
 ```
