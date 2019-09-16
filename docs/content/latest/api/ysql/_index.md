@@ -70,9 +70,17 @@ DCL statements protect and prevent the database from corruptions.
 
 | Statement | Description |
 |-----------|-------------|
+| [`ALTER GROUP`](commands/dcl_alter_group) | Alter a group |
+| [`ALTER ROLE`](commands/dcl_alter_role) | Alter a role (user or group) |
+| [`ALTER USER`](commands/dcl_alter_user) | Alter a user |
+| [`CREATE GROUP`](commands/dcl_create_group) | Create a new group (role) |
+| [`CREATE ROLE`](commands/dcl_create_role) | Create a new role (user or group) |
 | [`CREATE USER`](commands/dcl_create_user) | Create a new user (role) |
-| [`GRANT`](commands/dcl_grant) | Grant permissions (under development) |
-| [`REVOKE`](commands/dcl_revoke) | Revoke permissions (under development) |
+| [`DROP GROUP`](commands/dcl_drop_group) | Drop a group |
+| [`DROP ROLE`](commands/dcl_drop_role) | Drop a role (user or group) |
+| [`DROP USER`](commands/dcl_drop_user) | Drop a user |
+| [`GRANT`](commands/dcl_grant) | Grant permissions |
+| [`REVOKE`](commands/dcl_revoke) | Revoke permissions |
 
 ## Transaction control language (TCL)
 

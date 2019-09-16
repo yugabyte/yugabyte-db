@@ -1,21 +1,21 @@
 ---
-title: CREATE USER
-linkTitle: CREATE USER
-description: Users and roles
-summary: CREATE USER
+title: ALTER GROUP
+description: Groups and roles
+summary: Groups and roles
 menu:
   latest:
-    identifier: api-ysql-commands-create-user
+    identifier: api-ysql-commands-alter-group
     parent: api-ysql-commands
 aliases:
-  - /latest/api/ysql/commands/dcl_create_user
+  - /latest/api/ysql/commands/dcl_alter_group
 isTocNested: true
 showAsideToc: true
 ---
 
 ## Synopsis
 
-`CREATE USER` is an alias for [`CREATE ROLE`](../dcl_create_role) and is used to create a role.
+`ALTER GROUP` is used to alter attributes for a group (role).
+This is added for compatibility with Postgres. Its usage is discouraged. [`ALTER ROLE`](../dcl_alter_role) is the preferred way to change attributes of a role.
 
 ## Syntax
 
@@ -36,40 +36,24 @@ showAsideToc: true
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_user,role_option.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/alter_group,role_specification,alter_group_rename.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_user,role_option.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/alter_group,role_specification,alter_group_rename.diagram.md" /%}}
   </div>
 </div>
 
-## Semantics
 
-See [`CREATE ROLE`](../dcl_create_role) for more details.
+See [`ALTER ROLE`](../dcl_alter_role) for more details.
 
-## Examples
-
-- Create a sample user with password.
-
-```sql
-postgres=# CREATE USER John WITH PASSWORD 'password';
-```
-
-- Grant John all permissions on the `postgres` database.
-
-```sql
-postgres=# GRANT ALL ON DATABASE postgres TO John;
-```
-
-- Remove John's permissions from the `postgres` database.
-
-```sql
-postgres=# REVOKE ALL ON DATABASE postgres FROM John;
-```
+`ALTER GROUP` can be used to add or remove roles from a group. Please use [`GRANT`](../dcl_grant) or [`REVOKE`](../dcl_revoke) instead.
+It can also be used to rename a role.
 
 ## See also
 
+[`ALTER ROLE`](../dcl_alter_role)
 [`CREATE ROLE`](../dcl_create_role)
+[`DROP ROLE`](../dcl_drop_role)
 [`GRANT`](../dcl_grant)
 [`REVOKE`](../dcl_revoke)
 [Other YSQL Statements](..)

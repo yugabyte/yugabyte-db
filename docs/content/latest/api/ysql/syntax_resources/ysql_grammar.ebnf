@@ -23,6 +23,47 @@ alter_domain_default ::= 'ALTER' 'DOMAIN' name
 alter_domain_rename ::= 'ALTER' 'DOMAIN' name
     'RENAME' 'TO' name ;
 
+(* 'ALTER' 'GROUP' *)
+alter_group ::= 'ALTER' 'GROUP' role_specification ( 'ADD' | 'DROP' ) 'USER' role_name { ',' role_name } ;
+
+alter_group_rename ::= 'ALTER' 'GROUP' role_name 'RENAME' 'TO' new_role_name ;
+
+(* 'ALTER' 'ROLE' *)
+alter_role ::= 'ALTER' 'ROLE' role_specification [ [ 'WITH' ] alter_role_option { ',' alter_role_option } ] ;
+
+alter_role_option ::= 'SUPERUSER'
+              | 'NOSUPERUSER'
+              | 'CREATEDB'
+              | 'NOCREATEDB'
+              | 'CREATEROLE'
+              | 'NOCREATEROLE'
+              | 'INHERIT'
+              | 'NOINHERIT'
+              | 'LOGIN'
+              | 'NOLOGIN'
+              | 'CONNECTION' 'LIMIT' connlimit
+              | [ 'ENCRYPTED' ] 'PASSWORD' ''' password '''
+              | 'PASSWORD' 'NULL'
+              | 'VALID' 'UNTIL' ''' timestamp ''' ;
+
+role_specification ::= role_name
+                     | 'CURRENT_USER'
+                     | 'SESSION_USER' ;
+
+alter_role_rename ::= 'ALTER' 'ROLE' role_name 'RENAME' 'TO' new_role_name ;
+
+new_role_name ::= name ;
+
+alter_role_config ::= 'ALTER' 'ROLE' ( role_specification | 'ALL' ) [ 'IN' 'DATABASE' database_name ] config_setting ;
+
+config_setting ::= 'SET' config_param ( 'TO' | '=' ) ( config_value | 'DEFAULT' )
+                 | 'SET' config_param 'FROM' 'CURRENT'
+                 | 'RESET' config_param
+                 | 'RESET' 'ALL' ;
+
+config_param ::= '<Text Literal>' ;
+config_value ::= '<Text Literal>' ;
+
 (* 'ALTER' 'TABLE' *)
 alter_table ::= 'ALTER' 'TABLE' [ 'ONLY' ] name [ '*' ]
                         alter_table_action { ',' alter_table_action } ;
@@ -35,10 +76,17 @@ alter_table_action ::=
     | 'DROP' 'CONSTRAINT' constraint_name [ 'RESTRICT' | 'CASCADE' ]
     | 'RENAME' [ 'COLUMN' ] column_name 'TO' column_name ) ;
 
-alter_table_constraint ::= [ 'CONSTRAINT' constraint_name ] ( 
-                       'CHECK' '(' expression ')' | 
+alter_table_constraint ::= [ 'CONSTRAINT' constraint_name ] (
+                       'CHECK' '(' expression ')' |
                        'UNIQUE' '(' column_names ')' index_parameters |
                        'FOREIGN' 'KEY' '(' column_names ')' references_clause ) ;
+
+(* 'ALTER' 'USER' *)
+alter_user ::= 'ALTER' 'USER' role_specification [ [ 'WITH' ] alter_role_option { ',' alter_role_option } ] ;
+
+alter_user_rename ::= 'ALTER' 'USER' role_name 'RENAME' 'TO' new_role_name ;
+
+alter_user_config ::= 'ALTER' 'USER' ( role_specification | 'ALL' ) [ 'IN' 'DATABASE' database_name ] config_setting ;
 
 (* 'BEGIN' *)
 begin = 'BEGIN' [ 'TRANSACTION' | 'WORK' ] { transaction_mode } ;
@@ -207,6 +255,9 @@ create_domain ::= 'CREATE' 'DOMAIN' name [ 'AS' ] data_type
 domain_constraint ::= [ 'CONSTRAINT' constraint_name ]
     ( 'NOT' 'NULL' | 'NULL' | 'CHECK' '(' expression ')' ) ;
 
+(* 'CREATE' 'GROUP' *)
+create_group ::= 'CREATE' 'GROUP' role_name [ [ 'WITH' ] role_option { ',' role_option } ] ;
+
 (* 'CREATE' 'INDEX' *)
 create_index ::= 'CREATE' [ 'UNIQUE' ] 'INDEX' [ [ 'IF' 'NOT' 'EXISTS' ] name ] \
                           'ON' [ 'ONLY' ] table_name '(' index_elem { ',' index_elem } ')' \
@@ -215,8 +266,46 @@ create_index ::= 'CREATE' [ 'UNIQUE' ] 'INDEX' [ [ 'IF' 'NOT' 'EXISTS' ] name ] 
 
 index_elem ::= ( column_name | '(' expression ')' ) [ opclass ] [ 'ASC' | 'DESC' ] ;
 
+(* 'CREATE' 'ROLE' *)
+create_role ::= 'CREATE' 'ROLE' role_name [ [ 'WITH' ] role_option { ',' role_option } ] ;
+
+role_option ::= 'SUPERUSER'
+              | 'NOSUPERUSER'
+              | 'CREATEDB'
+              | 'NOCREATEDB'
+              | 'CREATEROLE'
+              | 'NOCREATEROLE'
+              | 'INHERIT'
+              | 'NOINHERIT'
+              | 'LOGIN'
+              | 'NOLOGIN'
+              | 'CONNECTION' 'LIMIT' connlimit
+              | [ 'ENCRYPTED' ] 'PASSWORD' ''' password '''
+              | 'PASSWORD' 'NULL'
+              | 'VALID' 'UNTIL' ''' timestamp '''
+              | 'IN' 'ROLE' role_name { ',' role_name }
+              | 'IN' 'GROUP' role_name { ',' role_name }
+              | 'ROLE' role_name { ',' role_name }
+              | 'ADMIN' role_name { ',' role_name }
+              | 'USER' role_name { ',' role_name }
+              | 'SYSID' uid ;
+
+role_name ::= name ;
+password ::= '<Text Literal>' ;
+timestamp ::= '<DateTime Literal>' ;
+connlimit ::= '<Integer Literal>';
+uid ::= '<Text Literal>';
+
 (* 'CREATE' 'SCHEMA' *)
-create_schema ::= 'CREATE' 'SCHEMA' [ 'IF' 'NOT' 'EXISTS' ] schema_name [ schema_element { schema_element } ] ;
+create_schema_name ::= 'CREATE' 'SCHEMA' [ 'IF' 'NOT' 'EXISTS' ] schema_name
+                       [ 'AUTHORIZATION' role_specification ]
+                       [ schema_element { schema_element } ] ;
+
+create_schema_role ::= 'CREATE' 'SCHEMA' [ 'IF' 'NOT' 'EXISTS']
+                       'AUTHORIZATION' role_specification [ schema_element { schema_element } ] ;
+
+(* TODO add ddl_statement, dcl_statement, dml_statement as top level rules *)
+schema_element ::= '<YSQL DDL statement>' ;
 
 (* 'CREATE' 'SEQUENCE' *)
 create_sequence ::= 'CREATE' 'SEQUENCE' [ 'IF' 'NOT' 'EXISTS' ] sequence_name  sequence_options ;
@@ -254,10 +343,10 @@ column_constraint ::= [ 'CONSTRAINT' constraint_name ]
 table_constraint ::= [ 'CONSTRAINT' constraint_name ]
                      ( 'CHECK' '(' expression ')'
                        | 'UNIQUE' '(' column_names ')' index_parameters
-                       | 'PRIMARY' 'KEY' '(' column_names ')' 
+                       | 'PRIMARY' 'KEY' '(' column_names ')'
                        | 'FOREIGN' 'KEY' '(' column_names ')' references_clause ) ;
 
-references_clause ::= 'REFERENCES' table_name [ ( column_name { ',' column_name } ) ] 
+references_clause ::= 'REFERENCES' table_name [ ( column_name { ',' column_name } ) ]
                       [ 'MATCH' 'FULL' | 'MATCH' 'PARTIAL' | 'MATCH' 'SIMPLE' ] \
                       [ 'ON' 'DELETE' key_action ] [ 'ON' 'UPDATE' key_action ] ;
 
@@ -328,7 +417,7 @@ base_type_option ::= 'RECEIVE' '=' receive_function
                      | 'COLLATABLE' '=' collatable ;
 
 (* 'CREATE' 'USER' *)
-create_user ::= 'CREATE' 'USER' name ;
+create_user ::= 'CREATE' 'USER' role_name [ [ 'WITH' ] role_option { ',' role_option } ] ;
 
 (* 'CREATE' 'VIEW' *)
 create_view ::= 'CREATE' [ 'OR' 'REPLACE' ] 'VIEW' qualified_name [ '(' column_list ')' ] 'AS' select ;
@@ -364,6 +453,18 @@ aggregate_signature = '*'
 (* 'DROP' 'DATABASE' *)
 drop_database ::= 'DROP' 'DATABASE' [ 'IF' 'EXISTS' ] database_name ;
 
+(* 'DROP' 'DOMAIN' *)
+drop_domain ::= 'DROP' 'DOMAIN' [ 'IF' 'EXISTS' ] name { ',' name }  [ 'CASCADE' | 'RESTRICT' ] ;
+
+(* 'DROP' 'GROUP' *)
+drop_group ::= 'DROP' 'GROUP' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
+
+(* 'DROP' 'ROLE' *)
+drop_role ::= 'DROP' 'ROLE' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
+
+(* 'DROP' 'SEQUENCE' *)
+drop_sequence ::= 'DROP' 'SEQUENCE' [ 'IF' 'EXISTS' ] sequence_name [ 'CASCADE' | 'RESTRICT' ] ;
+
 (* 'DROP' 'TABLE' *)
 drop_table ::= 'DROP' 'TABLE' [ 'IF' 'EXISTS' ] table_name ;
 
@@ -371,14 +472,11 @@ drop_table ::= 'DROP' 'TABLE' [ 'IF' 'EXISTS' ] table_name ;
 drop_type ::= 'DROP' 'TYPE' [ 'IF' 'EXISTS' ] type_name { ',' type_name }
               [ 'CASCADE' | 'RESTRICT' ] ;
 
-(* 'DROP' 'SEQUENCE' *)
-drop_sequence ::= 'DROP' 'SEQUENCE' [ 'IF' 'EXISTS' ] sequence_name [ 'CASCADE' | 'RESTRICT' ] ;
+(* 'DROP' 'USER' *)
+drop_user ::= 'DROP' 'USER' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
 
 (* DROP TRIGGER *)
 drop_trigger = 'DROP' 'TRIGGER' [ 'IF' 'EXISTS' ] name 'ON' table_name [ 'CASCADE' | 'RESTRICT' ] ;
-
-(* 'DROP' 'DOMAIN' *)
-drop_domain ::= 'DROP' 'DOMAIN' [ 'IF' 'EXISTS' ] name { ',' name }  [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'END' 'TRANSACTION' *)
 end ::= 'END' [ 'TRANSACTION' | 'WORK' ] ;
@@ -398,7 +496,49 @@ option ::= 'ANALYZE' [ boolean ]
            | 'FORMAT' ( 'TEXT' | 'XML' | 'JSON' | 'YAML' ) ;
 
 (* 'GRANT' *)
-grant ::= 'GRANT' privileges 'ON' privilege_target 'TO' name { ',' name } [ 'WITH' 'GRANT' 'OPTION' ] ;
+grant_table ::= 'GRANT' ( ( 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'TRUNCATE' | 'REFERENCES' | 'TRIGGER' )
+    { ',' ( 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'TRUNCATE' | 'REFERENCES' | 'TRIGGER' ) }
+     | 'ALL' [ 'PRIVILEGES' ] )
+    'ON' ( [ 'TABLE' ] table_name { ',' table_name }
+         | 'ALL' 'TABLES' 'IN' 'SCHEMA' schema_name { ',' schema_name } )
+    'TO' grant_role_spec { ',' grant_role_spec } [ 'WITH' 'GRANT' 'OPTION' ] ;
+
+grant_table_col ::= 'GRANT' ( ( 'SELECT' | 'INSERT' | 'UPDATE' | 'REFERENCES' ) '(' column_names ')'
+    { ',' '(' column_names ')' }
+     | 'ALL' [ 'PRIVILEGES' ] '(' column_names ')' )
+    'ON' ( [ 'TABLE' ] table_name { ',' table_name } )
+    'TO' grant_role_spec { ',' grant_role_spec } [ 'WITH' 'GRANT' 'OPTION' ] ;
+
+grant_seq ::= 'GRANT' ( ( 'USAGE' | 'SELECT' | 'UPDATE' ) { ',' ( 'USAGE' | 'SELECT' | 'UPDATE' ) }
+     | 'ALL' [ 'PRIVILEGES' ] )
+    'ON' ( 'SEQUENCE' sequence_name { ',' sequence_name }
+         | 'ALL' 'SEQUENCES' 'IN' 'SCHEMA' schema_name { ',' sequence_name } )
+    'TO' grant_role_spec { ',' grant_role_spec } [ 'WITH' 'GRANT' 'OPTION' ] ;
+
+grant_db ::= 'GRANT' ( ( 'CREATE' | 'CONNECT' | 'TEMPORARY' | 'TEMP' ) { ',' ( 'CREATE' | 'CONNECT' | 'TEMPORARY' | 'TEMP' ) }
+    | 'ALL' [ 'PRIVILEGES' ] )
+    'ON' 'DATABASE' database_name { ',' database_name }
+    'TO' grant_role_spec { ',' grant_role_spec } [ 'WITH' 'GRANT' 'OPTION' ] ;
+
+grant_domain ::= 'GRANT' ( 'USAGE' | 'ALL' [ 'PRIVILEGES' ] )
+    'ON' 'DOMAIN' domain_name { ',' domain_name }
+    'TO' grant_role_spec { ',' grant_role_spec } [ 'WITH' 'GRANT' 'OPTION' ] ;
+
+grant_schema ::= 'GRANT' ( ( 'CREATE' | 'USAGE' ) { ',' ( 'CREATE' | 'USAGE' ) } | 'ALL' [ 'PRIVILEGES' ] )
+    'ON' 'SCHEMA' schema_name { ',' schema_name }
+    'TO' grant_role_spec { ',' grant_role_spec } [ 'WITH' 'GRANT' 'OPTION' ] ;
+
+grant_type ::= 'GRANT' ( 'USAGE' | 'ALL' [ 'PRIVILEGES' ] )
+    'ON' 'TYPE' type_name { ',' type_name }
+    'TO' grant_role_spec { ',' grant_role_spec } [ 'WITH' 'GRANT' 'OPTION' ] ;
+
+grant_role ::= 'GRANT' role_name { ',' role_name } 'TO' role_name { ',' role_name }
+      [ 'WITH' 'ADMIN' 'OPTION' ] ;
+
+grant_role_spec ::= [ 'GROUP' ] role_name
+  | 'PUBLIC'
+  | 'CURRENT_USER'
+  | 'SESSION_USER' ;
 
 (* 'INSERT' *)
 
@@ -439,7 +579,58 @@ prepare_statement ::= 'PREPARE' name [ '(' data_type { ',' data_type } ')' ] 'AS
 reset_stmt := 'RESET' ( name | 'ALL' ) ;
 
 (* 'REVOKE' *)
-revoke ::= 'REVOKE' privileges 'ON' privilege_target 'FROM' name { ',' name } [ 'CASCADE' | 'RESTRICT' ] ;
+revoke_table ::= 'REVOKE' [ 'GRANT' 'OPTION' 'FOR' ]
+                     ( ( 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'TRUNCATE' | 'REFERENCES' | 'TRIGGER' )
+                     { ',' ( 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'TRUNCATE' | 'REFERENCES' | 'TRIGGER' ) }
+                      | 'ALL' [ 'PRIVILEGES' ] )
+                     'ON' ( [ 'TABLE' ] table_name { ',' table_name }
+                          | 'ALL' 'TABLES' 'IN' 'SCHEMA' schema_name { ',' schema_name } )
+                     'FROM' ( [ 'GROUP' ] role_name | 'PUBLIC' ) { ',' ( [ 'GROUP' ] role_name | 'PUBLIC' ) }
+                     [ 'CASCADE' | 'RESTRICT' ] ;
+
+revoke_table_col ::= 'REVOKE' [ 'GRANT' 'OPTION' 'FOR' ]
+                         ( ( 'SELECT' | 'INSERT' | 'UPDATE' | 'REFERENCES' ) '(' column_names ')'
+                         { ',' '(' column_names ')' } | 'ALL' [ 'PRIVILEGES' ] '(' column_names ')' )
+                         'ON' [ 'TABLE' ] table_name { ',' table_name }
+                         'FROM' ( [ 'GROUP' ] role_name | 'PUBLIC' ) { ',' ( [ 'GROUP' ] role_name | 'PUBLIC' ) }
+                         [ 'CASCADE' | 'RESTRICT' ] ;
+
+revoke_seq ::= 'REVOKE' [ 'GRANT' 'OPTION' 'FOR' ]
+                   ( ( 'USAGE' | 'SELECT' | 'UPDATE' ) { ',' ( 'USAGE' | 'SELECT' | 'UPDATE' ) }
+                    | 'ALL' [ 'PRIVILEGES' ] )
+                   'ON' ( 'SEQUENCE' sequence_name { ',' sequence_name }
+                        | 'ALL' 'SEQUENCES' 'IN' 'SCHEMA' schema_name { ',' schema_name } )
+                   'FROM' ( [ 'GROUP' ] role_name | 'PUBLIC' ) { ',' ( [ 'GROUP' ] role_name | 'PUBLIC' ) }
+                   [ 'CASCADE' | 'RESTRICT' ] ;
+
+revoke_db ::= 'REVOKE' [ 'GRANT' 'OPTION' 'FOR' ]
+                  ( ( 'CREATE' | 'CONNECT' | 'TEMPORARY' | 'TEMP' ) { ',' ( 'CREATE' | 'CONNECT' | 'TEMPORARY' | 'TEMP' ) }
+                   | 'ALL' [ 'PRIVILEGES' ] )
+                  'ON' 'DATABASE' database_name { ',' database_name }
+                  'FROM' ( [ 'GROUP' ] role_name | 'PUBLIC' ) { ',' ( [ 'GROUP' ] role_name | 'PUBLIC' ) }
+                  [ 'CASCADE' | 'RESTRICT' ] ;
+
+revoke_domain ::= 'REVOKE' [ 'GRANT' 'OPTION' 'FOR' ]
+                      ( 'USAGE' | 'ALL' [ 'PRIVILEGES' ] )
+                      'ON' 'DOMAIN' domain_name { ',' domain_name }
+                      'FROM' ( [ 'GROUP' ] role_name | 'PUBLIC' ) { ',' ( [ 'GROUP' ] role_name | 'PUBLIC' ) }
+                      [ 'CASCADE' | 'RESTRICT' ] ;
+
+revoke_schema ::= 'REVOKE' [ 'GRANT' 'OPTION' 'FOR' ]
+                      ( ( 'CREATE' | 'USAGE' ) { ',' ( 'CREATE' | 'USAGE' ) } | 'ALL' [ 'PRIVILEGES' ] )
+                      'ON' 'SCHEMA' schema_name { ',' schema_name }
+                      'FROM' ( [ 'GROUP' ] role_name | 'PUBLIC' ) { ',' ( [ 'GROUP' ] role_name | 'PUBLIC' ) }
+                      [ 'CASCADE' | 'RESTRICT' ] ;
+
+revoke_type ::= 'REVOKE' [ 'GRANT' 'OPTION' 'FOR' ]
+                    ( 'USAGE' | 'ALL' [ 'PRIVILEGES' ] )
+                    'ON' 'TYPE' type_name { ',' type_name }
+                    'FROM' ( [ 'GROUP' ] role_name | 'PUBLIC' ) { ',' ( [ 'GROUP' ] role_name | 'PUBLIC' ) }
+                    [ 'CASCADE' | 'RESTRICT' ] ;
+
+revoke_role ::= 'REVOKE' [ 'ADMIN' 'OPTION' 'FOR' ]
+                    role_name { ',' role_name } 'FROM' role_name { ',' role_name }
+                    [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'ROLLBACK' *)
 rollback ::= 'ROLLBACK' [ 'TRANSACTION' | 'WORK' ] ;

@@ -1,20 +1,20 @@
-title: COMMENT
-linkTitle: COMMENT
-summary: COMMENT
-description: COMMENT
+---
+title: ALTER USER
+description: Users and roles
+summary: Users and roles
 menu:
   latest:
-    identifier: api-ysql-commands-comment
+    identifier: api-ysql-commands-alter-user
     parent: api-ysql-commands
 aliases:
-  - /latest/api/ysql/commands/ddl_comment
+  - /latest/api/ysql/commands/dcl_alter_user
 isTocNested: true
 showAsideToc: true
 ---
 
 ## Synopsis
 
-Use the `COMMENT` statement to set, update, or remove a comment on a database object.
+`ALTER USER` is an alias for [`ALTER ROLE`](../dcl_alter_role) and is used to alter a role.
 
 ## Syntax
 
@@ -35,37 +35,20 @@ Use the `COMMENT` statement to set, update, or remove a comment on a database ob
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/comment_on.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/alter_user,alter_role_option,role_specification,alter_user_rename,alter_user_config,config_setting.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/comment_on.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/alter_user,alter_role_option,role_specification,alter_user_rename,alter_user_config,config_setting.diagram.md" /%}}
   </div>
 </div>
 
-## Semantics
 
-To remove a comment, set the value to `NULL`.
+See [`ALTER ROLE`](../dcl_alter_role) for more details.
 
-### *comment_on*
+## See also
 
-#### COMMMENT ON
-
-Add or change a comment about a database object. To remove a comment, set the value to `NULL`.
-
-### *aggregate_signature*
-
-## Examples
-
-### Add a comment
-
-```
-COMMENT ON DATABASE postgres IS 'Default database';
-```
-
-```
-COMMENT ON INDEX index_name IS 'Special index';
-```
-
-### Remove a comment
-
-COMMENT ON TABLE some_table IS NULL;
+[`CREATE ROLE`](../dcl_create_role)
+[`DROP ROLE`](../dcl_drop_role)
+[`GRANT`](../dcl_grant)
+[`REVOKE`](../dcl_revoke)
+[Other YSQL Statements](..)
