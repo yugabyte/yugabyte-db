@@ -39,7 +39,7 @@ The following SQL statements are supported by the YugaByte Structured Query Lang
 | [`CREATE VIEW`](ddl_create_view) | Create a new view |
 | [`DEALLOCATE`](perf_deallocate) | Deallocate a prepared statement |
 | [`DELETE`](dml_delete) | Delete rows from a table |
-| [`DO`](commands/cmd_doc) | Execute an anonymous code block |
+| [`DO`](cmd_do) | Execute an anonymous code block |
 | [`DROP AGGREGATE`](ddl_drop_aggregate) | Delete an aggregate |
 | [`DROP DATABASE`](ddl_drop_database) | Delete a database from the system |
 | [`DROP DOMAIN`](ddl_drop_domain) | Delete a domain |
