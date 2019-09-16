@@ -28,4 +28,9 @@ storage_parameter ::= param_name [ = param_value ]
 
 index_parameters ::= [ INCLUDE ( column_names ) ] 
                      [ WITH ( storage_parameters ) ]
+
+references_clause ::= REFERENCES table_name [ column_name [ , ... ] ] 
+                      [ MATCH FULL | MATCH PARTIAL | MATCH SIMPLE ]  
+                      [ ON DELETE key_action ] 
+                      [ ON UPDATE key_action ]
 ```
