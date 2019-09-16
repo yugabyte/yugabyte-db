@@ -15,7 +15,9 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `CREATE SCHEMA` statement to enter a new schema into the current database. 
+`CREATE SCHEMA` creates a new schema in the current database.
+A schema is essentially a namespace: it contains named objects (tables, data types, functions, and operators) whose names can duplicate those of other objects existing in other schemas.
+Named objects in a schema can be accessed by using the schema name as prefix or by setting the schema name in the search path.
 
 ## Syntax
 
@@ -36,31 +38,54 @@ Use the `CREATE SCHEMA` statement to enter a new schema into the current databas
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_schema.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_schema_name,create_schema_role,schema_element,role_specification.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_schema.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_schema_name,create_schema_role,schema_element,role_specification.diagram.md" /%}}
   </div>
 </div>
 
-## Semantics
+Where
 
-- `AUTHORIZATION` clause is not yet supported.
+- `schema_name` is the name of the schema being created. If no schema_name is specified, the `role_name` is used.
 
-## *create_schema*
+- `role_name` is the role who will own the new schema. If omitted, it defaults to the user executing the command. To create a schema owned by another role, you must be a direct or indirect member of that role, or be a superuser.
 
-### CREATE SCHEMA [ IF NOT EXISTS ] *schema_name* [ *schema_element* [ ... ] ]
+- `schema_element` is a YSQL statement defining an object to be created within the schema.
+Currently, only [`CREATE TABLE`](../ddl_create_table), [`CREATE VIEW`](../ddl_create_view), [`CREATE INDEX`](../ddl_create_index), [`CREATE SEQUENCE`](../ddl_create_sequence), [`CREATE TRIGGER`](../ddl_create_trigger) and [`GRANT`](../dcl_grant) are supported as clauses within `CREATE SCHEMA`.
+Other kinds of objects may be created in separate commands after the schema is created.
 
-Create a schema in the current database.
+## Examples
 
-### *schema_name*
+- Create a new schema.
 
-Specify the name of the schema to be created. The schema name must be unique.
+```sql
+yugabyte=# CREATE SCHEMA IF NOT EXIST branch;
+```
 
-### *schema_element*
+- Create a schema for a user.
 
-Specify the SQL statement that defines a database object to be created within the schema.
-Acceptable clauses are `CREATE TABLE`, `CREATE VIEW`, `CREATE INDEX`, `CREATE SEQUENCE`, and `GRANT`. Other database objects must be created in separate commands after the schema is created.
+```sql
+yugabyte=# CREATE ROLE John;
+yugabyte=# CREATE SCHEMA AUTHORIZATION john;
+```
+
+- Create a schema that will be owned by another role.
+
+```sql
+yugabyte=# CREATE SCHEMA branch AUTHORIZATION john;
+```
+
+- Create a schema and an object within that schema.
+
+```sql
+yugabyte=# CREATE SCHEMA branch
+               CREATE TABLE dept(
+                   dept_id INT NOT NULL,
+                   dept_name TEXT NOT NULL,
+                   PRIMARY KEY (dept_id)
+               );
+```
 
 ## See also
 

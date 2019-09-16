@@ -1,20 +1,21 @@
-title: COMMENT
-linkTitle: COMMENT
-summary: COMMENT
-description: COMMENT
+---
+title: DROP GROUP
+linkTitle: DROP GROUP
+description: Groups and roles
+summary: DROP GROUP
 menu:
   latest:
-    identifier: api-ysql-commands-comment
+    identifier: api-ysql-commands-drop-group
     parent: api-ysql-commands
 aliases:
-  - /latest/api/ysql/commands/ddl_comment
+  - /latest/api/ysql/commands/dcl_drop_group
 isTocNested: true
 showAsideToc: true
 ---
 
 ## Synopsis
 
-Use the `COMMENT` statement to set, update, or remove a comment on a database object.
+`DROP GROUP` is an alias for [`DROP ROLE`](../dcl_drop_role) and is used to drop a role.
 
 ## Syntax
 
@@ -35,37 +36,29 @@ Use the `COMMENT` statement to set, update, or remove a comment on a database ob
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/comment_on.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/drop_group.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/comment_on.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/drop_group.diagram.md" /%}}
   </div>
 </div>
 
 ## Semantics
 
-To remove a comment, set the value to `NULL`.
+See [`DROP ROLE`](../dcl_drop_role) for more details.
 
-### *comment_on*
+## Example
 
-#### COMMMENT ON
+- Drop a group.
 
-Add or change a comment about a database object. To remove a comment, set the value to `NULL`.
-
-### *aggregate_signature*
-
-## Examples
-
-### Add a comment
-
-```
-COMMENT ON DATABASE postgres IS 'Default database';
+```sql
+postgres=# DROP GROUP SysAdmin;
 ```
 
-```
-COMMENT ON INDEX index_name IS 'Special index';
-```
+## See also
 
-### Remove a comment
-
-COMMENT ON TABLE some_table IS NULL;
+[`CREATE ROLE`](../dcl_create_role)
+[`ALTER ROLE`](../dcl_alter_role)
+[`GRANT`](../dcl_grant)
+[`REVOKE`](../dcl_revoke)
+[Other YSQL Statements](..)
