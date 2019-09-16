@@ -98,8 +98,8 @@
 %type <node> where_opt
 
 /* expression */
-%type <node> expr expr_opt atom literal list var
-%type <list> expr_comma_list expr_comma_list_opt
+%type <node> expr expr_opt atom literal map list var
+%type <list> expr_comma_list expr_comma_list_opt map_keyvals
 
 /* identifier */
 %type <string> name
@@ -713,7 +713,34 @@ literal:
         {
             $$ = make_null_const(@1);
         }
+    | map
     | list
+    ;
+
+map:
+    '{' map_keyvals '}'
+        {
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                            errmsg("map literal parsed"),
+                            errdetail("%s", nodeToString($2)),
+                            errposition(@1 + 1)));
+            $$ = NULL;
+        }
+    ;
+
+map_keyvals:
+    /* empty */
+        {
+            $$ = NIL;
+        }
+    | name ':' expr
+        {
+            $$ = list_make2(makeString($1), $3);
+        }
+    | map_keyvals ',' name ':' expr
+        {
+            $$ = lappend(lappend($1, makeString($3)), $5);
+        }
     ;
 
 list:

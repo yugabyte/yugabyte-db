@@ -1,6 +1,23 @@
 LOAD 'agensgraph';
 SET search_path TO ag_catalog;
 --
+-- map literal
+--
+-- empty map
+SELECT * FROM cypher($$RETURN {}$$) AS r(c jsonbx);
+ERROR:  map literal parsed
+LINE 1: SELECT * FROM cypher($$RETURN {}$$) AS r(c jsonbx);
+                                      ^
+DETAIL:  <>
+-- map of scalar values
+SELECT * FROM cypher($$
+RETURN {s: 's', i: 1, f: 1.0, b: true, z: null}
+$$) AS r(c jsonbx);
+ERROR:  map literal parsed
+LINE 2: RETURN {s: 's', i: 1, f: 1.0, b: true, z: null}
+               ^
+DETAIL:  ("s" {A_CONST :val "s" :location 12} "i" {A_CONST :val 1 :location 20} "f" {A_CONST :val 1.0 :location 26} "b" {TYPECAST :arg {A_CONST :val "t" :location 34} :typeName {TYPENAME :names ("pg_catalog" "bool") :typeOid 0 :setof false :pct_type false :typmods <> :typemod -1 :arrayBounds <> :location -1} :location -1} "z" {A_CONST :val NULL :location 43})
+--
 -- list literal
 --
 -- empty list
