@@ -306,12 +306,14 @@ message PgsqlResponsePB {
     PGSQL_STATUS_DUPLICATE_KEY_ERROR = 5;
   }
 
-  // Status and error message
+  // TODO: AppStatusPB can consolidate status + error_message + pg_error_code
+  // Internal Status information
   optional RequestStatus status = 1 [ default = PGSQL_STATUS_OK ]; // required
 
   // True if this operation was not actually applied, for instance update to the same value.
   optional bool skipped = 6;
 
+  // User readable error message associated with Internal & External Status
   optional string error_message = 2;
 
   // Sidecar of rows data returned
@@ -322,4 +324,8 @@ message PgsqlResponsePB {
 
   // Number of rows affected by the operation. Currently only used for update and delete.
   optional int32 rows_affected_count = 7;
+
+  // External Status : PostgreSQL error code encoded as in errcodes.h or yb_pg_errcodes.h.
+  // See https://www.postgresql.org/docs/11/errcodes-appendix.html
+  optional uint64 pg_error_code = 8;
 }

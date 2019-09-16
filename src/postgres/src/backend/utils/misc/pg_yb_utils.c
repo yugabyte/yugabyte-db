@@ -234,11 +234,10 @@ HandleYBStatus(YBCStatus status)
 	if (YBShouldReportErrorStatus()) {
 		YBC_LOG_ERROR("HandleYBStatus: %s", msg_buf);
 	}
-
+	const uint32 pg_err_code = YBCStatusPgsqlError(status);
 	YBCFreeStatus(status);
-	/* TODO: consider creating PostgreSQL error codes for YB statuses. */
 	ereport(ERROR,
-			(errcode(ERRCODE_INTERNAL_ERROR),
+			(errcode(pg_err_code),
 			 errmsg("%s", msg_buf)));
 }
 

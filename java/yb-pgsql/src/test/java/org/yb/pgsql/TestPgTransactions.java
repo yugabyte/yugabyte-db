@@ -14,10 +14,10 @@ package org.yb.pgsql;
 
 import org.apache.commons.lang3.RandomUtils;
 import org.junit.Test;
-import org.junit.Ignore;
 import org.junit.runner.RunWith;
 import org.postgresql.core.TransactionState;
 import org.postgresql.util.PSQLException;
+import org.postgresql.util.PSQLState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBClusterBuilder;
@@ -48,17 +48,11 @@ public class TestPgTransactions extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransactions.class);
 
   private static boolean isYBTransactionError(PSQLException ex) {
-    String msg = ex.getMessage();
-    // TODO: test for error codes here when we move to more PostgreSQL-friendly transaction errors.
-    return (
-        msg.contains("Conflicts with higher priority transaction") ||
-        msg.contains("Transaction aborted") ||
-        msg.contains("Transaction expired") ||
-        msg.contains("Restart read required") ||
-        msg.contains("Conflicts with committed transaction") ||
-        msg.contains(
-            "current transaction is aborted, commands ignored until end of transaction block")) ||
-        msg.contains("Value write after transaction start");
+    return ex.getSQLState().equals("40001");
+  }
+
+  private static boolean isTransactionAbortedError(PSQLException ex) {
+    return PSQLState.IN_FAILED_SQL_TRANSACTION.getState().equals(ex.getSQLState());
   }
 
   private void checkTransactionFairness(
@@ -174,7 +168,6 @@ public class TestPgTransactions extends BasePgSQLTest {
   }
 
   private void runReadDelayWriteTest(final IsolationLevel isolationLevel) throws Exception {
-    Connection setupConn = createConnection(isolationLevel, AutoCommit.ENABLED);
     Statement statement = connection.createStatement();
     statement.execute("CREATE TABLE counters (k INT PRIMARY KEY, v INT)");
 
@@ -280,7 +273,7 @@ public class TestPgTransactions extends BasePgSQLTest {
                 hadErrors.set(true);
               }
             } catch (PSQLException ex) {
-              if (!isYBTransactionError(ex)) {
+              if (!isYBTransactionError(ex) && !isTransactionAbortedError(ex)) {
                 throw ex;
               }
               LOG.info(
@@ -477,9 +470,9 @@ public class TestPgTransactions extends BasePgSQLTest {
             String.format("INSERT INTO test(h, r, v) VALUES (%d, %d, %d)", i, i, 200 * i));
         executed2 = true;
       } catch (PSQLException ex) {
-        // TODO: validate the exception message.
         // Not reporting a stack trace here on purpose, because this will happen a lot in a test.
-        LOG.info("Error while inserting on the second connection:" + ex.getMessage());
+        // [#1289] Don't think this should ever be a isTransactionAbortedError
+        assertTrue(ex.getMessage(), isYBTransactionError(ex));
       }
       TransactionState txnState1BeforeCommit = getPgTxnState(connection1);
       TransactionState txnState2BeforeCommit = getPgTxnState(connection2);

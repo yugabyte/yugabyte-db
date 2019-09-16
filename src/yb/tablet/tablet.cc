@@ -63,6 +63,7 @@
 #include "yb/common/schema.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
+#include "yb/common/pgsql_error.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
@@ -803,16 +804,19 @@ Status Tablet::PrepareTransactionWriteBatch(
     // Store transaction metadata (status tablet, isolation level etc.)
     if (!transaction_participant()->Add(
             put_batch.transaction(), put_batch.may_have_metadata(), rocksdb_write_batch)) {
-      return STATUS_FORMAT(TryAgain, "Transaction was recently aborted: $0", transaction_id);
+      return STATUS(TryAgain,
+                    Format("Transaction was recently aborted: $0", transaction_id), Slice(),
+                    PgsqlError(YBPgErrorCode::YB_PG_IN_FAILED_SQL_TRANSACTION));
     }
   }
   auto metadata_with_write_id = transaction_participant()->MetadataWithWriteId(transaction_id);
   if (!metadata_with_write_id) {
     // If metadata is missing it could be caused by aborted and removed transaction.
     // In this case we should not add new intents for it.
-    return STATUS_FORMAT(
-        TryAgain, "Transaction metadata missing: $0, looks like it was just aborted",
-        transaction_id);
+    return STATUS(TryAgain,
+                  Format("Transaction metadata missing: $0, looks like it was just aborted",
+                         transaction_id), Slice(),
+                         PgsqlError(YBPgErrorCode::YB_PG_IN_FAILED_SQL_TRANSACTION));
   }
 
   auto isolation_level = metadata_with_write_id->first.isolation;

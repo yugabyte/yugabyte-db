@@ -283,7 +283,7 @@ class YugabyteProcessManager(object):
                 "handler_latency_yb_tserver_TabletServerService_Write_count,"
                 "handler_latency_yb_tserver_TabletServerService_Read_sum,"
                 "handler_latency_yb_tserver_TabletServerService_Write_sum",
-             "--ysql_num_shards_per_tserver", YSQL_NUM_SHARDS_PER_TSERVER]
+             "--ysql_num_shards_per_tserver", str(YSQL_NUM_SHARDS_PER_TSERVER)]
         if self.configs.saved_data.get("master_flags"):
             yb_master_cmd.extend(
                 ["--{}".format(flag) for flag in \
@@ -307,7 +307,7 @@ class YugabyteProcessManager(object):
                 "handler_latency_yb_tserver_TabletServerService_Read_sum,"
                 "handler_latency_yb_tserver_TabletServerService_Write_sum",
              "--metrics_snapshotter_interval_ms", "11000",
-             "--ysql_num_shards_per_tserver", YSQL_NUM_SHARDS_PER_TSERVER]
+             "--ysql_num_shards_per_tserver", str(YSQL_NUM_SHARDS_PER_TSERVER)]
         if self.configs.saved_data.get("tserver_flags"):
             yb_tserver_cmd.extend(
                 ["--{}".format(flag) for flag in \
@@ -478,15 +478,6 @@ class YugabyteProcessManager(object):
 
     # Initialize YW process. Creates all necessary tables. Returns false if init failed.
     def init_yw(self):
-        # Create YW database.
-        create_yw_db = [
-            os.path.join(BIN_DIR, "ysqlsh"), "-c", "create database {};".format(WEBSERVER_DB)]
-        Output.log("Creating {} database...".format(WEBSERVER_DB))
-        _, err, ret_code = run_process(create_yw_db)
-        if err or ret_code:
-            Output.log("Failed to create {}: {}".format(WEBSERVER_DB, err), logging.ERROR)
-            return False
-
         # Create Play evolutions table. Required for YugaWare to start up properly.
         create_play_table = [
             os.path.join(YUGAWARE_BIN_DIR, "yugaware"), "-Dconfig.file=" + YUGAWARE_CONF
@@ -504,12 +495,6 @@ class YugabyteProcessManager(object):
 
     # Returns if yugaware was properly initialized before.
     def is_yw_initialized(self):
-        # Check YW database was created.
-        list_db_cmd = [os.path.join(BIN_DIR, "ysqlsh"), "-c", "\l"]
-        out, err, ret_code = run_process(list_db_cmd)
-        if err or ret_code or WEBSERVER_DB not in out:
-            return False
-
         # Check Play evolutions table was created.
         list_tables_cmd = [os.path.join(BIN_DIR, "ysqlsh"), "-d", WEBSERVER_DB, "-c", "\d"]
         out, err, ret_code = run_process(list_tables_cmd)

@@ -29,6 +29,7 @@ The following SQL statements are supported by the YugaByte Structured Query Lang
 | [`COMMENT`](ddl_comment) | Adds a comment on a database object |
 | [`COMMIT`](txn_commit) | Commits a transaction |
 | [`COPY`](cmd_copy) | Copy data between tables and files |
+| [`CREATE AGGREGATE`](ddl_create_aggregate) | Create a new aggregate |
 | [`CREATE DATABASE`](ddl_create_database) | Create a new database |
 | [`CREATE DOMAIN`](ddl_create_domain) | Create a new domain |
 | [`CREATE INDEX`](ddl_create_index) | Create a new index |
@@ -39,18 +40,21 @@ The following SQL statements are supported by the YugaByte Structured Query Lang
 | [`CREATE SEQUENCE`](ddl_create_sequence) | Create a new sequence generator |
 | [`CREATE TABLE`](ddl_create_table) | Create a new table |
 | [`CREATE TABLE AS`](ddl_create_table_as) | Create a new table |
+| [`CREATE TRIGGER`](ddl_create_trigger) | Create a new trigger |
 | [`CREATE TYPE`](ddl_create_type) | Create a new type |
 | [`CREATE USER`](dcl_create_user) | Create a new user (role) |
 | [`CREATE VIEW`](ddl_create_view) | Create a new view |
 | [`DEALLOCATE`](perf_deallocate) | Deallocate a prepared statement |
 | [`DELETE`](dml_delete) | Delete rows from a table |
-| [`DO`](commands/cmd_doc) | Execute an anonymous code block |
+| [`DO`](cmd_do) | Execute an anonymous code block |
+| [`DROP AGGREGATE`](ddl_drop_aggregate) | Delete an aggregate |
 | [`DROP DATABASE`](ddl_drop_database) | Delete a database from the system |
 | [`DROP DOMAIN`](ddl_drop_domain) | Delete a domain |
 | [`DROP GROUP`](dcl_drop_group) | Delete a group (role) |
 | [`DROP ROLE`](dcl_drop_role) | Delete a role (user or group) |
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP TABLE`](ddl_drop_table) | Deletes a table from a database |
+| [`DROP TRIGGER`](ddl_drop_trigger) | Delete a trigger |
 | [`DROP TYPE`](ddl_drop_type) | Delete a user-defined type |
 | [`DROP USER`](dcl_drop_user) | Delete a user (role) |
 | [`END`](txn_end) | Commit a transaction |

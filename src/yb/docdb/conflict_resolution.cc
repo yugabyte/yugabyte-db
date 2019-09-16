@@ -14,6 +14,7 @@
 #include "yb/docdb/conflict_resolution.h"
 
 #include "yb/common/hybrid_time.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/docdb.h"
@@ -25,6 +26,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/yb_pg_errcodes.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -61,9 +63,8 @@ struct TransactionData {
 CHECKED_STATUS MakeConflictStatus(const TransactionId& our_id, const TransactionId& other_id,
                                   const char* reason, Counter* conflicts_metric) {
   conflicts_metric->Increment();
-  return STATUS_FORMAT(TryAgain,
-                       "$0 Conflicts with $1 transaction: $2",
-                       our_id, reason, other_id);
+  return STATUS(TryAgain, Format("$0 Conflicts with $1 transaction: $2", our_id, reason, other_id),
+                Slice(), PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) );
 }
 
 class ConflictResolver;
@@ -474,8 +475,10 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
                 << ", found key: " << SubDocKey::DebugSliceToString(value_iter.key());
         if (doc_ht.hybrid_time() >= read_time_) {
           conflicts_metric_->Increment();
-          return STATUS_FORMAT(TryAgain, "Value write after transaction start: $0 >= $1",
-                               doc_ht.hybrid_time(), read_time_);
+          return STATUS(TryAgain,
+                        Format("Value write after transaction start: $0 >= $1",
+                               doc_ht.hybrid_time(), read_time_), Slice(),
+                        PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
         }
         buffer.Reset(existing_key);
         // Already have ValueType::kHybridTime at the end

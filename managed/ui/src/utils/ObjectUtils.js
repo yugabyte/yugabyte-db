@@ -245,8 +245,9 @@ export function insertSpacesFromCamelCase(string) {
 // Official Version string is x.x.x.x-bx
 export function sortVersionStrings(arr) {
   const regExp = /^(\d+).(\d+).(\d+).(\d+)(?:-[a-z]+)?(\d+)?/;
-  return arr.sort((a, b) => {
-    if (!a.match(regExp) || !b.match(regExp)) return -1;
+  const matchedVersions = arr.filter(a => a.match(regExp));
+  const abnormalVersions = arr.filter(a => !a.match(regExp));
+  return matchedVersions.sort((a, b) => {
     const a_arr = a.split(regExp).filter(Boolean);
     const b_arr = b.split(regExp).filter(Boolean);
     for(let idx = 0; idx < a_arr.length; idx++) {
@@ -255,7 +256,7 @@ export function sortVersionStrings(arr) {
       }
     }
     return 0;
-  });
+  }).concat(abnormalVersions.sort((a, b) => a.localeCompare(b)));
 }
 
 export function getPointsOnCircle(numPoints, center, radius) {
