@@ -18,6 +18,8 @@ import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 
 import java.util.UUID;
+import java.util.HashMap;
+import java.util.Map;
 
 import static com.yugabyte.yw.models.Backup.BackupState.Completed;
 import static com.yugabyte.yw.models.Backup.BackupState.Failed;
@@ -42,6 +44,9 @@ public class BackupUniverseTest extends CommissionerBaseTest {
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
+    Map<String, String> config = new HashMap<>();
+    config.put("takeBackups", "true");
+    defaultUniverse.setConfig(config);
   }
 
   private TaskInfo submitTask(BackupTableParams.ActionType actionType, boolean enableVerboseLogs) {

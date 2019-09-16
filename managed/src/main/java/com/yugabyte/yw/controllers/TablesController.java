@@ -7,6 +7,7 @@ import java.util.UUID;
 
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -280,6 +281,61 @@ public class TablesController extends AuthenticatedController {
     }
   }
 
+  public Result createMultiTableBackup(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      String errMsg = "Invalid Customer UUID: " + customerUUID;
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
+    Universe universe = Universe.get(universeUUID);
+    if (universe == null) {
+      String errMsg = "Invalid Universe UUID: " + universeUUID;
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
+    Form<MultiTableBackup.Params> formData = formFactory
+        .form(MultiTableBackup.Params.class)
+        .bindFromRequest();
+
+    if (formData.hasErrors()) {
+      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+    }
+
+    MultiTableBackup.Params taskParams = formData.get();
+    CustomerConfig storageConfig = CustomerConfig.get(customerUUID, taskParams.storageConfigUUID);
+    if (storageConfig == null) {
+      String errMsg = "Invalid StorageConfig UUID: " + taskParams.storageConfigUUID;
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
+
+    taskParams.universeUUID = universeUUID;
+    taskParams.customerUUID = customerUUID;
+
+    ObjectNode resultNode = Json.newObject();
+    if (taskParams.schedulingFrequency != 0L || taskParams.cronExpression != null) {
+      Schedule schedule = Schedule.create(customerUUID, taskParams,
+          TaskType.MultiTableBackup, taskParams.schedulingFrequency,
+          taskParams.cronExpression);
+      UUID scheduleUUID = schedule.getScheduleUUID();
+      LOG.info("Submitted universe backup to be scheduled {}, schedule uuid = {}.",
+          universeUUID, scheduleUUID);
+      resultNode.put("scheduleUUID", scheduleUUID.toString());
+    } else {
+      UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, taskParams);
+      LOG.info("Submitted task to universe {}, task uuid = {}.",
+          universe.name, taskUUID);
+      CustomerTask.create(customer,
+          customerUUID,
+          taskUUID,
+          CustomerTask.TargetType.Universe,
+          CustomerTask.TaskType.Backup,
+          universe.name);
+      LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID,
+          universe.name);
+      resultNode.put("taskUUID", taskUUID.toString());
+    }
+    return ApiResponse.success(resultNode);
+  }
+
   public Result createBackup(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
@@ -326,8 +382,8 @@ public class TablesController extends AuthenticatedController {
       CustomerTask.create(customer,
           taskParams.universeUUID,
           taskUUID,
-          CustomerTask.TargetType.Backup,
-          CustomerTask.TaskType.Create,
+          CustomerTask.TargetType.Table,
+          CustomerTask.TaskType.Backup,
           taskParams.tableName);
       LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
           tableUUID, taskParams.keyspace, taskParams.tableName);

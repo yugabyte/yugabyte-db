@@ -75,6 +75,9 @@ public class CustomerTask extends Model {
     @EnumValue("BulkImportData")
     BulkImportData,
 
+    @EnumValue("Backup")
+    Backup,
+
     @EnumValue("Restore")
     Restore;
 
@@ -94,6 +97,8 @@ public class CustomerTask extends Model {
           return completed ? "Bulk imported data" : "Bulk importing data";
         case Restore:
           return completed ? "Restored " : "Restoring ";
+        case Backup:
+          return completed ? "Backed up" : "Backing up";
         default:
           return null;
       }

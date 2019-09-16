@@ -49,6 +49,9 @@ public class SubTaskGroup implements Runnable {
   // Flag to denote the task is done.
   boolean tasksDone = false;
 
+  // Flag to denote is an exception needs to be thrown on failure.
+  boolean ignoreErrors = false;
+
   /**
    * Creates the task list.
    *
@@ -56,11 +59,23 @@ public class SubTaskGroup implements Runnable {
    * @param executor : The threadpool to run the task on.
    */
   public SubTaskGroup(String name, ExecutorService executor) {
+    this(name, executor, false);
+  }
+
+  /**
+   * Creates the task list.
+   *
+   * @param name     : Name for the task list, used to name the threads.
+   * @param executor : The threadpool to run the task on.
+   * @param ignoreErrors : Flag to tell if an error needs to be thrown if the subTask fails.
+   */
+  public SubTaskGroup(String name, ExecutorService executor, boolean ignoreErrors) {
     this.name = name;
     this.executor = executor;
     this.taskMap = new HashMap<>();
     this.futuresMap = new HashMap<>();
     this.numTasksCompleted = new AtomicInteger(0);
+    this.ignoreErrors = ignoreErrors;
   }
 
   public synchronized void setSubTaskGroupType(UserTaskDetails.SubTaskGroupType subTaskGroupType) {

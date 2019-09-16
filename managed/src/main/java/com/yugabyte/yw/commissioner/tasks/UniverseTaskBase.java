@@ -61,6 +61,7 @@ import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -734,9 +735,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  public SubTaskGroup createTableBackupTask(BackupTableParams taskParams) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("BackupTable", executor);
-    BackupTable task = new BackupTable();
+  public SubTaskGroup createTableBackupTask(BackupTableParams taskParams, Backup backup) {
+    SubTaskGroup subTaskGroup = null;
+    if (backup == null) {
+      subTaskGroup = new SubTaskGroup("BackupTable", executor);
+    } else {
+      subTaskGroup = new SubTaskGroup("BackupTable", executor, true);
+    }
+    BackupTable task = new BackupTable(backup);
     task.initialize(taskParams);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addTask(task);
@@ -970,5 +976,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
+  }
+
+  public void updateBackupState(boolean state) {
+    UniverseUpdater updater = new UniverseUpdater() {
+        @Override
+        public void run(Universe universe) {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          universeDetails.backupInProgress = state;
+          universe.setUniverseDetails(universeDetails);
+        }
+      };
+      Universe.saveDetails(taskParams().universeUUID, updater);
   }
 }
