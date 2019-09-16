@@ -1,0 +1,54 @@
+---
+title: DROP AGGREGATE
+linkTitle: DROP AGGREGATE
+summary: Remove an aggregate
+description: DROP AGGREGATE
+menu:
+  latest:
+    identifier: api-ysql-commands-drop-aggregate
+    parent: api-ysql-commands
+aliases:
+  - /latest/api/ysql/ddl_drop_aggregate/
+isTocNested: true
+showAsideToc: true
+---
+
+## Synopsis
+
+Use the `DROP AGGREGATE` statement to remove an aggregate.
+
+## Syntax
+
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      Grammar
+    </a>
+  </li>
+  <li>
+    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      Diagram
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+    {{% includeMarkdown "../syntax_resources/commands/drop_aggregate,aggregate_signature.grammar.md" /%}}
+  </div>
+  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+    {{% includeMarkdown "../syntax_resources/commands/drop_aggregate,aggregate_signature.diagram.md" /%}}
+  </div>
+</div>
+
+## Semantics
+
+See the semantics of each option in the [PostgreSQL docs][postgresql-docs-drop-aggregate].
+
+## See also
+
+- [`CREATE AGGREGATE`](../ddl_create_aggregate)
+
+[postgresql-docs-drop-aggregate]: https://www.postgresql.org/docs/current/sql-dropaggregate.html

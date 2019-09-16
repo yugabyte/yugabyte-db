@@ -44,6 +44,7 @@ DDL statements define the structures in a database, change their definitions, as
 | [`CREATE TABLE AS`](commands/ddl_create_table_as) | Create a new table |
 | [`CREATE TYPE`](commands/ddl_create_type) | Create a new type |
 | [`CREATE VIEW`](commands/ddl_create_view) | Create a new view |
+| [`DROP AGGREGATE`](commands/ddl_drop_aggregate) | Delete an aggregate |
 | [`DROP DATABASE`](commands/ddl_drop_database) | Delete a database from the system |
 | [`DROP SEQUENCE`](commands/ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP TABLE`](commands/ddl_drop_table) | Delete a table from a database |

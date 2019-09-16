@@ -1,11 +1,7 @@
 ```
 comment_on ::= COMMENT ON 
                { ACCESS METHOD object_name
-                 | AGGREGATE aggregate_name ( 
-                   { aggregate_arg [ , ... ] | * } )
-                 | AGGREGATE aggregate_name ( 
-                   [ aggregate_arg [ , ... ] ] ORDER BY aggregate_arg 
-                   [ , ... ] )
+                 | AGGREGATE aggregate_name ( aggregate_signature )
                  | CAST ( source_type AS target_type )
                  | COLLATION object_name
                  | COLUMN relation_name . column_name

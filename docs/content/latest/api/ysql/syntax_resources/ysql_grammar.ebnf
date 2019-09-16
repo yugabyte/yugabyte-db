@@ -287,6 +287,17 @@ returning_clause ::= 'RETURNING' ( '*' | ( output_expression [ [ 'AS' ] output_n
 
 returning_expression ::= output_expression [ [ 'AS' ] output_name ] ;
 
+(* 'DROP' 'AGGREGATE' *)
+
+drop_aggregate = 'DROP' 'AGGREGATE' [ 'IF' 'EXISTS' ] aggregate_name '(' aggregate_signature ')'
+                 { ',' aggregate_name '(' aggregate_signature ')' }
+                 [ 'CASCADE' | 'RESTRICT' ] ;
+
+aggregate_signature = '*'
+                    | aggregate_arg { ',' aggregate_arg }
+                    | [ aggregate_arg { ',' aggregate_arg } ]
+                      'ORDER' 'BY' aggregate_arg { ',' aggregate_arg } ;
+
 (* 'DROP' 'DATABASE' *)
 drop_database ::= 'DROP' 'DATABASE' [ 'IF' 'EXISTS' ] database_name ;
 
@@ -619,7 +630,3 @@ mstate_data_size = '<non-negative integer>' ;
 mffunc = function_name ;
 minitial_condition = '<Text literal>' ;
 sort_operator = operator_name ;
-aggregate_signature = '*'
-                    | aggregate_arg { ',' aggregate_arg }
-                    | [ aggregate_arg { ',' aggregate_arg } ]
-                      'ORDER' 'BY' aggregate_arg { ',' aggregate_arg } ;
