@@ -88,7 +88,7 @@ class YugabyteProcessManager(object):
     # Starts Yugabyte DB node.
     def start(self):
         self.validate_resources()
-        Output.print_and_log("Starting Yugabyte DB...")
+        Output.print_and_log("Starting Yugabyte DB (this may take a couple minutes)...")
         self.set_env_vars()
         self.set_signals(self.kill_yugabyte)
         atexit.register(self.kill_yugabyte)
@@ -592,11 +592,11 @@ class YugabyteProcessManager(object):
         ysql_port = self.configs.saved_data.get("ysql_port")
         ycql_port = self.configs.saved_data.get("ycql_port")
         status_info = [
+            (Output.make_yellow("Webserver UI"), yw_status),
             (Output.make_yellow("JDBC"), "jdbc:postgresql://127.0.0.1:{}/postgres".format(
                 ysql_port)),
             (Output.make_yellow("YSQL"), "bin/ysqlsh -p {}".format(ysql_port)),
             (Output.make_yellow("YCQL"), "bin/cqlsh 127.0.0.1 {}".format(ycql_port)),
-            (Output.make_yellow("Webserver UI"), yw_status),
             (Output.make_yellow("Data Dir"), self.configs.saved_data.get("data_dir")),
             (Output.make_yellow("Log Dir"), self.configs.saved_data.get("log_dir")),
             (Output.make_yellow("Universe UUID"), self.get_universe_uuid())
