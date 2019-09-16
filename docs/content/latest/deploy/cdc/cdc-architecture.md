@@ -12,84 +12,40 @@ isTocNested: false
 showAsideToc: true
 ---
 
+This topic includes an overview of change data capture (CDC), use cases, the CDC process architecture, and how to use CDC with Apache Kafka.
+
 ## Overview
 
-Change data capture (CDC) enables capturing changes performed to the data stored in YugaByte DB. Here is an overview of the approach YugaByte DB uses for providing change capture stream on tables that can be consumed by third party applications. This feature is useful in a number of scenarios such as:
+Change data capture (CDC) refers to technology for ensuring that any changes in data (inserts, updates, and deletions) are identified, captured, and automatically applied to another data repository instance or made available for consumption by applications and other tools. CDC is useful in a number of scenarios, such as:
 
 ### Microservice-oriented architectures
 
-There are some microservices that require a stream of changes to the data. For example, a search system powered by a service such as Elasticsearch may be used in conjunction with the database stores the transactions. The search system requires a stream of changes made to the data in YugaByte DB. 
+Some microservices require a stream of changes to the data and using CDC in YugaByte DB can provide consumable data changes to CDC subscribers.
 
 ### Asynchronous replication to remote systems
 
-Remote systems such as caches and analytics pipelines may subscribe to the stream of changes, transform them and consume these changes.
+Remote systems may subscribe to a stream of data changes and then transform and consume the changes. Maintaining separate database instances for transactional and reporting purposes can be used to manage workload performance.
 
-### Two data center (2DC) deployments
+### Multiple data center strategies
 
-Two data center (2DC) deployments in YugaByte DB leverage change data capture at the core.
+Maintaining multiple data centers enables enterprises to provide:
+
+- High availability (HA) — Redundant systems helps ensure that your operations virtually never fail
+- Geo-redundancy — Geographically dispersed servers provide resiliency against catastrophic events and natural disasters
+
+Two data center (2DC), or dual data center, deployments are a common use of CDC that allows efficient management of two YugaByte universes that are geographically separated. For more information, see [Deploy to two data centers](../two-data-centers).
+
+### Compliance and auditing
+
+Auditing and compliance requirements can require you to use CDC to maintain records of data changes.
 
 {{< note title="Note" >}}
 
-In this design, the terms "data center", "cluster", and "universe" are used interchangeably. We assume here that each YB universe is deployed in a single data-center.
+In the design overview below, the terms "data center", "cluster", and "universe" are used interchangeably. We assume here that each YB universe is deployed in a single data-center.
 
 {{< /note >}}
 
-## Create a CDC stream
-
-To create a CDC stream, run the following commands on YSQL or YCQL APIs:
-
-```sql
-CREATE CDC
-       FOR <namespace>.<table>
-       INTO <target>
-       WITH <options>;
-```
-
-Run the following command to drop an existing CDC stream:
-
-```sql
-DROP CDC FOR <namespace>.<table>;
-```
-
-Initially, `KAFKA` and `ELASTICSEARCH` will be the supported targets. The usage for each of these is shown below.
-
-### Kafka as the CDC target
-
-```
-CREATE CDC FOR my_database.my_table
-           INTO KAFKA
-           WITH cluster_address = 'http://localhost:9092',
-                topic = 'my_table_topic',
-                record = AFTER;
-```
-
-The CDC options for Kafka include:
-
-| Option name       | Default       | Description   |
-| ----------------- | ------------- | ------------- |
-| `cluster_address` | -             | The `host:port` of the Kafka target cluster |
-| `topic`           | Table name    | The Kafka topic to which the stream is published |
-| `record`          | AFTER         | The type of records in the stream. Valid values are `CHANGE` (changed values only), `AFTER` (the entire row after the change is applied), ALL (the before and after value of the row). |
-
-### Elasticsearch as the CDC target
-
-```
-CREATE CDC FOR my_database.my_table
-           INTO ELASTICSEARCH
-           WITH cluster_address = 'http://localhost:9200',
-                index = 'my_table_index';
-```
-
-The CDC options for Elasticsearch include:
-
-| Option name       | Default       | Description   |
-| ----------------- | ------------- | ------------- |
-| `cluster_address` | -             | The `host:port` of the Elasticsearch target cluster |
-| `index`           | Table name    | The Elasticsearch index into which the search index is built |
-
-## Design
-
-### Process Architecture
+## Process Architecture
 
 ```
                           ╔═══════════════════════════════════════════╗
@@ -118,7 +74,9 @@ The CDC options for Elasticsearch include:
 
 ```
 
-Creating a new CDC stream on a table returns a stream UUID. The CDC Service stores information about all streams in the system table `cdc_streams`. The schema for this table looks as follows:
+### CDC streams
+
+Creating a new CDC stream on a table returns a stream UUID. The CDC Service stores information about all streams in the system table `cdc_streams`. The schema for this table looks like this:
 
 ```
 cdc_streams {
@@ -127,6 +85,8 @@ params	map<text, text>,
 primary key (stream_id)
 }
 ```
+
+### CDC subscribers
 
 Along with creating a CDC stream, a CDC subscriber is also created for all existing tablets of the stream. A new subscriber entry is created in the `cdc_subscribers` table. The schema for this table is:
 
@@ -140,43 +100,90 @@ primary key (stream_id, subscriber_id, tablet_id)
 }
 ```
 
+### CDC service APIs
+
 Every YB-TServer has a `CDC service` that is stateless. The main APIs provided by `CDC Service` are:
 
-* `SetupCDC` API — Sets up a CDC stream for a table.
-* `RegisterSubscriber` API — Registers a CDC subscriber that will read changes from some, or all, tablets of the CDC stream.
-* `GetChanges` API – Used by CDC subscribers to get the latest set of changes.
-* `GetSnapshot` API — Used to bootstrap CDC subscribers and get the current snapshot of the database (typically will be invoked prior to GetChanges)
+- `SetupCDC` API — Sets up a CDC stream for a table.
+- `RegisterSubscriber` API — Registers a CDC subscriber that will read changes from some, or all, tablets of the CDC stream.
+- `GetChanges` API – Used by CDC subscribers to get the latest set of changes.
+- `GetSnapshot` API — Used to bootstrap CDC subscribers and get the current snapshot of the database (typically will be invoked prior to GetChanges)
 
 ### Pushing changes to external systems
 
-Each YugaByte DB's TServer has CDC subscribers (`cdc_subscribers`) that are responsible for getting changes for all tablets for which the TServer is a leader. When a new stream and subscriber are created, the TServer `cdc_subscribers` detect this and start invoking the `cdc_service.GetChanges` API periodically to get the latest set of changes.
+Each YugaByte DB's TServer has CDC subscribers (`cdc_subscribers`) that are responsible for getting changes for all tablets for which the TServer is a leader. When a new stream and subscriber are created, the TServer `cdc_subscribers` detects this and starts invoking the `cdc_service.GetChanges` API periodically to get the latest set of changes.
 
 While invoking `GetChanges`, the CDC subscriber needs to pass in a `from_checkpoint` which is the last `OP ID` that it successfully consumed. When the CDC service receives a request of `GetChanges` for a tablet, it reads the changes from the WAL (log cache) starting from `from_checkpoint`, deserializes them and returns those to CDC subscriber. It also records the `from_checkpoint` in `cdc_subscribers` table in the data column. This will be used for bootstrapping fallen subscribers who don’t know the last checkpoint or in case of tablet leader changes.
 
-When `cdc_subscribers` receive the set of changes, they then push these changes out to Kafka or Elastic Search.
+When `cdc_subscribers` receive the set of changes, they then push these changes out to Kafka.
 
 ### CDC Guarantees
 
 #### Per-tablet ordered delivery guarantee
 
-All changes for a row (or rows in the same tablet) will be received in the order in which they happened. However, due to the distributed nature of the problem, there is no guarantee the order across tablets.
+All data changes for one row, or multiple rows in the same tablet, will be received in the order in which they occur. Due to the distributed nature of the problem, however, there is no guarantee for the order across tablets.
 
 For example, let us imagine the following scenario:
 
-* Two rows are being updated concurrently.
-* These two rows belong to different tablets.
-* The first row `row #1` was updated at time `t1` and the second row `row #2` was updated at time `t2`.
+- Two rows are being updated concurrently.
+- These two rows belong to different tablets.
+- The first row `row #1` was updated at time `t1` and the second row `row #2` was updated at time `t2`.
 
-In this case, it is entirely possible for the CDC feature to push the later update corresponding to `row #2` change to Kafka before pushing the update corresponding to `row #1`.
+In this case, it is possible for CDC to push the later update corresponding to `row #2` change to Kafka before pushing the earlier update, corresponding to `row #1`.
 
-#### At-least once delivery
+#### At-least-once delivery
 
-Updates for rows will be pushed at least once. This can happen in case of tablet leader change, where the old leader already pushed changes to Kafka or Elasticsearch, but the latest pushed `op id` was not updated in `cdc_subscribers` table. 
+Updates for rows will be pushed at least once. With "at-least-once" delivery, you will never lose a message, but might end up being delivered to a CDC consumer more than once. This can happen in case of tablet leader change, where the old leader already pushed changes to Kafka, but the latest pushed `op id` was not updated in `cdc_subscribers` table. 
 
-For example, let us imagine a CDC client has received changes for a row at times t1 and t3. It is possible for the client to receive those updates again. 
+For example, imagine a CDC client has received changes for a row at times t1 and t3. It is possible for the client to receive those updates again.
 
 #### No gaps in change stream
 
 When you have received a change for a row for timestamp `t`, you will not receive a previously unseen change for that row from an earlier timestamp. This guarantees that receiving any change implies that all earlier changes have been received for a row.
 
-[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/docdb-change-data-capture.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
+## Use change data capture in YugaByte DB
+
+To use change data capture (CDC) in YugaByte DB, perform the following steps.
+
+### Create a CDC stream
+
+To create a CDC stream, run the following commands on YSQL or YCQL APIs:
+
+```sql
+CREATE CDC
+       FOR <namespace>.<table>
+       INTO <target>
+       WITH <options>;
+```
+
+### Drop a CDC stream
+
+To drop an existing CDC stream, run the following command:
+
+```sql
+DROP CDC FOR <namespace>.<table>;
+```
+
+## Using Kafka as the CDC target
+
+YugaByte DB supports the use of Apache Kafka as a target for CDC-generated data changes.
+
+### To create a CDC target for Apache Kafka
+
+Run the following CDC command, with any required options, to create a CDC target for Apache Kafka:
+
+```
+CREATE CDC FOR my_database.my_table
+           INTO KAFKA
+           WITH cluster_address = 'http://localhost:9092',
+                topic = 'my_table_topic',
+                record = AFTER;
+```
+
+The CDC options for Kafka include:
+
+| Option name       | Default       | Description   |
+| ----------------- | ------------- | ------------- |
+| `cluster_address` | -             | The `host:port` of the Kafka target cluster |
+| `topic`           | Table name    | The Kafka topic to which the stream is published |
+| `record`          | AFTER         | The type of records in the stream. Valid values are `CHANGE` (changed values only), `AFTER` (the entire row after the change is applied), ALL (the before and after value of the row). |
