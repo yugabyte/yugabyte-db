@@ -36,10 +36,10 @@ Use the `COMMENT` statement to set, update, or remove a comment on a database ob
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/comment_on,aggregate_signature.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/comment_on.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/comment_on,aggregate_signature.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/comment_on.diagram.md" /%}}
   </div>
 </div>
 

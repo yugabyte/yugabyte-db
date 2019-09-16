@@ -26,6 +26,7 @@ The following SQL statements are supported by the YugaByte Structured Query Lang
 | [`COMMENT`](ddl_comment) | Adds a comment on a database object |
 | [`COMMIT`](txn_commit) | Commits a transaction |
 | [`COPY`](cmd_copy) | Copy data between tables and files |
+| [`CREATE AGGREGATE`](ddl_create_aggregate) | Create a new aggregate |
 | [`CREATE DATABASE`](ddl_create_database) | Create a new database |
 | [`CREATE DOMAIN`](ddl_create_domain) | Create a new domain |
 | [`CREATE INDEX`](ddl_create_index) | Create a new index |
@@ -38,7 +39,8 @@ The following SQL statements are supported by the YugaByte Structured Query Lang
 | [`CREATE VIEW`](ddl_create_view) | Create a new view |
 | [`DEALLOCATE`](perf_deallocate) | Deallocate a prepared statement |
 | [`DELETE`](dml_delete) | Delete rows from a table |
-| [`DO`](commands/cmd_doc) | Execute an anonymous code block |
+| [`DO`](cmd_do) | Execute an anonymous code block |
+| [`DROP AGGREGATE`](ddl_drop_aggregate) | Delete an aggregate |
 | [`DROP DATABASE`](ddl_drop_database) | Delete a database from the system |
 | [`DROP DOMAIN`](ddl_drop_domain) | Delete a domain |
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
