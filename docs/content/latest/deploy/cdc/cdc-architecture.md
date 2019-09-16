@@ -57,7 +57,7 @@ In the design overview below, the terms "data center", "cluster", and "universe"
              .----------->║  ║                ║ ║  ╚═════════════╝ ║  ║
              |            ║  ╚════════════════╝ ╚══════════════════╝  ║
              |            ╚═══════════════════════════════════════════╝
-             |                 
+             |
              |
              |_______________________________________________.
              |                                               |
@@ -80,8 +80,8 @@ Creating a new CDC stream on a table returns a stream UUID. The CDC Service stor
 
 ```
 cdc_streams {
-stream_id	text,
-params	map<text, text>,
+stream_id  text,
+params     map<text, text>,
 primary key (stream_id)
 }
 ```
@@ -92,10 +92,10 @@ Along with creating a CDC stream, a CDC subscriber is also created for all exist
 
 ```
 cdc_subscribers {
-stream_id		text,
-subscriber_id	text,
-tablet_id		text,
-data			map<text, text>,
+stream_id      text,
+subscriber_id  text,
+tablet_id      text,
+data           map<text, text>,
 primary key (stream_id, subscriber_id, tablet_id)
 }
 ```
@@ -117,7 +117,7 @@ While invoking `GetChanges`, the CDC subscriber needs to pass in a `from_checkpo
 
 When `cdc_subscribers` receive the set of changes, they then push these changes out to Kafka.
 
-### CDC Guarantees
+### CDC guarantees
 
 #### Per-tablet ordered delivery guarantee
 
@@ -133,7 +133,7 @@ In this case, it is possible for CDC to push the later update corresponding to `
 
 #### At-least-once delivery
 
-Updates for rows will be pushed at least once. With "at-least-once" delivery, you will never lose a message, but might end up being delivered to a CDC consumer more than once. This can happen in case of tablet leader change, where the old leader already pushed changes to Kafka, but the latest pushed `op id` was not updated in `cdc_subscribers` table. 
+Updates for rows will be pushed at least once. With "at-least-once" delivery, you will never lose a message, but might end up being delivered to a CDC consumer more than once. This can happen in case of tablet leader change, where the old leader already pushed changes to Kafka, but the latest pushed `op id` was not updated in `cdc_subscribers` table.
 
 For example, imagine a CDC client has received changes for a row at times t1 and t3. It is possible for the client to receive those updates again.
 
