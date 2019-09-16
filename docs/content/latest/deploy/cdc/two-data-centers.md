@@ -12,47 +12,52 @@ isTocNested: true
 showAsideToc: true
 ---
 
-YugaByte DB supports two data center (2DC) deployments, which is built on top of [Change Data Capture (CDC)](../cdc).
+This page includes an overview about the YugaByte DB support for two data center (2DC) deployments, supported scenarios, and the life cycle of replication.
+For details on deploying a 2DC deployment, including one-way and two-way replication, see [Deploy two data centers with change data capture (CDC)](../2dc-replication).
+
+## Overview
 
 {{< note title="Note" >}}
 
-In this design document, the terms "cluster" and "universe" will be used interchangeably. While not a requirement in the final design, we assume here that each YugaByte DB universe is deployed in a single data center for simplicity purposes.
+The terms "cluster" and "universe" will be used interchangeably. For simplicity in the following sections, each YugaByte DB universe is assumed to be deployed in a single data center.
 
 {{< /note >}}
 
-This feature will support the following:
+YugaByte DB supports two data center (2DC) deployments, which is built on top of [Change Data Capture (CDC)](../cdc). YugaByte DB support for two data center (2DC) deployments includes the following:
 
-* Since replication across data centers is done at the DocDB level, replication works across the YSQL and YCQL APIs.
+* Replication works across both the YSQL and YCQL APIs because replication is done at the DocDB level.
 
-* Supports replication of single-key updates as well as multi-key, distributed transactions.
+* Replication of single-key updates and multi-key, distributed transactions are supported.
 
-* Schema changes are run on both universes independently. This will eventually be automated to the extent possible. Note that some combinations of schema changes and update operations are inherently unsafe. Identifying all of these cases and making the database safe in all scenarios (by throwing a user facing error out or through some other such mechanism) will be a follow on task to harden this feature.
+* Schema changes run independently on each universe. Eventually, this will be automated as much as possible. Because some combinations of schema changes and update operations are inherently unsafe, we plan to harden this feature by identifying the unsafe operations and make the database safe in all scenarios (by throwing user-facing errors or through other mechanisms).
 
-* Supports active-active replication, with both data centers accepting writes and replicating them to the other data center.
+* Active-active replication is supported, with both data centers accepting writes and replicating them to the other data center.
 
-* Replication can be performed to multiple target clusters. Consume replicated data from multiple source clusters.
+* Replication can be performed to multiple target clusters and the target data center can consume replicated data from multiple source clusters.
 
-* Updates are timeline consistent. The target data center will receive updates for a row in the same order in which they occurred on the source.
+* Updates are timeline consistent — the target data center will receive updates for a row in the same order in which they occurred on the source.
 
-* Transactions are applied atomically on the consumer. That is, either all changes in a transaction should be visible or none.
+* Transactions are applied atomically on the consumer — either all changes in a transaction will be visible or none.
 
-* Target data center will know the data consistency timestamp. Since YB data is distributed across multiple nodes, (and data is replicated from multiple nodes), target data center should be able to tell that all tablets have received data at least until timestamp x, that is, it has received all the writes that happened at source data centers until timestamp x.
+* The target data center will know the data consistency timestamp. Since data in YugaByte DB is distributed across multiple nodes and replicated from multiple nodes, the target data center is able to determine that all tablets have received data at least until timestamp x, that is, it has received all the writes that happened at source data centers until timestamp x.
 
 ### Watch an example video (less than 2 mins)
+
+If you're interested, you can watch the following YouTube video demonstrating a 2DC deployment.
 
 <a href="http://www.youtube.com/watch?feature=player_embedded&v=2quaIAKBATk" target="_blank">
   <img src="http://img.youtube.com/vi/2quaIAKBATk/0.jpg" alt="YugaByte DB 2DC deployment" width="240" height="180" border="10" />
 </a>
 
-## Supported deployment scenarios
+## Supported two data center (2DC) deployment scenarios
 
-The following 2DC scenarios are supported:
+YugaByte DB supports the following two scenarios for 2DC deployments.
 
 ### Master-slave with asynchronous replication
 
 The replication could be unidirectional from a **source cluster** (aka the *master* cluster) to one or more **sink clusters** (aka *slave* clusters). The sink clusters, typically located in data centers or regions that are different from the source cluster, are *passive* because they do not not take writes from the higher layer services. Such deployments are typically used for serving low latency reads from the slave clusters as well as for disaster recovery purposes.
 
-The source-sink deployment architecture is shown in the following diagram:
+The source-sink deployment architecture is shown here:
 
 ![2DC source-sink deployment](/images/deploy/cdc/2DC-source-sink-deployment.png)
 
@@ -62,24 +67,24 @@ The replication of data can be bidirectional between two clusters. In this case,
 
 > **NOTE:** The multi-master deployment is built internally using two master-slave unidirectional replication streams as a building block. Special care is taken to ensure that the timestamps are assigned to ensure last writer wins semantics and the data arriving from the replication stream is not re-replicated. Since master-slave is the core building block, we will focus the rest of this design document on that.
 
-The architecture diagram is shown below:
+The architecture diagram is shown here:
 
 ![2DC multi-master deployment](/images/deploy/cdc/2DC-multi-master-deployment.png)
 
 ## Life cycle of replication
 
-A 2DC one-way sync replication in YugaByte DB can be broken down into the following phases:
+A 2DC one-way sync replication in YugaByte DB follows these four life cycle phases:
 
 1. Initialize the producer and the consumer
 2. Set up a distributed CDC
 3. Pull changes from source cluster
 4. Periodically checkpoint progress
 
-Each of these are described below.
+Details about these life cycle phases are included below.
 
 ### 1. Initialize the producer and the consumer
 
-In order to setup 2DC async replication, the user runs a command similar to the one shown below:
+In order to setup 2DC async replication, the user runs a command similar to the one here:
 
 ```bash
 yugabyte-db init-replication                         \
@@ -91,16 +96,16 @@ yugabyte-db init-replication                         \
 
 This instructs the sink cluster to perform the following two actions:
 
-* Initialize its **sink replication consumer** which prepares it to consume updates from the source.
-* Make an RPC call to the source universe to initialize the **source replication producer**, which prepares it to produce a stream of updates.
+1. Initialize the **sink replication consumer**, preparing it to consume updates from the source.
+2. Make an RPC call to the source universe to initialize the **source replication producer**, preparing it to produce a stream of updates.
 
-This is shown diagrammatically below.
+This is shown diagrammatically here:
 
 ![2DC initialize consumer and producer](/images/deploy/cdc/2DC-step1-initialize.png)
 
-The **sink replication consumer** and the **source replication producer** are distributed, scale-out services that run on each node of the sink and source clusters respectively. In the case of the *source replication producer*, each node is responsible for all the source tablet leaders it hosts (note that the tablets are restricted to only those that participate in replication). In the case of the *sink replication consumer*, the metadata about which sink node owns which source tablet is explicitly tracked in the system catalog.
+The **sink replication consumer** and the **source replication producer** are distributed, scale-out services that run on each node of the sink and source YugaByte DB clusters, respectively. In the case of the *source replication producer*, each node is responsible for all of the source tablet leaders that it hosts (note that the tablets are restricted to only those that participate in replication). In the case of the *sink replication consumer*, the metadata about which sink node owns which source tablet is explicitly tracked in the system catalog.
 
-Note that the sink clusters can fall behind the source clusters due to various failure scenarios (such as node outages or extended network partitions). Upon the failure conditions healing, it may not always be safe to continue replication. In such cases, the user would have to bootstrap the sink cluster to a point from which replication can safely resume. Some of the cases that arise are shown diagrammatically below:
+Note that the sink clusters can fall behind the source clusters due to various failure scenarios (for example, node outages or extended network partitions). Upon healing of the failure conditions, continuing replication may not always be safe. In such cases, the user needs to bootstrap the sink cluster to a point from which replication can safely resume. Some of the cases that arise are shown diagrammatically below:
 
 ```
                           ╔══════════════════════════════════╗
@@ -122,10 +127,11 @@ Note that the sink clusters can fall behind the source clusters due to various f
 
 ### 2. Set up a distributed CDC
 
-The next step is to start the change data capture processes on the source cluster so that it can begin generating a list of changes. Since this feature builds on top of *Change Data Capture (CDC)*, the change stream has the following guarantees:
+The second step is to start the change data capture processes on the source cluster so that it can begin generating a list of changes. Since this feature builds on top of [Change Data Capture (CDC)](../cdc), the change stream has the following guarantees:
 
 * **In order delivery per row**: All changes for a single row (or rows in the same tablet) will be received in the order in which they happened.
-  > Note that global ordering is not guaranteed across tablets.
+
+> Note that global ordering is not guaranteed across tablets.
 
 * **At least once delivery**: Updates for rows will be pushed at least once. It is possible to receive previously seen updates again.
 
@@ -133,11 +139,11 @@ The next step is to start the change data capture processes on the source cluste
 
 The following substeps happen as a part of this step:
 
-* The sink cluster fetches the list of source tablets.
-* The responsibility of replication from a subset of source tablets is assigned to each of the nodes in the sink cluster.
-* Each node in the sync cluster pulls the change stream from the source cluster for the tablets that have been assigned to it. These changes are then applied to the sink cluster.
+1. The sink cluster fetches the list of source tablets.
+2. The responsibility of replication from a subset of source tablets is assigned to each of the nodes in the sink cluster.
+3. Each node in the sync cluster pulls the change stream from the source cluster for the tablets that have been assigned to it. These changes are then applied to the sink cluster.
 
-The sync cluster maintains the state of replication in a separate `system.cdc_state` table. The following information is tracked for each tablet in the source cluster that needs to be replicated:
+The sync cluster maintains the state of replication in a separate CDC state table (`system.cdc_state`). The following information is tracked for each tablet in the source cluster that needs to be replicated:
 
 * Details of the source tablet, along with which table it belongs to
 * The node in the sink cluster that is currently responsible for replicating the data
@@ -157,7 +163,7 @@ GetCDCRecordsResponsePB Format:
 ╚══════════╩══════════╩══════════════════╩═══════════╩═════════════════════════════════════════════╝
 ```
 
-As shown in the figure above, each update message has a corresponding **document key** (denoted by the `document_key_1` field in the figure above) which the *sink replication consumer* uses to locate the owning tablet leader on the sink cluster. The update message is routed to that tablet leader, which handles the update request. See the section below on transactional guarantees for details on how this update is handled.
+As shown in the figure above, each update message has a corresponding **document key** (denoted by the `document_key_1` field in the figure above), which the *sink replication consumer* uses to locate the owning tablet leader on the sink cluster. The update message is routed to that tablet leader, which handles the update request. For details on how this update is handled, see [transactional guarantees](#transactional-guarantees) below.
 
 {{< note title="Note" >}}
 
@@ -167,7 +173,7 @@ In a Kubernetes deployment, the `GetCDCRecords()` RPC request can be routed to t
 
 ### 4. Periodically checkpoint progress
 
-The sink cluster nodes will periodically write a *checkpoint* consisting of the last successfully applied operation ID along with the source tablet information into its `system.cdc_state` table. This allows the replication to continue from this point onwards.
+The sink cluster nodes will periodically write a *checkpoint* consisting of the last successfully applied operation ID along with the source tablet information into its CDC state table (`system.cdc_state`). This allows the replication to continue from this point onwards.
 
 ## Transactional guarantees
 
@@ -201,7 +207,7 @@ Once the `ReplicateMsg` is processed by the tablet leader, the *sink replication
 
 {{< note title="Note" >}}
 
-Sll replicated records will be applied at the same hybrid timestamp at which they occurred on the producer universe.
+All replicated records will be applied at the same hybrid timestamp at which they occurred on the producer universe.
 
 {{< /note >}}
 
@@ -217,7 +223,7 @@ ReplicateMsg received by the tablet leader of the sink cluster:
 ╚══════════════╩═══════════╩════════════════════╩═══════════════════════╝
 ```
 
-In the case of single-row transactions, the `TransactionMetadata` field be set. Note that in this case, the `OperationType` can be `WRITE` or `CREATE/UPDATE TXN`.
+In the case of single-row transactions, the `TransactionMetadata` field will be set. Note that in this case, the `OperationType` can be `WRITE` or `CREATE/UPDATE TXN`.
 
 Upon receiving a `ReplicateMsg` that is a part of a multi-row transaction, the *sink replication consumer* handles it as follows:
 
@@ -233,7 +239,7 @@ Upon receiving a `ReplicateMsg` that is a part of a multi-row transaction, the *
     * If all involved tablets have received `Transaction Applying` message, then set the status to `COMMITTED`, and sends a new `Transaction Applying` wal message to all involved tablets, notifying them to commit the transaction.
     * In applying record above, if the status is `WAITING_TO_COMMIT` and all involved tablets have received their applying message, then it applies a new `COMMITTED` message to WAL, changes transaction status to `COMMITTED` and sends a new applying message for all involved tablets, notifying them to commit the transaction.
 
-This combination of `WAITING_TO_COMMIT` status and `tablets_received_applying_record` field will be used to ensure that transaction records are applied atomically on the replicated universe.
+This combination of the `WAITING_TO_COMMIT` status and the `tablets_received_applying_record` field will be used to ensure that transaction records are applied atomically on the replicated universe.
 
 ## What’s supported
 
