@@ -185,6 +185,7 @@ nextval
 
 ## See also
 
+- [`ALTER SEQUENCE`](../alter_sequence)
 - [`DROP SEQUENCE`](../drop_sequence)
 - [`currval()`](../currval_sequence)
 - [`lastval()`](../lastval_sequence)

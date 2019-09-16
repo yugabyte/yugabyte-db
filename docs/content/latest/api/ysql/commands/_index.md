@@ -23,6 +23,7 @@ The following SQL statements are supported by the YugaByte Structured Query Lang
 | [`ALTER DOMAIN`](ddl_alter_domain) | Alters a domain |
 | [`ALTER GROUP`](dcl_alter_group) | Alter a group |
 | [`ALTER ROLE`](dcl_alter_role) | Alter a role |
+| [`ALTER SEQUENCE`](ddl_alter_sequence) | Alters a sequence definition |
 | [`ALTER TABLE`](ddl_alter_table) | Changes table definition |
 | [`ALTER USER`](dcl_alter_user) | Alter a user (role) |
 | [`BEGIN`](txn_begin) | Starts a transaction |

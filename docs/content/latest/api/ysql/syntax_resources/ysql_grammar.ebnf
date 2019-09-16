@@ -64,6 +64,28 @@ config_setting ::= 'SET' config_param ( 'TO' | '=' ) ( config_value | 'DEFAULT' 
 config_param ::= '<Text Literal>' ;
 config_value ::= '<Text Literal>' ;
 
+(* 'ALTER' 'SEQUENCE' *)
+alter_sequence ::= 'ALTER' 'SEQUENCE' [ 'IF' 'EXISTS' ] name sequence_options ;
+
+name ::= '<Text Literal>' ;
+
+sequence_options ::= [ 'AS' data_type ]
+                     [ 'INCREMENT' [ 'BY' ] increment ]
+                     [ 'MINVALUE' minvalue | 'NO' 'MINVALUE' ]
+                     [ 'MAXVALUE' maxvalue | 'NO' 'MAXVALUE' ]
+                     [ 'START' [ 'WITH' ] start ]
+                     [ 'RESTART' [ [ 'WITH' ] restart ] ]
+                     [ 'CACHE' cache ]
+                     [ 'OWNED BY' table_name.table_column | 'NONE' ] ;
+
+data_type ::= ( 'smallint' | 'integer' | 'bigint' ) ;
+increment ::= '<Integer Literal>' ;
+minvalue ::= '<Integer Literal>' ;
+maxvalue ::= '<Integer Literal>' ;
+start ::= '<Integer Literal>' ;
+restart ::= '<Integer Literal>';
+cache ::= '<Integer Literal>' ;
+
 (* 'ALTER' 'TABLE' *)
 alter_table ::= 'ALTER' 'TABLE' [ 'ONLY' ] name [ '*' ]
                         alter_table_action { ',' alter_table_action } ;
