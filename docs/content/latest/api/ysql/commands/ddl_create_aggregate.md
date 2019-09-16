@@ -49,12 +49,71 @@ create aggregates.
 The order of options does not matter.  Even the mandatory options `BASETYPE`, `SFUNC`, and `STYPE`
 may appear in any order.
 
-- TODO
+See the semantics of each option in the [PostgreSQL docs][postgresql-docs-create-aggregate].
 
 ## Examples
 
-TODO
+Normal syntax example.
+
+```sql
+yugabyte=# CREATE AGGREGATE sumdouble (float8) (
+              STYPE = float8,
+              SFUNC = float8pl,
+              MSTYPE = float8,
+              MSFUNC = float8pl,
+              MINVFUNC = float8mi
+           );
+yugabyte=# CREATE TABLE normal_table(
+             f float8,
+             i int
+           );
+yugabyte=# INSERT INTO normal_table(f, i) VALUES
+             (0.1, 9),
+             (0.9, 1);
+yugabyte=# SELECT sumdouble(f), sumdouble(i) FROM normal_table;
+```
+
+Order by syntax example.
+
+```sql
+yugabyte=# CREATE AGGREGATE my_percentile_disc(float8 ORDER BY anyelement) (
+             STYPE = internal,
+             SFUNC = ordered_set_transition,
+             FINALFUNC = percentile_disc_final,
+             FINALFUNC_EXTRA = true,
+             FINALFUNC_MODIFY = read_write
+           );
+yugabyte=# SELECT my_percentile_disc(0.1), my_percentile_disc(0.9)
+             WITHIN GROUP (ORDER BY typlen)
+             FROM pg_type;
+```
+
+Old syntax example.
+
+```sql
+yugabyte=# CREATE AGGREGATE oldcnt(
+             SFUNC = int8inc,
+             BASETYPE = 'ANY',
+             STYPE = int8,
+             INITCOND = '0'
+           );
+yugabyte=# SELECT oldcnt(*) FROM pg_aggregate;
+```
+
+Zero-argument aggregate example.
+
+```sql
+yugabyte=# CREATE AGGREGATE newcnt(*) (
+             SFUNC = int8inc,
+             STYPE = int8,
+             INITCOND = '0',
+             PARALLEL = SAFE
+           );
+yugabyte=# SELECT newcnt(*) FROM pg_aggregate;
+```
 
 ## See also
 
 - [`DROP AGGREGATE`](../ddl_drop_aggregate)
+
+[postgresql-docs-create-aggregate]: https://www.postgresql.org/docs/current/sql-createaggregate.html
