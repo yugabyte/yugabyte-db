@@ -193,7 +193,8 @@ public class UniverseController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
 
-    if (!Util.isValidUniverseNameFormat(taskParams.getPrimaryCluster().userIntent.universeName)) {
+    if (taskParams.getPrimaryCluster() != null &&
+        !Util.isValidUniverseNameFormat(taskParams.getPrimaryCluster().userIntent.universeName)) {
       return ApiResponse.error(BAD_REQUEST, Util.UNIV_NAME_ERROR_MESG);
     }
 
@@ -218,29 +219,32 @@ public class UniverseController extends AuthenticatedController {
         universe.universeUUID, universe.name, customer.getCustomerId());
 
       TaskType taskType = TaskType.CreateUniverse;
+      Cluster primaryCluster = taskParams.getPrimaryCluster();
 
-      if (taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes)) {
-        taskType = TaskType.CreateKubernetesUniverse;
-      }
-
-      if (taskParams.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt ||
-          taskParams.getPrimaryCluster().userIntent.enableClientToNodeEncrypt) {
-        if (taskParams.rootCA == null) {
-          taskParams.rootCA =  CertificateHelper.createRootCA(taskParams.nodePrefix,
-                               customerUUID, appConfig.getString("yb.storage.path"));
+      if (primaryCluster != null) {
+        if (primaryCluster.userIntent.providerType.equals(CloudType.kubernetes)) {
+          taskType = TaskType.CreateKubernetesUniverse;
         }
-        // Set the flag to mark the universe as using TLS enabled and therefore not allowing
-        // insecure connections.
-        taskParams.allowInsecure = false;
-      }
 
-      if (taskParams.getPrimaryCluster().userIntent.enableEncryptionAtRest) {
-        // Convert from hex to byte array
-        Random rd = new Random();
-        byte[] data = new byte[32];
-        rd.nextBytes(data);
-        taskParams.encryptionKeyFilePath = CertificateHelper.createEncryptionKeyFile(customerUUID, universe.universeUUID,
-                data, "/opt/yugaware"); // appConfig.getString("yb.storage.path"));
+        if (primaryCluster.userIntent.enableNodeToNodeEncrypt ||
+                primaryCluster.userIntent.enableClientToNodeEncrypt) {
+          if (taskParams.rootCA == null) {
+            taskParams.rootCA = CertificateHelper.createRootCA(taskParams.nodePrefix,
+                    customerUUID, appConfig.getString("yb.storage.path"));
+          }
+          // Set the flag to mark the universe as using TLS enabled and therefore not allowing
+          // insecure connections.
+          taskParams.allowInsecure = false;
+        }
+
+        if (primaryCluster.userIntent.enableEncryptionAtRest) {
+          // Convert from hex to byte array
+          Random rd = new Random();
+          byte[] data = new byte[32];
+          rd.nextBytes(data);
+          taskParams.encryptionKeyFilePath = CertificateHelper.createEncryptionKeyFile(customerUUID, universe.universeUUID,
+                  data, "/opt/yugaware"); // appConfig.getString("yb.storage.path"));
+        }
       }
 
       // Submit the task to create the universe.
@@ -317,6 +321,7 @@ public class UniverseController extends AuthenticatedController {
       Cluster primaryCluster = taskParams.getPrimaryCluster();
       UUID uuid = null;
       PlacementInfo placementInfo = null;
+      TaskType taskType = TaskType.EditUniverse;
       if (primaryCluster == null) {
         // Update of a read only cluster.
         List<Cluster> readReplicaClusters = taskParams.getReadOnlyClusters();
@@ -332,22 +337,21 @@ public class UniverseController extends AuthenticatedController {
       } else {
         uuid = primaryCluster.uuid;
         placementInfo = primaryCluster.placementInfo;
+
+        if (primaryCluster.userIntent.providerType.equals(CloudType.kubernetes)) {
+          taskType = TaskType.EditKubernetesUniverse;
+        }
+        if (primaryCluster.userIntent.enableEncryptionAtRest) {
+          taskParams.encryptionKeyFilePath = CertificateHelper.getEncryptionFile(customerUUID, universe.universeUUID,
+                  appConfig.getString("yb.storage.path"));
+        }
       }
+
       updatePlacementInfo(taskParams.getNodesInCluster(uuid), placementInfo);
 
-      TaskType taskType = TaskType.EditUniverse;
-      if (primaryCluster != null &&
-          primaryCluster.userIntent.providerType.equals(CloudType.kubernetes)) {
-        taskType = TaskType.EditKubernetesUniverse;
-      }
       taskParams.rootCA = universe.getUniverseDetails().rootCA;
       LOG.info("Found universe {} : name={} at version={}.",
                universe.universeUUID, universe.name, universe.version);
-
-      if (taskParams.getPrimaryCluster().userIntent.enableEncryptionAtRest) {
-        taskParams.encryptionKeyFilePath = CertificateHelper.getEncryptionFile(customerUUID, universe.universeUUID,
-                appConfig.getString("yb.storage.path"));
-      }
 
       UUID taskUUID = commissioner.submit(taskType, taskParams);
       LOG.info("Submitted edit universe for {} : {}, task uuid = {}.",
