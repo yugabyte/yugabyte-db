@@ -24,6 +24,7 @@ DATA = agensgraph--0.0.0.sql
 
 REGRESS = commands \
           cypher \
+          expr \
           scan \
           jsonbx
 REGRESS_OPTS = --load-extension=agensgraph

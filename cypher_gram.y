@@ -98,8 +98,8 @@
 %type <node> where_opt
 
 /* expression */
-%type <node> expr expr_opt atom literal var
-%type <list> expr_comma_list
+%type <node> expr expr_opt atom literal list var
+%type <list> expr_comma_list expr_comma_list_opt
 
 /* identifier */
 %type <string> name
@@ -660,15 +660,24 @@ expr_opt:
     ;
 
 expr_comma_list:
-            expr
-                    {
-                        $$ = list_make1($1);
-                    }
-            | expr_comma_list ',' expr
-                    {
-                        $$ = lappend($1, $3);
-                    }
-        ;
+    expr
+        {
+            $$ = list_make1($1);
+        }
+    | expr_comma_list ',' expr
+        {
+            $$ = lappend($1, $3);
+        }
+    ;
+
+expr_comma_list_opt:
+    /* empty */
+        {
+            $$ = NIL;
+        }
+    | expr_comma_list
+    ;
+
 
 atom:
     literal
@@ -703,6 +712,18 @@ literal:
     | NULL_P
         {
             $$ = make_null_const(@1);
+        }
+    | list
+    ;
+
+list:
+    '[' expr_comma_list_opt ']'
+        {
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                            errmsg("list literal parsed"),
+                            errdetail("%s", nodeToString($2)),
+                            errposition(@1 + 1)));
+            $$ = NULL;
         }
     ;
 
