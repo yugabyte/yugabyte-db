@@ -27,8 +27,8 @@
 
 typedef struct JsonbXInState
 {
-    JsonbXParseState *parseState;
-    JsonbXValue *res;
+    agtype_parse_state *parseState;
+    agtype_value *res;
 } JsonbXInState;
 
 /* unlike with json categories, we need to treat json and jsonb differently */
@@ -58,9 +58,9 @@ static void jsonbx_in_array_start(void *pstate);
 static void jsonbx_in_array_end(void *pstate);
 static void jsonbx_in_object_field_start(void *pstate, char *fname,
                                          bool isnull);
-static void jsonbx_put_escaped_value(StringInfo out, JsonbXValue *scalarVal);
+static void jsonbx_put_escaped_value(StringInfo out, agtype_value *scalarVal);
 static void jsonbx_in_scalar(void *pstate, char *token,
-                             JsonTokenType tokentype);
+                             agtype_token_type tokentype);
 static void jsonbx_categorize_type(Oid typoid, JsonbXTypeCategory *tcategory,
                                    Oid *outfuncoid);
 static void composite_to_jsonbx(Datum composite, JsonbXInState *result);
@@ -72,7 +72,7 @@ static void array_to_jsonbx_internal(Datum array, JsonbXInState *result);
 static void datum_to_jsonbx(Datum val, bool is_null, JsonbXInState *result,
                             JsonbXTypeCategory tcategory, Oid outfuncoid,
                             bool key_scalar);
-static char *JsonbXToCStringWorker(StringInfo out, JsonbXContainer *in,
+static char *JsonbXToCStringWorker(StringInfo out, agtype_container *in,
                                    int estimated_len, bool indent);
 static void add_indent(StringInfo out, bool indent, int level);
 static bool is_decimal_needed(char *string);
@@ -96,10 +96,10 @@ PG_FUNCTION_INFO_V1(jsonbx_out);
  */
 Datum jsonbx_out(PG_FUNCTION_ARGS)
 {
-    JsonbX *jb = PG_GETARG_JSONBX_P(0);
+    agtype *jb = AG_GET_ARG_AGTYPE_P(0);
     char *out;
 
-    out = JsonbXToCString(NULL, &jb->root, VARSIZE(jb));
+    out = agtype_to_cstring(NULL, &jb->root, VARSIZE(jb));
 
     PG_RETURN_CSTRING(out);
 }
@@ -113,13 +113,13 @@ Datum jsonbx_out(PG_FUNCTION_ARGS)
  */
 static inline Datum jsonbx_from_cstring(char *json, int len)
 {
-    JsonLexContext *lex;
+    agtype_lex_context *lex;
     JsonbXInState state;
-    JsonSemAction sem;
+    agtype_sem_action sem;
 
     memset(&state, 0, sizeof(state));
     memset(&sem, 0, sizeof(sem));
-    lex = ag_makeJsonLexContextCstringLen(json, len, true);
+    lex = make_agtype_lex_context_cstring_len(json, len, true);
 
     sem.semstate = (void *)&state;
 
@@ -130,22 +130,22 @@ static inline Datum jsonbx_from_cstring(char *json, int len)
     sem.scalar = jsonbx_in_scalar;
     sem.object_field_start = jsonbx_in_object_field_start;
 
-    ag_parse_json(lex, &sem);
+    parse_agtype(lex, &sem);
 
     /* after parsing, the item member has the composed jsonbx structure */
-    PG_RETURN_POINTER(JsonbXValueToJsonbX(state.res));
+    PG_RETURN_POINTER(agtype_value_to_agtype(state.res));
 }
 
 static size_t checkStringLen(size_t len)
 {
-    if (len > JXENTRY_OFFLENMASK)
+    if (len > AGTENTRY_OFFLENMASK)
         ereport(
             ERROR,
             (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
              errmsg("string too long to represent as jsonbx string"),
              errdetail(
                  "Due to an implementation restriction, jsonbx strings cannot exceed %d bytes.",
-                 JXENTRY_OFFLENMASK)));
+                 AGTENTRY_OFFLENMASK)));
 
     return len;
 }
@@ -154,7 +154,7 @@ static void jsonbx_in_object_start(void *pstate)
 {
     JsonbXInState *_state = (JsonbXInState *)pstate;
 
-    _state->res = pushJsonbXValue(&_state->parseState, WJBX_BEGIN_OBJECT,
+    _state->res = push_agtype_value(&_state->parseState, WAGT_BEGIN_OBJECT,
                                   NULL);
 }
 
@@ -162,35 +162,35 @@ static void jsonbx_in_object_end(void *pstate)
 {
     JsonbXInState *_state = (JsonbXInState *)pstate;
 
-    _state->res = pushJsonbXValue(&_state->parseState, WJBX_END_OBJECT, NULL);
+    _state->res = push_agtype_value(&_state->parseState, WAGT_END_OBJECT, NULL);
 }
 
 static void jsonbx_in_array_start(void *pstate)
 {
     JsonbXInState *_state = (JsonbXInState *)pstate;
 
-    _state->res = pushJsonbXValue(&_state->parseState, WJBX_BEGIN_ARRAY, NULL);
+    _state->res = push_agtype_value(&_state->parseState, WAGT_BEGIN_ARRAY, NULL);
 }
 
 static void jsonbx_in_array_end(void *pstate)
 {
     JsonbXInState *_state = (JsonbXInState *)pstate;
 
-    _state->res = pushJsonbXValue(&_state->parseState, WJBX_END_ARRAY, NULL);
+    _state->res = push_agtype_value(&_state->parseState, WAGT_END_ARRAY, NULL);
 }
 
 static void jsonbx_in_object_field_start(void *pstate, char *fname,
                                          bool isnull)
 {
     JsonbXInState *_state = (JsonbXInState *)pstate;
-    JsonbXValue v;
+    agtype_value v;
 
     Assert(fname != NULL);
-    v.type = jbvXString;
+    v.type = AGTV_STRING;
     v.val.string.len = checkStringLen(strlen(fname));
     v.val.string.val = fname;
 
-    _state->res = pushJsonbXValue(&_state->parseState, WJBX_KEY, &v);
+    _state->res = push_agtype_value(&_state->parseState, WAGT_KEY, &v);
 }
 
 static bool is_decimal_needed(char *string)
@@ -212,38 +212,38 @@ static bool is_decimal_needed(char *string)
     return true;
 }
 
-static void jsonbx_put_escaped_value(StringInfo out, JsonbXValue *scalarVal)
+static void jsonbx_put_escaped_value(StringInfo out, agtype_value *scalarVal)
 {
     char *temp_string = NULL;
 
     switch (scalarVal->type)
     {
-    case jbvXNull:
+    case AGTV_NULL:
         appendBinaryStringInfo(out, "null", 4);
         break;
-    case jbvXString:
+    case AGTV_STRING:
         escape_json(out, pnstrdup(scalarVal->val.string.val,
                                   scalarVal->val.string.len));
         break;
-    case jbvXNumeric:
+    case AGTV_NUMERIC:
         appendStringInfoString(
             out, DatumGetCString(DirectFunctionCall1(
                      numeric_out, PointerGetDatum(scalarVal->val.numeric))));
         break;
-    case jbvXInteger8:
+    case AGTV_INTEGER:
         appendStringInfoString(
             out, DatumGetCString(DirectFunctionCall1(
-                     int8out, Int64GetDatum(scalarVal->val.integer8))));
+                     int8out, Int64GetDatum(scalarVal->val.int_value))));
         break;
-    case jbvXFloat8:
+    case AGTV_FLOAT:
         temp_string = DatumGetCString(DirectFunctionCall1(
-            float8out, Float8GetDatum(scalarVal->val.float8)));
+            float8out, Float8GetDatum(scalarVal->val.float_value)));
         appendStringInfoString(out, temp_string);
 
         if (is_decimal_needed(temp_string))
             appendBinaryStringInfo(out, ".0", 2);
         break;
-    case jbvXBool:
+    case AGTV_BOOL:
         if (scalarVal->val.boolean)
             appendBinaryStringInfo(out, "true", 4);
         else
@@ -258,40 +258,40 @@ static void jsonbx_put_escaped_value(StringInfo out, JsonbXValue *scalarVal)
  * For jsonbx we always want the de-escaped value - that's what's in token
  */
 static void jsonbx_in_scalar(void *pstate, char *token,
-                             JsonTokenType tokentype)
+                             agtype_token_type tokentype)
 {
     JsonbXInState *_state = (JsonbXInState *)pstate;
-    JsonbXValue v;
+    agtype_value v;
 
     switch (tokentype)
     {
-    case JSON_TOKEN_STRING:
+    case AGTYPE_TOKEN_STRING:
         Assert(token != NULL);
-        v.type = jbvXString;
+        v.type = AGTV_STRING;
         v.val.string.len = checkStringLen(strlen(token));
         v.val.string.val = token;
         break;
-    case JSON_TOKEN_INTEGER8:
+    case AGTYPE_TOKEN_INTEGER:
         Assert(token != NULL);
-        v.type = jbvXInteger8;
-        scanint8(token, false, &v.val.integer8);
+        v.type = AGTV_INTEGER;
+        scanint8(token, false, &v.val.int_value);
         break;
-    case JSON_TOKEN_FLOAT8:
+    case AGTYPE_TOKEN_FLOAT:
         Assert(token != NULL);
-        v.type = jbvXFloat8;
-        v.val.float8 = float8in_internal(token, NULL, "double precision",
+        v.type = AGTV_FLOAT;
+        v.val.float_value = float8in_internal(token, NULL, "double precision",
                                          token);
         break;
-    case JSON_TOKEN_TRUE:
-        v.type = jbvXBool;
+    case AGTYPE_TOKEN_TRUE:
+        v.type = AGTV_BOOL;
         v.val.boolean = true;
         break;
-    case JSON_TOKEN_FALSE:
-        v.type = jbvXBool;
+    case AGTYPE_TOKEN_FALSE:
+        v.type = AGTV_BOOL;
         v.val.boolean = false;
         break;
-    case JSON_TOKEN_NULL:
-        v.type = jbvXNull;
+    case AGTYPE_TOKEN_NULL:
+        v.type = AGTV_NULL;
         break;
     default:
         /* should not be possible */
@@ -302,29 +302,29 @@ static void jsonbx_in_scalar(void *pstate, char *token,
     if (_state->parseState == NULL)
     {
         /* single scalar */
-        JsonbXValue va;
+        agtype_value va;
 
-        va.type = jbvXArray;
-        va.val.array.rawScalar = true;
-        va.val.array.nElems = 1;
+        va.type = AGTV_ARRAY;
+        va.val.array.raw_scalar = true;
+        va.val.array.num_elems = 1;
 
-        _state->res = pushJsonbXValue(&_state->parseState, WJBX_BEGIN_ARRAY,
+        _state->res = push_agtype_value(&_state->parseState, WAGT_BEGIN_ARRAY,
                                       &va);
-        _state->res = pushJsonbXValue(&_state->parseState, WJBX_ELEM, &v);
-        _state->res = pushJsonbXValue(&_state->parseState, WJBX_END_ARRAY,
+        _state->res = push_agtype_value(&_state->parseState, WAGT_ELEM, &v);
+        _state->res = push_agtype_value(&_state->parseState, WAGT_END_ARRAY,
                                       NULL);
     }
     else
     {
-        JsonbXValue *o = &_state->parseState->contVal;
+        agtype_value *o = &_state->parseState->cont_val;
 
         switch (o->type)
         {
-        case jbvXArray:
-            _state->res = pushJsonbXValue(&_state->parseState, WJBX_ELEM, &v);
+        case AGTV_ARRAY:
+            _state->res = push_agtype_value(&_state->parseState, WAGT_ELEM, &v);
             break;
-        case jbvXObject:
-            _state->res = pushJsonbXValue(&_state->parseState, WJBX_VALUE, &v);
+        case AGTV_OBJECT:
+            _state->res = push_agtype_value(&_state->parseState, WAGT_VALUE, &v);
             break;
         default:
             elog(ERROR, "unexpected parent of nested structure");
@@ -333,8 +333,8 @@ static void jsonbx_in_scalar(void *pstate, char *token,
 }
 
 /*
- * JsonbXToCString
- *	   Converts jsonbx value to a C-string.
+ * agtype_to_cstring
+ *	   Converts agtype value to a C-string.
  *
  * If 'out' argument is non-null, the resulting C-string is stored inside the
  * StringBuffer.  The resulting string is always returned.
@@ -343,7 +343,7 @@ static void jsonbx_in_scalar(void *pstate, char *token,
  * caller wants access to the len attribute without having to call strlen, e.g.
  * if they are converting it to a text* object.
  */
-char *JsonbXToCString(StringInfo out, JsonbXContainer *in, int estimated_len)
+char *agtype_to_cstring(StringInfo out, agtype_container *in, int estimated_len)
 {
     return JsonbXToCStringWorker(out, in, estimated_len, false);
 }
@@ -351,7 +351,7 @@ char *JsonbXToCString(StringInfo out, JsonbXContainer *in, int estimated_len)
 /*
  * same thing but with indentation turned on
  */
-char *JsonbXToCStringIndent(StringInfo out, JsonbXContainer *in,
+char *agtype_to_cstring_indent(StringInfo out, agtype_container *in,
                             int estimated_len)
 {
     return JsonbXToCStringWorker(out, in, estimated_len, true);
@@ -360,13 +360,13 @@ char *JsonbXToCStringIndent(StringInfo out, JsonbXContainer *in,
 /*
  * common worker for above two functions
  */
-static char *JsonbXToCStringWorker(StringInfo out, JsonbXContainer *in,
+static char *JsonbXToCStringWorker(StringInfo out, agtype_container *in,
                                    int estimated_len, bool indent)
 {
     bool first = true;
-    JsonbXIterator *it;
-    JsonbXValue v;
-    JsonbXIteratorToken type = WJBX_DONE;
+    agtype_iterator *it;
+    agtype_value v;
+    agtype_iterator_token type = WAGT_DONE;
     int level = 0;
     bool redo_switch = false;
 
@@ -386,19 +386,19 @@ static char *JsonbXToCStringWorker(StringInfo out, JsonbXContainer *in,
 
     enlargeStringInfo(out, (estimated_len >= 0) ? estimated_len : 64);
 
-    it = JsonbXIteratorInit(in);
+    it = agtype_iterator_init(in);
 
     while (redo_switch ||
-           ((type = JsonbXIteratorNext(&it, &v, false)) != WJBX_DONE))
+           ((type = agtype_iterator_next(&it, &v, false)) != WAGT_DONE))
     {
         redo_switch = false;
         switch (type)
         {
-        case WJBX_BEGIN_ARRAY:
+        case WAGT_BEGIN_ARRAY:
             if (!first)
                 appendBinaryStringInfo(out, ", ", ispaces);
 
-            if (!v.val.array.rawScalar)
+            if (!v.val.array.raw_scalar)
             {
                 add_indent(out, use_indent && !last_was_key, level);
                 appendStringInfoCharMacro(out, '[');
@@ -409,7 +409,7 @@ static char *JsonbXToCStringWorker(StringInfo out, JsonbXContainer *in,
             first = true;
             level++;
             break;
-        case WJBX_BEGIN_OBJECT:
+        case WAGT_BEGIN_OBJECT:
             if (!first)
                 appendBinaryStringInfo(out, ", ", ispaces);
 
@@ -419,7 +419,7 @@ static char *JsonbXToCStringWorker(StringInfo out, JsonbXContainer *in,
             first = true;
             level++;
             break;
-        case WJBX_KEY:
+        case WAGT_KEY:
             if (!first)
                 appendBinaryStringInfo(out, ", ", ispaces);
             first = true;
@@ -430,15 +430,15 @@ static char *JsonbXToCStringWorker(StringInfo out, JsonbXContainer *in,
             jsonbx_put_escaped_value(out, &v);
             appendBinaryStringInfo(out, ": ", 2);
 
-            type = JsonbXIteratorNext(&it, &v, false);
-            if (type == WJBX_VALUE)
+            type = agtype_iterator_next(&it, &v, false);
+            if (type == WAGT_VALUE)
             {
                 first = false;
                 jsonbx_put_escaped_value(out, &v);
             }
             else
             {
-                Assert(type == WJBX_BEGIN_OBJECT || type == WJBX_BEGIN_ARRAY);
+                Assert(type == WAGT_BEGIN_OBJECT || type == WAGT_BEGIN_ARRAY);
 
                 /*
                  * We need to rerun the current switch() since we need to
@@ -448,7 +448,7 @@ static char *JsonbXToCStringWorker(StringInfo out, JsonbXContainer *in,
                 redo_switch = true;
             }
             break;
-        case WJBX_ELEM:
+        case WAGT_ELEM:
             if (!first)
                 appendBinaryStringInfo(out, ", ", ispaces);
             first = false;
@@ -457,7 +457,7 @@ static char *JsonbXToCStringWorker(StringInfo out, JsonbXContainer *in,
                 add_indent(out, use_indent, level);
             jsonbx_put_escaped_value(out, &v);
             break;
-        case WJBX_END_ARRAY:
+        case WAGT_END_ARRAY:
             level--;
             if (!raw_scalar)
             {
@@ -466,7 +466,7 @@ static char *JsonbXToCStringWorker(StringInfo out, JsonbXContainer *in,
             }
             first = false;
             break;
-        case WJBX_END_OBJECT:
+        case WAGT_END_OBJECT:
             level--;
             add_indent(out, use_indent, level);
             appendStringInfoCharMacro(out, '}');
@@ -615,7 +615,7 @@ static void jsonbx_categorize_type(Oid typoid, JsonbXTypeCategory *tcategory,
  * except that if is_null is true then they can be invalid.
  *
  * If key_scalar is true, the value is stored as a key, so insist
- * it's of an acceptable type, and force it to be a jbvXString.
+ * it's of an acceptable type, and force it to be a AGTV_STRING.
  */
 static void datum_to_jsonbx(Datum val, bool is_null, JsonbXInState *result,
                             JsonbXTypeCategory tcategory, Oid outfuncoid,
@@ -623,16 +623,16 @@ static void datum_to_jsonbx(Datum val, bool is_null, JsonbXInState *result,
 {
     char *outputstr;
     bool numeric_error;
-    JsonbXValue jb;
+    agtype_value agt;
     bool scalar_jsonbx = false;
 
     check_stack_depth();
 
-    /* Convert val to a JsonbXValue in jb (in most cases) */
+    /* Convert val to a agtype_value in agt (in most cases) */
     if (is_null)
     {
         Assert(!key_scalar);
-        jb.type = jbvXNull;
+        agt.type = AGTV_NULL;
     }
     else if (key_scalar &&
              (tcategory == JSONBXTYPE_ARRAY ||
@@ -644,7 +644,7 @@ static void datum_to_jsonbx(Datum val, bool is_null, JsonbXInState *result,
             ERROR,
             (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
              errmsg(
-                 "key value must be scalar, not array, composite, or json")));
+                 "key value must be scalar, not array, composite, or agtype")));
     }
     else
     {
@@ -663,31 +663,31 @@ static void datum_to_jsonbx(Datum val, bool is_null, JsonbXInState *result,
             if (key_scalar)
             {
                 outputstr = DatumGetBool(val) ? "true" : "false";
-                jb.type = jbvXString;
-                jb.val.string.len = strlen(outputstr);
-                jb.val.string.val = outputstr;
+                agt.type = AGTV_STRING;
+                agt.val.string.len = strlen(outputstr);
+                agt.val.string.val = outputstr;
             }
             else
             {
-                jb.type = jbvXBool;
-                jb.val.boolean = DatumGetBool(val);
+                agt.type = AGTV_BOOL;
+                agt.val.boolean = DatumGetBool(val);
             }
             break;
         case JSONBXTYPE_INTEGER8:
             outputstr = OidOutputFunctionCall(outfuncoid, val);
             if (key_scalar)
             {
-                jb.type = jbvXString;
-                jb.val.string.len = strlen(outputstr);
-                jb.val.string.val = outputstr;
+                agt.type = AGTV_STRING;
+                agt.val.string.len = strlen(outputstr);
+                agt.val.string.val = outputstr;
             }
             else
             {
                 Datum intd;
 
                 intd = DirectFunctionCall1(int8in, CStringGetDatum(outputstr));
-                jb.type = jbvXInteger8;
-                jb.val.integer8 = DatumGetInt64(intd);
+                agt.type = AGTV_INTEGER;
+                agt.val.int_value = DatumGetInt64(intd);
                 pfree(outputstr);
             }
             break;
@@ -695,14 +695,14 @@ static void datum_to_jsonbx(Datum val, bool is_null, JsonbXInState *result,
             outputstr = OidOutputFunctionCall(outfuncoid, val);
             if (key_scalar)
             {
-                jb.type = jbvXString;
-                jb.val.string.len = strlen(outputstr);
-                jb.val.string.val = outputstr;
+                agt.type = AGTV_STRING;
+                agt.val.string.len = strlen(outputstr);
+                agt.val.string.val = outputstr;
             }
             else
             {
-                jb.type = jbvXFloat8;
-                jb.val.float8 = DatumGetFloat8(val);
+                agt.type = AGTV_FLOAT;
+                agt.val.float_value = DatumGetFloat8(val);
             }
             break;
         case JSONBXTYPE_NUMERIC:
@@ -710,14 +710,14 @@ static void datum_to_jsonbx(Datum val, bool is_null, JsonbXInState *result,
             if (key_scalar)
             {
                 /* always quote keys */
-                jb.type = jbvXString;
-                jb.val.string.len = strlen(outputstr);
-                jb.val.string.val = outputstr;
+                agt.type = AGTV_STRING;
+                agt.val.string.len = strlen(outputstr);
+                agt.val.string.val = outputstr;
             }
             else
             {
                 /*
-					 * Make it numeric if it's a valid JSON number, otherwise
+					 * Make it numeric if it's a valid AGTYPE number, otherwise
 					 * a string. Invalid numeric output will always have an
 					 * 'N' or 'n' in it (I think).
 					 */
@@ -727,47 +727,47 @@ static void datum_to_jsonbx(Datum val, bool is_null, JsonbXInState *result,
                 {
                     Datum numd;
 
-                    jb.type = jbvXNumeric;
+                    agt.type = AGTV_NUMERIC;
                     numd = DirectFunctionCall3(numeric_in,
                                                CStringGetDatum(outputstr),
                                                ObjectIdGetDatum(InvalidOid),
                                                Int32GetDatum(-1));
-                    jb.val.numeric = DatumGetNumeric(numd);
+                    agt.val.numeric = DatumGetNumeric(numd);
                     pfree(outputstr);
                 }
                 else
                 {
-                    jb.type = jbvXString;
-                    jb.val.string.len = strlen(outputstr);
-                    jb.val.string.val = outputstr;
+                    agt.type = AGTV_STRING;
+                    agt.val.string.len = strlen(outputstr);
+                    agt.val.string.val = outputstr;
                 }
             }
             break;
         case JSONBXTYPE_DATE:
-            jb.type = jbvXString;
-            jb.val.string.val = ag_JsonEncodeDateTime(NULL, val, DATEOID);
-            jb.val.string.len = strlen(jb.val.string.val);
+            agt.type = AGTV_STRING;
+            agt.val.string.val = agtype_encode_date_time(NULL, val, DATEOID);
+            agt.val.string.len = strlen(agt.val.string.val);
             break;
         case JSONBXTYPE_TIMESTAMP:
-            jb.type = jbvXString;
-            jb.val.string.val = ag_JsonEncodeDateTime(NULL, val, TIMESTAMPOID);
-            jb.val.string.len = strlen(jb.val.string.val);
+            agt.type = AGTV_STRING;
+            agt.val.string.val = agtype_encode_date_time(NULL, val, TIMESTAMPOID);
+            agt.val.string.len = strlen(agt.val.string.val);
             break;
         case JSONBXTYPE_TIMESTAMPTZ:
-            jb.type = jbvXString;
-            jb.val.string.val = ag_JsonEncodeDateTime(NULL, val,
+            agt.type = AGTV_STRING;
+            agt.val.string.val = agtype_encode_date_time(NULL, val,
                                                       TIMESTAMPTZOID);
-            jb.val.string.len = strlen(jb.val.string.val);
+            agt.val.string.len = strlen(agt.val.string.val);
             break;
         case JSONBXTYPE_JSONCAST:
         case JSONBXTYPE_JSON:
         {
-            /* parse the json right into the existing result object */
-            JsonLexContext *lex;
-            JsonSemAction sem;
+            /* parse the agtype right into the existing result object */
+            agtype_lex_context *lex;
+            agtype_sem_action sem;
             text *json = DatumGetTextPP(val);
 
-            lex = ag_makeJsonLexContext(json, true);
+            lex = make_agtype_lex_context(json, true);
 
             memset(&sem, 0, sizeof(sem));
 
@@ -780,51 +780,51 @@ static void datum_to_jsonbx(Datum val, bool is_null, JsonbXInState *result,
             sem.scalar = jsonbx_in_scalar;
             sem.object_field_start = jsonbx_in_object_field_start;
 
-            ag_parse_json(lex, &sem);
+            parse_agtype(lex, &sem);
         }
         break;
         case JSONBXTYPE_JSONB:
         {
-            JsonbX *jsonbX = DatumGetJsonbXP(val);
-            JsonbXIterator *it;
+            agtype *jsonbX = DATUM_GET_AGTYPE_P(val);
+            agtype_iterator *it;
 
-            it = JsonbXIteratorInit(&jsonbX->root);
+            it = agtype_iterator_init(&jsonbX->root);
 
-            if (JBX_ROOT_IS_SCALAR(jsonbX))
+            if (AGT_ROOT_IS_SCALAR(jsonbX))
             {
-                (void)JsonbXIteratorNext(&it, &jb, true);
-                Assert(jb.type == jbvXArray);
-                (void)JsonbXIteratorNext(&it, &jb, true);
+                (void)agtype_iterator_next(&it, &agt, true);
+                Assert(agt.type == AGTV_ARRAY);
+                (void)agtype_iterator_next(&it, &agt, true);
                 scalar_jsonbx = true;
             }
             else
             {
-                JsonbXIteratorToken type;
+                agtype_iterator_token type;
 
-                while ((type = JsonbXIteratorNext(&it, &jb, false)) !=
-                       WJBX_DONE)
+                while ((type = agtype_iterator_next(&it, &agt, false)) !=
+                       WAGT_DONE)
                 {
-                    if (type == WJBX_END_ARRAY || type == WJBX_END_OBJECT ||
-                        type == WJBX_BEGIN_ARRAY || type == WJBX_BEGIN_OBJECT)
-                        result->res = pushJsonbXValue(&result->parseState,
+                    if (type == WAGT_END_ARRAY || type == WAGT_END_OBJECT ||
+                        type == WAGT_BEGIN_ARRAY || type == WAGT_BEGIN_OBJECT)
+                        result->res = push_agtype_value(&result->parseState,
                                                       type, NULL);
                     else
-                        result->res = pushJsonbXValue(&result->parseState,
-                                                      type, &jb);
+                        result->res = push_agtype_value(&result->parseState,
+                                                      type, &agt);
                 }
             }
         }
         break;
         default:
             outputstr = OidOutputFunctionCall(outfuncoid, val);
-            jb.type = jbvXString;
-            jb.val.string.len = checkStringLen(strlen(outputstr));
-            jb.val.string.val = outputstr;
+            agt.type = AGTV_STRING;
+            agt.val.string.len = checkStringLen(strlen(outputstr));
+            agt.val.string.val = outputstr;
             break;
         }
     }
 
-    /* Now insert jb into result, unless we did it recursively */
+    /* Now insert agt into result, unless we did it recursively */
     if (!is_null && !scalar_jsonbx && tcategory >= JSONBXTYPE_JSON &&
         tcategory <= JSONBXTYPE_JSONCAST)
     {
@@ -834,30 +834,30 @@ static void datum_to_jsonbx(Datum val, bool is_null, JsonbXInState *result,
     else if (result->parseState == NULL)
     {
         /* single root scalar */
-        JsonbXValue va;
+        agtype_value va;
 
-        va.type = jbvXArray;
-        va.val.array.rawScalar = true;
-        va.val.array.nElems = 1;
+        va.type = AGTV_ARRAY;
+        va.val.array.raw_scalar = true;
+        va.val.array.num_elems = 1;
 
-        result->res = pushJsonbXValue(&result->parseState, WJBX_BEGIN_ARRAY,
+        result->res = push_agtype_value(&result->parseState, WAGT_BEGIN_ARRAY,
                                       &va);
-        result->res = pushJsonbXValue(&result->parseState, WJBX_ELEM, &jb);
-        result->res = pushJsonbXValue(&result->parseState, WJBX_END_ARRAY,
+        result->res = push_agtype_value(&result->parseState, WAGT_ELEM, &agt);
+        result->res = push_agtype_value(&result->parseState, WAGT_END_ARRAY,
                                       NULL);
     }
     else
     {
-        JsonbXValue *o = &result->parseState->contVal;
+        agtype_value *o = &result->parseState->cont_val;
 
         switch (o->type)
         {
-        case jbvXArray:
-            result->res = pushJsonbXValue(&result->parseState, WJBX_ELEM, &jb);
+        case AGTV_ARRAY:
+            result->res = push_agtype_value(&result->parseState, WAGT_ELEM, &agt);
             break;
-        case jbvXObject:
-            result->res = pushJsonbXValue(
-                &result->parseState, key_scalar ? WJBX_KEY : WJBX_VALUE, &jb);
+        case AGTV_OBJECT:
+            result->res = push_agtype_value(
+                &result->parseState, key_scalar ? WAGT_KEY : WAGT_VALUE, &agt);
             break;
         default:
             elog(ERROR, "unexpected parent of nested structure");
@@ -879,7 +879,7 @@ static void array_dim_to_jsonbx(JsonbXInState *result, int dim, int ndims,
 
     Assert(dim < ndims);
 
-    result->res = pushJsonbXValue(&result->parseState, WJBX_BEGIN_ARRAY, NULL);
+    result->res = push_agtype_value(&result->parseState, WAGT_BEGIN_ARRAY, NULL);
 
     for (i = 1; i <= dims[dim]; i++)
     {
@@ -896,7 +896,7 @@ static void array_dim_to_jsonbx(JsonbXInState *result, int dim, int ndims,
         }
     }
 
-    result->res = pushJsonbXValue(&result->parseState, WJBX_END_ARRAY, NULL);
+    result->res = push_agtype_value(&result->parseState, WAGT_END_ARRAY, NULL);
 }
 
 /*
@@ -924,9 +924,9 @@ static void array_to_jsonbx_internal(Datum array, JsonbXInState *result)
 
     if (nitems <= 0)
     {
-        result->res = pushJsonbXValue(&result->parseState, WJBX_BEGIN_ARRAY,
+        result->res = push_agtype_value(&result->parseState, WAGT_BEGIN_ARRAY,
                                       NULL);
-        result->res = pushJsonbXValue(&result->parseState, WJBX_END_ARRAY,
+        result->res = push_agtype_value(&result->parseState, WAGT_END_ARRAY,
                                       NULL);
         return;
     }
@@ -969,7 +969,7 @@ static void composite_to_jsonbx(Datum composite, JsonbXInState *result)
     tmptup.t_data = td;
     tuple = &tmptup;
 
-    result->res = pushJsonbXValue(&result->parseState, WJBX_BEGIN_OBJECT,
+    result->res = push_agtype_value(&result->parseState, WAGT_BEGIN_OBJECT,
                                   NULL);
 
     for (i = 0; i < tupdesc->natts; i++)
@@ -979,7 +979,7 @@ static void composite_to_jsonbx(Datum composite, JsonbXInState *result)
         char *attname;
         JsonbXTypeCategory tcategory;
         Oid outfuncoid;
-        JsonbXValue v;
+        agtype_value v;
         Form_pg_attribute att = TupleDescAttr(tupdesc, i);
 
         if (att->attisdropped)
@@ -987,12 +987,12 @@ static void composite_to_jsonbx(Datum composite, JsonbXInState *result)
 
         attname = NameStr(att->attname);
 
-        v.type = jbvXString;
+        v.type = AGTV_STRING;
         /* don't need checkStringLen here - can't exceed maximum name length */
         v.val.string.len = strlen(attname);
         v.val.string.val = attname;
 
-        result->res = pushJsonbXValue(&result->parseState, WJBX_KEY, &v);
+        result->res = push_agtype_value(&result->parseState, WAGT_KEY, &v);
 
         val = heap_getattr(tuple, i + 1, tupdesc, &isnull);
 
@@ -1007,6 +1007,6 @@ static void composite_to_jsonbx(Datum composite, JsonbXInState *result)
         datum_to_jsonbx(val, isnull, result, tcategory, outfuncoid, false);
     }
 
-    result->res = pushJsonbXValue(&result->parseState, WJBX_END_OBJECT, NULL);
+    result->res = push_agtype_value(&result->parseState, WAGT_END_OBJECT, NULL);
     ReleaseTupleDesc(tupdesc);
 }

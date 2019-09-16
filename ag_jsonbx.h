@@ -1,42 +1,42 @@
 /*-------------------------------------------------------------------------
  *
- * jsonb.h
- *	  Declarations for jsonb data type support.
+ * agtype.h
+ *	  Declarations for agtype data type support.
  *
  * Copyright (c) 1996-2018, PostgreSQL Global Development Group
  *
- * src/include/utils/jsonb.h
+ * agtype.h
  *
  *-------------------------------------------------------------------------
  */
-#ifndef AG_AG_JSONBX_H
-#define AG_AG_JSONBX_H
+#ifndef AG_AGTYPE_H
+#define AG_AGTYPE_H
 
 #include "lib/stringinfo.h"
 #include "utils/array.h"
 #include "utils/numeric.h"
 
-/* Tokens used when sequentially processing a jsonb value */
+/* Tokens used when sequentially processing an agtype value */
 typedef enum
 {
-    WJBX_DONE,
-    WJBX_KEY,
-    WJBX_VALUE,
-    WJBX_ELEM,
-    WJBX_BEGIN_ARRAY,
-    WJBX_END_ARRAY,
-    WJBX_BEGIN_OBJECT,
-    WJBX_END_OBJECT
-} JsonbXIteratorToken;
+    WAGT_DONE,
+    WAGT_KEY,
+    WAGT_VALUE,
+    WAGT_ELEM,
+    WAGT_BEGIN_ARRAY,
+    WAGT_END_ARRAY,
+    WAGT_BEGIN_OBJECT,
+    WAGT_END_OBJECT
+} agtype_iterator_token;
 
 /* Strategy numbers for GIN index opclasses */
-#define JsonbXContainsStrategyNumber 7
-#define JsonbXExistsStrategyNumber 9
-#define JsonbXExistsAnyStrategyNumber 10
-#define JsonbXExistsAllStrategyNumber 11
+#define AGTYPE_CONTAINS_STRATEGY_NUMBER 7
+#define AGTYPE_EXISTS_STRATEGY_NUMBER 9
+#define AGTYPE_EXISTS_ANY_STRATEGY_NUMBER 10
+#define AGTYPE_EXISTS_ALL_STRATEGY_NUMBER 11
 
 /*
- * In the standard jsonb_ops GIN opclass for jsonb, we choose to index both
+ * In the standard agtype_ops GIN opclass for agtype, we choose to index both
  * keys and values.  The storage format is text.  The first byte of the text
  * string distinguishes whether this is a key (always a string), null value,
  * boolean value, numeric value, or string value.  However, array elements
@@ -45,63 +45,63 @@ typedef enum
  * elements like keys.  The remainder of the text string is empty for a null
  * value, "t" or "f" for a boolean value, a normalized print representation of
  * a numeric value, or the text of a string value.  However, if the length of
- * this text representation would exceed JGIN_MAXLENGTH bytes, we instead hash
- * the text representation and store an 8-hex-digit representation of the
+ * this text representation would exceed AGT_GIN_MAX_LENGTH bytes, we instead
+ * hash the text representation and store an 8-hex-digit representation of the
  * uint32 hash value, marking the prefix byte with an additional bit to
  * distinguish that this has happened.  Hashing long strings saves space and
  * ensures that we won't overrun the maximum entry length for a GIN index.
- * (But JGIN_MAXLENGTH is quite a bit shorter than GIN's limit.  It's chosen
+ * (But AGT_GIN_MAX_LENGTH is quite a bit shorter than GIN's limit.  It's chosen
  * to ensure that the on-disk text datum will have a short varlena header.)
  * Note that when any hashed item appears in a query, we must recheck index
  * matches against the heap tuple; currently, this costs nothing because we
  * must always recheck for other reasons.
  */
-#define JXGINFLAG_KEY 0x01 /* key (or string array element) */
-#define JXGINFLAG_NULL 0x02 /* null value */
-#define JXGINFLAG_BOOL 0x03 /* boolean value */
-#define JXGINFLAG_NUM 0x04 /* numeric value */
-#define JXGINFLAG_STR 0x05 /* string value (if not an array element) */
-#define JXGINFLAG_HASHED 0x10 /* OR'd into flag if value was hashed */
-#define JXGIN_MAXLENGTH 125 /* max length of text part before hashing */
+#define AGT_GIN_FLAG_KEY 0x01 /* key (or string array element) */
+#define AGT_GIN_FLAG_NULL 0x02 /* null value */
+#define AGT_GIN_FLAG_BOOL 0x03 /* boolean value */
+#define AGT_GIN_FLAG_NUM 0x04 /* numeric value */
+#define AGT_GIN_FLAG_STR 0x05 /* string value (if not an array element) */
+#define AGT_GIN_FLAG_HASHED 0x10 /* OR'd into flag if value was hashed */
+#define AGT_GIN_MAX_LENGTH 125 /* max length of text part before hashing */
 
 /* Convenience macros */
-#define DatumGetJsonbXP(d) ((JsonbX *)PG_DETOAST_DATUM(d))
-#define JsonbXPGetDatum(p) PointerGetDatum(p)
-#define PG_GETARG_JSONBX_P(x) DatumGetJsonbXP(PG_GETARG_DATUM(x))
-#define PG_RETURN_JSONBX_P(x) PG_RETURN_POINTER(x)
+#define DATUM_GET_AGTYPE_P(d) ((agtype *)PG_DETOAST_DATUM(d))
+#define AGTYPE_P_GET_DATUM(p) PointerGetDatum(p)
+#define AG_GET_ARG_AGTYPE_P(x) DATUM_GET_AGTYPE_P(PG_GETARG_DATUM(x))
+#define AG_RETURN_AGTYPE_P(x) PG_RETURN_POINTER(x)
 
-typedef struct JsonbXPair JsonbXPair;
-typedef struct JsonbXValue JsonbXValue;
+typedef struct agtype_pair agtype_pair;
+typedef struct agtype_value agtype_value;
 
 /*
- * Jsonbs are varlena objects, so must meet the varlena convention that the
+ * Agtypes are varlena objects, so must meet the varlena convention that the
  * first int32 of the object contains the total object size in bytes.  Be sure
  * to use VARSIZE() and SET_VARSIZE() to access it, though!
  *
- * JsonbX is the on-disk representation, in contrast to the in-memory JsonbValue
- * representation.  Often, JsonbValues are just shims through which a Jsonb
+ * agtype is the on-disk representation, in contrast to the in-memory agtype_value
+ * representation.  Often, agtype_values are just shims through which a agtype
  * buffer is accessed, but they can also be deep copied and passed around.
  *
- * JsonbX is a tree structure. Each node in the tree consists of a JXEntry
- * header and a variable-length content (possibly of zero size).  The JXEntry
+ * agtype is a tree structure. Each node in the tree consists of a agtentry
+ * header and a variable-length content (possibly of zero size).  The agtentry
  * header indicates what kind of a node it is, e.g. a string or an array,
  * and provides the length of its variable-length portion.
  *
- * The JXEntry and the content of a node are not stored physically together.
- * Instead, the container array or object has an array that holds the JXEntrys
+ * The agtentry and the content of a node are not stored physically together.
+ * Instead, the container array or object has an array that holds the agtentrys
  * of all the child nodes, followed by their variable-length portions.
  *
  * The root node is an exception; it has no parent array or object that could
- * hold its JXEntry. Hence, no JXEntry header is stored for the root node.  It
+ * hold its agtentry. Hence, no agtentry header is stored for the root node.  It
  * is implicitly known that the root node must be an array or an object,
  * so we can get away without the type indicator as long as we can distinguish
  * the two.  For that purpose, both an array and an object begin with a uint32
- * header field, which contains an JBX_FOBJECT or JBX_FARRAY flag.  When a naked
- * scalar value needs to be stored as a JsonbX value, what we actually store is
+ * header field, which contains an AGT_FOBJECT or AGT_FARRAY flag.  When a naked
+ * scalar value needs to be stored as a agtype value, what we actually store is
  * an array with one element, with the flags in the array's header field set
- * to JBX_FSCALAR | JBX_FARRAY.
+ * to AGT_FSCALAR | AGT_FARRAY.
  *
- * Overall, the JsonbX struct requires 4-bytes alignment. Within the struct,
+ * Overall, the agtype struct requires 4-bytes alignment. Within the struct,
  * the variable-length portion of some node types is aligned to a 4-byte
  * boundary, while others are not. When alignment is needed, the padding is
  * in the beginning of the node that requires it. For example, if a numeric
@@ -111,7 +111,7 @@ typedef struct JsonbXValue JsonbXValue;
  */
 
 /*
- * JXEntry format.
+ * agtentry format.
  *
  * The least significant 28 bits store either the data length of the entry,
  * or its end+1 offset from the start of the variable-length portion of the
@@ -120,15 +120,15 @@ typedef struct JsonbXValue JsonbXValue;
  * or an offset.
  *
  * The reason for the offset-or-length complication is to compromise between
- * access speed and data compressibility.  In the initial design each JXEntry
- * always stored an offset, but this resulted in JXEntry arrays with horrible
- * compressibility properties, so that TOAST compression of a JSONB did not
+ * access speed and data compressibility.  In the initial design each agtentry
+ * always stored an offset, but this resulted in agtentry arrays with horrible
+ * compressibility properties, so that TOAST compression of a AGTYPE did not
  * work well.  Storing only lengths would greatly improve compressibility,
  * but it makes random access into large arrays expensive (O(N) not O(1)).
- * So what we do is store an offset in every JB_OFFSET_STRIDE'th JXEntry and
+ * So what we do is store an offset in every AGT_OFFSET_STRIDE'th agtentry and
  * a length in the rest.  This results in reasonably compressible data (as
  * long as the stride isn't too small).  We may have to examine as many as
- * JB_OFFSET_STRIDE JXEntrys in order to find out the offset or length of any
+ * AGT_OFFSET_STRIDE agtentrys in order to find out the offset or length of any
  * given item, but that's still O(1) no matter how large the container is.
  *
  * We could avoid eating a flag bit for this purpose if we were to store
@@ -136,56 +136,56 @@ typedef struct JsonbXValue JsonbXValue;
  * stride as an unchangeable constant.  Neither of those options is very
  * attractive though.
  */
-typedef uint32 JXEntry;
+typedef uint32 agtentry;
 
-#define JXENTRY_OFFLENMASK 0x0FFFFFFF
-#define JXENTRY_TYPEMASK 0x70000000
-#define JXENTRY_HAS_OFF 0x80000000
+#define AGTENTRY_OFFLENMASK 0x0FFFFFFF
+#define AGTENTRY_TYPEMASK 0x70000000
+#define AGTENTRY_HAS_OFF 0x80000000
 
 /* values stored in the type bits */
-#define JXENTRY_ISSTRING 0x00000000
-#define JXENTRY_ISNUMERIC 0x10000000
-#define JXENTRY_ISBOOL_FALSE 0x20000000
-#define JXENTRY_ISBOOL_TRUE 0x30000000
-#define JXENTRY_ISNULL 0x40000000
-#define JXENTRY_ISCONTAINER 0x50000000 /* array or object */
-#define JXENTRY_ISJSONBX 0x70000000 // out type designator
+#define AGTENTRY_IS_STRING 0x00000000
+#define AGTENTRY_IS_NUMERIC 0x10000000
+#define AGTENTRY_IS_BOOL_FALSE 0x20000000
+#define AGTENTRY_IS_BOOL_TRUE 0x30000000
+#define AGTENTRY_IS_NULL 0x40000000
+#define AGTENTRY_IS_CONTAINER 0x50000000 /* array or object */
+#define AGTENTRY_IS_AGTYPE 0x70000000 /* our type designator */
 
 /* Access macros.  Note possible multiple evaluations */
-#define JBXE_OFFLENFLD(je_) ((je_)&JXENTRY_OFFLENMASK)
-#define JBXE_HAS_OFF(je_) (((je_)&JXENTRY_HAS_OFF) != 0)
-#define JBXE_ISSTRING(je_) (((je_)&JXENTRY_TYPEMASK) == JXENTRY_ISSTRING)
-#define JBXE_ISNUMERIC(je_) (((je_)&JXENTRY_TYPEMASK) == JXENTRY_ISNUMERIC)
-#define JBXE_ISCONTAINER(je_) (((je_)&JXENTRY_TYPEMASK) == JXENTRY_ISCONTAINER)
-#define JBXE_ISNULL(je_) (((je_)&JXENTRY_TYPEMASK) == JXENTRY_ISNULL)
-#define JBXE_ISBOOL_TRUE(je_) (((je_)&JXENTRY_TYPEMASK) == JXENTRY_ISBOOL_TRUE)
-#define JBXE_ISBOOL_FALSE(je_) \
-    (((je_)&JXENTRY_TYPEMASK) == JXENTRY_ISBOOL_FALSE)
-#define JBXE_ISBOOL(je_) (JBXE_ISBOOL_TRUE(je_) || JBXE_ISBOOL_FALSE(je_))
-#define JBXE_ISJSONBX(je_) (((je_)&JXENTRY_TYPEMASK) == JXENTRY_ISJSONBX)
+#define AGTE_OFFLENFLD(agte_) ((agte_)&AGTENTRY_OFFLENMASK)
+#define AGTE_HAS_OFF(agte_) (((agte_)&AGTENTRY_HAS_OFF) != 0)
+#define AGTE_IS_STRING(agte_) (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_STRING)
+#define AGTE_IS_NUMERIC(agte_) (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_NUMERIC)
+#define AGTE_IS_CONTAINER(agte_) (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_CONTAINER)
+#define AGTE_IS_NULL(agte_) (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_NULL)
+#define AGTE_IS_BOOL_TRUE(agte_) (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_BOOL_TRUE)
+#define AGTE_IS_BOOL_FALSE(agte_) \
+    (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_BOOL_FALSE)
+#define AGTE_IS_BOOL(agte_) (AGTE_IS_BOOL_TRUE(agte_) || AGTE_IS_BOOL_FALSE(agte_))
+#define AGTE_IS_AGTYPE(agte_) (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_AGTYPE)
 
-/* Macro for advancing an offset variable to the next JXEntry */
-#define JBXE_ADVANCE_OFFSET(offset, je) \
+/* Macro for advancing an offset variable to the next agtentry */
+#define AGTE_ADVANCE_OFFSET(offset, agte) \
     do \
     { \
-        JXEntry je_ = (je); \
-        if (JBXE_HAS_OFF(je_)) \
-            (offset) = JBXE_OFFLENFLD(je_); \
+        agtentry agte_ = (agte); \
+        if (AGTE_HAS_OFF(agte_)) \
+            (offset) = AGTE_OFFLENFLD(agte_); \
         else \
-            (offset) += JBXE_OFFLENFLD(je_); \
+            (offset) += AGTE_OFFLENFLD(agte_); \
     } while (0)
 
 /*
- * We store an offset, not a length, every JB_OFFSET_STRIDE children.
- * Caution: this macro should only be referenced when creating a JSONB
+ * We store an offset, not a length, every AGT_OFFSET_STRIDE children.
+ * Caution: this macro should only be referenced when creating a AGTYPE
  * value.  When examining an existing value, pay attention to the HAS_OFF
  * bits instead.  This allows changes in the offset-placement heuristic
  * without breaking on-disk compatibility.
  */
-#define JBX_OFFSET_STRIDE 32
+#define AGT_OFFSET_STRIDE 32
 
 /*
- * A jsonbx array or object node, within a JsonbX Datum.
+ * An agtype array or object node, within a agtype Datum.
  *
  * An array has one child for each element, stored in array order.
  *
@@ -194,78 +194,78 @@ typedef uint32 JXEntry;
  * key order.  This arrangement keeps the keys compact in memory, making a
  * search for a particular key more cache-friendly.
  */
-typedef struct JsonbXContainer
+typedef struct agtype_container
 {
     uint32 header; /* number of elements or key/value pairs, and
 								 * flags */
-    JXEntry children[FLEXIBLE_ARRAY_MEMBER];
+    agtentry children[FLEXIBLE_ARRAY_MEMBER];
 
     /* the data for each child node follows. */
-} JsonbXContainer;
+} agtype_container;
 
-/* flags for the header-field in JsonbContainer */
-#define JBX_CMASK 0x0FFFFFFF /* mask for count field */
-#define JBX_FSCALAR 0x10000000 /* flag bits */
-#define JBX_FOBJECT 0x20000000
-#define JBX_FARRAY 0x40000000
+/* flags for the header-field in agtype_container*/
+#define AGT_CMASK 0x0FFFFFFF /* mask for count field */
+#define AGT_FSCALAR 0x10000000 /* flag bits */
+#define AGT_FOBJECT 0x20000000
+#define AGT_FARRAY 0x40000000
 
-/* convenience macros for accessing a JsonbXContainer struct */
-#define JsonbXContainerSize(jc) ((jc)->header & JBX_CMASK)
-#define JsonbXContainerIsScalar(jc) (((jc)->header & JBX_FSCALAR) != 0)
-#define JsonbXContainerIsObject(jc) (((jc)->header & JBX_FOBJECT) != 0)
-#define JsonbXContainerIsArray(jc) (((jc)->header & JBX_FARRAY) != 0)
+/* convenience macros for accessing a agtype_container struct */
+#define AGTYPE_CONTAINER_SIZE(agtc) ((agtc)->header & AGT_CMASK)
+#define AGTYPE_CONTAINER_IS_SCALAR(agtc) (((agtc)->header & AGT_FSCALAR) != 0)
+#define AGTYPE_CONTAINER_IS_OBJECT(agtc) (((agtc)->header & AGT_FOBJECT) != 0)
+#define AGTYPE_CONTAINER_IS_ARRAY(agtc) (((agtc)->header & AGT_FARRAY) != 0)
 
-/* The top-level on-disk format for a jsonbx datum. */
+/* The top-level on-disk format for a agtype datum. */
 typedef struct
 {
     int32 vl_len_; /* varlena header (do not touch directly!) */
-    JsonbXContainer root;
-} JsonbX;
+    agtype_container root;
+} agtype;
 
-/* convenience macros for accessing the root container in a JsonbX datum */
-#define JBX_ROOT_COUNT(jbxp_) (*(uint32 *)VARDATA(jbxp_) & JBX_CMASK)
-#define JBX_ROOT_IS_SCALAR(jbxp_) \
-    ((*(uint32 *)VARDATA(jbxp_) & JBX_FSCALAR) != 0)
-#define JBX_ROOT_IS_OBJECT(jbxp_) \
-    ((*(uint32 *)VARDATA(jbxp_) & JBX_FOBJECT) != 0)
-#define JBX_ROOT_IS_ARRAY(jbxp_) \
-    ((*(uint32 *)VARDATA(jbxp_) & JBX_FARRAY) != 0)
+/* convenience macros for accessing the root container in a agtype datum */
+#define AGT_ROOT_COUNT(agtp_) (*(uint32 *)VARDATA(agtp_) & AGT_CMASK)
+#define AGT_ROOT_IS_SCALAR(agtp_) \
+    ((*(uint32 *)VARDATA(agtp_) & AGT_FSCALAR) != 0)
+#define AGT_ROOT_IS_OBJECT(agtp_) \
+    ((*(uint32 *)VARDATA(agtp_) & AGT_FOBJECT) != 0)
+#define AGT_ROOT_IS_ARRAY(agtp_) \
+    ((*(uint32 *)VARDATA(agtp_) & AGT_FARRAY) != 0)
 
 /*
- * IMPORTANT NOTE: For jbvXType, IsAJsonbXScalar() checks that the type is
- * between jbvXNull and jbvXBool, inclusive. So, new scalars need to be
- * between these values.
+ * IMPORTANT NOTE: For agtype_value_type, IS_A_AGTYPE_SCALAR() checks that the
+ * type is between AGTV_NULL and AGTV_BOOL, inclusive. So, new scalars need to
+ * be between these values.
  */
-enum jbvXType
+enum agtype_value_type
 {
     /* Scalar types */
-    jbvXNull = 0x0,
-    jbvXString,
-    jbvXNumeric,
-    jbvXInteger8,
-    jbvXFloat8,
-    jbvXBool,
+    AGTV_NULL = 0x0,
+    AGTV_STRING,
+    AGTV_NUMERIC,
+    AGTV_INTEGER,
+    AGTV_FLOAT,
+    AGTV_BOOL,
     /* Composite types */
-    jbvXArray = 0x10,
-    jbvXObject,
-    /* Binary (i.e. struct Jsonb) jbvArray/jbvObject */
-    jbvXBinary
+    AGTV_ARRAY = 0x10,
+    AGTV_OBJECT,
+    /* Binary (i.e. struct agtype) AGTV_ARRAY/AGTV_OBJECT */
+    AGTV_BINARY
 };
 
 /*
- * JsonbXValue:	In-memory representation of Jsonb.  This is a convenient
+ * agtype_value: In-memory representation of agtype.  This is a convenient
  * deserialized representation, that can easily support using the "val"
- * union across underlying types during manipulation.  The JsonbX on-disk
+ * union across underlying types during manipulation.  The agtype on-disk
  * representation has various alignment considerations.
  */
-struct JsonbXValue
+struct agtype_value
 {
-    enum jbvXType type; /* Influences sort order */
+    enum agtype_value_type type; /* Influences sort order */
 
     union
     {
-        int64 integer8; /* Cypher 8 byte Integer */
-        float8 float8; /* Cypher 8 byte Float */
+        int64 int_value; /* Cypher 8 byte Integer */
+        float8 float_value; /* Cypher 8 byte Float */
         Numeric numeric;
         bool boolean;
         struct
@@ -276,124 +276,124 @@ struct JsonbXValue
 
         struct
         {
-            int nElems;
-            JsonbXValue *elems;
-            bool rawScalar; /* Top-level "raw scalar" array? */
+            int num_elems;
+            agtype_value *elems;
+            bool raw_scalar; /* Top-level "raw scalar" array? */
         } array; /* Array container type */
 
         struct
         {
-            int nPairs; /* 1 pair, 2 elements */
-            JsonbXPair *pairs;
+            int num_pairs; /* 1 pair, 2 elements */
+            agtype_pair *pairs;
         } object; /* Associative container type */
 
         struct
         {
             int len;
-            JsonbXContainer *data;
+            agtype_container *data;
         } binary; /* Array or object, in on-disk format */
     } val;
 };
 
-#define IsAJsonbXScalar(jsonbXval) \
-    ((jsonbXval)->type >= jbvXNull && (jsonbXval)->type <= jbvXBool)
+#define IS_A_AGTYPE_SCALAR(agtype_val) \
+    ((agtype_val)->type >= AGTV_NULL && (agtype_val)->type <= AGTV_BOOL)
 
 /*
  * Key/value pair within an Object.
  *
- * This struct type is only used briefly while constructing a Jsonb; it is
+ * This struct type is only used briefly while constructing an agtype ; it is
  * *not* the on-disk representation.
  *
  * Pairs with duplicate keys are de-duplicated.  We store the originally
  * observed pair ordering for the purpose of removing duplicates in a
  * well-defined way (which is "last observed wins").
  */
-struct JsonbXPair
+struct agtype_pair
 {
-    JsonbXValue key; /* Must be a jbvString */
-    JsonbXValue value; /* May be of any type */
+    agtype_value key; /* Must be a AGTV_STRING */
+    agtype_value value; /* May be of any type */
     uint32 order; /* Pair's index in original sequence */
 };
 
-/* Conversion state used when parsing JsonbX from text, or for type coercion */
-typedef struct JsonbXParseState
+/* Conversion state used when parsing agtype from text, or for type coercion */
+typedef struct agtype_parse_state
 {
-    JsonbXValue contVal;
+    agtype_value cont_val;
     Size size;
-    struct JsonbXParseState *next;
-} JsonbXParseState;
+    struct agtype_parse_state *next;
+} agtype_parse_state;
 
 /*
- * JsonbIterator holds details of the type for each iteration. It also stores a
- * JsonbX varlena buffer, which can be directly accessed in some contexts.
+ * agtype_iterator holds details of the type for each iteration. It also stores a
+ * agtype varlena buffer, which can be directly accessed in some contexts.
  */
 typedef enum
 {
-    JBXI_ARRAY_START,
-    JBXI_ARRAY_ELEM,
-    JBXI_OBJECT_START,
-    JBXI_OBJECT_KEY,
-    JBXI_OBJECT_VALUE
-} JsonbXIterState;
+    AGTI_ARRAY_START,
+    AGTI_ARRAY_ELEM,
+    AGTI_OBJECT_START,
+    AGTI_OBJECT_KEY,
+    AGTI_OBJECT_VALUE
+} agt_iterator_state;
 
-typedef struct JsonbXIterator
+typedef struct agtype_iterator
 {
     /* Container being iterated */
-    JsonbXContainer *container;
-    uint32 nElems; /* Number of elements in children array (will
-								 * be nPairs for objects) */
-    bool isScalar; /* Pseudo-array scalar value? */
-    JXEntry *children; /* JXEntrys for child nodes */
+    agtype_container *container;
+    uint32 num_elems; /* Number of elements in children array (will
+								 * be num_pairs for objects) */
+    bool is_scalar; /* Pseudo-array scalar value? */
+    agtentry *children; /* agtentrys for child nodes */
     /* Data proper.  This points to the beginning of the variable-length data */
-    char *dataProper;
+    char *data_proper;
 
-    /* Current item in buffer (up to nElems) */
-    int curIndex;
+    /* Current item in buffer (up to num_elems) */
+    int curr_index;
 
     /* Data offset corresponding to current item */
-    uint32 curDataOffset;
+    uint32 curr_data_offset;
 
     /*
 	 * If the container is an object, we want to return keys and values
-	 * alternately; so curDataOffset points to the current key, and
-	 * curValueOffset points to the current value.
+	 * alternately; so curr_data_offset points to the current key, and
+	 * curr_value_offset points to the current value.
 	 */
-    uint32 curValueOffset;
+    uint32 curr_value_offset;
 
     /* Private state */
-    JsonbXIterState state;
+    agt_iterator_state state;
 
-    struct JsonbXIterator *parent;
-} JsonbXIterator;
+    struct agtype_iterator *parent;
+} agtype_iterator;
 
 /* Support functions */
-extern short padBufferToInt(StringInfo buffer);
-extern int reserveFromBuffer(StringInfo buffer, int len);
-extern uint32 getJsonbXOffset(const JsonbXContainer *jc, int index);
-extern uint32 getJsonbXLength(const JsonbXContainer *jc, int index);
-extern int compareJsonbXContainers(JsonbXContainer *a, JsonbXContainer *b);
-extern JsonbXValue *findJsonbXValueFromContainer(JsonbXContainer *sheader,
+extern short pad_buffer_to_int(StringInfo buffer);
+extern int reserve_from_buffer(StringInfo buffer, int len);
+extern uint32 get_agtype_offset(const agtype_container *agtc, int index);
+extern uint32 get_agtype_length(const agtype_container *agtc, int index);
+extern int compare_agtype_containers(agtype_container *a, agtype_container *b);
+extern agtype_value *find_agtype_value_from_container(agtype_container *sheader,
                                                  uint32 flags,
-                                                 JsonbXValue *key);
-extern JsonbXValue *getIthJsonbXValueFromContainer(JsonbXContainer *sheader,
+                                                 agtype_value *key);
+extern agtype_value *get_ith_agtype_value_from_container(agtype_container *sheader,
                                                    uint32 i);
-extern JsonbXValue *pushJsonbXValue(JsonbXParseState **pstate,
-                                    JsonbXIteratorToken seq,
-                                    JsonbXValue *jbVal);
-extern JsonbXIterator *JsonbXIteratorInit(JsonbXContainer *container);
-extern JsonbXIteratorToken
-JsonbXIteratorNext(JsonbXIterator **it, JsonbXValue *val, bool skipNested);
-extern JsonbX *JsonbXValueToJsonbX(JsonbXValue *val);
-extern bool JsonbXDeepContains(JsonbXIterator **val,
-                               JsonbXIterator **mContained);
-extern void JsonbXHashScalarValue(const JsonbXValue *scalarVal, uint32 *hash);
-extern void JsonbXHashScalarValueExtended(const JsonbXValue *scalarVal,
+extern agtype_value *push_agtype_value(agtype_parse_state **pstate,
+                                    agtype_iterator_token seq,
+                                    agtype_value *agtval);
+extern agtype_iterator *agtype_iterator_init(agtype_container *container);
+extern agtype_iterator_token agtype_iterator_next(agtype_iterator **it,
+                                    agtype_value *val, bool skip_nested);
+extern agtype *agtype_value_to_agtype(agtype_value *val);
+extern bool agtype_deep_contains(agtype_iterator **val,
+                               agtype_iterator **m_contained);
+extern void agtype_hash_scalar_value(const agtype_value *scalar_val, uint32 *hash);
+extern void agtype_hash_scalar_value_extended(const agtype_value *scalar_val,
                                           uint64 *hash, uint64 seed);
 
-/* jsonbx.c support functions */
-extern char *JsonbXToCString(StringInfo out, JsonbXContainer *in,
+/* agtype.c support functions */
+extern char *agtype_to_cstring(StringInfo out, agtype_container *in,
                              int estimated_len);
-extern char *JsonbXToCStringIndent(StringInfo out, JsonbXContainer *in,
+extern char *agtype_to_cstring_indent(StringInfo out, agtype_container *in,
                                    int estimated_len);
 
-#endif /* AG_AG_JSONBX_H */
+#endif /* AG_AGTYPE_H */

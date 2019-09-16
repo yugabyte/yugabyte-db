@@ -1,38 +1,38 @@
 /*-------------------------------------------------------------------------
  *
- * jsonapi.h
- *	  Declarations for JSON API support.
+ * agtype_parser.h
+ *	  Declarations for AGTYPE Parser API support.
  *
  * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * src/include/utils/jsonapi.h
+ * agtype_parser.h
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef JSONAPI_H
-#define JSONAPI_H
+#ifndef AG_AGTYPE_PARSER_H
+#define AG_AGTYPE_PARSER_H
 
 #include "lib/stringinfo.h"
 
 typedef enum
 {
-    JSON_TOKEN_INVALID,
-    JSON_TOKEN_STRING,
-    JSON_TOKEN_INTEGER8,
-    JSON_TOKEN_FLOAT8,
-    JSON_TOKEN_OBJECT_START,
-    JSON_TOKEN_OBJECT_END,
-    JSON_TOKEN_ARRAY_START,
-    JSON_TOKEN_ARRAY_END,
-    JSON_TOKEN_COMMA,
-    JSON_TOKEN_COLON,
-    JSON_TOKEN_TRUE,
-    JSON_TOKEN_FALSE,
-    JSON_TOKEN_NULL,
-    JSON_TOKEN_END
-} JsonTokenType;
+    AGTYPE_TOKEN_INVALID,
+    AGTYPE_TOKEN_STRING,
+    AGTYPE_TOKEN_INTEGER,
+    AGTYPE_TOKEN_FLOAT,
+    AGTYPE_TOKEN_OBJECT_START,
+    AGTYPE_TOKEN_OBJECT_END,
+    AGTYPE_TOKEN_ARRAY_START,
+    AGTYPE_TOKEN_ARRAY_END,
+    AGTYPE_TOKEN_COMMA,
+    AGTYPE_TOKEN_COLON,
+    AGTYPE_TOKEN_TRUE,
+    AGTYPE_TOKEN_FALSE,
+    AGTYPE_TOKEN_NULL,
+    AGTYPE_TOKEN_END
+} agtype_token_type;
 
 /*
  * All the fields in this structure should be treated as read-only.
@@ -47,53 +47,53 @@ typedef enum
  * AFTER the end of the token, i.e. where there would be a nul byte
  * if we were using nul-terminated strings.
  */
-typedef struct JsonLexContext
+typedef struct agtype_lex_context
 {
     char *input;
     int input_length;
     char *token_start;
     char *token_terminator;
     char *prev_token_terminator;
-    JsonTokenType token_type;
+    agtype_token_type token_type;
     int lex_level;
     int line_number;
     char *line_start;
     StringInfo strval;
-} JsonLexContext;
+} agtype_lex_context;
 
-typedef void (*json_struct_action)(void *state);
-typedef void (*json_ofield_action)(void *state, char *fname, bool isnull);
-typedef void (*json_aelem_action)(void *state, bool isnull);
-typedef void (*json_scalar_action)(void *state, char *token,
-                                   JsonTokenType tokentype);
+typedef void (*agtype_struct_action)(void *state);
+typedef void (*agtype_ofield_action)(void *state, char *fname, bool isnull);
+typedef void (*agtype_aelem_action)(void *state, bool isnull);
+typedef void (*agtype_scalar_action)(void *state, char *token,
+                                   agtype_token_type tokentype);
 
 /*
- * Semantic Action structure for use in parsing json.
+ * Semantic Action structure for use in parsing agtype.
  * Any of these actions can be NULL, in which case nothing is done at that
  * point, Likewise, semstate can be NULL. Using an all-NULL structure amounts
  * to doing a pure parse with no side-effects, and is therefore exactly
- * what the json input routines do.
+ * what the agtype input routines do.
  *
  * The 'fname' and 'token' strings passed to these actions are palloc'd.
  * They are not free'd or used further by the parser, so the action function
  * is free to do what it wishes with them.
  */
-typedef struct JsonSemAction
+typedef struct agtype_sem_action
 {
     void *semstate;
-    json_struct_action object_start;
-    json_struct_action object_end;
-    json_struct_action array_start;
-    json_struct_action array_end;
-    json_ofield_action object_field_start;
-    json_ofield_action object_field_end;
-    json_aelem_action array_element_start;
-    json_aelem_action array_element_end;
-    json_scalar_action scalar;
-} JsonSemAction;
+    agtype_struct_action object_start;
+    agtype_struct_action object_end;
+    agtype_struct_action array_start;
+    agtype_struct_action array_end;
+    agtype_ofield_action object_field_start;
+    agtype_ofield_action object_field_end;
+    agtype_aelem_action array_element_start;
+    agtype_aelem_action array_element_end;
+    agtype_scalar_action scalar;
+} agtype_sem_action;
 
 /*
- * parse_json will parse the string in the lex calling the
+ * parse_agtype will parse the string in the lex calling the
  * action functions in sem at the appropriate points. It is
  * up to them to keep what state they need	in semstate. If they
  * need access to the state of the lexer, then its pointer
@@ -101,28 +101,28 @@ typedef struct JsonSemAction
  * points to. If the action pointers are NULL the parser
  * does nothing and just continues.
  */
-extern void ag_parse_json(JsonLexContext *lex, JsonSemAction *sem);
+extern void parse_agtype(agtype_lex_context *lex, agtype_sem_action *sem);
 
 /*
- * constructors for JsonLexContext, with or without strval element.
+ * constructors for agtype_lex_context, with or without strval element.
  * If supplied, the strval element will contain a de-escaped version of
  * the lexeme. However, doing this imposes a performance penalty, so
  * it should be avoided if the de-escaped lexeme is not required.
  *
- * If you already have the json as a text* value, use the first of these
- * functions, otherwise use  makeJsonLexContextCstringLen().
+ * If you already have the agtype as a text* value, use the first of these
+ * functions, otherwise use ag_make_agtype_lex_context_cstring_len().
  */
-extern JsonLexContext *ag_makeJsonLexContext(text *json, bool need_escapes);
-extern JsonLexContext *ag_makeJsonLexContextCstringLen(char *json, int len,
+extern agtype_lex_context *make_agtype_lex_context(text *agtype, bool need_escapes);
+extern agtype_lex_context *make_agtype_lex_context_cstring_len(char *agtype, int len,
                                                        bool need_escapes);
 
 /*
- * Utility function to check if a string is a valid JSON number.
+ * Utility function to check if a string is a valid AGTYPE number.
  *
  * str argument does not need to be nul-terminated.
  */
-extern bool ag_IsValidJsonNumber(const char *str, int len);
+extern bool is_valid_agtype_number(const char *str, int len);
 
-extern char *ag_JsonEncodeDateTime(char *buf, Datum value, Oid typid);
+extern char *agtype_encode_date_time(char *buf, Datum value, Oid typid);
 
-#endif /* JSONAPI_H */
+#endif /* AG_AGTYPE_PARSER_H */
