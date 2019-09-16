@@ -1,7 +1,7 @@
 ---
 title: 2DC replication
 linkTitle: 2DC replication
-description: Replicating two data centers
+description: Replicating between two data centers
 menu:
   latest:
     parent: change-data-capture
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-
+Follow the steps below to configure a two data center (2DC) replication and then use either one-way (unidirectional) or two-way (bidirectional) replication between the two data centers.
 
 ## Set up a 2DC replication
 
@@ -20,9 +20,13 @@ showAsideToc: true
 
 To create the producer universe, follow these steps.
 
-1. Create Universe “yugabyte-producer”
+1. Create the “yugabyte-producer” universe.
 
-2. Create YSQL table with index
+2. Create the the tables for the APIs being used.
+
+**For YSQL:**
+
+Create the YSQL table with index.
 
    ```sql
    CREATE TABLE sqlsecondaryindex(
@@ -31,7 +35,9 @@ To create the producer universe, follow these steps.
    CREATE INDEX sql_idx ON sqlsecondaryindex(v);
    ```
 
-3. Create YCQL table
+**For YCQL:**
+
+Create the YCQL table.
 
 ```sql
 CREATE KEYSPACE ybdemo_keyspace;
@@ -42,9 +48,15 @@ CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (k varchar, v blob, primary key (
 
 To create the consumer universe, follow the steps below.
 
-1. Create Universe “yugabyte-consumer”
+1. Create the “yugabyte-consumer” universe.
 
-2. Create the same YSQL table and index
+2. Create the tables for the APIs you are using.
+
+Make sure to create the same tables as you did for the producer universe.
+
+**For YSQL:**
+
+Create the YSQL table and index.
 
 ```sql
 CREATE TABLE sqlsecondaryindex(
@@ -53,7 +65,9 @@ CREATE TABLE sqlsecondaryindex(
 CREATE INDEX sql_idx ON sqlsecondaryindex(v);
 ```
 
-3. Create the same YCQL table.
+**For YCQL:**
+
+Create the YCQL table.
 
 ```sql
 CREATE KEYSPACE ybdemo_keyspace;
@@ -63,18 +77,18 @@ CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (
   primary key (k));
 ```
 
+After creating the required tables, you can now set up the replication behavior.
+
 ## Set up one-way (unidirectional) replication
 
-1. Set up one-way replication on those two tables.
+1. Look up the producer universe UUID and the table IDs for the two tables and the index table on master UI.
 
-2. Look up the producer universe UUID and the table IDs for the two tables and the index table on master UI.
-
-3. Run this `yb-admin` command
+2. Run the following `yb-admin` command.
 
 ```bash
-yb-admin -master_addresses <consumer_universe_master_addresses> 
-setup_universe_replication <producer_universe_uuid> 
-  <producer_universe_master_addresses> 
+yb-admin -master_addresses <consumer_universe_master_addresses>
+setup_universe_replication <producer_universe_uuid>
+  <producer_universe_master_addresses>
   <table_id>,[<table_id>..]
 ```
 
@@ -92,7 +106,7 @@ There should be three table IDs in the command above — two of those are YSQL f
 
 ## Set up two-way (bidirectional) replication
 
-If you want to set up 2-way replication, then repeat the above command on “yugabyte-producer” universe. 
+To set up 2-way replication, follow the steps above in [Set up one-way (unidirectional) replication] and then do the same steps for the the “yugabyte-producer” universe.
 
 Note that this time, “yugabyte-producer” will be set up to consume data from “yugabyte-consumer”.
 
@@ -100,12 +114,13 @@ Note that this time, “yugabyte-producer” will be set up to consume data from
 
 1. Start pumping data into “yugabyte-producer” using `yb-sample-apps`.
 
-#### YSQL Example
+#### YSQL example
 
 ```bash
 java -jar target/yb-sample-apps.jar --workload SqlSecondaryIndex  --nodes 127.0.0.1:5433
+```
 
-#### YCQL Example
+#### YCQL example
 
 ```bash
 java -jar target/yb-sample-apps.jar --workload CassandraBatchKeyValue --nodes 127.0.0.1:9042
@@ -113,8 +128,10 @@ java -jar target/yb-sample-apps.jar --workload CassandraBatchKeyValue --nodes 12
 
 ### Verify replication
 
-1. Connect to “yugabyte-consumer” universe using the YSQL shell (`ysqlsh`) or the YCQL shell (`cqlsh`), and then confirm that you can see expected records.
+**For one-way replication:**
 
-### Verify 2-way replication
+Connect to “yugabyte-consumer” universe using the YSQL shell (`ysqlsh`) or the YCQL shell (`cqlsh`), and then confirm that you can see expected records.
 
-For 2-way replication, repeat steps (10) and (11), but pump data into “yugabyte-consumer”. To avoid primary key conflict errors, keep the key space for the two universes separate.
+For two-way replication:**
+
+Repeat steps above, but pump data into “yugabyte-consumer”. To avoid primary key conflict errors, keep the key space for the two universes separate.
