@@ -34,6 +34,7 @@ DDL statements define the structures in a database, change their definitions, as
 | Statement | Description |
 |-----------|-------------|
 | [`ALTER DATABASE`](commands/ddl_alter_db) | Change database definition |
+| [`ALTER SEQUENCE`](commands/ddl_alter_sequence) | Change sequence definition |
 | [`ALTER TABLE`](commands/ddl_alter_table) | Change table definition |
 | [`CREATE AGGREGATE`](commands/ddl_create_aggregate) | Create a new aggregate |
 | [`CREATE CAST`](commands/ddl_create_cast) | Create a new cast |
