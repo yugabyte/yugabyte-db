@@ -92,6 +92,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // Set to true when an create/edit/destroy intent on the universe is started.
   public boolean updateInProgress = false;
 
+  public boolean backupInProgress = false;
+
   // This tracks the if latest operation on this universe has successfully completed. This flag is
   // reset each time a new operation on the universe starts, and is set at the very end of that
   // operation.

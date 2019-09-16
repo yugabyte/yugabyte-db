@@ -15,7 +15,9 @@ import akka.actor.ActorSystem;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.Duration;
 
+import java.time.ZonedDateTime;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +31,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.text.SimpleDateFormat;
 
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.Backup;
@@ -36,10 +39,16 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.forms.ITaskParams;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.cronutils.model.Cron;
+import com.cronutils.model.definition.CronDefinitionBuilder;
+import com.cronutils.model.time.ExecutionTime;
+import com.cronutils.parser.CronParser;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -50,6 +59,8 @@ import play.api.Play;
 import play.libs.Json;
 import com.fasterxml.jackson.databind.JsonNode;
 
+import static com.cronutils.model.CronType.UNIX;
+
 @Singleton
 public class Scheduler {
 
@@ -57,7 +68,7 @@ public class Scheduler {
 
   // Minimum number of scheduled threads.
   private static final int SCHEDULE_THREADS = 1;
-  private final int YB_SCHEDULER_INTERVAL = 5;
+  private final int YB_SCHEDULER_INTERVAL = 2;
 
   private final ActorSystem actorSystem;
   private final ExecutionContext executionContext;
@@ -73,7 +84,6 @@ public class Scheduler {
   public Scheduler(ActorSystem actorSystem, ExecutionContext executionContext) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
-
     this.initialize();
  
     LOG.info("Starting scheduling service");
@@ -104,6 +114,12 @@ public class Scheduler {
       for (Schedule schedule : Schedule.getAllActive()) {
         Date currentTime = new Date();
         long frequency = schedule.getFrequency();
+        String cronExpression = schedule.getCronExpression();
+        if (cronExpression == null && frequency == 0) {
+          LOG.error("Scheduled task does not have a recurrence specified {}",
+                    schedule.getScheduleUUID());
+          continue;
+        }
         TaskType taskType = schedule.getTaskType();
         // TODO: Come back and maybe address if using relations between schedule and schedule_task is
         // a better approach.
@@ -114,6 +130,7 @@ public class Scheduler {
           lastScheduledTime = lastTask.getScheduledTime();
           lastCompletedTime = lastTask.getCompletedTime();
         }
+        boolean runTask = false;
         long diff = 0;
 
         // Check if task needs to be scheduled again.
@@ -122,10 +139,42 @@ public class Scheduler {
         } else if (lastScheduledTime == null) {
           diff = Long.MAX_VALUE;
         }
+        // If frequency if specified, check if the task needs to be scheduled.
+        // The check sees the difference between the last scheduled task and the current
+        // time. If the diff is greater than the frequency, means we need to run the task
+        // again.
+        if (frequency != 0L && diff > frequency) {
+          runTask = true;
+        }
+        // In the case frequency is not defined and we have a cron expression, we compute
+        // solely in accordance to the cron execution time. If the execution time is within the
+        // scheduler interval, we run the task.
+        else if (cronExpression != null) {
+          CronParser unixCronParser =
+              new CronParser(CronDefinitionBuilder.instanceDefinitionFor(UNIX));
+          Cron parsedUnixCronExpression = unixCronParser.parse(cronExpression);
+          ZonedDateTime now = ZonedDateTime.now();
+          ExecutionTime executionTime = ExecutionTime.forCron(parsedUnixCronExpression);
+          long timeFromLastExecution = executionTime.timeFromLastExecution(now).get().getSeconds();
+          if (timeFromLastExecution < YB_SCHEDULER_INTERVAL) {
+            // In case the last task was completed, or the last task was never even scheduled,
+            // we run the task. If the task was scheduled, but didn't complete, we skip this
+            // iteration completely.
+            if (lastCompletedTime != null || lastScheduledTime == null) {
+              runTask = true;
+            } else if (lastScheduledTime != null) {
+              LOG.warn("Previous scheduled task still running, skipping this iteration's task. " +
+                       "Will try again next at {}.", executionTime.nextExecution(now).get());
+            }
+          }
+        }
 
-        if (diff > frequency) {
+        if (runTask) {
           if (taskType == TaskType.BackupUniverse) {
             this.runBackupTask(schedule);
+          }
+          if (taskType == TaskType.MultiTableBackup) {
+            this.runMultiTableBackupsTask(schedule);
           }
         }
       }
@@ -142,6 +191,19 @@ public class Scheduler {
     Customer customer = Customer.get(customerUUID);
     JsonNode params = schedule.getTaskParams();
     BackupTableParams taskParams = Json.fromJson(params, BackupTableParams.class);
+    Universe universe = null;
+    try {
+      universe = Universe.get(taskParams.universeUUID);
+    } catch (Exception e) {
+      schedule.stopSchedule();
+      return;
+    }
+    if (universe.getUniverseDetails().updateInProgress ||
+        universe.getUniverseDetails().backupInProgress) {
+      LOG.warn("Cannot run Backup task since the universe {} is currently {}",
+               taskParams.universeUUID.toString(), "in a locked state");
+      return;
+    }
     Backup backup = Backup.create(customerUUID, taskParams);
     UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
@@ -156,5 +218,41 @@ public class Scheduler {
         taskParams.tableName);
     LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
         taskParams.tableUUID, taskParams.keyspace, taskParams.tableName);
+  }
+
+  public void runMultiTableBackupsTask(Schedule schedule) {
+    UUID customerUUID = schedule.getCustomerUUID();
+    Customer customer = Customer.get(customerUUID);
+    JsonNode params = schedule.getTaskParams();
+    MultiTableBackup.Params taskParams = Json.fromJson(params,
+        MultiTableBackup.Params.class);
+    Universe universe = null;
+    try {
+      universe = Universe.get(taskParams.universeUUID);
+    } catch (Exception e) {
+      schedule.stopSchedule();
+      return;
+    }
+    Map<String, String> config = universe.getConfig();
+    if (universe.getUniverseDetails().updateInProgress || config.isEmpty() ||
+        config.get("takeBackups").equals("false") ||
+        universe.getUniverseDetails().backupInProgress) {
+      LOG.warn("Cannot run MultiTableBackup task since the universe {} is currently {}",
+               taskParams.universeUUID.toString(), "in a locked state");
+      return;
+    }
+    UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, taskParams);
+    ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
+    LOG.info("Submitted backup for universe: {}, task uuid = {}.",
+        taskParams.universeUUID, taskUUID);
+    CustomerTask.create(customer,
+        customerUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Backup,
+        universe.name
+        );
+    LOG.info("Saved task uuid {} in customer tasks table for universe {}:{}", taskUUID,
+        taskParams.universeUUID, universe.name);
   }
 }

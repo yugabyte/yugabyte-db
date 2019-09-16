@@ -43,12 +43,16 @@ public class SubTaskGroupQueue {
       } catch (Throwable t) {
         // Update task state to failure
         subTaskGroup.setUserSubTaskState(TaskInfo.State.Failure);
-        throw t;
+        if (!subTaskGroup.ignoreErrors) {
+          throw t;
+        }
       }
       if (!success) {
         LOG.error("SubTaskGroup '{}' waitFor() returned failed status.", subTaskGroup.toString());
         subTaskGroup.setUserSubTaskState(TaskInfo.State.Failure);
-        throw new RuntimeException(subTaskGroup.toString() + " failed.");
+        if (!subTaskGroup.ignoreErrors) {
+          throw new RuntimeException(subTaskGroup.toString() + " failed.");
+        }
       }
       subTaskGroup.setUserSubTaskState(TaskInfo.State.Success);
     }

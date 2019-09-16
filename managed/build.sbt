@@ -24,9 +24,8 @@ libraryDependencies ++= Seq(
   "org.yaml" % "snakeyaml" % "1.17",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
   "org.springframework.security" % "spring-security-core" % "5.1.6.RELEASE",
-  "com.amazonaws" % "aws-java-sdk-kms" % "1.11.638"
-
-
+  "com.amazonaws" % "aws-java-sdk-kms" % "1.11.638",
+  "com.cronutils" % "cron-utils" % "9.0.1"
 )
 // Default to true if nothing passed on the env, so we can pick up YB jars from local java itest.
 lazy val mavenLocal = Option(System.getenv("USE_MAVEN_LOCAL")).getOrElse("false")

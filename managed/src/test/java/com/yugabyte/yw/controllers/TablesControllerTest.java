@@ -41,6 +41,7 @@ import com.google.protobuf.ByteString;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
+import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
@@ -512,6 +513,33 @@ public class TablesControllerTest extends WithApplication {
     Backup backup = Backup.fetchByTaskUUID(fakeTaskUUID);
     assertNotNull(backup);
     assertEquals(tableUUID, backup.getBackupInfo().tableUUID);
+  }
+
+  @Test
+  public void testCreateMultiBackup() {
+    Customer customer = ModelFactory.testCustomer();
+    Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
+    UUID tableUUID = UUID.randomUUID();
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID +
+        "/multi_table_backup";
+    ObjectNode bodyJson = Json.newObject();
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(customer);
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+
+    ArgumentCaptor<TaskType> taskType = ArgumentCaptor.forClass(TaskType.class);;
+    ArgumentCaptor<MultiTableBackup.Params> taskParams =
+        ArgumentCaptor.forClass(MultiTableBackup.Params.class);;
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
+        customer.createAuthToken(), bodyJson);
+    verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
+    assertEquals(TaskType.MultiTableBackup, taskType.getValue());
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
+    CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
+    assertNotNull(ct);
   }
 
   @Test
