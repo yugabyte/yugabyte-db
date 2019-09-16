@@ -1,8 +1,7 @@
 ```
-create_sequence ::= CREATE SEQUENCE [ IF NOT EXISTS ] sequence_name 
-                    sequence_options
+alter_sequence ::= ALTER SEQUENCE [ IF EXISTS ] name sequence_options
 
-sequence_name ::= '<Text Literal>'
+name ::= '<Text Literal>'
 
 sequence_options ::= [ AS data_type ] [ INCREMENT [ BY ] increment ] 
                      [ MINVALUE minvalue | NO MINVALUE ] 
