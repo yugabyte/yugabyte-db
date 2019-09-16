@@ -192,12 +192,12 @@ ERROR:  null value in column "a" violates not-null constraint
 DETAIL:  Failing row contains (null, ).
 ALTER TABLE itest4 ALTER COLUMN a DROP NOT NULL;
 INSERT INTO itest4 DEFAULT VALUES;
-SELECT * FROM itest4;
+SELECT * FROM itest4 ORDER BY a;
  a | b 
 ---+---
  1 | 
-   | 
  2 | 
+   | 
 (3 rows)
 
 -- check that sequence is removed
