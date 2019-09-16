@@ -221,6 +221,30 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
+  public void testUniverseBackupFlagSuccess() {
+    Universe u = createUniverse(customer.getCustomerId());
+    customer.addUniverseUUID(u.universeUUID);
+    customer.save();
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
+                 "/update_backup_state?markActive=true";
+    Result result = doRequestWithAuthToken("PUT", url, authToken);
+    assertOk(result);
+    assertThat(Universe.get(u.universeUUID).getConfig().get("takeBackups"),
+               allOf(notNullValue(), equalTo("true")));
+  }
+
+  @Test
+  public void testUniverseBackupFlagFailure() {
+    Universe u = createUniverse(customer.getCustomerId());
+    customer.addUniverseUUID(u.universeUUID);
+    customer.save();
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
+                 "/update_backup_state";
+    Result result = doRequestWithAuthToken("PUT", url, authToken);
+    assertBadRequest(result, "Invalid Query: Need to specify markActive value");
+  }
+
+  @Test
   public void testUniverseGetWithInvalidCustomerUUID() {
     UUID invalidUUID = UUID.randomUUID();
     String url = "/api/customers/" + invalidUUID + "/universes/" + UUID.randomUUID();

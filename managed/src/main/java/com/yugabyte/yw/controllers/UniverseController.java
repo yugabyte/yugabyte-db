@@ -428,6 +428,36 @@ public class UniverseController extends AuthenticatedController {
     return ApiResponse.success(universes);
   }
 
+  /**
+   * Mark whether the universe needs to be backed up or not.
+   *
+   * @return Result
+   */
+  public Result setBackupFlag(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+    Universe universe = Universe.get(universeUUID);
+    if (universe == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Universe UUID: " + universeUUID);
+    }
+    String active = "false";
+    Map<String, String> config = new HashMap<>();
+    try {
+      if (request().getQueryString("markActive") != null) {
+        active = request().getQueryString("markActive");
+        config.put("takeBackups", active);
+      } else {
+        return ApiResponse.error(BAD_REQUEST, "Invalid Query: Need to specify markActive value");
+      }
+      universe.setConfig(config);
+      return ApiResponse.success();
+    } catch (Exception e) {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, e);
+    }
+  }
+
   public Result index(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {

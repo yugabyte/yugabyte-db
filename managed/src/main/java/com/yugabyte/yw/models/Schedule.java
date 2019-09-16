@@ -78,9 +78,22 @@ public class Schedule extends Model {
   private State status = State.Active;
   public State getStatus() { return status; }
 
+  @Column
+  private String cronExpression;
+  public String getCronExpression() { return cronExpression; }
+  public void setCronExpression(String cronExpression) {
+    this.cronExpression = cronExpression;
+  }
+
   public static final Find<UUID, Schedule> find = new Find<UUID, Schedule>(){};
 
-  public static Schedule create(UUID customerUUID, ITaskParams params, TaskType taskType, long frequency) {
+  public static Schedule create(UUID customerUUID, ITaskParams params, TaskType taskType,
+                                long frequency) {
+    return create(customerUUID, params, taskType, frequency, null);
+  }
+
+  public static Schedule create(UUID customerUUID, ITaskParams params, TaskType taskType,
+                                long frequency, String cronExpression) {
     Schedule schedule = new Schedule();
     schedule.scheduleUUID = UUID.randomUUID();
     schedule.customerUUID = customerUUID;
@@ -89,6 +102,7 @@ public class Schedule extends Model {
     schedule.taskParams = Json.toJson(params);
     schedule.frequency = frequency;
     schedule.status = State.Active;
+    schedule.cronExpression = cronExpression;
     schedule.save();
     return schedule;
   }

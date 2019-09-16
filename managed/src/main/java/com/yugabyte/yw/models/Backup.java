@@ -41,7 +41,10 @@ public class Backup extends Model {
     Failed,
 
     @EnumValue("Deleted")
-    Deleted
+    Deleted,
+
+    @EnumValue("Skipped")
+    Skipped
   }
 
   @Id

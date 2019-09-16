@@ -56,6 +56,16 @@ public class UniverseTest extends FakeDBApplication {
   }
 
   @Test
+  public void testConfig() {
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
+    assertNotNull(u);
+    Map<String, String> config = new HashMap<>();
+    config.put("takeBackups", "true");
+    u.setConfig(config);
+    assertEquals(config, u.getConfig());
+  }
+
+  @Test
   public void testGetSingleUniverse() {
     Universe newUniverse = createUniverse(defaultCustomer.getCustomerId());
     assertNotNull(newUniverse);
