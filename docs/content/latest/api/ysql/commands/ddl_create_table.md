@@ -36,10 +36,10 @@ Use the `CREATE TABLE` statement to create a new table in a database. It defines
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameters,storage_parameter,index_parameters.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameters,storage_parameter,index_parameters,references_clause.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameters,storage_parameter,index_parameters.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameters,storage_parameter,index_parameters,references_clause.diagram.md" /%}}
   </div>
 </div>
 
@@ -116,12 +116,52 @@ postgres=# CREATE TABLE cars(id int PRIMARY KEY,
 
 ### Table with foreign key constraint
 
+Define two tables with a foreign keys constraint.
 ```sql
 postgres=# CREATE TABLE products(id int PRIMARY KEY,
                                  descr text);
 postgres=# CREATE TABLE orders(id int PRIMARY KEY,
                                pid int REFERENCES products(id) ON DELETE CASCADE,
                                amount int);
+
+```
+
+Insert some rows.
+```sql
+postgres=# SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+postgres=# INSERT INTO products VALUES (1, 'Phone X'), (2, 'Tablet Z');
+postgres=# INSERT INTO orders VALUES (1, 1, 3), (2, 1, 3), (3, 2, 2);
+
+postgres=# SELECT o.id AS order_id, p.id as product_id, p.descr, o.amount FROM products p, orders o WHERE o.pid = p.id;
+```
+```
+order_id | product_id |  descr   | amount
+----------+------------+----------+--------
+        1 |          1 | Phone X  |      3
+        2 |          1 | Phone X  |      3
+        3 |          2 | Tablet Z |      2
+(3 rows)
+```
+
+Inserting a row referencing a non-existent product is not allowed.
+```sql
+postgres=# INSERT INTO orders VALUES (1, 3, 3);
+```
+```
+ERROR:  insert or update on table "orders" violates foreign key constraint "orders_pid_fkey"
+DETAIL:  Key (pid)=(3) is not present in table "products".
+```
+
+Deleting a product will cascade to all orders (as defined in the `CREATE TABLE` statement above).
+```sql
+postgres=# DELETE from products where id = 1;
+postgres=# SELECT o.id AS order_id, p.id as product_id, p.descr, o.amount FROM products p, orders o WHERE o.pid = p.id;
+```
+```
+ order_id | product_id |  descr   | amount
+----------+------------+----------+--------
+        3 |          2 | Tablet Z |      2
+(1 row)
 ```
 
 ### Table with unique constraint
@@ -130,6 +170,7 @@ postgres=# CREATE TABLE orders(id int PRIMARY KEY,
 postgres=# CREATE TABLE translations(message_id int UNIQUE,
                                      message_txt text);
 ```
+
 
 ## See also
 

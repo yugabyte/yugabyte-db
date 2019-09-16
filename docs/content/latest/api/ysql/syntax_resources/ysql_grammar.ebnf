@@ -275,6 +275,19 @@ create_table_as ::= 'CREATE' 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] \
                            table_name [ '(' column_name { ',' column_name } ')' ] \
                            'AS' query [ 'WITH' [ 'NO' ] 'DATA' ] ;
 
+
+(* CREATE TRIGGER *)
+create_trigger = 'CREATE' 'TRIGGER' name
+                  ( 'BEFORE' | 'AFTER' | 'INSTEAD' 'OF' ) ( event { 'OR' event } )
+                      'ON' table_name
+                      [ 'FROM' table_name ] \
+                      [ 'NOT' 'DEFERRABLE' ]
+                      [ 'FOR' [ 'EACH' ] ( 'ROW' | 'STATEMENT' ) ]
+                      [ 'WHEN' '(' condition ')' ] \
+                      'EXECUTE' ( 'FUNCTION' | 'PROCEDURE' ) function_name '(' function_arguments ')' ;
+
+event = ( 'INSERT' | 'UPDATE' [ 'OF' column_name { ',' column_name } ] | 'DELETE' | 'TRUNCATE' ) ;
+
 (* 'CREATE' 'TYPE' *)
 create_composite_type ::= 'CREATE' 'TYPE' type_name 'AS'
                           '(' [ composite_type_elem { ',' composite_type_elem } ] ')' ;
@@ -360,6 +373,9 @@ drop_type ::= 'DROP' 'TYPE' [ 'IF' 'EXISTS' ] type_name { ',' type_name }
 
 (* 'DROP' 'SEQUENCE' *)
 drop_sequence ::= 'DROP' 'SEQUENCE' [ 'IF' 'EXISTS' ] sequence_name [ 'CASCADE' | 'RESTRICT' ] ;
+
+(* DROP TRIGGER *)
+drop_trigger = 'DROP' 'TRIGGER' [ 'IF' 'EXISTS' ] name 'ON' table_name [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'DOMAIN' *)
 drop_domain ::= 'DROP' 'DOMAIN' [ 'IF' 'EXISTS' ] name { ',' name }  [ 'CASCADE' | 'RESTRICT' ] ;
@@ -534,6 +550,10 @@ argname ::= name ;
 
 argtype ::= type_name ;
 
+function_arguments = [ text_literal { ',' text_literal } ] ;
+
+text_literal = '<Text Literal>' ;
+
 large_object_oid ::= '<Integer Literal>' ;
 
 left_type ::= ( qualified_name | 'NONE' ) ;
@@ -545,6 +565,8 @@ lang_name ::= name ;
 name ::= '<Text Literal>' ;
 
 column_names ::= column_name { ',' column_name } ;
+
+condition = expression ;
 
 where_expression ::= boolean_expression ;
 
