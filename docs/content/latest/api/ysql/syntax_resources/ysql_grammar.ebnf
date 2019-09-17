@@ -111,7 +111,7 @@ comment_on = 'COMMENT' 'ON' (
   'INDEX' object_name |
   'LARGE' 'OBJECT' large_object_oid |
   'MATERIALIZED' 'VIEW' object_name |
-  'OPERATOR' operator_name '(' left_type ',' right_type ')' |
+  'OPERATOR' operator_name '(' operator_signature ')' |
   'OPERATOR' 'CLASS' object_name 'USING' index_method |
   'OPERATOR' 'FAMILY' object_name 'USING' index_method |
   'POLICY' policy_name 'ON' table_name |
@@ -495,6 +495,13 @@ drop_domain ::= 'DROP' 'DOMAIN' [ 'IF' 'EXISTS' ] name { ',' name }  [ 'CASCADE'
 
 (* 'DROP' 'GROUP' *)
 drop_group ::= 'DROP' 'GROUP' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
+
+(* 'DROP' 'OPERATOR' *)
+drop_operator = 'DROP' 'OPERATOR' [ 'IF' 'EXISTS' ] operator_name '(' operator_signature ')'
+                { ',' operator_name '(' operator_signature ')' }
+                [ 'CASCADE' | 'RESTRICT' ] ;
+
+operator_signature = ( left_type | 'NONE' ) ',' ( right_type | 'NONE' ) ;
 
 (* 'DROP' 'ROLE' *)
 drop_role ::= 'DROP' 'ROLE' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;

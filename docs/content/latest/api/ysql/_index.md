@@ -49,6 +49,7 @@ DDL statements define the structures in a database, change their definitions, as
 | [`DROP AGGREGATE`](commands/ddl_drop_aggregate) | Delete an aggregate |
 | [`DROP CAST`](commands/ddl_drop_cast) | Delete a cast |
 | [`DROP DATABASE`](commands/ddl_drop_database) | Delete a database from the system |
+| [`DROP OPERATOR`](commands/ddl_drop_operator) | Delete an operator |
 | [`DROP SEQUENCE`](commands/ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP TABLE`](commands/ddl_drop_table) | Delete a table from a database |
 | [`DROP TYPE`](commands/ddl_drop_type) | Delete a user-defined type |

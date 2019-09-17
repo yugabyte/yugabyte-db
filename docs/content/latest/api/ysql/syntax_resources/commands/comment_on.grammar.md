@@ -18,7 +18,7 @@ comment_on ::= COMMENT ON
                  | INDEX object_name
                  | LARGE OBJECT large_object_oid
                  | MATERIALIZED VIEW object_name
-                 | OPERATOR operator_name ( left_type , right_type )
+                 | OPERATOR operator_name ( operator_signature )
                  | OPERATOR CLASS object_name USING index_method
                  | OPERATOR FAMILY object_name USING index_method
                  | POLICY policy_name ON table_name
