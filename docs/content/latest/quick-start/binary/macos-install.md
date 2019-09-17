@@ -67,11 +67,11 @@ You might have to `unload` the service before loading it.
 Download the YugaByte DB tar.gz as shown below.
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugabyte-1.3.2.1-darwin.tar.gz
+$ wget https://downloads.yugabyte.com/yugabyte-2.0.0.0-darwin.tar.gz
 ```
 
 ```sh
-$ tar xvfz yugabyte-1.3.2.1-darwin.tar.gz && cd yugabyte-1.3.2.1/
+$ tar xvfz yugabyte-2.0.0.0-darwin.tar.gz && cd yugabyte-2.0.0.0/
 ```
 
 ## Configure
