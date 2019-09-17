@@ -5,7 +5,7 @@ description: Users and roles
 summary: CREATE USER
 menu:
   latest:
-    identifier: api-ysql-commands-create-users
+    identifier: api-ysql-commands-create-user
     parent: api-ysql-commands
 aliases:
   - /latest/api/ysql/commands/dcl_create_user
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `CREATE USER` statement, and limited `GRANT` or `REVOKE` statements, to create new roles and set or remove permissions.
+`CREATE USER` is an alias for [`CREATE ROLE`](../dcl_create_role) and is used to create a role.
 
 ## Syntax
 
@@ -36,26 +36,40 @@ Use the `CREATE USER` statement, and limited `GRANT` or `REVOKE` statements, to 
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_user.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_user,role_option.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_user.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_user,role_option.diagram.md" /%}}
   </div>
 </div>
 
 ## Semantics
 
-### *name*
-
-Specify the new database role.
+See [`CREATE ROLE`](../dcl_create_role) for more details.
 
 ## Examples
 
-### Create a sample role
+- Create a sample user with password.
 
 ```sql
-postgres=# CREATE USER John;
-CREATE ROLE
+postgres=# CREATE USER John WITH PASSWORD 'password';
 ```
 
-Note that `CREATE ROLE` is returned because `CREATE USER` is an alias for `CREATE ROLE`.
+- Grant John all permissions on the `postgres` database.
+
+```sql
+postgres=# GRANT ALL ON DATABASE postgres TO John;
+```
+
+- Remove John's permissions from the `postgres` database.
+
+```sql
+postgres=# REVOKE ALL ON DATABASE postgres FROM John;
+```
+
+## See also
+
+[`CREATE ROLE`](../dcl_create_role)
+[`GRANT`](../dcl_grant)
+[`REVOKE`](../dcl_revoke)
+[Other YSQL Statements](..)

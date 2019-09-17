@@ -1115,53 +1115,53 @@ did_test_succeed() {
   fi
 
   if [[ ! -f "$log_path" ]]; then
-    log "Log path '$log_path' not found."
+    log "Test failure reason: Log path '$log_path' not found."
     return 1
   fi
 
   if grep -q 'Running 0 tests from 0 test cases' "$log_path" && \
      ! egrep -q 'YOU HAVE [[:digit:]]+ DISABLED TEST' "$log_path"; then
-    log 'No tests were run, and no disabled tests found, invalid test filter?'
+    log 'Test failure reason: No tests were run, and no disabled tests found, invalid test filter?'
     return 1
   fi
 
   if grep -q 'LeakSanitizer: detected memory leaks' "$log_path"; then
-    log 'Detected memory leaks'
+    log 'Test failure reason: Detected memory leaks'
     return 1
   fi
 
   if grep -q 'AddressSanitizer: heap-use-after-free' "$log_path"; then
-    log 'Detected use of freed memory'
+    log 'Test failure reason: Detected use of freed memory'
     return 1
   fi
 
   if grep -q 'AddressSanitizer: undefined-behavior' "$log_path"; then
-    log 'Detected ASAN undefined behavior'
+    log 'Test failure reason: Detected ASAN undefined behavior'
     return 1
   fi
 
   if grep -q 'UndefinedBehaviorSanitizer: undefined-behavior' "$log_path"; then
-    log 'Detected UBSAN undefined behavior'
+    log 'Test failure reason: Detected UBSAN undefined behavior'
     return 1
   fi
 
   if grep -q 'ThreadSanitizer' "$log_path"; then
-    log 'ThreadSanitizer failures'
+    log 'Test failure reason: ThreadSanitizer failures'
     return 1
   fi
 
   if egrep -q 'Leak check.*detected leaks' "$log_path"; then
-    log 'Leak check failures'
+    log 'Test failure reason: Leak check failures'
     return 1
   fi
 
   if egrep -q 'Segmentation fault: ' "$log_path"; then
-    log 'Segmentation fault'
+    log 'Test failure reason: Segmentation fault'
     return 1
   fi
 
   if egrep -q '^\[  FAILED  \]' "$log_path"; then
-    log 'GTest failures'
+    log 'Test failure reason: GTest failures'
     return 1
   fi
 
@@ -1200,18 +1200,18 @@ did_test_succeed() {
       SIGIO \
       SIGPWR; do
     if grep -q " $signal_str " "$log_path"; then
-      log "Caught signal: $signal_str"
+      log "Test failure reason: Caught signal: $signal_str"
       return 1
     fi
   done
 
   if grep -q 'Check failed: ' "$log_path"; then
-    log 'Check failed'
+    log 'Test failure reason: Check failed'
     return 1
   fi
 
   if egrep -q '^\[INFO\] BUILD FAILURE$' "$log_path"; then
-    log "Java build or tests failed"
+    log "Test failure reason: Java build or tests failed"
     return 1
   fi
 

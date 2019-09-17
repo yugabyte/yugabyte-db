@@ -207,6 +207,16 @@ public class MiniYBCluster implements AutoCloseable {
     }
   }
 
+  private static void addFlagsFromEnv(List<String> dest, String envVarName) {
+    final String extraFlagsFromEnv = System.getenv(envVarName);
+    if (extraFlagsFromEnv != null) {
+      // TODO: this has an issue with handling quoted arguments with embedded spaces.
+      for (String flag : extraFlagsFromEnv.split("\\s+")) {
+        dest.add(flag);
+      }
+    }
+  }
+
   /** Common flags for both master and tserver processes */
   private List<String> getCommonDaemonFlags() {
     final List<String> commonFlags = Lists.newArrayList(
@@ -214,13 +224,7 @@ public class MiniYBCluster implements AutoCloseable {
         "--logtostderr",
         "--logbuflevel=-1",
         "--webserver_doc_root=" + TestUtils.getWebserverDocRoot());
-    final String extraFlagsFromEnv = System.getenv("YB_EXTRA_DAEMON_FLAGS");
-    if (extraFlagsFromEnv != null) {
-      // TODO: this has an issue with handling quoted arguments with embedded spaces.
-      for (String flag : extraFlagsFromEnv.split("\\s+")) {
-        commonFlags.add(flag);
-      }
-    }
+    addFlagsFromEnv(commonFlags, "YB_EXTRA_DAEMON_FLAGS");
     if (testClassName != null) {
       commonFlags.add("--yb_test_name=" + testClassName);
     }
@@ -544,6 +548,7 @@ public class MiniYBCluster implements AutoCloseable {
         "--pgsql_proxy_webserver_port=" + pgsqlWebPort,
         "--yb_client_admin_operation_timeout_sec=" + YB_CLIENT_ADMIN_OPERATION_TIMEOUT_SEC,
         "--callhome_enabled=false");
+    addFlagsFromEnv(tsCmdLine, "YB_EXTRA_TSERVER_FLAGS");
 
     if (startPgSqlProxy) {
       tsCmdLine.addAll(Lists.newArrayList(
@@ -598,6 +603,7 @@ public class MiniYBCluster implements AutoCloseable {
       "--webserver_port=" + masterWebPort,
       "--callhome_enabled=false");
     masterCmdLine.addAll(getCommonDaemonFlags());
+    addFlagsFromEnv(masterCmdLine, "YB_EXTRA_MASTER_FLAGS");
     return masterCmdLine;
   }
 

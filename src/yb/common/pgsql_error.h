@@ -17,15 +17,16 @@
 #include "yb/common/pgsql_protocol.pb.h"
 
 #include "yb/util/status.h"
+#include "yb/util/yb_pg_errcodes.h"
 
 namespace yb {
 
-struct PgsqlErrorTag : IntegralErrorTag<PgsqlResponsePB::RequestStatus> {
+struct PgsqlErrorTag : IntegralErrorTag<YBPgErrorCode> {
   // It is part of the wire protocol and should not be changed once released.
   static constexpr uint8_t kCategory = 6;
 
   static std::string ToMessage(Value value) {
-    return PgsqlResponsePB::RequestStatus_Name(value);
+    return ToString(value);
   }
 };
 

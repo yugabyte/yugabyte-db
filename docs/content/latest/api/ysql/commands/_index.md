@@ -21,29 +21,42 @@ The following SQL statements are supported by the YugaByte Structured Query Lang
 | [`ABORT`](txn_abort) | Rolls back a transaction |
 | [`ALTER DATABASE`](ddl_alter_db) | Changes database definition |
 | [`ALTER DOMAIN`](ddl_alter_domain) | Alters a domain |
+| [`ALTER GROUP`](dcl_alter_group) | Alter a group |
+| [`ALTER ROLE`](dcl_alter_role) | Alter a role |
 | [`ALTER TABLE`](ddl_alter_table) | Changes table definition |
+| [`ALTER USER`](dcl_alter_user) | Alter a user (role) |
 | [`BEGIN`](txn_begin) | Starts a transaction |
 | [`COMMENT`](ddl_comment) | Adds a comment on a database object |
 | [`COMMIT`](txn_commit) | Commits a transaction |
 | [`COPY`](cmd_copy) | Copy data between tables and files |
+| [`CREATE AGGREGATE`](ddl_create_aggregate) | Create a new aggregate |
 | [`CREATE DATABASE`](ddl_create_database) | Create a new database |
 | [`CREATE DOMAIN`](ddl_create_domain) | Create a new domain |
 | [`CREATE INDEX`](ddl_create_index) | Create a new index |
+| [`CREATE GROUP`](dcl_create_group) | Create a new group (role) |
+| [`CREATE ROLE`](dcl_create_role) | Create a new role (user or group) |
+| [`CREATE USER`](dcl_create_user) | Create a new user (role) |
 | [`CREATE SCHEMA`](ddl_create_schema) | Create a new schema (namespace) |
 | [`CREATE SEQUENCE`](ddl_create_sequence) | Create a new sequence generator |
 | [`CREATE TABLE`](ddl_create_table) | Create a new table |
 | [`CREATE TABLE AS`](ddl_create_table_as) | Create a new table |
+| [`CREATE TRIGGER`](ddl_create_trigger) | Create a new trigger |
 | [`CREATE TYPE`](ddl_create_type) | Create a new type |
 | [`CREATE USER`](dcl_create_user) | Create a new user (role) |
 | [`CREATE VIEW`](ddl_create_view) | Create a new view |
 | [`DEALLOCATE`](perf_deallocate) | Deallocate a prepared statement |
 | [`DELETE`](dml_delete) | Delete rows from a table |
-| [`DO`](commands/cmd_doc) | Execute an anonymous code block |
+| [`DO`](cmd_do) | Execute an anonymous code block |
+| [`DROP AGGREGATE`](ddl_drop_aggregate) | Delete an aggregate |
 | [`DROP DATABASE`](ddl_drop_database) | Delete a database from the system |
 | [`DROP DOMAIN`](ddl_drop_domain) | Delete a domain |
+| [`DROP GROUP`](dcl_drop_group) | Delete a group (role) |
+| [`DROP ROLE`](dcl_drop_role) | Delete a role (user or group) |
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP TABLE`](ddl_drop_table) | Deletes a table from a database |
+| [`DROP TRIGGER`](ddl_drop_trigger) | Delete a trigger |
 | [`DROP TYPE`](ddl_drop_type) | Delete a user-defined type |
+| [`DROP USER`](dcl_drop_user) | Delete a user (role) |
 | [`END`](txn_end) | Commit a transaction |
 | [`EXECUTE`](perf_execute) | Execute a prepared statement |
 | [`EXPLAIN`](perf_explain) | Display execution plan for a statement |

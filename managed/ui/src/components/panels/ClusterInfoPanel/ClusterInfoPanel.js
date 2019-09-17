@@ -14,7 +14,7 @@ export default class ClusterInfoPanel extends Component {
   }
 
   render() {
-    const { type, universeInfo, universeInfo: {universeDetails, universeDetails: {clusters}} } = this.props;
+    const { type, universeInfo, insecure, universeInfo: {universeDetails, universeDetails: {clusters}} } = this.props;
     let cluster = null;
     if (type === 'primary') {
       cluster = getPrimaryCluster(clusters);
@@ -23,7 +23,7 @@ export default class ClusterInfoPanel extends Component {
     }
     const userIntent = cluster && cluster.userIntent;
     const connectStringPanelItemsShrink = [
-      {name: "Instance Type", data: userIntent && userIntent.instanceType},
+      !insecure && {name: "Instance Type", data: userIntent && userIntent.instanceType},
       {name: "Replication Factor", data: userIntent.replicationFactor}
     ];
 

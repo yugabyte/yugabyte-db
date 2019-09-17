@@ -35,18 +35,22 @@ DDL statements define the structures in a database, change their definitions, as
 |-----------|-------------|
 | [`ALTER DATABASE`](commands/ddl_alter_db) | Change database definition |
 | [`ALTER TABLE`](commands/ddl_alter_table) | Change table definition |
+| [`CREATE AGGREGATE`](commands/ddl_create_aggregate) | Create a new aggregate |
 | [`CREATE DATABASE`](commands/ddl_create_database) | Create a new database |
 | [`CREATE INDEX`](commands/ddl_create_index) | Create a new index |
 | [`CREATE SCHEMA`](commands/ddl_create_schema) | Create a new schema (namespace) |
 | [`CREATE SEQUENCE`](commands/ddl_create_sequence) | Create a new sequence generator |
 | [`CREATE TABLE`](commands/ddl_create_table) | Create a new table |
 | [`CREATE TABLE AS`](commands/ddl_create_table_as) | Create a new table |
+| [`CREATE TRIGGER`](commands/ddl_create_trigger) | Create a new trigger |
 | [`CREATE TYPE`](commands/ddl_create_type) | Create a new type |
 | [`CREATE VIEW`](commands/ddl_create_view) | Create a new view |
+| [`DROP AGGREGATE`](commands/ddl_drop_aggregate) | Delete an aggregate |
 | [`DROP DATABASE`](commands/ddl_drop_database) | Delete a database from the system |
 | [`DROP SEQUENCE`](commands/ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP TABLE`](commands/ddl_drop_table) | Delete a table from a database |
 | [`DROP TYPE`](commands/ddl_drop_type) | Delete a user-defined type |
+| [`DROP TRIGGER`](commands/ddl_drop_trigger) | Delete a trigger |
 | [`TRUNCATE`](commands/ddl_truncate) | Clear all rows from a table |
 
 ## Data manipulation language (DML)
@@ -66,9 +70,17 @@ DCL statements protect and prevent the database from corruptions.
 
 | Statement | Description |
 |-----------|-------------|
+| [`ALTER GROUP`](commands/dcl_alter_group) | Alter a group |
+| [`ALTER ROLE`](commands/dcl_alter_role) | Alter a role (user or group) |
+| [`ALTER USER`](commands/dcl_alter_user) | Alter a user |
+| [`CREATE GROUP`](commands/dcl_create_group) | Create a new group (role) |
+| [`CREATE ROLE`](commands/dcl_create_role) | Create a new role (user or group) |
 | [`CREATE USER`](commands/dcl_create_user) | Create a new user (role) |
-| [`GRANT`](commands/dcl_grant) | Grant permissions (under development) |
-| [`REVOKE`](commands/dcl_revoke) | Revoke permissions (under development) |
+| [`DROP GROUP`](commands/dcl_drop_group) | Drop a group |
+| [`DROP ROLE`](commands/dcl_drop_role) | Drop a role (user or group) |
+| [`DROP USER`](commands/dcl_drop_user) | Drop a user |
+| [`GRANT`](commands/dcl_grant) | Grant permissions |
+| [`REVOKE`](commands/dcl_revoke) | Revoke permissions |
 
 ## Transaction control language (TCL)
 
@@ -107,7 +119,7 @@ TCL statements manage transactions of operations on the database.
 | Statement | Description |
 |-----------|-------------|
 | [`COPY`](commands/cmd_copy) | Copy data between tables and files |
-| [`DO`](commands/cmd_doc) | Execute an anonymous code block |
+| [`DO`](commands/cmd_do) | Execute an anonymous code block |
 
 ## Language elements
 
