@@ -1,12 +1,12 @@
 ---
-title: 2DC deployments
-linkTitle: 2DC deployments
-description: 2-data center deployments
+title: 2DC deployments [beta]
+linkTitle: 2DC deployments [beta]
+description: 2-data center (2DC) deployments
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
-    parent: change-data-capture
-    identifier: two-data-centers
+    parent: architecture
+    identifier: 2dc-deployments
     weight: 652
 type: page
 isTocNested: true

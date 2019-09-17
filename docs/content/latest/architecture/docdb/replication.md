@@ -17,7 +17,7 @@ showAsideToc: true
 
 DocDB replicates data in order to survive failures while continuing to maintain consistency of
 data and not requiring operator intervention. The **replication factor** (RF) is the number of copies
-of data in a Yugabyte DB universe. The **fault tolerance** (FT) of a Yugabyte DB universe is the maximum
+of data in a YugabyteDB universe. The **fault tolerance** (FT) of a YugabyteDB universe is the maximum
 number of node failures it can survive while continuing to preserve correctness of data. FT and RF
 are highly correlated. To achieve a FT of k nodes, the universe has to be configured with a RF of
 (2k + 1).
@@ -54,7 +54,7 @@ performed as a controlled background operation without any impact to the foregro
 ## Tunable read consistency
 
 Only the tablet leader can process user-facing write and read requests. Note that while this is the
-case for strongly consistent reads, Yugabyte DB offers reading from **followers** with relaxed
+case for strongly consistent reads, YugabyteDB offers reading from **followers** with relaxed
 guarantees which is desired in some deployment models. All other tablet-peers are called followers
 and merely replicate data, and are available as hot standbys that can take over quickly in case the
 leader fails.
@@ -63,8 +63,8 @@ leader fails.
 
 In addition to the core distributed consensus based replication, DocDB extends Raft to add
 read-only replicas (aks observer nodes) that do not participate in writes but get a timeline consistent
-copy of the data in an asynchronous manner. Nodes in remote  datacenters can thus be added in "read-only"
-mode. This is primarily for cases where latency of doing a distributed consensus based write is not
+copy of the data in an asynchronous manner. Nodes in remote data centers can thus be added in "read-only"
+mode. This is primarily for cases where latency of doing a distributed consensus-based write is not
 tolerable for some workloads. This read-only node (or timeline-consistent node) is still strictly better than
 eventual consistency, because with the latter the application's view of the data can move back and
 forth in time and is hard to program to.

@@ -5,7 +5,7 @@ description: Change data capture (CDC) [beta]
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
-    parent: change-data-capture
+    parent: architecture
     identifier: cdc-architecture
     weight: 651
 type: page
@@ -21,7 +21,7 @@ Change data capture (CDC) refers to technology for ensuring that any changes in 
 
 ### Microservice-oriented architectures
 
-Some microservices require a stream of changes to the data and using CDC in Yugabyte DB can provide consumable data changes to CDC subscribers.
+Some microservices require a stream of changes to the data and using CDC in YugabyteDB can provide consumable data changes to CDC subscribers.
 
 ### Asynchronous replication to remote systems
 
@@ -112,7 +112,7 @@ Every YB-TServer has a `CDC service` that is stateless. The main APIs provided b
 
 ### Pushing changes to external systems
 
-Each Yugabyte DB's TServer has CDC subscribers (`cdc_subscribers`) that are responsible for getting changes for all tablets for which the TServer is a leader. When a new stream and subscriber are created, the TServer `cdc_subscribers` detects this and starts invoking the `cdc_service.GetChanges` API periodically to get the latest set of changes.
+Each YugabyteDB's TServer has CDC subscribers (`cdc_subscribers`) that are responsible for getting changes for all tablets for which the TServer is a leader. When a new stream and subscriber are created, the TServer `cdc_subscribers` detects this and starts invoking the `cdc_service.GetChanges` API periodically to get the latest set of changes.
 
 While invoking `GetChanges`, the CDC subscriber needs to pass in a `from_checkpoint` which is the last `OP ID` that it successfully consumed. When the CDC service receives a request of `GetChanges` for a tablet, it reads the changes from the WAL (log cache) starting from `from_checkpoint`, deserializes them and returns those to CDC subscriber. It also records the `from_checkpoint` in `cdc_subscribers` table in the data column. This will be used for bootstrapping fallen subscribers who don’t know the last checkpoint or in case of tablet leader changes.
 
@@ -142,9 +142,9 @@ For example, imagine a CDC client has received changes for a row at times t1 and
 
 When you have received a change for a row for timestamp `t`, you will not receive a previously unseen change for that row from an earlier timestamp. This guarantees that receiving any change implies that all earlier changes have been received for a row.
 
-## Use change data capture in Yugabyte DB
+## Use change data capture in YugabyteDB
 
-To use change data capture (CDC) in Yugabyte DB, perform the following steps.
+To use change data capture (CDC) in YugabyteDB, perform the following steps.
 
 ### Create a CDC stream
 
@@ -167,7 +167,7 @@ DROP CDC FOR <namespace>.<table>;
 
 ## Using Kafka as the CDC target
 
-Yugabyte DB supports the use of Apache Kafka as a target for CDC-generated data changes.
+YugabyteDB supports the use of Apache Kafka as a target for CDC-generated data changes.
 
 ### To create a CDC target for Apache Kafka
 

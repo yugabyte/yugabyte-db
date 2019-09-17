@@ -28,7 +28,7 @@ In order to enable use cases such as ordered secondary indexes, support for rang
 
 ## Hash partitioning tables
 
-The hash space for hash partitioned Yugabyte DB tables is the 2-byte range from 0x0000 to 0xFFFF. Such
+The hash space for hash partitioned YugabyteDB tables is the 2-byte range from 0x0000 to 0xFFFF. Such
 a table may therefore have at most 64K tablets. We expect this to be sufficient in practice even for
 very large data sets or cluster sizes.
 
@@ -37,7 +37,7 @@ As an example, for a table with 16 tablets the overall hash space [0x0000 to 0xF
 
 ![tablet_overview](/images/architecture/tablet_overview.png)
 
-Read/write operations are processed by converting the primary key into an internal key and its hash
+Read and write operations are processed by converting the primary key into an internal key and its hash
 value, and determining what tablet the operation should be routed to.
 
 The figure below illustrates this.
