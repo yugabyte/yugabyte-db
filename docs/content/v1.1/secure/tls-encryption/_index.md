@@ -17,7 +17,7 @@ menu:
 TLS encryption is only supported in [Yugabyte DB Enterprise Edition](https://www.yugabyte.com/enterprise-edition/).
 {{< /note >}}
 
-Yugabyte DB uses OpenSSL (native to Linux/BSD operating systems) in order to perform TLS encryption. You can configure YugaByte DB to encrypt all network communication. The following communication is encrypted: 
+Yugabyte DB uses OpenSSL (native to Linux/BSD operating systems) in order to perform TLS encryption. You can configure Yugabyte DB to encrypt all network communication. The following communication is encrypted: 
 
 * Server to server (for example, between YB-Masters and YB-TServers)
 * Client to server (including connecting to the cluster using a command line shell)

@@ -100,7 +100,7 @@ The following resources are created by this module:
 
 For cluster named `test-cluster`, the instances will be named `yugabyte-test-cluster-node-1`, `yugabyte-test-cluster-node-2`, `yugabyte-test-cluster-node-3`.
 
-- `module.azure-yugabyte.azurerm_network_security_group.Yugabyte-SG` The security group that allows the various clients to access the YugaByte DB cluster.
+- `module.azure-yugabyte.azurerm_network_security_group.Yugabyte-SG` The security group that allows the various clients to access the Yugabyte DB cluster.
 
 For cluster named `test-cluster`, this security group will be named `yugabyte-test-cluster-SG` with the ports 7000, 9000, 9042, 7100, 9200 and 6379 open to all other instances in the same security group.
 

@@ -36,7 +36,7 @@ To use the PgExercises sample database, you must have installed and configured Y
 
 ### 1. Download the SQL scripts
 
-You can download the PGExercise SQL scripts that is compatible with Yugabyte DB from the [`sample` directory of the YugaByte DB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample).
+You can download the PGExercise SQL scripts that is compatible with Yugabyte DB from the [`sample` directory of the Yugabyte DB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample).
 
 Here are the two files you’ll need.
 
@@ -120,8 +120,8 @@ Yugabyte DB returns the same results as expected based on the solutions on the P
 - ["Work out the start times of bookings for tennis courts"](https://pgexercises.com/questions/joins/simplejoin2.html)
   - The `JOIN` does not return the correct row numbers. See [Yugabyte DB GitHub issue #1827](https://github.com/yugabyte/yugabyte-db/issues/1827).
 - ["Find telephone numbers with parentheses"](https://pgexercises.com/questions/string/reg.html)
-  - Yugabyte DB returns results with a sort order of strings different than in PostgreSQL due to [hash partitioning in YugaByte DB](../architecture/docdb/sharding/#hash-partitioning-tables).
+  - Yugabyte DB returns results with a sort order of strings different than in PostgreSQL due to [hash partitioning in Yugabyte DB](../architecture/docdb/sharding/#hash-partitioning-tables).
 - ["Update a row based on the contents of another row"](https://pgexercises.com/questions/updates/updatecalculated.html)
-  - Yugabyte DB returns an error because using the `FROM` clause in `UPDATE` is not yet supported. See [YugaByte DB GitHub issue #738](https://github.com/yugabyte/yugabyte-db/issues/738).
+  - Yugabyte DB returns an error because using the `FROM` clause in `UPDATE` is not yet supported. See [Yugabyte DB GitHub issue #738](https://github.com/yugabyte/yugabyte-db/issues/738).
 - ["Delete based on a subquery"](https://pgexercises.com/questions/updates/deletewh2.html)
-  - Yugabyte DB returns an error. See [YugaByte DB GitHub issue #1828](https://github.com/yugabyte/yugabyte-db/issues/1828).
+  - Yugabyte DB returns an error. See [Yugabyte DB GitHub issue #1828](https://github.com/yugabyte/yugabyte-db/issues/1828).

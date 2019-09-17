@@ -1,15 +1,15 @@
 ---
 baseurl: https://docs.yugabyte.com
 languageCode: en-us
-title: YugaByte DB Docs
+title: Yugabyte DB Docs
 metadataformat: yaml
 canonifyurls: false
 googleAnalytics: UA-104956980-3
 
 params:
-  author: Team YugaByte
-  description: 'YugaByte DB, the transactional, high-performance database for building internet-scale, globally-distributed apps.'
-  copyright: 'YugaByte, Inc.'
+  author: Team Yugabyte
+  description: 'Yugabyte DB, the transactional, high-performance database for building internet-scale, globally-distributed apps.'
+  copyright: 'Yugabyte, Inc.'
   block_indexing: false
   version: Beta
   logo: /images/og-image.jpg

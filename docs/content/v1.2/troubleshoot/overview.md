@@ -25,7 +25,7 @@ Next, check the list of [cluster issues](../cluster) and the respective fixes fo
 
 ## 3. Check logs
 
-Inspect the Yugabyte logs for more details on your issue. See [this](../nodes/check-logs) page for more details on where to find and how to understand the YugaByte log files.
+Inspect the Yugabyte logs for more details on your issue. See [this](../nodes/check-logs) page for more details on where to find and how to understand the Yugabyte log files.
 
 ## 4. File an issue
 

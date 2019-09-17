@@ -13,7 +13,7 @@ showAsideToc: true
 
 DocDB replicates data in order to survive failures while continuing to maintain consistency of
 data and not requiring operator intervention. The **replication factor** (RF) is the number of copies
-of data in a Yugabyte DB universe. The **fault tolerance** (FT) of a YugaByte DB universe is the maximum
+of data in a Yugabyte DB universe. The **fault tolerance** (FT) of a Yugabyte DB universe is the maximum
 number of node failures it can survive while continuing to preserve correctness of data. FT and RF
 are highly correlated. To achieve a FT of k nodes, the universe has to be configured with a RF of
 (2k + 1).

@@ -69,7 +69,7 @@ menu:
         <div class="title">Yugabyte Platform</div>
       </div>
       <div class="body">
-        Running Yugabyte DB using the YugaByte Platform.
+        Running Yugabyte DB using the Yugabyte Platform.
       </div>
     </a>
   </div>

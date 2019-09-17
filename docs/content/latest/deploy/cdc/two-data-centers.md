@@ -24,7 +24,7 @@ The terms "cluster" and "universe" will be used interchangeably. For simplicity 
 
 {{< /note >}}
 
-Yugabyte DB supports two data center (2DC) deployments, which is built on top of [Change Data Capture (CDC)](../cdc). YugaByte DB support for two data center (2DC) deployments includes the following:
+Yugabyte DB supports two data center (2DC) deployments, which is built on top of [Change Data Capture (CDC)](../cdc). Yugabyte DB support for two data center (2DC) deployments includes the following:
 
 * Replication works across both the YSQL and YCQL APIs because replication is done at the DocDB level.
 

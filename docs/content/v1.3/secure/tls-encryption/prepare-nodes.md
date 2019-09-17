@@ -161,11 +161,11 @@ Certificate:
         Version: 3 (0x2)
         Serial Number: 9342236890667368184 (0x81a64af46bc73ef8)
     Signature Algorithm: sha256WithRSAEncryption
-        Issuer: O=Yugabyte, CN=CA for YugaByte DB
+        Issuer: O=Yugabyte, CN=CA for Yugabyte DB
         Validity
             Not Before: Dec 20 05:16:11 2018 GMT
             Not After : Jan 19 05:16:11 2019 GMT
-        Subject: O=Yugabyte, CN=CA for YugaByte DB
+        Subject: O=Yugabyte, CN=CA for Yugabyte DB
         Subject Public Key Info:
             Public Key Algorithm: rsaEncryption
                 Public-Key: (2048 bit)

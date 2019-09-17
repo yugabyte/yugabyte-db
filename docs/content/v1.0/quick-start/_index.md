@@ -3,7 +3,7 @@ title: Community Edition Quick Start
 linkTitle: Quick Start
 description: Community Edition Quick Start
 image: /images/section_icons/index/quick_start.png
-headcontent: The easiest way to test Yugabyte DB's basic features and APIs is to create a local multi-node cluster. We recommend deploying YugaByte DB to individual machines for performance benchmarking and pre-production evaluations.  
+headcontent: The easiest way to test Yugabyte DB's basic features and APIs is to create a local multi-node cluster. We recommend deploying Yugabyte DB to individual machines for performance benchmarking and pre-production evaluations.  
 type: page
 menu:
   v1.0:

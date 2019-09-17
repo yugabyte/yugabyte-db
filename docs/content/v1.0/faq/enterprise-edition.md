@@ -11,7 +11,7 @@ menu:
 
 ## What is YugaWare?
 
-YugaWare, shipped as a part of Yugabyte DB Enterprise, is the Admin Console for YugaByte DB. It has a built-in orchestration and monitoring engine for deploying YugaByte DB in any public or private cloud.
+YugaWare, shipped as a part of Yugabyte DB Enterprise, is the Admin Console for Yugabyte DB. It has a built-in orchestration and monitoring engine for deploying YugaByte DB in any public or private cloud.
 
 ## How does the installation work for Yugabyte DB Enterprise?
 
@@ -47,7 +47,7 @@ For airgapped hosts a supported version of docker-engine (currently 1.7.1 to 17.
 
 - Following ports should be open on the YugaWare host: 8800 (replicated ui), 80 (http for yugaware ui), 22 (ssh)
 - Attached disk storage (such as persistent EBS volumes on AWS): 100 GB minimum
-- A Yugabyte license file (attached to your welcome email from YugaByte Support)
+- A Yugabyte license file (attached to your welcome email from Yugabyte Support)
 - Ability to connect from the YugaWare host to all the Yugabyte DB data nodes. If this is not setup, [setup passwordless ssh](#step-5-troubleshoot-yugaware).
 
 

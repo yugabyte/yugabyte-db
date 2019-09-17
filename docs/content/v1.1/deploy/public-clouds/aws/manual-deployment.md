@@ -78,7 +78,7 @@ export TAR_FILE=yugabyte-ce-${YB_VERSION}-linux.tar.gz
 
 ### Prepare Data Drives
 
-If your AMI already has the needed hooks for mounting the devices as directories in some well defined location OR if are just trying to use a vanilla directory as the data drive for a quick experiment and do not need mounting the additional devices on your AWS volume, you can just use an arbitrary directory (like `/home/$USER/` as your data directory), and Yugabyte DB will create a `yb-data` sub-directory there (`/home/$USER/yb-data`) and use that. The steps below are are simply a guide to help use the additional volumes (install a filesystem on those volumes and mount them in some well defined location so that they can be used as data directories by YugaByte DB).
+If your AMI already has the needed hooks for mounting the devices as directories in some well defined location OR if are just trying to use a vanilla directory as the data drive for a quick experiment and do not need mounting the additional devices on your AWS volume, you can just use an arbitrary directory (like `/home/$USER/` as your data directory), and Yugabyte DB will create a `yb-data` sub-directory there (`/home/$USER/yb-data`) and use that. The steps below are are simply a guide to help use the additional volumes (install a filesystem on those volumes and mount them in some well defined location so that they can be used as data directories by Yugabyte DB).
 
 #### Locate Drives
 

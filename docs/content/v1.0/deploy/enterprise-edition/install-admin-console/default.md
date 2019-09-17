@@ -56,7 +56,7 @@ The simplest option is use a self-signed cert for now and add the custom SSL cer
 
 ### Upload License File
 
-Now upload the Yugabyte license file received from YugaByte Support.
+Now upload the Yugabyte license file received from Yugabyte Support.
 
 ![Replicated License Upload](/images/replicated/replicated-license-upload.png)
 

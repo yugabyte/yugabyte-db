@@ -13,7 +13,7 @@ Take note of the following for configuring your GCP provider:
 
 - Upload the JSON file that you obtained when you created your service account as per the [Initial Setup](../prepare-cloud-environment/).
 
-- Assuming this is a new deployment, we recommend creating a new VPC specifically for Yugabyte DB nodes. You have to ensure that the YugaWare host machine is able to connect to your Google Cloud account where this new VPC will be created. Otherwise, you can choose to specify an existing VPC for YugaByte DB nodes. The 3rd option that is available only when your YugaWare host machine is also running on Google Cloud is to use the same VPC that the YugaWare host machine runs on. 
+- Assuming this is a new deployment, we recommend creating a new VPC specifically for Yugabyte DB nodes. You have to ensure that the YugaWare host machine is able to connect to your Google Cloud account where this new VPC will be created. Otherwise, you can choose to specify an existing VPC for Yugabyte DB nodes. The 3rd option that is available only when your YugaWare host machine is also running on Google Cloud is to use the same VPC that the YugaWare host machine runs on. 
 
 - Finally, click `Save` and give it a couple of minutes, as it will need to do a bit of work in the background. This includes generating a new VPC, a network, subnetworks in all available regions, as well as a new firewall rule, VPC peering for network connectivity and a custom SSH keypair for YugaWare-to-Yugabyte connectivity
 

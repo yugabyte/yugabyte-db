@@ -49,7 +49,7 @@ tserver process.
 
 ## 3. Can cqlsh connect locally?
 
-Once on the machine where Yugabyte DB is running, use `cqlsh` to connect to the local YugaByte DB instance.
+Once on the machine where Yugabyte DB is running, use `cqlsh` to connect to the local Yugabyte DB instance.
 Depending on your installation, you may need to install `cqlsh`, otherwise you can find it in the Yugabyte `bin` directory. 
 Try running:
 ```sh
