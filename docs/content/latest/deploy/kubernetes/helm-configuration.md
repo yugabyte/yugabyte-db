@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Configure cluster
 
-Instead of using the default values in the helm chart, you can also modify the configuration of the Yugabyte cluster according to your requirements. The following section shows the commands and tags that can be modified to achieve the desired configuration.
+Instead of using the default values in the helm chart, you can also modify the configuration of the YugabyteDB cluster according to your requirements. The following section shows the commands and tags that can be modified to achieve the desired configuration.
 
 ### CPU, memory, and replica count
 
@@ -60,7 +60,7 @@ $ helm upgrade --set replicas.tserver=5 yb-demo ./yugabyte
 
 ### LoadBalancer for services
 
-By default, the Yugabyte DB helm chart exposes only the master ui endpoint using LoadBalancer. If you wish to expose also the ycql and yedis services via LoadBalancer for your app to use, you could do that in couple of different ways.
+By default, the YugabyteDB helm chart exposes only the master ui endpoint using LoadBalancer. If you wish to expose also the ycql and yedis services via LoadBalancer for your app to use, you could do that in couple of different ways.
 
 If you want individual LoadBalancer endpoint for each of the services (YCQL, YEDIS), run the following command.
 

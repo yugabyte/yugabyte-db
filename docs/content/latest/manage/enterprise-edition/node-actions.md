@@ -95,7 +95,7 @@ Do not `REMOVE` more than (RF - 1)/2 nodes at any given time. For example, on a 
 
 ## Quick operations, on an existing instance
 
-The second scenario is for more of a 'quick' planned change that can be performed on a node. For example, the DevOps wants to mount a new disk on the node or just install and run a new security daemon. In that case, the instance is still in use and stopping any running Yugabyte process might be needed. Then the user can pick the `Stop Processes` option and then perform the system task, and then pick the `Start Processes` for that node.
+The second scenario is for more of a 'quick' planned change that can be performed on a node. For example, the DevOps wants to mount a new disk on the node or just install and run a new security daemon. In that case, the instance is still in use and stopping any running YugabyteDB process might be needed. Then the user can pick the `Stop Processes` option and then perform the system task, and then pick the `Start Processes` for that node.
 
 The following two steps helps stop the server processes on the node and restart it back up. There is no data moved out of the node proactively, but the data shard/tablet leaders could change as perf RAFT requirements.
 

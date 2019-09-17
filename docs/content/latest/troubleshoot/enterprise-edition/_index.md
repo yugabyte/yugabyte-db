@@ -20,7 +20,7 @@ menu:
         <div class="title">Troubleshoot universes</div>
       </div>
       <div class="body">
-        Troubleshoot a Yugabyte DB universe using the Yugabyte Admin Console.
+        Troubleshoot a YugabyteDB universe using the YugabyteDB Admin Console.
       </div>
     </a>
   </div>

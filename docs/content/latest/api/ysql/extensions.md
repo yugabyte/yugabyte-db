@@ -12,11 +12,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This page documents how to install and use PostgreSQL extensions that are tested to work with YSQL. Note that since Yugabyte DB’s storage architecture is not the same as that of native PostgreSQL, PostgreSQL extensions especially those that interact with the storage layer are not expected to work as-is on Yugabyte DB. We intend to incrementally develop support for as many extensions as possible. 
+This page documents how to install and use PostgreSQL extensions that are tested to work with YSQL. Note that since YugabyteDB’s storage architecture is not the same as that of native PostgreSQL, PostgreSQL extensions especially those that interact with the storage layer are not expected to work as-is on YugabyteDB. We intend to incrementally develop support for as many extensions as possible. 
 
 ## Use Included Extensions
 
-These are extensions that are included in the standard Yugabyte DB distribution and can be enabled in YSQL by simply running the `CREATE EXTENSION` statememt.
+These are extensions that are included in the standard YugabyteDB distribution and can be enabled in YSQL by simply running the `CREATE EXTENSION` statememt.
 
 ### pgcrypto
 
@@ -175,7 +175,7 @@ In order to install an extension you need to copy these files into the respectiv
 
 Shared library files will be in the `pkglibdir` directory while SQL and control files should be in the `extension` subdirectory of the `libdir` directory.
 To find these directories on your local installation, you can use Yugabyte's `pg_config` executable.
-First, alias it to `yb_pg_config` by replacing `<yugabyte-path>` with the path to your Yugabyte installation in the command below and then running it.  
+First, alias it to `yb_pg_config` by replacing `<yugabyte-path>` with the path to your YugabyteDB installation in the command below and then running it.  
 ```sh
 $ alias yb_pg_config=/<yugabyte-path>/postgres/bin/pg_config
 ```
@@ -228,7 +228,7 @@ For instance, on macOS, you can either
     $ brew install postgres && brew install postgis
     ```
 
-Now follow the instructions described above to copy the needed files into your Yugabyte installation, and then create 
+Now follow the instructions described above to copy the needed files into your YugabyteDB installation, and then create 
 the extension.
 
 ```sh

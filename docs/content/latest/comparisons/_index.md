@@ -3,7 +3,7 @@ title: Comparisons
 linkTitle: Comparisons
 description: Comparisons
 image: /images/section_icons/index/comparisons.png
-headcontent: This page highlights how Yugabyte DB compares against other operational databases in the distributed SQL and NoSQL categories. Click on the database name in the table header to see a more detailed comparison.
+headcontent: This page highlights how YugabyteDB compares against other operational databases in the distributed SQL and NoSQL categories. Click on the database name in the table header to see a more detailed comparison.
 aliases:
   - /comparisons/
 section: FAQ
@@ -32,7 +32,7 @@ Open Source | <i class="fas fa-times"></i> | Apache 2.0 | <i class="fas fa-times
 
 ## NoSQL databases
 
-Feature  | [MongoDB](mongodb/) | [FoundationDB](foundationdb/) | [Apache Cassandra](cassandra/) |[Amazon DynamoDB](amazon-dynamodb/) | [MS Azure CosmosDB](azure-cosmos/)| Yugabyte DB
+Feature  | [MongoDB](mongodb/) | [FoundationDB](foundationdb/) | [Apache Cassandra](cassandra/) |[Amazon DynamoDB](amazon-dynamodb/) | [MS Azure CosmosDB](azure-cosmos/)| YugabyteDB
 --------|-----------|-------|--------|-------------|--------------|-----------------
 Horizontal write scalability | <i class="fas fa-check"></i> | <i class="fas fa-check"></i> |<i class="fas fa-check"></i>| <i class="fas fa-check"></i> | <i class="fas fa-check"></i> | <i class="fas fa-check"></i>
 Automated failover &amp; repair | <i class="fas fa-check"></i> | <i class="fas fa-check"></i> |<i class="fas fa-check"></i>|<i class="fas fa-check"></i> | <i class="fas fa-check"></i> | <i class="fas fa-check"></i>

@@ -24,7 +24,7 @@ To run all the C++ tests you can use following command:
 ./yb_build.sh release --ctest
 ```
 
-If you omit release argument, it will run java tests against debug Yugabyte DB build.
+If you omit release argument, it will run java tests against debug YugabyteDB build.
 
 ### Run specific tests
 
@@ -50,7 +50,7 @@ Given that you've already built C++ and Java code you can run Java tests using f
 ./yb_build.sh release --scb --sj --java-tests
 ```
 
-If you omit release argument, it will run java tests against debug Yugabyte build, so you should then either build debug binaries with `./yb_build.sh` or omit `--scb` and then it will build debug binaries automatically.
+If you omit release argument, it will run java tests against debug YugabyteDB build, so you should then either build debug binaries with `./yb_build.sh` or omit `--scb` and then it will build debug binaries automatically.
 
 ### Run specific tests
 

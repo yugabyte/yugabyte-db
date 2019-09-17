@@ -1,7 +1,7 @@
 ---
-title: 1. Install Yugabyte DB
-linkTitle: 1. Install Yugabyte DB
-description: Install Yugabyte DB
+title: 1. Install YugabyteDB
+linkTitle: 1. Install YugabyteDB
+description: Install YugabyteDB
 aliases:
   - /quick-start/install/
 menu:

@@ -12,11 +12,11 @@ aliases:
 isTocNested: true
 showAsideToc: true
 ---
-`MONITOR` is a debugging tool to see all requests that are being processed by a Yugabyte YEDIS API server.
+`MONITOR` is a debugging tool to see all requests that are being processed by a YugabyteDB YEDIS API server.
 
 ## Synopsis
 
-`MONITOR` is a debugging tool to see all requests that are being processed by a Yugabyte YEDIS API server. If there are multiple YEDIS API servers in the system, the command only captures the requests being processed by the server that the client is connected to. A client can issue the `MONITOR` command through the redis-cli. Once the command is issued the server will stream all requests (except `config` commands) that are processed at the server. 
+`MONITOR` is a debugging tool to see all requests that are being processed by a YugabyteDB YEDIS API server. If there are multiple YEDIS API servers in the system, the command only captures the requests being processed by the server that the client is connected to. A client can issue the `MONITOR` command through the redis-cli. Once the command is issued the server will stream all requests (except `config` commands) that are processed at the server. 
 
 ## Return value
 

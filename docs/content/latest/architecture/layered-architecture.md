@@ -13,24 +13,24 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte DB architecture follows a layered design. It is comprised of 2 logical layers as shown in the diagram below:
+YugabyteDB architecture follows a layered design. It is comprised of 2 logical layers as shown in the diagram below:
 
-* **Yugabyte Query Layer**
+* **YugabyteDB Query Layer**
 * **DocDB** distributed document store
 
-![Yugabyte DB Logical Architecture](/images/architecture/yb-arch-new.png)
+![YugabyteDB logical architecture](/images/architecture/yb-arch-new.png)
 
-## Yugabyte Query Layer
+## YugabyteDB Query Layer
 
-The [Yugabyte Query Layer or YQL](../query-layer/) is the upper layer of Yugabyte DB. Applications interact directly with YQL using client drivers. This layer deals with the API specific aspects such as query/command compilation and the run-time (data type representations, built-in operations and more). YQL is built with extensibility in mind, and allows for new APIs to be added.
+The [YugabyteDB query layer (YQL)](../query-layer/) is the upper layer of YugabyteDB. Applications interact directly with YQL using client drivers. This layer deals with the API specific aspects such as query/command compilation and the run-time (data type representations, built-in operations and more). YQL is built with extensibility in mind, and allows for new APIs to be added.
 
 Currently, YQL supports two flavors of distributed SQL APIs.
 
-### Yugabyte SQL (YSQL)
+### YugabyteDB SQL (YSQL)
 
-YSQL is a distributed SQL API that is built by re-using the PostgreSQL language layer code. It is a stateless SQL query engine that is wire-format compatible with PostgreSQL.
+YSQL is a distributed SQL API that is built by reusing the PostgreSQL language layer code. It is a stateless SQL query engine that is wire-format compatible with PostgreSQL.
 
-### Yugabyte Cloud QL (YCQL)
+### YugabyteDB Cloud QL (YCQL)
 
 YCQL is a semi-relational language that has its roots in Cassandra Query Language. It is a SQL-like language built specifically to be aware of clustering of data across nodes.
 
@@ -82,7 +82,7 @@ You can now read about the following:
 
 {{< note title="" >}}
 
-* [The design goals of Yugabyte DB](../design-goals/)
+* [The design goals of YugabyteDB](../design-goals/)
 * [Architecture of DocDB](../docdb/)
 * [Transactions in DocDB](../transactions/)
 * [Design of the query layer](../query-layer/)
