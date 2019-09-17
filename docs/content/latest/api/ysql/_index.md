@@ -40,6 +40,7 @@ DDL statements define the structures in a database, change their definitions, as
 | [`CREATE DATABASE`](commands/ddl_create_database) | Create a new database |
 | [`CREATE INDEX`](commands/ddl_create_index) | Create a new index |
 | [`CREATE OPPERATOR`](commands/ddl_create_operator) | Create a new operator |
+| [`CREATE RULE`](commands/ddl_create_rule) | Create a new rule |
 | [`CREATE SCHEMA`](commands/ddl_create_schema) | Create a new schema (namespace) |
 | [`CREATE SEQUENCE`](commands/ddl_create_sequence) | Create a new sequence generator |
 | [`CREATE TABLE`](commands/ddl_create_table) | Create a new table |

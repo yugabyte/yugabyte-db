@@ -353,6 +353,15 @@ timestamp ::= '<DateTime Literal>' ;
 connlimit ::= '<Integer Literal>';
 uid ::= '<Text Literal>';
 
+(* 'CREATE' 'RULE' *)
+create_rule = 'CREATE' [ 'OR' 'REPLACE' ] 'RULE' rule_name 'AS' 'ON' rule_event
+              'TO' table_name [ 'WHERE' condition ]
+              'DO' [ 'ALSO' | 'INSTEAD' ] ( 'NOTHING' | command { ';' command } ) ;
+
+rule_event = 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' ;
+
+command = 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'NOTIFY' ;
+
 (* 'CREATE' 'SCHEMA' *)
 create_schema_name ::= 'CREATE' 'SCHEMA' [ 'IF' 'NOT' 'EXISTS' ] schema_name
                        [ 'AUTHORIZATION' role_specification ]
