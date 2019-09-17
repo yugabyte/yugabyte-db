@@ -13,7 +13,7 @@ The tutorial assumes that you have:
 To get the C/C++ driver run: 
 
 ```sh
-$ git clone https://github.com/Yugabyte/cassandra-cpp-driver.git
+$ git clone https://github.com/yugabyte/cassandra-cpp-driver.git
 ```
 
 ### Dependencies

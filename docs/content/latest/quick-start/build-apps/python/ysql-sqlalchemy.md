@@ -56,7 +56,7 @@ go get github.com/lib/pq/hstore
 ## Clone the orm-examples repo
 
 ```sh
-$ git clone https://github.com/Yugabyte/orm-examples.git
+$ git clone https://github.com/yugabyte/orm-examples.git
 ```
 ```sh
 export GOPATH=$GOPATH:$HOME/orm-examples/golang/gorm
@@ -68,7 +68,7 @@ This repository has a Python example that implements a simple REST API server. T
 - The products table contains a list of products the e-commerce site sells.
 - The orders placed by the users are populated in the orders table. An order can consist of multiple line items, each of these are inserted in the orderline table.
 
-The source for the above application can be found in the [repo](https://github.com/Yugabyte/orm-examples/tree/master/golang/gorm). There are a number of options that can be customized in the properties file located at `src/config/config.json`. 
+The source for the above application can be found in the [repo](https://github.com/yugabyte/orm-examples/tree/master/golang/gorm). There are a number of options that can be customized in the properties file located at `src/config/config.json`. 
 
 ## Build & run the app
 
@@ -247,4 +247,4 @@ $ curl http://localhost:8080/orders
 
 ## Explore the source
 
-As highlighted earlier, the source for the above application can be found in the [orm-examples](https://github.com/Yugabyte/orm-examples/tree/master/golang/gorm) repo.
+As highlighted earlier, the source for the above application can be found in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/golang/gorm) repo.

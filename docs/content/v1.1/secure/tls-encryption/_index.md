@@ -22,7 +22,7 @@ Yugabyte DB uses OpenSSL (native to Linux/BSD operating systems) in order to per
 * Server to server (for example, between YB-Masters and YB-TServers)
 * Client to server (including connecting to the cluster using a command line shell)
 
-Note that YEDIS does not currently support TLS encryption, however this is on the roadmap. Please [open a GitHub issue](https://github.com/Yugabyte/yugabyte-db/issues) if this is of interest.
+Note that YEDIS does not currently support TLS encryption, however this is on the roadmap. Please [open a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues) if this is of interest.
 
 In this section, we will look at how to setup a 3 node Yugabyte DB cluster with TLS encryption enabled.
 

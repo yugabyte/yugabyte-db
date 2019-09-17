@@ -22,7 +22,7 @@ Yugabyte DB is a transactional, high-performance database for building internet-
 
 Yugabyte DB is purpose-built to power fast-growing online services on public, private and hybrid clouds with transactional integrity, high availabilty, low latency, high throughput and multi-region scalability while also providing unparalleled data modeling freedom to application architects. Enterprises gain more functional depth and agility without any cloud lock-in when compared to proprietary cloud databases such as Amazon DynamoDB, Microsoft Azure Cosmos DB and Google Cloud Spanner. Enterprises also benefit from stronger data integrity guarantees, more reliable scaling and higher performance than those offered by legacy open source NoSQL databases such as MongoDB and Apache Cassandra. 
 
-Yugabyte DB Community Edition is developed and distributed as an [Apache 2.0 open source project](https://github.com/YugaByte/yugabyte-db/).
+Yugabyte DB Community Edition is developed and distributed as an [Apache 2.0 open source project](https://github.com/yugabyte/yugabyte-db/).
 
 ## What makes Yugabyte DB unique?
 
@@ -58,7 +58,7 @@ Yugabyte DB feature highlights are listed below.
 
 ### 5. Open Source
 
-- Fully functional distributed database available under [Apache 2.0 open source license](https://github.com/Yugabyte/yugabyte-db/). Upgrade to [Enterprise Edition](https://www.yugabyte.com/product/compare/) anytime.
+- Fully functional distributed database available under [Apache 2.0 open source license](https://github.com/yugabyte/yugabyte-db/). Upgrade to [Enterprise Edition](https://www.yugabyte.com/product/compare/) anytime.
 
 - Multi-API/multi-model database that extends existing popular and open APIs including Cassandra, Redis and PostgreSQL.
 

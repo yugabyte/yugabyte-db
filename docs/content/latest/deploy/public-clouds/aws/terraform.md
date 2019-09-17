@@ -24,7 +24,7 @@ Common commands:
 
 ## 1. Create a terraform config file
 
-Create a terraform config file called `yugabyte-db-config.tf` and add following details to it. The terraform module can be found in the [terraform-aws-yugabyte github repository](https://github.com/Yugabyte/terraform-aws-yugabyte).
+Create a terraform config file called `yugabyte-db-config.tf` and add following details to it. The terraform module can be found in the [terraform-aws-yugabyte github repository](https://github.com/yugabyte/terraform-aws-yugabyte).
 
 ```sh
 provider "aws" {

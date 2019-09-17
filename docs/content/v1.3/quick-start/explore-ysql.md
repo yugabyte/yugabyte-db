@@ -15,7 +15,7 @@ showAsideToc: true
 After [creating a local cluster](../create-local-cluster/), follow the instructions here to explore Yugabyte DB's PostgreSQL-compatible [YSQL](../../api/ysql/) API.
 
 {{< note title="Note" >}}
-YSQL is currently in beta. We are actively working on making it production ready for the 2.0 release in Summer 2019. If you face any problems while trying YSQL or find important features not yet supported, help us make it better by reporting issues on <a href="https://github.com/Yugabyte/yugabyte-db/issues">GitHub</a> and/or join our <a href="https://www.yugabyte.com/slack">Slack channel</a> to discuss live with us.
+YSQL is currently in beta. We are actively working on making it production ready for the 2.0 release in Summer 2019. If you face any problems while trying YSQL or find important features not yet supported, help us make it better by reporting issues on <a href="https://github.com/yugabyte/yugabyte-db/issues">GitHub</a> and/or join our <a href="https://www.yugabyte.com/slack">Slack channel</a> to discuss live with us.
 {{< /note >}}
 
 ## 1. Load data
@@ -29,7 +29,7 @@ $ wget https://raw.githubusercontent.com/Yugabyte/yb-sql-workshop/master/query-u
 -  Download the sample data
 
 ```sh
-$ wget https://github.com/Yugabyte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
+$ wget https://github.com/yugabyte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
 ```
 
 ```sh

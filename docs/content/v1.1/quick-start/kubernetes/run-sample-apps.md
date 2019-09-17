@@ -83,7 +83,7 @@ The above output is the Admin UI URL and visiting the Tablet Servers page there 
 
 ## 5. Review Yugastore architecture and code
 
-Details of Yugastore architecture are documented [here](../../develop/realworld-apps/ecommerce-app/). Source code is available in the [Yugastore GitHub repo](https://github.com/Yugabyte/yugastore).
+Details of Yugastore architecture are documented [here](../../develop/realworld-apps/ecommerce-app/). Source code is available in the [Yugastore GitHub repo](https://github.com/yugabyte/yugastore).
 
 ## 6. Run IoT Fleet Management app
 

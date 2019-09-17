@@ -37,7 +37,7 @@ docker run -d -p 8080:8080 \
        hasura/graphql-engine:v1.0.0-beta.6
 ```
 
-The `HASURA_GRAPHQL_TX_ISOLATION` setting is a temporary requirement due to a Yugabyte DB issue involving the locking of foreign keys ([GitHub issue #1199](https://github.com/YugaByte/yugabyte-db/issues/1199)).
+The `HASURA_GRAPHQL_TX_ISOLATION` setting is a temporary requirement due to a Yugabyte DB issue involving the locking of foreign keys ([GitHub issue #1199](https://github.com/yugabyte/yugabyte-db/issues/1199)).
 
 {{< note title="Note" >}}
 

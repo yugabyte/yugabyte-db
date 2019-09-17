@@ -152,7 +152,7 @@ Let us insert a key-value entry, with the value size around 2MB. Since the memst
 Download the sample app JAR file.
 
 ```sh
-$ wget https://github.com/Yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
+$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
 Run the workload.

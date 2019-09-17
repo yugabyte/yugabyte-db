@@ -75,4 +75,4 @@ Follow the instructions from [TablePlus Getting Started](https://tableplus.io/bl
 
 Following is a known issue that we hope to address soon. You can track the issue directly on GitHub.
 
-[tableplus integration: redis metadata commands should gracefully error for redis compatible yedis](https://github.com/Yugabyte/yugabyte-db/issues/503)
+[tableplus integration: redis metadata commands should gracefully error for redis compatible yedis](https://github.com/yugabyte/yugabyte-db/issues/503)

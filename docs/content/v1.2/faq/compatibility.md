@@ -38,7 +38,7 @@ As highlighted in [Distributed PostgreSQL on a Google Spanner Architecture – Q
 - Expressions: Rich set of PostgreSQL built-in functions and operators
 - Other Features: VIEWs, EXPLAIN, PREPARE-BIND-EXECUTE, and JDBC support
 
-Yugabyte DB's goal is to remain as compatible with PostgreSQL as possible. If you see a feature currently missing, please file a [GitHub issue](https://github.com/YugaByte/yugabyte-db/issues) for us.
+Yugabyte DB's goal is to remain as compatible with PostgreSQL as possible. If you see a feature currently missing, please file a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues) for us.
 
 ## YCQL Compatibility with Apache Cassandra QL
 

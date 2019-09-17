@@ -61,7 +61,7 @@ Some features are marked Beta in every release. Following are the points to cons
 
 - Recommended only for non-production use.
 
-Please do try our beta features and give feedback on them on our [Slack channel](https://www.yugabyte.com/slack) or by filing a [GitHub issue](https://github.com/Yugabyte/yugabyte-db/issues).
+Please do try our beta features and give feedback on them on our [Slack channel](https://www.yugabyte.com/slack) or by filing a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues).
 
 ## Any performance benchmarks available?
 

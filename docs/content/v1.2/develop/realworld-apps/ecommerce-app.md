@@ -15,7 +15,7 @@ showAsideToc: true
 
 Yugastore is a sample, full-stack online bookstore, or more generally, an e-commerce app built on top of Yugabyte DB. It is a cloud native, distributed app built on a microservices architecture. YugaByte DB simplifies the development of such apps by providing a SQL-like API (based on Cassandra Query Language) and a Redis-API on top of a common database. The app can be deployed and run on VMs or using StatefulSets in Kubernetes.
 
-You can browse the [Yugastore source-code on GitHub](https://github.com/Yugabyte/yugastore). It is fully open-source.
+You can browse the [Yugastore source-code on GitHub](https://github.com/yugabyte/yugastore). It is fully open-source.
 
 ![Yugastore app screenshot](/images/develop/realworld-apps/ecommerce-app/yugastore-app-screenshots.png)
 
@@ -55,16 +55,16 @@ This app is built using the following stack:
 All the source for the various components can be found in the following locations:
 
 * React UI
-    * You can see all the React routes in [index.js](https://github.com/Yugabyte/yugastore/blob/master/ui/src/index.js).
-    * You can find the components in the [ui/src/components](https://github.com/Yugabyte/yugastore/tree/master/ui/src/components) subdirectory.
+    * You can see all the React routes in [index.js](https://github.com/yugabyte/yugastore/blob/master/ui/src/index.js).
+    * You can find the components in the [ui/src/components](https://github.com/yugabyte/yugastore/tree/master/ui/src/components) subdirectory.
 
 * Express / NodeJS webframework
-    * You can find all the Rest API routes for products in [routes/product.js](https://github.com/Yugabyte/yugastore/blob/master/routes/products.js).
-    * You can find the web framework setup in [app.js](https://github.com/Yugabyte/yugastore/blob/master/app.js).
+    * You can find all the Rest API routes for products in [routes/product.js](https://github.com/yugabyte/yugastore/blob/master/routes/products.js).
+    * You can find the web framework setup in [app.js](https://github.com/yugabyte/yugastore/blob/master/app.js).
 
 * Models
-    * The sample data is present in [models/products.json](https://github.com/Yugabyte/yugastore/blob/master/models/sample_data.json)
-    * The data loader is in the file [models/yugabyte/db_init.js](https://github.com/Yugabyte/yugastore/blob/master/models/yugabyte/db_init.js).
+    * The sample data is present in [models/products.json](https://github.com/yugabyte/yugastore/blob/master/models/sample_data.json)
+    * The data loader is in the file [models/yugabyte/db_init.js](https://github.com/yugabyte/yugastore/blob/master/models/yugabyte/db_init.js).
 
 
 The sections below describe the architecture / data model for the various features in the app.
@@ -97,7 +97,7 @@ The dynamic attributes for rendering sorted views (such as *highly rated* or *mo
 ```
 
 
-The sample list of products are in the [`models/sample_data.json`](https://github.com/Yugabyte/yugastore/blob/master/models/sample_data.json) file in the codebase. The file has entries such as the following:
+The sample list of products are in the [`models/sample_data.json`](https://github.com/yugabyte/yugastore/blob/master/models/sample_data.json) file in the codebase. The file has entries such as the following:
 
 ```json
 {
@@ -121,7 +121,7 @@ The sample list of products are in the [`models/sample_data.json`](https://githu
     ...
 ```
 
-The [db_init.js](https://github.com/Yugabyte/yugastore/blob/master/models/yugabyte/db_init.js) node script loads the static attributes of the sample data using the following Cassandra batch insert API into YugaByte DB.
+The [db_init.js](https://github.com/yugabyte/yugastore/blob/master/models/yugabyte/db_init.js) node script loads the static attributes of the sample data using the following Cassandra batch insert API into YugaByte DB.
 
 ```js
 insert_batch.push({
@@ -256,5 +256,5 @@ ybRedis.incrby("pageviews:product:5:count", 1);
 
 ## Summary
 
-This application is a blue print for building eCommerce and other similar web applications. The instructions to build and run the application, as well as the source code can be found in [the Yugastore github repo](https://github.com/Yugabyte/yugastore).
+This application is a blue print for building eCommerce and other similar web applications. The instructions to build and run the application, as well as the source code can be found in [the Yugastore github repo](https://github.com/yugabyte/yugastore).
 
