@@ -40,8 +40,8 @@ You can download the PGExercise SQL scripts that is compatible with Yugabyte DB 
 
 Here are the two files you’ll need.
 
-- [`clubdata_ddl.sql`](https://raw.githubusercontent.com/Yugabyte/yugabyte-db/master/sample/clubdata_ddl.sql) — Creates the tables and other database objects
-- [`clubdata_data.sql`](https://raw.githubusercontent.com/Yugabyte/yugabyte-db/master/sample/clubdata_data.sql) — Loads the sample data
+- [`clubdata_ddl.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/clubdata_ddl.sql) — Creates the tables and other database objects
+- [`clubdata_data.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/clubdata_data.sql) — Loads the sample data
 
 ### 2. Open the YSQL shell
 

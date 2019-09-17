@@ -20,7 +20,7 @@ Follow [Quick Start](../../../quick-start/) instructions to run a local Yugabyte
 ### Download the Sample Schema
 
 ```sh
-$ wget https://raw.githubusercontent.com/Yugabyte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
+$ wget https://raw.githubusercontent.com/yugabyte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
 ```
 
 ### Download the Sample Data

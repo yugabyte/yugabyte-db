@@ -46,7 +46,7 @@ App architecture with the CKY stack is shown below. The same [Kafka Connect Sink
 
 ### Spark, Kafka and Yugabyte DB (SKY Stack)
 
-App architecture with the SKY stack is shown below. The Kafka Connect Sink Connector for Yugabyte DB is used for storing raw events from Kafka to Yugabyte DB. The aggregate data generated via Apache Spark Streaming is persisted in YugaByte DB using the Spark-Cassandra Connector.
+App architecture with the SKY stack is shown below. The Kafka Connect Sink Connector for Yugabyte DB is used for storing raw events from Kafka to Yugabyte DB. The aggregate data generated via Apache Spark Streaming is persisted in Yugabyte DB using the Spark-Cassandra Connector.
 
 ![YB IoT Fleet Management Architecture with Apache Spark](/images/develop/realworld-apps/iot-spark-kafka-ksql/yb-iot-fleet-mgmt-arch-kafka-spark.png)
 

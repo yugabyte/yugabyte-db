@@ -18,7 +18,7 @@ showAsideToc: true
 
 [TablePlus](https://tableplus.io/) is an increasingly popular database developer console with built-in integrations with major databases including PostgreSQL, Cassandra and Redis. It is free to get started with the option of upgrading to a [perpetual paid license](https://tableplus.io/pricing) for a small cost.
 
-In this tutorial, we will show how to connect TablePlus with all the 3 Yugabyte DB APIs on a local cluster. TablePlus works without any issues with Yugabyte DB because the YugaByte DB APIs are compatible at the wire protocol level with databases already supported by TablePlus.
+In this tutorial, we will show how to connect TablePlus with all the 3 Yugabyte DB APIs on a local cluster. TablePlus works without any issues with Yugabyte DB because the Yugabyte DB APIs are compatible at the wire protocol level with databases already supported by TablePlus.
 
 ## Download TablePlus
 

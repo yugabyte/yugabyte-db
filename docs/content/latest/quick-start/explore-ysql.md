@@ -26,7 +26,7 @@ After [creating a local cluster](../create-local-cluster/), follow the instructi
 - Download the sample schema.
 
 ```sh
-$ wget https://raw.githubusercontent.com/Yugabyte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
+$ wget https://raw.githubusercontent.com/yugabyte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
 ```
 
 -  Download the sample data

@@ -110,7 +110,7 @@ kubeconfig entry generated for yugabyte.
 You can launch a universe on this node pool to run on local SSDs by running the following command.
 
 ```sh
-$ kubectl apply -f https://raw.githubusercontent.com/Yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml
+$ kubectl apply -f https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml
 ```
 
 ```sh
@@ -224,7 +224,7 @@ system_schema  system_auth  system
 You can destroy the Yugabyte DB universe by running the following. Note that this does not destroy the data, and you may not be able to respawn the cluster because there is data left behind on the persistent disks.
 
 ```sh
-$ kubectl delete -f https://raw.githubusercontent.com/Yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml
+$ kubectl delete -f https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml
 ```
 
 You can destroy the node-pool we created by running the following command:

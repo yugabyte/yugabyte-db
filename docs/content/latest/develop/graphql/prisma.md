@@ -31,7 +31,7 @@ Setting the transaction isolation level to `serializable` is a temporary limitat
 
 {{< /note >}}
 
-If you are new to Yugabyte DB, you can be up and running with Yugabyte DB in under five minutes by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/). After installing YugaByte DB, make sure to follow the step mentioned above.
+If you are new to Yugabyte DB, you can be up and running with Yugabyte DB in under five minutes by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/). After installing Yugabyte DB, make sure to follow the step mentioned above.
 
 ### Prisma
 
