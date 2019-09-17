@@ -72,7 +72,7 @@ YugaByte DB supports two flavors of distributed SQL.
 
 ### 1. YugaByte SQL (YSQL)
 
-[YSQL](../api/ysql/), currently in Beta, is a fully relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Get started by [exploring YSQL features](../quick-start/explore-ysql/).
+[YSQL](../api/ysql/) is a fully relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Get started by [exploring YSQL features](../quick-start/explore-ysql/).
 
 ### 2. YugaByte Cloud QL (YCQL)
 
