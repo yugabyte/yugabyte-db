@@ -1,5 +1,5 @@
 ---
-title: KEYWORDS
+title: Keywords
 linkTitle: Keywords
 description: List of YSQL keywords
 summary: Reference for YSQL API

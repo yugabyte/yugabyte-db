@@ -21,7 +21,7 @@ As before, we shall assume that we brought up a universe on four nodes with repl
 If you want this cluster to be able to support Redis clients, you **must** perform this step.
 {{< /note >}}
 
-While the YCQL and YSQL (Beta) services are turned on by default after all the yb-tservers start, the Redis-compatible YEDIS service is off by default. If you want this cluster to be able to support Redis clients, run the following command from any of the 4 instances. The command below will add the special Redis table into the DB and also start the YEDIS server on port 6379 on all instances.
+While the YCQL and YSQL services are turned on by default after all the yb-tservers start, the Redis-compatible YEDIS service is off by default. If you want this cluster to be able to support Redis clients, run the following command from any of the 4 instances. The command below will add the special Redis table into the DB and also start the YEDIS server on port 6379 on all instances.
 
 ```sh
 $ ./bin/yb-admin --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 setup_redis_table

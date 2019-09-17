@@ -1,6 +1,6 @@
 ---
-title: RESERVED NAMES
-linkTitle: Reserved Names
+title: Reserved names
+linkTitle: Reserved names
 description: List of reserved names
 summary: List of reserved names
 image: /images/section_icons/api/ysql.png
