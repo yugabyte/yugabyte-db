@@ -998,6 +998,18 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Create for a given tablet and stream.
+   * @param hp host port of the server.
+   * @param tableId the table id to subscribe to.
+   * @return a deferred object for the response from server.
+   */
+  public CreateCDCStreamResponse createCDCStream(
+          final HostAndPort hp, String tableId) throws Exception{
+    Deferred<CreateCDCStreamResponse> d = asyncClient.createCDCStream(hp, tableId);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Test if a table exists.
    * @param keyspace the keyspace name to which this table belongs.
    * @param name a non-null table name

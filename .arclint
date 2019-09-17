@@ -20,7 +20,9 @@
         "(^cmake_modules/FindBoost[.]cmake$)",
         "(^README[.]md$)",
         "(^java/pom[.]xml$)",
-        "(^.*[.]patch$)"
+        "(^.*[.]patch$)",
+        "(java/yb-cdc/pom.xml)",
+        "(java/yb-cdc/README.md)"
       ]
     },
     "pycodestyle": {

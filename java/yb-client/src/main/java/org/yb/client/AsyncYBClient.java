@@ -338,6 +338,52 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Create for a given table and stream.
+   * @param hp host port of the server.
+   * @param tableId the table id to subscribe to.
+   * @return a deferred object for the response from server.
+   */
+  public Deferred<CreateCDCStreamResponse> createCDCStream(final HostAndPort hp, String tableId) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    CreateCDCStreamRequest rpc = new CreateCDCStreamRequest(this.masterTable, tableId);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<CreateCDCStreamResponse> d = rpc.getDeferred();
+    rpc.attempt++;
+    client.sendRpc(rpc);
+    return d;
+  }
+
+  /**
+   * Get changes for a given tablet and stream.
+   * @param hp host port of the server.
+   * @param table the table to get changes for.
+   * @param streamId the stream to get changes for.
+   * @param tabletId the tablet to get changes for.
+   * @param term the leader term to start getting changes for.
+   * @param index the log index to start get changes for.
+   * @param cb the callback to call once the RPC returns.
+   * @return a deferred object for the response from server.
+   */
+  public Deferred<Void> getChanges(
+          HostAndPort hp, YBTable table, String streamId, String tabletId, long term,
+          long index, Callback<Void, GetChangesResponse> cb) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    GetChangesRequest rpc = new GetChangesRequest(table, streamId, tabletId, term, index);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<GetChangesResponse> d = rpc.getDeferred();
+    client.sendRpc(rpc);
+    return d.addCallback(cb);
+  }
+
+  /**
    * Check if the server is ready to serve requests.
    * @param hp host port of the server.
    * @param isTserver true if host/port is for tserver, else its master.
