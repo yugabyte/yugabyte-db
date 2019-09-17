@@ -1,7 +1,7 @@
 ---
 title: Extensions
 linkTitle: Extensions
-description: Install and Use Extensions
+description: Install and use Extensions
 summary: Reference for YSQL Extensions
 menu:
   latest:
@@ -12,12 +12,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This page documents how to install and use YSQL-compatible PostgreSQL extensions.
-
+This page documents how to install and use PostgreSQL extensions that are tested to work with YSQL. Note that since Yugabyte DB’s storage architecture is not the same as that of native PostgreSQL, PostgreSQL extensions especially those that interact with the storage layer are not expected to work as-is on Yugabyte DB. We intend to incrementally develop support for as many extensions as possible. 
 
 ## Use Included Extensions
 
-These are extensions that are included in the standard YugaByteDB distribution and can be enabled in YSQL by simply running the `CREATE EXTENSION` statememt.
+These are extensions that are included in the standard Yugabyte DB distribution and can be enabled in YSQL by simply running the `CREATE EXTENSION` statememt.
 
 ### pgcrypto
 
@@ -192,7 +191,7 @@ $ ls "$(yb_pg_config --sharedir)"/extension/
 ```
 
 To obtain these files for your target extension, you can build it from scratch following the extension's build instructions.
-Alternatively, if you already have PostgreSQL (ideally version `11.2` for best YugaByte YSQL compatibility) with that extension installed, then you can find these files as follows:
+Alternatively, if you already have PostgreSQL (ideally version `11.2` for best YSQL compatibility) with that extension installed, then you can find these files as follows:
 
 ```sh
 $ ls "$(pg_config --pkglibdir)" | grep <name>
@@ -250,7 +249,7 @@ This might take a couple of minutes.
     ```
 
 2. Extract the dataset using the `shp2pgsql` tool.
-    This should come with your PostgreSQL installation, it is not yet packaged with YugaByte YSQL.
+    This should come with your PostgreSQL installation, it is not yet packaged with YSQL.
 
     ```sh
     $ shp2pgsql geo_export_*.shp > edmonton.sql
@@ -323,7 +322,7 @@ This might take a couple of minutes.
 
 {{< note title="Note" >}}
 
-YugaByte YSQL does not yet support GiST indexes. This is tracked in [this GitHub issue](https://github.com/YugaByte/yugabyte-db/issues/1337).
+YSQL does not yet support GiST indexes. This is tracked in [this GitHub issue](https://github.com/YugaByte/yugabyte-db/issues/1337).
 
 {{< /note >}}
 

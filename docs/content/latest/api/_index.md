@@ -19,7 +19,7 @@ menu:
     <a class="section-link icon-offset" href="./ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/api/ysql.png" aria-hidden="true" />
-        <div class="title">YSQL (Beta)</div>
+        <div class="title">YSQL</div>
       </div>
       <div class="body">
         Complete reference for YugaByte Structured Query Language (YSQL) API.

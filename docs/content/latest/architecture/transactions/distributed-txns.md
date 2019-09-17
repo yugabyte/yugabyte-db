@@ -14,7 +14,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-Distributed ACID transactions are transactions that modify multiple rows in more than one shard. YugaByte DB supports distributed transactions, enabling features such as strongly consistent secondary indexes and multi-table/row ACID operations in both the YCQL context as well as in the YSQL context (currently in Beta). This section provides some common concepts and notions used in YugaByte's approach to implementing distributed transactions.  Once you are familiar with these concepts, see [Transactional IO Path](../transactional-io-path/) for a walk-through of a distributed transaction's life cycle.
+Distributed ACID transactions are transactions that modify multiple rows in more than one shard. YugaByte DB supports distributed transactions, enabling features such as strongly consistent secondary indexes and multi-table/row ACID operations in both the YCQL context as well as in the YSQL context. This section provides some common concepts and notions used in YugaByte's approach to implementing distributed transactions.  Once you are familiar with these concepts, see [Transactional IO Path](../transactional-io-path/) for a walk-through of a distributed transaction's life cycle.
 
 ## Provisional records
 
