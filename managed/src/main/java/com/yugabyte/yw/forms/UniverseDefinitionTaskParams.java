@@ -74,6 +74,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // Flag for creating encryption-at-rest key file
   public String encryptionKeyFilePath;
 
+  // Store encryption key provider specific configuration/authorization values
+  public Map<String, String> encryptionAtRestConfig;
+
   // This flag represents whether user has chosen to provide placement info
   // In Edit Universe if this flag is set we go through the NEW_CONFIG_FROM_PLACEMENT_INFO path
   public boolean userAZSelected = false;
