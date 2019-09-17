@@ -33,7 +33,7 @@ menu:
         <div class="title">Manual deployment</div>
       </div>
       <div class="body">
-          Manual deployment of Yugabyte DB in a private data center using the basic admin commands.
+          Manual deployment of YugabyteDB in a private data center using the basic admin commands.
       </div>
     </a>
   </div>
@@ -45,7 +45,7 @@ menu:
         <div class="title">Kubernetes</div>
       </div>
       <div class="body">
-        Orchestrated deployment of Yugabyte DB using open source as well as managed Kubernetes services.
+        Orchestrated deployment of YugabyteDB using open source as well as managed Kubernetes services.
       </div>
     </a>
   </div>
@@ -59,19 +59,19 @@ menu:
         <div class="title">Docker</div>
       </div>
       <div class="body">
-        Orchestrated deployment of Yugabyte DB in Docker Swarm and Docker Compose.
+        Orchestrated deployment of YugabyteDB in Docker Swarm and Docker Compose.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cdc/">
+    <a class="section-link icon-offset" href="replicate-2dc/">
       <div class="head">
         <img class="icon" src="/images/deploy/cdc/deploy.png" aria-hidden="true" />
-        <div class="title">Change Data Capture</div>
+        <div class="title">Replicate between two data centers</div>
       </div>
       <div class="body">
-          Use CDC to identify, capture, and deliver data changes in multi-data centers.
+          Replicate between two data centers for high availability, geo-redundancy, disaster recovery, and more.
       </div>
     </a>
   </div>
@@ -83,7 +83,7 @@ menu:
         <div class="title">Pivotal Cloud Foundry</div>
       </div>
       <div class="body">
-        Deploying and managing Yugabyte DB through Pivotal Cloud Foundry (PCF) and Pivotal Container Service (PKS).
+        Deploy and manage YugabyteDB using Pivotal Cloud Foundry (PCF) and Pivotal Container Service (PKS).
       </div>
     </a>
   </div>
@@ -96,7 +96,7 @@ menu:
         <div class="title">Public clouds</div>
       </div>
       <div class="body">
-        Automated and manual deployments of Yugabyte DB on various public clouds.
+        Automated and manual deployments of YugabyteDB on various public clouds.
       </div>
     </a>
   </div>
@@ -109,7 +109,7 @@ menu:
         <div class="title">Yugabyte Platform</div>
       </div>
       <div class="body">
-        The simplest way to run Yugabyte DB on any public cloud or private data center.
+        The simplest way to run YugabyteDB on any public cloud or private data center.
       </div>
     </a>
   </div>
