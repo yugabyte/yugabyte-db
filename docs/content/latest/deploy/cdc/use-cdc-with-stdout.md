@@ -5,8 +5,8 @@ description: Use CDC with Kafka [beta]
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
-    parent: change-data-capture
-    identifier: yugabyte-db-connector
+    parent: cdc
+    identifier: use-cdc-with-stdout
     weight: 654
 type: page
 isTocNested: true

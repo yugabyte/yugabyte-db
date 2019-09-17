@@ -5,8 +5,8 @@ description: Use CDC with Kafka [beta]
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
-    parent: change-data-capture
-    identifier: yugabyte-db-connector
+    parent: cdc
+    identifier: use-cdc-with-kafka
     weight: 654
 type: page
 isTocNested: true
@@ -23,7 +23,7 @@ Create a YugabyteDB local cluster and add a table.
 
 If you are new to YugabyteDB, you can create a local YugaByte cluster in under five minutes by following the steps in the [Quick start](/quick-start/install/
 
-## Step 2 — Set up Apache Kafka (skip if your are logging to Console)
+## Step 2 — Set up Apache Kafka (skip if your are logging to console)
 
 YugabyteDB supports the use of [Apache Avro schemas](http://avro.apache.org/docs/current/#schemas) to serialize and deserialize tables.
 
