@@ -23,7 +23,7 @@ YSQL is currently in beta. We are actively working on making it production ready
 - Download the sample schema.
 
 ```sh
-$ wget https://raw.githubusercontent.com/Yugabyte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
+$ wget https://raw.githubusercontent.com/yugabyte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
 ```
 
 -  Download the sample data

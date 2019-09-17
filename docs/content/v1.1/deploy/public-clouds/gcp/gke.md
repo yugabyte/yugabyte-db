@@ -41,7 +41,7 @@ $ gcloud container clusters create yugabyte
 Create a Yugabyte DB cluster by running the following.
 
 ```sh
-$ kubectl create -f https://raw.githubusercontent.com/Yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset.yaml
+$ kubectl create -f https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset.yaml
 ```
 
 ```
@@ -121,7 +121,7 @@ system_schema  system_auth  system
 Destroy the Yugabyte DB cluster we created above by running the following.
 
 ```sh
-$ kubectl delete -f https://raw.githubusercontent.com/Yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset.yaml
+$ kubectl delete -f https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset.yaml
 ```
 
 ```

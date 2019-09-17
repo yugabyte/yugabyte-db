@@ -22,7 +22,7 @@ The [YSQL](../../api/ysql) API is compatible with PostgreSQL. This means Postgre
 
 - Yugabyte DB's API compatibility is aimed at accelerating developer onboarding. By integrating well with the existing ecosystem, Yugabyte DB ensures that developers can get started easily using a language they are already comfortable with. 
 
-- Yugabyte DB's API compatibility is not aimed at lift-and-shift porting of existing applications written for the original language. This is because existing applications are not written to take advantage of the distributed SQL APIs provided by Yugabyte DB. For such existing applications, developers should expect to modify their previously monolithic PostgreSQL and/or non-transactional Cassandra data access logic as they look to migrate to YugaByte DB.
+- Yugabyte DB's API compatibility is not aimed at lift-and-shift porting of existing applications written for the original language. This is because existing applications are not written to take advantage of the distributed SQL APIs provided by Yugabyte DB. For such existing applications, developers should expect to modify their previously monolithic PostgreSQL and/or non-transactional Cassandra data access logic as they look to migrate to Yugabyte DB.
 
 
 ## YSQL Compatibility with PostgreSQL

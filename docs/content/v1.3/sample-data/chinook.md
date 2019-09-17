@@ -43,9 +43,9 @@ To install and use the Chinook sample database, you need to have installed and c
 
 You can download the Chinook database that is compatible with Yugabyte DB from the [`sample` directory of the Yugabyte DB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). Download the following three files.
 
-- [`chinook_ddl.sql`](https://raw.githubusercontent.com/Yugabyte/yugabyte-db/42799a519726c75f502f463795ac6cd3ebda40c2/sample/chinook_ddl.sql) — Creates the tables and constraints
-- [`chinook_genres_artists_albums.sql`](https://raw.githubusercontent.com/Yugabyte/yugabyte-db/42799a519726c75f502f463795ac6cd3ebda40c2/sample/chinook_genres_artists_albums.sql) — Loads artist and album information
-- [`chinook_songs.sql`](https://raw.githubusercontent.com/Yugabyte/yugabyte-db/42799a519726c75f502f463795ac6cd3ebda40c2/sample/chinook_songs.sql) — Loads individual song information
+- [`chinook_ddl.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/42799a519726c75f502f463795ac6cd3ebda40c2/sample/chinook_ddl.sql) — Creates the tables and constraints
+- [`chinook_genres_artists_albums.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/42799a519726c75f502f463795ac6cd3ebda40c2/sample/chinook_genres_artists_albums.sql) — Loads artist and album information
+- [`chinook_songs.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/42799a519726c75f502f463795ac6cd3ebda40c2/sample/chinook_songs.sql) — Loads individual song information
 
 ### 2. Open the YSQL shell
 

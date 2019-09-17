@@ -70,13 +70,13 @@ Here is a table that lists some of the important features that Yugabyte DB suppo
 
 ## Linear scalability
 
-In order to test the linear scalability of Yugabyte DB, we have run some large cluster benchmarks (upto 50 nodes). We were able to scale Yugabyte DB to million of reads and writes per second while retaining low latencies. You can read more about our [large cluster tests and how we scaled YugaByte DB to millions of IOPS](https://blog.yugabyte.com/scaling-yugabyte-db-to-millions-of-reads-and-writes-fb86cea5ff15).
+In order to test the linear scalability of Yugabyte DB, we have run some large cluster benchmarks (upto 50 nodes). We were able to scale Yugabyte DB to million of reads and writes per second while retaining low latencies. You can read more about our [large cluster tests and how we scaled Yugabyte DB to millions of IOPS](https://blog.yugabyte.com/scaling-yugabyte-db-to-millions-of-reads-and-writes-fb86cea5ff15).
 
 ![Linear Scalability at large cluster sizes](/images/develop/learn/yb-scale-out.png)
 
 ## High performance
 
-Yugabyte DB was built with a performance as a design goal. Performance in a public cloud environment without sacrificing consistency is a serious ask. Yugabyte DB has been written ground up in C++ for this very reason. Here is a chart showing how YugaByte DB compares with Apache Cassandra when running a YCSB benchmark. Read more about the [YCSB benchmark results and what makes YugaByte DB performant](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
+Yugabyte DB was built with a performance as a design goal. Performance in a public cloud environment without sacrificing consistency is a serious ask. Yugabyte DB has been written ground up in C++ for this very reason. Here is a chart showing how Yugabyte DB compares with Apache Cassandra when running a YCSB benchmark. Read more about the [YCSB benchmark results and what makes Yugabyte DB performant](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
 
 The first chart below shows the total ops/second when running YBSB benchmark.
 
