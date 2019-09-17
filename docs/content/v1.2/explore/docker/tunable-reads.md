@@ -24,7 +24,7 @@ $ ./yb-docker-ctl add_node
 
 ## 2. Write some data
 
-Pull the [yb-sample-apps](https://github.com/YugaByte/yb-sample-apps) docker container. This container has built-in Java client programs for various workloads including SQL inserts and updates.
+Pull the [yb-sample-apps](https://github.com/Yugabyte/yb-sample-apps) docker container. This container has built-in Java client programs for various workloads including SQL inserts and updates.
 
 ```sh
 $ docker pull yugabytedb/yb-sample-apps

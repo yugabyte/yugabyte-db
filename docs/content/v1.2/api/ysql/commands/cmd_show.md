@@ -31,7 +31,7 @@ Where
 
 ## Semantics
 
-- Although the values of a parameter can be set, showed, and reset, the effect of these parameters are not yet supported in YugaByte. The factory-settings or default behaviors will be used for the moment.
+- Although the values of a parameter can be set, showed, and reset, the effect of these parameters are not yet supported in Yugabyte. The factory-settings or default behaviors will be used for the moment.
 
 ## See Also
 [`SET`](../cmd_set)

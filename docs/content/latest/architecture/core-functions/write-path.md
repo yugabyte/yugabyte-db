@@ -26,7 +26,7 @@ by exactly one tablet. This tablet as well as the YB-TServers hosting it can eas
 making an RPC call to the YB-Master. The YQL layer makes this RPC call to determine the
 tablet/YB-TServer owning the key and caches the result for future use.
 
-YugaByte has a [smart client](../../../develop/client-drivers/java/) that can cache the location of the
+Yugabyte has a [smart client](../../../develop/client-drivers/java/) that can cache the location of the
 tablet directly and can therefore save the extra network hop. This allows it to send the request
 directly to the YQL layer of the appropriate YB-TServer which hosts the tablet leader. If the YQL
 layer finds that the tablet leader is hosted on the local node, the RPC call becomes a local
@@ -81,5 +81,5 @@ value column V the values (k, v). The write flow is depicted below.
 ![write_path_io](/images/architecture/write_path_io.png)
 
 Note that the above scenario has been greatly simplified by assuming that the user application sends
-the write query to a random YugaByte server, which then routes the request appropriately. In
-practice, the use of the YugaByte smart client is recommended for removing the extra network hop.
+the write query to a random Yugabyte server, which then routes the request appropriately. In
+practice, the use of the Yugabyte smart client is recommended for removing the extra network hop.

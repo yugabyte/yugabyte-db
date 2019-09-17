@@ -1,7 +1,7 @@
 ---
 title: Check processes
 linkTitle: Check processes
-description: Check YugaByte DB processes
+description: Check Yugabyte DB processes
 menu:
   v1.3:
     parent: troubleshoot-nodes
@@ -10,11 +10,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## 1. Are the YugaByte DB processes running?
+## 1. Are the Yugabyte DB processes running?
 
-Connect to the local node where YugaByte DB is running. 
+Connect to the local node where Yugabyte DB is running. 
 
-On the local setup, this is your local machine (or a Docker instance running on your local machine). On a multi-node cluster, you may need to `ssh` into the machines where the YugaByte nodes are running.
+On the local setup, this is your local machine (or a Docker instance running on your local machine). On a multi-node cluster, you may need to `ssh` into the machines where the Yugabyte nodes are running.
 
 ```sh
 $ ps aux | grep yb-tserver

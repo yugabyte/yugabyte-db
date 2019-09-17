@@ -32,8 +32,8 @@ postgres=> CREATE TABLE multi_types(h bigint, r float, vi int, vs text, PRIMARY 
 ```
 
 ```sql
-postgres=> INSERT INTO multi_types(h, r, vi, vs) VALUES (1, 1.5, 3, 'YugaByte');
-INSERT INTO multi_types(h, r, vi, vs) VALUES (2, 3.5, 4, 'YugaByte-1.1');
+postgres=> INSERT INTO multi_types(h, r, vi, vs) VALUES (1, 1.5, 3, 'Yugabyte');
+INSERT INTO multi_types(h, r, vi, vs) VALUES (2, 3.5, 4, 'Yugabyte-1.1');
 ```
 
 ## 4. Query data with aggregates
@@ -45,8 +45,8 @@ postgres=> SELECT * FROM multi_types;
 ```
 h |  r  | vi |      vs      
 ---+-----+----+--------------
- 2 | 3.5 |  4 | YugaByte-1.1
- 1 | 1.5 |  3 | YugaByte
+ 2 | 3.5 |  4 | Yugabyte-1.1
+ 1 | 1.5 |  3 | Yugabyte
 (2 rows)
 ```
 Run another query.

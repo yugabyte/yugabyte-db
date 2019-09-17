@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-An expression with operators is a compound expression that combines multiple expressions using builtin operators. The following sections discuss the supported operators in YugaByte.
+An expression with operators is a compound expression that combines multiple expressions using builtin operators. The following sections discuss the supported operators in Yugabyte.
 
 ## Nullary operations
 

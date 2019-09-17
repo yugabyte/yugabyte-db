@@ -10,7 +10,7 @@ menu:
     weight: 20
 ---
 
-{{< hero class="enterprise-edition" title="Contact Us for YugaByte DB Enterprise Edition" >}}
+{{< hero class="enterprise-edition" title="Contact Us for Yugabyte DB Enterprise Edition" >}}
 <p class="subtitle">
 Enterprise Edition is Community Edition plus:
 </p>
@@ -43,7 +43,7 @@ Enterprise Edition is Community Edition plus:
         <div class="title">Overview</div>
       </div>
       <div class="body">
-        What is YugaByte DB and how is it unique?
+        What is Yugabyte DB and how is it unique?
       </div>
     </a>
   </div>
@@ -55,7 +55,7 @@ Enterprise Edition is Community Edition plus:
         <div class="title">Benefits</div>
       </div>
       <div class="body">
-        Key benefits of YugaByte DB.
+        Key benefits of Yugabyte DB.
       </div>
     </a>
   </div>

@@ -23,7 +23,7 @@ $ ./bin/yb-ctl add_node
 Download the sample app jar.
 
 ```sh
-$ wget https://github.com/YugaByte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
+$ wget https://github.com/Yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
 ```
 
 By default, the key-value sample application runs with strong read consistency where all data is read from the tablet leader. We are going to populate exactly one key with a 10KB value into the system. Since the replication factor is 3, this key will get replicated to only 3 of the 4 nodes in the universe.

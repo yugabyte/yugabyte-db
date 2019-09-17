@@ -97,7 +97,7 @@ The simplest option is use a self-signed cert for now and add the custom SSL cer
 
 ### Upload license file
 
-Now upload the YugaByte license file received from YugaByte Support.
+Now upload the Yugabyte license file received from YugaByte Support.
 
 ![Replicated License Upload](/images/replicated/replicated-license-upload.png)
 
@@ -111,7 +111,7 @@ Two options to install YugaWare are presented.
 
 ### Secure Replicated
 
-The next step is to add a password to protect the Replicated Admin Console (note that this Admin Console is for Replicated and is different from YugaWare, the Admin Console for YugaByte DB).
+The next step is to add a password to protect the Replicated Admin Console (note that this Admin Console is for Replicated and is different from YugaWare, the Admin Console for Yugabyte DB).
 
 ![Replicated Password](/images/replicated/replicated-password.png)
 
@@ -123,4 +123,4 @@ Replicated will perform a set of pre-flight checks to ensure that the host is se
 
 Clicking Continue above will bring us to YugaWare configuration.
 
-In case the pre-flight check fails, review the [Troubleshoot YugaByte Platform](../../../troubleshoot/enterprise-edition/) section below to identify the resolution.
+In case the pre-flight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/enterprise-edition/) section below to identify the resolution.

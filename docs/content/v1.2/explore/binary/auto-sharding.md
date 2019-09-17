@@ -99,7 +99,7 @@ cqlsh> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (k text PRIMARY KEY, v blo
 ```
 
 
-For each table, we have instructed YugaByte DB to create 4 shards per tserver present in the universe. Since we have 3 nodes, we expect 12 tablets for the `ybdemo_keyspace.cassandrakeyvalue` table.
+For each table, we have instructed Yugabyte DB to create 4 shards per tserver present in the universe. Since we have 3 nodes, we expect 12 tablets for the `ybdemo_keyspace.cassandrakeyvalue` table.
 
 
 ## 3. Explore tablets
@@ -156,7 +156,7 @@ Let us insert a key-value entry, with the value size around 2MB. Since the memst
 Download the sample app jar.
 
 ```sh
-$ wget https://github.com/YugaByte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
+$ wget https://github.com/Yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
 Run the workload.

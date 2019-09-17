@@ -1,1 +1,1 @@
-Documentation for deploying YugaByte DB Enterprise Edition on Kubernetes are coming soon.
+Documentation for deploying Yugabyte DB Enterprise Edition on Kubernetes are coming soon.

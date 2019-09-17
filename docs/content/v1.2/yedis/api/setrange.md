@@ -43,7 +43,7 @@ $ GET yugakey
 ```
 
 ```
-"YugaByte"
+"Yugabyte"
 ```
 
 ## See Also
