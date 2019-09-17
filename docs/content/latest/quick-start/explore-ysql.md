@@ -94,15 +94,11 @@ orders.sql  products.sql  reviews.sql users.sql
 - Create a database.
 
 ```sql
-postgres=> CREATE DATABASE yb_demo;
+yugabyte=> CREATE DATABASE yb_demo;
 ```
 
 ```sql
-postgres=> GRANT ALL ON DATABASE yb_demo to postgres;
-```
-
-```sql
-postgres=> \c yb_demo;
+yugabyte=> \c yb_demo;
 ```
 
 - Insert sample data
