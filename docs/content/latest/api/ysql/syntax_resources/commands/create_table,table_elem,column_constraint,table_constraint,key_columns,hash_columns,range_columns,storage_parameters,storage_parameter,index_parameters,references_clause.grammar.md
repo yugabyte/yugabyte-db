@@ -1,6 +1,6 @@
 ```
-create_table ::= CREATE TABLE [ IF NOT EXISTS ] table_name ( 
-                 [ table_elem [ , ... ] ] ) 
+create_table ::= CREATE [ TEMPORARY | TEMP ] TABLE [ IF NOT EXISTS ] 
+                 table_name ( [ table_elem [ , ... ] ] ) 
                  [ WITH ( storage_parameters ) | WITHOUT OIDS ]
 
 table_elem ::= column_name data_type [ column_constraint [ ... ] ]
@@ -18,9 +18,15 @@ column_constraint ::= [ CONSTRAINT constraint_name ]
 table_constraint ::= [ CONSTRAINT constraint_name ] 
                      { CHECK ( expression )
                        | UNIQUE ( column_names ) index_parameters
-                       | PRIMARY KEY ( column_names )
+                       | PRIMARY KEY ( key_columns )
                        | FOREIGN KEY ( column_names ) 
                          references_clause }
+
+key_columns ::= hash_columns [ , range_columns ] | range_columns
+
+hash_columns ::= column_name [ HASH ] | ( column_name [ , ... ] ) HASH
+
+range_columns ::= { column_name { ASC | DESC } } [ , ... ]
 
 storage_parameters ::= storage_parameter [ , ... ]
 
