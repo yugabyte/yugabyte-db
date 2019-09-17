@@ -114,13 +114,14 @@ bool YBCStatusIsNotFound(YBCStatus s) {
   return StatusWrapper(s)->IsNotFound();
 }
 
-bool IsQLError(YBCStatus s, PgsqlResponsePB::RequestStatus ec) {
-  StatusWrapper status(s);
-  return PgsqlError(*status).value() == ec;
+bool YBCStatusIsDuplicateKey(YBCStatus s) {
+  return StatusWrapper(s)->IsAlreadyPresent();
 }
 
-bool YBCStatusIsDuplicateKey(YBCStatus s) {
-  return IsQLError(s, PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
+uint32_t YBCStatusPgsqlError(YBCStatus s) {
+  const uint8_t* pgerr = StatusWrapper(s)->ErrorData(PgsqlErrorTag::kCategory);
+  return static_cast<uint32>(pgerr == nullptr ? YBPgErrorCode::YB_PG_INTERNAL_ERROR
+                                              : PgsqlErrorTag::Decode(pgerr));
 }
 
 void YBCFreeStatus(YBCStatus s) {

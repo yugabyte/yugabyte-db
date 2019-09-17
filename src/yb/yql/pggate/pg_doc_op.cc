@@ -18,12 +18,13 @@
 
 #include "yb/client/table.h"
 
-#include "yb/common/pgsql_error.h"
-
 #include "yb/yql/pggate/pggate_flags.h"
 
 // TODO: include a header for PgTxnManager specifically.
 #include "yb/yql/pggate/pggate_if_cxx_decl.h"
+
+#include "yb/common/pgsql_error.h"
+#include "yb/util/yb_pg_errcodes.h"
 
 namespace yb {
 namespace pggate {
@@ -155,7 +156,14 @@ bool PgDocOp::CheckRestartUnlocked(client::YBPgsqlOp* op) {
     return false;
   }
 
-  if (op->response().status() == PgsqlResponsePB::PGSQL_STATUS_RESTART_REQUIRED_ERROR &&
+  const auto& response = op->response();
+
+  YBPgErrorCode pg_error_code = YBPgErrorCode::YB_PG_INTERNAL_ERROR;
+  if (response.has_pg_error_code()) {
+    pg_error_code = static_cast<YBPgErrorCode>(response.pg_error_code());
+  }
+
+  if (response.status() == PgsqlResponsePB::PGSQL_STATUS_RESTART_REQUIRED_ERROR &&
       pg_session_->pg_txn_manager()->CanRestart()) {
     exec_status_ = pg_session_->RestartTransaction();
     if (exec_status_.ok()) {
@@ -164,9 +172,13 @@ bool PgDocOp::CheckRestartUnlocked(client::YBPgsqlOp* op) {
         return true;
       }
     }
+  } else if (response.status() == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR) {
+    // We're doing this to eventually replace the error message by one mentioning the index name.
+    exec_status_ = STATUS(AlreadyPresent, op->response().error_message(), Slice(),
+        PgsqlError(pg_error_code));
   } else {
     exec_status_ = STATUS(QLError, op->response().error_message(), Slice(),
-                          PgsqlError(op->response().status()));
+        PgsqlError(pg_error_code));
   }
 
   return false;

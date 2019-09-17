@@ -3,38 +3,38 @@ import t from 'typy';
 import { browserHistory} from 'react-router';
 
 
-export function getFeatureState(features, feature_name) {
-  return t(features, feature_name).safeObject || "enabled";
+export function getFeatureState(features, feature_name, default_value = "enabled") {
+  return t(features, feature_name).safeObject || default_value;
 }
 
-export function isNonAvailable(features, feature_name) {
-  const featureState =  getFeatureState(features, feature_name);
+export function isNonAvailable(features, feature_name, default_value) {
+  const featureState =  getFeatureState(features, feature_name, default_value);
   return (featureState === "disabled" || featureState === "hidden");
 }
 
-export function isAvailable(features, feature_name) {
-  const featureState =  getFeatureState(features, feature_name);
+export function isAvailable(features, feature_name, default_value) {
+  const featureState =  getFeatureState(features, feature_name, default_value);
   return (featureState === "enabled" || featureState === "visible");
 }
 
 
-export function isEnabled(features, feature_name) {
-  const featureState =  getFeatureState(features, feature_name);
+export function isEnabled(features, feature_name, default_value) {
+  const featureState =  getFeatureState(features, feature_name, default_value);
   return featureState === "enabled";
 }
 
-export function isDisabled(features, feature_name) {
-  const featureState =  getFeatureState(features, feature_name);
+export function isDisabled(features, feature_name, default_value) {
+  const featureState =  getFeatureState(features, feature_name, default_value);
   return featureState === "disabled";
 }
 
-export function isHidden(features, feature_name) {
-  const featureState =  getFeatureState(features, feature_name);
+export function isHidden(features, feature_name, default_value) {
+  const featureState =  getFeatureState(features, feature_name, default_value);
   return featureState === "hidden";
 }
 
-export function isNotHidden(features, feature_name) {
-  const featureState =  getFeatureState(features, feature_name);
+export function isNotHidden(features, feature_name, default_value) {
+  const featureState =  getFeatureState(features, feature_name, default_value);
   return featureState !== "hidden";
 }
 

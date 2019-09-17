@@ -78,7 +78,12 @@ export default class NodeAction extends Component {
   render() {
     const { currentRow, providerUUID } = this.props;
     if (!isNonEmptyArray(currentRow.allowedActions)) {
-      return <span />;
+      return (
+        <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
+          <MenuItem disabled>
+            No actions available
+          </MenuItem>
+        </DropdownButton>);
     }
     const actionButtons = currentRow.allowedActions.map((actionType, idx) => {
       const btnId = _.uniqueId('node_action_btn_');

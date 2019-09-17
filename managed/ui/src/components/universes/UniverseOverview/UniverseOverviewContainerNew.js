@@ -9,9 +9,12 @@ const mapDispatchToProps = (dispatch) => {
     showUniverseOverviewMapModal: () => {
       dispatch(openDialog("universeOverviewMapModal"));
     },
+    showDemoCommandModal: () => {
+      dispatch(openDialog("universeOverviewDemoModal"));
+    },
     closeModal: () => {
       dispatch(closeDialog());
-    }
+    },
   };
 };
 

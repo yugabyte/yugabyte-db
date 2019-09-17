@@ -35,6 +35,8 @@ DEFINE_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bi
 DEFINE_bool(pg_transactions_enabled, true,
             "True to enable transactions in YugaByte PostgreSQL API. This should eventually "
             "be set to true by default.");
+DEFINE_bool(pg_verbose_error_log, false,
+            "True to enable verbose logging of errors in PostgreSQL server");
 DEFINE_int32(pgsql_proxy_webserver_port, 13000, "Webserver port for PGSQL");
 DECLARE_string(metric_node_name);
 TAG_FLAG(pg_transactions_enabled, advanced);
@@ -257,6 +259,11 @@ Status PgWrapper::Start() {
 
   auto config_file_args = CHECK_RESULT(WritePgConfigFiles(conf_.data_dir));
   argv.insert(argv.end(), config_file_args.begin(), config_file_args.end());
+
+  if (FLAGS_pg_verbose_error_log) {
+    argv.push_back("-c");
+    argv.push_back("log_error_verbosity=VERBOSE");
+  }
 
   pg_proc_.emplace(postgres_executable, argv);
   pg_proc_->ShareParentStderr();

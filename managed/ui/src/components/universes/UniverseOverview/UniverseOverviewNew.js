@@ -8,7 +8,7 @@ import PropTypes from 'prop-types';
 import { FormattedDate, FormattedRelative } from 'react-intl';
 import { ClusterInfoPanelContainer, YBWidget } from '../../panels';
 import { OverviewMetricsContainer, StandaloneMetricsPanelContainer, DiskUsagePanel, CpuUsagePanel } from '../../metrics';
-import { YBResourceCount, YBCost, DescriptionList } from 'components/common/descriptors';
+import { YBResourceCount, YBCost, DescriptionList, YBCodeBlock } from 'components/common/descriptors';
 import { RegionMap, YBMapLegend} from '../../maps';
 import { isNonEmptyObject, isNullOrEmpty,
   isNonEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
@@ -241,6 +241,55 @@ export default class UniverseOverviewNew extends Component {
     </Col>);
   }
 
+  getDemoWidget = () => {
+    const {
+      closeModal,
+      showDemoCommandModal,
+      modal: { showModal, visibleModal },
+    } = this.props;
+    return (<Col lg={2} md={4} sm={4} xs={6}>
+      <YBWidget
+        size={1}
+        className={"overview-widget-cost"}
+        headerLeft={"Explore YSQL"}
+        body={
+          <FlexContainer direction={"column"} >
+            <FlexGrow>
+              <div style={{marginBottom: '30px'}}>Load a retail data set and run queries against it.</div>
+            </FlexGrow>
+            <FlexShrink className={"centered"}>
+              <Fragment>
+                <YBButton btnClass={"btn btn-default"}
+                  btnText={"Create Demo"}
+                  title={"Create Demo"}
+                  onClick={showDemoCommandModal}
+                />
+                <YBModal
+                  title={"YSQL Retail Demo"}
+                  visible={showModal && visibleModal === "universeOverviewDemoModal"}
+                  onHide={closeModal}
+                  cancelLabel={"Close"}
+                  showCancelButton={true}
+                >
+                  <div>1. Create a sample retail database:</div>
+                  <YBCodeBlock>
+                    yugabyte-db demo create retail
+                  </YBCodeBlock>
+                  <div>2. Connect to the database:</div>
+                  <YBCodeBlock>
+                    yugabyte-db demo run retail
+                  </YBCodeBlock>
+                  <div>3. Explore more YSQL <a href="https://docs.yugabyte.com/latest/quick-start/explore-ysql/">here</a>.</div>
+                </YBModal>
+              </Fragment>
+            </FlexShrink>
+          </FlexContainer>
+        }
+      />
+    </Col>
+    );
+  }
+
   getPrimaryClusterWidget = (currentUniverse) => {
     if (isNullOrEmpty(currentUniverse)) return;
     return (<Col lg={2} sm={4} xs={6}>
@@ -447,13 +496,13 @@ export default class UniverseOverviewNew extends Component {
 
     const universeInfo = currentUniverse.data;
     const nodePrefixes = [universeInfo.universeDetails.nodePrefix];
-
     return (
       <Fragment>
         <Row>
           {this.getDatabaseWidget(universeInfo, tasks)}
           {this.getPrimaryClusterWidget(universeInfo)}
           {isEnabled(currentCustomer.data.features, "universes.details.overview.costs") && this.getCostWidget(universeInfo)}
+          {isEnabled(currentCustomer.data.features, "universes.details.overview.demo", "disabled") && this.getDemoWidget()}
           {this.getCPUWidget(universeInfo)}
           {this.getHealthWidget(universe.healthCheck, universeInfo)}
         </Row>

@@ -3,7 +3,9 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
@@ -25,6 +27,7 @@ import play.libs.Json;
 import play.mvc.*;
 
 import java.io.File;
+import java.io.InputStream;
 import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
@@ -123,12 +126,19 @@ public class SessionController extends Controller {
     SetSecurityFormData data = formData.get();
     configHelper.loadConfigToDB(Security, ImmutableMap.of("level", data.level));
     if (data.level.equals("insecure")) {
-      List<Customer> custs = Customer.find.all();
-      for (Customer cust: custs) {
-        String apiToken = cust.getApiToken();
-        if (apiToken == null || apiToken.isEmpty()) {
-          cust.upsertApiToken();
-        }
+      Customer cust = Customer.get(customerUUID);
+      String apiToken = cust.getApiToken();
+      if (apiToken == null || apiToken.isEmpty()) {
+        cust.upsertApiToken();
+      }
+
+      try {
+        InputStream featureStream = environment.resourceAsStream("sampleFeatureConfig.json");
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode features = mapper.readTree(featureStream);
+        Customer.get(customerUUID).upsertFeatures(features);
+      } catch(IOException e) {
+        LOG.error("Failed to parse sample feature config file for OSS mode.");
       }
     }
     return ok();

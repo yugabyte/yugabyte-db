@@ -30,6 +30,8 @@
 
 #include "yb/client/transaction_rpc.h"
 
+#include "yb/common/pgsql_error.h"
+
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb.h"
 
@@ -399,7 +401,8 @@ class CleanupIntentsTask : public rpc::ThreadPoolTask {
 };
 
 CHECKED_STATUS MakeAbortedStatus(const TransactionId& id) {
-  return STATUS_FORMAT(TryAgain, "Transaction aborted: $0", id);
+  return STATUS(TryAgain, Format("Transaction aborted: $0", id), Slice(),
+      PgsqlError(YBPgErrorCode::YB_PG_IN_FAILED_SQL_TRANSACTION));
 }
 
 class RunningTransaction : public std::enable_shared_from_this<RunningTransaction> {
@@ -690,14 +693,11 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
             << waiter.serial_no << " vs " << serial_no;
         waiter.callback(TransactionStatusResult{TransactionStatus::PENDING, time_of_status});
       } else {
-        waiter.callback(STATUS_FORMAT(
-            TryAgain,
-            "Cannot determine transaction status with read_ht $0, and global_limit_ht $1, "
-                "last known: $2 at $3",
-            waiter.read_ht,
-            waiter.global_limit_ht,
-            TransactionStatus_Name(transaction_status),
-            time_of_status));
+        waiter.callback(STATUS(TryAgain,
+            Format("Cannot determine transaction status with read_ht $0, and global_limit_ht $1, "
+                   "last known: $2 at $3", waiter.read_ht, waiter.global_limit_ht,
+                   TransactionStatus_Name(transaction_status), time_of_status), Slice(),
+            PgsqlError(YBPgErrorCode::YB_PG_IN_FAILED_SQL_TRANSACTION) ));
       }
     }
   }
@@ -883,7 +883,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     auto lock_and_iterator = LockAndFindOrLoad(
         id, "metadata"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
     if (!lock_and_iterator.found()) {
-      return STATUS_FORMAT(TryAgain, "Unknown transaction, could be recently aborted: $0", id);
+      return STATUS(TryAgain,
+                    Format("Unknown transaction, could be recently aborted: $0", id), Slice(),
+                    PgsqlError(YBPgErrorCode::YB_PG_IN_FAILED_SQL_TRANSACTION));
     }
     RETURN_NOT_OK(lock_and_iterator.transaction().CheckAborted());
     return lock_and_iterator.transaction().metadata();

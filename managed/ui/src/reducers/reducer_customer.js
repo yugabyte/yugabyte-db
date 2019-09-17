@@ -19,8 +19,6 @@ import { VALIDATE_FROM_TOKEN, VALIDATE_FROM_TOKEN_RESPONSE,
 import { sortVersionStrings, isDefinedNotNull } from '../utils/ObjectUtils';
 import { getInitialState, setLoadingState, setSuccessState, setFailureState, setPromiseResponse }  from '../utils/PromiseUtils';
 
-import ossConfig from './configs/ossConfig';
-
 const INITIAL_STATE = {
   currentCustomer: getInitialState({}),
   authToken: getInitialState({}),
@@ -51,7 +49,6 @@ export default function(state = INITIAL_STATE, action) {
       return setLoadingState(state, "currentCustomer", {});
     case VALIDATE_FROM_TOKEN_RESPONSE:
       return setPromiseResponse(state, "currentCustomer", action);
-
     case REGISTER:
       return setLoadingState(state, "authToken", {});
     case REGISTER_RESPONSE:
@@ -68,16 +65,8 @@ export default function(state = INITIAL_STATE, action) {
         INSECURE_apiToken: null,
       };
     case INSECURE_LOGIN_RESPONSE:
-      const currentCustomer = {
-        ...state.currentCustomer,
-        data: {
-          ...state.currentCustomer.data,
-          features: ossConfig.features
-        }
-      };
       return {
         ...state,
-        currentCustomer,
         INSECURE_apiToken: action.payload.data.apiToken
       };
     case LOGOUT:

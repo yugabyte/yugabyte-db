@@ -17,6 +17,7 @@
 #define YB_COMMON_YBC_UTIL_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,6 +32,7 @@ extern YBCStatus YBCStatusOK;
 bool YBCStatusIsOK(YBCStatus s);
 bool YBCStatusIsNotFound(YBCStatus s);
 bool YBCStatusIsDuplicateKey(YBCStatus s);
+uint32_t YBCStatusPgsqlError(YBCStatus s);
 void YBCFreeStatus(YBCStatus s);
 
 size_t YBCStatusMessageLen(YBCStatus s);

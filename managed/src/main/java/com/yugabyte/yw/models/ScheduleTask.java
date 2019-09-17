@@ -43,12 +43,12 @@ public class ScheduleTask extends Model {
   public UUID getScheduleUUID() { return scheduleUUID; }
 
   @Column
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd hh:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   private Date completedTime;
   public Date getCompletedTime() { return completedTime; }
   
   @Column
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd hh:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   private Date scheduledTime;
   public Date getScheduledTime() { return scheduledTime; }
 
