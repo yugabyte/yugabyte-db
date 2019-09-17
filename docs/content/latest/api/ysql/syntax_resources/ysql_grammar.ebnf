@@ -757,7 +757,8 @@ select ::= [ 'WITH' [ 'RECURSIVE' ] ( with_query { ',' with_query } ) ] \
 
 select_expression ::= expression [ [ 'AS' ] name ] ;
 
-order_expr ::= expression [ 'ASC' | 'DESC' | 'USING' operator ] [ 'NULLS' ( 'FIRST' | 'LAST' ) ] ;
+order_expr = expression [ 'ASC' | 'DESC' | 'USING' operator_name ]
+             [ 'NULLS' ( 'FIRST' | 'LAST' ) ] ;
 
 (* 'SET' variable *)
 set ::= 'SET' [ 'SESSION' | 'LOCAL' ]
