@@ -1,7 +1,7 @@
 ---
-title: Use CDC with Kafka
-linkTitle: Use CDC with Kafka
-description: Use CDC with Kafka
+title: Use CDC with Kafka [beta]
+linkTitle: Use CDC with Kafka [beta]
+description: Use CDC with Kafka [beta]
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
@@ -13,18 +13,19 @@ isTocNested: true
 showAsideToc: true
 ---
 
-You can use the Change Data Capture (CDC) API, you can use YugaByteDB as a data source to an Apache Kafka or console sink.
-Follow the steps outlined below to explore the new CDC functionality using a YugaByteDB local cluster.
 
-## Step 1 — Set up YugaByteDB
+You can use the Change Data Capture (CDC) API, you can use YugabyteDB as a data source to an Apache Kafka or console sink.
+Follow the steps outlined below to explore the new CDC functionality using a YugabyteDB local cluster.
 
-Create a YugaByteDB local cluster and add a table.
+## Step 1 — Set up YugabyteDB
 
-If you are new to YugaByteDB, you can create a local YugaByte cluster in under five minutes by following the steps in the [Quick start](/quick-start/install/
+Create a YugabyteDB local cluster and add a table.
+
+If you are new to YugabyteDB, you can create a local YugaByte cluster in under five minutes by following the steps in the [Quick start](/quick-start/install/
 
 ## Step 2 — Set up Apache Kafka (skip if your are logging to Console)
 
-YugaByteDB supports the use of [Apache Avro schemas](http://avro.apache.org/docs/current/#schemas) to serialize and deserialize tables.
+YugabyteDB supports the use of [Apache Avro schemas](http://avro.apache.org/docs/current/#schemas) to serialize and deserialize tables.
 
 Create two Avro schemas, one for the table and one for the primary key of the table. After this step, you should have two files: `table_schema_path.avsc` and `primary_key_schema_path.avsc`.
 
@@ -66,9 +67,9 @@ export CONFLUENT_HOME=~/code/confluent-5.3.1
 bin/kafka-avro-console-consumer --bootstrap-server localhost:9092 --topic <topic_name> --key-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer --value-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer
 ```
 
-## Step 4 — Set up Kafka Connect to YugaByteDB
+## Step 4 — Set up Kafka Connect to YugabyteDB
 
-1. In a new shell window, fork YugaByte's GitHub repository for [Kafka Connect to YugaByteDB](https://github.com/yugabyte/yb-kafka-connector) and change to the `yb-cdc` directory.
+1. In a new shell window, fork YugaByte's GitHub repository for [Kafka Connect to YugabyteDB](https://github.com/yugabyte/yb-kafka-connector) and change to the `yb-cdc` directory.
 
 ```
 git clone https://github.com/yugabyte/yb-kafka-connector.git
