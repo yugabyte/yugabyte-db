@@ -81,7 +81,7 @@ cd yb-kafka-connector/yb-cdc
 
 You can now follow the steps below to log to a console or Kafka sink.
 
-## Logging to console
+**Logging to console**
 
 ```bash
 java -jar target/yb_cdc_connector.jar
@@ -91,7 +91,7 @@ java -jar target/yb_cdc_connector.jar
 --log_only // Flag to log to console.
 ```
 
-## Logging to Kafka
+**Logging to Kafka**
 
 ```bash
 java -jar target/yb_cdc_connector.jar
