@@ -32,19 +32,20 @@ YugaByte DB is not a good fit for traditional Online Analytical Processing (OLAP
 
 ## How many major releases YugaByte DB has had so far?
 
-YugaByte DB has had 5 major releases.
+YugaByte DB has had 6 major releases.
 
 - [v0.9 Beta](https://blog.yugabyte.com/yugabyte-has-arrived/) in November 2017
 - [v1.0](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-%F0%9F%8D%BE-%F0%9F%8E%89/) in May 2018
 - [v1.1](https://blog.yugabyte.com/announcing-yugabyte-db-1-1-and-company-update/) in September 2018
 - [v1.2](https://blog.yugabyte.com/announcing-yugabyte-db-1-2-company-update-jepsen-distributed-sql/) in March 2019
 - [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/) in July 2019
+- [v2.0](https://blog.yugabyte.com/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/ ) in September 2019
 
-Next major release is the v2.0 release in Summer 2019.
+Next major release is the v2.1 release in Fall 2019.
 
 ## Can I deploy YugaByte DB to production?
 
-Yes, YugaByte DB is [production ready](https://blog.yugabyte.com/yugabyte-db-1-0-a-peek-under-the-hood/) starting with v1.0 in May 2018. The YSQL API is currently in Release Candidacy and is expected to reach production readiness in the v2.0 (Summer 2019).
+Yes, both YugaByte DB APIs are production ready. [YCQL](https://blog.yugabyte.com/yugabyte-db-1-0-a-peek-under-the-hood/) achieved this status starting with v1.0 in May 2018. [YSQL](https://blog.yugabyte.com/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/) achieved this status starting v2.0 in September 2019.
 
 ## Which companies are currently using YugaByte DB in production?
 
