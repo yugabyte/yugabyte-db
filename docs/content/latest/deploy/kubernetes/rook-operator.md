@@ -1,17 +1,19 @@
 ---
-title: Rook Yugabyte DB operator
+title: Rook operator
 linkTitle: Rook operator
-description: Rook Yugabyte DB operator
+description: Rook operator
 menu:
   latest:
     identifier: rook-operator
     parent: deploy-kubernetes
     weight: 624
+isTocNested: true
+showAsideToc: true
 ---
 
 [Rook](https://rook.io) is an open source, cloud-native storage orchestrator for Kubernetes, providing the platform, framework, and support that can turn Yugabyte DB clusters into self-managing, self-scaling, and self-healing storage services. Rook automates storage-layer tasks, including deployment, bootstrapping, configuration, provisioning, scaling, upgrading, migration, disaster recovery, monitoring, and resource management.
 
-The [Rook Yugabyte DB operator](https://rook.io/docs/rook/v1.1/yugabytedb.html) is a custom controller that uses Custom Resource Definition (CRD) to extend the Kubernetes API and automate deploying, scaling, and managing Yugabyte DB clusters.  Based on the  _desired state_ that you specified in the CRD, the Rook operator observes (watching for changes in state and health), analyzes (comparing current to desired state), and acts (applying changes to the cluster) to maintain the desired state. For details, see [Yugabyte DB Cluster CRD](https://rook.io/docs/rook/v1.1/yugabytedb-cluster-crd.html)
+The [Rook operator](https://rook.io/docs/rook/v1.1/yugabytedb.html) is a custom controller that uses Custom Resource Definition (CRD) to extend the Kubernetes API and automate deploying, scaling, and managing Yugabyte DB clusters.  Based on the  _desired state_ that you specified in the CRD, the Rook operator observes (watching for changes in state and health), analyzes (comparing current to desired state), and acts (applying changes to the cluster) to maintain the desired state. For details, see [Yugabyte DB Cluster CRD](https://rook.io/docs/rook/v1.1/yugabytedb-cluster-crd.html)
 
 ## Before you begin
 
@@ -62,9 +64,9 @@ cluster/examples/kubernetes/yugabytedb
 
 Make a copy of the sample CRD file (`cluster.yaml`)  and modify it as needed. For details on the configuration options, see [Yugabyte DB CRD](https://rook.io/docs/rook/v1.1/yugabytedb-cluster-crd.html).
 
-## Create a simple YugabyteDB cluster
+## Create a simple Yugabyte DB cluster
 
-1. Create your YugabyteDB cluster by running the following command:
+1. Create your Yugabyte DB cluster by running the following command:
 
     ```bash
     kubectl create -f cluster.yaml
@@ -92,8 +94,8 @@ kubectl exec -it yb-tserver-rook-yugabytedb-0 /home/yugabyte/bin/ysqlsh -- -h yb
 
 For details on the YSQL API, see:
 
-- [Explore Yugabyte SQL (YSQL)](https://docs.yugabyte.com/latest/quick-start/explore-ysql/#kubernetes) in the Quick Start section
-- [Yugabyte Structured Query Language (YSQL)](https://docs.yugabyte.com/latest/api/ysql/)
+- [Explore YSQL](../../../quick-start/explore-ysql/#kubernetes)
+- [YSQL Reference](../../../api/ysql/) 
 
 ## Cleanup
 
@@ -106,7 +108,7 @@ kubectl delete -f cluster.yaml
 kubectl delete -f operator.yaml
 ```
 
-Manually delete any Persistent Volumes that were created for this YugabyteDB cluster.
+Manually delete any Persistent Volumes that were created for this Yugabyte DB cluster.
 
 ## Troubleshooting
 
@@ -116,15 +118,13 @@ If the cluster does not start,  run following command to take a look at operator
 
 ```bash
 kubectl -n rook-yugabytedb-system logs -l app=rook-yugabytedb-operator
-
 ```
 
 ### Review the Yugabyte DB logs
 
-If everything is OK in the operator logs, check the YugabyteDB logs for YB-Master and YB-TServer.
+If everything is OK in the operator logs, check the Yugabyte DB logs for YB-Master and YB-TServer.
 
 ```bash
 kubectl -n rook-yugabytedb logs -l app=yb-master-rook-yugabytedb
 kubectl -n rook-yugabytedb logs -l app=yb-tserver-rook-yugabytedb
-
 ```
