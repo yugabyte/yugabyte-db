@@ -15,7 +15,7 @@ menu:
 
 ## Distributed SQL databases
 
-Feature | [CockroachDB](cockroachdb/) | TiDB | Amazon Aurora | [MS Azure CosmosDB](azure-cosmos/) | [Google Cloud Spanner](google-spanner/) | Yugabyte DB
+Feature | [CockroachDB](cockroachdb/) | TiDB | [Amazon Aurora](https://blog.yugabyte.com/comparing-distributed-sql-performance-yugabyte-db-vs-amazon-aurora-postgresql-vs-cockroachdb/) | [MS Azure CosmosDB](azure-cosmos/) | [Google Cloud Spanner](google-spanner/) | Yugabyte DB
 --------|-----------------|------------|----------------|----------------|-------------|-----------
 Horizontal write scalability (with auto sharding/rebalancing) | <i class="fas fa-check"></i> | <i class="fas fa-check"></i> | <i class="fas fa-times"></i> | <i class="fas fa-check">| <i class="fas fa-check"></i> | <i class="fas fa-check"></i>
 Automated failover &amp; repair  | <i class="fas fa-check"></i> | <i class="fas fa-check"></i> | <i class="fas fa-check"></i> | <i class="fas fa-check"> | <i class="fas fa-check"></i> | <i class="fas fa-check"></i>
@@ -43,7 +43,7 @@ Strongly-consistent secondary indexes  | <i class="fas fa-times"></i> |<i class=
 Multiple read consistency levels | <i class="fas fa-check"></i> | <i class="fas fa-check"></i> |<i class="fas fa-check"></i>| <i class="fas fa-check"></i> | <i class="fas fa-check"></i> | <i class="fas fa-check"></i>
 Low, predictable p99 latencies | <i class="fas fa-times"></i> | <i class="fas fa-times"></i> |<i class="fas fa-times"></i>|<i class="fas fa-check"></i> | <i class="fas fa-check"></i> | <i class="fas fa-check"></i>
 High data density| <i class="fas fa-times"></i> | <i class="fas fa-times"></i> |<i class="fas fa-times"></i>| <i class="fas fa-times"></i> | <i class="fas fa-times"></i> | <i class="fas fa-check"></i>
-API | MongoDB QL | Proprietary KV, MongoDB QL | Cassandra QL | Proprietary KV, Document | Cassandra QL, MongoDB QL | YCQL w/ Cassandra QL roots
+API | MongoDB QL | Proprietary KV, MongoDB QL | Cassandra QL | Proprietary KV, Document | Cassandra QL, MongoDB QL | Yugabyte Cloud QL w/ native document modeling
 Open Source | <i class="fas fa-times"></i> | Apache 2.0 | Apache 2.0 | <i class="fas fa-times"></i> | <i class="fas fa-times"></i> | Apache 2.0
 
 {{< note title="Note" >}}

@@ -1,7 +1,7 @@
 ---
 title: 2DC replication
 linkTitle: Replicate between 2 data centers
-description: Replicating between two data centers
+description: Replicating between 2 data centers
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:

@@ -32,8 +32,8 @@ $ kubectl exec -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0  --
 ```
 
 ```
-ysqlsh (11.2)
+ysqlsh (11.2-YB-2.0.0.0-b0)
 Type "help" for help.
 
-postgres=#
+yugabyte=#
 ```
