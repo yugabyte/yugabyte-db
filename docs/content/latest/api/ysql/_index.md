@@ -39,6 +39,7 @@ DDL statements define the structures in a database, change their definitions, as
 | [`CREATE CAST`](commands/ddl_create_cast) | Create a new cast |
 | [`CREATE DATABASE`](commands/ddl_create_database) | Create a new database |
 | [`CREATE INDEX`](commands/ddl_create_index) | Create a new index |
+| [`CREATE OPPERATOR`](commands/ddl_create_operator) | Create a new operator |
 | [`CREATE SCHEMA`](commands/ddl_create_schema) | Create a new schema (namespace) |
 | [`CREATE SEQUENCE`](commands/ddl_create_sequence) | Create a new sequence generator |
 | [`CREATE TABLE`](commands/ddl_create_table) | Create a new table |
@@ -49,6 +50,7 @@ DDL statements define the structures in a database, change their definitions, as
 | [`DROP AGGREGATE`](commands/ddl_drop_aggregate) | Delete an aggregate |
 | [`DROP CAST`](commands/ddl_drop_cast) | Delete a cast |
 | [`DROP DATABASE`](commands/ddl_drop_database) | Delete a database from the system |
+| [`DROP OPERATOR`](commands/ddl_drop_operator) | Delete an operator |
 | [`DROP SEQUENCE`](commands/ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP TABLE`](commands/ddl_drop_table) | Delete a table from a database |
 | [`DROP TYPE`](commands/ddl_drop_type) | Delete a user-defined type |

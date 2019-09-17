@@ -133,7 +133,7 @@ comment_on = 'COMMENT' 'ON' (
   'INDEX' object_name |
   'LARGE' 'OBJECT' large_object_oid |
   'MATERIALIZED' 'VIEW' object_name |
-  'OPERATOR' operator_name '(' left_type ',' right_type ')' |
+  'OPERATOR' operator_name '(' operator_signature ')' |
   'OPERATOR' 'CLASS' object_name 'USING' index_method |
   'OPERATOR' 'FAMILY' object_name 'USING' index_method |
   'POLICY' policy_name 'ON' table_name |
@@ -308,6 +308,20 @@ create_index ::= 'CREATE' [ 'UNIQUE' ] 'INDEX' [ [ 'IF' 'NOT' 'EXISTS' ] name ] 
                           [ 'WHERE' predicate ] ;
 
 index_elem ::= ( column_name | '(' expression ')' ) [ opclass ] [ 'HASH' | 'ASC' | 'DESC' ] [ 'NULLS' ( 'FIRST' | 'LAST' ) ] ;
+
+(* 'CREATE' 'OPERATOR' *)
+create_operator = 'CREATE' 'OPERATOR' operator_name '('
+                  ( 'FUNCTION' '=' function_name | 'PROCEDURE' '=' procedure_name )
+                  { ',' operator_option } ')' ;
+
+operator_option = 'LEFTARG' '=' left_type
+                | 'RIGHTARG' '=' right_type
+                | 'COMMUTATOR' '=' com_op
+                | 'NEGATOR' '=' neg_op
+                | 'RESTRICT' '=' res_proc
+                | 'JOIN' '=' join_proc
+                | 'HASHES'
+                | 'MERGES' ;
 
 (* 'CREATE' 'ROLE' *)
 create_role ::= 'CREATE' 'ROLE' role_name [ [ 'WITH' ] role_option { ',' role_option } ] ;
@@ -492,8 +506,8 @@ returning_expression ::= output_expression [ [ 'AS' ] output_name ] ;
 do = 'DO' [ 'LANGUAGE' lang_name ] code ;
 
 (* 'DROP' 'AGGREGATE' *)
-drop_aggregate = 'DROP' 'AGGREGATE' [ 'IF' 'EXISTS' ] aggregate_name '(' aggregate_signature ')'
-                 { ',' aggregate_name '(' aggregate_signature ')' }
+drop_aggregate = 'DROP' 'AGGREGATE' [ 'IF' 'EXISTS' ] ( aggregate_name '(' aggregate_signature ')' )
+                 { ',' ( aggregate_name '(' aggregate_signature ')' ) }
                  [ 'CASCADE' | 'RESTRICT' ] ;
 
 aggregate_signature = '*'
@@ -512,6 +526,13 @@ drop_domain ::= 'DROP' 'DOMAIN' [ 'IF' 'EXISTS' ] name { ',' name }  [ 'CASCADE'
 
 (* 'DROP' 'GROUP' *)
 drop_group ::= 'DROP' 'GROUP' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
+
+(* 'DROP' 'OPERATOR' *)
+drop_operator = 'DROP' 'OPERATOR' [ 'IF' 'EXISTS' ] ( operator_name '(' operator_signature ')' )
+                { ',' ( operator_name '(' operator_signature ')' ) }
+                [ 'CASCADE' | 'RESTRICT' ] ;
+
+operator_signature = ( left_type | 'NONE' ) ',' ( right_type | 'NONE' ) ;
 
 (* 'DROP' 'ROLE' *)
 drop_role ::= 'DROP' 'ROLE' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
@@ -899,3 +920,8 @@ function_signature =
 
 source_type = type_name ;
 target_type = type_name ;
+
+com_op = operator_name ;
+neg_op = operator_name ;
+res_proc = procedure_name ;
+join_proc = procedure_name ;
