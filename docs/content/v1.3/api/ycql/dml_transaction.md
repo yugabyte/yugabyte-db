@@ -35,7 +35,7 @@ Where
 
 ### ANSI SQL syntax
 
-Alternatively, YugaByte DB supports ANSI SQL `START TRANSACTION` and `COMMIT` statements.
+Alternatively, Yugabyte DB supports ANSI SQL `START TRANSACTION` and `COMMIT` statements.
 
 ```
 transaction_block ::= START TRANSACTION ';'

@@ -14,12 +14,11 @@ comment_on ::= COMMENT ON
                  | EVENT TRIGGER object_name
                  | FOREIGN DATA WRAPPER object_name
                  | FOREIGN TABLE object_name
-                 | FUNCTION function_name 
-                   [ ( [ [ argmode ] [ argname ] argtype [ , ... ] ] ) ]
+                 | FUNCTION function_name [ ( function_signature ) ]
                  | INDEX object_name
                  | LARGE OBJECT large_object_oid
                  | MATERIALIZED VIEW object_name
-                 | OPERATOR operator_name ( left_type , right_type )
+                 | OPERATOR operator_name ( operator_signature )
                  | OPERATOR CLASS object_name USING index_method
                  | OPERATOR FAMILY object_name USING index_method
                  | POLICY policy_name ON table_name

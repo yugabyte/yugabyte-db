@@ -11,7 +11,7 @@ menu:
 ## Synopsis
 
 Datetime datatypes are used to specify data of date and time at a timezone, `DATE` for a specific day, `TIME` for time of day, and `TIMESTAMP` for the combination of both date and time.
-Of the three, YugaByte currently only supports the `TIMESTAMP` type.
+Of the three, Yugabyte currently only supports the `TIMESTAMP` type.
 
 ## Syntax
 ```

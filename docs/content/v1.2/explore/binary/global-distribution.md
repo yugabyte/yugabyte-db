@@ -25,7 +25,7 @@ You can view the tablet servers on the [tablet servers page](http://localhost:70
 Download the sample app jar.
 
 ```sh
-$ wget https://github.com/YugaByte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
+$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
 ```
 
 Run a simple key-value workload in a separate shell.

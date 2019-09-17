@@ -2,6 +2,7 @@
 title: 2DC deployments
 linkTitle: 2DC deployments
 description: 2-data center deployment with change data capture
+beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
     parent: change-data-capture
@@ -12,18 +13,18 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This page includes an overview about the YugaByte DB support for 2-data center (2DC) deployments, supported scenarios, and the life cycle of replication.
+This page includes an overview about the Yugabyte DB support for 2-data center (2DC) deployments, supported scenarios, and the life cycle of replication.
 For details on deploying a 2DC deployment, including one-way and two-way replication, see [Deploy two data centers with change data capture (CDC)](../2dc-replication).
 
 ## Overview
 
 {{< note title="Note" >}}
 
-The terms "cluster" and "universe" will be used interchangeably. For simplicity in the following sections, each YugaByte DB universe is assumed to be deployed in a single data center.
+The terms "cluster" and "universe" will be used interchangeably. For simplicity in the following sections, each Yugabyte DB universe is assumed to be deployed in a single data center.
 
 {{< /note >}}
 
-YugaByte DB supports two data center (2DC) deployments, which is built on top of [Change Data Capture (CDC)](../cdc). YugaByte DB support for two data center (2DC) deployments includes the following:
+Yugabyte DB supports two data center (2DC) deployments, which is built on top of [Change Data Capture (CDC)](../cdc). Yugabyte DB support for two data center (2DC) deployments includes the following:
 
 * Replication works across both the YSQL and YCQL APIs because replication is done at the DocDB level.
 
@@ -39,19 +40,19 @@ YugaByte DB supports two data center (2DC) deployments, which is built on top of
 
 * Transactions are applied atomically on the consumer — either all changes in a transaction will be visible or none.
 
-* The target data center will know the data consistency timestamp. Since data in YugaByte DB is distributed across multiple nodes and replicated from multiple nodes, the target data center is able to determine that all tablets have received data at least until timestamp x, that is, it has received all the writes that happened at source data centers until timestamp x.
+* The target data center will know the data consistency timestamp. Since data in Yugabyte DB is distributed across multiple nodes and replicated from multiple nodes, the target data center is able to determine that all tablets have received data at least until timestamp x, that is, it has received all the writes that happened at source data centers until timestamp x.
 
 ### Watch an example video (less than 2 mins)
 
 If you're interested, you can watch the following YouTube video demonstrating a 2DC deployment.
 
 <a href="http://www.youtube.com/watch?feature=player_embedded&v=2quaIAKBATk" target="_blank">
-  <img src="http://img.youtube.com/vi/2quaIAKBATk/0.jpg" alt="YugaByte DB 2DC deployment" width="240" height="180" border="10" />
+  <img src="http://img.youtube.com/vi/2quaIAKBATk/0.jpg" alt="Yugabyte DB 2DC deployment" width="240" height="180" border="10" />
 </a>
 
 ## Supported two data center (2DC) deployment scenarios
 
-YugaByte DB supports the following two scenarios for 2DC deployments.
+Yugabyte DB supports the following two scenarios for 2DC deployments.
 
 ### Master-slave with asynchronous replication
 
@@ -73,7 +74,7 @@ The architecture diagram is shown here:
 
 ## Life cycle of replication
 
-A 2DC one-way sync replication in YugaByte DB follows these four life cycle phases:
+A 2DC one-way sync replication in Yugabyte DB follows these four life cycle phases:
 
 1. Initialize the producer and the consumer
 2. Set up a distributed CDC
@@ -103,7 +104,7 @@ This is shown diagrammatically here:
 
 ![2DC initialize consumer and producer](/images/deploy/cdc/2DC-step1-initialize.png)
 
-The **sink replication consumer** and the **source replication producer** are distributed, scale-out services that run on each node of the sink and source YugaByte DB clusters, respectively. In the case of the *source replication producer*, each node is responsible for all of the source tablet leaders that it hosts (note that the tablets are restricted to only those that participate in replication). In the case of the *sink replication consumer*, the metadata about which sink node owns which source tablet is explicitly tracked in the system catalog.
+The **sink replication consumer** and the **source replication producer** are distributed, scale-out services that run on each node of the sink and source Yugabyte DB clusters, respectively. In the case of the *source replication producer*, each node is responsible for all of the source tablet leaders that it hosts (note that the tablets are restricted to only those that participate in replication). In the case of the *sink replication consumer*, the metadata about which sink node owns which source tablet is explicitly tracked in the system catalog.
 
 Note that the sink clusters can fall behind the source clusters due to various failure scenarios (for example, node outages or extended network partitions). Upon healing of the failure conditions, continuing replication may not always be safe. In such cases, the user needs to bootstrap the sink cluster to a point from which replication can safely resume. Some of the cases that arise are shown diagrammatically below:
 

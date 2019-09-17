@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following SQL statements are supported by the YugaByte Structured Query Language (YSQL).
+The following SQL statements are supported by the Yugabyte Structured Query Language (YSQL).
 
 | Statement | Description |
 |-----------|-------------|
@@ -23,6 +23,7 @@ The following SQL statements are supported by the YugaByte Structured Query Lang
 | [`ALTER DOMAIN`](ddl_alter_domain) | Alters a domain |
 | [`ALTER GROUP`](dcl_alter_group) | Alter a group |
 | [`ALTER ROLE`](dcl_alter_role) | Alter a role |
+| [`ALTER SEQUENCE`](ddl_alter_sequence) | Alters a sequence definition |
 | [`ALTER TABLE`](ddl_alter_table) | Changes table definition |
 | [`ALTER USER`](dcl_alter_user) | Alter a user (role) |
 | [`BEGIN`](txn_begin) | Starts a transaction |
@@ -30,11 +31,14 @@ The following SQL statements are supported by the YugaByte Structured Query Lang
 | [`COMMIT`](txn_commit) | Commits a transaction |
 | [`COPY`](cmd_copy) | Copy data between tables and files |
 | [`CREATE AGGREGATE`](ddl_create_aggregate) | Create a new aggregate |
+| [`CREATE CAST`](ddl_create_cast) | Create a new cast |
 | [`CREATE DATABASE`](ddl_create_database) | Create a new database |
 | [`CREATE DOMAIN`](ddl_create_domain) | Create a new domain |
 | [`CREATE INDEX`](ddl_create_index) | Create a new index |
 | [`CREATE GROUP`](dcl_create_group) | Create a new group (role) |
+| [`CREATE OPERATOR`](ddl_create_operator) | Create a new operator |
 | [`CREATE ROLE`](dcl_create_role) | Create a new role (user or group) |
+| [`CREATE RULE`](ddl_create_rule) | Create a new rule |
 | [`CREATE USER`](dcl_create_user) | Create a new user (role) |
 | [`CREATE SCHEMA`](ddl_create_schema) | Create a new schema (namespace) |
 | [`CREATE SEQUENCE`](ddl_create_sequence) | Create a new sequence generator |
@@ -48,10 +52,13 @@ The following SQL statements are supported by the YugaByte Structured Query Lang
 | [`DELETE`](dml_delete) | Delete rows from a table |
 | [`DO`](cmd_do) | Execute an anonymous code block |
 | [`DROP AGGREGATE`](ddl_drop_aggregate) | Delete an aggregate |
+| [`DROP CAST`](ddl_drop_cast) | Delete a cast |
 | [`DROP DATABASE`](ddl_drop_database) | Delete a database from the system |
 | [`DROP DOMAIN`](ddl_drop_domain) | Delete a domain |
 | [`DROP GROUP`](dcl_drop_group) | Delete a group (role) |
+| [`DROP OPERATOR`](ddl_drop_operator) | Delete an operator |
 | [`DROP ROLE`](dcl_drop_role) | Delete a role (user or group) |
+| [`DROP RULE`](ddl_drop_rule) | Delete a rule |
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP TABLE`](ddl_drop_table) | Deletes a table from a database |
 | [`DROP TRIGGER`](ddl_drop_trigger) | Delete a trigger |

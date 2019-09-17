@@ -31,7 +31,7 @@ showAsideToc: true
   </li>
 </ul>
 
-Use [docker-compose](https://docs.docker.com/compose/overview/) utility to create and manage YugaByte DB local clusters. Note that this approach is not recommended for multi-node clusters used for performance testing and production environments.
+Use [docker-compose](https://docs.docker.com/compose/overview/) utility to create and manage Yugabyte DB local clusters. Note that this approach is not recommended for multi-node clusters used for performance testing and production environments.
 
 ## 1. Create a single node cluster
 
@@ -104,7 +104,7 @@ Optionally, you can enable YEDIS API by running the following command.
 $ docker exec -it yb-master-n1 /home/yugabyte/bin/yb-admin --master_addresses yb-master-n1:7100 setup_redis_table
 ```
 
-Clients can now connect to the YSQL(Beta) API at localhost:5433, YCQL API at localhost:9042 and YEDIS API at localhost:6379. The yb-master admin service is available at http://localhost:7000.
+Clients can now connect to the YSQL API at localhost:5433, YCQL API at localhost:9042 and YEDIS API at localhost:6379. The yb-master admin service is available at http://localhost:7000.
 
 ## 3. Test the APIs
 

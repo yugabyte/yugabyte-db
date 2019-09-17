@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This page describes how to prepare each node in a YugaByte DB cluster to enable TLS encryption.
+This page describes how to prepare each node in a Yugabyte DB cluster to enable TLS encryption.
 
 ## Basic setup
 
@@ -98,8 +98,8 @@ distinguished_name = my_distinguished_name
 x509_extensions = my_extensions
 
 [ my_distinguished_name ]
-organizationName = YugaByte
-commonName = CA for YugaByte DB
+organizationName = Yugabyte
+commonName = CA for Yugabyte DB
 
 [ my_extensions ]
 keyUsage = critical,digitalSignature,nonRepudiation,keyEncipherment,keyCertSign
@@ -161,11 +161,11 @@ Certificate:
         Version: 3 (0x2)
         Serial Number: 9342236890667368184 (0x81a64af46bc73ef8)
     Signature Algorithm: sha256WithRSAEncryption
-        Issuer: O=YugaByte, CN=CA for YugaByte DB
+        Issuer: O=Yugabyte, CN=CA for Yugabyte DB
         Validity
             Not Before: Dec 20 05:16:11 2018 GMT
             Not After : Jan 19 05:16:11 2019 GMT
-        Subject: O=YugaByte, CN=CA for YugaByte DB
+        Subject: O=Yugabyte, CN=CA for Yugabyte DB
         Subject Public Key Info:
             Public Key Algorithm: rsaEncryption
                 Public-Key: (2048 bit)
@@ -226,7 +226,7 @@ prompt=no
 distinguished_name = my_distinguished_name
 
 [ my_distinguished_name ]
-organizationName = YugaByte
+organizationName = Yugabyte
 # Required value for commonName, do not change.
 commonName = <NODE_IP_ADDRESS>
 ```
@@ -236,7 +236,7 @@ commonName = <NODE_IP_ADDRESS>
 You can generate the private key for each of the nodes as follows.
 
 {{< note title="Note" >}}
-The file names must be of the format `node.<commonName>.key` for YugaByte DB to recognize the file.
+The file names must be of the format `node.<commonName>.key` for Yugabyte DB to recognize the file.
 {{< /note >}}
 
 ```sh

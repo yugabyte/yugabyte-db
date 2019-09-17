@@ -36,6 +36,7 @@ DISK_UTILIZATION_THRESHOLD_PCT = 80
 FD_THRESHOLD_PCT = 50
 SSH_TIMEOUT_SEC = 10
 MAX_CONCURRENT_PROCESSES = 10
+MAX_TRIES = 2
 
 # This hardcoded as the ses:FromAddress in the IAM policy.
 EMAIL_SERVER = "email-smtp.us-west-2.amazonaws.com"
@@ -360,6 +361,7 @@ class NodeChecker():
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
     def check_redis_cli(self):
+        logging.info("Checking redis cli works for node {}".format(self.node))
         e = self._new_entry("Connectivity with redis-cli")
         redis_cli = '{}/bin/redis-cli'.format(YB_TSERVER_DIR)
         remote_cmd = 'echo "ping" | {} -h {}'.format(redis_cli, self.node)
@@ -568,31 +570,72 @@ def local_time():
 ###################################################################################################
 # Multi-threaded handling and main
 ###################################################################################################
-def multithreaded_caller(instance, func_name, args=(), kwargs=None):
+def multithreaded_caller(instance, func_name,  sleep_interval=0, args=(), kwargs=None):
+    if sleep_interval > 0:
+        logging.debug("waiting for sleep to run " + func_name)
+        time.sleep(sleep_interval)
+
     if kwargs is None:
         kwargs = {}
     return getattr(instance, func_name)(*args, **kwargs)
 
 
 class CheckCoordinator:
-    def __init__(self):
+    class CheckRunInfo:
+        def __init__(self, instance, func_name, yb_process):
+            self.instance = instance
+            self.func_name = func_name
+            self.yb_process = yb_process
+            self.result = None
+            self.entry = None
+            self.tries = 0
+
+    def __init__(self, retry_interval_secs):
         self.pool = Pool(MAX_CONCURRENT_PROCESSES)
-        self.results = []
+        self.checks = []
+        self.retry_interval_secs = retry_interval_secs
 
     def add_check(self, instance, func_name, yb_process=None):
-        result = None
-        if yb_process is None:
-            result = self.pool.apply_async(multithreaded_caller, (instance, func_name,))
-        else:
-            result = self.pool.apply_async(
-                multithreaded_caller, (instance, func_name, (yb_process,)))
-        self.results.append(result)
+        self.checks.append(CheckCoordinator.CheckRunInfo(instance, func_name, yb_process))
 
     def run(self):
+
+        while True:
+            checks_remaining = 0
+            for check in self.checks:
+                check.entry = check.result.get() if check.result else None
+
+                # Run checks until they succeed, up to max tries. Wait for sleep_interval secs
+                # before retrying to let transient errors correct themselves.
+                if check.entry is None or (check.entry.has_error and check.tries < MAX_TRIES):
+                    checks_remaining += 1
+                    sleep_interval = self.retry_interval_secs if check.tries > 0 else 0
+
+                    if check.tries > 0:
+                        logging.info("Retry # " + str(check.tries) +
+                                     " for check " + check.func_name)
+
+                    if check.yb_process is None:
+                        check.result = self.pool.apply_async(
+                                            multithreaded_caller,
+                                            (check.instance, check.func_name, sleep_interval))
+                    else:
+                        check.result = self.pool.apply_async(
+                                            multithreaded_caller,
+                                            (check.instance,
+                                                check.func_name,
+                                                sleep_interval,
+                                                (check.yb_process,)))
+
+                    check.tries += 1
+
+            if checks_remaining == 0:
+                break
+
         entries = []
-        for r in self.results:
+        for check in self.checks:
             # TODO: we probably do not need to set a timeout, since SSH has one...
-            entries.append(r.get())
+            entries.append(check.result.get())
         return entries
 
 
@@ -633,13 +676,14 @@ def main():
                         help='Send email with status update even if no errors')
     parser.add_argument('--start_time_ms', type=int, required=False, default=None,
                         help='Potential start time of the universe, to prevent uptime confusion.')
-
+    parser.add_argument('--retry_interval_secs', type=int, required=False, default=30,
+                        help='Time to wait between retries of failed checks')
     args = parser.parse_args()
     universe = UniverseDefinition(args.cluster_payload)
     # Technically, each cluster can have its own version, but in practice, we disallow that in YW.
     universe_version = universe.clusters[0].yb_version if universe.clusters else None
     report = Report(universe_version)
-    coordinator = CheckCoordinator()
+    coordinator = CheckCoordinator(args.retry_interval_secs)
     summary_nodes = []
     for c in universe.clusters:
         master_nodes = c.master_nodes
@@ -687,7 +731,8 @@ def main():
     report.write_to_log(args.log_file)
 
     # Write to stdout to be caught by YW subprocess.
-    print report
+    if logging.getLogger().isEnabledFor(logging.DEBUG):
+        print(report)
 
 
 if __name__ == '__main__':

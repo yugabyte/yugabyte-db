@@ -3,7 +3,7 @@ title: Node Level Issues
 linkTitle: Node Level Issues
 description: Node Level Issues
 image: /images/section_icons/quick_start/create_cluster.png
-headcontent: Diagnose and solve issues on an individual YugaByte DB node.
+headcontent: Diagnose and solve issues on an individual Yugabyte DB node.
 menu:
   v1.0:
     identifier: troubleshoot-nodes
@@ -19,7 +19,7 @@ menu:
         <div class="title">Check Processes</div>
       </div>
       <div class="body">
-        Check the status and accessibility of YugaByte DB nodes.
+        Check the status and accessibility of Yugabyte DB nodes.
       </div>
     </a>
   </div>
@@ -31,7 +31,7 @@ menu:
         <div class="title">Inspect Logs</div>
       </div>
       <div class="body">
-        Diagnose issues by inspecting the YugaByte DB logs.
+        Diagnose issues by inspecting the Yugabyte DB logs.
       </div>
     </a>
   </div>
@@ -43,7 +43,7 @@ menu:
         <div class="title">Get System Stats</div>
       </div>
       <div class="body">
-        Get state information and metrics for YugaByte DB processes.
+        Get state information and metrics for Yugabyte DB processes.
       </div>
     </a>
   </div>

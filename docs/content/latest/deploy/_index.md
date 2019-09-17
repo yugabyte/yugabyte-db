@@ -1,8 +1,8 @@
 ---
 title: Deploy
 linkTitle: Deploy
-description: Deploy YugaByte DB
-headcontent: You can deploy YugaByte DB to any public cloud or private data center of your choice using either YugaByte DB or the YugaByte Platform.
+description: Deploy Yugabyte DB
+headcontent: You can deploy Yugabyte DB to any public cloud or private data center of your choice using either Yugabyte DB or the Yugabyte Platform.
 image: /images/section_icons/index/deploy.png
 aliases:
   - /deploy/
@@ -21,7 +21,7 @@ menu:
         <div class="title">Checklist</div>
       </div>
       <div class="body">
-          This page compiles system requirements, configuration details and other important details when deploying YugaByte DB in production.
+          This page compiles system requirements, configuration details and other important details when deploying Yugabyte DB in production.
       </div>
     </a>
   </div>
@@ -33,7 +33,7 @@ menu:
         <div class="title">Manual deployment</div>
       </div>
       <div class="body">
-          Manual deployment of YugaByte DB in a private data center using the basic admin commands.
+          Manual deployment of Yugabyte DB in a private data center using the basic admin commands.
       </div>
     </a>
   </div>
@@ -45,7 +45,7 @@ menu:
         <div class="title">Kubernetes</div>
       </div>
       <div class="body">
-        Orchestrated deployment of YugaByte DB using open source as well as managed Kubernetes services.
+        Orchestrated deployment of Yugabyte DB using open source as well as managed Kubernetes services.
       </div>
     </a>
   </div>
@@ -59,7 +59,7 @@ menu:
         <div class="title">Docker</div>
       </div>
       <div class="body">
-        Orchestrated deployment of YugaByte DB in Docker Swarm and Docker Compose.
+        Orchestrated deployment of Yugabyte DB in Docker Swarm and Docker Compose.
       </div>
     </a>
   </div>
@@ -83,7 +83,7 @@ menu:
         <div class="title">Pivotal Cloud Foundry</div>
       </div>
       <div class="body">
-        Deploying and managing YugaByte DB through Pivotal Cloud Foundry (PCF) and Pivotal Container Service (PKS).
+        Deploying and managing Yugabyte DB through Pivotal Cloud Foundry (PCF) and Pivotal Container Service (PKS).
       </div>
     </a>
   </div>
@@ -96,7 +96,7 @@ menu:
         <div class="title">Public clouds</div>
       </div>
       <div class="body">
-        Automated and manual deployments of YugaByte DB on various public clouds.
+        Automated and manual deployments of Yugabyte DB on various public clouds.
       </div>
     </a>
   </div>
@@ -106,10 +106,10 @@ menu:
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise.png" aria-hidden="true" />
         <div class="articles">4 articles</div>
-        <div class="title">YugaByte Platform</div>
+        <div class="title">Yugabyte Platform</div>
       </div>
       <div class="body">
-        The simplest way to run YugaByte DB on any public cloud or private data center.
+        The simplest way to run Yugabyte DB on any public cloud or private data center.
       </div>
     </a>
   </div>

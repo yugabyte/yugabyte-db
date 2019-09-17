@@ -1,13 +1,13 @@
-# YugaByte DB Docs
+# Yugabyte DB Docs
 
-This repository contains the documentation for YugaByte DB available at https://docs.yugabyte.com/
+This repository contains the documentation for Yugabyte DB available at https://docs.yugabyte.com/
 
-Please [open an issue](https://github.com/YugaByte/docs/issues) to suggest enhancements.
+Please [open an issue](https://github.com/yugabyte/docs/issues) to suggest enhancements.
 
 
-# Contributing to YugaByte DB Docs
+# Contributing to Yugabyte DB Docs
 
-YugaByte DB docs are based on the Hugo framework and use the Material Docs theme.
+Yugabyte DB docs are based on the Hugo framework and use the Material Docs theme.
 
 * Hugo framework: http://gohugo.io/overview/introduction/
 * Material Docs theme: http://themes.gohugo.io/material-docs/
@@ -24,7 +24,7 @@ Follow these steps if this is the first time you are setting up for working on t
 
    Add the original repository as an upstream remote:
    ```sh
-   git remote add --track master upstream https://github.com/YugaByte/yugabyte-db.git
+   git remote add --track master upstream https://github.com/yugabyte/yugabyte-db.git
    ```
 
 1. Install Hugo. For example, on a Mac, you can run the following commands:
@@ -110,16 +110,16 @@ instructions just as a reference for YCQL._
 ### Generate API syntax diagrams
 
 1. Download the latest RRDiagram JAR file (`rrdiagram.jar`).  You can find it on the [release
-   page](https://github.com/YugaByte/RRDiagram/releases/), or you can try running the following
+   page](https://github.com/yugabyte/RRDiagram/releases/), or you can try running the following
    command.
 
    ```sh
-   wget $(curl -s https://api.github.com/repos/YugaByte/RRDiagram/releases/latest \
+   wget $(curl -s https://api.github.com/repos/Yugabyte/RRDiagram/releases/latest \
           | grep browser_download_url | cut -d \" -f 4)
    ```
 
    _Note: Alternatively, you can manually build the jar file as described in the [build
-   section](https://github.com/YugaByte/RRDiagram/README.md#build) of the `RRDiagram` repo (and
+   section](https://github.com/yugabyte/RRDiagram/README.md#build) of the `RRDiagram` repo (and
    move/rename the resulting jar from the target folder)._
 
 1. Run the diagram generator using the following command:

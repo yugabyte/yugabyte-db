@@ -1,4 +1,4 @@
-[Yugastore-java](https://github.com/YugaByte/yugastore-java) app is an end-to-end ecommerce application built using a microservices design pattern. React UI, Spring Boot app framework and YugaByte DB (both YSQL and YCQL) are used as the underlying technology stack.
+[Yugastore-java](https://github.com/yugabyte/yugastore-java) app is an end-to-end ecommerce application built using a microservices design pattern. React UI, Spring Boot app framework and Yugabyte DB (both YSQL and YCQL) are used as the underlying technology stack.
 
 ## 1. Create cluster
 
@@ -13,7 +13,7 @@ Clients can now connect to the YSQL API at `localhost:5433` and YCQL API at `loc
 
 Clone the repo.
 ```sh
-$ git clone https://github.com/YugaByte/yugastore-java.git
+$ git clone https://github.com/yugabyte/yugastore-java.git
 ```
 ```sh
 $ cd yugastore-java
@@ -24,7 +24,7 @@ Create the app binaries.
 $ mvn -DskipTests package
 ```
 
-Create the app's schema in YugaByte DB.
+Create the app's schema in Yugabyte DB.
 ```sh
 $ cd resources
 ```
@@ -73,7 +73,7 @@ Add two items to the cart as shown below.
 
 ![yugastore-java checkout](/images/quick_start/binary-yugastore-java-checkout.png)
 
-Verify that your cart is now stored inside the YSQL `shopping_cart` table. From your YugaByte DB local cluster home, run the following.
+Verify that your cart is now stored inside the YSQL `shopping_cart` table. From your Yugabyte DB local cluster home, run the following.
 
 
 ```sh
@@ -123,4 +123,4 @@ cart_key | user_id | asin | time_added | quantity
 
 ## 6. Run IoT Fleet Management app
 
-After running Yugastore, we recommend running the [IoT Fleet Management](../realworld-apps/iot-spark-kafka-ksql/) app. This app is built on top of YugaByte DB as the database (using the YCQL API), Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.
+After running Yugastore, we recommend running the [IoT Fleet Management](../realworld-apps/iot-spark-kafka-ksql/) app. This app is built on top of Yugabyte DB as the database (using the YCQL API), Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.
