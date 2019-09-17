@@ -120,6 +120,7 @@ DROP SEQUENCE
 
 ## See also
 
+- [`ALTER SEQUENCE`](../ddl_alter_sequence)
 - [`CREATE SEQUENCE`](../ddl_create_sequence)
 - [`currval()`](../currval_sequence)
 - [`lastval()`](../lastval_sequence)

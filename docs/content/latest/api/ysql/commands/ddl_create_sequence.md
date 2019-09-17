@@ -61,17 +61,21 @@ Specify the difference between consecutive values in the sequence. Default is `1
 
  Specify the minimum value allowed in the sequence. If this value is reached (in a sequence with a negative increment), `nextval()` will return an error. If `NO MINVALUE` is specified, the default value will be used. Default is 1.
 
-### MAXVALUE *maxvalue* | NO MAXVALUE
+#### MAXVALUE *maxvalue* | NO MAXVALUE
 
 Specify the maximum value allowed in the sequence. If this value is reached, `nextval()` will return an error. If `NO MAXVALUE` is specified, the default will be used. Default is `2<sup>63</sup> - 1`.
 
-### START WITH *start*
+#### START WITH *start*
 
 Specify the first value in the sequence. `start` cannot be less than `minvalue`. Default is `1`.
 
-### CACHE *cache*
+#### CACHE *cache*
 
 Specify how many numbers from the sequence to cache in the client. Default is `1`.
+
+#### [ NO ] CYCLE
+
+If `CYCLE` is spefified, the sequence will wrap around once it has reached `minvalue` or `maxvalue`. If `maxvalue` was reached, `minvalue` will be the next number in the sequence. If `minvalue` was reached (for a descending sequence), `maxvalue` will be the next number in a sequence. `NO CYCLE` is the default.
 
 ## Cache
 
@@ -185,8 +189,8 @@ nextval
 
 ## See also
 
-- [`ALTER SEQUENCE`](../alter_sequence)
-- [`DROP SEQUENCE`](../drop_sequence)
+- [`ALTER SEQUENCE`](../ddl_alter_sequence)
+- [`DROP SEQUENCE`](../ddl_drop_sequence)
 - [`currval()`](../currval_sequence)
 - [`lastval()`](../lastval_sequence)
 - [`nextval()`](../nextval_sequence)
