@@ -24,13 +24,16 @@ showAsideToc: true
 </div>
 -->
 
-Yugabyte DB is a high-performance distributed SQL database for powering global, internet-scale applications. Built using a unique combination of high-performance document store, , per-shard distributed consensus replication and multi-shard ACID transactions (inspired by Google Spanner), Yugabyte DB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures and global data distribution. As a cloud native database, it can be deployed across public and private clouds as well as in Kubernetes environments with ease.
+Yugabyte DB is a high-performance distributed SQL database for powering global, internet-scale applications. Built using a unique combination of high-performance document store, per-shard distributed consensus replication and multi-shard ACID transactions (inspired by Google Spanner), Yugabyte DB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures and global data distribution. As a cloud native database, it can be deployed across public and private clouds as well as in Kubernetes environments with ease.
 
 Yugabyte DB is developed and distributed as an [Apache 2.0 open source project](https://github.com/yugabyte/yugabyte-db/).
 
 ## What makes Yugabyte DB unique?
 
-Yugabyte DB is a transactional database that brings together three must-have needs of cloud native microservices, namely SQL as a flexible query language, low-latency read performance and globally-distributed write scalability. Monolithic SQL databases offer SQL and low-latency reads but do not have ability to scale writes across multiple nodes and/or regions. Distributed NoSQL databases offer performance and write scalablility but give up on SQL semantics such as multi-key access, ACID transactions and strong consistency.
+Yugabyte DB is a transactional database that brings together three must-have needs of cloud-native microservices, namely SQL as a flexible query language, low-latency read performance and globally-distributed write scalability. 
+
+- Monolithic SQL databases offer SQL and low-latency reads but do not have ability to scale writes across multiple nodes and/or regions. 
+- Distributed NoSQL databases offer performance and write scalablility but give up on SQL semantics such as multi-key access, ACID transactions and strong consistency.
 
 Yugabyte DB feature highlights are listed below.
 
@@ -38,7 +41,7 @@ Yugabyte DB feature highlights are listed below.
 
 - SQL [JOINs](../quick-start/explore-ysql/#3-joins) and [distributed transactions](../quick-start/explore-ysql/#4-distributed-transactions) that allow multi-row access across any number of shards at any scale.
 
-- Transactional [document store](../architecture/concepts/docdb/) backed by self-healing, strongly consistent [replication](../architecture/concepts/docdb/replication/).
+- Transactional [document store](../architecture/concepts/docdb/) backed by self-healing, strongly-consistent, synchronous [replication](../architecture/concepts/docdb/replication/).
 
 ### 2. High performance and massive scalability
 
@@ -48,7 +51,7 @@ Yugabyte DB feature highlights are listed below.
 
 ### 3. Global data consistency
 
-- [Global data distribution](../explore/global-distribution/) that brings consistent data close to users through multi-region and multi-cloud deployments.
+- [Global data distribution](../explore/global-distribution/) that brings consistent data close to users through multi-region and multi-cloud deployments. Optional two-region multi-master and master-slave configurations powered by CDC-driven asynchronous replication.
 
 - [Auto-sharding & auto-rebalancing](../explore/auto-sharding/) to ensure uniform load across all nodes even for very large clusters.
 
@@ -64,7 +67,7 @@ Yugabyte DB feature highlights are listed below.
 
 ### 6. Built-in enterprise features
 
-- Starting [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), only open source distributed SQL database to have built-in enterprise features such as Distributed Backups, Data Encryption, and Read Replicas. Upcoming features such as Change Data Capture and 2 Data Center Deployments are also included in open source.
+- Starting [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), Yugabyte DB is the only open-source distributed SQL database to have built-in enterprise features such as Distributed Backups, Data Encryption, and Read Replicas. Upcoming features such as [Change Data Capture](../deploy/cdc/cdc-architecture/) and [2 Data Center Deployments](../deploy/cdc/two-data-centers/) are also included in open source.
 
 ## What client APIs are supported by Yugabyte DB?
 

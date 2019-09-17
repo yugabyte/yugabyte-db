@@ -1,7 +1,7 @@
 ---
 title: 2DC deployments
 linkTitle: 2DC deployments
-description: 2-data center deployment with change data capture
+description: 2-data center deployments
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
