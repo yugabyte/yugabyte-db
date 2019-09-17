@@ -37,6 +37,7 @@ The following SQL statements are supported by the Yugabyte Structured Query Lang
 | [`CREATE INDEX`](ddl_create_index) | Create a new index |
 | [`CREATE GROUP`](dcl_create_group) | Create a new group (role) |
 | [`CREATE OPERATOR`](ddl_create_operator) | Create a new operator |
+| [`CREATE OPERATOR CLASS`](ddl_create_operator_class) | Create a new operator class |
 | [`CREATE ROLE`](dcl_create_role) | Create a new role (user or group) |
 | [`CREATE RULE`](ddl_create_rule) | Create a new rule |
 | [`CREATE USER`](dcl_create_user) | Create a new user (role) |
