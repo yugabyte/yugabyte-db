@@ -5,5 +5,5 @@ create_index ::= CREATE [ UNIQUE ] INDEX [ [ IF NOT EXISTS ] name ]
                  [ WHERE predicate ]
 
 index_elem ::= { column_name | ( expression ) } [ opclass ] 
-               [ ASC | DESC ]
+               [ HASH | ASC | DESC ] [ NULLS { FIRST | LAST } ]
 ```

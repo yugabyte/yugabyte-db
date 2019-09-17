@@ -36,56 +36,60 @@ Use the `CREATE TABLE` statement to create a new table in a database. It defines
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameters,storage_parameter,index_parameters,references_clause.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameters,storage_parameter,index_parameters,references_clause.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause.diagram.md" /%}}
   </div>
 </div>
 
 ## Semantics
 
-### *create_table*
+Create a table with *table_name*. An error is raised if `qualified_name` already exists in the specified database, unless the `IF NOT EXISTS` clause is used.
 
-#### CREATE TABLE [ IF NOT EXISTS ] *table_name*
+### Primary Key
 
-Create a table with *table_name*. An error is raised if `qualified_name` already exists in the specified database.
+Primary key can be defined in either `column_constraint` or `table_constraint`, but not in both.
+There are 2 types of primary keys:
 
-### *table_elem*
+- `Hash primary keys`: This is the default and is used to hash-partition a table.
+This is the recommended option to better scale read/write operations to the table.
 
-### *column_constraint*
+- `Range primary keys`: This will range partition the table and is useful for applications that require the primary key to be ordered.
 
-#### CONSTRAINT *constraint_name*
+### Foreign Key
 
-Specify the name of the constraint.
+`FOREIGN KEY` and `REFERENCES` specifies that the set of columns can only contain values that are present in the referenced column(s) of the referenced table.
+It is used to enforce referential integrity of data.
 
-### *table_constraint*
+### Unique
 
-#### CONSTRAINT *constraint_name*
+This enforces that the set of columns specified in the `UNIQUE` constraint are unique in the table, i.e., no two rows can have the same values for the set of columns specified in the `UNIQUE` constraint.
 
-##### NOT NULL | NULL | CHECK ( *expression* ) | DEFAULT *expression* | UNIQUE index_parameters | PRIMARY KEY | *references_clause*
+### Check
 
-###### PRIMARY KEY
+This is used to enforce that data in the specified table meets the requirements specified in the `CHECK` clause.
 
-- Currently defining a primary key is required.
-- Primary key can be defined in either `column_constraint` or `table_constraint`, but not in both.
-- Each row in a table is uniquely identified by its primary key.
+### Default
 
-###### FOREIGN KEY
+This clause is used to specify a default value for the column. If an `INSERT` statement does not specify a value for the column, then the default value is used.
+If no default is specified for a column, then the default is NULL.
 
-Foreign keys are supported starting v1.2.10.
+### Temporary or Temp
 
-### *storage_parameter*
+Using this qualifier will create a temporary table. Temporary tables are only visible in the current client session or transaction in which they are created
+and are automatically dropped at the end of the session or transaction.
+Any indexes created on temporary tables are temporary as well.
+
+### Storage Parameters
 
 Represent storage parameters [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS).
+This is ignored and only present for compatibility with Postgres.
 
-#### *name* | *name* = *value*
-
-For DEFAULT keyword must be of the same type as the column it modifies. It must be of type boolean for CHECK constraints.
 
 ## Examples
 
-### Table with primary key
+### Table with primary key.
 
 ```sql
 postgres=# CREATE TABLE sample(k1 int,
@@ -95,7 +99,30 @@ postgres=# CREATE TABLE sample(k1 int,
                                PRIMARY KEY (k1, k2));
 ```
 
-### Table with check constraint
+In this example, the first column `k1` will be HASH, while second column `k2` will be ASC.
+```
+postgres=# \d sample
+               Table "public.sample"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k1     | integer |           | not null |
+ k2     | integer |           | not null |
+ v1     | integer |           |          |
+ v2     | text    |           |          |
+Indexes:
+    "sample_pkey" PRIMARY KEY, lsm (k1 HASH, k2)
+```
+
+### Table with range primary key.
+```sql
+postgres=# CREATE TABLE range(k1 int,
+                              k2 int,
+                              v1 int,
+                              v2 text,
+                              PRIMARY KEY (k1 ASC, k2 DESC));
+```
+
+### Table with check constraint.
 
 ```sql
 postgres=# CREATE TABLE student_grade(student_id int,
@@ -105,7 +132,7 @@ postgres=# CREATE TABLE student_grade(student_id int,
                                       PRIMARY KEY (student_id, class_id, term_id));
 ```
 
-### Table with default value
+### Table with default value.
 
 ```sql
 postgres=# CREATE TABLE cars(id int PRIMARY KEY,
@@ -114,7 +141,7 @@ postgres=# CREATE TABLE cars(id int PRIMARY KEY,
                              color text NOT NULL DEFAULT 'WHITE' CHECK (color in ('RED', 'WHITE', 'BLUE')));
 ```
 
-### Table with foreign key constraint
+### Table with foreign key constraint.
 
 Define two tables with a foreign keys constraint.
 ```sql
@@ -164,7 +191,7 @@ postgres=# SELECT o.id AS order_id, p.id as product_id, p.descr, o.amount FROM p
 (1 row)
 ```
 
-### Table with unique constraint
+### Table with unique constraint.
 
 ```sql
 postgres=# CREATE TABLE translations(message_id int UNIQUE,
