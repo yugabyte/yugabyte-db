@@ -16,6 +16,8 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
 
 import java.net.InetSocketAddress;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -286,6 +288,25 @@ public class Util {
       return mapper.readTree(inputString);
     } catch (IOException e) {
       throw new RuntimeException("Shell Response message is not a valid Json.");
+    }
+  }
+
+  public static String generateSalt(UUID customerUUID, String keyProvider) {
+    final String saltBase = "%s%s";
+    final String salt = String.format(
+            saltBase,
+            customerUUID.toString().replace("-", ""),
+            keyProvider.hashCode()
+    );
+    return salt.length() % 2 == 0 ? salt : salt + "0";
+  }
+
+  public static String buildURL(String host, String endpoint) {
+    try {
+      return new URL("https", host, endpoint).toString();
+    } catch (MalformedURLException e) {
+      LOG.error("Error building request URL", e);
+      return null;
     }
   }
 }
