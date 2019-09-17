@@ -3,7 +3,7 @@ title: Restoring data
 linkTitle: Restoring data
 description: Restoring data
 image: /images/section_icons/manage/enterprise.png
-headcontent: Restoring data in YugabyteDB.
+headcontent: Restoring data in Yugabyte DB.
 aliases:
   - /manage/backup-restore/restoring-data
 menu:

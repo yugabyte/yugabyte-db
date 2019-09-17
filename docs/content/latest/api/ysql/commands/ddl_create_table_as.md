@@ -45,7 +45,7 @@ Use the `CREATE TABLE AS` statement to create a new table using the output of a 
 
 ## Semantics
 
-YugabyteDB may extend the syntax to allow specifying PRIMARY KEY for `CREATE TABLE AS` command.
+Yugabyte DB may extend the syntax to allow specifying PRIMARY KEY for `CREATE TABLE AS` command.
 
 ### *create_table_as*
 

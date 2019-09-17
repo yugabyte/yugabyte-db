@@ -52,7 +52,7 @@ to user issued APIs.
 
 ## An example
 
-Let us take our standard example of creating a table in a YugabyteDB universe with 4 nodes. Also, as
+Let us take our standard example of creating a table in a Yugabyte universe with 4 nodes. Also, as
 before, let us say the table has 16 tablets and a replication factor of 3. The table creation
 process is illustrated below. First, the YB-Master leader validates the schema, creates the 16
 tablets (48 tablet-peers because of the replication factor of 3) and replicates this data needed for

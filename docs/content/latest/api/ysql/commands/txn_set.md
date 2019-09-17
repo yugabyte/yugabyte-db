@@ -63,7 +63,7 @@ Default in ANSI SQL standard.
 
 #### REPEATABLE READ
 
-Also referred to as "snapshot isolation" in YugabyteDB.
+Also referred to as "snapshot isolation" in Yugabyte DB.
 Default.
 
 #### READ COMMITTED

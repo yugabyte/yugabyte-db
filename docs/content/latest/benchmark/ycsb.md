@@ -3,7 +3,7 @@ title: YCSB
 linkTitle: YCSB
 description: YCSB
 image: /images/section_icons/architecture/concepts.png
-headcontent: Benchmark YugabyteDB using YCSB.
+headcontent: Benchmark Yugabyte DB using YCSB.
 menu:
   latest:
     identifier: benchmark-ycsb
@@ -162,7 +162,7 @@ run_workload workloade
 cleanup
 ```
 
-We use YugabyteDB with strongly consistent reads and writes, which corresponds, in Cassandra, to using the `QUORUM` option for both `cassandra.readconsistencylevel` and `cassandra.writeconsistencylevel` (see the command above).
+We use Yugabyte DB with strongly consistent reads and writes, which corresponds, in Cassandra, to using the `QUORUM` option for both `cassandra.readconsistencylevel` and `cassandra.writeconsistencylevel` (see the command above).
 
 ## Step 6. Run and check results
 

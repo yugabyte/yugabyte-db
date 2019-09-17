@@ -1,6 +1,6 @@
 
 
-YugabyteDB supports a number of standard aggregation functions. Let us go through some of these using an example. Consider a products table as shown below.
+Yugabyte DB supports a number of standard aggregation functions. Let us go through some of these using an example. Consider a products table as shown below.
 
 | ProductID | ProductName          | SupplierID | CategoryID | Unit | Price | Quantity
 | ---       | ---                  | ---        | ---        | ---  | --- | ---

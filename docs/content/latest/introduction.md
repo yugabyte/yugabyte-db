@@ -16,7 +16,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## What is YugabyteDB?
+## What is Yugabyte DB?
 
 <!--
 <div class="video-wrapper">
@@ -26,16 +26,16 @@ showAsideToc: true
 
 Yugabyte DB is a high-performance distributed SQL database for powering global, internet-scale applications. Built using a unique combination of high-performance document store, per-shard distributed consensus replication and multi-shard ACID transactions (inspired by Google Spanner), Yugabyte DB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures and global data distribution. As a cloud native database, it can be deployed across public and private clouds as well as in Kubernetes environments with ease.
 
-YugabyteDB is developed and distributed as an [Apache 2.0 open source project](https://github.com/yugabyte/yugabyte-db/).
+Yugabyte DB is developed and distributed as an [Apache 2.0 open source project](https://github.com/yugabyte/yugabyte-db/).
 
-## What makes YugabyteDB unique?
+## What makes Yugabyte DB unique?
 
 Yugabyte DB is a transactional database that brings together three must-have needs of cloud-native microservices, namely SQL as a flexible query language, low-latency read performance and globally-distributed write scalability. 
 
 - Monolithic SQL databases offer SQL and low-latency reads but do not have ability to scale writes across multiple nodes and/or regions. 
 - Distributed NoSQL databases offer performance and write scalablility but give up on SQL semantics such as multi-key access, ACID transactions and strong consistency.
 
-YugabyteDB feature highlights are listed below.
+Yugabyte DB feature highlights are listed below.
 
 ### 1. SQL and ACID transactions
 
@@ -69,9 +69,9 @@ YugabyteDB feature highlights are listed below.
 
 - Starting [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), Yugabyte DB is the only open-source distributed SQL database to have built-in enterprise features such as Distributed Backups, Data Encryption, and Read Replicas. Upcoming features such as [Change Data Capture](../deploy/cdc/cdc-architecture/) and [2 Data Center Deployments](../deploy/cdc/two-data-centers/) are also included in open source.
 
-## What client APIs are supported by YugabyteDB?
+## What client APIs are supported by Yugabyte DB?
 
-YugabyteDB supports two flavors of distributed SQL.
+Yugabyte DB supports two flavors of distributed SQL.
 
 ### 1. Yugabyte SQL (YSQL)
 
@@ -82,16 +82,16 @@ YugabyteDB supports two flavors of distributed SQL.
 [YCQL]((../api/ycql/)) is a SQL-based flexible-schema API that is best fit for internet-scale OLTP apps needing a semi-relational API highly optimized for write-intensive applications as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. Get started by [exploring YCQL features](../api/ycql/quick-start/).
 
 {{< note title="Note" >}}
-The YugabyteDB APIs are isolated and independent from one another today. This means that the data inserted or managed by one API cannot be queried by the other API. Additionally, there is no common way to access the data across the APIs (external frameworks such as [Presto](../develop/ecosystem-integrations/presto/) can help for simple cases). 
+The Yugabyte DB APIs are isolated and independent from one another today. This means that the data inserted or managed by one API cannot be queried by the other API. Additionally, there is no common way to access the data across the APIs (external frameworks such as [Presto](../develop/ecosystem-integrations/presto/) can help for simple cases). 
 
 <b>The net impact is that application developers have to select an API first before undertaking detailed database schema/query design and implementation.</b>
 {{< /note >}}
 
-## How does YugabyteDB's common document store work?
+## How does Yugabyte DB's common document store work?
 
-[DocDB](../architecture/concepts/docdb/), YugabyteDB's distributed document store common across all APIs, is built using a custom integration of Raft replication, distributed ACID transactions and the RocksDB storage engine. Specifically, DocDB enhances RocksDB by transforming it from a key-value store (with only primitive data types) to a document store (with complex data types). **Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key.** DocDB’s [sharding](../architecture/concepts/docdb/sharding/), [replication/fault-tolerance](../architecture/concepts/docdb/replication/) and [distributed ACID transactions](../architecture/transactions/distributed-txns/) architecture are all based on the [Google Spanner design](https://research.google.com/archive/spanner-osdi2012.pdf) first published in 2012. [How We Built a High Performance Document Store on RocksDB?](https://blog.yugabyte.com/how-we-built-a-high-performance-document-store-on-rocksdb/) provides an in-depth look into DocDB.
+[DocDB](../architecture/concepts/docdb/), Yugabyte DB's distributed document store common across all APIs, is built using a custom integration of Raft replication, distributed ACID transactions and the RocksDB storage engine. Specifically, DocDB enhances RocksDB by transforming it from a key-value store (with only primitive data types) to a document store (with complex data types). **Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key.** DocDB’s [sharding](../architecture/concepts/docdb/sharding/), [replication/fault-tolerance](../architecture/concepts/docdb/replication/) and [distributed ACID transactions](../architecture/transactions/distributed-txns/) architecture are all based on the [Google Spanner design](https://research.google.com/archive/spanner-osdi2012.pdf) first published in 2012. [How We Built a High Performance Document Store on RocksDB?](https://blog.yugabyte.com/how-we-built-a-high-performance-document-store-on-rocksdb/) provides an in-depth look into DocDB.
 
-## What are the trade-offs involved in using YugabyteDB?
+## What are the trade-offs involved in using Yugabyte DB?
 
 Trade-offs depend on the type of database used as baseline for comparison.
 
@@ -99,7 +99,7 @@ Trade-offs depend on the type of database used as baseline for comparison.
 
 Examples: PostgreSQL, MySQL, Oracle, Amazon Aurora.
 
-**Benefits of YugabyteDB**
+**Benefits of Yugabyte DB**
 
 - Scale write throughput linearly across multiple nodes and/or geographic regions. 
 - Automatic failover and native repair.
@@ -114,7 +114,7 @@ Learn more: [Distributed PostgreSQL on a Google Spanner Architecture – Query L
 
 Examples: Vitess, Citus
 
-**Benefits of YugabyteDB**
+**Benefits of Yugabyte DB**
 
 - Distributed transactions across any number of nodes.
 - No single point of failure given all nodes are equal.
@@ -129,7 +129,7 @@ Learn more: [Rise of Globally Distributed SQL Databases – Redefining Transacti
 
 Examples: MongoDB, Amazon DynamoDB, FoundationDB, Azure Cosmos DB.
 
-**Benefits of YugabyteDB**
+**Benefits of Yugabyte DB**
 
 - Flexibility of SQL as query needs change in response to business changes.
 - Distributed transactions across any number of nodes.
@@ -145,7 +145,7 @@ Learn more: [Why are NoSQL Databases Becoming Transactional?](https://blog.yugab
 
 Examples: Apache Cassandra, Couchbase.
 
-**Benefits of YugabyteDB**
+**Benefits of Yugabyte DB**
 
 - Flexibility of SQL as query needs change in response to business changes.
 - Strongly consistent, zero data loss writes.

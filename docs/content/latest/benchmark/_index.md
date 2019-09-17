@@ -1,7 +1,7 @@
 ---
 title: Benchmark
 linkTitle: Benchmark
-description: Benchmark YugabyteDB
+description: Benchmark Yugabyte DB
 image: /images/section_icons/explore/high_performance.png
 headcontent:
 section: USER GUIDES

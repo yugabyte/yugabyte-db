@@ -39,20 +39,20 @@ usage: yb-docker-ctl [-h]
                      {create,add_node,status,destroy,stop_node,start_node,stop,start,remove_node}
                      ...
 
-YugabyteDB Docker Container Control
+Yugabyte Docker Container Control
 
 positional arguments:
   {create,add_node,status,destroy,stop_node,start_node,stop,start,remove_node}
                         Commands
-    create              Create YugabyteDB Cluster
-    add_node            Add a new YugabyteDB Cluster Node
-    status              Check YugabyteDB Cluster status
-    destroy             Destroy YugabyteDB Cluster
-    stop_node           Stop a YugabyteDB Cluster Node
-    start_node          Start a YugabyteDB Cluster Node
-    stop                Stop YugabyteDB Cluster so that it can be started later
-    start               Start YugabyteDB Cluster if one already exists
-    remove_node         Stop a YugabyteDB Cluster Node
+    create              Create Yugabyte Cluster
+    add_node            Add a new Yugabyte Cluster Node
+    status              Check Yugabyte Cluster status
+    destroy             Destroy Yugabyte Cluster
+    stop_node           Stop a Yugabyte Cluster Node
+    start_node          Start a Yugabyte Cluster Node
+    stop                Stop Yugabyte Cluster so that it can be started later
+    start               Start Yugabyte Cluster if one already exists
+    remove_node         Stop a Yugabyte Cluster Node
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -66,7 +66,7 @@ The number of nodes created when you use the `yb-dockter-ctl create` command is 
 
 ### Create a 1-node local cluster with RF of 1
 
-To create a 1-node local cluster for development and learning YugabyteDB, run the default `yb-docker-ctl` command. By default, this creates a 1-node cluster with a replication factor (RF) of 1. Note that the `yb-docker-ctl create` command pulls the latest `yugabytedb/yugabyte` image at the outset, in case the image has not yet downloaded or is not the latest version.
+To create a 1-node local cluster for development and learning Yugabyte DB, run the default `yb-docker-ctl` command. By default, this creates a 1-node cluster with a replication factor (RF) of 1. Note that the `yb-docker-ctl create` command pulls the latest `yugabytedb/yugabyte` image at the outset, in case the image has not yet downloaded or is not the latest version.
 
 ```sh
 $ ./yb-docker-ctl create
@@ -182,7 +182,7 @@ $ ./yb-docker-ctl destroy
 
 ## Upgrade container image
 
-The following `docker pull` command below upgrades the Docker image of YugabyteDB to the latest version.
+The following `docker pull` command below upgrades the Docker image of Yugabyte DB to the latest version.
 
 ```sh
 $ docker pull yugabytedb/yugabyte
