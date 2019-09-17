@@ -32,7 +32,7 @@ $ wget https://raw.githubusercontent.com/Yugabyte/yb-sql-workshop/master/query-u
 -  Download the sample data
 
 ```sh
-$ wget https://github.com/Yugabyte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
+$ wget https://github.com/yugabyte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
 ```
 
 ```sh

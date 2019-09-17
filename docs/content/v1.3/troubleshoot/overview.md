@@ -29,4 +29,4 @@ Inspect the Yugabyte logs for more details on your issue. For more details on wh
 
 ## 4. File an issue
 
-If you could not find a solution to your problem in these docs, please file a [GitHub issue](https://github.com/Yugabyte/yugabyte-db/issues) describing your specific problem.
+If you could not find a solution to your problem in these docs, please file a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues) describing your specific problem.

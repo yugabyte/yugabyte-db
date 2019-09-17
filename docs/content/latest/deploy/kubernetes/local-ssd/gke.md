@@ -121,7 +121,7 @@ service "yb-tservers" created
 statefulset "yb-tserver" created
 ```
 
-You can see the [yaml file to launch a Yugabyte DB kubernetes universe on nodes with local disks](https://github.com/YugaByte/yugabyte-db/blob/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml).
+You can see the [yaml file to launch a Yugabyte DB kubernetes universe on nodes with local disks](https://github.com/yugabyte/yugabyte-db/blob/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml).
 
 Note the following `nodeSelector` snippet in the yaml file which instructs the Kubernetes scheduler to place the Yugabyte pods on nodes that have local disks:
 

@@ -1,7 +1,7 @@
 
 ## Installation
 
-Install the Ruby YCQL driver using the following command. You can get further details for the driver [here](https://github.com/Yugabyte/cassandra-ruby-driver).
+Install the Ruby YCQL driver using the following command. You can get further details for the driver [here](https://github.com/yugabyte/cassandra-ruby-driver).
 
 ```sh
 $ gem install yugabyte-ycql-driver

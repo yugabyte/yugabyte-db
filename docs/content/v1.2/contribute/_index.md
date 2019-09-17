@@ -12,7 +12,7 @@ menu:
     weight: 2900
 ---
 
-We are big believers in open source. [Yugabyte DB](https://github.com/YugaByte/yugabyte-db) is distributed under the Apache v2.0 license, which is very permissive open source license. We value external contributions and fully welcome them! We accept contributions as GitHub pull requests. This page contains everything you need to get you going quickly.
+We are big believers in open source. [Yugabyte DB](https://github.com/yugabyte/yugabyte-db) is distributed under the Apache v2.0 license, which is very permissive open source license. We value external contributions and fully welcome them! We accept contributions as GitHub pull requests. This page contains everything you need to get you going quickly.
 
 
 ## Learn about the architecture
@@ -36,7 +36,7 @@ This is the C++ code and the unit tests that comprise the core of Yugabyte DB. Y
 
 ### Docs
 
-[Yugabyte DB documentation](/) uses the Hugo framework. There are two types of docs issues - infrastructure enhancements and adding content. You can [follow the steps outlined here](https://github.com/YugaByte/docs) to run a local version of the docs site. Next, look at the [contributing guide](https://github.com/YugaByte/docs/blob/master/CONTRIBUTING.md) to make your changes and contribute them.
+[Yugabyte DB documentation](/) uses the Hugo framework. There are two types of docs issues - infrastructure enhancements and adding content. You can [follow the steps outlined here](https://github.com/yugabyte/docs) to run a local version of the docs site. Next, look at the [contributing guide](https://github.com/YugaByte/docs/blob/master/CONTRIBUTING.md) to make your changes and contribute them.
 
 ## Find an issue
 
@@ -53,9 +53,9 @@ Issues are tagged with other useful labels as described below.
 | `new feature`      | An new feature does not exist. New features can be complex additions to the existing system, or standalone pieces. |
 | `question`         | A question that needs to be answered. |
 
-* If you are just starting out contributing to Yugabyte DB, first off welcome and thanks! Look for issues labelled [good first issue](https://github.com/YugaByte/yugabyte-db/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22).
+* If you are just starting out contributing to Yugabyte DB, first off welcome and thanks! Look for issues labelled [good first issue](https://github.com/yugabyte/yugabyte-db/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22).
 
-* If you have already contributed and are familiar, then look for issues with the [help wanted](https://github.com/Yugabyte/yugabyte-db/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22) label.
+* If you have already contributed and are familiar, then look for issues with the [help wanted](https://github.com/yugabyte/yugabyte-db/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22) label.
 
 
 {{< note title="Note" >}}
