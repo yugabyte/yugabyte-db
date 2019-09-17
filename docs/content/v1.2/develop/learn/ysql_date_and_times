@@ -4,7 +4,7 @@ Yugabyte DB has extensive date and time capability that may be daunting for the 
 Refer to the data types on https://docs.yugabyte.com/latest/api/ysql/datatypes/ for date and time types.
 
 ## Special Values
-There are special values that you can reference - Yugabyte DB only caters for some, other special values from postgresql are not implemented in YugaByte, but some can be recreated if you require them. Below is YSQL to select special date and time values. First start ysql from your command line.
+There are special values that you can reference - Yugabyte DB only caters for some, other special values from postgresql are not implemented in Yugabyte, but some can be recreated if you require them. Below is YSQL to select special date and time values. First start ysql from your command line.
 
 ```sh
 ./bin/ysqlsh
@@ -69,7 +69,7 @@ postgres=# select to_char(current_timestamp, 'DD-MON-YYYY HH:MI:SS PM');
 In the above you will see that to present the date in a friendly readable format, the date and time needs to be represented in text using `TO_CHAR`. When it is represented as a date or time data type, it is displayed using system settings, hence why the date representation of text `09-JUL-2019` appears as `2019-07-09`.
 
 ## Timezones
-Thus far, we have been operating with the default timezone installed for Yugabyte being UTC (+0). Lets select what timezones are available from YugaByte:
+Thus far, we have been operating with the default timezone installed for Yugabyte being UTC (+0). Lets select what timezones are available from Yugabyte:
 
 ```
 
@@ -133,7 +133,7 @@ Tue 09 Jul 12:27:08 AEST 2019
 ```
 Note that the above does not use quotes, but is the "Grave Accent" symbol, which is normally found below the Tilde `~` symbol on your keyboard. 
 
-The above is showing you the current date and time of the underlying server.  It is not the date and time of the database. However, in a single node implementation of Yugabyte there will be a relationship between your computer's date and the database date because YugaByte would have obtained the date from the server when it was started. We will explore the date and time (timestamps) within the database.
+The above is showing you the current date and time of the underlying server.  It is not the date and time of the database. However, in a single node implementation of Yugabyte there will be a relationship between your computer's date and the database date because Yugabyte would have obtained the date from the server when it was started. We will explore the date and time (timestamps) within the database.
 
 ```
 

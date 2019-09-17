@@ -11,7 +11,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Explore how you can use Prisma, and its GraphQL support, to interact with Yugabyte DB. You will quickly build a GraphQL server and then use the Prisma client to write data to and run queries on a YugaByte DB database. Also, you'll get a taste of Prisma's ORM functionality.
+Explore how you can use Prisma, and its GraphQL support, to interact with Yugabyte DB. You will quickly build a GraphQL server and then use the Prisma client to write data to and run queries on a Yugabyte DB database. Also, you'll get a taste of Prisma's ORM functionality.
 
 [Prisma](https://prisma.io) is an [open source](https://github.com/prisma/prisma) suite of database tools that simplify database workflows by easing database access, migrations, and data management. Prisma replaces traditional ORMs and can be used to build GraphQL servers, REST APIs, microservices, and more. For an overview, see [Prisma Basics: Datamodel, Prisma Client & Server](https://www.prisma.io/docs/understand-prisma/prisma-basics-datamodel-client-and-server-fgz4/).
 
@@ -19,7 +19,7 @@ Explore how you can use Prisma, and its GraphQL support, to interact with Yugaby
 
 ### Yugabyte DB
 
-If Yugabyte DB is installed, run the following `yb-ctl create` command to start a YugaByte DB 1-node cluster, setting the default transaction isolation level to `serializable`:
+If Yugabyte DB is installed, run the following `yb-ctl create` command to start a Yugabyte DB 1-node cluster, setting the default transaction isolation level to `serializable`:
 
 ```bash
 ./bin/yb-ctl create --tserver_flags='ysql_pg_conf="default_transaction_isolation=serializable"'
@@ -31,7 +31,7 @@ Setting the transaction isolation level to `serializable` is a temporary limitat
 
 {{< /note >}}
 
-If you are new to Yugabyte DB, you can be up and running with YugaByte DB in under five minutes by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/). After installing YugaByte DB, make sure to follow the step mentioned above.
+If you are new to Yugabyte DB, you can be up and running with Yugabyte DB in under five minutes by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/). After installing YugaByte DB, make sure to follow the step mentioned above.
 
 ### Prisma
 
@@ -56,7 +56,7 @@ To set up a Prisma project, named `prisma-yb`, run the following command.
 prisma init prisma-yb
 ```
 
-In order to quickly explore using Prisma with Yugabyte DB, we will use the default database and user in the PostgreSQL-compatible YugaByte DB.
+In order to quickly explore using Prisma with Yugabyte DB, we will use the default database and user in the PostgreSQL-compatible Yugabyte DB.
 
 When prompted, enter or select the following values:
 

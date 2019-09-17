@@ -16,7 +16,7 @@ showAsideToc: true
 
 ## Overview
 
-This is an end-to-end functional application with source code and installation instructions available on [GitHub](https://github.com/yugabyte/yb-iot-fleet-management). It is a blueprint for an IoT application built on top of YugaByte DB (using the Cassandra-compatible YCQL API) as the database, Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.
+This is an end-to-end functional application with source code and installation instructions available on [GitHub](https://github.com/yugabyte/yb-iot-fleet-management). It is a blueprint for an IoT application built on top of Yugabyte DB (using the Cassandra-compatible YCQL API) as the database, Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.
 
 ## Scenario
 
@@ -48,7 +48,7 @@ App architecture with the CKY stack is shown below. The same [Kafka Connect Sink
 
 ### Spark, Kafka, and Yugabyte DB (SKY Stack)
 
-App architecture with the SKY stack is shown below. The Kafka Connect Sink Connector for Yugabyte DB is used for storing raw events from Kafka to YugaByte DB. The aggregate data generated via Apache Spark Streaming is persisted in YugaByte DB using the Spark-Cassandra Connector.
+App architecture with the SKY stack is shown below. The Kafka Connect Sink Connector for Yugabyte DB is used for storing raw events from Kafka to Yugabyte DB. The aggregate data generated via Apache Spark Streaming is persisted in YugaByte DB using the Spark-Cassandra Connector.
 
 ![YB IoT Fleet Management Architecture with Apache Spark](/images/develop/realworld-apps/iot-spark-kafka-ksql/yb-iot-fleet-mgmt-arch-kafka-spark.png)
 
@@ -127,7 +127,7 @@ A single data point is a JSON payload and looks as follows:
 }
 ```
 
-The [Kafka Connect Sink Connector for Yugabyte DB](https://github.com/yugabyte/yb-kafka-connector) reads the above `iot-data-event` topic, transforms the event into a YCQL `INSERT` statement and then calls YugaByte DB to persist the event in the `TrafficKeySpace.Origin_Table` table.
+The [Kafka Connect Sink Connector for Yugabyte DB](https://github.com/yugabyte/yb-kafka-connector) reads the above `iot-data-event` topic, transforms the event into a YCQL `INSERT` statement and then calls Yugabyte DB to persist the event in the `TrafficKeySpace.Origin_Table` table.
 
 ## Data processor
 
@@ -152,7 +152,7 @@ CREATE STREAM traffic_stream (
            TIMESTAMP_FORMAT='yyyy-MM-dd HH:mm:ss');
 ```
 
-Various aggreations/queries can now be run on the above stream with results of each type of query stored in a topic of its own. This application uses 3 such queries/topics. Thereafter, the [Kafka Connect Sink Connector for Yugabyte DB](https://github.com/yugabyte/yb-kafka-connector) reads these 3 topics and persists the results into the 3 corresponding tables in YugaByte DB.
+Various aggreations/queries can now be run on the above stream with results of each type of query stored in a topic of its own. This application uses 3 such queries/topics. Thereafter, the [Kafka Connect Sink Connector for Yugabyte DB](https://github.com/yugabyte/yb-kafka-connector) reads these 3 topics and persists the results into the 3 corresponding tables in Yugabyte DB.
 
 ```sql
 CREATE TABLE total_traffic

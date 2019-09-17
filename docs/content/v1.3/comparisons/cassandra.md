@@ -12,7 +12,7 @@ showAsideToc: true
 
 Application developers choosing Apache Cassandra as their default operational database understand well that their choice does not support multi-shard (aka distributed) ACID transactions. But they mistakenly believe that they can use Cassandra features such as quorum writes/reads, lightweight transactions and secondary indexes to achieve single-key ACID guarantees. This is because the Cassandra marketing and technical documentation over the years has promoted it as a “consistent-enough” database. This is far from the truth. The only good use of Apache Cassandra is in context of its original intent as a inexpensive, eventually consistent store for large volumes of data. Newer Cassandra compatible databases such as DataStax Enterprise and ScyllaDB suffer from the same problems as Apache Cassandra since they have not changed the design of the eventually consistent core.
 
-For use cases that simultaneously need strong consistency, low latency and high density, the right path is to use a database that is not simply Cassandra compatible but is also transactional. This is exactly what Yugabyte DB offers. Each of the problems highlighted here are solved by YugaByte DB at the core of its architecture.
+For use cases that simultaneously need strong consistency, low latency and high density, the right path is to use a database that is not simply Cassandra compatible but is also transactional. This is exactly what Yugabyte DB offers. Each of the problems highlighted here are solved by Yugabyte DB at the core of its architecture.
 
 - Single-key writes go through Raft (which also uses quorum) in Yugabyte DB but reads are quorumless and hence can be served off a single node both for strongly consistent and timeline-consistent (aka bounded staleness) cases.
 
@@ -54,7 +54,7 @@ Local secondary indexes in Apache Cassandra ([see blog](https://pantheon.io/blog
 
 ## Data modeling
 
-Apache Cassandra is a flexi-schema database that supports single key data modeling. On the other hand, Yugabyte DB is a multi-model and multi-API database that supports multiple different types of data modeling including flexi-schema and document data (with the native JSON data type support in the Cassandra-compatible YCQL API). Additionally, YugaByte DB supports key-value (with the Redis-compatible YEDIS API) and relational (with the PostgreSQL-compatible YSQL API) data modeling.
+Apache Cassandra is a flexi-schema database that supports single key data modeling. On the other hand, Yugabyte DB is a multi-model and multi-API database that supports multiple different types of data modeling including flexi-schema and document data (with the native JSON data type support in the Cassandra-compatible YCQL API). Additionally, Yugabyte DB supports key-value (with the Redis-compatible YEDIS API) and relational (with the PostgreSQL-compatible YSQL API) data modeling.
 
 Some further details on the document data modeling of both databases is warranted. Apache Cassandra's JSON support can be misleading for many developers. CQL allows SELECT and INSERT statements to include the JSON keyword. The SELECT output will now be available in the JSON format and the INSERT inputs can now be specified in the JSON format. However, this “JSON” support is simply an ease-of-use abstraction in the CQL layer that the underlying database engine is unaware of. Since there is no native JSON data type in CQL, the schema doesn’t have any knowledge of the JSON provided by the user. This means the schema definition doesn’t change nor does the schema enforcement. Cassandra developers needing native JSON support previously had no choice but to add a new document database such as MongoDB or Couchbase into their data tier.
 
@@ -72,7 +72,7 @@ With Yugabyte DB’s native JSON support, developers can now benefit from the st
 
 ## Operational flexibility
 
-At times, you may need to move your database infrastructure to new hardware or you may want to add a sync/async replica in another region or in public cloud. With Yugabyte DB, these operations are simple 1-click intent based operations that are handled seamlessly by the system in a completely online manner. YugaByte’s core data fabric and its consensus based replication model enables the "data tier” to be very agile/recomposable much like containers/VMs have done for the application or stateless tier.
+At times, you may need to move your database infrastructure to new hardware or you may want to add a sync/async replica in another region or in public cloud. With Yugabyte DB, these operations are simple 1-click intent based operations that are handled seamlessly by the system in a completely online manner. Yugabyte’s core data fabric and its consensus based replication model enables the "data tier” to be very agile/recomposable much like containers/VMs have done for the application or stateless tier.
 
 ## Need to scale beyond single or 2-DC deployments
 

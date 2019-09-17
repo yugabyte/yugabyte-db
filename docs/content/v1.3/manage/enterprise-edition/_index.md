@@ -3,7 +3,7 @@ title: Yugabyte Platform
 linkTitle: Yugabyte Platform
 description: Yugabyte Platform
 image: /images/section_icons/manage/enterprise.png
-headcontent: Manage Yugabyte DB without any downtime using the YugaByte Platform's built-in orchestration and monitoring.
+headcontent: Manage Yugabyte DB without any downtime using the Yugabyte Platform's built-in orchestration and monitoring.
 menu:
   v1.3:
     identifier: manage-enterprise-edition
@@ -21,7 +21,7 @@ Yugabyte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
         <div class="title">Create universe - Multi-zone</div>
       </div>
       <div class="body">
-        Create Yugabyte DB universes in one region across multiple zones using YugaByte Admin Console's intent-driven orchestration.
+        Create Yugabyte DB universes in one region across multiple zones using Yugabyte Admin Console's intent-driven orchestration.
       </div>
     </a>
   </div>
@@ -33,7 +33,7 @@ Yugabyte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
         <div class="title">Create universe - Multi-region</div>
       </div>
       <div class="body">
-        Create Yugabyte DB universes in multiple regions using YugaByte Admin Console's intent-driven orchestration.
+        Create Yugabyte DB universes in multiple regions using Yugabyte Admin Console's intent-driven orchestration.
       </div>
     </a>
   </div>

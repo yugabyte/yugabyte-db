@@ -11,7 +11,7 @@ menu:
 
 Yugabyte DB replicates data in order to survive failures while continuing to maintain consistency of
 data and not requiring operator intervention. **Replication Factor** (or RF) is the number of copies
-of data in a Yugabyte universe. **Fault Tolerance** (or FT) of a YugaByte universe is the maximum
+of data in a Yugabyte universe. **Fault Tolerance** (or FT) of a Yugabyte universe is the maximum
 number of node failures it can survive while continuing to preserve correctness of data. FT and RF
 are highly correlated. To achieve a FT of k nodes, the universe has to be configured with a RF of
 (2k + 1).

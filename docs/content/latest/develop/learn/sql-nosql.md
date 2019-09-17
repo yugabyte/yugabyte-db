@@ -55,9 +55,9 @@ Operational characteristics can be defined as the runtime concerns that arise wh
 
 Applications and cloud services depend on databases for a variety of built-in features. These can include the ability to perform multi-row transactions, JSON or document support, secondary indexes, automatic data expiry with TTLs, and so on.
 
-Here is a table that lists some of the important features that Yugabyte DB supports, and which of YugaByte DB's APIs to use in order to achieve these features. Note that typically, multiple databases are deployed in order to achieve these features.
+Here is a table that lists some of the important features that Yugabyte DB supports, and which of Yugabyte DB's APIs to use in order to achieve these features. Note that typically, multiple databases are deployed in order to achieve these features.
 
-| Database features  | Yugabyte DB - Cassandra-compatible YCQL API | YugaByte DB - Redis-compatible YEDIS API|
+| Database features  | Yugabyte DB - Cassandra-compatible YCQL API | Yugabyte DB - Redis-compatible YEDIS API|
 | --------------- | ---------------- | ------------------ |
 | Multi-row transactions | Yes | - |
 | Consistent secondary indexes | Coming soon | - |
@@ -69,13 +69,13 @@ Here is a table that lists some of the important features that Yugabyte DB suppo
 
 ## Linear scalability
 
-In order to test the linear scalability of Yugabyte DB, we have run some large cluster benchmarks (upto 50 nodes). We were able to scale YugaByte DB to million of reads and writes per second while retaining low latencies. You can read more about our [large cluster tests and how we scaled YugaByte DB to millions of IOPS](https://blog.yugabyte.com/scaling-yugabyte-db-to-millions-of-reads-and-writes-fb86cea5ff15).
+In order to test the linear scalability of Yugabyte DB, we have run some large cluster benchmarks (upto 50 nodes). We were able to scale Yugabyte DB to million of reads and writes per second while retaining low latencies. You can read more about our [large cluster tests and how we scaled YugaByte DB to millions of IOPS](https://blog.yugabyte.com/scaling-yugabyte-db-to-millions-of-reads-and-writes-fb86cea5ff15).
 
 ![Linear scalability at large cluster sizes](/images/develop/learn/yb-scale-out.png)
 
 ## High performance
 
-Yugabyte DB was built with a performance as a design goal. Performance in a public cloud environment without sacrificing consistency is a serious ask. YugaByte DB has been written ground up in C++ for this very reason. Here is a chart showing how YugaByte DB compares with Apache Cassandra when running a YCSB benchmark. Read more about the [YCSB benchmark results and what makes YugaByte DB performant](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
+Yugabyte DB was built with a performance as a design goal. Performance in a public cloud environment without sacrificing consistency is a serious ask. Yugabyte DB has been written ground up in C++ for this very reason. Here is a chart showing how YugaByte DB compares with Apache Cassandra when running a YCSB benchmark. Read more about the [YCSB benchmark results and what makes YugaByte DB performant](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
 
 The first chart below shows the total ops/second when running YBSB benchmark.
 
@@ -87,7 +87,7 @@ The second chart below shows the latency for the YCSB run.
 
 ## Geo-distributed
 
-This is a screenshot of Yugabyte DB EE, which visualized the universe created. Below is a screenshot of a 5-node YugaByte DB universe created for a user identity use-case to power users logging in and changing passwords for a SaaS application. The replication factor of this universe is 5, and it is configured to keep 2 copies of data in us-west, 2 copies of the data in us-east and 1 copy of the data in asia-pacific region. 
+This is a screenshot of Yugabyte DB EE, which visualized the universe created. Below is a screenshot of a 5-node Yugabyte DB universe created for a user identity use-case to power users logging in and changing passwords for a SaaS application. The replication factor of this universe is 5, and it is configured to keep 2 copies of data in us-west, 2 copies of the data in us-east and 1 copy of the data in asia-pacific region. 
 
 ![Geo-distributed](/images/develop/learn/yb-geo-distributed.png)
 

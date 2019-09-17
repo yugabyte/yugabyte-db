@@ -2,7 +2,7 @@
 title: TLS encryption
 linkTitle: TLS encryption
 description: TLS encryption
-headcontent: Enable TLS encryption over the wire in Yugabyte DB (YugaByte Platform only).
+headcontent: Enable TLS encryption over the wire in Yugabyte DB (Yugabyte Platform only).
 image: /images/section_icons/secure/tls-encryption.png
 menu:
   v1.3:
@@ -11,7 +11,7 @@ menu:
     weight: 720
 ---
 
-Yugabyte DB supports Transport Layer Security (TLS) encryption using [OpenSSL](https://www.openssl.org), which is natively available for Linux, BSD, and macOS operating systems. You can configure YugaByte DB to encrypt network communication, including:
+Yugabyte DB supports Transport Layer Security (TLS) encryption using [OpenSSL](https://www.openssl.org), which is natively available for Linux, BSD, and macOS operating systems. You can configure Yugabyte DB to encrypt network communication, including:
 
 * Server-server — between YB-Masters and YB-TServers
 * Client-server — using CLIs and APIs for YSQL and YCQL

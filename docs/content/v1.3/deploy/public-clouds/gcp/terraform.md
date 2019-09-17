@@ -100,7 +100,7 @@ The following resources are created by this module:
 
 For cluster named `test-cluster`, the instances will be named `yugabyte-test-cluster-n1`, `yugabyte-test-cluster-n2`, `yugabyte-test-cluster-n3`.
 
-- `module.terraform-gcp-yugabyte.google_compute_firewall.Yugabyte-Firewall` The firwall rule that allows the various clients to access the YugaByte DB cluster.
+- `module.terraform-gcp-yugabyte.google_compute_firewall.Yugabyte-Firewall` The firwall rule that allows the various clients to access the Yugabyte DB cluster.
 
 For cluster named `test-cluster`, this firewall rule will be named `default-yugabyte-test-cluster-firewall` with the ports 7000, 9000, 9042 and 6379 open to all.
 

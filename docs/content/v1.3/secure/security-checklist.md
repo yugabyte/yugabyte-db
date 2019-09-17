@@ -15,7 +15,7 @@ Below are a list of security measures that can be implemented to protect your Yu
 
 ## Enable authentication
 
-Authentication requires that all clients provide valid credentials before they can connect to a Yugabyte DB cluster. The authentication credentials in YugaByte DB are stored internally in the YB-Master system tables. The authentication mechanisms available to users depends on what is supported and exposed by the API (YCQL, YEDIS, YSQL).
+Authentication requires that all clients provide valid credentials before they can connect to a Yugabyte DB cluster. The authentication credentials in Yugabyte DB are stored internally in the YB-Master system tables. The authentication mechanisms available to users depends on what is supported and exposed by the API (YCQL, YEDIS, YSQL).
 
 Read more about [how to enable authentication in Yugabyte DB](../authentication).
 
@@ -37,7 +37,7 @@ Ensure that Yugabyte DB runs in a trusted network environment.  Here are some st
 
 * Servers running Yugabyte DB processes are directly accessible only by the servers running the application and database administrators.
 
-* Only servers running applications can connect to Yugabyte DB processes on the RPC ports. Access to the various [YugaByte DB ports](../../deploy/checklist/#default-ports-reference) should be denied to everybody else.
+* Only servers running applications can connect to Yugabyte DB processes on the RPC ports. Access to the various [Yugabyte DB ports](../../deploy/checklist/#default-ports-reference) should be denied to everybody else.
 
 ### RPC bind interfaces
 
@@ -45,7 +45,7 @@ Limit the interfaces on which Yugabyte DB instances listen for incoming connecti
 
 ### Tips for public clouds
 
-* Do not assign a public IP address to the nodes running Yugabyte DB if possible. The applications can connect to YugaByte DB over private IP addresses.
+* Do not assign a public IP address to the nodes running Yugabyte DB if possible. The applications can connect to Yugabyte DB over private IP addresses.
 
 * In AWS, run the Yugabyte DB cluster in a separate VPC ([Amazon Virtual Private Network](https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html)) and peer this only with VPC(s) from which database access is required, for example from those VPCs where the application will run.
 
@@ -53,7 +53,7 @@ Limit the interfaces on which Yugabyte DB instances listen for incoming connecti
 
 ## Enable encryption on the wire
 
-[TLS/SSL encryption](https://en.wikipedia.org/wiki/Transport_Layer_Security) ensures that network communication between servers is secure. You can configure Yugabyte DB to use TLS to encrypt intra-cluster and client to cluster network communication. It is recommended to enable TLS encryption over the wire in YugaByte DB clusters and clients to ensure privacy and integrity of data transferred over the network.
+[TLS/SSL encryption](https://en.wikipedia.org/wiki/Transport_Layer_Security) ensures that network communication between servers is secure. You can configure Yugabyte DB to use TLS to encrypt intra-cluster and client to cluster network communication. It is recommended to enable TLS encryption over the wire in Yugabyte DB clusters and clients to ensure privacy and integrity of data transferred over the network.
 
 Read more about enabling [TLS/SSL encryption](../tls-encryption) in Yugabyte DB.
 

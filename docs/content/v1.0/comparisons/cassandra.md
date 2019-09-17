@@ -50,7 +50,7 @@ Local secondary indexes in Apache Cassandra ([see blog](https://pantheon.io/blog
 
 ## 6. Operational Flexibility 
 
-At times, you may need to move your database infrastructure to new hardware or you may want to add a sync/async replica in another region or in public cloud. With Yugabyte DB, these operations are simple 1-click intent based operations that are handled seamlessly by the system in a completely online manner. YugaByte’s core data fabric and its consensus based replication model enables the "data tier” to be very agile/recomposable much like containers/VMs have done for the application or stateless tier.
+At times, you may need to move your database infrastructure to new hardware or you may want to add a sync/async replica in another region or in public cloud. With Yugabyte DB, these operations are simple 1-click intent based operations that are handled seamlessly by the system in a completely online manner. Yugabyte’s core data fabric and its consensus based replication model enables the "data tier” to be very agile/recomposable much like containers/VMs have done for the application or stateless tier.
 
 ## 7. Need to Scale Beyond Single or 2-DC Deployments
 

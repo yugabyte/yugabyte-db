@@ -21,7 +21,7 @@ Yugabyte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
         <div class="title">Create Universe - Multi-Zone</div>
       </div>
       <div class="body">
-        Create Yugabyte DB universes in one region across multiple zones using YugaByte Admin Console's intent-driven orchestration.
+        Create Yugabyte DB universes in one region across multiple zones using Yugabyte Admin Console's intent-driven orchestration.
       </div>
     </a>
   </div>
@@ -33,7 +33,7 @@ Yugabyte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
         <div class="title">Create Universe - Multi-Region</div>
       </div>
       <div class="body">
-        Create Yugabyte DB universes in multiple regions using YugaByte Admin Console's intent-driven orchestration.
+        Create Yugabyte DB universes in multiple regions using Yugabyte Admin Console's intent-driven orchestration.
       </div>
     </a>
   </div>

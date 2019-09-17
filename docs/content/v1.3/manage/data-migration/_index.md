@@ -11,7 +11,7 @@ menu:
     weight: 703
 ---
 
-This section goes into details of importing data into Yugabyte DB as well as exporting data out of YugaByte DB.
+This section goes into details of importing data into Yugabyte DB as well as exporting data out of Yugabyte DB.
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">

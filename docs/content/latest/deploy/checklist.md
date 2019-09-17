@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Overview
 
-Yugabyte DB consists of two distributed services - the YB-Master service and the YB-TServer service. The YB-Master service should be brought up first followed by the YB-TServer service. In order to bring up these distributed services, the respective processes (YB-Master or YB-TServer) need to be started across different machines. Below are some considerations and recommendations on starting these services. The *deployment configurations* section below has detailed steps on how to setup YugaByte clusters.
+Yugabyte DB consists of two distributed services - the YB-Master service and the YB-TServer service. The YB-Master service should be brought up first followed by the YB-TServer service. In order to bring up these distributed services, the respective processes (YB-Master or YB-TServer) need to be started across different machines. Below are some considerations and recommendations on starting these services. The *deployment configurations* section below has detailed steps on how to setup Yugabyte clusters.
 
 ## Basics
 
@@ -56,7 +56,7 @@ Allocate adequate CPU and RAM. Yugabyte DB has good defaults for running on a wi
 ### Disks
 
 - Use SSDs (solid state disks) for good performance.
-- Both local or remote attached storage work with Yugabyte DB. Since YugaByte DB internally replicates data for fault tolerance, remote attached storage which which does its own additional replication is not a requirement. Local disks often offer better performance at a lower cost.
+- Both local or remote attached storage work with Yugabyte DB. Since Yugabyte DB internally replicates data for fault tolerance, remote attached storage which which does its own additional replication is not a requirement. Local disks often offer better performance at a lower cost.
 - Multi-disk nodes
       - Do not use RAID across multiple disks. Yugabyte DB can natively handle multi-disk nodes (JBOD).
       - Create a data directory on each of the data disks and specify a comma separated list of those directories to the yb-master and yb-tserver processes via the --fs_data_dirs flag

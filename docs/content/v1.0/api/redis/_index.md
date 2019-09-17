@@ -13,7 +13,7 @@ menu:
 ---
 
 ## Introduction
-The YEDIS API allows Yugabyte DB to become an auto-sharded, clustered & elastic Redis-as-a-Database in a Redis-driver compatible manner. A Redis client can connect, send request, and receive result from YugaByte DB.
+The YEDIS API allows Yugabyte DB to become an auto-sharded, clustered & elastic Redis-as-a-Database in a Redis-driver compatible manner. A Redis client can connect, send request, and receive result from Yugabyte DB.
 
 ## Data Types
 The following datatypes can be read and written via the YEDIS API. All data are on-disk persistent in Yugabyte DB.<br>

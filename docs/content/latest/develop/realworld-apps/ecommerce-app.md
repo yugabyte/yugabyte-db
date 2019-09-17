@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Overview
 
-Yugastore is a sample, full-stack online bookstore, or more generally, an e-commerce app built on top of Yugabyte DB. It is a cloud native, distributed app built on a microservices architecture. YugaByte DB simplifies the development of such apps by providing a SQL-like API (based on Cassandra Query Language) and a Redis-API on top of a common database. The app can be deployed and run on VMs or using StatefulSets in Kubernetes.
+Yugastore is a sample, full-stack online bookstore, or more generally, an e-commerce app built on top of Yugabyte DB. It is a cloud native, distributed app built on a microservices architecture. Yugabyte DB simplifies the development of such apps by providing a SQL-like API (based on Cassandra Query Language) and a Redis-API on top of a common database. The app can be deployed and run on VMs or using StatefulSets in Kubernetes.
 
 You can browse the [Yugastore source-code on GitHub](https://github.com/yugabyte/yugastore). It is fully open-source.
 
@@ -123,7 +123,7 @@ The sample list of products are in the [`models/sample_data.json`](https://githu
     ...
 ```
 
-The [db_init.js](https://github.com/yugabyte/yugastore/blob/master/models/yugabyte/db_init.js) node script loads the static attributes of the sample data using the following Cassandra batch insert API into YugaByte DB.
+The [db_init.js](https://github.com/yugabyte/yugastore/blob/master/models/yugabyte/db_init.js) node script loads the static attributes of the sample data using the following Cassandra batch insert API into Yugabyte DB.
 
 ```js
 insert_batch.push({

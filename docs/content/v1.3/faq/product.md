@@ -62,7 +62,7 @@ Please do try our beta features and give feedback on them on our [Slack channel]
 
 ## Any performance benchmarks available?
 
-[Yahoo Cloud Serving Benchmark (YCSB)](https://github.com/brianfrankcooper/YCSB/wiki) is a popular benchmarking framework for NoSQL databases. We benchmarked Yugabyte Cassandra API against the standard Apache Cassandra using YCSB. YugaByte DB outperformed Apache Cassandra by increasing margins as the number of keys (data density) increased across all the 6 YCSB workload configurations. 
+[Yahoo Cloud Serving Benchmark (YCSB)](https://github.com/brianfrankcooper/YCSB/wiki) is a popular benchmarking framework for NoSQL databases. We benchmarked Yugabyte Cassandra API against the standard Apache Cassandra using YCSB. Yugabyte DB outperformed Apache Cassandra by increasing margins as the number of keys (data density) increased across all the 6 YCSB workload configurations. 
 
 [Netflix Data Benchmark (NDBench)](https://github.com/Netflix/ndbench) is another publicly available, cloud-enabled benchmark tool for data store systems. We ran NDBench against Yugabyte DB for 7 days and observed P99 and P995 latencies that were orders of magnitude less than that of Apache Cassandra. 
 
@@ -76,13 +76,13 @@ Details for both the above benchhmarks are published in [Building a Strongly Con
 
 Starting [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), Yugabyte DB is 100% open source. It is licensed under Apache 2.0 and the source is available on [GitHub](https://github.com/yugabyte/yugabyte-db).
 
-## How does Yugabyte DB, YugaByte Platform and YugaByte Cloud differ from each other?
+## How does Yugabyte DB, Yugabyte Platform and YugaByte Cloud differ from each other?
 
-[Yugabyte DB](../../quick-start/) is the best choice for the startup organizations with strong technical operations expertise looking to deploy YugaByte DB into production with traditional DevOps tools.
+[Yugabyte DB](../../quick-start/) is the best choice for the startup organizations with strong technical operations expertise looking to deploy Yugabyte DB into production with traditional DevOps tools.
 
-[Yugabyte Platform](../../deploy/enterprise-edition/) is commercial software for running a self-managed DB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugaByte DB in mission-critical production environments with one or more regions (across both public cloud and on-premises datacenters).
+[Yugabyte Platform](../../deploy/enterprise-edition/) is commercial software for running a self-managed DB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run Yugabyte DB in mission-critical production environments with one or more regions (across both public cloud and on-premises datacenters).
 
-[Yugabyte Cloud](http://yugabyte.com/cloud) is YugaByte's fully-managed cloud service on AWS and GCP. You can [sign up](https://www.yugabyte.com/cloud/) for early access now.
+[Yugabyte Cloud](http://yugabyte.com/cloud) is Yugabyte's fully-managed cloud service on AWS and GCP. You can [sign up](https://www.yugabyte.com/cloud/) for early access now.
 
 A more detailed comparison of the above is available [here](https://www.yugabyte.com/platform/#compare-editions).
 

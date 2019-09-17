@@ -38,7 +38,7 @@ Generally, common tools like `top` or `iostat` may be useful.
 
 ### Auditd
 
-If `top` reports high CPU usage for the `auditd` process, it may have some rules auditing some system calls frequently used Yugabyte which can significantly affect performance. You can try temporarily disabling `audit` by running (on each YugaByte node).
+If `top` reports high CPU usage for the `auditd` process, it may have some rules auditing some system calls frequently used Yugabyte which can significantly affect performance. You can try temporarily disabling `audit` by running (on each Yugabyte node).
 
 ```sh
 $ auditctl -e 0

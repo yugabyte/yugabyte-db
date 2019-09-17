@@ -19,11 +19,11 @@ This section details how to configure cloud providers for Yugabyte DB using the 
 
 ### Public cloud
 
-If you plan to run Yugabyte DB nodes on public cloud providers such as Amazon Web Services (AWS) or Google Cloud Platform (GCP), all you need to provide on YugaWare UI is your cloud provider credentials. YugaWare will use those credentials to automatically provision and de-provision instances that run YugaByte. An 'instance' for YugaByte includes a compute instance as well as local or remote disk storage attached to the compute instance.
+If you plan to run Yugabyte DB nodes on public cloud providers such as Amazon Web Services (AWS) or Google Cloud Platform (GCP), all you need to provide on YugaWare UI is your cloud provider credentials. YugaWare will use those credentials to automatically provision and de-provision instances that run Yugabyte. An 'instance' for YugaByte includes a compute instance as well as local or remote disk storage attached to the compute instance.
 
 ### Private cloud or on-premises datacenters
 
-The prerequisites for Yugabyte DB Enterprise Edition data nodes are same as that of [YugaByte DB Community Edition](../../checklist/).
+The prerequisites for Yugabyte DB Enterprise Edition data nodes are same as that of [Yugabyte DB Community Edition](../../checklist/).
 
 ## Configure cloud providers
 

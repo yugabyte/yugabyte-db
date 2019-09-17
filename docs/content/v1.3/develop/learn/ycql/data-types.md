@@ -36,7 +36,7 @@ cqlsh> CREATE TABLE store.books ( id int PRIMARY KEY, details jsonb );
 ```
 
 ### Insert Data
-Next we insert some sample data for a few books into this store. You can copy and paste the following commands into the cqlsh shell for Yugabyte DB to insert the data. Note that you would need a cqlsh that has the enhancement to work with YugaByte DB JSON documents, you can download it using the documentation here.
+Next we insert some sample data for a few books into this store. You can copy and paste the following commands into the cqlsh shell for Yugabyte DB to insert the data. Note that you would need a cqlsh that has the enhancement to work with Yugabyte DB JSON documents, you can download it using the documentation here.
 
 ```sql
 INSERT INTO store.books (id, details) VALUES (1, 

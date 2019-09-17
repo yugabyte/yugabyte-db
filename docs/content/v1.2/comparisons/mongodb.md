@@ -10,7 +10,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-Even though it has improved its transactional capabilities over the last few years, MongoDB is still architecturally not a good fit for transactional applications with strict guarantees on low latency and high throughput. Using transactions in MongoDB today essentially means giving up on high performance and horizontal scalability. At Yugabyte, we believe this is a compromise fast-growing online services should not be forced to make. As shown in the table below, we architected YugaByte DB to simultaneously deliver transactional guarantees, high performance and linear scalability. A 3-node YugaByte DB cluster supports both single-shard and multi-shard transactions and seamlessly scales out on-demand (in single region as well as across multiple regions) to increase write throughput without compromising low latency reads.
+Even though it has improved its transactional capabilities over the last few years, MongoDB is still architecturally not a good fit for transactional applications with strict guarantees on low latency and high throughput. Using transactions in MongoDB today essentially means giving up on high performance and horizontal scalability. At Yugabyte, we believe this is a compromise fast-growing online services should not be forced to make. As shown in the table below, we architected Yugabyte DB to simultaneously deliver transactional guarantees, high performance and linear scalability. A 3-node YugaByte DB cluster supports both single-shard and multi-shard transactions and seamlessly scales out on-demand (in single region as well as across multiple regions) to increase write throughput without compromising low latency reads.
 
 Following are the key areas of difference between Yugabyte DB 1.1 and MongoDB 4.0.
 
@@ -18,7 +18,7 @@ Following are the key areas of difference between Yugabyte DB 1.1 and MongoDB 4.
 
 ## Data Modeling
 
-MongoDB is a document-oriented database that only supports document data modeling. On the other hand, Yugabyte DB is a multi-model and multi-API database that supports multiple different types of data modeling including document data (with the native JSON data type support in the Cassandra-compatible YCQL API). Additionally, YugaByte DB supports key-value (with the Redis-compatible YEDIS API) and relational (with the PostgreSQL-compatible YSQL API) data modeling.
+MongoDB is a document-oriented database that only supports document data modeling. On the other hand, Yugabyte DB is a multi-model and multi-API database that supports multiple different types of data modeling including document data (with the native JSON data type support in the Cassandra-compatible YCQL API). Additionally, Yugabyte DB supports key-value (with the Redis-compatible YEDIS API) and relational (with the PostgreSQL-compatible YSQL API) data modeling.
 
 ## Auto Sharding
 

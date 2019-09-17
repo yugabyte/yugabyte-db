@@ -24,7 +24,7 @@ The Yugabyte DB Helm chart documented here has been tested with the following so
 - Kubernetes 1.10+
 - Helm 2.8.0+
 - Yugabyte DB Docker Images 1.1.0+
-- Kubernetes nodes where a total of 12 CPU cores and 45 GB RAM can be allocated to Yugabyte DB. This can be 3 nodes with 4 CPU core and 15 GB RAM allocated to YugaByte DB.
+- Kubernetes nodes where a total of 12 CPU cores and 45 GB RAM can be allocated to Yugabyte DB. This can be 3 nodes with 4 CPU core and 15 GB RAM allocated to Yugabyte DB.
 - For optimal performance, ensure to set the appropriate [system limits using `ulimit`](../../manual-deployment/system-config/#setting-ulimits/) on each node in your Kubernetes cluster.
 
 Confirm that your `helm` is configured correctly.
@@ -242,7 +242,7 @@ Any program can use the `EXTERNAL-IP` of the `ysql-service` and `yql-service` to
 
 ## Upgrade the cluster
 
-You can perform rolling upgrades on the Yugabyte DB cluster with the following command. Change the `Image.tag` value to any valid tag from [YugaByte DB's listing on the Docker Hub registry](https://hub.docker.com/r/yugabytedb/yugabyte/tags/). By default, the `latest` Docker image is used for the install.
+You can perform rolling upgrades on the Yugabyte DB cluster with the following command. Change the `Image.tag` value to any valid tag from [Yugabyte DB's listing on the Docker Hub registry](https://hub.docker.com/r/yugabytedb/yugabyte/tags/). By default, the `latest` Docker image is used for the install.
 
 ```sh
 $ helm upgrade yb-demo yugabytedb/yugabyte --set Image.tag=1.3.1.0-b16 --wait
