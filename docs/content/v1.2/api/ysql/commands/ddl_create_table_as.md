@@ -33,7 +33,7 @@ Where
 
 ## Semantics
 
-- YugaByte may extend syntax to allow specifying PRIMARY KEY for `CREATE TABLE AS` command.
+- Yugabyte may extend syntax to allow specifying PRIMARY KEY for `CREATE TABLE AS` command.
 
 ## Examples
 ```sql

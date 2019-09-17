@@ -13,24 +13,24 @@ isTocNested: true
 showAsideToc: true
 ---
 
-[Metabase](https://www.metabase.com/) is an extremly easy-to-use Business Intelligence (BI) tool. It bills itself as `the easy, open source way for everyone in your company to ask questions and learn from data`. This page shows how Metabase can be setup to integrate with YugaByte DB's PostgreSQL compatible API.
+[Metabase](https://www.metabase.com/) is an extremly easy-to-use Business Intelligence (BI) tool. It bills itself as `the easy, open source way for everyone in your company to ask questions and learn from data`. This page shows how Metabase can be setup to integrate with Yugabyte DB's PostgreSQL compatible API.
 
 ## 1. Start local cluster with YSQL API enabled
 
-Follow [Quick Start](../../../quick-start/) instructions to run a local YugaByte DB cluster. Test YugaByte DB's PostgreSQL compatible YSQL API as [documented](../../../quick-start/test-postgresql/) so that you can confirm that you have a PostgresSQL compatible service running on `localhost:5433`. 
+Follow [Quick Start](../../../quick-start/) instructions to run a local Yugabyte DB cluster. Test YugaByte DB's PostgreSQL compatible YSQL API as [documented](../../../quick-start/test-postgresql/) so that you can confirm that you have a PostgresSQL compatible service running on `localhost:5433`. 
 
 ## 2. Load data
 
 ### Download the sample schema
 
 ```sh
-$ wget https://raw.githubusercontent.com/YugaByte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
+$ wget https://raw.githubusercontent.com/Yugabyte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
 ```
 
 ### Download the sample data
 
 ```sh
-$ wget https://github.com/YugaByte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
+$ wget https://github.com/Yugabyte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
 ```
 
 ```sh
@@ -45,7 +45,7 @@ $ ls data/
 orders.sql	products.sql	reviews.sql	users.sql
 ```
 
-### Connect to YugaByte DB using ysqlsh
+### Connect to Yugabyte DB using ysqlsh
 
 You can do this as shown below.
 

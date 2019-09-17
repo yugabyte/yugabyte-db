@@ -1,5 +1,5 @@
 **NOTE:**
-The Docker option to run local clusters is recommended only for advanced Docker users. This is because running stateful apps like YugaByte DB in Docker is more complex and error-prone than the more common stateless app use cases.
+The Docker option to run local clusters is recommended only for advanced Docker users. This is because running stateful apps like Yugabyte DB in Docker is more complex and error-prone than the more common stateless app use cases.
 
 
 ## Prerequisites
@@ -50,7 +50,7 @@ $ docker ps
 $ python --version
 ```
 
-Pull the YugaByte DB container.
+Pull the Yugabyte DB container.
 
 ```sh
 $ docker pull yugabytedb/yugabyte:1.1.15.0-b24

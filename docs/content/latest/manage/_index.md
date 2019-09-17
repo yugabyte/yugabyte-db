@@ -1,7 +1,7 @@
 ---
 title: Manage
 linkTitle: Manage
-description: Manage YugaByte DB
+description: Manage Yugabyte DB
 image: /images/section_icons/quick_start/sample_apps.png
 headcontent:
 aliases:
@@ -21,7 +21,7 @@ menu:
         <div class="title">Backup and restore</div>
       </div>
       <div class="body">
-        Back up and restore data in YugaByte DB.
+        Back up and restore data in Yugabyte DB.
       </div>
     </a>
   </div>
@@ -33,7 +33,7 @@ menu:
         <div class="title">Data migration</div>
       </div>
       <div class="body">
-        Bulk data import and export in the context of YugaByte DB.
+        Bulk data import and export in the context of Yugabyte DB.
       </div>
     </a>
   </div>
@@ -79,10 +79,10 @@ menu:
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
         <div class="articles">11 articles</div>
-        <div class="title">YugaByte Platform</div>
+        <div class="title">Yugabyte Platform</div>
       </div>
       <div class="body">
-        Manage YugaByte DB without any downtime using the YugaByte Platform's built-in orchestration and monitoring.
+        Manage Yugabyte DB without any downtime using the YugaByte Platform's built-in orchestration and monitoring.
       </div>
     </a>
   </div>

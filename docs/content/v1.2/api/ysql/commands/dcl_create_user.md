@@ -12,7 +12,7 @@ showAsideToc: true
 
 ## Synopsis 
 
-YugaByte supports the `CREATE USER` and limited `GRANT`/`REVOKE` commands to create new roles and set/remove permissions.
+Yugabyte supports the `CREATE USER` and limited `GRANT`/`REVOKE` commands to create new roles and set/remove permissions.
 
 ## Syntax
 

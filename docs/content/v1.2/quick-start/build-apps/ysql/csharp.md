@@ -2,7 +2,7 @@
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB, created a universe and are able to interact with it using the YSQL shell. If not, please follow these steps in the [ysql guide](../../../api/ysql/).
+- installed Yugabyte DB, created a universe and are able to interact with it using the YSQL shell. If not, please follow these steps in the [ysql guide](../../../api/ysql/).
 - installed Visual Studio
 
 ## Writing a HelloWorld C# app
@@ -25,7 +25,7 @@ To install the driver in your Visual Studio project
 using System;
 using Npgsql;
 
-namespace YugaByte_CSharp_Demo
+namespace Yugabyte_CSharp_Demo
 {
     class Program
     {

@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section details how to configure cloud providers for YugaByte DB using the YugaWare Admin Console. If no cloud providers are configured in YugaWare yet, the main Dashboard page highlights the need to configure at least 1 cloud provider.
+This section details how to configure cloud providers for Yugabyte DB using the YugaWare Admin Console. If no cloud providers are configured in YugaWare yet, the main Dashboard page highlights the need to configure at least 1 cloud provider.
 
 ![Configure Cloud Provider](/images/ee/configure-cloud-provider.png)
 
@@ -21,11 +21,11 @@ This section details how to configure cloud providers for YugaByte DB using the 
 
 ### Public cloud
 
-If you plan to run YugaByte DB nodes on public cloud providers such as Amazon Web Services (AWS) or Google Cloud Platform (GCP), all you need to provide on YugaWare UI is your cloud provider credentials. YugaWare will use those credentials to automatically provision and de-provision instances that run YugaByte. An 'instance' for YugaByte includes a compute instance as well as local or remote disk storage attached to the compute instance.
+If you plan to run Yugabyte DB nodes on public cloud providers such as Amazon Web Services (AWS) or Google Cloud Platform (GCP), all you need to provide on YugaWare UI is your cloud provider credentials. YugaWare will use those credentials to automatically provision and de-provision instances that run YugaByte. An 'instance' for YugaByte includes a compute instance as well as local or remote disk storage attached to the compute instance.
 
 ### Private cloud or on-premises datacenters
 
-The prerequisites for YugaByte Platform data nodes are same as that of [YugaByte DB](../../checklist/).
+The prerequisites for Yugabyte Platform data nodes are same as that of [YugaByte DB](../../checklist/).
 
 ## Configure cloud providers
 
@@ -82,4 +82,4 @@ The prerequisites for YugaByte Platform data nodes are same as that of [YugaByte
 
 ## Next step
 
-You are now ready to create YugaByte DB universes as outlined in the next section.
+You are now ready to create Yugabyte DB universes as outlined in the next section.

@@ -333,7 +333,7 @@ SWMTKN-1-aadasdsadas-2ja2q2esqsivlfx2ygi8u62yq
 $ docker-machine create -d virtualbox worker4
 ```
 
-- Pull the YugaByte DB container.
+- Pull the Yugabyte DB container.
 
 ```sh
 $ docker-machine ssh worker4 "docker pull yugabytedb/yugabyte"

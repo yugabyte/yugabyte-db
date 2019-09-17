@@ -1,7 +1,7 @@
 ---
-title: Install YugaByte DB
-linkTitle: 1. Install YugaByte DB
-description: Install YugaByte DB
+title: Install Yugabyte DB
+linkTitle: 1. Install Yugabyte DB
+description: Install Yugabyte DB
 menu:
   v1.2:
     parent: quick-start

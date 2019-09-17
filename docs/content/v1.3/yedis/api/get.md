@@ -33,7 +33,7 @@ $ GET yugakey
 ```
 
 ```sh
-$ SET yugakey "YugaByte"
+$ SET yugakey "Yugabyte"
 ```
 
 ```
@@ -45,7 +45,7 @@ $ GET yugakey
 ```
 
 ```
-"YugaByte"
+"Yugabyte"
 ```
 
 

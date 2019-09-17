@@ -20,7 +20,7 @@ Returns TTL in milliseconds, encoded as integer response.
 ## Examples
 
 ```sh
-$ SET yugakey "YugaByte"
+$ SET yugakey "Yugabyte"
 ```
 
 ```
