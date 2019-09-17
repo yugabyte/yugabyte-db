@@ -58,6 +58,7 @@ The following SQL statements are supported by the Yugabyte Structured Query Lang
 | [`DROP DOMAIN`](ddl_drop_domain) | Delete a domain |
 | [`DROP GROUP`](dcl_drop_group) | Delete a group (role) |
 | [`DROP OPERATOR`](ddl_drop_operator) | Delete an operator |
+| [`DROP OPERATOR CLASS`](ddl_drop_operator_class) | Delete an operator class |
 | [`DROP ROLE`](dcl_drop_role) | Delete a role (user or group) |
 | [`DROP RULE`](ddl_drop_rule) | Delete a rule |
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
