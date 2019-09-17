@@ -307,7 +307,8 @@ create_index ::= 'CREATE' [ 'UNIQUE' ] 'INDEX' [ [ 'IF' 'NOT' 'EXISTS' ] name ] 
                           [ 'INCLUDE' '(' column_name { ',' column_name } ')' ] \
                           [ 'WHERE' predicate ] ;
 
-index_elem ::= ( column_name | '(' expression ')' ) [ opclass ] [ 'HASH' | 'ASC' | 'DESC' ] [ 'NULLS' ( 'FIRST' | 'LAST' ) ] ;
+index_elem = ( column_name | '(' expression ')' ) [ operator_class_name ]
+             [ 'HASH' | 'ASC' | 'DESC' ] [ 'NULLS' ( 'FIRST' | 'LAST' ) ] ;
 
 (* 'CREATE' 'OPERATOR' *)
 create_operator = 'CREATE' 'OPERATOR' operator_name '('
@@ -322,6 +323,17 @@ operator_option = 'LEFTARG' '=' left_type
                 | 'JOIN' '=' join_proc
                 | 'HASHES'
                 | 'MERGES' ;
+
+(* 'CREATE' 'OPERATOR' 'CLASS' *)
+create_operator_class = 'CREATE' 'OPERATOR' 'CLASS' operator_class_name [ 'DEFAULT' ]
+                        'FOR' 'TYPE' data_type
+                        'USING' index_method 'AS' operator_class_as { ',' operator_class_as } ;
+
+operator_class_as = 'OPERATOR' strategy_number operator_name [ '(' operator_signature ')' ]
+                    [ 'FOR' 'SEARCH' ]
+                  | 'FUNCTION' support_number [ '(' op_type { ',' op_type } ')' ]
+                    function_name '(' function_signature ')'
+                  | 'STORAGE' storage_type ;
 
 (* 'CREATE' 'ROLE' *)
 create_role ::= 'CREATE' 'ROLE' role_name [ [ 'WITH' ] role_option { ',' role_option } ] ;
@@ -546,6 +558,10 @@ drop_operator = 'DROP' 'OPERATOR' [ 'IF' 'EXISTS' ] ( operator_name '(' operator
 
 operator_signature = ( left_type | 'NONE' ) ',' ( right_type | 'NONE' ) ;
 
+(* 'DROP' 'OPERATOR' 'CLASS' *)
+drop_operator_class = 'DROP' 'OPERATOR' 'CLASS' [ 'IF' 'EXISTS' ] operator_class_name
+                      'USING' index_method [ 'CASCADE' | 'RESTRICT' ] ;
+
 (* 'DROP' 'ROLE' *)
 drop_role ::= 'DROP' 'ROLE' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
 
@@ -741,7 +757,8 @@ select ::= [ 'WITH' [ 'RECURSIVE' ] ( with_query { ',' with_query } ) ] \
 
 select_expression ::= expression [ [ 'AS' ] name ] ;
 
-order_expr ::= expression [ 'ASC' | 'DESC' | 'USING' operator ] [ 'NULLS' ( 'FIRST' | 'LAST' ) ] ;
+order_expr = expression [ 'ASC' | 'DESC' | 'USING' operator_name ]
+             [ 'NULLS' ( 'FIRST' | 'LAST' ) ] ;
 
 (* 'SET' variable *)
 set ::= 'SET' [ 'SESSION' | 'LOCAL' ]
@@ -940,3 +957,8 @@ com_op = operator_name ;
 neg_op = operator_name ;
 res_proc = procedure_name ;
 join_proc = procedure_name ;
+
+strategy_number = '<positive integer>' ;
+support_number = '<positive integer>' ;
+op_type = data_type ;
+storage_type = data_type ;

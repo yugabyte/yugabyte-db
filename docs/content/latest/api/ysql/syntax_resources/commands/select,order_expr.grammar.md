@@ -10,6 +10,6 @@ select ::= [ WITH [ RECURSIVE ] { with_query [ , ... ] } ]  SELECT
            [ LIMIT [ integer | ALL ] ] 
            [ OFFSET integer [ ROW | ROWS ] ]
 
-order_expr ::= expression [ ASC | DESC | USING operator ] 
+order_expr ::= expression [ ASC | DESC | USING operator_name ] 
                [ NULLS { FIRST | LAST } ]
 ```
