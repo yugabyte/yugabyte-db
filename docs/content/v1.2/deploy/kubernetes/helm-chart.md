@@ -45,7 +45,7 @@ Server: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"
 For creating the cluster, you have to first clone the yugabyte-db project and then create a Yugabyte service account in your Kubernetes cluster.
 
 ```sh
-$ git clone https://github.com/Yugabyte/yugabyte-db.git
+$ git clone https://github.com/yugabyte/yugabyte-db.git
 ```
 
 ```sh

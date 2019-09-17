@@ -17,7 +17,7 @@ showAsideToc: true
 
 ## Download 
 
-cqlsh is installed as part of Yugabyte DB and is located in the bin directory of YugaByte home. It is also available for download and install from YugaByte DB's [Github repo](https://github.com/YugaByte/cqlsh/releases).
+cqlsh is installed as part of Yugabyte DB and is located in the bin directory of YugaByte home. It is also available for download and install from YugaByte DB's [Github repo](https://github.com/yugabyte/cqlsh/releases).
 
 ## Example
 

@@ -27,7 +27,7 @@ If Yugabyte DB is installed, run the following `yb-ctl create` command to start 
 
 {{< note title="Note" >}}
 
-Setting the transaction isolation level to `serializable` is a temporary limitation due to a Yugabyte DB issue involving the locking of foreign keys ([GitHub issue #1199](https://github.com/YugaByte/yugabyte-db/issues/1199))
+Setting the transaction isolation level to `serializable` is a temporary limitation due to a Yugabyte DB issue involving the locking of foreign keys ([GitHub issue #1199](https://github.com/yugabyte/yugabyte-db/issues/1199))
 
 {{< /note >}}
 

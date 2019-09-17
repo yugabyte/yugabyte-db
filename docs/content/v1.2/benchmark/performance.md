@@ -45,10 +45,10 @@ For this benchmark, we will setup a 3-node cluster with a replication factor of 
 
 ### Benchmark Tool
 
-We will use the `yb-sample-apps.jar` tool to perform this benchmark. You can get it from [this GitHub repository](https://github.com/Yugabyte/yb-sample-apps) as shown below.
+We will use the `yb-sample-apps.jar` tool to perform this benchmark. You can get it from [this GitHub repository](https://github.com/yugabyte/yb-sample-apps) as shown below.
 
 ```sh
-$ wget https://github.com/Yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
+$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
 ```
 
 You would need to install java in order to run this tool. Also export the environment variable  $ENDPOINTS containing the IP addresses (plus port) for the nodes of the cluster.

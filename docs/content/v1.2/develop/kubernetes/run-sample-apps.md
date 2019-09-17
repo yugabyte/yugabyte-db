@@ -1,4 +1,4 @@
-[Yugastore](https://github.com/Yugabyte/yugastore) app is a sample ecommerce application built using a microservices design pattern. React UI, Node.js Express app framework and YugaByte DB (YCQL and YEDIS) are used as the underlying technology stack.
+[Yugastore](https://github.com/yugabyte/yugastore) app is a sample ecommerce application built using a microservices design pattern. React UI, Node.js Express app framework and YugaByte DB (YCQL and YEDIS) are used as the underlying technology stack.
 
 ## 1. Create a cluster
 
@@ -91,7 +91,7 @@ The above output is the Admin UI URL and visiting the Tablet Servers page there 
 
 ## 5. Review Yugastore architecture and code
 
-Details of Yugastore architecture are documented [here](../realworld-apps/ecommerce-app/). Source code is available in the [Yugastore GitHub repo](https://github.com/Yugabyte/yugastore).
+Details of Yugastore architecture are documented [here](../realworld-apps/ecommerce-app/). Source code is available in the [Yugastore GitHub repo](https://github.com/yugabyte/yugastore).
 
 ## 6. Run IoT Fleet Management app
 

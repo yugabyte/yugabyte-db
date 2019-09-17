@@ -79,7 +79,7 @@ You can setup Yugabyte-cqlsh by doing the following:
 
 ```sh
 cd $HOME
-git clone https://github.com/Yugabyte/cqlsh
+git clone https://github.com/yugabyte/cqlsh
 ```
 
 ## Step 5. Prepare the driver script

@@ -87,14 +87,14 @@ cqlsh> COPY example.SensorData FROM '/path/to/sample.csv';
 
 ### Medium Datasets (GBs)
 
-[`cassandra-loader`](https://github.com/brianmhess/cassandra-loader) is a general purpose bulk loader for CQL that supports various types of delimited files (particularly csv files). For more details, review the README of the [Yugabyte DB cassandra-loader fork](https://github.com/YugaByte/cassandra-loader/). Note that cassandra-loader requires quotes for collection types (e.g. “[1,2,3]” rather than [1,2,3] for lists).
+[`cassandra-loader`](https://github.com/brianmhess/cassandra-loader) is a general purpose bulk loader for CQL that supports various types of delimited files (particularly csv files). For more details, review the README of the [Yugabyte DB cassandra-loader fork](https://github.com/yugabyte/cassandra-loader/). Note that cassandra-loader requires quotes for collection types (e.g. “[1,2,3]” rather than [1,2,3] for lists).
 
 #### Install cassandra-loader
 
 You can do this as shown below.
 
 ```sh
-$ wget https://github.com/Yugabyte/cassandra-loader/releases/download/v0.0.27-yb-2/cassandra-loader
+$ wget https://github.com/yugabyte/cassandra-loader/releases/download/v0.0.27-yb-2/cassandra-loader
 ```
 
 ```sh
@@ -111,7 +111,7 @@ time ./cassandra-loader \
 	-schema "example.SensorData(customer_name, device_id, ts, sensor_data)"
 ```
 
-For additional options, refer to the [cassandra-loader options](https://github.com/Yugabyte/cassandra-loader#options).
+For additional options, refer to the [cassandra-loader options](https://github.com/yugabyte/cassandra-loader#options).
 
 ### Large datasets (TBs or larger)
 

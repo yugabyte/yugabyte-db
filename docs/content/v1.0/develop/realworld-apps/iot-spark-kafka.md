@@ -167,4 +167,4 @@ public class CassandraConfig extends AbstractCassandraConfiguration {
 
 ## Summary
 
-This application is a blue print for building IoT applications. The instructions to build and run the application, as well as the source code can be found in [this github repo](https://github.com/Yugabyte/yb-iot-fleet-management).
+This application is a blue print for building IoT applications. The instructions to build and run the application, as well as the source code can be found in [this github repo](https://github.com/yugabyte/yb-iot-fleet-management).

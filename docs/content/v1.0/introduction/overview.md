@@ -52,6 +52,6 @@ Yugabyte DB is a single operational database that brings together 3 must-have ne
 
 ### 5. Open Source
 
-- Fully functional distributed database available under [Apache 2.0 open source license](https://github.com/Yugabyte/yugabyte-db/). Upgrade to [Enterprise Edition](https://www.yugabyte.com/product/compare/) anytime.
+- Fully functional distributed database available under [Apache 2.0 open source license](https://github.com/yugabyte/yugabyte-db/). Upgrade to [Enterprise Edition](https://www.yugabyte.com/product/compare/) anytime.
 
 - Multi-API/multi-model database that extends existing popular and open APIs including Cassandra, Redis and PostgreSQL.

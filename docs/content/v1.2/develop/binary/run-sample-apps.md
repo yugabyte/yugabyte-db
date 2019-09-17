@@ -1,4 +1,4 @@
-[Yugastore-java](https://github.com/Yugabyte/yugastore-java) app is an end-to-end ecommerce application built using a microservices design pattern. React UI, Spring Boot app framework and YugaByte DB (both YSQL and YCQL) are used as the underlying technology stack.
+[Yugastore-java](https://github.com/yugabyte/yugastore-java) app is an end-to-end ecommerce application built using a microservices design pattern. React UI, Spring Boot app framework and YugaByte DB (both YSQL and YCQL) are used as the underlying technology stack.
 
 ## 1. Create cluster
 
@@ -13,7 +13,7 @@ Clients can now connect to the YSQL API at `localhost:5433` and YCQL API at `loc
 
 Clone the repo.
 ```sh
-$ git clone https://github.com/Yugabyte/yugastore-java.git
+$ git clone https://github.com/yugabyte/yugastore-java.git
 ```
 ```sh
 $ cd yugastore-java

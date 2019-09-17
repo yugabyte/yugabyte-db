@@ -209,7 +209,7 @@ Finally, connect to the cluster with `ysqlsh` and run the `CREATE EXTENSION` sta
 {{< note title="Note" >}}
 
 Only some extensions are currently supported.
-If you encounter any problems with installing or using a particular extension please post an issue on our [GitHub](https://github.com/Yugabyte/yugabyte-db/issues).
+If you encounter any problems with installing or using a particular extension please post an issue on our [GitHub](https://github.com/yugabyte/yugabyte-db/issues).
 
 {{< /note >}}
 
@@ -322,7 +322,7 @@ This might take a couple of minutes.
 
 {{< note title="Note" >}}
 
-YSQL does not yet support GiST indexes. This is tracked in [this GitHub issue](https://github.com/Yugabyte/yugabyte-db/issues/1337).
+YSQL does not yet support GiST indexes. This is tracked in [this GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/1337).
 
 {{< /note >}}
 
