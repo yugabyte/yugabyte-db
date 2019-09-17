@@ -35,6 +35,7 @@ The following SQL statements are supported by the YugaByte Structured Query Lang
 | [`CREATE DOMAIN`](ddl_create_domain) | Create a new domain |
 | [`CREATE INDEX`](ddl_create_index) | Create a new index |
 | [`CREATE GROUP`](dcl_create_group) | Create a new group (role) |
+| [`CREATE OPERATOR`](ddl_create_operator) | Create a new operator |
 | [`CREATE ROLE`](dcl_create_role) | Create a new role (user or group) |
 | [`CREATE USER`](dcl_create_user) | Create a new user (role) |
 | [`CREATE SCHEMA`](ddl_create_schema) | Create a new schema (namespace) |

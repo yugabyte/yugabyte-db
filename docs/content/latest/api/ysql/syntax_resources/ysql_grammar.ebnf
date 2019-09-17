@@ -287,6 +287,20 @@ create_index ::= 'CREATE' [ 'UNIQUE' ] 'INDEX' [ [ 'IF' 'NOT' 'EXISTS' ] name ] 
 
 index_elem ::= ( column_name | '(' expression ')' ) [ opclass ] [ 'ASC' | 'DESC' ] ;
 
+(* 'CREATE' 'OPERATOR' *)
+create_operator = 'CREATE' 'OPERATOR' operator_name '('
+                  ( 'FUNCTION' '=' function_name | 'PROCEDURE' '=' procedure_name )
+                  { ',' operator_option } ')' ;
+
+operator_option = 'LEFTARG' '=' left_type
+                | 'RIGHTARG' '=' right_type
+                | 'COMMUTATOR' '=' com_op
+                | 'NEGATOR' '=' neg_op
+                | 'RESTRICT' '=' res_proc
+                | 'JOIN' '=' join_proc
+                | 'HASHES'
+                | 'MERGES' ;
+
 (* 'CREATE' 'ROLE' *)
 create_role ::= 'CREATE' 'ROLE' role_name [ [ 'WITH' ] role_option { ',' role_option } ] ;
 
@@ -868,3 +882,8 @@ function_signature =
 
 source_type = type_name ;
 target_type = type_name ;
+
+com_op = operator_name ;
+neg_op = operator_name ;
+res_proc = procedure_name ;
+join_proc = procedure_name ;
