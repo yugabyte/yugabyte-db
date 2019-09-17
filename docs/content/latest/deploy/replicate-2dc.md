@@ -7,7 +7,7 @@ menu:
   latest:
     parent: change-data-capture
     identifier: 2dc-replication
-    weight: 653
+    weight: 632
 type: page
 isTocNested: true
 showAsideToc: true

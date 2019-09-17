@@ -7,7 +7,7 @@ menu:
   latest:
     parent: cdc
     identifier: use-cdc-with-kafka
-    weight: 654
+    weight: 691
 type: page
 isTocNested: true
 showAsideToc: true

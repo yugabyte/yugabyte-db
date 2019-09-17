@@ -7,7 +7,7 @@ menu:
   latest:
     parent: architecture
     identifier: cdc-architecture
-    weight: 651
+    weight: 1111
 type: page
 isTocNested: true
 showAsideToc: true
