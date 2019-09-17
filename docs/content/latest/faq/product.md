@@ -79,7 +79,7 @@ Details for both the above benchhmarks are published in [Building a Strongly Con
 
 Starting [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), Yugabyte DB is 100% open source. It is licensed under Apache 2.0 and the source is available on [GitHub](https://github.com/yugabyte/yugabyte-db).
 
-## How does Yugabyte DB, Yugabyte Platform and YugaByte Cloud differ from each other?
+## How does Yugabyte DB, Yugabyte Platform and Yugabyte Cloud differ from each other?
 
 [Yugabyte DB](../../quick-start/) is the best choice for the startup organizations with strong technical operations expertise looking to deploy Yugabyte DB into production with traditional DevOps tools.
 

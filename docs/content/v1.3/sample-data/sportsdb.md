@@ -33,11 +33,11 @@ To use the SportsDB sample database, you must have installed and configured Yuga
 
 The SQL scripts that you need to create the SportsDB sample database (Yugabyte DB-compatible) are available in the [`sample` directory of the Yugabyte DB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). Download the following five files.
 
-- [`sportsdb_tables.sql`](https://raw.githubusercontent.com/Yugabyte/yugabyte-db/master/sample/sportsdb_tables.sql) — Creates the tables and sequences
-- [`sportsdb_inserts.sql`](https://raw.githubusercontent.com/Yugabyte/yugabyte-db/master/sample/sportsdb_inserts.sql) — Loads the sample data into the `sportsdb` database
-- [`sportsdb_constraints.sql`](https://raw.githubusercontent.com/Yugabyte/yugabyte-db/master/sample/sportsdb_constraints.sql) — Creates the unique constraints
-- [`sportsdb_fks.sql`](https://raw.githubusercontent.com/Yugabyte/yugabyte-db/master/sample/sportsdb_fks.sql) — Creates the foreign key constraints
-- [`sportsdb_indexes.sql`](https://raw.githubusercontent.com/Yugabyte/yugabyte-db/master/sample/sportsdb_indexes.sql) — Creates the indexes
+- [`sportsdb_tables.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/sportsdb_tables.sql) — Creates the tables and sequences
+- [`sportsdb_inserts.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/sportsdb_inserts.sql) — Loads the sample data into the `sportsdb` database
+- [`sportsdb_constraints.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/sportsdb_constraints.sql) — Creates the unique constraints
+- [`sportsdb_fks.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/sportsdb_fks.sql) — Creates the foreign key constraints
+- [`sportsdb_indexes.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/sportsdb_indexes.sql) — Creates the indexes
 
 ### 2. Open the YSQL shell
 

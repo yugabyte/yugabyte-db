@@ -13,7 +13,7 @@ showAsideToc: true
 
 ## What is YugaWare?
 
-YugaWare, shipped as a part of Yugabyte DB Enterprise, is the Admin Console for Yugabyte DB. It has a built-in orchestration and monitoring engine for deploying YugaByte DB in any public or private cloud.
+YugaWare, shipped as a part of Yugabyte DB Enterprise, is the Admin Console for Yugabyte DB. It has a built-in orchestration and monitoring engine for deploying Yugabyte DB in any public or private cloud.
 
 ## How does the installation work for Yugabyte DB Enterprise?
 

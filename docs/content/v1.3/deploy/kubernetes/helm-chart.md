@@ -45,7 +45,7 @@ Server: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"
 For creating the cluster, you need to have a service account with cluster-admin privilege.
 
 ```sh
-$ kubectl create -f https://raw.githubusercontent.com/Yugabyte/charts/master/stable/yugabyte/yugabyte-rbac.yaml
+$ kubectl create -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/yugabyte-rbac.yaml
 ```
 
 ```sh
@@ -221,7 +221,7 @@ $ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/cqlsh yb-tserver-0
 By default Yugabyte helm will expose only the master ui endpoint via LoadBalancer. If you wish to expose YSQL and YCQL services using LoadBalancer for your app to use, you can do that as follows.
 
 ```sh
-helm install yugabytedb/yugabyte -f https://raw.githubusercontent.com/Yugabyte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --name yb-demo --wait --set "disableYsql=true"
+helm install yugabytedb/yugabyte -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --name yb-demo --wait --set "disableYsql=true"
 ```
 
 To connect an external program, get the load balancer IP address of the corresponding service. The example below shows how to do this for the YSQL and YCQL services.
