@@ -58,7 +58,23 @@ yugabyte=# CREATE RULE t1_to_t2 AS ON INSERT TO t1 DO INSTEAD
              INSERT INTO t2 VALUES (new.a, new.b);
 yugabyte=# INSERT INTO t1 VALUES (3, 4);
 yugabyte=# SELECT * FROM t1;
+```
+
+```
+ a | b
+---+---
+(0 rows)
+```
+
+```sql
 yugabyte=# SELECT * FROM t2;
+```
+
+```
+ a | b
+---+---
+ 3 | 4
+(1 row)
 ```
 
 ## See also
