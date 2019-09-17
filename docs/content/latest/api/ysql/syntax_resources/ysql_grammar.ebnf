@@ -546,6 +546,9 @@ operator_signature = ( left_type | 'NONE' ) ',' ( right_type | 'NONE' ) ;
 (* 'DROP' 'ROLE' *)
 drop_role ::= 'DROP' 'ROLE' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
 
+(* 'DROP' 'RULE' *)
+drop_rule = 'DROP' 'RULE' [ 'IF' 'EXISTS' ] rule_name 'ON' table_name [ 'CASCADE' | 'RESTRICT' ] ;
+
 (* 'DROP' 'SEQUENCE' *)
 drop_sequence ::= 'DROP' 'SEQUENCE' [ 'IF' 'EXISTS' ] sequence_name [ 'CASCADE' | 'RESTRICT' ] ;
 
