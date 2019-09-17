@@ -36,6 +36,7 @@ The following SQL statements are supported by the Yugabyte Structured Query Lang
 | [`CREATE DOMAIN`](ddl_create_domain) | Create a new domain |
 | [`CREATE INDEX`](ddl_create_index) | Create a new index |
 | [`CREATE GROUP`](dcl_create_group) | Create a new group (role) |
+| [`CREATE OPERATOR`](ddl_create_operator) | Create a new operator |
 | [`CREATE ROLE`](dcl_create_role) | Create a new role (user or group) |
 | [`CREATE USER`](dcl_create_user) | Create a new user (role) |
 | [`CREATE SCHEMA`](ddl_create_schema) | Create a new schema (namespace) |
@@ -54,6 +55,7 @@ The following SQL statements are supported by the Yugabyte Structured Query Lang
 | [`DROP DATABASE`](ddl_drop_database) | Delete a database from the system |
 | [`DROP DOMAIN`](ddl_drop_domain) | Delete a domain |
 | [`DROP GROUP`](dcl_drop_group) | Delete a group (role) |
+| [`DROP OPERATOR`](ddl_drop_operator) | Delete an operator |
 | [`DROP ROLE`](dcl_drop_role) | Delete a role (user or group) |
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP TABLE`](ddl_drop_table) | Deletes a table from a database |
