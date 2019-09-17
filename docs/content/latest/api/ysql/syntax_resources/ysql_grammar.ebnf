@@ -107,7 +107,7 @@ comment_on = 'COMMENT' 'ON' (
   'EVENT' 'TRIGGER' object_name |
   'FOREIGN' 'DATA' 'WRAPPER' object_name |
   'FOREIGN' 'TABLE' object_name |
-  'FUNCTION' function_name [ '(' [ [ argmode ] [ argname ] argtype { ',' argtype } ] ')' ] |
+  'FUNCTION' function_name [ '(' function_signature ')' ] |
   'INDEX' object_name |
   'LARGE' 'OBJECT' large_object_oid |
   'MATERIALIZED' 'VIEW' object_name |
@@ -233,6 +233,27 @@ aggregate_old_option = 'SSPACE' '=' state_data_size
                      | 'MFINALFUNC_MODIFY' '=' ( 'READ_ONLY' | 'SHAREABLE' | 'READ_WRITE' )
                      | 'MINITCOND' '=' minitial_condition
                      | 'SORTOP' '=' sort_operator ;
+
+(* 'CREATE' 'CAST' *)
+
+create_cast = create_cast_with_function
+            | create_cast_without_function
+            | create_cast_with_inout ;
+
+create_cast_with_function = 'CREATE' 'CAST' '(' cast_signature ')'
+                            'WITH' 'FUNCTION' function_name
+                            [ '(' function_signature ')' ]
+                            [ 'AS' 'ASSIGNMENT' | 'AS' 'IMPLICIT' ] ;
+
+create_cast_without_function = 'CREATE' 'CAST' '(' cast_signature ')'
+                               'WITHOUT' 'FUNCTION'
+                               [ 'AS' 'ASSIGNMENT' | 'AS' 'IMPLICIT' ] ;
+
+create_cast_with_inout = 'CREATE' 'CAST' '(' cast_signature ')'
+                         'WITH' 'INOUT'
+                         [ 'AS' 'ASSIGNMENT' | 'AS' 'IMPLICIT' ] ;
+
+cast_signature = source_type 'AS' target_type ;
 
 (* 'CREATE' 'DATABASE' *)
 
@@ -440,7 +461,6 @@ returning_expression ::= output_expression [ [ 'AS' ] output_name ] ;
 do = 'DO' [ 'LANGUAGE' lang_name ] code ;
 
 (* 'DROP' 'AGGREGATE' *)
-
 drop_aggregate = 'DROP' 'AGGREGATE' [ 'IF' 'EXISTS' ] aggregate_name '(' aggregate_signature ')'
                  { ',' aggregate_name '(' aggregate_signature ')' }
                  [ 'CASCADE' | 'RESTRICT' ] ;
@@ -449,6 +469,9 @@ aggregate_signature = '*'
                     | aggregate_arg { ',' aggregate_arg }
                     | [ aggregate_arg { ',' aggregate_arg } ]
                       'ORDER' 'BY' aggregate_arg { ',' aggregate_arg } ;
+
+(* 'DROP' 'CAST' *)
+drop_cast = 'DROP' 'CAST' [ 'IF' 'EXISTS' ] '(' cast_signature ')' [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'DATABASE' *)
 drop_database ::= 'DROP' 'DATABASE' [ 'IF' 'EXISTS' ] database_name ;
@@ -731,10 +754,6 @@ domain_name ::= qualified_name ;
 
 index_method ::= '<Text Literal>';
 
-source_type ::= '<Text Literal>' ;
-
-target_type ::= '<Text Literal>' ;
-
 argmode ::= ( 'IN' | 'OUT' | 'INOUT' | 'VARIADIC' ) ;
 
 argname ::= name ;
@@ -843,3 +862,9 @@ mstate_data_size = '<non-negative integer>' ;
 mffunc = function_name ;
 minitial_condition = '<Text literal>' ;
 sort_operator = operator_name ;
+
+function_signature =
+                   | [ argmode ] [ argname ] argtype { ',' [ argmode ] [ argname ] argtype } ;
+
+source_type = type_name ;
+target_type = type_name ;

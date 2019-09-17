@@ -14,8 +14,7 @@ comment_on ::= COMMENT ON
                  | EVENT TRIGGER object_name
                  | FOREIGN DATA WRAPPER object_name
                  | FOREIGN TABLE object_name
-                 | FUNCTION function_name 
-                   [ ( [ [ argmode ] [ argname ] argtype [ , ... ] ] ) ]
+                 | FUNCTION function_name [ ( function_signature ) ]
                  | INDEX object_name
                  | LARGE OBJECT large_object_oid
                  | MATERIALIZED VIEW object_name
