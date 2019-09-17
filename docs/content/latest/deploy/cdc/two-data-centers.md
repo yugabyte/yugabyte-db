@@ -1,7 +1,7 @@
 ---
-title: Two data centers
-linkTitle: Two data centers
-description: Two data center deployment with change data capture
+title: 2DC deployments
+linkTitle: 2DC deployments
+description: 2-data center deployment with change data capture
 menu:
   latest:
     parent: change-data-capture
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This page includes an overview about the YugaByte DB support for two data center (2DC) deployments, supported scenarios, and the life cycle of replication.
+This page includes an overview about the YugaByte DB support for 2-data center (2DC) deployments, supported scenarios, and the life cycle of replication.
 For details on deploying a 2DC deployment, including one-way and two-way replication, see [Deploy two data centers with change data capture (CDC)](../2dc-replication).
 
 ## Overview

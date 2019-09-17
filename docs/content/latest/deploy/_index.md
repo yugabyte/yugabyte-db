@@ -2,7 +2,7 @@
 title: Deploy
 linkTitle: Deploy
 description: Deploy YugaByte DB
-headcontent: You can deploy YugaByte DB to any public cloud or private data center of your choice using either YugaByte DBor the YugaByte Platform.
+headcontent: You can deploy YugaByte DB to any public cloud or private data center of your choice using either YugaByte DB or the YugaByte Platform.
 image: /images/section_icons/index/deploy.png
 aliases:
   - /deploy/
@@ -49,6 +49,7 @@ menu:
       </div>
     </a>
   </div>
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="docker/">
       <div class="head">
@@ -61,18 +62,20 @@ menu:
         Orchestrated deployment of YugaByte DB in Docker Swarm and Docker Compose.
       </div>
     </a>
-      <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
+        <img class="icon" src="/images/deploy/cdc/deploy.png" aria-hidden="true" />
         <div class="title">Change Data Capture</div>
       </div>
       <div class="body">
-          Use change data capture (CDC) to identify, capture, and deliver data changes in multi-data centers operations or to third party applications.
+          Use CDC to identify, capture, and deliver data changes in multi-data centers.
       </div>
     </a>
   </div>
-  </div>
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="pivotal-cloud-foundry/">
       <div class="head">
@@ -84,6 +87,7 @@ menu:
       </div>
     </a>
   </div>
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="public-clouds/">
       <div class="head">
@@ -96,6 +100,7 @@ menu:
       </div>
     </a>
   </div>
+  
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="enterprise-edition/">
       <div class="head">
@@ -108,4 +113,5 @@ menu:
       </div>
     </a>
   </div>
+
 </div>

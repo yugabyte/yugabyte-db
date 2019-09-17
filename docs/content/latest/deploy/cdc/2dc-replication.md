@@ -1,6 +1,6 @@
 ---
 title: 2DC replication
-linkTitle: 2DC replication
+linkTitle: Replicate between 2 data centers
 description: Replicating between two data centers
 menu:
   latest:

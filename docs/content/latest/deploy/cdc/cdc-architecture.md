@@ -1,7 +1,7 @@
 ---
 title: Change data capture (CDC)
-linkTitle: Change data capture (CDC)
-description: Change data capture (CDC)
+linkTitle: CDC architecture
+description: Change data capture (CDC) architecture
 menu:
   latest:
     parent: change-data-capture
