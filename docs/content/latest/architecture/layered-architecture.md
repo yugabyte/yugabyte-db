@@ -22,7 +22,7 @@ Yugabyte DB architecture follows a layered design. It is comprised of 2 logical 
 
 ## Yugabyte Query Layer
 
-The [Yugabyte Query Layer or YQL](../query-layer/) is the upper layer of YugaByte DB. Applications interact directly with YQL using client drivers. This layer deals with the API specific aspects such as query/command compilation and the run-time (data type representations, built-in operations and more). YQL is built with extensibility in mind, and allows for new APIs to be added.
+The [Yugabyte Query Layer or YQL](../query-layer/) is the upper layer of Yugabyte DB. Applications interact directly with YQL using client drivers. This layer deals with the API specific aspects such as query/command compilation and the run-time (data type representations, built-in operations and more). YQL is built with extensibility in mind, and allows for new APIs to be added.
 
 Currently, YQL supports two flavors of distributed SQL APIs.
 

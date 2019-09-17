@@ -12,7 +12,7 @@ showAsideToc: true
 
 ## What does API compatibility exactly mean?
 
-API compatibility refers to the fact that the database APIs offered by Yugabyte DB servers implement the same wire protocol and modeling/query language as that of an existing database. Since client drivers, command line shells, IDE integrations and other ecosystem integrations of the existing database rely on this wire protocol and modeling/query language, they are expected to work with YugaByte DB without major modifications. 
+API compatibility refers to the fact that the database APIs offered by Yugabyte DB servers implement the same wire protocol and modeling/query language as that of an existing database. Since client drivers, command line shells, IDE integrations and other ecosystem integrations of the existing database rely on this wire protocol and modeling/query language, they are expected to work with Yugabyte DB without major modifications. 
 
 {{< note title="Note" >}}
 The [YSQL](../../api/ysql) API is compatible with PostgreSQL. This means PostgreSQL client drivers, psql command line shell, IDE integrations such as TablePlus and DBWeaver and more can be used with Yugabyte DB. The same concept applies to [YCQL](../../api/ycql) in the context of the Apache Cassandra Query Language.
@@ -20,9 +20,9 @@ The [YSQL](../../api/ysql) API is compatible with PostgreSQL. This means Postgre
 
 ## Why are Yugabyte DB APIs compatible with popular DB languages?
 
-- Yugabyte DB's API compatibility is aimed at accelerating developer onboarding. By integrating well with the existing ecosystem, YugaByte DB ensures that developers can get started easily using a language they are already comfortable with. 
+- Yugabyte DB's API compatibility is aimed at accelerating developer onboarding. By integrating well with the existing ecosystem, Yugabyte DB ensures that developers can get started easily using a language they are already comfortable with. 
 
-- Yugabyte DB's API compatibility is not aimed at lift-and-shift porting of existing applications written for the original language. This is because existing applications are not written to take advantage of the distributed SQL APIs provided by YugaByte DB. For such existing applications, developers should expect to modify their previously monolithic PostgreSQL and/or non-transactional Cassandra data access logic as they look to migrate to YugaByte DB.
+- Yugabyte DB's API compatibility is not aimed at lift-and-shift porting of existing applications written for the original language. This is because existing applications are not written to take advantage of the distributed SQL APIs provided by Yugabyte DB. For such existing applications, developers should expect to modify their previously monolithic PostgreSQL and/or non-transactional Cassandra data access logic as they look to migrate to YugaByte DB.
 
 ## YSQL compatibility with PostgreSQL
 
@@ -79,7 +79,7 @@ Yes, you can have collection data types as primary keys as long as they are mark
 
 ### What is the difference between a `COUNTER` data type and `INTEGER` data type?
 
-Unlike Apache Cassandra, Yugabyte COUNTER type is almost the same as INTEGER types. There is no need of lightweight transactions requiring 4 round trips to perform increments in YugaByte - these are efficiently performed with just one round trip.
+Unlike Apache Cassandra, Yugabyte COUNTER type is almost the same as INTEGER types. There is no need of lightweight transactions requiring 4 round trips to perform increments in Yugabyte - these are efficiently performed with just one round trip.
 
 ### How is 'USING TIMESTAMP' different in Yugabyte DB?
 

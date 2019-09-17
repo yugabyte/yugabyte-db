@@ -17,7 +17,7 @@ showAsideToc: true
 
 ## Download 
 
-ysqlsh is installed as part of Yugabyte DB and is located in the bin directory of YugaByte home. 
+ysqlsh is installed as part of Yugabyte DB and is located in the bin directory of Yugabyte home. 
 
 ## Example
 

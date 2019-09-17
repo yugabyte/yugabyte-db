@@ -2,7 +2,7 @@
 title: Deploy
 linkTitle: Deploy
 description: Deploy Yugabyte DB
-headcontent: You can deploy Yugabyte DB to any public cloud or private datacenter of your choice using either YugaByte DB OSS or the YugaByte Platform.
+headcontent: You can deploy Yugabyte DB to any public cloud or private datacenter of your choice using either Yugabyte DB OSS or the YugaByte Platform.
 image: /images/section_icons/index/deploy.png
 section: USER GUIDES
 menu:

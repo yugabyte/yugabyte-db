@@ -31,7 +31,7 @@ $ cd yugastore
 $ npm install
 ```
 
-Note that the `config.json` in the `yugastore` directory stores the connection parameters for Yugabyte DB. If you are running YugaByte DB in a different configuration, then you will need to change these parameters.
+Note that the `config.json` in the `yugastore` directory stores the connection parameters for Yugabyte DB. If you are running Yugabyte DB in a different configuration, then you will need to change these parameters.
 
 ```
 {

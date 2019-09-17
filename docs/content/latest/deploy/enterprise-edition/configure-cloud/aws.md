@@ -22,7 +22,7 @@ In order to be able to provision EC2 instances with Yugabyte DB, YugaWare will r
 
 ## Enabling Hosted Zones
 
-Integrating with hosted zones can make Yugabyte DB universes easily discoverable. YugaWare can integrate with Route53 to provide you managed CNAME entries for your YugaByte DB universes, which will be updated as you change the set of nodes, to include all the relevant ones for each of your universes.
+Integrating with hosted zones can make Yugabyte DB universes easily discoverable. YugaWare can integrate with Route53 to provide you managed CNAME entries for your Yugabyte DB universes, which will be updated as you change the set of nodes, to include all the relevant ones for each of your universes.
 
 ## Global deployment
 
@@ -42,7 +42,7 @@ If you choose to allow YugaWare to configure, own and manage a full cross-region
 If you wish to use your own custom VPCs, this is also supported. This will allow you the most level of customization over your VPC setup:
 
 - You **must** provide a VPC ID to use for each region.
-- You **must** provide a Security Group ID to use for each region. This will be attached to all Yugabyte DB nodes and must allow traffic from all other YugaByte DB nodes, even across regions, if you deploy across multiple regions.
+- You **must** provide a Security Group ID to use for each region. This will be attached to all Yugabyte DB nodes and must allow traffic from all other Yugabyte DB nodes, even across regions, if you deploy across multiple regions.
 - You **must** provide the mapping of what Subnet IDs to use for each Availability Zone in which you wish to be able to deploy. This is required to ensure YugaWare can deploy nodes in the correct network isolation that you desire in your environment.
 - You can **optionally** provide a custom AMI ID to use in each region, else, we will use a recent [marketplace centos AMI](https://wiki.centos.org/Cloud/AWS).
 
@@ -53,7 +53,7 @@ One really important note if you choose to provide your own VPC information: **i
 - VPC Peering Connections must be established in an N x N matrix, such that every VPC in every region you configure must be peered to every other VPC in every other region.
 - Routing Table entries in every regional VPC should route traffic to every other VPC CIDR block across the PeeringConnection to that respective VPC. This must match the Subnets that you provided during the configuration step.
 - Security Groups in each VPC can be hardened by only opening up the relevant ports to the CIDR blocks of the VPCs from which you are expecting traffic.
-- Lastly, if you deploy YugaWare in a different VPC than the ones in which you intend to deploy Yugabyte DB nodes, then its own VPC must also be part of this cross-region VPC mesh, as well as setting up Routing Table entries in the source VPC (YugaWare) and allowing one further CIDR block (or public IP) ingress rule on the Security Groups for the YugaByte DB nodes (to allow traffic from YugaWare or its VPC).
+- Lastly, if you deploy YugaWare in a different VPC than the ones in which you intend to deploy Yugabyte DB nodes, then its own VPC must also be part of this cross-region VPC mesh, as well as setting up Routing Table entries in the source VPC (YugaWare) and allowing one further CIDR block (or public IP) ingress rule on the Security Groups for the Yugabyte DB nodes (to allow traffic from YugaWare or its VPC).
 
 ## Final notes
 

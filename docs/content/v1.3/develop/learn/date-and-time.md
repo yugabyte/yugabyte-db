@@ -30,7 +30,7 @@ For date and time data types, see [Data types](/latest/api/ysql/datatypes/).
 
 ## Special values
 
-There are special values that you can reference - Yugabyte DB only caters for some, other special values from postgresql are not implemented in YugaByte DB, but some can be recreated if you require them. Below is YSQL to select special date and time values. First start ysql from your command line.
+There are special values that you can reference - Yugabyte DB only caters for some, other special values from postgresql are not implemented in Yugabyte DB, but some can be recreated if you require them. Below is YSQL to select special date and time values. First start ysql from your command line.
 
 ```sh
 ./bin/ysqlsh
@@ -92,7 +92,7 @@ In the above you will see that to present the date in a friendly readable format
 
 ## Time zones
 
-Thus far, we have been operating with the default time zone installed for Yugabyte being UTC (+0). Lets select what time zones are available from YugaByte:
+Thus far, we have been operating with the default time zone installed for Yugabyte being UTC (+0). Lets select what time zones are available from Yugabyte:
 
 ```
 postgres=# select * from pg_timezone_names;
@@ -160,7 +160,7 @@ Tue 09 Jul 12:27:08 AEST 2019
 
 Note that the above does not use quotes, but is the "Grave Accent" symbol, which is normally found below the Tilde `~` symbol on your keyboard.
 
-The above is showing you the current date and time of the underlying server.  It is not the date and time of the database. However, in a single node implementation of Yugabyte there will be a relationship between your computer's date and the database date because YugaByte would have obtained the date from the server when it was started. We will explore the date and time (timestamps) within the database.
+The above is showing you the current date and time of the underlying server.  It is not the date and time of the database. However, in a single node implementation of Yugabyte there will be a relationship between your computer's date and the database date because Yugabyte would have obtained the date from the server when it was started. We will explore the date and time (timestamps) within the database.
 
 ```
 postgres=# SHOW timezone;

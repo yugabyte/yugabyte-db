@@ -18,7 +18,7 @@ In order to be able to provision EC2 instances with Yugabyte DB, YugaWare will r
 - Use your own already existing KeyPairs. For this you will need to provide the name of the KeyPair, as well as the private key content and the corresponding SSH user. **Note that currently, all this info must be the same across all the regions you choose to provision!**
 
 ## Enabling Hosted Zones
-Integrating with hosted zones can make Yugabyte DB universes easily discoverable. YugaWare can integrate with Route53 to provide you managed CNAME entries for your YugaByte DB universes, which will be updated as you change the set of nodes, to include all the relevant ones for each of your universes.
+Integrating with hosted zones can make Yugabyte DB universes easily discoverable. YugaWare can integrate with Route53 to provide you managed CNAME entries for your Yugabyte DB universes, which will be updated as you change the set of nodes, to include all the relevant ones for each of your universes.
 
 ## Global deployment
 For deployment, YugaWare aims to provide you with easy access to the many regions that AWS makes available globally. To that end, it allows you to select which regions you wish to deploy to and supports two different ways of configuring your setup, based on your environment:
@@ -37,7 +37,7 @@ If you choose to allow YugaWare to configure, own and manage a full cross-region
 If you wish to use your own custom VPCs, this is also supported. This will allow you the most level of customization over your VPC setup:
 
 - You **must** provide a VPC ID to use for each region.
-- You **must** provide a Security Group ID to use for each region. This will be attached to all Yugabyte DB nodes and must allow traffic from all other YugaByte DB nodes, even across regions, if you deploy across multiple regions.
+- You **must** provide a Security Group ID to use for each region. This will be attached to all Yugabyte DB nodes and must allow traffic from all other Yugabyte DB nodes, even across regions, if you deploy across multiple regions.
 - You **must** provide the mapping of what Subnet IDs to use for each Availability Zone in which you wish to be able to deploy. This is required to ensure YugaWare can deploy nodes in the correct network isolation that you desire in your environment.
 - You can **optionally** provide a custom AMI ID to use in each region, else, we will use a recent [marketplace centos AMI](https://wiki.centos.org/Cloud/AWS).
 
@@ -48,7 +48,7 @@ One really important note if you choose to provide your own VPC information: **i
 - VPC Peering Connections must be established in an N x N matrix, such that every VPC in every region you configure must be peered to every other VPC in every other region.
 - Routing Table entries in every regional VPC should route traffic to every other VPC CIDR block across the PeeringConnection to that respective VPC. This must match the Subnets that you provided during the configuration step.
 - Security Groups in each VPC can be hardened by only opening up the relevant ports to the CIDR blocks of the VPCs from which you are expecting traffic.
-- Lastly, if you deploy YugaWare in a different VPC than the ones in which you intend to deploy Yugabyte DB nodes, then its own VPC must also be part of this cross-region VPC mesh, as well as setting up Routing Table entries in the source VPC (YugaWare) and allowing one further CIDR block (or public IP) ingress rule on the Security Groups for the YugaByte DB nodes (to allow traffic from YugaWare or its VPC).
+- Lastly, if you deploy YugaWare in a different VPC than the ones in which you intend to deploy Yugabyte DB nodes, then its own VPC must also be part of this cross-region VPC mesh, as well as setting up Routing Table entries in the source VPC (YugaWare) and allowing one further CIDR block (or public IP) ingress rule on the Security Groups for the Yugabyte DB nodes (to allow traffic from YugaWare or its VPC).
 
 ## Final notes
 If you allow YugaWare to manage KeyPairs for you and you deploy multiple YugaWare instances across your environment, then the AWS Provider name should be unique for each instance of YugaWare integrating with a given AWS Account.
