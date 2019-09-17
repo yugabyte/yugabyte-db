@@ -22,7 +22,7 @@ Returns a string value.
 You can do this as shown below.
 
 ```sh
-$ SET yugakey "YugaByte"
+$ SET yugakey "Yugabyte"
 ```
 
 ```

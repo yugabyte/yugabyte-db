@@ -19,7 +19,7 @@ menu:
         <div class="title">Introduction</div>
       </div>
       <div class="body">
-        Learn YugaByte DB's unique value proposition.
+        Learn Yugabyte DB's unique value proposition.
       </div>
     </a>
   </div>
@@ -64,10 +64,10 @@ menu:
     <a class="section-link icon-offset" href="enterprise-edition/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />      
-        <div class="title">YugaByte Platform</div>
+        <div class="title">Yugabyte Platform</div>
       </div>
       <div class="body">
-        Running YugaByte DB using the YugaByte Platform.
+        Running Yugabyte DB using the YugaByte Platform.
       </div>
     </a>
   </div>

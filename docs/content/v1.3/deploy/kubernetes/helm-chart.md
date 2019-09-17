@@ -19,12 +19,12 @@ showAsideToc: true
 
 You must have a Kubernetes cluster that has Helm configured. If you have not installed Helm client and server (aka Tiller) yet, follow the instructions [here](https://docs.helm.sh/using_helm/#installing-helm).
 
-The YugaByte DB Helm chart documented here has been tested with the following software versions:
+The Yugabyte DB Helm chart documented here has been tested with the following software versions:
 
 - Kubernetes 1.10+
 - Helm 2.8.0+
-- YugaByte DB Docker Images 1.1.0+
-- Kubernetes nodes where a total of 12 CPU cores and 45 GB RAM can be allocated to YugaByte DB. This can be 3 nodes with 4 CPU core and 15 GB RAM allocated to YugaByte DB.
+- Yugabyte DB Docker Images 1.1.0+
+- Kubernetes nodes where a total of 12 CPU cores and 45 GB RAM can be allocated to Yugabyte DB. This can be 3 nodes with 4 CPU core and 15 GB RAM allocated to YugaByte DB.
 - For optimal performance, ensure to set the appropriate [system limits using `ulimit`](../../manual-deployment/system-config/#setting-ulimits/) on each node in your Kubernetes cluster.
 
 Confirm that your `helm` is configured correctly.
@@ -45,7 +45,7 @@ Server: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"
 For creating the cluster, you need to have a service account with cluster-admin privilege.
 
 ```sh
-$ kubectl create -f https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/yugabyte-rbac.yaml
+$ kubectl create -f https://raw.githubusercontent.com/Yugabyte/charts/master/stable/yugabyte/yugabyte-rbac.yaml
 ```
 
 ```sh
@@ -88,12 +88,12 @@ $ helm search yugabytedb/yugabyte
 
 ```sh
 NAME               	CHART VERSION	APP VERSION	DESCRIPTION
-yugabytedb/yugabyte	1.3.0        	1.3.0.0-b1 	YugaByte Database is the high-performance distr...
+yugabytedb/yugabyte	1.3.0        	1.3.0.0-b1 	Yugabyte Database is the high-performance distr...
 ```
 
-### Install YugaByte DB
+### Install Yugabyte DB
 
-Install YugaByte DB in the Kubernetes cluster using the command below. By default, this helm chart will expose only the master ui endpoint via LoadBalancer. If you need to connect external clients, see the section below.
+Install Yugabyte DB in the Kubernetes cluster using the command below. By default, this helm chart will expose only the master ui endpoint via LoadBalancer. If you need to connect external clients, see the section below.
 
 ```sh
 $ helm install yugabytedb/yugabyte --namespace yb-demo --name yb-demo --wait
@@ -105,9 +105,9 @@ If you are running in a resource-constrained environment or a local environment 
 $ helm install yugabytedb/yugabyte --set resource.master.requests.cpu=0.1,resource.master.requests.memory=0.2Gi,resource.tserver.requests.cpu=0.1,resource.tserver.requests.memory=0.2Gi --namespace yb-demo --name yb-demo
 ```
 
-### Installing YugaByte DB with YSQL (beta)
+### Installing Yugabyte DB with YSQL (beta)
 
-If you wish to enable YSQL (beta) support, install YugaByte DB with additional parameter as shown below.
+If you wish to enable YSQL (beta) support, install Yugabyte DB with additional parameter as shown below.
 
 ```sh
 $ helm install yugabytedb/yugabyte --wait --namespace yb-demo --name yb-demo --set "disableYsql=false"
@@ -204,7 +204,7 @@ REVISION  UPDATED                   STATUS    CHART           DESCRIPTION
 
 ## Connect using shell clients
 
-If you installed YugaByte DB with YSQL on, then connect using ysqlsh client as shown below.
+If you installed Yugabyte DB with YSQL on, then connect using ysqlsh client as shown below.
 
 ```sh
 $ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0.yb-tservers.yb-demo
@@ -218,10 +218,10 @@ $ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/cqlsh yb-tserver-0
 
 ## Connect using external clients
 
-By default YugaByte helm will expose only the master ui endpoint via LoadBalancer. If you wish to expose YSQL and YCQL services using LoadBalancer for your app to use, you can do that as follows.
+By default Yugabyte helm will expose only the master ui endpoint via LoadBalancer. If you wish to expose YSQL and YCQL services using LoadBalancer for your app to use, you can do that as follows.
 
 ```sh
-helm install yugabytedb/yugabyte -f https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --name yb-demo --wait --set "disableYsql=true"
+helm install yugabytedb/yugabyte -f https://raw.githubusercontent.com/Yugabyte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --name yb-demo --wait --set "disableYsql=true"
 ```
 
 To connect an external program, get the load balancer IP address of the corresponding service. The example below shows how to do this for the YSQL and YCQL services.
@@ -242,7 +242,7 @@ Any program can use the `EXTERNAL-IP` of the `ysql-service` and `yql-service` to
 
 ## Upgrade the cluster
 
-You can perform rolling upgrades on the YugaByte DB cluster with the following command. Change the `Image.tag` value to any valid tag from [YugaByte DB's listing on the Docker Hub registry](https://hub.docker.com/r/yugabytedb/yugabyte/tags/). By default, the `latest` Docker image is used for the install.
+You can perform rolling upgrades on the Yugabyte DB cluster with the following command. Change the `Image.tag` value to any valid tag from [YugaByte DB's listing on the Docker Hub registry](https://hub.docker.com/r/yugabytedb/yugabyte/tags/). By default, the `latest` Docker image is used for the install.
 
 ```sh
 $ helm upgrade yb-demo yugabytedb/yugabyte --set Image.tag=1.3.1.0-b16 --wait

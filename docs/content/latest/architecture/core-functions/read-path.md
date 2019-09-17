@@ -24,7 +24,7 @@ that hosts the leader tablet-peer. The read is handled by the leader of the RAFT
 owning the internal key. The leader of the tablet RAFT group which handles the read request performs
 the read from its DocDB and returns the result to the user.
 
-As mentioned before in the [write IO path section](../write-path/#step-1-identify-tablet-leader), the YugaByte DB smart
+As mentioned before in the [write IO path section](../write-path/#step-1-identify-tablet-leader), the Yugabyte DB smart
 client can route the application requests directly to the correct YB-TServer avoiding any extra
 network hops or master lookups.
 

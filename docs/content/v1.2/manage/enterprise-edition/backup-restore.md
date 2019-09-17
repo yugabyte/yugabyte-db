@@ -11,7 +11,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section will describe how to backup and restore tables using the YugaByte Admin Console.
+This section will describe how to backup and restore tables using the Yugabyte Admin Console.
 
 ## Create Universe
 

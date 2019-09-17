@@ -1,7 +1,7 @@
 ---
 title: YSQL
 linkTitle: YSQL
-description: YugaByte Structured Query Language (YSQL) [Beta]
+description: Yugabyte Structured Query Language (YSQL) [Beta]
 summary: Reference for the YSQL API
 image: /images/section_icons/api/ysql.png
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
