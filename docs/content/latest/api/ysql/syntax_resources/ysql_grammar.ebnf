@@ -353,6 +353,18 @@ timestamp ::= '<DateTime Literal>' ;
 connlimit ::= '<Integer Literal>';
 uid ::= '<Text Literal>';
 
+(* 'CREATE' 'RULE' *)
+create_rule = 'CREATE' [ 'OR' 'REPLACE' ] 'RULE' rule_name 'AS' 'ON' rule_event
+              'TO' table_name [ 'WHERE' condition ]
+              'DO' [ 'ALSO' | 'INSTEAD' ]
+              ( 'NOTHING'
+              | command
+              | '(' command { ';' command } ')' ) ;
+
+rule_event = 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' ;
+
+command = 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'NOTIFY' ;
+
 (* 'CREATE' 'SCHEMA' *)
 create_schema_name ::= 'CREATE' 'SCHEMA' [ 'IF' 'NOT' 'EXISTS' ] schema_name
                        [ 'AUTHORIZATION' role_specification ]
@@ -536,6 +548,9 @@ operator_signature = ( left_type | 'NONE' ) ',' ( right_type | 'NONE' ) ;
 
 (* 'DROP' 'ROLE' *)
 drop_role ::= 'DROP' 'ROLE' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
+
+(* 'DROP' 'RULE' *)
+drop_rule = 'DROP' 'RULE' [ 'IF' 'EXISTS' ] rule_name 'ON' table_name [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'SEQUENCE' *)
 drop_sequence ::= 'DROP' 'SEQUENCE' [ 'IF' 'EXISTS' ] sequence_name [ 'CASCADE' | 'RESTRICT' ] ;
