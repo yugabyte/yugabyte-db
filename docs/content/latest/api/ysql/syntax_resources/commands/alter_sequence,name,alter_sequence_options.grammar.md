@@ -4,7 +4,7 @@ alter_sequence ::= ALTER SEQUENCE [ IF EXISTS ] name
 
 name ::= '<Text Literal>'
 
-alter_sequence_options ::= [ AS data_type ] 
+alter_sequence_options ::= [ AS seq_data_type ] 
                            [ INCREMENT [ BY ] increment ] 
                            [ MINVALUE minvalue | NO MINVALUE ] 
                            [ MAXVALUE maxvalue | NO MAXVALUE ] 

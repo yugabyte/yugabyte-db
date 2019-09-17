@@ -34,10 +34,12 @@ The following SQL statements are supported by the Yugabyte Structured Query Lang
 | [`CREATE CAST`](ddl_create_cast) | Create a new cast |
 | [`CREATE DATABASE`](ddl_create_database) | Create a new database |
 | [`CREATE DOMAIN`](ddl_create_domain) | Create a new domain |
+| [`CREATE FUNCTION`](ddl_create_function) | Create a new function |
 | [`CREATE INDEX`](ddl_create_index) | Create a new index |
 | [`CREATE GROUP`](dcl_create_group) | Create a new group (role) |
 | [`CREATE OPERATOR`](ddl_create_operator) | Create a new operator |
 | [`CREATE OPERATOR CLASS`](ddl_create_operator_class) | Create a new operator class |
+| [`CREATE PROCEDURE`](ddl_create_procedure) | Create a new procedure |
 | [`CREATE ROLE`](dcl_create_role) | Create a new role (user or group) |
 | [`CREATE RULE`](ddl_create_rule) | Create a new rule |
 | [`CREATE USER`](dcl_create_user) | Create a new user (role) |
@@ -56,9 +58,11 @@ The following SQL statements are supported by the Yugabyte Structured Query Lang
 | [`DROP CAST`](ddl_drop_cast) | Delete a cast |
 | [`DROP DATABASE`](ddl_drop_database) | Delete a database from the system |
 | [`DROP DOMAIN`](ddl_drop_domain) | Delete a domain |
+| [`DROP FUNCTION`](ddl_drop_function) | Delete a function |
 | [`DROP GROUP`](dcl_drop_group) | Delete a group (role) |
 | [`DROP OPERATOR`](ddl_drop_operator) | Delete an operator |
 | [`DROP OPERATOR CLASS`](ddl_drop_operator_class) | Delete an operator class |
+| [`DROP PROCEDURE`](ddl_drop_procedure) | Delete a procedure |
 | [`DROP ROLE`](dcl_drop_role) | Delete a role (user or group) |
 | [`DROP RULE`](ddl_drop_rule) | Delete a rule |
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
