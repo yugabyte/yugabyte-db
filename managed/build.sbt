@@ -22,7 +22,9 @@ libraryDependencies ++= Seq(
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.2.0-yb-19",
   "org.yaml" % "snakeyaml" % "1.17",
-  "org.bouncycastle" % "bcpkix-jdk15on" % "1.61"
+  "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
+  "org.springframework.security" % "spring-security-core" % "5.1.6.RELEASE"
+
 )
 // Default to true if nothing passed on the env, so we can pick up YB jars from local java itest.
 lazy val mavenLocal = Option(System.getenv("USE_MAVEN_LOCAL")).getOrElse("false")

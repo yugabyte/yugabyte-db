@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -38,7 +39,9 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
+import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.EncryptionAtRestService;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Customer;
@@ -72,6 +75,9 @@ public class UniverseController extends AuthenticatedController {
 
   @Inject
   play.Configuration appConfig;
+
+  @Inject
+  ApiHelper apiHelper;
 
   // The YB client to use.
   public YBClientService ybService;
@@ -183,6 +189,13 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Create for {}.", customerUUID);
       // Get the user submitted form data.
       ObjectNode formData = (ObjectNode) request().body().asJson();
+      // TODO: Remove hard-coded encryption key params once the formData fields are passed in from UI
+      formData.put(
+              "encryptionAtRestConfig",
+              Json.newObject()
+                      .put("kms_provider", "SMARTKEY")
+                      .put("algorithm", "AES")
+                      .put("key_size", "256"));
       taskParams = bindFormDataToTaskParams(formData);
     } catch (Throwable t) {
       return ApiResponse.error(BAD_REQUEST, t.getMessage());
@@ -238,10 +251,28 @@ public class UniverseController extends AuthenticatedController {
         }
 
         if (primaryCluster.userIntent.enableEncryptionAtRest) {
-          // Convert from hex to byte array
-          Random rd = new Random();
-          byte[] data = new byte[32];
-          rd.nextBytes(data);
+          // Generate encryption master key
+          byte[] data = null;
+          EncryptionAtRestService keyService = EncryptionAtRestService.getServiceInstance(
+                  apiHelper,
+                  taskParams.encryptionAtRestConfig.get("kms_provider")
+          );
+          if (keyService != null) {
+            String encryptionKey = keyService.createAndRetrieveEncryptionKey(
+                    universe.universeUUID,
+                    customerUUID,
+                    taskParams.encryptionAtRestConfig
+            );
+            if (encryptionKey != null && !encryptionKey.isEmpty()) {
+              data = Base64.getDecoder().decode(encryptionKey);
+            }
+          }
+          // Default to Yugaware-generated encryption key if KMS not chosen/failed
+          if (data == null) {
+            Random rd = new Random();
+            data = new byte[32];
+            rd.nextBytes(data);
+          }
           taskParams.encryptionKeyFilePath = CertificateHelper.createEncryptionKeyFile(customerUUID, universe.universeUUID,
                   data, "/opt/yugaware"); // appConfig.getString("yb.storage.path"));
         }
@@ -929,6 +960,7 @@ public class UniverseController extends AuthenticatedController {
   private UniverseDefinitionTaskParams bindFormDataToTaskParams(ObjectNode formData, boolean isRolling) throws Exception {
     ObjectMapper mapper = new ObjectMapper();
     ArrayNode nodeSetArray = null;
+    Map<String, String> configMap = null;
     int expectedUniverseVersion = -1;
     if (formData.get("nodeDetailsSet") != null) {
       nodeSetArray = (ArrayNode)formData.get("nodeDetailsSet");
@@ -936,6 +968,11 @@ public class UniverseController extends AuthenticatedController {
     }
     if (formData.get("expectedUniverseVersion") != null) {
       expectedUniverseVersion = formData.get("expectedUniverseVersion").asInt();
+    }
+    JsonNode config = formData.get("encryptionAtRestConfig");
+    if (config != null) {
+      formData.remove("encryptionAtRestConfig");
+      configMap = mapper.treeToValue(config, Map.class);
     }
     UniverseDefinitionTaskParams taskParams = null;
     List<Cluster> clusters = mapClustersInParams(formData);
@@ -952,6 +989,7 @@ public class UniverseController extends AuthenticatedController {
       }
     }
     taskParams.expectedUniverseVersion = expectedUniverseVersion;
+    taskParams.encryptionAtRestConfig = configMap;
     return taskParams;
   }
 
