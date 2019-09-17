@@ -59,6 +59,12 @@ yugabyte=# CREATE OPERATOR @#@ (
 yugabyte=# SELECT @#@ 5;
 ```
 
+```
+ ?column?
+----------
+      120
+```
+
 ## See also
 
 - [`DROP OPERATOR`](../ddl_drop_operator)
