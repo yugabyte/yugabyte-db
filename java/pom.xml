@@ -130,6 +130,7 @@
     <module>yb-pgsql</module>
     <module>yb-loadtester</module>
     <module>yb-jedis-tests</module>
+    <module>yb-cdc</module>
   </modules>
 
   <build>
