@@ -65,18 +65,18 @@ config_param ::= '<Text Literal>' ;
 config_value ::= '<Text Literal>' ;
 
 (* 'ALTER' 'SEQUENCE' *)
-alter_sequence ::= 'ALTER' 'SEQUENCE' [ 'IF' 'EXISTS' ] name sequence_options ;
+alter_sequence ::= 'ALTER' 'SEQUENCE' [ 'IF' 'EXISTS' ] name alter_sequence_options ;
 
 name ::= '<Text Literal>' ;
 
-sequence_options ::= [ 'AS' data_type ]
-                     [ 'INCREMENT' [ 'BY' ] increment ]
-                     [ 'MINVALUE' minvalue | 'NO' 'MINVALUE' ]
-                     [ 'MAXVALUE' maxvalue | 'NO' 'MAXVALUE' ]
-                     [ 'START' [ 'WITH' ] start ]
-                     [ 'RESTART' [ [ 'WITH' ] restart ] ]
-                     [ 'CACHE' cache ]
-                     [ 'OWNED BY' table_name.table_column | 'NONE' ] ;
+alter_sequence_options ::= [ 'AS' data_type ]
+                           [ 'INCREMENT' [ 'BY' ] increment ]
+                           [ 'MINVALUE' minvalue | 'NO' 'MINVALUE' ]
+                           [ 'MAXVALUE' maxvalue | 'NO' 'MAXVALUE' ]
+                           [ 'START' [ 'WITH' ] start ]
+                           [ 'RESTART' [ [ 'WITH' ] restart ] ]
+                           [ 'CACHE' cache ]
+                           [ 'OWNED BY' table_name.table_column | 'NONE' ] ;
 
 data_type ::= ( 'smallint' | 'integer' | 'bigint' ) ;
 increment ::= '<Integer Literal>' ;
@@ -359,7 +359,8 @@ sequence_options ::= [ 'INCREMENT' [ 'BY' ] increment ]
                      [ 'MINVALUE' minvalue | 'NO' 'MINVALUE' ]
                      [ 'MAXVALUE' maxvalue | 'NO' 'MAXVALUE' ]
                      [ 'START' [ 'WITH' ] start ]
-                     [ 'CACHE' cache ] ;
+                     [ 'CACHE' cache ]
+                     [ [ NO ] CYCLE ] ;
 
 increment ::= '<Integer Literal>' ;
 minvalue ::= '<Integer Literal>' ;
