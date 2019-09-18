@@ -15,6 +15,81 @@ alter_database ::=
 alter_database_option ::=
   ( 'ALLOW_CONNECTIONS' allowconn | 'CONNECTION' 'LIMIT' connlimit | 'IS_TEMPLATE' istemplate ) ;
 
+(* 'ALTER' 'DEFAULT' 'PRIVILEGES' *)
+alter_default_priv = 'ALTER' 'DEFAULT' 'PRIVILEGES'
+                               [ 'FOR' ( 'ROLE' | 'USER' ) role_name { ',' role_name } ]
+                               [ 'IN' 'SCHEMA' schema_name { ',' schema_name } ]
+                               abbr_grant_or_revoke ;
+
+abbr_grant_or_revoke = a_grant_table
+                            | a_grant_seq
+                            | a_grant_func
+                            | a_grant_type
+                            | a_grant_schema
+                            | a_revoke_table
+                            | a_revoke_seq
+                            | a_revoke_func
+                            | a_revoke_type
+                            | a_revoke_schema ;
+
+a_grant_table = 'GRANT' ( grant_table_priv { ',' grant_table_priv }
+                                   | 'ALL' [ 'PRIVILEGES' ] )
+                          'ON' 'TABLES'
+                          'TO' grant_role_spec { ',' grant_role_spec } [ 'WITH' 'GRANT' 'OPTION' ] ;
+
+grant_table_priv = 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'TRUNCATE' | 'REFERENCES' | 'TRIGGER' ;
+
+a_grant_seq = 'GRANT' ( grant_seq_priv { ',' grant_seq_priv }
+                                  | 'ALL' [ 'PRIVILEGES' ] )
+                        'ON' 'SEQUENCES'
+                        'TO' grant_role_spec { ',' grant_role_spec } [ 'WITH' 'GRANT' 'OPTION' ] ;
+
+grant_seq_priv = 'USAGE' | 'SELECT' | 'UPDATE' ;
+
+a_grant_func = 'GRANT' ( 'EXECUTE' | 'ALL' [ 'PRIVILEGES' ] )
+                          'ON' ( 'FUNCTIONS' | 'ROUTINES' )
+                          'TO' grant_role_spec { ',' grant_role_spec } [ 'WITH' 'GRANT' 'OPTION' ] ;
+
+a_grant_type = 'GRANT' ( 'USAGE' | 'ALL' [ 'PRIVILEGES' ] )
+                          'ON' 'TYPES'
+                          'TO' grant_role_spec { ',' grant_role_spec } [ 'WITH' 'GRANT' 'OPTION' ] ;
+
+a_grant_schema = 'GRANT' ( 'USAGE' | 'CREATE' | 'ALL' [ 'PRIVILEGES' ] )
+                            'ON' 'SCHEMAS'
+                            'TO' grant_role_spec { ',' grant_role_spec } [ 'WITH' 'GRANT' 'OPTION' ] ;
+
+a_revoke_table = 'REVOKE' [ 'GRANT' 'OPTION' 'FOR' ]
+                              ( grant_table_priv { ',' grant_table_priv }
+                                | 'ALL' [ 'PRIVILEGES' ] )
+                            'ON' 'TABLES'
+                            'FROM' grant_role_spec { ',' grant_role_spec }
+                            [ 'CASCADE' | 'RESTRICT' ] ;
+
+a_revoke_seq = 'REVOKE' [ 'GRANT' 'OPTION' 'FOR' ]
+                            ( grant_seq_priv { ',' grant_seq_priv }
+                              | 'ALL' [ 'PRIVILEGES' ] )
+                          'ON' 'SEQUENCES'
+                          'FROM' grant_role_spec { ',' grant_role_spec }
+                          [ 'CASCADE' | 'RESTRICT' ] ;
+
+a_revoke_func = 'REVOKE' [ 'GRANT' 'OPTION' 'FOR' ]
+                          ( 'EXECUTE' | 'ALL' [ 'PRIVILEGES' ] )
+                          'ON' ( 'FUNCTIONS' | 'ROUTINES' )
+                          'FROM' grant_role_spec { ',' grant_role_spec }
+                          [ 'CASCADE' | 'RESTRICT' ] ;
+
+a_revoke_type = 'REVOKE' [ 'GRANT' 'OPTION' 'FOR' ]
+                          ( 'USAGE' | 'ALL' [ 'PRIVILEGES' ] )
+                          'ON' 'TYPES'
+                          'FROM' grant_role_spec { ',' grant_role_spec }
+                          [ 'CASCADE' | 'RESTRICT' ] ;
+
+a_revoke_schema = 'REVOKE' [ 'GRANT' 'OPTION' 'FOR' ]
+                            ( 'USAGE' | 'CREATE' | 'ALL' [ 'PRIVILEGES' ] )
+                            'ON' 'SCHEMAS'
+                            'FROM' grant_role_spec { ',' grant_role_spec }
+                            [ 'CASCADE' | 'RESTRICT' ] ;
+
 (* 'ALTER' 'DOMAIN' *)
 
 alter_domain_default ::= 'ALTER' 'DOMAIN' name
@@ -663,6 +738,10 @@ drop_rule = 'DROP' 'RULE' [ 'IF' 'EXISTS' ] rule_name 'ON' table_name [ 'CASCADE
 (* 'DROP' 'SEQUENCE' *)
 drop_sequence ::= 'DROP' 'SEQUENCE' [ 'IF' 'EXISTS' ] sequence_name [ 'CASCADE' | 'RESTRICT' ] ;
 
+(* 'DROP' 'OWNED' *)
+drop_owned = 'DROP' 'OWNED' 'BY' role_specification { ',' role_specification }
+            [ 'CASCADE' | 'RESTRICT' ] ;
+
 (* 'DROP' 'TABLE' *)
 drop_table ::= 'DROP' 'TABLE' [ 'IF' 'EXISTS' ] table_name { ',' table_name} ;
 
@@ -773,8 +852,18 @@ lockmode ::= ( 'ACCESS' 'SHARE'
 (* 'PREPARE' *)
 prepare_statement ::= 'PREPARE' name [ '(' data_type { ',' data_type } ')' ] 'AS' statement ;
 
+(* 'REASSIGN' 'OWNED' *)
+reassign_owned = 'REASSIGN' 'OWNED' 'BY' role_specification { ',' role_specification }
+                                    'TO' role_specification ;
+
 (* 'RESET' *)
 reset_stmt := 'RESET' ( name | 'ALL' ) ;
+
+(* 'RESET' 'ROLE' *)
+reset_role = 'RESET' 'ROLE' ;
+
+(* 'RESET' 'SESSION' 'AUTHORIZATION' *)
+reset_session_authorization = 'RESET' 'SESSION' 'AUTHORIZATION' ;
 
 (* 'REVOKE' *)
 revoke_table ::= 'REVOKE' [ 'GRANT' 'OPTION' 'FOR' ]
@@ -859,6 +948,12 @@ set ::= 'SET' [ 'SESSION' | 'LOCAL' ]
 
 (* 'SET' 'CONSTRAINTS' *)
 set_constraints ::= 'SET' 'CONSTRAINTS' ( 'ALL' | name { ',' name } ) ( 'DEFERRED' | 'IMMEDIATE' ) ;
+
+(* 'SET' 'ROLE' *)
+set_role = 'SET' [ 'SESSION' | 'LOCAL' ] 'ROLE' ( role_name | 'NONE' ) ;
+
+(* 'SET' 'SESSION' 'AUTHORIZATION' *)
+set_session_authorization = 'SET' [ 'SESSION' | 'LOCAL' ] 'SESSION' 'AUTHORIZATION' ( role_name | 'DEFAULT' ) ;
 
 (* 'SET' 'TRANSACTION' *)
 set_transaction = 'SET' 'TRANSACTION' transaction_mode { transaction_mode } ;
