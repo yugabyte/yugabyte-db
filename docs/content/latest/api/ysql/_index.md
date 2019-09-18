@@ -38,9 +38,11 @@ DDL statements define the structures in a database, change their definitions, as
 | [`CREATE AGGREGATE`](commands/ddl_create_aggregate) | Create a new aggregate |
 | [`CREATE CAST`](commands/ddl_create_cast) | Create a new cast |
 | [`CREATE DATABASE`](commands/ddl_create_database) | Create a new database |
+| [`CREATE FUNCTION`](commands/ddl_create_function) | Create a new function |
 | [`CREATE INDEX`](commands/ddl_create_index) | Create a new index |
 | [`CREATE OPERATOR`](commands/ddl_create_operator) | Create a new operator |
 | [`CREATE OPERATOR CLASS`](commands/ddl_create_operator_class) | Create a new operator class |
+| [`CREATE PROCEDURE`](commands/ddl_create_procedure) | Create a new procedure |
 | [`CREATE RULE`](commands/ddl_create_rule) | Create a new rule |
 | [`CREATE SCHEMA`](commands/ddl_create_schema) | Create a new schema (namespace) |
 | [`CREATE SEQUENCE`](commands/ddl_create_sequence) | Create a new sequence generator |
@@ -52,8 +54,10 @@ DDL statements define the structures in a database, change their definitions, as
 | [`DROP AGGREGATE`](commands/ddl_drop_aggregate) | Delete an aggregate |
 | [`DROP CAST`](commands/ddl_drop_cast) | Delete a cast |
 | [`DROP DATABASE`](commands/ddl_drop_database) | Delete a database from the system |
+| [`DROP FUNCTION`](commands/ddl_drop_function) | Delete a function |
 | [`DROP OPERATOR`](commands/ddl_drop_operator) | Delete an operator |
 | [`DROP OPERATOR CLASS`](commands/ddl_drop_operator_class) | Delete an operator class |
+| [`DROP PROCEDURE`](commands/ddl_drop_procedure) | Delete a procedure |
 | [`DROP RULE`](commands/ddl_drop_rule) | Delete a rule |
 | [`DROP SEQUENCE`](commands/ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP TABLE`](commands/ddl_drop_table) | Delete a table from a database |
