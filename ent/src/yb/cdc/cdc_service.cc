@@ -55,6 +55,8 @@ DEFINE_test_flag(bool, mock_get_changes_response_for_consumer_testing, false,
 DEFINE_int32(cdc_wal_retention_time_secs, 4 * 3600,
              "WAL retention time in seconds to be used for tables for which a CDC stream was "
              "created.");
+DEFINE_int32(cdc_state_checkpoint_update_interval_ms, 15 * 1000,
+             "Rate at which CDC state's checkpoint is updated.");
 
 namespace yb {
 namespace cdc {
@@ -66,6 +68,10 @@ using tserver::TSTabletManager;
 using client::internal::RemoteTabletServer;
 
 constexpr int kMaxDurationForTabletLookup = 50;
+const client::YBTableName kCdcStateTableName(
+    master::kSystemNamespaceName, master::kCdcStateTableName);
+const auto kCdcStateCheckpointInterval = MonoDelta::FromMilliseconds(
+    FLAGS_cdc_state_checkpoint_update_interval_ms);
 
 CDCServiceImpl::CDCServiceImpl(TSTabletManager* tablet_manager,
                                const scoped_refptr<MetricEntity>& metric_entity)
@@ -90,7 +96,7 @@ bool YsqlTableHasPrimaryKey(const client::YBSchema& schema) {
   return true;
 }
 
-bool IsTabletPeerLeader(std::shared_ptr<tablet::TabletPeer> peer) {
+bool IsTabletPeerLeader(const std::shared_ptr<tablet::TabletPeer>& peer) {
   return peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
 }
 } // namespace
@@ -334,7 +340,7 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
     // Forward GetChanges() to tablet leader.
     // TODO: Remove this once cdc consumer has meta cache and is able to direct requests to tablet
     // leader. Once that is done, we should return NOT_LEADER error here.
-    TabletLeaderGetChanges(req, resp, &context);
+    TabletLeaderGetChanges(req, resp, &context, tablet_peer);
     return;
   }
 
@@ -425,12 +431,18 @@ std::shared_ptr<CDCServiceProxy> CDCServiceImpl::GetCDCServiceProxy(RemoteTablet
 
 void CDCServiceImpl::TabletLeaderGetChanges(const GetChangesRequestPB* req,
                                             GetChangesResponsePB* resp,
-                                            RpcContext* context) {
-  auto ts_leader = GetLeaderTServer(req->tablet_id());
-  RPC_CHECK_AND_RETURN_ERROR(ts_leader.ok(), ts_leader.status(), resp->mutable_error(),
+                                            RpcContext* context,
+                                            const std::shared_ptr<tablet::TabletPeer>& peer) {
+  auto result = GetLeaderTServer(req->tablet_id());
+  RPC_CHECK_AND_RETURN_ERROR(result.ok(), result.status(), resp->mutable_error(),
                              CDCErrorPB::TABLET_NOT_FOUND, *context);
 
-  auto cdc_proxy = GetCDCServiceProxy(*ts_leader);
+  auto ts_leader = *result;
+  RPC_CHECK_EQ_AND_RETURN_ERROR(ts_leader->permanent_uuid(), peer->permanent_uuid(),
+                                STATUS(IllegalState, "Tablet leader not found"),
+                                resp->mutable_error(), CDCErrorPB::NOT_LEADER, *context);
+
+  auto cdc_proxy = GetCDCServiceProxy(ts_leader);
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_rpc_timeout_ms));
   cdc_proxy->GetChanges(*req, resp, &rpc);
@@ -441,12 +453,18 @@ void CDCServiceImpl::TabletLeaderGetChanges(const GetChangesRequestPB* req,
 
 void CDCServiceImpl::TabletLeaderGetCheckpoint(const GetCheckpointRequestPB* req,
                                                GetCheckpointResponsePB* resp,
-                                               RpcContext* context) {
-  auto ts_leader = GetLeaderTServer(req->tablet_id());
-  RPC_CHECK_AND_RETURN_ERROR(ts_leader.ok(), ts_leader.status(), resp->mutable_error(),
+                                               RpcContext* context,
+                                               const std::shared_ptr<tablet::TabletPeer>& peer) {
+  auto result = GetLeaderTServer(req->tablet_id());
+  RPC_CHECK_AND_RETURN_ERROR(result.ok(), result.status(), resp->mutable_error(),
                              CDCErrorPB::TABLET_NOT_FOUND, *context);
 
-  auto cdc_proxy = GetCDCServiceProxy(*ts_leader);
+  auto ts_leader = *result;
+  RPC_CHECK_EQ_AND_RETURN_ERROR(ts_leader->permanent_uuid(), peer->permanent_uuid(),
+                                STATUS(IllegalState, "Tablet leader not found"),
+                                resp->mutable_error(), CDCErrorPB::NOT_LEADER, *context);
+
+  auto cdc_proxy = GetCDCServiceProxy(ts_leader);
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_rpc_timeout_ms));
   cdc_proxy->GetCheckpoint(*req, resp, &rpc);
@@ -482,7 +500,7 @@ void CDCServiceImpl::GetCheckpoint(const GetCheckpointRequestPB* req,
     // Forward GetCheckpoint() to tablet leader.
     // TODO: Remove this once cdc consumer has meta cache and is able to direct requests to tablet
     // leader. Once that is done, we should return NOT_LEADER error here.
-    TabletLeaderGetCheckpoint(req, resp, &context);
+    TabletLeaderGetCheckpoint(req, resp, &context, tablet_peer);
     return;
   }
 
@@ -509,16 +527,14 @@ Result<OpIdPB> CDCServiceImpl::GetLastCheckpoint(
     const std::shared_ptr<client::YBSession>& session) {
   {
     std::shared_lock<rw_spinlock> l(lock_);
-    auto it = tablet_checkpoints_.find(tablet_id);
+    auto it = tablet_checkpoints_.find({stream_id, tablet_id});
     if (it != tablet_checkpoints_.end()) {
-      return it->second;
+      return it->second.op_id;
     }
   }
 
-  // TODO: Cache table handle.
-  client::YBTableName table_name(master::kSystemNamespaceName, master::kCdcStateTableName);
   client::TableHandle table;
-  RETURN_NOT_OK(table.Open(table_name, async_client_init_->client()));
+  RETURN_NOT_OK(table.Open(kCdcStateTableName, async_client_init_->client()));
 
   const auto op = table.NewReadOp();
   auto* const req = op->mutable_request();
@@ -552,21 +568,37 @@ Status CDCServiceImpl::UpdateCheckpoint(const std::string& stream_id,
                                         const std::string& tablet_id,
                                         const OpIdPB& op_id,
                                         const std::shared_ptr<client::YBSession>& session) {
-  client::YBTableName table_name(master::kSystemNamespaceName, master::kCdcStateTableName);
-  client::TableHandle table;
-  RETURN_NOT_OK(table.Open(table_name, async_client_init_->client()));
+  bool update_cdc_state = true;
+  CDCTabletCheckpoint checkpoint({op_id, MonoTime::Now()});
 
-  const auto op = table.NewUpdateOp();
-  auto* const req = op->mutable_request();
-  QLAddStringHashValue(req, stream_id);
-  QLAddStringHashValue(req, tablet_id);
-  table.AddStringColumnValue(req, master::kCdcCheckpoint,
-                             Format("$0.$1", op_id.term(), op_id.index()));
-  RETURN_NOT_OK(session->ApplyAndFlush(op));
+  {
+    std::shared_lock<rw_spinlock> l(lock_);
+    auto it = tablet_checkpoints_.find({stream_id, tablet_id});
+    if (it != tablet_checkpoints_.end()) {
+      // Check if we need to update cdc_state table.
+      if (MonoTime::Now().GetDeltaSince(it->second.last_cdc_state_update_time) <=
+          kCdcStateCheckpointInterval) {
+        update_cdc_state = false;
+        checkpoint.last_cdc_state_update_time = it->second.last_cdc_state_update_time;
+      }
+    }
+  }
+
+  if (update_cdc_state) {
+    client::TableHandle table;
+    RETURN_NOT_OK(table.Open(kCdcStateTableName, async_client_init_->client()));
+    const auto op = table.NewUpdateOp();
+    auto* const req = op->mutable_request();
+    QLAddStringHashValue(req, stream_id);
+    QLAddStringHashValue(req, tablet_id);
+    table.AddStringColumnValue(req, master::kCdcCheckpoint,
+                               Format("$0.$1", op_id.term(), op_id.index()));
+    RETURN_NOT_OK(session->ApplyAndFlush(op));
+  }
 
   {
     std::lock_guard<rw_spinlock> l(lock_);
-    tablet_checkpoints_.emplace(tablet_id, op_id);
+    tablet_checkpoints_[ProducerTabletInfo({stream_id, tablet_id})] = checkpoint;
   }
   return Status::OK();
 }
