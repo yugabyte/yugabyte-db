@@ -51,20 +51,20 @@ ROWS 60
 AS 'MODULE_PATHNAME';
 
 --
--- jsonbx type and support functions
+-- agtype type and support functions
 --
 
-CREATE TYPE jsonbx;
+CREATE TYPE agtype;
 
-CREATE FUNCTION jsonbx_in(cstring)
-RETURNS jsonbx
+CREATE FUNCTION agtype_in(cstring)
+RETURNS agtype
 LANGUAGE C
 STABLE
 STRICT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION jsonbx_out(jsonbx)
+CREATE FUNCTION agtype_out(agtype)
 RETURNS cstring
 LANGUAGE C
 STABLE
@@ -72,9 +72,9 @@ STRICT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE TYPE jsonbx (
-INPUT = jsonbx_in,
-OUTPUT = jsonbx_out,
+CREATE TYPE agtype (
+INPUT = agtype_in,
+OUTPUT = agtype_out,
 LIKE = jsonb,
 CATEGORY = 'U',
 PREFERRED = FALSE,
