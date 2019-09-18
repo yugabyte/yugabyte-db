@@ -275,7 +275,7 @@ public class AWSInitializer extends AbstractInitializer {
       // The service code should be 'AmazonEC2'.
       include &= matches(productAttrs, "servicecode", FilterOp.Equals, "AmazonEC2");
       // Filter by the OS we support.
-      include &= (matches(productAttrs, "operatingSystem", FilterOp.Equals, "RHEL"));
+      include &= (matches(productAttrs, "operatingSystem", FilterOp.Equals, "Linux"));
       // Pick the supported license models.
       include &= (matches(productAttrs, "licenseModel", FilterOp.Equals, "No License required") ||
           matches(productAttrs, "licenseModel", FilterOp.Equals, "NA"));
@@ -392,7 +392,7 @@ public class AWSInitializer extends AbstractInitializer {
       // The service code should be 'AmazonEC2'.
       include &= matches(productAttrs, "servicecode", FilterOp.Equals, "AmazonEC2");
       // Filter by the OS we support.
-      include &= (matches(productAttrs, "operatingSystem", FilterOp.Equals, "RHEL"));
+      include &= (matches(productAttrs, "operatingSystem", FilterOp.Equals, "Linux"));
       // Pick the supported license models.
       include &= (matches(productAttrs, "licenseModel", FilterOp.Equals, "No License required") ||
                   matches(productAttrs, "licenseModel", FilterOp.Equals, "NA"));
