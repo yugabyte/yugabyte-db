@@ -5930,7 +5930,7 @@ void CatalogManager::ReportMetrics() {
   master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
   const int32 num_live_servers = ts_descs.size();
   metric_num_tablet_servers_live_->set_value(num_live_servers);
-  
+
   master_->ts_manager()->GetAllDescriptors(&ts_descs);
   metric_num_tablet_servers_dead_->set_value(ts_descs.size() - num_live_servers);
 }
