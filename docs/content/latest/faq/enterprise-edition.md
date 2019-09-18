@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## What is YugaWare?
 
-YugaWare, shipped as a part of Yugabyte Platform, is the Admin Console for Yugabyte DB. It has a built-in orchestration and monitoring engine for deploying Yugabyte DB in any public or private cloud.
+YugaWare, shipped as a part of Yugabyte Platform, is the Admin Console for YugabyteDB. It has a built-in orchestration and monitoring engine for deploying YugabyteDB in any public or private cloud.
 
 ## How does the installation work for Yugabyte Platform?
 
@@ -73,7 +73,7 @@ A REST API is also exposed by the admin console to the end users in addition to 
 
 ## Would we have access to the database machines that get spawned in public clouds?
 
-Yes, you would have access to all machines spawned. The machines are spawned by YugaWare. YugaWare runs on your machine in your AWS region/datacenter. If you have configured YugaWare to work with any public cloud like AWS or GCP,  it will spawn Yugabyte nodes using your credentials on your behalf. These machines run in your account, but are created and managed by YugaWare on your behalf. You can log on to these machines anytime, and YugaWare will additionally show you some stats graphed into a built in dashboard either per node or per universe.
+Yes, you would have access to all machines spawned. The machines are spawned by YugaWare. YugaWare runs on your machine in your AWS region/data center. If you have configured YugaWare to work with any public cloud like AWS or GCP,  it will spawn YugabyteDB nodes using your credentials on your behalf. These machines run in your account, but are created and managed by YugaWare on your behalf. You can log on to these machines anytime, and YugaWare will additionally show you some stats graphed into a built in dashboard either per node or per universe.
 
 ## How many machines would I need to try out Yugabyte DB against my load?
 
@@ -84,7 +84,7 @@ You would need:
 - Minimum as many data nodes as the replication factor. So just one machine for replication factor 1, and 3 machines in case of rf=3  
 - A machine to run the load tests on  
 
-Typically you can saturate a database machine (or three in case of replication factor 3) with just one large enough test machine running a synthetic load tester that has a light usage pattern. Yugabyte ships some synthetic load-testers with the product which can simulate a few different workloads. For example, one load tester simulates a timeseries/IoT style workload and another does stock-ticker like workload. But if you have a load tester that emulates your planned usage pattern, nothing like it!
+Typically you can saturate a database machine (or three in case of replication factor 3) with just one large enough test machine running a synthetic load tester that has a light usage pattern. Yugabyte ships some synthetic load-testers with the product which can simulate a few different workloads. For example, one load tester simulates a time series/IoT-style workload and another does stock-ticker like workload. But if you have a load tester that emulates your planned usage pattern, nothing like it!
 
 ## Can we control the properties (such as VPC, IOPS, tenancy etc.) of the machines YugaWare is spinning up? 
 

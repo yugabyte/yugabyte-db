@@ -31,10 +31,10 @@ Remote systems may subscribe to a stream of data changes and then transform and 
 
 Maintaining multiple data centers enables enterprises to provide:
 
-- High availability (HA) — Redundant systems helps ensure that your operations virtually never fail
-- Geo-redundancy — Geographically dispersed servers provide resiliency against catastrophic events and natural disasters
+- High availability (HA) — Redundant systems help ensure that your operations virtually never fail.
+- Geo-redundancy — Geographically dispersed servers provide resiliency against catastrophic events and natural disasters.
 
-Two data center (2DC), or dual data center, deployments are a common use of CDC that allows efficient management of two Yugabyte universes that are geographically separated. For more information, see [Deploy to two data centers](../two-data-centers).
+Two data center (2DC), or dual data center, deployments are a common use of CDC that allows efficient management of two Yugabyte universes that are geographically separated. For more information, see [Two data center (2DC) deployments](../2dc-deployments).
 
 ### Compliance and auditing
 
@@ -42,38 +42,13 @@ Auditing and compliance requirements can require you to use CDC to maintain reco
 
 {{< note title="Note" >}}
 
-In the design overview below, the terms "data center", "cluster", and "universe" are used interchangeably. We assume here that each YB universe is deployed in a single data-center.
+In the sections below, the terms "data center", "cluster", and "universe" are used interchangeably. We assume here that each YB universe is deployed in a single data center.
 
 {{< /note >}}
 
-## Process Architecture
+## Process architecture
 
-```
-                          ╔═══════════════════════════════════════════╗
-                          ║  Node #1                                  ║
-                          ║  ╔════════════════╗ ╔══════════════════╗  ║
-                          ║  ║    YB-Master   ║ ║    YB-TServer    ║  ║  CDC Service is stateless
-    CDC Streams metadata  ║  ║  (Stores CDC   ║ ║  ╔═════════════╗ ║  ║           |
-    replicated with Raft  ║  ║   metadata)    ║ ║  ║ CDC Service ║ ║  ║<----------'
-             .----------->║  ║                ║ ║  ╚═════════════╝ ║  ║
-             |            ║  ╚════════════════╝ ╚══════════════════╝  ║
-             |            ╚═══════════════════════════════════════════╝
-             |
-             |
-             |_______________________________________________.
-             |                                               |
-             V                                               V
-  ╔═══════════════════════════════════════════╗    ╔═══════════════════════════════════════════╗
-  ║  Node #2                                  ║    ║  Node #3                                  ║
-  ║  ╔════════════════╗ ╔══════════════════╗  ║    ║  ╔════════════════╗ ╔══════════════════╗  ║
-  ║  ║    YB-Master   ║ ║    YB-TServer    ║  ║    ║  ║    YB-Master   ║ ║    YB-TServer    ║  ║
-  ║  ║  (Stores CDC   ║ ║  ╔═════════════╗ ║  ║    ║  ║  (Stores CDC   ║ ║  ╔═════════════╗ ║  ║
-  ║  ║   metadata)    ║ ║  ║ CDC Service ║ ║  ║    ║  ║   metadata)    ║ ║  ║ CDC Service ║ ║  ║
-  ║  ║                ║ ║  ╚═════════════╝ ║  ║    ║  ║                ║ ║  ╚═════════════╝ ║  ║
-  ║  ╚════════════════╝ ╚══════════════════╝  ║    ║  ╚════════════════╝ ╚══════════════════╝  ║
-  ╚═══════════════════════════════════════════╝    ╚═══════════════════════════════════════════╝
-
-```
+![CDC process architecture](/images/architecture/cdc-2dc/process-architecture.png)
 
 ### CDC streams
 
@@ -141,50 +116,3 @@ For example, imagine a CDC client has received changes for a row at times t1 and
 #### No gaps in change stream
 
 When you have received a change for a row for timestamp `t`, you will not receive a previously unseen change for that row from an earlier timestamp. This guarantees that receiving any change implies that all earlier changes have been received for a row.
-
-## Use change data capture in YugabyteDB
-
-To use change data capture (CDC) in YugabyteDB, perform the following steps.
-
-### Create a CDC stream
-
-To create a CDC stream, run the following commands on YSQL or YCQL APIs:
-
-```sql
-CREATE CDC
-       FOR <namespace>.<table>
-       INTO <target>
-       WITH <options>;
-```
-
-### Drop a CDC stream
-
-To drop an existing CDC stream, run the following command:
-
-```sql
-DROP CDC FOR <namespace>.<table>;
-```
-
-## Using Kafka as the CDC target
-
-YugabyteDB supports the use of Apache Kafka as a target for CDC-generated data changes.
-
-### To create a CDC target for Apache Kafka
-
-Run the following CDC command, with any required options, to create a CDC target for Apache Kafka:
-
-```
-CREATE CDC FOR my_database.my_table
-           INTO KAFKA
-           WITH cluster_address = 'http://localhost:9092',
-                topic = 'my_table_topic',
-                record = AFTER;
-```
-
-The CDC options for Kafka include:
-
-| Option name       | Default       | Description   |
-| ----------------- | ------------- | ------------- |
-| `cluster_address` | -             | The `host:port` of the Kafka target cluster |
-| `topic`           | Table name    | The Kafka topic to which the stream is published |
-| `record`          | AFTER         | The type of records in the stream. Valid values are `CHANGE` (changed values only), `AFTER` (the entire row after the change is applied), ALL (the before and after value of the row). |

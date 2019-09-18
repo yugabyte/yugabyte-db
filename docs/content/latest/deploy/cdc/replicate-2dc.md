@@ -5,7 +5,7 @@ description: Replicate between two data centers
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
-    parent: deploy
+    parent: cdc
     identifier: replicate-2dc
     weight: 632
 type: page
@@ -13,9 +13,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Follow the steps below to configure a two data center (2DC) replication and then use either one-way (unidirectional) or two-way (bidirectional) replication between the two data centers.
+Follow the steps below to set up a two data center (2DC) deployment using either one-way (unidirectional) or two-way (bidirectional) replication between the data centers.
 
-For more information on the architecture support, see [2-data center deployments](../architecture/two-data-centers).
+For more information on the two data center (2DC) deployment support, see [Two data center (2DC) deployments](../architecture/two-data-centers).
 
 ## Set up a two data center replication
 
@@ -27,26 +27,6 @@ To create the producer universe, follow these steps.
 
 2. Create the the tables for the APIs being used.
 
-**For YSQL:**
-
-Create the YSQL table with index.
-
-   ```sql
-   CREATE TABLE sqlsecondaryindex(
-     k text PRIMARY KEY,
-     v text);
-   CREATE INDEX sql_idx ON sqlsecondaryindex(v);
-   ```
-
-**For YCQL:**
-
-Create the YCQL table.
-
-```sql
-CREATE KEYSPACE ybdemo_keyspace;
-CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (k varchar, v blob, primary key (k));
-```
-
 ### Set up Universe 2 (consumer universe)
 
 To create the consumer universe, follow the steps below.
@@ -57,32 +37,11 @@ To create the consumer universe, follow the steps below.
 
 Make sure to create the same tables as you did for the producer universe.
 
-**For YSQL:**
-
-Create the YSQL table and index.
-
-```sql
-CREATE TABLE sqlsecondaryindex(
-  k text PRIMARY KEY,
-  v text);
-CREATE INDEX sql_idx ON sqlsecondaryindex(v);
-```
-
-**For YCQL:**
-
-Create the YCQL table.
-
-```sql
-CREATE KEYSPACE ybdemo_keyspace;
-CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (
-  k varchar, 
-  v blob, 
-  primary key (k));
-```
-
 After creating the required tables, you can now set up the replication behavior.
 
-## Set up one-way (unidirectional) replication
+## Set up replication for the two data centers
+
+## Unidirectional (one-way) replication
 
 1. Look up the producer universe UUID and the table IDs for the two tables and the index table on master UI.
 
@@ -107,7 +66,7 @@ There should be three table IDs in the command above — two of those are YSQL f
 
 {{< /note >}}
 
-## Set up two-way (bidirectional) replication
+## Bidirectionsl (two-way) replication
 
 To set up 2-way replication, follow the steps above in [Set up one-way (unidirectional) replication] and then do the same steps for the the “yugabyte-producer” universe.
 

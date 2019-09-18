@@ -13,7 +13,7 @@ isTocNested: false
 showAsideToc: false
 ---
 
-`yb-tserver`, located in the `bin` directory of Yugabyte home, is the [YB-TServer](../../architecture/concepts/universe/#yb-tserver) binary.
+`yb-tserver`, located in the `bin` directory of YugabyteDB home, is the [YB-TServer](../../architecture/concepts/universe/#yb-tserver) binary.
 
 ## Example
 
@@ -33,7 +33,7 @@ Use the **-\-help** option to see all the commands supported.
 $ ./bin/yb-tserver --help
 ```
 
-## Config flags
+## Configuration flags
 
 Flag | Mandatory | Default | Description
 ----------------------|------|---------|------------------------
@@ -56,7 +56,7 @@ Flag | Mandatory | Default | Description
 `--pgsql_proxy_bind_address` | N | `0.0.0.0:5433` | YSQL API bind address.
 `--pgsql_proxy_webserver_port` | N | 13000 | YSQL metrics monitoring port.
 `--placement_zone` | N |`rack1` | Name of the availability zone or rack where this instance is deployed.
-`--placement_region` | N |`datacenter1` | Name of the region or datacenter where this instance is deployed.
+`--placement_region` | N |`datacenter1` | Name of the region or data center where this instance is deployed.
 `--placement_cloud` | N |`cloud1` | Name of the cloud where this instance is deployed.
 `--logtostderr` | N | N/A  | Log to standard error.
 `--flagfile` | N | N/A  | Load flags from the specified file.

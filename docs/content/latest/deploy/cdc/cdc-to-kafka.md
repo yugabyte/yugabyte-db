@@ -1,18 +1,17 @@
 ---
-title: Change data capture with Kafka
-linkTitle: Change data capture with Kafka
-description: Change data capture with Kafka
+title: Change data capture to Kafka
+linkTitle: Change data capture to Kafka
+description: Change data capture to Kafka
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
-    parent: deploy
-    identifier: use-cdc-with-kafka
+    parent: cdc
+    identifier: cdc-to-kafka
     weight: 691
 type: page
 isTocNested: true
 showAsideToc: true
 ---
-
 
 You can use the Change Data Capture (CDC) API, you can use YugabyteDB as a data source to an Apache Kafka or console sink.
 Follow the steps outlined below to explore the new CDC functionality using a YugabyteDB local cluster.

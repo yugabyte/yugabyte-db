@@ -5,7 +5,7 @@ description: Change data capture to stdout
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
-    parent: deploy
+    parent: cdc
     identifier: cdc-to-stdout
     weight: 692
 type: page
@@ -13,9 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte
-You can use the Change Data Capture (CDC) API, you can use YugabyteDB as a data source to an Apache Kafka or console sink.
-Follow the steps outlined below to explore the new CDC functionality using a YugabyteDB local cluster.
+Follow the steps below to connect a local YugabyteDB cluster to use Change Data Capture (CDC) API to send data changes to `stdout`. To learn about the change data capture (CDC) architecture, see [Change data capture (CDC)](../architecture/cdc-architecture).
 
 ## Step 1 — Set up YugabyteDB
 

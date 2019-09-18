@@ -17,11 +17,11 @@ showAsideToc: true
 
 ## Overview
 
-`cqlsh` is a command line interface (CLI), or shell, for interacting with Yugabyte DB through [YCQL](../../api/ycql/).
+The `cqlsh` shell provides a command line interface (CLI) for interacting with YugabyteDB through [YCQL](../../api/ycql/).
 
 ## Download
 
-cqlsh is installed as part of Yugabyte DB and is located in the `bin` directory of Yugabyte home. It is also available for download and install from Yugabyte DB's [GitHub repo](https://github.com/yugabyte/cqlsh/releases).
+`cqlsh` is installed as part of YugabyteDB and is located in the `bin` directory of YugabyteDB home. It is also available for download and install from YugabyteDB's [GitHub repository](https://github.com/yugabyte/cqlsh/releases).
 
 ## Example
 

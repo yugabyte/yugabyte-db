@@ -16,7 +16,7 @@ showAsideToc: true
 {{< note title="Note" >}}
 
 - For any cluster, the number of nodes on which the YB-Masters need to be started on **must** equal the replication factor.
-- The number of comma seperated addresses present in `master_addresses` should also equal the replication factor.
+- The number of comma-separated addresses present in `master_addresses` should also equal the replication factor.
 
 {{< /note >}}
 
@@ -29,7 +29,7 @@ Let us assume the following.
       - Let us assume their private IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140`
 - We have multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`
 
-This section covers deployment for a single region/zone (or a single datacenter/rack). Execute the following steps on each of the instances.
+This section covers deployment for a single region/zone (or a single data center/rack). Execute the following steps on each of the instances.
 
 ## Run yb-master with command line params
 

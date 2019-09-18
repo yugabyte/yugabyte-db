@@ -15,7 +15,7 @@ This section will describe how to create a universe spanning multiple geographic
 
 * Run the CassandraKeyValue workload
 * Write data with global consistency (higher latencies because we chose nodes in far away regions)
-* Read data from the local datacenter (low latency timeline consistent reads)
+* Read data from the local data center (low latency timeline consistent reads)
 * Verify the latencies of the overall app
 
 ## 1. Create the universe
@@ -57,7 +57,7 @@ In this section, we are going to connect to each node and perform the following:
 
 * Run the CassandraKeyValue workload
 * Write data with global consistency (higher latencies because we chose nodes in far away regions)
-* Read data from the local datacenter (low latency timeline consistent reads)
+* Read data from the local data center (low latency, timeline-consistent reads)
 
 Browse to the nodes tab to find the nodes and click on the `Connect` button. This should bring up a dialog showing how to connect to the nodes.
 
@@ -65,25 +65,25 @@ Browse to the nodes tab to find the nodes and click on the `Connect` button. Thi
 
 ### Connect to the nodes
 
-Create three bash terminals and connect to each of the nodes by running the commands shown in the popup above. We are going to start a workload from each of the nodes. Below is a screenshot of the terminals.
+Create three Bash terminals and connect to each of the nodes by running the commands shown in the popup above. We are going to start a workload from each of the nodes. Below is a screenshot of the terminals.
 
 ![Multi-region universe node terminals](/images/ee/multi-region-universe-node-shells.png)
 
 On each of the terminals, do the following.
 
-- **Install Java**
+1. Install Java.
 
 ```sh
 $ sudo yum install java-1.8.0-openjdk.x86_64 -y
 ```
 
-- **Switch to the `yugabyte` user**
+2. Switch to the `yugabyte` user.
 
 ```sh
 $ sudo su - yugabyte
 ```
 
-- **Export the `YCQL_ENDPOINTS` env variable**
+3. Export the `YCQL_ENDPOINTS` env variable
 
 Export an environment variable telling us the IP addresses for nodes in the cluster. Browse to the universe overview tab in YugaWare and click on the `YCQL Endpoints` link. This should open a new tab with a list of IP addresses. 
 
@@ -123,7 +123,7 @@ You can find the region codes for each of the nodes by browsing to the nodes tab
 Recall that we expect the app to have the following characteristics based on its deployment configuration:
 
 * Global consistency on writes, which would cause higher latencies in order to replicate data across multiple geographic regions.
-* Low latency reads from the nearest datacenter, which offers timeline consistency (similar to async replication).
+* Low latency reads from the nearest data center, which offers timeline consistency (similar to async replication).
 
 Let us verify this by browse to the metrics tab of the universe in YugaWare to see the overall performance of the app. It should look similar to the screenshot below.
 
