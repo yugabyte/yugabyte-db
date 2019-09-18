@@ -1,13 +1,13 @@
 /*-------------------------------------------------------------------------
  *
- * json.c
- *		JSON data type support.
+ * agtype_parser.c
+ *		AGTYPE data type support.
  *
  * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  src/backend/utils/adt/json.c
+ *	  agtype_parser.c
  *
  *-------------------------------------------------------------------------
  */
@@ -18,7 +18,6 @@
 #include "miscadmin.h"
 #include "utils/date.h"
 #include "utils/datetime.h"
-#include "utils/json.h"
 
 #include "ag_jsonapi.h"
 /*
@@ -26,56 +25,32 @@
  * mechanism, but is passed explicitly to the error reporting routine
  * for better diagnostics.
  */
-typedef enum /* contexts of JSON parser */
+typedef enum /* contexts of AGTYPE parser */
 {
-    JSON_PARSE_VALUE, /* expecting a value */
-    JSON_PARSE_STRING, /* expecting a string (for a field name) */
-    JSON_PARSE_ARRAY_START, /* saw '[', expecting value or ']' */
-    JSON_PARSE_ARRAY_NEXT, /* saw array element, expecting ',' or ']' */
-    JSON_PARSE_OBJECT_START, /* saw '{', expecting label or '}' */
-    JSON_PARSE_OBJECT_LABEL, /* saw object label, expecting ':' */
-    JSON_PARSE_OBJECT_NEXT, /* saw object value, expecting ',' or '}' */
-    JSON_PARSE_OBJECT_COMMA, /* saw object ',', expecting next label */
-    JSON_PARSE_END /* saw the end of a document, expect nothing */
-} JsonParseContext;
+    AGTYPE_PARSE_VALUE, /* expecting a value */
+    AGTYPE_PARSE_STRING, /* expecting a string (for a field name) */
+    AGTYPE_PARSE_ARRAY_START, /* saw '[', expecting value or ']' */
+    AGTYPE_PARSE_ARRAY_NEXT, /* saw array element, expecting ',' or ']' */
+    AGTYPE_PARSE_OBJECT_START, /* saw '{', expecting label or '}' */
+    AGTYPE_PARSE_OBJECT_LABEL, /* saw object label, expecting ':' */
+    AGTYPE_PARSE_OBJECT_NEXT, /* saw object value, expecting ',' or '}' */
+    AGTYPE_PARSE_OBJECT_COMMA, /* saw object ',', expecting next label */
+    AGTYPE_PARSE_END /* saw the end of a document, expect nothing */
+} agtype_parse_context;
 
-typedef enum /* type categories for datum_to_json */
-{
-    JSONTYPE_NULL, /* null, so we didn't bother to identify */
-    JSONTYPE_BOOL, /* boolean (built-in types only) */
-    JSONTYPE_NUMERIC, /* numeric (ditto) */
-    JSONTYPE_DATE, /* we use special formatting for datetimes */
-    JSONTYPE_TIMESTAMP,
-    JSONTYPE_TIMESTAMPTZ,
-    JSONTYPE_JSON, /* JSON itself (and JSONB) */
-    JSONTYPE_ARRAY, /* array */
-    JSONTYPE_COMPOSITE, /* composite */
-    JSONTYPE_CAST, /* something with an explicit cast to JSON */
-    JSONTYPE_OTHER /* all else */
-} JsonTypeCategory;
-
-typedef struct JsonAggState
-{
-    StringInfo str;
-    JsonTypeCategory key_category;
-    Oid key_output_func;
-    JsonTypeCategory val_category;
-    Oid val_output_func;
-} JsonAggState;
-
-static inline void json_lex(agtype_lex_context *lex);
-static inline void json_lex_string(agtype_lex_context *lex);
-static inline void json_lex_number(agtype_lex_context *lex, char *s, bool *num_err,
+static inline void agtype_lex(agtype_lex_context *lex);
+static inline void agtype_lex_string(agtype_lex_context *lex);
+static inline void agtype_lex_number(agtype_lex_context *lex, char *s, bool *num_err,
                                    int *total_len);
 static inline void parse_scalar(agtype_lex_context *lex, agtype_sem_action *sem);
 static void parse_object_field(agtype_lex_context *lex, agtype_sem_action *sem);
 static void parse_object(agtype_lex_context *lex, agtype_sem_action *sem);
 static void parse_array_element(agtype_lex_context *lex, agtype_sem_action *sem);
 static void parse_array(agtype_lex_context *lex, agtype_sem_action *sem);
-static void report_parse_error(JsonParseContext ctx, agtype_lex_context *lex)
+static void report_parse_error(agtype_parse_context ctx, agtype_lex_context *lex)
     pg_attribute_noreturn();
 static void report_invalid_token(agtype_lex_context *lex) pg_attribute_noreturn();
-static int report_json_context(agtype_lex_context *lex);
+static int report_agtype_context(agtype_lex_context *lex);
 static char *extract_mb_char(char *s);
 
 /* Recursive Descent parser support routines */
@@ -121,7 +96,7 @@ static inline bool lex_accept(agtype_lex_context *lex, agtype_token_type token,
                 *lexeme = tokstr;
             }
         }
-        json_lex(lex);
+        agtype_lex(lex);
         return true;
     }
     return false;
@@ -133,7 +108,7 @@ static inline bool lex_accept(agtype_lex_context *lex, agtype_token_type token,
  * move the lexer to the next token if the current look_ahead token matches
  * the parameter token. Otherwise, report an error.
  */
-static inline void lex_expect(JsonParseContext ctx, agtype_lex_context *lex,
+static inline void lex_expect(agtype_parse_context ctx, agtype_lex_context *lex,
                               agtype_token_type token)
 {
     if (!lex_accept(lex, token, NULL))
@@ -141,7 +116,7 @@ static inline void lex_expect(JsonParseContext ctx, agtype_lex_context *lex,
 }
 
 /* chars to consider as part of an alphanumeric token */
-#define JSON_ALPHANUMERIC_CHAR(c) \
+#define AGTYPE_ALPHANUMERIC_CHAR(c) \
     (((c) >= 'a' && (c) <= 'z') || ((c) >= 'A' && (c) <= 'Z') || \
      ((c) >= '0' && (c) <= '9') || (c) == '_' || IS_HIGHBIT_SET(c))
 
@@ -160,7 +135,7 @@ bool is_valid_agtype_number(const char *str, int len)
         return false;
 
     /*
-	 * json_lex_number expects a leading  '-' to have been eaten already.
+	 * agtype_lex_number expects a leading  '-' to have been eaten already.
 	 *
 	 * having to cast away the constness of str is ugly, but there's not much
 	 * easy alternative.
@@ -176,7 +151,7 @@ bool is_valid_agtype_number(const char *str, int len)
         dummy_lex.input_length = len;
     }
 
-    json_lex_number(&dummy_lex, dummy_lex.input, &numeric_error, &total_len);
+    agtype_lex_number(&dummy_lex, dummy_lex.input, &numeric_error, &total_len);
 
     return (!numeric_error) && (total_len == dummy_lex.input_length);
 }
@@ -218,7 +193,7 @@ agtype_lex_context *make_agtype_lex_context_cstring_len(char *agtype, int len,
  * Publicly visible entry point for the AGTYPE parser.
  *
  * lex is a lexing context, set up for the agtype to be processed by calling
- * makeagtype_lex_context(). sem is a structure of function pointers to semantic
+ * agtype_lex_context(). sem is a structure of function pointers to semantic
  * action routines to be called at appropriate spots during parsing, and a
  * pointer to a state object to be passed to those routines.
  */
@@ -227,7 +202,7 @@ void parse_agtype(agtype_lex_context *lex, agtype_sem_action *sem)
     agtype_token_type tok;
 
     /* get the initial token */
-    json_lex(lex);
+    agtype_lex(lex);
 
     tok = lex_peek(lex);
 
@@ -244,12 +219,12 @@ void parse_agtype(agtype_lex_context *lex, agtype_sem_action *sem)
         parse_scalar(lex, sem); /* agtype can be a bare scalar */
     }
 
-    lex_expect(JSON_PARSE_END, lex, AGTYPE_TOKEN_END);
+    lex_expect(AGTYPE_PARSE_END, lex, AGTYPE_TOKEN_END);
 }
 
 /*
  *	Recursive Descent parse routines. There is one for each structural
- *	element in a json document:
+ *	element in an agtype document:
  *	  - scalar (string, number, true, false, null)
  *	  - array  ( [ ] )
  *	  - array element
@@ -287,7 +262,7 @@ static inline void parse_scalar(agtype_lex_context *lex, agtype_sem_action *sem)
         lex_accept(lex, AGTYPE_TOKEN_STRING, valaddr);
         break;
     default:
-        report_parse_error(JSON_PARSE_VALUE, lex);
+        report_parse_error(AGTYPE_PARSE_VALUE, lex);
     }
 
     if (sfunc != NULL)
@@ -313,9 +288,9 @@ static void parse_object_field(agtype_lex_context *lex, agtype_sem_action *sem)
         fnameaddr = &fname;
 
     if (!lex_accept(lex, AGTYPE_TOKEN_STRING, fnameaddr))
-        report_parse_error(JSON_PARSE_STRING, lex);
+        report_parse_error(AGTYPE_PARSE_STRING, lex);
 
-    lex_expect(JSON_PARSE_OBJECT_LABEL, lex, AGTYPE_TOKEN_COLON);
+    lex_expect(AGTYPE_PARSE_OBJECT_LABEL, lex, AGTYPE_TOKEN_COLON);
 
     tok = lex_peek(lex);
     isnull = tok == AGTYPE_TOKEN_NULL;
@@ -363,7 +338,7 @@ static void parse_object(agtype_lex_context *lex, agtype_sem_action *sem)
     lex->lex_level++;
 
     /* we know this will succeed, just clearing the token */
-    lex_expect(JSON_PARSE_OBJECT_START, lex, AGTYPE_TOKEN_OBJECT_START);
+    lex_expect(AGTYPE_PARSE_OBJECT_START, lex, AGTYPE_TOKEN_OBJECT_START);
 
     tok = lex_peek(lex);
     switch (tok)
@@ -377,10 +352,10 @@ static void parse_object(agtype_lex_context *lex, agtype_sem_action *sem)
         break;
     default:
         /* case of an invalid initial token inside the object */
-        report_parse_error(JSON_PARSE_OBJECT_START, lex);
+        report_parse_error(AGTYPE_PARSE_OBJECT_START, lex);
     }
 
-    lex_expect(JSON_PARSE_OBJECT_NEXT, lex, AGTYPE_TOKEN_OBJECT_END);
+    lex_expect(AGTYPE_PARSE_OBJECT_NEXT, lex, AGTYPE_TOKEN_OBJECT_END);
 
     lex->lex_level--;
 
@@ -440,7 +415,7 @@ static void parse_array(agtype_lex_context *lex, agtype_sem_action *sem)
 	 */
     lex->lex_level++;
 
-    lex_expect(JSON_PARSE_ARRAY_START, lex, AGTYPE_TOKEN_ARRAY_START);
+    lex_expect(AGTYPE_PARSE_ARRAY_START, lex, AGTYPE_TOKEN_ARRAY_START);
     if (lex_peek(lex) != AGTYPE_TOKEN_ARRAY_END)
     {
         parse_array_element(lex, sem);
@@ -449,7 +424,7 @@ static void parse_array(agtype_lex_context *lex, agtype_sem_action *sem)
             parse_array_element(lex, sem);
     }
 
-    lex_expect(JSON_PARSE_ARRAY_NEXT, lex, AGTYPE_TOKEN_ARRAY_END);
+    lex_expect(AGTYPE_PARSE_ARRAY_NEXT, lex, AGTYPE_TOKEN_ARRAY_END);
 
     lex->lex_level--;
 
@@ -460,7 +435,7 @@ static void parse_array(agtype_lex_context *lex, agtype_sem_action *sem)
 /*
  * Lex one token from the input stream.
  */
-static inline void json_lex(agtype_lex_context *lex)
+static inline void agtype_lex(agtype_lex_context *lex)
 {
     char *s;
     int len;
@@ -522,13 +497,13 @@ static inline void json_lex(agtype_lex_context *lex)
             break;
         case '"':
             /* string */
-            json_lex_string(lex);
+            agtype_lex_string(lex);
             lex->token_type = AGTYPE_TOKEN_STRING;
             break;
         case '-':
             /* Negative number. */
-            json_lex_number(lex, s + 1, NULL, NULL);
-            /* token is assigned in json_lex_number */
+            agtype_lex_number(lex, s + 1, NULL, NULL);
+            /* token is assigned in agtype_lex_number */
             break;
         case '0':
         case '1':
@@ -541,8 +516,8 @@ static inline void json_lex(agtype_lex_context *lex)
         case '8':
         case '9':
             /* Positive number. */
-            json_lex_number(lex, s, NULL, NULL);
-            /* token is assigned in json_lex_number */
+            agtype_lex_number(lex, s, NULL, NULL);
+            /* token is assigned in agtype_lex_number */
             break;
         default:
         {
@@ -558,7 +533,7 @@ static inline void json_lex(agtype_lex_context *lex)
 					 * some unintuitive prefix thereof.
 					 */
             for (p = s;
-                 p - s < lex->input_length - len && JSON_ALPHANUMERIC_CHAR(*p);
+                 p - s < lex->input_length - len && AGTYPE_ALPHANUMERIC_CHAR(*p);
                  p++)
                 /* skip */;
 
@@ -601,7 +576,7 @@ static inline void json_lex(agtype_lex_context *lex)
 /*
  * The next token in the input stream is known to be a string; lex it.
  */
-static inline void json_lex_string(agtype_lex_context *lex)
+static inline void agtype_lex_string(agtype_lex_context *lex)
 {
     char *s;
     int len;
@@ -632,10 +607,10 @@ static inline void json_lex_string(agtype_lex_context *lex)
             lex->token_terminator = s;
             ereport(ERROR,
                     (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-                     errmsg("invalid input syntax for type %s", "json"),
+                     errmsg("invalid input syntax for type %s", "agtype"),
                      errdetail("Character with value 0x%02x must be escaped.",
                                (unsigned char)*s),
-                     report_json_context(lex)));
+                     report_agtype_context(lex)));
         }
         else if (*s == '\\')
         {
@@ -674,10 +649,10 @@ static inline void json_lex_string(agtype_lex_context *lex)
                             ERROR,
                             (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
                              errmsg("invalid input syntax for type %s",
-                                    "json"),
+                                    "agtype"),
                              errdetail(
                                  "\"\\u\" must be followed by four hexadecimal digits."),
-                             report_json_context(lex)));
+                             report_agtype_context(lex)));
                     }
                 }
                 if (lex->strval != NULL)
@@ -692,10 +667,10 @@ static inline void json_lex_string(agtype_lex_context *lex)
                                 ERROR,
                                 (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
                                  errmsg("invalid input syntax for type %s",
-                                        "json"),
+                                        "agtype"),
                                  errdetail(
                                      "Unicode high surrogate must not follow a high surrogate."),
-                                 report_json_context(lex)));
+                                 report_agtype_context(lex)));
                         hi_surrogate = (ch & 0x3ff) << 10;
                         continue;
                     }
@@ -706,10 +681,10 @@ static inline void json_lex_string(agtype_lex_context *lex)
                                 ERROR,
                                 (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
                                  errmsg("invalid input syntax for type %s",
-                                        "json"),
+                                        "agtype"),
                                  errdetail(
                                      "Unicode low surrogate must follow a high surrogate."),
-                                 report_json_context(lex)));
+                                 report_agtype_context(lex)));
                         ch = 0x10000 + hi_surrogate + (ch & 0x3ff);
                         hi_surrogate = -1;
                     }
@@ -719,10 +694,10 @@ static inline void json_lex_string(agtype_lex_context *lex)
                             ERROR,
                             (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
                              errmsg("invalid input syntax for type %s",
-                                    "json"),
+                                    "agtype"),
                              errdetail(
                                  "Unicode low surrogate must follow a high surrogate."),
-                             report_json_context(lex)));
+                             report_agtype_context(lex)));
 
                     /*
 					 * For UTF8, replace the escape sequence by the actual
@@ -739,7 +714,7 @@ static inline void json_lex_string(agtype_lex_context *lex)
                             (errcode(ERRCODE_UNTRANSLATABLE_CHARACTER),
                              errmsg("unsupported Unicode escape sequence"),
                              errdetail("\\u0000 cannot be converted to text."),
-                             report_json_context(lex)));
+                             report_agtype_context(lex)));
                     }
                     else if (GetDatabaseEncoding() == PG_UTF8)
                     {
@@ -751,7 +726,7 @@ static inline void json_lex_string(agtype_lex_context *lex)
                     {
                         /*
 						 * This is the only way to designate things like a
-						 * form feed character in JSON, so it's useful in all
+						 * form feed character in AGTYPE, so it's useful in all
 						 * encodings.
 						 */
                         appendStringInfoChar(lex->strval, (char)ch);
@@ -764,7 +739,7 @@ static inline void json_lex_string(agtype_lex_context *lex)
                              errmsg("unsupported Unicode escape sequence"),
                              errdetail(
                                  "Unicode escape values cannot be used for code point values above 007F when the server encoding is not UTF8."),
-                             report_json_context(lex)));
+                             report_agtype_context(lex)));
                     }
                 }
             }
@@ -774,10 +749,10 @@ static inline void json_lex_string(agtype_lex_context *lex)
                     ereport(
                         ERROR,
                         (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-                         errmsg("invalid input syntax for type %s", "json"),
+                         errmsg("invalid input syntax for type %s", "agtype"),
                          errdetail(
                              "Unicode low surrogate must follow a high surrogate."),
-                         report_json_context(lex)));
+                         report_agtype_context(lex)));
 
                 switch (*s)
                 {
@@ -807,10 +782,10 @@ static inline void json_lex_string(agtype_lex_context *lex)
                     ereport(
                         ERROR,
                         (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-                         errmsg("invalid input syntax for type %s", "json"),
+                         errmsg("invalid input syntax for type %s", "agtype"),
                          errdetail("Escape sequence \"\\%s\" is invalid.",
                                    extract_mb_char(s)),
-                         report_json_context(lex)));
+                         report_agtype_context(lex)));
                 }
             }
             else if (strchr("\"\\/bfnrt", *s) == NULL)
@@ -825,10 +800,10 @@ static inline void json_lex_string(agtype_lex_context *lex)
                 lex->token_terminator = s + pg_mblen(s);
                 ereport(ERROR,
                         (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-                         errmsg("invalid input syntax for type %s", "json"),
+                         errmsg("invalid input syntax for type %s", "agtype"),
                          errdetail("Escape sequence \"\\%s\" is invalid.",
                                    extract_mb_char(s)),
-                         report_json_context(lex)));
+                         report_agtype_context(lex)));
             }
         }
         else if (lex->strval != NULL)
@@ -837,10 +812,10 @@ static inline void json_lex_string(agtype_lex_context *lex)
                 ereport(
                     ERROR,
                     (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-                     errmsg("invalid input syntax for type %s", "json"),
+                     errmsg("invalid input syntax for type %s", "agtype"),
                      errdetail(
                          "Unicode low surrogate must follow a high surrogate."),
-                     report_json_context(lex)));
+                     report_agtype_context(lex)));
 
             appendStringInfoChar(lex->strval, *s);
         }
@@ -850,9 +825,9 @@ static inline void json_lex_string(agtype_lex_context *lex)
         ereport(
             ERROR,
             (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-             errmsg("invalid input syntax for type %s", "json"),
+             errmsg("invalid input syntax for type %s", "agtype"),
              errdetail("Unicode low surrogate must follow a high surrogate."),
-             report_json_context(lex)));
+             report_agtype_context(lex)));
 
     /* Hooray, we found the end of the string! */
     lex->prev_token_terminator = lex->token_terminator;
@@ -862,7 +837,7 @@ static inline void json_lex_string(agtype_lex_context *lex)
 /*
  * The next token in the input stream is known to be a number; lex it.
  *
- * In JSON, a number consists of four parts:
+ * In AGTYPE, a number consists of four parts:
  *
  * (1) An optional minus sign ('-').
  *
@@ -887,7 +862,7 @@ static inline void json_lex_string(agtype_lex_context *lex)
  * raising an error for a badly-formed number.  Also, if total_len is not NULL
  * the distance from lex->input to the token end+1 is returned to *total_len.
  */
-static inline void json_lex_number(agtype_lex_context *lex, char *s, bool *num_err,
+static inline void agtype_lex_number(agtype_lex_context *lex, char *s, bool *num_err,
                                    int *total_len)
 {
     bool error = false;
@@ -962,11 +937,11 @@ static inline void json_lex_number(agtype_lex_context *lex, char *s, bool *num_e
     }
 
     /*
-	 * Check for trailing garbage.  As in json_lex(), any alphanumeric stuff
+	 * Check for trailing garbage.  As in agtype_lex(), any alphanumeric stuff
 	 * here should be considered part of the token for error-reporting
 	 * purposes.
 	 */
-    for (; len < lex->input_length && JSON_ALPHANUMERIC_CHAR(*s); s++, len++)
+    for (; len < lex->input_length && AGTYPE_ALPHANUMERIC_CHAR(*s); s++, len++)
         error = true;
 
     if (total_len != NULL)
@@ -993,7 +968,7 @@ static inline void json_lex_number(agtype_lex_context *lex, char *s, bool *num_e
  *
  * lex->token_start and lex->token_terminator must identify the current token.
  */
-static void report_parse_error(JsonParseContext ctx, agtype_lex_context *lex)
+static void report_parse_error(agtype_parse_context ctx, agtype_lex_context *lex)
 {
     char *token;
     int toklen;
@@ -1001,9 +976,9 @@ static void report_parse_error(JsonParseContext ctx, agtype_lex_context *lex)
     /* Handle case where the input ended prematurely. */
     if (lex->token_start == NULL || lex->token_type == AGTYPE_TOKEN_END)
         ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-                        errmsg("invalid input syntax for type %s", "json"),
+                        errmsg("invalid input syntax for type %s", "agtype"),
                         errdetail("The input string ended unexpectedly."),
-                        report_json_context(lex)));
+                        report_agtype_context(lex)));
 
     /* Separate out the current token. */
     toklen = lex->token_terminator - lex->token_start;
@@ -1012,79 +987,79 @@ static void report_parse_error(JsonParseContext ctx, agtype_lex_context *lex)
     token[toklen] = '\0';
 
     /* Complain, with the appropriate detail message. */
-    if (ctx == JSON_PARSE_END)
+    if (ctx == AGTYPE_PARSE_END)
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-                 errmsg("invalid input syntax for type %s", "json"),
+                 errmsg("invalid input syntax for type %s", "agtype"),
                  errdetail("Expected end of input, but found \"%s\".", token),
-                 report_json_context(lex)));
+                 report_agtype_context(lex)));
     else
     {
         switch (ctx)
         {
-        case JSON_PARSE_VALUE:
+        case AGTYPE_PARSE_VALUE:
             ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-                            errmsg("invalid input syntax for type %s", "json"),
-                            errdetail("Expected JSON value, but found \"%s\".",
+                            errmsg("invalid input syntax for type %s", "agtype"),
+                            errdetail("Expected AGTYPE value, but found \"%s\".",
                                       token),
-                            report_json_context(lex)));
+                            report_agtype_context(lex)));
             break;
-        case JSON_PARSE_STRING:
+        case AGTYPE_PARSE_STRING:
             ereport(ERROR,
                     (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-                     errmsg("invalid input syntax for type %s", "json"),
+                     errmsg("invalid input syntax for type %s", "agtype"),
                      errdetail("Expected string, but found \"%s\".", token),
-                     report_json_context(lex)));
+                     report_agtype_context(lex)));
             break;
-        case JSON_PARSE_ARRAY_START:
+        case AGTYPE_PARSE_ARRAY_START:
             ereport(ERROR,
                     (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-                     errmsg("invalid input syntax for type %s", "json"),
+                     errmsg("invalid input syntax for type %s", "agtype"),
                      errdetail(
                          "Expected array element or \"]\", but found \"%s\".",
                          token),
-                     report_json_context(lex)));
+                     report_agtype_context(lex)));
             break;
-        case JSON_PARSE_ARRAY_NEXT:
+        case AGTYPE_PARSE_ARRAY_NEXT:
             ereport(ERROR,
                     (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-                     errmsg("invalid input syntax for type %s", "json"),
+                     errmsg("invalid input syntax for type %s", "agtype"),
                      errdetail("Expected \",\" or \"]\", but found \"%s\".",
                                token),
-                     report_json_context(lex)));
+                     report_agtype_context(lex)));
             break;
-        case JSON_PARSE_OBJECT_START:
+        case AGTYPE_PARSE_OBJECT_START:
             ereport(ERROR,
                     (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-                     errmsg("invalid input syntax for type %s", "json"),
+                     errmsg("invalid input syntax for type %s", "agtype"),
                      errdetail("Expected string or \"}\", but found \"%s\".",
                                token),
-                     report_json_context(lex)));
+                     report_agtype_context(lex)));
             break;
-        case JSON_PARSE_OBJECT_LABEL:
+        case AGTYPE_PARSE_OBJECT_LABEL:
             ereport(ERROR,
                     (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-                     errmsg("invalid input syntax for type %s", "json"),
+                     errmsg("invalid input syntax for type %s", "agtype"),
                      errdetail("Expected \":\", but found \"%s\".", token),
-                     report_json_context(lex)));
+                     report_agtype_context(lex)));
             break;
-        case JSON_PARSE_OBJECT_NEXT:
+        case AGTYPE_PARSE_OBJECT_NEXT:
             ereport(ERROR,
                     (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-                     errmsg("invalid input syntax for type %s", "json"),
+                     errmsg("invalid input syntax for type %s", "agtype"),
                      errdetail("Expected \",\" or \"}\", but found \"%s\".",
                                token),
-                     report_json_context(lex)));
+                     report_agtype_context(lex)));
             break;
-        case JSON_PARSE_OBJECT_COMMA:
+        case AGTYPE_PARSE_OBJECT_COMMA:
             ereport(ERROR,
                     (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-                     errmsg("invalid input syntax for type %s", "json"),
+                     errmsg("invalid input syntax for type %s", "agtype"),
                      errdetail("Expected string, but found \"%s\".", token),
-                     report_json_context(lex)));
+                     report_agtype_context(lex)));
             break;
         default:
-            elog(ERROR, "unexpected json parse state: %d", ctx);
+            elog(ERROR, "unexpected agtype parse state: %d", ctx);
         }
     }
 }
@@ -1106,13 +1081,13 @@ static void report_invalid_token(agtype_lex_context *lex)
     token[toklen] = '\0';
 
     ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-                    errmsg("invalid input syntax for type %s", "json"),
+                    errmsg("invalid input syntax for type %s", "agtype"),
                     errdetail("Token \"%s\" is invalid.", token),
-                    report_json_context(lex)));
+                    report_agtype_context(lex)));
 }
 
 /*
- * Report a CONTEXT line for bogus JSON input.
+ * Report a CONTEXT line for bogus AGTYPE input.
  *
  * lex->token_terminator must be set to identify the spot where we detected
  * the error.  Note that lex->token_start might be NULL, in case we recognized
@@ -1121,7 +1096,7 @@ static void report_invalid_token(agtype_lex_context *lex)
  * The return value isn't meaningful, but we make it non-void so that this
  * can be invoked inside ereport().
  */
-static int report_json_context(agtype_lex_context *lex)
+static int report_agtype_context(agtype_lex_context *lex)
 {
     const char *context_start;
     const char *context_end;
@@ -1182,7 +1157,7 @@ static int report_json_context(agtype_lex_context *lex)
                  "..." :
                  "";
 
-    return errcontext("JSON data, line %d: %s%s%s", line_number, prefix, ctxt,
+    return errcontext("AGTYPE data, line %d: %s%s%s", line_number, prefix, ctxt,
                       suffix);
 }
 
@@ -1291,53 +1266,9 @@ char *agtype_encode_date_time(char *buf, Datum value, Oid typid)
     }
     break;
     default:
-        elog(ERROR, "unknown jsonb value datetime type oid %d", typid);
+        elog(ERROR, "unknown agtype value datetime type oid %d", typid);
         return NULL;
     }
 
     return buf;
-}
-
-/*
- * Produce a JSON string literal, properly escaping characters in the text.
- */
-void escape_json(StringInfo buf, const char *str)
-{
-    const char *p;
-
-    appendStringInfoCharMacro(buf, '"');
-    for (p = str; *p; p++)
-    {
-        switch (*p)
-        {
-        case '\b':
-            appendStringInfoString(buf, "\\b");
-            break;
-        case '\f':
-            appendStringInfoString(buf, "\\f");
-            break;
-        case '\n':
-            appendStringInfoString(buf, "\\n");
-            break;
-        case '\r':
-            appendStringInfoString(buf, "\\r");
-            break;
-        case '\t':
-            appendStringInfoString(buf, "\\t");
-            break;
-        case '"':
-            appendStringInfoString(buf, "\\\"");
-            break;
-        case '\\':
-            appendStringInfoString(buf, "\\\\");
-            break;
-        default:
-            if ((unsigned char)*p < ' ')
-                appendStringInfo(buf, "\\u%04x", (int)*p);
-            else
-                appendStringInfoCharMacro(buf, *p);
-            break;
-        }
-    }
-    appendStringInfoCharMacro(buf, '"');
 }

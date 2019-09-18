@@ -29,48 +29,48 @@
  * reserved for that in the agtype_container.header field.
  *
  * (The total size of an array's or object's elements is also limited by
- * JENTRY_OFFLENMASK, but we're not concerned about that here.)
+ * AGTENTRY_OFFLENMASK, but we're not concerned about that here.)
  */
-#define JSONBX_MAX_ELEMS (Min(MaxAllocSize / sizeof(agtype_value), AGT_CMASK))
-#define JSONBX_MAX_PAIRS (Min(MaxAllocSize / sizeof(agtype_pair), AGT_CMASK))
+#define AGTYPE_MAX_ELEMS (Min(MaxAllocSize / sizeof(agtype_value), AGT_CMASK))
+#define AGTYPE_MAX_PAIRS (Min(MaxAllocSize / sizeof(agtype_pair), AGT_CMASK))
 
-static void fillJsonbXValue(agtype_container *container, int index,
+static void fill_agtype_value(agtype_container *container, int index,
                             char *base_addr, uint32 offset,
                             agtype_value *result);
-static bool equalsJsonbXScalarValue(agtype_value *a, agtype_value *b);
-static int compareJsonbXScalarValue(agtype_value *a, agtype_value *b);
-static agtype *convertToJsonbX(agtype_value *val);
-static void convertJsonbXValue(StringInfo buffer, agtentry *header,
+static bool equals_agtype_scalar_value(agtype_value *a, agtype_value *b);
+static int compare_agtype_scalar_value(agtype_value *a, agtype_value *b);
+static agtype *convert_to_agtype(agtype_value *val);
+static void convert_agtype_value(StringInfo buffer, agtentry *header,
                                agtype_value *val, int level);
-static void convertJsonbXArray(StringInfo buffer, agtentry *header,
+static void convert_agtype_array(StringInfo buffer, agtentry *header,
                                agtype_value *val, int level);
-static void convertJsonbXObject(StringInfo buffer, agtentry *header,
+static void convert_agtype_object(StringInfo buffer, agtentry *header,
                                 agtype_value *val, int level);
-static void convertJsonbXScalar(StringInfo buffer, agtentry *header,
-                                agtype_value *scalarVal);
+static void convert_agtype_scalar(StringInfo buffer, agtentry *header,
+                                agtype_value *scalar_val);
 
-static void appendToBuffer(StringInfo buffer, const char *data, int len);
-static void copyToBuffer(StringInfo buffer, int offset, const char *data,
+static void append_to_buffer(StringInfo buffer, const char *data, int len);
+static void copy_to_buffer(StringInfo buffer, int offset, const char *data,
                          int len);
 
-static agtype_iterator *iteratorFromContainer(agtype_container *container,
+static agtype_iterator *iterator_from_container(agtype_container *container,
                                              agtype_iterator *parent);
-static agtype_iterator *freeAndGetParent(agtype_iterator *it);
-static agtype_parse_state *pushState(agtype_parse_state **pstate);
-static void appendKey(agtype_parse_state *pstate, agtype_value *scalarVal);
-static void appendValue(agtype_parse_state *pstate, agtype_value *scalarVal);
-static void appendElement(agtype_parse_state *pstate, agtype_value *scalarVal);
-static int lengthCompareJsonbXStringValue(const void *a, const void *b);
-static int lengthCompareJsonbXPair(const void *a, const void *b, void *arg);
-static void uniqueifyJsonbXObject(agtype_value *object);
-static agtype_value *pushJsonbXValueScalar(agtype_parse_state **pstate,
+static agtype_iterator *free_and_get_parent(agtype_iterator *it);
+static agtype_parse_state *push_state(agtype_parse_state **pstate);
+static void append_key(agtype_parse_state *pstate, agtype_value *scalar_val);
+static void append_value(agtype_parse_state *pstate, agtype_value *scalar_val);
+static void append_element(agtype_parse_state *pstate, agtype_value *scalar_val);
+static int length_compare_agtype_string_value(const void *a, const void *b);
+static int length_compare_agtype_pair(const void *a, const void *b, void *arg);
+static void uniqueify_agtype_object(agtype_value *object);
+static agtype_value *push_agtype_value_scalar(agtype_parse_state **pstate,
                                           agtype_iterator_token seq,
-                                          agtype_value *scalarVal);
+                                          agtype_value *scalar_val);
 
 /*
  * Turn an in-memory agtype_value into a agtype for on-disk storage.
  *
- * There isn't a JsonbToJsonbValue(), because generally we find it more
+ * There isn't an agtype_to_agtype_value(), because generally we find it more
  * convenient to directly iterate through the agtype representation and only
  * really convert nested scalar values.  agtype_iterator_next() does this, so that
  * clients of the iteration code don't have to directly deal with the binary
@@ -89,21 +89,21 @@ agtype *agtype_value_to_agtype(agtype_value *val)
         /* Scalar value */
         agtype_parse_state *pstate = NULL;
         agtype_value *res;
-        agtype_value scalarArray;
+        agtype_value scalar_array;
 
-        scalarArray.type = AGTV_ARRAY;
-        scalarArray.val.array.raw_scalar = true;
-        scalarArray.val.array.num_elems = 1;
+        scalar_array.type = AGTV_ARRAY;
+        scalar_array.val.array.raw_scalar = true;
+        scalar_array.val.array.num_elems = 1;
 
-        push_agtype_value(&pstate, WAGT_BEGIN_ARRAY, &scalarArray);
+        push_agtype_value(&pstate, WAGT_BEGIN_ARRAY, &scalar_array);
         push_agtype_value(&pstate, WAGT_ELEM, val);
         res = push_agtype_value(&pstate, WAGT_END_ARRAY, NULL);
 
-        out = convertToJsonbX(res);
+        out = convert_to_agtype(res);
     }
     else if (val->type == AGTV_OBJECT || val->type == AGTV_ARRAY)
     {
-        out = convertToJsonbX(val);
+        out = convert_to_agtype(val);
     }
     else
     {
@@ -204,8 +204,8 @@ int compare_agtype_containers(agtype_container *a, agtype_container *b)
             {
                 /*
 				 * There is no array or object to compare at this stage of
-				 * processing.  jbvArray/jbvObject values are compared
-				 * initially, at the WJB_BEGIN_ARRAY and WJB_BEGIN_OBJECT
+				 * processing.  AGTV_ARRAY/AGTV_OBJECT values are compared
+				 * initially, at the WAGT_BEGIN_ARRAY and WAGT_BEGIN_OBJECT
 				 * tokens.
 				 */
                 continue;
@@ -221,7 +221,7 @@ int compare_agtype_containers(agtype_container *a, agtype_container *b)
                 case AGTV_BOOL:
                 case AGTV_INTEGER:
                 case AGTV_FLOAT:
-                    res = compareJsonbXScalarValue(&va, &vb);
+                    res = compare_agtype_scalar_value(&va, &vb);
                     break;
                 case AGTV_ARRAY:
 
@@ -263,13 +263,13 @@ int compare_agtype_containers(agtype_container *a, agtype_container *b)
 			 *
 			 * If the two values were of the same container type, then there'd
 			 * have been a chance to observe the variation in the number of
-			 * elements/pairs (when processing WJB_BEGIN_OBJECT, say). They're
+			 * elements/pairs (when processing WAGT_BEGIN_OBJECT, say). They're
 			 * either two heterogeneously-typed containers, or a container and
 			 * some scalar type.
 			 *
-			 * We don't have to consider the WJB_END_ARRAY and WJB_END_OBJECT
+			 * We don't have to consider the WAGT_END_ARRAY and WAGT_END_OBJECT
 			 * cases here, because we would have seen the corresponding
-			 * WJB_BEGIN_ARRAY and WJB_BEGIN_OBJECT tokens first, and
+			 * WAGT_BEGIN_ARRAY and WAGT_BEGIN_OBJECT tokens first, and
 			 * concluded that they don't match.
 			 */
             Assert(ra != WAGT_END_ARRAY && ra != WAGT_END_OBJECT);
@@ -350,11 +350,11 @@ agtype_value *find_agtype_value_from_container(agtype_container *container,
 
         for (i = 0; i < count; i++)
         {
-            fillJsonbXValue(container, i, base_addr, offset, result);
+            fill_agtype_value(container, i, base_addr, offset, result);
 
             if (key->type == result->type)
             {
-                if (equalsJsonbXScalarValue(key, result))
+                if (equals_agtype_scalar_value(key, result))
                     return result;
             }
 
@@ -363,35 +363,35 @@ agtype_value *find_agtype_value_from_container(agtype_container *container,
     }
     else if ((flags & AGT_FOBJECT) && AGTYPE_CONTAINER_IS_OBJECT(container))
     {
-        /* Since this is an object, account for *Pairs* of Jentrys */
+        /* Since this is an object, account for *Pairs* of AGTentrys */
         char *base_addr = (char *)(children + count * 2);
-        uint32 stopLow = 0, stopHigh = count;
+        uint32 stop_low = 0, stop_high = count;
 
         /* Object key passed by caller must be a string */
         Assert(key->type == AGTV_STRING);
 
         /* Binary search on object/pair keys *only* */
-        while (stopLow < stopHigh)
+        while (stop_low < stop_high)
         {
-            uint32 stopMiddle;
+            uint32 stop_middle;
             int difference;
             agtype_value candidate;
 
-            stopMiddle = stopLow + (stopHigh - stopLow) / 2;
+            stop_middle = stop_low + (stop_high - stop_low) / 2;
 
             candidate.type = AGTV_STRING;
             candidate.val.string.val = base_addr +
-                                       get_agtype_offset(container, stopMiddle);
-            candidate.val.string.len = get_agtype_length(container, stopMiddle);
+                                       get_agtype_offset(container, stop_middle);
+            candidate.val.string.len = get_agtype_length(container, stop_middle);
 
-            difference = lengthCompareJsonbXStringValue(&candidate, key);
+            difference = length_compare_agtype_string_value(&candidate, key);
 
             if (difference == 0)
             {
                 /* Found our key, return corresponding value */
-                int index = stopMiddle + count;
+                int index = stop_middle + count;
 
-                fillJsonbXValue(container, index, base_addr,
+                fill_agtype_value(container, index, base_addr,
                                 get_agtype_offset(container, index), result);
 
                 return result;
@@ -399,9 +399,9 @@ agtype_value *find_agtype_value_from_container(agtype_container *container,
             else
             {
                 if (difference < 0)
-                    stopLow = stopMiddle + 1;
+                    stop_low = stop_middle + 1;
                 else
-                    stopHigh = stopMiddle;
+                    stop_high = stop_middle;
             }
         }
     }
@@ -424,7 +424,7 @@ agtype_value *get_ith_agtype_value_from_container(agtype_container *container,
     uint32 nelements;
 
     if (!AGTYPE_CONTAINER_IS_ARRAY(container))
-        elog(ERROR, "not a jsonbx array");
+        elog(ERROR, "not an agtype array");
 
     nelements = AGTYPE_CONTAINER_SIZE(container);
     base_addr = (char *)&container->children[nelements];
@@ -434,7 +434,7 @@ agtype_value *get_ith_agtype_value_from_container(agtype_container *container,
 
     result = palloc(sizeof(agtype_value));
 
-    fillJsonbXValue(container, i, base_addr, get_agtype_offset(container, i),
+    fill_agtype_value(container, i, base_addr, get_agtype_offset(container, i),
                     result);
 
     return result;
@@ -452,7 +452,7 @@ agtype_value *get_ith_agtype_value_from_container(agtype_container *container,
  * A nested array or object will be returned as AGTV_BINARY, ie. it won't be
  * expanded.
  */
-static void fillJsonbXValue(agtype_container *container, int index,
+static void fill_agtype_value(agtype_container *container, int index,
                             char *base_addr, uint32 offset,
                             agtype_value *result)
 {
@@ -474,7 +474,11 @@ static void fillJsonbXValue(agtype_container *container, int index,
         result->type = AGTV_NUMERIC;
         result->val.numeric = (Numeric)(base_addr + INTALIGN(offset));
     }
-    /* if this is a AGTYPE */
+    /*
+	 * If this is an AGTYPE.
+	 * This is needed because we allow the original jsonb type to be
+	 * passed in.
+	 */
     else if (AGTE_IS_AGTYPE(entry))
     {
         ag_deserialize_extended_type(base_addr, offset, result);
@@ -504,8 +508,8 @@ static void fillJsonbXValue(agtype_container *container, int index,
 /*
  * Push agtype_value into agtype_parse_state.
  *
- * Used when parsing JSON tokens to form agtype, or when converting an in-memory
- * agtype_value to a agtype.
+ * Used when parsing AGTYPE tokens to form agtype, or when converting an
+ * in-memory agtype_value to an agtype.
  *
  * Initial state of *agtype_parse_state is NULL, since it'll be allocated here
  * originally (caller will get agtype_parse_state back by reference).
@@ -515,7 +519,7 @@ static void fillJsonbXValue(agtype_container *container, int index,
  * "raw scalar" pseudo array to append it - the actual scalar should be passed
  * next and it will be added as the only member of the array.
  *
- * Values of type jvbXBinary, which are rolled up arrays and objects,
+ * Values of type AGTV_BINARY, which are rolled up arrays and objects,
  * are unpacked before being added to the result.
  */
 agtype_value *push_agtype_value(agtype_parse_state **pstate,
@@ -530,13 +534,13 @@ agtype_value *push_agtype_value(agtype_parse_state **pstate,
         agtval->type != AGTV_BINARY)
     {
         /* drop through */
-        return pushJsonbXValueScalar(pstate, seq, agtval);
+        return push_agtype_value_scalar(pstate, seq, agtval);
     }
 
     /* unpack the binary and add each piece to the pstate */
     it = agtype_iterator_init(agtval->val.binary.data);
     while ((tok = agtype_iterator_next(&it, &v, false)) != WAGT_DONE)
-        res = pushJsonbXValueScalar(pstate, tok,
+        res = push_agtype_value_scalar(pstate, tok,
                                     tok < WAGT_BEGIN_ARRAY ? &v : NULL);
 
     return res;
@@ -546,27 +550,27 @@ agtype_value *push_agtype_value(agtype_parse_state **pstate,
  * Do the actual pushing, with only scalar or pseudo-scalar-array values
  * accepted.
  */
-static agtype_value *pushJsonbXValueScalar(agtype_parse_state **pstate,
+static agtype_value *push_agtype_value_scalar(agtype_parse_state **pstate,
                                           agtype_iterator_token seq,
-                                          agtype_value *scalarVal)
+                                          agtype_value *scalar_val)
 {
     agtype_value *result = NULL;
 
     switch (seq)
     {
     case WAGT_BEGIN_ARRAY:
-        Assert(!scalarVal || scalarVal->val.array.raw_scalar);
-        *pstate = pushState(pstate);
+        Assert(!scalar_val || scalar_val->val.array.raw_scalar);
+        *pstate = push_state(pstate);
         result = &(*pstate)->cont_val;
         (*pstate)->cont_val.type = AGTV_ARRAY;
         (*pstate)->cont_val.val.array.num_elems = 0;
         (*pstate)->cont_val.val.array.raw_scalar =
-            (scalarVal && scalarVal->val.array.raw_scalar);
-        if (scalarVal && scalarVal->val.array.num_elems > 0)
+            (scalar_val && scalar_val->val.array.raw_scalar);
+        if (scalar_val && scalar_val->val.array.num_elems > 0)
         {
             /* Assume that this array is still really a scalar */
-            Assert(scalarVal->type == AGTV_ARRAY);
-            (*pstate)->size = scalarVal->val.array.num_elems;
+            Assert(scalar_val->type == AGTV_ARRAY);
+            (*pstate)->size = scalar_val->val.array.num_elems;
         }
         else
         {
@@ -576,8 +580,8 @@ static agtype_value *pushJsonbXValueScalar(agtype_parse_state **pstate,
             palloc(sizeof(agtype_value) * (*pstate)->size);
         break;
     case WAGT_BEGIN_OBJECT:
-        Assert(!scalarVal);
-        *pstate = pushState(pstate);
+        Assert(!scalar_val);
+        *pstate = push_state(pstate);
         result = &(*pstate)->cont_val;
         (*pstate)->cont_val.type = AGTV_OBJECT;
         (*pstate)->cont_val.val.object.num_pairs = 0;
@@ -586,23 +590,23 @@ static agtype_value *pushJsonbXValueScalar(agtype_parse_state **pstate,
             palloc(sizeof(agtype_pair) * (*pstate)->size);
         break;
     case WAGT_KEY:
-        Assert(scalarVal->type == AGTV_STRING);
-        appendKey(*pstate, scalarVal);
+        Assert(scalar_val->type == AGTV_STRING);
+        append_key(*pstate, scalar_val);
         break;
     case WAGT_VALUE:
-        Assert(IS_A_AGTYPE_SCALAR(scalarVal));
-        appendValue(*pstate, scalarVal);
+        Assert(IS_A_AGTYPE_SCALAR(scalar_val));
+        append_value(*pstate, scalar_val);
         break;
     case WAGT_ELEM:
-        Assert(IS_A_AGTYPE_SCALAR(scalarVal));
-        appendElement(*pstate, scalarVal);
+        Assert(IS_A_AGTYPE_SCALAR(scalar_val));
+        append_element(*pstate, scalar_val);
         break;
     case WAGT_END_OBJECT:
-        uniqueifyJsonbXObject(&(*pstate)->cont_val);
+        uniqueify_agtype_object(&(*pstate)->cont_val);
         /* fall through! */
     case WAGT_END_ARRAY:
-        /* Steps here common to WJB_END_OBJECT case */
-        Assert(!scalarVal);
+        /* Steps here common to WAGT_END_OBJECT case */
+        Assert(!scalar_val);
         result = &(*pstate)->cont_val;
 
         /*
@@ -615,27 +619,27 @@ static agtype_value *pushJsonbXValueScalar(agtype_parse_state **pstate,
             switch ((*pstate)->cont_val.type)
             {
             case AGTV_ARRAY:
-                appendElement(*pstate, result);
+                append_element(*pstate, result);
                 break;
             case AGTV_OBJECT:
-                appendValue(*pstate, result);
+                append_value(*pstate, result);
                 break;
             default:
-                elog(ERROR, "invalid jsonbx container type");
+                elog(ERROR, "invalid agtype container type");
             }
         }
         break;
     default:
-        elog(ERROR, "unrecognized jsonbx sequential processing token");
+        elog(ERROR, "unrecognized agtype sequential processing token");
     }
 
     return result;
 }
 
 /*
- * push_agtype_value() worker:  Iteration-like forming of Jsonb
+ * push_agtype_value() worker:  Iteration-like forming of agtype
  */
-static agtype_parse_state *pushState(agtype_parse_state **pstate)
+static agtype_parse_state *push_state(agtype_parse_state **pstate)
 {
     agtype_parse_state *ns = palloc(sizeof(agtype_parse_state));
 
@@ -644,22 +648,22 @@ static agtype_parse_state *pushState(agtype_parse_state **pstate)
 }
 
 /*
- * push_agtype_value() worker:  Append a pair key to state when generating a Jsonb
+ * push_agtype_value() worker:  Append a pair key to state when generating agtype
  */
-static void appendKey(agtype_parse_state *pstate, agtype_value *string)
+static void append_key(agtype_parse_state *pstate, agtype_value *string)
 {
     agtype_value *object = &pstate->cont_val;
 
     Assert(object->type == AGTV_OBJECT);
     Assert(string->type == AGTV_STRING);
 
-    if (object->val.object.num_pairs >= JSONBX_MAX_PAIRS)
+    if (object->val.object.num_pairs >= AGTYPE_MAX_PAIRS)
         ereport(
             ERROR,
             (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
              errmsg(
-                 "number of jsonbx object pairs exceeds the maximum allowed (%zu)",
-                 JSONBX_MAX_PAIRS)));
+                 "number of agtype object pairs exceeds the maximum allowed (%zu)",
+                 AGTYPE_MAX_PAIRS)));
 
     if (object->val.object.num_pairs >= pstate->size)
     {
@@ -674,34 +678,35 @@ static void appendKey(agtype_parse_state *pstate, agtype_value *string)
 }
 
 /*
- * push_agtype_value() worker:  Append a pair value to state when generating a
- * Jsonb
+ * push_agtype_value() worker:  Append a pair value to state when generating an
+ * agtype
  */
-static void appendValue(agtype_parse_state *pstate, agtype_value *scalarVal)
+static void append_value(agtype_parse_state *pstate, agtype_value *scalar_val)
 {
     agtype_value *object = &pstate->cont_val;
 
     Assert(object->type == AGTV_OBJECT);
 
-    object->val.object.pairs[object->val.object.num_pairs++].value = *scalarVal;
+    object->val.object.pairs[object->val.object.num_pairs++].value = *scalar_val;
 }
 
 /*
- * push_agtype_value() worker:  Append an element to state when generating a Jsonb
+ * push_agtype_value() worker:  Append an element to state when generating an
+ * agtype
  */
-static void appendElement(agtype_parse_state *pstate, agtype_value *scalarVal)
+static void append_element(agtype_parse_state *pstate, agtype_value *scalar_val)
 {
     agtype_value *array = &pstate->cont_val;
 
     Assert(array->type == AGTV_ARRAY);
 
-    if (array->val.array.num_elems >= JSONBX_MAX_ELEMS)
+    if (array->val.array.num_elems >= AGTYPE_MAX_ELEMS)
         ereport(
             ERROR,
             (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
              errmsg(
-                 "number of jsonbx array elements exceeds the maximum allowed (%zu)",
-                 JSONBX_MAX_ELEMS)));
+                 "number of agtype array elements exceeds the maximum allowed (%zu)",
+                 AGTYPE_MAX_ELEMS)));
 
     if (array->val.array.num_elems >= pstate->size)
     {
@@ -710,7 +715,7 @@ static void appendElement(agtype_parse_state *pstate, agtype_value *scalarVal)
                                           sizeof(agtype_value) * pstate->size);
     }
 
-    array->val.array.elems[array->val.array.num_elems++] = *scalarVal;
+    array->val.array.elems[array->val.array.num_elems++] = *scalar_val;
 }
 
 /*
@@ -721,7 +726,7 @@ static void appendElement(agtype_parse_state *pstate, agtype_value *scalarVal)
  */
 agtype_iterator *agtype_iterator_init(agtype_container *container)
 {
-    return iteratorFromContainer(container, NULL);
+    return iterator_from_container(container, NULL);
 }
 
 /*
@@ -746,7 +751,7 @@ agtype_iterator *agtype_iterator_init(agtype_container *container)
  * iterators.
  *
  * Clients of this function should not have to handle any AGTV_BINARY values
- * (since recursive calls will deal with this), provided skipNested is false.
+ * (since recursive calls will deal with this), provided skip_nested is false.
  * It is our job to expand the AGTV_BINARY representation without bothering them
  * with it.  However, clients should not take it upon themselves to touch array
  * or Object element/pair buffers, since their element/pair pointers are
@@ -755,7 +760,7 @@ agtype_iterator *agtype_iterator_init(agtype_container *container)
  * when recursing in.
  */
 agtype_iterator_token agtype_iterator_next(agtype_iterator **it, agtype_value *val,
-                                       bool skipNested)
+                                       bool skip_nested)
 {
     if (*it == NULL)
         return WAGT_DONE;
@@ -795,21 +800,21 @@ recurse:
 				 * independently tracks iteration progress at its level of
 				 * nesting).
 				 */
-            *it = freeAndGetParent(*it);
+            *it = free_and_get_parent(*it);
             return WAGT_END_ARRAY;
         }
 
-        fillJsonbXValue((*it)->container, (*it)->curr_index, (*it)->data_proper,
+        fill_agtype_value((*it)->container, (*it)->curr_index, (*it)->data_proper,
                         (*it)->curr_data_offset, val);
 
         AGTE_ADVANCE_OFFSET((*it)->curr_data_offset,
                             (*it)->children[(*it)->curr_index]);
         (*it)->curr_index++;
 
-        if (!IS_A_AGTYPE_SCALAR(val) && !skipNested)
+        if (!IS_A_AGTYPE_SCALAR(val) && !skip_nested)
         {
             /* Recurse into container. */
-            *it = iteratorFromContainer(val->val.binary.data, *it);
+            *it = iterator_from_container(val->val.binary.data, *it);
             goto recurse;
         }
         else
@@ -847,16 +852,16 @@ recurse:
 				 * (which independently tracks iteration progress at its level
 				 * of nesting).
 				 */
-            *it = freeAndGetParent(*it);
+            *it = free_and_get_parent(*it);
             return WAGT_END_OBJECT;
         }
         else
         {
             /* Return key of a key/value pair.  */
-            fillJsonbXValue((*it)->container, (*it)->curr_index,
+            fill_agtype_value((*it)->container, (*it)->curr_index,
                             (*it)->data_proper, (*it)->curr_data_offset, val);
             if (val->type != AGTV_STRING)
-                elog(ERROR, "unexpected jsonbx type as object key");
+                elog(ERROR, "unexpected agtype type as object key");
 
             /* Set state for next call */
             (*it)->state = AGTI_OBJECT_VALUE;
@@ -867,7 +872,7 @@ recurse:
         /* Set state for next call */
         (*it)->state = AGTI_OBJECT_KEY;
 
-        fillJsonbXValue((*it)->container, (*it)->curr_index + (*it)->num_elems,
+        fill_agtype_value((*it)->container, (*it)->curr_index + (*it)->num_elems,
                         (*it)->data_proper, (*it)->curr_value_offset, val);
 
         AGTE_ADVANCE_OFFSET((*it)->curr_data_offset,
@@ -879,11 +884,11 @@ recurse:
         /*
 			 * Value may be a container, in which case we recurse with new,
 			 * child iterator (unless the caller asked not to, by passing
-			 * skipNested).
+			 * skip_nested).
 			 */
-        if (!IS_A_AGTYPE_SCALAR(val) && !skipNested)
+        if (!IS_A_AGTYPE_SCALAR(val) && !skip_nested)
         {
-            *it = iteratorFromContainer(val->val.binary.data, *it);
+            *it = iterator_from_container(val->val.binary.data, *it);
             goto recurse;
         }
         else
@@ -897,7 +902,7 @@ recurse:
 /*
  * Initialize an iterator for iterating all elements in a container.
  */
-static agtype_iterator *iteratorFromContainer(agtype_container *container,
+static agtype_iterator *iterator_from_container(agtype_container *container,
                                              agtype_iterator *parent)
 {
     agtype_iterator *it;
@@ -928,7 +933,7 @@ static agtype_iterator *iteratorFromContainer(agtype_container *container,
         break;
 
     default:
-        elog(ERROR, "unknown type of jsonbx container");
+        elog(ERROR, "unknown type of agtype container");
     }
 
     return it;
@@ -938,7 +943,7 @@ static agtype_iterator *iteratorFromContainer(agtype_container *container,
  * agtype_iterator_next() worker:	Return parent, while freeing memory for current
  * iterator
  */
-static agtype_iterator *freeAndGetParent(agtype_iterator *it)
+static agtype_iterator *free_and_get_parent(agtype_iterator *it)
 {
     agtype_iterator *v = it->parent;
 
@@ -955,16 +960,16 @@ static agtype_iterator *freeAndGetParent(agtype_iterator *it)
  * "belong" to those values in the sense that they've just been initialized in
  * respect of them by the caller (perhaps in a nested fashion).
  *
- * "val" is lhs agtype, and mContained is rhs agtype when called from top level.
- * We determine if mContained is contained within val.
+ * "val" is lhs agtype, and m_contained is rhs agtype when called from top level.
+ * We determine if m_contained is contained within val.
  */
-bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **mContained)
+bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **m_contained)
 {
     agtype_value vval, vcontained;
     agtype_iterator_token rval, rcont;
 
     /*
-	 * Guard against stack overflow due to overly complex Jsonb.
+	 * Guard against stack overflow due to overly complex agtype.
 	 *
 	 * Functions called here independently take this precaution, but that
 	 * might not be sufficient since this is also a recursive function.
@@ -972,7 +977,7 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **mContained)
     check_stack_depth();
 
     rval = agtype_iterator_next(val, &vval, false);
-    rcont = agtype_iterator_next(mContained, &vcontained, false);
+    rcont = agtype_iterator_next(m_contained, &vcontained, false);
 
     if (rval != rcont)
     {
@@ -1004,9 +1009,9 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **mContained)
         /* Work through rhs "is it contained within?" object */
         for (;;)
         {
-            agtype_value *lhsVal; /* lhsVal is from pair in lhs object */
+            agtype_value *lhs_val; /* lhs_val is from pair in lhs object */
 
-            rcont = agtype_iterator_next(mContained, &vcontained, false);
+            rcont = agtype_iterator_next(m_contained, &vcontained, false);
 
             /*
 			 * When we get through caller's rhs "is it contained within?"
@@ -1019,17 +1024,17 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **mContained)
             Assert(rcont == WAGT_KEY);
 
             /* First, find value by key... */
-            lhsVal = find_agtype_value_from_container((*val)->container,
+            lhs_val = find_agtype_value_from_container((*val)->container,
                                                   AGT_FOBJECT, &vcontained);
 
-            if (!lhsVal)
+            if (!lhs_val)
                 return false;
 
             /*
 			 * ...at this stage it is apparent that there is at least a key
 			 * match for this rhs pair.
 			 */
-            rcont = agtype_iterator_next(mContained, &vcontained, true);
+            rcont = agtype_iterator_next(m_contained, &vcontained, true);
 
             Assert(rcont == WAGT_VALUE);
 
@@ -1037,25 +1042,25 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **mContained)
 			 * Compare rhs pair's value with lhs pair's value just found using
 			 * key
 			 */
-            if (lhsVal->type != vcontained.type)
+            if (lhs_val->type != vcontained.type)
             {
                 return false;
             }
-            else if (IS_A_AGTYPE_SCALAR(lhsVal))
+            else if (IS_A_AGTYPE_SCALAR(lhs_val))
             {
-                if (!equalsJsonbXScalarValue(lhsVal, &vcontained))
+                if (!equals_agtype_scalar_value(lhs_val, &vcontained))
                     return false;
             }
             else
             {
                 /* Nested container value (object or array) */
-                agtype_iterator *nestval, *nestContained;
+                agtype_iterator *nestval, *nest_contained;
 
-                Assert(lhsVal->type == AGTV_BINARY);
+                Assert(lhs_val->type == AGTV_BINARY);
                 Assert(vcontained.type == AGTV_BINARY);
 
-                nestval = agtype_iterator_init(lhsVal->val.binary.data);
-                nestContained = agtype_iterator_init(vcontained.val.binary.data);
+                nestval = agtype_iterator_init(lhs_val->val.binary.data);
+                nest_contained = agtype_iterator_init(vcontained.val.binary.data);
 
                 /*
 				 * Match "value" side of rhs datum object's pair recursively.
@@ -1077,15 +1082,15 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **mContained)
 				 * of containment (plus of course the mapped nodes must be
 				 * equal).
 				 */
-                if (!agtype_deep_contains(&nestval, &nestContained))
+                if (!agtype_deep_contains(&nestval, &nest_contained))
                     return false;
             }
         }
     }
     else if (rcont == WAGT_BEGIN_ARRAY)
     {
-        agtype_value *lhsConts = NULL;
-        uint32 nLhsElems = vval.val.array.num_elems;
+        agtype_value *lhs_conts = NULL;
+        uint32 num_lhs_elems = vval.val.array.num_elems;
 
         Assert(vval.type == AGTV_ARRAY);
         Assert(vcontained.type == AGTV_ARRAY);
@@ -1106,7 +1111,7 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **mContained)
         /* Work through rhs "is it contained within?" array */
         for (;;)
         {
-            rcont = agtype_iterator_next(mContained, &vcontained, true);
+            rcont = agtype_iterator_next(m_contained, &vcontained, true);
 
             /*
 			 * When we get through caller's rhs "is it contained within?"
@@ -1132,21 +1137,21 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **mContained)
 				 * If this is first container found in rhs array (at this
 				 * depth), initialize temp lhs array of containers
 				 */
-                if (lhsConts == NULL)
+                if (lhs_conts == NULL)
                 {
                     uint32 j = 0;
 
                     /* Make room for all possible values */
-                    lhsConts = palloc(sizeof(agtype_value) * nLhsElems);
+                    lhs_conts = palloc(sizeof(agtype_value) * num_lhs_elems);
 
-                    for (i = 0; i < nLhsElems; i++)
+                    for (i = 0; i < num_lhs_elems; i++)
                     {
                         /* Store all lhs elements in temp array */
                         rcont = agtype_iterator_next(val, &vval, true);
                         Assert(rcont == WAGT_ELEM);
 
                         if (vval.type == AGTV_BINARY)
-                            lhsConts[j++] = vval;
+                            lhs_conts[j++] = vval;
                     }
 
                     /* No container elements in temp array, so give up now */
@@ -1154,26 +1159,26 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **mContained)
                         return false;
 
                     /* We may have only partially filled array */
-                    nLhsElems = j;
+                    num_lhs_elems = j;
                 }
 
                 /* XXX: Nested array containment is O(N^2) */
-                for (i = 0; i < nLhsElems; i++)
+                for (i = 0; i < num_lhs_elems; i++)
                 {
                     /* Nested container value (object or array) */
-                    agtype_iterator *nestval, *nestContained;
+                    agtype_iterator *nestval, *nest_contained;
                     bool contains;
 
-                    nestval = agtype_iterator_init(lhsConts[i].val.binary.data);
-                    nestContained =
+                    nestval = agtype_iterator_init(lhs_conts[i].val.binary.data);
+                    nest_contained =
                         agtype_iterator_init(vcontained.val.binary.data);
 
-                    contains = agtype_deep_contains(&nestval, &nestContained);
+                    contains = agtype_deep_contains(&nestval, &nest_contained);
 
                     if (nestval)
                         pfree(nestval);
-                    if (nestContained)
-                        pfree(nestContained);
+                    if (nest_contained)
+                        pfree(nest_contained);
                     if (contains)
                         break;
                 }
@@ -1182,62 +1187,62 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **mContained)
 				 * Report rhs container value is not contained if couldn't
 				 * match rhs container to *some* lhs cont
 				 */
-                if (i == nLhsElems)
+                if (i == num_lhs_elems)
                     return false;
             }
         }
     }
     else
     {
-        elog(ERROR, "invalid jsonbx container type");
+        elog(ERROR, "invalid agtype container type");
     }
 
-    elog(ERROR, "unexpectedly fell off end of jsonbx container");
+    elog(ERROR, "unexpectedly fell off end of agtype container");
     return false;
 }
 
 /*
- * Hash a agtype_value scalar value, mixing the hash value into an existing
+ * Hash an agtype_value scalar value, mixing the hash value into an existing
  * hash provided by the caller.
  *
  * Some callers may wish to independently XOR in AGT_FOBJECT and AGT_FARRAY
  * flags.
  */
-void agtype_hash_scalar_value(const agtype_value *scalarVal, uint32 *hash)
+void agtype_hash_scalar_value(const agtype_value *scalar_val, uint32 *hash)
 {
     uint32 tmp;
 
-    /* Compute hash value for scalarVal */
-    switch (scalarVal->type)
+    /* Compute hash value for scalar_val */
+    switch (scalar_val->type)
     {
     case AGTV_NULL:
         tmp = 0x01;
         break;
     case AGTV_STRING:
         tmp = DatumGetUInt32(
-            hash_any((const unsigned char *)scalarVal->val.string.val,
-                     scalarVal->val.string.len));
+            hash_any((const unsigned char *)scalar_val->val.string.val,
+                     scalar_val->val.string.len));
         break;
     case AGTV_NUMERIC:
         /* Must hash equal numerics to equal hash codes */
         tmp = DatumGetUInt32(DirectFunctionCall1(
-            hash_numeric, NumericGetDatum(scalarVal->val.numeric)));
+            hash_numeric, NumericGetDatum(scalar_val->val.numeric)));
         break;
     case AGTV_BOOL:
-        tmp = scalarVal->val.boolean ? 0x02 : 0x04;
+        tmp = scalar_val->val.boolean ? 0x02 : 0x04;
 
         break;
     case AGTV_INTEGER:
         tmp = DatumGetUInt32(DirectFunctionCall1(
-            hashint8, Int64GetDatum(scalarVal->val.int_value)));
+            hashint8, Int64GetDatum(scalar_val->val.int_value)));
         break;
     case AGTV_FLOAT:
         tmp = DatumGetUInt32(DirectFunctionCall1(
-            hashfloat8, Float8GetDatum(scalarVal->val.float_value)));
+            hashfloat8, Float8GetDatum(scalar_val->val.float_value)));
         break;
 
     default:
-        elog(ERROR, "invalid jsonbx scalar type");
+        elog(ERROR, "invalid agtype scalar type");
         tmp = 0; /* keep compiler quiet */
         break;
     }
@@ -1255,47 +1260,47 @@ void agtype_hash_scalar_value(const agtype_value *scalarVal, uint32 *hash)
  * Hash a value to a 64-bit value, with a seed. Otherwise, similar to
  * agtype_hash_scalar_value.
  */
-void agtype_hash_scalar_value_extended(const agtype_value *scalarVal, uint64 *hash,
+void agtype_hash_scalar_value_extended(const agtype_value *scalar_val, uint64 *hash,
                                    uint64 seed)
 {
     uint64 tmp;
 
-    switch (scalarVal->type)
+    switch (scalar_val->type)
     {
     case AGTV_NULL:
         tmp = seed + 0x01;
         break;
     case AGTV_STRING:
         tmp = DatumGetUInt64(
-            hash_any_extended((const unsigned char *)scalarVal->val.string.val,
-                              scalarVal->val.string.len, seed));
+            hash_any_extended((const unsigned char *)scalar_val->val.string.val,
+                              scalar_val->val.string.len, seed));
         break;
     case AGTV_NUMERIC:
         tmp = DatumGetUInt64(DirectFunctionCall2(
-            hash_numeric_extended, NumericGetDatum(scalarVal->val.numeric),
+            hash_numeric_extended, NumericGetDatum(scalar_val->val.numeric),
             UInt64GetDatum(seed)));
         break;
     case AGTV_BOOL:
         if (seed)
             tmp = DatumGetUInt64(DirectFunctionCall2(
-                hashcharextended, BoolGetDatum(scalarVal->val.boolean),
+                hashcharextended, BoolGetDatum(scalar_val->val.boolean),
                 UInt64GetDatum(seed)));
         else
-            tmp = scalarVal->val.boolean ? 0x02 : 0x04;
+            tmp = scalar_val->val.boolean ? 0x02 : 0x04;
 
         break;
     case AGTV_INTEGER:
         tmp = DatumGetUInt64(DirectFunctionCall2(
-            hashint8extended, Int64GetDatum(scalarVal->val.int_value),
+            hashint8extended, Int64GetDatum(scalar_val->val.int_value),
             UInt64GetDatum(seed)));
         break;
     case AGTV_FLOAT:
         tmp = DatumGetUInt64(DirectFunctionCall2(
-            hashfloat8extended, Float8GetDatum(scalarVal->val.float_value),
+            hashfloat8extended, Float8GetDatum(scalar_val->val.float_value),
             UInt64GetDatum(seed)));
         break;
     default:
-        elog(ERROR, "invalid jsonbx scalar type");
+        elog(ERROR, "invalid agtype scalar type");
         break;
     }
 
@@ -1306,32 +1311,32 @@ void agtype_hash_scalar_value_extended(const agtype_value *scalarVal, uint64 *ha
 /*
  * Are two scalar agtype_values of the same type a and b equal?
  */
-static bool equalsJsonbXScalarValue(agtype_value *aScalar, agtype_value *bScalar)
+static bool equals_agtype_scalar_value(agtype_value *a_scalar, agtype_value *b_scalar)
 {
-    if (aScalar->type == bScalar->type)
+    if (a_scalar->type == b_scalar->type)
     {
-        switch (aScalar->type)
+        switch (a_scalar->type)
         {
         case AGTV_NULL:
             return true;
         case AGTV_STRING:
-            return lengthCompareJsonbXStringValue(aScalar, bScalar) == 0;
+            return length_compare_agtype_string_value(a_scalar, b_scalar) == 0;
         case AGTV_NUMERIC:
             return DatumGetBool(DirectFunctionCall2(
-                numeric_eq, PointerGetDatum(aScalar->val.numeric),
-                PointerGetDatum(bScalar->val.numeric)));
+                numeric_eq, PointerGetDatum(a_scalar->val.numeric),
+                PointerGetDatum(b_scalar->val.numeric)));
         case AGTV_BOOL:
-            return aScalar->val.boolean == bScalar->val.boolean;
+            return a_scalar->val.boolean == b_scalar->val.boolean;
         case AGTV_INTEGER:
-            return aScalar->val.int_value == bScalar->val.int_value;
+            return a_scalar->val.int_value == b_scalar->val.int_value;
         case AGTV_FLOAT:
-            return aScalar->val.float_value == bScalar->val.float_value;
+            return a_scalar->val.float_value == b_scalar->val.float_value;
 
         default:
-            elog(ERROR, "invalid jsonbx scalar type");
+            elog(ERROR, "invalid agtype scalar type");
         }
     }
-    elog(ERROR, "jsonbx scalar type mismatch");
+    elog(ERROR, "agtype scalar type mismatch");
     return -1;
 }
 
@@ -1341,40 +1346,40 @@ static bool equalsJsonbXScalarValue(agtype_value *aScalar, agtype_value *bScalar
  * Strings are compared using the default collation.  Used by B-tree
  * operators, where a lexical sort order is generally expected.
  */
-static int compareJsonbXScalarValue(agtype_value *aScalar, agtype_value *bScalar)
+static int compare_agtype_scalar_value(agtype_value *a_scalar, agtype_value *b_scalar)
 {
-    if (aScalar->type == bScalar->type)
+    if (a_scalar->type == b_scalar->type)
     {
-        switch (aScalar->type)
+        switch (a_scalar->type)
         {
         case AGTV_NULL:
             return 0;
         case AGTV_STRING:
-            return varstr_cmp(aScalar->val.string.val, aScalar->val.string.len,
-                              bScalar->val.string.val, bScalar->val.string.len,
+            return varstr_cmp(a_scalar->val.string.val, a_scalar->val.string.len,
+                              b_scalar->val.string.val, b_scalar->val.string.len,
                               DEFAULT_COLLATION_OID);
         case AGTV_NUMERIC:
             return DatumGetInt32(DirectFunctionCall2(
-                numeric_cmp, PointerGetDatum(aScalar->val.numeric),
-                PointerGetDatum(bScalar->val.numeric)));
+                numeric_cmp, PointerGetDatum(a_scalar->val.numeric),
+                PointerGetDatum(b_scalar->val.numeric)));
         case AGTV_BOOL:
-            if (aScalar->val.boolean == bScalar->val.boolean)
+            if (a_scalar->val.boolean == b_scalar->val.boolean)
                 return 0;
-            else if (aScalar->val.boolean > bScalar->val.boolean)
+            else if (a_scalar->val.boolean > b_scalar->val.boolean)
                 return 1;
             else
                 return -1;
         case AGTV_INTEGER:
-            if (aScalar->val.int_value == bScalar->val.int_value)
+            if (a_scalar->val.int_value == b_scalar->val.int_value)
                 return 0;
-            else if (aScalar->val.int_value > bScalar->val.int_value)
+            else if (a_scalar->val.int_value > b_scalar->val.int_value)
                 return 1;
             else
                 return -1;
         case AGTV_FLOAT:
-            if (aScalar->val.float_value == bScalar->val.float_value)
+            if (a_scalar->val.float_value == b_scalar->val.float_value)
                 return 0;
-            else if (aScalar->val.float_value > bScalar->val.float_value)
+            else if (a_scalar->val.float_value > b_scalar->val.float_value)
                 return 1;
             else
                 return -1;
@@ -1388,14 +1393,14 @@ static int compareJsonbXScalarValue(agtype_value *aScalar, agtype_value *bScalar
 }
 
 /*
- * Functions for manipulating the resizeable buffer used by convertJsonbX and
+ * Functions for manipulating the resizeable buffer used by convert_agtype and
  * its subroutines.
  */
 
 /*
  * Reserve 'len' bytes, at the end of the buffer, enlarging it if necessary.
  * Returns the offset to the reserved area. The caller is expected to fill
- * the reserved area later with copyToBuffer().
+ * the reserved area later with copy_to_buffer().
  */
 int reserve_from_buffer(StringInfo buffer, int len)
 {
@@ -1422,21 +1427,21 @@ int reserve_from_buffer(StringInfo buffer, int len)
 /*
  * Copy 'len' bytes to a previously reserved area in buffer.
  */
-static void copyToBuffer(StringInfo buffer, int offset, const char *data,
+static void copy_to_buffer(StringInfo buffer, int offset, const char *data,
                          int len)
 {
     memcpy(buffer->data + offset, data, len);
 }
 
 /*
- * A shorthand for reserve_from_buffer + copyToBuffer.
+ * A shorthand for reserve_from_buffer + copy_to_buffer.
  */
-static void appendToBuffer(StringInfo buffer, const char *data, int len)
+static void append_to_buffer(StringInfo buffer, const char *data, int len)
 {
     int offset;
 
     offset = reserve_from_buffer(buffer, len);
-    copyToBuffer(buffer, offset, data, len);
+    copy_to_buffer(buffer, offset, data, len);
 }
 
 /*
@@ -1459,12 +1464,12 @@ short pad_buffer_to_int(StringInfo buffer)
 }
 
 /*
- * Given a agtype_value, convert to agtype. The result is palloc'd.
+ * Given an agtype_value, convert to agtype. The result is palloc'd.
  */
-static agtype *convertToJsonbX(agtype_value *val)
+static agtype *convert_to_agtype(agtype_value *val)
 {
     StringInfoData buffer;
-    agtentry jentry;
+    agtentry aentry;
     agtype *res;
 
     /* Should not already have binary representation */
@@ -1476,7 +1481,7 @@ static agtype *convertToJsonbX(agtype_value *val)
     /* Make room for the varlena header */
     reserve_from_buffer(&buffer, VARHDRSZ);
 
-    convertJsonbXValue(&buffer, &jentry, val, 0);
+    convert_agtype_value(&buffer, &aentry, val, 0);
 
     /*
 	 * Note: the agtentry of the root is discarded. Therefore the root
@@ -1492,7 +1497,7 @@ static agtype *convertToJsonbX(agtype_value *val)
 }
 
 /*
- * Subroutine of convertJsonbX: serialize a single agtype_value into buffer.
+ * Subroutine of convert_agtype: serialize a single agtype_value into buffer.
  *
  * The agtentry header for this node is returned in *header.  It is filled in
  * with the length of this value and appropriate type bits.  If we wish to
@@ -1502,7 +1507,7 @@ static agtype *convertToJsonbX(agtype_value *val)
  * If the value is an array or an object, this recurses. 'level' is only used
  * for debugging purposes.
  */
-static void convertJsonbXValue(StringInfo buffer, agtentry *header,
+static void convert_agtype_value(StringInfo buffer, agtentry *header,
                                agtype_value *val, int level)
 {
     check_stack_depth();
@@ -1513,25 +1518,25 @@ static void convertJsonbXValue(StringInfo buffer, agtentry *header,
     /*
 	 * A agtype_value passed as val should never have a type of AGTV_BINARY, and
 	 * neither should any of its sub-components. Those values will be produced
-	 * by convertJsonbXArray and convertJsonbXObject, the results of which will
+	 * by convert_agtype_array and convert_agtype_object, the results of which will
 	 * not be passed back to this function as an argument.
 	 */
 
     if (IS_A_AGTYPE_SCALAR(val))
-        convertJsonbXScalar(buffer, header, val);
+        convert_agtype_scalar(buffer, header, val);
     else if (val->type == AGTV_ARRAY)
-        convertJsonbXArray(buffer, header, val, level);
+        convert_agtype_array(buffer, header, val, level);
     else if (val->type == AGTV_OBJECT)
-        convertJsonbXObject(buffer, header, val, level);
+        convert_agtype_object(buffer, header, val, level);
     else
-        elog(ERROR, "unknown type of jsonbx container to convert");
+        elog(ERROR, "unknown type of agtype container to convert");
 }
 
-static void convertJsonbXArray(StringInfo buffer, agtentry *pheader,
+static void convert_agtype_array(StringInfo buffer, agtentry *pheader,
                                agtype_value *val, int level)
 {
     int base_offset;
-    int jentry_offset;
+    int agtentry_offset;
     int i;
     int totallen;
     uint32 header;
@@ -1544,7 +1549,7 @@ static void convertJsonbXArray(StringInfo buffer, agtentry *pheader,
     pad_buffer_to_int(buffer);
 
     /*
-	 * Construct the header Jentry and store it in the beginning of the
+	 * Construct the header AGTentry and store it in the beginning of the
 	 * variable-length payload.
 	 */
     header = num_elems | AGT_FARRAY;
@@ -1555,10 +1560,10 @@ static void convertJsonbXArray(StringInfo buffer, agtentry *pheader,
         header |= AGT_FSCALAR;
     }
 
-    appendToBuffer(buffer, (char *)&header, sizeof(uint32));
+    append_to_buffer(buffer, (char *)&header, sizeof(uint32));
 
-    /* Reserve space for the JXEntries of the elements. */
-    jentry_offset = reserve_from_buffer(buffer, sizeof(agtentry) * num_elems);
+    /* Reserve space for the AGTEntries of the elements. */
+    agtentry_offset = reserve_from_buffer(buffer, sizeof(agtentry) * num_elems);
 
     totallen = 0;
     for (i = 0; i < num_elems; i++)
@@ -1571,7 +1576,7 @@ static void convertJsonbXArray(StringInfo buffer, agtentry *pheader,
          * Convert element, producing a agtentry and appending its
          * variable-length data to buffer
          */
-        convertJsonbXValue(buffer, &meta, elem, level + 1);
+        convert_agtype_value(buffer, &meta, elem, level + 1);
 
         len = AGTE_OFFLENFLD(meta);
         totallen += len;
@@ -1586,7 +1591,7 @@ static void convertJsonbXArray(StringInfo buffer, agtentry *pheader,
                 ERROR,
                 (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
                  errmsg(
-                     "total size of jsonbx array elements exceeds the maximum of %u bytes",
+                     "total size of agtype array elements exceeds the maximum of %u bytes",
                      AGTENTRY_OFFLENMASK)));
 
         /*
@@ -1595,8 +1600,8 @@ static void convertJsonbXArray(StringInfo buffer, agtentry *pheader,
         if ((i % AGT_OFFSET_STRIDE) == 0)
             meta = (meta & AGTENTRY_TYPEMASK) | totallen | AGTENTRY_HAS_OFF;
 
-        copyToBuffer(buffer, jentry_offset, (char *)&meta, sizeof(agtentry));
-        jentry_offset += sizeof(agtentry);
+        copy_to_buffer(buffer, agtentry_offset, (char *)&meta, sizeof(agtentry));
+        agtentry_offset += sizeof(agtentry);
     }
 
     /* Total data size is everything we've appended to buffer */
@@ -1608,22 +1613,22 @@ static void convertJsonbXArray(StringInfo buffer, agtentry *pheader,
             ERROR,
             (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
              errmsg(
-                 "total size of jsonbx array elements exceeds the maximum of %u bytes",
+                 "total size of agtype array elements exceeds the maximum of %u bytes",
                  AGTENTRY_OFFLENMASK)));
 
     /* Initialize the header of this node in the container's agtentry array */
     *pheader = AGTENTRY_IS_CONTAINER | totallen;
 }
 
-static void convertJsonbXObject(StringInfo buffer, agtentry *pheader,
+static void convert_agtype_object(StringInfo buffer, agtentry *pheader,
                                 agtype_value *val, int level)
 {
     int base_offset;
-    int jentry_offset;
+    int agtentry_offset;
     int i;
     int totallen;
     uint32 header;
-    int nPairs = val->val.object.num_pairs;
+    int num_pairs = val->val.object.num_pairs;
 
     /* Remember where in the buffer this object starts. */
     base_offset = buffer->len;
@@ -1635,18 +1640,18 @@ static void convertJsonbXObject(StringInfo buffer, agtentry *pheader,
 	 * Construct the header agtentry and store it in the beginning of the
 	 * variable-length payload.
 	 */
-    header = nPairs | AGT_FOBJECT;
-    appendToBuffer(buffer, (char *)&header, sizeof(uint32));
+    header = num_pairs | AGT_FOBJECT;
+    append_to_buffer(buffer, (char *)&header, sizeof(uint32));
 
-    /* Reserve space for the JXEntries of the keys and values. */
-    jentry_offset = reserve_from_buffer(buffer, sizeof(agtentry) * nPairs * 2);
+    /* Reserve space for the AGTEntries of the keys and values. */
+    agtentry_offset = reserve_from_buffer(buffer, sizeof(agtentry) * num_pairs * 2);
 
     /*
 	 * Iterate over the keys, then over the values, since that is the ordering
 	 * we want in the on-disk representation.
 	 */
     totallen = 0;
-    for (i = 0; i < nPairs; i++)
+    for (i = 0; i < num_pairs; i++)
     {
         agtype_pair *pair = &val->val.object.pairs[i];
         int len;
@@ -1656,7 +1661,7 @@ static void convertJsonbXObject(StringInfo buffer, agtentry *pheader,
 		 * Convert key, producing a agtentry and appending its variable-length
 		 * data to buffer
 		 */
-        convertJsonbXScalar(buffer, &meta, &pair->key);
+        convert_agtype_scalar(buffer, &meta, &pair->key);
 
         len = AGTE_OFFLENFLD(meta);
         totallen += len;
@@ -1671,7 +1676,7 @@ static void convertJsonbXObject(StringInfo buffer, agtentry *pheader,
                 ERROR,
                 (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
                  errmsg(
-                     "total size of jsonbx object elements exceeds the maximum of %u bytes",
+                     "total size of agtype object elements exceeds the maximum of %u bytes",
                      AGTENTRY_OFFLENMASK)));
 
         /*
@@ -1680,10 +1685,10 @@ static void convertJsonbXObject(StringInfo buffer, agtentry *pheader,
         if ((i % AGT_OFFSET_STRIDE) == 0)
             meta = (meta & AGTENTRY_TYPEMASK) | totallen | AGTENTRY_HAS_OFF;
 
-        copyToBuffer(buffer, jentry_offset, (char *)&meta, sizeof(agtentry));
-        jentry_offset += sizeof(agtentry);
+        copy_to_buffer(buffer, agtentry_offset, (char *)&meta, sizeof(agtentry));
+        agtentry_offset += sizeof(agtentry);
     }
-    for (i = 0; i < nPairs; i++)
+    for (i = 0; i < num_pairs; i++)
     {
         agtype_pair *pair = &val->val.object.pairs[i];
         int len;
@@ -1693,7 +1698,7 @@ static void convertJsonbXObject(StringInfo buffer, agtentry *pheader,
 		 * Convert value, producing a agtentry and appending its variable-length
 		 * data to buffer
 		 */
-        convertJsonbXValue(buffer, &meta, &pair->value, level + 1);
+        convert_agtype_value(buffer, &meta, &pair->value, level + 1);
 
         len = AGTE_OFFLENFLD(meta);
         totallen += len;
@@ -1708,17 +1713,17 @@ static void convertJsonbXObject(StringInfo buffer, agtentry *pheader,
                 ERROR,
                 (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
                  errmsg(
-                     "total size of jsonbx object elements exceeds the maximum of %u bytes",
+                     "total size of agtype object elements exceeds the maximum of %u bytes",
                      AGTENTRY_OFFLENMASK)));
 
         /*
 		 * Convert each AGT_OFFSET_STRIDE'th length to an offset.
 		 */
-        if (((i + nPairs) % AGT_OFFSET_STRIDE) == 0)
+        if (((i + num_pairs) % AGT_OFFSET_STRIDE) == 0)
             meta = (meta & AGTENTRY_TYPEMASK) | totallen | AGTENTRY_HAS_OFF;
 
-        copyToBuffer(buffer, jentry_offset, (char *)&meta, sizeof(agtentry));
-        jentry_offset += sizeof(agtentry);
+        copy_to_buffer(buffer, agtentry_offset, (char *)&meta, sizeof(agtentry));
+        agtentry_offset += sizeof(agtentry);
     }
 
     /* Total data size is everything we've appended to buffer */
@@ -1730,53 +1735,53 @@ static void convertJsonbXObject(StringInfo buffer, agtentry *pheader,
             ERROR,
             (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
              errmsg(
-                 "total size of jsonbx object elements exceeds the maximum of %u bytes",
+                 "total size of agtype object elements exceeds the maximum of %u bytes",
                  AGTENTRY_OFFLENMASK)));
 
     /* Initialize the header of this node in the container's agtentry array */
     *pheader = AGTENTRY_IS_CONTAINER | totallen;
 }
 
-static void convertJsonbXScalar(StringInfo buffer, agtentry *jxentry,
-                                agtype_value *scalarVal)
+static void convert_agtype_scalar(StringInfo buffer, agtentry *aentry,
+                                agtype_value *scalar_val)
 {
     int numlen;
     short padlen;
     bool status;
 
-    switch (scalarVal->type)
+    switch (scalar_val->type)
     {
     case AGTV_NULL:
-        *jxentry = AGTENTRY_IS_NULL;
+        *aentry = AGTENTRY_IS_NULL;
         break;
 
     case AGTV_STRING:
-        appendToBuffer(buffer, scalarVal->val.string.val,
-                       scalarVal->val.string.len);
+        append_to_buffer(buffer, scalar_val->val.string.val,
+                       scalar_val->val.string.len);
 
-        *jxentry = scalarVal->val.string.len;
+        *aentry = scalar_val->val.string.len;
         break;
 
     case AGTV_NUMERIC:
-        numlen = VARSIZE_ANY(scalarVal->val.numeric);
+        numlen = VARSIZE_ANY(scalar_val->val.numeric);
         padlen = pad_buffer_to_int(buffer);
 
-        appendToBuffer(buffer, (char *)scalarVal->val.numeric, numlen);
+        append_to_buffer(buffer, (char *)scalar_val->val.numeric, numlen);
 
-        *jxentry = AGTENTRY_IS_NUMERIC | (padlen + numlen);
+        *aentry = AGTENTRY_IS_NUMERIC | (padlen + numlen);
         break;
 
     case AGTV_BOOL:
-        *jxentry = (scalarVal->val.boolean) ? AGTENTRY_IS_BOOL_TRUE :
+        *aentry = (scalar_val->val.boolean) ? AGTENTRY_IS_BOOL_TRUE :
                                               AGTENTRY_IS_BOOL_FALSE;
         break;
 
     default:
         /* returns true if there was a valid extended type processed */
-        status = ag_serialize_extended_type(buffer, jxentry, scalarVal);
+        status = ag_serialize_extended_type(buffer, aentry, scalar_val);
         /* if nothing was found, error log out */
         if (!status)
-            elog(ERROR, "invalid jsonbx scalar type");
+            elog(ERROR, "invalid agtype scalar type");
     }
 }
 
@@ -1792,7 +1797,7 @@ static void convertJsonbXScalar(StringInfo buffer, agtentry *jxentry,
  * a and b are first sorted based on their length.  If a tie-breaker is
  * required, only then do we consider string binary equality.
  */
-static int lengthCompareJsonbXStringValue(const void *a, const void *b)
+static int length_compare_agtype_string_value(const void *a, const void *b)
 {
     const agtype_value *va = (const agtype_value *)a;
     const agtype_value *vb = (const agtype_value *)b;
@@ -1825,14 +1830,14 @@ static int lengthCompareJsonbXStringValue(const void *a, const void *b)
  *
  * Pairs with equals keys are ordered such that the order field is respected.
  */
-static int lengthCompareJsonbXPair(const void *a, const void *b,
+static int length_compare_agtype_pair(const void *a, const void *b,
                                    void *binequal)
 {
     const agtype_pair *pa = (const agtype_pair *)a;
     const agtype_pair *pb = (const agtype_pair *)b;
     int res;
 
-    res = lengthCompareJsonbXStringValue(&pa->key, &pb->key);
+    res = length_compare_agtype_string_value(&pa->key, &pb->key);
     if (res == 0 && binequal)
         *((bool *)binequal) = true;
 
@@ -1849,17 +1854,17 @@ static int lengthCompareJsonbXPair(const void *a, const void *b,
 /*
  * Sort and unique-ify pairs in agtype_value object
  */
-static void uniqueifyJsonbXObject(agtype_value *object)
+static void uniqueify_agtype_object(agtype_value *object)
 {
-    bool hasNonUniq = false;
+    bool has_non_uniq = false;
 
     Assert(object->type == AGTV_OBJECT);
 
     if (object->val.object.num_pairs > 1)
         qsort_arg(object->val.object.pairs, object->val.object.num_pairs,
-                  sizeof(agtype_pair), lengthCompareJsonbXPair, &hasNonUniq);
+                  sizeof(agtype_pair), length_compare_agtype_pair, &has_non_uniq);
 
-    if (hasNonUniq)
+    if (has_non_uniq)
     {
         agtype_pair *ptr = object->val.object.pairs + 1,
                    *res = object->val.object.pairs;
@@ -1867,7 +1872,7 @@ static void uniqueifyJsonbXObject(agtype_value *object)
         while (ptr - object->val.object.pairs < object->val.object.num_pairs)
         {
             /* Avoid copying over duplicate */
-            if (lengthCompareJsonbXStringValue(ptr, res) != 0)
+            if (length_compare_agtype_string_value(ptr, res) != 0)
             {
                 res++;
                 if (ptr != res)
