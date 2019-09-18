@@ -1,7 +1,7 @@
 ---
-title: Change data capture (CDC) [beta]
-linkTitle: Change data capture (CDC) [beta]
-description: Change data capture (CDC) [beta]
+title: Change data capture (CDC)
+linkTitle: Change data capture (CDC)
+description: Change data capture (CDC)
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:

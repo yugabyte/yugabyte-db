@@ -1,12 +1,12 @@
 ---
-title: Replicate between 2 data centers [beta]
-linkTitle: Replicate between 2 data centers [beta]
-description: Replicate between two data centers [beta]
+title: Replicate between 2 data centers
+linkTitle: Replicate between 2 data centers
+description: Replicate between two data centers
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
-    parent: change-data-capture
-    identifier: 2dc-replication
+    parent: deploy
+    identifier: replicate-2dc
     weight: 632
 type: page
 isTocNested: true

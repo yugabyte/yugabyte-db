@@ -1,12 +1,12 @@
 ---
-title: Use CDC with Kafka [beta]
-linkTitle: Use CDC with Kafka [beta]
-description: Use CDC with Kafka [beta]
+title: Change data capture to stdout
+linkTitle: Change data capture to stdout
+description: Change data capture to stdout
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
-    parent: cdc
-    identifier: use-cdc-with-stdout
+    parent: deploy
+    identifier: cdc-to-stdout
     weight: 692
 type: page
 isTocNested: true

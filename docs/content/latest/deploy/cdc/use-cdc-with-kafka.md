@@ -1,11 +1,11 @@
 ---
-title: Use CDC with Kafka [beta]
-linkTitle: Use CDC with Kafka [beta]
-description: Use CDC with Kafka [beta]
+title: Change data capture with Kafka
+linkTitle: Change data capture with Kafka
+description: Change data capture with Kafka
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
-    parent: cdc
+    parent: deploy
     identifier: use-cdc-with-kafka
     weight: 691
 type: page
