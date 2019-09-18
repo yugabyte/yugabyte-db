@@ -16,7 +16,7 @@
 
 #include <unordered_map>
 
-#include "yb/cdc/cdc_consumer_util.h"
+#include "yb/cdc/cdc_util.h"
 #include "yb/util/locks.h"
 
 namespace yb {

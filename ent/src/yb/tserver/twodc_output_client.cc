@@ -14,7 +14,7 @@
 
 #include <shared_mutex>
 
-#include "yb/cdc/cdc_consumer_util.h"
+#include "yb/cdc/cdc_util.h"
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/gutil/strings/join.h"

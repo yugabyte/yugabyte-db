@@ -15,8 +15,8 @@
 #include <string>
 #include <boost/functional/hash.hpp>
 
-#ifndef ENT_SRC_YB_CDC_CDC_CONSUMER_UTIL_H
-#define ENT_SRC_YB_CDC_CDC_CONSUMER_UTIL_H
+#ifndef ENT_SRC_YB_CDC_CDC_UTIL_H
+#define ENT_SRC_YB_CDC_CDC_UTIL_H
 
 namespace yb {
 namespace cdc {
@@ -50,4 +50,4 @@ struct ProducerTabletInfo {
 } // namespace yb
 
 
-#endif // ENT_SRC_YB_CDC_CDC_CONSUMER_UTIL_H
+#endif // ENT_SRC_YB_CDC_CDC_UTIL_H
