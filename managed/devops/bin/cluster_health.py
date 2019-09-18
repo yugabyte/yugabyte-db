@@ -731,8 +731,7 @@ def main():
     report.write_to_log(args.log_file)
 
     # Write to stdout to be caught by YW subprocess.
-    if logging.getLogger().isEnabledFor(logging.DEBUG):
-        print(report)
+    print(report)
 
 
 if __name__ == '__main__':
