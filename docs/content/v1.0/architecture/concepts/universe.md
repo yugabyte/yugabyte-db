@@ -13,7 +13,7 @@ menu:
 
 ### Introduction
 
-A YugaByte universe, is a group of nodes (VMs, physical machines or containers) that collectively function as a highly available and resilient database.
+A Yugabyte universe, is a group of nodes (VMs, physical machines or containers) that collectively function as a highly available and resilient database.
 
 The universe can be deployed in a variety of configurations depending on business requirements, and latency considerations. Some examples:
 
@@ -21,32 +21,32 @@ The universe can be deployed in a variety of configurations depending on busines
 - Multiple AZs in a region
 - Multiple regions (with synchronous and asynchronous replication choices)
 
-A YugaByte *universe* can consist of one or more keyspaces (a.k.a databases in other databases such as MySQL or Postgres). A keyspace is essentially a namespace and can contain one or more tables. YugaByte automatically shards, replicates and load-balances these tables across the nodes in the universe, while respecting user-intent such as cross-AZ or region placement requirements, desired replication factor, and so on. YugaByte automatically handles failures (e.g., node, process, AZ or region failures), and re-distributes and re-replicates data back to desired levels across the remaining available nodes while still respecting any data placement requirements.
+A Yugabyte *universe* can consist of one or more keyspaces (a.k.a databases in other databases such as MySQL or Postgres). A keyspace is essentially a namespace and can contain one or more tables. Yugabyte automatically shards, replicates and load-balances these tables across the nodes in the universe, while respecting user-intent such as cross-AZ or region placement requirements, desired replication factor, and so on. Yugabyte automatically handles failures (e.g., node, process, AZ or region failures), and re-distributes and re-replicates data back to desired levels across the remaining available nodes while still respecting any data placement requirements.
 
 ### Processes
 
-A YugaByte universe comprises of two sets of processes, YB-Master and YB-TServer. These serve different purposes.
+A Yugabyte universe comprises of two sets of processes, YB-Master and YB-TServer. These serve different purposes.
 
-- The YB-Master (aka the YugaByte Master Server) processes are responsible for keeping system metadata, coordinating system-wide operations such as create/alter drop tables, and initiating maintenance operations such as load-balancing.
+- The YB-Master (aka the Yugabyte Master Server) processes are responsible for keeping system metadata, coordinating system-wide operations such as create/alter drop tables, and initiating maintenance operations such as load-balancing.
 
-- The YB-TServer (aka the YugaByte Tablet Server) processes are responsible for hosting/serving user data (e.g, tables).
+- The YB-TServer (aka the Yugabyte Tablet Server) processes are responsible for hosting/serving user data (e.g, tables).
 
-YugaByte is architected to not have any single point of failure. The YB-Master and YB-TServer processes use [Raft](https://raft.github.io/), a distributed consensus algorithm, for replicating changes to system metadata or user data respectively across a set of nodes.
+Yugabyte is architected to not have any single point of failure. The YB-Master and YB-TServer processes use [Raft](https://raft.github.io/), a distributed consensus algorithm, for replicating changes to system metadata or user data respectively across a set of nodes.
 
 High Availability (HA) of the YB-Master’s functionalities and of the user-tables served by the YB-TServers is achieved by the failure-detection and new-leader election mechanisms that are built into the Raft implementation.
 
-Below is an illustration of a simple 4-node YugaByte universe:
+Below is an illustration of a simple 4-node Yugabyte universe:
 
 ![4 node cluster](/images/architecture/4_node_cluster.png)
 
 ## Cluster
-A YugaByte Universe can comprise of one or more clusters. Each cluster is a logical group of nodes running YB-TServers that are either performing strong (synchronous) replication of the user data or are in a timeline consistent (asynchronous) replication mode. The set of nodes that are performing strong replication are referred to as the Primary cluster and other groups are called Read Replica clusters. There is always one primary cluster in a universe and there can be zero or more read replica clusters in that universe. More information is [here](../replication/#read-only-replicas).
+A Yugabyte Universe can comprise of one or more clusters. Each cluster is a logical group of nodes running YB-TServers that are either performing strong (synchronous) replication of the user data or are in a timeline consistent (asynchronous) replication mode. The set of nodes that are performing strong replication are referred to as the Primary cluster and other groups are called Read Replica clusters. There is always one primary cluster in a universe and there can be zero or more read replica clusters in that universe. More information is [here](../replication/#read-only-replicas).
 
 Note: In most of the docs, the term `cluster` and `universe` are used interchangeably.
 
 ## YB-TServer
 
-The YB-TServer (short for YugaByte Tablet Server) is the process that does the actual IO for end
+The YB-TServer (short for Yugabyte Tablet Server) is the process that does the actual IO for end
 user requests. Recall from the previous section that data for a table is split/sharded into tablets.
 Each tablet is composed of one or more tablet-peers depending on the replication factor. And each
 YB-TServer hosts one or more tablet-peers.
@@ -54,7 +54,7 @@ YB-TServer hosts one or more tablet-peers.
 Note: We will refer to the “tablet-peers hosted by a YB-TServer” simply as the “tablets hosted by a
 YB-TServer”.
 
-Below is a pictorial illustration of this in the case of a 4 node YugaByte universe, with one table
+Below is a pictorial illustration of this in the case of a 4 node Yugabyte universe, with one table
 that has 16 tablets and a replication factor of 3.
 
 ![tserver_overview](/images/architecture/tserver_overview.png)

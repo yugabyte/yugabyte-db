@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-A YugaByte DB universe, is a group of nodes (VMs, physical machines or containers) that collectively function as a highly available and resilient database.
+A Yugabyte DB universe, is a group of nodes (VMs, physical machines or containers) that collectively function as a highly available and resilient database.
 
 {{< note title="Note" >}}
 In most of the docs, the term `cluster` and `universe` are used interchangeably. However, the two are not always equivalent. The difference is described in a section below.
@@ -28,9 +28,9 @@ The universe can be deployed in a variety of configurations depending on busines
 
 ## Organization of user data
 
-A YugaByte DB *universe* can consist of one or more namespaces. Each of these namespaces can contain one or more user tables.
+A Yugabyte DB *universe* can consist of one or more namespaces. Each of these namespaces can contain one or more user tables.
 
-YugaByte automatically shards, replicates and load-balances these tables across the nodes in the universe, while respecting user-intent such as cross-AZ or region placement requirements, desired replication factor, and so on. YugaByte automatically handles failures (e.g., node, process, AZ or region failures), and re-distributes and re-replicates data back to desired levels across the remaining available nodes while still respecting any data placement requirements.
+Yugabyte automatically shards, replicates and load-balances these tables across the nodes in the universe, while respecting user-intent such as cross-AZ or region placement requirements, desired replication factor, and so on. Yugabyte automatically handles failures (e.g., node, process, AZ or region failures), and re-distributes and re-replicates data back to desired levels across the remaining available nodes while still respecting any data placement requirements.
 
 ### YSQL
 
@@ -45,30 +45,30 @@ A namespace in YCQL is referred to as a **keyspace** and is logically the same a
 A universe comprises of two sets of processes, **YB-TServer** and **YB-Master**. The YB-TServer and YB-Master processes form two respective distributed services using [Raft](https://raft.github.io/) as a building block. High Availability (HA) of both these services is achieved by the failure-detection, leader election and data replication mechanisms in the Raft implementation.
 
 {{< note title="Note" >}}
-YugaByte DB is architected to not have any single point of failure.
+Yugabyte DB is architected to not have any single point of failure.
 {{< /note >}}
 
 These serve different purposes as described below.
 
 ### YB-TServer process
 
-The **YB-TServer** (aka the *YugaByte DB Tablet Server*) processes are responsible for hosting/serving user data (e.g, tables). They deal with all the user queries.
+The **YB-TServer** (aka the *Yugabyte DB Tablet Server*) processes are responsible for hosting/serving user data (e.g, tables). They deal with all the user queries.
 
 You can read more [about YB-TServers](../yb-tserver).
 
 ### YB-Master process
 
-The **YB-Master** (aka the *YugaByte DB Master Server*) processes are responsible for keeping system metadata, coordinating system-wide operations such as create/alter/drop tables, and initiating maintenance operations such as load-balancing.
+The **YB-Master** (aka the *Yugabyte DB Master Server*) processes are responsible for keeping system metadata, coordinating system-wide operations such as create/alter/drop tables, and initiating maintenance operations such as load-balancing.
 
 You can read more [about YB-TServers](../yb-tserver).
 
-Below is an illustration of a simple 4-node YugaByte universe:
+Below is an illustration of a simple 4-node Yugabyte universe:
 
 ![4 node cluster](/images/architecture/4_node_cluster.png)
 
 ## Universe vs cluster
 
-A YugaByte DB universe can comprise of one or more clusters. Each cluster is a logical group of nodes running YB-TServers that are either performing one of the following replication modes:
+A Yugabyte DB universe can comprise of one or more clusters. Each cluster is a logical group of nodes running YB-TServers that are either performing one of the following replication modes:
 
 - Synchronous replication
 - Asynchronous replication

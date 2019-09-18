@@ -33,7 +33,7 @@ The master store system metadata such as the information about all the keyspaces
 
 ### Authoritative source of tablet ssignments to YB-TServers
 
-The YB-Master stores all tablets and the corresponding YB-TServers that currently host them. This map of tablets to the hosting YB-TServers is queried by clients (such as the YQL layer). Applications using the YB smart clients for various languages (such as Cassandra, Redis, or PostgreSQL(beta)) are very efficient in retrieving data. The smart clients query the YB-Master for the tablet to YB-TServer map and cache it. By doing so, the smart clients can talk directly to the correct YB-TServer to serve various queries without incurring additional network hops.
+The YB-Master stores all tablets and the corresponding YB-TServers that currently host them. This map of tablets to the hosting YB-TServers is queried by clients (such as the YQL layer). Applications using the YB smart clients for the YCQL and YSQL APIs are  efficient in retrieving data. The smart clients query the YB-Master for the tablet to YB-TServer map and cache it. By doing so, the smart clients can talk directly to the correct YB-TServer to serve various queries without incurring additional network hops.
 
 ### Background Operations
 

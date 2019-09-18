@@ -15,6 +15,8 @@ showAsideToc: true
 
 ## Synopsis
 
+This command creates an index on the specified column(s) of the specified table. Indexes are primarily used to improve query performance.
+
 ## Syntax
 
 <ul class="nav nav-tabs nav-tabs-yb">
@@ -43,9 +45,7 @@ showAsideToc: true
 
 ## Semantics
 
-`CONCURRENTLY`, `USING method`, `COLLATE`, `NULL` order, and `TABLESPACE` options are not yet supported.
-
-### *create_index*
+`CONCURRENTLY`, `USING method`, `COLLATE`, and `TABLESPACE` options are not yet supported.
 
 ### UNIQUE
 
@@ -73,8 +73,60 @@ Specify the name of a column of the table.
 
 Specify one or more columns of the table and must be surrounded by parentheses.
 
+- `HASH` - Use hash of the column. This is the default option and is used to hash partition the index table.
 - `ASC` — Sort in ascending order.
 - `DESC` — Sort in descending order.
+- `NULLS FIRST` - Specifies that nulls sort before non-nulls. This is the default when DESC is specified.
+- `NULLS LAST` - Specifies that nulls sort after non-nulls. This is the default when DESC is not specified.
 
-#### *opclass*
+## Examples
 
+### Unique index with HASH column ordering
+
+Create a unique index with hash ordered columns.
+
+```sql
+yugabyte=# CREATE TABLE products(id int PRIMARY KEY,
+                                 name text,
+                                 code text);
+yugabyte=# CREATE UNIQUE INDEX ON products(code);
+yugabyte=# \d products
+              Table "public.products"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ id     | integer |           | not null |
+ name   | text    |           |          |
+ code   | text    |           |          |
+Indexes:
+    "products_pkey" PRIMARY KEY, lsm (id HASH)
+    "products_code_idx" UNIQUE, lsm (code HASH)
+```
+
+### ASC ordered index
+
+Create an index with ascending ordered key.
+
+```sql
+yugabyte=# CREATE INDEX products_name ON products(name ASC);
+yugabyte=# \d products_name
+   Index "public.products_name"
+ Column | Type | Key? | Definition
+--------+------+------+------------
+ name   | text | yes  | name
+lsm, for table "public.products
+```
+
+### INCLUDE columns
+
+Create an index with ascending ordered key and include other columns as non-key columns
+
+```sql
+yugabyte=# CREATE INDEX products_name_code ON products(name) INCLUDE (code);
+yugabyte=# \d products_name_code;
+ Index "public.products_name_code"
+ Column | Type | Key? | Definition
+--------+------+------+------------
+ name   | text | yes  | name
+ code   | text | no   | code
+lsm, for table "public.products"
+```

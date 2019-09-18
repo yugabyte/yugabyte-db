@@ -1,10 +1,9 @@
 ---
 title: YSQL
 linkTitle: YSQL
-description: YugaByte Structured Query Language (YSQL) [Beta]
+description: Yugabyte Structured Query Language (YSQL)
 summary: Reference for the YSQL API
 image: /images/section_icons/api/ysql.png
-beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
     identifier: api-ysql
@@ -19,7 +18,7 @@ showAsideToc: true
 
 ## Introduction
 
-The YugaByte Structured Query Language (YSQL) is the distributed SQL API for YugaByte DB and is compatible with the SQL dialect of PostgreSQL. Currently, YSQL is compatible with PostgreSQL 11.2 version. YugaByte DB and YSQL are optimized for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features, such as JOINs, distributed transactions, and referential integrity (such as foreign keys).
+The Yugabyte Structured Query Language (YSQL) is the distributed SQL API for Yugabyte DB and is compatible with the SQL dialect of PostgreSQL. Currently, YSQL is compatible with PostgreSQL 11.2 version. Yugabyte DB and YSQL are optimized for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features, such as JOINs, distributed transactions, and referential integrity (such as foreign keys).
 
 The main components of YSQL include the data definition language (DDL), the data manipulation language (DML), and the data control language (DCL). A number of elements are used to construct these components, including data types, database objects, names and qualifiers, expressions, and comments. Other components are also provided for different purposes such as system control, transaction control, and performance tuning.
 
@@ -34,10 +33,15 @@ DDL statements define the structures in a database, change their definitions, as
 | Statement | Description |
 |-----------|-------------|
 | [`ALTER DATABASE`](commands/ddl_alter_db) | Change database definition |
+| [`ALTER SEQUENCE`](commands/ddl_alter_sequence) | Change sequence definition |
 | [`ALTER TABLE`](commands/ddl_alter_table) | Change table definition |
 | [`CREATE AGGREGATE`](commands/ddl_create_aggregate) | Create a new aggregate |
+| [`CREATE CAST`](commands/ddl_create_cast) | Create a new cast |
 | [`CREATE DATABASE`](commands/ddl_create_database) | Create a new database |
 | [`CREATE INDEX`](commands/ddl_create_index) | Create a new index |
+| [`CREATE OPERATOR`](commands/ddl_create_operator) | Create a new operator |
+| [`CREATE OPERATOR CLASS`](commands/ddl_create_operator_class) | Create a new operator class |
+| [`CREATE RULE`](commands/ddl_create_rule) | Create a new rule |
 | [`CREATE SCHEMA`](commands/ddl_create_schema) | Create a new schema (namespace) |
 | [`CREATE SEQUENCE`](commands/ddl_create_sequence) | Create a new sequence generator |
 | [`CREATE TABLE`](commands/ddl_create_table) | Create a new table |
@@ -46,7 +50,11 @@ DDL statements define the structures in a database, change their definitions, as
 | [`CREATE TYPE`](commands/ddl_create_type) | Create a new type |
 | [`CREATE VIEW`](commands/ddl_create_view) | Create a new view |
 | [`DROP AGGREGATE`](commands/ddl_drop_aggregate) | Delete an aggregate |
+| [`DROP CAST`](commands/ddl_drop_cast) | Delete a cast |
 | [`DROP DATABASE`](commands/ddl_drop_database) | Delete a database from the system |
+| [`DROP OPERATOR`](commands/ddl_drop_operator) | Delete an operator |
+| [`DROP OPERATOR CLASS`](commands/ddl_drop_operator_class) | Delete an operator class |
+| [`DROP RULE`](commands/ddl_drop_rule) | Delete a rule |
 | [`DROP SEQUENCE`](commands/ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP TABLE`](commands/ddl_drop_table) | Delete a table from a database |
 | [`DROP TYPE`](commands/ddl_drop_type) | Delete a user-defined type |

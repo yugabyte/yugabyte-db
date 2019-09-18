@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte Inc.
+// Copyright (c) Yugabyte Inc.
 
 import Clipboard from 'clipboard';
 import 'particles.js';

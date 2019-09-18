@@ -64,6 +64,28 @@ config_setting ::= 'SET' config_param ( 'TO' | '=' ) ( config_value | 'DEFAULT' 
 config_param ::= '<Text Literal>' ;
 config_value ::= '<Text Literal>' ;
 
+(* 'ALTER' 'SEQUENCE' *)
+alter_sequence ::= 'ALTER' 'SEQUENCE' [ 'IF' 'EXISTS' ] name alter_sequence_options ;
+
+name ::= '<Text Literal>' ;
+
+alter_sequence_options ::= [ 'AS' data_type ]
+                           [ 'INCREMENT' [ 'BY' ] increment ]
+                           [ 'MINVALUE' minvalue | 'NO' 'MINVALUE' ]
+                           [ 'MAXVALUE' maxvalue | 'NO' 'MAXVALUE' ]
+                           [ 'START' [ 'WITH' ] start ]
+                           [ 'RESTART' [ [ 'WITH' ] restart ] ]
+                           [ 'CACHE' cache ]
+                           [ 'OWNED BY' table_name.table_column | 'NONE' ] ;
+
+data_type ::= ( 'smallint' | 'integer' | 'bigint' ) ;
+increment ::= '<Integer Literal>' ;
+minvalue ::= '<Integer Literal>' ;
+maxvalue ::= '<Integer Literal>' ;
+start ::= '<Integer Literal>' ;
+restart ::= '<Integer Literal>';
+cache ::= '<Integer Literal>' ;
+
 (* 'ALTER' 'TABLE' *)
 alter_table ::= 'ALTER' 'TABLE' [ 'ONLY' ] name [ '*' ]
                         alter_table_action { ',' alter_table_action } ;
@@ -107,11 +129,11 @@ comment_on = 'COMMENT' 'ON' (
   'EVENT' 'TRIGGER' object_name |
   'FOREIGN' 'DATA' 'WRAPPER' object_name |
   'FOREIGN' 'TABLE' object_name |
-  'FUNCTION' function_name [ '(' [ [ argmode ] [ argname ] argtype { ',' argtype } ] ')' ] |
+  'FUNCTION' function_name [ '(' function_signature ')' ] |
   'INDEX' object_name |
   'LARGE' 'OBJECT' large_object_oid |
   'MATERIALIZED' 'VIEW' object_name |
-  'OPERATOR' operator_name '(' left_type ',' right_type ')' |
+  'OPERATOR' operator_name '(' operator_signature ')' |
   'OPERATOR' 'CLASS' object_name 'USING' index_method |
   'OPERATOR' 'FAMILY' object_name 'USING' index_method |
   'POLICY' policy_name 'ON' table_name |
@@ -234,6 +256,27 @@ aggregate_old_option = 'SSPACE' '=' state_data_size
                      | 'MINITCOND' '=' minitial_condition
                      | 'SORTOP' '=' sort_operator ;
 
+(* 'CREATE' 'CAST' *)
+
+create_cast = create_cast_with_function
+            | create_cast_without_function
+            | create_cast_with_inout ;
+
+create_cast_with_function = 'CREATE' 'CAST' '(' cast_signature ')'
+                            'WITH' 'FUNCTION' function_name
+                            [ '(' function_signature ')' ]
+                            [ 'AS' 'ASSIGNMENT' | 'AS' 'IMPLICIT' ] ;
+
+create_cast_without_function = 'CREATE' 'CAST' '(' cast_signature ')'
+                               'WITHOUT' 'FUNCTION'
+                               [ 'AS' 'ASSIGNMENT' | 'AS' 'IMPLICIT' ] ;
+
+create_cast_with_inout = 'CREATE' 'CAST' '(' cast_signature ')'
+                         'WITH' 'INOUT'
+                         [ 'AS' 'ASSIGNMENT' | 'AS' 'IMPLICIT' ] ;
+
+cast_signature = source_type 'AS' target_type ;
+
 (* 'CREATE' 'DATABASE' *)
 
 create_database ::= 'CREATE' 'DATABASE' name [ create_database_options ] ;
@@ -264,7 +307,75 @@ create_index ::= 'CREATE' [ 'UNIQUE' ] 'INDEX' [ [ 'IF' 'NOT' 'EXISTS' ] name ] 
                           [ 'INCLUDE' '(' column_name { ',' column_name } ')' ] \
                           [ 'WHERE' predicate ] ;
 
-index_elem ::= ( column_name | '(' expression ')' ) [ opclass ] [ 'ASC' | 'DESC' ] ;
+index_elem = ( column_name | '(' expression ')' ) [ operator_class_name ]
+             [ 'HASH' | 'ASC' | 'DESC' ] [ 'NULLS' ( 'FIRST' | 'LAST' ) ] ;
+
+(* 'CREATE' 'OPERATOR' *)
+create_operator = 'CREATE' 'OPERATOR' operator_name '('
+                  ( 'FUNCTION' '=' function_name | 'PROCEDURE' '=' procedure_name )
+                  { ',' operator_option } ')' ;
+
+operator_option = 'LEFTARG' '=' left_type
+                | 'RIGHTARG' '=' right_type
+                | 'COMMUTATOR' '=' com_op
+                | 'NEGATOR' '=' neg_op
+                | 'RESTRICT' '=' res_proc
+                | 'JOIN' '=' join_proc
+                | 'HASHES'
+                | 'MERGES' ;
+
+(* 'CREATE' 'OPERATOR' 'CLASS' *)
+create_operator_class = 'CREATE' 'OPERATOR' 'CLASS' operator_class_name [ 'DEFAULT' ]
+                        'FOR' 'TYPE' data_type
+                        'USING' index_method 'AS' operator_class_as { ',' operator_class_as } ;
+
+operator_class_as = 'OPERATOR' strategy_number operator_name [ '(' operator_signature ')' ]
+                    [ 'FOR' 'SEARCH' ]
+                  | 'FUNCTION' support_number [ '(' op_type { ',' op_type } ')' ]
+                    function_name '(' function_signature ')'
+                  | 'STORAGE' storage_type ;
+
+(* 'CREATE' 'ROLE' *)
+create_role ::= 'CREATE' 'ROLE' role_name [ [ 'WITH' ] role_option { ',' role_option } ] ;
+
+role_option ::= 'SUPERUSER'
+              | 'NOSUPERUSER'
+              | 'CREATEDB'
+              | 'NOCREATEDB'
+              | 'CREATEROLE'
+              | 'NOCREATEROLE'
+              | 'INHERIT'
+              | 'NOINHERIT'
+              | 'LOGIN'
+              | 'NOLOGIN'
+              | 'CONNECTION' 'LIMIT' connlimit
+              | [ 'ENCRYPTED' ] 'PASSWORD' ''' password '''
+              | 'PASSWORD' 'NULL'
+              | 'VALID' 'UNTIL' ''' timestamp '''
+              | 'IN' 'ROLE' role_name { ',' role_name }
+              | 'IN' 'GROUP' role_name { ',' role_name }
+              | 'ROLE' role_name { ',' role_name }
+              | 'ADMIN' role_name { ',' role_name }
+              | 'USER' role_name { ',' role_name }
+              | 'SYSID' uid ;
+
+role_name ::= name ;
+password ::= '<Text Literal>' ;
+timestamp ::= '<DateTime Literal>' ;
+connlimit ::= '<Integer Literal>';
+uid ::= '<Text Literal>';
+
+(* 'CREATE' 'RULE' *)
+create_rule = 'CREATE' [ 'OR' 'REPLACE' ] 'RULE' rule_name 'AS' 'ON' rule_event
+              'TO' table_name [ 'WHERE' condition ]
+              'DO' [ 'ALSO' | 'INSTEAD' ]
+              ( 'NOTHING'
+              | command
+              | '(' command { ';' command } ')' ) ;
+
+rule_event = 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' ;
+
+command = 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'NOTIFY' ;
 
 (* 'CREATE' 'ROLE' *)
 create_role ::= 'CREATE' 'ROLE' role_name [ [ 'WITH' ] role_option { ',' role_option } ] ;
@@ -316,7 +427,8 @@ sequence_options ::= [ 'INCREMENT' [ 'BY' ] increment ]
                      [ 'MINVALUE' minvalue | 'NO' 'MINVALUE' ]
                      [ 'MAXVALUE' maxvalue | 'NO' 'MAXVALUE' ]
                      [ 'START' [ 'WITH' ] start ]
-                     [ 'CACHE' cache ] ;
+                     [ 'CACHE' cache ]
+                     [ [ NO ] CYCLE ] ;
 
 increment ::= '<Integer Literal>' ;
 minvalue ::= '<Integer Literal>' ;
@@ -325,7 +437,7 @@ start ::= '<Integer Literal>' ;
 cache ::= '<Integer Literal>' ;
 
 (* 'CREATE' 'TABLE' *)
-create_table ::= 'CREATE' 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] table_name
+create_table ::= 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] table_name
                  '(' [ table_elem { ',' table_elem } ] ')'
                  [ 'WITH' '(' storage_parameters ')' | 'WITHOUT' 'OIDS' ] ;
 
@@ -343,8 +455,16 @@ column_constraint ::= [ 'CONSTRAINT' constraint_name ]
 table_constraint ::= [ 'CONSTRAINT' constraint_name ]
                      ( 'CHECK' '(' expression ')'
                        | 'UNIQUE' '(' column_names ')' index_parameters
-                       | 'PRIMARY' 'KEY' '(' column_names ')'
+                       | 'PRIMARY' 'KEY' '(' key_columns ')'
                        | 'FOREIGN' 'KEY' '(' column_names ')' references_clause ) ;
+
+key_columns ::= hash_columns [ ',' range_columns ]
+              | range_columns ;
+
+hash_columns ::= column_name [ 'HASH' ]
+                | '(' column_name { ',' column_name } ')' 'HASH' ;
+
+range_columns ::= ( column_name ( 'ASC' | 'DESC' ) ) { ','  ( column_name ( 'ASC' | 'DESC' ) ) } ;
 
 references_clause ::= 'REFERENCES' table_name [ ( column_name { ',' column_name } ) ]
                       [ 'MATCH' 'FULL' | 'MATCH' 'PARTIAL' | 'MATCH' 'SIMPLE' ] \
@@ -440,15 +560,17 @@ returning_expression ::= output_expression [ [ 'AS' ] output_name ] ;
 do = 'DO' [ 'LANGUAGE' lang_name ] code ;
 
 (* 'DROP' 'AGGREGATE' *)
-
-drop_aggregate = 'DROP' 'AGGREGATE' [ 'IF' 'EXISTS' ] aggregate_name '(' aggregate_signature ')'
-                 { ',' aggregate_name '(' aggregate_signature ')' }
+drop_aggregate = 'DROP' 'AGGREGATE' [ 'IF' 'EXISTS' ] ( aggregate_name '(' aggregate_signature ')' )
+                 { ',' ( aggregate_name '(' aggregate_signature ')' ) }
                  [ 'CASCADE' | 'RESTRICT' ] ;
 
 aggregate_signature = '*'
                     | aggregate_arg { ',' aggregate_arg }
                     | [ aggregate_arg { ',' aggregate_arg } ]
                       'ORDER' 'BY' aggregate_arg { ',' aggregate_arg } ;
+
+(* 'DROP' 'CAST' *)
+drop_cast = 'DROP' 'CAST' [ 'IF' 'EXISTS' ] '(' cast_signature ')' [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'DATABASE' *)
 drop_database ::= 'DROP' 'DATABASE' [ 'IF' 'EXISTS' ] database_name ;
@@ -459,8 +581,22 @@ drop_domain ::= 'DROP' 'DOMAIN' [ 'IF' 'EXISTS' ] name { ',' name }  [ 'CASCADE'
 (* 'DROP' 'GROUP' *)
 drop_group ::= 'DROP' 'GROUP' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
 
+(* 'DROP' 'OPERATOR' *)
+drop_operator = 'DROP' 'OPERATOR' [ 'IF' 'EXISTS' ] ( operator_name '(' operator_signature ')' )
+                { ',' ( operator_name '(' operator_signature ')' ) }
+                [ 'CASCADE' | 'RESTRICT' ] ;
+
+operator_signature = ( left_type | 'NONE' ) ',' ( right_type | 'NONE' ) ;
+
+(* 'DROP' 'OPERATOR' 'CLASS' *)
+drop_operator_class = 'DROP' 'OPERATOR' 'CLASS' [ 'IF' 'EXISTS' ] operator_class_name
+                      'USING' index_method [ 'CASCADE' | 'RESTRICT' ] ;
+
 (* 'DROP' 'ROLE' *)
 drop_role ::= 'DROP' 'ROLE' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
+
+(* 'DROP' 'RULE' *)
+drop_rule = 'DROP' 'RULE' [ 'IF' 'EXISTS' ] rule_name 'ON' table_name [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'SEQUENCE' *)
 drop_sequence ::= 'DROP' 'SEQUENCE' [ 'IF' 'EXISTS' ] sequence_name [ 'CASCADE' | 'RESTRICT' ] ;
@@ -651,7 +787,8 @@ select ::= [ 'WITH' [ 'RECURSIVE' ] ( with_query { ',' with_query } ) ] \
 
 select_expression ::= expression [ [ 'AS' ] name ] ;
 
-order_expr ::= expression [ 'ASC' | 'DESC' | 'USING' operator ] [ 'NULLS' ( 'FIRST' | 'LAST' ) ] ;
+order_expr = expression [ 'ASC' | 'DESC' | 'USING' operator_name ]
+             [ 'NULLS' ( 'FIRST' | 'LAST' ) ] ;
 
 (* 'SET' variable *)
 set ::= 'SET' [ 'SESSION' | 'LOCAL' ]
@@ -730,10 +867,6 @@ trigger_name ::= qualified_name ;
 domain_name ::= qualified_name ;
 
 index_method ::= '<Text Literal>';
-
-source_type ::= '<Text Literal>' ;
-
-target_type ::= '<Text Literal>' ;
 
 argmode ::= ( 'IN' | 'OUT' | 'INOUT' | 'VARIADIC' ) ;
 
@@ -843,3 +976,19 @@ mstate_data_size = '<non-negative integer>' ;
 mffunc = function_name ;
 minitial_condition = '<Text literal>' ;
 sort_operator = operator_name ;
+
+function_signature =
+                   | [ argmode ] [ argname ] argtype { ',' [ argmode ] [ argname ] argtype } ;
+
+source_type = type_name ;
+target_type = type_name ;
+
+com_op = operator_name ;
+neg_op = operator_name ;
+res_proc = procedure_name ;
+join_proc = procedure_name ;
+
+strategy_number = '<positive integer>' ;
+support_number = '<positive integer>' ;
+op_type = data_type ;
+storage_type = data_type ;

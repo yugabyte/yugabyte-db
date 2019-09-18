@@ -22,9 +22,9 @@ the cluster, refer to [Create Service Account](/deploy/kubernetes/helm-chart/#cr
   * Specify at **provider level** in the provider form as shown above. If specified, this config file will be used for all AZ's in all regions.
   * Specify at **zone level** inside of the region form as described below, this is especially needed for **multi-az** or **multi-region** deployments.
 
-- `Image Registry` specifies where to pull YugaByte image from leave this to default, unless you are hosting the registry on your end.
+- `Image Registry` specifies where to pull Yugabyte image from leave this to default, unless you are hosting the registry on your end.
 
-- `Pull Secret`, Our Enterprise YugaByte image is in a private repo and we need to upload the pull secret to download the image, your sales representative should have provided this secret.
+- `Pull Secret`, Our Enterprise Yugabyte image is in a private repo and we need to upload the pull secret to download the image, your sales representative should have provided this secret.
 
 A filled in form looks something like this:
 
@@ -44,7 +44,7 @@ Click on Add Region to open the modal.
 
 <img title="K8s Configuration -- zone config" alt="K8s Configuration -- zone config" class="expandable-image" src="/images/ee/k8s-setup/k8s-az-kubeconfig.png" />
 
-- `Overrides` is *optional*, if not specified YugaByte Platform would use defaults specified inside the helm chart,
+- `Overrides` is *optional*, if not specified Yugabyte Platform would use defaults specified inside the helm chart,
 
 * Overrides to add Service level annotations
 

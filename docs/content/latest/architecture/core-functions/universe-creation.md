@@ -14,7 +14,7 @@ showAsideToc: true
 ---
 
 ## Step 1. Start YB-Masters
-When creating a YugaByte universe, the first step is to bring up sufficient YB-Masters (as many as
+When creating a Yugabyte universe, the first step is to bring up sufficient YB-Masters (as many as
 the replication factor) with each being told about the others. These YB-Masters initialize themselves with a unique
 UUID, learn about each other and perform a leader election. At the end of this step, one of the masters establishes itself as the leader.
 
@@ -25,7 +25,7 @@ are alive. The heartbeats also communicate the tablets the YB-TServers are curre
 their load, but no tablets would exist in the system yet.
 
 ## An Example
-Let us illustrate this with our usual example of creating a 4-node YugaByte universe with a
+Let us illustrate this with our usual example of creating a 4-node Yugabyte universe with a
 replication factor of 3. In order to do so, first the three masters are started in the create mode
 instructing them to that this is a brand new universe create. This is done explicitly to prevent
 accidental errors in creating a universe while it is already running.

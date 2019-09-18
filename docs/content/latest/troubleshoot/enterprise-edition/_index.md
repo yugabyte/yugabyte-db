@@ -1,9 +1,9 @@
 ---
-title: YugaByte Platform
-linkTitle: YugaByte Platform
-description: YugaByte Platform
+title: Yugabyte Platform
+linkTitle: Yugabyte Platform
+description: Yugabyte Platform
 image: /images/section_icons/manage/enterprise.png
-headcontent: Tools and issues specific to the YugaByte Platform.
+headcontent: Tools and issues specific to the Yugabyte Platform.
 aliases:
   - /troubleshoot/enterprise-edition/
 menu:
@@ -20,7 +20,7 @@ menu:
         <div class="title">Troubleshoot universes</div>
       </div>
       <div class="body">
-        Troubleshoot a YugaByte DB universe using the YugaByte Admin Console.
+        Troubleshoot a Yugabyte DB universe using the Yugabyte Admin Console.
       </div>
     </a>
   </div>

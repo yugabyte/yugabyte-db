@@ -13,20 +13,20 @@ showAsideToc: true
 
 ## 1. Start local cluster with YSQL API enabled
 
-Follow [Quick Start](../../../quick-start/) instructions to run a local YugaByte DB cluster. Test the YSQL API as [documented](../../../quick-start/explore-ysql/) so that you can confirm that you have the YSQL service running on `localhost:5433`. 
+Follow [Quick Start](../../../quick-start/) instructions to run a local Yugabyte DB cluster. Test the YSQL API as [documented](../../../quick-start/explore-ysql/) so that you can confirm that you have the YSQL service running on `localhost:5433`. 
 
 ## 2. Load data
 
 ### Download the sample schema
 
 ```sh
-$ wget https://raw.githubusercontent.com/YugaByte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
+$ wget https://raw.githubusercontent.com/yugabyte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
 ```
 
 ### Download the sample data
 
 ```sh
-$ wget https://github.com/YugaByte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
+$ wget https://github.com/yugabyte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
 ```
 
 ```sh
@@ -41,7 +41,7 @@ $ ls data/
 orders.sql  products.sql  reviews.sql users.sql
 ```
 
-### Connect to YugaByte DB using ysqlsh
+### Connect to Yugabyte DB using ysqlsh
 
 ```sh
 $ ./bin/ysqlsh

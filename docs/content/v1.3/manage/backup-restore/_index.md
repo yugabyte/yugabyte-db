@@ -3,7 +3,7 @@ title: Backup and restore
 linkTitle: Backup and restore
 description: Backup and restore
 image: /images/section_icons/manage/enterprise.png
-headcontent: Backup and restore your data in YugaByte DB.
+headcontent: Backup and restore your data in Yugabyte DB.
 menu:
   v1.3:
     identifier: manage-backup-restore
@@ -11,9 +11,9 @@ menu:
     weight: 702
 ---
 
-YugaByte DB is a distributed database that internally replicates data. It is possible to place the regions in separate fault domains, therefore backups for the purpose of data redundancy is not necessary. However, it is an operational best practice to have a backup strategy. For example, an error in the application layer could cause it to write bad data into the database. In such a scenario, it is essential to be able to restore the database from a backup to a state before the application error was introduced.
+Yugabyte DB is a distributed database that internally replicates data. It is possible to place the regions in separate fault domains, therefore backups for the purpose of data redundancy is not necessary. However, it is an operational best practice to have a backup strategy. For example, an error in the application layer could cause it to write bad data into the database. In such a scenario, it is essential to be able to restore the database from a backup to a state before the application error was introduced.
 
-This section goes into details of backing up data and restoring it from YugaByte DB.
+This section goes into details of backing up data and restoring it from Yugabyte DB.
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -23,7 +23,7 @@ This section goes into details of backing up data and restoring it from YugaByte
         <div class="title">Backing up data</div>
       </div>
       <div class="body">
-        This section describes how to create a backup of the data in YugaByte DB.
+        This section describes how to create a backup of the data in Yugabyte DB.
       </div>
     </a>
   </div>
@@ -34,7 +34,7 @@ This section goes into details of backing up data and restoring it from YugaByte
         <div class="title">Restoring data</div>
       </div>
       <div class="body">
-        This section describes how to restore data into YugaByte DB from a backup.
+        This section describes how to restore data into Yugabyte DB from a backup.
       </div>
     </a>
   </div>

@@ -1,7 +1,7 @@
 ---
 title: Extensions
 linkTitle: Extensions
-description: Install and Use Extensions
+description: Install and use Extensions
 summary: Reference for YSQL Extensions
 menu:
   latest:
@@ -12,12 +12,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This page documents how to install and use YSQL-compatible PostgreSQL extensions.
-
+This page documents how to install and use PostgreSQL extensions that are tested to work with YSQL. Note that since Yugabyte DB’s storage architecture is not the same as that of native PostgreSQL, PostgreSQL extensions especially those that interact with the storage layer are not expected to work as-is on Yugabyte DB. We intend to incrementally develop support for as many extensions as possible. 
 
 ## Use Included Extensions
 
-These are extensions that are included in the standard YugaByteDB distribution and can be enabled in YSQL by simply running the `CREATE EXTENSION` statememt.
+These are extensions that are included in the standard Yugabyte DB distribution and can be enabled in YSQL by simply running the `CREATE EXTENSION` statememt.
 
 ### pgcrypto
 
@@ -54,7 +53,7 @@ The `fuzzystrmatch` extension provides several functions to determine similariti
 
 ```sql
 CREATE EXTENSION fuzzystrmatch;
-SELECT levenshtein('YugaByte', 'yugabyte'), metaphone('yugabyte', 8);
+SELECT levenshtein('Yugabyte', 'yugabyte'), metaphone('yugabyte', 8);
 ```
 
 ```
@@ -171,12 +170,12 @@ Typically extensions need three types of files:
 - SQL files (`<name>--<version>.sql`)
 - Control files (`<name>.control`)
 
-In order to install an extension you need to copy these files into the respective directories of your YugaByte installation.
+In order to install an extension you need to copy these files into the respective directories of your Yugabyte installation.
 
 
 Shared library files will be in the `pkglibdir` directory while SQL and control files should be in the `extension` subdirectory of the `libdir` directory.
-To find these directories on your local installation, you can use YugaByte's `pg_config` executable.
-First, alias it to `yb_pg_config` by replacing `<yugabyte-path>` with the path to your YugaByte installation in the command below and then running it.  
+To find these directories on your local installation, you can use Yugabyte's `pg_config` executable.
+First, alias it to `yb_pg_config` by replacing `<yugabyte-path>` with the path to your Yugabyte installation in the command below and then running it.  
 ```sh
 $ alias yb_pg_config=/<yugabyte-path>/postgres/bin/pg_config
 ```
@@ -192,7 +191,7 @@ $ ls "$(yb_pg_config --sharedir)"/extension/
 ```
 
 To obtain these files for your target extension, you can build it from scratch following the extension's build instructions.
-Alternatively, if you already have PostgreSQL (ideally version `11.2` for best YugaByte YSQL compatibility) with that extension installed, then you can find these files as follows:
+Alternatively, if you already have PostgreSQL (ideally version `11.2` for best YSQL compatibility) with that extension installed, then you can find these files as follows:
 
 ```sh
 $ ls "$(pg_config --pkglibdir)" | grep <name>
@@ -202,7 +201,7 @@ $ ls "$(pg_config --pkglibdir)" | grep <name>
 $ ls "$(pg_config --sharedir)"/extension/ | grep <name>
 ```
 
-Copy those files to the YugaByte installation.
+Copy those files to the Yugabyte installation.
 Restart the cluster (or the respective node in a multi-node install).
 Finally, connect to the cluster with `ysqlsh` and run the `CREATE EXTENSION` statement to create the extension.
 
@@ -210,7 +209,7 @@ Finally, connect to the cluster with `ysqlsh` and run the `CREATE EXTENSION` sta
 {{< note title="Note" >}}
 
 Only some extensions are currently supported.
-If you encounter any problems with installing or using a particular extension please post an issue on our [GitHub](https://github.com/YugaByte/yugabyte-db/issues).
+If you encounter any problems with installing or using a particular extension please post an issue on our [GitHub](https://github.com/yugabyte/yugabyte-db/issues).
 
 {{< /note >}}
 
@@ -229,7 +228,7 @@ For instance, on macOS, you can either
     $ brew install postgres && brew install postgis
     ```
 
-Now follow the instructions described above to copy the needed files into your YugaByte installation, and then create 
+Now follow the instructions described above to copy the needed files into your Yugabyte installation, and then create 
 the extension.
 
 ```sh
@@ -250,7 +249,7 @@ This might take a couple of minutes.
     ```
 
 2. Extract the dataset using the `shp2pgsql` tool.
-    This should come with your PostgreSQL installation, it is not yet packaged with YugaByte YSQL.
+    This should come with your PostgreSQL installation, it is not yet packaged with YSQL.
 
     ```sh
     $ shp2pgsql geo_export_*.shp > edmonton.sql
@@ -323,7 +322,7 @@ This might take a couple of minutes.
 
 {{< note title="Note" >}}
 
-YugaByte YSQL does not yet support GiST indexes. This is tracked in [this GitHub issue](https://github.com/YugaByte/yugabyte-db/issues/1337).
+YSQL does not yet support GiST indexes. This is tracked in [this GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/1337).
 
 {{< /note >}}
 
@@ -332,7 +331,7 @@ YugaByte YSQL does not yet support GiST indexes. This is tracked in [this GitHub
 
 The `uuid-ossp` extension provides functions to generate universally unique identifiers (UUIDs) and also functions to produce certain special UUID constants.
 
-The easiest way to install it is to copy the files from an existing PostgreSQL installation into YugaByte, and then create the extension.
+The easiest way to install it is to copy the files from an existing PostgreSQL installation into Yugabyte, and then create the extension.
 
 ```sh
 $ cp -v "$(pg_config --pkglibdir)"/*uuid-ossp*.so "$(yb_pg_config --pkglibdir)" && 

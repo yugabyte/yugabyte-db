@@ -4,6 +4,7 @@ create_index ::= CREATE [ UNIQUE ] INDEX [ [ IF NOT EXISTS ] name ]
                  [ INCLUDE ( column_name [ , ... ] ) ]  
                  [ WHERE predicate ]
 
-index_elem ::= { column_name | ( expression ) } [ opclass ] 
-               [ ASC | DESC ]
+index_elem ::= { column_name | ( expression ) } 
+               [ operator_class_name ] [ HASH | ASC | DESC ] 
+               [ NULLS { FIRST | LAST } ]
 ```

@@ -29,6 +29,7 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/pgsql_error.h"
 #include "yb/common/ql_protocol_util.h"
 
 #include "yb/tserver/tserver_shared_mem.h"
@@ -479,6 +480,27 @@ Status PgSession::FlushBufferedWriteOperations(PgsqlOpBuffer* write_ops, bool tr
         Status s = sync.Wait();
         final_status = CombineStatuses(final_status, s);
         num_writes = 0;
+      }
+    }
+    for (auto it = write_ops->begin(); it != write_ops->end(); ++it) {
+      // Handle any QL errors from individual ops.
+      std::shared_ptr<client::YBPgsqlOp> op = *it;
+      if (!op->succeeded()) {
+        const auto& response = op->response();
+        YBPgErrorCode pg_error_code = YBPgErrorCode::YB_PG_INTERNAL_ERROR;
+        if (response.has_pg_error_code()) {
+          pg_error_code = static_cast<YBPgErrorCode>(response.pg_error_code());
+        }
+
+        Status s;
+        if (response.status() == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR) {
+          s = STATUS(AlreadyPresent, op->response().error_message(), Slice(),
+                     PgsqlError(pg_error_code));
+        } else {
+          s = STATUS(QLError, op->response().error_message(), Slice(),
+                     PgsqlError(pg_error_code));
+        }
+        final_status = CombineStatuses(final_status, s);
       }
     }
     write_ops->clear();

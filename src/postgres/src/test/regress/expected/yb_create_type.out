@@ -9,7 +9,7 @@ CREATE TYPE composite_type AS (
                                             List of data types
  Schema |      Name      | Internal name  | Size  | Elements |  Owner   | Access privileges | Description
 --------+----------------+----------------+-------+----------+----------+-------------------+-------------
- public | composite_type | composite_type | tuple |          | postgres |                   |
+ public | composite_type | composite_type | tuple |          | yugabyte |                   |
 (1 row)
 
 SELECT typname FROM pg_type WHERE typname LIKE '%composite_type';
@@ -48,7 +48,7 @@ CREATE TYPE enum_type AS ENUM ('baa', 'caw', 'moo');
                                         List of data types
  Schema |   Name    | Internal name | Size | Elements |  Owner   | Access privileges | Description
 --------+-----------+---------------+------+----------+----------+-------------------+-------------
- public | enum_type | enum_type     | 4    | baa     +| postgres |                   |
+ public | enum_type | enum_type     | 4    | baa     +| yugabyte |                   |
         |           |               |      | caw     +|          |                   |
         |           |               |      | moo      |          |                   |
 (1 row)
@@ -91,7 +91,7 @@ CREATE TYPE range_type AS RANGE (
                                          List of data types
  Schema |    Name    | Internal name | Size | Elements |  Owner   | Access privileges | Description
 --------+------------+---------------+------+----------+----------+-------------------+-------------
- public | range_type | range_type    | var  |          | postgres |                   |
+ public | range_type | range_type    | var  |          | yugabyte |                   |
 (1 row)
 
 SELECT typname FROM pg_type WHERE typname LIKE '%range_type';
@@ -195,7 +195,7 @@ CREATE TYPE base_type (
                                         List of data types
  Schema |   Name    | Internal name | Size | Elements |  Owner   | Access privileges | Description
 --------+-----------+---------------+------+----------+----------+-------------------+-------------
- public | base_type | base_type     | 2    |          | postgres |                   |
+ public | base_type | base_type     | 2    |          | yugabyte |                   |
 (1 row)
 
 SELECT typname FROM pg_type WHERE typname LIKE '%base_type';
