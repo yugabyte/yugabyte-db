@@ -11,7 +11,7 @@
 // under the License.
 
 #include "yb/cdc/cdc_output_client_interface.h"
-#include "yb/cdc/cdc_consumer_util.h"
+#include "yb/cdc/cdc_util.h"
 
 #ifndef ENT_SRC_YB_TSERVER_TWODC_OUTPUT_CLIENT_H
 #define ENT_SRC_YB_TSERVER_TWODC_OUTPUT_CLIENT_H

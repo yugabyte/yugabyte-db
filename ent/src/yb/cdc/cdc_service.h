@@ -17,6 +17,8 @@
 
 #include "yb/cdc/cdc_producer.h"
 #include "yb/cdc/cdc_service.proxy.h"
+#include "yb/cdc/cdc_util.h"
+#include "yb/client/table_handle.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -33,6 +35,11 @@ typedef std::unordered_map<HostPort, std::shared_ptr<CDCServiceProxy>, HostPortH
 static const char* const kRecordType = "record_type";
 static const char* const kRecordFormat = "record_format";
 static const char* const kRetentionSec = "retention_sec";
+
+struct CDCTabletCheckpoint {
+  OpIdPB op_id;
+  MonoTime last_cdc_state_update_time;
+};
 
 class CDCServiceImpl : public CDCServiceIf {
  public:
@@ -94,10 +101,12 @@ class CDCServiceImpl : public CDCServiceIf {
 
   void TabletLeaderGetChanges(const GetChangesRequestPB* req,
                               GetChangesResponsePB* resp,
-                              rpc::RpcContext* context);
+                              rpc::RpcContext* context,
+                              const std::shared_ptr<tablet::TabletPeer>& peer);
   void TabletLeaderGetCheckpoint(const GetCheckpointRequestPB* req,
                                  GetCheckpointResponsePB* resp,
-                                 rpc::RpcContext* context);
+                                 rpc::RpcContext* context,
+                                 const std::shared_ptr<tablet::TabletPeer>& peer);
 
   Result<client::internal::RemoteTabletServer *> GetLeaderTServer(const TabletId& tablet_id);
   std::shared_ptr<CDCServiceProxy> GetCDCServiceProxy(client::internal::RemoteTabletServer* ts);
@@ -110,7 +119,8 @@ class CDCServiceImpl : public CDCServiceIf {
   mutable rw_spinlock lock_;
 
   // These are guarded by lock_.
-  std::unordered_map<std::string, OpIdPB> tablet_checkpoints_;
+  std::unordered_map<ProducerTabletInfo, CDCTabletCheckpoint, ProducerTabletInfo::Hash>
+      tablet_checkpoints_;
   std::unordered_map<std::string, std::shared_ptr<StreamMetadata>> stream_metadata_;
 
   // TODO: Add cache invalidation after tablet splitting is implemented (#1004).

@@ -14,7 +14,7 @@
 #include <shared_mutex>
 
 #include "yb/cdc/cdc_consumer_proxy_manager.h"
-#include "yb/cdc/cdc_consumer_util.h"
+#include "yb/cdc/cdc_util.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_consumer.pb.h"
 

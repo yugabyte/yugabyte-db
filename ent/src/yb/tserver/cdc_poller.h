@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string>
 
-#include "yb/cdc/cdc_consumer_util.h"
+#include "yb/cdc/cdc_util.h"
 #include "yb/cdc/cdc_output_client_interface.h"
 #include "yb/tserver/tablet_server.h"
 
