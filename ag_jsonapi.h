@@ -65,7 +65,7 @@ typedef void (*agtype_struct_action)(void *state);
 typedef void (*agtype_ofield_action)(void *state, char *fname, bool isnull);
 typedef void (*agtype_aelem_action)(void *state, bool isnull);
 typedef void (*agtype_scalar_action)(void *state, char *token,
-                                   agtype_token_type tokentype);
+                                     agtype_token_type tokentype);
 
 /*
  * Semantic Action structure for use in parsing agtype.
@@ -112,9 +112,10 @@ extern void parse_agtype(agtype_lex_context *lex, agtype_sem_action *sem);
  * If you already have the agtype as a text* value, use the first of these
  * functions, otherwise use ag_make_agtype_lex_context_cstring_len().
  */
-extern agtype_lex_context *make_agtype_lex_context(text *agtype, bool need_escapes);
-extern agtype_lex_context *make_agtype_lex_context_cstring_len(char *agtype, int len,
-                                                       bool need_escapes);
+extern agtype_lex_context *make_agtype_lex_context(text *agtype,
+                                                   bool need_escapes);
+extern agtype_lex_context *
+make_agtype_lex_context_cstring_len(char *agtype, int len, bool need_escapes);
 
 /*
  * Utility function to check if a string is a valid AGTYPE number.

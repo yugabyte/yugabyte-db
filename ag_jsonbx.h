@@ -154,15 +154,21 @@ typedef uint32 agtentry;
 /* Access macros.  Note possible multiple evaluations */
 #define AGTE_OFFLENFLD(agte_) ((agte_)&AGTENTRY_OFFLENMASK)
 #define AGTE_HAS_OFF(agte_) (((agte_)&AGTENTRY_HAS_OFF) != 0)
-#define AGTE_IS_STRING(agte_) (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_STRING)
-#define AGTE_IS_NUMERIC(agte_) (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_NUMERIC)
-#define AGTE_IS_CONTAINER(agte_) (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_CONTAINER)
+#define AGTE_IS_STRING(agte_) \
+    (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_STRING)
+#define AGTE_IS_NUMERIC(agte_) \
+    (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_NUMERIC)
+#define AGTE_IS_CONTAINER(agte_) \
+    (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_CONTAINER)
 #define AGTE_IS_NULL(agte_) (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_NULL)
-#define AGTE_IS_BOOL_TRUE(agte_) (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_BOOL_TRUE)
+#define AGTE_IS_BOOL_TRUE(agte_) \
+    (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_BOOL_TRUE)
 #define AGTE_IS_BOOL_FALSE(agte_) \
     (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_BOOL_FALSE)
-#define AGTE_IS_BOOL(agte_) (AGTE_IS_BOOL_TRUE(agte_) || AGTE_IS_BOOL_FALSE(agte_))
-#define AGTE_IS_AGTYPE(agte_) (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_AGTYPE)
+#define AGTE_IS_BOOL(agte_) \
+    (AGTE_IS_BOOL_TRUE(agte_) || AGTE_IS_BOOL_FALSE(agte_))
+#define AGTE_IS_AGTYPE(agte_) \
+    (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_AGTYPE)
 
 /* Macro for advancing an offset variable to the next agtentry */
 #define AGTE_ADVANCE_OFFSET(offset, agte) \
@@ -372,28 +378,30 @@ extern int reserve_from_buffer(StringInfo buffer, int len);
 extern uint32 get_agtype_offset(const agtype_container *agtc, int index);
 extern uint32 get_agtype_length(const agtype_container *agtc, int index);
 extern int compare_agtype_containers(agtype_container *a, agtype_container *b);
-extern agtype_value *find_agtype_value_from_container(agtype_container *sheader,
-                                                 uint32 flags,
-                                                 agtype_value *key);
-extern agtype_value *get_ith_agtype_value_from_container(agtype_container *sheader,
-                                                   uint32 i);
+extern agtype_value *
+find_agtype_value_from_container(agtype_container *sheader, uint32 flags,
+                                 agtype_value *key);
+extern agtype_value *
+get_ith_agtype_value_from_container(agtype_container *sheader, uint32 i);
 extern agtype_value *push_agtype_value(agtype_parse_state **pstate,
-                                    agtype_iterator_token seq,
-                                    agtype_value *agtval);
+                                       agtype_iterator_token seq,
+                                       agtype_value *agtval);
 extern agtype_iterator *agtype_iterator_init(agtype_container *container);
 extern agtype_iterator_token agtype_iterator_next(agtype_iterator **it,
-                                    agtype_value *val, bool skip_nested);
+                                                  agtype_value *val,
+                                                  bool skip_nested);
 extern agtype *agtype_value_to_agtype(agtype_value *val);
 extern bool agtype_deep_contains(agtype_iterator **val,
-                               agtype_iterator **m_contained);
-extern void agtype_hash_scalar_value(const agtype_value *scalar_val, uint32 *hash);
+                                 agtype_iterator **m_contained);
+extern void agtype_hash_scalar_value(const agtype_value *scalar_val,
+                                     uint32 *hash);
 extern void agtype_hash_scalar_value_extended(const agtype_value *scalar_val,
-                                          uint64 *hash, uint64 seed);
+                                              uint64 *hash, uint64 seed);
 
 /* agtype.c support functions */
 extern char *agtype_to_cstring(StringInfo out, agtype_container *in,
-                             int estimated_len);
+                               int estimated_len);
 extern char *agtype_to_cstring_indent(StringInfo out, agtype_container *in,
-                                   int estimated_len);
+                                      int estimated_len);
 
 #endif /* AG_AGTYPE_H */

@@ -72,7 +72,7 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
                             agt_type_category tcategory, Oid outfuncoid,
                             bool key_scalar);
 static char *agtype_to_cstring_worker(StringInfo out, agtype_container *in,
-                                   int estimated_len, bool indent);
+                                      int estimated_len, bool indent);
 static void add_indent(StringInfo out, bool indent, int level);
 static bool is_decimal_needed(char *string);
 static void escape_agtype(StringInfo buf, const char *str);
@@ -155,28 +155,31 @@ static void agtype_in_object_start(void *pstate)
     agtype_in_state *_state = (agtype_in_state *)pstate;
 
     _state->res = push_agtype_value(&_state->parse_state, WAGT_BEGIN_OBJECT,
-                                  NULL);
+                                    NULL);
 }
 
 static void agtype_in_object_end(void *pstate)
 {
     agtype_in_state *_state = (agtype_in_state *)pstate;
 
-    _state->res = push_agtype_value(&_state->parse_state, WAGT_END_OBJECT, NULL);
+    _state->res = push_agtype_value(&_state->parse_state, WAGT_END_OBJECT,
+                                    NULL);
 }
 
 static void agtype_in_array_start(void *pstate)
 {
     agtype_in_state *_state = (agtype_in_state *)pstate;
 
-    _state->res = push_agtype_value(&_state->parse_state, WAGT_BEGIN_ARRAY, NULL);
+    _state->res = push_agtype_value(&_state->parse_state, WAGT_BEGIN_ARRAY,
+                                    NULL);
 }
 
 static void agtype_in_array_end(void *pstate)
 {
     agtype_in_state *_state = (agtype_in_state *)pstate;
 
-    _state->res = push_agtype_value(&_state->parse_state, WAGT_END_ARRAY, NULL);
+    _state->res = push_agtype_value(&_state->parse_state, WAGT_END_ARRAY,
+                                    NULL);
 }
 
 static void agtype_in_object_field_start(void *pstate, char *fname,
@@ -223,7 +226,7 @@ static void agtype_put_escaped_value(StringInfo out, agtype_value *scalar_val)
         break;
     case AGTV_STRING:
         escape_agtype(out, pnstrdup(scalar_val->val.string.val,
-                                  scalar_val->val.string.len));
+                                    scalar_val->val.string.len));
         break;
     case AGTV_NUMERIC:
         appendStringInfoString(
@@ -280,7 +283,7 @@ static void agtype_in_scalar(void *pstate, char *token,
         Assert(token != NULL);
         v.type = AGTV_FLOAT;
         v.val.float_value = float8in_internal(token, NULL, "double precision",
-                                         token);
+                                              token);
         break;
     case AGTYPE_TOKEN_TRUE:
         v.type = AGTV_BOOL;
@@ -309,10 +312,10 @@ static void agtype_in_scalar(void *pstate, char *token,
         va.val.array.num_elems = 1;
 
         _state->res = push_agtype_value(&_state->parse_state, WAGT_BEGIN_ARRAY,
-                                      &va);
+                                        &va);
         _state->res = push_agtype_value(&_state->parse_state, WAGT_ELEM, &v);
         _state->res = push_agtype_value(&_state->parse_state, WAGT_END_ARRAY,
-                                      NULL);
+                                        NULL);
     }
     else
     {
@@ -321,10 +324,12 @@ static void agtype_in_scalar(void *pstate, char *token,
         switch (o->type)
         {
         case AGTV_ARRAY:
-            _state->res = push_agtype_value(&_state->parse_state, WAGT_ELEM, &v);
+            _state->res = push_agtype_value(&_state->parse_state, WAGT_ELEM,
+                                            &v);
             break;
         case AGTV_OBJECT:
-            _state->res = push_agtype_value(&_state->parse_state, WAGT_VALUE, &v);
+            _state->res = push_agtype_value(&_state->parse_state, WAGT_VALUE,
+                                            &v);
             break;
         default:
             elog(ERROR, "unexpected parent of nested structure");
@@ -343,7 +348,8 @@ static void agtype_in_scalar(void *pstate, char *token,
  * caller wants access to the len attribute without having to call strlen, e.g.
  * if they are converting it to a text* object.
  */
-char *agtype_to_cstring(StringInfo out, agtype_container *in, int estimated_len)
+char *agtype_to_cstring(StringInfo out, agtype_container *in,
+                        int estimated_len)
 {
     return agtype_to_cstring_worker(out, in, estimated_len, false);
 }
@@ -352,7 +358,7 @@ char *agtype_to_cstring(StringInfo out, agtype_container *in, int estimated_len)
  * same thing but with indentation turned on
  */
 char *agtype_to_cstring_indent(StringInfo out, agtype_container *in,
-                            int estimated_len)
+                               int estimated_len)
 {
     return agtype_to_cstring_worker(out, in, estimated_len, true);
 }
@@ -361,7 +367,7 @@ char *agtype_to_cstring_indent(StringInfo out, agtype_container *in,
  * common worker for above two functions
  */
 static char *agtype_to_cstring_worker(StringInfo out, agtype_container *in,
-                                   int estimated_len, bool indent)
+                                      int estimated_len, bool indent)
 {
     bool first = true;
     agtype_iterator *it;
@@ -635,8 +641,7 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
         agt.type = AGTV_NULL;
     }
     else if (key_scalar &&
-             (tcategory == AGT_TYPE_ARRAY ||
-              tcategory == AGT_TYPE_COMPOSITE ||
+             (tcategory == AGT_TYPE_ARRAY || tcategory == AGT_TYPE_COMPOSITE ||
               tcategory == AGT_TYPE_JSON || tcategory == AGT_TYPE_JSONB ||
               tcategory == AGT_TYPE_JSONCAST))
     {
@@ -750,13 +755,14 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
             break;
         case AGT_TYPE_TIMESTAMP:
             agt.type = AGTV_STRING;
-            agt.val.string.val = agtype_encode_date_time(NULL, val, TIMESTAMPOID);
+            agt.val.string.val = agtype_encode_date_time(NULL, val,
+                                                         TIMESTAMPOID);
             agt.val.string.len = strlen(agt.val.string.val);
             break;
         case AGT_TYPE_TIMESTAMPTZ:
             agt.type = AGTV_STRING;
             agt.val.string.val = agtype_encode_date_time(NULL, val,
-                                                      TIMESTAMPTZOID);
+                                                         TIMESTAMPTZOID);
             agt.val.string.len = strlen(agt.val.string.val);
             break;
         case AGT_TYPE_JSONCAST:
@@ -807,10 +813,10 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
                     if (type == WAGT_END_ARRAY || type == WAGT_END_OBJECT ||
                         type == WAGT_BEGIN_ARRAY || type == WAGT_BEGIN_OBJECT)
                         result->res = push_agtype_value(&result->parse_state,
-                                                      type, NULL);
+                                                        type, NULL);
                     else
                         result->res = push_agtype_value(&result->parse_state,
-                                                      type, &agt);
+                                                        type, &agt);
                 }
             }
         }
@@ -841,10 +847,10 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
         va.val.array.num_elems = 1;
 
         result->res = push_agtype_value(&result->parse_state, WAGT_BEGIN_ARRAY,
-                                      &va);
+                                        &va);
         result->res = push_agtype_value(&result->parse_state, WAGT_ELEM, &agt);
         result->res = push_agtype_value(&result->parse_state, WAGT_END_ARRAY,
-                                      NULL);
+                                        NULL);
     }
     else
     {
@@ -853,11 +859,13 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
         switch (o->type)
         {
         case AGTV_ARRAY:
-            result->res = push_agtype_value(&result->parse_state, WAGT_ELEM, &agt);
+            result->res = push_agtype_value(&result->parse_state, WAGT_ELEM,
+                                            &agt);
             break;
         case AGTV_OBJECT:
-            result->res = push_agtype_value(
-                &result->parse_state, key_scalar ? WAGT_KEY : WAGT_VALUE, &agt);
+            result->res = push_agtype_value(&result->parse_state,
+                                            key_scalar ? WAGT_KEY : WAGT_VALUE,
+                                            &agt);
             break;
         default:
             elog(ERROR, "unexpected parent of nested structure");
@@ -879,7 +887,8 @@ static void array_dim_to_agtype(agtype_in_state *result, int dim, int ndims,
 
     Assert(dim < ndims);
 
-    result->res = push_agtype_value(&result->parse_state, WAGT_BEGIN_ARRAY, NULL);
+    result->res = push_agtype_value(&result->parse_state, WAGT_BEGIN_ARRAY,
+                                    NULL);
 
     for (i = 1; i <= dims[dim]; i++)
     {
@@ -896,7 +905,8 @@ static void array_dim_to_agtype(agtype_in_state *result, int dim, int ndims,
         }
     }
 
-    result->res = push_agtype_value(&result->parse_state, WAGT_END_ARRAY, NULL);
+    result->res = push_agtype_value(&result->parse_state, WAGT_END_ARRAY,
+                                    NULL);
 }
 
 /*
@@ -925,9 +935,9 @@ static void array_to_agtype_internal(Datum array, agtype_in_state *result)
     if (nitems <= 0)
     {
         result->res = push_agtype_value(&result->parse_state, WAGT_BEGIN_ARRAY,
-                                      NULL);
+                                        NULL);
         result->res = push_agtype_value(&result->parse_state, WAGT_END_ARRAY,
-                                      NULL);
+                                        NULL);
         return;
     }
 
@@ -970,7 +980,7 @@ static void composite_to_agtype(Datum composite, agtype_in_state *result)
     tuple = &tmptup;
 
     result->res = push_agtype_value(&result->parse_state, WAGT_BEGIN_OBJECT,
-                                  NULL);
+                                    NULL);
 
     for (i = 0; i < tupdesc->natts; i++)
     {
@@ -1007,7 +1017,8 @@ static void composite_to_agtype(Datum composite, agtype_in_state *result)
         datum_to_agtype(val, isnull, result, tcategory, outfuncoid, false);
     }
 
-    result->res = push_agtype_value(&result->parse_state, WAGT_END_OBJECT, NULL);
+    result->res = push_agtype_value(&result->parse_state, WAGT_END_OBJECT,
+                                    NULL);
     ReleaseTupleDesc(tupdesc);
 }
 

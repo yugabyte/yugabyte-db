@@ -40,16 +40,21 @@ typedef enum /* contexts of AGTYPE parser */
 
 static inline void agtype_lex(agtype_lex_context *lex);
 static inline void agtype_lex_string(agtype_lex_context *lex);
-static inline void agtype_lex_number(agtype_lex_context *lex, char *s, bool *num_err,
-                                   int *total_len);
-static inline void parse_scalar(agtype_lex_context *lex, agtype_sem_action *sem);
-static void parse_object_field(agtype_lex_context *lex, agtype_sem_action *sem);
+static inline void agtype_lex_number(agtype_lex_context *lex, char *s,
+                                     bool *num_err, int *total_len);
+static inline void parse_scalar(agtype_lex_context *lex,
+                                agtype_sem_action *sem);
+static void parse_object_field(agtype_lex_context *lex,
+                               agtype_sem_action *sem);
 static void parse_object(agtype_lex_context *lex, agtype_sem_action *sem);
-static void parse_array_element(agtype_lex_context *lex, agtype_sem_action *sem);
+static void parse_array_element(agtype_lex_context *lex,
+                                agtype_sem_action *sem);
 static void parse_array(agtype_lex_context *lex, agtype_sem_action *sem);
-static void report_parse_error(agtype_parse_context ctx, agtype_lex_context *lex)
+static void report_parse_error(agtype_parse_context ctx,
+                               agtype_lex_context *lex)
     pg_attribute_noreturn();
-static void report_invalid_token(agtype_lex_context *lex) pg_attribute_noreturn();
+static void report_invalid_token(agtype_lex_context *lex)
+    pg_attribute_noreturn();
 static int report_agtype_context(agtype_lex_context *lex);
 static char *extract_mb_char(char *s);
 
@@ -108,8 +113,8 @@ static inline bool lex_accept(agtype_lex_context *lex, agtype_token_type token,
  * move the lexer to the next token if the current look_ahead token matches
  * the parameter token. Otherwise, report an error.
  */
-static inline void lex_expect(agtype_parse_context ctx, agtype_lex_context *lex,
-                              agtype_token_type token)
+static inline void lex_expect(agtype_parse_context ctx,
+                              agtype_lex_context *lex, agtype_token_type token)
 {
     if (!lex_accept(lex, token, NULL))
         report_parse_error(ctx, lex);
@@ -175,7 +180,7 @@ agtype_lex_context *make_agtype_lex_context(text *agtype, bool need_escapes)
 }
 
 agtype_lex_context *make_agtype_lex_context_cstring_len(char *agtype, int len,
-                                                bool need_escapes)
+                                                        bool need_escapes)
 {
     agtype_lex_context *lex = palloc0(sizeof(agtype_lex_context));
 
@@ -231,7 +236,8 @@ void parse_agtype(agtype_lex_context *lex, agtype_sem_action *sem)
  *	  - object ( { } )
  *	  - object field
  */
-static inline void parse_scalar(agtype_lex_context *lex, agtype_sem_action *sem)
+static inline void parse_scalar(agtype_lex_context *lex,
+                                agtype_sem_action *sem)
 {
     char *val = NULL;
     agtype_scalar_action sfunc = sem->scalar;
@@ -363,7 +369,8 @@ static void parse_object(agtype_lex_context *lex, agtype_sem_action *sem)
         (*oend)(sem->semstate);
 }
 
-static void parse_array_element(agtype_lex_context *lex, agtype_sem_action *sem)
+static void parse_array_element(agtype_lex_context *lex,
+                                agtype_sem_action *sem)
 {
     agtype_aelem_action astart = sem->array_element_start;
     agtype_aelem_action aend = sem->array_element_end;
@@ -532,8 +539,8 @@ static inline void agtype_lex(agtype_lex_context *lex)
 					 * the whole word as an unexpected token, rather than just
 					 * some unintuitive prefix thereof.
 					 */
-            for (p = s;
-                 p - s < lex->input_length - len && AGTYPE_ALPHANUMERIC_CHAR(*p);
+            for (p = s; p - s < lex->input_length - len &&
+                        AGTYPE_ALPHANUMERIC_CHAR(*p);
                  p++)
                 /* skip */;
 
@@ -862,8 +869,8 @@ static inline void agtype_lex_string(agtype_lex_context *lex)
  * raising an error for a badly-formed number.  Also, if total_len is not NULL
  * the distance from lex->input to the token end+1 is returned to *total_len.
  */
-static inline void agtype_lex_number(agtype_lex_context *lex, char *s, bool *num_err,
-                                   int *total_len)
+static inline void agtype_lex_number(agtype_lex_context *lex, char *s,
+                                     bool *num_err, int *total_len)
 {
     bool error = false;
     int len = s - lex->input;
@@ -968,7 +975,8 @@ static inline void agtype_lex_number(agtype_lex_context *lex, char *s, bool *num
  *
  * lex->token_start and lex->token_terminator must identify the current token.
  */
-static void report_parse_error(agtype_parse_context ctx, agtype_lex_context *lex)
+static void report_parse_error(agtype_parse_context ctx,
+                               agtype_lex_context *lex)
 {
     char *token;
     int toklen;
@@ -998,11 +1006,12 @@ static void report_parse_error(agtype_parse_context ctx, agtype_lex_context *lex
         switch (ctx)
         {
         case AGTYPE_PARSE_VALUE:
-            ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-                            errmsg("invalid input syntax for type %s", "agtype"),
-                            errdetail("Expected AGTYPE value, but found \"%s\".",
-                                      token),
-                            report_agtype_context(lex)));
+            ereport(
+                ERROR,
+                (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+                 errmsg("invalid input syntax for type %s", "agtype"),
+                 errdetail("Expected AGTYPE value, but found \"%s\".", token),
+                 report_agtype_context(lex)));
             break;
         case AGTYPE_PARSE_STRING:
             ereport(ERROR,
@@ -1157,8 +1166,8 @@ static int report_agtype_context(agtype_lex_context *lex)
                  "..." :
                  "";
 
-    return errcontext("AGTYPE data, line %d: %s%s%s", line_number, prefix, ctxt,
-                      suffix);
+    return errcontext("AGTYPE data, line %d: %s%s%s", line_number, prefix,
+                      ctxt, suffix);
 }
 
 /*
