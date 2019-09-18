@@ -173,4 +173,54 @@ public class TestPgUpdate extends BasePgSQLTest {
       assertEquals(expectedRows, getSortedRowList(returning));
     }
   }
+
+  @Test
+  public void testUpdateEnforceConstraints() throws SQLException {
+    String tableName = "test_update_enforce_constraints";
+
+    List<Row> expectedRows = new ArrayList<>();
+
+    try (Statement stmt = connection.createStatement()) {
+      String create_table_format = "CREATE TABLE %s(a INT PRIMARY KEY, b INT CHECK (b > 0))";
+      stmt.execute(String.format(create_table_format, tableName));
+
+      String insert_format = "INSERT INTO %s(a, b) VALUES(%d, %d) RETURNING a, b";
+
+      // INSERT with invalid value will fail.
+      String insert_text = String.format(insert_format, tableName, 1, -1);
+      runInvalidQuery(stmt, insert_text);
+
+      ResultSet returning;
+      // INSERT with valid value will succeed.
+      for (int i = 1; i <= 5; ++i) {
+        insert_text = String.format(insert_format, tableName, i, i);
+        stmt.execute(insert_text);
+        expectedRows.add(new Row(i, i));
+        returning = stmt.getResultSet();
+        assertEquals(expectedRows.subList(i - 1, i), getSortedRowList(returning));
+      }
+
+      // UPDATE with invalid value will fail.
+      runInvalidQuery(stmt, String.format("UPDATE %s SET b = -1 WHERE a = 1", tableName));
+      stmt.execute(String.format("SELECT * FROM %s", tableName));
+      returning = stmt.getResultSet();
+      assertEquals(expectedRows, getSortedRowList(returning));
+
+      // UPDATE multiple rows where some row will be invalid.
+      runInvalidQuery(stmt, String.format("Update %s SET b = b - 2 WHERE a < 5", tableName));
+      stmt.execute(String.format("SELECT * FROM %s", tableName));
+      returning = stmt.getResultSet();
+      assertEquals(expectedRows, getSortedRowList(returning));
+
+      // UPDATE with valid value will succeed.
+      stmt.execute(String.format("UPDATE %s SET b = b + 1", tableName));
+      expectedRows.clear();
+      for (int i = 1; i <= 5; ++i) {
+        expectedRows.add(new Row(i, i + 1));
+      }
+      stmt.execute(String.format("SELECT * FROM %s", tableName));
+      returning = stmt.getResultSet();
+      assertEquals(expectedRows, getSortedRowList(returning));
+    }
+  }
 }
