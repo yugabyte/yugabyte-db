@@ -28,7 +28,7 @@
       "exclude": "(^thirdparty/|^[.]ycm_extra_conf[.]py$)",
       "bin": "pycodestyle"
     },
-    "googleccplint": {
+    "googlecpplint": {
       "type": "googlecpplint",
       "exclude": [
         "(^src/yb/yql/cql/ql/kwlist[.]h$)",
