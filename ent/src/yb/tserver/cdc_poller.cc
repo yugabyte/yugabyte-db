@@ -20,10 +20,13 @@
 #include "yb/client/client.h"
 
 #include "yb/consensus/opid_util.h"
+#include "yb/util/logging.h"
 #include "yb/util/threadpool.h"
 
 DEFINE_int32(async_replication_polling_delay_ms, 0,
              "How long to delay in ms between applying and repolling.");
+DEFINE_int32(replication_failure_delay_exponent, 16 /* ~ 2^16/1000 ~= 65 sec */,
+             "Max number of failures (N) to use when calculating exponential backoff (2^N-1).");
 
 DECLARE_int32(cdc_rpc_timeout_ms);
 
@@ -58,22 +61,39 @@ CDCPoller::~CDCPoller() {
   output_client_->Shutdown();
 }
 
+std::string CDCPoller::ToString() const {
+  std::ostringstream os;
+  os << "P " << producer_tablet_info_.stream_id << ":" << producer_tablet_info_.tablet_id
+     << " C " << consumer_tablet_info_.table_id << ":" << consumer_tablet_info_.tablet_id;
+  return os.str();
+}
+
 bool CDCPoller::CheckOnline() {
   return cdc_consumer_ != nullptr;
 }
 
-void CDCPoller::Poll() {
-  if (!CheckOnline()) {
-    return;
+#define RETURN_WHEN_OFFLINE() \
+  if (!CheckOnline()) { \
+    LOG(WARNING) << "CDC Poller went offline: " << ToString(); \
+    return; \
   }
+
+void CDCPoller::Poll() {
+  RETURN_WHEN_OFFLINE();
   WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::DoPoll, this)),
               "Could not submit Poll to thread pool");
 }
 
 void CDCPoller::DoPoll() {
-  if (!CheckOnline()) {
-    return;
+  RETURN_WHEN_OFFLINE();
+
+  // determine if we should delay our upcoming poll
+  if (FLAGS_async_replication_polling_delay_ms > 0 || poll_failures_ > 0) {
+    int64_t delay = max(FLAGS_async_replication_polling_delay_ms, // user setting
+                        (1 << poll_failures_) -1); // failure backoff
+    SleepFor(MonoDelta::FromMilliseconds(delay));
   }
+
   cdc::GetChangesRequestPB req;
   req.set_stream_id(producer_tablet_info_.stream_id);
   req.set_tablet_id(producer_tablet_info_.tablet_id);
@@ -90,58 +110,70 @@ void CDCPoller::DoPoll() {
 }
 
 void CDCPoller::HandlePoll() {
-  if (!CheckOnline()) {
-    return;
-  }
+  RETURN_WHEN_OFFLINE();
+
   WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::DoHandlePoll, this)),
               "Could not submit HandlePoll to thread pool");
 }
 
 void CDCPoller::DoHandlePoll() {
-  if (!CheckOnline()) {
-    return;
-  }
+  RETURN_WHEN_OFFLINE();
+
   if (!should_continue_polling_()) {
     return remove_self_from_pollers_map_();
   }
 
-  if (!rpc_->status().ok() || resp_->has_error() || !resp_->has_checkpoint()) {
-    // In case of errors, try polling again.
-    // TODO: Set a max limit on polling.
+  bool failed = false;
+  if (!rpc_->status().ok()) {
+    LOG(INFO) << "CDCPoller failure: " << rpc_->status().ToString();
+    failed = true;
+  } else if (resp_->has_error()) {
+    LOG(WARNING) << "CDCPoller failure response: " << resp_->error().status().DebugString();
+    failed = true;
+  } else if (!resp_->has_checkpoint()) {
+    LOG(ERROR) << "CDCPoller failure: no checkpoint";
+    failed = true;
+  }
+  if (failed) {
+    // In case of errors, try polling again with backoff
+    poll_failures_ = min(poll_failures_ + 1, FLAGS_replication_failure_delay_exponent);
     return Poll();
   }
+  poll_failures_ = max(poll_failures_ - 2, 0); // otherwise, recover slowly if we're congested
 
+  // Success Case: ApplyChanges() from Poll
   WARN_NOT_OK(output_client_->ApplyChanges(resp_.get()), "Could not ApplyChanges");
 }
 
 void CDCPoller::HandleApplyChanges(cdc::OutputClientResponse response) {
-  if (!CheckOnline()) {
-    return;
-  }
+  RETURN_WHEN_OFFLINE();
+
   WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::DoHandleApplyChanges, this, response)),
               "Could not submit HandleApplyChanges to thread pool");
 }
 
 void CDCPoller::DoHandleApplyChanges(cdc::OutputClientResponse response) {
-  if (!CheckOnline()) {
-    return;
-  }
+  RETURN_WHEN_OFFLINE();
+
   if (!should_continue_polling_()) {
     return remove_self_from_pollers_map_();
   }
   if (!response.status.ok()) {
-    // Repeat the ApplyChanges step;
+    LOG(WARNING) << "ApplyChanges failure: " << response.status;
+    // Repeat the ApplyChanges step, with exponential backoff
+    apply_failures_ = min(apply_failures_ + 1, FLAGS_replication_failure_delay_exponent);
+    int64_t delay = (1 << apply_failures_) -1;
+    SleepFor(MonoDelta::FromMilliseconds(delay));
     WARN_NOT_OK(output_client_->ApplyChanges(resp_.get()), "Could not ApplyChanges");
     return;
   }
+  apply_failures_ = max(apply_failures_ - 2, 0); // recover slowly if we've gotten congested
 
   op_id_ = response.last_applied_op_id;
-  if (FLAGS_async_replication_polling_delay_ms != 0) {
-    SleepFor(MonoDelta::FromMilliseconds(FLAGS_async_replication_polling_delay_ms));
-  }
 
   Poll();
 }
+#undef RETURN_WHEN_OFFLINE
 
 } // namespace enterprise
 } // namespace tserver

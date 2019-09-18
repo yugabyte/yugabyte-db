@@ -12,6 +12,7 @@
 //
 
 #include <stdlib.h>
+#include <string>
 
 #include "yb/cdc/cdc_consumer_util.h"
 #include "yb/cdc/cdc_output_client_interface.h"
@@ -63,6 +64,8 @@ class CDCPoller {
   // Begins poll process for a producer tablet.
   void Poll();
 
+  std::string ToString() const;
+
  private:
   bool CheckOnline();
 
@@ -91,6 +94,8 @@ class CDCPoller {
   CDCConsumer* cdc_consumer_;
 
   std::atomic<bool> is_polling_{true};
+  int poll_failures_{0};
+  int apply_failures_{0};
 };
 
 } // namespace enterprise
