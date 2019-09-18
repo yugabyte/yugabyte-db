@@ -1058,6 +1058,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Number of live tservers metric.
   scoped_refptr<AtomicGauge<uint32_t>> metric_num_tablet_servers_live_;
 
+  // Number of dead tservers metric.
+  scoped_refptr<AtomicGauge<uint32_t>> metric_num_tablet_servers_dead_;
+
   friend class ClusterLoadBalancer;
 
   // Policy for load balancing tablets on tablet servers.

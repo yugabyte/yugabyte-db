@@ -205,6 +205,12 @@ METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_live,
                            "in the time interval defined by the gflag "
                            "FLAGS_tserver_unresponsive_timeout_ms.");
 
+METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_dead,
+                           "Number of dead tservers in the cluster", yb::MetricUnit::kUnits,
+                           "The number of tablet servers that have not responded or done a "
+                           "heartbeat in the time interval defined by the gflag "
+                           "FLAGS_tserver_unresponsive_timeout_ms.");
+
 DEFINE_test_flag(uint64, inject_latency_during_remote_bootstrap_secs, 0,
                  "Number of seconds to sleep during a remote bootstrap.");
 
@@ -472,6 +478,9 @@ Status CatalogManager::Init(bool is_first_run) {
   // Initialize the metrics emitted by the catalog manager.
   metric_num_tablet_servers_live_ =
     METRIC_num_tablet_servers_live.Instantiate(master_->metric_entity_cluster(), 0);
+
+  metric_num_tablet_servers_dead_ =
+    METRIC_num_tablet_servers_dead.Instantiate(master_->metric_entity_cluster(), 0);
 
   RETURN_NOT_OK_PREPEND(InitSysCatalogAsync(is_first_run),
                         "Failed to initialize sys tables async");
@@ -5914,7 +5923,11 @@ void CatalogManager::ReportMetrics() {
   // Report metrics on how many tservers are alive.
   TSDescriptorVector ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
-  metric_num_tablet_servers_live_->set_value(ts_descs.size());
+  const int32 num_live_servers = ts_descs.size();
+  metric_num_tablet_servers_live_->set_value(num_live_servers);
+
+  master_->ts_manager()->GetAllDescriptors(&ts_descs);
+  metric_num_tablet_servers_dead_->set_value(ts_descs.size() - num_live_servers);
 }
 
 std::string CatalogManager::LogPrefix() const {
