@@ -71,7 +71,7 @@ the one-byte prefix that puts these records before all regular records in RocksD
 
   As an example, suppose a snapshot isolation transaction is setting column `col1` in row `row1` to
   `value1`. Then `DocumentKey` is `row1` and `SubKey1` is `col1`. Suppose the provisional record was
-  written into the tablet with hybrid `1516847525206000`, and the transaction id is
+  written into the tablet with hybrid `1516847525206000`, and the transaction ID is
   `7c98406e-2373-499d-88c2-25d72a4a178c`. In that case we will end up with the following provisional
   record values in RocksDB:
 
@@ -88,10 +88,10 @@ the one-byte prefix that puts these records before all regular records in RocksD
 
 - `TxnId -> StatusTabletId, IsolationLevel, Priority`
 
-  - `StatusTabletId` is the id of the tablet that keeps track of this transaction's status.
+  - `StatusTabletId` is the ID of the tablet that keeps track of this transaction's status.
     Unlike the case of tables/tablets holding user data, where we are using a [hash-based
     mapping](../../concepts/sharding/) from keys to tablets, there is no deterministic way
-    to compute the transaction status tablet id by transaction id, so this information must be
+    to compute the transaction status tablet ID by transaction ID, so this information must be
     explicitly passed to all components handling a particular transaction.
   - `Isolation Level` [Snapshot Isolation](https://en.wikipedia.org/wiki/Snapshot_isolation) or
     [Serializable Isolation](https://en.wikipedia.org/wiki/Serializability).
@@ -110,7 +110,7 @@ TxnId, HybridTime -> primary provisional record key
   key/value pairs belonging to primary provisional records can we written for the same transaction
   with the same hybrid time, we need to use an increasing counter (which we call a *write id*) at
   the end of the encoded representation of hybrid time in order to obtain unique RocksDB keys for
-  this reverse index. This write id is shown as `.0`, `.1`, etc. in `T130.0`, `T130.1` in the figure
+  this reverse index. This write ID is shown as `.0`, `.1`, etc. in `T130.0`, `T130.1` in the figure
   above.
 
 ## Transaction status tracking
@@ -132,7 +132,7 @@ After a transaction is committed, two more fields are set:
   transaction status tablet at the moment of appending the "transaction committed" entry to its
   Raft log. It is then used as the final MVCC timestamp for regular records that replace the
   transaction's provisional records when provisional records are being applied and cleaned up.
-- **List of ids of participating tablets**. After a transaction commits, we know the final set of
+- **List of IDs of participating tablets**. After a transaction commits, we know the final set of
   tablets that the transaction has written to. The tablet server managing the transaction sends
   this list to the transaction status tablet as part of the commit message, and the transaction
   status tablet makes sure that all participating tablets are notified of the transaction's
@@ -141,5 +141,4 @@ After a transaction is committed, two more fields are set:
 
 ## See also
 
-To continue exploring the architecture of YugabyteDB's distributed transaction implementation,
-please take a look at the [Core functions / IO path with distributed transactions](../transactional-io-path/) section next.
+To continue exploring the architecture of YugabyteDB's distributed transaction implementation, take a look at the [Core functions / IO path with distributed transactions](../transactional-io-path/) section next.

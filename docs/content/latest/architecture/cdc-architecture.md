@@ -13,11 +13,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This topic includes an overview of change data capture (CDC), use cases, the CDC process architecture, and how to use CDC with Apache Kafka.
+Change data capture (CDC) in YugabyteDB provides technology to ensure that any changes in data (inserts, updates, and deletions) are identified, captured, and automatically applied to another data repository instance or made available for consumption by applications and other tools.
 
-## Overview
+## Use cases
 
-Change data capture (CDC) refers to technology for ensuring that any changes in data (inserts, updates, and deletions) are identified, captured, and automatically applied to another data repository instance or made available for consumption by applications and other tools. CDC is useful in a number of scenarios, such as:
+Change data capture is useful in a number of scenarios, such as the ones described here.
 
 ### Microservice-oriented architectures
 
@@ -34,7 +34,7 @@ Maintaining multiple data centers enables enterprises to provide:
 - High availability (HA) — Redundant systems help ensure that your operations virtually never fail.
 - Geo-redundancy — Geographically dispersed servers provide resiliency against catastrophic events and natural disasters.
 
-Two data center (2DC), or dual data center, deployments are a common use of CDC that allows efficient management of two Yugabyte universes that are geographically separated. For more information, see [Two data center (2DC) deployments](../2dc-deployments).
+Two data center (2DC), or dual data center, deployments are a common use of CDC that allows efficient management of two Yugabyte universes that are geographically separated. For more information, see [Two data center (2DC) deployments](../2dc-deployments) and [Replicate between two data centers](../deploy/cdc/)
 
 ### Compliance and auditing
 

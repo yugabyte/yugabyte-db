@@ -28,61 +28,65 @@ In terms of the [CAP theorem](https://en.wikipedia.org/wiki/CAP_theorem), Yugaby
 
 YugabyteDB supports single-key linearizable writes. Linearizability is one of the strongest single-key consistency models, and implies that every operation appears to take place atomically and in some total linear order that is consistent with the real-time ordering of those operations. In other words, the following should be true of operations on a single key: 
 
-* Operations can execute concurrently, but the state of the database at any point in time must appear to be the result of some totally ordered, sequential execution of operations.
-* If operation A completes before operation B begins, then B should logically take effect after A.
+- Operations can execute concurrently, but the state of the database at any point in time must appear to be the result of some totally ordered, sequential execution of operations.
+- If operation A completes before operation B begins, then B should logically take effect after A.
 
 ### Multi-key ACID transactions
 
-YugabyteDB supports multi-key transactions with both Serializable and Snapshot Isolation.
+YugabyteDB supports multi-key transactions with both Serializable and Snapshot isolation.
 
-* The [YSQL](../../api/ysql/) API supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` respectively. Note that YSQL Serializable support was added in [v1.2.6](../../releases/v1.2.6/).
-* The [YCQL](../../api/ycql/dml_transaction/) API supports only Snapshot Isolation using the `BEGIN TRANSACTION` syntax.
+- The [YSQL](../../api/ysql/) API supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` respectively. Note that YSQL Serializable support was added in [v1.2.6](../../releases/v1.2.6/).
+- The [YCQL](../../api/ycql/dml_transaction/) API supports only Snapshot Isolation using the `BEGIN TRANSACTION` syntax.
 
-{{< tip title="Read More about Consistency" >}}
-* Achieving [consistency with Raft consensus](../docdb/replication/).
-* How [fault tolerance and high availability](../core-functions/high-availability/) are achieved.
-* [Single-key linearizable transactions](../transactions/single-row-transactions/) in YugabyteDB.
-* The architecture of [distributed transactions](../transactions/single-row-transactions/).
+{{< tip title="Read more about consistency" >}}
+
+- Achieving [consistency with Raft consensus](../docdb/replication/).
+- How [fault tolerance and high availability](../core-functions/high-availability/) are achieved.
+- [Single-key linearizable transactions](../transactions/single-row-transactions/) in YugabyteDB.
+- The architecture of [distributed transactions](../transactions/single-row-transactions/).
+
 {{< /tip >}}
 
 ## Query APIs
 
-YugabyteDB does not reinvent storage APIs. It is wire-compatible with existing APIs and extends functionality. It supports the following APIs:
+YugabyteDB does not reinvent storage APIs. It is wire-compatible with existing APIs and extends functionality. The following APIs are supported:
 
-* **YSQL** which is being built to be ANSI-SQL compliant and is wire-compatible with PostgreSQL
-* **YCQL** (or the *Yugabyte Cloud Query Language*) which is a semi-relational API with Cassandra roots
+- **YSQL** — ANSI-SQL compliant and is wire-compatible with PostgreSQL
+- **YCQL** (or the *Yugabyte Cloud Query Language*) which is a semi-relational API with Cassandra roots
 
 ### Distributed SQL
 
 The YSQL API is PostgreSQL-compatible as noted before. It reuses PostgreSQL code base.
 
-* New changes do not break existing PostgreSQL functionality
+- New changes do not break existing PostgreSQL functionality
 
-* Designed with migrations to newer PostgreSQL versions over time as an explicit goal. This means that new features are implemented in a modular fashion in the YugabyteDB codebase to enable rapidly integrating with new PostgreSQL features in an on-going fashion.
+- Designed with migrations to newer PostgreSQL versions over time as an explicit goal. This means that new features are implemented in a modular fashion in the YugabyteDB codebase to enable rapidly integrating with new PostgreSQL features in an on-going fashion.
 
-* Support wide SQL functionality:
-  * All data types
-  * Built-in functions and expressions
-  * Various kinds of joins
-  * Constraints (primary key, foreign key, unique, not null, check)
-  * Secondary indexes (incl. multi-column & covering columns)
-  * Distributed transactions (Serializable and Snapshot Isolation)
-  * Views
-  * Stored Procedures
-  * Triggers
+- Support wide SQL functionality:
+  - All data types
+  - Built-in functions and expressions
+  - Joins (inner join, outer join, full outer join, cross join, natural join)
+  - Constraints (primary key, foreign key, unique, not null, check)
+  - Secondary indexes (including multi-column and covering columns)
+  - Distributed transactions (Serializable and Snapshot Isolation)
+  - Views
+  - Stored procedures
+  - Triggers
 
-{{< tip title="Read More" >}}
+{{< tip title="Read more" >}}
+
 Understanding [the design of the query layer](../query-layer/overview/).
+
 {{< /tip >}}
 
 ## Performance
 
 Written in C++ to ensure high performance and the ability to leverage large memory heaps (RAM) as an internal database cache. It is optimized primarily to run on SSDs and NVMe drives. It is designed with the following workloads in mind:
 
-* High write throughput
-* High client concurrency
-* High data density (total data set size per node)
-* Ability to handle ever growing event data use-cases well
+- High write throughput
+- High client concurrency
+- High data density (total data set size per node)
+- Ability to handle ever growing event data use-cases well
 
 {{< tip title="Read More" >}}
 Achieving [high performance in YugabyteDB](../docdb/performance/).
@@ -94,15 +98,15 @@ Achieving [high performance in YugabyteDB](../docdb/performance/).
 
 YugabyteDB should work well in deployments where the nodes of the cluster span:
 
-* single zone
-* multiple zones
-* multiple regions that are geographically replicated
-* multiple clouds (both public and private clouds)
+- single zone
+- multiple zones
+- multiple regions that are geographically replicated
+- multiple clouds (both public and private clouds)
 
 In order to achieve this, a number of features would be required. For example, client drivers across the various languages should be:
 
-* Cluster-aware, with ability to handle node failures seamlessly
-* Topology-aware, with ability to route traffic seamlessly
+- Cluster-aware, with ability to handle node failures seamlessly
+- Topology-aware, with ability to route traffic seamlessly
 
 ## Cloud native
 
@@ -110,9 +114,8 @@ YugabyteDB is a cloud-native database. It has been designed with the following c
 
 ### Run on commodity hardware
 
-* Run on any public cloud or on-premise data center. This means YugabyteDB should be able to run on commodity hardware on bare metal machines, VMs or containers.
-
-* No hard external dependencies. For example, YugabyteDB should not rely on atomic clocks, but should be able to utilize one if available.
+- Run on any public cloud or on-premise data center. This means YugabyteDB should be able to run on commodity hardware on bare metal machines, VMs or containers.
+- No hard external dependencies. For example, YugabyteDB should not rely on atomic clocks, but should be able to utilize one if available.
 
 ### Kubernetes ready
 
@@ -128,10 +131,10 @@ You can now read about the following:
 
 {{< note title="" >}}
 
-* [Overview of the architectural layers in YugabyteDB](../layered-architecture/)
-* [Architecture of DocDB](../docdb/)
-* [Transactions in DocDB](../transactions/)
-* [Design of the query layer](../query-layer/)
-* [How various functions work, like the read and write IO paths](../core-functions/)
+- [Overview of the architectural layers in YugabyteDB](../layered-architecture/)
+- [Architecture of DocDB](../docdb/)
+- [Transactions in DocDB](../transactions/)
+- [Design of the query layer](../query-layer/)
+- [How various functions work, like the read and write IO paths](../core-functions/)
 
 {{< /note >}}

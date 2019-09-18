@@ -13,22 +13,21 @@ isTocNested: true
 showAsideToc: true
 ---
 
-YugabyteDB provides synchronous replication of data in clusters dispersed across multiple (three or more) data centers, leveraging the Raft consensus algorithm to achieve enhanced high availability and performance. But many use cases and smaller enterprise applications do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. For these needs, YugabyteDB supports two data center (2DC) deployments, which use asynchronous replication using [change data capture (CDC)](../cdc-architecture).
+YugabyteDB provides synchronous replication of data in clusters dispersed across multiple (three or more) data centers, leveraging the Raft consensus algorithm to achieve enhanced high availability and performance. But many use cases and smaller enterprise applications do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. For these needs, YugabyteDB supports two data center (2DC) deployments, which use asynchronous replication built on top of [change data capture (CDC)](../cdc-architecture) in [DocDB](../docdb).
 
-For details on deploying a 2DC deployment, including one-way and two-way replication, see [Deploy two data centers with change data capture (CDC)](../replicate-between-2dc
-).
+For details on deploying a 2DC deployment, see [Replicate between two data centers](../deploy/replicate-between-2dc).
 
 {{< note title="Note" >}}
 
-In the following sections, the terms "cluster" and "universe" will be used interchangeably, assuming that each Yugabyte DB universe is deployed in a single data center.
+In the following sections, the terms "cluster" and "universe" will be used interchangeably, assuming that each YugabyteDB universe is deployed in a single data center.
 
 {{< /note >}}
 
 ## YugabyteDB support for two data center (2DC) deployments
 
-Two data center (2DC) deployments with YugabyteDB includes support for the following features:
+Two data center (2DC) deployments with YugabyteDB include support for the following features:
 
-- Replication across YSQL and YCQL APIs because replication is done at the DocDB level.
+- Replication across YSQL and YCQL APIs because replication is performed at the DocDB level.
 - Replication of single-key updates and multi-key, distributed transactions
 - Schema changes run independently on each universe.
   - Eventually, this will be automated as much as possible.
@@ -38,15 +37,15 @@ Two data center (2DC) deployments with YugabyteDB includes support for the follo
 - Updates are timeline consistent — the target data center receives row updates in the same order that they occur on the source.
 - Transactions are applied atomically on the consumer — either all changes within a transaction are visible or none.
 - The target data center knows the data consistency timestamp.
-  - Since data in Yugabyte DB is distributed across multiple nodes and replicated from multiple nodes, the target data center is able to determine that all tablets have received data at least until timestamp `x`, that is, it has received all the writes that happened at source data centers until timestamp `x`.
+  - Since data in YugabyteDB is distributed across multiple nodes and replicated from multiple nodes, the target data center is able to determine that all tablets have received data at least until timestamp `x`, that is, it has received all the writes that happened at source data centers until timestamp `x`.
 
 ## Supported replication scenarios
 
-For two data center deployments, Yugabyte DB supports both unidirectional and bidirectional replication.
+YugabyteDB supports asynchronous data replication between two data centers using either unidirectional (master-slave) or bidirectional (master-master or active-active) replication.
 
 ### Unidirectional: master-slave replication with asynchronous replication
 
-The replication could be unidirectional from a **source cluster** (aka the *master* cluster) to one or more **sink clusters** (aka *slave* clusters). The sink clusters, typically located in data centers or regions that are different from the source cluster, are *passive* because they do not accept writes from higher layer services. These deployments are typically used to serve low latency reads from the slave clusters and for disaster recovery.
+Unidirectional replication is performed from a **source cluster** (aka the *master* cluster) to one or more **sink clusters** (aka *slave* clusters). The sink clusters, typically located in data centers or regions that are different from the source cluster, are *passive* because they do not accept writes from higher layer services. These deployments are typically used to serve low latency reads from the slave clusters and for disaster recovery.
 
 The source-sink deployment architecture is shown here:
 
@@ -68,7 +67,7 @@ The multi-master architecture is shown here:
 
 ## Life cycle of a replication
 
-A one-way replication for two data center deployments with Yugabyte DB follows these four life cycle phases:
+A one-way replication for two data center deployments with YugabyteDB follows these four life cycle phases:
 
 1. Initialize the producer and the consumer.
 2. Set up a distributed CDC.
@@ -97,7 +96,7 @@ These actions are shown here:
 
 ![2DC initialize consumer and producer](/images/architecture/cdc-2dc/2DC-step1-initialize.png)
 
-The **sink replication consumer** and the **source replication producer** are distributed, scale-out services that run on each node of the sink and source Yugabyte DB clusters, respectively. In the case of the *source replication producer*, each node is responsible for all of the source tablet leaders that it hosts (note that the tablets are restricted to only those that participate in replication). In the case of the *sink replication consumer*, the metadata about which sink node owns which source tablet is explicitly tracked in the system catalog.
+The **sink replication consumer** and the **source replication producer** are distributed, scale-out services that run on each node of the sink and source YugabyteDB clusters, respectively. In the case of the *source replication producer*, each node is responsible for all of the source tablet leaders that it hosts (note that the tablets are restricted to only those that participate in replication). In the case of the *sink replication consumer*, the metadata about which sink node owns which source tablet is explicitly tracked in the system catalog.
 
 Note that the sink clusters can fall behind the source clusters due to various failure scenarios (for example, node outages or extended network partitions). Upon healing of the failure conditions, continuing replication may not always be safe. In such cases, the user needs to bootstrap the sink cluster to a point from which replication can safely resume. Some of the cases that arise are shown diagrammatically below:
 
@@ -127,11 +126,11 @@ The sink cluster maintains the state of replication in a separate CDC state tabl
 
 ### 3. Fetch and handle changes from source cluster
 
-The *sink replication consumer* continuously performs a `GetCDCRecords()` RPC call to fetch updates (which returns a `GetCDCRecordsResponsePB`). The source cluster sends a response that includes a list of update messages that need to be replicated, if any. Optionally, it also includes a list of IP addresses of new nodes in the source cluster in case tablets have moved. An example of the response message is shown below.
+The *sink replication consumer* continuously performs a `GetCDCRecords()` RPC call to fetch updates (which returns a `GetCDCRecordsResponsePB`). The source cluster sends a response that includes a list of update messages that need to be replicated, if any. Optionally, it also includes a list of IP addresses of new nodes in the source cluster in case tablets have moved. An example of the response message is shown here:
 
 ![Response message from source cluster](/images/architecture/cdc-2dc/fetch-and-handle-from-source.png)
 
-As shown in the figure above, each update message has a corresponding **document key** (denoted by the `document_key_1` field in the figure above), which the *sink replication consumer* uses to locate the owning tablet leader on the sink cluster. The update message is routed to that tablet leader, which handles the update request. For details on how this update is handled, see [transactional guarantees](#transactional-guarantees) below.
+Each update message has a corresponding **document key** (denoted by the `document_key_1` field in the figure above), which the *sink replication consumer* uses to locate the owning tablet leader on the sink cluster. The update message is routed to that tablet leader, which handles the update request. For details on how this update is handled, see [transactional guarantees](#transactional-guarantees) below.
 
 {{< note title="Note" >}}
 
@@ -149,9 +148,9 @@ The CDC change stream generates updates, including provisional writes, at the gr
 
 The *sink replication consumer* ensures the following:
 
-- **Atomicity of transactions**: This implies one can never read a partial result of a transaction on the sink cluster.
-- **Not globally ordered**: The transactions — especially those that do not involve overlapping rows — may not be applied in the same order as they occur in the source cluster.
-- **Last writer wins**: In case of active-active configurations, if there are conflicting writes to the same key, then the update with the larger timestamp is considered the latest update. Thus, the deployment is eventually consistent across the two data centers.
+- **Atomicity of transactions**: This implies you can never read a partial result of a transaction on the sink cluster.
+- **Not globally ordered**: The transactions — especially those that do not involve overlapping rows — might not be applied in the same order as they occurred in the source cluster.
+- **Last writer wins**: For active-active configurations, if there are conflicting writes to the same key, then the update with the larger timestamp is considered the latest update. Thus, the deployment is eventually consistent across the two data centers.
 
 The following sections outline how these transactional guarantees are achieved by looking at how a tablet leader handles a single `ReplicateMsg`, which has changes for a document key that it owns.
 
