@@ -3,7 +3,6 @@
 
 1. Download and install [terraform](https://www.terraform.io/downloads.html). 
 
-
 2. Verify by the `terraform` command, it should print a help message that looks similar to that shown below.
 
 ```sh
@@ -20,7 +19,6 @@ Common commands:
     env                Workspace management
     fmt                Rewrites config files to canonical format
 ```
-
 
 ## 1. Create a terraform config file
 
@@ -103,7 +101,6 @@ You can check the state of the nodes at any point by running the following comma
 ```sh
 $ terraform show
 ```
-
 
 ## 3. Verify resources created
 

@@ -31,19 +31,19 @@ showAsideToc: true
   </li>
 </ul>
 
-Use [docker-compose](https://docs.docker.com/compose/overview/) utility to create and manage Yugabyte DB local clusters. Note that this approach is not recommended for multi-node clusters used for performance testing and production environments.
+Use [docker-compose](https://docs.docker.com/compose/overview/) utility to create and manage YugabyteDB local clusters. Note that this approach is not recommended for multi-node clusters used for performance testing and production environments.
 
 ## 1. Create a single node cluster
 
 ### Pull the container
 
-Pull the container from docker hub registry
+Pull the container from Docker Hub registry.
 
 ```sh
 $ docker pull yugabytedb/yugabyte
 ```
 
-### Create a docker-compose.yaml file
+### Create a `docker-compose.yaml` file
 
 <div class='copy'></div>
 

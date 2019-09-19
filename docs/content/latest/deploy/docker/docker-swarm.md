@@ -32,7 +32,7 @@ showAsideToc: true
   </li>
 </ul>
 
-Docker includes [swarm](https://docs.docker.com/engine/swarm/) mode for natively managing a cluster of [Docker Engines](https://docs.docker.com/engine/) called a swarm. The Docker CLI can be used create a swarm, deploy application services to a swarm, and manage swarm behavior -- without using any additional orchestration software. Details on how swarm mode works are available [here](https://docs.docker.com/engine/swarm/key-concepts/).
+Docker includes [swarm](https://docs.docker.com/engine/swarm/) mode for natively managing a cluster of [Docker Engines](https://docs.docker.com/engine/) called a swarm. The Docker CLI can be used create a swarm, deploy application services to a swarm, and manage swarm behavior — without using any additional orchestration software. Details on how swarm mode works are available [here](https://docs.docker.com/engine/swarm/key-concepts/).
 
 This tutorial uses [Docker Machine](https://docs.docker.com/machine/) to create multiple nodes on your desktop. These nodes can even be on multiple machines on the cloud platform of your choice.
 
@@ -55,13 +55,13 @@ This tutorial uses [Docker Machine](https://docs.docker.com/machine/) to create 
 
 - [Microsoft Hyper-V driver](https://docs.docker.com/machine/drivers/hyper-v/) for creating the swarm nodes.
 
-As noted in [Docker docs](https://docs.docker.com/engine/swarm/swarm-tutorial/#use-docker-for-mac-or-docker-for-windows), the host on which Docker for Mac or Docker for Windows is installed does not itself participate in the swarm. The included version of Docker Machine is used to create the swarm nodes using VirtualBox (for macOS) and Hyper-V (for Windows).
+As noted in the [Docker documentation](https://docs.docker.com/engine/swarm/swarm-tutorial/#use-docker-for-mac-or-docker-for-windows), the host on which Docker for Mac or Docker for Windows is installed does not itself participate in the swarm. The included version of Docker Machine is used to create the swarm nodes using VirtualBox (for macOS) and Hyper-V (for Windows).
 
 ## 1. Create swarm nodes
 
-Following bash script is a simpler form of Docker's own swarm beginner tutorial [bash script](https://github.com/docker/labs/blob/master/swarm-mode/beginner-tutorial/swarm-node-vbox-setup.sh). You can use this for Linux and macOS. If you are using Windows, then download and change the [powershell Hyper-V version](https://github.com/docker/labs/blob/master/swarm-mode/beginner-tutorial/swarm-node-hyperv-setup.ps1) of the same script.
+Following bash script is a simpler form of Docker's own swarm beginner tutorial [bash script](https://github.com/docker/labs/blob/master/swarm-mode/beginner-tutorial/swarm-node-vbox-setup.sh). You can use this for Linux and macOS. If you are using Windows, then download and change the [Powershell Hyper-V version](https://github.com/docker/labs/blob/master/swarm-mode/beginner-tutorial/swarm-node-hyperv-setup.ps1) of the same script.
 
-- The script first instantiates 3 [nodes](https://docs.docker.com/engine/swarm/how-swarm-mode-works/nodes/) using Docker Machine and VirtualBox. Thereafter, it initializes the swarm cluster by creating a swarm [manager](https://docs.docker.com/engine/swarm/how-swarm-mode-works/nodes/#manager-nodes) on the first node. Finally, it adds the remaining nodes as [workers](https://docs.docker.com/engine/swarm/how-swarm-mode-works/nodes/#worker-nodes) to the cluster. It also pulls the yugabytedb/yugabyte container image into each of the nodes to expedite the next steps.
+- The script first instantiates three [nodes](https://docs.docker.com/engine/swarm/how-swarm-mode-works/nodes/) using Docker Machine and VirtualBox. Thereafter, it initializes the swarm cluster by creating a swarm [manager](https://docs.docker.com/engine/swarm/how-swarm-mode-works/nodes/#manager-nodes) on the first node. Finally, it adds the remaining nodes as [workers](https://docs.docker.com/engine/swarm/how-swarm-mode-works/nodes/#worker-nodes) to the cluster. It also pulls the `yugabytedb/yugabyte` container image into each of the nodes to expedite the next steps.
 
 {{< note title="Note" >}}
 In more fault-tolerant setups, there will be multiple manager nodes and they will be independent of the worker nodes. A 3-node master and 3-node worker setup is used in the Docker tutorial script referenced above.
@@ -149,10 +149,12 @@ $ docker network create --driver overlay --attachable yugabytedb
 
 ## 3. Create yb-master services
 
-- Create 3 yb-master [`replicated`](https://docs.docker.com/engine/swarm/how-swarm-mode-works/services/) services each with replicas set to 1. This is the [only way](https://github.com/moby/moby/issues/30963) in Docker Swarm today to get stable network identies for each of yb-master containers that we will need to provide as input for creating the yb-tserver service in the next step.
+- Create 3 YB-Master [`replicated`](https://docs.docker.com/engine/swarm/how-swarm-mode-works/services/) services each with replicas set to 1. This is the [only way](https://github.com/moby/moby/issues/30963) in Docker Swarm today to get stable network identities for each of the YB-Master containers that we will need to provide as input for creating the YB-TServer service in the next step.
 
-{{< note title="Note for Kubernetes Users" >}}
-Docker Swarm lacks an equivalent of [Kubernetes StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/). The concept of replicated services is similar to [Kubernetes Deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/).
+{{< note title="Note for Kubernetes users" >}}
+
+Docker Swarm lacks an equivalent of [Kubernetes StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/). The concept of replicated services is similar to [Kubernetes deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/).
+
 {{< /note >}}
 
 ```sh
