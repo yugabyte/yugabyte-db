@@ -22,11 +22,12 @@ EXTENSION = agensgraph
 
 DATA = agensgraph--0.0.0.sql
 
-REGRESS = commands \
+REGRESS = agtype \
+          commands \
           cypher \
           expr \
-          scan \
-          jsonbx
+          scan
+
 REGRESS_OPTS = --load-extension=agensgraph
 
 PG_CONFIG = pg_config
