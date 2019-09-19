@@ -323,12 +323,15 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
       if (left < MonoDelta::kZero) {
         break;
       }
-      std::this_thread::sleep_for(std::min(left, MonoDelta(15s)).ToSteadyDuration());
       auto* master = cluster_->master(RandomUniformInt(0, num_masters - 1));
       if (master->IsProcessAlive()) {
+        std::this_thread::sleep_for(
+            std::min(left, MonoDelta(20s) * kTimeMultiplier).ToSteadyDuration());
         LOG(INFO) << "Killing: " << master->uuid();
         master->Shutdown();
       } else {
+        std::this_thread::sleep_for(
+            std::min(left, MonoDelta(15s)).ToSteadyDuration());
         LOG(INFO) << "Resuming: " << master->uuid();
         ASSERT_OK(master->Start());
       }
