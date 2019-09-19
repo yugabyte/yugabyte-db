@@ -1,13 +1,13 @@
 /*-------------------------------------------------------------------------
  *
- * ag_jsonbx_util.c
+ * agtype_util.c
  *	  converting between agtype and agtype_values, and iterating.
  *
  * Copyright (c) 2014-2018, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
- *	  ag_jsonbx_util.c
+ *	  agtype_util.c
  *
  *-------------------------------------------------------------------------
  */
@@ -20,8 +20,8 @@
 #include "utils/memutils.h"
 #include "utils/varlena.h"
 
-#include "ag_extended_type.h"
-#include "ag_jsonbx.h"
+#include "agtype_ext.h"
+#include "agtype.h"
 /*
  * Maximum number of elements in an array (or key/value pairs in an object).
  * This is limited by two things: the size of the agtentry array must fit

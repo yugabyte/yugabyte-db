@@ -1,4 +1,4 @@
-#include "ag_extended_type.h"
+#include "agtype_ext.h"
 
 /* define the type and size of the agt_header */
 #define AGT_HEADER_TYPE uint32

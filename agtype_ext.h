@@ -1,9 +1,9 @@
-#ifndef AG_AG_EXTENDED_TYPE_H
-#define AG_AG_EXTENDED_TYPE_H
+#ifndef AG_AGTYPE_EXT_H
+#define AG_AGTYPE_EXT_H
 
 #include "postgres.h"
 
-#include "ag_jsonbx.h"
+#include "agtype.h"
 
 /*
  * Function serializes the data into the buffer provided.
@@ -20,4 +20,4 @@ bool ag_serialize_extended_type(StringInfo buffer, agtentry *agtentry,
 void ag_deserialize_extended_type(char *base_addr, uint32 offset,
                                   agtype_value *result);
 
-#endif /* AG_AG_EXTENDED_TYPE_H */
+#endif /* AG_AGTYPE_EXT_H */

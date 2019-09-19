@@ -19,7 +19,7 @@
 #include "utils/date.h"
 #include "utils/datetime.h"
 
-#include "ag_jsonapi.h"
+#include "agtype_parser.h"
 /*
  * The context of the parser is maintained by the recursive descent
  * mechanism, but is passed explicitly to the error reporting routine

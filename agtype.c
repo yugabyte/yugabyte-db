@@ -21,8 +21,8 @@
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
 
-#include "ag_jsonapi.h"
-#include "ag_jsonbx.h"
+#include "agtype_parser.h"
+#include "agtype.h"
 
 typedef struct agtype_in_state
 {
