@@ -2347,6 +2347,7 @@ CopyFrom(CopyState cstate)
 	bool		useHeapMultiInsert;
 	int			nBufferedTuples = 0;
 	int			prev_leaf_part_index = -1;
+	bool		useNonTxnInsert;
 
 #define MAX_BUFFERED_TUPLES 1000
 	HeapTuple  *bufferedTuples = NULL;	/* initialize to silence warning */
@@ -2610,6 +2611,21 @@ CopyFrom(CopyState cstate)
 	}
 
 	/*
+	 * Only use non-txn insert if it's explicitly enabled, the relation meets criteria for
+	 * multi insert (e.g. no triggers), and the relation does not have secondary indices.
+	 */
+	if (YBIsNonTxnCopyEnabled() &&
+		useYBMultiInsert &&
+		!YBCRelInfoHasSecondaryIndices(resultRelInfo))
+	{
+		useNonTxnInsert = true;
+	}
+	else
+	{
+		useNonTxnInsert = false;
+	}
+
+	/*
 	 * Check BEFORE STATEMENT insertion triggers. It's debatable whether we
 	 * should do this for COPY, since it's not really an "INSERT" statement as
 	 * such. However, executing these triggers maintains consistency with the
@@ -2628,6 +2644,15 @@ CopyFrom(CopyState cstate)
 	errcallback.arg = (void *) cstate;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
+
+	/* Warn if non-txn COPY enabled and relation does not meet non-txn criteria. */
+	if (YBIsNonTxnCopyEnabled() && !useNonTxnInsert)
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("non-transactional COPY is not supported on this relation; "
+						"using transactional COPY instead"),
+				 errhint("Non-transactional COPY is not supported on relations with "
+						 "secondary indices or triggers.")));
 
 	if (useYBMultiInsert)
 		YBCStartBufferingWriteOperations();
@@ -2847,7 +2872,7 @@ CopyFrom(CopyState cstate)
 						/* OK, store the tuple and create index entries for it */
 						if (IsYBRelation(resultRelInfo->ri_RelationDesc))
 						{
-							if (YBCIsEnvVarTrue("FLAGS_ysql_non_txn_copy"))
+							if (useNonTxnInsert)
 							{
 								YBCExecuteNonTxnInsert(cstate->rel, tupDesc, tuple);
 							}
