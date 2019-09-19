@@ -60,7 +60,6 @@ class HostPort;
 namespace master {
 class AlterTableRequestPB;
 class CreateTableRequestPB;
-class GetLeaderMasterRpc;
 class MasterServiceProxy;
 } // namespace master
 
