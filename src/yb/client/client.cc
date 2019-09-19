@@ -990,7 +990,7 @@ Result<bool> YBClient::IsLoadBalanced(uint32_t num_servers) {
   req.set_expected_num_servers(num_servers);
   // Cannot use CALL_SYNC_LEADER_MASTER_RPC directly since this is susbstituted with RETURN_NOT_OK
   // and we want to capture the status to check if load is balanced.
-  Status s = [&, this]() {
+  Status s = [&, this]() -> Status {
     CALL_SYNC_LEADER_MASTER_RPC(req, resp, IsLoadBalanced);
     return Status::OK();
   }();

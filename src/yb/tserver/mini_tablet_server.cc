@@ -194,7 +194,7 @@ Status MiniTabletServer::FlushTablets(tablet::FlushMode mode, tablet::FlushFlags
   if (!server_) {
     return Status::OK();
   }
-  return ForAllTablets(this, [mode, flags](TabletPeer* tablet_peer) {
+  return ForAllTablets(this, [mode, flags](TabletPeer* tablet_peer) -> Status {
     if (!tablet_peer->tablet()) {
       return Status::OK();
     }

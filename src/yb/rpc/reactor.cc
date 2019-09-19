@@ -289,7 +289,7 @@ void Reactor::QueueEventOnAllConnections(
 
 Status Reactor::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                                 DumpRunningRpcsResponsePB* resp) {
-  return RunOnReactorThread([&req, resp](Reactor* reactor) {
+  return RunOnReactorThread([&req, resp](Reactor* reactor) -> Status {
     for (const ConnectionPtr& conn : reactor->server_conns_) {
       RETURN_NOT_OK(conn->DumpPB(req, resp->add_inbound_connections()));
     }

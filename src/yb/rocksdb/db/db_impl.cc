@@ -3309,7 +3309,7 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
       delete cfd;
       // This was the last reference of the column family, so no need to
       // compact.
-      return Status::OK();
+      return FileNumbersHolder();
     }
 
     if (is_large_compaction) {

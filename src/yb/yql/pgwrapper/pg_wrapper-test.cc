@@ -146,7 +146,7 @@ class PgWrapperTest : public PgWrapperTestBase {
                   InternalError, "$0 request failed: $1", flush_or_compaction,
                   wait_resp.ShortDebugString());
             }
-            return Status::OK();
+            return true;
           }
           return false;
         },
