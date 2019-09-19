@@ -76,6 +76,7 @@ WEBSERVER_DB = "system_platform"
 DEMO_DB_PREFIX = "yb_demo_"
 
 ALERT_WARNING = "Warning"
+ULIMIT_ERR_CODE = "LOW_ULIMITS"
 
 class YugabyteProcessManager(object):
     def __init__(self):
@@ -682,11 +683,13 @@ class YugabyteProcessManager(object):
                 msg += "{0}: {1}. {2}: {3}. Use 'ulimit {4} {3}' to set.\n".format(
                     Output.make_yellow("Current " + name), value,
                     Output.make_green("Recommended"), recommended_value, flag)
-            extra_info = "For more info, see " \
+            msg += "Note Yugabyte DB will still run, although it may fail for larger workloads. "
+                "For more info, see " + Output.make_underline(
+                "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config/")
+            yw_alert += ". Note Yugabyte DB will still run, although it may fail for larger "
+                "workloads. For more info, see " \
                 "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config/"
-            msg += extra_info
-            yw_alert += ". " + extra_info
-            self.alerts.append((ALERT_WARNING, yw_alert))
+            self.alerts.append((ALERT_WARNING, ULIMIT_ERR_CODE, yw_alert))
             Output.print_and_log(msg, logging.WARNING)
 
     # Parse config file and input args. Validate them and save any new configs.
@@ -854,6 +857,7 @@ class YugabyteProcessManager(object):
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
 
+        Output.log_dir = log_dir
         logging.basicConfig(
             level=logging.DEBUG, filename=os.path.join(log_dir, "yugabyte-db.log"), filemode="a",
             format="[%(filename)s:%(lineno)d] %(asctime)s %(levelname)s: %(message)s")
@@ -1453,10 +1457,12 @@ class YugaWareProxy(object):
         for alert in alerts:
             data = {
                 "type": alert[0],
-                "message": alert[1]
+                "errCode": alert[1],
+                "message": alert[2]
             }
             try:
                 req = Request(target, headers=headers, data=json.dumps(data).encode('utf8'))
+                req.get_method = lambda: "PUT"
                 resp = urlopen(req)
                 if resp.code != 200:
                     Output.log(
@@ -1488,6 +1494,7 @@ class Output(object):
         logging.ERROR: logging.error,
         logging.CRITICAL: logging.critical
     }
+    log_dir = None
 
     @staticmethod
     def print_out(msg):
@@ -1504,6 +1511,8 @@ class Output(object):
 
     @staticmethod
     def log_error_and_exit(msg):
+        if Output.log_dir:
+            msg += "\nFor more information, check the logs in {}".format(Output.log_dir)
         Output.print_and_log(msg, logging.ERROR)
         sys.exit(1)
 

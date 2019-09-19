@@ -37,6 +37,10 @@ public class Alert extends Model {
   private Date createTime;
 
   @Constraints.Required
+  @Column(columnDefinition = "Text", nullable = false)
+  public String errCode;
+
+  @Constraints.Required
   @Column(length = 255)
   public String type;
 
@@ -57,15 +61,22 @@ public class Alert extends Model {
    * @param message
    * @return new alert
    */
-  public static Alert create(UUID customerUUID, String type, String message) {
+  public static Alert create(UUID customerUUID, String errCode, String type, String message) {
     Alert alert = new Alert();
     alert.uuid = UUID.randomUUID();
     alert.customerUUID = customerUUID;
     alert.createTime = new Date();
+    alert.errCode = errCode;
     alert.type = type;
     alert.message = message;
     alert.save();
     return alert;
+  }
+
+  public void update(String newMessage) {
+    createTime = new Date();
+    message = newMessage;
+    save();
   }
 
   public JsonNode toJson() {
@@ -73,12 +84,21 @@ public class Alert extends Model {
         .put("uuid", uuid.toString())
         .put("customerUUID", customerUUID.toString())
         .put("createTime", createTime.toString())
+        .put("errCode", errCode)
         .put("type", type)
         .put("message", message);
     return json;
   }
 
+  public static Boolean exists(String errCode) {
+    return find.where().eq("errCode", errCode).findRowCount() != 0;
+  }
+
   public static List<Alert> get(UUID customerUUID) {
     return find.where().eq("customer_uuid", customerUUID).findList();
+  }
+
+  public static List<Alert> get(UUID customerUUID, String errCode) {
+    return find.where().eq("customer_uuid", customerUUID).eq("errCode", errCode).findList();
   }
 }
