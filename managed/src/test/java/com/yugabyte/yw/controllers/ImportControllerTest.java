@@ -66,6 +66,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     authToken = customer.createAuthToken();
     mockClient = mock(YBClient.class);
     mockResponse = mock(ListTabletServersResponse.class);
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     when(mockResponse.getTabletServersCount()).thenReturn(3);
@@ -85,7 +86,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     }
   }
 
-  @Ignore
+  @Test
   public void testImportUniverse() {
     String url = "/api/customers/" + customer.uuid + "/universes/import";
     ObjectNode bodyJson = Json.newObject()
@@ -168,7 +169,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     for (Iterator<JsonNode> it = nodeDetailsMap.elements(); it.hasNext();) {
       JsonNode node = it.next();
       int nodeIdx = node.get("nodeIdx").asInt();
-      assertValue(node, "nodeName", "yb-importUniv-n" + nodeIdx);
+      assertValue(node, "nodeName", "yb-tc-importUniv-n" + nodeIdx);
       assertThat(node.get("cloudInfo").get("private_ip").asText(),
                  allOf(notNullValue(), containsString("127.0.0")));
       numNodes++;
@@ -176,14 +177,14 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertEquals(3, numNodes);
 
     // Provider should have the instance type.
-    UUID provUUID = Provider.get(customer.uuid, CloudType.other).uuid;
+    UUID provUUID = Provider.get(customer.uuid, CloudType.local).uuid;
     url = "/api/customers/" + customer.uuid + "/providers/" + provUUID + "/instance_types/" +
           ImportUniverseFormData.DEFAULT_INSTANCE;
     result = doRequestWithAuthToken("GET", url, authToken);
     assertOk(result);
     json = Json.parse(contentAsString(result));
     assertEquals(json.get("instanceTypeCode").asText(), ImportUniverseFormData.DEFAULT_INSTANCE);
-    assertEquals(json.get("providerCode").asText(), CloudType.other.name());
+    assertEquals(json.get("providerCode").asText(), CloudType.local.toString());
 
     // Edit should fail.
     bodyJson = Json.newObject();
