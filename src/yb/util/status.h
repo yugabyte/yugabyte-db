@@ -331,11 +331,15 @@ struct StatusCategoryDescription {
 
 class Status {
  public:
+  // Wrapper class for OK status to forbid creation of Result from Status::OK in compile time
+  class OK {
+   public:
+    operator Status() const {
+      return Status();
+    }
+  };
   // Create a success status.
   Status() {}
-
-  // Return a success status.
-  static Status OK() { return Status(); }
 
   // Returns true if the status indicates success.
   bool ok() const { return state_ == nullptr; }

@@ -255,7 +255,7 @@ Status CDCProducer::PopulateWriteRecord(const ReplicateMsgPtr& msg,
   CDCRecordPB* record = nullptr;
   for (const auto& write_pair : batch.write_pairs()) {
     Slice key = write_pair.key();
-    const auto& key_sizes = VERIFY_RESULT(docdb::DocKey::EncodedHashPartAndDocKeySizes(key));
+    const auto key_sizes = VERIFY_RESULT(docdb::DocKey::EncodedHashPartAndDocKeySizes(key));
 
     Slice value = write_pair.value();
     docdb::Value decoded_value;
@@ -309,7 +309,7 @@ Status CDCProducer::PopulateWriteRecord(const ReplicateMsgPtr& msg,
       Slice key_column = write_pair.key().data() + key_sizes.second;
       RETURN_NOT_OK(PrimitiveValue::DecodeKey(&key_column, &column_id));
       if (column_id.value_type() == docdb::ValueType::kColumnId) {
-        ColumnSchema col = VERIFY_RESULT(schema.column_by_id(column_id.GetColumnId()));
+        const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_id.GetColumnId()));
         AddColumnToMap(col, decoded_value.primitive_value(), record->add_changes());
       } else if (column_id.value_type() != docdb::ValueType::kSystemColumnId) {
         LOG(DFATAL) << "Unexpected value type in key: " << column_id.value_type();

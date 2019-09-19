@@ -583,7 +583,7 @@ Status ReadablePBContainerFile::Dump(ostream* os, bool oneline) {
       count++;
     }
   }
-  return s.IsEndOfFile() ? s.OK() : s;
+  return s.IsEndOfFile() ? Status::OK() : s;
 }
 
 Status ReadablePBContainerFile::Close() {

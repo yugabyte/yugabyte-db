@@ -1473,7 +1473,7 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
     return STATUS(NotSupported, "Transaction status table does not support read");
   }
 
-  return Status::OK();
+  return ReadHybridTime();
 }
 
 ConsensusServiceImpl::ConsensusServiceImpl(const scoped_refptr<MetricEntity>& metric_entity,
