@@ -634,7 +634,7 @@ drop_rule = 'DROP' 'RULE' [ 'IF' 'EXISTS' ] rule_name 'ON' table_name [ 'CASCADE
 drop_sequence ::= 'DROP' 'SEQUENCE' [ 'IF' 'EXISTS' ] sequence_name [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'TABLE' *)
-drop_table ::= 'DROP' 'TABLE' [ 'IF' 'EXISTS' ] table_name ;
+drop_table ::= 'DROP' 'TABLE' [ 'IF' 'EXISTS' ] table_name { ',' table_name} ;
 
 (* 'DROP' 'TYPE' *)
 drop_type ::= 'DROP' 'TYPE' [ 'IF' 'EXISTS' ] type_name { ',' type_name }
