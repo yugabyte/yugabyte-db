@@ -120,3 +120,14 @@ YBUnsupportedFeatureSignalLevel()
 	}
 	return cached_value;
 }
+
+bool
+YBIsNonTxnCopyEnabled()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrue("FLAGS_ysql_non_txn_copy");;
+	}
+	return cached_value;
+}
