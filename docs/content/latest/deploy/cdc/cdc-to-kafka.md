@@ -1,7 +1,7 @@
 ---
 title: Change data capture to Kafka
-linkTitle: Change data capture to Kafka
-description: Change data capture to Kafka
+linkTitle: Change data capture (CDC) to Kafka
+description: Change data capture (CDC) to Kafka
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
@@ -13,8 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-You can use the Change Data Capture (CDC) API, you can use YugabyteDB as a data source to an Apache Kafka or console sink.
-Follow the steps outlined below to explore the new CDC functionality using a YugabyteDB local cluster.
+Follow the steps below to connect a local YugabyteDB cluster to use the Change Data Capture (CDC) API to send data changes to Apache Kafka. To learn about the change data capture (CDC) architecture, see [Change data capture (CDC)](../architecture/cdc-architecture).
 
 ## Step 1 — Set up YugabyteDB
 
@@ -77,21 +76,7 @@ cd yb-kafka-connector/yb-cdc
 
 2. Start the Kafka connector application.
 
-## Step 5 — Logging 
-
-You can now follow the steps below to log to a console or Kafka sink.
-
-**Logging to console**
-
-```bash
-java -jar target/yb_cdc_connector.jar
---table_name <namespace/database>.<table>
---master_addrs <yb master addresses> [default 127.0.0.1:7100]
---[stream_id] <optional existing stream id>
---log_only // Flag to log to console.
-```
-
-**Logging to Kafka**
+## Step 5 — Log to Kafka
 
 ```bash
 java -jar target/yb_cdc_connector.jar
@@ -99,12 +84,19 @@ java -jar target/yb_cdc_connector.jar
 --master_addrs <yb master addresses> [default 127.0.0.1:7100]
 --[stream_id] <optional existing stream id>
 --kafka_addrs <kafka cluster addresses> [default 127.0.0.1:9092]
---shema_registry_addrs [default 127.0.0.1:8081]
+--schema_registry_addrs [default 127.0.0.1:8081]
 --topic_name <topic name to write to>
 --table_schema_path <avro table schema>
 --primary_key_schema_path <avro primary key schema>
 ```
 
+{{< note title="Note" >}}
+
+In the command above, only one YB-Master address is specified, assuming that you are using a 1-node local cluster with RF=1. If you are using a 3-node local cluster, then you need to add a comma-delimited list of the addresses for all of your YB-Master services in the `--master-addrs` option above.
+
+{{< /note >}}
+
+
 ## Step 6 — Write values and observe
 
-In another window, write values to the table and observe the values on your chosen output stream.
+In another window, write values to the table and observe the values on your Kafka output stream.
