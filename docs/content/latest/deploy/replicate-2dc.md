@@ -5,7 +5,7 @@ description: Replicate between two data centers
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
-    parent: cdc
+    parent: deploy
     identifier: replicate-2dc
     weight: 632
 type: page
@@ -66,7 +66,7 @@ There should be three table IDs in the command above — two of those are YSQL f
 
 {{< /note >}}
 
-## Bidirectionsl (two-way) replication
+## Bidirectional (two-way) replication
 
 To set up 2-way replication, follow the steps above in [Set up one-way (unidirectional) replication] and then do the same steps for the the “yugabyte-producer” universe.
 
@@ -94,6 +94,6 @@ java -jar target/yb-sample-apps.jar --workload CassandraBatchKeyValue --nodes 12
 
 Connect to “yugabyte-consumer” universe using the YSQL shell (`ysqlsh`) or the YCQL shell (`cqlsh`), and then confirm that you can see expected records.
 
-For two-way replication:**
+**For two-way replication:**
 
 Repeat steps above, but pump data into “yugabyte-consumer”. To avoid primary key conflict errors, keep the key space for the two universes separate.
