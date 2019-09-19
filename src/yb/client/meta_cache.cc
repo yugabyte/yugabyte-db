@@ -565,9 +565,7 @@ void LookupRpc::SendRpc() {
     Finished(STATUS(TimedOut, "timed out after deadline expired"));
     return;
   }
-  auto rpc_deadline = now + meta_cache_->client_->default_rpc_timeout();
-  mutable_retrier()->mutable_controller()->set_deadline(
-      std::min(rpc_deadline, retrier().deadline()));
+  mutable_retrier()->PrepareController(MonoDelta());
 
   DoSendRpc();
 }
@@ -594,10 +592,13 @@ void LookupRpc::NewLeaderMasterDeterminedCb(const Status& status) {
 template <class Response>
 void LookupRpc::DoFinished(
     const Status& status, const Response& resp, const std::string* partition_group_start) {
-  if (resp.has_error()) {
-    LOG(INFO) << "Got resp error " << master::MasterErrorPB::Code_Name(resp.error().code())
-              << ", status: " << status;
+  if (status.ok() && resp.has_error()) {
+    LOG(INFO) << this << " " << "LookupRpc failed, got resp error "
+              << master::MasterErrorPB::Code_Name(resp.error().code());
+  } else if (!status.ok()) {
+    LOG(INFO) << this << " " << "LookupRpc failed: " << status;
   }
+
   // Prefer early failures over controller failures.
   Status new_status = status;
   if (new_status.ok() &&
@@ -607,13 +608,17 @@ void LookupRpc::DoFinished(
 
   // Prefer controller failures over response failures.
   if (new_status.ok() && resp.has_error()) {
+    new_status = StatusFromPB(resp.error().status());
     if (resp.error().code() == master::MasterErrorPB::NOT_THE_LEADER ||
         resp.error().code() == master::MasterErrorPB::CATALOG_MANAGER_NOT_INITIALIZED) {
-      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Leader Master has changed, re-trying...";
-      ResetMasterLeaderAndRetry();
+      if (client()->IsMultiMaster()) {
+        YB_LOG_EVERY_N_SECS(WARNING, 1) << "Leader Master has changed, re-trying...";
+        ResetMasterLeaderAndRetry();
+      } else {
+        ScheduleRetry(new_status);
+      }
       return;
     }
-    new_status = StatusFromPB(resp.error().status());
   }
 
   if (new_status.IsTimedOut()) {
@@ -646,7 +651,7 @@ void LookupRpc::DoFinished(
            meta_cache_->ProcessTabletLocations(resp.tablet_locations(), partition_group_start));
   } else {
     new_status = new_status.CloneAndPrepend(Substitute("$0 failed", ToString()));
-    LOG(WARNING) << new_status.ToString();
+    LOG(WARNING) << this << " LookupRpc " << new_status;
     Notify(new_status);
   }
 }
@@ -808,7 +813,7 @@ class LookupByIdRpc : public LookupRpc {
         tablet_id_(std::move(tablet_id)) {}
 
   std::string ToString() const override {
-    return Format("LookupByIdRpc($0, $1)", tablet_id_, num_attempts());
+    return Format("LookupByIdRpc(tablet: $0, num_attempts: $1)", tablet_id_, num_attempts());
   }
 
   void DoSendRpc() override {
