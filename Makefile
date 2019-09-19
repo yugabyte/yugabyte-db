@@ -2,10 +2,10 @@ MODULE_big = agensgraph
 
 OBJS = ag_catalog.o \
        ag_graph.o \
-       ag_extended_type.o \
-       ag_json.o \
-       ag_jsonbx.o \
-       ag_jsonbx_util.o \
+       agtype.o \
+	   agtype_ext.o \
+       agtype_parser.o \
+       agtype_util.o \
        agensgraph.o \
        analyze.o \
        commands.o \
