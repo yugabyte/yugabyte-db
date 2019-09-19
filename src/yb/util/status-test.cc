@@ -180,7 +180,7 @@ TEST(StatusTest, RandomErrorCodes) {
 
 
 TEST(StatusTest, TestMemoryUsage) {
-  ASSERT_EQ(0, Status::OK().memory_footprint_excluding_this());
+  ASSERT_EQ(0, static_cast<Status>(Status::OK()).memory_footprint_excluding_this());
   auto status = STATUS(IOError, "file error", "some other thing", Errno(ENOTDIR));
   ASSERT_GT(status.memory_footprint_excluding_this(), 0);
 }

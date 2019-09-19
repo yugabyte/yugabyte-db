@@ -80,7 +80,7 @@ Status ConsumePrimitiveValuesFromKey(Slice* slice, AllowSpecial allow_special, C
 
 Status ConsumePrimitiveValuesFromKey(Slice* slice, AllowSpecial allow_special,
                                      boost::container::small_vector_base<Slice>* result) {
-  return ConsumePrimitiveValuesFromKey(slice, allow_special, [slice, result] {
+  return ConsumePrimitiveValuesFromKey(slice, allow_special, [slice, result]() -> Status {
     auto begin = slice->data();
     RETURN_NOT_OK(PrimitiveValue::DecodeKey(slice, /* out */ nullptr));
     if (result) {

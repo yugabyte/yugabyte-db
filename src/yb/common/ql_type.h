@@ -280,7 +280,7 @@ class QLType {
   }
 
   // Returns the type of given field, or nullptr if that field is not found in this UDT.R
-  const Result<QLType::SharedPtr> GetUDTFieldTypeByName(const std::string& field_name) const {
+  Result<QLType::SharedPtr> GetUDTFieldTypeByName(const std::string& field_name) const {
     SCHECK(IsUserDefined(), InternalError, "Can only be called on UDT");
     const int idx = GetUDTypeFieldIdxByName(field_name);
     if (idx == -1) {
