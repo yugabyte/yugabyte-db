@@ -2341,4 +2341,24 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     String drop_index_stmt = String.format("DROP INDEX %s.%s", keyspace, index_name);
     s2.execute(drop_index_stmt);
   }
+
+  @Test
+  public void testDropTypeWithKeyspacePermission() throws Exception {
+    String type_name = "test_type";
+    String type_name2 = type_name + "_2";
+
+    LOG.info("Begin test");
+    grantPermissionOnAllKeyspaces(CREATE, username);
+
+    s2.execute(String.format("CREATE KEYSPACE %s", anotherKeyspace));
+    s2.execute(String.format("CREATE TYPE %s.%s (id TEXT)", anotherKeyspace, type_name));
+    // Type owner must be able to drop own type.
+    s2.execute(String.format("DROP TYPE %s.%s", anotherKeyspace, type_name));
+
+    s2.execute("USE " + anotherKeyspace);
+    s2.execute(String.format("CREATE TYPE %s (id INT)", type_name2));
+    s2.execute(String.format("DROP TYPE %s", type_name2));
+
+    LOG.info("End test");
+  }
 }
