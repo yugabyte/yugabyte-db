@@ -683,10 +683,10 @@ class YugabyteProcessManager(object):
                 msg += "{0}: {1}. {2}: {3}. Use 'ulimit {4} {3}' to set.\n".format(
                     Output.make_yellow("Current " + name), value,
                     Output.make_green("Recommended"), recommended_value, flag)
-            msg += "Note Yugabyte DB will still run, although it may fail for larger workloads. "
+            msg += "Note Yugabyte DB will still run, although it may fail for larger workloads. " \
                 "For more info, see " + Output.make_underline(
                 "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config/")
-            yw_alert += ". Note Yugabyte DB will still run, although it may fail for larger "
+            yw_alert += ". Note Yugabyte DB will still run, although it may fail for larger " \
                 "workloads. For more info, see " \
                 "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config/"
             self.alerts.append((ALERT_WARNING, ULIMIT_ERR_CODE, yw_alert))
