@@ -75,6 +75,8 @@ class PgDml : public PgStatement {
 
   virtual void SetCatalogCacheVersion(uint64_t catalog_cache_version) = 0;
 
+  bool has_aggregate_targets();
+
  protected:
   // Method members.
   // Constructor.

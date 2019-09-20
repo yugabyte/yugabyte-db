@@ -90,6 +90,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static final String UPDATE_STMT_METRIC = METRIC_PREFIX + "UpdateStmt";
   protected static final String OTHER_STMT_METRIC = METRIC_PREFIX + "OtherStmts";
   protected static final String TRANSACTIONS_METRIC = METRIC_PREFIX + "Transactions";
+  protected static final String AGGREGATE_PUSHDOWNS_METRIC = METRIC_PREFIX + "AggregatePushdowns";
 
   // CQL and Redis settings.
   protected static boolean startCqlProxy = false;
