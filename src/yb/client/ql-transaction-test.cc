@@ -412,12 +412,7 @@ TEST_F(QLTransactionTest, Heartbeat) {
   auto session = CreateSession(txn);
   WriteRows(session);
   std::this_thread::sleep_for(GetTransactionTimeout() * 2);
-  CountDownLatch latch(1);
-  txn->Commit([&latch](const Status& status) {
-    EXPECT_OK(status);
-    latch.CountDown();
-  });
-  latch.Wait();
+  ASSERT_OK(txn->CommitFuture().get());
   VerifyData();
   CheckNoRunningTransactions();
 }
@@ -428,12 +423,8 @@ TEST_F(QLTransactionTest, Expire) {
   auto session = CreateSession(txn);
   WriteRows(session);
   std::this_thread::sleep_for(GetTransactionTimeout() * 2);
-  CountDownLatch latch(1);
-  txn->Commit([&latch](const Status& status) {
-    EXPECT_TRUE(status.IsExpired()) << "Bad status: " << status.ToString();
-    latch.CountDown();
-  });
-  latch.Wait();
+  auto commit_status = txn->CommitFuture().get();
+  ASSERT_TRUE(commit_status.IsExpired()) << "Bad status: " << commit_status;
   std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_transaction_heartbeat_usec * 2));
   ASSERT_OK(cluster_->CleanTabletLogs());
   ASSERT_FALSE(HasTransactions());
