@@ -992,7 +992,7 @@ Status ExternalMiniCluster::StartMasters() {
 
 Status ExternalMiniCluster::WaitForInitDb() {
   const auto start_time = std::chrono::steady_clock::now();
-  const auto kTimeout = NonTsanVsTsan(600s, 1800s);
+  const auto kTimeout = NonTsanVsTsan(900s, 1800s);
   while (true) {
     for (int i = 0; i < opts_.num_masters; i++) {
       auto elapsed_time = std::chrono::steady_clock::now() - start_time;
