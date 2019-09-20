@@ -118,7 +118,7 @@ class UniverseConnectModal extends Component {
               <tr>
                 <td>JDBC</td>
                 <td>:</td>
-                <td>jdbc:postgresql://{connectIp}:5433/postgres</td>
+                <td title={`jdbc:postgresql://${connectIp}:5433/postgres`}>jdbc:postgresql://{connectIp}:5433/postgres</td>
               </tr>
               {userIntent.enableYSQL &&
                 <tr>
