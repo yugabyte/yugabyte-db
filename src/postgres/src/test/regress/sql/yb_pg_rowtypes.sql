@@ -341,23 +341,22 @@ create temp table compos (f1 int, f2 text);
 -- insert into compos values (v);  -- fail
 -- $$ language sql;
 
--- TODO(jason): uncomment when issue #1541 is closed or closing.
--- create function fcompos1(v compos) returns void as $$
--- insert into compos values (v.*);
--- $$ language sql;
---
--- create function fcompos2(v compos) returns void as $$
--- select fcompos1(v);
--- $$ language sql;
---
--- create function fcompos3(v compos) returns void as $$
--- select fcompos1(fcompos3.v.*);
--- $$ language sql;
---
--- select fcompos1(row(1,'one'));
--- select fcompos2(row(2,'two'));
--- select fcompos3(row(3,'three'));
--- select * from compos;
+create function fcompos1(v compos) returns void as $$
+insert into compos values (v.*);
+$$ language sql;
+
+create function fcompos2(v compos) returns void as $$
+select fcompos1(v);
+$$ language sql;
+
+create function fcompos3(v compos) returns void as $$
+select fcompos1(fcompos3.v.*);
+$$ language sql;
+
+select fcompos1(row(1,'one'));
+select fcompos2(row(2,'two'));
+select fcompos3(row(3,'three'));
+select * from compos order by f1;
 
 --
 -- We allow I/O conversion casts from composite types to strings to be
