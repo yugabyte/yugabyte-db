@@ -80,6 +80,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // the waiter, which will be invoked when we obtain such information.
   bool Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
                ForceConsistentRead force_consistent_read,
+               CoarseTimePoint deadline,
                Waiter waiter,
                TransactionMetadata* metadata,
                bool* may_have_metadata);
@@ -89,13 +90,17 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
       const internal::InFlightOps& ops, const ReadHybridTime& used_read_time, const Status& status);
 
   // Commits this transaction.
-  void Commit(CommitCallback callback);
+  void Commit(CoarseTimePoint deadline, CommitCallback callback);
+
+  void Commit(CommitCallback callback) {
+    Commit(CoarseTimePoint(), std::move(callback));
+  }
 
   // Utility function for Commit.
-  std::future<Status> CommitFuture();
+  std::future<Status> CommitFuture(CoarseTimePoint deadline = CoarseTimePoint());
 
   // Aborts this transaction.
-  void Abort();
+  void Abort(CoarseTimePoint deadline = CoarseTimePoint());
 
   // Returns transaction ID.
   const TransactionId& id() const;
@@ -116,10 +121,12 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   // Prepares child data, so child transaction could be started in another server.
   // Should be async because status tablet could be not ready yet.
-  void PrepareChild(ForceConsistentRead force_consistent_read, PrepareChildCallback callback);
+  void PrepareChild(
+      ForceConsistentRead force_consistent_read, CoarseTimePoint deadline,
+      PrepareChildCallback callback);
 
   std::future<Result<ChildTransactionDataPB>> PrepareChildFuture(
-      ForceConsistentRead force_consistent_read);
+      ForceConsistentRead force_consistent_read, CoarseTimePoint deadline = CoarseTimePoint());
 
   // After we finish all child operations, we should finish child and send result to parent.
   Result<ChildTransactionResultPB> FinishChild();

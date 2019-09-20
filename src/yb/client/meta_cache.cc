@@ -513,6 +513,10 @@ class LookupRpc : public Rpc {
   void DoFinished(const Status& status, const Response& resp,
                   const std::string* partition_group_start);
 
+  std::string LogPrefix() const {
+    return yb::ToString(this) + ": ";
+  }
+
  private:
   virtual void DoSendRpc() = 0;
 
@@ -584,7 +588,7 @@ void LookupRpc::NewLeaderMasterDeterminedCb(const Status& status) {
     mutable_retrier()->mutable_controller()->Reset();
     SendRpc();
   } else {
-    LOG(WARNING) << "Failed to determine new Master: " << status.ToString();
+    LOG_WITH_PREFIX(WARNING) << "Failed to determine new Master: " << status;
     ScheduleRetry(status);
   }
 }
@@ -593,10 +597,10 @@ template <class Response>
 void LookupRpc::DoFinished(
     const Status& status, const Response& resp, const std::string* partition_group_start) {
   if (status.ok() && resp.has_error()) {
-    LOG(INFO) << this << " " << "LookupRpc failed, got resp error "
-              << master::MasterErrorPB::Code_Name(resp.error().code());
+    LOG_WITH_PREFIX(INFO)
+        << "Failed, got resp error " << master::MasterErrorPB::Code_Name(resp.error().code());
   } else if (!status.ok()) {
-    LOG(INFO) << this << " " << "LookupRpc failed: " << status;
+    LOG_WITH_PREFIX(INFO) << "Failed: " << status;
   }
 
   // Prefer early failures over controller failures.
@@ -650,8 +654,8 @@ void LookupRpc::DoFinished(
     Notify(Status::OK(),
            meta_cache_->ProcessTabletLocations(resp.tablet_locations(), partition_group_start));
   } else {
+    LOG_WITH_PREFIX(WARNING) << new_status;
     new_status = new_status.CloneAndPrepend(Substitute("$0 failed", ToString()));
-    LOG(WARNING) << this << " LookupRpc " << new_status;
     Notify(new_status);
   }
 }
