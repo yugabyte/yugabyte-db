@@ -24,6 +24,7 @@ import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -307,6 +308,81 @@ public class TestPgSelect extends BasePgSQLTest {
         assertThat(String.valueOf(rs.getArray(1)),
                 RegexMatcher.matchesRegex(".*-YB-.*"));
         assertFalse(rs.next());
+      }
+    }
+  }
+
+  private void verifyStatementPushdownMetric(Statement statement,
+                                             String stmt,
+                                             boolean pushdown_expected) throws Exception {
+    verifyStatementMetric(statement, stmt, AGGREGATE_PUSHDOWNS_METRIC,
+                          pushdown_expected ? 1 : 0, 1, true);
+  }
+
+  @Test
+  public void testAggregatePushdowns() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      createSimpleTable("aggtest");
+
+      // Pushdown COUNT/MAX/MIN/SUM for INTEGER/FLOAT.
+      verifyStatementPushdownMetric(
+          statement, "SELECT COUNT(vi), MAX(vi), MIN(vi), SUM(vi) FROM aggtest", true);
+      verifyStatementPushdownMetric(
+          statement, "SELECT COUNT(r), MAX(r), MIN(r), SUM(r) FROM aggtest", true);
+
+      // Don't pushdown if non-supported aggregate is provided (e.g. AVG, at least for now).
+      verifyStatementPushdownMetric(
+          statement, "SELECT COUNT(vi), AVG(vi) FROM aggtest", false);
+
+      // Pushdown COUNT(*).
+      verifyStatementPushdownMetric(
+          statement, "SELECT COUNT(*) FROM aggtest", true);
+
+      // Don't pushdown if there's a WHERE condition.
+      verifyStatementPushdownMetric(
+          statement, "SELECT COUNT(*) FROM aggtest WHERE h > 0", false);
+
+      // Pushdown for BIGINT COUNT/MAX/MIN.
+      verifyStatementPushdownMetric(
+          statement, "SELECT COUNT(h), MAX(h), MIN(h) FROM aggtest", true);
+
+      // Don't pushdown for BIGINT SUM.
+      verifyStatementPushdownMetric(
+          statement, "SELECT SUM(h) FROM aggtest", false);
+
+      // Pushdown COUNT/MIN/MAX for text.
+      verifyStatementPushdownMetric(
+          statement, "SELECT COUNT(vs), MAX(vs), MIN(vs) FROM aggtest", true);
+
+      // Pushdown shared aggregates.
+      verifyStatementPushdownMetric(
+          statement, "SELECT MAX(vi), MAX(vi) + 1 FROM aggtest", true);
+
+      // Don't pushdown complicated expression in aggregate.
+      verifyStatementPushdownMetric(
+          statement, "SELECT MAX(vi + 1) FROM aggtest", false);
+
+      // Don't pushdown window functions.
+      verifyStatementPushdownMetric(
+          statement, "SELECT h, COUNT(h) OVER (PARTITION BY h) FROM aggtest", false);
+
+      // Don't pushdown if DISTINCT present.
+      verifyStatementPushdownMetric(
+          statement, "SELECT COUNT(DISTINCT vi) FROM aggtest", false);
+
+      // Create table with NUMERIC/DECIMAL types.
+      statement.execute("CREATE TABLE aggtest2 (n numeric, d decimal)");
+
+      // Pushdown COUNT for NUMERIC/DECIMAL types.
+      verifyStatementPushdownMetric(
+          statement, "SELECT COUNT(n), COUNT(d) FROM aggtest2", true);
+
+      // Don't pushdown SUM/MAX/MIN for NUMERIC/DECIMAL types.
+      for (String col : Arrays.asList("n", "d")) {
+        for (String agg : Arrays.asList("SUM", "MAX", "MIN")) {
+          verifyStatementPushdownMetric(
+              statement, "SELECT " + agg + "(" + col + ") FROM aggtest2", false);
+        }
       }
     }
   }

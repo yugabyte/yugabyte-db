@@ -402,4 +402,3 @@ FROM (VALUES (-2.5::numeric),
   1.5 |          2
   2.5 |          3
 (7 rows)
-

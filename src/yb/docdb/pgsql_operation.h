@@ -134,7 +134,8 @@ class PgsqlReadOperation : public DocExprExecutor {
   // state in the response object.
   CHECKED_STATUS SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,
                                            const PgsqlResultSet* resultset,
-                                           const size_t row_count_limit);
+                                           const size_t row_count_limit,
+                                           const bool scan_time_exceeded);
 
   //------------------------------------------------------------------------------------------------
   const PgsqlReadRequestPB& request_;

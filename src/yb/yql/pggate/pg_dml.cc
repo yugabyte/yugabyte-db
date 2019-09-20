@@ -272,13 +272,19 @@ Status PgDml::Fetch(int32_t natts,
 }
 
 Status PgDml::WritePgTuple(PgTuple *pg_tuple) {
+  int attr_num = 0;
   for (const PgExpr *target : targets_) {
-    if (target->opcode() != PgColumnRef::Opcode::PG_EXPR_COLREF) {
-      return STATUS(InternalError, "Unexpected expression, only column refs supported here");
+    if (!target->is_colref() && !target->is_aggregate()) {
+      return STATUS(InternalError,
+                    "Unexpected expression, only column refs or aggregates supported here");
     }
-    const auto *col_ref = static_cast<const PgColumnRef *>(target);
+    if (target->opcode() == PgColumnRef::Opcode::PG_EXPR_COLREF) {
+      attr_num = static_cast<const PgColumnRef *>(target)->attr_num();
+    } else {
+      attr_num++;
+    }
     PgWireDataHeader header = PgDocData::ReadDataHeader(&cursor_);
-    target->TranslateData(&cursor_, header, col_ref->attr_num() - 1, pg_tuple);
+    target->TranslateData(&cursor_, header, attr_num - 1, pg_tuple);
   }
   return Status::OK();
 }
@@ -340,6 +346,19 @@ Result<string> PgDml::GetYBTupleId() {
   } else {
     return docdb::DocKey(range_components_).Encode().data();
   }
+}
+
+bool PgDml::has_aggregate_targets() {
+  int num_aggregate_targets = 0;
+  for (const auto& target : targets_) {
+    if (target->is_aggregate())
+      num_aggregate_targets++;
+  }
+
+  CHECK(num_aggregate_targets == 0 || num_aggregate_targets == targets_.size())
+    << "Some, but not all, targets are aggregate expressions.";
+
+  return num_aggregate_targets > 0;
 }
 
 }  // namespace pggate
