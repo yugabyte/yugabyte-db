@@ -2697,8 +2697,13 @@ begin
   insert into foo values(5,6) returning * into x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
--- TODO:(dmitry) Uncomment when issue #1541 will be resolved
--- select stricttest();
+select stricttest();
+NOTICE:  x.f1 = 5, x.f2 = 6
+ stricttest 
+------------
+ 
+(1 row)
+
 create or replace function stricttest() returns void as $$
 declare x record;
 begin
@@ -2706,8 +2711,9 @@ begin
   insert into foo values(7,8),(9,10) returning * into x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
--- TODO:(dmitry) Uncomment when issue #1541 will be resolved
--- select stricttest();
+select stricttest();
+ERROR:  query returned more than one row
+CONTEXT:  PL/pgSQL function stricttest() line 5 at SQL statement
 create or replace function stricttest() returns void as $$
 declare x record;
 begin
@@ -2715,8 +2721,13 @@ begin
   execute 'insert into foo values(5,6) returning *' into x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
--- TODO:(dmitry) Uncomment when issue #1541 will be resolved
--- select stricttest();
+select stricttest();
+NOTICE:  x.f1 = 5, x.f2 = 6
+ stricttest 
+------------
+ 
+(1 row)
+
 create or replace function stricttest() returns void as $$
 declare x record;
 begin
@@ -2724,19 +2735,24 @@ begin
   execute 'insert into foo values(7,8),(9,10) returning *' into x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
--- TODO:(dmitry) Uncomment when issue #1541 will be resolved
--- select stricttest();
+select stricttest();
+NOTICE:  x.f1 = 7, x.f2 = 8
+ stricttest 
+------------
+ 
+(1 row)
+
 select * from foo order by f1;
  f1 | f2
 ----+----
   1 |  2
   3 |  4
-(2 rows)
+  5 |  6
+  5 |  6
+  7 |  8
+  9 | 10
+(6 rows)
 
--- TODO(jason): Remove the following line when the above comments about issue
--- #1541 are uncommented.  This is to present foo as expected for the following
--- tests.  (See the output of the above select in `expected/plpgsql.out`.)
-insert into foo values (5, 6), (5, 6), (7, 8), (9, 10);
 create or replace function stricttest() returns void as $$
 declare x record;
 begin

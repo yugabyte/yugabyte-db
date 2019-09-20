@@ -83,6 +83,7 @@
 #include "utils/timestamp.h"
 #include "mb/pg_wchar.h"
 #include "pg_yb_utils.h"
+#include "utils/rel.h"
 
 /* ----------------
  *		global variables
@@ -739,6 +740,13 @@ pg_analyze_and_rewrite_params(RawStmt *parsetree,
 	(*parserSetup) (pstate, parserSetupArg);
 
 	query = transformTopLevelStmt(pstate, parsetree);
+
+	if (pstate->p_target_relation &&
+		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
+		&& IsYugaByteEnabled())
+	{
+		SetTxnWithPGRel();
+	}
 
 	if (post_parse_analyze_hook)
 		(*post_parse_analyze_hook) (pstate, query);
