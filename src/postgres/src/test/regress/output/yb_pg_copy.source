@@ -4,6 +4,7 @@
 -- CLASS POPULATION
 --	(any resemblance to real life is purely coincidental)
 --
+COPY aggtest FROM '@abs_srcdir@/data/agg.data';
 COPY onek FROM '@abs_srcdir@/data/onek.data';
 COPY onek TO '@abs_builddir@/results/onek.data';
 DELETE FROM onek;

@@ -53,6 +53,7 @@ typedef enum statementType
 	Update,
 	Other,
 	Transaction,
+	AggregatePushdown,
 	kMaxStatementType
 } statementType;
 int num_entries = kMaxStatementType;
@@ -110,6 +111,7 @@ set_metric_names(void)
   strcpy(ybpgm_table[Update].name, YSQL_METRIC_PREFIX "UpdateStmt");
   strcpy(ybpgm_table[Other].name, YSQL_METRIC_PREFIX "OtherStmts");
   strcpy(ybpgm_table[Transaction].name, YSQL_METRIC_PREFIX "Transactions");
+  strcpy(ybpgm_table[AggregatePushdown].name, YSQL_METRIC_PREFIX "AggregatePushdowns");
 }
 
 void
@@ -460,7 +462,11 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 	ybpgm_Store(type, time);
 
 	if (!queryDesc->estate->es_yb_is_single_row_modify_txn)
-		ybpgm_Store(Transaction, time);
+	  ybpgm_Store(Transaction, time);
+
+	if (IsA(queryDesc->planstate, AggState) &&
+		castNode(AggState, queryDesc->planstate)->yb_pushdown_supported)
+	  ybpgm_Store(AggregatePushdown, time);
   }
 
   if (prev_ExecutorEnd)

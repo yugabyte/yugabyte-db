@@ -16,7 +16,6 @@
 namespace yb {
 namespace docdb {
 
-using yb::bfql::TSOpcode;
 using yb::util::Decimal;
 
 //--------------------------------------------------------------------------------------------------
@@ -54,15 +53,15 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
                                            const QLTableRow& table_row,
                                            QLValue *result,
                                            const Schema *schema) {
-  TSOpcode tsopcode = static_cast<TSOpcode>(tscall.opcode());
+  bfql::TSOpcode tsopcode = static_cast<bfql::TSOpcode>(tscall.opcode());
   switch (tsopcode) {
-    case TSOpcode::kNoOp:
-    case TSOpcode::kScalarInsert:
+    case bfql::TSOpcode::kNoOp:
+    case bfql::TSOpcode::kScalarInsert:
       LOG(FATAL) << "Client should not generate function call instruction with operator "
                  << static_cast<int>(tsopcode);
       break;
 
-    case TSOpcode::kTtl: {
+    case bfql::TSOpcode::kTtl: {
       DCHECK_EQ(tscall.operands().size(), 1) << "WriteTime takes only one argument, a column";
       int64_t ttl_seconds = -1;
       RETURN_NOT_OK(table_row.GetTTL(tscall.operands(0).column_id(), &ttl_seconds));
@@ -74,7 +73,7 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
       return Status::OK();
     }
 
-    case TSOpcode::kWriteTime: {
+    case bfql::TSOpcode::kWriteTime: {
       DCHECK_EQ(tscall.operands().size(), 1) << "WriteTime takes only one argument, a column";
       int64_t write_time = 0;
       RETURN_NOT_OK(table_row.GetWriteTime(tscall.operands(0).column_id(), &write_time));
@@ -82,7 +81,7 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
       return Status::OK();
     }
 
-    case TSOpcode::kCount:
+    case bfql::TSOpcode::kCount:
       if (tscall.operands(0).has_column_id()) {
         // Check if column value is NULL. CQL does not count NULL value of a column.
         QLValue arg_result;
@@ -93,41 +92,41 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
       }
       return EvalCount(result);
 
-    case TSOpcode::kSum: {
+    case bfql::TSOpcode::kSum: {
       QLValue arg_result;
       RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
       return EvalSum(arg_result, result);
     }
 
-    case TSOpcode::kMin: {
+    case bfql::TSOpcode::kMin: {
       QLValue arg_result;
       RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
       return EvalMin(arg_result, result);
     }
 
-    case TSOpcode::kMax: {
+    case bfql::TSOpcode::kMax: {
       QLValue arg_result;
       RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
       return EvalMax(arg_result, result);
     }
 
-    case TSOpcode::kAvg: {
+    case bfql::TSOpcode::kAvg: {
       QLValue arg_result;
       RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
       return EvalAvg(arg_result, result);
     }
 
-    case TSOpcode::kMapExtend: FALLTHROUGH_INTENDED;
-    case TSOpcode::kMapRemove: FALLTHROUGH_INTENDED;
-    case TSOpcode::kSetExtend: FALLTHROUGH_INTENDED;
-    case TSOpcode::kSetRemove: FALLTHROUGH_INTENDED;
-    case TSOpcode::kListAppend:
+    case bfql::TSOpcode::kMapExtend: FALLTHROUGH_INTENDED;
+    case bfql::TSOpcode::kMapRemove: FALLTHROUGH_INTENDED;
+    case bfql::TSOpcode::kSetExtend: FALLTHROUGH_INTENDED;
+    case bfql::TSOpcode::kSetRemove: FALLTHROUGH_INTENDED;
+    case bfql::TSOpcode::kListAppend:
       // Return the value of the second operand. The first operand must be a column ID.
       return EvalExpr(tscall.operands(1), table_row, result);
-    case TSOpcode::kListPrepend:
+    case bfql::TSOpcode::kListPrepend:
       // Return the value of the first operand. The second operand is a column ID.
       return EvalExpr(tscall.operands(0), table_row, result);
-    case TSOpcode::kListRemove: {
+    case bfql::TSOpcode::kListRemove: {
       QLValue org_list_value;
       QLValue sub_list_value;
       RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &org_list_value));
@@ -153,8 +152,83 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
       return Status::OK();
     }
 
-    case TSOpcode::kToJson:
+    case bfql::TSOpcode::kToJson:
       return EvalParametricToJson(tscall.operands(0), table_row, result, schema);
+  }
+
+  result->SetNull();
+  return Status::OK();
+}
+
+CHECKED_STATUS DocExprExecutor::EvalTSCall(const PgsqlBCallPB& tscall,
+                                           const QLTableRow::SharedPtrConst& table_row,
+                                           QLValue *result) {
+  bfpg::TSOpcode tsopcode = static_cast<bfpg::TSOpcode>(tscall.opcode());
+  switch (tsopcode) {
+    case bfpg::TSOpcode::kCount:
+      if (tscall.operands(0).has_column_id()) {
+        // Check if column value is NULL. Postgres does not count NULL value of a column, unless
+        // it's COUNT(*).
+        QLValue arg_result;
+        RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
+        if (arg_result.IsNull()) {
+          return Status::OK();
+        }
+      }
+      return EvalCount(result);
+
+    case bfpg::TSOpcode::kSumInt8: {
+      QLValue arg_result;
+      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
+      return EvalSumInt8(arg_result, result);
+    }
+
+    case bfpg::TSOpcode::kSumInt16: {
+      QLValue arg_result;
+      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
+      return EvalSumInt16(arg_result, result);
+    }
+
+    case bfpg::TSOpcode::kSumInt32: {
+      QLValue arg_result;
+      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
+      return EvalSumInt32(arg_result, result);
+    }
+
+    case bfpg::TSOpcode::kSumInt64: {
+      QLValue arg_result;
+      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
+      return EvalSumInt64(arg_result, result);
+    }
+
+    case bfpg::TSOpcode::kSumFloat: {
+      QLValue arg_result;
+      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
+      return EvalSumFloat(arg_result, result);
+    }
+
+    case bfpg::TSOpcode::kSumDouble: {
+      QLValue arg_result;
+      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
+      return EvalSumDouble(arg_result, result);
+    }
+
+    case bfpg::TSOpcode::kMin: {
+      QLValue arg_result;
+      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
+      return EvalMin(arg_result, result);
+    }
+
+    case bfpg::TSOpcode::kMax: {
+      QLValue arg_result;
+      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
+      return EvalMax(arg_result, result);
+    }
+
+    default:
+      LOG(FATAL) << "Client should not generate function call instruction with operator "
+                 << static_cast<int>(tsopcode);
+      break;
   }
 
   result->SetNull();
@@ -215,6 +289,90 @@ CHECKED_STATUS DocExprExecutor::EvalSum(const QLValue& val, QLValue *aggr_sum) {
     default:
       return STATUS(RuntimeError, "Cannot find SUM of this column");
   }
+  return Status::OK();
+}
+
+CHECKED_STATUS DocExprExecutor::EvalSumInt8(const QLValue& val, QLValue *aggr_sum) {
+  if (val.IsNull()) {
+    return Status::OK();
+  }
+
+  if (aggr_sum->IsNull()) {
+    aggr_sum->set_int64_value(val.int8_value());
+  } else {
+    aggr_sum->set_int64_value(aggr_sum->int64_value() + val.int8_value());
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS DocExprExecutor::EvalSumInt16(const QLValue& val, QLValue *aggr_sum) {
+  if (val.IsNull()) {
+    return Status::OK();
+  }
+
+  if (aggr_sum->IsNull()) {
+    aggr_sum->set_int64_value(val.int16_value());
+  } else {
+    aggr_sum->set_int64_value(aggr_sum->int64_value() + val.int16_value());
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS DocExprExecutor::EvalSumInt32(const QLValue& val, QLValue *aggr_sum) {
+  if (val.IsNull()) {
+    return Status::OK();
+  }
+
+  if (aggr_sum->IsNull()) {
+    aggr_sum->set_int64_value(val.int32_value());
+  } else {
+    aggr_sum->set_int64_value(aggr_sum->int64_value() + val.int32_value());
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS DocExprExecutor::EvalSumInt64(const QLValue& val, QLValue *aggr_sum) {
+  if (val.IsNull()) {
+    return Status::OK();
+  }
+
+  if (aggr_sum->IsNull()) {
+    aggr_sum->set_int64_value(val.int64_value());
+  } else {
+    aggr_sum->set_int64_value(aggr_sum->int64_value() + val.int64_value());
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS DocExprExecutor::EvalSumFloat(const QLValue& val, QLValue *aggr_sum) {
+  if (val.IsNull()) {
+    return Status::OK();
+  }
+
+  if (aggr_sum->IsNull()) {
+    aggr_sum->set_float_value(val.float_value());
+  } else {
+    aggr_sum->set_float_value(aggr_sum->float_value() + val.float_value());
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS DocExprExecutor::EvalSumDouble(const QLValue& val, QLValue *aggr_sum) {
+  if (val.IsNull()) {
+    return Status::OK();
+  }
+
+  if (aggr_sum->IsNull()) {
+    aggr_sum->set_double_value(val.double_value());
+  } else {
+    aggr_sum->set_double_value(aggr_sum->double_value() + val.double_value());
+  }
+
   return Status::OK();
 }
 
