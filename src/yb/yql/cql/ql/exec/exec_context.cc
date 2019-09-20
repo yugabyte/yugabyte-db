@@ -76,7 +76,8 @@ Status ExecContext::StartTransaction(const IsolationLevel isolation_level, QLEnv
 Status ExecContext::PrepareChildTransaction(ChildTransactionDataPB* data) {
   ChildTransactionDataPB result =
       VERIFY_RESULT(DCHECK_NOTNULL(transaction_.get())->PrepareChildFuture(
-          client::ForceConsistentRead::kTrue).get());
+           client::ForceConsistentRead::kTrue,
+           CoarseMonoClock::now() + transactional_session_->timeout()).get());
   *data = std::move(result);
   return Status::OK();
 }
@@ -91,6 +92,7 @@ void ExecContext::CommitTransaction(CommitCallback callback) {
     return;
   }
 
+  auto deadline = CoarseMonoClock::now() + transactional_session_->timeout();
   // Clear the transaction from the session before committing the transaction. SetTransaction()
   // must be called before the Commit() call instead of after because when the commit callback is
   // invoked, it will finish the current transaction, return the response and make the CQLProcessor
@@ -100,7 +102,7 @@ void ExecContext::CommitTransaction(CommitCallback callback) {
 
   YBTransactionPtr transaction = std::move(transaction_);
   TRACE("Commit Transaction");
-  transaction->Commit(std::move(callback));
+  transaction->Commit(deadline, std::move(callback));
 }
 
 void ExecContext::AbortTransaction() {

@@ -187,9 +187,9 @@ Status YBClient::Data::SyncLeaderMasterRpc(
     Status s = func(master_proxy.get(), req, resp, &rpc);
     if (s.IsNetworkError() || s.IsServiceUnavailable()) {
       YB_LOG_EVERY_N_SECS(WARNING, 1)
-          << "Unable to send the request (" << req.ShortDebugString()
+          << "Unable to send the request " << req.GetTypeName() << " (" << req.ShortDebugString()
           << ") to leader Master (" << leader_master_hostport().ToString()
-          << "): " << s.ToString();
+          << "): " << s;
       if (client->IsMultiMaster()) {
         YB_LOG_EVERY_N_SECS(INFO, 1) << "Determining the new leader Master and retrying...";
         WARN_NOT_OK(SetMasterServerProxy(client, deadline),
