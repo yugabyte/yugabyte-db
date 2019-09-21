@@ -59,30 +59,38 @@ class DocKeyTest : public YBTest {
     const int kMaxNumRangeKeys = 3;
     const int kMaxNumSubKeys = 3;
     vector<SubDocKey> sub_doc_keys;
-    for (int num_hash_keys = 0; num_hash_keys <= kMaxNumHashKeys; ++num_hash_keys) {
-      for (int num_range_keys = 0; num_range_keys <= kMaxNumRangeKeys; ++num_range_keys) {
-        for (int num_sub_keys = 0; num_sub_keys <= kMaxNumSubKeys; ++num_sub_keys) {
-          for (int has_hybrid_time = 0; has_hybrid_time <= 1; ++has_hybrid_time) {
-            SubDocKey sub_doc_key;
-            if (num_hash_keys > 0) {
-              sub_doc_key.doc_key().set_hash(kAsciiFriendlyHash);
+    Uuid cotable_id;
+    EXPECT_OK(cotable_id.FromHexString("0123456789abcdef0123456789abcdef"));
+    for (bool has_cotable_id : {false, true}) {
+      for (int num_hash_keys = 0; num_hash_keys <= kMaxNumHashKeys; ++num_hash_keys) {
+        for (int num_range_keys = 0; num_range_keys <= kMaxNumRangeKeys; ++num_range_keys) {
+          for (int num_sub_keys = 0; num_sub_keys <= kMaxNumSubKeys; ++num_sub_keys) {
+            for (int has_hybrid_time = 0; has_hybrid_time <= 1; ++has_hybrid_time) {
+              SubDocKey sub_doc_key;
+
+              if (has_cotable_id) {
+                sub_doc_key.doc_key().set_cotable_id(cotable_id);
+              }
+              if (num_hash_keys > 0) {
+                sub_doc_key.doc_key().set_hash(kAsciiFriendlyHash);
+              }
+              for (int hIndex = 0; hIndex < num_hash_keys; ++hIndex) {
+                sub_doc_key.doc_key().hashed_group().push_back(
+                    PrimitiveValue(Format("h$0_$1", hIndex, std::string(hIndex + 1, 'h'))));
+              }
+              for (int rIndex = 0; rIndex < num_range_keys; ++rIndex) {
+                sub_doc_key.doc_key().range_group().push_back(
+                    PrimitiveValue(Format("r$0_$1", rIndex, std::string(rIndex + 1, 'r'))));
+              }
+              for (int skIndex = 0; skIndex < num_sub_keys; ++skIndex) {
+                sub_doc_key.subkeys().push_back(
+                    PrimitiveValue(Format("sk$0_$1", skIndex, std::string(skIndex + 1, 's'))));
+              }
+              if (has_hybrid_time) {
+                sub_doc_key.set_hybrid_time(DocHybridTime(HybridTime::FromMicros(123456), 1));
+              }
+              sub_doc_keys.push_back(sub_doc_key);
             }
-            for (int hIndex = 0; hIndex < num_hash_keys; ++hIndex) {
-              sub_doc_key.doc_key().hashed_group().push_back(
-                  PrimitiveValue(Format("h$0_$1", hIndex, std::string(hIndex + 1, 'h'))));
-            }
-            for (int rIndex = 0; rIndex < num_range_keys; ++rIndex) {
-              sub_doc_key.doc_key().range_group().push_back(
-                  PrimitiveValue(Format("r$0_$1", rIndex, std::string(rIndex + 1, 'r'))));
-            }
-            for (int skIndex = 0; skIndex < num_sub_keys; ++skIndex) {
-              sub_doc_key.subkeys().push_back(
-                  PrimitiveValue(Format("sk$0_$1", skIndex, std::string(skIndex + 1, 's'))));
-            }
-            if (has_hybrid_time) {
-              sub_doc_key.set_hybrid_time(DocHybridTime(HybridTime::FromMicros(123456), 1));
-            }
-            sub_doc_keys.push_back(sub_doc_key);
           }
         }
       }
@@ -91,10 +99,18 @@ class DocKeyTest : public YBTest {
   }
 
   string GetTestDescriptionForSubDocKey(const SubDocKey& sub_doc_key) {
+    auto encoded_key = sub_doc_key.Encode();
+    const char* kFormatStr =
+        "Encoded SubDocKey: $0\n"
+        "Encoded input binary data (partially human-readable): $1\n"
+        "Encoded input binary data (hex): $2\n"
+        "Encoded input binary data size: $3\n";
     return yb::Format(
-        "Encoded SubDocKey: $0; encoded input binary data: $1",
+        kFormatStr,
         sub_doc_key,
-        sub_doc_key.Encode().AsSlice().ToDebugHexString()
+        util::FormatSliceAsStr(encoded_key.AsSlice()),
+        encoded_key.AsSlice().ToDebugHexString(),
+        encoded_key.size()
     );
   }
 
@@ -447,18 +463,35 @@ TEST_F(DocKeyTest, TestDecodePrefixLengths) {
 
     size_t expected_hash_enc_size = 0;
     const DocKey& doc_key = sub_doc_key.doc_key();
-    if (!doc_key.hashed_group().empty()) {
+    DocKey hash_only_key;
+    if (!doc_key.hashed_group().empty() || doc_key.has_cotable_id()) {
+      if (doc_key.has_cotable_id()) {
+        if (doc_key.hashed_group().empty()) {
+          hash_only_key = DocKey(doc_key.cotable_id());
+        } else {
+          hash_only_key = DocKey(doc_key.cotable_id(), doc_key.hash(), doc_key.hashed_group());
+        }
+      } else {
+        hash_only_key = DocKey(doc_key.hash(), doc_key.hashed_group());
+      }
       // We subtract 1 because we don't want to include kGroupEnd in the expected hash key size.
-      expected_hash_enc_size = DocKey(doc_key.hash(), doc_key.hashed_group()).Encode().size() - 1;
+      expected_hash_enc_size = hash_only_key.Encode().size() - 1;
     }
-    EXPECT_EQ(expected_hash_enc_size, encoded_hash_key_size);
-    EXPECT_EQ(sub_doc_key.doc_key().Encode().size(), encoded_doc_key_size);
+    ASSERT_EQ(expected_hash_enc_size, encoded_hash_key_size)
+        << "Expected encoded hash key size based on: " << hash_only_key;
+    ASSERT_EQ(sub_doc_key.doc_key().Encode().size(), encoded_doc_key_size);
 
     SubDocKey cur_key;
     boost::container::small_vector<size_t, 8> prefix_lengths;
     std::vector<size_t> expected_prefix_lengths;
-    if (doc_key.has_hash()) {
-      cur_key.doc_key() = DocKey(doc_key.hash(), doc_key.hashed_group());
+    if (doc_key.has_hash() || doc_key.has_cotable_id()) {
+      if (doc_key.has_hash() && doc_key.has_cotable_id()) {
+        cur_key.doc_key() = DocKey(doc_key.cotable_id(), doc_key.hash(), doc_key.hashed_group());
+      } else if (doc_key.has_hash()) {
+        cur_key.doc_key() = DocKey(doc_key.hash(), doc_key.hashed_group());
+      } else {
+        cur_key.doc_key() = DocKey(doc_key.cotable_id());
+      }
       // Subtract one to avoid counting the final kGroupEnd, unless this is the entire key.
       if (doc_key.range_group().empty()) {
         expected_prefix_lengths.push_back(cur_key.Encode().size());
@@ -466,6 +499,17 @@ TEST_F(DocKeyTest, TestDecodePrefixLengths) {
         expected_prefix_lengths.push_back(cur_key.Encode().size() - 1);
       }
     }
+    const auto exp_hash_prefix(cur_key);
+    const auto exp_enc_hash_prefix = exp_hash_prefix.Encode();
+    SCOPED_TRACE(
+        Format(
+            "Key used to determine expected hash prefix length: $0\n"
+                "encoded (partially human readable): $1\n"
+                "encoded size: $2\n",
+            exp_hash_prefix,
+            FormatSliceAsStr(exp_enc_hash_prefix.AsSlice()),
+            exp_enc_hash_prefix.size()));
+
     const size_t num_range_keys = doc_key.range_group().size();
     for (size_t i = 0; i < num_range_keys; ++i) {
       cur_key.doc_key().range_group().push_back(doc_key.range_group()[i]);
@@ -482,8 +526,8 @@ TEST_F(DocKeyTest, TestDecodePrefixLengths) {
       expected_prefix_lengths.push_back(cur_key.Encode().size());
     }
 
-    EXPECT_OK(SubDocKey::DecodePrefixLengths(subdockey_slice, &prefix_lengths));
-    EXPECT_EQ(yb::ToString(expected_prefix_lengths), yb::ToString(prefix_lengths));
+    ASSERT_OK(SubDocKey::DecodePrefixLengths(subdockey_slice, &prefix_lengths));
+    ASSERT_EQ(yb::ToString(expected_prefix_lengths), yb::ToString(prefix_lengths));
   }
 }
 
@@ -503,7 +547,7 @@ TEST_F(DocKeyTest, TestEnumerateIntents) {
       KeyBytes encoded_key_buffer;
 
       VLOG(1) << "EnumerateIntents for: " << test_description;
-      EXPECT_OK(EnumerateIntents(
+      ASSERT_OK(EnumerateIntents(
           subdockey_slice,
           /* value */ Slice("some_value"),
           IntentCollector(&collected_intents),
@@ -523,10 +567,18 @@ TEST_F(DocKeyTest, TestEnumerateIntents) {
       std::vector<SubDocKey> expected_intents;
       SubDocKey current_expected_intent;
 
-      expected_intents.push_back(SubDocKey());
+      if (sub_doc_key.doc_key().has_cotable_id()) {
+        DocKey cotable_id_only_doc_key;
+        cotable_id_only_doc_key.set_cotable_id(sub_doc_key.doc_key().cotable_id());
+        current_expected_intent = SubDocKey(cotable_id_only_doc_key);
+        expected_intents.push_back(current_expected_intent);
+      } else {
+        expected_intents.push_back(SubDocKey());
+      }
 
       if (!sub_doc_key.doc_key().hashed_group().empty()) {
         current_expected_intent = SubDocKey(DocKey(
+            sub_doc_key.doc_key().cotable_id(),
             sub_doc_key.doc_key().hash(),
             sub_doc_key.doc_key().hashed_group()));
         expected_intents.push_back(current_expected_intent);
@@ -552,32 +604,31 @@ TEST_F(DocKeyTest, TestEnumerateIntents) {
         SCOPED_TRACE(Format("Expected intents: $0", yb::ToString(expected_intents_set)));
 
         // There should be no duplicate intents in our set of expected intents.
-        EXPECT_EQ(expected_intents_set.size(), expected_intents.size());
+        ASSERT_EQ(expected_intents_set.size(), expected_intents.size());
 
         const SubDocKey doc_key_only(sub_doc_key.doc_key());
-        EXPECT_TRUE(expected_intents_set.count(doc_key_only))
+        ASSERT_TRUE(expected_intents_set.count(doc_key_only))
             << "doc_key_only: " << doc_key_only;
 
         SubDocKey hash_part_only(sub_doc_key);
         hash_part_only.subkeys().clear();
         hash_part_only.doc_key().range_group().clear();
         hash_part_only.remove_hybrid_time();
-        EXPECT_TRUE(expected_intents_set.count(hash_part_only))
+        ASSERT_TRUE(expected_intents_set.count(hash_part_only))
             << "hash_part_only: " << hash_part_only;
       }
 
-      EXPECT_EQ(expected_intents.size(), collected_intents.size())
-          << "Expected: " << yb::ToString(expected_intents)
-          << ", collected: " << yb::ToString(collected_intents);
       const size_t num_intents = std::min(expected_intents.size(), collected_intents.size());
       for (size_t i = 0; i < num_intents; ++i) {
         SubDocKey decoded_intent_key;
         const auto& intent = collected_intents[i];
+        SCOPED_TRACE(Format("i=$0: generated intent bytes, partially human-readable: $1",
+                            i, util::FormatSliceAsStr(intent.intent_key.AsSlice())));
         Slice intent_key_slice = intent.intent_key.AsSlice();
-        EXPECT_OK(decoded_intent_key.DecodeFrom(&intent_key_slice, HybridTimeRequired::kFalse));
-        EXPECT_EQ(0, intent_key_slice.size());
-        EXPECT_FALSE(decoded_intent_key.has_hybrid_time());
-        EXPECT_EQ(expected_intents[i].ToString(), decoded_intent_key.ToString());
+        ASSERT_OK(decoded_intent_key.DecodeFrom(&intent_key_slice, HybridTimeRequired::kFalse));
+        ASSERT_EQ(0, intent_key_slice.size());
+        ASSERT_FALSE(decoded_intent_key.has_hybrid_time());
+        ASSERT_EQ(expected_intents[i].ToString(), decoded_intent_key.ToString());
 
         SubDocKey a = expected_intents[i];
         SubDocKey b = decoded_intent_key;
@@ -588,15 +639,19 @@ TEST_F(DocKeyTest, TestEnumerateIntents) {
         }
         VLOG(1) << "Subkeys match: " << (a.subkeys() == b.subkeys());
 
-        EXPECT_EQ(expected_intents[i], decoded_intent_key);
+        ASSERT_EQ(expected_intents[i], decoded_intent_key);
         if (i < num_intents - 1) {
-          EXPECT_EQ(IntentStrength::kWeak, intent.strength);
-          EXPECT_EQ(0, intent.value.size());
+          ASSERT_EQ(IntentStrength::kWeak, intent.strength);
+          ASSERT_EQ(0, intent.value.size());
         } else {
-          EXPECT_EQ(IntentStrength::kStrong, intent.strength);
-          EXPECT_GT(intent.value.size(), 0);
+          ASSERT_EQ(IntentStrength::kStrong, intent.strength);
+          ASSERT_GT(intent.value.size(), 0);
         }
       }
+
+      ASSERT_EQ(expected_intents.size(), collected_intents.size())
+          << "Expected: " << yb::ToString(expected_intents) << "\n"
+          << "Collected: " << yb::ToString(collected_intents);
     }
   }
 }
