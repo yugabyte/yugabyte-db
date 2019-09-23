@@ -27,11 +27,9 @@ A JRE (or JDK), for Java 8 or 11, is installed. JDK and JRE installers for Linux
 
 {{< note title="Note" >}}
 
-The Confluent Platform currently only support Java 8 and 11. If you do not use one of these, an error message is generated and it will not start.
+The Confluent Platform currently only supports Java 8 and 11. If you do not use one of these, an error message is generated and it will not start. For details related to the Confluent Platform, see [Java version requirements](https://docs.confluent.io/current/cli/installing.html#java-version-requirements).
 
 {{< /note >}}
-
-For the Confluent Platform, see [Java version requirements](https://docs.confluent.io/current/cli/installing.html#java-version-requirements).
 
 ### Apache Kafka
 
@@ -49,13 +47,13 @@ CREATE TABLE users (name text, pass text, id int, primary key (id));
 
 ## Step 2 — Create Avro schemas
 
-YugabyteDB supports the use of [Apache Avro schemas](http://avro.apache.org/docs/current/#schemas) to serialize and deserialize tables. You can use the [Schema Registry](https://docs.confluent.io/current/schema-registry/index.html) in the Confluent Platform to create the two Avro schema files that you need. For a step-by-step tutorial, see [Schema Registry Tutorial](https://docs.confluent.io/current/schema-registry/schema_registry_tutorial.html).
+The Yugabyte CDC connector supports the use of [Apache Avro schemas](http://avro.apache.org/docs/current/#schemas) to serialize and deserialize tables. You can use the [Schema Registry](https://docs.confluent.io/current/schema-registry/index.html) in the Confluent Platform to create and manage Avro schema files. For a step-by-step tutorial, see [Schema Registry Tutorial](https://docs.confluent.io/current/schema-registry/schema_registry_tutorial.html).
 
 Create two Avro schemas, one for the `users` table and one for the primary key of the table. After this step, you should have two files: `table_schema_path.avsc` and `primary_key_schema_path.avsc`.
 
-You can use the following two Avro schema examples that will work with the table you created.
+You can use the following two Avro schema examples that will work with the `users` table you created.
 
-**`table_schema_path.avsc`**
+**`table_schema_path.avsc`:**
 
 ```json
 {
@@ -70,7 +68,7 @@ You can use the following two Avro schema examples that will work with the table
 }
 ```
 
-**`primary_key_schema_path.avsc`
+**`primary_key_schema_path.avsc`:**
 
 ```json
 {
@@ -103,6 +101,8 @@ Download the [Yugabyte CDC connector (JAR file)](https://github.com/yugabyte/yb-
 
 ## Step 5 — Log to Kafka
 
+Run the following command to start logging an output stream of data changes from YugabyteDB to Apache Kafka.
+
 ```bash
 java -jar target/yb_cdc_connector.jar
 --table_name yugabyte.cdc
@@ -110,6 +110,8 @@ java -jar target/yb_cdc_connector.jar
 --table_schema_path table_schema_path.avsc
 --primary_key_schema_path primary_key_schema_path.avsc
 ```
+
+For details on the available options, see [Using the Yugabyte CDC connector](./use-cdc).
 
 ## Step 6 — Write values and observe
 

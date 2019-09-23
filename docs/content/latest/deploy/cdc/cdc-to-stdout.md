@@ -27,21 +27,27 @@ A JRE (or JDK), for Java 8 or later, is installed. JDK and JRE installers for Li
 
 ## Step 1 — Add a database table
 
-Start your local YugabyteDB cluster and add a table (for example, `cdc` to the default `yugabyte` database.
+Start your local YugabyteDB cluster and add a table, named `users`, to the default `yugabyte` database.
+
+```sql
+
+```
 
 ## Step 2 — Download the Yugabyte CDC connector
 
 Download the [Yugabyte CDC connector (JAR file)](https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar).
 
-## Step 3 — Stream the log output stream to `stdout`
+## Step 3 — Stream the log output stream to "stdout"
 
-You can now follow the command below to to start the YugabyteDB CDC connector and stream the output from the `cdc` table to `stdout`.
+Run the command below to to start the YugabyteDB CDC connector and stream the output from the `cdc` table to `stdout`.
 
 ```bash
 java -jar yb_cdc_connector.jar
---table_name yugabyte.cdc
+--table_name yugabyte.users
 --log_only // Flag to log to console.
 ```
+
+For details on the available options, see [Using the Yugabyte CDC connector](./use-cdc).
 
 ## Step 4 — Write values and observe
 
