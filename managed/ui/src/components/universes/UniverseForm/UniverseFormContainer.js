@@ -204,7 +204,7 @@ function mapStateToProps(state, ownProps) {
       "ybSoftwareVersion": "",
       "numNodes": 3,
       "isMultiAZ": true,
-      "instanceType": "c4.2xlarge",
+      "instanceType": "c5.large",
       "accessKeyCode": "yugabyte-default",
       "assignPublicIP":  true,
       "useTimeSync": false,
