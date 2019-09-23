@@ -63,6 +63,18 @@ struct DBPropertyInfo {
 extern const DBPropertyInfo* GetPropertyInfo(const Slice& property);
 
 #ifndef ROCKSDB_LITE
+enum class InternalDBStatsType {
+  WAL_FILE_BYTES,
+  WAL_FILE_SYNCED,
+  BYTES_WRITTEN,
+  NUMBER_KEYS_WRITTEN,
+  WRITE_DONE_BY_OTHER,
+  WRITE_DONE_BY_SELF,
+  WRITE_WITH_WAL,
+  WRITE_STALL_MICROS,
+  INTERNAL_DB_STATS_ENUM_MAX,
+};
+
 class InternalStats {
  public:
   enum InternalCFStatsType {
@@ -77,18 +89,6 @@ class InternalStats {
     WRITE_STALLS_ENUM_MAX,
     BYTES_FLUSHED,
     INTERNAL_CF_STATS_ENUM_MAX,
-  };
-
-  enum InternalDBStatsType {
-    WAL_FILE_BYTES,
-    WAL_FILE_SYNCED,
-    BYTES_WRITTEN,
-    NUMBER_KEYS_WRITTEN,
-    WRITE_DONE_BY_OTHER,
-    WRITE_DONE_BY_SELF,
-    WRITE_WITH_WAL,
-    WRITE_STALL_MICROS,
-    INTERNAL_DB_STATS_ENUM_MAX,
   };
 
   InternalStats(int num_levels, Env* env, ColumnFamilyData* cfd)
@@ -218,13 +218,13 @@ class InternalStats {
   }
 
   void AddDBStats(InternalDBStatsType type, uint64_t value) {
-    auto& v = db_stats_[type];
+    auto& v = db_stats_[static_cast<size_t>(type)];
     v.store(v.load(std::memory_order_relaxed) + value,
             std::memory_order_relaxed);
   }
 
   uint64_t GetDBStats(InternalDBStatsType type) {
-    return db_stats_[type].load(std::memory_order_relaxed);
+    return db_stats_[static_cast<size_t>(type)].load(std::memory_order_relaxed);
   }
 
   HistogramImpl* GetFileReadHist(int level) {
@@ -253,7 +253,8 @@ class InternalStats {
   void DumpCFStats(std::string* value);
 
   // Per-DB stats
-  std::atomic<uint64_t> db_stats_[INTERNAL_DB_STATS_ENUM_MAX];
+  std::atomic<uint64_t> db_stats_[
+      static_cast<size_t>(InternalDBStatsType::INTERNAL_DB_STATS_ENUM_MAX)];
   // Per-ColumnFamily stats
   uint64_t cf_stats_value_[INTERNAL_CF_STATS_ENUM_MAX];
   uint64_t cf_stats_count_[INTERNAL_CF_STATS_ENUM_MAX];
