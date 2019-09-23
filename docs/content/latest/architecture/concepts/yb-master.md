@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The YB-Master is the keeper of system meta-data/records, such as what tables exist in the system, where their tablets live, what users/roles exist, the permissions associated with them, and so on.
+The YB-Master is the keeper of system meta-data/records, such as what tables exist in the system, where their tablets live, what users and roles exist, the permissions associated with them, and so on.
 
 It is also responsible for coordinating background operations (such as load-balancing or initiating re-replication of under-replicated data) and performing a variety of administrative operations such as create/alter/drop of a table.
 

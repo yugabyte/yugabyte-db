@@ -14,7 +14,7 @@ showAsideToc: true
 ---
 
 The YB-TServer (short for YugabyteDB Tablet Server) is the process that does the actual IO for end
-user requests. Recall from the previous section that data for a table is split/sharded into tablets.
+user requests. Recall from the previous section that data for a table is split or sharded into tablets.
 Each tablet is composed of one or more tablet-peers depending on the replication factor. And each
 YB-TServer hosts one or more tablet-peers.
 
