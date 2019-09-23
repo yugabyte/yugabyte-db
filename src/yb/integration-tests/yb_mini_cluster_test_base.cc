@@ -22,7 +22,7 @@
 using namespace std::literals;
 
 DECLARE_bool(use_priority_thread_pool_for_flushes);
-
+DECLARE_bool(allow_preempting_compactions);
 
 ///////////////////////////////////////////////////
 // YBMiniClusterTestBase
@@ -34,6 +34,7 @@ template <class T>
 void YBMiniClusterTestBase<T>::SetUp() {
   YBTest::SetUp();
   FLAGS_use_priority_thread_pool_for_flushes = true;
+  FLAGS_allow_preempting_compactions = true;
   verify_cluster_before_next_tear_down_ = true;
 }
 
