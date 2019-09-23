@@ -1129,7 +1129,7 @@ Status ClusterAdminClient::ModifyPlacementInfo(
 
 Status ClusterAdminClient::GetUniverseConfig() {
   const auto cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
-  cout << "Config: "  << endl << cluster_config.cluster_config().DebugString();
+  cout << "Config: \r\n"  << cluster_config.cluster_config().DebugString() << endl;
   return Status::OK();
 }
 

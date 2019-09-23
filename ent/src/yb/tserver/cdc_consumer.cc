@@ -40,7 +40,7 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
     std::function<bool(const std::string&)> is_leader_for_tablet,
     rpc::ProxyCache* proxy_cache,
     TabletServer* tserver) {
-
+  LOG(INFO) << "Creating CDC Consumer";
   auto master_addrs = tserver->options().GetMasterAddresses();
   std::vector<std::string> hostport_strs;
   hostport_strs.reserve(master_addrs->size());
