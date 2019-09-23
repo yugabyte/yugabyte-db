@@ -204,6 +204,10 @@ class MasterServiceImpl : public MasterServiceIf,
                              GetLoadMovePercentResponsePB* resp,
                              rpc::RpcContext rpc) override;
 
+  void GetLeaderBlacklistCompletion(const GetLeaderBlacklistPercentRequestPB* req,
+                             GetLoadMovePercentResponsePB* resp,
+                             rpc::RpcContext rpc) override;
+
   void IsMasterLeaderServiceReady(const IsMasterLeaderReadyRequestPB* req,
                                   IsMasterLeaderReadyResponsePB* resp,
                                   rpc::RpcContext rpc) override;

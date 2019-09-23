@@ -126,6 +126,8 @@ class ClusterAdminClient {
 
   CHECKED_STATUS GetLoadMoveCompletion();
 
+  CHECKED_STATUS GetLeaderBlacklistCompletion();
+
   CHECKED_STATUS GetIsLoadBalancerIdle();
 
   CHECKED_STATUS ListLeaderCounts(const client::YBTableName& table_name);
@@ -151,7 +153,8 @@ class ClusterAdminClient {
 
   CHECKED_STATUS GetUniverseConfig();
 
-  CHECKED_STATUS ChangeBlacklist(const std::vector<HostPort>& servers, bool add);
+  CHECKED_STATUS ChangeBlacklist(const std::vector<HostPort>& servers, bool add,
+      bool blacklist_leader);
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.

@@ -61,7 +61,8 @@ CHECKED_STATUS GetUniverseConfig(ClusterAdminClientClass* client,
 }
 
 CHECKED_STATUS ChangeBlacklist(ClusterAdminClientClass* client,
-                               const ClusterAdminCli::CLIArguments& args) {
+                               const ClusterAdminCli::CLIArguments& args, bool blacklist_leader,
+                               const std::string& errStr) {
   if (args.size() < 4) {
     return ClusterAdminCli::kInvalidArguments;
   }
@@ -73,8 +74,9 @@ CHECKED_STATUS ChangeBlacklist(ClusterAdminClientClass* client,
   for (const auto& arg : boost::make_iterator_range(args.begin() + 3, args.end())) {
     hostports.push_back(VERIFY_RESULT(HostPort::FromString(arg, kDefaultRpcPort)));
   }
-  RETURN_NOT_OK_PREPEND(client->ChangeBlacklist(hostports, change_type == kBlacklistAdd),
-                        "Unable to change blacklist");
+
+  RETURN_NOT_OK_PREPEND(client->ChangeBlacklist(hostports, change_type == kBlacklistAdd,
+        blacklist_leader), errStr);
   return Status::OK();
 }
 
@@ -411,6 +413,14 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "get_leader_blacklist_completion", "",
+      [client](const CLIArguments&) -> Status {
+        RETURN_NOT_OK_PREPEND(client->GetLeaderBlacklistCompletion(),
+                              "Unable to get leader blacklist completion");
+        return Status::OK();
+      });
+
+  Register(
       "get_is_load_balancer_idle", "",
       [client](const CLIArguments&) -> Status {
         RETURN_NOT_OK_PREPEND(client->GetIsLoadBalancerIdle(),
@@ -453,7 +463,12 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "change_blacklist", Format(" <$0|$1> <ip_addr>:<port> [<ip_addr>:<port>]...",
           kBlacklistAdd, kBlacklistRemove),
-      std::bind(&ChangeBlacklist, client, _1));
+      std::bind(&ChangeBlacklist, client, _1, false, "Unable to change blacklist"));
+
+  Register(
+      "change_leader_blacklist", Format(" <$0|$1> <ip_addr>:<port> [<ip_addr>:<port>]...",
+          kBlacklistAdd, kBlacklistRemove),
+      std::bind(&ChangeBlacklist, client, _1, true, "Unable to change leader blacklist"));
 }
 
 }  // namespace tools

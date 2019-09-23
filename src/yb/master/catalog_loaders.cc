@@ -230,6 +230,11 @@ Status ClusterConfigLoader::Visit(
     RETURN_NOT_OK(catalog_manager_->SetBlackList(metadata.server_blacklist()));
   }
 
+  if (metadata.has_leader_blacklist()) {
+    // Rebuild the blacklist state for load movement completion tracking.
+    RETURN_NOT_OK(catalog_manager_->SetLeaderBlacklist(metadata.leader_blacklist()));
+  }
+
   // Update in memory state.
   catalog_manager_->cluster_config_ = config;
   l->Commit();

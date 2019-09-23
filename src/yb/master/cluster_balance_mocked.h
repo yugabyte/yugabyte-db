@@ -37,6 +37,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   }
 
   const BlacklistPB& GetServerBlacklist() const override { return blacklist_; }
+  const BlacklistPB& GetLeaderBlacklist() const override { return leader_blacklist_; }
 
   void SendReplicaChanges(scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid,
                           const bool is_add, const bool should_remove,
@@ -74,6 +75,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   TableInfoMap table_map_;
   ReplicationInfoPB replication_info_;
   BlacklistPB blacklist_;
+  BlacklistPB leader_blacklist_;
   vector<TabletId> pending_add_replica_tasks_;
   vector<TabletId> pending_remove_replica_tasks_;
   vector<TabletId> pending_stepdown_leader_tasks_;

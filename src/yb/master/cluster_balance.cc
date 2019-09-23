@@ -117,6 +117,10 @@ int ClusterLoadBalancer::get_total_blacklisted_servers() const {
   return state_->blacklisted_servers_.size();
 }
 
+int ClusterLoadBalancer::get_total_leader_blacklisted_servers() const {
+  return state_->leader_blacklisted_servers_.size();
+}
+
 int ClusterLoadBalancer::get_total_over_replication() const {
   return state_->tablets_over_replicated_.size();
 }
@@ -340,6 +344,9 @@ Status ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
   // Set the blacklist so we can also mark the tablet servers as we add them up.
   state_->SetBlacklist(GetServerBlacklist());
 
+  // Set the leader blacklist so we can also mark the tablet servers as we add them up.
+  state_->SetLeaderBlacklist(GetLeaderBlacklist());
+
   // Loop over live tablet servers to set empty defaults, so we can also have info on those
   // servers that have yet to receive load (have heartbeated to the master, but have not been
   // assigned any tablets yet).
@@ -393,9 +400,10 @@ Status ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
 
   VLOG(1) << Substitute(
       "Total running tablets: $0. Total overreplication: $1. Total starting tablets: $2. "
-      "Wrong placement: $3. BlackListed: $4. Total underreplication: $5",
+      "Wrong placement: $3. BlackListed: $4. Total underreplication: $5, Leader BlackListed: $6",
       get_total_running_tablets(), get_total_over_replication(), get_total_starting_tablets(),
-      get_total_wrong_placement(), get_total_blacklisted_servers(), get_total_under_replication());
+      get_total_wrong_placement(), get_total_blacklisted_servers(), get_total_under_replication(),
+      get_total_leader_blacklisted_servers());
 
   for (const auto& tablet : tablets) {
     const auto& tablet_id = tablet->id();
@@ -668,15 +676,39 @@ Result<bool> ClusterLoadBalancer::GetTabletToMove(
 
 Result<bool> ClusterLoadBalancer::GetLeaderToMove(
     TabletId* moving_tablet_id, TabletServerId* from_ts, TabletServerId *to_ts) {
-  if (state_->sorted_leader_load_.empty() ||
-      state_->IsLeaderLoadBelowThreshold(state_->sorted_leader_load_.back())) {
+  if (state_->sorted_leader_load_.empty()) {
     return false;
+  }
+
+  // Find out if there are leaders to be moved.
+  for (int right = state_->sorted_leader_load_.size() - 1; right >= 0; --right) {
+    const TabletServerId& high_load_uuid = state_->sorted_leader_load_[right];
+    auto high_leader_blacklisted = (state_->leader_blacklisted_servers_.find(high_load_uuid) !=
+      state_->leader_blacklisted_servers_.end());
+    if (high_leader_blacklisted) {
+      int high_load = state_->GetLeaderLoad(high_load_uuid);
+      if (high_load > 0) {
+        // Leader blacklisted tserver with a leader replica.
+        break;
+      } else {
+        // Leader blacklisted tserver without leader replica.
+        continue;
+      }
+    } else {
+      if (state_->IsLeaderLoadBelowThreshold(state_->sorted_leader_load_[right])) {
+        // Non-leader blacklisted tserver with not too many leader replicas.
+        return false;
+      } else {
+        // Non-leader blacklisted tserver with too many leader replicas.
+        break;
+      }
+    }
   }
 
   // The algorithm to balance the leaders is very similar to the one for tablets:
   //
   // Start with two indices pointing at left and right most ends of the sorted_leader_load_
-  // structure.
+  // structure. Note that leader blacklisted tserver is considered as having infinite leader load.
   //
   // We will try to find two TSs that have at least one leader that can be moved amongst them, from
   // the higher load to the lower load TS. To do this, we will go through comparing the TSs
@@ -697,14 +729,24 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
   const auto current_time = MonoTime::Now();
   int last_pos = state_->sorted_leader_load_.size() - 1;
   for (int left = 0; left <= last_pos; ++left) {
+    const TabletServerId& low_load_uuid = state_->sorted_leader_load_[left];
+    auto low_leader_blacklisted = (state_->leader_blacklisted_servers_.find(low_load_uuid) !=
+        state_->leader_blacklisted_servers_.end());
+    if (low_leader_blacklisted) {
+      // Left marker has gone beyond non-leader blacklisted tservers.
+      return false;
+    }
+
     for (int right = last_pos; right >= 0; --right) {
-      const TabletServerId& low_load_uuid = state_->sorted_leader_load_[left];
       const TabletServerId& high_load_uuid = state_->sorted_leader_load_[right];
+      auto high_leader_blacklisted = (state_->leader_blacklisted_servers_.find(high_load_uuid) !=
+          state_->leader_blacklisted_servers_.end());
       int load_variance =
           state_->GetLeaderLoad(high_load_uuid) - state_->GetLeaderLoad(low_load_uuid);
 
       // Check for state change or end conditions.
-      if (left == right || load_variance < state_->options_->kMinLeaderLoadVarianceToBalance) {
+      if (left == right || (load_variance < state_->options_->kMinLeaderLoadVarianceToBalance &&
+            !high_leader_blacklisted)) {
         // Either both left and right are at the end, or our load_variance is already too small,
         // which means it will be too small for any TSs between left and right, so we can return.
         if (right == last_pos) {
@@ -746,6 +788,14 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
           }
         } else {
           LOG(WARNING) << "Did not find load balancer metadata for tablet " << *moving_tablet_id;
+        }
+
+        // Leader movement solely due to leader blacklist.
+        if (load_variance < state_->options_->kMinLeaderLoadVarianceToBalance &&
+            high_leader_blacklisted) {
+          state_->LogSortedLeaderLoad();
+          LOG(INFO) << "Move tablet " << tablet_id << " leader from leader blacklisted TS "
+            << *from_ts << " to TS " << *to_ts;
         }
         return true;
       }
@@ -917,6 +967,11 @@ const PlacementInfoPB& ClusterLoadBalancer::GetClusterPlacementInfo() const {
 const BlacklistPB& ClusterLoadBalancer::GetServerBlacklist() const {
   auto l = catalog_manager_->cluster_config_->LockForRead();
   return l->data().pb.server_blacklist();
+}
+
+const BlacklistPB& ClusterLoadBalancer::GetLeaderBlacklist() const {
+  auto l = catalog_manager_->cluster_config_->LockForRead();
+  return l->data().pb.leader_blacklist();
 }
 
 bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
