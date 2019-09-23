@@ -27,7 +27,7 @@ class RemoteShell(object):
             host=options.get("ssh_host"),
             user=options.get("ssh_user"),
             port=options.get("ssh_port"),
-            connect_kwargs={'key_filename': options.get("private_key_file")}
+            connect_kwargs={'key_filename': [options.get("private_key_file")]}
         )
 
     def run_command(self, command):
