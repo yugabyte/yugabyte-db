@@ -47,12 +47,15 @@ void YBTableName::GetFromTableIdentifierPB(const master::TableIdentifierPB& id) 
 }
 
 void YBTableName::SetIntoNamespaceIdentifierPB(master::NamespaceIdentifierPB* id) const {
-  id->set_name(resolved_namespace_name());
   if (!namespace_id_.empty()) {
     id->set_id(namespace_id_);
+    if (!has_namespace()) {
+      return;
+    }
   } else {
     id->clear_id();
   }
+  id->set_name(resolved_namespace_name());
 }
 
 void YBTableName::GetFromNamespaceIdentifierPB(const master::NamespaceIdentifierPB& id) {

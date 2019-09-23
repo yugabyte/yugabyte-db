@@ -578,25 +578,21 @@ Status YBClient::DeleteNamespace(const std::string& namespace_name,
   return Status::OK();
 }
 
-Status YBClient::ListNamespaces(const boost::optional<YQLDatabase>& database_type,
-                                std::vector<std::string>* namespace_names,
-                                std::vector<std::string>* namespace_ids) {
+Result<vector<master::NamespaceIdentifierPB>> YBClient::ListNamespaces(
+    const boost::optional<YQLDatabase>& database_type) {
   ListNamespacesRequestPB req;
   ListNamespacesResponsePB resp;
   if (database_type) {
     req.set_database_type(*database_type);
   }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListNamespaces);
-
-  for (auto ns : resp.namespaces()) {
-    if (namespace_names != nullptr) {
-      namespace_names->push_back(ns.name());
-    }
-    if (namespace_ids != nullptr) {
-      namespace_ids->push_back(ns.id());
-    }
+  auto* namespaces = resp.mutable_namespaces();
+  vector<master::NamespaceIdentifierPB> result;
+  result.reserve(namespaces->size());
+  for (auto& ns : *namespaces) {
+    result.push_back(std::move(ns));
   }
-  return Status::OK();
+  return result;
 }
 
 Status YBClient::ReservePgsqlOids(const std::string& namespace_id,
@@ -650,11 +646,8 @@ Status YBClient::GrantRevokePermission(GrantRevokeStatementType statement_type,
 
 Result<bool> YBClient::NamespaceExists(const std::string& namespace_name,
                                        const boost::optional<YQLDatabase>& database_type) {
-  std::vector<std::string> namespace_names;
-  RETURN_NOT_OK(ListNamespaces(database_type, &namespace_names));
-
-  for (const string& name : namespace_names) {
-    if (name == namespace_name) {
+  for (const auto& ns : VERIFY_RESULT(ListNamespaces(database_type))) {
+    if (ns.name() == namespace_name) {
       return true;
     }
   }
@@ -663,11 +656,8 @@ Result<bool> YBClient::NamespaceExists(const std::string& namespace_name,
 
 Result<bool> YBClient::NamespaceIdExists(const std::string& namespace_id,
                                          const boost::optional<YQLDatabase>& database_type) {
-  std::vector<std::string> namespace_ids;
-  RETURN_NOT_OK(ListNamespaces(database_type, nullptr /* namespace_names */, &namespace_ids));
-
-  for (const string& id : namespace_ids) {
-    if (namespace_id == id) {
+  for (const auto& ns : VERIFY_RESULT(ListNamespaces(database_type))) {
+    if (ns.id() == namespace_id) {
       return true;
     }
   }
