@@ -341,15 +341,14 @@ class YBClient {
                                        const char* resource_name,
                                        const char* namespace_name,
                                        const std::string& role_name);
-  // List all namespace names and optionally namespace ids.
-  // 'namespaces' is appended to only on success.
-  CHECKED_STATUS ListNamespaces(std::vector<std::string>* namespace_names,
-                                std::vector<std::string>* namespace_ids = nullptr) {
-    return ListNamespaces(boost::none, namespace_names, namespace_ids);
+
+  // List all namespace identifiers.
+  Result<vector<master::NamespaceIdentifierPB>> ListNamespaces() {
+    return ListNamespaces(boost::none);
   }
-  CHECKED_STATUS ListNamespaces(const boost::optional<YQLDatabase>& database_type,
-                                std::vector<std::string>* namespace_names,
-                                std::vector<std::string>* namespace_ids = nullptr);
+
+  Result<vector<master::NamespaceIdentifierPB>> ListNamespaces(
+      const boost::optional<YQLDatabase>& database_type);
 
   // Check if the namespace given by 'namespace_name' or 'namespace_id' exists.
   // Result value is set only on success.

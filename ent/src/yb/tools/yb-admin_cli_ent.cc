@@ -52,11 +52,11 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         }
 
         const int num_tables = (args.size() - 2)/2;
-        vector<YBTableName> tables(num_tables);
+        vector<YBTableName> tables;
+        tables.reserve(num_tables);
 
         for (int i = 0; i < num_tables; ++i) {
-          tables[i].set_namespace_name(args[2 + i*2]);
-          tables[i].set_table_name(args[3 + i*2]);
+          tables.push_back(VERIFY_RESULT(ResolveTableName(client, args[2 + i*2], args[3 + i*2])));
         }
 
         int timeout_secs = 60;
@@ -108,11 +108,11 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
         const string file_name = args[2];
         const int num_tables = (args.size() - 3)/2;
-        vector<YBTableName> tables(num_tables);
+        vector<YBTableName> tables;
+        tables.reserve(num_tables);
 
         for (int i = 0; i < num_tables; ++i) {
-          tables[i].set_namespace_name(args[3 + i*2]);
-          tables[i].set_table_name(args[4 + i*2]);
+          tables.push_back(VERIFY_RESULT(ResolveTableName(client, args[3 + i*2], args[4 + i*2])));
         }
 
         string msg = num_tables > 0 ?
@@ -143,7 +143,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         if (args.size() != 4) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        const YBTableName table_name(args[2], args[3]);
+        const auto table_name = VERIFY_RESULT(ResolveTableName(client, args[2], args[3]));
         RETURN_NOT_OK_PREPEND(client->ListReplicaTypeCounts(table_name),
                               "Unable to list live and read-only replica counts");
         return Status::OK();
