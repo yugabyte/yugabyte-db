@@ -3,7 +3,7 @@ title: YCSB
 linkTitle: YCSB
 description: YCSB
 image: /images/section_icons/architecture/concepts.png
-headcontent: Benchmark Yugabyte DB using YCSB.
+headcontent: Benchmark YugabyteDB using YCSB.
 menu:
   latest:
     identifier: benchmark-ycsb
@@ -16,16 +16,17 @@ isTocNested: True
 ---
 
 {{< note title="Note" >}}
+
 For more information about YCSB see: 
 
 * YCSB Wiki: https://github.com/brianfrankcooper/YCSB/wiki
 * Workload info: https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads
-{{< /note >}}
 
+{{< /note >}}
 
 We will first setup YCSB and configure it to use the YCQL driver for Cassandra.
 
-## Step 1.Clone the YCSB repository
+## Step 1. Clone the YCSB repository
 
 You can do this by running the following commands.
 
@@ -73,9 +74,9 @@ You can build YCSB by running the following command.
 mvn -pl com.yahoo.ycsb:cassandra-binding -am clean package -DskipTests
 ```
 
-## Step 4. Setup cqlsh
+## Step 4. Set up cqlsh
 
-You can setup Yugabyte-cqlsh by doing the following:
+You can set up Yugabyte-cqlsh by doing the following:
 
 ```sh
 cd $HOME
@@ -95,7 +96,9 @@ chmod a+x run-yb-ycsb.sh
 2. Copy the following contents in `run-yb-ycsb.sh`:
 
 {{< note title="Note" >}}
+
 You may want to customize the values below (such as <ip-addr>) with the correct/intended ones for your setup.
+
 {{< /note >}}
 
 ```sh
@@ -162,7 +165,7 @@ run_workload workloade
 cleanup
 ```
 
-We use Yugabyte DB with strongly consistent reads and writes, which corresponds, in Cassandra, to using the `QUORUM` option for both `cassandra.readconsistencylevel` and `cassandra.writeconsistencylevel` (see the command above).
+We use YugabyteDB with strongly consistent reads and writes, which corresponds, in Cassandra, to using the `QUORUM` option for both `cassandra.readconsistencylevel` and `cassandra.writeconsistencylevel` (see the command above).
 
 ## Step 6. Run and check results
 
@@ -173,7 +176,9 @@ Simply run the script above:
 ```
 
 {{< tip title="Tip" >}}
+
 See also [this page](https://github.com/brianfrankcooper/YCSB/wiki/Running-a-Workload-in-Parallel) about running workloads in parallel.
+
 {{< /tip >}}
 
 Results for each workload will be in `workload[abcdef]-transaction.dat` (e.g. `workloada-transaction.dat`).

@@ -3,7 +3,7 @@ title: Performance
 linkTitle: Performance
 description: Performance
 image: /images/section_icons/architecture/concepts.png
-headcontent: Test the performance of Yugabyte DB for various workloads.
+headcontent: Test the performance of YugabyteDB for various workloads.
 menu:
   latest:
     identifier: benchmark-performance
@@ -17,7 +17,7 @@ isTocNested: True
 
 ## Goal
 
-The goal of this benchmark is to get an idea of the performance of Yugabyte DB using a key-value workload.
+The goal of this benchmark is to get an idea of the performance of YugabyteDB using a key-value workload.
 
 ## Recommended configuration
 
