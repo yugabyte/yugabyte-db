@@ -198,7 +198,15 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "list_tables", "",
       [client](const CLIArguments&) -> Status {
-        RETURN_NOT_OK_PREPEND(client->ListTables(),
+        RETURN_NOT_OK_PREPEND(client->ListTables(false /* include_db_type */),
+                              "Unable to list tables");
+        return Status::OK();
+      });
+
+  Register(
+      "list_tables_with_db_types", "",
+      [client](const CLIArguments&) -> Status {
+        RETURN_NOT_OK_PREPEND(client->ListTables(true /* include_db_type */),
                               "Unable to list tables");
         return Status::OK();
       });
@@ -209,7 +217,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         if (args.size() < 4) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        const YBTableName table_name(args[2], args[3]);
+        const auto table_name = VERIFY_RESULT(ResolveTableName(client, args[2], args[3]));
         int max = -1;
         if (args.size() > 4) {
           max = std::stoi(args[4].c_str());
@@ -276,7 +284,8 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         if (args.size() != 4) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        const YBTableName table_name(args[2], args[3]);
+        const auto table_name = VERIFY_RESULT(ResolveTableName(client, args[2], args[3]));
+
         RETURN_NOT_OK_PREPEND(client->DeleteTable(table_name),
                               Substitute("Unable to delete table $0", table_name.ToString()));
         return Status::OK();
@@ -288,7 +297,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         if (args.size() != 4 && args.size() != 5) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        const YBTableName table_name(args[2], args[3]);
+        const auto table_name = VERIFY_RESULT(ResolveTableName(client, args[2], args[3]));
         int timeout_secs = 20;
         if (args.size() > 4) {
           timeout_secs = std::stoi(args[4].c_str());
@@ -306,7 +315,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         if (args.size() != 4 && args.size() != 5) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        const YBTableName table_name(args[2], args[3]);
+        const auto table_name = VERIFY_RESULT(ResolveTableName(client, args[2], args[3]));
         int timeout_secs = 20;
         if (args.size() > 4) {
           timeout_secs = std::stoi(args[4].c_str());
@@ -434,7 +443,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         if (args.size() != 4) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        const YBTableName table_name(args[2], args[3]);
+        const auto table_name = VERIFY_RESULT(ResolveTableName(client, args[2], args[3]));
         RETURN_NOT_OK_PREPEND(client->ListLeaderCounts(table_name),
                               "Unable to get leader counts");
         return Status::OK();
@@ -469,6 +478,13 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       "change_leader_blacklist", Format(" <$0|$1> <ip_addr>:<port> [<ip_addr>:<port>]...",
           kBlacklistAdd, kBlacklistRemove),
       std::bind(&ChangeBlacklist, client, _1, true, "Unable to change leader blacklist"));
+}
+
+Result<YBTableName> ResolveTableName(ClusterAdminClientClass* client,
+                                     const string& full_namespace_name,
+                                     const string& table_name) {
+  const auto& namespace_info = VERIFY_RESULT_REF(client->GetNamespaceInfo(full_namespace_name));
+  return YBTableName(namespace_info.id(), namespace_info.name(), table_name);
 }
 
 }  // namespace tools

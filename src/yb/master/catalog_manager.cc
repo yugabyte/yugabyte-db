@@ -4231,16 +4231,18 @@ Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
 
   boost::shared_lock<LockType> l(lock_);
 
-  for (const NamespaceInfoMap::value_type& entry : namespace_ids_map_) {
-    auto ltm = entry.second->LockForRead();
+  for (const auto& entry : namespace_ids_map_) {
+    const auto& namespace_info = *entry.second;
+    auto ltm = namespace_info.LockForRead();
     // If the request asks for namespaces for a specific database type, filter by the type.
-    if (req->has_database_type() && entry.second->database_type() != req->database_type()) {
+    if (req->has_database_type() && namespace_info.database_type() != req->database_type()) {
       continue;
     }
 
     NamespaceIdentifierPB *ns = resp->add_namespaces();
-    ns->set_id(entry.second->id());
-    ns->set_name(entry.second->name());
+    ns->set_id(namespace_info.id());
+    ns->set_name(namespace_info.name());
+    ns->set_database_type(namespace_info.database_type());
   }
   return Status::OK();
 }
