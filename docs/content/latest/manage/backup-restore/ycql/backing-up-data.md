@@ -75,7 +75,7 @@ There are a number of useful options in the `COPY TO` command used to perform th
 
 We are going to use the example shown in the [quick start](../../../quick-start/test-cassandra/) section in order to demonstrate how to perform backups.
 
-This section assumes you already have a Yugabyte DB cluster. You can install a local cluster on your laptop using [these quick start instructions](../../../quick-start/install/).
+This section assumes you already have a YugabyteDB cluster. You can install a local cluster on your laptop using [these quick start instructions](../../../quick-start/install/).
 
 ### Create a table with data
 

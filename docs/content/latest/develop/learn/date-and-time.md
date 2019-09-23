@@ -24,13 +24,13 @@ showAsideToc: true
 
 ## Introduction
 
-Yugabyte DB has extensive date and time capability that may be daunting for the new user. Once understood, the rich functionality will allow you to perform very sophisticated calculations and granular time capture.
+YugabyteDB has extensive date and time capability that may be daunting for the new user. Once understood, the rich functionality will allow you to perform very sophisticated calculations and granular time capture.
 
 For date and time data types, see [Data types](/latest/api/ysql/datatypes/).
 
 ## Special values
 
-There are special values that you can reference - Yugabyte DB only caters for some, other special values from postgresql are not implemented in Yugabyte DB, but some can be recreated if you require them. Below is YSQL to select special date and time values. First start ysql from your command line.
+There are special values that you can reference - YugabyteDB only caters for some, other special values from postgresql are not implemented in YugabyteDB, but some can be recreated if you require them. Below is YSQL to select special date and time values. First start ysql from your command line.
 
 ```sh
 ./bin/ysqlsh
@@ -60,7 +60,7 @@ postgres=# select (current_date-1)::timestamp as yesterday,
 ```
 
 {{< note title="Note" >}}
-Yugabyte DB cannot create the special values of `infinity`, `-infinity` and `allballs` that can be found in postgresql. If you are wondering, 'allballs' is a theoretical time of "00:00:00.00 UTC".
+YugabyteDB cannot create the special values of `infinity`, `-infinity` and `allballs` that can be found in postgresql. If you are wondering, 'allballs' is a theoretical time of "00:00:00.00 UTC".
 {{< /note >}}
 
 ## Formatting
@@ -706,7 +706,7 @@ The final example above illustrates the difficulty that can occur with dates. Th
 This is for those more interested in getting into some of the more finer points of control.
 {{< /note >}}
 
-Yugabyte DB has inherited a lot of similar capability of the YSQL API to the PostgreSQL SQL API, and this will explain why when we start to look under the hood, it is looking very much like pg.
+YugabyteDB has inherited a lot of similar capability of the YSQL API to the PostgreSQL SQL API, and this will explain why when we start to look under the hood, it is looking very much like pg.
 
 Yugabyte tracks its settings in its catalog, lets query some relevant settings and this time we will transform the layout of the query results using the `Expanded display` setting. This can be done in any database.
 
@@ -806,4 +806,4 @@ Now you don't need to make those settings each time you enter YSQL. However, app
 
 ## Conclusion
 
-As illustrated, the area of dates and times is a comprehensive area that is well addressed by PostgreSQL and hence YSQL within Yugabyte DB. All of the date-time data types are implemented, and the vast majority of methods, operators and special values are available. The functionality is complex enough for you to be able to code any shortfalls that you find within the YSQL implementation of its SQL API.
+As illustrated, the area of dates and times is a comprehensive area that is well addressed by PostgreSQL and hence YSQL within YugabyteDB. All of the date-time data types are implemented, and the vast majority of methods, operators and special values are available. The functionality is complex enough for you to be able to code any shortfalls that you find within the YSQL implementation of its SQL API.

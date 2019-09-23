@@ -11,21 +11,21 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The [Hasura GraphQL engine](https://hasura.io) is an [open source](https://github.com/hasura/graphql-engine) GraphQL server that can be integrated with Yugabyte DB to provide GraphQL on your Yugabyte DB databases and applications.
+The [Hasura GraphQL engine](https://hasura.io) is an [open source](https://github.com/hasura/graphql-engine) GraphQL server that can be integrated with YugabyteDB to provide GraphQL on your YugabyteDB databases and applications.
 
-Follow the steps below to learn how easily you can begin using the Hasura GraphQL engine with Yugabyte DB. For details on using the Hasura GraphQL engine, see the [Hasura GraphQL engine documentation](https://docs.hasura.io).
+Follow the steps below to learn how easily you can begin using the Hasura GraphQL engine with YugabyteDB. For details on using the Hasura GraphQL engine, see the [Hasura GraphQL engine documentation](https://docs.hasura.io).
 
 ## Before you begin
 
-### Install and start Yugabyte DB
+### Install and start YugabyteDB
 
-If you're new to Yugabyte DB, you can be up and running with Yugabyte DB in under five minutes by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/).
+If you're new to YugabyteDB, you can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/).
 
 ### Install and start Hasura
 
 To install the Hasura GraphQL engine, follow the steps in Hasura's [Quick start with Docker](https://docs.hasura.io/1.0/graphql/manual/getting-started/docker-simple.html).
 
-To use Hasura with Yugabyte DB, the configuration should be similar to PostgreSQL, but the port should be `5433` and the transaction isolation level should be set to `SERIALIZABLE`. 
+To use Hasura with YugabyteDB, the configuration should be similar to PostgreSQL, but the port should be `5433` and the transaction isolation level should be set to `SERIALIZABLE`. 
 
 For a local Mac setup, the configuration should be:
 
@@ -37,7 +37,7 @@ docker run -d -p 8080:8080 \
        hasura/graphql-engine:v1.0.0-beta.6
 ```
 
-The `HASURA_GRAPHQL_TX_ISOLATION` setting is a temporary requirement due to a Yugabyte DB issue involving the locking of foreign keys ([GitHub issue #1199](https://github.com/yugabyte/yugabyte-db/issues/1199)).
+The `HASURA_GRAPHQL_TX_ISOLATION` setting is a temporary requirement due to a YugabyteDB issue involving the locking of foreign keys ([GitHub issue #1199](https://github.com/yugabyte/yugabyte-db/issues/1199)).
 
 {{< note title="Note" >}}
 

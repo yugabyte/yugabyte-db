@@ -15,7 +15,7 @@ showAsideToc: true
 
 Most application developers have used SQL, and possibly some NoSQL databases, to build applications. YugabyteDB brings the best of these two databases together into one unified platform to simplify development of scalable cloud services.
 
-Very often, today's cloud services and applications will start out with just a few requests and a very small amount of data. These can be served by just a few nodes. But if the application becomes popular, they would have to scale out rapidly in order to handle millions of requests and many terabytes of data. Yugabyte DB is well suited for these kinds of workloads.
+Very often, today's cloud services and applications will start out with just a few requests and a very small amount of data. These can be served by just a few nodes. But if the application becomes popular, they would have to scale out rapidly in order to handle millions of requests and many terabytes of data. YugabyteDB is well suited for these kinds of workloads.
 
 ## Unifying SQL and NoSQL
 
@@ -23,7 +23,7 @@ Here are a few different criteria where YugabyteDB brings the best of SQL and No
 
 ### Data characteristics
 
-These can be loosely defined as the high-level concerns when choosing a database to build an application or a cloud service - such as its data model, the API it supports, its consistency semantics and so on. Here is a table that contrasts what Yugabyte DB offers with SQL and NoSQL databases in general. Note that there are a number of different NoSQL databases each with their own nuanced behavior, and the table below is not accurate for all NoSQL databases - it is just meant to give an idea.
+These can be loosely defined as the high-level concerns when choosing a database to build an application or a cloud service - such as its data model, the API it supports, its consistency semantics and so on. Here is a table that contrasts what YugabyteDB offers with SQL and NoSQL databases in general. Note that there are a number of different NoSQL databases each with their own nuanced behavior, and the table below is not accurate for all NoSQL databases - it is just meant to give an idea.
 
 | Database characteristics  | SQL | NoSQL | YugabyteDB |
 | --------------- | ---------------- | ------------------ | ------------------ |
@@ -55,7 +55,7 @@ Operational characteristics can be defined as the runtime concerns that arise wh
 
 Applications and cloud services depend on databases for a variety of built-in features. These can include the ability to perform multi-row transactions, JSON or document support, secondary indexes, automatic data expiry with TTLs, and so on.
 
-Here is a table that lists some of the important features that YugabyteDB supports, and which of Yugabyte DB's APIs to use in order to achieve these features. Note that typically, multiple databases are deployed in order to achieve these features.
+Here is a table that lists some of the important features that YugabyteDB supports, and which of YugabyteDB's APIs to use in order to achieve these features. Note that typically, multiple databases are deployed in order to achieve these features.
 
 | Database features  | YugabyteDB - Cassandra-compatible YCQL API | YugabyteDB - Redis-compatible YEDIS API|
 | --------------- | ---------------- | ------------------ |
@@ -69,7 +69,7 @@ Here is a table that lists some of the important features that YugabyteDB suppor
 
 ## Linear scalability
 
-In order to test the linear scalability of Yugabyte DB, we have run some large cluster benchmarks (up to 50 nodes). We were able to scale Yugabyte DB to million of reads and writes per second while retaining low latencies. You can read more about our [large cluster tests and how we scaled Yugabyte DB to millions of IOPS](https://blog.yugabyte.com/scaling-yugabyte-db-to-millions-of-reads-and-writes-fb86cea5ff15).
+In order to test the linear scalability of YugabyteDB, we have run some large cluster benchmarks (up to 50 nodes). We were able to scale YugabyteDB to million of reads and writes per second while retaining low latencies. You can read more about our [large cluster tests and how we scaled YugabyteDB to millions of IOPS](https://blog.yugabyte.com/scaling-yugabyte-db-to-millions-of-reads-and-writes-fb86cea5ff15).
 
 ![Linear scalability at large cluster sizes](/images/develop/learn/yb-scale-out.png)
 
@@ -87,7 +87,7 @@ The second chart below shows the latency for the YCSB run.
 
 ## Geo-distributed
 
-This is a screenshot of YugabyteDB EE, which visualized the universe created. Below is a screenshot of a 5-node Yugabyte DB universe created for a user identity use-case to power users logging in and changing passwords for a SaaS application. The replication factor of this universe is 5, and it is configured to keep 2 copies of data in `us-west`, 2 copies of the data in `us-east` and 1 copy of the data in the Asia-Pacific region. 
+This is a screenshot of YugabyteDB EE, which visualized the universe created. Below is a screenshot of a 5-node YugabyteDB universe created for a user identity use-case to power users logging in and changing passwords for a SaaS application. The replication factor of this universe is 5, and it is configured to keep 2 copies of data in `us-west`, 2 copies of the data in `us-east` and 1 copy of the data in the Asia-Pacific region. 
 
 ![Geo-distributed](/images/develop/learn/yb-geo-distributed.png)
 

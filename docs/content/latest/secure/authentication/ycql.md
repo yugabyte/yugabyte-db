@@ -15,11 +15,11 @@ You can enable access control by starting the `yb-tserver` processes with the `-
   >& /home/centos/disk1/yb-tserver.out &
 ```
 
-You can read more about bringing up the YB-TServers for a deployment in the section on [manual deployment of a Yugabyte DB cluster](../../deploy/manual-deployment/start-tservers/).
+You can read more about bringing up the YB-TServers for a deployment in the section on [manual deployment of a YugabyteDB cluster](../../deploy/manual-deployment/start-tservers/).
 
 ## 2. Connect with the default admin credentials
 
-A new Yugabyte DB cluster with authentication enabled comes up with a default admin user, the default username/password for this admin user is `cassandra`/`cassandra`. Note that this default user has `SUPERUSER` privilege. You can connect to this cluster using `cqlsh` as follows:
+A new YugabyteDB cluster with authentication enabled comes up with a default admin user, the default username/password for this admin user is `cassandra`/`cassandra`. Note that this default user has `SUPERUSER` privilege. You can connect to this cluster using `cqlsh` as follows:
 
 ```sh
 $ cqlsh -u cassandra -p cassandra
