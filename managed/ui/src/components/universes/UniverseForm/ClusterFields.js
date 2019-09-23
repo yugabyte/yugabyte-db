@@ -18,7 +18,7 @@ import { getPrimaryCluster, getReadOnlyCluster, getClusterByType, isKubernetesUn
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
-  'aws': 'c4.2xlarge',
+  'aws': 'c5.large',
   'gcp': 'n1-standard-1',
   'kubernetes': 'small'
 };
