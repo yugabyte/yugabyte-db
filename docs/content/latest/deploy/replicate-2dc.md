@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Follow the steps below to set up a two data center (2DC) deployment using either unidirectional (one-way) or bidirectional (two-way)) replication between the data centers.
+Follow the steps below to set up a two data center (2DC) deployment using either unidirectional (one-way) or bidirectional (two-way) replication between the data centers.
 
 For more information on the two data center (2DC) deployment architecture and supported replication scenarios, see [Two data center (2DC) deployments](../architecture/2dc-deployments).
 
