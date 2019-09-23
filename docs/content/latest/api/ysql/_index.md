@@ -82,6 +82,7 @@ DCL statements protect and prevent the database from corruptions.
 
 | Statement | Description |
 |-----------|-------------|
+| [`ALTER DEFAULT PRIVILEGES`](commands/dcl_alter_default_privileges) | Define default privileges |
 | [`ALTER GROUP`](commands/dcl_alter_group) | Alter a group |
 | [`ALTER ROLE`](commands/dcl_alter_role) | Alter a role (user or group) |
 | [`ALTER USER`](commands/dcl_alter_user) | Alter a user |
@@ -90,9 +91,13 @@ DCL statements protect and prevent the database from corruptions.
 | [`CREATE USER`](commands/dcl_create_user) | Create a new user (role) |
 | [`DROP GROUP`](commands/dcl_drop_group) | Drop a group |
 | [`DROP ROLE`](commands/dcl_drop_role) | Drop a role (user or group) |
+| [`DROP OWNED`](commands/dcl_drop_owned) | Drop owned objects |
 | [`DROP USER`](commands/dcl_drop_user) | Drop a user |
 | [`GRANT`](commands/dcl_grant) | Grant permissions |
+| [`REASSIGN OWNED`](commands/dcl_reassign_owned) | Reassign owned objects |
 | [`REVOKE`](commands/dcl_revoke) | Revoke permissions |
+| [`SET ROLE`](commands/dcl_set_role) | Set a role |
+| [`SET SESSION AUTHORIZATION`](commands/set_session_authorization) | Set session authorization |
 
 ## Transaction control language (TCL)
 
