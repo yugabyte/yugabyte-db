@@ -879,13 +879,14 @@ TEST_F(ConsensusQueueTest, TestReadReplicatedMessagesForCDC) {
   ASSERT_TRUE(more_pending);
 
   ReplicateMsgs msgs;
-  ASSERT_OK(queue_->ReadReplicatedMessagesForCDC(MakeOpIdForIndex(0), &msgs));
+  bool more_messages;
+  ASSERT_OK(queue_->ReadReplicatedMessagesForCDC(MakeOpIdForIndex(0), &msgs, &more_messages));
   ASSERT_EQ(last_committed_index, msgs.size());
   msgs.clear();
 
   // Read from some index > 0
   int start = 10;
-  ASSERT_OK(queue_->ReadReplicatedMessagesForCDC(MakeOpIdForIndex(start), &msgs));
+  ASSERT_OK(queue_->ReadReplicatedMessagesForCDC(MakeOpIdForIndex(start), &msgs, &more_messages));
   ASSERT_EQ(last_committed_index - start, msgs.size());
 }
 

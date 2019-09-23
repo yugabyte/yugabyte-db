@@ -72,10 +72,12 @@ Status CDCProducer::GetChanges(const std::string& stream_id,
   }
 
   ReplicateMsgs messages;
-  RETURN_NOT_OK(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(from_op_id, &messages));
+  bool have_more_messages;
+  RETURN_NOT_OK(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(from_op_id, &messages,
+                                                                       &have_more_messages));
 
   TxnStatusMap txn_map = VERIFY_RESULT(BuildTxnStatusMap(
-      messages, tablet_peer->Now(), txn_participant));
+      messages, have_more_messages, tablet_peer->Now(), txn_participant));
   auto ordered_msgs = VERIFY_RESULT(SortWrites(messages, txn_map));
 
   for (const auto& msg : ordered_msgs) {
@@ -171,6 +173,7 @@ Result<std::vector<RecordTimeIndex>> CDCProducer::GetCommittedRecordIndexes(
 }
 
 Result<TxnStatusMap> CDCProducer::BuildTxnStatusMap(const ReplicateMsgs& messages,
+                                                    bool more_replicate_msgs,
                                                     const HybridTime& hybrid_time,
                                                     TransactionParticipant* txn_participant) {
   TxnStatusMap txn_map;
@@ -194,16 +197,29 @@ Result<TxnStatusMap> CDCProducer::BuildTxnStatusMap(const ReplicateMsgs& message
         && msg->write_request().write_batch().has_transaction()) {
       auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
           msg->write_request().write_batch().transaction().transaction_id()));
+
       if (!txn_map.count(txn_id)) {
+        TransactionStatusResult txn_status(TransactionStatus::PENDING, HybridTime::kMin);
+
         auto result = GetTransactionStatus(txn_id, hybrid_time, txn_participant);
         if (!result.ok()) {
           if (result.status().IsNotFound()) {
-            LOG(INFO) << "Transaction not found, considering it aborted: " << txn_id;
+            // Consider the transaction as aborted only if more_replicate_msgs is false.
+            // If more_replicate_messages is true, then it's possible that transaction is committed
+            // but we haven't read the commit message yet.
+            // Such a transaction will be considered as pending and will not be returned by CDC
+            // producer until the transaction is committed.
+            // TODO (#2405) : Handle long running or very large transactions correctly.
+            if (!more_replicate_msgs) {
+              LOG(INFO) << "Transaction not found, considering it aborted: " << txn_id;
+              txn_status = TransactionStatusResult::Aborted();
+            }
           } else {
             return result.status();
           }
+        } else {
+          txn_status = *result;
         }
-        auto txn_status = result.ok() ? *result : TransactionStatusResult::Aborted();
         txn_map.emplace(txn_id, txn_status);
       }
     }

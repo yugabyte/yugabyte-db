@@ -274,7 +274,7 @@ Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> CDCService
   return tablets;
 }
 
-std::shared_ptr<std::unordered_set<std::string>> CDCServiceImpl::GetTabletIdsForStream(
+Result<std::shared_ptr<std::unordered_set<std::string>>> CDCServiceImpl::GetTabletIdsForStream(
     const CDCStreamId& stream_id) {
   {
     std::shared_lock<rw_spinlock> l(lock_);
@@ -284,14 +284,11 @@ std::shared_ptr<std::unordered_set<std::string>> CDCServiceImpl::GetTabletIdsFor
     }
   }
 
-  auto result = GetTablets(stream_id);
-  if (!result.ok()) {
-    return nullptr;
-  }
+  auto result = VERIFY_RESULT(GetTablets(stream_id));
 
   std::unordered_set<std::string> tablets;
-  tablets.reserve(result->size());
-  for (const auto& tablet : *result) {
+  tablets.reserve(result.size());
+  for (const auto& tablet : result) {
     tablets.insert(tablet.tablet_id());
   }
 
@@ -651,7 +648,7 @@ std::shared_ptr<StreamMetadata> CDCServiceImpl::GetStreamMetadataFromCache(
 
 Status CDCServiceImpl::CheckTabletValidForStream(const std::string& stream_id,
                                                  const std::string& tablet_id) {
-  auto tablets = GetTabletIdsForStream(stream_id);
+  auto tablets = VERIFY_RESULT(GetTabletIdsForStream(stream_id));
   SCHECK_NE(tablets, nullptr, IllegalState, Format("No tablets found for stream $0", stream_id));
   SCHECK_EQ(tablets->count(tablet_id), 1, InvalidArgument,
             Format("Tablet ID $0 is not part of stream ID $1", tablet_id, stream_id));
