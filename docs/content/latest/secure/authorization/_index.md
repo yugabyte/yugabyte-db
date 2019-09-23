@@ -2,7 +2,7 @@
 title: Authorization
 linkTitle: Authorization
 description: Authorization
-headcontent: Enable authorization using role-based access control in Yugabyte DB.
+headcontent: Enable authorization using role-based access control in YugabyteDB.
 image: /images/section_icons/secure/authorization.png
 aliases:
   - /secure/authorization/
