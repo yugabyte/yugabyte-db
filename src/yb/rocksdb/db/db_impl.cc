@@ -2564,6 +2564,7 @@ class DBImpl::FlushTask : public ThreadPoolTask {
 
   void AbortedUnlocked() override {
     db_impl_->mutex_.AssertHeld();
+    cfd_->set_pending_flush(false);
     if (cfd_->Unref()) {
       delete cfd_;
     }
