@@ -1,7 +1,7 @@
 ---
-title: Quick Start YCQL
-linkTitle: Quick Start YCQL
-description: Quick Start
+title: Quick start YCQL
+linkTitle: Quick start YCQL
+description: Quick start YCQL
 image: /images/section_icons/quick_start/explore_ycql.png
 aliases:
   - /quick-start/test-cassandra/
@@ -10,12 +10,12 @@ aliases:
 menu:
   latest:
     parent: api-cassandra
-    weight: 1100
+    weight: 1101
 ---
 
 After [creating a local cluster](../../../quick-start/create-local-cluster/), follow the instructions below to explore the [YCQL](../) API.
 
-[**cqlsh**](http://cassandra.apache.org/doc/latest/tools/cqlsh.html) is a command line shell for interacting with [CQL (the Cassandra Query Language)](http://cassandra.apache.org/doc/latest/cql/index.html) servers. It uses the Python driver, and connects to the single node specified on the command line. For ease of use, Yugabyte DB ships with the 3.10 version of cqlsh in its bin directory.
+[**cqlsh**](http://cassandra.apache.org/doc/latest/tools/cqlsh.html) is a command line shell for interacting with [CQL (the Cassandra Query Language)](http://cassandra.apache.org/doc/latest/cql/index.html) servers. It uses the Python driver, and connects to the single node specified on the command line. For ease of use, YugabyteDB ships with the 3.10 version of cqlsh in its bin directory.
 
 ## 1. Connect with cqlsh
 
