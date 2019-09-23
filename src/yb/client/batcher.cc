@@ -491,6 +491,7 @@ void Batcher::FlushBuffersIfReady() {
     // it could be done.
     if (!transaction->Prepare(ops_,
                               force_consistent_read_,
+                              deadline_,
                               std::bind(&Batcher::TransactionReady, this, _1, BatcherPtr(this)),
                               &transaction_metadata_,
                               &may_have_metadata_)) {

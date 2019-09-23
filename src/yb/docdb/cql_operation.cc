@@ -813,7 +813,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
           CHECK(column_value.has_column_id())
               << "column id missing: " << column_value.DebugString();
           const ColumnId column_id(column_value.column_id());
-          const auto column = VERIFY_RESULT(schema_.column_by_id(column_id));
+          const auto& column = VERIFY_RESULT_REF(schema_.column_by_id(column_id));
           const DocPath sub_path(
               column.is_static() ?
                 encoded_hashed_doc_key_.as_slice() : encoded_pk_doc_key_.as_slice(),

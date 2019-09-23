@@ -24,7 +24,7 @@ export default class AlertsList extends Component {
             <BootstrapTable data={alertsList} bodyStyle={tableBodyContainer} pagination={true}>
               <TableHeaderColumn dataField="uuid" isKey={true} hidden={true}/>
               <TableHeaderColumn dataField="createTime" columnClassName="no-border"
-                                className="no-border" dataAlign="left" width={'15%'}>
+                                className="no-border" dataAlign="left" width={'10%'}>
                 Time
               </TableHeaderColumn>
               <TableHeaderColumn dataField="type" columnClassName="no-border name-column"
@@ -32,8 +32,12 @@ export default class AlertsList extends Component {
                                 width={'10%'}>
                 Type
               </TableHeaderColumn>
+              <TableHeaderColumn dataField="errCode" columnClassName="no-border name-column"
+                                className="no-border" width={'10%'}>
+                Error Code
+              </TableHeaderColumn>
               <TableHeaderColumn dataField="message" columnClassName="no-border name-column"
-                                className="no-border" width={'75%'}
+                                className="no-border" width={'70%'}
                                 tdStyle={ { whiteSpace: 'normal' } }>
                 Message
               </TableHeaderColumn>

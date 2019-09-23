@@ -1,0 +1,41 @@
+-- YB COPY TEST
+
+-- Create table.
+CREATE TABLE onek (
+    unique1     int4,
+    unique2     int4,
+    two         int4,
+    four        int4,
+    ten         int4,
+    twenty      int4,
+    hundred     int4,
+    thousand    int4,
+    twothousand int4,
+    fivethous   int4,
+    tenthous    int4,
+    odd         int4,
+    even        int4,
+    stringu1    name,
+    stringu2    name,
+    string4     name
+);
+
+--
+-- Test non-txn COPY on regular table.
+--
+COPY onek FROM '@abs_srcdir@/data/onek.data';
+
+-- Verify data is there.
+SELECT COUNT(*) FROM onek;
+
+-- Clear the data.
+TRUNCATE onek;
+
+--
+-- Test non-txn COPY on a table with an index.
+--
+CREATE INDEX ON onek(unique1);
+COPY onek FROM '@abs_srcdir@/data/onek.data';
+
+-- Verify data is there.
+SELECT COUNT(*) FROM onek;

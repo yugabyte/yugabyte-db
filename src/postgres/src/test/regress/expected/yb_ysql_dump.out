@@ -20,7 +20,7 @@ SET default_tablespace = '';
 SET default_with_oids = false;
 
 --
--- Name: tbl1; Type: TABLE; Schema: public; Owner: postgres_test
+-- Name: tbl1; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
 CREATE TABLE public.tbl1 (
@@ -29,10 +29,10 @@ CREATE TABLE public.tbl1 (
 );
 
 
-ALTER TABLE public.tbl1 OWNER TO postgres_test;
+ALTER TABLE public.tbl1 OWNER TO yugabyte_test;
 
 --
--- Name: tbl10; Type: TABLE; Schema: public; Owner: postgres_test
+-- Name: tbl10; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
 CREATE TABLE public.tbl10 (
@@ -44,10 +44,10 @@ CREATE TABLE public.tbl10 (
 );
 
 
-ALTER TABLE public.tbl10 OWNER TO postgres_test;
+ALTER TABLE public.tbl10 OWNER TO yugabyte_test;
 
 --
--- Name: tbl11; Type: TABLE; Schema: public; Owner: postgres_test
+-- Name: tbl11; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
 CREATE TABLE public.tbl11 (
@@ -58,10 +58,10 @@ CREATE TABLE public.tbl11 (
 );
 
 
-ALTER TABLE public.tbl11 OWNER TO postgres_test;
+ALTER TABLE public.tbl11 OWNER TO yugabyte_test;
 
 --
--- Name: tbl12; Type: TABLE; Schema: public; Owner: postgres_test
+-- Name: tbl12; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
 CREATE TABLE public.tbl12 (
@@ -73,10 +73,10 @@ CREATE TABLE public.tbl12 (
 );
 
 
-ALTER TABLE public.tbl12 OWNER TO postgres_test;
+ALTER TABLE public.tbl12 OWNER TO yugabyte_test;
 
 --
--- Name: tbl13; Type: TABLE; Schema: public; Owner: postgres_test
+-- Name: tbl13; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
 CREATE TABLE public.tbl13 (
@@ -88,10 +88,10 @@ CREATE TABLE public.tbl13 (
 );
 
 
-ALTER TABLE public.tbl13 OWNER TO postgres_test;
+ALTER TABLE public.tbl13 OWNER TO yugabyte_test;
 
 --
--- Name: tbl1_a_seq; Type: SEQUENCE; Schema: public; Owner: postgres_test
+-- Name: tbl1_a_seq; Type: SEQUENCE; Schema: public; Owner: yugabyte_test
 --
 
 CREATE SEQUENCE public.tbl1_a_seq
@@ -103,17 +103,17 @@ CREATE SEQUENCE public.tbl1_a_seq
     CACHE 1;
 
 
-ALTER TABLE public.tbl1_a_seq OWNER TO postgres_test;
+ALTER TABLE public.tbl1_a_seq OWNER TO yugabyte_test;
 
 --
--- Name: tbl1_a_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres_test
+-- Name: tbl1_a_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: yugabyte_test
 --
 
 ALTER SEQUENCE public.tbl1_a_seq OWNED BY public.tbl1.a;
 
 
 --
--- Name: tbl2; Type: TABLE; Schema: public; Owner: postgres_test
+-- Name: tbl2; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
 CREATE TABLE public.tbl2 (
@@ -121,10 +121,10 @@ CREATE TABLE public.tbl2 (
 );
 
 
-ALTER TABLE public.tbl2 OWNER TO postgres_test;
+ALTER TABLE public.tbl2 OWNER TO yugabyte_test;
 
 --
--- Name: tbl2_a_seq; Type: SEQUENCE; Schema: public; Owner: postgres_test
+-- Name: tbl2_a_seq; Type: SEQUENCE; Schema: public; Owner: yugabyte_test
 --
 
 CREATE SEQUENCE public.tbl2_a_seq
@@ -136,17 +136,17 @@ CREATE SEQUENCE public.tbl2_a_seq
     CACHE 1;
 
 
-ALTER TABLE public.tbl2_a_seq OWNER TO postgres_test;
+ALTER TABLE public.tbl2_a_seq OWNER TO yugabyte_test;
 
 --
--- Name: tbl2_a_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres_test
+-- Name: tbl2_a_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: yugabyte_test
 --
 
 ALTER SEQUENCE public.tbl2_a_seq OWNED BY public.tbl2.a;
 
 
 --
--- Name: tbl3; Type: TABLE; Schema: public; Owner: postgres_test
+-- Name: tbl3; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
 CREATE TABLE public.tbl3 (
@@ -156,10 +156,10 @@ CREATE TABLE public.tbl3 (
 );
 
 
-ALTER TABLE public.tbl3 OWNER TO postgres_test;
+ALTER TABLE public.tbl3 OWNER TO yugabyte_test;
 
 --
--- Name: tbl4; Type: TABLE; Schema: public; Owner: postgres_test
+-- Name: tbl4; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
 CREATE TABLE public.tbl4 (
@@ -169,10 +169,10 @@ CREATE TABLE public.tbl4 (
 );
 
 
-ALTER TABLE public.tbl4 OWNER TO postgres_test;
+ALTER TABLE public.tbl4 OWNER TO yugabyte_test;
 
 --
--- Name: tbl5; Type: TABLE; Schema: public; Owner: postgres_test
+-- Name: tbl5; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
 CREATE TABLE public.tbl5 (
@@ -183,10 +183,10 @@ CREATE TABLE public.tbl5 (
 );
 
 
-ALTER TABLE public.tbl5 OWNER TO postgres_test;
+ALTER TABLE public.tbl5 OWNER TO yugabyte_test;
 
 --
--- Name: tbl6; Type: TABLE; Schema: public; Owner: postgres_test
+-- Name: tbl6; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
 CREATE TABLE public.tbl6 (
@@ -195,10 +195,10 @@ CREATE TABLE public.tbl6 (
 );
 
 
-ALTER TABLE public.tbl6 OWNER TO postgres_test;
+ALTER TABLE public.tbl6 OWNER TO yugabyte_test;
 
 --
--- Name: tbl7; Type: TABLE; Schema: public; Owner: postgres_test
+-- Name: tbl7; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
 CREATE TABLE public.tbl7 (
@@ -210,10 +210,10 @@ CREATE TABLE public.tbl7 (
 );
 
 
-ALTER TABLE public.tbl7 OWNER TO postgres_test;
+ALTER TABLE public.tbl7 OWNER TO yugabyte_test;
 
 --
--- Name: tbl8; Type: TABLE; Schema: public; Owner: postgres_test
+-- Name: tbl8; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
 CREATE TABLE public.tbl8 (
@@ -225,10 +225,10 @@ CREATE TABLE public.tbl8 (
 );
 
 
-ALTER TABLE public.tbl8 OWNER TO postgres_test;
+ALTER TABLE public.tbl8 OWNER TO yugabyte_test;
 
 --
--- Name: tbl9; Type: TABLE; Schema: public; Owner: postgres_test
+-- Name: tbl9; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
 CREATE TABLE public.tbl9 (
@@ -239,24 +239,24 @@ CREATE TABLE public.tbl9 (
 );
 
 
-ALTER TABLE public.tbl9 OWNER TO postgres_test;
+ALTER TABLE public.tbl9 OWNER TO yugabyte_test;
 
 --
--- Name: tbl1 a; Type: DEFAULT; Schema: public; Owner: postgres_test
+-- Name: tbl1 a; Type: DEFAULT; Schema: public; Owner: yugabyte_test
 --
 
 ALTER TABLE ONLY public.tbl1 ALTER COLUMN a SET DEFAULT nextval('public.tbl1_a_seq'::regclass);
 
 
 --
--- Name: tbl2 a; Type: DEFAULT; Schema: public; Owner: postgres_test
+-- Name: tbl2 a; Type: DEFAULT; Schema: public; Owner: yugabyte_test
 --
 
 ALTER TABLE ONLY public.tbl2 ALTER COLUMN a SET DEFAULT nextval('public.tbl2_a_seq'::regclass);
 
 
 --
--- Data for Name: tbl1; Type: TABLE DATA; Schema: public; Owner: postgres_test
+-- Data for Name: tbl1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
 COPY public.tbl1 (a, b) FROM stdin;
@@ -265,7 +265,7 @@ COPY public.tbl1 (a, b) FROM stdin;
 
 
 --
--- Data for Name: tbl10; Type: TABLE DATA; Schema: public; Owner: postgres_test
+-- Data for Name: tbl10; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
 COPY public.tbl10 (a, b, c, d) FROM stdin;
@@ -273,7 +273,7 @@ COPY public.tbl10 (a, b, c, d) FROM stdin;
 
 
 --
--- Data for Name: tbl11; Type: TABLE DATA; Schema: public; Owner: postgres_test
+-- Data for Name: tbl11; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
 COPY public.tbl11 (a, b, c) FROM stdin;
@@ -281,7 +281,7 @@ COPY public.tbl11 (a, b, c) FROM stdin;
 
 
 --
--- Data for Name: tbl12; Type: TABLE DATA; Schema: public; Owner: postgres_test
+-- Data for Name: tbl12; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
 COPY public.tbl12 (a, b, c, d) FROM stdin;
@@ -289,7 +289,7 @@ COPY public.tbl12 (a, b, c, d) FROM stdin;
 
 
 --
--- Data for Name: tbl13; Type: TABLE DATA; Schema: public; Owner: postgres_test
+-- Data for Name: tbl13; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
 COPY public.tbl13 (a, b, c, d) FROM stdin;
@@ -297,7 +297,7 @@ COPY public.tbl13 (a, b, c, d) FROM stdin;
 
 
 --
--- Data for Name: tbl2; Type: TABLE DATA; Schema: public; Owner: postgres_test
+-- Data for Name: tbl2; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
 COPY public.tbl2 (a) FROM stdin;
@@ -305,7 +305,7 @@ COPY public.tbl2 (a) FROM stdin;
 
 
 --
--- Data for Name: tbl3; Type: TABLE DATA; Schema: public; Owner: postgres_test
+-- Data for Name: tbl3; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
 COPY public.tbl3 (a, b) FROM stdin;
@@ -313,7 +313,7 @@ COPY public.tbl3 (a, b) FROM stdin;
 
 
 --
--- Data for Name: tbl4; Type: TABLE DATA; Schema: public; Owner: postgres_test
+-- Data for Name: tbl4; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
 COPY public.tbl4 (a, b) FROM stdin;
@@ -321,7 +321,7 @@ COPY public.tbl4 (a, b) FROM stdin;
 
 
 --
--- Data for Name: tbl5; Type: TABLE DATA; Schema: public; Owner: postgres_test
+-- Data for Name: tbl5; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
 COPY public.tbl5 (a, b, c) FROM stdin;
@@ -330,7 +330,7 @@ COPY public.tbl5 (a, b, c) FROM stdin;
 
 
 --
--- Data for Name: tbl6; Type: TABLE DATA; Schema: public; Owner: postgres_test
+-- Data for Name: tbl6; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
 COPY public.tbl6 (a) FROM stdin;
@@ -338,7 +338,7 @@ COPY public.tbl6 (a) FROM stdin;
 
 
 --
--- Data for Name: tbl7; Type: TABLE DATA; Schema: public; Owner: postgres_test
+-- Data for Name: tbl7; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
 COPY public.tbl7 (a, b, c, d) FROM stdin;
@@ -346,7 +346,7 @@ COPY public.tbl7 (a, b, c, d) FROM stdin;
 
 
 --
--- Data for Name: tbl8; Type: TABLE DATA; Schema: public; Owner: postgres_test
+-- Data for Name: tbl8; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
 COPY public.tbl8 (a, b, c, d) FROM stdin;
@@ -354,7 +354,7 @@ COPY public.tbl8 (a, b, c, d) FROM stdin;
 
 
 --
--- Data for Name: tbl9; Type: TABLE DATA; Schema: public; Owner: postgres_test
+-- Data for Name: tbl9; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
 COPY public.tbl9 (a, b, c) FROM stdin;
@@ -362,28 +362,28 @@ COPY public.tbl9 (a, b, c) FROM stdin;
 
 
 --
--- Name: tbl1_a_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres_test
+-- Name: tbl1_a_seq; Type: SEQUENCE SET; Schema: public; Owner: yugabyte_test
 --
 
 SELECT pg_catalog.setval('public.tbl1_a_seq', 1, true);
 
 
 --
--- Name: tbl2_a_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres_test
+-- Name: tbl2_a_seq; Type: SEQUENCE SET; Schema: public; Owner: yugabyte_test
 --
 
 SELECT pg_catalog.setval('public.tbl2_a_seq', 1, false);
 
 
 --
--- Name: tbl8_idx; Type: INDEX; Schema: public; Owner: postgres_test
+-- Name: tbl8_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
 CREATE INDEX tbl8_idx ON public.tbl8 USING lsm ((b, c) HASH);
 
 
 --
--- Name: tbl8_idx2; Type: INDEX; Schema: public; Owner: postgres_test
+-- Name: tbl8_idx2; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
 CREATE INDEX tbl8_idx2 ON public.tbl8 USING lsm (a HASH, b);
@@ -392,4 +392,3 @@ CREATE INDEX tbl8_idx2 ON public.tbl8 USING lsm (a HASH, b);
 --
 -- YSQL database dump complete
 --
-

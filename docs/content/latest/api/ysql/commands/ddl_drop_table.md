@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `DROP TABLE` statement to remove a table and all of its data from the database.
+Use the `DROP TABLE` statement to remove one or more tables (with all of their data) from the database.
 
 ## Syntax
 
@@ -47,9 +47,13 @@ Use the `DROP TABLE` statement to remove a table and all of its data from the da
 
 ### *drop_table*
 
+#### *if_exists*
+
+Under normal operation, an error is raised if the table does not exist.  Adding `IF EXISTS` will quietly ignore any non-existent tables specified.
+
 #### *table_name*
 
-Specify the name of the table to be dropped. If the table does not exist, an error is raised. Objects associated with the table, such as prepared statements, will be eventually invalidated after the `DROP TABLE` statement is completed.
+Specify the name of the table to be dropped. Objects associated with the table, such as prepared statements, will be eventually invalidated after the `DROP TABLE` statement is completed.
 
 ## See also
 

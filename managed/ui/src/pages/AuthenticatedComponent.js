@@ -26,7 +26,7 @@ class AuthenticatedComponent extends Component {
   }
 
   componentDidMount() {
-    if (!localStorage.getItem('__yb-visited__')) {
+    if (!localStorage.getItem('__yb-visited__') || localStorage.getItem('__yb-visited__') === 'false') {
       localStorage.setItem('__yb-visited__', 'true');
       this.setState({ showIntroModal: true });
     }
@@ -82,7 +82,7 @@ class AuthenticatedComponent extends Component {
         </div>
         <div>
           <a className="social-media-btn"
-            href="https://github.com/yugabyte"
+            href="https://github.com/yugabyte/yugabyte-db"
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -124,7 +124,7 @@ class AuthenticatedComponent extends Component {
                  cancelLabel={"Close"}
                  footerAccessory={socialMediaLinks}
           >
-            <p>Thank you for downloading YugaByte DB.</p>
+            <p>Thank you for downloading Yugabyte DB.</p>
             <p>Documentation can be found <a
               href="https://docs.yugabyte.com/latest/manage/enterprise-edition/"
               target="_blank" rel="noopener noreferrer">

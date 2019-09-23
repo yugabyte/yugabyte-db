@@ -800,7 +800,7 @@ Result<bool> ReplicaState::AdvanceCommittedOpIdUnlocked(
     VLOG_WITH_PREFIX(1)
         << "Already marked ops through " << last_committed_op_id_ << " as committed. "
         << "Now trying to mark " << committed_op_id << " which would be a no-op.";
-    return Status::OK();
+    return false;
   }
 
   if (pending_operations_.empty()) {

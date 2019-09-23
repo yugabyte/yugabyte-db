@@ -199,6 +199,11 @@ class RetryingTSRpcTask : public MonitoredTask {
     return type() != ASYNC_CREATE_REPLICA && type() != ASYNC_DELETE_REPLICA;
   }
 
+  // Returns true if we should not retry for this task type.
+  bool NoRetryTaskType() {
+    return type() == ASYNC_FLUSH_TABLETS;
+  }
+
   // Reschedules the current task after a backoff delay.
   // Returns false if the task was not rescheduled due to reaching the maximum
   // timeout or because the task is no longer in a running state.

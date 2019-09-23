@@ -226,5 +226,58 @@ TEST_F(ResultTest, VerifyResultMacro) {
   ASSERT_TRUE(s.IsInternalError());
 }
 
+struct NonCopyableNonMovable {
+  NonCopyableNonMovable() = default;
+  NonCopyableNonMovable(const NonCopyableNonMovable&) = delete;
+  NonCopyableNonMovable& operator=(const NonCopyableNonMovable&) = delete;
+};
+
+class MoveCounter {
+ public:
+  MoveCounter() = default;
+  MoveCounter(const MoveCounter&) = delete;
+
+  MoveCounter(const MoveCounter&&) {
+    ++counter_;
+  }
+
+  MoveCounter& operator=(const MoveCounter&) = delete;
+
+  MoveCounter& operator=(MoveCounter&&) {
+    ++counter_;
+    return *this;
+  }
+
+  static size_t counter() {
+    return counter_;
+  }
+
+ private:
+  static size_t counter_;
+};
+
+size_t MoveCounter::counter_ = 0;
+
+// Next function won't compile in case VERIFY_RESULT will try to create copy of Result's data
+Status VerifyResultMacroReferenceNoCopyHelper() {
+  static const NonCopyableNonMovable data;
+  const auto& r ATTRIBUTE_UNUSED = VERIFY_RESULT_REF(Result<const NonCopyableNonMovable&>(data));
+  return Status::OK();
+}
+
+Status VerifyResultMacroMoveCountHelper() {
+  const auto result ATTRIBUTE_UNUSED = VERIFY_RESULT(Result<MoveCounter>(MoveCounter()));
+  return Status::OK();
+}
+
+TEST_F(ResultTest, VerifyResultMacroReferenceNoCopy) {
+  VerifyResultMacroReferenceNoCopyHelper();
+}
+
+TEST_F(ResultTest, VerifyResultMacroMoveCount) {
+  VerifyResultMacroMoveCountHelper();
+  ASSERT_EQ(2, MoveCounter::counter());
+}
+
 } // namespace test
 } // namespace yb

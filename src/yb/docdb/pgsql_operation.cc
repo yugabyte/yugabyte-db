@@ -25,6 +25,10 @@
 #include "yb/util/trace.h"
 
 DECLARE_bool(trace_docdb_calls);
+DECLARE_int64(retryable_rpc_single_call_timeout_ms);
+
+DEFINE_double(ysql_scan_timeout_multiplier, 0.5,
+              "YSQL read scan timeout multipler of retryable_rpc_single_call_timeout_ms.");
 
 namespace yb {
 namespace docdb {
@@ -414,10 +418,17 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
     TRACE("Initialized iterator");
   }
 
+  // Set scan start time.
+  bool scan_time_exceeded = false;
+  const int64 scan_time_limit =
+    FLAGS_retryable_rpc_single_call_timeout_ms * FLAGS_ysql_scan_timeout_multiplier;
+  const MonoTime start_time = MonoTime::Now();
+
   // Fetching data.
   int match_count = 0;
   QLTableRow::SharedPtr row = std::make_shared<QLTableRow>();
-  while (resultset->rsrow_count() < row_count_limit && VERIFY_RESULT(iter->HasNext())) {
+  while (resultset->rsrow_count() < row_count_limit && VERIFY_RESULT(iter->HasNext()) &&
+         !scan_time_exceeded) {
 
     row->Clear();
 
@@ -453,6 +464,12 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
         RETURN_NOT_OK(PopulateResultSet(row, resultset));
       }
     }
+
+    // Check every row_count_limit matches whether we've exceeded our scan time.
+    if (match_count % row_count_limit == 0) {
+      const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(start_time);
+      scan_time_exceeded = elapsed_time.ToMilliseconds() > scan_time_limit;
+    }
   }
 
   if (request_.is_aggregate() && match_count > 0) {
@@ -464,13 +481,14 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   }
   *restart_read_ht = iter->RestartReadHt();
 
-  return SetPagingStateIfNecessary(iter, resultset, row_count_limit);
+  return SetPagingStateIfNecessary(iter, resultset, row_count_limit, scan_time_exceeded);
 }
 
 Status PgsqlReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,
                                                      const PgsqlResultSet* resultset,
-                                                     const size_t row_count_limit) {
-  if (resultset->rsrow_count() >= row_count_limit && !request_.is_aggregate()) {
+                                                     const size_t row_count_limit,
+                                                     const bool scan_time_exceeded) {
+  if (resultset->rsrow_count() >= row_count_limit || scan_time_exceeded) {
     SubDocKey next_row_key;
     RETURN_NOT_OK(iter->GetNextReadSubDocKey(&next_row_key));
     // When the "limit" number of rows are returned and we are asked to return the paging state,

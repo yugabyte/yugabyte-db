@@ -67,9 +67,7 @@ config_value ::= '<Text Literal>' ;
 (* 'ALTER' 'SEQUENCE' *)
 alter_sequence ::= 'ALTER' 'SEQUENCE' [ 'IF' 'EXISTS' ] name alter_sequence_options ;
 
-name ::= '<Text Literal>' ;
-
-alter_sequence_options ::= [ 'AS' data_type ]
+alter_sequence_options ::= [ 'AS' seq_data_type ]
                            [ 'INCREMENT' [ 'BY' ] increment ]
                            [ 'MINVALUE' minvalue | 'NO' 'MINVALUE' ]
                            [ 'MAXVALUE' maxvalue | 'NO' 'MAXVALUE' ]
@@ -78,13 +76,8 @@ alter_sequence_options ::= [ 'AS' data_type ]
                            [ 'CACHE' cache ]
                            [ 'OWNED BY' table_name.table_column | 'NONE' ] ;
 
-data_type ::= ( 'smallint' | 'integer' | 'bigint' ) ;
-increment ::= '<Integer Literal>' ;
-minvalue ::= '<Integer Literal>' ;
-maxvalue ::= '<Integer Literal>' ;
-start ::= '<Integer Literal>' ;
+seq_data_type ::= ( 'smallint' | 'integer' | 'bigint' ) ;
 restart ::= '<Integer Literal>';
-cache ::= '<Integer Literal>' ;
 
 (* 'ALTER' 'TABLE' *)
 alter_table ::= 'ALTER' 'TABLE' [ 'ONLY' ] name [ '*' ]
@@ -298,6 +291,42 @@ create_domain ::= 'CREATE' 'DOMAIN' name [ 'AS' ] data_type
 domain_constraint ::= [ 'CONSTRAINT' constraint_name ]
     ( 'NOT' 'NULL' | 'NULL' | 'CHECK' '(' expression ')' ) ;
 
+(* CREATE FUNCTION *)
+create_function =  'CREATE' [ 'OR' 'REPLACE' ] 'FUNCTION'
+                   name '(' [ arg_decl { ',' arg_decl } ] ')' \
+                   [ 'RETURNS' type_name
+                   | 'RETURNS' 'TABLE' '(' ( column_name type_name ) { ',' ( column_name type_name ) } ')' ] \
+                   ( 'LANGUAGE' lang_name
+                      | 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) }
+                      | 'WINDOW'
+                      | 'IMMUTABLE' | 'STABLE' | 'VOLATILE' | [ 'NOT' ] 'LEAKPROOF'
+                      | 'CALLED' 'ON' 'NULL' 'INPUT' | 'RETURNS' 'NULL' 'ON' 'NULL' 'INPUT' | 'STRICT'
+                      | [ 'EXTERNAL' ] 'SECURITY' 'INVOKER' | [ 'EXTERNAL' ] 'SECURITY' 'DEFINER'
+                      | 'PARALLEL' ( 'UNSAFE' | 'RESTRICTED' | 'SAFE' )
+                      | 'COST' int_literal
+                      | 'ROWS' int_literal
+                      | 'SET' configuration_parameter ( 'TO' value | '=' value | 'FROM' 'CURRENT' )
+                      | 'AS' 'definition'
+                      | 'AS' 'obj_file', 'link_symbol'
+                   )
+                   { ( 'LANGUAGE' lang_name
+                      | 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) }
+                      | 'WINDOW'
+                      | 'IMMUTABLE' | 'STABLE' | 'VOLATILE' | [ 'NOT' ] 'LEAKPROOF'
+                      | 'CALLED' 'ON' 'NULL' 'INPUT' | 'RETURNS' 'NULL' 'ON' 'NULL' 'INPUT' | 'STRICT'
+                      | [ 'EXTERNAL' ] 'SECURITY' 'INVOKER' | [ 'EXTERNAL' ] 'SECURITY' 'DEFINER'
+                      | 'PARALLEL' ( 'UNSAFE' | 'RESTRICTED' | 'SAFE' )
+                      | 'COST' int_literal
+                      | 'ROWS' int_literal
+                      | 'SET' configuration_parameter ( 'TO' value | '=' value | 'FROM' 'CURRENT' )
+                      | 'AS' 'definition'
+                      | 'AS' 'obj_file', 'link_symbol'
+                   ) } ;
+
+
+arg_decl = [ argmode ] [ argname ] argtype [ ( 'DEFAULT' | '=' ) expression ] ;
+
+
 (* 'CREATE' 'GROUP' *)
 create_group ::= 'CREATE' 'GROUP' role_name [ [ 'WITH' ] role_option { ',' role_option } ] ;
 
@@ -334,6 +363,23 @@ operator_class_as = 'OPERATOR' strategy_number operator_name [ '(' operator_sign
                   | 'FUNCTION' support_number [ '(' op_type { ',' op_type } ')' ]
                     function_name '(' function_signature ')'
                   | 'STORAGE' storage_type ;
+
+create_procedure =  'CREATE' [ 'OR' 'REPLACE' ] 'PROCEDURE'
+                   name '(' [ arg_decl { ',' arg_decl } ] ')' \
+                   ( 'LANGUAGE' lang_name
+                      | 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) }
+                      | [ 'EXTERNAL' ] 'SECURITY' 'INVOKER' | [ 'EXTERNAL' ] 'SECURITY' 'DEFINER'
+                      | 'SET' configuration_parameter ( 'TO' value | '=' value | 'FROM' 'CURRENT' )
+                      | 'AS' 'definition'
+                      | 'AS' 'obj_file', 'link_symbol'
+                   )
+                   { ( 'LANGUAGE' lang_name
+                      | 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) }
+                      | [ 'EXTERNAL' ] 'SECURITY' 'INVOKER' | [ 'EXTERNAL' ] 'SECURITY' 'DEFINER'
+                      | 'SET' configuration_parameter ( 'TO' value | '=' value | 'FROM' 'CURRENT' )
+                      | 'AS' 'definition'
+                      | 'AS' 'obj_file', 'link_symbol'
+                   ) } ;
 
 (* 'CREATE' 'ROLE' *)
 create_role ::= 'CREATE' 'ROLE' role_name [ [ 'WITH' ] role_option { ',' role_option } ] ;
@@ -428,7 +474,7 @@ sequence_options ::= [ 'INCREMENT' [ 'BY' ] increment ]
                      [ 'MAXVALUE' maxvalue | 'NO' 'MAXVALUE' ]
                      [ 'START' [ 'WITH' ] start ]
                      [ 'CACHE' cache ]
-                     [ [ NO ] CYCLE ] ;
+                     [ [ 'NO' ] 'CYCLE' ] ;
 
 increment ::= '<Integer Literal>' ;
 minvalue ::= '<Integer Literal>' ;
@@ -476,8 +522,8 @@ storage_parameters ::= storage_parameter { ',' storage_parameter } ;
 
 storage_parameter ::= param_name [ '=' param_value] ;
 
-index_parameters ::= [ INCLUDE '(' column_names ')' ]
-                     [ WITH '(' storage_parameters ')' ] ;
+index_parameters ::= [ 'INCLUDE' '(' column_names ')' ]
+                     [ 'WITH' '(' storage_parameters ')' ] ;
 
 (* 'CREATE' 'TABLE' 'AS' *)
 create_table_as ::= 'CREATE' 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] \
@@ -578,6 +624,15 @@ drop_database ::= 'DROP' 'DATABASE' [ 'IF' 'EXISTS' ] database_name ;
 (* 'DROP' 'DOMAIN' *)
 drop_domain ::= 'DROP' 'DOMAIN' [ 'IF' 'EXISTS' ] name { ',' name }  [ 'CASCADE' | 'RESTRICT' ] ;
 
+(* DROP FUNCTION *)
+drop_function = 'DROP' ( 'FUNCTION' | 'PROCEDURE' ) [ 'IF' 'EXISTS' ] \
+                        ( name [ '(' [ argtype_decl { ',' argtype_decl } ] ')' ] )
+                  { ',' ( name [ '(' [ argtype_decl { ',' argtype_decl } ] ')' ] ) } 
+                  [ 'CASCADE' | 'RESTRICT' ] ;
+
+argtype_decl = [ argmode ] [ argname ] argtype;
+
+
 (* 'DROP' 'GROUP' *)
 drop_group ::= 'DROP' 'GROUP' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
 
@@ -592,6 +647,13 @@ operator_signature = ( left_type | 'NONE' ) ',' ( right_type | 'NONE' ) ;
 drop_operator_class = 'DROP' 'OPERATOR' 'CLASS' [ 'IF' 'EXISTS' ] operator_class_name
                       'USING' index_method [ 'CASCADE' | 'RESTRICT' ] ;
 
+
+(* DROP PROCEDURE *)
+drop_procedure = 'DROP' 'PROCEDURE' ) [ 'IF' 'EXISTS' ] \
+                        ( name [ '(' [ argtype_decl { ',' argtype_decl } ] ')' ] )
+                  { ',' ( name [ '(' [ argtype_decl { ',' argtype_decl } ] ')' ] ) } 
+                  [ 'CASCADE' | 'RESTRICT' ] ;
+
 (* 'DROP' 'ROLE' *)
 drop_role ::= 'DROP' 'ROLE' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
 
@@ -602,7 +664,7 @@ drop_rule = 'DROP' 'RULE' [ 'IF' 'EXISTS' ] rule_name 'ON' table_name [ 'CASCADE
 drop_sequence ::= 'DROP' 'SEQUENCE' [ 'IF' 'EXISTS' ] sequence_name [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'TABLE' *)
-drop_table ::= 'DROP' 'TABLE' [ 'IF' 'EXISTS' ] table_name ;
+drop_table ::= 'DROP' 'TABLE' [ 'IF' 'EXISTS' ] table_name { ',' table_name} ;
 
 (* 'DROP' 'TYPE' *)
 drop_type ::= 'DROP' 'TYPE' [ 'IF' 'EXISTS' ] type_name { ',' type_name }
@@ -856,7 +918,6 @@ object_name ::= name ;
 relation_name ::= qualified_name ;
 aggregate_name ::= qualified_name ;
 constraint_name ::= qualified_name ;
-function_name ::= qualified_name ;
 operator_name ::= qualified_name ;
 policy_name ::= qualified_name ;
 procedure_name ::= qualified_name ;
@@ -878,12 +939,19 @@ function_arguments = [ text_literal { ',' text_literal } ] ;
 
 text_literal = '<Text Literal>' ;
 
+int_literal = '<Integer Literal>' ;
+
+numeric_literal = '<Numeric Literal>' ;
+
+value = text_literal | numeric_literal | boolean ;
+
+configuration_parameter = text_literal ;
+
 large_object_oid ::= '<Integer Literal>' ;
 
 left_type ::= ( qualified_name | 'NONE' ) ;
 right_type ::= ( qualified_name | 'NONE' ) ;
 
-type_name ::= name ;
 lang_name ::= name ;
 
 name ::= '<Text Literal>' ;
@@ -892,7 +960,7 @@ column_names ::= column_name { ',' column_name } ;
 
 condition = expression ;
 
-where_expression ::= boolean_expression ;
+where_expression ::= condition ;
 
 expression ::= '<expression>' ;
 

@@ -80,7 +80,7 @@ Status ConsumePrimitiveValuesFromKey(Slice* slice, AllowSpecial allow_special, C
 
 Status ConsumePrimitiveValuesFromKey(Slice* slice, AllowSpecial allow_special,
                                      boost::container::small_vector_base<Slice>* result) {
-  return ConsumePrimitiveValuesFromKey(slice, allow_special, [slice, result] {
+  return ConsumePrimitiveValuesFromKey(slice, allow_special, [slice, result]() -> Status {
     auto begin = slice->data();
     RETURN_NOT_OK(PrimitiveValue::DecodeKey(slice, /* out */ nullptr));
     if (result) {
@@ -133,6 +133,23 @@ DocKey::DocKey(DocKeyHash hash,
       hash_(hash),
       hashed_group_(std::move(hashed_components)),
       range_group_(std::move(range_components)) {
+}
+
+DocKey::DocKey(const Uuid& cotable_id,
+               DocKeyHash hash,
+               std::vector<PrimitiveValue> hashed_components,
+               std::vector<PrimitiveValue> range_components)
+    : cotable_id_(cotable_id),
+      hash_present_(true),
+      hash_(hash),
+      hashed_group_(std::move(hashed_components)),
+      range_group_(std::move(range_components)) {
+}
+
+DocKey::DocKey(const Uuid& cotable_id)
+    : cotable_id_(cotable_id),
+      hash_present_(false),
+      hash_(0) {
 }
 
 DocKey::DocKey(const Schema& schema)
@@ -950,7 +967,11 @@ Result<bool> DocKeyDecoder::DecodeHashCode(uint16_t* out, AllowSpecial allow_spe
 
   auto good_value_type = allow_special ? IsPrimitiveOrSpecialValueType(first_value_type)
                                        : IsPrimitiveValueType(first_value_type);
-  if (!good_value_type && first_value_type != ValueType::kGroupEnd) {
+  if (first_value_type == ValueType::kGroupEnd) {
+    return false;
+  }
+
+  if (!good_value_type) {
     return STATUS_FORMAT(Corruption,
         "Expected first value type to be primitive or GroupEnd, got $0 in $1",
         first_value_type, input_.ToDebugHexString());

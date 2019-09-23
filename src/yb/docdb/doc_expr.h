@@ -37,9 +37,19 @@ class DocExprExecutor : public QLExprExecutor {
                                     QLValue *result,
                                     const Schema *schema = nullptr) override;
 
+  virtual CHECKED_STATUS EvalTSCall(const PgsqlBCallPB& ql_expr,
+                                    const QLTableRow::SharedPtrConst& table_row,
+                                    QLValue *result) override;
+
   // Evaluate aggregate functions for each row.
   CHECKED_STATUS EvalCount(QLValue *aggr_count);
   CHECKED_STATUS EvalSum(const QLValue& val, QLValue *aggr_sum);
+  CHECKED_STATUS EvalSumInt8(const QLValue& val, QLValue *aggr_sum);
+  CHECKED_STATUS EvalSumInt16(const QLValue& val, QLValue *aggr_sum);
+  CHECKED_STATUS EvalSumInt32(const QLValue& val, QLValue *aggr_sum);
+  CHECKED_STATUS EvalSumInt64(const QLValue& val, QLValue *aggr_sum);
+  CHECKED_STATUS EvalSumFloat(const QLValue& val, QLValue *aggr_sum);
+  CHECKED_STATUS EvalSumDouble(const QLValue& val, QLValue *aggr_sum);
   CHECKED_STATUS EvalMax(const QLValue& val, QLValue *aggr_max);
   CHECKED_STATUS EvalMin(const QLValue& val, QLValue *aggr_min);
   CHECKED_STATUS EvalAvg(const QLValue& val, QLValue *aggr_avg);

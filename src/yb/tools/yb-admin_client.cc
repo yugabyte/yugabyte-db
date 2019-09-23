@@ -148,18 +148,13 @@ ClusterAdminClient::ClusterAdminClient(string addrs,
       client_init_(certs_dir.empty()),
       initted_(false) {}
 
-ClusterAdminClient::~ClusterAdminClient() {
-  yb_client_.reset();
-  messenger_->Shutdown();
-}
-
 Status ClusterAdminClient::Init() {
   CHECK(!initted_);
 
   // Check if caller will initialize the client and related parts.
   if (client_init_) {
     messenger_ = VERIFY_RESULT(MessengerBuilder("yb-admin").Build());
-    yb_client_ = CHECK_RESULT(YBClientBuilder()
+    yb_client_ = VERIFY_RESULT(YBClientBuilder()
         .add_master_server_addr(master_addr_list_)
         .default_admin_operation_timeout(timeout_)
         .Build(messenger_.get()));

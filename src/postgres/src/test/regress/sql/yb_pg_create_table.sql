@@ -133,7 +133,7 @@ CREATE TABLE real_city (
 );
 
 CREATE TABLE aggtest (
-	a 			int2,
+	a			int2,
 	b			float4
 );
 

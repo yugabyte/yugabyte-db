@@ -766,11 +766,11 @@ tserver_ops_latency:
     service_method: "Read|Write|Scan"
   group_by: "service_method"
   layout:
-    title: "YugaByte Op Latency"
+    title: "Average Latency"
     xaxis:
       type: "date"
     yaxis:
-        #ticksuffix: "&nbsp;ms"
+      # ticksuffix: "&nbsp;ms"
       ticksuffix: "&nbsp;\u00B5s"
 
 tserver_handler_latency:
@@ -781,7 +781,7 @@ tserver_handler_latency:
   filters:
     export_type: "tserver_export"
   layout:
-    title: "YugaByte Reactor Delays"
+    title: "Reactor Delays"
     xaxis:
       type: "date"
     yaxis:
@@ -803,7 +803,7 @@ total_rpcs_per_sec:
     service_method: "Write|Read|Scan"
   group_by: "service_method"
   layout:
-    title: "Total RPCs / Sec"
+    title: "Total Ops / Sec"
     xaxis:
       type: "date"
 
@@ -818,7 +818,7 @@ tserver_rpcs_per_sec_per_node:
     service_method: "Write|Read|Scan"
   group_by: "service_method"
   layout:
-    title: "YugaByte RPCs / Sec / Node"
+    title: "Ops / Sec / Node"
     xaxis:
       type: "date"
 
@@ -833,7 +833,7 @@ tserver_consensus_rpcs_per_sec:
     service_method: "UpdateConsensus|RequestConsensusVote"
   group_by: "service_method"
   layout:
-    title: "Consensus Rpc Ops / Sec"
+    title: "Consensus Ops / Sec"
     xaxis:
       type: "date"
     yaxis:
@@ -1561,7 +1561,7 @@ cql_reactor_latency:
   filters:
     export_type: "cql_export"
   layout:
-    title: "YugaByte Reactor Delays"
+    title: "Reactor Delays"
     xaxis:
       type: "date"
     yaxis:

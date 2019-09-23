@@ -31,7 +31,12 @@ enum class TSOpcode : int32_t {
   kCount,
   kMax,
   kMin,
-  kSum,
+  kSumInt8,
+  kSumInt16,
+  kSumInt32,
+  kSumInt64,
+  kSumFloat,
+  kSumDouble,
 
   kScalarInsert,
   kMapExtend,

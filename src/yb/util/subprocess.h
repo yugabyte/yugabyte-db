@@ -143,9 +143,10 @@ class Subprocess {
   static CHECKED_STATUS Call(const std::vector<std::string>& argv);
 
   // Same as above, but collects the output from the child process stdout into
-  // 'stdout_out'.
+  // the output parameter.
+  // If read_stderr is set to true, stderr is collected instead.
   static CHECKED_STATUS Call(const std::vector<std::string>& argv,
-                     std::string* stdout_out);
+                     std::string* output, bool read_stderr = false);
 
   // Return the pipe fd to the child's standard stream.
   // Stream should not be disabled or shared.

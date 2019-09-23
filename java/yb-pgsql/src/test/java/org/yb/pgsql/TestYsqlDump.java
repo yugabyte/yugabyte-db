@@ -21,19 +21,47 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
 import org.yb.pgsql.PgRegressRunner;
 import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.util.StringUtil;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
+import java.io.IOException;
 import java.lang.ProcessBuilder;
 import java.sql.*;
 import java.util.*;
+import java.util.regex.Pattern;
 
 import static org.yb.AssertionWrappers.*;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestYsqlDump extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYsqlDump.class);
+
+  // The following logic is needed to remove the dependency on the exact version number from
+  // the ysql_dump output part that looks like this:
+  // -- Dumped from database version 11.2-YB-1.3.2.0-b0
+  // -- Dumped by ysql_dump version 11.2-YB-1.3.2.0-b0
+
+  private static String VERSION_STR_PREFIX = " version ";
+  private static Pattern VERSION_NUMBER_PATTERN = Pattern.compile(
+      VERSION_STR_PREFIX + "[0-9]+[.][0-9]+-YB-([0-9]+[.]){3}[0-9]+-b[0-9]+");
+  private static String VERSION_NUMBER_REPLACEMENT_STR =
+      VERSION_STR_PREFIX + "X.X-YB-X.X.X.X-bX";
+
+  private String postprocessOutputLine(String s) {
+    if (s == null)
+      return null;
+    return StringUtil.rtrim(
+      VERSION_NUMBER_PATTERN.matcher(s).replaceAll(VERSION_NUMBER_REPLACEMENT_STR));
+  }
+
+  private static void expectOnlyEmptyLines(String curLine, BufferedReader in) throws IOException {
+    while (curLine != null) {
+      assertEquals("", curLine.trim());
+      curLine = in.readLine();
+    }
+  }
 
   @Test
   public void testPgDump() throws Exception {
@@ -64,16 +92,17 @@ public class TestYsqlDump extends BasePgSQLTest {
                                            "-U", DEFAULT_PG_USER,
                                            "-f", actual.toString());
     pb.start().waitFor();
-
     try (BufferedReader actualIn   = createFileReader(actual);
          BufferedReader expectedIn = createFileReader(new File(pgRegressDir,
                                                               "expected/yb_ysql_dump.out"));) {
       String actualLine = null, expectedLine = null;
-      while ((actualLine = actualIn.readLine()) != null) {
-        expectedLine = expectedIn.readLine();
-        assertEquals(actualLine, expectedLine);
+
+      while ((actualLine = actualIn.readLine()) != null &&
+             (expectedLine = expectedIn.readLine()) != null) {
+        assertEquals(postprocessOutputLine(actualLine), postprocessOutputLine(expectedLine));
       }
-      assertEquals(expectedIn.readLine(), null);
+      expectOnlyEmptyLines(actualLine, actualIn);
+      expectOnlyEmptyLines(expectedLine, expectedIn);
     }
   }
 

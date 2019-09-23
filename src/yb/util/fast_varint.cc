@@ -352,13 +352,10 @@ Result<uint64_t> FastDecodeUnsignedVarInt(Slice* slice) {
 
 Result<uint64_t> FastDecodeUnsignedVarInt(const Slice& slice) {
   Slice s(slice);
-  auto status = FastDecodeUnsignedVarInt(&s);
-  if (!status.ok()) {
-    return status;
-  }
+  const auto result = VERIFY_RESULT(FastDecodeUnsignedVarInt(&s));
   if (s.size() != 0)
     return STATUS(Corruption, "Slice not fully decoded.");
-  return Status::OK();
+  return result;
 }
 
 }  // namespace util

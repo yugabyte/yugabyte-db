@@ -238,9 +238,16 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
     return false;
   }
 
-  if (RetryLimitTaskType() && attempt_ > FLAGS_unresponsive_ts_rpc_retry_limit) {
+  int attempt_threshold = std::numeric_limits<int>::max();
+  if (NoRetryTaskType()) {
+    attempt_threshold = 0;
+  } else if (RetryLimitTaskType()) {
+    attempt_threshold = FLAGS_unresponsive_ts_rpc_retry_limit;
+  }
+
+  if (attempt_ > attempt_threshold) {
     LOG(WARNING) << "Reached maximum number of retries ("
-                 << FLAGS_unresponsive_ts_rpc_retry_limit << ") for request " << description()
+                 << attempt_threshold << ") for request " << description()
                  << ", task=" << this << " state=" << state();
     TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kFailed);
     return false;

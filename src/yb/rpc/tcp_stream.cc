@@ -241,7 +241,7 @@ void TcpStream::PopSending() {
 
 void TcpStream::Handler(ev::io& watcher, int revents) {  // NOLINT
   DVLOG_WITH_PREFIX(4) << "Handler(revents=" << revents << ")";
-  auto status = Status::OK();
+  Status status = Status::OK();
   if (revents & ev::ERROR) {
     status = STATUS(NetworkError, ToString() + ": Handler encountered an error");
     VLOG_WITH_PREFIX(3) << status;

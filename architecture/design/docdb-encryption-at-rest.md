@@ -191,10 +191,24 @@ If we want to both keep the checkpoint logic the same while avoiding in place mo
 
 **We picked option 3 as that was the cleanest design**. We avoid in place modification of files and keep the file and its encryption metadata, located in the header as discussed above, isolated to one file. In addition, table level encryption naturally follows from table level keys, so we would get that for free.
 
+# Key Management Service (KMS) Integration
+
+KMS integration would initially be facilitated via the Enterprise Platform solution, where the user would maintain the credentials to their KMS system of choice, and at the universe creation time
+we would make appropriate API calls to create a new Universe Key and use that key to provision a new universe with At Rest Encryption enabled. In this section we details the approach we plan on 
+taking with some of the KMS system that we would support via Platform. 
+
+## Equinix [SmartKey](https://www.equinix.com/services/edge-services/smartkey/). Integration
+  SmartKey is KMS a offering from Equinix, they provide SDK and API to manage the keys in their platform, YugaByte platform would integrate with SmartKey via the REST API route and authenticate
+using their API key in order to manage the Keys. We would use the name attribute on the Key to link the universe that the key is generated for. Once the key is generated we would make appropriate RPC 
+calls to YugaByte to enable encryption. We would call their rekey api when the user wants to rekey the universe and update the YugaByte nodes in a rolling fashion. 
+
+## AWS [Key Management Service](https://docs.aws.amazon.com/kms/latest/developerguide/overview.html)
+  Amazon offers their KMS solution, we will your their KMS api to manage the keys, And they have the concept of aliases which we would use that to build a relationship between the key and universe.
+When the key needs to be rotated we would create a new key and update the alias accordingly. And do the update on YugaByte nodes in a rolling fashion.
+
 # Future Work
 
 * Enable using a KMIP server for the universe key
-* Create an extensible way to integrate with popular external KMS systems
+* Make YugaByte platform act like a KMIP server which would encapsulate different KMS systems and give one common interface for YugaByte to interact.
 
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/docdb-encryption-at-rest.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
-

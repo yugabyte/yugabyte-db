@@ -109,6 +109,10 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // Set the timeout for writes made in this session.
   void SetTimeout(MonoDelta timeout);
 
+  MonoDelta timeout() const {
+    return timeout_;
+  }
+
   CHECKED_STATUS ReadSync(std::shared_ptr<YBOperation> yb_op);
 
   void ReadAsync(std::shared_ptr<YBOperation> yb_op, StatusFunctor callback);

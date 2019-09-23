@@ -217,7 +217,7 @@ Status DiscreteScanChoices::DoneWithCurrentTarget() {
 Status DiscreteScanChoices::SkipTargetsUpTo(const Slice& new_target) {
   VLOG(2) << __PRETTY_FUNCTION__ << " Updating current target to be >= " << new_target;
   DCHECK(!FinishedWithScanChoices());
-  InitScanTargetRangeGroupIfNeeded();
+  RETURN_NOT_OK(InitScanTargetRangeGroupIfNeeded());
   DocKeyDecoder decoder(new_target);
   RETURN_NOT_OK(decoder.DecodeToRangeGroup());
   current_scan_target_.Reset(Slice(new_target.data(), decoder.left_input().data()));

@@ -78,7 +78,7 @@ void DisableApplyingIntents() {
 
 void CommitAndResetSync(YBTransactionPtr *txn) {
   CountDownLatch latch(1);
-  (*txn)->Commit([&latch](const Status& status) {
+  (*txn)->Commit(TransactionRpcDeadline(), [&latch](const Status& status) {
     ASSERT_OK(status);
     latch.CountDown(1);
   });

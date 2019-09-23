@@ -12,6 +12,9 @@ import java.util.UUID;
  */
 public class AlertFormData {
   @Constraints.Required()
+  public String errCode;
+
+  @Constraints.Required()
   public String type;
 
   @Constraints.Required()

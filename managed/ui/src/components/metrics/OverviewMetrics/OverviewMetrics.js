@@ -9,6 +9,8 @@ import { isNonEmptyObject, isNonEmptyArray, isEmptyArray, isNonEmptyString } fro
 import { YBPanelLegend } from '../../common/descriptors';
 import { YBWidget } from '../../panels';
 import { METRIC_COLORS } from '../MetricsConfig';
+import { getPromiseState } from 'utils/PromiseUtils';
+import { getFeatureState } from 'utils/LayoutUtils';
 import _ from 'lodash';
 
 const moment = require('moment');
@@ -45,7 +47,12 @@ class OverviewMetrics extends Component {
   }
 
   componentDidMount(){
+    const { currentCustomer } = this.props;
     const self = this;
+    const pollingInterval = getPromiseState(currentCustomer).isSuccess() ?
+      getFeatureState(currentCustomer.data.features, "universes.details.overview.metricsInterval", OVERVIEW_METRICS_INTERVAL_MS) :
+      OVERVIEW_METRICS_INTERVAL_MS;
+
     // set the polling for metrics but update start and end time interval boundaries
     self.queryMetricsType({
       ...self.props.graph.graphFilter,
@@ -58,7 +65,7 @@ class OverviewMetrics extends Component {
         startMoment: moment().subtract("1", "hours"), 
         endMoment: moment()
       });
-    }, OVERVIEW_METRICS_INTERVAL_MS);
+    }, pollingInterval);
   }
 
   queryMetricsType = graphFilter => {

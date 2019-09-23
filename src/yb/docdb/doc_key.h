@@ -90,6 +90,13 @@ class DocKey {
          std::vector<PrimitiveValue> hashed_components,
          std::vector<PrimitiveValue> range_components = std::vector<PrimitiveValue>());
 
+  DocKey(const Uuid& cotable_id,
+         DocKeyHash hash,
+         std::vector<PrimitiveValue> hashed_components,
+         std::vector<PrimitiveValue> range_components = std::vector<PrimitiveValue>());
+
+  explicit DocKey(const Uuid& cotable_id);
+
   // Constructors to create a DocKey for the given schema to support co-located tables.
   explicit DocKey(const Schema& schema);
   DocKey(const Schema& schema, DocKeyHash hash);
@@ -114,6 +121,14 @@ class DocKey {
   //  - drop elements (primitive values) from the end if new_size is smaller than the old size.
   //  - append default primitive values (kNullLow) if new_size is bigger than the old size.
   void ResizeRangeComponents(int new_size);
+
+  const Uuid& cotable_id() const {
+    return cotable_id_;
+  }
+
+  bool has_cotable_id() const {
+    return !cotable_id_.IsNil();
+  }
 
   DocKeyHash hash() const {
     return hash_;
@@ -209,6 +224,10 @@ class DocKey {
 
   bool BelongsTo(const Schema& schema) const {
     return cotable_id_ == schema.cotable_id();
+  }
+
+  void set_cotable_id(const Uuid& cotable_id) {
+    cotable_id_ = cotable_id;
   }
 
   void set_hash(DocKeyHash hash) {
