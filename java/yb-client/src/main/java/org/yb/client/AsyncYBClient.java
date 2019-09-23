@@ -546,6 +546,17 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Get the tablet load move completion percentage for blacklisted nodes.
+   * @return a deferred object that yields the move completion info.
+   */
+  public Deferred<GetLoadMovePercentResponse> getLeaderBlacklistCompletion() {
+    checkIsClosed();
+    GetLeaderBlacklistPercentRequest rpc = new GetLeaderBlacklistPercentRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
    * Check if the tablet load is balanced as per the master leader.
    * @param numServers expected number of servers which need to balanced.
    * @return a deferred object that yields if the load is balanced.

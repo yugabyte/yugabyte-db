@@ -337,6 +337,15 @@ Status ClusterAdminClient::GetLoadMoveCompletion() {
   return Status::OK();
 }
 
+Status ClusterAdminClient::GetLeaderBlacklistCompletion() {
+  CHECK(initted_);
+  const auto resp = VERIFY_RESULT(InvokeRpc(
+      &MasterServiceProxy::GetLeaderBlacklistCompletion, master_proxy_.get(),
+      master::GetLeaderBlacklistPercentRequestPB()));
+  cout << "Percent complete = " << resp.percent() << endl;
+  return Status::OK();
+}
+
 Status ClusterAdminClient::GetIsLoadBalancerIdle() {
   CHECK(initted_);
   const auto resp = VERIFY_RESULT(InvokeRpc(
@@ -1087,10 +1096,13 @@ Status ClusterAdminClient::GetUniverseConfig() {
   return Status::OK();
 }
 
-Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers, bool add) {
+Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers, bool add,
+    bool blacklist_leader) {
   auto config = VERIFY_RESULT(GetMasterClusterConfig());
   auto& cluster_config = *config.mutable_cluster_config();
-  auto& blacklist = *cluster_config.mutable_server_blacklist();
+  auto& blacklist = (blacklist_leader) ?
+    *cluster_config.mutable_leader_blacklist() :
+    *cluster_config.mutable_server_blacklist();
   std::vector<HostPort> result_blacklist;
   for (const auto& host : blacklist.hosts()) {
     const HostPort hostport(host.host(), host.port());

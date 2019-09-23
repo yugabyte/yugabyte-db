@@ -518,6 +518,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Get the percentage of tablets that have been moved off of the black-listed tablet servers.
   CHECKED_STATUS GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp);
 
+  // Get the percentage of leaders that have been moved off of the leader black-listed tablet
+  // servers.
+  CHECKED_STATUS GetLeaderBlacklistCompletionPercent(GetLoadMovePercentResponsePB* resp);
+
+  // Get the percentage of leaders/tablets that have been moved off of the (leader) black-listed
+  // tablet servers.
+  CHECKED_STATUS GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp,
+      bool blacklist_leader);
+
   // API to check if all the live tservers have similar tablet workload.
   CHECKED_STATUS IsLoadBalanced(const IsLoadBalancedRequestPB* req,
                                 IsLoadBalancedResponsePB* resp);
@@ -927,9 +936,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // when the blacklist load removal operation was started. It permits overwrite semantics
   // for the blacklist.
   CHECKED_STATUS SetBlackList(const BlacklistPB& blacklist);
+  CHECKED_STATUS SetLeaderBlacklist(const BlacklistPB& leader_blacklist);
 
-  // Calculate the total number of replicas which are being handled by blacklisted servers.
-  int64_t GetNumBlacklistReplicas();
+  // Calculate the total number of replicas which are being handled by servers in state.
+  int64_t GetNumRelevantReplicas(const BlacklistState& state, bool leaders_only);
 
   int64_t leader_ready_term() {
     std::lock_guard<simple_spinlock> l(state_lock_);
@@ -1011,6 +1021,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Track all information related to the black list operations.
   BlacklistState blacklistState;
+
+  // Track all information related to the leader black list operations.
+  BlacklistState leaderBlacklistState;
 
   // TODO: convert this to YB_DEFINE_ENUM for automatic pretty-printing.
   enum State {

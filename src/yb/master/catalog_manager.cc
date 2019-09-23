@@ -5995,6 +5995,25 @@ Status CatalogManager::SetBlackList(const BlacklistPB& blacklist) {
   return Status::OK();
 }
 
+Status CatalogManager::SetLeaderBlacklist(const BlacklistPB& leader_blacklist) {
+  if (!leaderBlacklistState.tservers_.empty()) {
+    LOG(WARNING) << "Overwriting " << leaderBlacklistState.ToString()
+                 << " with new size " << leader_blacklist.hosts_size()
+                 << " and initial load " << leader_blacklist.initial_leader_load() << ".";
+    leaderBlacklistState.Reset();
+  }
+
+  LOG(INFO) << "Set leader blacklist size = " << leader_blacklist.hosts_size() << " with load "
+            << leader_blacklist.initial_leader_load() << " for num_tablets = "
+            << tablet_map_.size();
+
+  for (const auto& pb : leader_blacklist.hosts()) {
+    leaderBlacklistState.tservers_.insert(HostPortFromPB(pb));
+  }
+
+  return Status::OK();
+}
+
 Status CatalogManager::SetClusterConfig(
     const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp) {
   SysClusterConfigEntryPB config(req->cluster_config());
@@ -6003,8 +6022,18 @@ Status CatalogManager::SetClusterConfig(
   if (config.has_server_blacklist()) {
     RETURN_NOT_OK(SetBlackList(config.server_blacklist()));
 
-    config.mutable_server_blacklist()->set_initial_replica_load(GetNumBlacklistReplicas());
+    config.mutable_server_blacklist()->set_initial_replica_load(
+        GetNumRelevantReplicas(blacklistState, false /* leaders_only */));
     blacklistState.initial_load_ = config.server_blacklist().initial_replica_load();
+  }
+
+  // Save the list of leader blacklist to be used for completion checking.
+  if (config.has_leader_blacklist()) {
+    RETURN_NOT_OK(SetLeaderBlacklist(config.leader_blacklist()));
+
+    config.mutable_leader_blacklist()->set_initial_leader_load(
+        GetNumRelevantReplicas(leaderBlacklistState, true /* leaders_only */));
+    leaderBlacklistState.initial_load_ = config.leader_blacklist().initial_leader_load();
   }
 
   auto l = cluster_config_->LockForWrite();
@@ -6159,8 +6188,8 @@ std::string BlacklistState::ToString() {
                     tservers_.size(), initial_load_);
 }
 
-int64_t CatalogManager::GetNumBlacklistReplicas() {
-  int64_t blacklist_replicas = 0;
+int64_t CatalogManager::GetNumRelevantReplicas(const BlacklistState& state, bool leaders_only) {
+  int64_t res = 0;
   std::lock_guard <LockType> tablet_map_lock(lock_);
   for (const TabletInfoMap::value_type& entry : tablet_map_) {
     scoped_refptr<TabletInfo> tablet = entry.second;
@@ -6174,29 +6203,32 @@ int64_t CatalogManager::GetNumBlacklistReplicas() {
     TabletInfo::ReplicaMap locs;
     tablet->GetReplicaLocations(&locs);
     for (const TabletInfo::ReplicaMap::value_type& replica : locs) {
+      if (leaders_only && replica.second.role != RaftPeerPB::LEADER) {
+        continue;
+      }
       TSRegistrationPB reg = replica.second.ts_desc->GetRegistration();
-      bool blacklisted = false;
+      bool found = false;
       for (const auto& hp : reg.common().private_rpc_addresses()) {
-        if (blacklistState.tservers_.count(HostPortFromPB(hp)) != 0) {
-          blacklisted = true;
+        if (state.tservers_.count(HostPortFromPB(hp)) != 0) {
+          found = true;
           break;
         }
       }
-      if (!blacklisted) {
+      if (!found) {
         for (const auto& hp : reg.common().broadcast_addresses()) {
-          if (blacklistState.tservers_.count(HostPortFromPB(hp)) != 0) {
-            blacklisted = true;
+          if (state.tservers_.count(HostPortFromPB(hp)) != 0) {
+            found = true;
             break;
           }
         }
       }
-      if (blacklisted) {
-        blacklist_replicas++;
+      if (found) {
+        res++;
       }
     }
   }
 
-  return blacklist_replicas;
+  return res;
 }
 
 Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
@@ -6205,19 +6237,29 @@ Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
 }
 
 Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp) {
-  int64_t blacklist_replicas = GetNumBlacklistReplicas();
+  return GetLoadMoveCompletionPercent(resp, false);
+}
+
+Status CatalogManager::GetLeaderBlacklistCompletionPercent(GetLoadMovePercentResponsePB* resp) {
+  return GetLoadMoveCompletionPercent(resp, true);
+}
+
+Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp,
+    bool blacklist_leader) {
+  BlacklistState& state = (blacklist_leader) ? leaderBlacklistState : blacklistState;
+  int64_t blacklist_replicas = GetNumRelevantReplicas(state, blacklist_leader);
   LOG(INFO) << "Blacklisted count " << blacklist_replicas << " in " << tablet_map_.size()
-            << " tablets, across " << blacklistState.tservers_.size()
-            << " servers, with initial load " << blacklistState.initial_load_;
+            << " tablets, across " << state.tservers_.size()
+            << " servers, with initial load " << state.initial_load_;
 
   // Case when a blacklisted servers did not have any starting load.
-  if (blacklistState.initial_load_ == 0) {
+  if (state.initial_load_ == 0) {
     resp->set_percent(100);
     return Status::OK();
   }
 
   resp->set_percent(
-      100 - (static_cast<double>(blacklist_replicas) * 100 / blacklistState.initial_load_));
+      100 - (static_cast<double>(blacklist_replicas) * 100 / state.initial_load_));
 
   return Status::OK();
 }

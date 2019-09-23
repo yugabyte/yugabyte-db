@@ -641,6 +641,12 @@ void MasterServiceImpl::GetLoadMoveCompletion(
   HandleIn(req, resp, &rpc, &CatalogManager::GetLoadMoveCompletionPercent);
 }
 
+void MasterServiceImpl::GetLeaderBlacklistCompletion(
+    const GetLeaderBlacklistPercentRequestPB* req, GetLoadMovePercentResponsePB* resp,
+    RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::GetLeaderBlacklistCompletionPercent);
+}
+
 void MasterServiceImpl::IsMasterLeaderServiceReady(
     const IsMasterLeaderReadyRequestPB* req, IsMasterLeaderReadyResponsePB* resp,
     RpcContext rpc) {
