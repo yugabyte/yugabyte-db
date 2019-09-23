@@ -922,7 +922,7 @@ class QLTabletTestSmallMemstore : public QLTabletTest {
 };
 
 TEST_F_EX(QLTabletTest, DoubleFlush, QLTabletTestSmallMemstore) {
-  FLAGS_TEST_allow_stop_writes = false;
+  SetAtomicFlag(false, &FLAGS_TEST_allow_stop_writes);
 
   TestWorkload workload(cluster_.get());
   workload.set_table_name(kTable1Name);
@@ -940,6 +940,8 @@ TEST_F_EX(QLTabletTest, DoubleFlush, QLTabletTestSmallMemstore) {
 
   workload.StopAndJoin();
 
+  // Flush on rocksdb shutdown could produce second immutable memtable, that will stop writes.
+  SetAtomicFlag(true, &FLAGS_TEST_allow_stop_writes);
   cluster_->Shutdown(); // Need to shutdown cluster before resetting clock back.
   cluster_.reset();
 }
