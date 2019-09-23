@@ -39,28 +39,62 @@ A local install of the Confluent Platform should be up and running. The [Conflue
 
 To quickly get a local Confluent Platform (with Apache Kafka) up and running, follow the steps in the [Confluent Platform Quick Start (Local)](https://docs.confluent.io/current/quickstart/ce-quickstart.html#ce-quickstart).
 
-## Step 1 — Add the `cdc` table
+## Step 1 — Add the `users` table
 
-With your local YugabyteDB cluster running, add a table `cdc` to the default database (`yugabyte`).
+With your local YugabyteDB cluster running, create a table, called `users`, in the default database (`yugabyte`).
+
+```sql
+CREATE TABLE users (name text, pass text, id int, primary key (id));
+```
 
 ## Step 2 — Create Avro schemas
 
 YugabyteDB supports the use of [Apache Avro schemas](http://avro.apache.org/docs/current/#schemas) to serialize and deserialize tables. You can use the [Schema Registry](https://docs.confluent.io/current/schema-registry/index.html) in the Confluent Platform to create the two Avro schema files that you need. For a step-by-step tutorial, see [Schema Registry Tutorial](https://docs.confluent.io/current/schema-registry/schema_registry_tutorial.html).
 
-Create two Avro schemas, one for the `cdc` table and one for the primary key of the table. After this step, you should have two files: `table_schema_path.avsc` and `primary_key_schema_path.avsc`.
+Create two Avro schemas, one for the `users` table and one for the primary key of the table. After this step, you should have two files: `table_schema_path.avsc` and `primary_key_schema_path.avsc`.
+
+You can use the following two Avro schema examples that will work with the table you created.
+
+**`table_schema_path.avsc`**
+
+```json
+{
+  "type":"record",
+  "name":"Table",
+  "namespace":"org.yb.cdc.schema",
+  "fields":[
+  { "name":"name", "type":["null", "string"] },
+  { "name":"pass", "type":["null", "string"] },
+  { "name":"id", "type":["null", "int"] }
+  ]
+}
+```
+
+**`primary_key_schema_path.avsc`
+
+```json
+{
+  "type":"record",
+  "name":"PrimaryKey",
+  "namespace":"org.yb.cdc.schema",
+  "fields":[
+  { "name":"id", "type":["null", "int"] }
+  ]
+}
+```
 
 ## Step 3 — Start the Apache Kafka services
 
 1. Create a Kafka topic.
 
 ```bash
-./bin/kafka-topics --create --partitions 1 --topic <topic_name> --bootstrap-server localhost:9092 --replication-factor 1
+./bin/kafka-topics --create --partitions 1 --topic users_topic --bootstrap-server localhost:9092 --replication-factor 1
 ```
 
-5. Start the Kafka consumer.
+2. Start the Kafka consumer service.
 
 ```bash
-bin/kafka-avro-console-consumer --bootstrap-server localhost:9092 --topic <topic_name> --key-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer --value-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer
+bin/kafka-avro-console-consumer --bootstrap-server localhost:9092 --topic users_topic --key-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer --value-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer
 ```
 
 ## Step 4 — Download the Yugabyte CDC connector
