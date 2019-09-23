@@ -44,6 +44,14 @@ INSERT INTO agtype_table VALUES('mixed array', '[true, false, null, "string", 1,
 
 INSERT INTO agtype_table VALUES('object', '{"bool":true, "null":null, "string":"string", "integer":1, "float":1.2, "arrayi":[-1,0,1], "arrayf":[-1.0, 0.0, 1.0], "object":{"bool":true, "null":null, "string":"string", "int":1, "float":8.0}}');
 
+--
+-- Special float values: NaN, +/- Infinity
+INSERT INTO agtype_table VALUES ('float  nan', 'nan');
+INSERT INTO agtype_table VALUES ('float  Infinity', 'Infinity');
+INSERT INTO agtype_table VALUES ('float -Infinity', '-Infinity');
+INSERT INTO agtype_table VALUES ('float  inf', 'inf');
+INSERT INTO agtype_table VALUES ('float -inf', '-inf');
+
 SELECT * FROM agtype_table;
 
 --
@@ -51,9 +59,9 @@ SELECT * FROM agtype_table;
 --
 INSERT INTO agtype_table VALUES ('bad integer', '9223372036854775808');
 INSERT INTO agtype_table VALUES ('bad integer', '-9223372036854775809');
-INSERT INTO agtype_table VALUES ('bad float', 'NaN');
-INSERT INTO agtype_table VALUES ('bad float', 'Infinity');
-INSERT INTO agtype_table VALUES ('bad float', '-Infinity');
+INSERT INTO agtype_table VALUES ('bad float', '-NaN');
+INSERT INTO agtype_table VALUES ('bad float', 'Infi');
+INSERT INTO agtype_table VALUES ('bad float', '-Infi');
 
 --
 -- Cleanup

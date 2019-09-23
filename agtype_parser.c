@@ -508,8 +508,39 @@ static inline void agtype_lex(agtype_lex_context *lex)
             lex->token_type = AGTYPE_TOKEN_STRING;
             break;
         case '-':
-            /* Negative number. */
-            agtype_lex_number(lex, s + 1, NULL, NULL);
+            /* Negative numbers and special float values. */
+            if (*(s + 1) == 'i' || *(s + 1) == 'I')
+            {
+                char *s1 = s + 1;
+                char *p = s1;
+
+                /* advance p to the end of the token */
+                while (p - s < lex->input_length - len &&
+                       ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z')))
+                    p++;
+
+                /* update the terminators */
+                lex->prev_token_terminator = lex->token_terminator;
+                lex->token_terminator = p;
+
+                lex->token_type = AGTYPE_TOKEN_INVALID;
+                len = p - s1;
+                switch (len)
+                {
+                case 3:
+                    if (pg_strncasecmp(s1, "inf", len) == 0)
+                        lex->token_type = AGTYPE_TOKEN_FLOAT;
+                    break;
+                case 8:
+                    if (pg_strncasecmp(s1, "Infinity", len) == 0)
+                        lex->token_type = AGTYPE_TOKEN_FLOAT;
+                    break;
+                }
+                if (lex->token_type == AGTYPE_TOKEN_INVALID)
+                    report_invalid_token(lex);
+            }
+            else
+                agtype_lex_number(lex, s + 1, NULL, NULL);
             /* token is assigned in agtype_lex_number */
             break;
         case '0':
@@ -563,20 +594,41 @@ static inline void agtype_lex(agtype_lex_context *lex)
 					 */
             lex->prev_token_terminator = lex->token_terminator;
             lex->token_terminator = p;
-            if (p - s == 4)
+
+            lex->token_type = AGTYPE_TOKEN_INVALID;
+            len = p - s;
+            switch (len)
             {
-                if (memcmp(s, "true", 4) == 0)
+            /* A note about the mixture of case and case insensitivity -
+			 * The original code adheres to the JSON spec where true,
+			 * false, and null are strictly lower case. The Postgres float
+			 * logic, on the other hand, is case insensitive, allowing for
+			 * possibly many different input sources for float values. Hence,
+			 * the mixture of the two.
+			 */
+            case 3:
+                if ((pg_strncasecmp(s, "NaN", len) == 0) ||
+                    (pg_strncasecmp(s, "inf", len) == 0))
+                    lex->token_type = AGTYPE_TOKEN_FLOAT;
+                break;
+            case 4:
+                if (memcmp(s, "true", len) == 0)
                     lex->token_type = AGTYPE_TOKEN_TRUE;
-                else if (memcmp(s, "null", 4) == 0)
+                else if (memcmp(s, "null", len) == 0)
                     lex->token_type = AGTYPE_TOKEN_NULL;
-                else
-                    report_invalid_token(lex);
+                break;
+            case 5:
+                if (memcmp(s, "false", len) == 0)
+                    lex->token_type = AGTYPE_TOKEN_FALSE;
+                break;
+            case 8:
+                if (pg_strncasecmp(s, "Infinity", len) == 0)
+                    lex->token_type = AGTYPE_TOKEN_FLOAT;
+                break;
             }
-            else if (p - s == 5 && memcmp(s, "false", 5) == 0)
-                lex->token_type = AGTYPE_TOKEN_FALSE;
-            else
+            if (lex->token_type == AGTYPE_TOKEN_INVALID)
                 report_invalid_token(lex);
-        }
+        } /* end of default case */
         } /* end of switch */
 }
 
