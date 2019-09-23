@@ -15,45 +15,43 @@ showAsideToc: true
 
 Follow the steps below to connect a local YugabyteDB cluster to use the Change Data Capture (CDC) API to send data changes to Apache Kafka. To learn about the change data capture (CDC) architecture, see [Change data capture (CDC)](../architecture/cdc-architecture).
 
-## Step 1 — Set up YugabyteDB
+## Prerequisites
 
-Create a YugabyteDB local cluster and add a table.
+### YugabyteDB
 
-If you are new to YugabyteDB, you can create a local YugaByte cluster in under five minutes by following the steps in the [Quick start](/quick-start/install/
+A 1-node YugabyteDB cluster with RF=1 is up and running locally (the `yb-ctl create` command create this by default). If you are new to YugabyteDB, you can create a local YugaByte cluster in under five minutes by following the steps in the [Quick start](/quick-start/install/).
 
-## Step 2 — Set up Apache Kafka (skip if your are logging to console)
+### Java
 
-YugabyteDB supports the use of [Apache Avro schemas](http://avro.apache.org/docs/current/#schemas) to serialize and deserialize tables.
+A JRE (or JDK), for Java 8 or 11, is installed. JDK and JRE installers for Linux, macOS, and Windows can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 
-Create two Avro schemas, one for the table and one for the primary key of the table. After this step, you should have two files: `table_schema_path.avsc` and `primary_key_schema_path.avsc`.
+{{< note title="Note" >}}
+
+The Confluent Platform currently only support Java 8 and 11. If you do not use one of these, an error message is generated and it will not start.
+
+{{< /note >}}
+
+For the Confluent Platform, see [Java version requirements](https://docs.confluent.io/current/cli/installing.html#java-version-requirements).
+
+### Apache Kafka
+
+A local install of the Confluent Platform should be up and running. The [Confluent Platform](https://docs.confluent.io/current/platform.html) includes [Apache Kafka](https://docs.confluent.io/current/kafka/introduction.html) and additional tools and services (including Zookeeper and Avro), making it easy for you to quickly get started using the Kafka event streaming platform.
+
+To quickly get a local Confluent Platform (with Apache Kafka) up and running, follow the steps in the [Confluent Platform Quick Start (Local)](https://docs.confluent.io/current/quickstart/ce-quickstart.html#ce-quickstart).
+
+## Step 1 — Add the `cdc` table
+
+With your local YugabyteDB cluster running, add a table `cdc` to the default database (`yugabyte`).
+
+## Step 2 — Create Avro schemas
+
+YugabyteDB supports the use of [Apache Avro schemas](http://avro.apache.org/docs/current/#schemas) to serialize and deserialize tables. You can use the [Schema Registry](https://docs.confluent.io/current/schema-registry/index.html) in the Confluent Platform to create the two Avro schema files that you need. For a step-by-step tutorial, see [Schema Registry Tutorial](https://docs.confluent.io/current/schema-registry/schema_registry_tutorial.html).
+
+Create two Avro schemas, one for the `cdc` table and one for the primary key of the table. After this step, you should have two files: `table_schema_path.avsc` and `primary_key_schema_path.avsc`.
 
 ## Step 3 — Start the Apache Kafka services
 
-1. Download and install Confluent.
-
-The following series of commands will download Confluent, open the `tar` file, and move you to the Confluent installation directory.
-
-```bash
-curl -O http://packages.confluent.io/archive/5.3/confluent-5.3.1-2.12.tar.gz
-tar -xvzf confluent-5.3.1-2.12.tar.gz
-cd confluent-5.3.1/
-```
-
-2. Download the `bin` directory and add it to the PATH variable.
-
-```
-curl -L https://cnfl.io/cli | sh -s -- -b /<path-to-directory>/bin
-export PATH=<path-to-confluent>/bin:$PATH
-export CONFLUENT_HOME=~/code/confluent-5.3.1
-```
-
-3. Start the Zookeeper, Kafka, and the Avro schema registry services.
-
-```bash
-./bin/confluent local start
-```
-
-4. Create a Kafka topic.
+1. Create a Kafka topic.
 
 ```bash
 ./bin/kafka-topics --create --partitions 1 --topic <topic_name> --bootstrap-server localhost:9092 --replication-factor 1
@@ -65,37 +63,19 @@ export CONFLUENT_HOME=~/code/confluent-5.3.1
 bin/kafka-avro-console-consumer --bootstrap-server localhost:9092 --topic <topic_name> --key-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer --value-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer
 ```
 
-## Step 4 — Set up Kafka Connect to YugabyteDB
+## Step 4 — Download the Yugabyte CDC connector
 
-1. In a new shell window, fork YugaByte's GitHub repository for [Kafka Connect to YugabyteDB](https://github.com/yugabyte/yb-kafka-connector) and change to the `yb-cdc` directory.
-
-```
-git clone https://github.com/yugabyte/yb-kafka-connector.git
-cd yb-kafka-connector/yb-cdc
-```
-
-2. Start the Kafka connector application.
+Download the [Yugabyte CDC connector (JAR file)](https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar).
 
 ## Step 5 — Log to Kafka
 
 ```bash
 java -jar target/yb_cdc_connector.jar
---table_name <namespace/database>.<table>
---master_addrs <yb master addresses> [default 127.0.0.1:7100]
---[stream_id] <optional existing stream id>
---kafka_addrs <kafka cluster addresses> [default 127.0.0.1:9092]
---schema_registry_addrs [default 127.0.0.1:8081]
---topic_name <topic name to write to>
---table_schema_path <avro table schema>
---primary_key_schema_path <avro primary key schema>
+--table_name yugabyte.cdc
+--topic_name cdc-test
+--table_schema_path table_schema_path.avsc
+--primary_key_schema_path primary_key_schema_path.avsc
 ```
-
-{{< note title="Note" >}}
-
-In the command above, only one YB-Master address is specified, assuming that you are using a 1-node local cluster with RF=1. If you are using a 3-node local cluster, then you need to add a comma-delimited list of the addresses for all of your YB-Master services in the `--master-addrs` option above.
-
-{{< /note >}}
-
 
 ## Step 6 — Write values and observe
 

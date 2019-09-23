@@ -23,7 +23,7 @@ A 1-node YugabyteDB cluster with RF=1 is up and running locally (the `yb-ctl cre
 
 ### Java
 
-A recent JRE is installed and configured.
+A JRE (or JDK), for Java 8 or later, is installed. JDK and JRE installers for Linux, macOS, and Windows can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 
 ## Step 1 — Add a database table
 
@@ -33,7 +33,7 @@ Start your local YugabyteDB cluster and add a table (for example, `cdc` to the d
 
 Download the [Yugabyte CDC connector (JAR file)](https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar).
 
-## Step 3 — Stream the log to `stdout`
+## Step 3 — Stream the log output stream to `stdout`
 
 You can now follow the command below to to start the YugabyteDB CDC connector and stream the output from the `cdc` table to `stdout`.
 
@@ -42,8 +42,6 @@ java -jar yb_cdc_connector.jar
 --table_name yugabyte.cdc
 --log_only // Flag to log to console.
 ```
-
-
 
 ## Step 4 — Write values and observe
 
