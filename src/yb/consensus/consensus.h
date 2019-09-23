@@ -343,7 +343,8 @@ class Consensus {
   virtual MonoTime TimeSinceLastMessageFromLeader() = 0;
 
   // Read majority replicated messages for CDC producer.
-  virtual CHECKED_STATUS ReadReplicatedMessagesForCDC(const OpId& from, ReplicateMsgs* msgs) = 0;
+  virtual CHECKED_STATUS ReadReplicatedMessagesForCDC(const OpId& from, ReplicateMsgs* msgs,
+                                                      bool* have_more_messages) = 0;
 
  protected:
   friend class RefCountedThreadSafe<Consensus>;

@@ -101,6 +101,7 @@ class CDCProducer {
 
   // Build transaction status as of hybrid_time.
   static Result<TxnStatusMap> BuildTxnStatusMap(const consensus::ReplicateMsgs& messages,
+                                                bool more_replicate_msgs,
                                                 const HybridTime& hybrid_time,
                                                 tablet::TransactionParticipant* txn_participant);
 
