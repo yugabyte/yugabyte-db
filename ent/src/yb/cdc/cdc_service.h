@@ -87,7 +87,7 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> GetTablets(
       const CDCStreamId& stream_id);
 
-  std::shared_ptr<std::unordered_set<std::string>> GetTabletIdsForStream(
+  Result<std::shared_ptr<std::unordered_set<std::string>>> GetTabletIdsForStream(
       const CDCStreamId& stream_id);
 
   Result<std::shared_ptr<StreamMetadata>> GetStream(const std::string& stream_id);

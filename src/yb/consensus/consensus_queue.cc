@@ -525,10 +525,11 @@ Status PeerMessageQueue::ReadFromLogCache(int64_t from_index,
 
 // Read majority replicated messages from cache for CDC.
 // CDC producer will use this to get the messages to send in response to cdc::GetChanges RPC.
-Status PeerMessageQueue::ReadReplicatedMessagesForCDC(const OpId& last_op_id, ReplicateMsgs *msgs) {
+Status PeerMessageQueue::ReadReplicatedMessagesForCDC(const OpId& last_op_id, ReplicateMsgs *msgs,
+                                                      bool* have_more_messages) {
   // The batch of messages read from cache.
   ReplicateMsgs messages;
-  bool have_more_messages = false;
+  *have_more_messages = false;
   OpIdPB preceding_id;
 
   int64_t to_index;
@@ -544,7 +545,7 @@ Status PeerMessageQueue::ReadReplicatedMessagesForCDC(const OpId& last_op_id, Re
 
   Status s = ReadFromLogCache(last_op_id.index(), to_index,
                               FLAGS_consensus_max_batch_size_bytes,
-                              local_peer_uuid_, &messages, &preceding_id, &have_more_messages);
+                              local_peer_uuid_, &messages, &preceding_id, have_more_messages);
   if (PREDICT_FALSE(!s.ok())) {
     if (PREDICT_TRUE(s.IsNotFound())) {
       string msg = Format("The logs from index $0 have been garbage collected and cannot be read "

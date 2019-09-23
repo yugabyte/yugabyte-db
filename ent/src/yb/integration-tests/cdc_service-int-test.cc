@@ -315,6 +315,24 @@ TEST_F(CDCServiceTest, TestGetChanges) {
   }
 }
 
+TEST_F(CDCServiceTest, TestGetChangesInvalidStream) {
+  std::string tablet_id;
+  GetTablet(&tablet_id);
+
+  // Get CDC changes for non-existent stream.
+  GetChangesRequestPB change_req;
+  GetChangesResponsePB change_resp;
+
+  change_req.set_tablet_id(tablet_id);
+  change_req.set_stream_id("InvalidStreamId");
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
+
+  RpcController rpc;
+  ASSERT_NO_FATALS(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
+  ASSERT_TRUE(change_resp.has_error());
+}
+
 TEST_F(CDCServiceTest, TestGetCheckpoint) {
   CDCStreamId stream_id;
   CreateCDCStream(cdc_proxy_, table_.table()->id(), boost::none /* retention time */, &stream_id);

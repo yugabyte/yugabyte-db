@@ -91,7 +91,8 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   // Map of CDCRecord index -> RemoteTablet.
   std::unordered_map<size_t, client::internal::RemoteTablet*> records_;
 
-  const cdc::GetChangesResponsePB* resp_;
+  // This will cache the response to an ApplyChanges() request.
+  cdc::GetChangesResponsePB resp_;
 };
 
 Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
@@ -102,10 +103,10 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
   // Once all changes have been applied (successfully or not), we invoke the callback which will
   // then either poll for next set of changes (in case of successful application) or will try to
   // re-apply.
-  resp_ = resp;
   processed_record_count_.store(0, std::memory_order_release);
   record_count_.store(resp->records_size(), std::memory_order_release);
   DCHECK(resp->has_checkpoint());
+  resp_.Clear();
 
   // Init class variables that threads will use.
   {
@@ -113,6 +114,7 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
     DCHECK(consensus::OpIdEquals(op_id_, consensus::MinimumOpId()));
     op_id_ = resp->checkpoint().op_id();
     error_status_ = Status::OK();
+    records_.clear();
   }
 
   // Ensure we have records.
@@ -133,25 +135,29 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
   }
 
   // Inspect all records in the response.
-  bool records_to_process = false;
   for (int i = 0; i < resp->records_size(); i++) {
     if (resp->records(i).key_size() == 0) {
-      // Transaction status record, ignore.
+      // Transaction status record, ignore for now.
+      // Support for handling transactions will be added in future.
       IncProcessedRecordCount();
     } else {
-      // All KV-pairs within a single CDC record will be for the same row.
-      // key(0).key() will contain the hash code for that row. We use this to lookup the tablet.
-      client_->LookupTabletByKey(
-          table_.get(),
-          PartitionSchema::EncodeMultiColumnHashValue(
-              boost::lexical_cast<uint16_t>(resp->records(i).key(0).key())),
-          CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_cdc_rpc_timeout_ms),
-          std::bind(&TwoDCOutputClient::TabletLookupCallback, this, i, std::placeholders::_1));
-      records_to_process = true;
+      auto record_pb = resp_.add_records();
+      *record_pb = resp->records(i);
     }
   }
 
-  if (!records_to_process) {
+  for (int i = 0; i < resp_.records_size(); i++) {
+    // All KV-pairs within a single CDC record will be for the same row.
+    // key(0).key() will contain the hash code for that row. We use this to lookup the tablet.
+    client_->LookupTabletByKey(
+        table_.get(),
+        PartitionSchema::EncodeMultiColumnHashValue(
+            boost::lexical_cast<uint16_t>(resp_.records(i).key(0).key())),
+        CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_cdc_rpc_timeout_ms),
+        std::bind(&TwoDCOutputClient::TabletLookupCallback, this, i, std::placeholders::_1));
+  }
+
+  if (resp_.records_size() == 0) {
     // Nothing to process, return success.
     HandleResponse();
   }
@@ -171,7 +177,7 @@ void TwoDCOutputClient::TabletLookupCallback(
     const Result<client::internal::RemoteTabletPtr>& tablet) {
   if (!tablet.ok()) {
     IncProcessedRecordCount();
-    HandleError(tablet.status(), resp_->records(record_idx));
+    HandleError(tablet.status(), resp_.records(record_idx));
     return;
   }
 
@@ -183,8 +189,24 @@ void TwoDCOutputClient::TabletLookupCallback(
   IncProcessedRecordCount();
   if (processed_record_count_.load(std::memory_order_acquire) ==
       record_count_.load(std::memory_order_acquire)) {
+
     // Found tablets for all records, now we should write the records.
-    SendCDCWriteToTablet(0);
+    // But first, check if there were any errors during tablet lookup for any record.
+    bool has_error = false;
+    {
+      std::shared_lock<rw_spinlock> l(lock_);
+      if (!error_status_.ok()) {
+        has_error = true;
+      }
+    }
+
+    if (has_error) {
+      // Return error, if any, without applying records.
+      HandleResponse();
+    } else {
+      // Apply the writes on consumer.
+      SendCDCWriteToTablet(0);
+    }
   }
 }
 
@@ -201,9 +223,10 @@ void TwoDCOutputClient::SendCDCWriteToTablet(const size_t record_idx) {
     // Used only for testing external hybrid time.
     req.set_external_hybrid_time(yb::kInitialHybridTimeValue);
   } else {
-    req.set_external_hybrid_time(resp_->records(record_idx).time());
+    req.set_external_hybrid_time(resp_.records(record_idx).time());
   }
-  for (const auto& kv_pair : resp_->records(record_idx).changes()) {
+
+  for (const auto& kv_pair : resp_.records(record_idx).changes()) {
     auto* write_pair = req.mutable_write_batch()->add_write_pairs();
     write_pair->set_key(kv_pair.key());
     write_pair->set_value(kv_pair.value().binary_value());
@@ -225,14 +248,14 @@ void TwoDCOutputClient::WriteCDCRecordDone(
     const Status& status, const WriteResponsePB& response, size_t record_idx) {
   VLOG(1) << "Wrote CDC record: " << status << ": " << response.DebugString();
   if (!status.ok()) {
-    HandleError(status, resp_->records(record_idx));
+    HandleError(status, resp_.records(record_idx));
     return;
   } else if (response.has_error()) {
-    HandleError(StatusFromPB(response.error().status()), resp_->records(record_idx));
+    HandleError(StatusFromPB(response.error().status()), resp_.records(record_idx));
     return;
   }
 
-  if (record_idx == resp_->records_size() - 1) {
+  if (record_idx == resp_.records_size() - 1) {
     // Last record, return response to caller.
     HandleResponse();
   } else {

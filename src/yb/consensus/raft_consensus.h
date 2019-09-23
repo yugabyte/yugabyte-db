@@ -249,7 +249,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     TEST_delay_update_.store(duration, std::memory_order_release);
   }
 
-  CHECKED_STATUS ReadReplicatedMessagesForCDC(const OpId& from, ReplicateMsgs* msgs) override;
+  CHECKED_STATUS ReadReplicatedMessagesForCDC(const OpId& from, ReplicateMsgs* msgs,
+                                              bool* have_more_messages) override;
 
  protected:
   // Trigger that a non-Operation ConsensusRound has finished replication.

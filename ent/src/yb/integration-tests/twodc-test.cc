@@ -30,6 +30,7 @@
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/gutil/gscoped_ptr.h"
@@ -109,8 +110,17 @@ class TwoDCTest : public YBTest {
     producer_client_ = VERIFY_RESULT(producer_cluster_->CreateClient());
     consumer_client_ = VERIFY_RESULT(consumer_cluster_->CreateClient());
 
+    RETURN_NOT_OK(clock_->Init());
+    producer_txn_mgr_.emplace(producer_client_.get(), clock_, client::LocalTabletFilter());
+    consumer_txn_mgr_.emplace(consumer_client_.get(), clock_, client::LocalTabletFilter());
+
     YBSchemaBuilder b;
     b.AddColumn("c0")->Type(INT32)->NotNull()->HashPrimaryKey();
+
+    // Create transactional table.
+    TableProperties table_properties;
+    table_properties.SetTransactional(true);
+    b.SetTableProperties(table_properties);
     CHECK_OK(b.Build(&schema_));
 
     if (num_consumer_tablets.size() != num_producer_tablets.size()) {
@@ -232,7 +242,6 @@ class TwoDCTest : public YBTest {
     }
 
     producer_client_.reset();
-
     consumer_client_.reset();
   }
 
@@ -250,6 +259,28 @@ class TwoDCTest : public YBTest {
       QLAddInt32HashValue(req, key);
       ASSERT_OK(session->ApplyAndFlush(op));
     }
+  }
+
+  void WriteTransactionalWorkload(uint32_t start, uint32_t end, YBClient* client,
+                                  client::TransactionManager* txn_mgr, const YBTableName& table) {
+    auto session = client->NewSession();
+    auto transaction = std::make_shared<client::YBTransaction>(txn_mgr);
+    ReadHybridTime read_time;
+    ASSERT_OK(transaction->Init(IsolationLevel::SNAPSHOT_ISOLATION, read_time));
+    session->SetTransaction(transaction);
+
+    client::TableHandle table_handle;
+    ASSERT_OK(table_handle.Open(table, client));
+    std::vector<std::shared_ptr<client::YBqlOp>> ops;
+
+    for (uint32_t i = start; i < end; i++) {
+      auto op = table_handle.NewDeleteOp();
+      int32_t key = i;
+      auto req = op->mutable_request();
+      QLAddInt32HashValue(req, key);
+      ASSERT_OK(session->ApplyAndFlush(op));
+    }
+    transaction->CommitFuture().get();
   }
 
   void DeleteWorkload(uint32_t start, uint32_t end, YBClient* client, const YBTableName& table) {
@@ -314,6 +345,14 @@ class TwoDCTest : public YBTest {
     return consumer_cluster_.get();
   }
 
+  client::TransactionManager* producer_txn_mgr() {
+    return producer_txn_mgr_.get_ptr();
+  }
+
+  client::TransactionManager* consumer_txn_mgr() {
+    return consumer_txn_mgr_.get_ptr();
+  }
+
   uint32_t NumProducerTabletsPolled(MiniCluster* cluster) {
     uint32_t size = 0;
     for (const auto& mini_tserver : cluster->mini_tablet_servers()) {
@@ -353,6 +392,10 @@ class TwoDCTest : public YBTest {
 
   std::unique_ptr<YBClient> producer_client_;
   std::unique_ptr<YBClient> consumer_client_;
+
+  boost::optional<client::TransactionManager> producer_txn_mgr_;
+  boost::optional<client::TransactionManager> consumer_txn_mgr_;
+  server::ClockPtr clock_{new server::HybridClock()};
 
   YBSchema schema_;
 };
@@ -500,6 +543,36 @@ TEST_F(TwoDCTest, ApplyOperations) {
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
 
   WriteWorkload(0, 5, producer_client(), tables[0]->name());
+
+  // Check that all tablets continue to be polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
+
+  // Verify that both clusters have the same records.
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+
+  Destroy();
+}
+
+TEST_F(TwoDCTest, ApplyOperationsWithTransactions) {
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, replication_factor));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer table from the list.
+  producer_tables.reserve(1);
+  producer_tables.push_back(tables[0]);
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+  // After creating the cluster, make sure all producer tablets are being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
+
+  // Write some transactional rows.
+  WriteTransactionalWorkload(0, 5, producer_client(), producer_txn_mgr(), tables[0]->name());
+
+  // Write some non-transactional rows.
+  WriteWorkload(6, 10, producer_client(), tables[0]->name());
 
   // Check that all tablets continue to be polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
