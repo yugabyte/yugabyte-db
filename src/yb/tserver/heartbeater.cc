@@ -484,6 +484,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
       RETURN_NOT_OK(server_->SetUniverseKeyRegistry(resp.universe_key_registry()));
     }
 
+    // Check for CDC Universe Replication.
     if (resp.has_consumer_registry()) {
       int32_t cluster_config_version = -1;
       if (!resp.has_cluster_config_version()) {
