@@ -1,7 +1,7 @@
 ---
-title: Use change data capture (CDC)
-linkTitle: Use change data capture (CDC)
-description: Use change data capture (CDC)
+title: Using the Yugabyte CDC connector
+linkTitle: Using the Yugabyte CDC connector
+description: Using the Yugabyte CDC connector
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
@@ -13,41 +13,33 @@ isTocNested: true
 showAsideToc: true
 ---
 
+Use change data capture (CDC) in your YugabyteDB deployments to asynchronously replicate data changes. In the sections below, learn how you can use the Yugabyte CDC connector tp send data changes to Apache Kafka or to `stdout`.
+
 ## Prerequisites
 
-A Java runtime (or JDK) for Java 8 or later. JDK and JRE installers for Linux, macOS, and Windows can be downloaded from OpenJDK, AdoptOpenJDK, or Azul Systems. When installed, the default location of the JRE or JDK is:
+A Java runtime (or JDK) for Java 8 or later. JDK and JRE installers for Linux, macOS, and Windows can be downloaded from [OpenJDK](https://openjdk.java.net/install/), [AdoptOpenJDK](https://adoptopenjdk.net/releases.html), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). When installed, the default location of the JRE or JDK is:
 
 - Linux: `jre\lib\`
 - macOS: `\Library\Java\`
-- Windows: ???
+- Windows: `C:\Program Files\Java\`
+
+The JRE directory location can be found by looking at the `JAVA_HOME` environment variable.
 
 ## Install the Yugabyte CDC connector
 
-1. Download the [Yugabyte CDC connector (JAR file)](https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar).
+1. Download the [Yugabyte CDC connector (`yb-cdc-connector.jar`)](https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar).
 
-2. Install the JAR file (`yb-cdc-connector.jar`) in the following recommended location:
+2. Install the JAR file in the following recommended location:
 
 - Linux: `jre\lib\ext\yb-cdc-connector.jar`
 - macOS: `\Library\Java\Extensions\yb-cdc-connector.jar`
 - Windows: `%SystemRoot%\Sun\Java\lib\ext\yb-cdc-connector.jar`
 
-The JRE directory location can be found by looking at the `JAVA_HOME` environment variable.
-
 ## Use the Yugabyte CDC connector
 
 To use the Yugabyte CDC connector, run the `yb_cdc_connector` JAR file.
 
-**For stdout**
-
-```bash
-java -jar yb_cdc_connector.jar
---table_name <database>.<table>
---master_addrs <yb master addresses> [default 127.0.0.1:7100]
-[ --stream_id <stream-id> ]
-[ --log_only ]
-```
-
-**For Kafka**
+### Apache Kafka
 
 ```bash
 java -jar target/yb_cdc_connector.jar
@@ -60,6 +52,18 @@ java -jar target/yb_cdc_connector.jar
 --table_schema_path <avro table schema>
 --primary_key_schema_path <avro primary key schema>
 ```
+
+### `stdout`
+
+```bash
+java -jar yb_cdc_connector.jar
+--table_name <database>.<table>
+--master_addrs <yb master addresses> [default 127.0.0.1:7100]
+[ --stream_id <stream-id> ]
+[ --log_only ]
+```
+
+For details on the options, see [Use ]
 
 ## Parameters
 
