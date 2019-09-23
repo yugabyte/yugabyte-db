@@ -336,6 +336,22 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Get the tablet load move completion percentage for blacklisted nodes, if any.
+   * @return the response with percent load completed.
+   */
+  public GetLoadMovePercentResponse getLeaderBlacklistCompletion()
+      throws Exception {
+    Deferred<GetLoadMovePercentResponse> d;
+    GetLoadMovePercentResponse resp;
+    int numTries = 0;
+    do {
+      d = asyncClient.getLeaderBlacklistCompletion();
+      resp = d.join(getDefaultAdminOperationTimeoutMs());
+    } while (resp.hasRetriableError() && numTries++ < MAX_NUM_RETRIES);
+    return resp;
+  }
+
+  /**
    * Check if the tablet load is balanced as per the master leader.
    * @param numServers expected number of servers across which the load needs to balanced.
    *                   Zero implies load distribution can be checked across all servers

@@ -208,9 +208,11 @@ message ReplicationInfoPB {
 message BlacklistPB {
   repeated HostPortPB hosts = 1;
 
-  // Field to track the number of replicas in current set of tablets which have a blacklist server.
-  // Client should not set this. Set by server side when persisting the blacklist load.
+  // Fields to track the number of replicas/leaders in current set of tablets which have a
+  // blacklist server/leader. Client should not set this. Set by server side when persisting
+  // the blacklist load.
   optional int32 initial_replica_load = 2;
+  optional int32 initial_leader_load = 3;
 }
 
 ////////////////////////////////////////////////////////////
@@ -460,6 +462,7 @@ message SysClusterConfigEntryPB {
   optional string cluster_uuid = 4;
   optional ReplicationInfoPB replication_info = 2;
   optional BlacklistPB server_blacklist = 3;
+  optional BlacklistPB leader_blacklist = 7;
   optional EncryptionInfoPB encryption_info = 5;
   optional cdc.ConsumerRegistryPB consumer_registry = 6;
 }
@@ -1116,6 +1119,11 @@ message SetPreferredZonesResponsePB {
 message GetLoadMovePercentRequestPB {
 }
 
+// Get the percentage of tablet leadership that got moved as part of a leader blacklist config
+// change. Handled by the master leader and picked up by new leader on failover.
+message GetLeaderBlacklistPercentRequestPB {
+}
+
 // When no errors, the percent reflects the progress of load removal from the blacklisted tservers.
 message GetLoadMovePercentResponsePB {
   optional MasterErrorPB error = 1;
@@ -1637,6 +1645,8 @@ service MasterService {
   rpc ChangeMasterClusterConfig(ChangeMasterClusterConfigRequestPB)
       returns (ChangeMasterClusterConfigResponsePB);
   rpc GetLoadMoveCompletion(GetLoadMovePercentRequestPB)
+      returns (GetLoadMovePercentResponsePB);
+  rpc GetLeaderBlacklistCompletion(GetLeaderBlacklistPercentRequestPB)
       returns (GetLoadMovePercentResponsePB);
   rpc IsLoadBalanced(IsLoadBalancedRequestPB)
       returns (IsLoadBalancedResponsePB);

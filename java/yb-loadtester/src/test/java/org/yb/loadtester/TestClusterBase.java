@@ -469,6 +469,171 @@ public class TestClusterBase extends BaseCQLTest {
     verifyExpectedLiveTServers(NUM_TABLET_SERVERS);
   }
 
+  private void leaderBlacklistTServer(HostAndPort hps[], int offset) throws Exception {
+    // Retrieve existing config, set leader blacklist and reconfigure cluster.
+    List<Common.HostPortPB> leader_blacklist_hosts = new ArrayList<>();
+    HostAndPort hp = hps[offset];
+    Common.HostPortPB hostPortPB = Common.HostPortPB.newBuilder()
+      .setHost(hp.getHostText())
+      .setPort(hp.getPort())
+      .build();
+    leader_blacklist_hosts.add(hostPortPB);
+
+    ModifyMasterClusterConfigBlacklist operation =
+      new ModifyMasterClusterConfigBlacklist(client, leader_blacklist_hosts, true /* isAdd */,
+          true /* isLeaderBlacklist */);
+    try {
+      operation.doCall();
+    } catch (Exception e) {
+      LOG.warn("Failed with error:", e);
+      fail(e.getMessage());
+    }
+
+    // Wait for the move to complete.
+    TestUtils.waitFor(() -> {
+      verifyExpectedLiveTServers(NUM_TABLET_SERVERS + 1);
+      final double move_completion = client.getLeaderBlacklistCompletion().getPercentCompleted();
+      LOG.info("Move completion percent: " + move_completion);
+      return move_completion >= 100;
+    }, CLUSTER_MOVE_TIMEOUT_MS);
+
+    assertEquals(100, (int) client.getLeaderBlacklistCompletion().getPercentCompleted());
+
+    // Wait for the partition metadata to refresh.
+    Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
+
+    // Verify all tservers have expected tablets.
+    TestUtils.waitFor(() -> {
+      int numLeaderBlacklistTserversStillLeader = 0;
+
+      YBTable ybTable = client.openTable(CassandraStockTicker.keyspace,
+          CassandraStockTicker.tickerTableRaw);
+      Map <String, Integer> leaderCounts = new HashMap<>();
+      for (LocatedTablet tabletLocation : ybTable.getTabletsLocations(10000)) {
+        // Record leader counts for each tserver.
+        String tsUuid = tabletLocation.getLeaderReplica().getTsUuid();
+        Integer currentCount = leaderCounts.getOrDefault(tsUuid, 0);
+        leaderCounts.put(tsUuid, currentCount + 1);
+
+        // Verify all replicas are voters.
+        for (LocatedTablet.Replica replica : tabletLocation.getReplicas()) {
+          if (!replica.getMemberType().equals("VOTER")) {
+            return false;
+          }
+        }
+
+        // Verify that no leader blacklisted tservers are leaders.
+        Common.HostPortPB leader_host = tabletLocation.getLeaderReplica().getRpcHostPort();
+        for (Common.HostPortPB leader_blacklist_host : leader_blacklist_hosts) {
+          if (leader_host.equals(leader_blacklist_host)) {
+            LOG.info("Leader blacklisted tserver " + tsUuid + " is still a leader for tablet " +
+                tabletLocation);
+            numLeaderBlacklistTserversStillLeader++;
+          }
+        }
+      }
+
+      if (numLeaderBlacklistTserversStillLeader != 0) {
+        LOG.info("Number of leader blacklisted tservers still leader = " +
+            numLeaderBlacklistTserversStillLeader);
+        return false;
+      }
+
+      // Verify leaders are balanced across all tservers.
+      if (leaderCounts.size() != NUM_TABLET_SERVERS) {
+        return false;
+      }
+
+      int prevCount = -1;
+      for (Integer leaderCount : leaderCounts.values()) {
+        // The leader counts could be off by one.
+        if (prevCount != -1 && Math.abs(leaderCount - prevCount) > 1) {
+          return false;
+        }
+        prevCount = leaderCount;
+      }
+
+      return true;
+    }, 10 * WAIT_FOR_SERVER_TIMEOUT_MS);
+  }
+
+  private void leaderWhitelistTServer(HostAndPort hps[], int offset) throws Exception {
+    // Retrieve existing config, set leader blacklist and reconfigure cluster.
+    List<Common.HostPortPB> leader_blacklist_hosts = new ArrayList<>();
+    HostAndPort hp = hps[offset];
+    Common.HostPortPB hostPortPB = Common.HostPortPB.newBuilder()
+      .setHost(hp.getHostText())
+      .setPort(hp.getPort())
+      .build();
+    leader_blacklist_hosts.add(hostPortPB);
+
+    ModifyMasterClusterConfigBlacklist operation =
+      new ModifyMasterClusterConfigBlacklist(client, leader_blacklist_hosts, false /* isAdd */,
+          true /* isLeaderBlacklist */);
+    try {
+      operation.doCall();
+    } catch (Exception e) {
+      LOG.warn("Failed with error:", e);
+      fail(e.getMessage());
+    }
+
+    // Wait for the move to complete.
+    TestUtils.waitFor(() -> {
+      verifyExpectedLiveTServers(NUM_TABLET_SERVERS + 1);
+      final double move_completion = client.getLeaderBlacklistCompletion().getPercentCompleted();
+      LOG.info("Move completion percent: " + move_completion);
+      return move_completion >= 100;
+    }, CLUSTER_MOVE_TIMEOUT_MS);
+
+    assertEquals(100, (int) client.getLeaderBlacklistCompletion().getPercentCompleted());
+
+    // Wait for the partition metadata to refresh.
+    Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
+  }
+
+  protected void performTServerRollingRestart() throws Exception {
+    // Add a tserver so that no tablet is under-replicated during rolling restart.
+    LOG.info("Add tserver");
+    addNewTServers(1);
+
+    // Wait for the load to be balanced across the cluster.
+    assertTrue(client.waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, NUM_TABLET_SERVERS + 1));
+
+    // Wait for the load balancer to become idle.
+    assertTrue(client.waitForLoadBalancerIdle(LOADBALANCE_TIMEOUT_MS));
+
+    // Wait for the partition metadata to refresh.
+    Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
+
+    verifyExpectedLiveTServers(NUM_TABLET_SERVERS + 1);
+
+    // Create a copy to store new tserver list.
+    Map<HostAndPort, MiniYBDaemon> tservers = new HashMap<>(miniCluster.getTabletServers());
+    assertEquals(NUM_TABLET_SERVERS + 1, tservers.size());
+
+    // Retrieve existing config.
+    HostAndPort hps[] = new HostAndPort[tservers.size()];
+    int i = 0;
+    for (HostAndPort hp : tservers.keySet()) {
+      hps[i] = hp;
+      i++;
+    }
+
+    for (int j = 0; j < hps.length; j++) {
+      LOG.info("Leader blacklist tserver");
+      leaderBlacklistTServer(hps, j);
+
+      // Wait for the load balancer to become idle.
+      assertTrue(client.waitForLoadBalancerIdle(LOADBALANCE_TIMEOUT_MS));
+
+      LOG.info("Leader whitelist tserver");
+      leaderWhitelistTServer(hps, j);
+
+      // Wait for the load balancer to become idle.
+      assertTrue(client.waitForLoadBalancerIdle(LOADBALANCE_TIMEOUT_MS));
+    }
+  }
+
   protected void verifyClusterHealth() throws Exception {
     verifyClusterHealth(NUM_TABLET_SERVERS);
   }
