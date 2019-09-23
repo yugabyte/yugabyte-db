@@ -7,7 +7,7 @@ menu:
   latest:
     parent: cdc
     identifier: use-cdc
-    weight: 691
+    weight: 641
 type: page
 isTocNested: true
 showAsideToc: true
