@@ -5,7 +5,7 @@ description: FROZEN data types
 menu:
   latest:
     parent: api-cassandra
-    weight: 1400
+    weight: 1401
 aliases:
   - /latest/api/cassandra/type_frozen
   - /latest/api/ycql/type_frozen
