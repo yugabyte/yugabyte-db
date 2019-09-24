@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Configure cluster
 
-Instead of using the default values in the helm chart, you can also modify the configuration of the Yugabyte cluster according to your requirements. The following section shows the commands and tags that can be modified to achieve the desired configuration.
+Instead of using the default values in the helm chart, you can also modify the configuration of the YugabyteDB cluster according to your requirements. The following section shows the commands and tags that can be modified to achieve the desired configuration.
 
 ### CPU, memory, and replica count
 

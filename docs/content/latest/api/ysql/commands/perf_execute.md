@@ -58,30 +58,30 @@ Specify the expression. Each expression in `EXECUTE` must match with the corresp
 - Create a sample table.
 
 ```sql
-postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
+yugabyte=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
 
 - Prepare a simple insert.
 
 ```sql
-postgres=# PREPARE ins (bigint, double precision, int, text) AS 
+yugabyte=# PREPARE ins (bigint, double precision, int, text) AS 
                INSERT INTO sample(k1, k2, v1, v2) VALUES ($1, $2, $3, $4);
 ```
 
 - Execute the insert twice (with different parameters).
 
 ```sql
-postgres=# EXECUTE ins(1, 2.0, 3, 'a');
+yugabyte=# EXECUTE ins(1, 2.0, 3, 'a');
 ```
 
 ```sql
-postgres=# EXECUTE ins(2, 3.0, 4, 'b');
+yugabyte=# EXECUTE ins(2, 3.0, 4, 'b');
 ```
 
 - Check the results.
 
 ```sql
-postgres=# SELECT * FROM sample ORDER BY k1;
+yugabyte=# SELECT * FROM sample ORDER BY k1;
 ```
 
 ```

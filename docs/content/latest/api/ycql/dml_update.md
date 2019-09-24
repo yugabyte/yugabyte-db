@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `UPDATE` statement updates one or more column values for a row in table. Currently, Yugabyte can only update one row at a time, updating multiple rows is not yet supported.
+The `UPDATE` statement updates one or more column values for a row in table. Currently, YugabyteDB can only update one row at a time, updating multiple rows is not yet supported.
 
 ## Syntax
 

@@ -7,7 +7,7 @@ menu:
   latest:
     parent: deploy
     identifier: replicate-2dc
-    weight: 632
+    weight: 633
 type: page
 isTocNested: true
 showAsideToc: true

@@ -30,7 +30,7 @@ For deployment, YugaWare aims to provide you with easy access to the many region
 
 ### YugaWare-managed configuration
 
-If you choose to allow YugaWare to configure, own and manage a full cross-region deployment of VPCs, it will generate a Yugabyte specific VPC in each selected region, then interconnect them, as well as the VPC in which YugaWare was deployed, through [VPC Peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html). This mode will also setup all the other relevant sub-components in all regions, such as Subnets, Security Groups and Routing Table entries. Some notes:
+If you choose to allow YugaWare to configure, own and manage a full cross-region deployment of VPCs, it will generate a YugabyteDB specific VPC in each selected region, then interconnect them, as well as the VPC in which YugaWare was deployed, through [VPC Peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html). This mode will also setup all the other relevant sub-components in all regions, such as Subnets, Security Groups and Routing Table entries. Some notes:
 
 - You can **optionally** provide a custom CIDR block for each regional VPC, else we will choose some sensible defaults internally, aiming to not overlap across regions.
 - You can **optionally** provide a custom AMI ID to use in each region, else, we will use a recent [marketplace centos AMI](https://wiki.centos.org/Cloud/AWS).

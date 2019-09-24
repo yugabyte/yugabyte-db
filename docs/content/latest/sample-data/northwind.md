@@ -52,7 +52,7 @@ To open the YSQL shell, run the `ysqlsh` command.
 ```sh
 ysqlsh (11.2)
 Type "help" for help.
-postgres=#
+yugabyte=#
 ```
 
 ### 3. Create the Northwind database
@@ -66,7 +66,7 @@ CREATE DATABASE northwind;
 Confirm that you have the Northwind database by listing out the databases on your cluster.
 
 ```
-postgres=# \l
+yugabyte=# \l
 ```
 
 ![Northwind list of databases](/images/datasets/northwind/northwind-list-of-dbs.png)
@@ -74,7 +74,7 @@ postgres=# \l
 Connect to the Northwind database.
 
 ```
-postgres=# \c northwind
+yugabyte=# \c northwind
 You are now connected to database "northwind" as user "postgres".
 northwind=#
 ```

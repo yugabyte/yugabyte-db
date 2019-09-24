@@ -170,12 +170,12 @@ Typically extensions need three types of files:
 - SQL files (`<name>--<version>.sql`)
 - Control files (`<name>.control`)
 
-In order to install an extension you need to copy these files into the respective directories of your Yugabyte installation.
+In order to install an extension you need to copy these files into the respective directories of your YugabyteDB installation.
 
 
 Shared library files will be in the `pkglibdir` directory while SQL and control files should be in the `extension` subdirectory of the `libdir` directory.
 To find these directories on your local installation, you can use Yugabyte's `pg_config` executable.
-First, alias it to `yb_pg_config` by replacing `<yugabyte-path>` with the path to your Yugabyte installation in the command below and then running it.  
+First, alias it to `yb_pg_config` by replacing `<yugabyte-path>` with the path to your YugabyteDB installation in the command below and then running it.  
 ```sh
 $ alias yb_pg_config=/<yugabyte-path>/postgres/bin/pg_config
 ```
@@ -201,7 +201,7 @@ $ ls "$(pg_config --pkglibdir)" | grep <name>
 $ ls "$(pg_config --sharedir)"/extension/ | grep <name>
 ```
 
-Copy those files to the Yugabyte installation.
+Copy those files to the YugabyteDB installation.
 Restart the cluster (or the respective node in a multi-node install).
 Finally, connect to the cluster with `ysqlsh` and run the `CREATE EXTENSION` statement to create the extension.
 
@@ -228,7 +228,7 @@ For instance, on macOS, you can either
     $ brew install postgres && brew install postgis
     ```
 
-Now follow the instructions described above to copy the needed files into your Yugabyte installation, and then create 
+Now follow the instructions described above to copy the needed files into your YugabyteDB installation, and then create 
 the extension.
 
 ```sh

@@ -64,9 +64,9 @@ cluster/examples/kubernetes/yugabytedb
 
 Make a copy of the sample CRD file (`cluster.yaml`)  and modify it as needed. For details on the configuration options, see [YugabyteDB CRD](https://rook.io/docs/rook/v1.1/yugabytedb-cluster-crd.html).
 
-## Create a simple Yugabyte DB cluster
+## Create a simple YugabyteDB cluster
 
-1. Create your Yugabyte DB cluster by running the following command:
+1. Create your YugabyteDB cluster by running the following command:
 
     ```bash
     kubectl create -f cluster.yaml
@@ -108,7 +108,7 @@ kubectl delete -f cluster.yaml
 kubectl delete -f operator.yaml
 ```
 
-Manually delete any Persistent Volumes that were created for this Yugabyte DB cluster.
+Manually delete any Persistent Volumes that were created for this YugabyteDB cluster.
 
 ## Troubleshooting
 
@@ -122,7 +122,7 @@ kubectl -n rook-yugabytedb-system logs -l app=rook-yugabytedb-operator
 
 ### Review the YugabyteDB logs
 
-If everything is OK in the operator logs, check the Yugabyte DB logs for YB-Master and YB-TServer.
+If everything is OK in the operator logs, check the YugabyteDB logs for YB-Master and YB-TServer.
 
 ```bash
 kubectl -n rook-yugabytedb logs -l app=yb-master-rook-yugabytedb

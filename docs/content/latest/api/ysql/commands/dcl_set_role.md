@@ -61,7 +61,7 @@ yugabyte=# select session_user, current_user;
 (1 row)
 yugabyte=# set role john;
 SET
-yugabyte=> select session_user, current_user;
+yugabyte=# select session_user, current_user;
  session_user | current_user
 --------------+--------------
  yugabyte     | john
@@ -80,12 +80,12 @@ yugabyte=# create database db1;
 CREATE DATABASE
 yugabyte=# set role john;
 SET
-yugabyte=> select session_user, current_user;
+yugabyte=# select session_user, current_user;
  session_user | current_user
 --------------+--------------
  yugabyte     | john
 (1 row)
-yugabyte=> create database db2;
+yugabyte=# create database db2;
 ERROR:  permission denied to create database
 ```
 

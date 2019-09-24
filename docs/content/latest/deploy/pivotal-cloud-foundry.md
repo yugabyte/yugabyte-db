@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: pivotal-cloud-foundry
     parent: deploy
-    weight: 631
+    weight: 635
 isTocNested: true
 showAsideToc: true
 ---

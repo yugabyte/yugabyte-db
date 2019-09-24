@@ -10,7 +10,7 @@ section: USER GUIDES
 menu:
   latest:
     identifier: deploy
-    weight: 600
+    weight: 634
 ---
 
 <div class="row">
@@ -65,18 +65,6 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="replicate-2dc/">
-      <div class="head">
-        <img class="icon" src="/images/deploy/cdc/deploy.png" aria-hidden="true" />
-        <div class="title">Replicate between two data centers</div>
-      </div>
-      <div class="body">
-          Replicate asynchronously between two data centers for high availability, geo-redundancy, disaster recovery, and more.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc/">
       <div class="head">
         <img class="icon" src="/images/deploy/cdc/deploy.png" aria-hidden="true" />
@@ -84,6 +72,18 @@ menu:
       </div>
       <div class="body">
           Use change data capture (CDC) to asynchronously replicate data changes between data centers.
+      </div>
+    </a>
+  </div>
+  
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="replicate-2dc/">
+      <div class="head">
+        <img class="icon" src="/images/deploy/cdc/deploy.png" aria-hidden="true" />
+        <div class="title">Replicate between two data centers</div>
+      </div>
+      <div class="body">
+          Replicate asynchronously between two data centers for high availability, geo-redundancy, disaster recovery, and more.
       </div>
     </a>
   </div>

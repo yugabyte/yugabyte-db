@@ -60,7 +60,7 @@ Spin up a new set of VMs or servers (with the new AMI, for example) with IPs `no
 Use these two steps to configure the six new machines:
 
 - Follow the [System configuration](../../deploy/manual-deployment/system-config/) instructions for system setup.
-- Install [Yugabyte Software](../../deploy/manual-deployment/install-software/) on each new machine.
+- Install [YugabyteDB Software](../../deploy/manual-deployment/install-software/) on each new machine.
 
 ## 2. Start YB-Master processes
 

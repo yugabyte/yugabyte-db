@@ -29,7 +29,7 @@ Stopped | Server processes (yb-tserver and yb-master, if applicable) on that nod
 Removed | The node does not have any more data and the server processes have been stopped. It is not participating in the universe.
 Decommissioned | The underlying instance has been released to the IaaS. This can happen only after a node is removed or processes stopped.
 Provisioned | During universe (or cluster) creation, this indicates the instance is being setup with the required OS packages (for ex. ntp, chronyd).
-Software Installed | During universe (or cluster) creation, this indicates Yugabyte software is being deployed on this node.
+Software Installed | During universe (or cluster) creation, this indicates YugabyteDB software is being deployed on this node.
 Upgrade Software | The software version is being updated on this node and the master/tserver processes will be restarted.
 Upgrade GFlags | A server (master or tserver) process config file is being updated and the corresponding server will be restarted.
 Unreachable | YugaWare is not able to get information from the node_exporter process on that node.
@@ -95,7 +95,7 @@ Do not `REMOVE` more than (RF - 1)/2 nodes at any given time. For example, on a 
 
 ## Quick operations, on an existing instance
 
-The second scenario is for more of a 'quick' planned change that can be performed on a node. For example, the DevOps wants to mount a new disk on the node or just install and run a new security daemon. In that case, the instance is still in use and stopping any running Yugabyte process might be needed. Then the user can pick the `Stop Processes` option and then perform the system task, and then pick the `Start Processes` for that node.
+The second scenario is for more of a 'quick' planned change that can be performed on a node. For example, the DevOps wants to mount a new disk on the node or just install and run a new security daemon. In that case, the instance is still in use and stopping any running YugabyteDB process might be needed. Then the user can pick the `Stop Processes` option and then perform the system task, and then pick the `Start Processes` for that node.
 
 The following two steps helps stop the server processes on the node and restart it back up. There is no data moved out of the node proactively, but the data shard/tablet leaders could change as perf RAFT requirements.
 

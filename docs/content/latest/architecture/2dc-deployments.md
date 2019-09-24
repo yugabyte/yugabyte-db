@@ -7,7 +7,7 @@ menu:
   latest:
     parent: architecture
     identifier: 2dc-deployments
-    weight: 1112
+    weight: 1165
 type: page
 isTocNested: true
 showAsideToc: true

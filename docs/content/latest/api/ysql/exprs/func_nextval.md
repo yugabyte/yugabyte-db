@@ -29,7 +29,7 @@ Specify the name of the sequence.
 ### Create a simple sequence that increments by 1 every time nextval() is called
 
 ```sql
-postgres=# CREATE SEQUENCE s;
+yugabyte=# CREATE SEQUENCE s;
 ```
 
 ```
@@ -39,7 +39,7 @@ CREATE SEQUENCE
 Call nextval() a couple of times.
 
 ```sql
-postgres=# SELECT nextval('s');
+yugabyte=# SELECT nextval('s');
 ```
 
 ```
@@ -50,7 +50,7 @@ postgres=# SELECT nextval('s');
 ```
 
 ```sql
-postgres=# SELECT nextval('s');
+yugabyte=# SELECT nextval('s');
 ```
 
 ```
@@ -63,7 +63,7 @@ postgres=# SELECT nextval('s');
 ### Create a sequence with a cache of 3 values
 
 ```sql
-postgres=# CREATE SEQUENCE s2 CACHE 3;
+yugabyte=# CREATE SEQUENCE s2 CACHE 3;
 ```
 
 ```

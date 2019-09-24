@@ -48,7 +48,7 @@ export PEM=~/.ssh/yb-dev-aws-2.pem
 # or some reasonable file system), update system ulimits etc.
 #
 # If those steps are done differently and your image already has
-# suitable limits and data directories for Yugabyte to use then
+# suitable limits and data directories for YugabyteDB to use then
 # you may not need to worry about those steps.
 export ADMIN_USER=centos
 

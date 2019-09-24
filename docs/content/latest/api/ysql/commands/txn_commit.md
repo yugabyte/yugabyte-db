@@ -80,7 +80,7 @@ INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (1, 3.0, 4, 'b');
 Start a new shell  with `ysqlsh` and begin another transaction to insert some more rows.
 
 ```sql
-postgres=# BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ; 
+yugabyte=# BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ; 
 ```
 
 ```sql
@@ -92,7 +92,7 @@ In each shell, check the only the rows from the current transaction are visible.
 1st shell.
 
 ```sql
-postgres=# SELECT * FROM sample; -- run in first shell
+yugabyte=# SELECT * FROM sample; -- run in first shell
 ```
 
 ```
@@ -105,7 +105,7 @@ postgres=# SELECT * FROM sample; -- run in first shell
 2nd shell
 
 ```sql
-postgres=# SELECT * FROM sample; -- run in second shell
+yugabyte=# SELECT * FROM sample; -- run in second shell
 ```
 
 ```
@@ -131,7 +131,7 @@ ABORT TRANSACTION; -- run second shell.
 In each shell check that only the rows from the committed transaction are visible.
 
 ```sql
-postgres=# SELECT * FROM sample; -- run in first shell.
+yugabyte=# SELECT * FROM sample; -- run in first shell.
 ```
 
 ```
@@ -143,7 +143,7 @@ postgres=# SELECT * FROM sample; -- run in first shell.
 ```
 
 ```sql
-postgres=# SELECT * FROM sample; -- run in second shell.
+yugabyte=# SELECT * FROM sample; -- run in second shell.
 ```
 
 ```

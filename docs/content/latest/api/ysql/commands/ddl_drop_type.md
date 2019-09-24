@@ -56,33 +56,33 @@ Specify the name of the user-defined type to drop.
 Simple example
 
 ```sql
-postgres=# CREATE TYPE feature_struct AS (id INTEGER, name TEXT);
-postgres=# DROP TYPE feature_struct;
+yugabyte=# CREATE TYPE feature_struct AS (id INTEGER, name TEXT);
+yugabyte=# DROP TYPE feature_struct;
 ```
 
 `IF EXISTS` example
 
 ```sql
-postgres=# DROP TYPE IF EXISTS feature_shell;
+yugabyte=# DROP TYPE IF EXISTS feature_shell;
 ```
 
 `CASCADE` example
 
 ```sql
-postgres=# CREATE TYPE feature_enum AS ENUM ('one', 'two', 'three');
-postgres=# CREATE TABLE feature_tab_enum (feature_col feature_enum);
-postgres=# DROP TYPE feature_tab_enum CASCADE;
+yugabyte=# CREATE TYPE feature_enum AS ENUM ('one', 'two', 'three');
+yugabyte=# CREATE TABLE feature_tab_enum (feature_col feature_enum);
+yugabyte=# DROP TYPE feature_tab_enum CASCADE;
 ```
 
 `RESTRICT` example
 
 ```sql
-postgres=# CREATE TYPE feature_range AS RANGE (subtype=INTEGER);
-postgres=# CREATE TABLE feature_tab_range (feature_col feature_range);
-postgres=# -- The following should error:
-postgres=# DROP TYPE feature_range RESTRICT;
-postgres=# DROP TABLE feature_tab_range;
-postgres=# DROP TYPE feature_range RESTRICT;
+yugabyte=# CREATE TYPE feature_range AS RANGE (subtype=INTEGER);
+yugabyte=# CREATE TABLE feature_tab_range (feature_col feature_range);
+yugabyte=# -- The following should error:
+yugabyte=# DROP TYPE feature_range RESTRICT;
+yugabyte=# DROP TABLE feature_tab_range;
+yugabyte=# DROP TYPE feature_range RESTRICT;
 ```
 
 ## See also
