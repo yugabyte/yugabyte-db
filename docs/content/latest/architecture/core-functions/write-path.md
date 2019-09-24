@@ -1,7 +1,7 @@
 ---
-title: Write IO Path
-linkTitle: Write IO Path
-description: Write IO Path (Single Shard)
+title: Write IO path
+linkTitle: Write IO path
+description: Write IO path (single shard)
 menu:
   latest:
     identifier: write-path
@@ -59,27 +59,18 @@ The leader of the tablet's Raft group performs the following sequence:
 * responds with success to the user
 
 The follower tablets receive the data replicated using Raft and apply it into their local DocDB once
-it is known to have been committed. The leader piggybacks the advancement of the commit point in
-subsequent RPCs.
+it is known to have been committed. The leader piggybacks the advancement of the commit point in subsequent RPC requests.
 
-
-  * The Raft entry containing the write batch is replicated to the majority of the tablet's Raft
-    group peers.
-  * After receiving a "replication successful" callback from the Raft subsystem, the leader applies
-    the write batch to its local RocksDB.
-  * In the next update that the leader sends to followers, it also notifies followers that our entry
-    has been committed, and the followers apply the write batch to their RocksDB instances.
-
+* The Raft entry containing the write batch is replicated to the majority of the tablet's Raft group peers.
+* After receiving a "replication successful" callback from the Raft subsystem, the leader applies  the write batch to its local RocksDB
+* In the next update that the leader sends to followers, it also notifies followers that our entry has been committed, and the followers apply the write batch to their RocksDB instances.
 
 ## Step 4. Sending response to the client
 
-## An Example
+## An example
 
-As an example, let us assume the user wants to insert into a table T1 that had a key column K and a
-value column V the values (k, v). The write flow is depicted below.
+As an example, let us assume the user wants to insert into a table T1 that had a key column K and a value column V the values (k, v). The write flow is depicted below.
 
 ![write_path_io](/images/architecture/write_path_io.png)
 
-Note that the above scenario has been greatly simplified by assuming that the user application sends
-the write query to a random Yugabyte server, which then routes the request appropriately. In
-practice, the use of the Yugabyte smart client is recommended for removing the extra network hop.
+Note that the above scenario has been greatly simplified by assuming that the user application sends the write query to a random YugabyteDB server, which then routes the request appropriately. In practice, the use of the YugabyteDB smart client is recommended for removing the extra network hop.

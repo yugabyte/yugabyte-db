@@ -6,7 +6,7 @@ a) One of the following operating systems
 
 <i class="icon-ubuntu"></i> Ubuntu 16.04+
 
-b) Verify that you have python2 installed. Support for python3 is in the works.
+b) Verify that you have Python 2 installed. Support for Python 3 is in the works.
 
 ```sh
 $ python --version
@@ -18,7 +18,7 @@ Python 2.7.10
 
 ## Download
 
-Download the Yugabyte DB CE package as shown below.
+Download the YugabyteDB CE package as shown below.
 
 ```sh
 $ wget https://downloads.yugabyte.com/yugabyte-2.0.0.0-linux.tar.gz

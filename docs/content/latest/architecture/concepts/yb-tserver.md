@@ -13,15 +13,15 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The YB-TServer (short for Yugabyte Tablet Server) is the process that does the actual IO for end
-user requests. Recall from the previous section that data for a table is split/sharded into tablets.
+The YB-TServer (short for YugabyteDB Tablet Server) is the process that does the actual IO for end
+user requests. Recall from the previous section that data for a table is split or sharded into tablets.
 Each tablet is composed of one or more tablet-peers depending on the replication factor. And each
 YB-TServer hosts one or more tablet-peers.
 
 Note: We will refer to the “tablet-peers hosted by a YB-TServer” simply as the “tablets hosted by a
 YB-TServer”.
 
-Below is a pictorial illustration of this in the case of a 4 node Yugabyte universe, with one table
+Below is a pictorial illustration of this in the case of a 4-node YugabyteDB universe, with one table
 that has 16 tablets and a replication factor of 3.
 
 ![tserver_overview](/images/architecture/tserver_overview.png)
@@ -34,7 +34,7 @@ Within each YB-TServer, there is a lot of cross-tablet intelligence built in to 
 efficiency. Below are just some of the ways the YB-TServer coordinates operations across tablets
 hosted by it:
 
-### Server-global block cache
+## Server-global block cache
 
 The block cache is shared across the different tablets in a given
 YB-TServer. This leads to highly efficient memory utilization in cases when one tablet is read more
@@ -42,18 +42,18 @@ often than others. For example, one table may have a read-heavy usage pattern co
 others. The block cache will automatically favor blocks of this table as the block cache is global
 across all tablet-peers.
 
-### Throttled Compactions 
+## Throttled compactions
 
 The compactions are throttled across tablets in a given YB-TServer to
 prevent compaction storms. This prevents the often dreaded high foreground latencies during a
 compaction storm.
 
-### Small/Large Compaction Queues
+## Small and large compaction queues
 
 Compactions are prioritized into large and small compactions with
 some prioritization to keep the system functional even in extreme IO patterns.
 
-### Server-global Memstore Limit 
+### Server-global memstore limit
 
 Tracks and enforces a global size across the memstores for
 different tablets. This makes sense when there is a skew in the write rate across tablets. For
@@ -62,7 +62,7 @@ one of the tables gets a lot more writes than the other tables. The write heavy 
 grow much larger than it could if there was a per-tablet memory limit, allowing good write
 efficiency.
 
-### Auto-Sizing of Block Cache/Memstore
+### Auto-sizing of block cache/memstore
 
 The block cache and memstores represent some of the larger
 memory-consuming components. Since these are global across all the tablet-peers, this makes memory
@@ -70,10 +70,9 @@ management and sizing of these components across a variety of workloads very eas
 the RAM available on the system, the YB-TServer automatically gives a certain percentage of the
 total available memory to the block cache, and another percentage to memstores.
 
-### Striping tablet load uniformly across data disks 
+### Striping tablet load uniformly across data disks
 
 On multi-SSD machines, the data (SSTable) and
 WAL (RAFT write-ahead-log) for various tablets of tables are evenly distributed across the attached
 disks on a **per-table basis**. This ensures that each disk handles an even amount of load for each
 table.
-

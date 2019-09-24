@@ -13,9 +13,9 @@ isTocNested: false
 showAsideToc: true
 ---
 
-## When is Yugabyte DB a good fit?
+## When is YugabyteDB a good fit?
 
-Yugabyte DB is a good fit for fast-growing, cloud native applications that need to serve business-critical data reliably, with zero data loss, high availability and low latency. Common use cases include:
+YugabyteDB is a good fit for fast-growing, cloud native applications that need to serve business-critical data reliably, with zero data loss, high availability and low latency. Common use cases include:
 
 1. Distributed Online Transaction Processing (OLTP) applications needing multi-region scalability without compromising strong consistency and low latency. E.g. User identity, Retail product catalog, Financial data service.
 
@@ -25,14 +25,13 @@ Yugabyte DB is a good fit for fast-growing, cloud native applications that need 
 
 A few such use cases are detailed [here](https://www.yugabyte.com/).
 
-## When is Yugabyte DB not a good fit?
+## When is YugabyteDB not a good fit?
 
-Yugabyte DB is not a good fit for traditional Online Analytical Processing (OLAP) use cases that need complete ad-hoc analytics. Use an OLAP store such as [Druid](http://druid.io/druid.html) or a data warehouse such as [Snowflake](https://www.snowflake.net/).
+YugabyteDB is not a good fit for traditional Online Analytical Processing (OLAP) use cases that need complete ad-hoc analytics. Use an OLAP store such as [Druid](http://druid.io/druid.html) or a data warehouse such as [Snowflake](https://www.snowflake.net/).
 
+## How many major releases YugabyteDB has had so far?
 
-## How many major releases Yugabyte DB has had so far?
-
-Yugabyte DB has had 6 major releases.
+YugabyteDB has had 6 major releases.
 
 - [v0.9 Beta](https://blog.yugabyte.com/yugabyte-has-arrived/) in November 2017
 - [v1.0](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-%F0%9F%8D%BE-%F0%9F%8E%89/) in May 2018
@@ -41,13 +40,13 @@ Yugabyte DB has had 6 major releases.
 - [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/) in July 2019
 - [v2.0](https://blog.yugabyte.com/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/ ) in September 2019
 
-Next major release is the v2.1 release in Fall 2019.
+The next major release is the v2.1 release in Fall 2019.
 
-## Can I deploy Yugabyte DB to production?
+## Can I deploy YugabyteDB to production?
 
-Yes, both Yugabyte DB APIs are production ready. [YCQL](https://blog.yugabyte.com/yugabyte-db-1-0-a-peek-under-the-hood/) achieved this status starting with v1.0 in May 2018. [YSQL](https://blog.yugabyte.com/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/) achieved this status starting v2.0 in September 2019.
+Yes, both YugabyteDB APIs are production ready. [YCQL](https://blog.yugabyte.com/yugabyte-db-1-0-a-peek-under-the-hood/) achieved this status starting with v1.0 in May 2018. [YSQL](https://blog.yugabyte.com/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/) achieved this status starting v2.0 in September 2019.
 
-## Which companies are currently using Yugabyte DB in production?
+## Which companies are currently using YugabyteDB in production?
 
 Reference deployments are listed [here](https://www.yugabyte.com/all-resources/resource-parent/case-studies/).
 
@@ -65,33 +64,33 @@ Please do try our beta features and give feedback on them on our [Slack channel]
 
 ## Any performance benchmarks available?
 
-[Yahoo Cloud Serving Benchmark (YCSB)](https://github.com/brianfrankcooper/YCSB/wiki) is a popular benchmarking framework for NoSQL databases. We benchmarked Yugabyte Cassandra API against the standard Apache Cassandra using YCSB. Yugabyte DB outperformed Apache Cassandra by increasing margins as the number of keys (data density) increased across all the 6 YCSB workload configurations. 
+[Yahoo Cloud Serving Benchmark (YCSB)](https://github.com/brianfrankcooper/YCSB/wiki) is a popular benchmarking framework for NoSQL databases. We benchmarked Yugabyte Cassandra API against the standard Apache Cassandra using YCSB. YugabyteDB outperformed Apache Cassandra by increasing margins as the number of keys (data density) increased across all the 6 YCSB workload configurations. 
 
-[Netflix Data Benchmark (NDBench)](https://github.com/Netflix/ndbench) is another publicly available, cloud-enabled benchmark tool for data store systems. We ran NDBench against Yugabyte DB for 7 days and observed P99 and P995 latencies that were orders of magnitude less than that of Apache Cassandra. 
+[Netflix Data Benchmark (NDBench)](https://github.com/Netflix/ndbench) is another publicly available, cloud-enabled benchmark tool for data store systems. We ran NDBench against YugabyteDB for 7 days and observed P99 and P995 latencies that were orders of magnitude less than that of Apache Cassandra. 
 
 Details for both the above benchhmarks are published in [Building a Strongly Consistent Cassandra with Better Performance](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
 
 ## What about correctness testing?
 
-[Jepsen](https://jepsen.io/) is a widely used framework to evaluate databases’ behavior under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. Yugabyte DB 1.2 passes [formal Jepsen testing](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/). 
+[Jepsen](https://jepsen.io/) is a widely used framework to evaluate databases’ behavior under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. YugabyteDB 1.2 passes [formal Jepsen testing](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/). 
 
-## Is Yugabyte DB open source?
+## Is YugabyteDB open source?
 
-Starting [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), Yugabyte DB is 100% open source. It is licensed under Apache 2.0 and the source is available on [GitHub](https://github.com/yugabyte/yugabyte-db).
+Starting with [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is 100% open source. It is licensed under Apache 2.0 and the source is available on [GitHub](https://github.com/yugabyte/yugabyte-db).
 
-## How does Yugabyte DB, Yugabyte Platform and Yugabyte Cloud differ from each other?
+## How does YugabyteDB, Yugabyte Platform and Yugabyte Cloud differ from each other?
 
-[Yugabyte DB](../../quick-start/) is the best choice for the startup organizations with strong technical operations expertise looking to deploy Yugabyte DB into production with traditional DevOps tools.
+[YugabyteDB](../../quick-start/) is the best choice for the startup organizations with strong technical operations expertise looking to deploy YugabyteDB into production with traditional DevOps tools.
 
-[Yugabyte Platform](../../deploy/enterprise-edition/) is commercial software for running a self-managed DB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run Yugabyte DB in mission-critical production environments with one or more regions (across both public cloud and on-premises datacenters).
+[Yugabyte Platform](../../deploy/enterprise-edition/) is commercial software for running a self-managed DB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugabyteDB in mission-critical production environments with one or more regions (across both public cloud and on-premise data centers).
 
 [Yugabyte Cloud](http://yugabyte.com/cloud) is Yugabyte's fully-managed cloud service on AWS and GCP. You can [sign up](https://www.yugabyte.com/cloud/) for early access now.
 
 A more detailed comparison of the above is available [here](https://www.yugabyte.com/platform/#compare-editions).
 
-## How does Yugabyte DB compare to other SQL and NoSQL databases?
+## How does YugabyteDB compare to other SQL and NoSQL databases?
 
-See [Yugabyte DB in Comparison](../../comparisons/)
+See [YugabyteDB in Comparison](../../comparisons/)
 
 - [Google Cloud Spanner](../../comparisons/google-spanner/)
 - [CockroachDB](https://www.yugabyte.com/yugabyte-db-vs-cockroachdb/)
@@ -105,4 +104,4 @@ See [Yugabyte DB in Comparison](../../comparisons/)
 
 In the near-term, Yugabyte is not actively working on new feature or driver enhancements to the [YEDIS](../../yedis/) API other than bug fixes and stability improvements. Current focus is on [YSQL](../../api/ysql) and [YCQL](../../api/ycql).
 
-For key-value workloads that need persistence, elasticity and fault-tolerance, YCQL (with notion of keyspaces, tables, role-based acces control and more) is often a great fit, especially if the application new rather than an existing one already written in Redis. The YCQL drivers are also more clustering aware, and hence YCQL is expected to perform better than YEDIS for equivalent scenarios. In general, our new feature development (support for data types, built-ins, TLS, backups and more), correctness testing (using Jepsen) and performance optimization is in the YSQL and YCQL areas.
+For key-value workloads that need persistence, elasticity and fault-tolerance, YCQL (with notion of keyspaces, tables, role-based access control and more) is often a great fit, especially if the application new rather than an existing one already written in Redis. The YCQL drivers are also more clustering aware, and hence YCQL is expected to perform better than YEDIS for equivalent scenarios. In general, our new feature development (support for data types, built-ins, TLS, backups and more), correctness testing (using Jepsen) and performance optimization is in the YSQL and YCQL areas.

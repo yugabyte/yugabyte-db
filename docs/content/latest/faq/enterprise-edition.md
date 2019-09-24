@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## What is YugaWare?
 
-YugaWare, shipped as a part of Yugabyte Platform, is the Admin Console for Yugabyte DB. It has a built-in orchestration and monitoring engine for deploying Yugabyte DB in any public or private cloud.
+YugaWare, shipped as a part of Yugabyte Platform, is the Admin Console for YugabyteDB. It has a built-in orchestration and monitoring engine for deploying YugabyteDB in any public or private cloud.
 
 ## How does the installation work for Yugabyte Platform?
 
@@ -52,12 +52,12 @@ For airgapped hosts a supported version of docker-engine (currently 1.7.1 to 17.
 - Following ports should be open on the YugaWare host: 8800 (replicated ui), 80 (http for yugaware ui), 22 (ssh)
 - Attached disk storage (such as persistent EBS volumes on AWS): 100 GB minimum
 - A Yugabyte license file (attached to your welcome email from Yugabyte Support)
-- Ability to connect from the YugaWare host to all the Yugabyte DB data nodes. If this is not setup, [setup passwordless ssh](#step-5-troubleshoot-yugaware).
+- Ability to connect from the YugaWare host to all the YugabyteDB data nodes. If this is not setup, [setup passwordless ssh](#step-5-troubleshoot-yugaware).
 
 
-## What are the OS requirements and permissions to run the Yugabyte DB data nodes?
+## What are the OS requirements and permissions to run the YugabyteDB data nodes?
 
-Prerequisites for the Yugabyte DB data nodes are listed [here](../../../deploy/multi-node-cluster/#prerequisites).
+Prerequisites for the YugabyteDB data nodes are listed [here](../../../deploy/multi-node-cluster/#prerequisites).
 
 ## How are the build artifacts packaged and stored for Yugabyte Platform?
 
@@ -65,7 +65,7 @@ The Admin Console software is packaged as a set of docker container images hoste
 
 The data node software is packaged into the YugaWare application. YugaWare distributes and installs the data node software on the hosts identified to run the data nodes. Since it's already packaged into existing artifacts, the data node does not require any Internet connectivity.
 
-## How does the Admin Console interact with the Yugabyte DB data nodes?
+## How does the Admin Console interact with the YugabyteDB data nodes?
 
 The YugaWare Admin Console does a password-less ssh to interact with the data nodes. It needs to have the access key file (like a PEM file) uploaded into it via the UI. The setup on each of the data nodes to configure password-less ssh is documented [here](../../deploy/#private-cloud-or-on-premises-data-centers).
 
@@ -73,9 +73,9 @@ A REST API is also exposed by the admin console to the end users in addition to 
 
 ## Would we have access to the database machines that get spawned in public clouds?
 
-Yes, you would have access to all machines spawned. The machines are spawned by YugaWare. YugaWare runs on your machine in your AWS region/datacenter. If you have configured YugaWare to work with any public cloud like AWS or GCP,  it will spawn Yugabyte nodes using your credentials on your behalf. These machines run in your account, but are created and managed by YugaWare on your behalf. You can log on to these machines anytime, and YugaWare will additionally show you some stats graphed into a built in dashboard either per node or per universe.
+Yes, you would have access to all machines spawned. The machines are spawned by YugaWare. YugaWare runs on your machine in your AWS region/data center. If you have configured YugaWare to work with any public cloud like AWS or GCP,  it will spawn YugabyteDB nodes using your credentials on your behalf. These machines run in your account, but are created and managed by YugaWare on your behalf. You can log on to these machines anytime, and YugaWare will additionally show you some stats graphed into a built in dashboard either per node or per universe.
 
-## How many machines would I need to try out Yugabyte DB against my load?
+## How many machines would I need to try out YugabyteDB against my load?
 
 You would need:  
 
@@ -84,7 +84,7 @@ You would need:
 - Minimum as many data nodes as the replication factor. So just one machine for replication factor 1, and 3 machines in case of rf=3  
 - A machine to run the load tests on  
 
-Typically you can saturate a database machine (or three in case of replication factor 3) with just one large enough test machine running a synthetic load tester that has a light usage pattern. Yugabyte ships some synthetic load-testers with the product which can simulate a few different workloads. For example, one load tester simulates a timeseries/IoT style workload and another does stock-ticker like workload. But if you have a load tester that emulates your planned usage pattern, nothing like it!
+Typically you can saturate a database machine (or three in case of replication factor 3) with just one large enough test machine running a synthetic load tester that has a light usage pattern. Yugabyte ships some synthetic load-testers with the product which can simulate a few different workloads. For example, one load tester simulates a time series/IoT-style workload and another does stock-ticker like workload. But if you have a load tester that emulates your planned usage pattern, nothing like it!
 
 ## Can we control the properties (such as VPC, IOPS, tenancy etc.) of the machines YugaWare is spinning up? 
 

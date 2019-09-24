@@ -1,7 +1,7 @@
 ---
-title: Read IO Path
-linkTitle: Read IO Path
-description: Read IO Path (Single Shard)
+title: Read IO path
+linkTitle: Read IO path
+description: Read IO path (single shard)
 menu:
   latest:
     identifier: read-path
@@ -15,7 +15,7 @@ showAsideToc: true
 
 Let us take the case of a single key read.
 
-## Step 1. Identify Tablet Leader
+## Step 1. Identify tablet leader
 
 The user-issued read request first hits the YQL query layer on a port with the appropriate API, which is either YSQL or YCQL. This user request is translated by the YQL layer into an internal key. The
 YQL layer then finds this tablet as well as the YB-TServers hosting it by making an RPC call to the
@@ -24,11 +24,11 @@ that hosts the leader tablet-peer. The read is handled by the leader of the RAFT
 owning the internal key. The leader of the tablet RAFT group which handles the read request performs
 the read from its DocDB and returns the result to the user.
 
-As mentioned before in the [write IO path section](../write-path/#step-1-identify-tablet-leader), the Yugabyte DB smart
+As mentioned before in the [write IO path section](../write-path/#step-1-identify-tablet-leader), the YugabyteDB smart
 client can route the application requests directly to the correct YB-TServer avoiding any extra
 network hops or master lookups.
 
-## Step 2. Tablet Leader Performs the Read Operation (Default Strongly Consistent Read)
+## Step 2. Tablet leader performs the read operation (default is strongly consistent read)
 
 Continuing our previous example, let us assume the user wants to read the value where the primary
 key column K has a value k from table T1. From the previous example, the table T1 has a key column K
