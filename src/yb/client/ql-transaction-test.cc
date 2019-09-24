@@ -1597,6 +1597,10 @@ TEST_F_EX(QLTransactionTest, DeleteFlushedIntents, QLTransactionTestSingleTablet
 // Then performs non transactional writes and checks that log size stabilizes, meaning
 // log gc is working.
 TEST_F_EX(QLTransactionTest, GCLogsAfterTransactionalWritesStop, QLTransactionTestSingleTablet) {
+  // An amount of time during which we require log size to be stable.
+  const MonoDelta kStableTimePeriod = 10s;
+  const MonoDelta kTimeout = 30s + kStableTimePeriod;
+
   LOG(INFO) << "Perform transactional writes, to get non empty intents db";
   TestThreadHolder thread_holder;
   std::atomic<bool> use_transaction(true);
@@ -1643,7 +1647,6 @@ TEST_F_EX(QLTransactionTest, GCLogsAfterTransactionalWritesStop, QLTransactionTe
   use_transaction.store(false, std::memory_order_release);
   uint64_t max_log_size = 0;
   auto last_log_size_increment = CoarseMonoClock::now();
-  MonoDelta kTimeout = 30s;
   auto deadline = last_log_size_increment + kTimeout;
   while (!thread_holder.stop_flag().load(std::memory_order_acquire)) {
     auto now = CoarseMonoClock::now();
@@ -1657,15 +1660,17 @@ TEST_F_EX(QLTransactionTest, GCLogsAfterTransactionalWritesStop, QLTransactionTe
       }
       uint64_t current_log_size = log->OnDiskSize();
       if (current_log_size > max_log_size) {
-        LOG(INFO) << "Log size increased: " << current_log_size;
+        LOG(INFO) << Format("T $1 P $0: Log size increased: $2", peer->permanent_uuid(),
+                            peer->tablet_id(), current_log_size);
         last_log_size_increment = now;
         max_log_size = current_log_size;
       }
     }
-    if (now - last_log_size_increment > 15s) {
+    if (now - last_log_size_increment > kStableTimePeriod) {
       break;
     } else {
-      ASSERT_LE(now, deadline) << "Log size did not stabilize in " << kTimeout;
+      ASSERT_LE(last_log_size_increment + kStableTimePeriod, deadline)
+          << "Log size would not stabilize in " << kTimeout;
     }
     std::this_thread::sleep_for(100ms);
   }
