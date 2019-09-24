@@ -16,7 +16,7 @@ showAsideToc: true
 
 ## Step 1. Build the source
 
-* First, clone [the Yugabyte DB GitHub repo](https://github.com/yugabyte/yugabyte-db).
+* First, clone [the YugabyteDB GitHub repo](https://github.com/yugabyte/yugabyte-db).
 * Next, [build the source code](../build-from-src). 
 * Optionally, you may want to [run the unit tests](../run-unit-tests).
 

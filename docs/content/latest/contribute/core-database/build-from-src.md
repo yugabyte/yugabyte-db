@@ -15,7 +15,7 @@ showAsideToc: false
 ---
 
 {{< note title="Note" >}}
-CentOS 7 is the main recommended development and production platform for Yugabyte DB.
+CentOS 7 is the main recommended development and production platform for YugabyteDB.
 {{< /note >}}
 
 <ul class="nav nav-tabs nav-tabs-yb">
@@ -70,7 +70,7 @@ For Linux, it will first make sure our custom Linuxbrew distribution is installe
 
 ## Build Java code
 
-Yugabyte DB core is written in C++, but the repository contains Java code needed to run sample applications. To build the Java part, you need:
+YugabyteDB core is written in C++, but the repository contains Java code needed to run sample applications. To build the Java part, you need:
 
 * JDK 8
 * [Apache Maven](https://maven.apache.org/).
@@ -80,4 +80,4 @@ Also make sure Maven's bin directory is added to your PATH, e.g. by adding to yo
 export PATH=$HOME/tools/apache-maven-3.5.0/bin:$PATH
 ```
 
-For building Yugabyte DB Java code, you'll need to install Java and Apache Maven.
+For building YugabyteDB Java code, you'll need to install Java and Apache Maven.

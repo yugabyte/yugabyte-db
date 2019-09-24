@@ -1,4 +1,4 @@
-Run ysqlsh to connect to the service.
+Run `ysqlsh` to connect to the service.
 
 ```sh
 $ ./bin/ysqlsh  --echo-queries

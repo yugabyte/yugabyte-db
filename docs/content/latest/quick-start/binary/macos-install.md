@@ -2,7 +2,7 @@
 
 a) <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 (Sierra) or higher
 
-b) Verify that you have python2 installed. Support for python3 is in the works.
+b) Verify that you have Python 2 installed. Support for Python 3 is in the works.
 
 ```sh
 $ python --version
@@ -64,7 +64,7 @@ You might have to `unload` the service before loading it.
 
 ## Download
 
-Download the Yugabyte DB tar.gz as shown below.
+Download the YugabyteDB tar.gz as shown below.
 
 ```sh
 $ wget https://downloads.yugabyte.com/yugabyte-2.0.0.0-darwin.tar.gz

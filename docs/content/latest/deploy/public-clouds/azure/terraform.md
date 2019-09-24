@@ -100,11 +100,11 @@ The following resources are created by this module:
 
 For cluster named `test-cluster`, the instances will be named `yugabyte-test-cluster-node-1`, `yugabyte-test-cluster-node-2`, `yugabyte-test-cluster-node-3`.
 
-- `module.azure-yugabyte.azurerm_network_security_group.Yugabyte-SG` The security group that allows the various clients to access the Yugabyte DB cluster.
+- `module.azure-yugabyte.azurerm_network_security_group.Yugabyte-SG` The security group that allows the various clients to access the YugabyteDB cluster.
 
 For cluster named `test-cluster`, this security group will be named `yugabyte-test-cluster-SG` with the ports 7000, 9000, 9042, 7100, 9200 and 6379 open to all other instances in the same security group.
 
-- `module.azure-yugabyte.null_resource.create_yugabyte_universe` A local script that configures the newly created instances to form a new Yugabyte DB universe.
+- `module.azure-yugabyte.null_resource.create_yugabyte_universe` A local script that configures the newly created instances to form a new YugabyteDB universe.
 - `module.azure-yugabyte.azurerm_network_interface.Yugabyte-NIC` The Azure network interface for VM instance. 
   
 For cluster named `test-cluster`, the network interface will be named `yugabyte-test-cluster-NIC-1`, `yugabyte-test-cluster-NIC-2`, `yugabyte-test-cluster-NIC-3`.
