@@ -314,7 +314,8 @@ bool RemoteTablet::HasLeader() const {
   return LeaderTServer() != nullptr;
 }
 
-void RemoteTablet::GetRemoteTabletServers(vector<RemoteTabletServer*>* servers) {
+void RemoteTablet::GetRemoteTabletServers(
+    std::vector<RemoteTabletServer*>* servers, IncludeFailedReplicas include_failed_replicas) {
   DCHECK(servers->empty());
   struct ReplicaUpdate {
     RemoteReplica* replica;
@@ -326,7 +327,16 @@ void RemoteTablet::GetRemoteTabletServers(vector<RemoteTabletServer*>* servers) 
     std::shared_lock<rw_spinlock> lock(mutex_);
     for (RemoteReplica& replica : replicas_) {
       if (replica.Failed()) {
+        if (include_failed_replicas) {
+          servers->push_back(replica.ts);
+          continue;
+        }
         ReplicaUpdate replica_update = {&replica, RaftGroupStatePB::UNKNOWN, false};
+        VLOG_WITH_PREFIX(4)
+            << "Replica " << replica.ts->ToString()
+            << " failed, state: " << RaftGroupStatePB_Name(replica.state)
+            << ", is local: " << replica.ts->IsLocal()
+            << ", time since failure: " << (MonoTime::Now() - replica.last_failed_time);
         switch (replica.state) {
           case RaftGroupStatePB::UNKNOWN: FALLTHROUGH_INTENDED;
           case RaftGroupStatePB::NOT_STARTED: FALLTHROUGH_INTENDED;
@@ -364,10 +374,8 @@ void RemoteTablet::GetRemoteTabletServers(vector<RemoteTabletServer*>* servers) 
               continue;
             }
             break;
-          case RaftGroupStatePB::FAILED:
-            FALLTHROUGH_INTENDED;
-          case RaftGroupStatePB::QUIESCING:
-            FALLTHROUGH_INTENDED;
+          case RaftGroupStatePB::FAILED: FALLTHROUGH_INTENDED;
+          case RaftGroupStatePB::QUIESCING: FALLTHROUGH_INTENDED;
           case RaftGroupStatePB::SHUTDOWN:
             // These are terminal states, so we won't retry.
             continue;

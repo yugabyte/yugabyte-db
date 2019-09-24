@@ -247,16 +247,26 @@ bool TransactionTestBase::HasTransactions() {
   return false;
 }
 
+size_t TransactionTestBase::CountRunningTransactions() {
+  size_t result = 0;
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  for (const auto &peer : peers) {
+    auto participant = peer->tablet()->transaction_participant();
+    result += participant ? participant->TEST_GetNumRunningTransactions() : 0;
+  }
+  return result;
+}
+
 size_t TransactionTestBase::CountIntents() {
   size_t result = 0;
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    auto* tablet_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
-    auto peers = tablet_manager->GetTabletPeers();
-    for (const auto &peer : peers) {
-      auto participant = peer->tablet()->transaction_participant();
-      if (participant) {
-        result += participant->TEST_CountIntents();
-      }
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  for (const auto &peer : peers) {
+    auto participant = peer->tablet()->transaction_participant();
+    auto intents_count = participant ? participant->TEST_CountIntents() : 0;
+    if (intents_count) {
+      result += intents_count;
+      LOG(INFO) << Format("T $0 P $1: Intents present: $2", peer->tablet_id(),
+                          peer->permanent_uuid(), intents_count);
     }
   }
   return result;

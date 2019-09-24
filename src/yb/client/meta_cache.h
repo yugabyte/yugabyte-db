@@ -201,6 +201,7 @@ struct RemoteReplica {
 typedef std::unordered_map<std::string, std::unique_ptr<RemoteTabletServer>> TabletServerMap;
 
 YB_STRONGLY_TYPED_BOOL(UpdateLocalTsState);
+YB_STRONGLY_TYPED_BOOL(IncludeFailedReplicas);
 
 // The client's view of a given tablet. This object manages lookups of
 // the tablet's locations, status, etc.
@@ -253,11 +254,14 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   // Writes this tablet's TSes (across all replicas) to 'servers' for all available replicas. If a
   // replica has failed recently, check if it is available now if it is local. For remote replica,
   // wait for some time (configurable) before retrying.
-  void GetRemoteTabletServers(std::vector<RemoteTabletServer*>* servers);
+  void GetRemoteTabletServers(
+      std::vector<RemoteTabletServer*>* servers,
+      IncludeFailedReplicas include_failed_replicas = IncludeFailedReplicas::kFalse);
 
-  std::vector<RemoteTabletServer*> GetRemoteTabletServers() {
+  std::vector<RemoteTabletServer*> GetRemoteTabletServers(
+      IncludeFailedReplicas include_failed_replicas = IncludeFailedReplicas::kFalse) {
     std::vector<RemoteTabletServer*> result;
-    GetRemoteTabletServers(&result);
+    GetRemoteTabletServers(&result, include_failed_replicas);
     return result;
   }
 
