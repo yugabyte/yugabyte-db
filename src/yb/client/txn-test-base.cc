@@ -267,20 +267,29 @@ void TransactionTestBase::CheckNoRunningTransactions() {
   bool has_bad = false;
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto server = cluster_->mini_tablet_server(i)->server();
-    auto tablets = server->tablet_manager()->GetTabletPeers();
-    for (const auto& peer : tablets) {
-      auto status = Wait([peer] {
-            return peer->tablet() != nullptr;
-          },
-          deadline,
-          "Wait until peer has tablet");
-      if (!status.ok()) {
-        LOG(ERROR) << Format(
-            "Server: $0, tablet: $1, tablet object is not created",
-            server->permanent_uuid(), peer->tablet_id());
-        has_bad = true;
-        continue;
+    std::vector<std::shared_ptr<tablet::TabletPeer>> tablets;
+    auto status = Wait([server, &tablets] {
+      tablets.clear();
+      server->tablet_manager()->GetTabletPeers(&tablets);
+      for (const auto& peer : tablets) {
+        if (peer->tablet() == nullptr) {
+          return false;
+        }
       }
+      return true;
+    }, deadline, "Wait until all peers have tablets");
+    if (!status.ok()) {
+      has_bad = true;
+      for (const auto& peer : tablets) {
+        if (peer->tablet() == nullptr) {
+          LOG(ERROR) << Format(
+              "T $1 P $0: Tablet object is not created",
+              server->permanent_uuid(), peer->tablet_id());
+        }
+      }
+      continue;
+    }
+    for (const auto& peer : tablets) {
       auto participant = peer->tablet()->transaction_participant();
       if (participant) {
         auto status = Wait([participant] {
