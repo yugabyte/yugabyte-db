@@ -171,12 +171,11 @@ class YBTransaction::Impl final {
     return Status::OK();
   }
 
-  bool Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
+  bool Prepare(const internal::InFlightOps& ops,
                ForceConsistentRead force_consistent_read,
                CoarseTimePoint deadline,
                Waiter waiter,
-               TransactionMetadata* metadata,
-               bool* may_have_metadata) {
+               TransactionMetadata* metadata) {
     VLOG_WITH_PREFIX(2) << "Prepare";
 
     bool has_tablets_without_metadata = false;
@@ -194,19 +193,25 @@ class YBTransaction::Impl final {
 
       bool single_tablet = true;
       internal::RemoteTablet* tablet = nullptr;
-      for (const auto& op : ops) {
-        VLOG_WITH_PREFIX(3) << "Prepare, op: " << op->ToString();
-        DCHECK(op->tablet != nullptr);
-        if (single_tablet) {
-          if (tablet == nullptr) {
-            tablet = op->tablet.get();
-          } else if (tablet != op->tablet.get()) {
-            single_tablet = false;
+      for (auto op_it = ops.begin(); op_it != ops.end();) {
+        single_tablet = tablet == nullptr;
+        tablet = (**op_it).tablet.get();
+        bool will_write_metadata = false;
+        for (;;) {
+          DCHECK((**op_it).tablet != nullptr);
+          if (!will_write_metadata &&
+              (!(**op_it).yb_op->read_only() ||
+               metadata_.isolation == IsolationLevel::SERIALIZABLE_ISOLATION)) {
+            will_write_metadata = true;
+          }
+          if (++op_it == ops.end() || (**op_it).tablet.get() != tablet) {
+            break;
           }
         }
-        auto it = tablets_.find(op->tablet->tablet_id());
+
+        auto it = tablets_.find(tablet->tablet_id());
         if (it == tablets_.end()) {
-          it = tablets_.emplace(op->tablet->tablet_id(), TabletState()).first;
+          it = tablets_.emplace(tablet->tablet_id(), TabletState()).first;
           has_tablets_without_metadata = true;
         } else {
           // It is possible that after restart tablet does not know that he already stored metadata
@@ -218,19 +223,14 @@ class YBTransaction::Impl final {
           // Also it is better to avoid doing such check each time, because it has significant
           // impact on performance. So we are doing this optimization.
           auto metadata_state = it->second.metadata_state;
-          has_tablets_without_metadata = has_tablets_without_metadata ||
+          has_tablets_without_metadata =
+              has_tablets_without_metadata ||
               metadata_state != InvolvedTabletMetadataState::EXIST;
-          if (metadata_state != InvolvedTabletMetadataState::MISSING) {
-            if (may_have_metadata) {
-              *may_have_metadata = true;
-            }
-          }
         }
         // Prepare is invoked when we are going to send request to tablet server.
         // So after that tablet may have metadata, and we reflect it in our local state.
         if (it->second.metadata_state == InvolvedTabletMetadataState::MISSING &&
-            (!op->yb_op->read_only() ||
-             metadata_.isolation == IsolationLevel::SERIALIZABLE_ISOLATION)) {
+            will_write_metadata) {
           it->second.metadata_state = InvolvedTabletMetadataState::MAY_EXIST;
         }
       }
@@ -251,6 +251,7 @@ class YBTransaction::Impl final {
         metadata->transaction_id = metadata_.transaction_id;
       }
     }
+
     return true;
   }
 
@@ -918,14 +919,13 @@ void YBTransaction::InitWithReadPoint(
   return impl_->InitWithReadPoint(isolation, std::move(read_point));
 }
 
-bool YBTransaction::Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
+bool YBTransaction::Prepare(const internal::InFlightOps& ops,
                             ForceConsistentRead force_consistent_read,
                             CoarseTimePoint deadline,
                             Waiter waiter,
-                            TransactionMetadata* metadata,
-                            bool* may_have_metadata) {
+                            TransactionMetadata* metadata) {
   return impl_->Prepare(
-      ops, force_consistent_read, deadline, std::move(waiter), metadata, may_have_metadata);
+      ops, force_consistent_read, deadline, std::move(waiter), metadata);
 }
 
 void YBTransaction::Flushed(

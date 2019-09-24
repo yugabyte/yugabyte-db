@@ -146,14 +146,13 @@ class RpcController {
   // Return the configured timeout.
   MonoDelta timeout() const;
 
-  // Fills the 'sidecar' parameter with the slice pointing to the i-th
-  // sidecar upon success.
+  // Returns the slice pointing to the i-th sidecar upon success.
   //
   // Should only be called if the call's finished, but the controller has not
   // been Reset().
   //
   // May fail if index is invalid.
-  CHECKED_STATUS GetSidecar(int idx, Slice* sidecar) const;
+  Result<Slice> GetSidecar(int idx) const;
 
  private:
   friend class OutboundCall;

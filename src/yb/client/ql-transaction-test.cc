@@ -816,7 +816,11 @@ TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDi
   FLAGS_transaction_disable_proactive_cleanup_in_tests = true;
   FLAGS_aborted_intent_cleanup_ms = 1000; // 1 sec
 
+#ifndef NDEBUG
   const int kTransactions = 10;
+#else
+  const int kTransactions = 20;
+#endif
 
   LOG(INFO) << "Write values";
 

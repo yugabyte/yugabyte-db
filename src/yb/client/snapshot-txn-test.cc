@@ -21,6 +21,7 @@
 
 #include "yb/util/bfql/gen_opcodes.h"
 #include "yb/util/enums.h"
+#include "yb/util/lockfree.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 
@@ -30,6 +31,7 @@ using namespace std::literals;
 
 DECLARE_bool(ycql_consistent_transactional_paging);
 DECLARE_uint64(max_clock_skew_usec);
+DECLARE_int32(inject_load_transaction_delay_ms);
 
 namespace yb {
 namespace client {
@@ -544,6 +546,135 @@ TEST_F(SnapshotTxnTest, HotRow) {
       }
     }
   }
+}
+
+struct KeyToCheck {
+  int value;
+  KeyToCheck* next = nullptr;
+
+  explicit KeyToCheck(int value_) : value(value_) {}
+
+  friend void SetNext(KeyToCheck* key_to_check, KeyToCheck* next) {
+    key_to_check->next = next;
+  }
+
+  friend KeyToCheck* GetNext(KeyToCheck* key_to_check) {
+    return key_to_check->next;
+  }
+};
+
+// Concurrently execute multiple transaction, each of them writes the same key multiple times.
+// And perform tserver restarts in parallel to it.
+// This test checks that transaction participant state correctly restored after restart.
+TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
+  constexpr int kNumWritesPerKey = 10;
+
+  FLAGS_inject_load_transaction_delay_ms = 25;
+
+  TestThreadHolder thread_holder;
+
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+    SetFlagOnExit set_flag_on_exit(&stop);
+    int ts_idx_to_restart = 0;
+    while (!stop.load(std::memory_order_acquire)) {
+      std::this_thread::sleep_for(5s);
+      ts_idx_to_restart = (ts_idx_to_restart + 1) % cluster_->num_tablet_servers();
+      ASSERT_OK(cluster_->mini_tablet_server(ts_idx_to_restart)->Restart());
+    }
+  });
+
+  MPSCQueue<KeyToCheck> keys_to_check;
+  TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
+  std::atomic<int> key(0);
+  std::atomic<int> good_keys(0);
+  for (int i = 0; i != 25; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &stop = thread_holder.stop_flag(), &pool, &key, &keys_to_check, &good_keys] {
+      SetFlagOnExit set_flag_on_exit(&stop);
+
+      auto session = CreateSession();
+      while (!stop.load(std::memory_order_acquire)) {
+        int k = key.fetch_add(1, std::memory_order_acq_rel);
+        auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel()));
+        session->SetTransaction(txn);
+        bool good = true;
+        for (int j = 1; j <= kNumWritesPerKey; ++j) {
+          if (j > 1) {
+            std::this_thread::sleep_for(100ms);
+          }
+          auto write_status = WriteRow(&table_, session, k, j);
+          if (!write_status.ok()) {
+            auto msg = write_status.status().ToString();
+            if (msg.find("Service is shutting down") == std::string::npos) {
+              ASSERT_OK(write_status);
+            }
+            good = false;
+            break;
+          }
+        }
+        if (!good) {
+          continue;
+        }
+        auto commit_status = txn->CommitFuture().get();
+        if (!commit_status.ok()) {
+          auto msg = commit_status.ToString();
+          if (msg.find("Commit of expired transaction") == std::string::npos &&
+              msg.find("Transaction expired") == std::string::npos &&
+              msg.find("Transaction aborted") == std::string::npos &&
+              msg.find("Not the leader") == std::string::npos &&
+              msg.find("Timed out") == std::string::npos &&
+              msg.find("Network error") == std::string::npos) {
+            ASSERT_OK(commit_status);
+          }
+        } else {
+          keys_to_check.Push(new KeyToCheck(k));
+          good_keys.fetch_add(1, std::memory_order_acq_rel);
+        }
+      }
+    });
+  }
+
+  thread_holder.AddThreadFunctor(
+      [this, &stop = thread_holder.stop_flag(), &keys_to_check, kNumWritesPerKey] {
+    SetFlagOnExit set_flag_on_exit(&stop);
+
+    auto session = CreateSession();
+    for (;;) {
+      std::unique_ptr<KeyToCheck> key(keys_to_check.Pop());
+      if (key == nullptr) {
+        if (stop.load(std::memory_order_acquire)) {
+          break;
+        }
+        std::this_thread::sleep_for(10ms);
+        continue;
+      }
+      YBqlReadOpPtr op;
+      for (;;) {
+        op = ReadRow(session, key->value);
+        auto flush_result = session->Flush();
+        if (flush_result.ok()) {
+          break;
+        }
+      }
+      ASSERT_TRUE(op->succeeded());
+      auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
+      ASSERT_EQ(rowblock->row_count(), 1);
+      const auto& first_column = rowblock->row(0).column(0);
+      ASSERT_EQ(QLValue::InternalType::kInt32Value, first_column.type());
+      ASSERT_EQ(first_column.int32_value(), kNumWritesPerKey);
+    }
+  });
+
+  thread_holder.WaitAndStop(60s);
+
+  for (;;) {
+    std::unique_ptr<KeyToCheck> key(keys_to_check.Pop());
+    if (key == nullptr) {
+      break;
+    }
+  }
+
+  ASSERT_GE(good_keys.load(std::memory_order_relaxed), key.load(std::memory_order_relaxed) * 0.8);
 }
 
 } // namespace client

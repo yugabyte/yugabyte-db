@@ -286,7 +286,7 @@ message ReadRequestPB {
 
   optional string proxy_uuid = 11;
 
-  optional bool may_have_metadata = 12;
+  optional bool DEPRECATED_may_have_metadata = 12;
 
   optional double memory_limit_score = 13;
 }

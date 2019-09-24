@@ -802,8 +802,7 @@ Status Tablet::PrepareTransactionWriteBatch(
       FullyDecodeTransactionId(put_batch.transaction().transaction_id()));
   if (put_batch.transaction().has_isolation()) {
     // Store transaction metadata (status tablet, isolation level etc.)
-    if (!transaction_participant()->Add(
-            put_batch.transaction(), put_batch.may_have_metadata(), rocksdb_write_batch)) {
+    if (!transaction_participant()->Add(put_batch.transaction(), rocksdb_write_batch)) {
       return STATUS(TryAgain,
                     Format("Transaction was recently aborted: $0", transaction_id), Slice(),
                     PgsqlError(YBPgErrorCode::YB_PG_IN_FAILED_SQL_TRANSACTION));
@@ -889,8 +888,7 @@ void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_req
     write_request->mutable_write_batch()->mutable_transaction()->Swap(
         batch_request->mutable_write_batch()->mutable_transaction());
   }
-  write_request->mutable_write_batch()->set_may_have_metadata(
-      batch_request->write_batch().may_have_metadata());
+  write_request->mutable_write_batch()->set_deprecated_may_have_metadata(true);
   if (batch_request->has_request_id()) {
     write_request->set_client_id1(batch_request->client_id1());
     write_request->set_client_id2(batch_request->client_id2());

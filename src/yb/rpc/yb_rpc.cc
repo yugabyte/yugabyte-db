@@ -258,9 +258,6 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
 Status YBInboundCall::AddRpcSidecar(RefCntBuffer car, int* idx) {
   // Check that the number of sidecars does not exceed the number of payload
   // slices that are free.
-  if(sidecars_.size() >= CallResponse::kMaxSidecarSlices) {
-    return STATUS(ServiceUnavailable, "All available sidecars already used");
-  }
   *idx = static_cast<int>(sidecars_.size());
   if(consumption_) {
     consumption_.Add(car.size());

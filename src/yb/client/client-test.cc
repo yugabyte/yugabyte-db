@@ -2025,9 +2025,8 @@ TEST_F(ClientTest, TestReadFromFollower) {
       EXPECT_EQ(QLResponsePB_QLStatus_YQL_STATUS_OK, ql_resp.status());
       EXPECT_TRUE(ql_resp.has_rows_data_sidecar());
 
-      Slice rows_data;
       EXPECT_TRUE(controller.finished());
-      EXPECT_OK(controller.GetSidecar(ql_resp.rows_data_sidecar(), &rows_data));
+      Slice rows_data = EXPECT_RESULT(controller.GetSidecar(ql_resp.rows_data_sidecar()));
       yb::ql::RowsResult rowsResult(kReadFromFollowerTable, selected_cols, rows_data.ToBuffer());
       row_block = rowsResult.GetRowBlock();
       return FLAGS_test_scan_num_rows == row_block->row_count();

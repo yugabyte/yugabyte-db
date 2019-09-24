@@ -180,7 +180,7 @@ class YBInboundCall : public InboundCall {
  protected:
   // Vector of additional sidecars that are tacked on to the call's response
   // after serialization of the protobuf. See rpc/rpc_sidecar.h for more info.
-  std::vector<RefCntBuffer> sidecars_;
+  boost::container::small_vector<RefCntBuffer, kMinBufferForSidecarSlices> sidecars_;
 
   // Serialize and queue the response.
   virtual void Respond(const google::protobuf::MessageLite& response, bool is_success);

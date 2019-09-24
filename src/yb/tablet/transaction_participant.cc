@@ -61,6 +61,8 @@ DEFINE_double(transaction_ignore_applying_probability_in_tests, 0,
               "Probability to ignore APPLYING update in tests.");
 DEFINE_test_flag(bool, fail_in_apply_if_no_metadata, false,
                  "Fail when applying intents if metadata is not found.");
+DEFINE_test_flag(int32, inject_load_transaction_delay_ms, 0,
+                 "Inject delay before loading each transaction at startup.");
 
 METRIC_DEFINE_simple_counter(
     tablet, transaction_load_attempts,
@@ -780,42 +782,28 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     metric_transactions_running_ = METRIC_transactions_running.Instantiate(entity, 0);
     metric_transaction_load_attempts_ = METRIC_transaction_load_attempts.Instantiate(entity);
     metric_transaction_not_found_ = METRIC_transaction_not_found.Instantiate(entity);
+    memset(&last_loaded_, 0, sizeof(last_loaded_));
   }
 
   ~Impl() {
     transactions_.clear();
     TransactionsModifiedUnlocked();
     rpcs_.Shutdown();
+    if (load_thread_.joinable()) {
+      load_thread_.join();
+    }
   }
 
   // Adds new running transaction.
-  bool Add(const TransactionMetadataPB& data, bool may_have_metadata,
-           rocksdb::WriteBatch *write_batch) {
+  bool Add(const TransactionMetadataPB& data, rocksdb::WriteBatch *write_batch) {
     auto metadata = TransactionMetadata::FromPB(data);
     if (!metadata.ok()) {
       LOG_WITH_PREFIX(DFATAL) << "Invalid transaction id: " << metadata.status().ToString();
       return false;
     }
+    WaitLoaded(metadata->transaction_id);
     bool store = false;
-    if (may_have_metadata) {
-      auto lock_and_iterator = LockAndFindOrLoad(
-          metadata->transaction_id, "add"s, {});
-      if (!lock_and_iterator.found()) {
-        if (lock_and_iterator.recently_removed) {
-          return false;
-        }
-        VLOG_WITH_PREFIX(4)
-            << "Transaction did not present, create: " << metadata->transaction_id;
-        lock_and_iterator.lock = std::unique_lock<std::mutex>(mutex_);
-        auto insert_result = transactions_.insert(
-            std::make_shared<RunningTransaction>(*metadata, 0, this));
-        TransactionsModifiedUnlocked();
-        lock_and_iterator.iterator = insert_result.first;
-        store = insert_result.second;
-      } else {
-        DCHECK_EQ((**lock_and_iterator.iterator).metadata(), *metadata);
-      }
-    } else {
+    {
       std::lock_guard<std::mutex> lock(mutex_);
       auto it = transactions_.find(metadata->transaction_id);
       if (it == transactions_.end()) {
@@ -823,9 +811,6 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
         transactions_.insert(std::make_shared<RunningTransaction>(*metadata, 0, this));
         TransactionsModifiedUnlocked();
         store = true;
-      } else {
-        LOG_WITH_PREFIX(DFATAL) << "Transaction should not have metadata but present: "
-                                << metadata->transaction_id;
       }
     }
     if (store) {
@@ -880,7 +865,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents or not.
-    auto lock_and_iterator = LockAndFindOrLoad(
+    auto lock_and_iterator = LockAndFind(
         id, "metadata"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
     if (!lock_and_iterator.found()) {
       return STATUS(TryAgain,
@@ -895,7 +880,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       const TransactionId& id) {
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents of not.
-    auto lock_and_iterator = LockAndFindOrLoad(
+    auto lock_and_iterator = LockAndFind(
         id, "metadata with write id"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
     if (!lock_and_iterator.found()) {
       return boost::none;
@@ -916,7 +901,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   void RequestStatusAt(const StatusRequest& request) {
-    auto lock_and_iterator = LockAndFindOrLoad(*request.id, *request.reason, request.flags);
+    auto lock_and_iterator = LockAndFind(*request.id, *request.reason, request.flags);
     if (!lock_and_iterator.found()) {
       request.callback(
           STATUS_FORMAT(NotFound, "Request status of unknown transaction: $0", *request.id));
@@ -970,7 +955,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   void Abort(const TransactionId& id, TransactionStatusCallback callback) {
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents of not.
-    auto lock_and_iterator = LockAndFindOrLoad(
+    auto lock_and_iterator = LockAndFind(
         id, "abort"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
     if (!lock_and_iterator.found()) {
       callback(STATUS_FORMAT(NotFound, "Abort of unknown transaction: $0", id));
@@ -982,7 +967,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   CHECKED_STATUS CheckAborted(const TransactionId& id) {
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents of not.
-    auto lock_and_iterator = LockAndFindOrLoad(id, "check aborted"s, TransactionLoadFlags{});
+    auto lock_and_iterator = LockAndFind(id, "check aborted"s, TransactionLoadFlags{});
     if (!lock_and_iterator.found()) {
       return MakeAbortedStatus(id);
     }
@@ -993,7 +978,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) {
     // TODO(dtxn) optimize locking
     for (auto& pair : *inout) {
-      auto lock_and_iterator = LockAndFindOrLoad(
+      auto lock_and_iterator = LockAndFind(
           pair.first, "fill priorities"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
       if (!lock_and_iterator.found() || lock_and_iterator.transaction().WasAborted()) {
         pair.second = 0; // Minimal priority for already aborted transactions
@@ -1077,7 +1062,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       // Because it will be deleted when intents are applied.
       // We are not trying to cleanup intents here because we don't know whether this transaction
       // has intents of not.
-      auto lock_and_iterator = LockAndFindOrLoad(
+      auto lock_and_iterator = LockAndFind(
           data.transaction_id, "pre apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
       if (!lock_and_iterator.found()) {
         // This situation is normal and could be caused by 2 scenarios:
@@ -1097,7 +1082,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     {
       // We are not trying to cleanup intents here because we don't know whether this transaction
       // has intents or not.
-      auto lock_and_iterator = LockAndFindOrLoad(
+      auto lock_and_iterator = LockAndFind(
           data.transaction_id, "apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
       if (lock_and_iterator.found()) {
         RemoveUnlocked(lock_and_iterator.iterator, "applied"s);
@@ -1161,8 +1146,19 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   void SetDB(rocksdb::DB* db, const docdb::KeyBounds* key_bounds) {
+    bool had_db = db_ != nullptr;
     db_ = db;
     key_bounds_ = key_bounds;
+
+    // In case of truncate we should not reload transactions.
+    if (!had_db) {
+      std::unique_ptr <docdb::BoundedRocksDbIterator> iter(new docdb::BoundedRocksDbIterator(
+          docdb::CreateRocksDBIterator(
+              db_, &docdb::KeyBounds::kNoBounds,
+              docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
+              boost::none, rocksdb::kDefaultQueryId)));
+      load_thread_ = std::thread(&Impl::LoadTransactions, this, iter.release());
+    }
   }
 
   TransactionParticipantContext* participant_context() const {
@@ -1222,7 +1218,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return false;
   }
 
-  struct LockAndFindOrLoadResult {
+  struct LockAndFindResult {
     static Transactions::const_iterator UninitializedIterator() {
       static const Transactions empty_transactions;
       return empty_transactions.end();
@@ -1241,105 +1237,159 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     }
   };
 
-  LockAndFindOrLoadResult LockAndFindOrLoad(
+  void WaitLoaded(const TransactionId& id) {
+    if (all_loaded_.load(std::memory_order_acquire)) {
+      return;
+    }
+    std::unique_lock<std::mutex> lock(mutex_);
+    while (!all_loaded_.load(std::memory_order_acquire)) {
+      if (last_loaded_ >= id) {
+        break;
+      }
+      load_cond_.wait(lock);
+    }
+  }
+
+  LockAndFindResult LockAndFind(
       const TransactionId& id, const std::string& reason, TransactionLoadFlags flags) {
+    WaitLoaded(id);
+    std::unique_lock<std::mutex> lock(mutex_);
+    auto it = transactions_.find(id);
+    if (it != transactions_.end()) {
+      return LockAndFindResult{std::move(lock), it};
+    }
+    if (WasTransactionRecentlyRemoved(id)) {
+      VLOG_WITH_PREFIX(1)
+          << "Attempt to load recently removed transaction: " << id << ", for: " << reason;
+      LockAndFindResult result;
+      result.recently_removed = true;
+      return result;
+    }
+    metric_transaction_not_found_->Increment();
+    if (flags.Test(TransactionLoadFlag::kMustExist)) {
+      LOG_WITH_PREFIX(WARNING) << "Transaction not found: " << id << ", for: " << reason;
+    } else {
+      LOG_WITH_PREFIX(INFO) << "Transaction not found: " << id << ", for: " << reason;
+    }
+    if (flags.Test(TransactionLoadFlag::kCleanup)) {
+      auto cleanup_task = std::make_shared<CleanupIntentsTask>(
+          &participant_context_, &applier_, id);
+      cleanup_task->Prepare(cleanup_task);
+      participant_context_.Enqueue(cleanup_task.get());
+    }
+    return LockAndFindResult{};
+  }
+
+  void LoadTransactions(docdb::BoundedRocksDbIterator* iterator) {
+    LOG_WITH_PREFIX(INFO) << "LoadTransactions";
+
+    std::unique_ptr<docdb::BoundedRocksDbIterator> iterator_holder(iterator);
+    docdb::KeyBytes key_bytes;
+    TransactionId id;
+    memset(&id, 0, sizeof(id));
+    AppendTransactionKeyPrefix(id, &key_bytes);
+    iterator->Seek(key_bytes.AsSlice());
+    while (iterator->Valid()) {
+      auto key = iterator->key();
+      if (key[0] != docdb::ValueTypeAsChar::kTransactionId) {
+        break;
+      }
+      key.remove_prefix(1);
+      auto decode_id_result = DecodeTransactionId(&key);
+      if (!decode_id_result.ok()) {
+        LOG_WITH_PREFIX(DFATAL)
+            << "Failed to decode transaction id from: " << key.ToDebugHexString();
+        break;
+      }
+      id = *decode_id_result;
+      key_bytes.Clear();
+      AppendTransactionKeyPrefix(id, &key_bytes);
+      if (key.empty()) { // Key fully consists of transaction id - it is metadata record.
+        if (FLAGS_inject_load_transaction_delay_ms > 0) {
+          std::this_thread::sleep_for(FLAGS_inject_load_transaction_delay_ms * 1ms);
+        }
+        LoadTransaction(iterator, id, iterator->value(), &key_bytes);
+      }
+      key_bytes.AppendValueType(docdb::ValueType::kMaxByte);
+      iterator->Seek(key_bytes.AsSlice());
+    }
+
     {
-      std::unique_lock<std::mutex> lock(mutex_);
-      auto it = transactions_.find(id);
-      if (it != transactions_.end()) {
-        return LockAndFindOrLoadResult{std::move(lock), it};
-      }
-      if (WasTransactionRecentlyRemoved(id)) {
-        VLOG_WITH_PREFIX(1)
-            << "Attempt to load recently removed transaction: " << id << ", for: " << reason;
-        LockAndFindOrLoadResult result;
-        result.recently_removed = true;
-        return result;
-      }
+      std::lock_guard<std::mutex> lock(mutex_);
+      all_loaded_.store(true, std::memory_order_release);
     }
+    load_cond_.notify_all();
+  }
 
+  // iterator - rocks db iterator, that should be used for write id resolution.
+  // id - transaction id to load.
+  // value - transaction metadata record value.
+  // key_bytes - buffer that contains key of current record, i.e. value type + transaction id.
+  void LoadTransaction(
+      docdb::BoundedRocksDbIterator* iterator, const TransactionId& id, const Slice& value,
+      docdb::KeyBytes* key_bytes) {
     metric_transaction_load_attempts_->Increment();
-    LOG_WITH_PREFIX(INFO) << "Loading transaction: " << id << ", for: " << reason;
+    VLOG_WITH_PREFIX(1) << "Loading transaction: " << id;
 
-    docdb::KeyBytes key;
-    AppendTransactionKeyPrefix(id, &key);
-    auto iter = docdb::CreateRocksDBIterator(db_, &docdb::KeyBounds::kNoBounds,
-                                             docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-                                             boost::none,
-                                             rocksdb::kDefaultQueryId);
-    iter.Seek(key.AsSlice());
-    if (!iter.Valid() || iter.key() != key.data()) {
-      metric_transaction_not_found_->Increment();
-      if (flags.Test(TransactionLoadFlag::kMustExist)) {
-        LOG_WITH_PREFIX(WARNING) << "Transaction not found: " << id << ", for: " << reason;
-      } else {
-        LOG_WITH_PREFIX(INFO) << "Transaction not found: " << id << ", for: " << reason;
-      }
-      if (flags.Test(TransactionLoadFlag::kCleanup)) {
-        auto cleanup_task = std::make_shared<CleanupIntentsTask>(
-            &participant_context_, &applier_, id);
-        cleanup_task->Prepare(cleanup_task);
-        participant_context_.Enqueue(cleanup_task.get());
-      }
-      return LockAndFindOrLoadResult{};
-    }
     TransactionMetadataPB metadata_pb;
 
-    if (!metadata_pb.ParseFromArray(iter.value().cdata(), iter.value().size())) {
+    if (!metadata_pb.ParseFromArray(value.cdata(), value.size())) {
       LOG_WITH_PREFIX(DFATAL) << "Unable to parse stored metadata: "
-                              << iter.value().ToDebugHexString();
-      return LockAndFindOrLoadResult{};
+                              << value.ToDebugHexString();
+      return;
     }
 
     auto metadata = TransactionMetadata::FromPB(metadata_pb);
     if (!metadata.ok()) {
       LOG_WITH_PREFIX(DFATAL) << "Loaded bad metadata: " << metadata.status();
-      return LockAndFindOrLoadResult{};
+      return;
     }
 
-    key.AppendValueType(docdb::ValueType::kMaxByte);
-    iter.Seek(key.AsSlice());
-    if (iter.Valid()) {
-      iter.Prev();
+    key_bytes->AppendValueType(docdb::ValueType::kMaxByte);
+    iterator->Seek(key_bytes->AsSlice());
+    if (iterator->Valid()) {
+      iterator->Prev();
     } else {
-      iter.SeekToLast();
+      iterator->SeekToLast();
     }
-    key.Truncate(key.size() - 1);
+    key_bytes->Truncate(key_bytes->size() - 1);
     IntraTxnWriteId next_write_id = 0;
-    while (iter.Valid() && iter.key().starts_with(key)) {
-      auto decoded_key = docdb::DecodeIntentKey(iter.value());
+    while (iterator->Valid() && iterator->key().starts_with(*key_bytes)) {
+      auto decoded_key = docdb::DecodeIntentKey(iterator->value());
       LOG_IF_WITH_PREFIX(DFATAL, !decoded_key.ok())
-          << "Failed to decode intent " << iter.value().ToDebugHexString() << ": "
+          << "Failed to decode intent " << iterator->value().ToDebugHexString() << ": "
           << decoded_key.status();
       if (decoded_key.ok() && docdb::HasStrong(decoded_key->intent_types)) {
-        std::string rev_key = iter.value().ToString();
-        iter.Seek(rev_key);
+        std::string rev_key = iterator->value().ToString();
+        iterator->Seek(rev_key);
         // Delete could run in parallel to this load, since our deletes break snapshot read
         // we could get into situation when metadata and reverse record were successfully read,
         // but intent record could not be found.
-        if (iter.Valid() && iter.key().starts_with(rev_key)) {
+        if (iterator->Valid() && iterator->key().starts_with(rev_key)) {
           VLOG_WITH_PREFIX(1)
-              << "Found latest record: " << docdb::SubDocKey::DebugSliceToString(iter.key())
-              << " => " << iter.value().ToDebugHexString();
+              << "Found latest record: " << docdb::SubDocKey::DebugSliceToString(iterator->key())
+              << " => " << iterator->value().ToDebugHexString();
           auto status = docdb::DecodeIntentValue(
-              iter.value(), Slice(id.data, id.size()), &next_write_id, nullptr /* body */);
+              iterator->value(), Slice(id.data, id.size()), &next_write_id, nullptr /* body */);
           LOG_IF_WITH_PREFIX(DFATAL, !status.ok())
               << "Failed to decode intent value: " << status << ", "
-              << docdb::SubDocKey::DebugSliceToString(iter.key()) << " => "
-              << iter.value().ToDebugHexString();
+              << docdb::SubDocKey::DebugSliceToString(iterator->key()) << " => "
+              << iterator->value().ToDebugHexString();
           ++next_write_id;
         }
         break;
       }
-      iter.Prev();
+      iterator->Prev();
     }
 
-    std::unique_lock<std::mutex> lock(mutex_);
-    auto it = transactions_.insert(std::make_shared<RunningTransaction>(
-        std::move(*metadata), next_write_id, this)).first;
-    TransactionsModifiedUnlocked();
-
-    return LockAndFindOrLoadResult{std::move(lock), it};
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      last_loaded_ = metadata->transaction_id;
+      transactions_.insert(std::make_shared<RunningTransaction>(
+          std::move(*metadata), next_write_id, this));
+      TransactionsModifiedUnlocked();
+    }
+    load_cond_.notify_all();
   }
 
   client::YBClient* client() const {
@@ -1405,6 +1455,11 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   scoped_refptr<AtomicGauge<uint64_t>> metric_transactions_running_;
   scoped_refptr<Counter> metric_transaction_load_attempts_;
   scoped_refptr<Counter> metric_transaction_not_found_;
+
+  std::thread load_thread_;
+  std::condition_variable load_cond_;
+  TransactionId last_loaded_;
+  std::atomic<bool> all_loaded_{false};
 };
 
 TransactionParticipant::TransactionParticipant(
@@ -1416,9 +1471,9 @@ TransactionParticipant::TransactionParticipant(
 TransactionParticipant::~TransactionParticipant() {
 }
 
-bool TransactionParticipant::Add(const TransactionMetadataPB& data, bool may_have_metadata,
-                                 rocksdb::WriteBatch *write_batch) {
-  return impl_->Add(data, may_have_metadata, write_batch);
+bool TransactionParticipant::Add(
+    const TransactionMetadataPB& data, rocksdb::WriteBatch *write_batch) {
+  return impl_->Add(data, write_batch);
 }
 
 Result<TransactionMetadata> TransactionParticipant::PrepareMetadata(
