@@ -114,7 +114,7 @@ class TransactionPool::Impl {
     IncrementGauge(gauge_preparing_);
     new_txn->Prepare({}, ForceConsistentRead::kFalse, TransactionRpcDeadline(),
                      std::bind(&Impl::TransactionReady, this, new_txn, old_taken),
-                     nullptr /* metadata */, nullptr /* may_have_metadata */);
+                     nullptr /* metadata */);
     return result;
   }
 

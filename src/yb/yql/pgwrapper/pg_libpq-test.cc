@@ -46,10 +46,10 @@ class PgLibPqTest : public LibPqTestBase {
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
   auto conn = ASSERT_RESULT(Connect());
 
-  ASSERT_OK(Execute(conn.get(), "CREATE TABLE t (key INT, value TEXT)"));
-  ASSERT_OK(Execute(conn.get(), "INSERT INTO t (key, value) VALUES (1, 'hello')"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, value) VALUES (1, 'hello')"));
 
-  auto res = ASSERT_RESULT(Fetch(conn.get(), "SELECT * FROM t"));
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
 
   {
     auto lines = PQntuples(res.get());
@@ -84,22 +84,21 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
 
   auto conn = ASSERT_RESULT(Connect());
 
-  ASSERT_OK(Execute(conn.get(), "CREATE TABLE t (key INT PRIMARY KEY, color INT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, color INT)"));
 
   auto iterations_left = kIterations;
 
   for (int iteration = 0; iterations_left > 0; ++iteration) {
     SCOPED_TRACE(Format("Iteration: $0", iteration));
 
-    auto status = Execute(conn.get(), "DELETE FROM t");
+    auto status = conn.Execute("DELETE FROM t");
     if (!status.ok()) {
       ASSERT_STR_CONTAINS(status.ToString(), kTryAgain);
       continue;
     }
     for (int k = 0; k != kKeys; ++k) {
       int32_t color = RandomUniformInt(0, kColors - 1);
-      ASSERT_OK(Execute(conn.get(),
-          Format("INSERT INTO t (key, color) VALUES ($0, $1)", k, color)));
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, color) VALUES ($0, $1)", k, color));
     }
 
     std::atomic<int> complete{ 0 };
@@ -109,10 +108,10 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
       threads.emplace_back([this, color, kKeys, &complete] {
         auto conn = ASSERT_RESULT(Connect());
 
-        ASSERT_OK(Execute(conn.get(), "BEGIN"));
-        ASSERT_OK(Execute(conn.get(), "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+        ASSERT_OK(conn.Execute("BEGIN"));
+        ASSERT_OK(conn.Execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
 
-        auto res = Fetch(conn.get(), "SELECT * FROM t");
+        auto res = conn.Fetch("SELECT * FROM t");
         if (!res.ok()) {
           auto msg = res.status().message().ToBuffer();
           ASSERT_STR_CONTAINS(res.status().ToString(), kTryAgain);
@@ -129,8 +128,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
           }
 
           auto key = ASSERT_RESULT(GetInt32(res->get(), i, 0));
-          auto status = Execute(
-              conn.get(), Format("UPDATE t SET color = $1 WHERE key = $0", key, color));
+          auto status = conn.ExecuteFormat("UPDATE t SET color = $1 WHERE key = $0", key, color);
           if (!status.ok()) {
             auto msg = status.message().ToBuffer();
             // Missing metadata means that transaction was aborted and cleaned.
@@ -140,7 +138,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
           }
         }
 
-        auto status = Execute(conn.get(), "COMMIT");
+        auto status = conn.Execute("COMMIT");
         if (!status.ok()) {
           auto msg = status.message().ToBuffer();
           ASSERT_TRUE(msg.find("Operation expired") != std::string::npos) << status;
@@ -159,7 +157,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
       continue;
     }
 
-    auto res = ASSERT_RESULT(Fetch(conn.get(), "SELECT * FROM t"));
+    auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
     auto columns = PQnfields(res.get());
     ASSERT_EQ(2, columns);
 
@@ -193,28 +191,28 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableReadWriteConflict)) {
   auto tries = 1;
   for (; tries <= kNumTries; ++tries) {
     auto conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(Execute(conn.get(), "CREATE TABLE t (key INT PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
 
     size_t reads_won = 0, writes_won = 0;
     for (int i = 0; i != kKeys; ++i) {
       auto read_conn = ASSERT_RESULT(Connect());
-      ASSERT_OK(Execute(read_conn.get(), "BEGIN ISOLATION LEVEL SERIALIZABLE"));
-      auto res = Fetch(read_conn.get(), Format("SELECT * FROM t WHERE key = $0", i));
+      ASSERT_OK(read_conn.Execute("BEGIN ISOLATION LEVEL SERIALIZABLE"));
+      auto res = read_conn.FetchFormat("SELECT * FROM t WHERE key = $0", i);
       auto read_status = ResultToStatus(res);
 
       auto write_conn = ASSERT_RESULT(Connect());
-      ASSERT_OK(Execute(write_conn.get(), "BEGIN ISOLATION LEVEL SERIALIZABLE"));
-      auto write_status = Execute(write_conn.get(), Format("INSERT INTO t (key) VALUES ($0)", i));
+      ASSERT_OK(write_conn.Execute("BEGIN ISOLATION LEVEL SERIALIZABLE"));
+      auto write_status = write_conn.ExecuteFormat("INSERT INTO t (key) VALUES ($0)", i);
 
       std::thread read_commit_thread([&read_conn, &read_status] {
         if (read_status.ok()) {
-          read_status = Execute(read_conn.get(), "COMMIT");
+          read_status = read_conn.Execute("COMMIT");
         }
       });
 
       std::thread write_commit_thread([&write_conn, &write_status] {
         if (write_status.ok()) {
-          write_status = Execute(write_conn.get(), "COMMIT");
+          write_status = write_conn.Execute("COMMIT");
         }
       });
 
@@ -249,7 +247,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableReadWriteConflict)) {
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReadRestart)) {
   auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(Execute(conn.get(), "CREATE TABLE t (key INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
 
   std::atomic<bool> stop(false);
   std::atomic<int> last_written(0);
@@ -260,10 +258,10 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReadRestart)) {
     while (!stop.load(std::memory_order_acquire)) {
       SCOPED_TRACE(Format("Writing: $0", write_key));
 
-      ASSERT_OK(Execute(write_conn.get(), "BEGIN"));
-      auto status = Execute(write_conn.get(), Format("INSERT INTO t (key) VALUES ($0)", write_key));
+      ASSERT_OK(write_conn.Execute("BEGIN"));
+      auto status = write_conn.ExecuteFormat("INSERT INTO t (key) VALUES ($0)", write_key);
       if (status.ok()) {
-        status = Execute(write_conn.get(), "COMMIT");
+        status = write_conn.Execute("COMMIT");
       }
       if (status.ok()) {
         last_written.store(write_key, std::memory_order_release);
@@ -290,9 +288,9 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReadRestart)) {
 
     SCOPED_TRACE(Format("Reading: $0", read_key));
 
-    ASSERT_OK(Execute(conn.get(), "BEGIN"));
+    ASSERT_OK(conn.Execute("BEGIN"));
 
-    auto res = ASSERT_RESULT(Fetch(conn.get(), Format("SELECT * FROM t WHERE key = $0", read_key)));
+    auto res = ASSERT_RESULT(conn.FetchFormat("SELECT * FROM t WHERE key = $0", read_key));
     auto columns = PQnfields(res.get());
     ASSERT_EQ(1, columns);
 
@@ -302,7 +300,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReadRestart)) {
     auto key = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
     ASSERT_EQ(key, read_key);
 
-    ASSERT_OK(Execute(conn.get(), "ROLLBACK"));
+    ASSERT_OK(conn.Execute("ROLLBACK"));
   }
 
   ASSERT_GE(last_written.load(std::memory_order_acquire), 100);
@@ -312,12 +310,11 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReadRestart)) {
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentIndexInsert)) {
   auto conn = ASSERT_RESULT(Connect());
 
-  ASSERT_OK(Execute(
-      conn.get(),
+  ASSERT_OK(conn.Execute(
       "CREATE TABLE IF NOT EXISTS users(id text, ename text, age int, PRIMARY KEY(id))"));
 
-  ASSERT_OK(Execute(
-      conn.get(), "CREATE INDEX IF NOT EXISTS name_idx ON users(ename)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE INDEX IF NOT EXISTS name_idx ON users(ename)"));
 
   constexpr auto kWriteThreads = 4;
 
@@ -331,10 +328,9 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentIndexInsert)) {
       auto tid = std::hash<decltype(this_thread_id)>()(this_thread_id);
       int idx = 0;
       while (!stop.load(std::memory_order_acquire)) {
-        ASSERT_OK(Execute(
-            write_conn.get(),
-            Format("INSERT INTO users (id, ename, age) VALUES ('user-$0-$1', 'name-$1', $2)",
-                   tid, idx, 20 + (idx % 50))));
+        ASSERT_OK(write_conn.ExecuteFormat(
+            "INSERT INTO users (id, ename, age) VALUES ('user-$0-$1', 'name-$1', $2)",
+            tid, idx, 20 + (idx % 50)));
         ++idx;
       }
     });
@@ -351,25 +347,25 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentIndexInsert)) {
 }
 
 Result<int64_t> ReadSumBalance(
-    PGconn* conn, int accounts, const std::string& begin_transaction_statement,
+    PGConn* conn, int accounts, const std::string& begin_transaction_statement,
     std::atomic<int>* counter) {
-  RETURN_NOT_OK(Execute(conn, begin_transaction_statement));
+  RETURN_NOT_OK(conn->Execute(begin_transaction_statement));
   bool failed = true;
   auto se = ScopeExit([conn, &failed] {
     if (failed) {
-      EXPECT_OK(Execute(conn, "ROLLBACK"));
+      EXPECT_OK(conn->Execute("ROLLBACK"));
     }
   });
 
   int64_t sum = 0;
   for (int i = 1; i <= accounts; ++i) {
     LOG(INFO) << "Reading: " << i;
-    sum += VERIFY_RESULT(FetchValue<int64_t>(
-        conn, Format("SELECT balance FROM account_$0 WHERE id = $0", i)));
+    sum += VERIFY_RESULT(conn->FetchValue<int64_t>(
+        Format("SELECT balance FROM account_$0 WHERE id = $0", i)));
   }
 
   failed = false;
-  RETURN_NOT_OK(Execute(conn, "COMMIT"));
+  RETURN_NOT_OK(conn->Execute("COMMIT"));
   return sum;
 }
 
@@ -385,26 +381,16 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
   constexpr int kThreads = 5;
 #endif
 
-  PGConnPtr conn;
-  ASSERT_OK(WaitFor([this, &conn] {
-    auto res = Connect();
-    if (!res.ok()) {
-      return false;
-    }
-    conn = std::move(*res);
-    return true;
-  }, 5s, "Initial connect"));
+  PGConn conn = ASSERT_RESULT(Connect());
 
   const std::string begin_transaction_statement =
       "START TRANSACTION ISOLATION LEVEL " + isolation_level;
 
   for (int i = 1; i <= kAccounts; ++i) {
-    ASSERT_OK(Execute(
-        conn.get(),
-        Format("CREATE TABLE account_$0 (id int, balance bigint, PRIMARY KEY(id))", i)));
-    ASSERT_OK(Execute(
-        conn.get(),
-        Format("INSERT INTO account_$0 (id, balance) VALUES ($0, $1)", i, kInitialBalance)));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE account_$0 (id int, balance bigint, PRIMARY KEY(id))", i));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO account_$0 (id, balance) VALUES ($0, $1)", i, kInitialBalance));
   }
 
   std::atomic<int> writes(0);
@@ -424,17 +410,17 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
           ++to;
         }
         int64_t amount = RandomUniformInt(1, 10);
-        ASSERT_OK(Execute(conn.get(), begin_transaction_statement));
-        auto status = Execute(conn.get(), Format(
-              "UPDATE account_$0 SET balance = balance - $1 WHERE id = $0", from, amount));
+        ASSERT_OK(conn.Execute(begin_transaction_statement));
+        auto status = conn.ExecuteFormat(
+              "UPDATE account_$0 SET balance = balance - $1 WHERE id = $0", from, amount);
         if (status.ok()) {
-          status = Execute(conn.get(), Format(
-              "UPDATE account_$0 SET balance = balance + $1 WHERE id = $0", to, amount));
+          status = conn.ExecuteFormat(
+              "UPDATE account_$0 SET balance = balance + $1 WHERE id = $0", to, amount);
         }
         if (status.ok()) {
-          status = Execute(conn.get(), "COMMIT;");
+          status = conn.Execute("COMMIT;");
         } else {
-          ASSERT_OK(Execute(conn.get(), "ROLLBACK;"));
+          ASSERT_OK(conn.Execute("ROLLBACK;"));
         }
         if (!status.ok()) {
           ASSERT_TRUE(TransactionalFailure(status)) << status;
@@ -451,7 +437,7 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
        &stop_flag = thread_holder.stop_flag()]() {
     auto conn = ASSERT_RESULT(Connect());
     while (!stop_flag.load(std::memory_order_acquire)) {
-      auto sum = ReadSumBalance(conn.get(), kAccounts, begin_transaction_statement, &counter);
+      auto sum = ReadSumBalance(&conn, kAccounts, begin_transaction_statement, &counter);
       if (!sum.ok()) {
         ASSERT_TRUE(TransactionalFailure(sum.status())) << sum.status();
       } else {
@@ -474,7 +460,7 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
   thread_holder.Stop();
 
   ASSERT_OK(WaitFor([&conn, &begin_transaction_statement, &counter]() -> Result<bool> {
-    auto sum = ReadSumBalance(conn.get(), kAccounts, begin_transaction_statement, &counter);
+    auto sum = ReadSumBalance(&conn, kAccounts, begin_transaction_statement, &counter);
     if (!sum.ok()) {
       if (!TransactionalFailure(sum.status())) {
         return sum.status();
@@ -519,21 +505,20 @@ void PgLibPqTest::DoIncrement(int key, int num_increments, IsolationLevel isolat
   // Perform increments
   int succeeded_incs = 0;
   while (succeeded_incs < num_increments) {
-    ASSERT_OK(Execute(conn.get(), isolation == IsolationLevel::SERIALIZABLE_ISOLATION ?
+    ASSERT_OK(conn.Execute(isolation == IsolationLevel::SERIALIZABLE_ISOLATION ?
         "START TRANSACTION ISOLATION LEVEL SERIALIZABLE" :
         "START TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
     bool committed = false;
-    auto exec_status = Execute(conn.get(),
-                               Format("UPDATE t SET value = value + 1 WHERE key = $0", key));
+    auto exec_status = conn.ExecuteFormat("UPDATE t SET value = value + 1 WHERE key = $0", key);
     if (exec_status.ok()) {
-      auto commit_status = Execute(conn.get(), "COMMIT");
+      auto commit_status = conn.Execute("COMMIT");
       if (commit_status.ok()) {
         succeeded_incs++;
         committed = true;
       }
     }
     if (!committed) {
-      ASSERT_OK(Execute(conn.get(), "ROLLBACK"));
+      ASSERT_OK(conn.Execute("ROLLBACK"));
     }
   }
 }
@@ -541,7 +526,7 @@ void PgLibPqTest::DoIncrement(int key, int num_increments, IsolationLevel isolat
 void PgLibPqTest::TestParallelCounter(IsolationLevel isolation) {
   auto conn = ASSERT_RESULT(Connect());
 
-  ASSERT_OK(Execute(conn.get(), "CREATE TABLE t (key INT, value INT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT, value INT)"));
 
   const auto kThreads = RegularBuildVsSanitizers(3, 2);
   const auto kIncrements = RegularBuildVsSanitizers(100, 20);
@@ -550,8 +535,7 @@ void PgLibPqTest::TestParallelCounter(IsolationLevel isolation) {
   std::vector<std::thread> threads;
   while (threads.size() != kThreads) {
     int key = threads.size();
-    ASSERT_OK(Execute(conn.get(),
-                      Format("INSERT INTO t (key, value) VALUES ($0, 0)", key)));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, value) VALUES ($0, 0)", key));
 
     threads.emplace_back([this, key, isolation] {
       DoIncrement(key, kIncrements, isolation);
@@ -565,8 +549,7 @@ void PgLibPqTest::TestParallelCounter(IsolationLevel isolation) {
 
   // Check each counter
   for (int i = 0; i < kThreads; i++) {
-    auto res = ASSERT_RESULT(Fetch(conn.get(),
-                                   Format("SELECT value FROM t WHERE key = $0", i)));
+    auto res = ASSERT_RESULT(conn.FetchFormat("SELECT value FROM t WHERE key = $0", i));
 
     auto row_val = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
     ASSERT_EQ(row_val, kIncrements);
@@ -584,10 +567,9 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestParallelCounterRepeatableRead)) 
 void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation) {
   auto conn = ASSERT_RESULT(Connect());
 
-  ASSERT_OK(Execute(conn.get(), "CREATE TABLE t (key INT, value INT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT, value INT)"));
 
-  ASSERT_OK(Execute(conn.get(),
-                    "INSERT INTO t (key, value) VALUES (0, 0)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, value) VALUES (0, 0)"));
 
   const auto kThreads = RegularBuildVsSanitizers(3, 2);
   const auto kIncrements = RegularBuildVsSanitizers(100, 20);
@@ -606,8 +588,7 @@ void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation) {
   }
 
   // Check that we incremented exactly the desired number of times
-  auto res = ASSERT_RESULT(Fetch(conn.get(),
-                                 "SELECT value FROM t WHERE key = 0"));
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT value FROM t WHERE key = 0"));
 
   auto row_val = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
   ASSERT_EQ(row_val, kThreads * kIncrements);
@@ -626,8 +607,8 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SecondaryIndexInsertSelect)) {
 
   auto conn = ASSERT_RESULT(Connect());
 
-  ASSERT_OK(Execute(conn.get(), "CREATE TABLE t (a INT PRIMARY KEY, b INT)"));
-  ASSERT_OK(Execute(conn.get(), "CREATE INDEX ON t (b, a)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (a INT PRIMARY KEY, b INT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX ON t (b, a)"));
 
   TestThreadHolder holder;
   std::array<std::atomic<int>, kThreads> written;
@@ -645,7 +626,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SecondaryIndexInsertSelect)) {
         if (RandomUniformBool()) {
           int a = i * 1000000 + key;
           int b = key;
-          ASSERT_OK(Execute(conn.get(), Format("INSERT INTO t (a, b) VALUES ($0, $1)", a, b)));
+          ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (a, b) VALUES ($0, $1)", a, b));
           written[i].store(++key, std::memory_order_release);
         } else {
           int writer_index = RandomUniformInt(0, kThreads - 1);
@@ -655,8 +636,8 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SecondaryIndexInsertSelect)) {
           }
           int read_key = num_written - 1;
           int b = read_key;
-          int read_a = ASSERT_RESULT(FetchValue<int32_t>(
-              conn.get(), Format("SELECT a FROM t WHERE b = $0 LIMIT 1", b)));
+          int read_a = ASSERT_RESULT(conn.FetchValue<int32_t>(
+              Format("SELECT a FROM t WHERE b = $0 LIMIT 1", b)));
           ASSERT_EQ(read_a % 1000000, read_key);
         }
       }
@@ -666,33 +647,33 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SecondaryIndexInsertSelect)) {
   holder.WaitAndStop(60s);
 }
 
-void AssertRows(PGconn *conn, int expected_num_rows) {
-  auto res = ASSERT_RESULT(Fetch(conn, "SELECT * FROM test"));
+void AssertRows(PGConn *conn, int expected_num_rows) {
+  auto res = ASSERT_RESULT(conn->Fetch("SELECT * FROM test"));
   ASSERT_EQ(PQntuples(res.get()), expected_num_rows);
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(InTxnDelete)) {
   auto conn = ASSERT_RESULT(Connect());
 
-  ASSERT_OK(Execute(conn.get(), "CREATE TABLE test (pk int PRIMARY KEY)"));
-  ASSERT_OK(Execute(conn.get(), "BEGIN"));
-  ASSERT_OK(Execute(conn.get(), "INSERT INTO test VALUES (1)"));
-  ASSERT_NO_FATALS(AssertRows(conn.get(), 1));
-  ASSERT_OK(Execute(conn.get(), "DELETE FROM test"));
-  ASSERT_NO_FATALS(AssertRows(conn.get(), 0));
-  ASSERT_OK(Execute(conn.get(), "INSERT INTO test VALUES (1)"));
-  ASSERT_NO_FATALS(AssertRows(conn.get(), 1));
-  ASSERT_OK(Execute(conn.get(), "COMMIT"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test (pk int PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1)"));
+  ASSERT_NO_FATALS(AssertRows(&conn, 1));
+  ASSERT_OK(conn.Execute("DELETE FROM test"));
+  ASSERT_NO_FATALS(AssertRows(&conn, 0));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1)"));
+  ASSERT_NO_FATALS(AssertRows(&conn, 1));
+  ASSERT_OK(conn.Execute("COMMIT"));
 
-  ASSERT_NO_FATALS(AssertRows(conn.get(), 1));
+  ASSERT_NO_FATALS(AssertRows(&conn, 1));
 }
 
-TEST_F(PgLibPqTest, CompoundKeyColumnOrder) {
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CompoundKeyColumnOrder)) {
   const string table_name = "test";
   auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(Execute(conn.get(), Format(
+  ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0 (r2 int, r1 int, h int, v2 int, v1 int, primary key (h, r1, r2))",
-      table_name)));
+      table_name));
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   yb::client::YBSchema schema;
   PartitionSchema partition_schema;
@@ -714,6 +695,55 @@ TEST_F(PgLibPqTest, CompoundKeyColumnOrder) {
     }
   }
   ASSERT_TRUE(table_found);
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(BulkCopy)) {
+  const std::string kTableName = "customer";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE CUSTOMER ( CUSTKEY     INTEGER NOT NULL PRIMARY KEY,\n"
+      "                        NAME        VARCHAR(25) NOT NULL,\n"
+      "                        ADDRESS     VARCHAR(40) NOT NULL,\n"
+      "                        NATIONKEY   INTEGER NOT NULL,\n"
+      "                        PHONE       CHAR(15) NOT NULL,\n"
+      "                        MKTSEGMENT  CHAR(10) NOT NULL,\n"
+      "                        COMMENT     VARCHAR(117) NOT NULL);",
+      kTableName));
+
+  constexpr int kNumBatches = 10;
+  constexpr int kBatchSize = 1000;
+
+  int customer_key = 0;
+  for (int i = 0; i != kNumBatches; ++i) {
+    ASSERT_OK(conn.CopyBegin(Format("COPY $0 FROM STDIN WITH BINARY", kTableName)));
+    for (int j = 0; j != kBatchSize; ++j) {
+      conn.CopyStartRow(7);
+      conn.CopyPutInt32(++customer_key);
+      conn.CopyPutString(Format("Name $0 $1", i, j));
+      conn.CopyPutString(Format("Address $0 $1", i, j));
+      conn.CopyPutInt32(i);
+      conn.CopyPutString(std::to_string(999999876543210 + customer_key));
+      conn.CopyPutString(std::to_string(9876543210 + customer_key));
+      conn.CopyPutString(Format("Comment $0 $1", i, j));
+    }
+
+    ASSERT_OK(conn.CopyEnd());
+  }
+
+  LOG(INFO) << "Finished copy";
+  for (;;) {
+    auto result = conn.FetchFormat("SELECT COUNT(*) FROM $0", kTableName);
+    if (result.ok()) {
+      LogResult(result->get());
+      auto count = ASSERT_RESULT(GetInt64(result->get(), 0, 0));
+      LOG(INFO) << "Total count: " << count;
+      ASSERT_EQ(count, kNumBatches * kBatchSize);
+      break;
+    } else {
+      auto message = result.status().ToString();
+      ASSERT_TRUE(message.find("Snaphost too old") != std::string::npos) << result.status();
+    }
+  }
 }
 
 } // namespace pgwrapper

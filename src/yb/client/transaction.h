@@ -78,12 +78,12 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // This function is used to init metadata of Write/Read request.
   // If we don't have enough information, then the function returns false and stores
   // the waiter, which will be invoked when we obtain such information.
-  bool Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
+  // `ops` should be ordered by tablet.
+  bool Prepare(const internal::InFlightOps& ops,
                ForceConsistentRead force_consistent_read,
                CoarseTimePoint deadline,
                Waiter waiter,
-               TransactionMetadata* metadata,
-               bool* may_have_metadata);
+               TransactionMetadata* metadata);
 
   // Notifies transaction that specified ops were flushed with some status.
   void Flushed(

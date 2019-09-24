@@ -1236,7 +1236,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     WriteRequestPB write_req;
     *write_req.mutable_write_batch()->mutable_transaction() = req->transaction();
     write_req.set_tablet_id(req->tablet_id());
-    write_req.mutable_write_batch()->set_may_have_metadata(req->may_have_metadata());
+    write_req.mutable_write_batch()->set_deprecated_may_have_metadata(true);
     // TODO(dtxn) write request id
 
     auto* write_batch = write_req.mutable_write_batch();

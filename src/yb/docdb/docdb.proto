@@ -28,7 +28,7 @@ message KeyValuePairPB {
 message KeyValueWriteBatchPB {
   repeated KeyValuePairPB write_pairs = 1;
   TransactionMetadataPB transaction = 2;
-  bool may_have_metadata = 3;
+  bool DEPRECATED_may_have_metadata = 3;
   // Used by serializable isolation, to store read intents.
   // In case of read-modify-write operation both read_pairs and write_pairs could present.
   repeated KeyValuePairPB read_pairs = 5;

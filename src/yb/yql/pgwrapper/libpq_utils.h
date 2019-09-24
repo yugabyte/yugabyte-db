@@ -18,6 +18,7 @@
 
 #include <memory>
 
+#include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 
 namespace yb {
@@ -31,15 +32,7 @@ struct PGResultClear {
   void operator()(PGresult* result) const;
 };
 
-typedef std::unique_ptr<PGconn, PGConnClose> PGConnPtr;
 typedef std::unique_ptr<PGresult, PGResultClear> PGResultPtr;
-
-CHECKED_STATUS Execute(PGconn* conn, const std::string& command);
-
-Result<PGResultPtr> Fetch(PGconn* conn, const std::string& command);
-
-// Fetches data matrix of specified size. I.e. exact number of rows and columns are expected.
-Result<PGResultPtr> FetchMatrix(PGconn* conn, const std::string& command, int rows, int columns);
 
 Result<int32_t> GetInt32(PGresult* result, int row, int column);
 
@@ -65,14 +58,67 @@ Result<T> GetValue(PGresult* result, int row, int column) {
   return GetValueImpl(result, row, column, static_cast<T*>(nullptr));
 }
 
-template <class T>
-Result<T> FetchValue(PGconn* conn, const std::string& command) {
-  auto res = VERIFY_RESULT(FetchMatrix(conn, command, 1, 1));
-  return GetValue<T>(res.get(), 0, 0);
-}
-
 Result<std::string> AsString(PGresult* result, int row, int column);
 void LogResult(PGresult* result);
+
+class PGConn {
+ public:
+  ~PGConn();
+
+  PGConn(PGConn&& rhs);
+  PGConn& operator=(PGConn&& rhs);
+
+  static Result<PGConn> Connect(const HostPort& host_port);
+
+  CHECKED_STATUS Execute(const std::string& command);
+
+  template <class... Args>
+  CHECKED_STATUS ExecuteFormat(const std::string& format, Args&&... args) {
+    return Execute(Format(format, std::forward<Args>(args)...));
+  }
+
+  Result<PGResultPtr> Fetch(const std::string& command);
+
+  template <class... Args>
+  Result<PGResultPtr> FetchFormat(const std::string& format, Args&&... args) {
+    return Fetch(Format(format, std::forward<Args>(args)...));
+  }
+
+  // Fetches data matrix of specified size. I.e. exact number of rows and columns are expected.
+  Result<PGResultPtr> FetchMatrix(const std::string& command, int rows, int columns);
+
+  template <class T>
+  Result<T> FetchValue(const std::string& command) {
+    auto res = VERIFY_RESULT(FetchMatrix(command, 1, 1));
+    return GetValue<T>(res.get(), 0, 0);
+  }
+
+  CHECKED_STATUS CopyBegin(const std::string& command);
+  Result<PGResultPtr> CopyEnd();
+
+  void CopyStartRow(int16_t columns);
+
+  void CopyPutInt16(int16_t value);
+  void CopyPutInt32(int32_t value);
+  void CopyPutInt64(int64_t value);
+  void CopyPut(const char* value, size_t len);
+
+  void CopyPutString(const std::string& value) {
+    CopyPut(value.c_str(), value.length());
+  }
+
+ private:
+  typedef std::unique_ptr<PGconn, PGConnClose> PGConnPtr;
+  struct CopyData;
+
+  explicit PGConn(PGConnPtr ptr);
+
+  bool CopyEnsureBuffer(size_t len);
+  bool CopyFlushBuffer();
+
+  PGConnPtr impl_;
+  std::unique_ptr<CopyData> copy_data_;
+};
 
 } // namespace pgwrapper
 } // namespace yb
