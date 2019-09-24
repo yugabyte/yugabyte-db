@@ -276,8 +276,7 @@ Status TsAdminClient::DumpTablet(const std::string& tablet_id) {
   }
 
   QLRowBlock row_block(schema);
-  Slice data;
-  RETURN_NOT_OK(rpc.GetSidecar(0, &data));
+  Slice data = VERIFY_RESULT(rpc.GetSidecar(0));
   if (!data.empty()) {
     RETURN_NOT_OK(row_block.Deserialize(YQL_CLIENT_CQL, &data));
   }

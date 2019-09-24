@@ -422,6 +422,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   void LogCacheGC(MemTracker* log_cache_mem_tracker, size_t required);
 
+  const CoarseTimePoint start_time_;
+
   FsManager* const fs_manager_;
 
   TabletServer* server_;

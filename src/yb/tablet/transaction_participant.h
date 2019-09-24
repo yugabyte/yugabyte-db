@@ -126,7 +126,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   // Adds new running transaction.
   MUST_USE_RESULT bool Add(
-      const TransactionMetadataPB& data, bool may_have_metadata, rocksdb::WriteBatch *write_batch);
+      const TransactionMetadataPB& data, rocksdb::WriteBatch *write_batch);
 
   Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& id) override;
 

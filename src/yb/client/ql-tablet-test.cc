@@ -245,8 +245,7 @@ class QLTabletTest : public QLDmlTestBase {
           }
           std::shared_ptr<std::vector<ColumnSchema>>
             columns = std::make_shared<std::vector<ColumnSchema>>(table->schema().columns());
-          Slice data;
-          RETURN_NOT_OK(controller.GetSidecar(ql_batch.rows_data_sidecar(), &data));
+          Slice data = VERIFY_RESULT(controller.GetSidecar(ql_batch.rows_data_sidecar()));
           yb::ql::RowsResult result(table->name(), columns, data.ToBuffer());
           auto row_block = result.GetRowBlock();
           if (row_block->row_count() == 1) {

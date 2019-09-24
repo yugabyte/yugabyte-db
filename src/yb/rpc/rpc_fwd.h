@@ -116,7 +116,8 @@ typedef std::shared_ptr<StreamFactory> StreamFactoryPtr;
 YB_STRONGLY_TYPED_BOOL(ReadBufferFull);
 
 typedef int64_t ScheduledTaskId;
-const ScheduledTaskId kInvalidTaskId = -1;
+constexpr ScheduledTaskId kInvalidTaskId = -1;
+constexpr size_t kMinBufferForSidecarSlices = 16;
 
 YB_DEFINE_ENUM(ServicePriority, (kNormal)(kHigh));
 

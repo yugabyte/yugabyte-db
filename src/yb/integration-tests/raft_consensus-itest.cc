@@ -185,8 +185,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
     Schema schema(client::MakeColumnSchemasFromColDesc(rsrow->rscol_descs()), 0);
     QLRowBlock result(schema);
-    Slice data;
-    ASSERT_OK(rpc.GetSidecar(0, &data));
+    Slice data = ASSERT_RESULT(rpc.GetSidecar(0));
     if (!data.empty()) {
       ASSERT_OK(result.Deserialize(QLClient::YQL_CLIENT_CQL, &data));
     }

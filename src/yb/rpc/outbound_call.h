@@ -132,14 +132,10 @@ struct OutboundCallMetrics {
 // over.
 class CallResponse {
  public:
-  // Maximum number of separate payloads in one response i.e. max number of separate results that
-  // return rows (not just status) for the ops grouped together in one tserver RPC call.
-  static constexpr size_t kMaxSidecarSlices = 16;
-
   CallResponse();
 
-  CallResponse(CallResponse&& rhs);
-  void operator=(CallResponse&& rhs);
+  CallResponse(CallResponse&& rhs) = default;
+  CallResponse& operator=(CallResponse&& rhs) = default;
 
   // Parse the response received from a call. This must be called before any
   // other methods on this object. Takes ownership of data content.
@@ -164,8 +160,7 @@ class CallResponse {
     return serialized_response_;
   }
 
-  // See RpcController::GetSidecar()
-  CHECKED_STATUS GetSidecar(int idx, Slice* sidecar) const;
+  Result<Slice> GetSidecar(int idx) const;
 
  private:
   // True once ParseFrom() is called.
@@ -180,7 +175,7 @@ class CallResponse {
 
   // Slices of data for rpc sidecars. They point into memory owned by transfer_.
   // Number of sidecars chould be obtained from header_.
-  std::array<Slice, kMaxSidecarSlices> sidecar_slices_;
+  boost::container::small_vector<const uint8_t*, kMinBufferForSidecarSlices> sidecar_bounds_;
 
   // The incoming transfer data - retained because serialized_response_
   // and sidecar_slices_ refer into its data.
@@ -313,7 +308,7 @@ class OutboundCall : public RpcCall {
  protected:
   friend class RpcController;
 
-  virtual CHECKED_STATUS GetSidecar(int idx, Slice* sidecar) const;
+  virtual Result<Slice> GetSidecar(int idx) const;
 
   ConnectionId conn_id_;
   const std::string* hostname_;

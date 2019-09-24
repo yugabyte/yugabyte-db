@@ -385,12 +385,9 @@ TEST_F(TestRpc, TestRpcSidecar) {
   // we can't write the whole response to the socket in a single call.
   DoTestSidecar(&p, {3_MB, 2_MB, 240_MB});
 
-  std::vector<size_t> sizes(CallResponse::kMaxSidecarSlices);
+  std::vector<size_t> sizes(20);
   std::fill(sizes.begin(), sizes.end(), 123);
   DoTestSidecar(&p, sizes);
-
-  sizes.push_back(333);
-  DoTestSidecar(&p, sizes, Status::kRemoteError);
 }
 
 // Test that timeouts are properly handled.

@@ -172,10 +172,6 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
     return transaction_metadata_;
   }
 
-  bool may_have_metadata() const {
-    return may_have_metadata_;
-  }
-
   void set_allow_local_calls_in_curr_thread(bool flag) { allow_local_calls_in_curr_thread_ = flag; }
 
   bool allow_local_calls_in_curr_thread() const { return allow_local_calls_in_curr_thread_; }
@@ -226,7 +222,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   void CheckForFinishedFlush();
   void FlushBuffersIfReady();
-  void FlushBuffer(
+  std::shared_ptr<AsyncRpc> CreateRpc(
       RemoteTablet* tablet, InFlightOps::const_iterator begin, InFlightOps::const_iterator end,
       bool allow_local_calls_in_curr_thread, bool need_consistent_read);
 
@@ -296,23 +292,14 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // Number of outstanding lookups across all in-flight ops.
   int outstanding_lookups_ = 0;
 
-  // The maximum number of bytes of encoded operations which will be allowed to
-  // be buffered.
-  int64_t max_buffer_size_;
-
   // If true, we might allow the local calls to be run in the same IPC thread.
   bool allow_local_calls_in_curr_thread_ = true;
-
-  // The number of bytes used in the buffer for pending operations.
-  AtomicInt<int64_t> buffer_bytes_used_;
 
   std::shared_ptr<yb::client::internal::AsyncRpcMetrics> async_rpc_metrics_;
 
   YBTransactionPtr transaction_;
 
   TransactionMetadata transaction_metadata_;
-
-  bool may_have_metadata_ = false;
 
   // The consistent read point for this batch if it is specified.
   ConsistentReadPoint* read_point_ = nullptr;

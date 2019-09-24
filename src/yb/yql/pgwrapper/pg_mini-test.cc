@@ -79,8 +79,7 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
     pg_supervisor_ = std::make_unique<PgSupervisor>(pg_process_conf);
     ASSERT_OK(pg_supervisor_->Start());
 
-    connect_string_ = Format(
-        "host=$0 port=$1 user=postgres", pg_process_conf.listen_addresses, pg_process_conf.pg_port);
+    pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
 
     DontVerifyClusterBeforeNextTearDown();
   }
@@ -90,34 +89,22 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
     YBMiniClusterTestBase::DoTearDown();
   }
 
-  Result<PGConnPtr> Connect() {
-    auto deadline = CoarseMonoClock::now() + NonTsanVsTsan(15s, 60s);
-    for (;;) {
-      auto pg_ts = RandomElement(cluster_->mini_tablet_servers());
-      PGConnPtr result(PQconnectdb(connect_string_.c_str()));
-      auto status = PQstatus(result.get());
-      if (status == ConnStatusType::CONNECTION_OK) {
-        return result;
-      }
-      if (CoarseMonoClock::now() >= deadline) {
-        return STATUS_FORMAT(NetworkError, "Connect with '$0' failed: $1", connect_string_, status);
-      }
-    }
+  Result<PGConn> Connect() {
+    return PGConn::Connect(pg_host_port_);
   }
 
  private:
   std::unique_ptr<PgSupervisor> pg_supervisor_;
-  std::string connect_string_;
+  HostPort pg_host_port_;
 };
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(Simple)) {
   auto conn = ASSERT_RESULT(Connect());
 
-  ASSERT_OK(Execute(conn.get(), "CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
-  ASSERT_OK(Execute(conn.get(), "INSERT INTO t (key, value) VALUES (1, 'hello')"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, value) VALUES (1, 'hello')"));
 
-  auto value = ASSERT_RESULT(FetchValue<std::string>(
-      conn.get(), "SELECT value FROM t WHERE key = 1"));
+  auto value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
   ASSERT_EQ(value, "hello");
 }
 
@@ -125,13 +112,13 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(WriteRetry)) {
   constexpr int kKeys = 100;
   auto conn = ASSERT_RESULT(Connect());
 
-  ASSERT_OK(Execute(conn.get(), "CREATE TABLE t (key INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
 
   SetAtomicFlag(0.25, &FLAGS_respond_write_failed_probability);
 
   LOG(INFO) << "Insert " << kKeys << " keys";
   for (int key = 0; key != kKeys; ++key) {
-    auto status = Execute(conn.get(), Format("INSERT INTO t (key) VALUES ($0)", key));
+    auto status = conn.ExecuteFormat("INSERT INTO t (key) VALUES ($0)", key);
     ASSERT_TRUE(status.ok() || PgsqlError(status) == YBPgErrorCode::YB_PG_UNIQUE_VIOLATION ||
                 status.ToString().find("Already present: Duplicate request") != std::string::npos)
         << status;
@@ -139,14 +126,14 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(WriteRetry)) {
 
   SetAtomicFlag(0, &FLAGS_respond_write_failed_probability);
 
-  auto result = ASSERT_RESULT(FetchMatrix(conn.get(), "SELECT * FROM t ORDER BY key", kKeys, 1));
+  auto result = ASSERT_RESULT(conn.FetchMatrix("SELECT * FROM t ORDER BY key", kKeys, 1));
   for (int key = 0; key != kKeys; ++key) {
     auto fetched_key = ASSERT_RESULT(GetInt32(result.get(), key, 0));
     ASSERT_EQ(fetched_key, key);
   }
 
   LOG(INFO) << "Insert duplicate key";
-  auto status = Execute(conn.get(), "INSERT INTO t (key) VALUES (1)");
+  auto status = conn.Execute("INSERT INTO t (key) VALUES (1)");
   ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_UNIQUE_VIOLATION) << status;
   ASSERT_STR_CONTAINS(status.ToString(), "duplicate key value violates unique constraint");
 }

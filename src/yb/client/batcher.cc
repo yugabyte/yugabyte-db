@@ -121,8 +121,6 @@ Batcher::Batcher(YBClient* client,
     weak_session_(session),
     error_collector_(error_collector),
     next_op_sequence_number_(0),
-    max_buffer_size_(7 * 1024 * 1024),
-    buffer_bytes_used_(0),
     async_rpc_metrics_(session->async_rpc_metrics()),
     transaction_(std::move(transaction)),
     read_point_(read_point),
@@ -473,6 +471,22 @@ void Batcher::FlushBuffersIfReady() {
 
     if (state_ == BatcherState::kResolvingTablets) {
       state_ = BatcherState::kTransactionPrepare;
+
+      // All operations were added, and tablets for them were resolved.
+      // So we could sort them.
+      std::sort(ops_queue_.begin(),
+                ops_queue_.end(),
+                [](const InFlightOpPtr& lhs, const InFlightOpPtr& rhs) {
+        if (lhs->tablet.get() == rhs->tablet.get()) {
+          auto lgroup = GetOpGroup(lhs);
+          auto rgroup = GetOpGroup(rhs);
+          if (lgroup != rgroup) {
+            return lgroup < rgroup;
+          }
+          return lhs->sequence_number_ < rhs->sequence_number_;
+        }
+        return lhs->tablet.get() < rhs->tablet.get();
+      });
     } else if (state_ != BatcherState::kTransactionReady) {
       VLOG(3) << "FlushBuffersIfReady: batcher not yet in transaction ready state: " << state_;
       return;
@@ -489,12 +503,11 @@ void Batcher::FlushBuffersIfReady() {
     //
     // If transaction is not yet ready to do it, then it will notify as via provided when
     // it could be done.
-    if (!transaction->Prepare(ops_,
+    if (!transaction->Prepare(ops_queue_,
                               force_consistent_read_,
                               deadline_,
                               std::bind(&Batcher::TransactionReady, this, _1, BatcherPtr(this)),
-                              &transaction_metadata_,
-                              &may_have_metadata_)) {
+                              &transaction_metadata_)) {
       return;
     }
 
@@ -502,7 +515,6 @@ void Batcher::FlushBuffersIfReady() {
     force_consistent_read = true;
   }
 
-  InFlightOps ops;
   // We're only ready to flush if:
   // 1. The batcher is in the flushing state (i.e. FlushAsync was called).
   // 2. All outstanding ops have finished lookup. Why? To avoid a situation
@@ -510,58 +522,47 @@ void Batcher::FlushBuffersIfReady() {
   {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
     state_ = BatcherState::kTransactionReady;
-
-    ops.swap(ops_queue_);
   }
 
-  if (ops.empty()) {
+  // All asynchronous requests were completed, so we could access ops_queue_ w/o holding the lock.
+  if (ops_queue_.empty()) {
     return;
   }
 
-  std::sort(ops.begin(),
-            ops.end(),
-            [](const InFlightOpPtr& lhs, const InFlightOpPtr& rhs) {
-    if (lhs->tablet.get() == rhs->tablet.get()) {
-      auto lgroup = GetOpGroup(lhs);
-      auto rgroup = GetOpGroup(rhs);
-      if (lgroup != rgroup) {
-        return lgroup < rgroup;
-      }
-      return lhs->sequence_number_ < rhs->sequence_number_;
-    }
-    return lhs->tablet.get() < rhs->tablet.get();
-  });
+  // Use big enough value for preallocated storage, to avoid unnecessary allocations.
+  boost::container::small_vector<std::shared_ptr<AsyncRpc>, 40> rpcs;
 
   // Now flush the ops for each tablet.
-  auto start = ops.begin();
+  auto start = ops_queue_.begin();
   auto start_group = GetOpGroup(*start);
-  int num_sidecars = 0; // QL read ops and some QL write ops return rows in a sidecar.
-  for (auto it = start; it != ops.end(); ++it) {
+  for (auto it = start; it != ops_queue_.end(); ++it) {
     auto it_group = GetOpGroup(*it);
     // Aggregate and flush the ops so far if either:
     //   - we reached the next tablet or group
-    //   - we gathered more ops with rows result than we can handle in one call (kMaxSidecarSlices).
     if ((**it).tablet.get() != (**start).tablet.get() ||
-        start_group != it_group ||
-        num_sidecars >= rpc::CallResponse::kMaxSidecarSlices) {
+        start_group != it_group) {
       // Consistent read is not required when whole batch fits into one command.
-      bool need_consistent_read = force_consistent_read || start != ops.begin() || it != ops.end();
-      FlushBuffer(
+      bool need_consistent_read = force_consistent_read || start != ops_queue_.begin() ||
+                                  it != ops_queue_.end();
+      rpcs.push_back(CreateRpc(
           start->get()->tablet.get(), start, it, /* allow_local_calls_in_curr_thread */ false,
-          need_consistent_read);
+          need_consistent_read));
       start = it;
       start_group = it_group;
-      num_sidecars = 0;
-    }
-    if ((**it).yb_op->returns_sidecar()) {
-      num_sidecars++;
     }
   }
 
   // Consistent read is not required when whole batch fits into one command.
-  bool need_consistent_read = force_consistent_read || start != ops.begin();
-  FlushBuffer(start->get()->tablet.get(), start, ops.end(), allow_local_calls_in_curr_thread_,
-              need_consistent_read);
+  bool need_consistent_read = force_consistent_read || start != ops_queue_.begin();
+  rpcs.push_back(CreateRpc(
+      start->get()->tablet.get(), start, ops_queue_.end(),
+      allow_local_calls_in_curr_thread_, need_consistent_read));
+
+  ops_queue_.clear();
+
+  for (const auto& rpc : rpcs) {
+    rpc->SendRpc();
+  }
 }
 
 rpc::Messenger* Batcher::messenger() const {
@@ -593,7 +594,7 @@ void Batcher::RequestFinished(const TabletId& tablet_id, RetryableRequestId requ
   client_->RequestFinished(tablet_id, request_id);
 }
 
-void Batcher::FlushBuffer(
+std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
     RemoteTablet* tablet, InFlightOps::const_iterator begin, InFlightOps::const_iterator end,
     const bool allow_local_calls_in_curr_thread, const bool need_consistent_read) {
   VLOG(3) << "FlushBuffersIfReady: already in flushing state, immediately flushing to "
@@ -610,26 +611,18 @@ void Batcher::FlushBuffer(
   // Split the read operations according to consistency levels since based on consistency
   // levels the read algorithm would differ.
   InFlightOps ops(begin, end);
-  std::shared_ptr<AsyncRpc> rpc;
   auto op_group = GetOpGroup(*begin);
   AsyncRpcData data{this, tablet, allow_local_calls_in_curr_thread, need_consistent_read,
                     memory_limit_score_, std::move(ops)};
   switch (op_group) {
     case OpGroup::kWrite:
-      rpc = std::make_shared<WriteRpc>(&data);
-      break;
+      return std::make_shared<WriteRpc>(&data);
     case OpGroup::kLeaderRead:
-      rpc =
-          std::make_shared<ReadRpc>(&data);
-      break;
+      return std::make_shared<ReadRpc>(&data);
     case OpGroup::kConsistentPrefixRead:
-      rpc = std::make_shared<ReadRpc>(&data, YBConsistencyLevel::CONSISTENT_PREFIX);
-      break;
+      return std::make_shared<ReadRpc>(&data, YBConsistencyLevel::CONSISTENT_PREFIX);
   }
-  if (!rpc) {
-    FATAL_INVALID_ENUM_VALUE(OpGroup, op_group);
-  }
-  rpc->SendRpc();
+  FATAL_INVALID_ENUM_VALUE(OpGroup, op_group);
 }
 
 using tserver::ReadResponsePB;
