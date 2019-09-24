@@ -54,7 +54,7 @@ kern.maxfilesperproc=1048576
   </plist>
 ```
 
-Enure that the plist file is owned by `root:wheel` and has permissions `-rw-r--r--`. Reboot your computer for this to take effect. Or, to avoid this effort, enter this command:
+Enure that the `plist` file is owned by `root:wheel` and has permissions `-rw-r--r--`. Reboot your computer for this to take effect. Or, to avoid this effort, enter this command:
 
 ```sh
 $ sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
@@ -64,7 +64,7 @@ You might have to `unload` the service before loading it.
 
 ## Download
 
-Download the YugabyteDB tar.gz as shown below.
+Download the YugabyteDB `tar.gz` file as shown below.
 
 ```sh
 $ wget https://downloads.yugabyte.com/yugabyte-2.0.0.0-darwin.tar.gz
@@ -76,7 +76,7 @@ $ tar xvfz yugabyte-2.0.0.0-darwin.tar.gz && cd yugabyte-2.0.0.0/
 
 ## Configure
 
-Add a few loopback IP addresses to cover the add node scenarios of the [Explore Core Features](../../explore/) section.
+Add a few loopback IP addresses to cover the add node scenarios of the [Explore core features](../../explore/) section.
 
 ```sh
 sudo ifconfig lo0 alias 127.0.0.2

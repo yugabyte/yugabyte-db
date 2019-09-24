@@ -11,7 +11,7 @@ menu:
 type: page
 ---
 
-After [installing YugabyteDB](../install/), follow the instructions below to create a local cluster.
+After [installing YugabyteDB](../install/), follow the steps below to create a local cluster.
 
 {{< note title="Note" >}}
 
