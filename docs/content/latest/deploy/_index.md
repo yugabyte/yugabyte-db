@@ -71,13 +71,13 @@ menu:
         <div class="title">Replicate between two data centers</div>
       </div>
       <div class="body">
-          Replicate between two data centers for high availability, geo-redundancy, disaster recovery, and more.
+          Replicate asynchronously between two data centers for high availability, geo-redundancy, disaster recovery, and more.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="change-data-capture/">
+    <a class="section-link icon-offset" href="cdc/">
       <div class="head">
         <img class="icon" src="/images/deploy/cdc/deploy.png" aria-hidden="true" />
         <div class="title">Change data capture (CDC)</div>

@@ -1,6 +1,6 @@
 ---
-title: Change data capture to stdout
-linkTitle: Change data capture (CDC) to stdout
+title: CDC to stdout
+linkTitle: CDC to stdout
 description: Change data capture (CDC) to stdout
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
