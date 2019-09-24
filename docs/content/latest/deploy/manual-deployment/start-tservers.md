@@ -26,9 +26,9 @@ Let us assume the following.
       - Let us assume the master private IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140` (`node-a`, `node-b`, `node-c`)
 - We have multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`
 
-This section covers deployment for a single region/zone (or a single datacenter/rack). Execute the following steps on each of the instances.
+This section covers deployment for a single region/zone (or a single data center/rack). Execute the following steps on each of the instances.
 
-## Run yb-tserver with command line params
+## Run yb-tserver with command line parameters
 
 - Run `yb-tserver` as below. Note that all the master addresses have to be provided as a flag. For each yb-tserver, replace the rpc bind address flags with the private IP of the host running the yb-tserver.
 
@@ -48,10 +48,10 @@ $ ./bin/yb-tserver \
 Add `--redis_proxy_bind_address=172.151.17.130:6379` to the above list if you need to turn on the YEDIS API as well.
 
 {{< note title="Note" >}}
-The number of comma seperated values in `tserver_master_addrs` parameter should match the total number of masters (aka replication factor).
+The number of comma-separated values in `tserver_master_addrs` parameter should match the total number of masters (aka replication factor).
 {{< /note >}}
 
-## Run yb-tserver with conf file
+## Run yb-tserver with configuration file
 
 - Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the `--flagfile` option as shown below. For each yb-tserver, replace the rpc bind address flags with the private IP of the host running the yb-tserver.
 

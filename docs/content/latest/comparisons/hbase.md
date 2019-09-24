@@ -12,11 +12,11 @@ isTocNested: false
 showAsideToc: true
 ---
 
-Following are the key areas of differences between Yugabyte DB and [Apache HBase](http://hbase.apache.org/).
+Following are the key areas of differences between YugabyteDB and [Apache HBase](http://hbase.apache.org/).
 
 ## Simpler software stack
 
-HBase relies on HDFS (another complex piece of infrastructure for data replication) and on Zookeeper for leader election, failure detection, and so on. Running HBase smoothly requires a lot of on-going operational overheads.
+Apache HBase relies on HDFS (another complex piece of infrastructure for data replication) and on Apache Zookeeper for leader election, failure detection, and so on. Running HBase smoothly requires a lot of on-going operational overheads.
 
 ## High availability and fast failover
 
@@ -32,11 +32,11 @@ failure of the leader, and initiate leader election.
 
 Avoids GC tuning; can run better on large memory machines.
 Richer data model: Yugabyte offers a multi-model/multi-API through CQL & Redis (and SQL in future).
-Rather than deal with just byte keys and values, Yugabyte offers a rich set of scalar (int, text,
+Rather than deal with just byte keys and values, YugabyteDB offers a rich set of scalar (int, text,
 decimal, binary, timestamp, etc.) and composite types (such as collections, UDTs, etc.).
 
 ## Multi-data center deployment
 
-Flexlible deployment choices across multiple DCs or availability zones. HBase provides
-strong-consistency only within a single datacenter and offers only async replication alternative for
+Flexible deployment choices across multiple DCs or availability zones. HBase provides
+strong-consistency only within a single data center and offers only async replication alternative for
 cross-DC deployments.

@@ -11,7 +11,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-If you like sports statistics, you can install the PostgreSQL-compatible version of SportsDB on the Yugabyte DB distributed SQL database and explore statistics for your favorite sport.
+If you like sports statistics, you can install the PostgreSQL-compatible version of SportsDB on the YugabyteDB distributed SQL database and explore statistics for your favorite sport.
 
 ## About the SportsDB sample database
 
@@ -27,11 +27,11 @@ Follow the steps here to download and install the SportsDB sample database.
 
 ### Before you begin
 
-To use the SportsDB sample database, you must have installed and configured Yugabyte DB. To get up and running quickly, see [Quick Start](/latest/quick-start/).
+To use the SportsDB sample database, you must have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/latest/quick-start/).
 
 ### 1. Download the SportsDB scripts
 
-The SQL scripts that you need to create the SportsDB sample database (Yugabyte DB-compatible) are available in the [`sample` directory of the Yugabyte DB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). Download the following five files.
+The SQL scripts that you need to create the SportsDB sample database (YugabyteDB-compatible) are available in the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). Download the following five files.
 
 - [`sportsdb_tables.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/sportsdb_tables.sql) — Creates the tables and sequences
 - [`sportsdb_inserts.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/sportsdb_inserts.sql) — Loads the sample data into the `sportsdb` database
@@ -125,4 +125,4 @@ sportsdb=# \i /Users/yugabyte/sportsdb_indexes.sql
 
 ## Explore the SportsDB database
 
-That’s it! Using the command line or your favorite PostgreSQL development or administration tool, you are now ready to start exploring the SportsDB database and Yugabyte DB features.
+That’s it! Using the command line or your favorite PostgreSQL development or administration tool, you are now ready to start exploring the SportsDB database and YugabyteDB features.

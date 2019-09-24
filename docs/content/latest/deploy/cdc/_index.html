@@ -2,60 +2,50 @@
 title: Change data capture (CDC)
 linkTitle: Change data capture (CDC)
 description: Change data capture (CDC)
+headcontent: Deploy YugabyteDB applications using change data capture (CDC) to asynchronously replicate data changes between Yugabyte clusters and data centers.
+image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
-headcontent: Stream data changes asynchronously to external systems including a separate Yugabyte DB cluster in a remote region.
-image: /images/section_icons/index/architecture.png
 menu:
   latest:
-    identifier: change-data-capture
+    identifier: cdc
     parent: deploy
-    weight: 650
+    weight: 690
 ---
 
 <div class="row">
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="./cdc-architecture/">
+    <a class="section-link icon-offset" href="use-cdc/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/index/architecture.png" aria-hidden="true" />
-        <div class="title">CDC architecture</div>
+        <!-- img class="icon" src="/images/section_icons/explore/json_documents.png" aria-hidden="true" / -->
+        <div class="title">Use change data capture (CDC)</div>
       </div>
       <div class="body">
-          How change data capture (CDC) works in Yugabyte DB.
+        Use change data capture (CDC) to replicate data changes in YugabyteDB to a target location.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="./cdc-architecture/">
+    <a class="section-link icon-offset" href="cdc-to-kafka/">
       <div class="head">
-        <img class="icon" src="/images/deploy/cdc/deploy.png" aria-hidden="true" />
-        <div class="title">2-data center deployments with change data capture</div>
+        <!-- img class="icon" src="/images/section_icons/explore/json_documents.png" aria-hidden="true" / -->
+        <div class="title">CDC to Apache Kafka</div>
       </div>
       <div class="body">
-        Overview of Yugabyte DB support for 2-data center (2DC) deployments, supported scenarios, and the life cycle of replication.
+        Use change data capture (CDC) to replicate data changes in YugabyteDB to Apache Kafka.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="./2dc-replication/">
+    <a class="section-link icon-offset" href="cdc-to-stdout/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
-        <div class="title">Replicating between two data centers</div>
+        <!-- img class="icon" src="/images/section_icons/explore/json_documents.png" aria-hidden="true" / -->
+        <div class="title">CDC to stdout</div>
       </div>
       <div class="body">
-          Set up a 2-data center (2DC) deployment with one-way or two-way replication.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link" href="./yugabytedb-cdc-connector/">
-      <div class="head">
-        <div class="title">Use CDC with Apache Kafka</div>
-      </div>
-      <div class="body">
-        Explore how to use CDC to log data to an Apache Kafka or console sink from YugaByteDB.
+        Use change data capture (CDC) to replicate data changes in YugabyteDB to stdout.
       </div>
     </a>
   </div>

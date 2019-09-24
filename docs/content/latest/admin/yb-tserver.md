@@ -13,7 +13,7 @@ isTocNested: false
 showAsideToc: false
 ---
 
-`yb-tserver`, located in the `bin` directory of Yugabyte home, is the [YB-TServer](../../architecture/concepts/universe/#yb-tserver) binary.
+`yb-tserver`, located in the `bin` directory of YugabyteDB home, is the [YB-TServer](../../architecture/concepts/universe/#yb-tserver) binary.
 
 ## Example
 
@@ -33,7 +33,7 @@ Use the **-\-help** option to see all the commands supported.
 $ ./bin/yb-tserver --help
 ```
 
-## Config flags
+## Configuration flags
 
 Flag | Mandatory | Default | Description
 ----------------------|------|---------|------------------------
@@ -47,7 +47,7 @@ Flag | Mandatory | Default | Description
 `--use_private_ip` | N |`never` | Determines when to use private IP addresses. Possible values are `never`,`zone`,`cloud` and `region`. Based on the values of the `placement_*` config flags listed in this table.
 `--webserver_interface` | N |`0.0.0.0` | Address to bind for server UI access.
 `--webserver_port` | N | `7000` | Monitoring web server port.
-`--webserver_doc_root` | N | The `www` directory in the Yugabyte DB home directory | Monitoring web server home.
+`--webserver_doc_root` | N | The `www` directory in the YugabyteDB home directory | Monitoring web server home.
 `--cql_proxy_bind_address` | N | `0.0.0.0:9042` | YCQL API bind address.
 `--cql_proxy_webserver_port` | N | 12000 | YCQL metrics monitoring port
 `--redis_proxy_bind_address` | N | `0.0.0.0:6379` | YEDIS API bind address.
@@ -56,7 +56,7 @@ Flag | Mandatory | Default | Description
 `--pgsql_proxy_bind_address` | N | `0.0.0.0:5433` | YSQL API bind address.
 `--pgsql_proxy_webserver_port` | N | 13000 | YSQL metrics monitoring port.
 `--placement_zone` | N |`rack1` | Name of the availability zone or rack where this instance is deployed.
-`--placement_region` | N |`datacenter1` | Name of the region or datacenter where this instance is deployed.
+`--placement_region` | N |`datacenter1` | Name of the region or data center where this instance is deployed.
 `--placement_cloud` | N |`cloud1` | Name of the cloud where this instance is deployed.
 `--logtostderr` | N | N/A  | Log to standard error.
 `--flagfile` | N | N/A  | Load flags from the specified file.

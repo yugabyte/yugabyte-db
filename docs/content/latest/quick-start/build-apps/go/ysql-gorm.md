@@ -38,7 +38,7 @@ showAsideToc: true
 
 This tutorial assumes that you have:
 
-- installed Yugabyte DB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
+- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
 
 - installed Go 1.8+ as well as the following dependencies.
 
@@ -74,7 +74,7 @@ The source for the above application can be found in the [repository](https://gi
 $ cd ./golang/gorm
 ```
 
-Create the `ysql_gorm` database in Yugabyte DB, following the name specified in the configuration.
+Create the `ysql_gorm` database in YugabyteDB, following the name specified in the configuration.
 
 ```sh
 ./ysqlsh -c "CREATE DATABASE ysql_gorm"

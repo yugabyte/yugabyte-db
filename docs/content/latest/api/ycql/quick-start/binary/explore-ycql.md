@@ -11,7 +11,7 @@ $ ./bin/cqlsh localhost
 Connected to local cluster at 127.0.0.1:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
-cqlsh> 
+cqlsh>
 ```
 
 * Run a CQL command to verify it is working.
@@ -23,5 +23,5 @@ cqlsh> describe keyspaces;
 ```
 system_schema  system_auth  system
 
-cqlsh> 
+cqlsh>
 ```
