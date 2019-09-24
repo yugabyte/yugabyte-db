@@ -16,7 +16,7 @@ showAsideToc: true
 
 Connect to the local node where YugabyteDB is running. 
 
-On the local setup, this is your local machine (or a Docker instance running on your local machine). On a multi-node cluster, you may need to `ssh` into the machines where the Yugabyte nodes are running.
+On the local setup, this is your local machine (or a Docker instance running on your local machine). On a multi-node cluster, you may need to `ssh` into the machines where the YugabyteDB nodes are running.
 
 ```sh
 $ ps aux | grep yb-tserver

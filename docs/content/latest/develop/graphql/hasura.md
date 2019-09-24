@@ -111,7 +111,7 @@ Click **Add**, and then click **Save**.
 
 ### 5. Load sample data
 
-1. On the command line, change your directory to the root `yugabyte` directory, and then open `ysqlsh` (the YSQL CLI) to connect to the Yugabyte cluster:
+1. On the command line, change your directory to the root `yugabyte` directory, and then open `ysqlsh` (the YSQL CLI) to connect to the YugabyteDB cluster:
 
 ```bash
 ./bin/ysqlsh
@@ -182,13 +182,13 @@ Fetch a list of authors and a nested list of each author’s articles where the 
 
 Now that you're done with this exploration, you can clean up the pieces for your next adventure.
 
-1. Stop the Yugabyte cluster by running the `yb-ctl stop` command.
+1. Stop the YugabyteDB cluster by running the `yb-ctl stop` command.
 
     ```bash
     ./bin/yb-ctl stop
     ```
 
-    Note: To completely remove all Yugabyte data/cluster-state you can instead run:
+    Note: To completely remove all YugabyteDB data/cluster-state you can instead run:
 
     ```bash
     ./bin/yb-ctl destroy

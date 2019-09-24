@@ -47,7 +47,7 @@ $ ls data/
 orders.sql  products.sql  reviews.sql users.sql
 ```
 
-- Connect using ysqlsh, the Yugabyte SQL shell
+- Connect using ysqlsh, the YugabyteDB SQL shell
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

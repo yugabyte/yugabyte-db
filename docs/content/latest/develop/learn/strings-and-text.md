@@ -15,13 +15,13 @@ showAsideToc: true
 
 ## Introduction
 
-Strings, character data types, or text. What you want to call it is up to you. Manipulating and outputting text is a very important topic that will be required for many different types of systems that you work with. The Yugabyte SQL API offers extensive text capability that will be demonstrated here.
+Strings, character data types, or text. What you want to call it is up to you. Manipulating and outputting text is a very important topic that will be required for many different types of systems that you work with. The YugabyteDB SQL API offers extensive text capability that will be demonstrated here.
 
 ## About character data types
 
 ### Character data types
 
-For character data types, see [Data types](/latest/api/ysql/datatypes/). Note that Yugabyte implements the data type aliases and that is what is used here.
+For character data types, see [Data types](/latest/api/ysql/datatypes/). Note that YugabyteDB implements the data type aliases and that is what is used here.
 
 With PostgreSQL, the use of different character data types has a historical aspect. YugabyteDB — being a more recent implementation — has no such history. Consider keeping your use of character data types simple, ideally just 'text', or 'varchar(n)' if you require a restricted length. Although it's your choice, using text and then verifying the length of a character string will allow you to develop your own approach to managing this scenario, rather than encountering errors by exceeding some arbitrary length.
 
@@ -76,7 +76,7 @@ In the example above, notice that the column `b_char` does not contain a trailin
 
 ### Casting
 
-When you are working with text that has been entered by users through an application, ensure that Yugabyte understands that it is working with a text input. All values should be cast unless they can be trusted due to other validation measures that have already occurred.
+When you are working with text that has been entered by users through an application, ensure that YugabyteDB understands that it is working with a text input. All values should be cast unless they can be trusted due to other validation measures that have already occurred.
 
 Start YSQL and you can see the impacts of casting.
 
@@ -256,11 +256,11 @@ The final padding example above shows how you can center text and the trim examp
 You can also state that a text value is 'escaped' by prefixing with an 'e' or 'E'. Take a look at this example.
 
 ```
-yugabyte=# select E'I''ve told Yugabyte that this is an escaped string\n\tso I can specify escapes safely' as escaped_text;
+yugabyte=# select E'I''ve told YugabyteDB that this is an escaped string\n\tso I can specify escapes safely' as escaped_text;
 
                    escaped_text
 ---------------------------------------------------
- I've told Yugabyte that this is an escaped string+
+ I've told YugabyteDB that this is an escaped string+
          so I can specify escapes safely
 
 yugabyte=# select E'a\\b/c\u00B6' as escaped_txt, 'a\\b/c\u00B6' as raw_txt;
@@ -274,7 +274,7 @@ yugabyte=# select E'a\\b/c\u00B6' as escaped_txt, 'a\\b/c\u00B6' as raw_txt;
 `\n` refers to a new line, and `\t` is a tab, hence the formatted result.
 {{< /note >}}
 
-Yugabyte also has `DECODE` and `ENCODE` for decoding and encoding from, or to, binary data. It caters for 'base64', 'hex' and 'escape' representations. Decode will give the output in `BYTEA` data type. Additionally, you can use the `TO_HEX` command to convert an ascii number to its digital representation.
+YugabyteDB also has `DECODE` and `ENCODE` for decoding and encoding from, or to, binary data. It caters for 'base64', 'hex' and 'escape' representations. Decode will give the output in `BYTEA` data type. Additionally, you can use the `TO_HEX` command to convert an ascii number to its digital representation.
 
 #### Joining strings
 
@@ -393,7 +393,7 @@ yb_demo=# select format('SELECT %2$I, %3$I from %1$I where name = %4$L', 'users'
 
 #### Substituting text
 
-Substituting text with other text can be a complex task as you need to fully understand the scope of the data that the functions can be subject to. A common occurrence is failure due to an unexpected value being passed through, like `NULL`, an empty string `''`, or a value that Yugabyte would interpret as a different data type like `true` or `3`.
+Substituting text with other text can be a complex task as you need to fully understand the scope of the data that the functions can be subject to. A common occurrence is failure due to an unexpected value being passed through, like `NULL`, an empty string `''`, or a value that YugabyteDB would interpret as a different data type like `true` or `3`.
 
 The treatment of nulls in mathematical operations is often problematic, as is string joins as joining a null to a value results in a null. Coalescing the inputs will avoid these issues as shown in the examples below.
 

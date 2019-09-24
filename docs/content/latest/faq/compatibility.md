@@ -82,7 +82,7 @@ Yes, you can have collection data types as primary keys as long as they are mark
 
 ### What is the difference between a `COUNTER` data type and `INTEGER` data type?
 
-Unlike Apache Cassandra, Yugabyte COUNTER type is almost the same as INTEGER types. There is no need of lightweight transactions requiring 4 round trips to perform increments in Yugabyte - these are efficiently performed with just one round trip.
+Unlike Apache Cassandra, YugabyteDB COUNTER type is almost the same as INTEGER types. There is no need of lightweight transactions requiring 4 round trips to perform increments in YugabyteDB - these are efficiently performed with just one round trip.
 
 ### How is 'USING TIMESTAMP' different in YugabyteDB?
 

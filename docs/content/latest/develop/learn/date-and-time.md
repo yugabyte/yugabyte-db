@@ -92,7 +92,7 @@ In the above you will see that to present the date in a friendly readable format
 
 ## Time zones
 
-Thus far, we have been operating with the default time zone installed for Yugabyte being UTC (+0). Lets select what time zones are available from Yugabyte:
+Thus far, we have been operating with the default time zone installed for YugabyteDB being UTC (+0). Lets select what time zones are available from Yugabyte:
 
 ```
 yugabyte=# select * from pg_timezone_names;
@@ -143,10 +143,10 @@ yugabyte=# select * from pg_timezone_names;
 
 You can set the timezone to use for your session using the `SET` command. You can `SET` timezone using the timezone name as listed in pg_timezone_names, but not the abbreviation. You can also set the timezone to a numeric/decimal representation of the time offset. For example, -3.5 is 3 hours and 30 minutes before UTC.
 
-It seems logical to be able to set the timezone using the `UTC_OFFSET` format above. Yugabyte will allow this, however, be aware of the following behaviour if you choose this method:
+It seems logical to be able to set the timezone using the `UTC_OFFSET` format above. YugabyteDB will allow this, however, be aware of the following behaviour if you choose this method:
 
 {{< tip title="Tip" >}}
-When using POSIX time zone names, positive offsets are used for locations west of Greenwich. Everywhere else, Yugabyte follows the ISO-8601 convention that positive timezone offsets are east of Greenwich. Therefore an entry of '+10:00:00' will result in a timezone offset of -10 Hours as this is deemed East of Greenwich.
+When using POSIX time zone names, positive offsets are used for locations west of Greenwich. Everywhere else, YugabyteDB follows the ISO-8601 convention that positive timezone offsets are east of Greenwich. Therefore an entry of '+10:00:00' will result in a timezone offset of -10 Hours as this is deemed East of Greenwich.
 {{< /tip >}}
 
 Lets start examining dates and times within Yugabyte.
@@ -160,7 +160,7 @@ Tue 09 Jul 12:27:08 AEST 2019
 
 Note that the above does not use quotes, but is the "Grave Accent" symbol, which is normally found below the Tilde `~` symbol on your keyboard.
 
-The above is showing you the current date and time of the underlying server.  It is not the date and time of the database. However, in a single node implementation of Yugabyte there will be a relationship between your computer's date and the database date because Yugabyte would have obtained the date from the server when it was started. We will explore the date and time (timestamps) within the database.
+The above is showing you the current date and time of the underlying server.  It is not the date and time of the database. However, in a single node implementation of YugabyteDB there will be a relationship between your computer's date and the database date because YugabyteDB would have obtained the date from the server when it was started. We will explore the date and time (timestamps) within the database.
 
 ```
 yugabyte=# SHOW timezone;
@@ -383,7 +383,7 @@ yb_demo=# select d.order_id, to_char(o.created_at, 'DD-MON-YYYY HH AM') AS "Orde
 Your data will be slightly different as we used a `RANDOM()` function for setting the 'delivery_date' in the new 'order_deliveries' table.
 {{< /note >}}
 
-You can use views of the Yugabyte Data Catalogs to create data that is already prepared and formatted for your application code so that your SQL is simpler. Below is an example that is defined in the yb_demo database (has no dependency on yb_demo). This demonstration shows how you can nominate a shortlist of timezones that are formatted and ready to use for display purposes.
+You can use views of the YugabyteDB Data Catalogs to create data that is already prepared and formatted for your application code so that your SQL is simpler. Below is an example that is defined in the yb_demo database (has no dependency on yb_demo). This demonstration shows how you can nominate a shortlist of timezones that are formatted and ready to use for display purposes.
 
 ```
 yb_demo=# CREATE OR REPLACE VIEW TZ AS
@@ -593,15 +593,15 @@ For the very curious, why is there a gap after 'Tuesday' and 'Monday' in the exa
 
 People in different locations of the world are familiar with local representations of dates. Times are reasonably similar, but dates can differ. Within the USA, they use 3/5/19, whereas in Australia we would use 5/3/19 and in Europe they would use either 5.3.19 or 5/3/19. What is the date in question? 5th March, 2019.
 
-Yugabyte has `DateStyle` which is a setting that you apply to your session so that ambiguous dates can be determined and the display of dates in YSQL can be defaulted to a particular format.
+YugabyteDB has `DateStyle` which is a setting that you apply to your session so that ambiguous dates can be determined and the display of dates in YSQL can be defaulted to a particular format.
 
-By default, Yugabyte uses the ISO Standard of YYYY-MM-DD HH24:MI:SS. Other settings you can use are 'SQL', 'German', and 'Postgres'. These are all referenced below allowing you to see examples.
+By default, YugabyteDB uses the ISO Standard of YYYY-MM-DD HH24:MI:SS. Other settings you can use are 'SQL', 'German', and 'Postgres'. These are all referenced below allowing you to see examples.
 
 All settings except ISO allow you specify whether a Day appears before or after the Month. Therefore, a setting of 'DMY' will result in 3/5 being 3rd May, whereas 'MDY' will result in 5th March.
 
-If you are reading dates as text fields from a file or any source that is not a Yugabyte date or timestamp data type, then it is very important that you set your DateStyle properly unless you are very specific on how to convert a text field to a date - an example of which is included below.
+If you are reading dates as text fields from a file or any source that is not a YugabyteDB date or timestamp data type, then it is very important that you set your DateStyle properly unless you are very specific on how to convert a text field to a date - an example of which is included below.
 
-Note that Yugabyte will always interpret '6/6' as 6th June, and '13/12' as 13th December (because the month cannot be 13), but what about about '6/12'? Lets work through some examples within YSQL.
+Note that YugabyteDB will always interpret '6/6' as 6th June, and '13/12' as 13th December (because the month cannot be 13), but what about about '6/12'? Lets work through some examples within YSQL.
 
 ```
 yugabyte=# SHOW DateStyle;
@@ -698,7 +698,7 @@ yugabyte=# select to_char(to_date('05-03-2019', 'MM-DD-YYYY'), 'DD-MON-YYYY');
 
 Best practise is to pass all text representations of date and time data types through a `TO_DATE` or `TO_TIMESTAMP` function. There is not a 'to_time' function as its format is always fixed of 'HH24:MI:SS.ms', therefore be careful of AM/PM times and your milliseconds can also be thousandths of a second, so either 3 or 6 digits should be supplied.
 
-The final example above illustrates the difficulty that can occur with dates. The system is expecting a 'DMY' value but your source is of format 'MDY', therefore Yugabyte will not know how to convert it in ambiguous cases, therefore be explicit as shown.
+The final example above illustrates the difficulty that can occur with dates. The system is expecting a 'DMY' value but your source is of format 'MDY', therefore YugabyteDB will not know how to convert it in ambiguous cases, therefore be explicit as shown.
 
 ## Getting dirty - into the logs we go
 
@@ -708,7 +708,7 @@ This is for those more interested in getting into some of the more finer points 
 
 YugabyteDB has inherited a lot of similar capability of the YSQL API to the PostgreSQL SQL API, and this will explain why when we start to look under the hood, it is looking very much like pg.
 
-Yugabyte tracks its settings in its catalog, lets query some relevant settings and this time we will transform the layout of the query results using the `Expanded display` setting. This can be done in any database.
+YugabyteDB tracks its settings in its catalog, lets query some relevant settings and this time we will transform the layout of the query results using the `Expanded display` setting. This can be done in any database.
 
 ```
 yugabyte=# \x on
@@ -745,7 +745,7 @@ yugabyte=# \x off
 
 ```
 
-Using the `log_directory` and `log_filename` references, we can find the Yugabyte log to examine the timestamps being inserted into the logs. These are all UTC timestamps and should remain that way.
+Using the `log_directory` and `log_filename` references, we can find the YugabyteDB log to examine the timestamps being inserted into the logs. These are all UTC timestamps and should remain that way.
 
 You will see that the `lc_time` setting is currently UTF and the file the setting is obtained from is listed. Opening that file **as sudo/superuser**, you will see contents that look like the below (after much scrolling or searching for 'datestyle'):
 
@@ -779,7 +779,7 @@ default_text_search_config = 'pg_catalog.english'
 
 ```
 
-Make a backup of the original file and then change `datestyle = 'SQL, DMY'`, `timezone = 'GB'` (or any other timezone **name** you prefer) and save the file. You will need to restart your Yugabyte cluster for the changes to take affect using the shell command `./bin/yb-ctl restart` (and ensure you append any startup flags if you do this).
+Make a backup of the original file and then change `datestyle = 'SQL, DMY'`, `timezone = 'GB'` (or any other timezone **name** you prefer) and save the file. You will need to restart your YugabyteDB cluster for the changes to take affect using the shell command `./bin/yb-ctl restart` (and ensure you append any startup flags if you do this).
 
 Once the cluster is running as expected, then:
 

@@ -316,13 +316,13 @@ node index.js
 
 Now that you're done with this exploration, you can clean up the pieces for your next adventure.
 
-1. Stop the Yugabyte cluster
+1. Stop the YugabyteDB cluster
 
 ```bash
 ./bin/yb-ctl stop
 ```
 
-To completely remove all Yugabyte data/cluster-state you can instead run:
+To completely remove all YugabyteDB data/cluster-state you can instead run:
 
 ```bash
 ./bin/yb-ctl destroy

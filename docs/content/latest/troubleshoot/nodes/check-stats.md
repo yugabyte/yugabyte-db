@@ -38,7 +38,7 @@ Generally, common tools like `top` or `iostat` may be useful.
 
 ### Auditd
 
-If `top` reports high CPU usage for the `auditd` process, it may have some rules auditing some system calls frequently used Yugabyte which can significantly affect performance. You can try temporarily disabling `audit` by running (on each Yugabyte node).
+If `top` reports high CPU usage for the `auditd` process, it may have some rules auditing some system calls frequently used YugabyteDB which can significantly affect performance. You can try temporarily disabling `audit` by running (on each YugabyteDB node).
 
 ```sh
 $ auditctl -e 0
@@ -52,7 +52,7 @@ To re-enable it afterwards, run:
 $ auditctl -e 1
 ```
 
-## Yugabyte processes state
+## YugabyteDB processes state
 
 YugabyteDB provides web endpoints where the current state of each process is aggregated. This includes logs, gflags as well as memory, disk, and network usage metrics. Additionally, it provides dedicated metrics endpoints for CQL and, respectively, Redis requests.
 

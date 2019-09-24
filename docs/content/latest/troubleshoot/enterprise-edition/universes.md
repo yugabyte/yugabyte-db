@@ -25,7 +25,7 @@ Note: For a quick overview, check the query ops and latency graphs as well as th
 ## Nodes status
 
 In the [Admin Console](../../../deploy/enterprise-edition/install-admin-console/), click on the [Universe](../../../architecture/concepts/universe/#universe) page, then go to the Nodes tab.
-The page will show the status of the Master and TServer on each Yugabyte node.
+The page will show the status of the Master and TServer on each YugabyteDB node.
 
 ![Yugabyte Nodes Page](/images/troubleshooting/check-node-status.png)
 

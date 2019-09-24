@@ -22,7 +22,7 @@ You should see something like the screenshot below, click `Create` next.
 
 ## 2. [Optional] Create a new IAM role
 
-In order for YugaWare to manage Yugabyte nodes, it will require some limited access to your AWS infrastructure. This can be accomplished through directly providing a set of credentials, when configuring the AWS provider, which you can read more later on [here](../configure-cloud-providers/). Alternatively, the EC2 instance where YugaWare will be running can be brought up with an IAM role with enough permissions to take all the actions required by YugaWare. Below we provide a sample of such a role:
+In order for YugaWare to manage YugabyteDB nodes, it will require some limited access to your AWS infrastructure. This can be accomplished through directly providing a set of credentials, when configuring the AWS provider, which you can read more later on [here](../configure-cloud-providers/). Alternatively, the EC2 instance where YugaWare will be running can be brought up with an IAM role with enough permissions to take all the actions required by YugaWare. Below we provide a sample of such a role:
 
 ```sh
 {

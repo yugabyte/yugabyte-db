@@ -47,7 +47,7 @@ namespace Yugabyte_CSharp_Demo
                         { "127.0.0.1", 6379 },
                     },
                     CommandMap = CommandMap.Create(new HashSet<string>
-                    {   // EXCLUDE commands that are not fully supported on Yugabyte side.
+                    {   // EXCLUDE commands that are not fully supported on YugabyteDB side.
                         "SUBSCRIBE", "CLUSTER", "TIME", "PING"
                     }, available: false)
                 };
