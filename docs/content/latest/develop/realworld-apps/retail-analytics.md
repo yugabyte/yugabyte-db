@@ -53,7 +53,7 @@ $ ./bin/ysqlsh
 ysqlsh (11.2)
 Type "help" for help.
 
-postgres=#
+yugabyte=#
 ```
 
 ### Create a database
@@ -61,15 +61,15 @@ postgres=#
 You can do this as shown below.
 
 ```sql
-postgres=> CREATE DATABASE yb_demo;
+yugabyte=# CREATE DATABASE yb_demo;
 ```
 
 ```sql
-postgres=> GRANT ALL ON DATABASE yb_demo to postgres;
+yugabyte=# GRANT ALL ON DATABASE yb_demo to postgres;
 ```
 
 ```sql
-postgres=> \c yb_demo;
+yugabyte=# \c yb_demo;
 ```
 
 ### Load data
@@ -77,25 +77,25 @@ postgres=> \c yb_demo;
 First create the four tables necessary to store the data.
 
 ```sql
-postgres=> \i 'schema.sql';
+yugabyte=# \i 'schema.sql';
 ```
 
 Now load the data into the tables.
 
 ```sql
-postgres=> \i 'data/products.sql'
+yugabyte=# \i 'data/products.sql'
 ```
 
 ```sql
-postgres=> \i 'data/users.sql'
+yugabyte=# \i 'data/users.sql'
 ```
 
 ```sql
-postgres=> \i 'data/orders.sql'
+yugabyte=# \i 'data/orders.sql'
 ```
 
 ```sql
-postgres=> \i 'data/reviews.sql'
+yugabyte=# \i 'data/reviews.sql'
 ```
 
 ## 3. Run queries
@@ -103,7 +103,7 @@ postgres=> \i 'data/reviews.sql'
 ### How are users signing up for my site?
 
 ```sql
-yb_demo=> SELECT DISTINCT(source) FROM users;
+yb_demo=# SELECT DISTINCT(source) FROM users;
 ```
 
 ```
@@ -120,7 +120,7 @@ source
 ### What is the most effective channel for user signups?
 
 ```sql
-yb_demo=> SELECT source, count(*) AS num_user_signups
+yb_demo=# SELECT source, count(*) AS num_user_signups
           FROM users
           GROUP BY source
           ORDER BY num_user_signups DESC;
@@ -140,7 +140,7 @@ source     | num_user_signups
 ### What are the most effective channels for product sales by revenue?
 
 ```sql
-yb_demo=> SELECT source, ROUND(SUM(orders.total)) AS total_sales
+yb_demo=# SELECT source, ROUND(SUM(orders.total)) AS total_sales
           FROM users, orders WHERE users.id=orders.user_id
           GROUP BY source
           ORDER BY total_sales DESC;
@@ -160,7 +160,7 @@ source     | total_sales
 ### What is the min, max and average price of products in the store?
 
 ```sql
-yb_demo=> SELECT MIN(price), MAX(price), AVG(price) FROM products;
+yb_demo=# SELECT MIN(price), MAX(price), AVG(price) FROM products;
 ```
 
 ```
@@ -175,7 +175,7 @@ min               |       max        |       avg
 You can do this as shown below.
 
 ```sql
-yb_demo=> CREATE VIEW channel AS
+yb_demo=# CREATE VIEW channel AS
             (SELECT source, ROUND(SUM(orders.total)) AS total_sales
              FROM users, orders
              WHERE users.id=orders.user_id
@@ -186,7 +186,7 @@ yb_demo=> CREATE VIEW channel AS
 Now that the view is created, we can see it in our list of relations.
 
 ```sql
-yb_demo=> \d
+yb_demo=# \d
 ```
 
 ```
@@ -202,7 +202,7 @@ List of relations
 ```
 
 ```sql
-yb_demo=> SELECT source, total_sales * 100.0 / (SELECT SUM(total_sales) FROM channel) AS percent_sales
+yb_demo=# SELECT source, total_sales * 100.0 / (SELECT SUM(total_sales) FROM channel) AS percent_sales
           FROM channel WHERE source='Facebook';
 ```
 

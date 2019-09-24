@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: architecture-layered-architecture
     parent: architecture
-    weight: 1110
+    weight: 1109
 isTocNested: true
 showAsideToc: true
 ---

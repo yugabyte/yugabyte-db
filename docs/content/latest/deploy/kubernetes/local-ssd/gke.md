@@ -1,7 +1,7 @@
 
 ## 1. Create a gcloud cluster
 
-Each cluster brings up 3 nodes each of the type `n1-standard-1` for the Kubernetes masters. You can directly create a cluster with the desired machine type using the `--machine-type` option. In thie example we are going to create a node-pool with `n1-standard-8` type nodes for the Yugabyte universe.
+Each cluster brings up 3 nodes each of the type `n1-standard-1` for the Kubernetes masters. You can directly create a cluster with the desired machine type using the `--machine-type` option. In thie example we are going to create a node-pool with `n1-standard-8` type nodes for the YugabyteDB universe.
 
 - Choose the zone
 
@@ -123,7 +123,7 @@ statefulset "yb-tserver" created
 
 You can see the [yaml file to launch a YugabyteDB kubernetes universe on nodes with local disks](https://github.com/yugabyte/yugabyte-db/blob/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml).
 
-Note the following `nodeSelector` snippet in the yaml file which instructs the Kubernetes scheduler to place the Yugabyte pods on nodes that have local disks:
+Note the following `nodeSelector` snippet in the yaml file which instructs the Kubernetes scheduler to place the YugabyteDB pods on nodes that have local disks:
 
 ```
   nodeSelector:

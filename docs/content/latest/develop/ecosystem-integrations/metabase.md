@@ -57,21 +57,21 @@ $ ./bin/ysqlsh
 ysqlsh (11.2)
 Type "help" for help.
 
-postgres=#
+yugabyte=#
 ```
 
 ### Create a database
 
 ```sql
-postgres=> CREATE DATABASE yb_demo;
+yugabyte=# CREATE DATABASE yb_demo;
 ```
 
 ```sql
-postgres=> GRANT ALL ON DATABASE yb_demo to postgres;
+yugabyte=# GRANT ALL ON DATABASE yb_demo to postgres;
 ```
 
 ```sql
-postgres=> \c yb_demo;
+yugabyte=# \c yb_demo;
 ```
 
 ### Create schema and load data
@@ -79,25 +79,25 @@ postgres=> \c yb_demo;
 First create the 4 tables necessary to store the data.
 
 ```sql
-postgres=> \i 'schema.sql';
+yugabyte=# \i 'schema.sql';
 ```
 
 Now load the data into the tables.
 
 ```sql
-postgres=> \i 'data/products.sql'
+yugabyte=# \i 'data/products.sql'
 ```
 
 ```sql
-postgres=> \i 'data/users.sql'
+yugabyte=# \i 'data/users.sql'
 ```
 
 ```sql
-postgres=> \i 'data/orders.sql'
+yugabyte=# \i 'data/orders.sql'
 ```
 
 ```sql
-postgres=> \i 'data/reviews.sql'
+yugabyte=# \i 'data/reviews.sql'
 ```
 
 ## 3. Download and configure Metabase

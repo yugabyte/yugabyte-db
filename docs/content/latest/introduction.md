@@ -24,13 +24,13 @@ showAsideToc: true
 </div>
 -->
 
-Yugabyte DB is a high-performance distributed SQL database for powering global, internet-scale applications. Built using a unique combination of high-performance document store, per-shard distributed consensus replication and multi-shard ACID transactions (inspired by Google Spanner), Yugabyte DB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures and global data distribution. As a cloud native database, it can be deployed across public and private clouds as well as in Kubernetes environments with ease.
+YugabyteDB is a high-performance distributed SQL database for powering global, internet-scale applications. Built using a unique combination of high-performance document store, per-shard distributed consensus replication and multi-shard ACID transactions (inspired by Google Spanner), YugabyteDB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures and global data distribution. As a cloud native database, it can be deployed across public and private clouds as well as in Kubernetes environments with ease.
 
 YugabyteDB is developed and distributed as an [Apache 2.0 open source project](https://github.com/yugabyte/yugabyte-db/).
 
 ## What makes YugabyteDB unique?
 
-Yugabyte DB is a transactional database that brings together three must-have needs of cloud-native microservices, namely SQL as a flexible query language, low-latency read performance and globally-distributed write scalability. 
+YugabyteDB is a transactional database that brings together three must-have needs of cloud-native microservices, namely SQL as a flexible query language, low-latency read performance and globally-distributed write scalability. 
 
 - Monolithic SQL databases offer SQL and low-latency reads but do not have ability to scale writes across multiple nodes and/or regions. 
 - Distributed NoSQL databases offer performance and write scalablility but give up on SQL semantics such as multi-key access, ACID transactions and strong consistency.

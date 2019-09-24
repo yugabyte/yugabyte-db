@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Overview
 
-YugabyteDB consists of two distributed services - the YB-Master service and the YB-TServer service. The YB-Master service should be brought up first followed by the YB-TServer service. In order to bring up these distributed services, the respective processes (YB-Master or YB-TServer) need to be started across different machines. Below are some considerations and recommendations on starting these services. The *deployment configurations* section below has detailed steps on how to setup Yugabyte clusters.
+YugabyteDB consists of two distributed services - the YB-Master service and the YB-TServer service. The YB-Master service should be brought up first followed by the YB-TServer service. In order to bring up these distributed services, the respective processes (YB-Master or YB-TServer) need to be started across different machines. Below are some considerations and recommendations on starting these services. The *deployment configurations* section below has detailed steps on how to setup YugabyteDB clusters.
 
 ## Basics
 

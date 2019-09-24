@@ -65,7 +65,7 @@ Do not remove this sequence if any object depends on it. This is the default beh
 Dropping a sequence that has an object depending on it, fails.
 
 ```sql
-postgres=# CREATE TABLE t(k SERIAL, v INT);
+yugabyte=# CREATE TABLE t(k SERIAL, v INT);
 ```
 
 ```
@@ -85,7 +85,7 @@ CREATE TABLE
 ```
 
 ```sql
-postgres=#  DROP SEQUENCE t_k_seq;
+yugabyte=#  DROP SEQUENCE t_k_seq;
 ```
 
 ```
@@ -97,7 +97,7 @@ HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 Dropping the sequence with the `CASCADE` option solves the problem and also deletes the default value in table `t`.
 
 ```sql
-postgres=# DROP SEQUENCE t_k_seq CASCADE;
+yugabyte=# DROP SEQUENCE t_k_seq CASCADE;
 ```
 
 ```

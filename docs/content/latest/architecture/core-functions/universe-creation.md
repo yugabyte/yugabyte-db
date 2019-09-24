@@ -28,7 +28,7 @@ their load, but no tablets would exist in the system yet.
 
 ## An example
 
-Let us illustrate this with our usual example of creating a 4-node Yugabyte universe with a
+Let us illustrate this with our usual example of creating a 4-node YugabyteDB universe with a
 replication factor of 3. In order to do so, first the three masters are started in the create mode
 instructing them to that this is a brand new universe create. This is done explicitly to prevent
 accidental errors in creating a universe while it is already running.

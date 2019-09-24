@@ -13,7 +13,7 @@ isTocNested: false
 showAsideToc: false
 ---
 
-`yb-tserver`, located in the `bin` directory of YugabyteDB home, is the [YB-TServer](../../architecture/concepts/universe/#yb-tserver) binary.
+The [YB-TServer](../../architecture/concepts/universe/#yb-tserver) binary (`yb-tserver`) is located in the `bin` directory of YugabyteDB home.
 
 ## Example
 
@@ -27,7 +27,7 @@ $ ./bin/yb-tserver \
 
 ## Help
 
-Use the **-\-help** option to see all the commands supported.
+Use the `--help` option to see all of the supported commands.
 
 ```sh
 $ ./bin/yb-tserver --help
@@ -71,11 +71,11 @@ Flag | Mandatory | Default | Description
 
 ## Admin UI
 
-The Admin UI for yb-tserver is available at http://localhost:9000.
+The Admin UI for the YB-TServer is available at http://localhost:9000.
 
 ### Home
 
-Home page of the yb-tserver that gives a high level overview of this specific instance.
+Home page of the YB-TServer (`yb-tserver`) that gives a high level overview of this specific instance.
 
 ![tserver-home](/images/admin/tserver-home.png)
 

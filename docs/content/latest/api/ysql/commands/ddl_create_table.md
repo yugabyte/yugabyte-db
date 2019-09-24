@@ -92,7 +92,7 @@ This is ignored and only present for compatibility with Postgres.
 ### Table with primary key.
 
 ```sql
-postgres=# CREATE TABLE sample(k1 int,
+yugabyte=# CREATE TABLE sample(k1 int,
                                k2 int,
                                v1 int,
                                v2 text,
@@ -101,7 +101,7 @@ postgres=# CREATE TABLE sample(k1 int,
 
 In this example, the first column `k1` will be HASH, while second column `k2` will be ASC.
 ```
-postgres=# \d sample
+yugabyte=# \d sample
                Table "public.sample"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
@@ -115,7 +115,7 @@ Indexes:
 
 ### Table with range primary key.
 ```sql
-postgres=# CREATE TABLE range(k1 int,
+yugabyte=# CREATE TABLE range(k1 int,
                               k2 int,
                               v1 int,
                               v2 text,
@@ -125,7 +125,7 @@ postgres=# CREATE TABLE range(k1 int,
 ### Table with check constraint.
 
 ```sql
-postgres=# CREATE TABLE student_grade(student_id int,
+yugabyte=# CREATE TABLE student_grade(student_id int,
                                       class_id int,
                                       term_id int,
                                       grade int CHECK (grade >= 0 AND grade <= 10),
@@ -135,7 +135,7 @@ postgres=# CREATE TABLE student_grade(student_id int,
 ### Table with default value.
 
 ```sql
-postgres=# CREATE TABLE cars(id int PRIMARY KEY,
+yugabyte=# CREATE TABLE cars(id int PRIMARY KEY,
                              brand text CHECK (brand in ('X', 'Y', 'Z')),
                              model text NOT NULL,
                              color text NOT NULL DEFAULT 'WHITE' CHECK (color in ('RED', 'WHITE', 'BLUE')));
@@ -145,9 +145,9 @@ postgres=# CREATE TABLE cars(id int PRIMARY KEY,
 
 Define two tables with a foreign keys constraint.
 ```sql
-postgres=# CREATE TABLE products(id int PRIMARY KEY,
+yugabyte=# CREATE TABLE products(id int PRIMARY KEY,
                                  descr text);
-postgres=# CREATE TABLE orders(id int PRIMARY KEY,
+yugabyte=# CREATE TABLE orders(id int PRIMARY KEY,
                                pid int REFERENCES products(id) ON DELETE CASCADE,
                                amount int);
 
@@ -155,11 +155,11 @@ postgres=# CREATE TABLE orders(id int PRIMARY KEY,
 
 Insert some rows.
 ```sql
-postgres=# SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-postgres=# INSERT INTO products VALUES (1, 'Phone X'), (2, 'Tablet Z');
-postgres=# INSERT INTO orders VALUES (1, 1, 3), (2, 1, 3), (3, 2, 2);
+yugabyte=# SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+yugabyte=# INSERT INTO products VALUES (1, 'Phone X'), (2, 'Tablet Z');
+yugabyte=# INSERT INTO orders VALUES (1, 1, 3), (2, 1, 3), (3, 2, 2);
 
-postgres=# SELECT o.id AS order_id, p.id as product_id, p.descr, o.amount FROM products p, orders o WHERE o.pid = p.id;
+yugabyte=# SELECT o.id AS order_id, p.id as product_id, p.descr, o.amount FROM products p, orders o WHERE o.pid = p.id;
 ```
 ```
 order_id | product_id |  descr   | amount
@@ -172,7 +172,7 @@ order_id | product_id |  descr   | amount
 
 Inserting a row referencing a non-existent product is not allowed.
 ```sql
-postgres=# INSERT INTO orders VALUES (1, 3, 3);
+yugabyte=# INSERT INTO orders VALUES (1, 3, 3);
 ```
 ```
 ERROR:  insert or update on table "orders" violates foreign key constraint "orders_pid_fkey"
@@ -180,10 +180,12 @@ DETAIL:  Key (pid)=(3) is not present in table "products".
 ```
 
 Deleting a product will cascade to all orders (as defined in the `CREATE TABLE` statement above).
+
 ```sql
-postgres=# DELETE from products where id = 1;
-postgres=# SELECT o.id AS order_id, p.id as product_id, p.descr, o.amount FROM products p, orders o WHERE o.pid = p.id;
+yugabyte=# DELETE from products where id = 1;
+yugabyte=# SELECT o.id AS order_id, p.id as product_id, p.descr, o.amount FROM products p, orders o WHERE o.pid = p.id;
 ```
+
 ```
  order_id | product_id |  descr   | amount
 ----------+------------+----------+--------
@@ -194,10 +196,9 @@ postgres=# SELECT o.id AS order_id, p.id as product_id, p.descr, o.amount FROM p
 ### Table with unique constraint.
 
 ```sql
-postgres=# CREATE TABLE translations(message_id int UNIQUE,
+yugabyte=# CREATE TABLE translations(message_id int UNIQUE,
                                      message_txt text);
 ```
-
 
 ## See also
 

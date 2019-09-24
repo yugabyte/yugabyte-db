@@ -61,7 +61,7 @@ yugabyte=# select session_user, current_user;
 (1 row)
 yugabyte=# set session authorization john;
 SET
-yugabyte=> select session_user, current_user;
+yugabyte=# select session_user, current_user;
  session_user | current_user
 --------------+--------------
  john     | john

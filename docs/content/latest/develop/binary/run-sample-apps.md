@@ -80,7 +80,7 @@ Verify that your cart is now stored inside the YSQL `shopping_cart` table. From 
 $ ./bin/ysqlsh
 ```
 ```sh
-postgres=# select * from shopping_cart;
+yugabyte=# select * from shopping_cart;
 ```
 ```
  cart_key     | user_id |    asin    |       time_added        | quantity 
@@ -113,7 +113,7 @@ order_id                             | user_id | order_details                  
 
 Verify that there are no active shopping carts in YSQL at this point.
 ```sh
-postgres=# select * from shopping_cart;
+yugabyte=# select * from shopping_cart;
 ```
 ```
 cart_key | user_id | asin | time_added | quantity 
