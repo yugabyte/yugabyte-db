@@ -1,7 +1,7 @@
 ---
-title: Build a Go App
-linkTitle: Build a Go App
-description: Build a Go App
+title: Build a Go app
+linkTitle: Build a Go application
+description: Build a Go application
 menu:
   latest:
     parent: build-apps
@@ -51,7 +51,7 @@ go get github.com/lib/pq
 go get github.com/lib/pq/hstore
 ```
 
-## Clone the orm-examples repo
+## Clone the orm-examples repository
 
 ```sh
 $ git clone https://github.com/yugabyte/orm-examples.git
@@ -66,9 +66,9 @@ This repository has a Go language example that implements a simple REST API serv
 - The products table contains a list of products the e-commerce site sells.
 - The orders placed by the users are populated in the orders table. An order can consist of multiple line items, each of these are inserted in the orderline table.
 
-The source for the above application can be found in the [repository](https://github.com/yugabyte/orm-examples/tree/master/golang/gorm). There are a number of options that can be customized in the properties file located at `src/config/config.json`. 
+The source for the above application can be found in the [repository](https://github.com/yugabyte/orm-examples/tree/master/golang/gorm). There are a number of options that can be customized in the properties file located at `src/config/config.json`.
 
-## Build & run the app
+## Build and run the application
 
 ```sh
 $ cd ./golang/gorm
@@ -88,24 +88,28 @@ $ ./build-and-run.sh
 
 The REST API server will listen at `http://localhost:8080`.
 
-## Send requests to the app
+## Send requests to the application
 
 Create 2 users.
+
 ```sh
 $ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@yb.com" }' \
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
+
 ```sh
 $ curl --data '{ "firstName" : "Tom", "lastName" : "Stewart", "email" : "tstewart@yb.com" }' \
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
 
 Create 2 products.
+
 ```sh
 $ curl \
   --data '{ "productName": "Notebook", "description": "200 page notebook", "price": 7.50 }' \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/products
 ```
+
 ```sh
 $ curl \
   --data '{ "productName": "Pencil", "description": "Mechanical pencil", "price": 2.50 }' \
@@ -113,11 +117,13 @@ $ curl \
 ```
 
 Create 2 orders.
+
 ```sh
 $ curl \
   --data '{ "userId": "2", "products": [ { "productId": 1, "units": 2 } ] }' \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/orders
 ```
+
 ```sh
 $ curl \
   --data '{ "userId": "2", "products": [ { "productId": 1, "units": 2 }, { "productId": 2, "units": 4 } ] }' \
@@ -131,6 +137,7 @@ $ curl \
 ```sh
 $ ./bin/ysqlsh 
 ```
+
 ```
 ysqlsh (11.2)
 Type "help" for help.
@@ -143,7 +150,7 @@ yugabyte=# SELECT count(*) FROM users;
 ```
 
 ```
- count 
+ count
 -------
      2
 (1 row)
@@ -154,7 +161,7 @@ yugabyte=# SELECT count(*) FROM products;
 ```
 
 ```
- count 
+ count
 -------
      2
 (1 row)
@@ -163,8 +170,9 @@ yugabyte=# SELECT count(*) FROM products;
 ```sql
 yugabyte=# SELECT count(*) FROM orders;
 ```
+
 ```
- count 
+ count
 -------
      2
 (1 row)
@@ -175,7 +183,8 @@ yugabyte=# SELECT count(*) FROM orders;
 ```sh
 $ curl http://localhost:8080/users
 ```
-```
+
+```json
 {
   "content": [
     {
@@ -195,11 +204,11 @@ $ curl http://localhost:8080/users
 }  
 ```
 
-
 ```sh
 $ curl http://localhost:8080/products
 ```
-```
+
+```json
 {
   "content": [
     {
@@ -222,7 +231,8 @@ $ curl http://localhost:8080/products
 ```sh
 $ curl http://localhost:8080/orders
 ```
-```
+
+```json
 {
   "content": [
     {
@@ -259,4 +269,3 @@ $ curl http://localhost:8080/orders
 ## Explore the source
 
 As highlighted earlier, the source for the above application can be found in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/golang/gorm) repo.
-
