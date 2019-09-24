@@ -8,7 +8,7 @@ Create a cluster. The YEDIS API is initialized along with cluster creation so no
 $ ./yb-docker-ctl -rf 3 create
 ```
 
-Clients can now connect to the YSQL API at `localhost:5433`, YCQL API at `localhost:9042` and YEDIS API at  `localhost:6379`.
+Clients can now connect to the YSQL API at `localhost:5433`, YCQL API at `localhost:9042`, and YEDIS API at  `localhost:6379`.
 
 ## 2. Install Yugastore
 

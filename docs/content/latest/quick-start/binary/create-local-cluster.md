@@ -4,7 +4,7 @@ You can use the [`yb-ctl`](../../admin/yb-ctl/) utility, located in the `bin` di
 
 To quickly create a 1-node or 3-node local cluster, follow the steps below. For details on using the `yb-ctl create` command and the cluster configuration, see [Create a local cluster](../../admin/yb-ctl/#create-cluster) in the utility reference.
 
-### Create a 1-node cluster with RF=1
+### Create a 1-node cluster with RF of 1
 
 To create a 1-node cluster with a replication factor (RF) of 1, run the following `yb-ctl create` command. 
 
@@ -14,15 +14,15 @@ $ ./bin/yb-ctl create
 
 The initial cluster creation may take a minute or so **without any output** on the prompt.
 
-### Create a 3-node cluster with RF=3
+### Create a 3-node cluster with RF of 3
 
-To run a distributed SQL cluster locally, you can quickly create a 3-node cluster with RF of 3 by running the following command.
+To run a distributed SQL cluster locally for testing and development, you can quickly create a 3-node cluster with RF of 3 by running the following command.
 
 ```sh
 $ ./bin/yb-ctl --rf 3 create
 ```
 
-You can now check `$HOME/yugabyte-data` to see `node-i` directories created where `i` represents the `node_id` of the node. Inside each such directory, there will be 2 disks `disk1` and `disk2` to highlight the fact that YugabyteDB can work with multiple disks at the same time. Note that the IP address of `node-i` is by default set to `127.0.0.i`.
+You can now check `$HOME/yugabyte-data` to see `node-i` directories created where `i` represents the `node_id` of the node. Inside each such directory, there will be two disks, `disk1` and `disk2`, to highlight the fact that YugabyteDB can work with multiple disks at the same time. Note that the IP address of `node-i` is by default set to `127.0.0.i`.
 
 Clients can now connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively.
 

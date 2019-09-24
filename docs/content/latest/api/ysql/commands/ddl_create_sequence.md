@@ -110,7 +110,7 @@ CREATE TABLE t(k integer NOT NULL DEFAULT nextval('t_k_seq'));
 Create a simple sequence that increments by 1 every time `nextval()` is called.
 
 ```sql
-postgres=# CREATE SEQUENCE s;
+yugabyte=# CREATE SEQUENCE s;
 ```
 
 ```
@@ -120,7 +120,7 @@ CREATE SEQUENCE
 Call `nextval()`.
 
 ```sql
-postgres=# SELECT nextval('s');
+yugabyte=# SELECT nextval('s');
 ```
 
 ```
@@ -133,7 +133,7 @@ postgres=# SELECT nextval('s');
 Create a sequence with a cache of 10,000 values.
 
 ```sql
-postgres=# CREATE SEQUENCE s2 CACHE 10000;
+yugabyte=# CREATE SEQUENCE s2 CACHE 10000;
 ```
 
 ```

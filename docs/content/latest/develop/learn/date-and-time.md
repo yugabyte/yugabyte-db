@@ -37,19 +37,19 @@ There are special values that you can reference - YugabyteDB only caters for som
 ```
 
 ```
-postgres=# select current_date, current_time, current_timestamp, now();
+yugabyte=# select current_date, current_time, current_timestamp, now();
 
  current_date |    current_time    |       current_timestamp       |              now
 --------------+--------------------+-------------------------------+-------------------------------
  2019-07-09   | 00:53:13.924407+00 | 2019-07-09 00:53:13.924407+00 | 2019-07-09 00:53:13.924407+00
 
-postgres=# select make_timestamptz(1970, 01, 01, 00, 00, 00, 'UTC') as epoch;
+yugabyte=# select make_timestamptz(1970, 01, 01, 00, 00, 00, 'UTC') as epoch;
 
          epoch
 ------------------------
  1970-01-01 00:00:00+00
 
-postgres=# select (current_date-1)::timestamp as yesterday,
+yugabyte=# select (current_date-1)::timestamp as yesterday,
                   current_date::timestamp as today,
                   (current_date+1)::timestamp as tomorrow;
 
@@ -68,19 +68,19 @@ YugabyteDB cannot create the special values of `infinity`, `-infinity` and `allb
 Date formatting is an important aspect. As you can see above, the examples show the default ISO format for dates and timestamps. We will now do some formatting of dates.
 
 ```
-postgres=# select to_char(current_timestamp, 'DD-MON-YYYY');
+yugabyte=# select to_char(current_timestamp, 'DD-MON-YYYY');
 
    to_char
 -------------
  09-JUL-2019
 
-postgres=# select to_date(to_char(current_timestamp, 'DD-MON-YYYY'), 'DD-MON-YYYY');
+yugabyte=# select to_date(to_char(current_timestamp, 'DD-MON-YYYY'), 'DD-MON-YYYY');
 
   to_date
 ------------
  2019-07-09
 
-postgres=# select to_char(current_timestamp, 'DD-MON-YYYY HH:MI:SS PM');
+yugabyte=# select to_char(current_timestamp, 'DD-MON-YYYY HH:MI:SS PM');
 
          to_char
 -------------------------
@@ -92,10 +92,10 @@ In the above you will see that to present the date in a friendly readable format
 
 ## Time zones
 
-Thus far, we have been operating with the default time zone installed for Yugabyte being UTC (+0). Lets select what time zones are available from Yugabyte:
+Thus far, we have been operating with the default time zone installed for YugabyteDB being UTC (+0). Lets select what time zones are available from Yugabyte:
 
 ```
-postgres=# select * from pg_timezone_names;
+yugabyte=# select * from pg_timezone_names;
 
                name               | abbrev | utc_offset | is_dst
 ----------------------------------+--------+------------+--------
@@ -143,16 +143,16 @@ postgres=# select * from pg_timezone_names;
 
 You can set the timezone to use for your session using the `SET` command. You can `SET` timezone using the timezone name as listed in pg_timezone_names, but not the abbreviation. You can also set the timezone to a numeric/decimal representation of the time offset. For example, -3.5 is 3 hours and 30 minutes before UTC.
 
-It seems logical to be able to set the timezone using the `UTC_OFFSET` format above. Yugabyte will allow this, however, be aware of the following behaviour if you choose this method:
+It seems logical to be able to set the timezone using the `UTC_OFFSET` format above. YugabyteDB will allow this, however, be aware of the following behaviour if you choose this method:
 
 {{< tip title="Tip" >}}
-When using POSIX time zone names, positive offsets are used for locations west of Greenwich. Everywhere else, Yugabyte follows the ISO-8601 convention that positive timezone offsets are east of Greenwich. Therefore an entry of '+10:00:00' will result in a timezone offset of -10 Hours as this is deemed East of Greenwich.
+When using POSIX time zone names, positive offsets are used for locations west of Greenwich. Everywhere else, YugabyteDB follows the ISO-8601 convention that positive timezone offsets are east of Greenwich. Therefore an entry of '+10:00:00' will result in a timezone offset of -10 Hours as this is deemed East of Greenwich.
 {{< /tip >}}
 
 Lets start examining dates and times within Yugabyte.
 
 ```
-postgres=# \echo `date`
+yugabyte=# \echo `date`
 
 Tue 09 Jul 12:27:08 AEST 2019
 
@@ -160,83 +160,83 @@ Tue 09 Jul 12:27:08 AEST 2019
 
 Note that the above does not use quotes, but is the "Grave Accent" symbol, which is normally found below the Tilde `~` symbol on your keyboard.
 
-The above is showing you the current date and time of the underlying server.  It is not the date and time of the database. However, in a single node implementation of Yugabyte there will be a relationship between your computer's date and the database date because Yugabyte would have obtained the date from the server when it was started. We will explore the date and time (timestamps) within the database.
+The above is showing you the current date and time of the underlying server.  It is not the date and time of the database. However, in a single node implementation of YugabyteDB there will be a relationship between your computer's date and the database date because YugabyteDB would have obtained the date from the server when it was started. We will explore the date and time (timestamps) within the database.
 
 ```
-postgres=# SHOW timezone;
+yugabyte=# SHOW timezone;
 
  TimeZone
 ----------
  UTC
 
-postgres=# select current_timestamp;
+yugabyte=# select current_timestamp;
 
       current_timestamp
 ------------------------------
  2019-07-09 02:27:46.65152+00
 
-postgres=# SET timezone = +1;
+yugabyte=# SET timezone = +1;
 SET
 
-postgres=# SHOW timezone;
+yugabyte=# SHOW timezone;
 
  TimeZone
 ----------
  <+01>-01
 
-postgres=# select current_timestamp;
+yugabyte=# select current_timestamp;
 
       current_timestamp
 ------------------------------
  2019-07-09 03:28:11.52311+01
 
 
-postgres=# SET timezone = -1.5;
+yugabyte=# SET timezone = -1.5;
 SET
 
-postgres=# select current_timestamp;
+yugabyte=# select current_timestamp;
 
         current_timestamp
 ----------------------------------
  2019-07-09 00:58:27.906963-01:30
 
-postgres=# SET timezone = 'Australia/Sydney';
+yugabyte=# SET timezone = 'Australia/Sydney';
 SET
 
-postgres=# SHOW timezone;
+yugabyte=# SHOW timezone;
 
      TimeZone
 ------------------
  Australia/Sydney
 
-postgres=# select current_timestamp;
+yugabyte=# select current_timestamp;
 
        current_timestamp
 -------------------------------
  2019-07-09 12:28:46.610746+10
 
-postgres=# SET timezone = 'UTC';
+yugabyte=# SET timezone = 'UTC';
 SET
 
-postgres=# select current_timestamp;
+yugabyte=# select current_timestamp;
 
        current_timestamp
 -------------------------------
  2019-07-09 02:28:57.610746+00
 
-postgres=# select current_timestamp AT TIME ZONE 'Australia/Sydney';
+yugabyte=# select current_timestamp AT TIME ZONE 'Australia/Sydney';
 
           timezone
 ----------------------------
  2019-07-09 12:29:03.416867
 
-postgres=# select current_timestamp(0);
+yugabyte=# select current_timestamp(0);
 
    current_timestamp
 ------------------------
  2019-07-09 03:15:38+00
 
-postgres=# select current_timestamp(2);
+yugabyte=# select current_timestamp(2);
 
      current_timestamp
 ---------------------------
@@ -263,7 +263,7 @@ A simpler explanation is that the time is determined by the 'Shard Leader' of th
 Lets start working with dates and timestamps. The following assumes that you have installed the yb_demo database and its demo data.
 
 ```
-postgres=# \c yb_demo
+yugabyte=# \c yb_demo
 You are now connected to database "yb_demo" as user "postgres".
 
 yb_demo=# select to_char(max(orders.created_at), 'DD-MON-YYYY HH24:MI') AS "Last Order Date" from orders;
@@ -383,7 +383,7 @@ yb_demo=# select d.order_id, to_char(o.created_at, 'DD-MON-YYYY HH AM') AS "Orde
 Your data will be slightly different as we used a `RANDOM()` function for setting the 'delivery_date' in the new 'order_deliveries' table.
 {{< /note >}}
 
-You can use views of the Yugabyte Data Catalogs to create data that is already prepared and formatted for your application code so that your SQL is simpler. Below is an example that is defined in the yb_demo database (has no dependency on yb_demo). This demonstration shows how you can nominate a shortlist of timezones that are formatted and ready to use for display purposes.
+You can use views of the YugabyteDB Data Catalogs to create data that is already prepared and formatted for your application code so that your SQL is simpler. Below is an example that is defined in the yb_demo database (has no dependency on yb_demo). This demonstration shows how you can nominate a shortlist of timezones that are formatted and ready to use for display purposes.
 
 ```
 yb_demo=# CREATE OR REPLACE VIEW TZ AS
@@ -444,7 +444,7 @@ Who would have thought that Australia needs 23 timezone records ?
 You may have noticed that the above YSQL has references to `INTERVAL`. An interval is a data type that describes an increment of time. An interval allows you to show the difference between two timestamps or to create a new timestamp by adding or subtracting a particular unit of measure. Some examples are:
 
 ```
-postgres=# select current_timestamp AS "Current Timestamp",
+yugabyte=# select current_timestamp AS "Current Timestamp",
            current_timestamp + (10 * interval '1 min') AS "Plus 10 Mins",
            current_timestamp + (10 * interval '3 min') AS "Plus 30 Mins",
            current_timestamp + (10 * interval '2 hour') AS "Plus 20 hours",
@@ -454,55 +454,55 @@ postgres=# select current_timestamp AS "Current Timestamp",
 -------------------------------+-------------------------------+-------------------------------+-------------------------------+-------------------------------
  2019-07-09 05:08:58.859123+00 | 2019-07-09 05:18:58.859123+00 | 2019-07-09 05:38:58.859123+00 | 2019-07-10 01:08:58.859123+00 | 2020-05-09 05:08:58.859123+00
 
-postgres=# select current_time::time(0), time '05:00' + interval '5 hours 7 mins' AS "New time";
+yugabyte=# select current_time::time(0), time '05:00' + interval '5 hours 7 mins' AS "New time";
 
  current_time | New Time
 --------------+----------
  05:09:24     | 10:16:24
 
-postgres=# select current_date - date '01-01-2019' AS "Day of Year(A)", current_date - date_trunc('year', current_date) AS "Day of Year(B)";
+yugabyte=# select current_date - date '01-01-2019' AS "Day of Year(A)", current_date - date_trunc('year', current_date) AS "Day of Year(B)";
 
  Day of Year(A) | Day of Year(B)
 ----------------+----------------
             189 | 189 days
 
-postgres=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamp '2019-07-09 09:00:00.000000+00' AS "Time Difference";
+yugabyte=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamp '2019-07-09 09:00:00.000000+00' AS "Time Difference";
 
  Time Difference
 -----------------
  01:00:00
 
-postgres=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-09 10:00:00.000000+00' AS "Time Offset";
+yugabyte=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-09 10:00:00.000000+00' AS "Time Offset";
 
  Time Offset
 -------------
  00:00:00
 
-postgres=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-09 10:00:00.000000EST' AS "Time Offset";
+yugabyte=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-09 10:00:00.000000EST' AS "Time Offset";
 
  Time Offset
 -------------
  -05:00:00
 
-postgres=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-08 10:00:00.000000EST' AS "Time Offset";
+yugabyte=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-08 10:00:00.000000EST' AS "Time Offset";
 
  Time Offset
 -------------
  19:00:00
 
-postgres=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-07 10:00:00.000000EST' AS "Time Offset";
+yugabyte=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-07 10:00:00.000000EST' AS "Time Offset";
 
   Time Offset
 ----------------
  1 day 19:00:00
 
-postgres=# select age(timestamp '2019-07-09 10:00:00.000000+00', timestamptz '2019-07-07 10:00:00.000000EST') AS "Age Diff";
+yugabyte=# select age(timestamp '2019-07-09 10:00:00.000000+00', timestamptz '2019-07-07 10:00:00.000000EST') AS "Age Diff";
 
     Age Diff
 ----------------
  1 day 19:00:00
 
-postgres=# select (extract('days' from age(timestamp '2019-07-09 10:00:00.000000+00', timestamptz '2019-07-07 10:00:00.000000EST'))*24)+
+yugabyte=# select (extract('days' from age(timestamp '2019-07-09 10:00:00.000000+00', timestamptz '2019-07-07 10:00:00.000000EST'))*24)+
            (extract('hours' from age(timestamp '2019-07-09 10:00:00.000000+00', timestamptz '2019-07-07 10:00:00.000000EST'))) AS "Hours Diff";
 
  Hours Diff
@@ -572,7 +572,7 @@ yb_demo=# select date_trunc('days', age(created_at)) AS "Product Age" from produ
 A common requirement is to find out the date of next Monday, for example that might be the first day of the new week for scheduling purposes. This can be achieved in many ways, maybe in a simpler fashion than I have illustrated below. Below illustrates the chaining together of different date and time operators and functions to achieve the result you want.
 
 ```
-postgres=# select to_char(current_date, 'Day, DD-MON-YYYY') AS "Today",
+yugabyte=# select to_char(current_date, 'Day, DD-MON-YYYY') AS "Today",
            to_char((current_timestamp AT TIME ZONE 'Australia/Sydney')::date +
            (7-(extract('isodow' from current_timestamp AT TIME ZONE 'Australia/Sydney'))::int + 1),
            'Day, DD-MON-YYYY') AS "Start of Next Week";
@@ -593,102 +593,102 @@ For the very curious, why is there a gap after 'Tuesday' and 'Monday' in the exa
 
 People in different locations of the world are familiar with local representations of dates. Times are reasonably similar, but dates can differ. Within the USA, they use 3/5/19, whereas in Australia we would use 5/3/19 and in Europe they would use either 5.3.19 or 5/3/19. What is the date in question? 5th March, 2019.
 
-Yugabyte has `DateStyle` which is a setting that you apply to your session so that ambiguous dates can be determined and the display of dates in YSQL can be defaulted to a particular format.
+YugabyteDB has `DateStyle` which is a setting that you apply to your session so that ambiguous dates can be determined and the display of dates in YSQL can be defaulted to a particular format.
 
-By default, Yugabyte uses the ISO Standard of YYYY-MM-DD HH24:MI:SS. Other settings you can use are 'SQL', 'German', and 'Postgres'. These are all referenced below allowing you to see examples.
+By default, YugabyteDB uses the ISO Standard of YYYY-MM-DD HH24:MI:SS. Other settings you can use are 'SQL', 'German', and 'Postgres'. These are all referenced below allowing you to see examples.
 
 All settings except ISO allow you specify whether a Day appears before or after the Month. Therefore, a setting of 'DMY' will result in 3/5 being 3rd May, whereas 'MDY' will result in 5th March.
 
-If you are reading dates as text fields from a file or any source that is not a Yugabyte date or timestamp data type, then it is very important that you set your DateStyle properly unless you are very specific on how to convert a text field to a date - an example of which is included below.
+If you are reading dates as text fields from a file or any source that is not a YugabyteDB date or timestamp data type, then it is very important that you set your DateStyle properly unless you are very specific on how to convert a text field to a date - an example of which is included below.
 
-Note that Yugabyte will always interpret '6/6' as 6th June, and '13/12' as 13th December (because the month cannot be 13), but what about about '6/12'? Lets work through some examples within YSQL.
+Note that YugabyteDB will always interpret '6/6' as 6th June, and '13/12' as 13th December (because the month cannot be 13), but what about about '6/12'? Lets work through some examples within YSQL.
 
 ```
-postgres=# SHOW DateStyle;
+yugabyte=# SHOW DateStyle;
 
  DateStyle
 -----------
  ISO, DMY
 
-postgres=# select current_date, current_time(0), current_timestamp(0);
+yugabyte=# select current_date, current_time(0), current_timestamp(0);
 
  current_date | current_time |   current_timestamp
 --------------+--------------+------------------------
  2019-07-09   | 20:26:28+00  | 2019-07-09 20:26:28+00
 
-postgres=# SET DateStyle = 'SQL, DMY';
+yugabyte=# SET DateStyle = 'SQL, DMY';
 SET
 
-postgres=# select current_date, current_time(0), current_timestamp(0);
+yugabyte=# select current_date, current_time(0), current_timestamp(0);
 
  current_date | current_time |    current_timestamp
 --------------+--------------+-------------------------
  09/07/2019   | 20:26:48+00  | 09/07/2019 20:26:48 UTC
 
-postgres=# SET DateStyle = 'SQL, MDY';
+yugabyte=# SET DateStyle = 'SQL, MDY';
 SET
 
-postgres=# select current_date, current_time(0), current_timestamp(0);
+yugabyte=# select current_date, current_time(0), current_timestamp(0);
 
  current_date | current_time |    current_timestamp
 --------------+--------------+-------------------------
  07/09/2019   | 20:27:04+00  | 07/09/2019 20:27:04 UTC
 
-postgres=# SET DateStyle = 'German, DMY';
+yugabyte=# SET DateStyle = 'German, DMY';
 SET
 
-postgres=# select current_date, current_time(0), current_timestamp(0);
+yugabyte=# select current_date, current_time(0), current_timestamp(0);
 
  current_date | current_time |    current_timestamp
 --------------+--------------+-------------------------
  09.07.2019   | 20:27:30+00  | 09.07.2019 20:27:30 UTC
 
-postgres=# SET DateStyle = 'Postgres, DMY';
+yugabyte=# SET DateStyle = 'Postgres, DMY';
 SET
 
-postgres=# select current_date, current_time(0), current_timestamp(0);
+yugabyte=# select current_date, current_time(0), current_timestamp(0);
 
  current_date | current_time |      current_timestamp
 --------------+--------------+------------------------------
  09-07-2019   | 20:28:07+00  | Tue 09 Jul 20:28:07 2019 UTC
 
-postgres=# SET DateStyle = 'Postgres, MDY';
+yugabyte=# SET DateStyle = 'Postgres, MDY';
 SET
 
-postgres=# select current_date, current_time(0), current_timestamp(0);
+yugabyte=# select current_date, current_time(0), current_timestamp(0);
 
  current_date | current_time |      current_timestamp
 --------------+--------------+------------------------------
  07-09-2019   | 20:28:38+00  | Tue Jul 09 20:28:38 2019 UTC
 
-postgres=# select '01-01-2019'::date;
+yugabyte=# select '01-01-2019'::date;
 
     date
 ------------
  01-01-2019
 
-postgres=# select to_char('01-01-2019'::date, 'DD-MON-YYYY');
+yugabyte=# select to_char('01-01-2019'::date, 'DD-MON-YYYY');
 
    to_char
 -------------
  01-JAN-2019
 
-postgres=# select to_char('05-03-2019'::date, 'DD-MON-YYYY');
+yugabyte=# select to_char('05-03-2019'::date, 'DD-MON-YYYY');
 
    to_char
 -------------
  03-MAY-2019
 
-postgres=# SET DateStyle = 'Postgres, DMY';
+yugabyte=# SET DateStyle = 'Postgres, DMY';
 SET
 
-postgres=# select to_char('05-03-2019'::date, 'DD-MON-YYYY');
+yugabyte=# select to_char('05-03-2019'::date, 'DD-MON-YYYY');
 
    to_char
 -------------
  05-MAR-2019
 
-postgres=# select to_char(to_date('05-03-2019', 'MM-DD-YYYY'), 'DD-MON-YYYY');
+yugabyte=# select to_char(to_date('05-03-2019', 'MM-DD-YYYY'), 'DD-MON-YYYY');
 
    to_char
 -------------
@@ -698,7 +698,7 @@ postgres=# select to_char(to_date('05-03-2019', 'MM-DD-YYYY'), 'DD-MON-YYYY');
 
 Best practise is to pass all text representations of date and time data types through a `TO_DATE` or `TO_TIMESTAMP` function. There is not a 'to_time' function as its format is always fixed of 'HH24:MI:SS.ms', therefore be careful of AM/PM times and your milliseconds can also be thousandths of a second, so either 3 or 6 digits should be supplied.
 
-The final example above illustrates the difficulty that can occur with dates. The system is expecting a 'DMY' value but your source is of format 'MDY', therefore Yugabyte will not know how to convert it in ambiguous cases, therefore be explicit as shown.
+The final example above illustrates the difficulty that can occur with dates. The system is expecting a 'DMY' value but your source is of format 'MDY', therefore YugabyteDB will not know how to convert it in ambiguous cases, therefore be explicit as shown.
 
 ## Getting dirty - into the logs we go
 
@@ -708,14 +708,14 @@ This is for those more interested in getting into some of the more finer points 
 
 YugabyteDB has inherited a lot of similar capability of the YSQL API to the PostgreSQL SQL API, and this will explain why when we start to look under the hood, it is looking very much like pg.
 
-Yugabyte tracks its settings in its catalog, lets query some relevant settings and this time we will transform the layout of the query results using the `Expanded display` setting. This can be done in any database.
+YugabyteDB tracks its settings in its catalog, lets query some relevant settings and this time we will transform the layout of the query results using the `Expanded display` setting. This can be done in any database.
 
 ```
-postgres=# \x on
+yugabyte=# \x on
 
 Expanded display is on.
 
-postgres=# select name, short_desc, coalesce(setting, reset_val) AS "setting_value", sourcefile  
+yugabyte=# select name, short_desc, coalesce(setting, reset_val) AS "setting_value", sourcefile  
           from pg_catalog.pg_settings
           where name in('log_timezone', 'log_directory', 'log_filename', 'lc_time')
           order by name asc;
@@ -741,11 +741,11 @@ short_desc    | Sets the time zone to use in log messages.
 setting_value | UTC
 sourcefile    | /home/xxxxx/yugabyte-data/node-1/disk-1/pg_data/postgresql.conf
 
-postgres=# \x off
+yugabyte=# \x off
 
 ```
 
-Using the `log_directory` and `log_filename` references, we can find the Yugabyte log to examine the timestamps being inserted into the logs. These are all UTC timestamps and should remain that way.
+Using the `log_directory` and `log_filename` references, we can find the YugabyteDB log to examine the timestamps being inserted into the logs. These are all UTC timestamps and should remain that way.
 
 You will see that the `lc_time` setting is currently UTF and the file the setting is obtained from is listed. Opening that file **as sudo/superuser**, you will see contents that look like the below (after much scrolling or searching for 'datestyle'):
 
@@ -779,7 +779,7 @@ default_text_search_config = 'pg_catalog.english'
 
 ```
 
-Make a backup of the original file and then change `datestyle = 'SQL, DMY'`, `timezone = 'GB'` (or any other timezone **name** you prefer) and save the file. You will need to restart your Yugabyte cluster for the changes to take affect using the shell command `./bin/yb-ctl restart` (and ensure you append any startup flags if you do this).
+Make a backup of the original file and then change `datestyle = 'SQL, DMY'`, `timezone = 'GB'` (or any other timezone **name** you prefer) and save the file. You will need to restart your YugabyteDB cluster for the changes to take affect using the shell command `./bin/yb-ctl restart` (and ensure you append any startup flags if you do this).
 
 Once the cluster is running as expected, then:
 
@@ -788,13 +788,13 @@ $ ./bin/ysqlsh
 ysqlsh (11.2)
 Type "help" for help.
 
-postgres=# SHOW timezone;
+yugabyte=# SHOW timezone;
 
  TimeZone
 ----------
  GB
 
-postgres=# select current_date;
+yugabyte=# select current_date;
 
  current_date
 --------------

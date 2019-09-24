@@ -80,7 +80,7 @@ CREATE TABLE selective_sample SELECT * FROM sample WHERE k1 > 1;
 ```
 
 ```sql
-postgres=# SELECT * FROM selective_sample ORDER BY k1;
+yugabyte=# SELECT * FROM selective_sample ORDER BY k1;
 ```
 
 ```

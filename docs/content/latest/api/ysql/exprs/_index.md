@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte Structured Query Language (YSQL) supports all PostgreSQL-compatible built-in functions and operators. The following statements are the currently documented ones.
+YugabyteDB Structured Query Language (YSQL) supports all PostgreSQL-compatible built-in functions and operators. The following statements are the currently documented ones.
 
 | Statement | Description |
 |-----------|-------------|

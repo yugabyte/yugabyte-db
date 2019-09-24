@@ -15,7 +15,9 @@ menu:
 ---
 
 {{< note title="Note" >}}
-The local cluster setup on a single host is intended for development and learning. For production deployment or performance benchmarking, deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../latest/deploy).
+
+The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../latest/deploy).
+
 {{< /note >}}
 
 ## Get started yourself
@@ -61,10 +63,10 @@ The local cluster setup on a single host is intended for development and learnin
     <a class="section-link icon-offset" href="build-apps/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
-        <div class="title">4. Build an app</div>
+        <div class="title">4. Build an application</div>
       </div>
       <div class="body">
-        Build an app in the programming language of your choice.
+        Build an application in the programming language of your choice.
       </div>
     </a>
   </div>

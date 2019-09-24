@@ -39,7 +39,7 @@ usage: yb-docker-ctl [-h]
                      {create,add_node,status,destroy,stop_node,start_node,stop,start,remove_node}
                      ...
 
-Yugabyte Docker Container Control
+YugabyteDB Docker Container Control
 
 positional arguments:
   {create,add_node,status,destroy,stop_node,start_node,stop,start,remove_node}
