@@ -50,7 +50,7 @@ To open the YSQL shell, run the `ysqlsh` command.
 ```sh
 ysqlsh (11.2)
 Type "help" for help.
-postgres=#
+yugabyte=#
 ```
 
 ### 3. Create the PgExercises database
@@ -64,13 +64,13 @@ CREATE DATABASE exercises;
 Confirm that you have the `exercises` database by listing the databases on your cluster using the `\l` command.
 
 ```
-postgres=# \l
+yugabyte=# \l
 ```
 
 Connect to the `exercises` database.
 
 ```
-postgres=# \c exercises
+yugabyte=# \c exercises
 You are now connected to database "exercises" as user "postgres".
 exercises=#
 ```

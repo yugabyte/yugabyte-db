@@ -33,7 +33,7 @@ $ ./bin/ysqlsh
 ysqlsh (11.2)
 Type "help" for help.
 
-postgres=#
+yugabyte=#
 ```
 
 ## Defaults

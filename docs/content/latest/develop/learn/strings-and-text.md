@@ -37,17 +37,17 @@ The following example shows a few ways to work with the different data types.
 ysqlsh (11.2)
 Type "help" for help.
 
-postgres=# create table text_columns(a_text text, a_varchar varchar, a_char char, b_varchar varchar(10), b_char char(10));
+yugabyte=# create table text_columns(a_text text, a_varchar varchar, a_char char, b_varchar varchar(10), b_char char(10));
 
 CREATE TABLE
 
-postgres=# insert into text_columns values('abc ', 'abc ', 'abc ', 'abc ', 'abc ');
+yugabyte=# insert into text_columns values('abc ', 'abc ', 'abc ', 'abc ', 'abc ');
 ERROR:  value too long for type character(1)
 
-postgres=# insert into text_columns values('abc ', 'abc ', 'a', 'abc ', 'abc ');
+yugabyte=# insert into text_columns values('abc ', 'abc ', 'a', 'abc ', 'abc ');
 INSERT 0 1
 
-postgres=# select * from text_columns
+yugabyte=# select * from text_columns
            where a_text like 'ab__' and a_varchar like 'ab__'
            and b_varchar like 'ab__';
 
@@ -55,7 +55,7 @@ postgres=# select * from text_columns
 --------+-----------+--------+-----------+------------
  abc    | abc       | a      | abc       | abc
 
-postgres=# select * from text_columns
+yugabyte=# select * from text_columns
            where a_text like 'ab__' and a_varchar like 'ab__'
            and b_varchar like 'ab__' and b_char like 'ab__';
 
@@ -63,7 +63,7 @@ postgres=# select * from text_columns
 --------+-----------+--------+-----------+--------
 (0 rows)
 
-postgres=# select length(a_text) as a_text, length(a_varchar) as a_varchar, length(a_char) as a_char,
+yugabyte=# select length(a_text) as a_text, length(a_varchar) as a_varchar, length(a_char) as a_char,
            length(b_varchar) as b_varchar, length(b_char) as b_char
            from text_columns;
 
@@ -86,13 +86,13 @@ Start YSQL and you can see the impacts of casting.
 ysqlsh (11.2)
 Type "help" for help.
 
-postgres=# select cast(123 AS TEXT), cast('123' AS TEXT), 123::text, '123'::text;
+yugabyte=# select cast(123 AS TEXT), cast('123' AS TEXT), 123::text, '123'::text;
 
  text | text | text | text
 ------+------+------+------
  123  | 123  | 123  | 123
 
-postgres=# select tablename, hasindexes AS nocast, hasindexes::text AS casted
+yugabyte=# select tablename, hasindexes AS nocast, hasindexes::text AS casted
   from pg_catalog.pg_tables
   where tablename in('pg_default_acl', 'sql_features');
   
@@ -113,7 +113,7 @@ The focus here was to quickly show how each of the functions could be used, alon
 ### Altering the appearance of text
 
 ```sh
-postgres=# \c yb_demo  
+yugabyte=# \c yb_demo  
 You are now connected to database "yb_demo" as user "postgres".
 
 yb_demo =# select lower('hELLO world') AS LOWER,
@@ -148,13 +148,13 @@ Use `quote_ident` to parse identifiers in SQL like column names and `quote_nulla
 You can use "dollar sign quoting" to parse raw text — any text contained within dollar sign quotations are treated as a raw literal. The starting and ending markers do not need to be identical, but must start and end with a dollar sign (`$`). See the examples below.
 
 ```
-postgres=# select $$%&*$&$%7'\67458\''""""';;'\//\/\/\""'/'''''"""""'''''''''$$;
+yugabyte=# select $$%&*$&$%7'\67458\''""""';;'\//\/\/\""'/'''''"""""'''''''''$$;
 
                          ?column?
 -----------------------------------------------------------
  %&*$&$%7'\67458\''""""';;'\//\/\/\""'/'''''"""""'''''''''
 
-postgres=# select $__unique_$           Lots of space
+yugabyte=# select $__unique_$           Lots of space
 postgres$#                    and multi line too       $__unique_$;
 
                    ?column?
@@ -162,7 +162,7 @@ postgres$#                    and multi line too       $__unique_$;
             Lots of space                    +
                     and multi line too
 
-postgres=# select $$first$$ AS "F1", $$second$$ AS "F2";
+yugabyte=# select $$first$$ AS "F1", $$second$$ AS "F2";
 
   F1   |   F2
 -------+--------
@@ -256,14 +256,14 @@ The final padding example above shows how you can center text and the trim examp
 You can also state that a text value is 'escaped' by prefixing with an 'e' or 'E'. Take a look at this example.
 
 ```
-postgres=# select E'I''ve told Yugabyte that this is an escaped string\n\tso I can specify escapes safely' as escaped_text;
+yugabyte=# select E'I''ve told Yugabyte that this is an escaped string\n\tso I can specify escapes safely' as escaped_text;
 
                    escaped_text
 ---------------------------------------------------
  I've told Yugabyte that this is an escaped string+
          so I can specify escapes safely
 
-postgres=# select E'a\\b/c\u00B6' as escaped_txt, 'a\\b/c\u00B6' as raw_txt;
+yugabyte=# select E'a\\b/c\u00B6' as escaped_txt, 'a\\b/c\u00B6' as raw_txt;
 
  escaped_txt |   raw_txt
 -------------+--------------
@@ -673,7 +673,7 @@ yb_demo=# select m.name
 If you like a bit of a challenge, below is an example that URL escapes a string. There is still some more room for tweaking in its current form, that is left for you to do.
 
 ```
-postgres=# select string_agg(case
+yugabyte=# select string_agg(case
                               when to_hex(ascii(x.arr::text))::text
                                    in('20','23','24','25','26','40','60','2b','2c','2f','3a','3b','3c','3d','3e','3f',
                                    '5b','5c','5d','5e','7b','7c','7d') then '%' || to_hex(ascii(x.arr::text))::text

@@ -86,7 +86,7 @@ CREATE VIEW sample_view AS SELECT * FROM sample WHERE v2 != 'b' ORDER BY k1 DESC
 Select from the view.
 
 ```sql
-postgres=# SELECT * FROM sample_view;
+yugabyte=# SELECT * FROM sample_view;
 ```
 
 ```

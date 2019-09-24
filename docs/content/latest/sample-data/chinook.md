@@ -54,7 +54,7 @@ To open the YSQL shell, run the `ysqlsh` command.
 ```sh
 ysqlsh (11.2)
 Type "help" for help.
-postgres=#
+yugabyte=#
 ```
 
 ### 3. Create the Chinook database
@@ -68,13 +68,13 @@ CREATE DATABASE chinook;
 Confirm that you have the `chinook` database by using the `\l` command to list the databases on your cluster.
 
 ```
-postgres=# \l
+yugabyte=# \l
 ```
 
 Connect to the `chinook` database.
 
 ```
-postgres=# \c chinook
+yugabyte=# \c chinook
 You are now connected to database "chinook" as user "postgres".
 chinook=#
 ```

@@ -306,7 +306,7 @@ $ docker exec -it <ybtserver_container_id> ysqlsh
 ysqlsh (11.2)
 Type "help" for help.
 
-postgres=#
+yugabyte=#
 ```
 
 - Follow the test instructions as noted in [Quick Start](../quick-start/test-postgresql/).

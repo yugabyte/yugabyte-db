@@ -46,7 +46,7 @@ To open the Yugabyte SQL (YSQL) shell, run the `ysqlsh` command.
 ```sh
 ysqlsh (11.2)
 Type "help" for help.
-postgres=#
+yugabyte=#
 ```
 
 ### 3. Create the SportsDB database
@@ -60,7 +60,7 @@ CREATE DATABASE sportsdb;
 Confirm that you have the `sportsdb` database by listing out the databases on your cluster.
 
 ```
-postgres=# \l
+yugabyte=# \l
 ```
 
 [Add screenshot.]
@@ -68,7 +68,7 @@ postgres=# \l
 Connect to the `sportsdb` database.
 
 ```
-postgres=# \c sportsdb
+yugabyte=# \c sportsdb
 You are now connected to database "sportsdb" as user "postgres".
 sportsdb=#
 ```

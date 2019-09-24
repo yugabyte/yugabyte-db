@@ -135,11 +135,13 @@ $ ./bin/ysqlsh
 ysqlsh (11.2)
 Type "help" for help.
 
-postgres=#
+yugabyte=#
 ```
+
 ```sql
-postgres=> SELECT count(*) FROM users;
+yugabyte=# SELECT count(*) FROM users;
 ```
+
 ```
  count 
 -------
@@ -148,8 +150,9 @@ postgres=> SELECT count(*) FROM users;
 ```
 
 ```sql
-postgres=> SELECT count(*) FROM products;
+yugabyte=# SELECT count(*) FROM products;
 ```
+
 ```
  count 
 -------
@@ -158,7 +161,7 @@ postgres=> SELECT count(*) FROM products;
 ```
 
 ```sql
-postgres=> SELECT count(*) FROM orders;
+yugabyte=# SELECT count(*) FROM orders;
 ```
 ```
  count 

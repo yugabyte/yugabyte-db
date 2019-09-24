@@ -60,19 +60,19 @@ Specify the name of the domain. An error is raised if DOMAIN `name` does not exi
 ## Examples
 
 ```sql
-postgres=# CREATE DOMAIN idx DEFAULT 5 CHECK (VALUE > 0);
+yugabyte=# CREATE DOMAIN idx DEFAULT 5 CHECK (VALUE > 0);
 ```
 
 ```sql
-postgres=# ALTER DOMAIN idx DROP DEFAULT;
+yugabyte=# ALTER DOMAIN idx DROP DEFAULT;
 ```
 
 ```sql
-postgres=# ALTER DOMAIN idx RENAME TO idx_new;
+yugabyte=# ALTER DOMAIN idx RENAME TO idx_new;
 ```
 
 ```sql
-postgres=# DROP DOMAIN idx_new;
+yugabyte=# DROP DOMAIN idx_new;
 ```
 
 ## See also
