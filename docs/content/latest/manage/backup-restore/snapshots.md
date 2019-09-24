@@ -116,23 +116,29 @@ Then we need to copy the actual data from the table & tablets. In this case we
 have to use a script that copies all data. The filepath structure is:
 
 ```
-<yb_data_dir>/node-<node_number>/disk-<disk_number>/<api_dir>/tserver/data/rocksdb/table-<table_id>/[tablet-<tablet_id>.snapshots]/<snapshot_id>
+<yb_data_dir>/node-<node_number>/disk-<disk_number>/yb-data/tserver/data/rocksdb/table-<table_id>/[tablet-<tablet_id>.snapshots]/<snapshot_id>
 ```
 
 * `<yb_data_dir>` is the directory where YDB data is stored. (default=`~/yugabyte-data`)
 * `<node_number>` is used when multiple nodes are running on the same server (usually in testing/qa/dev) (default=1)
-* `<disk_number>` when running on multiple disks (default=1)
-* `<api_dir>` is `yb-data` in YCQL and `<pg-data>` in YSQL
-* `<table_id>` is the UUID of the table. (can take it from WEB UI)
-* `<tablet_id>` in each table we have a list of tablets. And each tablet has a tablet_id.snapshots directory, which is what we really need to copy.
+* `<disk_number>` when running yugabyte on multiple disks with `--fs_data_dirs` flag (default=1)
+* `<table_id>` is the UUID of the table (can take it from WEB UI)
+* `<tablet_id>` in each table we have a list of tablets. And each tablet has a `<tablet_id>.snapshots` directory, which is what we really need to copy
 * `<snapshot_id>` there is a directory for each snapshot since you can have multiple completed snapshots on each server
 
-When snapshoting a multi-node cluster, we need to go into each node and copy 
-the folders of ONLY the lead tablets on that node. No need to keep a copy for each replica, since each tablet will 
-have the same data.
+This directory structure is specific to `yb-ctl` which is a local testing tool. 
+In practice, for each server, we will have an `--fs_data_dirs` flag, which is a csv of paths where to put the data (normally different paths should be on different disks).
+In this `yb-ctl` example, these are the full paths up to the `disk-x`.
 
 
 ### Step 3.2: Copying snapshot data to another directory
+
+{{< note title="Tip" >}}
+When snapshoting a multi-node cluster, we need to go into each node and copy 
+the folders of ONLY the leader tablets on that node. No need to keep a copy for each replica, since each tablet-replica will 
+have the same data.
+{{< /note >}}
+
 
 First we need to get the `table_id` UUID that we're snapshoting. We can get this in 
 the WEB UI [http://127.0.0.1:7000/tables](http://127.0.0.1:7000/tables) under "User Tables".
@@ -145,10 +151,16 @@ Tablet UUID                      	Range                                         
 cea3aaac2f10460a880b0b4a2a4b652a 	partition_key_start: "" partition_key_end: "\177\377"    	127.0.0.1:9100
 e509cf8eedba410ba3b60c7e9138d479 	partition_key_start: "\177\377" partition_key_end: ""    	127.0.0.1:9100
 ```
+The third argument is for limiting the number of returned results. Setting it `0` returns all tablets.
 
-Using this information we can construct the full path of all directories where snapshots are stored for each tablet/snapshot_id.
+Using this information we can construct the full path of all directories where snapshots are stored for each (tablet,snapshot_id).
 
 We can create a small script to manually copy/move the folders to a backup directory/filesystem or external storage.
+
+{{< note title="Tip" >}}
+When doing RF1 as the source the output of the `yb-admin` like listing the tablets only shows LEADERS, because there's only 1 copy, which is the leader.
+{{< /note >}}
+
 
 ### Step 4: Destroying cluster and creating a new one
 First we destroy the cluster. 
