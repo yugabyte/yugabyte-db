@@ -741,6 +741,12 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
     VERIFY_ROW(session, 1, 11);
     VERIFY_ROW(session, 2, 12);
 
+    // Need to wait transaction to be replicated to all tablet replicas, otherwise direct intents
+    // cleanup could not happen.
+    ASSERT_OK(WaitFor([this] {
+      return CountRunningTransactions() == 6;
+    }, 10s, "Wait transactions replicated to all tablet replicas"));
+
     txn->Abort();
   }
 
