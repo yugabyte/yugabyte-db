@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import { NodeActionModalContainer, NodeConnectModal } from '../../universes';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
@@ -77,14 +77,6 @@ export default class NodeAction extends Component {
 
   render() {
     const { currentRow, providerUUID } = this.props;
-    if (!isNonEmptyArray(currentRow.allowedActions)) {
-      return (
-        <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
-          <MenuItem disabled>
-            No actions available
-          </MenuItem>
-        </DropdownButton>);
-    }
     const actionButtons = currentRow.allowedActions.map((actionType, idx) => {
       const btnId = _.uniqueId('node_action_btn_');
       return (
@@ -97,13 +89,18 @@ export default class NodeAction extends Component {
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
         <NodeConnectModal currentRow={currentRow} providerUUID={providerUUID} label={this.getLabel("CONNECT")}/>
-        {actionButtons}
-        <NodeActionModalContainer
-          visible = {this.state.showModal}
-          onHide = { this.closeModal}
-          nodeInfo = {currentRow}
-          actionType = {this.state.actionType}
-        />
+        {
+          isNonEmptyArray(currentRow.allowedActions)
+            ? <Fragment>{actionButtons}
+              <NodeActionModalContainer
+                visible = {this.state.showModal}
+                onHide = { this.closeModal}
+                nodeInfo = {currentRow}
+                actionType = {this.state.actionType}
+              />
+            </Fragment>
+          : null
+        }
       </DropdownButton>
     );
   }
