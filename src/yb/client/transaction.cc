@@ -587,14 +587,14 @@ class YBTransaction::Impl final {
 
   void LookupTabletForCleanupDone(const Result<internal::RemoteTabletPtr>& remote_tablet,
                                   const YBTransactionPtr& transaction) {
-    VLOG_WITH_PREFIX(1) << "Lookup tablet for cleanup done: " << remote_tablet;
     if (!remote_tablet.ok()) {
       // Intents will be cleaned up later in this case.
       LOG(WARNING) << "Tablet lookup failed: " << remote_tablet.status();
       return;
     }
-    std::vector<internal::RemoteTabletServer*> remote_tablet_servers;
-    (**remote_tablet).GetRemoteTabletServers(&remote_tablet_servers);
+    VLOG_WITH_PREFIX(1) << "Lookup tablet for cleanup done: " << yb::ToString(*remote_tablet);
+    auto remote_tablet_servers = (**remote_tablet).GetRemoteTabletServers(
+        internal::IncludeFailedReplicas::kTrue);
 
     constexpr auto kCallTimeout = 15s;
     auto now = manager_->Now().ToUint64();
@@ -603,6 +603,7 @@ class YBTransaction::Impl final {
       std::unique_lock<std::mutex> lock(mutex_);
       abort_requests_.reserve(abort_requests_.size() + remote_tablet_servers.size());
       for (auto* server : remote_tablet_servers) {
+        VLOG_WITH_PREFIX(2) << "Sending cleanup to: " << yb::ToString(*server);
         auto status = server->InitProxy(manager_->client());
         if (!status.ok()) {
           LOG(WARNING) << "Failed to init proxy to " << server->ToString() << ": " << status;
