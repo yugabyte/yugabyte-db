@@ -342,7 +342,9 @@ public class AWSInitializer extends AbstractInitializer {
     priceDetails.effectiveDate = product.get("effectiveDate").textValue();
 
     // Save to db
-    PriceComponent.upsert(provider.code, region.code, instanceCode, priceDetails);
+    if (Double.parseDouble(pricePerUnit) != 0.0) {
+      PriceComponent.upsert(provider.code, region.code, instanceCode, priceDetails);
+    }
   }
 
   /**

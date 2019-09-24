@@ -34,6 +34,12 @@ public class PriceComponent extends Model {
 
   @Column(nullable = false, columnDefinition = "TEXT")
   private String priceDetailsJson;
+
+  public void setPriceDetails(PriceDetails details) {
+    this.priceDetailsJson = Json.stringify(Json.toJson(details));
+    this.save();
+  }
+
   public PriceDetails priceDetails = new PriceDetails();
 
   private static final Find<PriceComponentKey, PriceComponent> find = new Find<PriceComponentKey,
@@ -102,9 +108,8 @@ public class PriceComponent extends Model {
       component = new PriceComponent();
       component.idKey = PriceComponentKey.create(providerCode, regionCode, componentCode);
     }
-    component.priceDetails = priceDetails == null ? new PriceDetails() : priceDetails;
-    component.priceDetailsJson = Json.stringify(Json.toJson(component.priceDetails));
-    component.save();
+    PriceDetails details = priceDetails == null ? new PriceDetails() : priceDetails;
+    component.setPriceDetails(details);
   }
 
   /**
