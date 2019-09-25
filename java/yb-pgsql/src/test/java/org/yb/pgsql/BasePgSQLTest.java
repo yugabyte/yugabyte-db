@@ -967,12 +967,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS * 2);
   }
 
-  // Time execution time of a statement.
-  protected void timeQueryWithRowCount(String stmt, int expectedRowCount, long maxRuntimeMillis)
+  // Run a query and check row-count.
+  private void runQueryWithRowCount(String stmt, int expectedRowCount)
       throws Exception {
-    LOG.info(String.format("Exec query: %s", stmt));
-    final long runtimeMillis = System.currentTimeMillis();
-
     // Query and check row count.
     int rowCount = 0;
     try (Statement statement = connection.createStatement()) {
@@ -983,11 +980,28 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       }
     }
     assertEquals(rowCount, expectedRowCount);
+  }
+
+  // Time execution time of a statement.
+  protected void timeQueryWithRowCount(String stmt, int expectedRowCount, long maxRuntimeMillis,
+                                       int numberOfRuns)
+      throws Exception {
+    LOG.info(String.format("Exec query: %s", stmt));
+
+    // Not timing the first query run as its result is not predictable.
+    runQueryWithRowCount(stmt, expectedRowCount);
+
+    // Seek average run-time for a few different run.
+    final long startTimeMillis = System.currentTimeMillis();
+    for (int qrun = 0; qrun < numberOfRuns; qrun++) {
+      runQueryWithRowCount(stmt, expectedRowCount);
+    }
 
     // Check the elapsed time.
-    long elapsedTimeMillis = System.currentTimeMillis() - runtimeMillis;
-    LOG.info(String.format("Complete query: %s. Elapsed time = %d msecs", stmt, elapsedTimeMillis));
-    assertTrue(elapsedTimeMillis < maxRuntimeMillis);
+    long elapsedTimeMillis = System.currentTimeMillis() - startTimeMillis;
+    LOG.info(String.format("Ran query %d times. Total elapsed time = %d msecs",
+                           numberOfRuns, elapsedTimeMillis));
+    assertTrue(elapsedTimeMillis < numberOfRuns * maxRuntimeMillis);
   }
 
   public static class ConnectionBuilder {
