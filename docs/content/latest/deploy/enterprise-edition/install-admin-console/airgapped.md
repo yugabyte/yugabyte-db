@@ -1,4 +1,4 @@
-An “airgapped” host has either no or a restricted path to inbound or outbound Internet traffic at all.
+An “air-gapped” host has either no or a restricted path to inbound or outbound Internet traffic at all.
 
 ## Prerequisites
 
@@ -13,7 +13,7 @@ https://download.docker.com
 
 ### 2. Install Docker Engine
 
-A supported version of docker-engine (currently 1.7.1 to 17.03.1-ce) needs to be installed on the host. If you do not have docker-engine installed, follow the instructions [here](https://help.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install docker-engine on an airgapped host. After docker-engine is installed, perform the following steps to install Replicated and then YugaWare.
+A supported version of Docker Engine (`docker-engine`) (currently 1.7.1 to 17.03.1-ce) needs to be installed on the host. If you do not have docker-engine installed, follow the instructions [here](https://help.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install docker-engine on an air-gapped host. After Docker Engine (`docker-engine`) is installed, perform the following steps to install Replicated and then YugaWare.
 
 ## Step 1. Install Replicated
 

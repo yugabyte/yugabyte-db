@@ -11,7 +11,7 @@ menu:
     weight: 705
 ---
 
-This page documents the options for export data out of YugabyteDB.
+This page documents the options for exporting data out of YugabyteDB.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>

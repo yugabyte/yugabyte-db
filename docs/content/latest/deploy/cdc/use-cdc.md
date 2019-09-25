@@ -21,11 +21,11 @@ The information on this page is for testing and learning about using CDC with th
 
 {{< /note >}}
 
-## Prerequisites 
+## Prerequisites
 
 ### YugabyteDB
 
-A 1-node YugabyteDB cluster with an RF of 1 is up and running locally (the `yb-ctl create` command create this by default). If you are new to YugabyteDB, you can create a local YugaByte cluster in under five minutes by following the steps in the [Quick start](/quick-start/install/).
+A 1-node YugabyteDB cluster with an RF of 1 is up and running locally (the `yb-ctl create` command creates this by default). If you are new to YugabyteDB, you can create a local YugaByte cluster in under five minutes by following the steps in the [Quick start](/quick-start/install/).
 
 ### Java
 
@@ -67,7 +67,7 @@ To use the Yugabyte CDC connector, run the `yb_cdc_connector` JAR file.
 
 ```bash
 java -jar target/yb_cdc_connector.jar
---table_name <namespace/database>.<table>
+--table_name <namespace>.<table>
 --master_addrs <yb master addresses>
 [ --[stream_id] <optional existing stream id> ]
 --kafka_addrs <kafka cluster addresses> [default 127.0.0.1:9092]
@@ -81,7 +81,7 @@ java -jar target/yb_cdc_connector.jar
 
 ```bash
 java -jar yb_cdc_connector.jar
---table_name <database>.<table>
+--table_name <namespace>.<table>
 --master_addrs <yb master addresses> [default 127.0.0.1:7100]
 [ --stream_id <stream-id> ]
 [ --log_only ]
@@ -93,7 +93,7 @@ java -jar yb_cdc_connector.jar
 
 #### `--table_name`
 
-Specify the name of the YSQL database or YCQL namespace.
+Specify the namespace and table, where namespace is the database (YSQL) or keyspace (YCQL).
 
 #### `--master_addrs`
 
