@@ -58,7 +58,7 @@ export default class CustomerMetricsPanel extends Component {
     width: null
   };
 
-  componentWillMount() {
+  componentDidMount() {
     const { customer: { currentCustomer }} = this.props;
     showOrRedirect(currentCustomer.data.features, "menu.metrics");
   }
