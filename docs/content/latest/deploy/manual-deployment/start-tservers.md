@@ -14,14 +14,16 @@ showAsideToc: true
 ---
 
 {{< note title="Note" >}}
-For any cluster, the number of nodes on which the YB-TServers need to be started on **must** equal or exceed the replication factor in order for any table to get created successfully.
+
+For any cluster, the number of nodes on which the YB-TServer services need to be started **must** equal, or exceed, the replication factor in order for any table to get created successfully.
+
 {{< /note >}}
 
 ## Example scenario
 
 Let us assume the following.
 
-- We want to create a a 4 node cluster with replication factor `3`.
+- We want to create a a 4-node cluster with replication factor `3`.
       - We would need to run the YB-TServer process on all the 4 nodes say `node-a`, `node-b`, `node-c`, `node-d`
       - Let us assume the master private IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140` (`node-a`, `node-b`, `node-c`)
 - We have multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`
@@ -48,7 +50,9 @@ $ ./bin/yb-tserver \
 Add `--redis_proxy_bind_address=172.151.17.130:6379` to the above list if you need to turn on the YEDIS API as well.
 
 {{< note title="Note" >}}
+
 The number of comma-separated values in `tserver_master_addrs` parameter should match the total number of masters (aka replication factor).
+
 {{< /note >}}
 
 ## Run yb-tserver with configuration file
@@ -111,4 +115,8 @@ I0912 22:26:39.111896  3162 ts_manager.cc:97] Registered new tablet server { per
 I0912 22:26:41.055996  3162 ts_manager.cc:97] Registered new tablet server { permanent_uuid: "60042249ad9e45b5a5d90f10fc2320dc" instance_seqno: 1505255201010923 } with Master
 ```
 
-{{< tip title="Tip" >}}Remember to add the command with which you launched `yb-tserver` to a cron to restart it if it goes down.{{< /tip >}}<br>
+{{< tip title="Tip" >}}
+
+Remember to add the command with which you launched `yb-tserver` to a cron to restart it if it goes down.
+
+{{< /tip >}}

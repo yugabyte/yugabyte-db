@@ -13,13 +13,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Install the software on each of the nodes using the steps shown below.
+Install YugabyteDB on each of the nodes using the steps shown below.
 
 ## Download
 
-Download the YugabyteDB CE binary package as described in the [Quick Start section](../../../quick-start/install/).
+Download the YugabyteDB binary package as described in the [Quick Start section](../../../quick-start/install/).
 
-Copy the YugabyteDB package into each instace and then running the following commands.
+Copy the YugabyteDB package into each instance and then run the following commands.
 
 ```sh
 $ tar xvfz yugabyte-<version>-<os>.tar.gz && cd yugabyte-<version>/

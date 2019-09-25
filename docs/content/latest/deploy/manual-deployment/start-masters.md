@@ -15,7 +15,7 @@ showAsideToc: true
 
 {{< note title="Note" >}}
 
-- For any cluster, the number of nodes on which the YB-Masters need to be started on **must** equal the replication factor.
+- For any cluster, the number of nodes on which the YB-Master services need to be started **must** equal the replication factor.
 - The number of comma-separated addresses present in `master_addresses` should also equal the replication factor.
 
 {{< /note >}}
@@ -25,15 +25,15 @@ showAsideToc: true
 Let us assume the following.
 
 - We want to create a a 4 node cluster with replication factor `3`.
-      - We would need to run the YB-Master process on only three of the nodes say `node-a`, `node-b`, `node-c`
-      - Let us assume their private IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140`
-- We have multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`
+      - We would need to run the YB-Master process on only three of the nodes, for example, `node-a`, `node-b`, `node-c`.
+      - Let us assume their private IP addresses are `172.151.17.130`, `172.151.17.220`, and `172.151.17.140`.
+- We have multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`.
 
-This section covers deployment for a single region/zone (or a single data center/rack). Execute the following steps on each of the instances.
+This section covers deployment for a single region or zone (or a single data center or rack). Execute the following steps on each of the instances.
 
 ## Run yb-master with command line params
 
-- Run `yb-master` binary on each of the nodes as shown below. Note how multiple directories can be provided to the `--fs_data_dirs` flag. For each yb-master, replace the rpc bind address flag with the private IP of the host running the yb-master.
+- Run `yb-master` binary on each of the nodes as shown below. Note how multiple directories can be provided to the `--fs_data_dirs` flag. For each YB-Master, replace the rpc bind address flag with the private IP of the host running the YB-Master.
 
 For the full list of flags, see the [yb-master Reference](../../../admin/yb-master/).
 
@@ -45,9 +45,9 @@ $ ./bin/yb-master \
   >& /home/centos/disk1/yb-master.out &
 ```
 
-## Run yb-master with conf file
+## Run YB-Master with configuration file
 
-- Alternatively, you can also create a `master.conf` file with the following flags and then run the `yb-master` with the `--flagfile` option as shown below. For each yb-master, replace the rpc bind address flag with the private IP of the host running the yb-master.
+- Alternatively, you can also create a `master.conf` file with the following flags and then run the `yb-master` with the `--flagfile` option as shown below. For each yb-master, replace the RPC bind address flag with the private IP of the host running the yb-master.
 
 ```sh
 --master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100

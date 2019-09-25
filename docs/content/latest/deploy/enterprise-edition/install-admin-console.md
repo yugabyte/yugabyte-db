@@ -21,7 +21,7 @@ menu:
   <li>
     <a href="#airgapped" class="nav-link" id="airgapped-tab" data-toggle="tab" role="tab" aria-controls="airgapped" aria-selected="true">
       <i class="fas fa-unlink"></i>
-      Airgapped
+      Air-gapped
     </a>
   </li>
   <li>

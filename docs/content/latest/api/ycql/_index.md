@@ -19,7 +19,7 @@ showAsideToc: true
 
 ## Introduction
 
-YCQL is a SQL-based, flexible-schema API that is best fit for internet-scale OLTP apps needing a semi-relational API highly optimized for write-intensive applications as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes, and a native JSON column type. It has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html). 
+YCQL is a SQL-based, flexible-schema API that is best fit for internet-scale OLTP application needing a semi-relational API highly optimized for write-intensive applications as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes, and a native JSON column type. It has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html). 
 
 YCQL supports the following features.
 
@@ -30,7 +30,7 @@ YCQL supports the following features.
 
 ## Quick Start
 
-You can explore the basics of the YCQL API using the [Quick Start](quick-start/) steps.
+You can explore the basics of the YCQL API using the [Quick start](quick-start/) steps.
 
 ## DDL statements
 
@@ -57,7 +57,7 @@ Statement | Description |
 
 Security statements are instructions for managing and restricting operations on the database objects.
 
-This feature is enabled by setting the yb-tserver gflag [`use_cassandra_authentication`](../../admin/yb-tserver/#config-flags) to `true`.
+This feature is enabled by setting the YB-TServer gflag [`use_cassandra_authentication`](../../admin/yb-tserver/#config-flags) to `true`.
 
 - Create, grant, and revoke users and roles
 - Grant, and revoke permissions on database objects
@@ -94,7 +94,7 @@ Statement | Description |
 
 ## Expressions
 
-An expression is a finite combination of one or more values, operators, functions, and expressions that specifies a computation. Expression can be used in the following components.
+An expression is a finite combination of one or more values, operators, functions, and expressions that specifies a computation. Expressions can be used in the following components.
 
 - The select list of [`SELECT`](dml_select) statement. For example, `SELECT id + 1 FROM sample_table;`.
 - The WHERE clause in [`SELECT`](dml_select), [`DELETE`](dml_delete), [`INSERT`](dml_insert), or [`UPDATE`](dml_update).

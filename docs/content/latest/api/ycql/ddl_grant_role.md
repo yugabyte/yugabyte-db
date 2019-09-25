@@ -19,7 +19,7 @@ The `GRANT ROLE` statement is used to grant a role's permissions and SUPERUSER s
 
 Granted roles form an acyclic graph, in other words, a role cannot be granted to any of the roles granted to it either directly or indirectly. For example, if A is granted to B, and B granted to C, C cannot be granted to neither A, B, nor C.
 
-This statment is enabled by setting the yb-tserver gflag [`use_cassandra_authentication`](../../../admin/yb-tserver/#config-flags) to `true`.
+This statement is enabled by setting the yb-tserver gflag [`use_cassandra_authentication`](../../../admin/yb-tserver/#config-flags) to `true`.
 
 ## Syntax
 

@@ -1,7 +1,7 @@
 ---
-title: Configure Cloud Providers
-linkTitle: 4. Configure Cloud Providers
-description: Configure Cloud Providers
+title: Configure cloud providers
+linkTitle: 4. Configure cloud providers
+description: Configure cloud providers
 aliases:
   - /deploy/enterprise-edition/configure-cloud-providers/
 menu:
@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section details how to configure cloud providers for YugabyteDB using the YugaWare Admin Console. If no cloud providers are configured in YugaWare yet, the main Dashboard page highlights the need to configure at least 1 cloud provider.
+This section details how to configure cloud providers for YugabyteDB using the YugaWare Admin Console. If no cloud providers are configured in YugaWare yet, the main Dashboard page highlights the need to configure at least one cloud provider.
 
 ![Configure Cloud Provider](/images/ee/configure-cloud-provider.png)
 
@@ -21,9 +21,9 @@ This section details how to configure cloud providers for YugabyteDB using the Y
 
 ### Public cloud
 
-If you plan to run YugabyteDB nodes on public cloud providers such as Amazon Web Services (AWS) or Google Cloud Platform (GCP), all you need to provide on YugaWare UI is your cloud provider credentials. YugaWare will use those credentials to automatically provision and de-provision instances that run Yugabyte. An 'instance' for YugabyteDB includes a compute instance as well as local or remote disk storage attached to the compute instance.
+If you plan to run YugabyteDB nodes on public cloud providers, such as Amazon Web Services (AWS) or Google Cloud Platform (GCP), all you need to provide on YugaWare UI is your cloud provider credentials. YugaWare will use those credentials to automatically provision and de-provision instances that run Yugabyte. An 'instance' for YugabyteDB includes a compute instance as well as local or remote disk storage attached to the compute instance.
 
-### Private cloud or on-premises data centers
+### Private cloud or on-premise data centers
 
 The prerequisites for Yugabyte Platform data nodes are same as that of [YugabyteDB](../../checklist/).
 
