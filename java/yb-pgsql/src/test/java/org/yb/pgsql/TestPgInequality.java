@@ -214,10 +214,11 @@ public class TestPgInequality extends BasePgSQLTest {
 
     // Full scan.
 
+    final int queryRunCount = 5;
     int h = hMax / 2;
-
     String query = String.format("SELECT * FROM %s WHERE h = %d", tableName, h);
-    timeQueryWithRowCount(query, riMax /* expectedRowCount */, fullScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, riMax /* expectedRowCount */, fullScanMaxRuntimeMillis,
+                          queryRunCount);
 
     // Interval scans that should return 100 rows each.
 
@@ -229,19 +230,22 @@ public class TestPgInequality extends BasePgSQLTest {
     // A < ri.
     A = riMax - riDelta - 1;
     query = String.format("SELECT * FROM %s WHERE h = %d AND ri > %d", tableName, h, A);
-    timeQueryWithRowCount(query, riDelta /* expectedRowCount */, intervalScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, riDelta /* expectedRowCount */, intervalScanMaxRuntimeMillis,
+                          queryRunCount);
 
     // ri < B.
     B = riDelta;
     query = String.format("SELECT * FROM %s WHERE h = %d AND ri < %d", tableName, h, B);
-    timeQueryWithRowCount(query, riDelta  /* expectedRowCount */, intervalScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, riDelta  /* expectedRowCount */, intervalScanMaxRuntimeMillis,
+                          queryRunCount);
 
     // A < ri < B.
     A = riMax / 2;
     B = A + riDelta + 1;
     query = String.format("SELECT * FROM %s WHERE h = %d AND ri > %d AND ri < %d", tableName, h,
         A, B);
-    timeQueryWithRowCount(query, riDelta /* expectedRowCount */, intervalScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, riDelta /* expectedRowCount */, intervalScanMaxRuntimeMillis,
+                          queryRunCount);
   }
 
   @Test
@@ -307,10 +311,12 @@ public class TestPgInequality extends BasePgSQLTest {
 
     // Full scan.
 
+    final int queryRunCount = 5;
     int h = hMax / 2;
 
     String query = String.format("SELECT * FROM %s WHERE h = %d", tableName, h);
-    timeQueryWithRowCount(query, riMax * rsMax /* expectedRowCount */, fullScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, riMax * rsMax /* expectedRowCount */, fullScanMaxRuntimeMillis,
+                          queryRunCount);
 
     // Interval scans that should return 100 rows each.
 
@@ -326,7 +332,8 @@ public class TestPgInequality extends BasePgSQLTest {
     query = String.format("SELECT * FROM %s WHERE h = %d AND ri > %d AND ri < %d", tableName, h,
         A, B);
     expectedRowCount = riDelta * rsMax;
-    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis,
+                          queryRunCount);
     assertEquals(expectedRowCount, 100);
 
     // C < rs < D.
@@ -338,7 +345,8 @@ public class TestPgInequality extends BasePgSQLTest {
     query = String.format("SELECT * FROM %s WHERE h = %d AND rs > '%s' AND rs < '%s'", tableName,
         h, CTmp, DTmp);
     expectedRowCount = riMax * rsDelta;
-    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis,
+                          queryRunCount);
     assertEquals(expectedRowCount, 100);
 
     // A < ri < B    AND    C < rs < D.
@@ -354,7 +362,8 @@ public class TestPgInequality extends BasePgSQLTest {
         "SELECT * FROM %s WHERE h = %d AND ri > %d AND ri < %d AND rs > '%s' AND rs < '%s'",
         tableName, h, A, B, CTmp, DTmp);
     expectedRowCount = riDelta * rsDelta;
-    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis,
+                          queryRunCount);
     assertEquals(expectedRowCount, 100);
 
     // In only -------------------------------------------------------------------------------------
@@ -373,7 +382,8 @@ public class TestPgInequality extends BasePgSQLTest {
     }
     query = String.format("SELECT * FROM %s WHERE h = %d AND ri IN (%s)", tableName, h, AtoB);
     expectedRowCount = riDelta * rsMax;
-    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis,
+                          queryRunCount);
     assertEquals(expectedRowCount, 100);
 
     // rs IN {C ... D}.
@@ -386,7 +396,8 @@ public class TestPgInequality extends BasePgSQLTest {
     }
     query = String.format("SELECT * FROM %s WHERE h = %d AND rs IN (%s)", tableName, h, CtoD);
     expectedRowCount = riMax * rsDelta;
-    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis,
+                          queryRunCount);
     assertEquals(expectedRowCount, 100);
 
     // ri IN {A ... B}    AND    rs IN {C ... D}.
@@ -407,7 +418,8 @@ public class TestPgInequality extends BasePgSQLTest {
     query = String.format(
         "SELECT * FROM %s WHERE h = %d AND ri IN (%s) AND rs IN (%s)", tableName, h, AtoB, CtoD);
     expectedRowCount = riDelta * rsDelta;
-    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis,
+                          queryRunCount);
     assertEquals(expectedRowCount, 100);
 
     // Inequality AND IN on different columns ------------------------------------------------------
@@ -429,7 +441,8 @@ public class TestPgInequality extends BasePgSQLTest {
         "SELECT * FROM %s WHERE h = %d AND ri > %d AND ri < %d AND rs IN (%s)", tableName, h, A,
         B, CtoD);
     expectedRowCount = riDelta * rsDelta;
-    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis,
+                          queryRunCount);
     assertEquals(expectedRowCount, 100);
 
     // ri IN {A ... B}    AND    C < rs < D.
@@ -449,7 +462,8 @@ public class TestPgInequality extends BasePgSQLTest {
         "SELECT * FROM %s WHERE h = %d AND ri IN (%s) AND rs > '%s' AND rs < '%s'", tableName, h,
         AtoB, CTmp, DTmp);
     expectedRowCount = riDelta * rsDelta;
-    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis,
+                          queryRunCount);
     assertEquals(expectedRowCount, 100);
 
     // Inequality AND IN on same column ------------------------------------------------------------
@@ -467,7 +481,8 @@ public class TestPgInequality extends BasePgSQLTest {
     query = String.format("SELECT * FROM %s WHERE h = %d AND ri > %d AND ri < %d AND ri IN (%s)",
         tableName, h, A, B, AtoB);
     expectedRowCount = riDelta * rsMax;
-    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis,
+                          queryRunCount);
     assertEquals(expectedRowCount, 100);
 
     // C < rs < D    AND    rs IN {C ... D}.
@@ -484,7 +499,8 @@ public class TestPgInequality extends BasePgSQLTest {
         "SELECT * FROM %s WHERE h = %d AND rs IN (%s) AND rs > '%s' AND rs < '%s'", tableName,
         h, CtoD, CTmp, DTmp);
     expectedRowCount = riMax * rsDelta;
-    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis,
+                          queryRunCount);
     assertEquals(expectedRowCount, 100);
   }
 }

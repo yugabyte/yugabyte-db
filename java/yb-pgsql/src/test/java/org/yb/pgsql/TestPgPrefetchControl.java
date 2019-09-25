@@ -130,71 +130,104 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
     }
 
     // Choose the maximum runtimes of the same SELECT statement with and without LIMIT.
-    int limitScanMaxRuntimeMillis = getPerfMaxRuntime(50, 100, 500, 500, 500);
-    int fullScanMaxRuntimeMillis = getPerfMaxRuntime(500, 3000, 10000, 10000, 10000);
+    // For performance check, only runs on RELEASE build matters, so expected runtime for other
+    // builds can be very over-estimated.
+    // Cases where "LIMIT clause" can be optimized
+    // LIMIT value is pushed down to YugaByte PgGate and DocDB for these cases.
+    // - LIMIT SELECT without WHERE clause and other options.
+    // Cases where "LIMIT clause" cannot be optimized.
+    // - LIMIT SELECT with WHERE clause on non-key column.
+    // - LIMIT SELECT with ORDER BY is not optimized.
+    // - LIMIT SELECT with AGGREGATE is not optimized.
+
+    final int queryRunCount = 5;
+    int limitScanMaxRuntimeMillis = getPerfMaxRuntime(20, 100, 500, 500, 500);
+    // Index scan is slower as it requires two reads.
+    // - Postgres first read ID from INDEX.
+    // - Postgres use the above ID to read from user-table.
+    int limitIndexScanMaxRuntimeMillis = getPerfMaxRuntime(100, 400, 1000, 1000, 1000);
+    // Full scan is slowest.
+    int fullScanMaxRuntimeMillis = getPerfMaxRuntime(200, 3000, 10000, 10000, 10000);
 
     // LIMIT SELECT without WHERE clause and other options will be optimized by passing LIMIT value
     // to YugaByte PgGate and DocDB.
     String query = String.format("SELECT * FROM %s LIMIT 1", tableName);
-    timeQueryWithRowCount(query, 1 /* expectedRowCount */, limitScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, 1 /* expectedRowCount */, limitScanMaxRuntimeMillis,
+                          queryRunCount);
 
     query = String.format("SELECT * FROM %s LIMIT 1 OFFSET 100", tableName);
-    timeQueryWithRowCount(query, 1 /* expectedRowCount */, limitScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, 1 /* expectedRowCount */, limitScanMaxRuntimeMillis,
+                          queryRunCount);
 
     // LIMIT SELECT with WHERE clause is not optimized.
     query = String.format("SELECT * FROM %s WHERE vi = %d LIMIT 1", tableName, viConst);
-    timeQueryWithRowCount(query, 1 /* expectedRowCount */, fullScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, 1 /* expectedRowCount */, limitScanMaxRuntimeMillis,
+                          queryRunCount);
 
     query = String.format("SELECT * FROM %s WHERE vi = %d LIMIT 1 OFFSET 100", tableName, viConst);
-    timeQueryWithRowCount(query, 1 /* expectedRowCount */, fullScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, 1 /* expectedRowCount */, limitScanMaxRuntimeMillis,
+                          queryRunCount);
 
     // LIMIT SELECT with ORDER BY is not optimized.
     query = String.format("SELECT * FROM %s ORDER BY vi LIMIT 1", tableName);
-    timeQueryWithRowCount(query, 1 /* expectedRowCount */, fullScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, 1 /* expectedRowCount */, fullScanMaxRuntimeMillis,
+                          queryRunCount);
 
     query = String.format("SELECT * FROM %s ORDER BY vi LIMIT 1 OFFSET 100", tableName);
-    timeQueryWithRowCount(query, 1 /* expectedRowCount */, fullScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, 1 /* expectedRowCount */, fullScanMaxRuntimeMillis,
+                          queryRunCount);
 
     // LIMIT SELECT with AGGREGATE is not optimized.
     query = String.format("SELECT SUM(h) FROM %s GROUP BY vs LIMIT 1", tableName);
-    timeQueryWithRowCount(query, 1 /* expectedRowCount */, fullScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, 1 /* expectedRowCount */, fullScanMaxRuntimeMillis,
+                          queryRunCount);
 
     query = String.format("SELECT SUM(h) FROM %s GROUP BY vs LIMIT 1 OFFSET 100", tableName);
-    timeQueryWithRowCount(query, 0 /* expectedRowCount */, fullScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, 0 /* expectedRowCount */, fullScanMaxRuntimeMillis,
+                          queryRunCount);
 
     // LIMIT SELECT with index scan is optimized because YugaByte processed the index.
     query = String.format("SELECT * FROM %s WHERE vs = 'value_%d' LIMIT 1",
                           tableName, viConst);
-    timeQueryWithRowCount(query, 1 /* expectedRowCount */, limitScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, 1 /* expectedRowCount */, limitScanMaxRuntimeMillis,
+                          queryRunCount);
 
+    // Index scan for 101 rows is slower as more data are sent back & forth.
     query = String.format("SELECT * FROM %s WHERE vs = 'value_%d' LIMIT 1 OFFSET 100",
                           tableName, viConst);
-    timeQueryWithRowCount(query, 1 /* expectedRowCount */, limitScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, 1 /* expectedRowCount */, limitIndexScanMaxRuntimeMillis,
+                          queryRunCount);
 
-    // SELECT with index PRIMARY KEY scan is ALWAYS optimized regardless whether there's LIMIT.
+    // SELECT with PRIMARY KEY scan is ALWAYS optimized regardless whether there's a LIMIT clause.
     query = String.format("SELECT * FROM %s WHERE h = 7 AND r = 'range_7' LIMIT 1",
                           tableName, viConst);
-    timeQueryWithRowCount(query, 1 /* expectedRowCount */, limitScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, 1 /* expectedRowCount */, limitScanMaxRuntimeMillis,
+                          queryRunCount);
 
     query = String.format("SELECT * FROM %s WHERE h = 7 AND r = 'range_7' LIMIT 1 OFFSET 100",
                           tableName, viConst);
-    timeQueryWithRowCount(query, 0 /* expectedRowCount */, limitScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, 0 /* expectedRowCount */, limitScanMaxRuntimeMillis,
+                          queryRunCount);
 
     // Union of LIMIT SELECTs.
     query = String.format("(SELECT * FROM %s LIMIT 1) UNION ALL (SELECT * FROM %s LIMIT 1)",
                           tableName, tableName2);
-    timeQueryWithRowCount(query, 2 /* expectedRowCount */, limitScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, 2 /* expectedRowCount */, limitScanMaxRuntimeMillis,
+                          queryRunCount);
 
     query = String.format("(SELECT * FROM %s LIMIT 1 OFFSET 100) UNION ALL" +
                           "  (SELECT * FROM %s LIMIT 1 OFFSET 100)",
                           tableName, tableName2);
-    timeQueryWithRowCount(query, 2 /* expectedRowCount */, limitScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, 2 /* expectedRowCount */, limitScanMaxRuntimeMillis,
+                          queryRunCount);
 
     // Union of Tables in a LIMIT SELECT.
     query = String.format("SELECT * FROM %s, %s LIMIT 1", tableName, tableName2);
-    timeQueryWithRowCount(query, 1 /* expectedRowCount */, limitScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, 1 /* expectedRowCount */, limitScanMaxRuntimeMillis,
+                          queryRunCount);
 
     query = String.format("SELECT * FROM %s, %s LIMIT 1 OFFSET 100", tableName, tableName2);
-    timeQueryWithRowCount(query, 1 /* expectedRowCount */, limitScanMaxRuntimeMillis);
+    timeQueryWithRowCount(query, 1 /* expectedRowCount */, limitScanMaxRuntimeMillis,
+                          queryRunCount);
   }
 }
