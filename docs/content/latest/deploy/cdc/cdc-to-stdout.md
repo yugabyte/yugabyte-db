@@ -44,7 +44,7 @@ Run the command below to to start the YugabyteDB CDC connector and stream the ou
 ```bash
 java -jar yb_cdc_connector.jar
 --table_name yugabyte.users
---log_only // Flag to log to console.
+--log_only
 ```
 
 For details on the available options, see [Using the Yugabyte CDC connector](./use-cdc).

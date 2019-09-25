@@ -25,13 +25,13 @@ After [creating a local cluster](../create-local-cluster/), follow the steps her
 
 Follow the steps to create a database and load sample data.
 
-1. Download the sample schema using the following `wget` command.
+1. Download the sample schema using the following `curl` command.
 
     ```sh
-    $ wget https://raw.githubusercontent.com/yugabyte/yb-sql-workshop/master/  query-using-bi-tools/schema.sql
+    $ wget https://raw.githubusercontent.com/yugabyte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
     ```
 
-2. Download the sample data archive by running the following `wget` command.
+2. Download the sample data archive by running the following `curl` command.
 
     ```sh
     $ wget https://github.com/yugabyte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz

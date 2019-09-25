@@ -35,7 +35,7 @@ The Confluent Platform currently only supports Java 8 and 11. If you do not use 
 
 A local install of the Confluent Platform should be up and running. The [Confluent Platform](https://docs.confluent.io/current/platform.html) includes [Apache Kafka](https://docs.confluent.io/current/kafka/introduction.html) and additional tools and services (including Zookeeper and Avro), making it easy for you to quickly get started using the Kafka event streaming platform.
 
-To quickly get a local Confluent Platform (with Apache Kafka) up and running, follow the steps in the [Confluent Platform Quick Start (Local)](https://docs.confluent.io/current/quickstart/ce-quickstart.html#ce-quickstart).
+To get a local Confluent Platform (with Apache Kafka) up and running quickly, follow the steps in the [Confluent Platform Quick Start (Local)](https://docs.confluent.io/current/quickstart/ce-quickstart.html#ce-quickstart).
 
 ## Step 1 — Add the `users` table
 
@@ -85,15 +85,15 @@ You can use the following two Avro schema examples that will work with the `user
 
 1. Create a Kafka topic.
 
-```bash
-./bin/kafka-topics --create --partitions 1 --topic users_topic --bootstrap-server localhost:9092 --replication-factor 1
-```
+    ```bash
+    ./bin/kafka-topics --create --partitions 1 --topic users_topic --bootstrap-server localhost:9092 --replication-factor 1
+    ```
 
 2. Start the Kafka consumer service.
 
-```bash
-bin/kafka-avro-console-consumer --bootstrap-server localhost:9092 --topic users_topic --key-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer --value-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer
-```
+    ```bash
+    bin/kafka-avro-console-consumer --bootstrap-server localhost:9092 --topic users_topic --key-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer     --value-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer
+    ```
 
 ## Step 4 — Download the Yugabyte CDC connector
 
