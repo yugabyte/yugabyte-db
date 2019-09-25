@@ -54,7 +54,6 @@ For airgapped hosts a supported version of docker-engine (currently 1.7.1 to 17.
 - A Yugabyte license file (attached to your welcome email from Yugabyte Support)
 - Ability to connect from the YugaWare host to all the YugabyteDB data nodes. If this is not setup, [setup passwordless ssh](#step-5-troubleshoot-yugaware).
 
-
 ## What are the OS requirements and permissions to run the YugabyteDB data nodes?
 
 Prerequisites for the YugabyteDB data nodes are listed [here](../../../deploy/multi-node-cluster/#prerequisites).
@@ -67,28 +66,28 @@ The data node software is packaged into the YugaWare application. YugaWare distr
 
 ## How does the Admin Console interact with the YugabyteDB data nodes?
 
-The YugaWare Admin Console does a password-less ssh to interact with the data nodes. It needs to have the access key file (like a PEM file) uploaded into it via the UI. The setup on each of the data nodes to configure password-less ssh is documented [here](../../deploy/#private-cloud-or-on-premises-data-centers).
+The YugaWare Admin Console does a password-less ssh to interact with the data nodes. It needs to have the access key file (like a PEM file) uploaded into it via the UI. The setup on each of the data nodes to configure password-less SSH is documented [here](../../deploy/#private-cloud-or-on-premises-data-centers).
 
 A REST API is also exposed by the admin console to the end users in addition to the UI as another means of interacting with the data platform.
 
 ## Would we have access to the database machines that get spawned in public clouds?
 
-Yes, you would have access to all machines spawned. The machines are spawned by YugaWare. YugaWare runs on your machine in your AWS region/data center. If you have configured YugaWare to work with any public cloud like AWS or GCP,  it will spawn YugabyteDB nodes using your credentials on your behalf. These machines run in your account, but are created and managed by YugaWare on your behalf. You can log on to these machines anytime, and YugaWare will additionally show you some stats graphed into a built in dashboard either per node or per universe.
+Yes, you would have access to all machines spawned. The machines are spawned by YugaWare. YugaWare runs on your machine in your AWS region/data center. If you have configured YugaWare to work with any public cloud like AWS or GCP, it will spawn YugabyteDB nodes using your credentials on your behalf. These machines run in your account, but are created and managed by YugaWare on your behalf. You can log on to these machines anytime, and YugaWare will additionally show you some stats graphed into a built in dashboard either per node or per universe.
 
 ## How many machines would I need to try out YugabyteDB against my load?
 
 You would need:  
 
-- One machine to install YugaWare on  
+- One server to install YugaWare on  
 
-- Minimum as many data nodes as the replication factor. So just one machine for replication factor 1, and 3 machines in case of rf=3  
-- A machine to run the load tests on  
+- Minimum number of servers is as many data nodes as the replication factor. So just one server for replication factor 1, and 3 servers in case of RF=3  
+- A server to run the load tests on  
 
-Typically you can saturate a database machine (or three in case of replication factor 3) with just one large enough test machine running a synthetic load tester that has a light usage pattern. YugabyteDB ships some synthetic load-testers with the product which can simulate a few different workloads. For example, one load tester simulates a time series/IoT-style workload and another does stock-ticker like workload. But if you have a load tester that emulates your planned usage pattern, nothing like it!
+Typically, you can saturate a database server (or three in case of RF=3) with just one large enough test machine running a synthetic load tester that has a light usage pattern. YugabyteDB ships some synthetic load-testers with the product, which can simulate a few different workloads. For example, one load tester simulates a time series or IoT-style workload and another does stock-ticker like workload. But if you have a load tester that emulates your planned usage pattern, nothing like it!
 
 ## Can we control the properties (such as VPC, IOPS, tenancy etc.) of the machines YugaWare is spinning up? 
 
-Yes, you can control what YugaWare is spinning up. For example: 
+Yes, you can control what YugaWare is spinning up. For example:
 
 - You can choose if YugaWare should spawn a new VPC with peering to the VPC on which application servers are running (to isolate the database machines into a separate VPC) AWS, or ask it to re-use an existing VPC.  
 

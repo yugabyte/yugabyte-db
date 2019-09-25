@@ -12,7 +12,7 @@ menu:
 ---
 
 
-Depending on the data volume imported, various bulk import tools can be used to bring data into YugabyteDB.
+Depending on the data volume imported, various bulk import tools can be used to load data into YugabyteDB.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>

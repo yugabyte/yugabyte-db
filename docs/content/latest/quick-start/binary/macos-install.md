@@ -1,6 +1,6 @@
 ## Prerequisites
 
-a) <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 (Sierra) or higher
+a) <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 (Sierra) or later.
 
 b) Verify that you have Python 2 installed. Support for Python 3 is in the works.
 
@@ -64,11 +64,13 @@ You might have to `unload` the service before loading it.
 
 ## Download
 
-Download the YugabyteDB `tar.gz` file as shown below.
+Download the YugabyteDB `tar.gz` file using the following `wget` command.
 
 ```sh
 $ wget https://downloads.yugabyte.com/yugabyte-2.0.0.0-darwin.tar.gz
 ```
+
+To unpack the archive file and change to the YugabyteDB home directory, run the following command.
 
 ```sh
 $ tar xvfz yugabyte-2.0.0.0-darwin.tar.gz && cd yugabyte-2.0.0.0/
