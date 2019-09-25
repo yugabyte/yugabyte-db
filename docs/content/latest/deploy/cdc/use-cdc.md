@@ -68,13 +68,13 @@ To use the Yugabyte CDC connector, run the `yb_cdc_connector` JAR file.
 ```bash
 java -jar target/yb_cdc_connector.jar
 --table_name <namespace>.<table>
---master_addrs <yb master addresses>
-[ --[stream_id] <optional existing stream id> ]
---kafka_addrs <kafka cluster addresses> [default 127.0.0.1:9092]
---schema_registry_addrs [default 127.0.0.1:8081]
---topic_name <topic name to write to>
---table_schema_path <avro table schema>
---primary_key_schema_path <avro primary key schema>
+--master_addrs <yb-master-addresses>
+[ --stream_id <existing-stream-id> ]
+--kafka_addrs <kafka-cluster-addresses>
+--schema_registry_addrs
+--topic_name <topic-name>
+--table_schema_path <avro-table-schema>
+--primary_key_schema_path <avro-primary-key-schema>
 ```
 
 ### Syntax for stdout
@@ -82,9 +82,9 @@ java -jar target/yb_cdc_connector.jar
 ```bash
 java -jar yb_cdc_connector.jar
 --table_name <namespace>.<table>
---master_addrs <yb master addresses> [default 127.0.0.1:7100]
-[ --stream_id <stream-id> ]
-[ --log_only ]
+--master_addrs <yb-master-addresses>
+--stream_id <stream-id>
+--log_only
 ```
 
 ## Parameters
@@ -138,7 +138,7 @@ The following command will start the Yugabyte CDC connector and send an output s
 ```bash
 java -jar yb_cdc_connector.jar
 --master_addrs 127.0.0.1,127.0.0.2,127.0.0.3
---table_name users
+--table_name yugabyte.users
 --log_only
 ```
 
