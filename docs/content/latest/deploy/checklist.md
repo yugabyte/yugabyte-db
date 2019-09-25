@@ -19,7 +19,7 @@ YugabyteDB consists of two distributed services - the YB-Master service and the 
 
 ## Basics
 
-- YugabyteDB works on a variety of OSes. For production workloads, the recommended OS is **CentOS 7.x** or **RHEL 7.x**.
+- YugabyteDB works on a variety of operating systems. For production workloads, the recommended operating systems are CentOS 7.x and RHEL 7.x.
 - Set the appropriate [system limits using `ulimit`](../manual-deployment/system-config/#setting-ulimits) on each node running a YugabyteDB process.
 - Use [ntp](../manual-deployment/system-config/#ntp) to synchronize time among the machines.
 
@@ -27,9 +27,9 @@ YugabyteDB consists of two distributed services - the YB-Master service and the 
 
 YugabyteDB internally replicates data in order to survive node failure without compromising data correctness. The number of copies of the data represents the replication factor.
 
-You would first need to choose a replication factor. You would need at least as many machines as the replication factor. YugabyteDB works with both hostnames or IP addresses. IP Addresses are preferred at this point, they are more extensively tested. Below are some recommendations relating to the replication factor.
+You would first need to choose a replication factor. You would need at least as many machines as the replication factor. YugabyteDB works with both hostnames or IP addresses. IP addresses are preferred at this point, they are more extensively tested. Below are some recommendations relating to the replication factor.
 
-- The replication factor should be an odd number
+- The replication factor should be an odd number.
 - The default replication factor is `3`.
   - A replication factor of `3` allows tolerating one machine failure.
   - A replication factor of `5` allows tolerating two machine failures.
@@ -42,7 +42,7 @@ See the [yb-master command reference](../manual-deployment/start-masters) for mo
 
 ## Hardware requirements
 
-YugabyteDB is designed to run well on bare-metal machines, virtual machines or containers.
+YugabyteDB is designed to run well on bare-metal machines, virtual machines (VMs), or containers.
 
 ### CPU and RAM
 
@@ -59,10 +59,10 @@ Allocate adequate CPU and RAM. YugabyteDB has good defaults for running on a wid
 - Both local or remote attached storage work with YugabyteDB. Since YugabyteDB internally replicates data for fault tolerance, remote attached storage which which does its own additional replication is not a requirement. Local disks often offer better performance at a lower cost.
 - Multi-disk nodes
       - Do not use RAID across multiple disks. YugabyteDB can natively handle multi-disk nodes (JBOD).
-      - Create a data directory on each of the data disks and specify a comma separated list of those directories to the yb-master and yb-tserver processes via the --fs_data_dirs flag
+      - Create a data directory on each of the data disks and specify a comma separated list of those directories to the yb-master and yb-tserver processes via the `--fs_data_dirs` flag.
 - Mount settings
-      - XFS is the recommended filesystem
-      - Use the `noatime` setting when mounting the data drives
+      - XFS is the recommended filesystem.
+      - Use the `noatime` setting when mounting the data drives.
 
 ### Network
 
@@ -102,7 +102,7 @@ In our Enterprise installs, we change the SSH port for added security.
 
 ## Clock synchronization
 
-For YugabyteDB to preserve data consistency, the clock drift and clock skew across different nodes must be bounded. This can be achieved by running a clock synchronization software such as [NTP](http://www.ntp.org/). Below are some recommendations on how to configure clock synchronization.
+For YugabyteDB to preserve data consistency, the clock drift and clock skew across different nodes must be bounded. This can be achieved by running clock synchronization software, such as [NTP](http://www.ntp.org/). Below are some recommendations on how to configure clock synchronization.
 
 ### Clock skew
 

@@ -16,7 +16,7 @@ showAsideToc: true
 
 The `yb-ctl` utility, located in the bin directory of YugabyteDB home, provides a simple command line interface for administering local clusters used for development and learning. It invokes the [`yb-master`](../admin/yb-master/) and [`yb-tserver`](../admin/yb-tserver/) binaries to perform the necessary administration.
 
-Use the `-\-help` option to see all the commands supported.
+Use the `--help` option to see all of the supported commands.
 
 ```sh
 $ ./bin/yb-ctl --help
@@ -81,11 +81,11 @@ Here are the default values for all the optional arguments.
 
 ## Create a cluster
 
-Use the `yb-ctl create` command to quickly create a local YugabyteDB cluster for development and learning.
+To quickly create a local YugabyteDB cluster for development and learning, use the `yb-ctl create` command.
 
-The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. Use the [`add_node`](#add-nodes) and [`remove_node`](#stop-remove-nodes) commands to expand or shrink the cluster.
+In order to ensure that all of the replicas for a given tablet can be placed on different nodes, the number of nodes created with the initial create command is always equal to the replication factor.  To expand or shrink the cluster, use the [`add_node`](#add-nodes) and [`remove_node`](#stop-remove-nodes) commands.
 
-Each of these initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of yb-masters in a cluster has to equal the replication factor for the cluster to be considered operating normally.
+Each of these initial nodes run a `yb-tserver` service and a `yb-master` service. Note that the number of YB-Master services in a cluster must equal the replication factor for the cluster to be considered operating normally.
 
 ### Create a local cluster with replication factor of 1
 
@@ -180,7 +180,7 @@ $ ./bin/yb-ctl stop
 
 ## Check cluster status
 
-You can get the status of the local cluster including the URLs for the admin UIs for the YB-Master and YB-TServer using the `status` command.
+You can get the status of the local cluster, including the URLs for the admin UIs for the YB-Master and YB-TServer, by using the `yb-ctl status` command.
 
 ```sh
 $ ./bin/yb-ctl status
@@ -200,7 +200,7 @@ $ ./bin/yb-ctl setup_redis
 
 ### Add nodes
 
-- Adding a new node to the cluster. This will start a new yb-tserver process and give it a new `node_id` for tracking purposes.
+- Adding a new node to the cluster. This will start a new YB-TServer service and give it a new `node_id` for tracking purposes.
 
 ```sh
 $ ./bin/yb-ctl add_node
@@ -209,8 +209,8 @@ $ ./bin/yb-ctl add_node
 
 ### Stop and remove nodes
 
-We can stop a node by executing the `stop` command. The command takes the node id of the node
-that has to be removed as input. Stop node command expects a node id which denotes the index of the server that needs to be stopped. It also takes an optional flag `--master` which denotes that the server is a master.
+We can stop a node by executing the `yb-ctl stop` command. The command takes the node ID of the node
+that has to be removed as input. Stop node command expects a node id which denotes the index of the server that needs to be stopped. It also takes an optional flag `--master`, which denotes that the server is a master.
 
 ```sh
 $ ./bin/yb-ctl stop_node 4
@@ -252,19 +252,19 @@ $ ./bin/yb-ctl add_node --placement_info "cloud1.region1.zone1"
 
 ### Create a cluster with custom flags
 
-You can also pass custom flags to the masters and tservers.
+You can also pass custom flags to the YB-Master and YB-TServer services.
 
 ```sh
 $ ./bin/yb-ctl --rf 1 create --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20,master_backup_svc_queue_length=70" --tserver_flags "log_inject_latency=false,log_segment_size_mb=128,raft_heartbeat_interval_ms=1000"
 ```
 
-To add a node with custom tserver flags.
+To add a node with custom YB-TServer flags:
 
 ```sh
 $ ./bin/yb-ctl add_node --tserver_flags "log_inject_latency=false,log_segment_size_mb=128"
 ```
 
-To add a node with custom master flags:
+To add a node with custom YB-Master flags:
 
 ```sh
 $ ./bin/yb-ctl add_node --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20"
@@ -272,9 +272,9 @@ $ ./bin/yb-ctl add_node --master_flags "log_cache_size_limit_mb=128,log_min_seco
 
 ### Restart a cluster
 
-The `restart` command can be used to restart a cluster. Please note that if you restart the cluster,
+The `yb-ctl restart` command can be used to restart a cluster. Please note that if you restart the cluster,
 all custom defined flags and placement information will be lost. Nevertheless, you can pass the
-placement information and custom flags in the same way as they are passed in the `create` command.
+placement information and custom flags in the same way as they are passed in the `yb-ctl create` command.
 
 ```sh
 $ ./bin/yb-ctl restart
@@ -294,14 +294,14 @@ $ ./bin/yb-ctl restart --master_flags "log_cache_size_limit_mb=128,log_min_secon
 
 ### Restart a node
 
-The `restart` first stops the node and then starts it again. At this point of time the node is not decommissioned from the cluster. Thus one of the primary advantages of this command is that it can be used to wipe out old flags and pass in new ones. Just like  create, you can pass the cloud/region/zone and custom flags in the `restart` command.
+The `yb-ctl restart` first stops the node and then starts it again. At this point of time the node is not decommissioned from the cluster. Thus one of the primary advantages of this command is that it can be used to wipe out old flags and pass in new ones. Just like  create, you can pass the cloud/region/zone and custom flags in the `yb-ctl restart` command.
 
 ```sh
 $ ./bin/yb-ctl restart_node 2
 
 ```
 
-- Restart node with placement info
+- Restart node with placement information
 
 ```sh
 $ ./bin/yb-ctl restart_node 2 --placement_info "cloud1.region1.zone1"
@@ -323,7 +323,7 @@ $ ./bin/yb-ctl restart_node 2 --master --master_flags "log_cache_size_limit_mb=1
 
 This command stops all the nodes, removes the underlying data directories, then starts back the same number of nodes that you had in your previous configuration.
 
-Just like the `restart` command the custom defined flags and placement information will be lost during `wipe_restart`, though you can pass placement information and custom flags in the same way as they are passed in the `create` command.
+Just like the `yb-ctl restart` command the custom defined flags and placement information will be lost during `wipe_restart`, though you can pass placement information and custom flags in the same way as they are passed in the `yb-ctl create` command.
 
 ```sh
 $ ./bin/yb-ctl wipe_restart
