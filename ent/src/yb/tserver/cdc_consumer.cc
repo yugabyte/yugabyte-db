@@ -150,6 +150,9 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
   for (const auto& producer_map : DCHECK_NOTNULL(consumer_registry)->producer_map()) {
     const auto& producer_entry_pb = producer_map.second;
     proxy_manager_->UpdateProxies(producer_entry_pb);
+    if (producer_entry_pb.disable_stream()) {
+      continue;
+    }
     for (const auto& stream_entry : producer_entry_pb.stream_map()) {
       const auto& stream_entry_pb = stream_entry.second;
       for (const auto& tablet_entry : stream_entry_pb.consumer_producer_tablet_map()) {

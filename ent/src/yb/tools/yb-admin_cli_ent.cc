@@ -232,6 +232,21 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                               producer_id));
         return Status::OK();
       });
+
+  Register(
+      "set_universe_replication_enabled", " <producer_universe_uuid> <0|1>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 4) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        const string producer_id = args[2];
+        const bool is_enabled = atoi(args[3].c_str()) != 0;
+        RETURN_NOT_OK_PREPEND(client->SetUniverseReplicationEnabled(producer_id, is_enabled),
+            Substitute("Unable to $0 replication for universe $1",
+                is_enabled ? "enable" : "disable",
+                producer_id));
+        return Status::OK();
+      });
 }
 
 }  // namespace enterprise

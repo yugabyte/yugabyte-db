@@ -406,6 +406,8 @@ message SysUniverseReplicationEntryPB {
     // creating CDC streams, starting subscribers. If any of these fail, we set the universe
     // replication state to FAILED.
     FAILED = 3;
+    // Disabled.
+    DISABLED = 6;
     // Deleted.
     DELETED = 4;
     // Error while cleaning up state of deleted entry. This indicates that universe replication has
@@ -1556,6 +1558,16 @@ message DeleteUniverseReplicationResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+
+message SetUniverseReplicationEnabledRequestPB {
+  optional string producer_id = 1;
+  optional bool is_enabled = 2;
+}
+
+message SetUniverseReplicationEnabledResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 message GetUniverseReplicationRequestPB {
   optional string producer_id = 1;
 }
@@ -1669,6 +1681,8 @@ service MasterService {
       returns (SetupUniverseReplicationResponsePB);
   rpc DeleteUniverseReplication(DeleteUniverseReplicationRequestPB)
       returns (DeleteUniverseReplicationResponsePB);
+  rpc SetUniverseReplicationEnabled(SetUniverseReplicationEnabledRequestPB)
+      returns (SetUniverseReplicationEnabledResponsePB);
   rpc GetUniverseReplication(GetUniverseReplicationRequestPB)
       returns (GetUniverseReplicationResponsePB);
 }

@@ -615,6 +615,29 @@ Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer
   return Status::OK();
 }
 
+CHECKED_STATUS ClusterAdminClient::SetUniverseReplicationEnabled(const std::string& producer_id,
+                                                                 bool is_enabled) {
+  master::SetUniverseReplicationEnabledRequestPB req;
+  master::SetUniverseReplicationEnabledResponsePB resp;
+  req.set_producer_id(producer_id);
+  req.set_is_enabled(is_enabled);
+  const string toggle = (is_enabled ? "enabl" : "disabl");
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master_proxy_->SetUniverseReplicationEnabled(req, &resp, &rpc);
+
+  if (resp.has_error()) {
+    cout << "Error " << toggle << "ing "
+         << "universe replication: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Replication " << toggle << "ed successfully" << endl;
+  return Status::OK();
+}
+
+
 }  // namespace enterprise
 }  // namespace tools
 }  // namespace yb

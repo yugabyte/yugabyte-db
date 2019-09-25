@@ -123,6 +123,11 @@ class CatalogManager : public yb::master::CatalogManager {
                                            DeleteUniverseReplicationResponsePB* resp,
                                            rpc::RpcContext* rpc);
 
+  // Enable/Disable an Existing Universe Replication.
+  CHECKED_STATUS SetUniverseReplicationEnabled(const SetUniverseReplicationEnabledRequestPB* req,
+                                               SetUniverseReplicationEnabledResponsePB* resp,
+                                               rpc::RpcContext* rpc);
+
   // Get Universe Replication.
   CHECKED_STATUS GetUniverseReplication(const GetUniverseReplicationRequestPB* req,
                                         GetUniverseReplicationResponsePB* resp,
