@@ -718,6 +718,13 @@ void MasterServiceImpl::DeleteUniverseReplication(const DeleteUniverseReplicatio
   HandleIn(req, resp, &rpc, &enterprise::CatalogManager::DeleteUniverseReplication);
 }
 
+void MasterServiceImpl::SetUniverseReplicationEnabled(
+                          const SetUniverseReplicationEnabledRequestPB* req,
+                          SetUniverseReplicationEnabledResponsePB* resp,
+                          rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::SetUniverseReplicationEnabled);
+}
+
 void MasterServiceImpl::GetUniverseReplication(const GetUniverseReplicationRequestPB* req,
                                                GetUniverseReplicationResponsePB* resp,
                                                rpc::RpcContext rpc) {

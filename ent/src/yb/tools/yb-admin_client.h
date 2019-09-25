@@ -64,6 +64,9 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   CHECKED_STATUS DeleteUniverseReplication(const std::string& producer_id);
 
+  CHECKED_STATUS SetUniverseReplicationEnabled(const std::string& producer_id,
+                                               bool is_enabled);
+
  private:
 
   CHECKED_STATUS SendEncryptionRequest(const std::string& key_path, bool enable_encryption);

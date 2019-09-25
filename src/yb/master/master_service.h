@@ -252,6 +252,10 @@ class MasterServiceImpl : public MasterServiceIf,
                                  DeleteUniverseReplicationResponsePB* resp,
                                  rpc::RpcContext rpc) override;
 
+  void SetUniverseReplicationEnabled(const SetUniverseReplicationEnabledRequestPB* req,
+                                     SetUniverseReplicationEnabledResponsePB* resp,
+                                     rpc::RpcContext rpc) override;
+
   void GetUniverseReplication(const GetUniverseReplicationRequestPB* req,
                               GetUniverseReplicationResponsePB* resp,
                               rpc::RpcContext rpc) override;
