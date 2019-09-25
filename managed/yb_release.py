@@ -7,7 +7,7 @@ import logging
 import os
 import shutil
 import tarfile
-from subprocess import check_output, CalledProcessError
+from subprocess import Popen, PIPE, CalledProcessError
 from ybops.utils import init_env, log_message, get_release_file
 from ybops.common.exceptions import YBOpsRuntimeError
 
@@ -30,14 +30,18 @@ parser.add_argument(
 parser.add_argument('--force', help='Force no user input', action="store_true")
 args = parser.parse_args()
 
-output = None
-
 try:
     init_env(logging.INFO)
     script_dir = os.path.dirname(os.path.realpath(__file__))
-    output = check_output(["sbt", "clean"])
+
+    _, err = Popen(["sbt", "clean"], stderr=PIPE)
+    if err:
+        raise RuntimeError(err)
     log_message(logging.INFO, "Kick off SBT universal packaging")
-    output = check_output(["sbt", "universal:packageZipTarball"])
+    _, err = Popen(["sbt", "universal:packageZipTarball"], stderr=PIPE)
+    if err:
+        raise RuntimeError(err)
+
     packaged_files = glob.glob(os.path.join(script_dir, "target", "universal", "yugaware*.tgz"))
     if args.unarchived:
         package_tar = packaged_files[0]
@@ -56,5 +60,4 @@ try:
             shutil.copy(release_file, args.destination)
 except (CalledProcessError, OSError, RuntimeError, TypeError, NameError) as e:
     log_message(logging.ERROR, e)
-    log_message(logging.ERROR, output)
     raise e
