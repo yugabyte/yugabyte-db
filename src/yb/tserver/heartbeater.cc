@@ -64,10 +64,12 @@ using namespace std::literals;
 DEFINE_int32(heartbeat_rpc_timeout_ms, 15000,
              "Timeout used for the TS->Master heartbeat RPCs.");
 TAG_FLAG(heartbeat_rpc_timeout_ms, advanced);
+TAG_FLAG(heartbeat_rpc_timeout_ms, runtime);
 
 DEFINE_int32(heartbeat_interval_ms, 1000,
              "Interval at which the TS heartbeats to the master.");
 TAG_FLAG(heartbeat_interval_ms, advanced);
+TAG_FLAG(heartbeat_interval_ms, runtime);
 
 DEFINE_int32(heartbeat_max_failures_before_backoff, 3,
              "Maximum number of consecutive heartbeat failures until the "
@@ -438,7 +440,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
   }
 
   RpcController rpc;
-  rpc.set_timeout(MonoDelta::FromSeconds(10));
+  rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_heartbeat_rpc_timeout_ms));
 
   req.set_config_index(server_->GetCurrentMasterIndex());
 
