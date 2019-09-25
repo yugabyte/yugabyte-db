@@ -16,7 +16,7 @@ menu:
 YugabyteDB supports Transport Layer Security (TLS) encryption using [OpenSSL](https://www.openssl.org), which is natively available for Linux, BSD, and macOS operating systems. You can configure YugabyteDB to encrypt network communication, including:
 
 * Server-server — between YB-Masters and YB-TServers
-* Client-server — using CLIs and APIs for YSQL and YCQL
+* Client-server — using CLIs and APIs for YCQL (YSQL support in progress)
 
 {{< note title="Note" >}}
 
