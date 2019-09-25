@@ -221,6 +221,28 @@ class TwoDCTest : public YBTest {
     }, MonoDelta::FromSeconds(kRpcTimeout), "Verify universe replication");
   }
 
+  Status ToggleUniverseReplication(
+      MiniCluster* consumer_cluster, YBClient* consumer_client,
+      const std::string& universe_id, bool is_enabled) {
+    master::SetUniverseReplicationEnabledRequestPB req;
+    master::SetUniverseReplicationEnabledResponsePB resp;
+
+    req.set_producer_id(universe_id);
+    req.set_is_enabled(is_enabled);
+
+    auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+        &consumer_client->proxy_cache(),
+        consumer_cluster->leader_mini_master()->bound_rpc_addr());
+
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    RETURN_NOT_OK(master_proxy->SetUniverseReplicationEnabled(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return Status::OK();
+  }
+
   Status VerifyUniverseReplicationDeleted(MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, int timeout) {
     return LoggedWaitFor([=]() -> Result<bool> {
@@ -702,6 +724,36 @@ TEST_F(TwoDCTest, BiDirectionalWrites) {
 
   // Ensure that same records exist on both universes.
   VerifyWrittenRecords(tables[0]->name(), tables[1]->name());
+
+  Destroy();
+}
+
+TEST_F(TwoDCTest, ToggleReplicationEnabled) {
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, replication_factor));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer table from the list.
+  producer_tables.reserve(1);
+  producer_tables.push_back(tables[0]);
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+  // Verify that universe is now ACTIVE
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+
+  // After we know the universe is ACTIVE, make sure all tablets are getting polled.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
+
+  // Disable the replication and ensure no tablets are being polled
+  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, false));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 0));
+
+  // Enable replication and ensure that all the tablets start being polled again
+  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
 
   Destroy();
 }

@@ -2094,6 +2094,75 @@ void CatalogManager::DeleteUniverseReplicationUnlocked(
   }
 }
 
+Status CatalogManager::SetUniverseReplicationEnabled(
+    const SetUniverseReplicationEnabledRequestPB* req,
+    SetUniverseReplicationEnabledResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing SetUniverseReplicationEnabled request from " << RequestorString(rpc)
+            << ": " << req->ShortDebugString();
+
+  // Sanity Checking Cluster State and Input.
+  RETURN_NOT_OK(CheckOnline());
+
+  if (!req->has_producer_id()) {
+    Status s = STATUS(InvalidArgument, "Producer universe ID must be provided", req->DebugString());
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+  }
+  if (!req->has_is_enabled()) {
+    Status s = STATUS(InvalidArgument, "Must explicitly set whether to enable", req->DebugString());
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+  }
+
+  scoped_refptr<UniverseReplicationInfo> universe;
+  {
+    std::shared_lock<LockType> l(lock_);
+
+    universe = FindPtrOrNull(universe_replication_map_, req->producer_id());
+    if (universe == nullptr) {
+      Status s = STATUS(NotFound, "Could not find CDC producer universe", req->DebugString());
+      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+    }
+  }
+
+  // Update the Master's Universe Config with the new state.
+  {
+    auto l = universe->LockForWrite();
+    if (l->data().pb.state() != SysUniverseReplicationEntryPB::DISABLED &&
+        l->data().pb.state() != SysUniverseReplicationEntryPB::ACTIVE) {
+      Status s = STATUS(InvalidArgument,
+          Format("Universe Replication in invalid state: $0.  Retry or Delete.",
+              SysUniverseReplicationEntryPB::State_Name(l->data().pb.state())),
+          req->DebugString());
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+    }
+    if (req->is_enabled()) {
+        l->mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::ACTIVE);
+    } else { // DISABLE.
+        l->mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DISABLED);
+    }
+    RETURN_NOT_OK(sys_catalog_->UpdateItem(universe.get(), leader_ready_term_));
+    l->Commit();
+  }
+
+  // Modify the Consumer Registry, which will fan out this info to all TServers on heartbeat.
+  {
+    auto l = cluster_config_->LockForWrite();
+    auto producer_map = l->mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+    auto it = producer_map->find(req->producer_id());
+    if (it == producer_map->end()) {
+      LOG(WARNING) << "Valid Producer Universe not in Consumer Registry: " << req->producer_id();
+      Status s = STATUS(NotFound, "Could not find CDC producer universe", req->DebugString());
+      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+    }
+    (*it).second.set_disable_stream(!req->is_enabled());
+    l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
+    RETURN_NOT_OK(sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_));
+    l->Commit();
+  }
+
+  return Status::OK();
+}
+
 Status CatalogManager::GetUniverseReplication(const GetUniverseReplicationRequestPB* req,
                                               GetUniverseReplicationResponsePB* resp,
                                               rpc::RpcContext* rpc) {
