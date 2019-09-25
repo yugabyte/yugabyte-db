@@ -21,9 +21,10 @@ export default class ListBackups extends Component {
     currentUniverse: PropTypes.object.isRequired
   }
 
-  componentWillMount() {
+  componentDidMount() {
     const { currentUniverse: { universeUUID }} = this.props;
     this.props.fetchUniverseBackups(universeUUID);
+    this.props.fetchUniverseList();
   }
 
   componentWillUnMount() {
