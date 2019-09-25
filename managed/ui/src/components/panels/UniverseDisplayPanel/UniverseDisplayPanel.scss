@@ -269,13 +269,11 @@ a:hover >  .universe-display-item-container, .create-universe-button:hover {
   &:hover {
     & > .btn-icon {
       @include transition(0.35s);
-      transform: translate(0, -30px);
-      opacity: 0;
+      transform: translate(0, -10px);
     }
     & > .display-name {
       @include transition(0.35s);
-      transform: translate(0, 30px);
-      opacity: 0;
+      transform: translate(0, 10px);
     }
 
     & > .button-group {
