@@ -15,11 +15,11 @@ class Metrics extends Component {
   }
   render() {
     return (
-      <div className="dashboard-container">
-        <Measure onMeasure={this.onResize.bind(this)}>
+      <Measure onMeasure={this.onResize.bind(this)}>
+        <div className="dashboard-container">
           <CustomerMetricsPanelContainer origin={"customer"} width={this.state.dimensions.width} />
-        </Measure>
-      </div>
+        </div>
+      </Measure>
     );
   }
 }

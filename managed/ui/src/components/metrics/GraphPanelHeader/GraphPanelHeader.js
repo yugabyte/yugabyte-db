@@ -135,7 +135,7 @@ class GraphPanelHeader extends Component {
   }
 
   shouldComponentUpdate(nextProps, nextState) {
-    return !_.isEqual(nextState, this.state);
+    return !_.isEqual(nextState, this.state) || !_.isEqual(nextProps.universe, this.props.universe) ;
   }
 
   submitGraphFilters = (type, val) => {
