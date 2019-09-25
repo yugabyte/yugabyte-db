@@ -10,7 +10,8 @@ import sys
 import time
 
 YB_NETWORK_NAME = "yb-net"
-YB_DOCKER_IMAGE = "yugabytedb/yugabyte:latest"
+YB_DOCKER_IMAGE = "yugabytedb/yugabyte"
+YB_DOCKER_IMAGE_TAG = "latest"
 CONTAINER_CONFIG_CMD = 'docker inspect -f "{{json .ContainerConfig.%s}}" %s'
 CONTAINER_IMAGE_FIND = 'docker images %s --format "{{.ID}}"'
 
@@ -58,12 +59,9 @@ class YBDockerControl():
         self.container_count = 0
         self.num_master = 0
         self.num_tservers = 0
+        self.setup_cli()
         self.verify_docker()
         self.setup_yb_network()
-        self.setup_cli()
-
-        self.volumes = self.read_container_config("Volumes")
-        self.working_dir = self.read_container_config("WorkingDir")
         self.placement_info = []
 
     def get_placement_list(self):
@@ -72,14 +70,20 @@ class YBDockerControl():
             placement_list = self.args.placement_info.split(",")
         return placement_list
 
+    def docker_image_tag(self):
+        return "{}:{}".format(YB_DOCKER_IMAGE, self.args.tag)
+
     @staticmethod
     def verify_docker():
         result = get_subprocess_result_as_str(['docker', 'info'])
         if 'Error' in result:
             sys.exit("Docker daemon not running")
-        result = get_subprocess_result_as_str(CONTAINER_IMAGE_FIND % YB_DOCKER_IMAGE, shell=True)
+
+    def pull_yb_image(self):
+        result = get_subprocess_result_as_str(CONTAINER_IMAGE_FIND % self.docker_image_tag(),
+                                              shell=True)
         if not result:
-            subprocess.check_call(['docker', 'pull', YB_DOCKER_IMAGE])
+            subprocess.check_call(['docker', 'pull', self.docker_image_tag()])
 
     @staticmethod
     def setup_yb_network():
@@ -106,12 +110,10 @@ class YBDockerControl():
         except subprocess.CalledProcessError:
             sys.exit("Unable to destroy docker network {}".format(YB_NETWORK_NAME))
 
-
-    @staticmethod
-    def read_container_config(config_name):
+    def read_container_config(self, config_name):
         try:
             config = get_subprocess_result_as_str(CONTAINER_CONFIG_CMD %
-                                             (config_name, YB_DOCKER_IMAGE),
+                                             (config_name, self.docker_image_tag()),
                                              shell=True)
             return json.loads(config.strip())
         except subprocess.CalledProcessError:
@@ -201,10 +203,17 @@ class YBDockerControl():
             sys.exit("Unable to fetch running YugaByte containers")
 
     def setup_cli(self):
+        parent_parser = argparse.ArgumentParser(add_help=False)
+        parent_parser.add_argument('--tag',
+                                   default=YB_DOCKER_IMAGE_TAG,
+                                   help='YugaByte Docker image tag')
+
         self.parser = argparse.ArgumentParser(description='YugaByte Docker Container Control')
         subparsers = self.parser.add_subparsers(help='Commands')
 
-        create_subparser = subparsers.add_parser('create', help='Create YugaByte Cluster')
+        create_subparser = subparsers.add_parser('create',
+                                                 help='Create YugaByte Cluster',
+                                                 parents = [parent_parser])
         create_subparser.set_defaults(command='create')
         create_subparser.add_argument('--rf', type=int, default=self.REPLICATION_FACTOR_OPTIMAL,
                                       help='Replication Factor')
@@ -212,7 +221,8 @@ class YBDockerControl():
                                       help='Seconds to wait for YugaByte cluster to come up')
 
         add_node_subparser = subparsers.add_parser('add_node',
-                                                   help='Add a new YugaByte Cluster Node')
+                                                   help='Add a new YugaByte Cluster Node',
+                                                   parents = [parent_parser])
         add_node_subparser.set_defaults(command='add_node')
 
         startup_subparsers = [create_subparser, add_node_subparser]
@@ -221,43 +231,50 @@ class YBDockerControl():
             self.add_shared_args(subparser)
 
         status_subparser = subparsers.add_parser('status',
-                                                 help='Check YugaByte Cluster status')
+                                                 help='Check YugaByte Cluster status',
+                                                 parents = [parent_parser])
         status_subparser.set_defaults(command='status')
 
         destroy_subparser = subparsers.add_parser('destroy',
-                                                  help='Destroy YugaByte Cluster')
+                                                  help='Destroy YugaByte Cluster',
+                                                  parents = [parent_parser])
         destroy_subparser.set_defaults(command='destroy')
 
         stop_node_subparser = subparsers.add_parser('stop_node',
-                                                    help='Stop a YugaByte Cluster Node')
+                                                    help='Stop a YugaByte Cluster Node',
+                                                    parents = [parent_parser])
         stop_node_subparser.add_argument("node", type=str, help='Node ID to stop')
         stop_node_subparser.add_argument("--master", action="store_true",
                                          help='Type of server stop')
         stop_node_subparser.set_defaults(command='stop_node')
 
         start_node_subparser = subparsers.add_parser('start_node',
-                                                     help='Start a YugaByte Cluster Node')
+                                                     help='Start a YugaByte Cluster Node',
+                                                     parents = [parent_parser])
         start_node_subparser.add_argument("node", type=str, help='Node ID to start')
         start_node_subparser.add_argument("--master", action="store_true",
                                           help='Type of server start')
         start_node_subparser.set_defaults(command='start_node')
 
         stop_subparser = subparsers.add_parser('stop',
-                                               help='Stop YugaByte Cluster')
+                                               help='Stop YugaByte Cluster',
+                                               parents = [parent_parser])
         stop_subparser.set_defaults(command='stop')
 
         start_subparser = subparsers.add_parser('start',
-                                                help='Start YugaByte Cluster')
+                                                help='Start YugaByte Cluster',
+                                                parents = [parent_parser])
         start_subparser.set_defaults(command='start')
 
         remove_node_subparser = subparsers.add_parser('remove_node',
-                                                      help='Stop a YugaByte Cluster Node')
+                                                      help='Stop a YugaByte Cluster Node',
+                                                      parents = [parent_parser])
         remove_node_subparser.add_argument("node", type=str, help='Node ID to remove')
         remove_node_subparser.set_defaults(command='remove_node')
 
     def start_cluster(self, server_type, node_id, placement):
         base_cmd = ['--net', YB_NETWORK_NAME, '--detach']
-        server_cmds = [YB_DOCKER_IMAGE]
+        server_cmds = [self.docker_image_tag()]
         server_cmds.append(os.path.join(self.working_dir, 'bin', server_type))
 
         exposed_ports = []
@@ -487,6 +504,9 @@ class YBDockerControl():
 
     def run(self):
         self.args = self.parser.parse_args()
+        self.pull_yb_image()
+        self.volumes = self.read_container_config("Volumes")
+        self.working_dir = self.read_container_config("WorkingDir")
         self.fetch_containers()
 
         if self.args.command == 'create':
