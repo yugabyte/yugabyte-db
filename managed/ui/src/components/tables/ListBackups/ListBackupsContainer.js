@@ -2,7 +2,9 @@
 
 import { connect } from 'react-redux';
 import { ListBackups } from '../../tables';
-import { fetchUniverseBackups, fetchUniverseBackupsResponse, resetUniverseBackups } from '../../../actions/universe';
+import { fetchUniverseList, fetchUniverseListResponse,
+  fetchUniverseBackups, fetchUniverseBackupsResponse,
+  resetUniverseBackups } from '../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -10,6 +12,12 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(fetchUniverseBackups(universeUUID))
       .then((response) => {
         dispatch(fetchUniverseBackupsResponse(response.payload));
+      });
+    },
+    fetchUniverseList: () => {
+      dispatch(fetchUniverseList())
+      .then((response) => {
+        dispatch(fetchUniverseListResponse(response.payload));
       });
     },
     resetUniverseBackups: () => {
