@@ -364,7 +364,7 @@ export default class ClusterFields extends Component {
       this.props.setPlacementStatus(placementStatusObject);
     }
     //hook from parent universeForm to check if any fields was changed
-    const nodeDetailsSet = getPromiseState(currentUniverse).isSuccess() ? universeConfigTemplate.data.nodeDetailsSet : [];
+    const nodeDetailsSet = getPromiseState(currentUniverse).isSuccess() && getPromiseState(universeConfigTemplate).isSuccess() ? universeConfigTemplate.data.nodeDetailsSet : [];
     if (type === "Edit" || (this.props.type === "Async" && this.state.isReadOnlyExists)) {
       this.props.handleHasFieldChanged(this.hasFieldChanged() || !_.isEqual(currentUniverse.data.universeDetails.nodeDetailsSet, nodeDetailsSet));
     } else {

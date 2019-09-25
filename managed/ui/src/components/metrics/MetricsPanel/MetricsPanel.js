@@ -94,9 +94,9 @@ export default class MetricsPanel extends Component {
     }
   }
 
-  componentWillReceiveProps(newProps) {
-    if (newProps.width !== this.props.width) {
-      Plotly.relayout(this.props.metricKey, {width: this.getGraphWidth(newProps.width)});
+  componentDidUpdate(prevProps) {
+    if (this.props.width !== prevProps.width) {
+      Plotly.relayout(prevProps.metricKey, {width: this.getGraphWidth(this.props.width)});
     }
   }
 

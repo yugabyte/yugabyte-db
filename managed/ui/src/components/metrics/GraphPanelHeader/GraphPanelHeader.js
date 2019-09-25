@@ -3,7 +3,10 @@
 import React, { Component } from 'react';
 import { Dropdown, MenuItem, FormControl} from 'react-bootstrap';
 import { DateTimePicker } from 'react-widgets';
+import momentLocalizer from "react-widgets-moment";
 import { withRouter, browserHistory } from 'react-router';
+import moment from 'moment';
+
 import _ from 'lodash';
 
 import { YBButton } from '../../common/forms/fields';
@@ -15,8 +18,6 @@ import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import './GraphPanelHeader.scss';
 
 require('react-widgets/dist/css/react-widgets.css');
-const moment = require('moment');
-const momentLocalizer = require('react-widgets/lib/localizers/moment');
 
 // We can define different filter types here, the type parameter should be
 // valid type that moment supports except for custom and divider.
@@ -70,13 +71,17 @@ class GraphPanelHeader extends Component {
     };
   }
 
-  componentWillMount() {
+  componentDidMount() {
     const location = browserHistory.getCurrentLocation();
     const currentQuery = location.query;
+    const { universe: { universeList }} = this.props;
     // Remove subtab from query param
     delete currentQuery.subtab;
 
     let currentFilters = this.state;
+    if (this.props.origin === "customer" && getPromiseState(universeList).isInit()) {
+      this.props.fetchUniverseList();
+    }
     if (isValidObject(currentQuery) && Object.keys(currentQuery).length > 1) {
       const filterParams = {
         nodePrefix: currentQuery.nodePrefix,
@@ -102,10 +107,10 @@ class GraphPanelHeader extends Component {
     this.props.changeGraphQueryFilters(currentFilters);
   }
 
-  componentWillReceiveProps(nextProps) {
-    const {location, universe, universe: {universeList}} = nextProps;
-    if (this.props.location !== nextProps.location ||
-       (getPromiseState(universeList).isSuccess() && getPromiseState(this.props.universe.universeList).isLoading())) {
+  componentDidUpdate(prevProps, prevState) {
+    const { location, universe, universe: { universeList }} = this.props;
+    if (prevProps.location !== this.props.location ||
+       (getPromiseState(universeList).isSuccess() && getPromiseState(prevProps.universe.universeList).isLoading())) {
       let nodePrefix = this.state.nodePrefix;
       if (location.query.nodePrefix) {
         nodePrefix = location.query.nodePrefix;
@@ -129,6 +134,10 @@ class GraphPanelHeader extends Component {
     }
   }
 
+  shouldComponentUpdate(nextProps, nextState) {
+    return !_.isEqual(nextState, this.state);
+  }
+
   submitGraphFilters = (type, val) => {
     const queryObject = this.state.filterParams;
     queryObject[type] = val;
@@ -147,14 +156,15 @@ class GraphPanelHeader extends Component {
 
   handleFilterChange = (eventKey, event) => {
     const filterInfo = filterTypes[eventKey] || filterTypes[DEFAULT_FILTER_KEY];
-    const newParams = this.state;
+    const newParams = _.cloneDeep(this.state);
     newParams.filterLabel = filterInfo.label;
     newParams.filterType = filterInfo.type;
     newParams.filterValue = filterInfo.value;
     this.setState({
       filterLabel: filterInfo.label,
       filterType: filterInfo.type,
-      filterValue: filterInfo.value});
+      filterValue: filterInfo.value
+    });
 
     if (event.target.getAttribute("data-filter-type") !== "custom") {
       const endMoment = moment();
@@ -245,12 +255,11 @@ class GraphPanelHeader extends Component {
             value={this.state.startMoment.toDate()}
             onChange={this.handleStartDateChange}
             max={new Date()} />
-            &nbsp;&ndash;&nbsp;
+            &ndash;
           <DateTimePicker
             value={this.state.endMoment.toDate()}
             onChange={this.handleEndDateChange}
             max={new Date()} min={this.state.startMoment.toDate()} />
-            &nbsp;
           <YBButton btnIcon={"fa fa-caret-right"} onClick={this.applyCustomFilter} />
         </span>
       );
