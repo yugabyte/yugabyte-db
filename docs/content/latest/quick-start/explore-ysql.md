@@ -37,7 +37,7 @@ Follow the steps to create a database and load sample data.
     $ wget https://github.com/yugabyte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
     ```
 
-3. Unarchive the `sample-data.tgz` file using the following `tar` command.
+3. Unpack the `sample-data.tgz` file running the following `tar` command.
 
     ```sh
     $ tar zxvf sample-data.tgz
