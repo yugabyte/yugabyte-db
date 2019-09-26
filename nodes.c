@@ -14,27 +14,37 @@ static void read_ag_node(ExtensibleNode *node);
 const char *node_names[] = {
     "cypher_return",
     "cypher_with",
+    "cypher_match",
+    "cypher_create",
     "cypher_set",
     "cypher_set_item",
     "cypher_delete",
+    "cypher_path",
+    "cypher_node",
+    "cypher_relationship"
 };
 
 #define DEFINE_NODE_METHODS(type) \
     { \
-        #type, \
+        CppAsString(type), \
         sizeof(type), \
         copy_ag_node, \
         equal_ag_node, \
-        out_##type, \
+        CppConcat(out_, type), \
         read_ag_node \
     }
 
 const ExtensibleNodeMethods node_methods[] = {
     DEFINE_NODE_METHODS(cypher_return),
     DEFINE_NODE_METHODS(cypher_with),
+    DEFINE_NODE_METHODS(cypher_match),
+    DEFINE_NODE_METHODS(cypher_create),
     DEFINE_NODE_METHODS(cypher_set),
     DEFINE_NODE_METHODS(cypher_set_item),
     DEFINE_NODE_METHODS(cypher_delete),
+    DEFINE_NODE_METHODS(cypher_path),
+    DEFINE_NODE_METHODS(cypher_node),
+    DEFINE_NODE_METHODS(cypher_relationship)
 };
 
 static void copy_ag_node(ExtensibleNode *newnode,

@@ -60,31 +60,36 @@
 /* keywords in alphabetical order */
 %token <keyword> AND AS ASC ASCENDING
                  BY
-                 CONTAINS
+                 CONTAINS CREATE
                  DELETE DESC DESCENDING DETACH DISTINCT
                  ENDS
                  FALSE_P
                  IN IS
                  LIMIT
+                 MATCH
                  NOT NULL_P
                  OR ORDER
                  REMOVE RETURN
                  SET SKIP STARTS
                  TRUE_P
-                 WHERE
-                 WITH
+                 WHERE WITH
 
 /* query */
-%type <list> single_query multi_part_query
-%type <list> updating_clause
-%type <list> updating_clause_chain_opt updating_clause_chain
-%type <list> with_chain_opt with_chain
+%type <list> single_query query_part_init query_part_last
+             reading_clause_list updating_clause_list_0 updating_clause_list_1
+%type <node> reading_clause updating_clause
 
 /* RETURN and WITH clause */
 %type <node> return return_item sort_item skip_opt limit_opt with
 %type <boolean> distinct_opt
-%type <list> return_items order_by_opt sort_items
+%type <list> return_item_list order_by_opt sort_item_list
 %type <integer> order_opt
+
+/* MATCH clause */
+%type <node> match
+
+/* CREATE clause */
+%type <node> create
 
 /* SET and REMOVE clause */
 %type <node> set set_item remove remove_item
@@ -97,12 +102,20 @@
 /* common */
 %type <node> where_opt
 
+/* pattern */
+%type <list> pattern simple_path_opt_parens simple_path
+%type <node> path anonymous_path
+             path_node path_relationship path_relationship_body
+             properties_opt
+%type <string> label_opt
+
 /* expression */
 %type <node> expr expr_opt atom literal map list var
-%type <list> expr_comma_list expr_comma_list_opt map_keyvals
+%type <list> expr_list expr_list_opt map_keyval_list_opt map_keyval_list
 
-/* identifier */
-%type <string> name
+/* names */
+%type <string> property_key_name var_name var_name_opt label_name
+%type <string> symbolic_name schema_name
 %type <keyword> reserved_keyword
 
 /* precedence: lowest to highest */
@@ -144,87 +157,30 @@ static Node *make_type_cast(Node *arg, TypeName *typename, int location);
 
 %%
 
+/*
+ * query
+ */
+
 stmt:
     single_query semicolon_opt
         {
+            /*
+             * If there is no transition for the lookahead token and the
+             * clauses can be reduced to single_query, the parsing is
+             * considered successful although it actually isn't.
+             *
+             * For example, when `MATCH ... CREATE ... MATCH ... ;` query is
+             * being parsed, there is no transition for the second `MATCH ...`
+             * because the query is wrong but `MATCH .. CREATE ...` is correct
+             * so it will be reduced to query_part_last anyway even if there
+             * are more tokens to read.
+             *
+             * Throw syntax error in this case.
+             */
+            if (yychar != YYEOF)
+                yyerror(&yylloc, scanner, extra, "syntax error");
+
             extra->result = $1;
-        }
-    ;
-
-single_query:
-    multi_part_query return
-        {
-            if ($1)
-                $$ = lappend($1, $2);
-            else
-                $$ = list_make1($2);
-        }
-    ;
-
-multi_part_query:
-    updating_clause_chain_opt with_chain_opt
-        {
-            if ($1 && $2)
-                $$ = lappend($1, $2);
-            else if ($1)
-                $$ = list_make1($1);
-            else if ($2)
-                $$ = list_make1($2);
-            else
-                $$ = NIL;
-        }
-    ;
-
-updating_clause_chain_opt:
-    /* empty */
-        {
-            $$ = NIL;
-        }
-    | updating_clause_chain
-    ;
-
-updating_clause_chain:
-    updating_clause
-        {
-            $$ = list_make1($1);
-        }
-    | updating_clause_chain updating_clause
-        {
-            $$ = lappend($1, $2);
-        }
-    ;
-
-updating_clause:
-    delete
-        {
-            $$ = list_make1($1);
-        }
-    | set
-        {
-            $$ = list_make1($1);
-        }
-    | remove
-        {
-            $$ = list_make1($1);
-        }
-    ;
-
-with_chain_opt:
-    /* empty */
-        {
-            $$ = NIL;
-        }
-    | with_chain
-    ;
-
-with_chain:
-    with
-        {
-            $$ = list_make1($1);
-        }
-    | with_chain with
-        {
-            $$ = lappend($1, $2);
         }
     ;
 
@@ -233,8 +189,88 @@ semicolon_opt:
     | ';'
     ;
 
+/*
+ * The overall structure of single_query looks like below.
+ *
+ * ( reading_clause* updating_clause* with )*
+ * reading_clause* ( updating_clause+ | updating_clause* return )
+ */
+single_query:
+    query_part_init query_part_last
+        {
+            $$ = list_concat($1, $2);
+        }
+    ;
+
+query_part_init:
+    /* empty */
+        {
+            $$ = NIL;
+        }
+    | query_part_init reading_clause_list updating_clause_list_0 with
+        {
+            $$ = lappend(list_concat(list_concat($1, $2), $3), $4);
+        }
+    ;
+
+query_part_last:
+    reading_clause_list updating_clause_list_1
+        {
+            $$ = list_concat($1, $2);
+        }
+    | reading_clause_list updating_clause_list_0 return
+        {
+            $$ = lappend(list_concat($1, $2), $3);
+        }
+    ;
+
+reading_clause_list:
+    /* empty */
+        {
+            $$ = NIL;
+        }
+    | reading_clause_list reading_clause
+        {
+            $$ = lappend($1, $2);
+        }
+    ;
+
+reading_clause:
+    match
+    ;
+
+updating_clause_list_0:
+    /* empty */
+        {
+            $$ = NIL;
+        }
+    | updating_clause_list_1
+    ;
+
+updating_clause_list_1:
+    updating_clause
+        {
+            $$ = list_make1($1);
+        }
+    | updating_clause_list_1 updating_clause
+        {
+            $$ = lappend($1, $2);
+        }
+    ;
+
+updating_clause:
+    create
+    | set
+    | remove
+    | delete
+    ;
+
+/*
+ * RETURN and WITH clause
+ */
+
 return:
-    RETURN distinct_opt return_items order_by_opt skip_opt limit_opt
+    RETURN distinct_opt return_item_list order_by_opt skip_opt limit_opt
         {
             cypher_return *n;
 
@@ -260,19 +296,19 @@ distinct_opt:
         }
     ;
 
-return_items:
+return_item_list:
     return_item
         {
             $$ = list_make1($1);
         }
-    | return_items ',' return_item
+    | return_item_list ',' return_item
         {
             $$ = lappend($1, $3);
         }
     ;
 
 return_item:
-    expr AS name
+    expr AS var_name
         {
             ResTarget *n;
 
@@ -303,18 +339,18 @@ order_by_opt:
         {
             $$ = NIL;
         }
-    | ORDER BY sort_items
+    | ORDER BY sort_item_list
         {
             $$ = $3;
         }
     ;
 
-sort_items:
+sort_item_list:
     sort_item
         {
             $$ = list_make1($1);
         }
-    | sort_items ',' sort_item
+    | sort_item_list ',' sort_item
         {
             $$ = lappend($1, $3);
         }
@@ -382,7 +418,8 @@ limit_opt:
     ;
 
 with:
-    WITH distinct_opt return_items order_by_opt skip_opt limit_opt where_opt
+    WITH distinct_opt return_item_list order_by_opt skip_opt limit_opt
+    where_opt
         {
             cypher_with *n;
 
@@ -398,6 +435,51 @@ with:
         }
     ;
 
+/*
+ * MATCH clause
+ */
+
+match:
+    MATCH pattern where_opt
+        {
+            cypher_match *n;
+
+            n = make_ag_node(cypher_match);
+            n->pattern = $2;
+            n->where = $3;
+
+            $$ = (Node *)n;
+
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                            errmsg("MATCH clause not implemented"),
+                            ag_scanner_errposition(@1, scanner)));
+        }
+    ;
+
+/*
+ * CREATE clause
+ */
+
+create:
+    CREATE pattern
+        {
+            cypher_create *n;
+
+            n = make_ag_node(cypher_create);
+            n->pattern = $2;
+
+            $$ = (Node *)n;
+
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                            errmsg("CREATE clause not implemented"),
+                            ag_scanner_errposition(@1, scanner)));
+        }
+    ;
+
+/*
+ * SET and REMOVE clause
+ */
+
 set:
     SET set_item_list
         {
@@ -408,6 +490,10 @@ set:
             n->is_remove = false;
 
             $$ = (Node *)n;
+
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                            errmsg("SET clause not implemented"),
+                            ag_scanner_errposition(@1, scanner)));
         }
     ;
 
@@ -457,6 +543,10 @@ remove:
             n->is_remove = true;
 
             $$ = (Node *)n;
+
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                            errmsg("REMOVE clause not implemented"),
+                            ag_scanner_errposition(@1, scanner)));
         }
     ;
 
@@ -481,19 +571,28 @@ remove_item:
             n->expr = make_null_const(-1);
             n->is_add = false;
 
-            $$ = (Node *) n;
+            $$ = (Node *)n;
         }
     ;
 
+/*
+ * DELETE clause
+ */
+
 delete:
-    detach_opt DELETE expr_comma_list
+    detach_opt DELETE expr_list
         {
             cypher_delete *n;
 
             n = make_ag_node(cypher_delete);
             n->detach = $1;
             n->exprs = $3;
-            $$ = (Node *) n;
+
+            $$ = (Node *)n;
+
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                            errmsg("DELETE clause not implemented"),
+                            ag_scanner_errposition(@1, scanner)));
         }
     ;
 
@@ -508,6 +607,10 @@ detach_opt:
         }
     ;
 
+/*
+ * common
+ */
+
 where_opt:
     /* empty */
         {
@@ -518,6 +621,143 @@ where_opt:
             $$ = $2;
         }
     ;
+
+/*
+ * pattern
+ */
+
+/* pattern is a set of one or more paths */
+pattern:
+    path
+        {
+            $$ = list_make1($1);
+        }
+    | pattern ',' path
+        {
+            $$ = lappend($1, $3);
+        }
+    ;
+
+/* path is a series of connected nodes and relationships */
+path:
+    anonymous_path
+    | var_name '=' anonymous_path /* named path */
+        {
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                            errmsg("named path not implemented"),
+                            ag_scanner_errposition(@1, scanner)));
+            $$ = NULL;
+        }
+    ;
+
+anonymous_path:
+    simple_path_opt_parens
+        {
+            cypher_path *n;
+
+            n = make_ag_node(cypher_path);
+            n->path = $1;
+
+            $$ = (Node *)n;
+        }
+    ;
+
+simple_path_opt_parens:
+    simple_path
+    | '(' simple_path ')'
+        {
+            $$ = $2;
+        }
+    ;
+
+simple_path:
+    path_node
+        {
+            $$ = list_make1($1);
+        }
+    | simple_path path_relationship path_node
+        {
+            $$ = lappend(lappend($1, $2), $3);
+        }
+    ;
+
+path_node:
+    '(' var_name_opt label_opt properties_opt ')'
+        {
+            cypher_node *n;
+
+            n = make_ag_node(cypher_node);
+            n->name = $2;
+            n->label = $3;
+            n->props = $4;
+
+            $$ = (Node *)n;
+        }
+    ;
+
+path_relationship:
+    '-' path_relationship_body '-'
+        {
+            cypher_relationship *n = (cypher_relationship *)$2;
+
+            n->dir = CYPHER_REL_DIR_NONE;
+
+            $$ = $2;
+        }
+    | '-' path_relationship_body '-' '>'
+        {
+            cypher_relationship *n = (cypher_relationship *)$2;
+
+            n->dir = CYPHER_REL_DIR_RIGHT;
+
+            $$ = $2;
+        }
+    | '<' '-' path_relationship_body '-'
+        {
+            cypher_relationship *n = (cypher_relationship *)$3;
+
+            n->dir = CYPHER_REL_DIR_LEFT;
+
+            $$ = $3;
+        }
+    ;
+
+path_relationship_body:
+    '[' var_name_opt label_opt properties_opt ']'
+        {
+            cypher_relationship *n;
+
+            n = make_ag_node(cypher_relationship);
+            n->name = $2;
+            n->label = $3;
+            n->props = $4;
+
+            $$ = (Node *)n;
+        }
+    ;
+
+label_opt:
+    /* empty */
+        {
+            $$ = NULL;
+        }
+    | ':' label_name
+        {
+            $$ = $2;
+        }
+    ;
+
+properties_opt:
+    /* empty */
+        {
+            $$ = NULL;
+        }
+    | map
+    ;
+
+/*
+ * expression
+ */
 
 expr:
     expr OR expr
@@ -612,14 +852,23 @@ expr:
         }
     | expr STARTS WITH expr %prec STARTS
         {
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                            errmsg("STARTS WITH not implemented"),
+                            ag_scanner_errposition(@2, scanner)));
             $$ = NULL;
         }
     | expr ENDS WITH expr %prec ENDS
         {
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                            errmsg("ENDS WITH not implemented"),
+                            ag_scanner_errposition(@2, scanner)));
             $$ = NULL;
         }
     | expr CONTAINS expr
         {
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                            errmsg("CONTAINS not implemented"),
+                            ag_scanner_errposition(@2, scanner)));
             $$ = NULL;
         }
     | expr '[' expr ']'
@@ -644,7 +893,7 @@ expr:
 
             $$ = append_indirection($1, (Node *)i);
         }
-    | expr '.' name
+    | expr '.' property_key_name
         {
             $$ = append_indirection($1, (Node *)makeString($3));
         }
@@ -659,25 +908,24 @@ expr_opt:
     | expr
     ;
 
-expr_comma_list:
+expr_list:
     expr
         {
             $$ = list_make1($1);
         }
-    | expr_comma_list ',' expr
+    | expr_list ',' expr
         {
             $$ = lappend($1, $3);
         }
     ;
 
-expr_comma_list_opt:
+expr_list_opt:
     /* empty */
         {
             $$ = NIL;
         }
-    | expr_comma_list
+    | expr_list
     ;
-
 
 atom:
     literal
@@ -718,44 +966,48 @@ literal:
     ;
 
 map:
-    '{' map_keyvals '}'
+    '{' map_keyval_list_opt '}'
         {
             ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                             errmsg("map literal parsed"),
                             errdetail("%s", nodeToString($2)),
-                            errposition(@1 + 1)));
+                            ag_scanner_errposition(@1, scanner)));
             $$ = NULL;
         }
     ;
 
-map_keyvals:
+map_keyval_list_opt:
     /* empty */
         {
             $$ = NIL;
         }
-    | name ':' expr
+    | map_keyval_list
+    ;
+
+map_keyval_list:
+    property_key_name ':' expr
         {
             $$ = list_make2(makeString($1), $3);
         }
-    | map_keyvals ',' name ':' expr
+    | map_keyval_list ',' property_key_name ':' expr
         {
             $$ = lappend(lappend($1, makeString($3)), $5);
         }
     ;
 
 list:
-    '[' expr_comma_list_opt ']'
+    '[' expr_list_opt ']'
         {
             ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                             errmsg("list literal parsed"),
                             errdetail("%s", nodeToString($2)),
-                            errposition(@1 + 1)));
+                            ag_scanner_errposition(@1, scanner)));
             $$ = NULL;
         }
     ;
 
 var:
-    IDENTIFIER
+    var_name
         {
             ColumnRef *n;
 
@@ -767,8 +1019,36 @@ var:
         }
     ;
 
-name:
+/*
+ * names
+ */
+
+property_key_name:
+    schema_name
+    ;
+
+var_name:
+    symbolic_name
+    ;
+
+var_name_opt:
+    /* empty */
+        {
+            $$ = NULL;
+        }
+    | var_name
+    ;
+
+label_name:
+    schema_name
+    ;
+
+symbolic_name:
     IDENTIFIER
+    ;
+
+schema_name:
+    symbolic_name
     | reserved_keyword
         {
             $$ = pstrdup($1);
@@ -782,6 +1062,7 @@ reserved_keyword:
     | ASCENDING
     | BY
     | CONTAINS
+    | CREATE
     | DELETE
     | DESC
     | DESCENDING
@@ -792,6 +1073,7 @@ reserved_keyword:
     | IN
     | IS
     | LIMIT
+    | MATCH
     | NOT
     | NULL_P
     | OR
@@ -807,6 +1089,10 @@ reserved_keyword:
     ;
 
 %%
+
+/*
+ * logical operators
+ */
 
 static Node *make_or_expr(Node *lexpr, Node *rexpr, int location)
 {
@@ -849,6 +1135,10 @@ static Node *make_not_expr(Node *expr, int location)
     return (Node *)makeBoolExpr(NOT_EXPR, list_make1(expr), location);
 }
 
+/*
+ * arithmetic operators
+ */
+
 static Node *do_negate(Node *n, int location)
 {
     if (IsA(n, A_Const))
@@ -883,6 +1173,10 @@ static void do_negate_float(Value *v)
         v->val.str = psprintf("-%s", v->val.str);
 }
 
+/*
+ * indirection
+ */
+
 static Node *append_indirection(Node *expr, Node *selector)
 {
     A_Indirection *indir;
@@ -903,6 +1197,10 @@ static Node *append_indirection(Node *expr, Node *selector)
         return (Node *)indir;
     }
 }
+
+/*
+ * literals
+ */
 
 static Node *make_int_const(int i, int location)
 {

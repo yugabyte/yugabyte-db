@@ -9,6 +9,10 @@
 
 #include "nodes.h"
 
+/*
+ * clauses
+ */
+
 typedef struct cypher_return
 {
     ExtensibleNode extensible;
@@ -30,33 +34,89 @@ typedef struct cypher_with
     Node *where;
 } cypher_with;
 
+typedef struct cypher_match
+{
+    ExtensibleNode extensible;
+    List *pattern; // a list of cypher_paths
+    Node *where; // optional WHERE subclause (expression)
+} cypher_match;
+
+typedef struct cypher_create
+{
+    ExtensibleNode extensible;
+    List *pattern; // a list of cypher_paths
+} cypher_create;
+
 typedef struct cypher_set
 {
     ExtensibleNode extensible;
-    List *items;
-    bool is_remove;
+    List *items; // a list of cypher_set_items
+    bool is_remove; // true if this is REMOVE clause
 } cypher_set;
 
 typedef struct cypher_set_item
 {
     ExtensibleNode extensible;
-    Node *prop;
-    Node *expr;
-    bool is_add;
+    Node *prop; // LHS
+    Node *expr; // RHS
+    bool is_add; // true if this is +=
 } cypher_set_item;
 
 typedef struct cypher_delete
 {
     ExtensibleNode extensible;
-    bool        detach;
-    List       *exprs;
+    bool detach; // true if DETACH is specified
+    List *exprs; // targets of this deletion
 } cypher_delete;
 
+/*
+ * pattern
+ */
+
+typedef struct cypher_path
+{
+    ExtensibleNode extensible;
+    List *path; // [ node ( , relationship , node , ... ) ]
+} cypher_path;
+
+// ( name :label props )
+typedef struct cypher_node
+{
+    ExtensibleNode extensible;
+    char *name;
+    char *label;
+    Node *props; // map or parameter
+} cypher_node;
+
+typedef enum
+{
+    CYPHER_REL_DIR_NONE,
+    CYPHER_REL_DIR_LEFT,
+    CYPHER_REL_DIR_RIGHT
+} cypher_rel_dir;
+
+// -[ name :label props ]-
+typedef struct cypher_relationship
+{
+    ExtensibleNode extensible;
+    char *name;
+    char *label;
+    Node *props; // map or parameter
+    cypher_rel_dir dir;
+} cypher_relationship;
+
+/* clauses */
 void out_cypher_return(StringInfo str, const ExtensibleNode *node);
-void out_cypher_sort_item(StringInfo str, const ExtensibleNode *node);
 void out_cypher_with(StringInfo str, const ExtensibleNode *node);
+void out_cypher_match(StringInfo str, const ExtensibleNode *node);
+void out_cypher_create(StringInfo str, const ExtensibleNode *node);
 void out_cypher_set(StringInfo str, const ExtensibleNode *node);
 void out_cypher_set_item(StringInfo str, const ExtensibleNode *node);
 void out_cypher_delete(StringInfo str, const ExtensibleNode *node);
+
+/* pattern */
+void out_cypher_path(StringInfo str, const ExtensibleNode *node);
+void out_cypher_node(StringInfo str, const ExtensibleNode *node);
+void out_cypher_relationship(StringInfo str, const ExtensibleNode *node);
 
 #endif
