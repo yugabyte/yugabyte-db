@@ -159,6 +159,12 @@ class ConsensusMetadata {
     return on_disk_size_.load(std::memory_order_acquire);
   }
 
+  // A lock-free way to read role and term atomically.
+  std::pair<RaftPeerPB::Role, int64_t> GetRoleAndTerm() const;
+
+  // Used internally for storing the role + term combination atomically.
+  using PackedRoleAndTerm = uint64;
+
  private:
   ConsensusMetadata(FsManager* fs_manager, std::string tablet_id,
                     std::string peer_uuid);
@@ -170,6 +176,8 @@ class ConsensusMetadata {
 
   // Updates the cached on-disk size of the consensus metadata.
   Status UpdateOnDiskSize();
+
+  void UpdateRoleAndTermCache();
 
   // Transient fields.
   // Constants:
@@ -191,6 +199,10 @@ class ConsensusMetadata {
 
   // The on-disk size of the consensus metadata, as of the last call to Load() or Flush().
   std::atomic<uint64_t> on_disk_size_;
+
+  // Active role and term. Stored as a separate atomic field for fast read-only access. This is
+  // still only modified under the lock.
+  std::atomic<PackedRoleAndTerm> role_and_term_cache_;
 
   DISALLOW_COPY_AND_ASSIGN(ConsensusMetadata);
 };
