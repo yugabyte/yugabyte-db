@@ -34,11 +34,11 @@ try:
     init_env(logging.INFO)
     script_dir = os.path.dirname(os.path.realpath(__file__))
 
-    _, err = Popen(["sbt", "clean"], stderr=PIPE)
+    _, err = Popen(["sbt", "clean"], stderr=PIPE).communicate()
     if err:
         raise RuntimeError(err)
     log_message(logging.INFO, "Kick off SBT universal packaging")
-    _, err = Popen(["sbt", "universal:packageZipTarball"], stderr=PIPE)
+    _, err = Popen(["sbt", "universal:packageZipTarball"], stderr=PIPE).communicate()
     if err:
         raise RuntimeError(err)
 
