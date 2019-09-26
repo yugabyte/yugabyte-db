@@ -936,6 +936,7 @@ Status ClusterAdminClient::AddReadReplicaPlacementInfo(
   auto* cluster_config = resp_cluster_config.mutable_cluster_config();
   auto* read_replica_config = cluster_config->mutable_replication_info()->add_read_replicas();
   string uuid_str = boost::uuids::to_string(Uuid::Generate());
+  read_replica_config->set_num_replicas(replication_factor);
   read_replica_config->set_placement_uuid(uuid_str);
 
   // Fill in the placement info with new stuff.
