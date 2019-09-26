@@ -285,9 +285,11 @@ class YBDockerControl():
                 '--replication_factor={}'.format(self.args.rf),
                 '--master_addresses={}'.format(",".join(self.master_addrs)),
                 '--rpc_bind_addresses={}'.format(container_with_port)])
-            # If YSQL in not disabled, initialize the sys catalog.
-            if not self.args.disable_ysql:
-                server_cmds.extend(["--use_initial_sys_catalog_snapshot=true"])
+            # If YSQL is disabled, don't start the YSQL server.
+            if self.args.disable_ysql:
+                server_cmds.extend(["--enable_ysql=false"])
+            else:
+                server_cmds.extend(["--enable_ysql=true"])
             # we expose master ui port for first node alone, exposing other
             # nodes to host would create a port conflict.
             if self.args.master_flags is not None:
@@ -313,9 +315,11 @@ class YBDockerControl():
                 server_cmds.extend(self.get_parsed_flag_args(tserver_parsed_flag_args))
             # we expose tserver ui, cassandra and redis port for first node alone,
             # exposing other nodes to host would create a port conflict.
-            if not self.args.disable_ysql:
+            if self.args.disable_ysql:
+                server_cmds.extend(["--enable_ysql=false"])
+            else:
                 server_cmds.extend([
-                  "--start_pgsql_proxy",
+                  "--enable_ysql=true",
                   "--pgsql_proxy_bind_address",
                   self.YB_POSTGRES_FORMAT_WITH_PORT.format(node_id)])
             if node_id == 1:
