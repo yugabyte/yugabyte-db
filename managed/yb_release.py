@@ -38,9 +38,8 @@ try:
     if err:
         raise RuntimeError(err)
     log_message(logging.INFO, "Kick off SBT universal packaging")
-    _, err = Popen(["sbt", "universal:packageZipTarball"], stderr=PIPE).communicate()
-    if err:
-        raise RuntimeError(err)
+    # Ignore any error output from packaging as npm is expected to have some warnings.
+    Popen(["sbt", "universal:packageZipTarball"], stderr=PIPE).communicate()
 
     packaged_files = glob.glob(os.path.join(script_dir, "target", "universal", "yugaware*.tgz"))
     if args.unarchived:
