@@ -56,7 +56,7 @@ In this section, we will look at how to set up a 3-node YugabyteDB cluster with 
         <div class="title">3. Client-server encryption</div>
       </div>
       <div class="body">
-          Enable client-server encryption for YSQL and YCQL.
+          Enable client-server encryption for YCQL (YSQL support is in-progress).
       </div>
     </a>
   </div>
