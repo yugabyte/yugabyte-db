@@ -54,10 +54,11 @@ services:
   yb-master:
       image: yugabytedb/yugabyte:latest
       container_name: yb-master-n1
-      command: [ "/home/yugabyte/bin/yb-master", 
-                "--fs_data_dirs=/mnt/disk0,/mnt/disk1", 
-                "--master_addresses=yb-master-n1:7100", 
-                "--replication_factor=1"]
+      command: [ "/home/yugabyte/bin/yb-master",
+                "--fs_data_dirs=/mnt/disk0,/mnt/disk1",
+                "--master_addresses=yb-master-n1:7100",
+                "--replication_factor=1",
+                "--enable_ysql=true"]
       ports:
       - "7000:7000"
       environment:
@@ -66,9 +67,9 @@ services:
   yb-tserver:
       image: yugabytedb/yugabyte:latest
       container_name: yb-tserver-n1
-      command: [ "/home/yugabyte/bin/yb-tserver", 
+      command: [ "/home/yugabyte/bin/yb-tserver",
                 "--fs_data_dirs=/mnt/disk0,/mnt/disk1",
-                "--start_pgsql_proxy", 
+                "--start_pgsql_proxy",
                 "--tserver_master_addrs=yb-master-n1:7100"]
       ports:
       - "9042:9042"
@@ -92,11 +93,7 @@ $ docker-compose up -d
 
 ## 2. Initialize the APIs
 
-Enable the YSQL API by running the following command.
-
-```sh
-$ docker exec -it yb-master-n1 bash  -c "YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses=yb-master-n1:7100 /home/yugabyte/postgres/bin/initdb -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres"
-```
+YCQL and YSQL APIs are enabled by default on the cluster.
 
 Optionally, you can enable YEDIS API by running the following command.
 
@@ -108,7 +105,7 @@ Clients can now connect to the YSQL API at localhost:5433, YCQL API at localhost
 
 ## 3. Test the APIs
 
-Follow the instructions in the [Quick Start](../../quick-start/) section with Docker.
+Follow the instructions in the [Quick Start](../../../quick-start/) section with Docker.
 
 ## 4. Stop the cluster
 
