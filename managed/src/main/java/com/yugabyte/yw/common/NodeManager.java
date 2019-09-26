@@ -216,10 +216,13 @@ public class NodeManager extends DevopsBase {
         subcommand.add("--package");
         subcommand.add(ybServerPackage);
         Map<String, String> extra_gflags = new HashMap<>();
+        extra_gflags.put("undefok", "enable_ysql");
         if (taskParam.isMaster) {
           extra_gflags.put("cluster_uuid", String.valueOf(taskParam.universeUUID));
           if (taskParam.enableYSQL) {
-            extra_gflags.put("use_initial_sys_catalog_snapshot", "true");
+            extra_gflags.put("enable_ysql", "true");
+          } else {
+            extra_gflags.put("enable_ysql", "false");
           }
         }
         extra_gflags.put("placement_uuid", String.valueOf(taskParam.placementUuid));
@@ -228,8 +231,10 @@ public class NodeManager extends DevopsBase {
         // TODO: add a shared path to massage flags across different flavors of configure.
         NodeDetails node = universe.getNode(taskParam.nodeName);
         if (taskParam.enableYSQL) {
-          extra_gflags.put("start_pgsql_proxy", "true");
+          extra_gflags.put("enable_ysql", "true");
           extra_gflags.put("pgsql_proxy_bind_address", String.format("%s:%s", node.cloudInfo.private_ip, node.ysqlServerRpcPort));
+        } else {
+          extra_gflags.put("enable_ysql", "false");
         }
         if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
           CertificateInfo cert = CertificateInfo.get(taskParam.rootCA);
