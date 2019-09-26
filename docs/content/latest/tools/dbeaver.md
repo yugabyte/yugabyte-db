@@ -11,15 +11,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-DBeaver is a popular PostgreSQL and can be used with the popular DBeaver database tool. Follow the steps on this page to install and configure DBeaver to work with your YugabyteDB clusters.
-
-## About DBeaver
-
 [DBeaver](https://dbeaver.io/) is a free (and [open source](https://github.com/dbeaver/dbeaver)) multi-platform, cross-platform database tool for developers, SQL programmers, database administrators, and analysts. DBeaver is written in Java, based on the [Eclipse](https://www.eclipse.org/) platform, and supports supports any database that ha a JDBC driver, including PostgreSQL, MariaDB, and MySQL. And, using the PostgreSQL JDBC driver, you can use DBeaver with YugabyteDB.
 
-The [DBeaver Community Edition](https://dbeaver.io/)
+The [DBeaver Community Edition](https://dbeaver.io/) includes these features:
 
-- Open source — check out their [GitHub repository](https://github.com/dbeaver/dbeaver)
+- [Open source](https://github.com/dbeaver/dbeaver)
 - Connection and metadata browser
 - SQL query editor and executor
 - Rich in-line data editor
@@ -56,17 +52,13 @@ To connect DBeaver to a YugabyteDB cluster, you need the PostgreSQL JDBC driver 
 1. Download the distribution package for the operating system on your client computer from the [DBeaver downloads page](https://dbeaver.io/download/).
 2. Install DBeaver following the steps on the [DBeaver Installation page](https://github.com/dbeaver/dbeaver/wiki/Installation).
 
-## Configure DBeaver
-
-### Configure the PostgreSQL driver
-
-In DBeaver, you can use the preconfigured PostgreSQL JDBC driver or configure a new driver.
+## Configure DBeaver for YugabyteDB
 
 #### Configure the PostgreSQL driver to use with YugabyteDB
 
 1. Start the DBeaver application. The DBeaver application window appears.
-2. In the menu, select **Database > Driver Manager**. The **Driver Manager** window appears.
-3. Select `PostgreSQL` and click **Copy**. The **Create new driver** window appears with a copy of the PostgreSQL driver settings.
+2. On the menu, select **Database > Driver Manager**. The **Driver Manager** window appears.
+3. Select **PostgreSQL** and then click **Copy**. The **Create new driver** window appears with a copy of the PostgreSQL driver settings.
 4. Make the following changes in the Settings:
 
     - **DriverName**: `YugabyteDB`
@@ -77,16 +69,12 @@ In DBeaver, you can use the preconfigured PostgreSQL JDBC driver or configure a 
 
 5. Click the **Libraries** tab.
 
-To use DBeaver's preconfigured driver, follow the steps in ???
-
-#### To add the current version of the PostgreSQL JDBC driver
-
 ### Create a YugabyteDB connection profile
 
-1. Click **Delete** for each of the files listed. The listing should be empty.
+1. For each of the files listed, click **Delete** and clear the listing.
 2. Click **Add File** and browse to the location of your JDK or JRE.
 
-    - For example, the default location for the installed JDK or JRE in macOS is here:
+    - For example, the default location for Java extensions in macOS is here:
 
         ```
         /Library/Java/Extensions/
@@ -101,3 +89,5 @@ To use DBeaver's preconfigured driver, follow the steps in ???
 1. In the 
 
 ## What's next
+
+You can now use DBeaver to explore 

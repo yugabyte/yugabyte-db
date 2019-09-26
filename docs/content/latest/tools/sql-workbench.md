@@ -11,7 +11,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-[SQL Workbench/J](https://www.sql-workbench.eu/index.html) is a free, DBMS-independent, cross-platform SQL query tool that . SQL Workbench/J is written in Java and should run on any operating system that provides a Java Runtime Environment (JRE).
+[SQL Workbench/J](https://www.sql-workbench.eu/index.html) is a free, DBMS-independent, cross-platform SQL query tool that also works with YugabyteDB. SQL Workbench/J is written in Java and should run on any operating system that provides a Java Runtime Environment (JRE).
 
 SQL Workbench/J has the following main focus:
 
@@ -20,7 +20,7 @@ SQL Workbench/J has the following main focus:
 - Editing, inserting, and deleting data directly in the query result view
 - Running queries in console mode
 
-In this section, we explain how to connect SQL Workbench/J with all the 3 YugabyteDB APIs on a local cluster. SQL Workbench/J works without any issues with YugabyteDB because the YugabyteDB APIs are compatible at the wire protocol level with databases already supported by SQL Workbench/J.
+In this section, you'll learn how to connect SQL Workbench/J with all of the YugabyteDB APIs on a local cluster. SQL Workbench/J works without any issues with YugabyteDB because the YugabyteDB APIs are compatible at the wire protocol level with databases already supported by SQL Workbench/J.
 
 ## Install SQL Workbench/J
 
@@ -32,13 +32,13 @@ To use SQL Workbench/J with YugabyteDB, you need to have YugabyteDB up and runni
 
 #### YugabyteDB
 
-Your YugabyteDB cluster should be up and running. To quickly create a local cluster, see [Quick Start](../../../quick-start/install).
+Your YugabyteDB cluster should be up and running. If you are new to YugabyteDB, you can quickly create a local cluster by following the steps in [Quick start](../../../quick-start/install).
 
-#### Java Runtime Environment (JRE)
+#### Java runtime environment (JRE)
 
-SQL Workbench/J requires a Java runtime (or JDK) for Java 8 or later. JDK and JRE installers for Linux, macOS, and Windows can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
+SQL Workbench/J requires a Java runtime (or JDK) for Java 8 or later. JRE and JDK installers for Linux, macOS, and Windows can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 
-For details on the JRE requirements, see the Prerequisites section on the SQL Workbench/J [Getting started](http://www.sql-workbench.eu/getting-started.html) page.
+For details on the JRE requirements, see the prerequisites section in the SQL Workbench/J [Getting started](http://www.sql-workbench.eu/getting-started.html) page.
 
 #### PostgreSQL JDBC driver
 
@@ -47,7 +47,9 @@ To connect SQL Workbench/J to a YugabyteDB cluster, you need the PostgreSQL JDBC
 ### To install SQL Workbench/J
 
 1. Go to the [SQL Workbench/J](http://www.sql-workbench.net/) website and download the distribution package for the operating system on your client computer.
-2. Unzip the archive into a directory of your choice. The application is now ready to run — no further steps are necessary. For details, see [Installing and starting SQL Workbench/J](http://www.sql-workbench.eu/manual/install.html) in the SQL Workbench/J user manual.
+2. Extract the archive into a directory of your choice.
+
+The application is now ready to run — no further steps are necessary. For details, see [Installing and starting SQL Workbench/J](http://www.sql-workbench.eu/manual/install.html) in the SQL Workbench/J user manual.
 
 ## Configure SQL Workbench/J
 
@@ -56,7 +58,13 @@ To connect SQL Workbench/J to a YugabyteDB cluster, you need the PostgreSQL JDBC
 YugabyteDB is PostgreSQL-compatible, so when working with SQL Workbench/J, use the PostgreSQL JDBC Driver.
 
 1. Launch the SQL Workbench/J application. The **Select Connection Profile** pop-up window appears.
+
+![Select connection profile](/images/develop/tools/sql-workbench/sql-wb-connection-profile.png)
+
 2. Click **Manage Drivers** (in the lower left of the window) to open the **Manage Drivers** window.
+
+![Manage drivers](/images/develop/tools/sql-workbench/sql-wb-manage-drivers.png)
+
 3. In the list of drivers, select `PostgreSQL` and then edit the fields for the driver:
 
     - **Name**:`PostgreSQL`
@@ -75,12 +83,12 @@ YugabyteDB is PostgreSQL-compatible, so when working with SQL Workbench/J, use t
 
 4. Click **OK**. The **Manage drivers** window closes and returns you to the **Select Connection Profile" window.
 
-You have now configured the PostgreSQL JDBC driver to work with YugabyteDB and can now create connection profiles.
+You have now configured the PostgreSQL JDBC driver to work with YugabyteDB and can now create a connection profiles.
 
 For more information, see:
 
 - [JDBC Drivers](http://www.sql-workbench.net/manual/jdbc-setup.html) in the SQL Workbench/J user manual.
-- [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/documentation/documentation.html) documentation
+- [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/documentation/documentation.html) documentation.
 
 ### Create a YugabyteDB connection profile
 
@@ -90,9 +98,9 @@ You need to create a connection profile for each database you use and you can al
 2. Replace `New profile` with a meaningful name for the connection profile. Because you need a separate profile for each database connection, include the database name in your profile name.
 3. For **Driver**, select `PostgreSQL (org.postgresql.Driver)`.
 4. For **URL**, replace `name_of_database` with the name of the database you want to connect to.
-5. For **Username**, enter `postgres` or the user name you will be using.
+5. For **Username**, enter `yugabyte`, or the user name you will be using.
 6. For **Password**, leave the field empty unless you require a specific password.
-7. Check the **Autocommit** checkbox. In PostgreSQL and YugabyteDB, AUTOCOMMIT is on by default.
+7. Select **Autocommit**. In PostgreSQL and YugabyteDB, AUTOCOMMIT is on by default.
 8. Click **Test** to verify that the connection works successfully.
 9. Click **OK**.  The SQL Workbench/J default window appears. Your connection is now ready to be used.
 
