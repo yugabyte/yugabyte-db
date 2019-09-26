@@ -302,16 +302,21 @@ public class NodeManagerTest extends FakeDBApplication {
           gflags.put("placement_uuid", String.valueOf(params.placementUuid));
         } else {
           if (configureParams.enableYSQL) {
-            gflags.put("use_initial_sys_catalog_snapshot", "true");
+            gflags.put("enable_ysql", "true");
+          } else {
+            gflags.put("enable_ysql", "false");
           }
         }
         gflags.put("metric_node_name", params.nodeName);
         if (configureParams.type == Everything) {
+          gflags.put("undefok", "enable_ysql");
           if (configureParams.enableYSQL) {
-            gflags.put("start_pgsql_proxy", "true");
+            gflags.put("enable_ysql", "true");
             gflags.put("pgsql_proxy_bind_address", String.format("%s:%s", configureParams.nodeName,
               Universe.get(configureParams.universeUUID)
                 .getNode(configureParams.nodeName).ysqlServerRpcPort));
+          } else {
+            gflags.put("enable_ysql", "false");
           }
           if (configureParams.callhomeLevel != null) {
             gflags.put("callhome_collection_level", configureParams.callhomeLevel.toString().toLowerCase());
