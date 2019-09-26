@@ -67,13 +67,11 @@ class CountDownLatch {
 
   // Waits for the count on the latch to reach zero, or until 'until' time is reached.
   // Returns true if the count became zero, false otherwise.
-  bool WaitUntil(const MonoTime& when) const {
-    return WaitFor(when - MonoTime::Now());
-  }
+  bool WaitUntil(MonoTime when) const;
 
   // Waits for the count on the latch to reach zero, or until 'delta' time elapses.
   // Returns true if the count became zero, false otherwise.
-  bool WaitFor(const MonoDelta& delta) const;
+  bool WaitFor(MonoDelta delta) const;
 
   // Reset the latch with the given count. This is equivalent to reconstructing
   // the latch. If 'count' is 0, and there are currently waiters, those waiters
