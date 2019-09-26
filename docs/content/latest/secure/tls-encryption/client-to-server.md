@@ -2,7 +2,7 @@
 title: 3. Client-server encryption
 linkTitle: 3. Client-server encryption
 description: 3. Client-server encryption
-headcontent: Enable client to server encryption.
+headcontent: Enable client-server encryption in YCQL (YSQL support is in-progress).
 image: /images/section_icons/secure/tls-encryption/client-to-server.png
 aliases:
   - /secure/tls-encryption/client-to-server
@@ -15,15 +15,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-YugabyteDB can be configured to provide client-server encryption, using Transport Layer Security (TLS), for YSQL and YCQL.
+YugabyteDB can be configured to provide client-server encryption, using Transport Layer Security (TLS), for YCQL (and YSQL support is in-progress). Note that there is no planned support for YEDIS.
 
-{{< note title="Note" >}}
-
-YEDIS does not include support for client-server TLS encryption.
-
-{{< /note >}}
-
-To enable client-server TLS encryption, start the YB-TServer processes with the required flags described below. The YB-TMaster processes do not require additional configuration.
+To enable client-server TLS encryption for YCQL, start the YB-TServer processes with the required flags described below. The YB-TMaster processes do not require additional configuration.
 
 Flag                                 | Process    | Description                  |
 -------------------------------------|--------------------------|------------------------------|
