@@ -295,6 +295,9 @@ ybcSetupScanTargets(ForeignScanState *node)
 	/* Planning function above should ensure target list is set */
 	List *target_attrs = foreignScan->fdw_private;
 
+	MemoryContext oldcontext =
+		MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_query_memory);
+
 	/* Set scan targets. */
 	if (node->yb_fdw_aggs == NIL)
 	{
@@ -429,13 +432,11 @@ ybcSetupScanTargets(ForeignScanState *node)
 		 * tupledesc that only includes the number of attributes. Switch to per-query memory from
 		 * per-tuple memory so the slot persists across iterations.
 		 */
-		MemoryContext oldcontext =
-			MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_query_memory);
 		TupleDesc target_tupdesc = CreateTemplateTupleDesc(list_length(node->yb_fdw_aggs),
 														   false /* hasoid */);
 		ExecInitScanTupleSlot(estate, &node->ss, target_tupdesc);
-		MemoryContextSwitchTo(oldcontext);
 	}
+	MemoryContextSwitchTo(oldcontext);
 }
 
 /*
