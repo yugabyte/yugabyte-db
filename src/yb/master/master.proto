@@ -425,9 +425,6 @@ message SysUniverseReplicationEntryPB {
 
   // producer table ID -> producer CDC stream map.
   map<string, string> table_streams = 6;
-
-  // resolved producer table map: table ID -> table identifier information.
-  map<string, TableIdentifierPB> resolved_tables = 7;
 }
 
 message ChangeEncryptionInfoRequestPB {
@@ -1563,9 +1560,7 @@ message GetUniverseReplicationRequestPB {
 
 message GetUniverseReplicationResponsePB {
   optional MasterErrorPB error = 1;
-  optional string producer_id = 2;
-  repeated HostPortPB producer_master_addresses = 3;
-  repeated TableIdentifierPB producer_tables = 4;
+  optional SysUniverseReplicationEntryPB entry = 2;
 }
 
 service MasterService {
