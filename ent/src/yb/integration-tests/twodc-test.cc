@@ -214,7 +214,8 @@ class TwoDCTest : public YBTest {
       rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
       Status s = master_proxy->GetUniverseReplication(req, resp, &rpc);
-      return s.ok() && !resp->has_error();
+      return s.ok() && !resp->has_error() &&
+             resp->entry().state() == master::SysUniverseReplicationEntryPB::ACTIVE;
     }, MonoDelta::FromSeconds(kRpcTimeout), "Verify universe replication");
   }
 
@@ -452,10 +453,10 @@ TEST_F(TwoDCTest, SetupUniverseReplication) {
   // Verify that universe was setup on consumer.
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
-  ASSERT_EQ(resp.producer_id(), kUniverseId);
-  ASSERT_EQ(resp.producer_tables_size(), producer_tables.size());
+  ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+  ASSERT_EQ(resp.entry().tables_size(), producer_tables.size());
   for (int i = 0; i < producer_tables.size(); i++) {
-    ASSERT_EQ(resp.producer_tables(i).table_id(), producer_tables[i]->id());
+    ASSERT_EQ(resp.entry().tables(i), producer_tables[i]->id());
   }
 
   // Verify that CDC streams were created on producer for all tables.
@@ -496,10 +497,10 @@ TEST_F(TwoDCTest, SetupUniverseReplicationMultipleTables) {
   // Verify that universe was setup on consumer.
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
-  ASSERT_EQ(resp.producer_id(), kUniverseId);
-  ASSERT_EQ(resp.producer_tables_size(), producer_tables.size());
+  ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+  ASSERT_EQ(resp.entry().tables_size(), producer_tables.size());
   for (int i = 0; i < producer_tables.size(); i++) {
-    ASSERT_EQ(resp.producer_tables(i).table_id(), producer_tables[i]->id());
+    ASSERT_EQ(resp.entry().tables(i), producer_tables[i]->id());
   }
 
   Destroy();
