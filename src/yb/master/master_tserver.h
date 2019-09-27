@@ -14,7 +14,9 @@
 #ifndef YB_MASTER_MASTER_TSERVER_H
 #define YB_MASTER_MASTER_TSERVER_H
 
+#include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tserver/tablet_server_interface.h"
+
 #include "yb/util/metrics.h"
 
 namespace yb {

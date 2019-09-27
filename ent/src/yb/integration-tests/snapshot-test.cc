@@ -30,6 +30,7 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/cast.h"
 #include "yb/util/pb_util.h"

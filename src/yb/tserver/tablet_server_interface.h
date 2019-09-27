@@ -16,15 +16,16 @@
 
 #include "yb/client/meta_cache.h"
 #include "yb/server/clock.h"
-#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/metrics.h"
 
 namespace yb {
 namespace tserver {
 
+class TabletPeerLookupIf;
+class TSTabletManager;
+
 class TabletServerIf : public LocalTabletServer {
  public:
-
   virtual ~TabletServerIf() {}
 
   virtual TSTabletManager* tablet_manager() = 0;

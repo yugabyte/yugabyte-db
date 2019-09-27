@@ -92,17 +92,8 @@ string ReplicaMapToString(const TabletInfo::ReplicaMap& replicas) {
 //  Class PickLeaderReplica.
 // ============================================================================
 Status PickLeaderReplica::PickReplica(TSDescriptor** ts_desc) {
-  TabletInfo::ReplicaMap replica_locations;
-  tablet_->GetReplicaLocations(&replica_locations);
-  for (const TabletInfo::ReplicaMap::value_type& r : replica_locations) {
-    if (r.second.role == consensus::RaftPeerPB::LEADER) {
-      *ts_desc = r.second.ts_desc;
-      return Status::OK();
-    }
-  }
-  return STATUS(NotFound, Substitute("No leader found for tablet $0 with $1 replicas : $2.",
-                                     tablet_.get()->ToString(), replica_locations.size(),
-                                     ReplicaMapToString(replica_locations)));
+  *ts_desc = VERIFY_RESULT(tablet_->GetLeader());
+  return Status::OK();
 }
 
 // ============================================================================

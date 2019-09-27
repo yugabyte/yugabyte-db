@@ -3815,8 +3815,8 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
               << " with leader state from term "
               << final_report->committed_consensus_state().current_term();
 
-      RETURN_NOT_OK(ResetTabletReplicasFromReportedConfig(*final_report, tablet,
-                                                          tablet_lock.get(), table_lock.get()));
+      RETURN_NOT_OK(ResetTabletReplicasFromReportedConfig(
+          *final_report, tablet, ts_desc->permanent_uuid(), tablet_lock.get(), table_lock.get()));
 
       // Sanity check replicas for this tablet.
       TabletInfo::ReplicaMap replica_map;
@@ -3829,8 +3829,13 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
       // Report opid_index is equal to the previous opid_index. If some
       // replica is reporting the same consensus configuration we already know about and hasn't
       // been added as replica, add it.
-      LOG(INFO) << "Peer " << ts_desc->permanent_uuid() << " sent full tablet report for "
-                << tablet->tablet_id() << ". Consensus state: " << cstate.ShortDebugString();
+      LOG(INFO) << "Peer " << ts_desc->permanent_uuid() << " sent "
+                << (is_incremental ? "incremental" : "full tablet")
+                << " report for " << tablet->tablet_id()
+                << ", prev state op id: " << prev_cstate.config().opid_index()
+                << ", prev state term: " << prev_cstate.current_term()
+                << ", prev state has_leader_uuid: " << prev_cstate.has_leader_uuid()
+                << ". Consensus state: " << cstate.ShortDebugString();
       UpdateTabletReplica(ts_desc, report, tablet);
     }
   } else if (is_incremental &&
@@ -4619,6 +4624,7 @@ uint64_t CatalogManager::GetYsqlCatalogVersion() {
 Status CatalogManager::ResetTabletReplicasFromReportedConfig(
     const ReportedTabletPB& report,
     const scoped_refptr<TabletInfo>& tablet,
+    const std::string& sender_uuid,
     TabletInfo::lock_type* tablet_lock,
     TableInfo::lock_type* table_lock) {
 
@@ -4646,7 +4652,7 @@ Status CatalogManager::ResetTabletReplicasFromReportedConfig(
     // Do not replace replicas in the NOT_STARTED or BOOTSTRAPPING state unless they are stale.
     bool create_new_replica = true;
     TabletReplica* existing_replica;
-    auto it = rl.find(ts_desc->permanent_uuid());
+    auto it = peer.permanent_uuid() != sender_uuid ? rl.find(ts_desc->permanent_uuid()) : rl.end();
     if (it != rl.end()) {
       existing_replica = &it->second;
       // IsStarting returns true if state == NOT_STARTED or state == BOOTSTRAPPING.
@@ -4699,7 +4705,6 @@ void CatalogManager::UpdateTabletReplica(TSDescriptor* ts_desc,
 void CatalogManager::NewReplica(TSDescriptor* ts_desc,
                                 const ReportedTabletPB& report,
                                 TabletReplica* replica) {
-
   // Tablets in state NOT_STARTED or BOOTSTRAPPING don't have a consensus.
   if (report.state() == tablet::NOT_STARTED || report.state() == tablet::BOOTSTRAPPING) {
     replica->role = RaftPeerPB::NON_PARTICIPANT;
@@ -4878,12 +4883,9 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
                    nullptr);
 
   // Synchronous tablet open for "local bootstrap".
-  SHUTDOWN_AND_TOMBSTONE_TABLET_PEER_NOT_OK(sys_catalog_->OpenTablet(meta),
-                                            sys_catalog_->tablet_peer(),
-                                            meta,
-                                            master_->fs_manager()->uuid(),
-                                            "Remote bootstrap: Failed opening sys catalog",
-                                            nullptr);
+  RETURN_NOT_OK(tserver::ShutdownAndTombstoneTabletPeerNotOk(
+      sys_catalog_->OpenTablet(meta), sys_catalog_->tablet_peer(), meta,
+      master_->fs_manager()->uuid(), "Remote bootstrap: Failed opening sys catalog"));
 
   // Set up the in-memory master list and also flush the cmeta.
   RETURN_NOT_OK(UpdateMastersListInMemoryAndDisk());

@@ -17,10 +17,11 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/secure.h"
 
-#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/backup_service.h"
-#include "yb/tserver/header_manager_impl.h"
 #include "yb/tserver/cdc_consumer.h"
+#include "yb/tserver/header_manager_impl.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"

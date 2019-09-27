@@ -739,10 +739,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                       ReportedTabletUpdatesPB* report_updates,
                                       bool is_incremental);
 
-  CHECKED_STATUS ResetTabletReplicasFromReportedConfig(const ReportedTabletPB& report,
-                                                       const scoped_refptr<TabletInfo>& tablet,
-                                                       TabletInfo::lock_type* tablet_lock,
-                                                       TableInfo::lock_type* table_lock);
+  CHECKED_STATUS ResetTabletReplicasFromReportedConfig(
+      const ReportedTabletPB& report, const scoped_refptr<TabletInfo>& tablet,
+      const std::string& sender_uuid,
+      TabletInfo::lock_type* tablet_lock, TableInfo::lock_type* table_lock);
 
   // Register a tablet server whenever it heartbeats with a consensus configuration. This is
   // needed because we have logic in the Master that states that if a tablet
@@ -760,7 +760,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                              const ReportedTabletPB& report,
                              const scoped_refptr<TabletInfo>& tablet);
 
-  void NewReplica(TSDescriptor* ts_desc, const ReportedTabletPB& report, TabletReplica* replica);
+  static void NewReplica(
+      TSDescriptor* ts_desc, const ReportedTabletPB& report, TabletReplica* replica);
 
   // Extract the set of tablets that can be deleted and the set of tablets
   // that must be processed because not running yet.

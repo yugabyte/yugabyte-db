@@ -18,15 +18,23 @@
 #include "yb/cdc/cdc_producer.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_util.h"
-#include "yb/client/table_handle.h"
+
+#include "yb/client/async_initializer.h"
+
 #include "yb/rpc/rpc_context.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/service_util.h"
 
 namespace yb {
+
+namespace tserver {
+
+class TSTabletManager;
+
+}
+
 namespace cdc {
 
 typedef std::unordered_map<HostPort, std::shared_ptr<CDCServiceProxy>, HostPortHash>
