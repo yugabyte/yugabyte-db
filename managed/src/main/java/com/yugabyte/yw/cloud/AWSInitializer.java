@@ -530,10 +530,15 @@ public class AWSInitializer extends AbstractInitializer {
             volumeSizeGB = 1900;
             break;
         }
-      } else {
-        volumeCount = Integer.parseInt(parts[0]);
-        volumeSizeGB = Integer.parseInt(parts[2]);
-        volumeType = VolumeType.valueOf(parts[3].toUpperCase());
+      } else if (parts.length == 5) {
+          volumeCount = Integer.parseInt(parts[0]);
+          volumeSizeGB = Integer.parseInt(parts[2]);
+          volumeType = VolumeType.valueOf(parts[3].toUpperCase());
+      }
+      else {
+          volumeCount = 1;
+          volumeSizeGB = Integer.parseInt(parts[0]);
+          volumeType = VolumeType.valueOf(parts[2].toUpperCase());
       }
 
       if (enableVerboseLogging) {
