@@ -14,6 +14,8 @@
 #ifndef YB_TSERVER_FACTORY_H
 #define YB_TSERVER_FACTORY_H
 
+#include "yb/tserver/ts_tablet_manager.h"
+
 namespace yb {
 namespace tserver {
 

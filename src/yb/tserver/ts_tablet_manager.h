@@ -108,19 +108,6 @@ class TransitionInProgressDeleter;
     } \
   } while (0)
 
-#define SHUTDOWN_AND_TOMBSTONE_TABLET_PEER_NOT_OK(expr, tablet_peer, meta, uuid, msg, \
-                                                  ts_manager_ptr) \
-  do { \
-    Status _s = (expr); \
-    if (PREDICT_FALSE(!_s.ok())) { \
-      if (tablet_peer) { \
-        tablet_peer->Shutdown(); \
-      } \
-      tserver::LogAndTombstone((meta), (msg), (uuid), _s, ts_manager_ptr); \
-      return _s; \
-    } \
-  } while (0)
-
 // Keeps track of the tablets hosted on the tablet server side.
 //
 // TODO: will also be responsible for keeping the local metadata about
@@ -550,6 +537,11 @@ Status HandleReplacingStaleTablet(scoped_refptr<tablet::RaftGroupMetadata> meta,
                                   const std::string& tablet_id,
                                   const std::string& uuid,
                                   const int64_t& leader_term);
+
+CHECKED_STATUS ShutdownAndTombstoneTabletPeerNotOk(
+    const Status& status, const tablet::TabletPeerPtr& tablet_peer,
+    const tablet::RaftGroupMetadataPtr& meta, const std::string& uuid, const char* msg,
+    TSTabletManager* ts_tablet_manager = nullptr);
 
 } // namespace tserver
 } // namespace yb

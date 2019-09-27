@@ -85,6 +85,25 @@ bool TabletReplica::IsStarting() const {
 // TabletInfo
 // ================================================================================================
 
+class TabletInfo::LeaderChangeReporter {
+ public:
+  explicit LeaderChangeReporter(TabletInfo* info)
+      : info_(info), old_leader_(info->GetLeaderUnlocked()) {
+  }
+
+  ~LeaderChangeReporter() {
+    auto new_leader = info_->GetLeaderUnlocked();
+    if (old_leader_ != new_leader) {
+      LOG(INFO) << "T " << info_->tablet_id() << ": Leader changed from "
+                << yb::ToString(old_leader_) << " to " << yb::ToString(new_leader);
+    }
+  }
+ private:
+  TabletInfo* info_;
+  TSDescriptor* old_leader_;
+};
+
+
 TabletInfo::TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id)
     : tablet_id_(std::move(tablet_id)),
       table_(table),
@@ -96,8 +115,31 @@ TabletInfo::~TabletInfo() {
 
 void TabletInfo::SetReplicaLocations(ReplicaMap replica_locations) {
   std::lock_guard<simple_spinlock> l(lock_);
+  LeaderChangeReporter leader_change_reporter(this);
   last_update_time_ = MonoTime::Now();
   replica_locations_ = std::move(replica_locations);
+}
+
+Result<TSDescriptor*> TabletInfo::GetLeader() const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  auto result = GetLeaderUnlocked();
+  if (result) {
+    return result;
+  }
+
+  return STATUS_FORMAT(
+      NotFound,
+      "No leader found for tablet $0 with $1 replicas: $2.",
+      ToString(), replica_locations_.size(), replica_locations_);
+}
+
+TSDescriptor* TabletInfo::GetLeaderUnlocked() const {
+  for (const auto& pair : replica_locations_) {
+    if (pair.second.role == consensus::RaftPeerPB::LEADER) {
+      return pair.second.ts_desc;
+    }
+  }
+  return nullptr;
 }
 
 void TabletInfo::GetReplicaLocations(ReplicaMap* replica_locations) const {
@@ -107,6 +149,7 @@ void TabletInfo::GetReplicaLocations(ReplicaMap* replica_locations) const {
 
 void TabletInfo::UpdateReplicaLocations(const TabletReplica& replica) {
   std::lock_guard<simple_spinlock> l(lock_);
+  LeaderChangeReporter leader_change_reporter(this);
   auto it = replica_locations_.find(replica.ts_desc->permanent_uuid());
   if (it == replica_locations_.end()) {
     replica_locations_.emplace(replica.ts_desc->permanent_uuid(), replica);

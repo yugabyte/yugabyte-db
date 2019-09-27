@@ -22,6 +22,8 @@
 #include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/cdc/cdc_consumer_proxy_manager.h"
 
+#include "yb/client/client.h"
+
 #include "yb/util/string_util.h"
 #include "yb/util/thread.h"
 

@@ -192,6 +192,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // configuration whose tablet servers have ever heartbeated to this Master.
   void SetReplicaLocations(ReplicaMap replica_locations);
   void GetReplicaLocations(ReplicaMap* replica_locations) const;
+  Result<TSDescriptor*> GetLeader() const;
 
   // Replaces a replica in replica_locations_ map if it exists. Otherwise, it adds it to the map.
   void UpdateReplicaLocations(const TabletReplica& replica);
@@ -220,7 +221,12 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
                                      LeaderStepDownFailureTimes* dest);
  private:
   friend class RefCountedThreadSafe<TabletInfo>;
+
+  class LeaderChangeReporter;
+  friend class LeaderChangeReporter;
+
   ~TabletInfo();
+  TSDescriptor* GetLeaderUnlocked() const;
 
   const TabletId tablet_id_;
   const scoped_refptr<TableInfo> table_;
