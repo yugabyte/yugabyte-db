@@ -66,7 +66,7 @@ Use the `yb-docker-ctl create` command to create a local Docker-based cluster fo
 
 The number of nodes created when you use the `yb-dockter-ctl create` command is always equal to the replication factor (RF), ensuring that all of the replicas for a given tablet can be placed on different nodes. With the [`add_node`](#add-a-node) and [`remove_node`](#remove-a-node) commands, the size of the cluster can thereafter be expanded or shrunk as needed.
 
-### To specify a docker image tag
+### Specify a docker image tag
 
 By default, the `create` and `add_node` commands pull the latest Docker Hub `yugabytedb/yugabyte` image to create clusters or add nodes.
 
