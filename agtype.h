@@ -406,6 +406,7 @@ extern char *agtype_to_cstring(StringInfo out, agtype_container *in,
                                int estimated_len);
 extern char *agtype_to_cstring_indent(StringInfo out, agtype_container *in,
                                       int estimated_len);
+extern Oid get_agtype_oid(void);
 
 // Oid of agtype
 #define AGTYPEOID \

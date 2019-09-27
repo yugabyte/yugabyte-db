@@ -111,6 +111,18 @@ SELECT agtype_div('1.0', '0.0');
 --
 SELECT agtype_pow('0', '-1');
 SELECT agtype_pow('-0.0', '-1');
+
+--
+-- Test operators +, -, unary -, *, /, %, and ^
+--
+SELECT '3.14'::agtype + '3.14'::agtype;
+SELECT '3.14'::agtype - '3.14'::agtype;
+SELECT -'3.14'::agtype;
+SELECT '3.14'::agtype * '3.14'::agtype;
+SELECT '3.14'::agtype / '3.14'::agtype;
+SELECT '3.14'::agtype % '3.14'::agtype;
+SELECT '3.14'::agtype ^ '2'::agtype;
+
 --
 -- Cleanup
 --

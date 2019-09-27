@@ -141,3 +141,49 @@ STABLE
 STRICT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
+
+--
+-- agtype operator definitions
+--
+CREATE OPERATOR + (
+    LEFTARG = agtype,
+    RIGHTARG = agtype,
+    FUNCTION = agtype_add,
+    COMMUTATOR = +
+);
+
+CREATE OPERATOR - (
+    LEFTARG = agtype,
+    RIGHTARG = agtype,
+    FUNCTION = agtype_sub
+);
+
+CREATE OPERATOR - (
+    RIGHTARG = agtype,
+    FUNCTION = agtype_neg
+);
+
+CREATE OPERATOR * (
+    LEFTARG = agtype,
+    RIGHTARG = agtype,
+    FUNCTION = agtype_mul,
+    COMMUTATOR = *
+);
+
+CREATE OPERATOR / (
+    LEFTARG = agtype,
+    RIGHTARG = agtype,
+    FUNCTION = agtype_div
+);
+
+CREATE OPERATOR % (
+    LEFTARG = agtype,
+    RIGHTARG = agtype,
+    FUNCTION = agtype_mod
+);
+
+CREATE OPERATOR ^ (
+    LEFTARG = agtype,
+    RIGHTARG = agtype,
+    FUNCTION = agtype_pow
+);

@@ -19,10 +19,12 @@
 #include "utils/builtins.h"
 #include "utils/int8.h"
 #include "utils/lsyscache.h"
+#include "utils/syscache.h"
 #include "utils/typcache.h"
 
-#include "agtype_parser.h"
+#include "ag_catalog.h"
 #include "agtype.h"
+#include "agtype_parser.h"
 
 typedef struct agtype_in_state
 {
@@ -76,6 +78,13 @@ static char *agtype_to_cstring_worker(StringInfo out, agtype_container *in,
 static void add_indent(StringInfo out, bool indent, int level);
 static bool is_decimal_needed(char *string);
 static void escape_agtype(StringInfo buf, const char *str);
+
+Oid get_agtype_oid(void)
+{
+    Oid oid = GetSysCacheOid2(TYPENAMENSP, CStringGetDatum("agtype"),
+                              ObjectIdGetDatum(ag_catalog_namespace_id()));
+    return oid;
+}
 
 PG_FUNCTION_INFO_V1(agtype_in);
 

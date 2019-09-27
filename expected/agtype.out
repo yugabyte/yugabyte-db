@@ -275,6 +275,51 @@ SELECT agtype_pow('-0.0', '-1');
 (1 row)
 
 --
+-- Test operators +, -, unary -, *, /, %, and ^
+--
+SELECT '3.14'::agtype + '3.14'::agtype;
+ ?column? 
+----------
+ 6.28
+(1 row)
+
+SELECT '3.14'::agtype - '3.14'::agtype;
+ ?column? 
+----------
+ 0.0
+(1 row)
+
+SELECT -'3.14'::agtype;
+ ?column? 
+----------
+ -3.14
+(1 row)
+
+SELECT '3.14'::agtype * '3.14'::agtype;
+ ?column? 
+----------
+ 9.8596
+(1 row)
+
+SELECT '3.14'::agtype / '3.14'::agtype;
+ ?column? 
+----------
+ 1.0
+(1 row)
+
+SELECT '3.14'::agtype % '3.14'::agtype;
+ ?column? 
+----------
+ 0.0
+(1 row)
+
+SELECT '3.14'::agtype ^ '2'::agtype;
+ ?column? 
+----------
+ 9.8596
+(1 row)
+
+--
 -- Cleanup
 --
 DROP TABLE agtype_table;
