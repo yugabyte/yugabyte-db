@@ -55,7 +55,9 @@ positional arguments:
     remove_node         Stop a Yugabyte Cluster Node
 
 optional arguments:
-  -h, --help            show this help message and exit
+  -h, --help            Show the online help and exit
+  --tag                 Use with `create` and `add_node` commands to
+                          specify a specific Docker image tag (version). If not included, then latest Docker image is used.
 ```
 
 ## Create a cluster
@@ -63,6 +65,20 @@ optional arguments:
 Use the `yb-docker-ctl create` command to create a local Docker-based cluster for development and learning.
 
 The number of nodes created when you use the `yb-dockter-ctl create` command is always equal to the replication factor (RF), ensuring that all of the replicas for a given tablet can be placed on different nodes. With the [`add_node`](#add-a-node) and [`remove_node`](#remove-a-node) commands, the size of the cluster can thereafter be expanded or shrunk as needed.
+
+### To specify a docker image tag
+
+By default, the `create` and `add_node` commands pull the latest Docker Hub `yugabytedb/yugabyte` image to create clusters or add nodes.
+
+To pull an earlier Docker image tag (version), add the optional `--tag <tag-id>` parameter to use an earlier release.
+
+In the following example, a 1-node YugabyteDB cluster is created using the earlier v1.3.2.1 release that has a tag of `1.3.2.1-b2`.
+
+```
+$yb-docker-ctl create --tag 1.3.2.1-b2
+```
+
+To get the correct tag value, see the [Docker Hub listing of tags for `yugabytedb/yugabyte`](https://hub.docker.com/r/yugabytedb/yugabyte/tags).
 
 ### Create a 1-node local cluster with RF of 1
 
