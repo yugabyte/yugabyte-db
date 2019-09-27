@@ -2089,13 +2089,7 @@ Status CatalogManager::GetUniverseReplication(const GetUniverseReplicationReques
   }
 
   auto l = universe->LockForRead();
-  resp->set_producer_id(l->data().pb.producer_id());
-  resp->mutable_producer_master_addresses()->CopyFrom(l->data().pb.producer_master_addresses());
-  resp->mutable_producer_tables()->Reserve(l->data().pb.tables().size());
-  for (const auto& table : l->data().pb.tables()) {
-    auto* t = resp->add_producer_tables();
-    t->set_table_id(table);
-  }
+  resp->mutable_entry()->CopyFrom(l->data().pb);
   return Status::OK();
 }
 
