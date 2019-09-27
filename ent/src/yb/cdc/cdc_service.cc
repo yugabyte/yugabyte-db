@@ -435,8 +435,14 @@ void CDCServiceImpl::TabletLeaderGetChanges(const GetChangesRequestPB* req,
                              CDCErrorPB::TABLET_NOT_FOUND, *context);
 
   auto ts_leader = *result;
-  RPC_CHECK_EQ_AND_RETURN_ERROR(ts_leader->permanent_uuid(), peer->permanent_uuid(),
-                                STATUS(IllegalState, "Tablet leader not found"),
+  // Check that tablet leader identified by master is not current tablet peer.
+  // This can happen during tablet rebalance if master and tserver have different views of
+  // leader. We need to avoid self-looping in this case.
+  RPC_CHECK_NE_AND_RETURN_ERROR(ts_leader->permanent_uuid(), peer->permanent_uuid(),
+                                STATUS(IllegalState,
+                                       Format("Tablet leader changed: leader=$0, peer=$1",
+                                              ts_leader->permanent_uuid(),
+                                              peer->permanent_uuid())),
                                 resp->mutable_error(), CDCErrorPB::NOT_LEADER, *context);
 
   auto cdc_proxy = GetCDCServiceProxy(ts_leader);
@@ -457,8 +463,14 @@ void CDCServiceImpl::TabletLeaderGetCheckpoint(const GetCheckpointRequestPB* req
                              CDCErrorPB::TABLET_NOT_FOUND, *context);
 
   auto ts_leader = *result;
-  RPC_CHECK_EQ_AND_RETURN_ERROR(ts_leader->permanent_uuid(), peer->permanent_uuid(),
-                                STATUS(IllegalState, "Tablet leader not found"),
+  // Check that tablet leader identified by master is not current tablet peer.
+  // This can happen during tablet rebalance if master and tserver have different views of
+  // leader. We need to avoid self-looping in this case.
+  RPC_CHECK_NE_AND_RETURN_ERROR(ts_leader->permanent_uuid(), peer->permanent_uuid(),
+                                STATUS(IllegalState,
+                                       Format("Tablet leader changed: leader=$0, peer=$1",
+                                              ts_leader->permanent_uuid(),
+                                              peer->permanent_uuid())),
                                 resp->mutable_error(), CDCErrorPB::NOT_LEADER, *context);
 
   auto cdc_proxy = GetCDCServiceProxy(ts_leader);
