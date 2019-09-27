@@ -25,6 +25,9 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.pb.h"
+
+#include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/version_info.h"
 
 static const char* kLowLevel = "low";

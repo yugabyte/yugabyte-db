@@ -844,7 +844,8 @@ class TestLoadBalancerBase {
     blacklist_.Clear();
     leader_blacklist_.Clear();
     tablet_map_.clear();
-    ts_descs_.clear();
+    TSDescriptorVector old_ts_descs;
+    old_ts_descs.swap(ts_descs_);
     affinitized_zones_.clear();
 
     // Set TS desc.

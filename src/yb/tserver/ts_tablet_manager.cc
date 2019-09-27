@@ -892,12 +892,9 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   OpenTablet(meta, nullptr);
 
   // If OpenTablet fails, tablet_peer->error() will be set.
-  SHUTDOWN_AND_TOMBSTONE_TABLET_PEER_NOT_OK(tablet_peer->error(),
-                                            tablet_peer,
-                                            meta,
-                                            fs_manager_->uuid(),
-                                            "Remote bootstrap: OpenTablet() failed",
-                                            this);
+  RETURN_NOT_OK(ShutdownAndTombstoneTabletPeerNotOk(
+      tablet_peer->error(), tablet_peer, meta, fs_manager_->uuid(),
+      "Remote bootstrap: OpenTablet() failed", this));
 
   auto status = rb_client->VerifyChangeRoleSucceeded(tablet_peer->shared_consensus());
   if (!status.ok()) {
@@ -1912,6 +1909,21 @@ TransitionInProgressDeleter::~TransitionInProgressDeleter() {
   }
   LOG(INFO) << "Deleted transition in progress " << transition
             << " for tablet " << entry_;
+}
+
+Status ShutdownAndTombstoneTabletPeerNotOk(
+    const Status& status, const tablet::TabletPeerPtr& tablet_peer,
+    const tablet::RaftGroupMetadataPtr& meta, const std::string& uuid, const char* msg,
+    TSTabletManager* ts_tablet_manager) {
+  if (status.ok()) {
+    return status;
+  }
+  // If shutdown was initiated by someone else we should not wait for shutdown to complete.
+  if (tablet_peer && tablet_peer->StartShutdown()) {
+    tablet_peer->CompleteShutdown();
+  }
+  tserver::LogAndTombstone(meta, msg, uuid, status, ts_tablet_manager);
+  return status;
 }
 
 } // namespace tserver

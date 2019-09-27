@@ -436,5 +436,9 @@ void TabletServer::SetYSQLCatalogVersion(uint64_t new_version) {
   }
 }
 
+TabletPeerLookupIf* TabletServer::tablet_peer_lookup() {
+  return tablet_manager_.get();
+}
+
 }  // namespace tserver
 }  // namespace yb

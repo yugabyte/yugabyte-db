@@ -415,8 +415,24 @@ void TabletPeer::CompleteShutdown() {
 }
 
 void TabletPeer::WaitUntilShutdown() {
+  const MonoDelta kSingleWait = 10ms;
+  const MonoDelta kReportInterval = 5s;
+  const MonoDelta kMaxWait = 30s;
+
+  MonoDelta waited = MonoDelta::kZero;
+  MonoDelta last_reported = MonoDelta::kZero;
   while (state_.load(std::memory_order_acquire) != RaftGroupStatePB::SHUTDOWN) {
-    SleepFor(MonoDelta::FromMilliseconds(10));
+    if (waited >= last_reported + kReportInterval) {
+      if (waited >= kMaxWait) {
+        LOG_WITH_PREFIX(DFATAL)
+            << "Wait for shutdown " << waited << " exceeded kMaxWait " << kMaxWait;
+      } else {
+        LOG_WITH_PREFIX(WARNING) << "Long wait for shutdown: " << waited;
+      }
+      last_reported = waited;
+    }
+    SleepFor(kSingleWait);
+    waited += kSingleWait;
   }
 }
 
