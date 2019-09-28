@@ -149,19 +149,20 @@ You should see an output like the following:
 
 ```
                                         Table "public.products"
-   Column   │            Type             │ Collation │ Nullable │               Default
-════════════╪═════════════════════════════╪═══════════╪══════════╪══════════════════════════════════════
- id         │ bigint                      │           │ not null │ nextval('products_id_seq'::regclass)
- created_at │ timestamp without time zone │           │          │
- category   │ text                        │           │          │
- ean        │ text                        │           │          │
- price      │ double precision            │           │          │
- quantity   │ integer                     │           │          │ 5000
- rating     │ double precision            │           │          │
- title      │ text                        │           │          │
- vendor     │ text                        │           │          │
+   Column   |            Type             | Collation | Nullable |               Default                
+------------+-----------------------------+-----------+----------+--------------------------------------
+ id         | bigint                      |           | not null | nextval('products_id_seq'::regclass)
+ created_at | timestamp without time zone |           |          | 
+ category   | text                        |           |          | 
+ ean        | text                        |           |          | 
+ price      | double precision            |           |          | 
+ quantity   | integer                     |           |          | 5000
+ rating     | double precision            |           |          | 
+ title      | text                        |           |          | 
+ vendor     | text                        |           |          | 
 Indexes:
     "products_pkey" PRIMARY KEY, lsm (id HASH)
+
 ```
 
 To see how many products there are in this table, you can run the following query.
