@@ -53,7 +53,7 @@ public class TestInsertValues extends BaseCQLTest {
   @Test
   public void testLargeInsert() throws Exception {
     final int STRING_SIZE = 64 * 1024 * 1024;
-    final String errorMessage = "YQL value too long";
+    final String errorMessage = "is longer than max value size supported";
     String tableName = "test_large_insert";
     String create_stmt = String.format(
         "CREATE TABLE %s (h int PRIMARY KEY, c varchar);", tableName);
