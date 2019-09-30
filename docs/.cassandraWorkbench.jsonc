@@ -1,0 +1,17 @@
+[
+    // AllowAllAuthenticator
+    {
+        "name": "Cluster AllowAllAuthenticator",
+        "contactPoints": ["127.0.0.1"]
+    },
+    //PasswordAuthenticator
+    {
+        "name": "Cluster PasswordAuthenticator",
+        "contactPoints": ["127.0.0.1"],
+        "authProvider": {
+            "class": "PasswordAuthenticator",
+            "username": "yourUsername",
+            "password": "yourPassword"
+        }
+    }
+]
