@@ -1236,7 +1236,7 @@ void DeleteCDCStreamRpc::SendRpc() {
   mutable_retrier()->mutable_controller()->set_deadline(
       std::min(rpc_deadline, retrier().deadline()));
 
-  req_.set_stream_id(stream_id_);
+  req_.add_stream_id(stream_id_);
   client_->data_->master_proxy()->DeleteCDCStreamAsync(
       req_, &resp_, mutable_retrier()->mutable_controller(),
       std::bind(&DeleteCDCStreamRpc::Finished, this, Status::OK()));

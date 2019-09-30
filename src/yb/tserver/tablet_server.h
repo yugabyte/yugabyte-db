@@ -185,6 +185,11 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   // Returns the file descriptor of this tablet server's shared memory segment.
   int GetSharedMemoryFd();
 
+  // Currently only used by cdc.
+  virtual int32_t cluster_config_version() const {
+    return std::numeric_limits<int32_t>::max();
+  }
+
  protected:
   virtual CHECKED_STATUS RegisterServices();
 

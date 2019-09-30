@@ -60,6 +60,7 @@
 #include "yb/util/test_util.h"
 
 DECLARE_int32(replication_factor);
+DECLARE_int32(cdc_rpc_timeout_ms);
 DECLARE_bool(mock_get_changes_response_for_consumer_testing);
 DECLARE_bool(twodc_write_hybrid_time_override);
 
@@ -199,7 +200,7 @@ class TwoDCTest : public YBTest {
   }
 
   Status VerifyUniverseReplication(
-      MiniCluster *consumer_cluster, YBClient* consumer_client,
+      MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, master::GetUniverseReplicationResponsePB* resp) {
     return LoggedWaitFor([=]() -> Result<bool> {
       master::GetUniverseReplicationRequestPB req;
@@ -215,6 +216,24 @@ class TwoDCTest : public YBTest {
       Status s = master_proxy->GetUniverseReplication(req, resp, &rpc);
       return s.ok() && !resp->has_error();
     }, MonoDelta::FromSeconds(kRpcTimeout), "Verify universe replication");
+  }
+
+  Status VerifyUniverseReplicationDeleted(MiniCluster* consumer_cluster, YBClient* consumer_client,
+      const std::string& universe_id, int timeout) {
+    return LoggedWaitFor([=]() -> Result<bool> {
+      master::GetUniverseReplicationRequestPB req;
+      master::GetUniverseReplicationResponsePB resp;
+      req.set_producer_id(universe_id);
+
+      auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+          &consumer_client->proxy_cache(),
+          consumer_cluster->leader_mini_master()->bound_rpc_addr());
+      rpc::RpcController rpc;
+      rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+      Status s = master_proxy->GetUniverseReplication(req, &resp, &rpc);
+      return resp.has_error() && resp.error().code() == master::MasterErrorPB::OBJECT_NOT_FOUND;
+    }, MonoDelta::FromMilliseconds(timeout), "Verify universe replication deleted");
   }
 
   Status GetCDCStreamForTable(
@@ -327,6 +346,23 @@ class TwoDCTest : public YBTest {
 
     return consumer_cluster_->leader_mini_master()->master()->catalog_manager()->InitCDCConsumer(
         consumer_info, master_addrs, universe_uuid);
+  }
+
+  Status DeleteUniverseReplication(const std::string& universe_id) {
+    master::DeleteUniverseReplicationRequestPB req;
+    master::DeleteUniverseReplicationResponsePB resp;
+
+    req.set_producer_id(universe_id);
+
+    auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+        &consumer_client_->proxy_cache(),
+        consumer_cluster_->leader_mini_master()->bound_rpc_addr());
+
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    RETURN_NOT_OK(master_proxy->DeleteUniverseReplication(req, &resp, &rpc));
+    LOG(INFO) << "Delete universe succeeded";
+    return Status::OK();
   }
 
   YBClient* producer_client() {
@@ -663,6 +699,39 @@ TEST_F(TwoDCTest, BiDirectionalWrites) {
 
   // Ensure that same records exist on both universes.
   VerifyWrittenRecords(tables[0]->name(), tables[1]->name());
+
+  Destroy();
+}
+
+TEST_F(TwoDCTest, TestDeleteUniverse) {
+  FLAGS_cdc_rpc_timeout_ms = 5000;
+  FLAGS_mock_get_changes_response_for_consumer_testing = true;
+
+  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4, 4, 12}, {8, 4, 12, 8}, 3));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer tables from the list.
+  producer_tables.reserve(tables.size() / 2);
+  for (int i = 0; i < tables.size(); i += 2) {
+    producer_tables.push_back(tables[i]);
+  }
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+  // Verify that universe was setup on consumer.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+
+  // After creating the cluster, make sure all 32 tablets being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 32));
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+
+  ASSERT_OK(VerifyUniverseReplicationDeleted(consumer_cluster(), consumer_client(), kUniverseId,
+      FLAGS_cdc_rpc_timeout_ms * 2));
+
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 0));
 
   Destroy();
 }

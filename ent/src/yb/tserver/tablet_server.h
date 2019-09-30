@@ -51,7 +51,11 @@ class TabletServer : public yb::tserver::TabletServer {
   yb::enterprise::UniverseKeyManager* GetUniverseKeyManager();
   CHECKED_STATUS SetUniverseKeyRegistry(
       const yb::UniverseKeyRegistryPB& universe_key_registry) override;
-  CHECKED_STATUS SetConsumerRegistry(const cdc::ConsumerRegistryPB& consumer_registry);
+  CHECKED_STATUS SetConfigVersionAndConsumerRegistry(int32_t cluster_config_version,
+      const cdc::ConsumerRegistryPB* consumer_registry);
+
+  int32_t cluster_config_version() const override;
+
   CDCConsumer* GetCDCConsumer();
 
  protected:
@@ -60,7 +64,7 @@ class TabletServer : public yb::tserver::TabletServer {
 
  private:
 
-  CHECKED_STATUS CreateCDCConsumer();
+  CHECKED_STATUS CreateCDCConsumer() REQUIRES(cdc_consumer_mutex_);
 
   std::unique_ptr<rpc::SecureContext> secure_context_;
   // Object that manages the universe key registry used for encrypting and decrypting data keys.
@@ -71,9 +75,8 @@ class TabletServer : public yb::tserver::TabletServer {
   // Encrypted env for all rocksdb file i/o operations.
   std::unique_ptr<rocksdb::Env> rocksdb_env_;
   // CDC consumer.
-  std::unique_ptr<CDCConsumer> cdc_consumer_;
-  std::mutex cdc_consumer_mutex_;
-
+  mutable std::mutex cdc_consumer_mutex_;
+  std::unique_ptr<CDCConsumer> cdc_consumer_ GUARDED_BY(cdc_consumer_mutex_);
 };
 
 } // namespace enterprise

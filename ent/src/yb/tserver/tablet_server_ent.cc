@@ -102,7 +102,7 @@ rocksdb::Env* TabletServer::GetRocksDBEnv() {
 }
 
 CDCConsumer* TabletServer::GetCDCConsumer() {
-  std::unique_lock<std::mutex> l(cdc_consumer_mutex_);
+  std::lock_guard<decltype(cdc_consumer_mutex_)> l(cdc_consumer_mutex_);
   return cdc_consumer_.get();
 }
 
@@ -117,7 +117,6 @@ Status TabletServer::SetUniverseKeyRegistry(
 }
 
 Status TabletServer::CreateCDCConsumer() {
-  std::unique_lock<std::mutex> l(cdc_consumer_mutex_);
   auto is_leader_clbk = [this](const string& tablet_id){
     std::shared_ptr<tablet::TabletPeer> tablet_peer;
     if (!tablet_manager_->LookupTablet(tablet_id, &tablet_peer)) {
@@ -130,12 +129,29 @@ Status TabletServer::CreateCDCConsumer() {
   return Status::OK();
 }
 
-Status TabletServer::SetConsumerRegistry(const cdc::ConsumerRegistryPB& consumer_registry) {
-  if (!cdc_consumer_.get()) {
+Status TabletServer::SetConfigVersionAndConsumerRegistry(int32_t cluster_config_version,
+    const cdc::ConsumerRegistryPB* consumer_registry) {
+  std::lock_guard<decltype(cdc_consumer_mutex_)> l(cdc_consumer_mutex_);
+
+  // Only create a cdc consumer if consumer_registry is not null.
+  if (!cdc_consumer_ && consumer_registry) {
     RETURN_NOT_OK(CreateCDCConsumer());
   }
-  cdc_consumer_->RefreshWithNewRegistryFromMaster(consumer_registry);
+  if (cdc_consumer_) {
+    cdc_consumer_->RefreshWithNewRegistryFromMaster(consumer_registry, cluster_config_version);
+  }
   return Status::OK();
+}
+
+int32_t TabletServer::cluster_config_version() const {
+  std::lock_guard<decltype(cdc_consumer_mutex_)> l(cdc_consumer_mutex_);
+  // If no CDC consumer, we will return -1, which will force the master to send the consumer
+  // registry if one exists. If we receive one, we will create a new CDC consumer in
+  // SetConsumerRegistry.
+  if (!cdc_consumer_) {
+    return -1;
+  }
+  return cdc_consumer_->cluster_config_version();
 }
 
 } // namespace enterprise

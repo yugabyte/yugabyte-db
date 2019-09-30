@@ -612,6 +612,8 @@ message TSHeartbeatRequestPB {
 
   // Number of tablets for which this ts is a leader.
   optional int32 leader_count = 7;
+
+  optional int32 cluster_config_version = 8;
 }
 
 message TSHeartbeatResponsePB {
@@ -652,6 +654,8 @@ message TSHeartbeatResponsePB {
   optional UniverseKeyRegistryPB universe_key_registry = 11;
 
   optional cdc.ConsumerRegistryPB consumer_registry = 12;
+
+  optional int32 cluster_config_version = 13;
 }
 
 message TSInformationPB {
@@ -1434,7 +1438,7 @@ message CreateCDCStreamResponsePB {
 }
 
 message DeleteCDCStreamRequestPB {
-  optional bytes stream_id = 1;
+  repeated bytes stream_id = 1;
 }
 
 message DeleteCDCStreamResponsePB {
