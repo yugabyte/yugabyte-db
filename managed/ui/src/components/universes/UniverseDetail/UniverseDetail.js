@@ -46,7 +46,7 @@ class UniverseDetail extends Component {
     this.props.resetTablesList();
   }
 
-  componentWillMount() {
+  componentDidMount() {
     const { customer : { currentCustomer }} = this.props;
     if (isNonAvailable(currentCustomer.data.features, "universes.details")) {
       if (isNonAvailable(currentCustomer.data.features, "universes")) {
@@ -64,7 +64,13 @@ class UniverseDetail extends Component {
         uuid = this.props.universeUUID;
       }
       this.props.getUniverseInfo(uuid);
-      this.props.getHealthCheck(uuid);
+
+      if (isDisabled(currentCustomer.data.features, "universes.details.health")) {
+        // Get alerts instead of Health
+        this.props.getAlertsList();
+      } else {
+        this.props.getHealthCheck(uuid);
+      }
     }
   }
 

@@ -6,6 +6,8 @@ import { fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo, closeU
   getHealthCheckResponse
 } from '../../../actions/universe';
 
+import { getAlerts, getAlertsSuccess, getAlertsFailure } from '../../../actions/customers';
+
 import { openDialog, closeDialog } from '../../../actions/modal';
 
 import { fetchUniverseTables, fetchUniverseTablesSuccess, fetchUniverseTablesFailure,
@@ -62,6 +64,15 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(getHealthCheck(uuid))
       .then((response) => {
         dispatch(getHealthCheckResponse(response.payload));
+      });
+    },
+    getAlertsList: () => {
+      dispatch(getAlerts()).then((response) => {
+        if (response.payload.status === 200) {
+          dispatch(getAlertsSuccess(response.payload));
+        } else {
+          dispatch(getAlertsFailure(response.payload));
+        }
       });
     }
   };

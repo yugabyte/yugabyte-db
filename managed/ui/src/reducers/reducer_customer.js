@@ -27,7 +27,10 @@ const INITIAL_STATE = {
   error: null,
   loading: false,
   softwareVersions: [],
-  alertsList: [],
+  alerts: {
+    alertsList: [],
+    updated: null
+  },
   hostInfo: null,
   customerCount: {},
   yugawareVersion: getInitialState({}),
@@ -120,11 +123,29 @@ export default function(state = INITIAL_STATE, action) {
     case FETCH_CUSTOMER_COUNT:
       return setLoadingState(state, "customerCount");
     case GET_ALERTS:
-      return {...state, alertsList: []};
+      return {
+        ...state,
+        alerts: {
+          alertsList: [],
+          updated: null,
+        }
+      };
     case GET_ALERTS_SUCCESS:
-      return {...state, alertsList: action.payload.data};
+      return {
+        ...state,
+        alerts: {
+          alertsList: action.payload.data,
+          updated: Date.now()
+        }
+      };
     case GET_ALERTS_FAILURE:
-      return {...state, alertsList: []};
+      return {
+        ...state,
+        alerts: {
+          alertsList: [],
+          updated: Date.now()
+        }
+      };
     case FETCH_YUGAWARE_VERSION:
       return setLoadingState(state, "yugawareVersion", {});
     case FETCH_YUGAWARE_VERSION_RESPONSE:
