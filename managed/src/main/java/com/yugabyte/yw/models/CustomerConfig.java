@@ -210,4 +210,16 @@ public class CustomerConfig extends Model {
             .eq("type", ConfigType.KMS)
             .findList();
   }
+
+  public static CustomerConfig updateKMSAuthObj(
+          UUID customerUUID,
+          String keyProvider,
+          ObjectNode newData
+  ) {
+    CustomerConfig config = getKMSConfig(customerUUID, keyProvider);
+    if (config == null) return null;
+    config.data = newData;
+    config.save();
+    return config;
+  }
 }

@@ -34,8 +34,9 @@ public class SmartKeyEARServiceTest {
     UUID testCustomerUUID = UUID.randomUUID();
     Map<String, String> config = null;
 
-    String mockKid = "9ffd3e51-19e5-41db-ab30-e78910ec743d";
-    String mockEncryptionKey = "tcIQ6E6HJu4m3C4NbVf/1yNe/6jYi/0LAYDsIouwcnU=";
+    byte[] mockKid = new String("9ffd3e51-19e5-41db-ab30-e78910ec743d").getBytes();
+    byte[] mockEncryptionKey =
+            new String("tcIQ6E6HJu4m3C4NbVf/1yNe/6jYi/0LAYDsIouwcnU=").getBytes();
 
     String getKeyMockResponse = String.format(
             "{\n" +
@@ -168,7 +169,7 @@ public class SmartKeyEARServiceTest {
 
     @Test
     public void testCreateAndRetrieveEncryptionKeySuccess() {
-        String encryptionKey = encryptionService
+        byte[] encryptionKey = encryptionService
                 .createAndRetrieveEncryptionKey(testUniUUID, testCustomerUUID, config);
         assertEquals(encryptionKey, mockEncryptionKey);
     }

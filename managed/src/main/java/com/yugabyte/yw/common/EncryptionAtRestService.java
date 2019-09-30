@@ -53,7 +53,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      * (such that each impl is a singleton)
      */
     public enum KeyProvider {
-        AWS(null),
+        AWS(AwsEARService.class),
         SMARTKEY(SmartKeyEARService.class);
 
         private Class providerService;
@@ -117,17 +117,14 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      *
      * @param universeUUID is the universe that the encryption key is being created for
      * @param customerUUID is the customer that the encryption key is being created for
-     * @param algorithm is the type of encryption algorithm that the encryption key will be used to
-     *                  encrypt data
-     * @param keySize is the size of the encryption key (in bits)
+     * @param config containing provider-specific creation parameters
      * @return an encryption key Id that can be used to retrieve the key if everything succeeds
      * during creation
      */
     protected abstract String createEncryptionKeyWithService(
             UUID universeUUID,
             UUID customerUUID,
-            String algorithm,
-            int keySize
+            Map<String, String> config
     );
 
     /**
@@ -137,9 +134,15 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      * @param kId is the third-party pkId for the remotely-created object
      * @param customerUUID is the customer that we should attempt to retrieve the encryption
      *                     key for
-     * @return a Base64 encoded representation of the encryption key
+     * @param config contains provider and key specific parameters to help locate the key
+     * @return the value of the encryption key
      */
-    protected abstract String getEncryptionKeyWithService(String kId, UUID customerUUID);
+    protected abstract byte[] getEncryptionKeyWithService(
+            String kId,
+            UUID customerUUID,
+            UUID universeUUID,
+            Map<String, String> config
+    );
 
     /**
      * A method for creating an encryption key, and then retrieving it's value for use
@@ -149,7 +152,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      * @param config contains any needed parameters for creating an encryption key
      * @return the encryption key value
      */
-    public String createAndRetrieveEncryptionKey(
+    public byte[] createAndRetrieveEncryptionKey(
             UUID universeUUID,
             UUID customerUUID,
             Map<String, String> config
@@ -157,11 +160,12 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
         try {
             final String algorithm = config.get("algorithm");
             final int keySize = Integer.parseInt(config.get("key_size"));
-            final String existingEncryptionKey = recoverEncryptionKeyWithService(
+            final byte[] existingEncryptionKey = recoverEncryptionKeyWithService(
                     customerUUID,
-                    universeUUID
+                    universeUUID,
+                    config
             );
-            if (existingEncryptionKey != null && !existingEncryptionKey.isEmpty()) {
+            if (existingEncryptionKey != null && existingEncryptionKey.length > 0) {
                 final String errMsg = String.format(
                         "Encryption key for customer %s and universe %s already exists" +
                                 " with provider %s",
@@ -186,8 +190,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
             final String kId = createEncryptionKeyWithService(
                     universeUUID,
                     customerUUID,
-                    algorithm,
-                    keySize
+                    config
             );
             if (kId == null || kId.isEmpty()) {
                 final String errMsg = String.format(
@@ -198,7 +201,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
                 LOG.error(errMsg);
                 throw new RuntimeException(errMsg);
             }
-            return getEncryptionKeyWithService(kId, customerUUID);
+            return getEncryptionKeyWithService(kId, customerUUID, universeUUID, config);
         } catch (Exception e) {
             LOG.error("Error occured attempting to create encryption key", e);
             return null;
@@ -222,7 +225,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      *
      * @param algorithm is a string representation of a SupportedAlgorithmInterface impl enum
      * @param keySize is the size of the encryption key (in bits)
-     * @return true if the parameters are valid, false otherwise
+     * @return true if the parameters are valid, false otherwise and errors
      */
     private ObjectNode validateEncryptionKeyParams(String algorithm, int keySize) {
         final T encryptionAlgorithm = validateEncryptionAlgorithm(algorithm);
@@ -344,6 +347,36 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
     }
 
     /**
+     * This method updates a KMS CustomerConfig entry's data field with whatever newValues contains
+     *
+     * @param customerUUID is the customer the configuration is associated to
+     * @param newValues is a map of field name -> field value of updated data field values
+     * @return a copy of the updated CustomerConfig (with data field encrypted)
+     */
+    public ObjectNode updateAuthConfig(UUID customerUUID, Map<String, JsonNode> newValues) {
+        ObjectNode config = getAuthConfig(customerUUID);
+        for (Map.Entry<String, JsonNode> newValue : newValues.entrySet()) {
+            config.put(newValue.getKey(), newValue.getValue());
+        }
+        final ObjectNode encryptedConfig = encryptConfigData(customerUUID, config);
+        return CustomerConfig.updateKMSAuthObj(
+                customerUUID,
+                this.keyProvider,
+                encryptedConfig
+        ).getData().deepCopy();
+    }
+
+    /**
+     * This method deleted a KMS configuration for the instantiated service type
+     *
+     * @param customerUUID is the customer that the configuration should be deleted for
+     */
+    public void deleteKMSConfig(UUID customerUUID) {
+        CustomerConfig config = getKMSConfig(customerUUID);
+        if (config != null) config.delete();
+    }
+
+    /**
      * This method attempts to retrieve a CustomerConfig containing authentication
      * information for the given encryption service provider
      *
@@ -361,9 +394,14 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      * @param customerUUID is the customer that the encryption keyt should be recovered for
      * @param universeUUID is the UUID of the universe that we want to recover the encryption
      *                     key for
+     * @param config is a service-specific map of keys/values to help identify the key
      * @return the value of the encryption key if a matching key is found
      */
-    public abstract String recoverEncryptionKeyWithService(UUID customerUUID, UUID universeUUID);
+    public abstract byte[] recoverEncryptionKeyWithService(
+            UUID customerUUID,
+            UUID universeUUID,
+            Map<String, String> config
+    );
 
     /**
      * This method iterates through a service provider's defined public constructors, and tries to

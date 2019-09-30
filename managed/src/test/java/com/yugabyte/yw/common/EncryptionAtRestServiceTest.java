@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -40,20 +41,23 @@ class TestEncryptionAtRestService extends EncryptionAtRestService<TestAlgorithm>
     protected String createEncryptionKeyWithService(
             UUID universeUUID,
             UUID customerUUID,
-            String algorithm,
-            int keySize
+            Map<String, String> config
     ) {
         return "some_key_id";
     }
 
     @Override
-    protected String getEncryptionKeyWithService(String kId, UUID customerUUID) {
-        return "some_key_value";
+    protected byte[] getEncryptionKeyWithService(
+            String kId, UUID customerUUID, UUID universeUUID, Map<String, String> config
+    ) {
+        return new String("some_key_value").getBytes();
     }
 
     @Override
-    public String recoverEncryptionKeyWithService(UUID customerUUID, UUID universeUUID) {
-        return customerUUID == null ? "some_key_value" : null;
+    public byte[] recoverEncryptionKeyWithService(
+            UUID customerUUID, UUID universeUUID, Map<String, String> config
+    ) {
+        return customerUUID == null ? new String("some_key_value").getBytes() : null;
     }
 
     @Override
