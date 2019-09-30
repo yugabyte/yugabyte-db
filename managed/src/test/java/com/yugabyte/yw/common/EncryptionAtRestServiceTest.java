@@ -106,14 +106,14 @@ public class EncryptionAtRestServiceTest {
     @Test
     public void testCreateAndRetrieveEncryptionKeySuccess() {
         EncryptionAtRestService service = new TestEncryptionAtRestService(null, "TEST");
-        assertEquals(service.createAndRetrieveEncryptionKey(
+        assertEquals(new String(service.createAndRetrieveEncryptionKey(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 ImmutableMap.of(
                         "algorithm", "TEST_ALGORITHM",
                         "key_size", "1"
                 )
-        ), "some_key_value");
+        )), "some_key_value");
     }
 
     @Test

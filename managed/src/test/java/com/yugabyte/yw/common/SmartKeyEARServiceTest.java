@@ -17,6 +17,7 @@ import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.anyMap;
 import static org.mockito.Matchers.eq;
 import org.mockito.runners.MockitoJUnitRunner;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -34,9 +35,10 @@ public class SmartKeyEARServiceTest {
     UUID testCustomerUUID = UUID.randomUUID();
     Map<String, String> config = null;
 
+    String mockEncodedEncryptionKey =
+            "RjZiNzVGekljNFh5Zmh0NC9FQ1dpM0FaZTlMVGFTbW1Wa1dnaHRzdDhRVT0=";
     byte[] mockKid = new String("9ffd3e51-19e5-41db-ab30-e78910ec743d").getBytes();
-    byte[] mockEncryptionKey =
-            new String("tcIQ6E6HJu4m3C4NbVf/1yNe/6jYi/0LAYDsIouwcnU=").getBytes();
+    byte[] mockEncryptionKey = Base64.getDecoder().decode(mockEncodedEncryptionKey);
 
     String getKeyMockResponse = String.format(
             "{\n" +
@@ -64,7 +66,7 @@ public class SmartKeyEARServiceTest {
                     "    \"value\": \"%s\",\n" +
                     "    \"group_id\": \"bd5260f9-7448-49ff-b0af-276f801227cb\"\n" +
                     "}",
-            mockEncryptionKey
+            mockEncodedEncryptionKey
     );
     String getKeyListMockResponse = "[]";
     String getAccessTokenMockResponse = "{\n" +
@@ -171,7 +173,7 @@ public class SmartKeyEARServiceTest {
     public void testCreateAndRetrieveEncryptionKeySuccess() {
         byte[] encryptionKey = encryptionService
                 .createAndRetrieveEncryptionKey(testUniUUID, testCustomerUUID, config);
-        assertEquals(encryptionKey, mockEncryptionKey);
+        assertEquals(new String(encryptionKey), new String(mockEncryptionKey));
     }
 
     @Test
