@@ -106,7 +106,7 @@ message CreateCDCStreamResponsePB {
 }
 
 message DeleteCDCStreamRequestPB {
-  optional bytes stream_id = 1;
+  repeated bytes stream_id = 1;
 }
 
 message DeleteCDCStreamResponsePB {

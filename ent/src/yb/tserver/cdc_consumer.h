@@ -65,11 +65,16 @@ class CDCConsumer {
   void Shutdown();
 
   // Refreshes the in memory state when we receive a new registry from master.
-  void RefreshWithNewRegistryFromMaster(const cdc::ConsumerRegistryPB& consumer_registry);
+  void RefreshWithNewRegistryFromMaster(const cdc::ConsumerRegistryPB* consumer_registry,
+                                        int32_t cluster_config_version);
 
   std::vector<std::string> TEST_producer_tablets_running();
 
   std::string LogPrefix();
+
+  // Return the value stored in cluster_config_version_. Since we are reading an atomic variable,
+  // we don't need to hold the mutex.
+  int32_t cluster_config_version() const NO_THREAD_SAFETY_ANALYSIS;
 
  private:
   // Runs a thread that periodically polls for any new threads.
@@ -77,7 +82,8 @@ class CDCConsumer {
 
   // Loops through all the entries in the registry and creates a producer -> consumer tablet
   // mapping.
-  void UpdateInMemoryState(const cdc::ConsumerRegistryPB& consumer_producer_map);
+  void UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_producer_map,
+                           int32_t cluster_config_version);
 
   // Loops through all entries in registry from master to check if all producer tablets are being
   // polled for.
@@ -115,6 +121,7 @@ class CDCConsumer {
 
   bool should_run_ = true;
 
+  std::atomic<int32_t> cluster_config_version_ GUARDED_BY(master_data_mutex_) = {-1};
 };
 
 } // namespace enterprise
