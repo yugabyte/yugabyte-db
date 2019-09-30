@@ -1,11 +1,50 @@
 
 ## Overview
 
-YCQL authentication is based on roles. Roles can be created with superuser, non-superuser and login privileges. New roles can be created, and existing ones altered or dropped by administrators using YCQL commands.
+YCQL authentication, identifying that a user is who they say they are, is based on roles. Roles can be created with superuser, non-superuser and login privileges. Administrators can create new roles and alter, or drop, existing ones using YCQL commands (`CREATE USER`,`CREATE ROLE`,`GRANT`,and `REVOKE`).
 
 ## 1. Enable YCQL authentication
 
-You can enable access control by starting the `yb-tserver` processes with the `--use_cassandra_authentication=true` flag. Your command should look similar to that shown below:
+### yb-ctl
+
+To enable YSQL authentication in your local YugabyteDB clusters, you can  use the `--tserver_flags` option with the `yb-ctl create` and yb-ctl start` commands.
+
+When you create a local cluster, you can run a command like this to enable YSQL authentication in the newly-created cluster.
+
+```bash
+./bin/yb-ctl create --tserver_flags ysql_enable-auth=true
+```
+
+After your local cluster has been created, you can enable YSQL authentication with a command like this:
+
+```bash
+./bin/yb-ctl start --tserver_flags ysql_enable-auth=true
+```
+
+### yb-tserver
+
+When managing YugabyteDB database clusters by starting and stopping YB-Master and YB-TServer services, you enable YSQL authentication in the cluster by configuring the YB-TServer services, which manage all user queries, to start with YSQL authentication enabled.
+
+To enable YSQL authentication, start your `yb-tserver` services with the `--ysql_enable_auth=true` flag. Your command should look similar to that shown below:
+
+```
+./bin/yb-tserver \
+  --tserver_master_addrs <master addresses> \
+  --fs_data_dirs <data directories> \
+  --ysql_enable_auth=true \
+  >& /home/centos/disk1/yb-tserver.out &
+```
+
+{{< note title="Note" >}}
+
+When you enable YSL authentication using this gflag, YCQL authentication is also enabled.
+
+{{< /note >}}
+
+
+You can read more about bringing up YB-TServer services for deployments in the section on [manual deployment of a YugabyteDB cluster](../../deploy/manual-deployment/start-tservers/).
+
+Your command should look similar to that shown below:
 
 ```
 ./bin/yb-tserver \
