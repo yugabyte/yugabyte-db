@@ -1,28 +1,36 @@
 
 ## Overview
 
-YCQL authentication is based on roles. Roles can be created with superuser, non-superuser and login privileges. New roles can be created, and existing ones altered or dropped by administrators using YCQL commands.
+YSQL authentication is based on roles. Roles can be created with superuser, non-superuser and login privileges. New roles can be created, and existing ones altered or dropped by administrators using YSQL commands.
 
-## 1. Enable YCQL authentication
+## 1. Enable YSQL authentication
 
-You can enable access control by starting the `yb-tserver` processes with the `--use_cassandra_authentication=true` flag. Your command should look similar to that shown below:
+### yb-ctl
+
+YSQL authentication is enabled by default when using local clusters managed using the `yb-ctl` utility.
+
+### yb-tserver
+
+When managing 
+
+To enable access control, start your `yb-tserver` services with the `--ysql_enable_auth=true` flag. Your command should look similar to that shown below:
 
 ```
 ./bin/yb-tserver \
   --tserver_master_addrs <master addresses> \
   --fs_data_dirs <data directories> \
-  --use_cassandra_authentication=true \
+  --ysql_enable_auth=true \
   >& /home/centos/disk1/yb-tserver.out &
 ```
 
-You can read more about bringing up the YB-TServers for a deployment in the section on [manual deployment of a YugabyteDB cluster](../../deploy/manual-deployment/start-tservers/).
+You can read more about bringing up YB-TServer services for deployments in the section on [manual deployment of a YugabyteDB cluster](../../deploy/manual-deployment/start-tservers/).
 
 ## 2. Connect with the default admin credentials
 
-A new YugabyteDB cluster with authentication enabled comes up with a default admin user, the default username/password for this admin user is `cassandra`/`cassandra`. Note that this default user has `SUPERUSER` privilege. You can connect to this cluster using `cqlsh` as follows:
+A new YugabyteDB cluster with authentication enabled comes up with a default admin user, the default username and password for this admin user is `yugabyte`/`cassandra`. Note that this default user has `SUPERUSER` privilege. You can connect to this cluster using `ysqlsh` as follows:
 
 ```sh
-$ cqlsh -u cassandra -p cassandra
+$ ysqlsh -U yugabyte -p yugabyte
 ```
 
 You should see the cluster connect and the following prompt:
@@ -36,7 +44,7 @@ cassandra@cqlsh>
 
 ## 3. Create a new user
 
-Use the [CREATE ROLE statement](../../api/ycql/ddl_create_role/) to create a new role. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all YCQL commands on any of the database resources.
+Use the [CREATE ROLE statement](../../api/ysql/ddl_create_role/) to create a new role. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all the YSQL commands on any of the database resources.
 
 **NOTE** By default, creating a role does not grant the `LOGIN` or the `SUPERUSER` privileges, these need to be explicitly granted.
 
@@ -51,7 +59,7 @@ cassandra@cqlsh> CREATE ROLE IF NOT EXISTS john WITH PASSWORD = 'PasswdForJohn' 
 If the role `john` already existed, the above statement will not error out since we have added the `IF NOT EXISTS` clause. To verify the user account just created, run the following query:
 
 ```sql
-yugabyte@ysqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
+cassandra@cqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
 
 You should see the following output.
@@ -97,7 +105,7 @@ You should see the following output.
 
 ## 4. Connect to cqlsh using non-default credentials
 
-You can connect to a YCQL cluster with authentication enabled as follows:
+You can connect to a YSQL cluster with authentication enabled as follows:
 
 ```sh
 $ cqlsh -u <username> -p <password>
@@ -119,7 +127,7 @@ $ cqlsh -u admin -p PasswdForAdmin
 
 ## 5. Edit user accounts
 
-You can edit existing user accounts using the [ALTER ROLE](../../api/ycql/ddl_alter_role/) command. Note that the role making these changes should have sufficient privileges to modify the target role.
+You can edit existing user accounts using the [ALTER ROLE](../../api/ysql/ddl_alter_role/) command. Note that the role making these changes should have sufficient privileges to modify the target role.
 
 ### Changing password for a user
 
@@ -248,7 +256,7 @@ $ cqlsh -u cassandra -p new_password
 
 ## 7. Deleting a user
 
-You can delete a user with the [DROP ROLE](../../api/ycql/ddl_drop_role/) command.
+You can delete a user with the [DROP ROLE](../../api/ysql/ddl_drop_role/) command.
 
 For example, to drop the user `john` in the above example, run the following command as a superuser:
 
