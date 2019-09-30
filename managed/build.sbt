@@ -24,8 +24,7 @@ libraryDependencies ++= Seq(
   "org.yaml" % "snakeyaml" % "1.17",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
   "org.springframework.security" % "spring-security-core" % "5.1.6.RELEASE",
-  "com.amazonaws" % "aws-java-sdk-kms" % "1.11.638",
-  "com.amazonaws" % "aws-java-sdk-iam" % "1.11.639"
+  "com.amazonaws" % "aws-java-sdk-kms" % "1.11.638"
 
 
 )

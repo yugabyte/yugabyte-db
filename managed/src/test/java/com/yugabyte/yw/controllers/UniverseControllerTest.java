@@ -26,8 +26,10 @@ import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyMap;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Matchers.anyMap;
 import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
 import static play.mvc.Http.Status.FORBIDDEN;
@@ -39,6 +41,7 @@ import java.util.*;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -101,6 +104,7 @@ public class UniverseControllerTest extends WithApplication {
   private String authToken;
   private YBClientService mockService;
   private YBClient mockClient;
+  private ApiHelper mockApiHelper;
 
   @Override
   protected Application provideApplication() {
@@ -108,10 +112,12 @@ public class UniverseControllerTest extends WithApplication {
     mockMetricQueryHelper = mock(MetricQueryHelper.class);
     mockClient = mock(YBClient.class);
     mockService = mock(YBClientService.class);
+    mockApiHelper = mock(ApiHelper.class);
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
         .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
+        .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
         .build();
   }
 
@@ -1519,7 +1525,7 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
-  public void testCreateUniverseEncryptionAtRest() {
+  public void testCreateUniverseEncryptionAtRestNoKMSConfig() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(Matchers.any(TaskType.class),
             Matchers.any(UniverseDefinitionTaskParams.class)))
@@ -1561,9 +1567,81 @@ public class UniverseControllerTest extends WithApplication {
     assertOk(result);
 
     // Check that the encryption key file was created in file system
-    File key = new File("/opt/yugaware/certs/" + customer.uuid.toString() + "/universe." + json.get("universeUUID").asText() + ".key");
+    File key = new File("/tmp/certs/" + customer.uuid.toString() + "/universe." + json.get("universeUUID").asText() + ".key");
     assertTrue(key.exists());
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
     verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), argCaptor.capture());
+    // The KMS provider service should not begin to make any requests since there is no KMS config
+    verify(mockApiHelper, times(0)).postRequest(any(String.class), any(JsonNode.class), anyMap());
+  }
+
+  @Test
+  public void testCreateUniverseEncryptionAtRestWithEncryptionAtRestKMSConfigExists() {
+    String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
+    ObjectNode kmsConfigReq = Json.newObject()
+            .put("base_url", "some_base_url")
+            .put("api_key", "some_api_token");
+    Result createKMSResult = doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq);
+    assertOk(createKMSResult);
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class),
+            Matchers.any(UniverseDefinitionTaskParams.class)))
+            .thenReturn(fakeTaskUUID);
+    when(mockAppConfig.getString("yb.storage.path")).thenReturn("/opt/yugaware");
+    Provider p = ModelFactory.awsProvider(customer);
+
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
+    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    ObjectNode bodyJson = (ObjectNode) Json.toJson(taskParams);
+
+    ObjectNode userIntentJson = Json.newObject()
+            .put("universeName", "encryptionAtRestUniverse")
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("enableNodeToNodeEncrypt", true)
+            .put("enableClientToNodeEncrypt", true)
+            .put("enableEncryptionAtRest", true)
+            .put("replicationFactor", 3)
+            .put("numNodes", 3)
+            .put("provider", p.uuid.toString());
+
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    ArrayNode nodeDetails = Json.newArray().add(Json.newObject().put("nodeName", "testing-1"));
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", nodeDetails);
+    bodyJson.put("nodePrefix", "demo-node");
+    bodyJson.put(
+            "encryptionAtRestConfig",
+            Json.newObject()
+                    .put("kms_provider", "SMARTKEY")
+                    .put("algorithm", "AES")
+                    .put("key_size", "256")
+                    .put("force_new_instance", "true")
+    );
+
+    String url = "/api/customers/" + customer.uuid + "/universes";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    ArgumentCaptor<UniverseTaskParams> argCaptor = ArgumentCaptor.forClass(UniverseTaskParams.class);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertOk(result);
+
+    // Check that the encryption key file was created in file system
+    File key = new File("/tmp/certs/" + customer.uuid.toString() + "/universe." + json.get("universeUUID").asText() + ".key");
+    assertTrue(key.exists());
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+    verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), argCaptor.capture());
+    // Verify that the KMS provider service started to run (it should fail as the credentials provided in the
+    //  sample config are not valid
+    verify(mockApiHelper, times(1)).postRequest(
+            "https://some_base_url/sys/v1/session/auth",
+            null,
+            ImmutableMap.of("Authorization", "Basic some_api_token")
+    );
   }
 }

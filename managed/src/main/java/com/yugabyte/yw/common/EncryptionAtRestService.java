@@ -427,6 +427,11 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
         return serviceConstructor;
     }
 
+    public static EncryptionAtRestService getServiceInstance(
+            ApiHelper apiHelper,
+            String keyProvider
+    ) { return getServiceInstance(apiHelper, keyProvider, false); }
+
     /**
      * This is the entry point into the service. All service instances should be retrieved through
      * this method. Will maintain a mapping of KeyProvider -> Instances such that there will be AT
@@ -440,7 +445,8 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      */
     public static EncryptionAtRestService getServiceInstance(
             ApiHelper apiHelper,
-            String keyProvider
+            String keyProvider,
+            boolean forceNewInstance
     ) {
         KeyProvider serviceProvider = null;
         EncryptionAtRestService serviceInstance = null;
@@ -460,7 +466,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
                 throw new IllegalArgumentException(errMsg);
             }
             serviceInstance = serviceProvider.getServiceInstance();
-            if (serviceInstance == null) {
+            if (forceNewInstance || serviceInstance == null) {
                 final Class serviceClass = serviceProvider.getProviderService();
                 if (serviceClass == null) {
                     final String errMsg = String.format(
