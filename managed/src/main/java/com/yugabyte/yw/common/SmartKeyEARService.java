@@ -9,6 +9,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.models.CustomerConfig;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -79,9 +80,10 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
     protected String createEncryptionKeyWithService(
             UUID universeUUID,
             UUID customerUUID,
-            String algorithm,
-            int keySize
+            Map<String, String> config
     ) {
+        final String algorithm = config.get("algorithm");
+        final int keySize = Integer.parseInt(config.get("key_size"));
         final String endpoint = "/crypto/v1/keys";
         // TODO: Remove EXPORT option once master keys are in encrypted format in Yugabyte
         final ArrayNode keyOps = Json.newArray()
@@ -107,7 +109,12 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
     }
 
     @Override
-    protected String getEncryptionKeyWithService(String kId, UUID customerUUID) {
+    protected byte[] getEncryptionKeyWithService(
+            String kId,
+            UUID customerUUID,
+            UUID universeUUID,
+            Map<String, String> config
+    ) {
         final String endpoint = String.format("/crypto/v1/keys/%s/export", kId);
         final ObjectNode authConfig = getAuthConfig(customerUUID);
         final String sessionToken = retrieveSessionAuthorization(authConfig);
@@ -119,11 +126,15 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
         final JsonNode response = this.apiHelper.getRequest(url, headers);
         final JsonNode errors = response.get("error");
         if (errors != null) throw new RuntimeException(errors.toString());
-        return response.get("value").asText();
+        return Base64.getDecoder().decode(response.get("value").asText());
     }
 
     @Override
-    public String recoverEncryptionKeyWithService(UUID customerUUID, UUID universeUUID) {
+    public byte[] recoverEncryptionKeyWithService(
+            UUID customerUUID,
+            UUID universeUUID,
+            Map<String, String> config
+    ) {
         final String endpoint = "/crypto/v1/keys";
         final Map<String, String> queryParams = ImmutableMap.of(
                 "name", universeUUID.toString(),
@@ -142,7 +153,9 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
         return StreamSupport.stream(response.spliterator(), false)
                 .map(securityObj -> getEncryptionKeyWithService(
                         securityObj.get("kid").asText(),
-                        customerUUID
+                        customerUUID,
+                        universeUUID,
+                        config
                 )).findFirst().orElse(null);
     }
 }

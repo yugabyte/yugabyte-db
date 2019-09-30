@@ -4,7 +4,6 @@ package com.yugabyte.yw.controllers;
 
 
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -258,17 +257,14 @@ public class UniverseController extends AuthenticatedController {
                   taskParams.encryptionAtRestConfig.get("kms_provider")
           );
           if (keyService != null) {
-            String encryptionKey = keyService.createAndRetrieveEncryptionKey(
+            data = keyService.createAndRetrieveEncryptionKey(
                     universe.universeUUID,
                     customerUUID,
                     taskParams.encryptionAtRestConfig
             );
-            if (encryptionKey != null && !encryptionKey.isEmpty()) {
-              data = Base64.getDecoder().decode(encryptionKey);
-            }
           }
           // Default to Yugaware-generated encryption key if KMS not chosen/failed
-          if (data == null) {
+          if (data == null || data.length == 0) {
             Random rd = new Random();
             data = new byte[32];
             rd.nextBytes(data);

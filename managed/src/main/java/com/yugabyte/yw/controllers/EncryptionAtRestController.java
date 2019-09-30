@@ -80,8 +80,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
                 apiHelper,
                 keyProvider
         );
-        CustomerConfig kmsConfig = keyService.getKMSConfig(customerUUID);
-        kmsConfig.delete();
+        keyService.deleteKMSConfig(customerUUID);
         return ApiResponse.success(String.format(
                 "KMS configuration for customer %s with key provider %s has been deleted",
                 customerUUID.toString(),
@@ -91,14 +90,18 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
     public Result recoverEncryptionKey(UUID customerUUID, UUID universeUUID, String keyProvider) {
         EncryptionAtRestService keyService = null;
-        String recoveredKey = null;
+        byte[] recoveredKey = null;
         try {
             keyService = EncryptionAtRestService.getServiceInstance(
                     apiHelper,
                     keyProvider
             );
-            recoveredKey = keyService.recoverEncryptionKeyWithService(customerUUID, universeUUID);
-            if (recoveredKey == null || recoveredKey.isEmpty()) {
+            recoveredKey = keyService.recoverEncryptionKeyWithService(
+                    customerUUID,
+                    universeUUID,
+                    null
+            );
+            if (recoveredKey == null || recoveredKey.length == 0) {
                 final String errMsg = String.format(
                         "No key found for customer %s for universe %s with provider %s",
                         customerUUID.toString(),
@@ -134,12 +137,12 @@ public class EncryptionAtRestController extends AuthenticatedController {
             );
             ObjectNode body = (ObjectNode) request().body().asJson();
             config = mapper.treeToValue(body, Map.class);
-            String encryptionKey = keyService.createAndRetrieveEncryptionKey(
+            byte[] encryptionKey = keyService.createAndRetrieveEncryptionKey(
                     universeUUID,
                     customerUUID,
                     config
             );
-            if (encryptionKey == null || encryptionKey.isEmpty()) {
+            if (encryptionKey == null || encryptionKey.length == 0) {
                 final String errMsg = "Error creating encryption key";
                 throw new RuntimeException(errMsg);
             }
