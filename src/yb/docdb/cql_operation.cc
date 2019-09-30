@@ -1083,7 +1083,8 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
 
         // For old message expr_case() == NOT SET.
         // For new message expr_case == kColumnId when indexing expression is a column-ref.
-        if (index_column.colexpr.expr_case() != QLExpressionPB::ExprCase::kColumnId) {
+        if (index_column.colexpr.expr_case() != QLExpressionPB::ExprCase::EXPR_NOT_SET &&
+            index_column.colexpr.expr_case() != QLExpressionPB::ExprCase::kColumnId) {
           // TODO(Oleg) INDEX SUPPORT - Remove the error STATUS and update the code accordingly.
           return STATUS(NotSupported, "Indexing expression is not yet supported");
 
