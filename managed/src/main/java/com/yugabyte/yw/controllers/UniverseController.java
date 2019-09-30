@@ -188,13 +188,6 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Create for {}.", customerUUID);
       // Get the user submitted form data.
       ObjectNode formData = (ObjectNode) request().body().asJson();
-      // TODO: Remove hard-coded encryption key params once the formData fields are passed in from UI
-      formData.put(
-              "encryptionAtRestConfig",
-              Json.newObject()
-                      .put("kms_provider", "SMARTKEY")
-                      .put("algorithm", "AES")
-                      .put("key_size", "256"));
       taskParams = bindFormDataToTaskParams(formData);
     } catch (Throwable t) {
       return ApiResponse.error(BAD_REQUEST, t.getMessage());
@@ -252,16 +245,19 @@ public class UniverseController extends AuthenticatedController {
         if (primaryCluster.userIntent.enableEncryptionAtRest) {
           // Generate encryption master key
           byte[] data = null;
-          EncryptionAtRestService keyService = EncryptionAtRestService.getServiceInstance(
-                  apiHelper,
-                  taskParams.encryptionAtRestConfig.get("kms_provider")
-          );
-          if (keyService != null) {
-            data = keyService.createAndRetrieveEncryptionKey(
-                    universe.universeUUID,
-                    customerUUID,
-                    taskParams.encryptionAtRestConfig
-            );
+          if (taskParams.encryptionAtRestConfig != null) {
+            boolean forceNewInstance = Boolean.parseBoolean(taskParams.encryptionAtRestConfig.get("force_new_instance"));
+            String kmsProvider = taskParams.encryptionAtRestConfig.get("kms_provider");
+            EncryptionAtRestService keyService = forceNewInstance ?
+                    EncryptionAtRestService.getServiceInstance(apiHelper, kmsProvider, true)
+                    : EncryptionAtRestService.getServiceInstance(apiHelper, kmsProvider);
+            if (keyService != null) {
+              data = keyService.createAndRetrieveEncryptionKey(
+                      universe.universeUUID,
+                      customerUUID,
+                      taskParams.encryptionAtRestConfig
+              );
+            }
           }
           // Default to Yugaware-generated encryption key if KMS not chosen/failed
           if (data == null || data.length == 0) {
@@ -270,7 +266,7 @@ public class UniverseController extends AuthenticatedController {
             rd.nextBytes(data);
           }
           taskParams.encryptionKeyFilePath = CertificateHelper.createEncryptionKeyFile(customerUUID, universe.universeUUID,
-                  data, "/opt/yugaware"); // appConfig.getString("yb.storage.path"));
+                  data, appConfig.getString("yb.storage.path"));
         }
       }
 

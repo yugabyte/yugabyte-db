@@ -5,36 +5,22 @@ package com.yugabyte.yw.common;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.regions.Regions;
-import com.amazonaws.services.identitymanagement.AmazonIdentityManagement;
-import com.amazonaws.services.identitymanagement.AmazonIdentityManagementClientBuilder;
-import com.amazonaws.services.identitymanagement.model.AccessKeyMetadata;
-import com.amazonaws.services.identitymanagement.model.ListAccessKeysRequest;
-import com.amazonaws.services.identitymanagement.model.ListAccessKeysResult;
-import com.amazonaws.services.identitymanagement.model.ListUsersRequest;
-import com.amazonaws.services.identitymanagement.model.ListUsersResult;
-import com.amazonaws.services.identitymanagement.model.User;
 import com.amazonaws.services.kms.AWSKMS;
 import com.amazonaws.services.kms.AWSKMSClientBuilder;
 import com.amazonaws.services.kms.model.AliasListEntry;
 import com.amazonaws.services.kms.model.CreateAliasRequest;
-import com.amazonaws.services.kms.model.CreateAliasResult;
 import com.amazonaws.services.kms.model.CreateKeyRequest;
 import com.amazonaws.services.kms.model.CreateKeyResult;
 import com.amazonaws.services.kms.model.DecryptRequest;
-import com.amazonaws.services.kms.model.DecryptResult;
 import com.amazonaws.services.kms.model.GenerateDataKeyWithoutPlaintextRequest;
-import com.amazonaws.services.kms.model.GenerateDataKeyWithoutPlaintextResult;
 import com.amazonaws.services.kms.model.ListAliasesRequest;
 import com.amazonaws.services.kms.model.ListAliasesResult;
 import com.amazonaws.services.kms.model.UpdateAliasRequest;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.BinaryNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -50,9 +36,9 @@ class AwsKMSCredentials {
     public Regions getRegion() { return this.region; }
 
     public AwsKMSCredentials(ObjectNode authConfig) {
-        this.accessKey = authConfig.get("access_key_id").asText();
-        this.secretKey = authConfig.get("secret_key_id").asText();
-        this.region = Enum.valueOf(Regions.class, authConfig.get("region").asText());
+        this.accessKey = authConfig.get("AWS_ACCESS_KEY_ID").asText();
+        this.secretKey = authConfig.get("AWS_SECRET_ACCESS_KEY").asText();
+        this.region = Enum.valueOf(Regions.class, authConfig.get("AWS_DEFAULT_REGION").asText());
     }
 }
 
@@ -86,11 +72,12 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
     }
 
     /**
+     * Instantiates a AWSKMS client to send requests to
      *
-     * @param creds
-     * @return
+     * @param creds are the required credentials to get a client instance
+     * @return a AWSKMS client
      */
-    private AWSKMS getClient(AwsKMSCredentials creds) {
+    protected AWSKMS getClient(AwsKMSCredentials creds) {
         final BasicAWSCredentials awsCreds = new BasicAWSCredentials(
                 creds.getAccessKey(),
                 creds.getSecretKey()
@@ -103,10 +90,11 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
     }
 
     /**
+     * Creates a new AWS KMS alias to be able to search for the CMK by
      *
-     * @param universeUUID
-     * @param customerUUID
-     * @param kId
+     * @param universeUUID will be the name of the alias
+     * @param customerUUID is the customer the alias is being created for
+     * @param kId is the CMK that the alias should target
      */
     private void createAlias(UUID universeUUID, UUID customerUUID, String kId) {
         final String aliasNameBase = "alias/%s";
@@ -117,10 +105,11 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
     }
 
     /**
+     * Try to retreive an AWS KMS alias by its name
      *
-     * @param customerUUID
-     * @param aliasName
-     * @return
+     * @param customerUUID is the customer that the alias was created for
+     * @param aliasName is the name of the alias in AWS
+     * @return the alias if found, or null otherwise
      */
     private AliasListEntry getAlias(UUID customerUUID, String aliasName) {
         final String aliasNameBase = "alias/%s";
@@ -147,10 +136,11 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
     }
 
     /**
+     * Updates the CMK that an alias targets
      *
-     * @param customerUUID
-     * @param universeUUID
-     * @param newTargetKeyId
+     * @param customerUUID the customer the CMK and alias belong to
+     * @param universeUUID the name of the alias
+     * @param newTargetKeyId the new CMK that the alias should target
      */
     private void updateAliasTarget(UUID customerUUID, UUID universeUUID, String newTargetKeyId) {
         UpdateAliasRequest req = new UpdateAliasRequest()
@@ -159,6 +149,14 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
         getClient(new AwsKMSCredentials(getAuthConfig(customerUUID))).updateAlias(req);
     }
 
+    /**
+     * A method to attempt to retrieve a ciphertext blob of the universe master key
+     *
+     * @param customerUUID is the customer the universe belongs to
+     * @param universeUUID is the universe that the master key is associated with
+     * @return a byte array containing the ciphertext blob of the universe master key
+     * @throws Exception if the binaryValue of the JsonNode could not be extracted
+     */
     private byte[] retrieveEncryptedUniverseKeyLocal(
             UUID customerUUID,
             UUID universeUUID
@@ -177,10 +175,11 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
     }
 
     /**
+     * Decrypts the universe master key ciphertext blob into plaintext using the universe CMK
      *
-     * @param customerUUID
-     * @param encryptedUniverseKey
-     * @return
+     * @param customerUUID is the customer the universe belongs to
+     * @param encryptedUniverseKey is the ciphertext blob of the universe master key
+     * @return a plaintext byte array of the universe master key
      */
     private byte[] decryptUniverseKey(UUID customerUUID, byte[] encryptedUniverseKey) {
         if (encryptedUniverseKey == null) return null;
@@ -197,12 +196,23 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
     }
 
     /**
+     * Generates the field name to store the ciphertext universe master key under
      *
-     * @param customerUUID
-     * @param cmkId
-     * @param algorithm
-     * @param keySize
-     * @return
+     * @param universeUUID the universe the master key is associated to
+     * @return the field name
+     */
+    private String getUniverseMasterKeyName(UUID universeUUID) {
+        return String.format("universe_key_%s", universeUUID.toString());
+    }
+
+    /**
+     * Generates a universe master key using the universe alias targetted CMK
+     *
+     * @param customerUUID the customer this is for
+     * @param cmkId the Id of the CMK that the alias for this universe is pointing to
+     * @param algorithm is the desired universe master key algorithm
+     * @param keySize is the desired universe master key size
+     * @return a ciphertext blob of the universe master key
      */
     private byte[] generateDataKey(UUID customerUUID, String cmkId, String algorithm, int keySize) {
         final String keySpecBase = "%s_%s";
@@ -246,10 +256,6 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
         return kId;
     }
 
-    private String getUniverseMasterKeyName(UUID universeUUID) {
-        return String.format("data_key_%s", universeUUID.toString());
-    }
-
     @Override
     protected byte[] getEncryptionKeyWithService(
             String kId,
@@ -264,7 +270,7 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
         updateAuthConfig(customerUUID, ImmutableMap.of(
                 getUniverseMasterKeyName(universeUUID), mapper.valueToTree(encryptedKeyBytes)
         ));
-        return recoverEncryptionKeyWithService(customerUUID, null, config);
+        return recoverEncryptionKeyWithService(customerUUID, universeUUID, config);
     }
 
     @Override
