@@ -89,9 +89,9 @@ function validateSession(store, replacePath, callback) {
         } else if ("uuid" in response.payload.data) {
           localStorage.setItem("customerId", response.payload.data["uuid"]);
         }
-      });
+      })
+      .finally(callback);
   }
-  callback();
 }
 
 export default (store) => {
