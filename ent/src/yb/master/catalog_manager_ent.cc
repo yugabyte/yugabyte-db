@@ -155,7 +155,7 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
       // TODO: Should we delete all failed universe replication items?
     }
 
-    // Add universe replication info to the universe replication  map.
+    // Add universe replication info to the universe replication map.
     catalog_manager_->universe_replication_map_[ri->id()] = ri;
     l->Commit();
 
@@ -1281,10 +1281,9 @@ Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
 Status CatalogManager::FillHeartbeatResponseCDC(const SysClusterConfigEntryPB& cluster_config,
                                                 const TSHeartbeatRequestPB* req,
                                                 TSHeartbeatResponsePB* resp) {
-  const auto& ts_uuid = req->common().ts_instance().permanent_uuid();
+  resp->set_cluster_config_version(cluster_config.version());
   if (!cluster_config.has_consumer_registry() ||
-      !ShouldResendRegistry(ts_uuid, req->has_registration(), &should_send_consumer_registry_,
-                            &should_send_consumer_registry_mutex_)) {
+      req->cluster_config_version() >= cluster_config.version()) {
     return Status::OK();
   }
   *resp->mutable_consumer_registry() = cluster_config.consumer_registry();
@@ -1509,23 +1508,30 @@ Status CatalogManager::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
 
   RETURN_NOT_OK(CheckOnline());
 
-  if (!req->has_stream_id()) {
+  if (req->stream_id_size() < 1) {
     Status s = STATUS(InvalidArgument, "No CDC Stream ID given", req->DebugString());
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
   }
 
-  scoped_refptr<CDCStreamInfo> stream;
+  std::vector<scoped_refptr<CDCStreamInfo>> streams;
+  std::string streams_str;
   {
     std::shared_lock<LockType> l(lock_);
-
-    stream = FindPtrOrNull(cdc_stream_map_, req->stream_id());
-    if (stream == nullptr) {
-      Status s = STATUS(NotFound, "CDC stream does not exist", req->DebugString());
-      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+    for (const auto& stream_id : req->stream_id()) {
+      auto stream = FindPtrOrNull(cdc_stream_map_, stream_id);
+      if (stream == nullptr) {
+        Status s = STATUS(NotFound, "CDC stream does not exist", req->DebugString());
+        return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+      }
+      streams.push_back(stream);
+      if (!streams_str.empty()) {
+        streams_str += ", ";
+      }
+      streams_str += stream->ToString();
     }
   }
 
-  Status s = DeleteCDCStreams(std::vector<scoped_refptr<CDCStreamInfo>>({stream}));
+  Status s = DeleteCDCStreams(streams);
   if (!s.ok()) {
     if (s.IsIllegalState()) {
       PANIC_RPC(rpc, s.message().ToString());
@@ -1533,7 +1539,7 @@ Status CatalogManager::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
     return CheckIfNoLongerLeaderAndSetupError(s, resp);
   }
 
-  LOG(INFO) << "Successfully deleted CDC stream " << stream->ToString()
+  LOG(INFO) << "Successfully deleted CDC streams " << streams_str
             << " per request from " << RequestorString(rpc);
 
   return Status::OK();
@@ -1789,31 +1795,40 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
   l->mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETED);
 
   // Delete subscribers.
-  for (const auto& table : l->data().pb.validated_tables()) {
-    LOG(INFO) << "Deleting subscriber for table " << table.second;
-    // TODO: Delete subscribers.
+  LOG(INFO) << "Deleting subscribers for producer " << req->producer_id();
+  {
+    auto cl = cluster_config_->LockForWrite();
+    auto producer_map = cl->mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+    auto it = producer_map->find(req->producer_id());
+    if (it != producer_map->end()) {
+      producer_map->erase(it);
+    }
+    cl->mutable_data()->pb.set_version(cl->mutable_data()->pb.version() + 1);
+    RETURN_NOT_OK(sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_));
+    cl->Commit();
   }
 
   if (!l->data().pb.table_streams().empty()) {
     // Delete CDC streams.
     auto result = ri->GetOrCreateCDCRpcTasks(l->data().pb.producer_master_addresses());
     if (!result.ok()) {
-      l->mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETED_ERROR);
-      l->Commit();
-      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, result.status());
-    }
-    auto cdc_rpc = *result;
+      LOG(WARNING) << "Unable to create cdc rpc task. CDC streams won't be deleted: " << result;
+    } else {
+      auto cdc_rpc = *result;
 
-    for (const auto &table : l->data().pb.table_streams()) {
-      cdc_rpc->client()->DeleteCDCStream(
-          table.second,
-          Bind(&enterprise::CatalogManager::DeleteCDCStreamCallback, Unretained(this),
-               ri->id(), table.first));
+      vector<CDCStreamId> streams;
+      for (const auto& table : l->data().pb.table_streams()) {
+        streams.push_back(table.second);
+      }
+      auto s = cdc_rpc->client()->DeleteCDCStream(streams);
+      if (!s.ok()) {
+        LOG(WARNING) << "Unable to delete CDC stream " << s;
+      }
     }
-  } else {
-    // No streams, delete universe.
-    DeleteUniverseReplicationUnlocked(ri);
   }
+
+  // Delete universe.
+  DeleteUniverseReplicationUnlocked(ri);
   l->Commit();
 
   LOG(INFO) << "Processed delete universe replication " << ri->ToString()
@@ -2027,37 +2042,6 @@ void CatalogManager::CreateCDCStreamCallback(
                    status.ToString()));
     LOG(WARNING) << status.ToString();
     return;
-  }
-  l->Commit();
-}
-
-void CatalogManager::DeleteCDCStreamCallback(
-    const  std::string& universe_id, const TableId& table_id, const Status& s) {
-  scoped_refptr<UniverseReplicationInfo> universe;
-  {
-    std::shared_lock<LockType> catalog_lock(lock_);
-    TRACE("Acquired catalog manager lock");
-
-    universe = FindPtrOrNull(universe_replication_map_, universe_id);
-    if (universe == nullptr) {
-      LOG(ERROR) << "Universe not found: " << universe_id;
-      return;
-    }
-  }
-
-  // Delete from universe.
-  if (!s.ok()) {
-    LOG(ERROR) << "Error deleting CDC stream for universe: " << universe->id()
-               << ", table: " << table_id;
-    MarkUniverseReplicationFailed(universe);
-    return;
-  }
-
-  auto l = universe->LockForWrite();
-  l->mutable_data()->pb.mutable_table_streams()->erase(table_id);
-  l->mutable_data()->pb.mutable_validated_tables()->erase(table_id);
-  if (l->mutable_data()->pb.validated_tables().size() == 0) {
-    DeleteUniverseReplicationUnlocked(universe);
   }
   l->Commit();
 }

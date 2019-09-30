@@ -71,7 +71,7 @@ Status MasterTestEnt::GetCDCStream(const CDCStreamId& stream_id, GetCDCStreamRes
 Status MasterTestEnt::DeleteCDCStream(const CDCStreamId& stream_id) {
   DeleteCDCStreamRequestPB req;
   DeleteCDCStreamResponsePB resp;
-  req.set_stream_id(stream_id);
+  req.add_stream_id(stream_id);
 
   RETURN_NOT_OK(proxy_->DeleteCDCStream(req, &resp, ResetAndGetController()));
   if (resp.has_error()) {

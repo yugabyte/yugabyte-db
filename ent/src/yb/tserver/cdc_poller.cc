@@ -117,6 +117,7 @@ void CDCPoller::HandlePoll() {
 }
 
 void CDCPoller::DoHandlePoll() {
+
   RETURN_WHEN_OFFLINE();
 
   if (!should_continue_polling_()) {

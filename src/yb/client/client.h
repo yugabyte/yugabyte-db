@@ -417,6 +417,9 @@ class YBClient {
                        const std::unordered_map<std::string, std::string>& options,
                        CreateCDCStreamCallback callback);
 
+  // Delete multiple CDC streams.
+  CHECKED_STATUS DeleteCDCStream(const vector<CDCStreamId>& streams);
+
   // Delete a CDC stream.
   CHECKED_STATUS DeleteCDCStream(const CDCStreamId& stream_id);
 

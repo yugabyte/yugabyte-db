@@ -202,13 +202,14 @@ void CDCServiceImpl::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
     return;
   }
 
-  RPC_CHECK_AND_RETURN_ERROR(req->has_stream_id(),
+  RPC_CHECK_AND_RETURN_ERROR(req->stream_id_size() > 0,
                              STATUS(InvalidArgument, "Stream ID is required to delete CDC stream"),
                              resp->mutable_error(),
                              CDCErrorPB::INVALID_REQUEST,
                              context);
 
-  Status s = async_client_init_->client()->DeleteCDCStream(req->stream_id());
+  vector<CDCStreamId> streams(req->stream_id().begin(), req->stream_id().end());
+  Status s = async_client_init_->client()->DeleteCDCStream(streams);
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
   context.RespondSuccess();

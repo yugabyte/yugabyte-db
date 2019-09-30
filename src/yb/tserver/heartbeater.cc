@@ -443,6 +443,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_heartbeat_rpc_timeout_ms));
 
   req.set_config_index(server_->GetCurrentMasterIndex());
+  req.set_cluster_config_version(server_->cluster_config_version());
 
   {
     VLOG_WITH_PREFIX(2) << "Sending heartbeat:\n" << req.DebugString();
@@ -484,8 +485,18 @@ Status Heartbeater::Thread::TryHeartbeat() {
     }
 
     if (resp.has_consumer_registry()) {
-      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->SetConsumerRegistry(
-          resp.consumer_registry()));
+      int32_t cluster_config_version = -1;
+      if (!resp.has_cluster_config_version()) {
+        YB_LOG_EVERY_N_SECS(INFO, 30)
+            << "Invalid heartbeat response without a cluster config version";
+      } else {
+        cluster_config_version = resp.cluster_config_version();
+      }
+      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->
+          SetConfigVersionAndConsumerRegistry(cluster_config_version, &resp.consumer_registry()));
+    } else if (resp.has_cluster_config_version()) {
+      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->
+          SetConfigVersionAndConsumerRegistry(resp.cluster_config_version(), nullptr));
     }
 
     // At this point we know resp is a successful heartbeat response from the master so set it as
