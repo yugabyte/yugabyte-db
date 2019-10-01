@@ -75,6 +75,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   // Postgres settings.
   protected static final String DEFAULT_PG_DATABASE = "yugabyte";
   protected static final String DEFAULT_PG_USER = "yugabyte";
+  protected static final String DEFAULT_PG_PASS = "yugabyte";
   public static final String TEST_PG_USER = "yugabyte_test";
 
   // Postgres flags.

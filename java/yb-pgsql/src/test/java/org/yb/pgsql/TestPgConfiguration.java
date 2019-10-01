@@ -232,6 +232,34 @@ public class TestPgConfiguration extends BasePgSQLTest {
       );
     }
 
+    // Can connect as default yugabyte user with the default password.
+    try (Connection ignored = newConnectionBuilder().setTServer(tserver).setUser(DEFAULT_PG_USER)
+            .setPassword(DEFAULT_PG_PASS).connect()) {
+      // No-op.
+    }
+
+    // Cannot connect as yugabyte user with incorrect password.
+    try (Connection ignored = newConnectionBuilder().setTServer(tserver).setUser(DEFAULT_PG_USER)
+            .setPassword("wrong_pass").connect()) {
+      fail("Expected login attempt to fail");
+    } catch (SQLException sqle) {
+      assertThat(
+              sqle.getMessage(),
+              CoreMatchers.containsString("password authentication failed for user")
+      );
+    }
+
+    // Cannot connect as yugabyte user without password.
+    try (Connection ignored = newConnectionBuilder().setTServer(tserver)
+            .setUser(DEFAULT_PG_USER).connect()) {
+      fail("Expected login attempt to fail");
+    } catch (SQLException sqle) {
+      assertThat(
+              sqle.getMessage(),
+              CoreMatchers.containsString("no password was provided")
+      );
+    }
+
     // Things like ip masking, auth methods, ... are difficult to test, so just check that the
     // hba rules are the same as we expect.
     try (Connection connection = newConnectionBuilder().setTServer(tserver).setUser("su")
