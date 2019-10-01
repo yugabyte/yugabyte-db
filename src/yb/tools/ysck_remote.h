@@ -92,7 +92,7 @@ class RemoteYsckMaster : public YsckMaster {
  public:
   static CHECKED_STATUS Build(const HostPort& address, std::shared_ptr<YsckMaster>* master);
 
-  virtual ~RemoteYsckMaster() { }
+  virtual ~RemoteYsckMaster();
 
   virtual CHECKED_STATUS Connect() const override;
 
