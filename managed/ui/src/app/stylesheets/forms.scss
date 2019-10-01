@@ -272,12 +272,24 @@
   }
 }
 
+.right-side-form-field {
+  padding-top: 10px;
+  position: relative;
+
+  /*
+   *  Regular Drop zone CSS class sets the right to a negative pixel width,
+   *  which causes the line to break out of the bounds of the parent div.
+   *  Then setting the left here will push it closer to the edge of the upload button.
+   */
+  .drop-zone-file {
+    left: 180px;
+    top: 20px;
+  }
+}
+
 .help-block {
   margin-bottom: 0;
 }
-
-
-
 
   .form-group {
     margin-bottom: 0px;

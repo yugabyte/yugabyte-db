@@ -35,3 +35,7 @@ export { default as GCPProviderInitView } from './PublicCloud/views/GCPProviderI
 
 export { default as StorageConfiguration } from './Storage/StorageConfiguration';
 export { default as StorageConfigurationContainer } from './Storage/StorageConfigurationContainer';
+
+export { default as KeyManagementConfiguration } from './Security/KeyManagementConfiguration';
+export { default as KeyManagementConfigurationContainer } from './Security/KeyManagementConfigurationContainer';
+export { default as SecurityConfiguration } from './Security/SecurityConfiguration';

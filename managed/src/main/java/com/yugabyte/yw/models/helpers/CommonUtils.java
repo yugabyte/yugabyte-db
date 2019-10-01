@@ -19,7 +19,7 @@ public class CommonUtils {
     for (Iterator<String> it = maskedData.fieldNames(); it.hasNext(); ) {
       String key = it.next();
       // TODO: make this a constant
-      if (key.contains("KEY") || key.contains("SECRET")) {
+      if (key.toLowerCase().contains("key") || key.toLowerCase().contains("secret") ||  key.toLowerCase().contains("api")) {
         ((ObjectNode) maskedData).put(key, maskedData.get(key).asText().replaceAll(maskRegex, "*"));
       }
     }

@@ -21,6 +21,8 @@ import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
+
 public class EncryptionAtRestController extends AuthenticatedController {
     public static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestController.class);
 
@@ -68,7 +70,12 @@ public class EncryptionAtRestController extends AuthenticatedController {
                                     apiHelper,
                                     provider.name()
                             );
-                    return keyService.getAuthConfig(customerUUID);
+                    ObjectNode obj = keyService.getAuthConfig(customerUUID);
+                    if (obj != null) {
+                        obj = (ObjectNode) maskConfig(obj);
+                        obj.put("provider", provider.name());
+                    }
+                    return obj;
                 })
                 .filter(authConfig -> authConfig != null)
                 .collect(Collectors.toList());
