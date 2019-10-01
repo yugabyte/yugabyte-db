@@ -154,6 +154,12 @@ ClusterAdminClient::ClusterAdminClient(string addrs,
       client_init_(certs_dir.empty()),
       initted_(false) {}
 
+ClusterAdminClient::~ClusterAdminClient() {
+  if (messenger_) {
+    messenger_->Shutdown();
+  }
+}
+
 Status ClusterAdminClient::Init() {
   CHECK(!initted_);
 

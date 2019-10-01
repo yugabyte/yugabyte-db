@@ -95,7 +95,7 @@ class RpcStubTest : public RpcTestBase {
   void SetUp() override {
     RpcTestBase::SetUp();
     StartTestServerWithGeneratedCode(&server_hostport_);
-    client_messenger_ = CreateMessenger("Client");
+    client_messenger_ = CreateAutoShutdownMessengerHolder("Client");
     proxy_cache_ = std::make_unique<ProxyCache>(client_messenger_.get());
   }
 
@@ -114,12 +114,12 @@ class RpcStubTest : public RpcTestBase {
 
   template <class T>
   struct ProxyWithMessenger {
-    std::unique_ptr<Messenger> messenger;
+    AutoShutdownMessengerHolder messenger;
     std::unique_ptr<T> proxy;
   };
 
   ProxyWithMessenger<CalculatorServiceProxy> CreateCalculatorProxyHolder(const Endpoint& remote) {
-    std::unique_ptr<Messenger> messenger = CreateMessenger("Client");
+    auto messenger = CreateAutoShutdownMessengerHolder("Client");
     IpAddress local_address = remote.address().is_v6()
         ? IpAddress(boost::asio::ip::address_v6::loopback())
         : IpAddress(boost::asio::ip::address_v4::loopback());
@@ -130,14 +130,12 @@ class RpcStubTest : public RpcTestBase {
     EXPECT_OK(messenger->StartAcceptor());
     EXPECT_FALSE(messenger->io_service().stopped());
     ProxyCache proxy_cache(messenger.get());
-    return ProxyWithMessenger<CalculatorServiceProxy>{
-      std::move(messenger),
-      std::make_unique<CalculatorServiceProxy>(&proxy_cache, HostPort(remote))
-    };
+    return { move(messenger),
+        std::make_unique<CalculatorServiceProxy>(&proxy_cache, HostPort(remote)) };
   }
 
   HostPort server_hostport_;
-  std::unique_ptr<Messenger> client_messenger_;
+  AutoShutdownMessengerHolder client_messenger_;
   std::unique_ptr<ProxyCache> proxy_cache_;
 };
 
@@ -694,7 +692,7 @@ TEST_F(RpcStubTest, TestRpcPerformance) {
   MessengerOptions messenger_options = kDefaultClientMessengerOptions;
   messenger_options.n_reactors = 4;
   proxy_cache_.reset();
-  client_messenger_ = CreateMessenger("Client", messenger_options);
+  client_messenger_ = CreateAutoShutdownMessengerHolder("Client", messenger_options);
   proxy_cache_ = std::make_unique<ProxyCache>(client_messenger_.get());
   CalculatorServiceProxy p(proxy_cache_.get(), server_hostport_);
 

@@ -55,6 +55,11 @@
 } while (0)
 
 namespace yb {
+namespace rpc {
+
+class Messenger;
+
+} // namespace rpc
 
 // Our test string literals contain "\x00" that is treated as a C-string null-terminator.
 // So we need to call the std::string constructor that takes the length argument.
@@ -318,6 +323,15 @@ class TestThreadHolder {
   std::atomic<bool> stop_flag_{false};
   std::vector<std::thread> threads_;
 };
+
+struct MessengerShutdownDeleter {
+  void operator()(rpc::Messenger* messenger) const;
+};
+
+using AutoShutdownMessengerHolder = std::unique_ptr<rpc::Messenger, MessengerShutdownDeleter>;
+
+AutoShutdownMessengerHolder CreateAutoShutdownMessengerHolder(
+    std::unique_ptr<rpc::Messenger>&& messenger);
 
 } // namespace yb
 

@@ -131,6 +131,8 @@ class TsAdminClient {
   // "localhost" or "127.0.0.1:7050".
   TsAdminClient(std::string addr, int64_t timeout_millis);
 
+  ~TsAdminClient();
+
   // Initialized the client and connects to the specified tablet
   // server.
   Status Init();
@@ -170,10 +172,10 @@ class TsAdminClient {
   std::string addr_;
   MonoDelta timeout_;
   bool initted_;
+  std::unique_ptr<rpc::Messenger> messenger_;
   shared_ptr<server::GenericServiceProxy> generic_proxy_;
   gscoped_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
   gscoped_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
-  std::unique_ptr<Messenger> messenger_;
 
   DISALLOW_COPY_AND_ASSIGN(TsAdminClient);
 };
@@ -182,6 +184,12 @@ TsAdminClient::TsAdminClient(string addr, int64_t timeout_millis)
     : addr_(std::move(addr)),
       timeout_(MonoDelta::FromMilliseconds(timeout_millis)),
       initted_(false) {}
+
+TsAdminClient::~TsAdminClient() {
+  if (messenger_) {
+    messenger_->Shutdown();
+  }
+}
 
 Status TsAdminClient::Init() {
   CHECK(!initted_);

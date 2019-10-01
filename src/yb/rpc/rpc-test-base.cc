@@ -486,6 +486,11 @@ std::unique_ptr<Messenger> RpcTestBase::CreateMessenger(
   return yb::rpc::CreateMessenger(name, metric_entity_, options);
 }
 
+AutoShutdownMessengerHolder RpcTestBase::CreateAutoShutdownMessengerHolder(
+    const string &name, const MessengerOptions& options) {
+  return yb::CreateAutoShutdownMessengerHolder(CreateMessenger(name, options));
+}
+
 MessengerBuilder RpcTestBase::CreateMessengerBuilder(const string &name,
                                                      const MessengerOptions& options) {
   return yb::rpc::CreateMessengerBuilder(name, metric_entity_, options);

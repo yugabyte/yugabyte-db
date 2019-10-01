@@ -72,7 +72,7 @@ class ClusterAdminClient {
   // If certs_dir is non-empty, caller will init the yb_client_.
   ClusterAdminClient(std::string addrs, int64_t timeout_millis, string certs_dir);
 
-  virtual ~ClusterAdminClient() = default;
+  virtual ~ClusterAdminClient();
 
   // Initialized the client and connects to the specified tablet server.
   virtual CHECKED_STATUS Init();

@@ -39,6 +39,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/walltime.h"
+#include "yb/rpc/messenger.h"
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random.h"
@@ -347,6 +348,16 @@ void WaitStopped(const CoarseDuration& duration, std::atomic<bool>* stop) {
   while (!stop->load(std::memory_order_acquire) && CoarseMonoClock::now() < end) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
+}
+
+void MessengerShutdownDeleter::operator()(rpc::Messenger* messenger) const {
+  messenger->Shutdown();
+  delete messenger;
+}
+
+AutoShutdownMessengerHolder CreateAutoShutdownMessengerHolder(
+    std::unique_ptr<rpc::Messenger>&& messenger) {
+  return AutoShutdownMessengerHolder(move(messenger).release());
 }
 
 } // namespace yb

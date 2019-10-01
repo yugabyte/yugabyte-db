@@ -307,7 +307,8 @@ target_link_libraries(yb_test_util
   gflags
   glog
   gmock
-  yb_util)
+  yb_util
+  yrpc)
 
 #######################################
 # yb_test_main
