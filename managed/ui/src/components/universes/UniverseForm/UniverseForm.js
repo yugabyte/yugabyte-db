@@ -285,6 +285,13 @@ class UniverseForm extends Component {
         }
       ];
     }
+
+    submitPayload.encryptionAtRestConfig = {
+      "kms_provider": formValues['primary'].selectEncryptionAtRestConfig,
+      "algorithm": "AES",
+      "key_size": "256",
+      "cmk_policy": formValues['primary'].cmkPolicyContent
+    };
     submitPayload.clusters = submitPayload.clusters.filter((c)=>(c.userIntent !== null));
     // filter clusters array if configuring(adding only) Read Replica due to server side validation
     if (type === "Async") {
@@ -403,6 +410,7 @@ class UniverseForm extends Component {
       fetchUniverseResources,
       accessKeys: this.props.accessKeys, updateFormField: this.updateFormField,
       setPlacementStatus: this.props.setPlacementStatus,
+      getKMSConfigs: this.props.getKMSConfigs,
       fetchUniverseTasks: this.props.fetchUniverseTasks,
       handleHasFieldChanged: this.handleHasFieldChanged,
       reset: this.props.reset, fetchUniverseMetadata: this.props.fetchUniverseMetadata,
@@ -469,11 +477,17 @@ UniverseForm.contextTypes = {
 class PrimaryClusterFields extends Component {
   render() {
     return (
-      <Fields names={['primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList', 'primary.replicationFactor',
-        'primary.numNodes', 'primary.instanceType', 'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.ybSoftwareVersion',
-        'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.storageType',
-        'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL', 'primary.enableNodeToNodeEncrypt',
-        'primary.enableClientToNodeEncrypt', 'primary.enableEncryptionAtRest']} component={ClusterFields} {...this.props} clusterType={"primary"} />
+      <Fields names={['primary.universeName', 'primary.provider', 'primary.providerType',
+        'primary.regionList', 'primary.replicationFactor', 'primary.numNodes',
+        'primary.instanceType', 'primary.masterGFlags', 'primary.tserverGFlags',
+        'primary.instanceTags', 'primary.ybSoftwareVersion', 'primary.diskIops',
+        'primary.numVolumes', 'primary.volumeSize', 'primary.storageType',
+        'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL',
+        'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt',
+        'primary.enableEncryptionAtRest', 'primary.selectEncryptionAtRestConfig',
+        'primary.useCmkPolicy'
+      ]}
+        component={ClusterFields} {...this.props} clusterType={"primary"} />
     );
   }
 }

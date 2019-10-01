@@ -337,11 +337,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
     public ObjectNode getAuthConfig(UUID customerUUID) {
         final ObjectNode config = CustomerConfig.getKMSAuthObj(customerUUID, this.keyProvider);
         if (config == null) {
-            throw new RuntimeException(String.format(
-                    "KMS configuration for customer %s using provider %s does not exist",
-                    customerUUID.toString(),
-                    this.keyProvider
-            ));
+            return null;
         }
         return decryptConfigData(customerUUID, config);
     }

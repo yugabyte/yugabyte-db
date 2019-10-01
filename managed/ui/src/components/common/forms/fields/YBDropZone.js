@@ -7,7 +7,7 @@ import { YBLabel } from 'components/common/descriptors';
 import './stylesheets/YBDropZone.scss';
 
 export default class YBDropZone extends Component {
-  onDrop = (file, e) => {
+  onDrop = (file) => {
     this.props.input.onChange(file[0]);
   }
   render() {
