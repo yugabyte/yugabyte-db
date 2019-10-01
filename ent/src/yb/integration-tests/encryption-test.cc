@@ -21,7 +21,7 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/integration-tests/cluster_verifier.h"
 
-#include "yb/master/master.proxy.h"
+#include "yb/master/catalog_manager.h"
 
 #include "yb/util/test_util.h"
 #include "yb/util/random_util.h"
@@ -30,6 +30,8 @@
 
 DECLARE_int64(db_write_buffer_size);
 DECLARE_int32(memstore_size_mb);
+DECLARE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps);
+DECLARE_int32(heartbeat_interval_ms);
 
 namespace yb {
 namespace integration_tests {
@@ -40,14 +42,28 @@ constexpr uint32_t key_size = (1 << 15);
 class EncryptionTest : public YBTableTestBase {
  public:
 
-  bool use_external_mini_cluster() override { return true; }
+  bool use_external_mini_cluster() override { return false; }
+
+  int num_tablet_servers() override {
+    return 1;
+  }
+
+  int num_tablets() override {
+    return 4;
+  }
 
   void SetUp() override {
     FLAGS_memstore_size_mb = 1;
     FLAGS_db_write_buffer_size = 1048576;
-    YBTableTestBase::SetUp();
+    FLAGS_load_balancer_max_concurrent_tablet_remote_bootstraps = 1;
 
+    YBTableTestBase::SetUp();
+  }
+
+  void BeforeCreateTable() override {
     ASSERT_NO_FATALS(RotateKey());
+    // Wait for the key to be propagated to tserver through heartbeat.
+    SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_heartbeat_interval_ms));
   }
 
   void WriteWorkload(uint32_t start, uint32_t end) {
@@ -69,21 +85,15 @@ class EncryptionTest : public YBTableTestBase {
   }
 
   Result<std::string> IsEncryptionEnabled() {
-    rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(5));
-
     master::IsEncryptionEnabledRequestPB is_enabled_req;
     master::IsEncryptionEnabledResponsePB is_enabled_resp;
 
-    RETURN_NOT_OK(external_mini_cluster()->master_proxy()->
-        IsEncryptionEnabled(is_enabled_req, &is_enabled_resp, &rpc));
+    RETURN_NOT_OK(mini_cluster()->leader_mini_master()->master()->catalog_manager()->
+        IsEncryptionEnabled(&is_enabled_req, &is_enabled_resp));
     return is_enabled_resp.encryption_enabled() ? is_enabled_resp.key_id() : "";
   }
 
   void RotateKey() {
-    rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(5));
-
     master::ChangeEncryptionInfoRequestPB encryption_info_req;
     master::ChangeEncryptionInfoResponsePB encryption_info_resp;
     encryption_info_req.set_encryption_enabled(true);
@@ -97,8 +107,8 @@ class EncryptionTest : public YBTableTestBase {
     ASSERT_OK(key_file->Close());
     encryption_info_req.set_key_path(file_name);
 
-    ASSERT_OK(external_mini_cluster()->master_proxy()->
-        ChangeEncryptionInfo(encryption_info_req, &encryption_info_resp, &rpc));
+    ASSERT_OK(mini_cluster()->leader_mini_master()->master()->catalog_manager()->
+        ChangeEncryptionInfo(&encryption_info_req, &encryption_info_resp));
     ASSERT_FALSE(encryption_info_resp.has_error());
     auto res = ASSERT_RESULT(IsEncryptionEnabled());
     ASSERT_NE("", res);
@@ -106,16 +116,23 @@ class EncryptionTest : public YBTableTestBase {
     current_key_id_ = res;
   }
 
-  void DisableEncryption() {
-    rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(5));
+  void WaitForLoadBalanced() {
+    SleepFor(MonoDelta::FromSeconds(5));
+    AssertLoggedWaitFor([&]() -> Result<bool> {
+      master::IsLoadBalancedRequestPB req;
+      master::IsLoadBalancedResponsePB resp;
+      return mini_cluster()->leader_mini_master()->master()->catalog_manager()->
+             IsLoadBalanced(&req, &resp).ok();
+    }, MonoDelta::FromSeconds(30), "Wait for load balanced");
+  }
 
+  void DisableEncryption() {
     master::ChangeEncryptionInfoRequestPB encryption_info_req;
     master::ChangeEncryptionInfoResponsePB encryption_info_resp;
     encryption_info_req.set_encryption_enabled(false);
 
-    ASSERT_OK(external_mini_cluster()->master_proxy()->
-        ChangeEncryptionInfo(encryption_info_req, &encryption_info_resp, &rpc));
+    ASSERT_OK(mini_cluster()->leader_mini_master()->master()->catalog_manager()->
+              ChangeEncryptionInfo(&encryption_info_req, &encryption_info_resp));
     ASSERT_FALSE(encryption_info_resp.has_error());
 
     auto res = ASSERT_RESULT(IsEncryptionEnabled());
@@ -127,50 +144,77 @@ class EncryptionTest : public YBTableTestBase {
 };
 
 TEST_F(EncryptionTest, BasicWriteRead) {
+  // Writes 1000 values and verifies they can be read.
   WriteWorkload(0, num_keys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
-  ClusterVerifier cv(external_mini_cluster());
+  ClusterVerifier cv(mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
 TEST_F(EncryptionTest, ClusterRestart) {
+  // Write 1000 values, restart the cluster, write 1000 more, and verify.
   WriteWorkload(0, num_keys);
-  external_mini_cluster()->Shutdown();
-  CHECK_OK(external_mini_cluster()->Restart());
+  CHECK_OK(mini_cluster()->RestartSync());
+  ASSERT_NO_FATALS(WaitForLoadBalanced());
   WriteWorkload(num_keys, 2 * num_keys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
-  ClusterVerifier cv(external_mini_cluster());
+  ClusterVerifier cv(mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
 TEST_F(EncryptionTest, AddServer) {
+  // Write 1000 values, add a server, and write 1000 more.
   WriteWorkload(0, num_keys);
-  ASSERT_OK(external_mini_cluster()->AddTabletServer());
+  ASSERT_OK(mini_cluster()->AddTabletServer());
+  ASSERT_NO_FATALS(WaitForLoadBalanced());
   WriteWorkload(num_keys, 2 * num_keys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
-  ClusterVerifier cv(external_mini_cluster());
+  ClusterVerifier cv(mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
 TEST_F(EncryptionTest, RotateKey) {
+  // Write 1000 values, rotate a new key, and write 1000 more.
   WriteWorkload(0, num_keys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ASSERT_NO_FATALS(RotateKey());
   WriteWorkload(num_keys, 2 * num_keys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
-  ClusterVerifier cv(external_mini_cluster());
+  ClusterVerifier cv(mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
 TEST_F(EncryptionTest, DisableEncryption) {
+  // Write 1000 values, disable encryption, and write 1000 more.
   WriteWorkload(0, num_keys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ASSERT_NO_FATALS(DisableEncryption());
   WriteWorkload(num_keys, 2 * num_keys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
-  ClusterVerifier cv(external_mini_cluster());
+  ClusterVerifier cv(mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
+
+TEST_F(EncryptionTest, EmptyTable) {
+  // No values added, make sure add server works with empty tables.
+  ASSERT_OK(mini_cluster()->AddTabletServer());
+  ASSERT_NO_FATALS(WaitForLoadBalanced());
+  ClusterVerifier cv(mini_cluster());
+  ASSERT_NO_FATALS(cv.CheckCluster());
+}
+
+TEST_F(EncryptionTest, EnableEncryption) {
+  // Disable encryption, add 1000 values, enable, and write 1000 more.
+  ASSERT_NO_FATALS(DisableEncryption());
+  WriteWorkload(0, num_keys);
+  ASSERT_NO_FATALS(VerifyWrittenRecords());
+  ASSERT_NO_FATALS(RotateKey());
+  WriteWorkload(num_keys, 2 * num_keys);
+  ASSERT_NO_FATALS(VerifyWrittenRecords());
+  ClusterVerifier cv(mini_cluster());
+  ASSERT_NO_FATALS(cv.CheckCluster());
+}
+
 
 } // namespace integration_tests
 } // namespace yb
