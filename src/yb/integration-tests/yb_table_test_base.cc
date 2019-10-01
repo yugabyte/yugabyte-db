@@ -76,6 +76,9 @@ bool YBTableTestBase::use_external_mini_cluster() {
 YBTableTestBase::YBTableTestBase() {
 }
 
+void YBTableTestBase::BeforeCreateTable() {
+}
+
 void YBTableTestBase::SetUp() {
   YBTest::SetUp();
 
@@ -105,6 +108,9 @@ void YBTableTestBase::SetUp() {
   ASSERT_OK(mini_cluster_status);
 
   CreateClient();
+
+  BeforeCreateTable();
+
   CreateTable();
   OpenTable();
 }

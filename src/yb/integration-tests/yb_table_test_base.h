@@ -57,6 +57,7 @@ class YBTableTestBase : public YBTest {
   YBTableTestBase();
   virtual void SetUp() override;
   virtual void TearDown() override;
+  virtual void BeforeCreateTable();
 
   virtual bool use_external_mini_cluster();
   virtual int session_timeout_ms();
