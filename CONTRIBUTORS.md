@@ -79,4 +79,5 @@ This is a list of people who have contributed code to the [YugaByte DB](https://
 * [vishal-biyani](https://github.com/vishal-biyani)
 * [samkulkarni20](https://github.com/samkulkarni20)
 * [fabiocmazzo](https://github.com/fabiocmazzo)
+* [dashaun](https://github.com/dashaun)
 
