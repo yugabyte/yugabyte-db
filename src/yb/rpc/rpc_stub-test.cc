@@ -657,24 +657,18 @@ class PingTestHelper {
     call.reply_time = MonoTime::Now();
     call.controller.Reset();
     LaunchNext();
-    if (++done_calls_ == calls_.size()) {
+    auto calls_size = calls_.size();
+    if (++done_calls_ == calls_size) {
       LOG(INFO) << "Calls done";
       std::unique_lock<std::mutex> lock(mutex_);
-      cond_.notify_one();
       finished_ = true;
+      cond_.notify_one();
     }
   }
 
   void Wait() {
-    {
-      std::unique_lock<std::mutex> lock(mutex_);
-      while (done_calls_ < calls_.size()) {
-        cond_.wait(lock);
-      }
-    }
-    while (!finished_) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
+    std::unique_lock<std::mutex> lock(mutex_);
+    cond_.wait(lock, [this] { return finished_; });
   }
 
   const std::vector<PingCall>& calls() const {
@@ -688,7 +682,7 @@ class PingTestHelper {
   std::vector<PingCall> calls_;
   std::mutex mutex_;
   std::condition_variable cond_;
-  std::atomic<bool> finished_ = {false};
+  bool finished_ = false;
 };
 
 DEFINE_uint64(test_rpc_concurrency, 20, "Number of concurrent RPC requests");
