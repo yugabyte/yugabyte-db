@@ -29,7 +29,7 @@ kern.maxfilesperproc=1048576
 
 - If your macOS version does not have the `/etc/sysctl.conf` file, then ensure that the file `/Library/LaunchDaemons/limit.maxfiles.plist` has the following content.
 
-```sh
+```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
   <plist version="1.0">

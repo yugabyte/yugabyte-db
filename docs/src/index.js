@@ -145,18 +145,9 @@ $(document).ready(() => {
 
   ((document, Clipboard) => {
     const $codes = document.querySelectorAll('pre');
-    // Check if there's a language class (mark of to-be-copied content)
-    const findLanguageDescriptor = list => {
-      for (let i = 0; i < list.length; i++) {
-        if (list[i].indexOf('language-') + 1) {
-          return list[i].replace('language-', '');
-        }
-      }
-      return false;
-    };
     const addCopyButton = element => {
       const container = element.getElementsByTagName('code')[0];
-      const languageDescriptor = findLanguageDescriptor(container.classList);
+      const languageDescriptor = container.classList[0];
       let regExpCopy = /a^/;
       if (languageDescriptor) {
         // Then apply copy button
