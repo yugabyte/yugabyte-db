@@ -8,13 +8,14 @@ import _ from 'lodash';
 import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, areIntentsEqual, isEmptyObject,
   isNonEmptyArray, trimSpecialChars } from 'utils/ObjectUtils';
 import { YBTextInput, YBTextInputWithLabel, YBSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel,
-  YBToggle, YBUnControlledNumericInput, YBControlledNumericInputWithLabel } from 'components/common/forms/fields';
+  YBToggle, YBUnControlledNumericInput, YBControlledNumericInputWithLabel, YBDropZone } from 'components/common/forms/fields';
 import { getPromiseState } from 'utils/PromiseUtils';
 import AZSelectorTable from './AZSelectorTable';
 import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
 import GFlagArrayComponent from './GFlagArrayComponent';
-import { getPrimaryCluster, getReadOnlyCluster, getClusterByType, isKubernetesUniverse } from "../../../utils/UniverseUtils";
+import { getPrimaryCluster, getReadOnlyCluster,
+  getClusterByType, isKubernetesUniverse, readUploadedFile } from "../../../utils/UniverseUtils";
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
@@ -84,6 +85,8 @@ export default class ClusterFields extends Component {
     this.toggleEnableNodeToNodeEncrypt = this.toggleEnableNodeToNodeEncrypt.bind(this);
     this.toggleEnableClientToNodeEncrypt = this.toggleEnableClientToNodeEncrypt.bind(this);
     this.toggleEnableEncryptionAtRest = this.toggleEnableEncryptionAtRest.bind(this);
+    this.handleSelectAuthConfig = this.handleSelectAuthConfig.bind(this);
+    this.handleUploadKeyPolicy = this.handleUploadKeyPolicy.bind(this);
     this.numNodesChangedViaAzList = this.numNodesChangedViaAzList.bind(this);
     this.replicationFactorChanged = this.replicationFactorChanged.bind(this);
     this.softwareVersionChanged = this.softwareVersionChanged.bind(this);
@@ -164,6 +167,7 @@ export default class ClusterFields extends Component {
       // If Edit Case Set Initial Configuration
       this.props.getExistingUniverseConfiguration(universeDetails);
     } else {
+      this.props.getKMSConfigs();
       // Repopulate the form fields when switching back to the view
       if (formValues && isNonEmptyObject(formValues[clusterType])) {
         this.setState({
@@ -539,6 +543,22 @@ export default class ClusterFields extends Component {
     }
   }
 
+  handleSelectAuthConfig(value) {
+    const { updateFormField, clusterType } = this.props;
+    updateFormField(`${clusterType}.selectEncryptionAtRestConfig`, value);
+    this.setState({selectEncryptionAtRestConfig: value});
+  }
+
+  handleUploadKeyPolicy(e, file) {
+    const { updateFormField, clusterType } = this.props;
+    updateFormField(`${clusterType}.useCmkPolicy`, file);
+    this.setState({useCmkPolicy: file});
+
+    readUploadedFile(file).then(text => {
+      updateFormField(`${clusterType}.cmkPolicyContent`, text);
+    });
+  }
+
   replicationFactorChanged = value => {
     const {updateFormField, clusterType, universe: {currentUniverse: {data}}} = this.props;
     const clusterExists = isDefinedNotNull(data.universeDetails) ? isEmptyObject(getClusterByType(data.universeDetails.clusters, clusterType)) : null;
@@ -808,6 +828,12 @@ export default class ClusterFields extends Component {
       cloud.gcpTypes.data && cloud.gcpTypes.data.sort().map(function (gcpType, idx) {
         return <option key={gcpType} value={gcpType}>{API_UI_STORAGE_TYPES[gcpType]}</option>;
       });
+    const kmsConfigList = [
+      <option value="0" key={`kms-option-0`}>Use auto-generated key</option>,
+      ...cloud.authConfig.data.map((config, index) => (
+        <option value={config.provider} key={`kms-option-${index + 1}`}>{config.provider}</option>
+      ))
+    ];
     const isFieldReadOnly = isNonEmptyObject(universe.currentUniverse.data) && (this.props.type === "Edit" || (this.props.type === "Async" && this.state.isReadOnlyExists));
 
     //Get list of cloud providers
@@ -904,6 +930,8 @@ export default class ClusterFields extends Component {
     let enableClientToNodeEncrypt = <span />;
     let selectTlsCert = <span />;
     let enableEncryptionAtRest = <span />;
+    let selectEncryptionAtRestConfig = <span />;
+    let useCmkPolicy = <span />;
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
 
     if (isDefinedNotNull(currentProvider) &&
@@ -945,8 +973,32 @@ export default class ClusterFields extends Component {
           onToggle={this.toggleEnableEncryptionAtRest}
           label="Enable Encryption at Rest"
           title="Upload encryption key file"
-          subLabel="Enable encryption for data stored on tablet servers."/>
+          subLabel="Enable encryption for data stored on tablet servers."
+        />
       );
+
+      if (this.state.enableEncryptionAtRest) {
+        selectEncryptionAtRestConfig = (
+          <Field name={`${clusterType}.selectEncryptionAtRestConfig`}
+            component={YBSelectWithLabel}
+            label="Key Management Service Config"
+            options={kmsConfigList}
+            input={{
+              onChange: this.handleSelectAuthConfig
+            }}
+          />
+        );
+        if (this.state.selectEncryptionAtRestConfig === 'AWS') {
+          useCmkPolicy = (
+            <div className={"right-side-form-field"}>
+              <Field component={YBDropZone} name={`${clusterType}.useCmkPolicy`}
+                title={"Upload CM Key Policy"} className="upload-file-button"
+                onChange={this.handleUploadKeyPolicy}
+              />
+            </div>
+          );
+        }
+      }
     }
 
     { // Block scope for state variables
@@ -1209,6 +1261,16 @@ export default class ClusterFields extends Component {
                 {enableClientToNodeEncrypt}
                 {enableEncryptionAtRest}
                 <Field name={`${clusterType}.mountPoints`} component={YBTextInput}  type="hidden"/>
+              </div>
+            </Col>
+            <Col sm={12} md={6} lg={4}>
+              <div className="form-right-aligned-labels right-side-form-field">
+                <Row>
+                  {selectEncryptionAtRestConfig}
+                </Row>
+                <Row>
+                  {useCmkPolicy}
+                </Row>
               </div>
             </Col>
           </Row>

@@ -3,7 +3,8 @@
 import React, { Component } from 'react';
 import { withRouter } from 'react-router';
 import { AzureProviderConfigurationContainer, KubernetesProviderConfigurationContainer,
-         OnPremConfigurationContainer, ProviderConfigurationContainer, StorageConfigurationContainer } from '../../config';
+         OnPremConfigurationContainer, ProviderConfigurationContainer, StorageConfigurationContainer,
+         SecurityConfiguration } from '../../config';
 import { Tab, Row, Col } from 'react-bootstrap';
 import { YBTabsPanel } from '../../panels';
 import './providerConfig.scss';
@@ -84,6 +85,11 @@ class DataCenterConfiguration extends Component {
           {isAvailable(currentCustomer.data.features, "config.backup") &&
             <Tab eventKey="backup" title="Backup" key="storage-config">
               <StorageConfigurationContainer activeTab={section} />
+            </Tab>
+          }
+          {isAvailable(currentCustomer.data.features, "config.security") &&
+            <Tab eventKey="security" title="Security" key="security-config">
+              <SecurityConfiguration activeTab={section} />
             </Tab>
           }
         </YBTabsPanel>
