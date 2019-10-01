@@ -728,7 +728,7 @@ TEST_F(TabletServerTest, TestRpcServerCreateDestroy) {
   }
   {
     MessengerBuilder mb("foo");
-    auto messenger = ASSERT_RESULT(mb.Build());
+    auto messenger = CreateAutoShutdownMessengerHolder(ASSERT_RESULT(mb.Build()));
     {
       server::RpcServer server2(
           "server2", opts, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());
@@ -744,7 +744,7 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   ServerRegistrationPB reg;
   auto tbo = ASSERT_RESULT(TabletServerOptions::CreateTabletServerOptions());
   MessengerBuilder mb("foo");
-  auto messenger = ASSERT_RESULT(mb.Build());
+  auto messenger = CreateAutoShutdownMessengerHolder(ASSERT_RESULT(mb.Build()));
 
   server::RpcServer server1(
       "server1", opts, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());

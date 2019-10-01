@@ -423,6 +423,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
       cluster_->Shutdown();
     }
     tablet_servers_.clear();
+    TabletServerTestBase::TearDown();
   }
 
   Result<std::unique_ptr<client::YBClient>> CreateClient() {

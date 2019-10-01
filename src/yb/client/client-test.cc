@@ -1547,8 +1547,8 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
 
   // Since we waited before, hopefully all replicas will be up to date
   // and we can just promote another replica.
-  auto client_messenger = ASSERT_RESULT(CreateMessenger("client"));
-
+  auto client_messenger = CreateAutoShutdownMessengerHolder(
+      ASSERT_RESULT(CreateMessenger("client")));
   int new_leader_idx = -1;
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
     MiniTabletServer* ts = cluster_->mini_tablet_server(i);
@@ -1988,7 +1988,8 @@ TEST_F(ClientTest, TestReadFromFollower) {
   }
   ASSERT_EQ(cluster_->num_tablet_servers() - 1, followers.size());
 
-  auto client_messenger = ASSERT_RESULT(CreateMessenger("client"));
+  auto client_messenger =
+      CreateAutoShutdownMessengerHolder(ASSERT_RESULT(CreateMessenger("client")));
   rpc::ProxyCache proxy_cache(client_messenger.get());
   for (const master::TSInfoPB& ts_info : followers) {
     // Try to read from followers.

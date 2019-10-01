@@ -163,7 +163,7 @@ TEST_F(TestRpc, TestCall) {
 
   // Set up client.
   LOG(INFO) << "Connecting to " << server_addr;
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   for (int i = 0; i < 10; i++) {
@@ -173,7 +173,7 @@ TEST_F(TestRpc, TestCall) {
 
 // Test that connecting to an invalid server properly throws an error.
 TEST_F(TestRpc, TestCallToBadServer) {
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   HostPort addr;
   Proxy p(client_messenger.get(), addr);
 
@@ -194,7 +194,7 @@ TEST_F(TestRpc, TestInvalidMethodCall) {
 
   // Set up client.
   LOG(INFO) << "Connecting to " << server_addr;
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   // Call the method which fails.
@@ -213,7 +213,7 @@ TEST_F(TestRpc, TestWrongService) {
   StartTestServer(&server_addr);
 
   // Set up client with the wrong service name.
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   // Call the method which fails.
@@ -259,7 +259,7 @@ TEST_F(TestRpc, TestHighFDs) {
   // Set up server and client, and verify we can make a successful call.
   HostPort server_addr;
   StartTestServer(&server_addr);
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
   ASSERT_OK(DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod()));
 }
@@ -285,7 +285,7 @@ TEST_F(TestRpc, TestConnectionKeepalive) {
   for (int i = 0; i < FLAGS_rpc_test_connection_keepalive_num_iterations; ++i) {
     // Set up client.
     LOG(INFO) << "Connecting to " << server_addr;
-    std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client", messenger_options);
+    auto client_messenger = CreateAutoShutdownMessengerHolder("Client", messenger_options);
     Proxy p(client_messenger.get(), server_addr);
 
     ASSERT_OK(DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod()));
@@ -322,7 +322,7 @@ TEST_F(TestRpc, TestCallLongerThanKeepalive) {
   // Set up client.
   auto client_options = kDefaultClientMessengerOptions;
   client_options.keep_alive_timeout = 100ms;
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client", client_options);
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client", client_options);
   Proxy p(client_messenger.get(), server_addr);
 
   // Make a call which sleeps longer than the keepalive.
@@ -356,7 +356,7 @@ TEST_F(TestRpc, TestConnectionHeartbeating) {
   for (int i = 0; i < FLAGS_rpc_test_connection_keepalive_num_iterations; ++i) {
     // Set up client.
     LOG(INFO) << "Connecting to " << server_addr;
-    std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client", messenger_options);
+    auto client_messenger = CreateAutoShutdownMessengerHolder("Client", messenger_options);
     Proxy p(client_messenger.get(), server_addr);
 
     ASSERT_OK(DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod()));
@@ -375,7 +375,7 @@ TEST_F(TestRpc, TestRpcSidecar) {
   StartTestServer(&server_addr);
 
   // Set up client.
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   // Test some small sidecars
@@ -394,7 +394,7 @@ TEST_F(TestRpc, TestRpcSidecar) {
 TEST_F(TestRpc, TestCallTimeout) {
   HostPort server_addr;
   StartTestServer(&server_addr);
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   uint64_t delay_ns = 1;
@@ -439,7 +439,7 @@ TEST_F(TestRpc, TestNegotiationTimeout) {
                                   &acceptor_thread));
 
   // Set up client.
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   ASSERT_NO_FATALS(DoTestExpectTimeout(&p, MonoDelta::FromMilliseconds(100)));
@@ -457,7 +457,7 @@ TEST_F(TestRpc, TestServerShutsDown) {
 
   // Set up client.
   LOG(INFO) << "Connecting to " << server_addr;
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   // Send a call.
@@ -552,7 +552,7 @@ TEST_F(TestRpc, TestRpcHandlerLatencyMetric) {
 
   // Set up client.
 
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   RpcController controller;
@@ -584,7 +584,7 @@ TEST_F(TestRpc, TestRpcHandlerLatencyMetric) {
 }
 
 TEST_F(TestRpc, TestRpcCallbackDestroysMessenger) {
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   HostPort bad_addr;
   CountDownLatch latch(1);
 
@@ -614,7 +614,7 @@ TEST_F(TestRpc, TestRpcContextClientDeadline) {
   StartTestServerWithGeneratedCode(&server_addr);
 
   // Set up client.
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   rpc_test::SleepRequestPB req;
@@ -645,7 +645,7 @@ TEST_F(TestRpc, QueueTimeout) {
   StartTestServerWithGeneratedCode(&server_addr, options);
 
   // Set up client.
-  auto client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   const auto* method = CalculatorServiceMethods::SleepMethod();
@@ -736,7 +736,7 @@ TEST_F(TestRpc, TestDisconnect) {
   StartTestServerWithGeneratedCode(&server_addr);
 
   // Set up client.
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
 
   constexpr size_t kRequests = 10000;
   DisconnectShare share = { { client_messenger.get(), server_addr }, kRequests };
@@ -785,7 +785,7 @@ TEST_F(TestRpc, DumpTimedOutCall) {
     }
   });
 
-  std::unique_ptr<Messenger> messenger = CreateMessenger("Client");
+  auto messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(messenger.get(), server_addr);
 
   {

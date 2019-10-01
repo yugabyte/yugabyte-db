@@ -181,6 +181,10 @@ class RpcTestBase : public YBTest {
       const string &name,
       const MessengerOptions& options = kDefaultClientMessengerOptions);
 
+  AutoShutdownMessengerHolder CreateAutoShutdownMessengerHolder(
+      const string &name,
+      const MessengerOptions& options = kDefaultClientMessengerOptions);
+
   MessengerBuilder CreateMessengerBuilder(
       const string &name,
       const MessengerOptions& options = kDefaultClientMessengerOptions);
