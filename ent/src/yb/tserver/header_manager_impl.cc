@@ -131,8 +131,8 @@ class HeaderManagerImpl : public yb::enterprise::HeaderManager {
   Status CheckSliceCanBeDecoded(const Slice& s, uint32_t expected_length, const string& field) {
     if (s.size() < expected_length) {
       return STATUS_SUBSTITUTE(InvalidArgument,
-                               "Error parsing field $0: expect 4 bytes found $1",
-                               field, s.size());
+                               "Error parsing field $0: expect $1 bytes found $2",
+                               field, expected_length, s.size());
     }
     return Status::OK();
   }

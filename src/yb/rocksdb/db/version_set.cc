@@ -2453,9 +2453,10 @@ struct LogReporter : public log::Reader::Reporter {
 
 class ManifestReader {
  public:
-  ManifestReader(Env* env, const EnvOptions& env_options, BoundaryValuesExtractor* extractor,
-                 const std::string& dbname)
-      : env_(env), env_options_(env_options), extractor_(extractor), dbname_(dbname) {}
+  ManifestReader(Env* env, Env* checkpoint_env, const EnvOptions& env_options,
+                 BoundaryValuesExtractor* extractor, const std::string& dbname)
+      : env_(env), checkpoint_env_(checkpoint_env), env_options_(env_options),
+        extractor_(extractor), dbname_(dbname) {}
 
   Status OpenManifest() {
     auto status = ReadManifestFilename();
@@ -2478,7 +2479,7 @@ class ManifestReader {
       }
       manifest_file_reader.reset(new SequentialFileReader(std::move(manifest_file)));
     }
-    status = env_->GetFileSize(manifest_filename_, &current_manifest_file_size_);
+    status = checkpoint_env_->GetFileSize(manifest_filename_, &current_manifest_file_size_);
     if (!status.ok()) {
       return status;
     }
@@ -2523,7 +2524,12 @@ class ManifestReader {
     return Status::OK();
   }
 
+  // In plaintext cluster, this is a default env, but in encrypted cluster, this encrypts on write
+  // and decrypts on read.
   Env* const env_;
+  // Default env used to checkpoint files. In encrypted cluster, we don't want to decrypt
+  // checkpointed files, so using the default env preserves file encryption.
+  Env* const checkpoint_env_;
   const EnvOptions& env_options_;
   BoundaryValuesExtractor* extractor_;
   std::string dbname_;
@@ -2579,8 +2585,8 @@ Status VersionSet::Recover(
   uint64_t current_manifest_file_size;
   std::string current_manifest_filename;
   {
-    ManifestReader manifest_reader(env_, env_options_, db_options_->boundary_extractor.get(),
-                                   dbname_);
+    ManifestReader manifest_reader(env_, db_options_->get_checkpoint_env(), env_options_,
+                                   db_options_->boundary_extractor.get(), dbname_);
     auto status = manifest_reader.OpenManifest();
     if (!status.ok()) {
       return status;
@@ -2818,8 +2824,8 @@ Status VersionSet::Recover(
 Status VersionSet::Import(const std::string& source_dir,
                           SequenceNumber seqno,
                           VersionEdit* edit) {
-  ManifestReader manifest_reader(env_, env_options_, db_options_->boundary_extractor.get(),
-                                 source_dir);
+  ManifestReader manifest_reader(env_, db_options_->get_checkpoint_env(), env_options_,
+                                 db_options_->boundary_extractor.get(), source_dir);
   auto status = manifest_reader.OpenManifest();
   if (!status.ok()) {
     return status;
