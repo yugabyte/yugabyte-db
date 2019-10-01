@@ -5,6 +5,9 @@ title: Yugabyte DB Docs
 metadataformat: yaml
 canonifyurls: false
 googleAnalytics: UA-104956980-3
+pygmentsCodefences: true
+pygmentsStyle: "pygments"
+
 
 params:
   author: Team Yugabyte
