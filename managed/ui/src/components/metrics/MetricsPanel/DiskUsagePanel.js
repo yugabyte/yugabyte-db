@@ -34,14 +34,14 @@ export default class DiskUsagePanel extends Component {
     const value = space.size ? Math.round(space.used * 1000 / space.size) / 1000 : 0;
     return (
       <div className="metrics-padded-panel disk-usage-panel">
-        { isNaN(space.size)
-          ?
+        { isNaN(space.size) 
+          ? 
             <Fragment>
               <YBResourceCount size={"No Data"} />
               <span className="gray-text metric-subtitle">{"Data is unavailable"} </span>
               <Graph value={0} unit={"percent"} />
             </Fragment>
-          :
+          : 
             <Fragment>
               <YBResourceCount size={Math.round(space.used * 10)/10} unit="GB used" />
               {space.free &&
