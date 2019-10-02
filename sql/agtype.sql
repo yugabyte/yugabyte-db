@@ -99,7 +99,7 @@ SELECT agtype_pow('2.0', '3');
 SELECT agtype_pow('2.0', '-1.0');
 
 --
--- Should faile with divide by zero
+-- Should fail with divide by zero
 --
 SELECT agtype_div('1', '0');
 SELECT agtype_div('1', '0.0');

@@ -31,7 +31,11 @@ Datum agtype_add(PG_FUNCTION_ARGS)
 
     if (!(AGT_ROOT_IS_SCALAR(lhs)) || !(AGT_ROOT_IS_SCALAR(rhs)))
     {
-        elog(ERROR, "only scalar operations are supported");
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("must be scalar value, not array or object")));
+
+        PG_RETURN_NULL();
     }
 
     agtv_lhs = get_ith_agtype_value_from_container(&lhs->root, 0);
@@ -65,7 +69,10 @@ Datum agtype_add(PG_FUNCTION_ARGS)
         AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
 
-    elog(ERROR, "opertion is not yet supported");
+    ereport(ERROR,
+            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+             errmsg("Invalid input parameter types for agtype_add")));
+
     PG_RETURN_NULL();
 }
 
@@ -84,7 +91,11 @@ Datum agtype_sub(PG_FUNCTION_ARGS)
 
     if (!(AGT_ROOT_IS_SCALAR(lhs)) || !(AGT_ROOT_IS_SCALAR(rhs)))
     {
-        elog(ERROR, "only scalar operations are supported");
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("must be scalar value, not array or object")));
+
+        PG_RETURN_NULL();
     }
 
     agtv_lhs = get_ith_agtype_value_from_container(&lhs->root, 0);
@@ -119,7 +130,9 @@ Datum agtype_sub(PG_FUNCTION_ARGS)
         AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
 
-    elog(ERROR, "opertion is not yet supported");
+    ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 errmsg("Invalid input parameter types for agtype_sub")));
 
     PG_RETURN_NULL();
 }
@@ -137,7 +150,11 @@ Datum agtype_neg(PG_FUNCTION_ARGS)
 
     if (!(AGT_ROOT_IS_SCALAR(v)))
     {
-        elog(ERROR, "only scalar operations are supported");
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("must be scalar value, not array or object")));
+
+        PG_RETURN_NULL();
     }
 
     agtv_value = get_ith_agtype_value_from_container(&v->root, 0);
@@ -155,7 +172,9 @@ Datum agtype_neg(PG_FUNCTION_ARGS)
         AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
 
-    elog(ERROR, "opertion is not yet supported");
+    ereport(ERROR,
+            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+             errmsg("Invalid input parameter type for agtype_neg")));
 
     PG_RETURN_NULL();
 }
@@ -175,7 +194,11 @@ Datum agtype_mul(PG_FUNCTION_ARGS)
 
     if (!(AGT_ROOT_IS_SCALAR(lhs)) || !(AGT_ROOT_IS_SCALAR(rhs)))
     {
-        elog(ERROR, "only scalar operations are supported");
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("must be scalar value, not array or object")));
+
+        PG_RETURN_NULL();
     }
 
     agtv_lhs = get_ith_agtype_value_from_container(&lhs->root, 0);
@@ -210,7 +233,9 @@ Datum agtype_mul(PG_FUNCTION_ARGS)
         AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
 
-    elog(ERROR, "opertion is not yet supported");
+    ereport(ERROR,
+            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+             errmsg("Invalid input parameter types for agtype_mul")));
 
     PG_RETURN_NULL();
 }
@@ -230,7 +255,11 @@ Datum agtype_div(PG_FUNCTION_ARGS)
 
     if (!(AGT_ROOT_IS_SCALAR(lhs)) || !(AGT_ROOT_IS_SCALAR(rhs)))
     {
-        elog(ERROR, "only scalar operations are supported");
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("must be scalar value, not array or object")));
+
+        PG_RETURN_NULL();
     }
 
     agtv_lhs = get_ith_agtype_value_from_container(&lhs->root, 0);
@@ -239,7 +268,11 @@ Datum agtype_div(PG_FUNCTION_ARGS)
     if (agtv_lhs->type == AGTV_INTEGER && agtv_rhs->type == AGTV_INTEGER)
     {
         if (agtv_rhs->val.int_value == 0)
-            elog(ERROR, "division by zero");
+        {
+            ereport(ERROR, (errcode(ERRCODE_DIVISION_BY_ZERO),
+                            errmsg("division by zero")));
+            PG_RETURN_NULL();
+        }
 
         agtv_result.type = AGTV_INTEGER;
         agtv_result.val.int_value = agtv_lhs->val.int_value /
@@ -249,7 +282,11 @@ Datum agtype_div(PG_FUNCTION_ARGS)
     if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_FLOAT)
     {
         if (agtv_rhs->val.float_value == 0)
-            elog(ERROR, "division by zero");
+        {
+            ereport(ERROR, (errcode(ERRCODE_DIVISION_BY_ZERO),
+                            errmsg("division by zero")));
+            PG_RETURN_NULL();
+        }
 
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = agtv_lhs->val.float_value /
@@ -259,7 +296,11 @@ Datum agtype_div(PG_FUNCTION_ARGS)
     if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_INTEGER)
     {
         if (agtv_rhs->val.int_value == 0)
-            elog(ERROR, "division by zero");
+        {
+            ereport(ERROR, (errcode(ERRCODE_DIVISION_BY_ZERO),
+                            errmsg("division by zero")));
+            PG_RETURN_NULL();
+        }
 
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = agtv_lhs->val.float_value /
@@ -269,7 +310,11 @@ Datum agtype_div(PG_FUNCTION_ARGS)
     if (agtv_lhs->type == AGTV_INTEGER && agtv_rhs->type == AGTV_FLOAT)
     {
         if (agtv_rhs->val.float_value == 0)
-            elog(ERROR, "division by zero");
+        {
+            ereport(ERROR, (errcode(ERRCODE_DIVISION_BY_ZERO),
+                            errmsg("division by zero")));
+            PG_RETURN_NULL();
+        }
 
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = agtv_lhs->val.int_value /
@@ -277,7 +322,9 @@ Datum agtype_div(PG_FUNCTION_ARGS)
         AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
 
-    elog(ERROR, "opertion is not yet supported");
+    ereport(ERROR,
+            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+             errmsg("Invalid input parameter types for agtype_div")));
 
     PG_RETURN_NULL();
 }
@@ -297,7 +344,11 @@ Datum agtype_mod(PG_FUNCTION_ARGS)
 
     if (!(AGT_ROOT_IS_SCALAR(lhs)) || !(AGT_ROOT_IS_SCALAR(rhs)))
     {
-        elog(ERROR, "only scalar operations are supported");
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("must be scalar value, not array or object")));
+
+        PG_RETURN_NULL();
     }
 
     agtv_lhs = get_ith_agtype_value_from_container(&lhs->root, 0);
@@ -332,7 +383,9 @@ Datum agtype_mod(PG_FUNCTION_ARGS)
         AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
 
-    elog(ERROR, "opertion is not yet supported");
+    ereport(ERROR,
+            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+             errmsg("Invalid input parameter types for agtype_mod")));
 
     PG_RETURN_NULL();
 }
@@ -352,7 +405,11 @@ Datum agtype_pow(PG_FUNCTION_ARGS)
 
     if (!(AGT_ROOT_IS_SCALAR(lhs)) || !(AGT_ROOT_IS_SCALAR(rhs)))
     {
-        elog(ERROR, "only scalar operations are supported");
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("must be scalar value, not array or object")));
+
+        PG_RETURN_NULL();
     }
 
     agtv_lhs = get_ith_agtype_value_from_container(&lhs->root, 0);
@@ -387,7 +444,9 @@ Datum agtype_pow(PG_FUNCTION_ARGS)
         AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
 
-    elog(ERROR, "opertion is not yet supported");
+    ereport(ERROR,
+            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+             errmsg("Invalid input parameter types for agtype_pow")));
 
     PG_RETURN_NULL();
 }

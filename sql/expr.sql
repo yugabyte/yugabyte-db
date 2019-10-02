@@ -22,3 +22,11 @@ SELECT * FROM cypher($$RETURN []$$) AS r(c agtype);
 
 -- list of scalar values
 SELECT * FROM cypher($$RETURN ['str', 1, 1.0, true, null]$$) AS r(c agtype);
+
+--
+-- Test transform logic for operators
+--
+SELECT * FROM cypher(
+$$ RETURN (-(3 * 2 - 4.0) ^ ((10 / 5) + 1)) % -3 $$
+)
+AS r(result agtype);
