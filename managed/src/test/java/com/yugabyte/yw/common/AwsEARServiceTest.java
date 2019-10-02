@@ -74,14 +74,14 @@ public class AwsEARServiceTest extends FakeDBApplication {
         private ObjectNode authConfig = Json.newObject()
                 .put("AWS_ACCESS_KEY_ID", "some_access_key")
                 .put("AWS_SECRET_ACCESS_KEY", "some_secret_key_id")
-                .put("AWS_DEFAULT_REGION", "US_WEST_2");
+                .put("AWS_REGION", "us-west-2");
 
         @Override
         public ObjectNode getAuthConfig(UUID customerUUID) {
             return this.authConfig;
         }
         @Override
-        protected AWSKMS getClient(AwsKMSCredentials creds) {
+        protected AWSKMS getClient(UUID customerUUID) {
             return mockClient;
         }
         @Override
@@ -175,7 +175,7 @@ public class AwsEARServiceTest extends FakeDBApplication {
     public void testCreateAndRetrieveEncryptionKeyUpdateAlias() {
         mockAliases.add(mockAlias);
         UpdateAliasRequest updateAliasReq = new UpdateAliasRequest()
-                .withAliasName(testUniUUID.toString())
+                .withAliasName("alias/" + testUniUUID.toString())
                 .withTargetKeyId(testCmkId);
         CreateKeyRequest createKeyReq = new CreateKeyRequest()
                 .withDescription("Yugaware KMS Integration")
