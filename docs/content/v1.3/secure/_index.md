@@ -1,8 +1,8 @@
 ---
 title: Secure
 linkTitle: Secure
-description: Secure Yugabyte DB
-headcontent: Secure your deployment of Yugabyte DB.
+description: Secure YugabyteDB
+headcontent: Secure your deployment of YugabyteDB.
 image: /images/section_icons/index/secure.png
 section: USER GUIDES
 menu:
@@ -20,7 +20,7 @@ menu:
       </div>
       <div class="body">
           A list of security measures you should consider implementing in order to secure your
-          Yugabyte DB cluster.
+          YugabyteDB cluster.
       </div>
     </a>
   </div>
@@ -42,7 +42,7 @@ menu:
         <div class="title">Authorization</div>
       </div>
       <div class="body">
-          Implementing authorization using role-based access control in Yugabyte DB.
+          Implementing authorization using role-based access control in YugabyteDB.
       </div>
     </a>
   </div>
@@ -53,7 +53,7 @@ menu:
         <div class="title">TLS encryption</div>
       </div>
       <div class="body">
-          Enable TLS encryption over the wire in Yugabyte DB to secure and protect network communication.
+          Enable TLS encryption over the wire in YugabyteDB to secure and protect network communication.
       </div>
     </a>
   </div>
@@ -65,7 +65,7 @@ menu:
         <div class="title">Encryption at rest</div>
       </div>
       <div class="body">
-          Enable encryption at rest in Yugabyte DB to secure and protect data on disk.
+          Enable encryption at rest in YugabyteDB to secure and protect data on disk.
       </div>
     </a>
   </div>

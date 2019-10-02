@@ -47,7 +47,7 @@ $ ./bin/yb-ctl --num_shards_per_tserver 4 add_node
 
 Now we should have 4 nodes. Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the stats update. In a short time, you should see the new node performing a comparable number of reads and writes as the other nodes. The 36 tablets will now get distributed evenly across all the 4 nodes, leading to each node having 9 tablets.
 
-The Yugabyte DB universe automatically let the client know to use the newly added node for serving queries. This scaling out of client queries is completely transparent to the application logic, allowing the application to scale linearly for both reads and writes. 
+The YugabyteDB universe automatically let the client know to use the newly added node for serving queries. This scaling out of client queries is completely transparent to the application logic, allowing the application to scale linearly for both reads and writes. 
 
 ![Read and write IOPS with 4 nodes - Rebalancing in progress](/images/ce/linear-scalability-4-nodes.png)
 
@@ -61,11 +61,11 @@ Remove the recently added node from the universe.
 $ ./bin/yb-ctl remove_node 4
 ```
 
-- Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the stats update. The `Time since heartbeat` value for that node will keep increasing. Once that number reaches 60s (i.e. 1 minute), Yugabyte DB will change the status of that node from ALIVE to DEAD. Note that at this time the universe is running in an under-replicated state for some subset of tablets.
+- Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the stats update. The `Time since heartbeat` value for that node will keep increasing. Once that number reaches 60s (i.e. 1 minute), YugabyteDB will change the status of that node from ALIVE to DEAD. Note that at this time the universe is running in an under-replicated state for some subset of tablets.
 
 ![Read and write IOPS with 4th node dead](/images/ce/linear-scalability-4-nodes-dead.png)
 
-- After 300s (i.e. 5 minutes), Yugabyte DB's remaining nodes will re-spawn new tablets that were lost with the loss of node 4. Each remaining node's tablet count will increase from 9 to 12, thus getting back to the original state of 36 total tablets.
+- After 300s (i.e. 5 minutes), YugabyteDB's remaining nodes will re-spawn new tablets that were lost with the loss of node 4. Each remaining node's tablet count will increase from 9 to 12, thus getting back to the original state of 36 total tablets.
 
 ![Read and write IOPS with 4th node removed](/images/ce/linear-scalability-3-nodes-rebalanced.png)
 

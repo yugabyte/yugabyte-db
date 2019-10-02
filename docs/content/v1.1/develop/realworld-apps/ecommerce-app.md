@@ -13,7 +13,7 @@ showAsideToc: true
 
 ## Overview
 
-Yugastore is a sample, full-stack online bookstore, or more generally, an e-commerce app built on top of Yugabyte DB. It is a cloud native, distributed app built on a microservices architecture. Yugabyte DB simplifies the development of such apps by providing a SQL-like API (based on Cassandra Query Language) and a Redis-API on top of a common database. The app can be deployed and run on VMs or using StatefulSets in Kubernetes.
+Yugastore is a sample, full-stack online bookstore, or more generally, an e-commerce app built on top of YugabyteDB. It is a cloud native, distributed app built on a microservices architecture. YugabyteDB simplifies the development of such apps by providing a SQL-like API (based on Cassandra Query Language) and a Redis-API on top of a common database. The app can be deployed and run on VMs or using StatefulSets in Kubernetes.
 
 You can browse the [Yugastore source-code on GitHub](https://github.com/yugabyte/yugastore). It is fully open-source.
 
@@ -48,7 +48,7 @@ This app is built using the following stack:
 
 * Frontend: [React](https://reactjs.org/)
 * Backend: [Express](https://expressjs.com/) and [NodeJS](https://nodejs.org/en/)
-* Database: [Yugabyte DB](https://www.yugabyte.com/)
+* Database: [YugabyteDB](https://www.yugabyte.com/)
 
 ![YERN stack](/images/develop/realworld-apps/ecommerce-app/yugabyte-express-react-nodejs.png)
 
@@ -121,7 +121,7 @@ The sample list of products are in the [`models/sample_data.json`](https://githu
     ...
 ```
 
-The [db_init.js](https://github.com/yugabyte/yugastore/blob/master/models/yugabyte/db_init.js) node script loads the static attributes of the sample data using the following Cassandra batch insert API into Yugabyte DB.
+The [db_init.js](https://github.com/yugabyte/yugastore/blob/master/models/yugabyte/db_init.js) node script loads the static attributes of the sample data using the following Cassandra batch insert API into YugabyteDB.
 
 ```js
 insert_batch.push({
@@ -130,7 +130,7 @@ insert_batch.push({
 });
 ```
 
-The dynamic attributes are loaded using the Redis-compatible YEDIS API into Yugabyte DB.
+The dynamic attributes are loaded using the Redis-compatible YEDIS API into YugabyteDB.
 
 ```
 ybRedisClient.zadd("allproducts:num_reviews", e.num_reviews, e.id);

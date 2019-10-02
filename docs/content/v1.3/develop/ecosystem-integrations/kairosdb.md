@@ -11,11 +11,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-[KairosDB](http://kairosdb.github.io/) is a Java-based time-series metrics API that leverages Cassandra as it's underlying distributed database. This page shows how it can be integrated with Yugabyte DB's Cassandra-compatible YCQL API.
+[KairosDB](http://kairosdb.github.io/) is a Java-based time-series metrics API that leverages Cassandra as it's underlying distributed database. This page shows how it can be integrated with YugabyteDB's Cassandra-compatible YCQL API.
 
 ## 1. Start local cluster
 
-Follow [Quick Start](../../../quick-start/) instructions to run a local Yugabyte DB cluster. Test Yugabyte DB's Cassandra API as [documented](../../quick-start/test-cassandra/) so that you can confirm that you have a Cassandra service running on `localhost:9042`.
+Follow [Quick Start](../../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's Cassandra API as [documented](../../quick-start/test-cassandra/) so that you can confirm that you have a Cassandra service running on `localhost:9042`.
 
 ## 2. Download KairosDB
 
@@ -27,7 +27,7 @@ $ tar xvfz kairosdb-1.2.0-0.3beta.tar.gz
 $ cd kairosdb/
 ```
 
-You can follow the [Getting Started](http://kairosdb.github.io/docs/build/html/GettingStarted.html) to see how to configure KairosDB in general. For the purpose of integrating with the local Yugabyte DB cluster running at `localhost:9042`, simply open `conf/kairosdb.properties` and comment out the default in-memory datastore as below.
+You can follow the [Getting Started](http://kairosdb.github.io/docs/build/html/GettingStarted.html) to see how to configure KairosDB in general. For the purpose of integrating with the local YugabyteDB cluster running at `localhost:9042`, simply open `conf/kairosdb.properties` and comment out the default in-memory datastore as below.
 
 ```
 #kairosdb.service.datastore=org.kairosdb.datastore.h2.H2Module
@@ -57,7 +57,7 @@ You should see the following lines if KairosDB starts up successfully.
 
 ## 4. Verify Cassandra integration with cqlsh
 
-- Run cqlsh to connect to the Yugabyte DB's YCQL API.
+- Run cqlsh to connect to the YugabyteDB's YCQL API.
 
 Assuming you are using the macOS or Linux binary
 

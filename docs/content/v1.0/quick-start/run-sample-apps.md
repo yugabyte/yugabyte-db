@@ -23,7 +23,7 @@ $ java -version
 
 - Make sure you have `yb-sample-apps.jar` in a convenient location.
 
-The Yugabyte DB install comes pre-packaged with the sample apps and the corresponding source code bundled as a self-contained JAR. 
+The YugabyteDB install comes pre-packaged with the sample apps and the corresponding source code bundled as a self-contained JAR. 
 
 For binary installs, this is located in the `java` subdirectory of the install. 
 

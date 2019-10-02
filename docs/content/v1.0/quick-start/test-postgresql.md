@@ -10,9 +10,9 @@ menu:
 ---
 
 
-After [creating a local cluster](../create-local-cluster/), follow the instructions below to test Yugabyte DB's PostgreSQL API.
+After [creating a local cluster](../create-local-cluster/), follow the instructions below to test YugabyteDB's PostgreSQL API.
 
-[**psql**](https://www.postgresql.org/docs/9.3/static/app-psql.html) is a command line shell for interacting with PostgreSQL. For ease of use, Yugabyte DB ships with the 10.3 version of psql in its bin directory.
+[**psql**](https://www.postgresql.org/docs/9.3/static/app-psql.html) is a command line shell for interacting with PostgreSQL. For ease of use, YugabyteDB ships with the 10.3 version of psql in its bin directory.
 
 
 ## 1. Connect with psql

@@ -100,7 +100,7 @@ Browse the [Java source code for the batch application](https://github.com/yugab
 
 ## Note on Linearizability
 
-By default, the original Cassandra Java driver and the Yugabyte DB Cassandra Java driver use `com.datastax.driver.core.policies.DefaultRetryPolicy`
+By default, the original Cassandra Java driver and the YugabyteDB Cassandra Java driver use `com.datastax.driver.core.policies.DefaultRetryPolicy`
 which can retry requests upon timeout on client side.
 
 Automatic retries can break linearizability of operations from the client point of view.

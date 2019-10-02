@@ -11,12 +11,12 @@ isTocNested: false
 showAsideToc: true
 ---
 
-Yugabyte DB offers ACID semantics for mutations involving a single row or rows that fall
+YugabyteDB offers ACID semantics for mutations involving a single row or rows that fall
 within the same shard (partition, tablet). These mutations incur only one network roundtrip between
 the distributed consensus peers.
 
 Even read-modify-write operations within a single row or single shard, such as the following incur
-only one round trip in Yugabyte DB.
+only one round trip in YugabyteDB.
 
 ```sql
    UPDATE table SET x = x + 1 WHERE ...
@@ -30,10 +30,10 @@ latency](https://docs.datastax.com/en/cassandra/3.0/cassandra/dml/dmlLtwtTransac
 
 ## Hybrid time as an MVCC timestamp
 
-Yugabyte DB implements [multiversion concurrency control (MVCC)](https://en.wikipedia.org/wiki/Multiversion_concurrency_control) and internally keeps track of multiple versions of values corresponding to the same key, for example, of a particular column in a particular row. The details of how multiple versions of the same key are stored in each replica's DocDB are described in [Persistence on top of RocksDB](../../concepts/docdb/persistence). The last part of each key is a timestamp, which allows to quickly navigate to a particular version of a key in the RocksDB
+YugabyteDB implements [multiversion concurrency control (MVCC)](https://en.wikipedia.org/wiki/Multiversion_concurrency_control) and internally keeps track of multiple versions of values corresponding to the same key, for example, of a particular column in a particular row. The details of how multiple versions of the same key are stored in each replica's DocDB are described in [Persistence on top of RocksDB](../../concepts/docdb/persistence). The last part of each key is a timestamp, which allows to quickly navigate to a particular version of a key in the RocksDB
 key-value store.
 
-The timestamp that we are using for MVCC comes from the [Hybrid Time](http://users.ece.utexas.edu/~garg/pdslab/david/hybrid-time-tech-report-01.pdf) algorithm, a distributed timestamp assignment algorithm that combines the advantages of local real-time (physical) clocks and Lamport clocks.  The Hybrid Time algorithm ensures that events connected by a causal chain of the form "A happens before B on the same server" or "A happens on one server, which then sends an RPC to another server, where B happens", always get assigned hybrid timestamps in an increasing order. This is achieved by propagating a hybrid timestamp with most RPC requests, and always updating the hybrid time on the receiving server to the highest value seen, including the current physical time on the server.  Multiple aspects of Yugabyte DB's transaction model rely on these properties of Hybrid Time, e.g.:
+The timestamp that we are using for MVCC comes from the [Hybrid Time](http://users.ece.utexas.edu/~garg/pdslab/david/hybrid-time-tech-report-01.pdf) algorithm, a distributed timestamp assignment algorithm that combines the advantages of local real-time (physical) clocks and Lamport clocks.  The Hybrid Time algorithm ensures that events connected by a causal chain of the form "A happens before B on the same server" or "A happens on one server, which then sends an RPC to another server, where B happens", always get assigned hybrid timestamps in an increasing order. This is achieved by propagating a hybrid timestamp with most RPC requests, and always updating the hybrid time on the receiving server to the highest value seen, including the current physical time on the server.  Multiple aspects of YugabyteDB's transaction model rely on these properties of Hybrid Time, e.g.:
 
 * Hybrid timestamps assigned to committed Raft log entries in the same tablet always keep
   increasing, even if there are leader changes. This is because the new leader always has all
@@ -76,7 +76,7 @@ time period in order to avoid the following inconsistency:
 
 ![A diagram showing a potential inconsistency in case of a network partition if leader leases are not present](/images/architecture/txn/leader_leases_network_partition.svg)
 
-The leader lease mechanism in Yugabyte DB prevents this inconsistency. It works as follows:
+The leader lease mechanism in YugabyteDB prevents this inconsistency. It works as follows:
 
 * With every leader-to-follower message (AppendEntries in Raft's terminology), whether replicating
   new entries or even an empty heartbeat message, the leader sends a "leader lease" request as a
@@ -190,7 +190,7 @@ committed.
 
 ## Propagating safe time from leader to followers for follower-side reads
 
-Yugabyte DB supports reads from followers to satisfy use cases that require an extremely low read
+YugabyteDB supports reads from followers to satisfy use cases that require an extremely low read
 latency that can only be achieved by serving read requests in the datacenter closest to the client.
 This comes at the expense of potentially slightly stale results, and this is a trade-off that
 application developers have to make. Similarly to strongly-consistent leader-side reads,

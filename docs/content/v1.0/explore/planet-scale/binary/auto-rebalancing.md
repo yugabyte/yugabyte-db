@@ -59,7 +59,7 @@ Now we should have 5 nodes. Refresh the <a href='http://127.0.0.1:7000/tablet-se
 
 ![Data and memory sizes with 5 nodes](/images/ce/auto-rebalancing-5-nodes.png)
 
-Yugabyte DB automatically balances the tablet leaders and followers of a universe by moving them in a rate-limited manner into the newly added nodes. This automatic balancing of the data is completely transparent to the application logic.
+YugabyteDB automatically balances the tablet leaders and followers of a universe by moving them in a rate-limited manner into the newly added nodes. This automatic balancing of the data is completely transparent to the application logic.
 
 ## 6. Clean up (optional)
 

@@ -9,7 +9,7 @@ menu:
     weight: 1051
 ---
 
-Yugabyte DB currently implements [Snapshot
+YugabyteDB currently implements [Snapshot
 Isolation](https://en.wikipedia.org/wiki/Snapshot_isolation), also known as SI, which is an
 transaction isolation level that guarantees that all reads made in a transaction will see a
 consistent snapshot of the database, and the transaction itself will successfully commit only if no

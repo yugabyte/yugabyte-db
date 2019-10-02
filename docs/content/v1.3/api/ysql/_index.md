@@ -16,7 +16,7 @@ showAsideToc: true
 
 ## Introduction
 
-The Yugabyte Structured Query Language (YSQL) is the distributed SQL API for Yugabyte DB and is compatible with the SQL dialect of PostgreSQL. Currently, YSQL is compatible with PostgreSQL 11.2 version. Yugabyte DB and YSQL are optimized for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features, such as JOINs, distributed transactions, and referential integrity (such as foreign keys).
+The Yugabyte Structured Query Language (YSQL) is the distributed SQL API for YugabyteDB and is compatible with the SQL dialect of PostgreSQL. Currently, YSQL is compatible with PostgreSQL 11.2 version. YugabyteDB and YSQL are optimized for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features, such as JOINs, distributed transactions, and referential integrity (such as foreign keys).
 
 The main components of YSQL include the data definition language (DDL), the data manipulation language (DML), and the data control language (DCL). A number of elements are used to construct these components, including data types, database objects, names and qualifiers, expressions, and comments. Other components are also provided for different purposes such as system control, transaction control, and performance tuning.
 

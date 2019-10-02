@@ -11,7 +11,7 @@ menu:
 
 Non-materialized views are supported at the query layer. When queried, views references will be rewritten to their defining query before execution.
 
-If you haven't installed Yugabyte DB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
+If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

@@ -17,7 +17,7 @@ The role-based access control model in YCQL is a collection of permissions on re
 
 ## Roles
 
-Roles in YCQL can represent individual users or a group of users. They encapsulate a set of privileges that can be assigned to other roles (or users). Roles are essential to implementing and administering access control on a Yugabyte DB cluster. Below are some important points about roles:
+Roles in YCQL can represent individual users or a group of users. They encapsulate a set of privileges that can be assigned to other roles (or users). Roles are essential to implementing and administering access control on a YugabyteDB cluster. Below are some important points about roles:
 
 * Roles which have login privilege are users. Hence, all users are roles but all roles are not users.
 

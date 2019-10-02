@@ -11,23 +11,23 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This tutorial walks through the steps to create service instance of Yugabyte DB in PCF.  
+This tutorial walks through the steps to create service instance of YugabyteDB in PCF.  
 
 ## Prerequisites
 
-Before creating the Service Instance, you need to have Yugabyte DB tile installed in your PCF marketplace. Follow the instructions
+Before creating the Service Instance, you need to have YugabyteDB tile installed in your PCF marketplace. Follow the instructions
 [here](https://docs.pivotal.io/partners/yugabyte-db/).
 
 Also in your YugaWare instance that you brought up in your PCF environment you have configured cloud provider. If not follow the
 instructions [here](../enterprise-edition/configure-cloud-providers/) to setup appropriate cloud
 providers
 
-After installing the tile, you have two ways to create a Yugabyte DB instance, one is through the App Manager UI, and other is through
+After installing the tile, you have two ways to create a YugabyteDB instance, one is through the App Manager UI, and other is through
 Cloud Foundry CLI (cf).
 
 ## Using PCF App Manager
 
-In your PCF App manager, go to marketplace and pick Yugabyte DB, it will present you with different service plans,
+In your PCF App manager, go to marketplace and pick YugabyteDB, it will present you with different service plans,
 each service plan has a small description on what the resource requirements and what it is the intended environment.
 
 ![Yugabyte Service Plans](/images/deploy/pivotal-cloud-foundry/service-plan-choices.png)
@@ -54,7 +54,7 @@ large          Cores: 16, Memory (GB): 15   paid
 x-large        Cores: 32, Memory (GB): 30   paid
 ```
 
-Once you decide on the service plan you can launch the Yugabyte DB service instance by executing the below command.
+Once you decide on the service plan you can launch the YugabyteDB service instance by executing the below command.
 
 ```sh
 $ cf create-service yugabyte-db x-small yb-demo -c '{"universe_name": "yb-demo"}'
@@ -127,9 +127,9 @@ in GB for each of those volumes, lets say if you want to have 2 volumes with 100
 }
 ```
 
-### Overriding the Yugabyte DB software version to use
+### Overriding the YugabyteDB software version to use
 
-To override the Yugabyte DB software version to use, just include `yb_version` with the desired value. Just make sure that particular
+To override the YugabyteDB software version to use, just include `yb_version` with the desired value. Just make sure that particular
 version exists in YugaWare.
 
 ```sh

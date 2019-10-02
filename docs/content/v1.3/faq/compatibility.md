@@ -12,17 +12,17 @@ showAsideToc: true
 
 ## What does API compatibility exactly mean?
 
-API compatibility refers to the fact that the database APIs offered by Yugabyte DB servers implement the same wire protocol and modeling/query language as that of an existing database. Since client drivers, command line shells, IDE integrations and other ecosystem integrations of the existing database rely on this wire protocol and modeling/query language, they are expected to work with Yugabyte DB without major modifications. 
+API compatibility refers to the fact that the database APIs offered by YugabyteDB servers implement the same wire protocol and modeling/query language as that of an existing database. Since client drivers, command line shells, IDE integrations and other ecosystem integrations of the existing database rely on this wire protocol and modeling/query language, they are expected to work with YugabyteDB without major modifications. 
 
 {{< note title="Note" >}}
-The [YSQL](../../api/ysql) API is compatible with PostgreSQL. This means PostgreSQL client drivers, psql command line shell, IDE integrations such as TablePlus and DBWeaver and more can be used with Yugabyte DB. The same concept applies to [YCQL](../../api/ycql) in the context of the Apache Cassandra Query Language.
+The [YSQL](../../api/ysql) API is compatible with PostgreSQL. This means PostgreSQL client drivers, psql command line shell, IDE integrations such as TablePlus and DBWeaver and more can be used with YugabyteDB. The same concept applies to [YCQL](../../api/ycql) in the context of the Apache Cassandra Query Language.
 {{< /note >}}
 
-## Why are Yugabyte DB APIs compatible with popular DB languages?
+## Why are YugabyteDB APIs compatible with popular DB languages?
 
-- Yugabyte DB's API compatibility is aimed at accelerating developer onboarding. By integrating well with the existing ecosystem, Yugabyte DB ensures that developers can get started easily using a language they are already comfortable with. 
+- YugabyteDB's API compatibility is aimed at accelerating developer onboarding. By integrating well with the existing ecosystem, YugabyteDB ensures that developers can get started easily using a language they are already comfortable with. 
 
-- Yugabyte DB's API compatibility is not aimed at lift-and-shift porting of existing applications written for the original language. This is because existing applications are not written to take advantage of the distributed SQL APIs provided by Yugabyte DB. For such existing applications, developers should expect to modify their previously monolithic PostgreSQL and/or non-transactional Cassandra data access logic as they look to migrate to Yugabyte DB.
+- YugabyteDB's API compatibility is not aimed at lift-and-shift porting of existing applications written for the original language. This is because existing applications are not written to take advantage of the distributed SQL APIs provided by YugabyteDB. For such existing applications, developers should expect to modify their previously monolithic PostgreSQL and/or non-transactional Cassandra data access logic as they look to migrate to YugabyteDB.
 
 ## YSQL compatibility with PostgreSQL
 
@@ -37,7 +37,7 @@ As highlighted in [Distributed PostgreSQL on a Google Spanner Architecture – Q
 - Expressions: Rich set of PostgreSQL built-in functions and operators
 - Other Features: VIEWs, EXPLAIN, PREPARE-BIND-EXECUTE, and JDBC support
 
-Yugabyte DB's goal is to remain as compatible with PostgreSQL as possible. If you see a feature currently missing, please file a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues) for us.
+YugabyteDB's goal is to remain as compatible with PostgreSQL as possible. If you see a feature currently missing, please file a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues) for us.
 
 ## YCQL compatibility with Apache Cassandra QL
 
@@ -81,7 +81,7 @@ Yes, you can have collection data types as primary keys as long as they are mark
 
 Unlike Apache Cassandra, Yugabyte COUNTER type is almost the same as INTEGER types. There is no need of lightweight transactions requiring 4 round trips to perform increments in Yugabyte - these are efficiently performed with just one round trip.
 
-### How is 'USING TIMESTAMP' different in Yugabyte DB?
+### How is 'USING TIMESTAMP' different in YugabyteDB?
 
 In Apache Cassandra, the highest timestamp provided always wins. Example:
 

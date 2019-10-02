@@ -72,7 +72,7 @@ Open and configure adding cluster as you need with connections informations: Yug
 
 ## Enjoy
 
-Now you have connected your YugaByte DB YCQL and can start exploring them by simply double-clicking on the connection name.
+Now you have connected your YugabyteDB YCQL and can start exploring them by simply double-clicking on the connection name.
 
 ![EDITOR UI](/images/develop/tools/vscodeworkbench/editor-ui.png)
 

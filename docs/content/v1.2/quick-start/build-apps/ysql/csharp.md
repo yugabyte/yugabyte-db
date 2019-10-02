@@ -2,7 +2,7 @@
 
 This tutorial assumes that you have:
 
-- installed Yugabyte DB, created a universe and are able to interact with it using the YSQL shell. If not, please follow these steps in the [ysql guide](../../../api/ysql/).
+- installed YugabyteDB, created a universe and are able to interact with it using the YSQL shell. If not, please follow these steps in the [ysql guide](../../../api/ysql/).
 - installed Visual Studio
 
 ## Writing a HelloWorld C# app

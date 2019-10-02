@@ -13,7 +13,7 @@ menu:
 ---
 
 ## Introduction
-PostgreSQL support is under active development in Yugabyte DB. We will keep updating this page as features are added.
+PostgreSQL support is under active development in YugabyteDB. We will keep updating this page as features are added.
 
 - Data definition language (DDL) statements.
 - Data manipulation language (DML) statements.
@@ -21,7 +21,7 @@ PostgreSQL support is under active development in Yugabyte DB. We will keep upda
 - Primitive user-defined datatypes.
 
 ## Examples
-The following examples show a limited set of PostgreSQL statements that can be used with Yugabyte DB.
+The following examples show a limited set of PostgreSQL statements that can be used with YugabyteDB.
 
 ```
 22:15 $ psql mytest --host=127.0.0.1 --port=5433
@@ -64,7 +64,7 @@ Statement | Description |
 [`DROP TABLE`](../ddl_drop_table) | Delete a table from a database |
 
 ## DML Statements
-Data manipulation language (DML) statements read from and write to the existing database objects. Currently, Yugabyte DB implicitly commits any updates by DML statements.
+Data manipulation language (DML) statements read from and write to the existing database objects. Currently, YugabyteDB implicitly commits any updates by DML statements.
 
 Statement | Description |
 ----------|-------------|

@@ -16,7 +16,7 @@ Clients can now connect to the YSQL and YCQL APIs at `localhost:5433` and `local
 
 ## 2. Check cluster status with yb-docker-ctl
 
-Run the command below to see that we now have 1 `yb-master` (yb-master-n1) and 1 `yb-tserver` (yb-tserver-n1) containers running on this localhost. Roles played by these containers in a Yugabyte DB cluster are explained in detail [here](../../architecture/concepts/universe/).
+Run the command below to see that we now have 1 `yb-master` (yb-master-n1) and 1 `yb-tserver` (yb-tserver-n1) containers running on this localhost. Roles played by these containers in a YugabyteDB cluster are explained in detail [here](../../architecture/concepts/universe/).
 
 ```sh
 $ ./yb-docker-ctl status
@@ -38,7 +38,7 @@ Clients connecting to the cluster will connect to only yb-tserver-n1 even if you
 
 ### 3.1 Overview and Master status
 
-The yb-master-n1 home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. The `Num User Tables` is 0 since there are no user tables created yet. Yugabyte DB version number is also shown for your reference. 
+The yb-master-n1 home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. The `Num User Tables` is 0 since there are no user tables created yet. YugabyteDB version number is also shown for your reference. 
 
 ![master-home](/images/admin/master-home-docker-rf1.png)
 

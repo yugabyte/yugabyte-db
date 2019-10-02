@@ -11,13 +11,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Sometimes there might be a need to move a Yugabyte DB universe deployed on a set of nodes to a completely different set of nodes in an online manner. Some scenarios that require such a cluster change are:
+Sometimes there might be a need to move a YugabyteDB universe deployed on a set of nodes to a completely different set of nodes in an online manner. Some scenarios that require such a cluster change are:
 
 - changing the instance or machine type.
 - updating the instance images on a regular basis (e.g., AMI rehydration in AWS).
 - moving to a different set of zones, regions or datacenters.
 
-This page provides the steps needed to perform such a data move in an online manner from the initial setup to the final setup as described below. This tutorial assumes that you are familiar with the [Yugabyte DB process architecture](../../../../architecture/concepts/universe/).
+This page provides the steps needed to perform such a data move in an online manner from the initial setup to the final setup as described below. This tutorial assumes that you are familiar with the [YugabyteDB process architecture](../../../../architecture/concepts/universe/).
 
 ## Example scenario
 

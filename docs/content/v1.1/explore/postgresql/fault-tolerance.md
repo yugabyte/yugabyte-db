@@ -9,10 +9,10 @@ menu:
     weight: 292
 ---
 
-Yugabyte DB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/) for PostgreSQL tables. In this tutorial, we will look at how fault tolerance is achieved for PostgreSQL, but the same steps would work for Cassandra and Redis tables as well. We will create these tables with a replication factor = 3 that allows a [fault tolerance](../../../architecture/concepts/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to 2, then writes will become unavailable on the cluster in order to preserve data consistency.
+YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/) for PostgreSQL tables. In this tutorial, we will look at how fault tolerance is achieved for PostgreSQL, but the same steps would work for Cassandra and Redis tables as well. We will create these tables with a replication factor = 3 that allows a [fault tolerance](../../../architecture/concepts/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to 2, then writes will become unavailable on the cluster in order to preserve data consistency.
 
 
-If you haven't installed Yugabyte DB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
+If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

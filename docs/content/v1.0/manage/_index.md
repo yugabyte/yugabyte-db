@@ -1,7 +1,7 @@
 ---
 title: Manage
 linkTitle: Manage
-description: Manage Yugabyte DB
+description: Manage YugabyteDB
 image: /images/section_icons/quick_start/sample_apps.png
 headcontent:
 menu:
@@ -19,7 +19,7 @@ menu:
         <div class="title">Backup and Restore</div>
       </div>
       <div class="body">
-        Backup and restore data in Yugabyte DB.
+        Backup and restore data in YugabyteDB.
       </div>
     </a>
   </div>
@@ -32,7 +32,7 @@ menu:
         <div class="title">Enterprise Edition</div>
       </div>
       <div class="body">
-        Manage Yugabyte DB without any downtime using the Enterprise Edition's built-in orchestration and monitoring.
+        Manage YugabyteDB without any downtime using the Enterprise Edition's built-in orchestration and monitoring.
       </div>
     </a>
   </div>

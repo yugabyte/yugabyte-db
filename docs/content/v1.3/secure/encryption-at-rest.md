@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This page describes how to enable and disable encryption at rest in a Yugabyte DB cluster with a
+This page describes how to enable and disable encryption at rest in a YugabyteDB cluster with a
 user generated key.
 
 ## Enabling encryption

@@ -15,7 +15,7 @@ statefulset "yb-tserver" created
 
 ## 2. Check cluster status
 
-Run the command below to see that we now have two services with 3 pods each - 3 `yb-master` pods (yb-master-1,yb-master-2,yb-master-3) and 3 `yb-tserver` pods (yb-tserver-1,yb-tserver-2,yb-tserver-3) running. Roles played by these pods in a Yugabyte DB cluster (aka Universe) is explained in detail [here](../../architecture/concepts/universe/).
+Run the command below to see that we now have two services with 3 pods each - 3 `yb-master` pods (yb-master-1,yb-master-2,yb-master-3) and 3 `yb-tserver` pods (yb-tserver-1,yb-tserver-2,yb-tserver-3) running. Roles played by these pods in a YugabyteDB cluster (aka Universe) is explained in detail [here](../../architecture/concepts/universe/).
 
 ```sh
 $ kubectl get pods
@@ -50,7 +50,7 @@ yb-tserver-2   1/1       Running   1          12s
 
 ## 3. Initialize the Redis-compatible YEDIS API
 
-Initialize Redis-compatible YEDIS API in the Yugabyte DB Universe we just setup by running the following `yb-admin` command. 
+Initialize Redis-compatible YEDIS API in the YugabyteDB Universe we just setup by running the following `yb-admin` command. 
 
 ```sh
 $ kubectl exec -it yb-master-0 /home/yugabyte/bin/yb-admin -- --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100,yb-master-1.yb-masters.default.svc.cluster.local:7100,yb-master-2.yb-masters.default.svc.cluster.local:7100 setup_redis_table
@@ -62,7 +62,7 @@ I0127 19:38:10.358551   115 client.cc:1292] Created table system_redis.redis of 
 I0127 19:38:10.358872   115 yb-admin_client.cc:400] Table 'system_redis.redis' created.
 ```
 
-Clients can now connect to this Yugabyte DB universe using Cassandra and Redis APIs on the 9042 and 6379 ports respectively.
+Clients can now connect to this YugabyteDB universe using Cassandra and Redis APIs on the 9042 and 6379 ports respectively.
 
 ## 4. Check cluster status via Kubernetes
 
@@ -96,7 +96,7 @@ Now, you can view the [yb-master-0 Admin UI](../../admin/yb-master/#admin-ui) is
 
 ### 5.1 Overview and Master status
 
-The yb-master-0 home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 3 and `Num Nodes (TServers)` as 3. The `Num User Tables` is 0 since there are no user tables created yet. Yugabyte DB version is also shown for your reference. 
+The yb-master-0 home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 3 and `Num Nodes (TServers)` as 3. The `Num User Tables` is 0 since there are no user tables created yet. YugabyteDB version is also shown for your reference. 
 
 ![master-home](/images/admin/master-home-kubernetes.png)
 

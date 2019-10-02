@@ -3,7 +3,7 @@ title: Enterprise Edition
 linkTitle: Enterprise Edition
 description: Enterprise Edition
 image: /images/section_icons/manage/enterprise.png
-headcontent: Manage Yugabyte DB without any downtime using the Enterprise Edition's built-in orchestration and monitoring.
+headcontent: Manage YugabyteDB without any downtime using the Enterprise Edition's built-in orchestration and monitoring.
 menu:
   v1.2:
     identifier: manage-enterprise-edition
@@ -11,7 +11,7 @@ menu:
     weight: 707
 ---
 
-Yugabyte DB creates a `universe` with a bunch of instances (VMs, pods, machines etc provided by IaaS) logically grouped together to form one logical distributed database. Each such universe can be made up of one or more clusters. These are comprised of one `Primary` cluster and zero or more `Read Replica` clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.
+YugabyteDB creates a `universe` with a bunch of instances (VMs, pods, machines etc provided by IaaS) logically grouped together to form one logical distributed database. Each such universe can be made up of one or more clusters. These are comprised of one `Primary` cluster and zero or more `Read Replica` clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -21,7 +21,7 @@ Yugabyte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
         <div class="title">Create Universe - Multi-Zone</div>
       </div>
       <div class="body">
-        Create Yugabyte DB universes in one region across multiple zones using Yugabyte Admin Console's intent-driven orchestration.
+        Create YugabyteDB universes in one region across multiple zones using Yugabyte Admin Console's intent-driven orchestration.
       </div>
     </a>
   </div>
@@ -33,7 +33,7 @@ Yugabyte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
         <div class="title">Create Universe - Multi-Region</div>
       </div>
       <div class="body">
-        Create Yugabyte DB universes in multiple regions using Yugabyte Admin Console's intent-driven orchestration.
+        Create YugabyteDB universes in multiple regions using Yugabyte Admin Console's intent-driven orchestration.
       </div>
     </a>
   </div>
@@ -93,7 +93,7 @@ Yugabyte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
         <div class="title">Read Replicas</div>
       </div>
       <div class="body">
-        Create Yugabyte DB universes with primary and read replica clusters in a hybrid cloud deployment.
+        Create YugabyteDB universes with primary and read replica clusters in a hybrid cloud deployment.
       </div>
     </a>
   </div>

@@ -12,7 +12,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-After [creating a local cluster](../create-local-cluster/), follow the instructions here to explore Yugabyte DB's PostgreSQL-compatible [YSQL](../../api/ysql/) API.
+After [creating a local cluster](../create-local-cluster/), follow the instructions here to explore YugabyteDB's PostgreSQL-compatible [YSQL](../../api/ysql/) API.
 
 
 {{< note title="Note" >}}

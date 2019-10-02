@@ -1,7 +1,7 @@
 
 ## Maven
 
-To build your Java application using the Yugabyte DB Cassandra driver, add the following Maven dependency to your application:
+To build your Java application using the YugabyteDB Cassandra driver, add the following Maven dependency to your application:
 
 ```mvn
 <dependency>
@@ -18,7 +18,7 @@ To build your Java application using the Yugabyte DB Cassandra driver, add the f
 
 This tutorial assumes that you have:
 
-- installed Yugabyte DB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-cassandra/).
+- installed YugabyteDB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-cassandra/).
 - installed JDK version 1.8+ and maven 3.3+
 
 

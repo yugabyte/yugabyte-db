@@ -1,7 +1,7 @@
 ---
 title: Inspect logs
 linkTitle: Inspect logs
-description: Inspect Yugabyte DB logs
+description: Inspect YugabyteDB logs
 menu:
   v1.3:
     parent: troubleshoot-nodes
@@ -10,7 +10,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Yugabyte DB base folder
+## YugabyteDB base folder
 
 The logs for each node are found in the yugabyte base directory which may depend on the details of your deployment:
 

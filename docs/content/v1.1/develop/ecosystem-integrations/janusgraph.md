@@ -11,11 +11,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-In this tutorial, we are first going to setup JanusGraph to work with Yugabyte DB as the underlying database. Then, using the Gremlin console, we are going to load some data and run some graph commands.
+In this tutorial, we are first going to setup JanusGraph to work with YugabyteDB as the underlying database. Then, using the Gremlin console, we are going to load some data and run some graph commands.
 
 ## 1. Start Local Cluster
 
-Start a cluster on your [local machine](../../../quick-start/install/). Check that you are able to connect to Yugabyte DB using `cqlsh` by doing the following.
+Start a cluster on your [local machine](../../../quick-start/install/). Check that you are able to connect to YugabyteDB using `cqlsh` by doing the following.
 
 ```sh
 $ cqlsh
@@ -44,7 +44,7 @@ $ cd janusgraph-0.2.0-hadoop2
 ```
 
 
-## 3. Run JanusGraph with Yugabyte DB
+## 3. Run JanusGraph with YugabyteDB
 
 - Start the Gremlin console by running `./bin/gremlin.sh`. You should see something like the following.
 
@@ -69,9 +69,9 @@ gremlin> graph = JanusGraphFactory.open('conf/janusgraph-cql.properties')
 ==>standardjanusgraph[cql:[127.0.0.1]]
 ```
 
-- Open the Yugabyte DB UI to verify that the `janusgraph` keyspace and the necessary tables were created by opening the following URL in a web browser: `http://localhost:7000/` (replace `localhost` with the ip address of any master node in a remote depoyment). You should see the following.
+- Open the YugabyteDB UI to verify that the `janusgraph` keyspace and the necessary tables were created by opening the following URL in a web browser: `http://localhost:7000/` (replace `localhost` with the ip address of any master node in a remote depoyment). You should see the following.
 
-![List of keyspaces and tables when running JanusGraph on Yugabyte DB](/images/develop/ecosystem-integrations/janusgraph/yb-janusgraph-tables.png)
+![List of keyspaces and tables when running JanusGraph on YugabyteDB](/images/develop/ecosystem-integrations/janusgraph/yb-janusgraph-tables.png)
 
 ## 4. Load Sample Data
 
@@ -179,7 +179,7 @@ gremlin> g.V(pluto).out('brother').as('god').out('lives').as('place').select('go
 
 ## 7. Global Graph Index Examples
 
-NOTE: Secondary indexes in Yugabyte DB are coming soon. These queries will iterate over all vertices to find the result.
+NOTE: Secondary indexes in YugabyteDB are coming soon. These queries will iterate over all vertices to find the result.
 
 - Geo-spatial indexes - events that have happened within 50 kilometers of Athens (latitude:37.97 and long:23.72).
 

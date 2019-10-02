@@ -1,5 +1,5 @@
 
-This page documents data modeling with Yugabyte DB’s [Cassandra compatible YCQL API](../../../api/ycql).
+This page documents data modeling with YugabyteDB’s [Cassandra compatible YCQL API](../../../api/ycql).
 
 ## Keyspaces, Tables, Rows and Columns
 
@@ -101,7 +101,7 @@ Note that if we had made both `author` and `book_title` partition key columns, w
 
 ## Secondary Indexes
 
-A database index is a data structure that improves the speed of data retrieval operations on a database table. Typically, databases are very efficient at looking up data by the primary key. A secondary index can be created using one or more columns of a database table, and provides the basis for both rapid random lookups and efficient access of ordered records when querying by those columns. To achieve this, secondary indexes require additional writes and storage space to maintain the index data structure. Yugabyte DB's secondary index support is documented in detail [here](../../../api/ycql/ddl_create_index/).
+A database index is a data structure that improves the speed of data retrieval operations on a database table. Typically, databases are very efficient at looking up data by the primary key. A secondary index can be created using one or more columns of a database table, and provides the basis for both rapid random lookups and efficient access of ordered records when querying by those columns. To achieve this, secondary indexes require additional writes and storage space to maintain the index data structure. YugabyteDB's secondary index support is documented in detail [here](../../../api/ycql/ddl_create_index/).
 
 ### Benefits of Secondary Indexes
 
@@ -145,11 +145,11 @@ You can now query the table by the email of a user efficiently as follows.
 cqlsh> SELECT * FROM example.users WHERE email='bond@yb.com';
 ```
 
-Read more about using secondary indexes to speed up queries in this quick guide to Yugabyte DB secondary indexes.
+Read more about using secondary indexes to speed up queries in this quick guide to YugabyteDB secondary indexes.
 
 ### Enforce Uniqueness of Column Values 
 
-In some cases, you would need to ensure that duplicate values cannot be inserted in a column of a table. You can achieve this in Yugabyte DB by creating a unique secondary index, where the application does not want duplicate values to be inserted into a column. 
+In some cases, you would need to ensure that duplicate values cannot be inserted in a column of a table. You can achieve this in YugabyteDB by creating a unique secondary index, where the application does not want duplicate values to be inserted into a column. 
 
 ```sql
 cqlsh> CREATE KEYSPACE example;
@@ -209,4 +209,4 @@ Document data models are best fit for applications requiring a flexible schema a
 
 [Apache Cassandra’s JSON](http://cassandra.apache.org/doc/latest/cql/json.html) support can be misleading for many developers. CQL allows SELECT and INSERT statements to include the JSON keyword. The SELECT output will now be available in the JSON format and the INSERT inputs can now be specified in the JSON format. However, this “JSON” support is simply an ease-of-use abstraction in the CQL layer that the underlying database engine is unaware of. Since there is no native JSON data type in CQL, the schema doesn’t have any knowledge of the JSON provided by the user. This means the schema definition doesn’t change nor does the schema enforcement. Cassandra developers needing native JSON support previously had no choice but to add a new document database such as MongoDB or Couchbase into their data tier. 
 
-With Yugabyte DB’s native JSON support using the [`JSONB`](../data-types/#jsonb) data type, application developers can now benefit from the structured query language of Cassandra and the document data modeling of MongoDB in a single database.
+With YugabyteDB’s native JSON support using the [`JSONB`](../data-types/#jsonb) data type, application developers can now benefit from the structured query language of Cassandra and the document data modeling of MongoDB in a single database.

@@ -24,7 +24,7 @@ $ kubectl apply -f yugabyte-statefulset.yaml
 
 - Check cluster status
 
-Run the command below to see that we now have two services with 3 pods each - 3 `yb-master` pods (yb-master-1,yb-master-2,yb-master-3) and 3 `yb-tserver` pods (yb-tserver-1,yb-tserver-2,yb-tserver-3) running. Roles played by these pods in a Yugabyte DB cluster (aka Universe) is explained in detail [here](../../architecture/concepts/universe/).
+Run the command below to see that we now have two services with 3 pods each - 3 `yb-master` pods (yb-master-1,yb-master-2,yb-master-3) and 3 `yb-tserver` pods (yb-tserver-1,yb-tserver-2,yb-tserver-3) running. Roles played by these pods in a YugabyteDB cluster (aka Universe) is explained in detail [here](../../architecture/concepts/universe/).
 
 ```sh
 $ kubectl get pods

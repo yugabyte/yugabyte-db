@@ -10,7 +10,7 @@ menu:
     weight: 2800
 ---
 
-The YEDIS API allows Yugabyte DB to function as a clustered, auto-sharded, globally distributed and persistent key-value database that is compatible with the Redis commands library. A Redis client can connect, send requests, and receive results from this API.
+The YEDIS API allows YugabyteDB to function as a clustered, auto-sharded, globally distributed and persistent key-value database that is compatible with the Redis commands library. A Redis client can connect, send requests, and receive results from this API.
 
 {{< note title="Note" >}}
 While YEDIS supports many Redis data types (such as string, hash, set, sorted set and a new Timeseries type) and commands, there are some notable exceptions at present.

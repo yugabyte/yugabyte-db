@@ -39,7 +39,7 @@ Server Version: version.Info{Major:"1", Minor:"8", GitVersion:"v1.8.0", ...}
 
 ## Download
 
-Download `yugabyte-statefulset.yaml`. This will create a local Yugabyte DB cluster on Kubernetes with a replication factor of 3.
+Download `yugabyte-statefulset.yaml`. This will create a local YugabyteDB cluster on Kubernetes with a replication factor of 3.
 
 ```sh
 $ mkdir ~/yugabyte && cd ~/yugabyte
