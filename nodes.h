@@ -21,7 +21,9 @@ typedef enum ag_node_tag
     // pattern
     cypher_path_t,
     cypher_node_t,
-    cypher_relationship_t
+    cypher_relationship_t,
+    // expression
+    cypher_bool_const_t
 } ag_node_tag;
 
 void register_ag_nodes(void);

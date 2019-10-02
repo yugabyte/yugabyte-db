@@ -9,7 +9,7 @@ SELECT * FROM cypher($$
  */
 RETURN 0
 /**/
-$$) AS t(a int);
+$$) AS t(a agtype);
  a 
 ---
  0
@@ -32,7 +32,7 @@ SELECT * FROM cypher($$
 // single-line
 // comment
 RETURN 0
-$$) AS t(a int);
+$$) AS t(a agtype);
  a 
 ---
  0
@@ -43,7 +43,8 @@ $$) AS t(a int);
 --
 SELECT * FROM cypher($$
 RETURN 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
-$$) AS t(a int, b int, c int, d int, e int, f int, g int, h int, i int, j int);
+$$) AS t(a agtype, b agtype, c agtype, d agtype, e agtype,
+         f agtype, g agtype, h agtype, i agtype, j agtype);
  a | b | c | d | e | f | g | h | i | j  
 ---+---+---+---+---+---+---+---+---+----
  1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
@@ -51,7 +52,8 @@ $$) AS t(a int, b int, c int, d int, e int, f int, g int, h int, i int, j int);
 
 SELECT * FROM cypher($$
 RETURN 11, 22, 33, 44, 55, 66, 77, 88, 99
-$$) AS t(a int, b int, c int, d int, e int, f int, g int, h int, i int);
+$$) AS t(a agtype, b agtype, c agtype, d agtype, e agtype,
+         f agtype, g agtype, h agtype, i agtype);
  a  | b  | c  | d  | e  | f  | g  | h  | i  
 ----+----+----+----+----+----+----+----+----
  11 | 22 | 33 | 44 | 55 | 66 | 77 | 88 | 99
@@ -60,7 +62,7 @@ $$) AS t(a int, b int, c int, d int, e int, f int, g int, h int, i int);
 -- 2^31 - 1, 2^31
 SELECT * FROM cypher($$
 RETURN 2147483647, 2147483648
-$$) AS t(a int, b int8);
+$$) AS t(a agtype, b agtype);
      a      |     b      
 ------------+------------
  2147483647 | 2147483648
@@ -71,7 +73,8 @@ $$) AS t(a int, b int8);
 --
 SELECT * FROM cypher($$
 RETURN 00, 01, 02, 03, 04, 05, 06, 07, 010
-$$) AS t(a int, b int, c int, d int, e int, f int, g int, h int, i int);
+$$) AS t(a agtype, b agtype, c agtype, d agtype, e agtype,
+         f agtype, g agtype, h agtype, i agtype);
  a | b | c | d | e | f | g | h | i 
 ---+---+---+---+---+---+---+---+---
  0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
@@ -79,7 +82,8 @@ $$) AS t(a int, b int, c int, d int, e int, f int, g int, h int, i int);
 
 SELECT * FROM cypher($$
 RETURN 000, 011, 022, 033, 044, 055, 066, 077
-$$) AS t(a int, b int, c int, d int, e int, f int, g int, h int);
+$$) AS t(a agtype, b agtype, c agtype, d agtype, e agtype,
+         f agtype, g agtype, h agtype);
  a | b | c  | d  | e  | f  | g  | h  
 ---+---+----+----+----+----+----+----
  0 | 9 | 18 | 27 | 36 | 45 | 54 | 63
@@ -88,7 +92,7 @@ $$) AS t(a int, b int, c int, d int, e int, f int, g int, h int);
 -- 2^31 - 1, 2^31
 SELECT * FROM cypher($$
 RETURN 000000000000, 017777777777, 0020000000000
-$$) AS t(a int, b int, c int8);
+$$) AS t(a agtype, b agtype, c agtype);
  a |     b      |     c      
 ---+------------+------------
  0 | 2147483647 | 2147483648
@@ -97,10 +101,10 @@ $$) AS t(a int, b int, c int8);
 -- 2^60 - 1, 2^64 - 1
 SELECT * FROM cypher($$
 RETURN 077777777777777777777, 01777777777777777777777
-$$) AS t(a int8, b numeric);
+$$) AS t(a agtype, b agtype);
           a          |          b           
 ---------------------+----------------------
- 1152921504606846975 | 18446744073709551615
+ 1152921504606846975 | 1.84467440737096e+19
 (1 row)
 
 -- an invalid character after reading valid digits
@@ -122,7 +126,8 @@ LINE 2: RETURN 09
 --
 SELECT * FROM cypher($$
 RETURN 0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9
-$$) AS t(a int, b int, c int, d int, e int, f int, g int, h int, i int, j int);
+$$) AS t(a agtype, b agtype, c agtype, d agtype, e agtype,
+         f agtype, g agtype, h agtype, i agtype, j agtype);
  a | b | c | d | e | f | g | h | i | j 
 ---+---+---+---+---+---+---+---+---+---
  0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
@@ -130,7 +135,7 @@ $$) AS t(a int, b int, c int, d int, e int, f int, g int, h int, i int, j int);
 
 SELECT * FROM cypher($$
 RETURN 0xA, 0xB, 0xC, 0xD, 0xE, 0xF
-$$) AS t(a int, b int, c int, d int, e int, f int);
+$$) AS t(a agtype, b agtype, c agtype, d agtype, e agtype, f agtype);
  a  | b  | c  | d  | e  | f  
 ----+----+----+----+----+----
  10 | 11 | 12 | 13 | 14 | 15
@@ -138,7 +143,8 @@ $$) AS t(a int, b int, c int, d int, e int, f int);
 
 SELECT * FROM cypher($$
 RETURN 0X00, 0X11, 0X22, 0X33, 0X44, 0X55, 0X66, 0X77, 0X88, 0X99
-$$) AS t(a int, b int, c int, d int, e int, f int, g int, h int, i int, j int);
+$$) AS t(a agtype, b agtype, c agtype, d agtype, e agtype,
+         f agtype, g agtype, h agtype, i agtype, j agtype);
  a | b  | c  | d  | e  | f  |  g  |  h  |  i  |  j  
 ---+----+----+----+----+----+-----+-----+-----+-----
  0 | 17 | 34 | 51 | 68 | 85 | 102 | 119 | 136 | 153
@@ -146,7 +152,7 @@ $$) AS t(a int, b int, c int, d int, e int, f int, g int, h int, i int, j int);
 
 SELECT * FROM cypher($$
 RETURN 0XAa, 0XBb, 0XCc, 0XDd, 0XEe, 0xFf
-$$) AS t(a int, b int, c int, d int, e int, f int);
+$$) AS t(a agtype, b agtype, c agtype, d agtype, e agtype, f agtype);
   a  |  b  |  c  |  d  |  e  |  f  
 -----+-----+-----+-----+-----+-----
  170 | 187 | 204 | 221 | 238 | 255
@@ -155,7 +161,7 @@ $$) AS t(a int, b int, c int, d int, e int, f int);
 -- 2^31 - 1, 2^31
 SELECT * FROM cypher($$
 RETURN 0x00000000, 0x7FFFFFFF, 0x080000000
-$$) AS t(a int, b int, c int8);
+$$) AS t(a agtype, b agtype, c agtype);
  a |     b      |     c      
 ---+------------+------------
  0 | 2147483647 | 2147483648
@@ -164,10 +170,10 @@ $$) AS t(a int, b int, c int8);
 -- 10^18, 2^64 - 1
 SELECT * FROM cypher($$
 RETURN 0xde0b6b3a7640000, 0xffffffffffffffff
-$$) AS t(a int8, b numeric);
+$$) AS t(a agtype, b agtype);
           a          |          b           
 ---------------------+----------------------
- 1000000000000000000 | 18446744073709551615
+ 1000000000000000000 | 1.84467440737096e+19
 (1 row)
 
 -- an invalid character after reading valid digits
@@ -196,10 +202,10 @@ LINE 2: RETURN 0x
 --
 SELECT * FROM cypher($$
 RETURN 03., 3.141592, .141592
-$$) AS t(a numeric, b numeric, c numeric);
- a |    b     |    c     
----+----------+----------
- 3 | 3.141592 | 0.141592
+$$) AS t(a agtype, b agtype, c agtype);
+  a  |    b     |    c     
+-----+----------+----------
+ 3.0 | 3.141592 | 0.141592
 (1 row)
 
 -- "0" and ".."
@@ -214,7 +220,7 @@ LINE 2: RETURN 0..
 --
 SELECT * FROM cypher($$
 RETURN 3141592e-6, 3.141592E0, .3141592e+1
-$$) AS t(a numeric, b numeric, c numeric);
+$$) AS t(a agtype, b agtype, c agtype);
     a     |    b     |    c     
 ----------+----------+----------
  3.141592 | 3.141592 | 3.141592
@@ -245,20 +251,19 @@ LINE 2: RETURN .3141592e+
 -- a long string
 SELECT * FROM cypher($$
 RETURN " !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
-$$) AS t(a text);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-  !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~
+$$) AS t(a agtype);
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ " !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
 (1 row)
 
 -- escape sequences
 SELECT * FROM cypher($$
 RETURN " \" \" ' \' ", ' \' \' " \" ', " / \/ \\ \b \f \n \r \t "
-$$) AS t(a text, b text, c text);
-     a     |     b     |         c         
------------+-----------+-------------------
-  " " ' '  |  ' ' " "  |  / / \ \x08 \x0C +
-           |           |  \r      
+$$) AS t(a agtype, b agtype, c agtype);
+       a       |       b       |             c             
+---------------+---------------+---------------------------
+ " \" \" ' ' " | " ' ' \" \" " | " / / \\ \b \f \n \r \t "
 (1 row)
 
 -- invalid escape sequence
@@ -275,10 +280,10 @@ RETURN "\u03A9 (GREEK CAPITAL LETTER OMEGA, U+03A9, Ω)",
        "\U0001d6e9 (MATHEMATICAL ITALIC CAPITAL THETA, U+1D6E9, 𝛩)",
        "\ud835\U0000DEF0 (MATHEMATICAL ITALIC CAPITAL OMICRON, U+1D6F0, 𝛰)",
        "\u002E (FULL STOP, U+002E, .)"
-$$) AS t(a text, b text, c text, d text);
-                     a                     |                         b                         |                          c                          |            d             
--------------------------------------------+---------------------------------------------------+-----------------------------------------------------+--------------------------
- Ω (GREEK CAPITAL LETTER OMEGA, U+03A9, Ω) | 𝛩 (MATHEMATICAL ITALIC CAPITAL THETA, U+1D6E9, 𝛩) | 𝛰 (MATHEMATICAL ITALIC CAPITAL OMICRON, U+1D6F0, 𝛰) | . (FULL STOP, U+002E, .)
+$$) AS t(a agtype, b agtype, c agtype, d agtype);
+                      a                      |                          b                          |                           c                           |             d              
+---------------------------------------------+-----------------------------------------------------+-------------------------------------------------------+----------------------------
+ "Ω (GREEK CAPITAL LETTER OMEGA, U+03A9, Ω)" | "𝛩 (MATHEMATICAL ITALIC CAPITAL THETA, U+1D6E9, 𝛩)" | "𝛰 (MATHEMATICAL ITALIC CAPITAL OMICRON, U+1D6F0, 𝛰)" | ". (FULL STOP, U+002E, .)"
 (1 row)
 
 -- invalid Unicode surrogate pair (need a low surrogate)

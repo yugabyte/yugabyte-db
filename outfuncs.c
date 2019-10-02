@@ -38,6 +38,13 @@
                          (int)_node->field_name); \
     } while (0)
 
+#define write_location_field(field_name) \
+    do \
+    { \
+        appendStringInfo(str, " :" CppAsString(field_name) " %d", \
+                         _node->field_name); \
+    } while (0)
+
 /*
  * clauses
  */
@@ -133,4 +140,16 @@ void out_cypher_relationship(StringInfo str, const ExtensibleNode *node)
     write_string_field(label);
     write_node_field(props);
     write_enum_field(dir, cypher_rel_dir);
+}
+
+/*
+ * expression
+ */
+
+void out_cypher_bool_const(StringInfo str, const ExtensibleNode *node)
+{
+    DEFINE_AG_NODE(cypher_bool_const);
+
+    write_bool_field(boolean);
+    write_location_field(location);
 }

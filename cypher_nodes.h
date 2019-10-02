@@ -105,6 +105,17 @@ typedef struct cypher_relationship
     cypher_rel_dir dir;
 } cypher_relationship;
 
+/*
+ * expression
+ */
+
+typedef struct cypher_bool_const
+{
+    ExtensibleNode extensible;
+    bool boolean;
+    int location;
+} cypher_bool_const;
+
 /* clauses */
 void out_cypher_return(StringInfo str, const ExtensibleNode *node);
 void out_cypher_with(StringInfo str, const ExtensibleNode *node);
@@ -118,5 +129,8 @@ void out_cypher_delete(StringInfo str, const ExtensibleNode *node);
 void out_cypher_path(StringInfo str, const ExtensibleNode *node);
 void out_cypher_node(StringInfo str, const ExtensibleNode *node);
 void out_cypher_relationship(StringInfo str, const ExtensibleNode *node);
+
+/* expression */
+void out_cypher_bool_const(StringInfo str, const ExtensibleNode *node);
 
 #endif

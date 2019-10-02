@@ -2,14 +2,14 @@ LOAD 'agensgraph';
 SET search_path TO ag_catalog;
 -- cypher() function takes only a dollar-quoted string constant as an argument.
 -- All other cases throw an error.
-SELECT * FROM cypher($$RETURN 0$$) AS r(c int);
+SELECT * FROM cypher($$RETURN 0$$) AS r(c agtype);
  c 
 ---
  0
 (1 row)
 
 WITH r(c) AS (
-  SELECT * FROM cypher($$RETURN 0$$) AS r(c int)
+  SELECT * FROM cypher($$RETURN 0$$) AS r(c agtype)
 )
 SELECT * FROM r;
  c 
@@ -38,7 +38,7 @@ ERROR:  return row and column definition list do not match
 LINE 1: SELECT * FROM cypher($$RETURN 0$$) AS r(c text, x text);
                       ^
 -- cypher() function can be called in ROWS FROM only if it is there solely.
-SELECT * FROM ROWS FROM (cypher($$RETURN 0$$) AS (c int));
+SELECT * FROM ROWS FROM (cypher($$RETURN 0$$) AS (c agtype));
  c 
 ---
  0
@@ -61,7 +61,7 @@ ERROR:  cypher(...) in expressions is not supported
 LINE 1: SELECT cypher($$RETURN 0$$);
                ^
 HINT:  Use subquery instead if possible.
-SELECT (SELECT * FROM cypher($$RETURN 0$$) AS r(c int));
+SELECT (SELECT * FROM cypher($$RETURN 0$$) AS r(c agtype));
  c 
 ---
  0

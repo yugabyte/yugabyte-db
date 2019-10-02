@@ -15,6 +15,9 @@
 #include "lib/stringinfo.h"
 #include "utils/array.h"
 #include "utils/numeric.h"
+#include "utils/syscache.h"
+
+#include "ag_catalog.h"
 
 /* Tokens used when sequentially processing an agtype value */
 typedef enum
@@ -403,5 +406,10 @@ extern char *agtype_to_cstring(StringInfo out, agtype_container *in,
                                int estimated_len);
 extern char *agtype_to_cstring_indent(StringInfo out, agtype_container *in,
                                       int estimated_len);
+
+// Oid of agtype
+#define AGTYPEOID \
+    (GetSysCacheOid2(TYPENAMENSP, CStringGetDatum("agtype"), \
+                     ag_catalog_namespace_id()))
 
 #endif /* AG_AGTYPE_H */

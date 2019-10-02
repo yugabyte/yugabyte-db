@@ -151,8 +151,6 @@ static Node *make_float_const(char *s, int location);
 static Node *make_string_const(char *s, int location);
 static Node *make_bool_const(bool b, int location);
 static Node *make_null_const(int location);
-
-static Node *make_type_cast(Node *arg, TypeName *typename, int location);
 %}
 
 %%
@@ -1240,14 +1238,13 @@ static Node *make_string_const(char *s, int location)
 
 static Node *make_bool_const(bool b, int location)
 {
-    A_Const *n;
+    cypher_bool_const *n;
 
-    n = makeNode(A_Const);
-    n->val.type = T_String;
-    n->val.val.str = (b ? "t" : "f");
+    n = make_ag_node(cypher_bool_const);
+    n->boolean = b;
     n->location = location;
 
-    return make_type_cast((Node *)n, SystemTypeName("bool"), -1);
+    return (Node *)n;
 }
 
 static Node *make_null_const(int location)
@@ -1256,18 +1253,6 @@ static Node *make_null_const(int location)
 
     n = makeNode(A_Const);
     n->val.type = T_Null;
-    n->location = location;
-
-    return (Node *)n;
-}
-
-static Node *make_type_cast(Node *arg, TypeName *typename, int location)
-{
-    TypeCast *n;
-
-    n = makeNode(TypeCast);
-    n->arg = arg;
-    n->typeName = typename;
     n->location = location;
 
     return (Node *)n;

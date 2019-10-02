@@ -16,7 +16,7 @@ $$) AS r(c agtype);
 ERROR:  map literal parsed
 LINE 2: RETURN {s: 's', i: 1, f: 1.0, b: true, z: null}
                ^
-DETAIL:  ("s" {A_CONST :val "s" :location 12} "i" {A_CONST :val 1 :location 20} "f" {A_CONST :val 1.0 :location 26} "b" {TYPECAST :arg {A_CONST :val "t" :location 34} :typeName {TYPENAME :names ("pg_catalog" "bool") :typeOid 0 :setof false :pct_type false :typmods <> :typemod -1 :arrayBounds <> :location -1} :location -1} "z" {A_CONST :val NULL :location 43})
+DETAIL:  ("s" {A_CONST :val "s" :location 12} "i" {A_CONST :val 1 :location 20} "f" {A_CONST :val 1.0 :location 26} "b" {EXTENSIBLENODE :extnodename cypher_bool_const :boolean true :location 34} "z" {A_CONST :val NULL :location 43})
 --
 -- list literal
 --
@@ -31,4 +31,4 @@ SELECT * FROM cypher($$RETURN ['str', 1, 1.0, true, null]$$) AS r(c agtype);
 ERROR:  list literal parsed
 LINE 1: SELECT * FROM cypher($$RETURN ['str', 1, 1.0, true, null]$$)...
                                       ^
-DETAIL:  ({A_CONST :val "str" :location 8} {A_CONST :val 1 :location 15} {A_CONST :val 1.0 :location 18} {TYPECAST :arg {A_CONST :val "t" :location 23} :typeName {TYPENAME :names ("pg_catalog" "bool") :typeOid 0 :setof false :pct_type false :typmods <> :typemod -1 :arrayBounds <> :location -1} :location -1} {A_CONST :val NULL :location 29})
+DETAIL:  ({A_CONST :val "str" :location 8} {A_CONST :val 1 :location 15} {A_CONST :val 1.0 :location 18} {EXTENSIBLENODE :extnodename cypher_bool_const :boolean true :location 23} {A_CONST :val NULL :location 29})
