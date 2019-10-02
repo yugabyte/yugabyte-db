@@ -59,19 +59,14 @@ DEFAULT_MASTER_PORT = 7100
 DEFAULT_TSERVER_PORT = 9100
 DEFAULT_YSQL_PORT = 5433
 DEFAULT_YCQL_PORT = 9042
+# TODO: Bug where webserver must be initiated with port 9000.
 DEFAULT_WEBSERVER_PORT = 7200
 VERSION_METADATA_PATH = os.path.join(YUGABYTE_DIR, "version_metadata.json")
 YUGABYTE_API_CLIENT_PROGRAMS = {
     "ysql": "ysqlsh",
     "ycql": "cqlsh",
 }
-YB_NUM_SHARDS_PER_TSERVER = 1
-YSQL_NUM_SHARDS_PER_TSERVER = 1
-METRICS_SNAPSHOT_LIST = "handler_latency_yb_tserver_TabletServerService_Read_count," \
-    "handler_latency_yb_tserver_TabletServerService_Write_count," \
-    "handler_latency_yb_tserver_TabletServerService_Read_sum," \
-    "handler_latency_yb_tserver_TabletServerService_Write_sum," \
-    "disk_usage,cpu_usage"
+YSQL_NUM_SHARDS_PER_TSERVER = 2
 
 # YugaWare configs. These have their own separate subdirectory to preserve our itest flow.
 YUGAWARE_DIR = os.path.join(YUGABYTE_DIR, "ui")
@@ -273,41 +268,47 @@ class YugabyteProcessManager(object):
             "--stop_on_parent_termination",
             "--undefok=stop_on_parent_termination",
             "--fs_data_dirs={}".format(self.configs.saved_data.get("data_dir")),
-            "--metrics_snapshotter_tserver_metrics_whitelist={}".format(METRICS_SNAPSHOT_LIST),
-            "--yb_num_shards_per_tserver={}".format(YB_NUM_SHARDS_PER_TSERVER),
-            "--ysql_num_shards_per_tserver={}".format(YSQL_NUM_SHARDS_PER_TSERVER)
         ]
         master_address = "127.0.0.1:{}".format(self.configs.saved_data.get("master_port"))
         tserver_address = "127.0.0.1:{}".format(self.configs.saved_data.get("tserver_port"))
         yb_master_cmd = [os.path.join(BIN_DIR, "yb-master")] + common_gflags + \
-            [
-                "--master_addresses={}".format(master_address),
-                "--rpc_bind_addresses={}".format(master_address),
-                "--replication_factor=1",
-                "--use_initial_sys_catalog_snapshot",
-                "--server_dump_info_path={}".format(
-                    os.path.join(self.configs.saved_data.get("data_dir"), "master-info")),
-                "--master_enable_metrics_snapshotter=true"
-            ]
+            ["--master_addresses={}".format(master_address),
+             "--rpc_bind_addresses", master_address,
+             "--replication_factor", "1",
+             "--use_initial_sys_catalog_snapshot",
+             "--server_dump_info_path",
+             os.path.join(self.configs.saved_data.get("data_dir"), "master-info"),
+             "--master_enable_metrics_snapshotter=true",
+             "--metrics_snapshotter_tserver_metrics_whitelist="
+                "handler_latency_yb_tserver_TabletServerService_Read_count,"
+                "handler_latency_yb_tserver_TabletServerService_Write_count,"
+                "handler_latency_yb_tserver_TabletServerService_Read_sum,"
+                "handler_latency_yb_tserver_TabletServerService_Write_sum",
+             "--ysql_num_shards_per_tserver", str(YSQL_NUM_SHARDS_PER_TSERVER)]
         if self.configs.saved_data.get("master_flags"):
             yb_master_cmd.extend(
                 ["--{}".format(flag) for flag in \
                     self.configs.saved_data.get("master_flags").split(",")])
 
         yb_tserver_cmd = [os.path.join(BIN_DIR, "yb-tserver")] + common_gflags + \
-            [
-                "--tserver_master_addrs={}".format(master_address),
-                "--rpc_bind_addresses={}".format(tserver_address),
-                "--cql_proxy_bind_address={}".format(
-                    "127.0.0.1:{}".format(self.configs.saved_data.get("ycql_port"))),
-                "--server_dump_info_path={}".format(
-                    os.path.join(self.configs.saved_data.get("data_dir"), "tserver-info")),
-                "--start_pgsql_proxy", "--pgsql_proxy_bind_address={}".format(
-                    "127.0.0.1:{}".format(self.configs.saved_data.get("ysql_port"))),
-                "--tserver_enable_metrics_snapshotter=true",
-                "--metrics_snapshotter_interval_ms=11000"
-            ]
-
+            ["--tserver_master_addrs={}".format(master_address),
+             "--rpc_bind_addresses", tserver_address,
+             "--cql_proxy_bind_address",
+             "127.0.0.1:{}".format(self.configs.saved_data.get("ycql_port")),
+             "--server_dump_info_path",
+             os.path.join(self.configs.saved_data.get("data_dir"), "tserver-info"),
+             "--start_pgsql_proxy", "--pgsql_proxy_bind_address",
+             "127.0.0.1:{}".format(self.configs.saved_data.get("ysql_port")),
+             "--server_dump_info_path",
+             os.path.join(self.configs.saved_data.get("data_dir"), "tserver-info"),
+             "--tserver_enable_metrics_snapshotter=true",
+             "--metrics_snapshotter_tserver_metrics_whitelist="
+                "handler_latency_yb_tserver_TabletServerService_Read_count,"
+                "handler_latency_yb_tserver_TabletServerService_Write_count,"
+                "handler_latency_yb_tserver_TabletServerService_Read_sum,"
+                "handler_latency_yb_tserver_TabletServerService_Write_sum",
+             "--metrics_snapshotter_interval_ms", "11000",
+             "--ysql_num_shards_per_tserver", str(YSQL_NUM_SHARDS_PER_TSERVER)]
         if self.configs.saved_data.get("tserver_flags"):
             yb_tserver_cmd.extend(
                 ["--{}".format(flag) for flag in \

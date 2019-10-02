@@ -22,10 +22,10 @@ export default class CpuUsagePanel extends Component {
         if (isKubernetes) {
           usage.system = parseFloat(metric.data.find((item) => item.name === 'cpu_usage').y[0]);
         } else {
-          usage.system = parseFloat(metric.data.find((item)=>item.name==="system").y.slice(-1)[0]);
-          usage.user = parseFloat(metric.data.find((item)=>item.name==="user").y.slice(-1)[0]);
+          usage.system = parseFloat(metric.data.find((item)=>item.name==="system").y[0]);
+          usage.user = parseFloat(metric.data.find((item)=>item.name==="user").y[0]);
         }
-      }
+      }    
     } catch (err) {
       console.log("CPU metric processing failed with: "+err);
     }
@@ -34,13 +34,13 @@ export default class CpuUsagePanel extends Component {
       0;
     return (
       <div className="metrics-padded-panel cpu-usage-panel">
-        { isNaN(usage.system)
-          ?
+        { isNaN(usage.system) 
+          ? 
             <Fragment>
               <Graph type={"semicircle"} value={0} />
               <div className="centered text-light text-lightgray">No Data</div>
             </Fragment>
-          :
+          : 
             <Fragment>
               <Graph type={"semicircle"} value={value} />
               <YBResourceCount size={Math.round(value*1000)/10} kind="% used" inline={true} />
