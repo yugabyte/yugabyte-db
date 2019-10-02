@@ -21,10 +21,10 @@ class StandaloneMetricsPanel extends Component {
     props.metricKey = metricKey;
     props.width = width;
     if (Object.keys(metrics).length > 0 && isNonEmptyObject(metrics[type]) && isNonEmptyObject(metrics[type][metricKey])&& !metrics[type][metricKey].error) {
-      /* Logic here is that some other main component 
+      /* Logic here is that some other main component
       like OverviewMetrics or CustomerMetricsPanel is capabale of loading data
-      and this panel only displays relevant data for the metric 
-      that should be displayed separately  
+      and this panel only displays relevant data for the metric
+      that should be displayed separately
       */
       const legendData = [];
       for(let idx=0; idx < metrics[type][metricKey].data.length; idx++){
