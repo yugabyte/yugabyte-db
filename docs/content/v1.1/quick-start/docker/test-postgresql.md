@@ -6,7 +6,7 @@ $ ./yb-docker-ctl destroy
 ```
 
 
-- Create a new cluster with YSQL API enabled. Note the additional option `enable_postgres` passed to the create cluster command. Also note that this requires at least version `1.1.2.0-b10` of Yugabyte DB.
+- Create a new cluster with YSQL API enabled. Note the additional option `enable_postgres` passed to the create cluster command. Also note that this requires at least version `1.1.2.0-b10` of YugabyteDB.
 
 ```sh
 $ ./yb-docker-ctl create --rf 3 --enable_postgres

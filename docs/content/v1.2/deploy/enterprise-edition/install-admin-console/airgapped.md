@@ -102,7 +102,7 @@ Two options to install YugaWare are presented.
 
 ### Secure Replicated
 
-The next step is to add a password to protect the Replicated Admin Console (note that this Admin Console is for Replicated and is different from YugaWare, the Admin Console for Yugabyte DB).
+The next step is to add a password to protect the Replicated Admin Console (note that this Admin Console is for Replicated and is different from YugaWare, the Admin Console for YugabyteDB).
 
 ![Replicated Password](/images/replicated/replicated-password.png)
 

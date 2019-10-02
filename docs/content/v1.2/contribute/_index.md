@@ -1,9 +1,9 @@
 ---
-title: Get Involved with Yugabyte DB
+title: Get Involved with YugabyteDB
 linkTitle: Get Involved
-description: Get Involved with Yugabyte DB
+description: Get Involved with YugabyteDB
 image: /images/section_icons/index/quick_start.png
-headcontent: Contributing code to improve Yugabyte DB.
+headcontent: Contributing code to improve YugabyteDB.
 type: page
 section: CONTRIBUTOR GUIDES
 menu:
@@ -12,7 +12,7 @@ menu:
     weight: 2900
 ---
 
-We are big believers in open source. [Yugabyte DB](https://github.com/yugabyte/yugabyte-db) is distributed under the Apache v2.0 license, which is very permissive open source license. We value external contributions and fully welcome them! We accept contributions as GitHub pull requests. This page contains everything you need to get you going quickly.
+We are big believers in open source. [YugabyteDB](https://github.com/yugabyte/yugabyte-db) is distributed under the Apache v2.0 license, which is very permissive open source license. We value external contributions and fully welcome them! We accept contributions as GitHub pull requests. This page contains everything you need to get you going quickly.
 
 
 ## Learn about the architecture
@@ -32,11 +32,11 @@ There are a few areas you can get involved in depending on your interests.
 
 ### Core Database
 
-This is the C++ code and the unit tests that comprise the core of Yugabyte DB. You can [follow the steps outlined here](core-database/checklist) to get going with steps such as building the codebase and running the unit tests.
+This is the C++ code and the unit tests that comprise the core of YugabyteDB. You can [follow the steps outlined here](core-database/checklist) to get going with steps such as building the codebase and running the unit tests.
 
 ### Docs
 
-[Yugabyte DB documentation](/) uses the Hugo framework. There are two types of docs issues - infrastructure enhancements and adding content. You can [follow the steps outlined here](https://github.com/yugabyte/docs) to run a local version of the docs site. Next, look at the [contributing guide](https://github.com/yugabyte/docs/blob/master/CONTRIBUTING.md) to make your changes and contribute them.
+[YugabyteDB documentation](/) uses the Hugo framework. There are two types of docs issues - infrastructure enhancements and adding content. You can [follow the steps outlined here](https://github.com/yugabyte/docs) to run a local version of the docs site. Next, look at the [contributing guide](https://github.com/yugabyte/docs/blob/master/CONTRIBUTING.md) to make your changes and contribute them.
 
 ## Find an issue
 
@@ -48,12 +48,12 @@ Issues are tagged with other useful labels as described below.
 | `bug`              | Bugs can have a small or large scope, so make sure to understand the bug. |
 | `docs`             | An issue related to the docs infrastructure, or content that needs to be added to the docs. |
 | `enhancement`      | An enhancement is often done to an existing feature, and is usually limited in scope. |
-| `good first issue` | A great first issue to work on as your initial contribution to Yugabyte DB. |
+| `good first issue` | A great first issue to work on as your initial contribution to YugabyteDB. |
 | `help wanted`      | Issues that are very useful and relatively standalone, but not actively being worked on. |
 | `new feature`      | An new feature does not exist. New features can be complex additions to the existing system, or standalone pieces. |
 | `question`         | A question that needs to be answered. |
 
-* If you are just starting out contributing to Yugabyte DB, first off welcome and thanks! Look for issues labelled [good first issue](https://github.com/yugabyte/yugabyte-db/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22).
+* If you are just starting out contributing to YugabyteDB, first off welcome and thanks! Look for issues labelled [good first issue](https://github.com/yugabyte/yugabyte-db/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22).
 
 * If you have already contributed and are familiar, then look for issues with the [help wanted](https://github.com/yugabyte/yugabyte-db/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22) label.
 

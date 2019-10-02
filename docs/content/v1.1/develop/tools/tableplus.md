@@ -15,7 +15,7 @@ showAsideToc: true
 
 [TablePlus](https://tableplus.io/) is an increasingly popular database developer console with built-in integrations with major databases including PostgreSQL, Cassandra and Redis. It is free to get started with the option of upgrading to a [perpetual paid license](https://tableplus.io/pricing) for a small cost.
 
-In this tutorial, we will show how to connect TablePlus with all the 3 Yugabyte DB APIs on a local cluster. TablePlus works without any issues with Yugabyte DB because the Yugabyte DB APIs are compatible at the wire protocol level with databases already supported by TablePlus.
+In this tutorial, we will show how to connect TablePlus with all the 3 YugabyteDB APIs on a local cluster. TablePlus works without any issues with YugabyteDB because the YugabyteDB APIs are compatible at the wire protocol level with databases already supported by TablePlus.
 
 ## Download TablePlus
 
@@ -28,7 +28,7 @@ Install TablePlus after the download completes.
 
 ## Start a Local Cluster
 
-Follow the instructions in the [Quick Start](../../../quick-start/install) to create a local Yugabyte DB cluster. We will use the macOS install instructions for the rest of this tutorial.
+Follow the instructions in the [Quick Start](../../../quick-start/install) to create a local YugabyteDB cluster. We will use the macOS install instructions for the rest of this tutorial.
 
 ```sh
 $ ./bin/yb-ctl create --enable_postgres
@@ -42,7 +42,7 @@ Click `Create a new connection` on TablePlus and then choose `Postgres` from the
 
 ![Choose DB](/images/develop/tools/tableplus/choose-db.png)
 
-Now enter the connection details as shown in the screenshot below and then click `Test` to ensure that TablePlus is indeed able to establish connectivity with the Yugabyte DB API. The color of the fields will change to green if the test succeeds.
+Now enter the connection details as shown in the screenshot below and then click `Test` to ensure that TablePlus is indeed able to establish connectivity with the YugabyteDB API. The color of the fields will change to green if the test succeeds.
 
 ![YSQL](/images/develop/tools/tableplus/ysql-connection.png)
 
@@ -60,7 +60,7 @@ Repeat the above steps for the Redis type as shown below.
 
 ## Explore with TablePlus
 
-Now you have connected to all the Yugabyte DB APIs and can start exploring them by simply double-clicking on the connection name.
+Now you have connected to all the YugabyteDB APIs and can start exploring them by simply double-clicking on the connection name.
 
 ![YB ALL](/images/develop/tools/tableplus/yb-all-connection.png)
 

@@ -9,7 +9,7 @@ menu:
     weight: 980
 ---
 
-The Yugabyte DB code base has leveraged several open source projects as a starting point.
+The YugabyteDB code base has leveraged several open source projects as a starting point.
 
 * Google Libraries (glog, gflags, protocol buffers, snappy, gperftools, gtest, gmock).
 

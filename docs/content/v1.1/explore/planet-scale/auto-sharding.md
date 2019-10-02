@@ -9,16 +9,16 @@ menu:
     weight: 270
 ---
 
-Yugabyte DB automatically splits user tables into multiple shards, called **tablets**. The primary key for each row in the table uniquely determines the tablet the row lives in. For data distribution purposes, a hash based partitioning scheme is used. Read more about [how sharding works](../../../architecture/concepts/sharding/) in Yugabyte DB.
+YugabyteDB automatically splits user tables into multiple shards, called **tablets**. The primary key for each row in the table uniquely determines the tablet the row lives in. For data distribution purposes, a hash based partitioning scheme is used. Read more about [how sharding works](../../../architecture/concepts/sharding/) in YugabyteDB.
 
 By default, Yugabyte creates 8 tablets per node in the cluster for each table and automatically distributes the data across the various tablets, which in turn are distributed evenly across the nodes. In this tutorial, we will explore how automatic sharding is done internally for Cassandra tables. The system Redis table works in an identical manner.
 
-We will explore automatic sharding inside Yugabyte DB by creating these tables:
+We will explore automatic sharding inside YugabyteDB by creating these tables:
 
 - Use a replication factor of 1. This will make it easier to understand how automatic sharding is achieved independent of data replication.
 - Insert entries one by one, and examine which how the data gets distributed across the various nodes.
 
-If you haven't installed Yugabyte DB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
+If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>

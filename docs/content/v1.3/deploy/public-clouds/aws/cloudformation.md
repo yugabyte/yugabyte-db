@@ -17,7 +17,7 @@ Once resource creation completes, check that stack was created:
 ```sh
 $ aws cloudformation describe-stacks --stack-name <stack-name>
 ```
-From this output, you will be able to get the VPC id and Yugabyte DB admin URL.
+From this output, you will be able to get the VPC id and YugabyteDB admin URL.
 
 ## AWS Console
 

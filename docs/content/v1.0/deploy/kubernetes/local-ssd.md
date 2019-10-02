@@ -9,7 +9,7 @@ menu:
     weight: 621
 ---
 
-This tutorial will cover how to deploy Yugabyte DB on Kubernetes StatefulSets using locally mounted SSDs as the data disks.
+This tutorial will cover how to deploy YugabyteDB on Kubernetes StatefulSets using locally mounted SSDs as the data disks.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

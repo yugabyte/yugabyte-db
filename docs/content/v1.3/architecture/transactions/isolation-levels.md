@@ -11,7 +11,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte DB supports two isolation levels.
+YugabyteDB supports two isolation levels.
 
 - [Snapshot isolation](https://en.wikipedia.org/wiki/Snapshot_isolation), also known as SI, which is an transaction isolation level that guarantees that all reads made in a transaction will see a consistent snapshot of the database, and the transaction itself will successfully commit only if no updates it has made conflict with any concurrent updates made by transactions that committed since that snapshot.
 - [Serializable](https://en.wikipedia.org/wiki/Isolation_(database_systems)#Serializable) isolation level, which would guarantee that transactions run in a way equivalent to a serial (sequential) schedule.

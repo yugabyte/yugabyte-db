@@ -3,7 +3,7 @@ title: Large Datasets
 linkTitle: Large Datasets
 description: Large Datasets
 image: /images/section_icons/architecture/concepts.png
-headcontent: Testing Yugabyte DB with large data sets.
+headcontent: Testing YugabyteDB with large data sets.
 menu:
   v1.2:
     identifier: benchmark-large-datasets
@@ -15,7 +15,7 @@ isTocNested: True
 
 ## Goal
 
-The goal of this benchmark is to understand the performance, failure and scaling characterics of Yugabyte DB with a massive dataset (multiple TB per node). In order to accomplish that, we will do the following:
+The goal of this benchmark is to understand the performance, failure and scaling characterics of YugabyteDB with a massive dataset (multiple TB per node). In order to accomplish that, we will do the following:
 
 * Load 30 billion key-value records
 * Each write operation inserts a single record
@@ -40,13 +40,13 @@ A machine in the AWS cloud with the following spec was chosen: **32-vcpus, 240 G
 
 ### Cluster Creation
 
-Create a standard 4 node cluster, with replication factor of 3. Pass the following option to the Yugabyte DB processes.
+Create a standard 4 node cluster, with replication factor of 3. Pass the following option to the YugabyteDB processes.
 
 ```
 --yb_num_shards_per_tserver=20
 ```
 
-The `yb_num_shards_per_tserver` was set to **20** (from the default value of 8). This is done because the i3.8xlarge nodes have 4 disks. In future, Yugabyte DB will automatically pick better defaults for nodes with multiple disks.
+The `yb_num_shards_per_tserver` was set to **20** (from the default value of 8). This is done because the i3.8xlarge nodes have 4 disks. In future, YugabyteDB will automatically pick better defaults for nodes with multiple disks.
 
 Export the following environment variable:
 ```

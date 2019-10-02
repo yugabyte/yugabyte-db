@@ -177,7 +177,7 @@ yb-tserver-1   1/1       Running   1          34m
 yb-tserver-2   1/1       Running   0          7s
 ```
 
-Yugabyte DB's fault tolerance when combined with Kubernetes's automated operations ensures that planet-scale applications can be run with ease while ensuring extreme data resilience.
+YugabyteDB's fault tolerance when combined with Kubernetes's automated operations ensures that planet-scale applications can be run with ease while ensuring extreme data resilience.
 
 ## 6. Clean up (optional)
 

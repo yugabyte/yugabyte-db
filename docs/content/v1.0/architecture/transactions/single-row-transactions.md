@@ -9,12 +9,12 @@ menu:
     weight: 1052
 ---
 
-Yugabyte DB currently offers ACID semantics for mutations involving a single row or rows that fall
+YugabyteDB currently offers ACID semantics for mutations involving a single row or rows that fall
 within the same shard (partition, tablet). These mutations incur only one network roundtrip between
 the distributed consensus peers.
 
 Even read-modify-write operations within a single row or single shard, such as the following incur
-only one round trip in Yugabyte DB.
+only one round trip in YugabyteDB.
 
 ```sql
    UPDATE table SET x = x + 1 WHERE ...
@@ -28,7 +28,7 @@ latency](https://docs.datastax.com/en/cassandra/3.0/cassandra/dml/dmlLtwtTransac
 
 ## Hybrid time as an MVCC timestamp
 
-Yugabyte DB implements [MVCC](https://en.wikipedia.org/wiki/Multiversion_concurrency_control)
+YugabyteDB implements [MVCC](https://en.wikipedia.org/wiki/Multiversion_concurrency_control)
 (multiversion concurrency control) and internally keeps track of multiple versions of values
 corresponding to the same key, e.g. of a particular column in a particular row. The details of how
 multiple versions of the same key are stored in each replica's DocDB are described in the [Encoding
@@ -44,7 +44,7 @@ chain of the form "A happens before B on the same server" or "A happens on one s
 sends an RPC to another server, where B happens", always get assigned hybrid timestamps in an
 increasing order. This is achieved by propagating a hybrid timestamp with most RPC requests, and
 always updating the hybrid time on the receiving server to the highest value seen, including the
-current physical time on the server.  Multiple aspects of Yugabyte DB's transaction model rely on
+current physical time on the server.  Multiple aspects of YugabyteDB's transaction model rely on
 these properties of Hybrid Time, e.g.:
 
 * Hybrid timestamps assigned to committed Raft log entries in the same tablet always keep

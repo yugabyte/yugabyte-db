@@ -13,7 +13,7 @@ $ pip install psycopg2-binary
 
 This tutorial assumes that you have:
 
-- installed Yugabyte DB and created a universe with YSQL enabled. If not, please follow these steps in the [quick start guide](../../../quick-start/test-ysql/).
+- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [quick start guide](../../../quick-start/test-ysql/).
 
 
 ### Writing the python code

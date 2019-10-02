@@ -9,7 +9,7 @@ menu:
     weight: 950
 ---
 
-Yugabyte DB replicates data in order to survive failures while continuing to maintain consistency of
+YugabyteDB replicates data in order to survive failures while continuing to maintain consistency of
 data and not requiring operator intervention. **Replication Factor** (or RF) is the number of copies
 of data in a Yugabyte universe. **Fault Tolerance** (or FT) of a Yugabyte universe is the maximum
 number of node failures it can survive while continuing to preserve correctness of data. FT and RF
@@ -18,7 +18,7 @@ are highly correlated. To achieve a FT of k nodes, the universe has to be config
 
 ## Strong write consistency
 
-Replication of data in Yugabyte DB is achieved at the level of tablets, using **tablet-peers**. Each
+Replication of data in YugabyteDB is achieved at the level of tablets, using **tablet-peers**. Each
 tablet comprises of a set of tablet-peers - each of which stores one copy of the data belonging to
 the tablet. There are as many tablet-peers for a tablet as the replication factor, and they form a
 Raft group. The tablet-peers are hosted on different nodes to allow data redundancy on node
@@ -49,14 +49,14 @@ performed as a controlled background operation without any impact to the foregro
 ## Tunable read consistency
 
 Only the tablet leader can process user-facing write and read requests. Note that while this is the
-case for strongly consistent reads, Yugabyte DB offers reading from **followers** with relaxed
+case for strongly consistent reads, YugabyteDB offers reading from **followers** with relaxed
 guarantees which is desired in some deployment models. All other tablet-peers are called followers
 and merely replicate data, and are available as hot standbys that can take over quickly in case the
 leader fails.
 
 ## Read-only replicas
 
-In addition to the core distributed consensus based replication, Yugabyte DB extends Raft to add
+In addition to the core distributed consensus based replication, YugabyteDB extends Raft to add
 read-only replicas (aks observer nodes) that do not participate in writes but get a timeline consistent
 copy of the data in an asynchronous manner. Nodes in remote  datacenters can thus be added in "read-only"
 mode. This is primarily for cases where latency of doing a distributed consensus based write is not

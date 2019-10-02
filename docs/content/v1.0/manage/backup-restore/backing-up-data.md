@@ -3,7 +3,7 @@ title: Backing Up Data
 linkTitle: Backing Up Data
 description: Backing Up Data
 image: /images/section_icons/manage/enterprise.png
-headcontent: Backing up data in Yugabyte DB.
+headcontent: Backing up data in YugabyteDB.
 menu:
   v1.0:
     identifier: manage-backup-restore-backing-up-data
@@ -13,19 +13,19 @@ menu:
 
 ## Overview
 
-This page covers backups for Yugabyte DB CE. Here are some points to keep in mind.
+This page covers backups for YugabyteDB CE. Here are some points to keep in mind.
 
-- Export-based backups (Yugabyte DB CE)
+- Export-based backups (YugabyteDB CE)
   - Single row ACID backups
   - Backup the schema and data separately
   - Multi-threaded parallelism
 
-- Distributed backups (Yugabyte DB EE)
+- Distributed backups (YugabyteDB EE)
   - Single tablet ACID backups
   - Integrated backup solution, integrated with object stores such as AWS S3
   - Massively parallel, efficient for very large data sets
 
-Dump the keyspace schema (optional) as well as the data in the tables to create a backup of the data in Yugabyte DB. Here are some points to bear in mind.
+Dump the keyspace schema (optional) as well as the data in the tables to create a backup of the data in YugabyteDB. Here are some points to bear in mind.
 
 ## Schema backup
 
@@ -102,7 +102,7 @@ There are a number of useful options in the `COPY TO` command used to perform th
 
 We are going to use the example shown in the [quick start](../../../quick-start/test-cassandra/) section in order to demonstrate how to perform backups.
 
-This section assumes you already have a Yugabyte DB cluster. You can install a local cluster on your laptop using [these quick start instructions](../../../quick-start/install/).
+This section assumes you already have a YugabyteDB cluster. You can install a local cluster on your laptop using [these quick start instructions](../../../quick-start/install/).
 
 ### Create a table with data
 

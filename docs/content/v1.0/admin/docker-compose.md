@@ -9,7 +9,7 @@ menu:
     weight: 2430
 ---
 
-Use the popular [docker-compose](https://docs.docker.com/compose/overview/) utility to create and manage Yugabyte DB local clusters.
+Use the popular [docker-compose](https://docs.docker.com/compose/overview/) utility to create and manage YugabyteDB local clusters.
 
 ## 1. Create a single node cluster
 
@@ -74,7 +74,7 @@ $ docker exec -it yb-master-n1 /home/yugabyte/bin/yb-admin --master_addresses yb
 Clients can now connect to the YCQL service at localhost:9042, to the YEDIS API at localhost:6379, and to the PostgreSQL(Beta) service at localhost:5433. The yb-master admin service is available at http://localhost:7000.
 
 
-## 3. Test the various Yugabyte DB APIs
+## 3. Test the various YugabyteDB APIs
 
 Follow the instructions in the Quick Start section with Docker using the links below.
 

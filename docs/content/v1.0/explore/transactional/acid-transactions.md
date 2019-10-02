@@ -12,14 +12,14 @@ menu:
 
 Distributed ACID transactions batch a multi-step, multi-table operation into a single, all-or-nothing operation. The intermediate states of the database between the steps in a transaction are not visible to other concurrent transactions or the end user. If the transaction encounters any failures that prevents it from completing successfully, none of the steps are applied to the database.
 
-Yugabyte DB is designed to support transactions at the following isolation levels:
+YugabyteDB is designed to support transactions at the following isolation levels:
 
 - Snapshot Isolation (currently supported)
 - Serializable (work in progress)
 
 You can [read more about transactions](../../../architecture/transactions/) in our architecture docs.
 
-If you haven't installed Yugabyte DB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
+If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

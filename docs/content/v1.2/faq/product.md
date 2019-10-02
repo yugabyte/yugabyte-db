@@ -11,9 +11,9 @@ isTocNested: false
 showAsideToc: true
 ---
 
-## When is Yugabyte DB a good fit?
+## When is YugabyteDB a good fit?
 
-Yugabyte DB is a good fit for fast-growing, cloud native applications that need to serve business-critical data reliably, with zero data loss, high availability and low latency. Common use cases include:
+YugabyteDB is a good fit for fast-growing, cloud native applications that need to serve business-critical data reliably, with zero data loss, high availability and low latency. Common use cases include:
 
 1. Distributed Online Transaction Processing (OLTP) applications needing multi-region scalability without compromising strong consistency and low latency. E.g. User identity, Retail product catalog, Financial data service.
 
@@ -23,14 +23,14 @@ Yugabyte DB is a good fit for fast-growing, cloud native applications that need 
 
 A few such use cases are detailed [here](https://www.yugabyte.com/).
 
-## When is Yugabyte DB not a good fit?
+## When is YugabyteDB not a good fit?
 
-Yugabyte DB is not a good fit for traditional Online Analytical Processing (OLAP) use cases that need complete ad-hoc analytics. Use an OLAP store such as [Druid](http://druid.io/druid.html) or a data warehouse such as [Snowflake](https://www.snowflake.net/).
+YugabyteDB is not a good fit for traditional Online Analytical Processing (OLAP) use cases that need complete ad-hoc analytics. Use an OLAP store such as [Druid](http://druid.io/druid.html) or a data warehouse such as [Snowflake](https://www.snowflake.net/).
 
 
-## How many major releases Yugabyte DB has had so far?
+## How many major releases YugabyteDB has had so far?
 
-Yugabyte DB has had 4 major releases.
+YugabyteDB has had 4 major releases.
 
 - [v0.9 Beta](https://blog.yugabyte.com/yugabyte-has-arrived/) in November 2017
 - [v1.0](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-%F0%9F%8D%BE-%F0%9F%8E%89/) in May 2018
@@ -39,11 +39,11 @@ Yugabyte DB has had 4 major releases.
 
 Next major release is the v2.0 release in Summer 2019.
 
-## Can I deploy Yugabyte DB to production?
+## Can I deploy YugabyteDB to production?
 
-Yes, Yugabyte DB is [production ready](https://blog.yugabyte.com/yugabyte-db-1-0-a-peek-under-the-hood/) starting with v1.0 in May 2018. The YSQL API is in beta and is expected to reach production readiness in the v2.0 (Summer 2019).
+Yes, YugabyteDB is [production ready](https://blog.yugabyte.com/yugabyte-db-1-0-a-peek-under-the-hood/) starting with v1.0 in May 2018. The YSQL API is in beta and is expected to reach production readiness in the v2.0 (Summer 2019).
 
-## Which companies are currently using Yugabyte DB in production?
+## Which companies are currently using YugabyteDB in production?
 
 Reference deployments are listed [here](https://www.yugabyte.com/all-resources/resource-parent/case-studies/).
 
@@ -61,31 +61,31 @@ Please do try our beta features and give feedback on them on our [Slack channel]
 
 ## Any performance benchmarks available?
 
-[Yahoo Cloud Serving Benchmark (YCSB)](https://github.com/brianfrankcooper/YCSB/wiki) is a popular benchmarking framework for NoSQL databases. We benchmarked Yugabyte Cassandra API against the standard Apache Cassandra using YCSB. Yugabyte DB outperformed Apache Cassandra by increasing margins as the number of keys (data density) increased across all the 6 YCSB workload configurations. 
+[Yahoo Cloud Serving Benchmark (YCSB)](https://github.com/brianfrankcooper/YCSB/wiki) is a popular benchmarking framework for NoSQL databases. We benchmarked Yugabyte Cassandra API against the standard Apache Cassandra using YCSB. YugabyteDB outperformed Apache Cassandra by increasing margins as the number of keys (data density) increased across all the 6 YCSB workload configurations. 
 
-[Netflix Data Benchmark (NDBench)](https://github.com/Netflix/ndbench) is another publicly available, cloud-enabled benchmark tool for data store systems. We ran NDBench against Yugabyte DB for 7 days and observed P99 and P995 latencies that were orders of magnitude less than that of Apache Cassandra. 
+[Netflix Data Benchmark (NDBench)](https://github.com/Netflix/ndbench) is another publicly available, cloud-enabled benchmark tool for data store systems. We ran NDBench against YugabyteDB for 7 days and observed P99 and P995 latencies that were orders of magnitude less than that of Apache Cassandra. 
 
 Details for both the above benchhmarks are published in [Building a Strongly Consistent Cassandra with Better Performance](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
 
 ## What about correctness testing?
 
-[Jepsen](https://jepsen.io/) is a widely used framework to evaluate databases’ behavior under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. Yugabyte DB 1.2 passes [formal Jepsen testing](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/). 
+[Jepsen](https://jepsen.io/) is a widely used framework to evaluate databases’ behavior under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. YugabyteDB 1.2 passes [formal Jepsen testing](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/). 
 
 ## Is the Community Edition open source?
 
-Yes, the Community Edition is a completely open source, fully functioning version of Yugabyte DB. It is licensed under Apache 2.0 and the source is available on [GitHub](https://github.com/yugabyte/yugabyte-db).
+Yes, the Community Edition is a completely open source, fully functioning version of YugabyteDB. It is licensed under Apache 2.0 and the source is available on [GitHub](https://github.com/yugabyte/yugabyte-db).
 
 ## How do the Community Edition and the Enterprise Edition differ from each other?
 
-[Community Edition](../../quick-start/) is the best choice for the startup organizations with strong technical operations expertise looking to deploy Yugabyte DB into production with traditional DevOps tools.
+[Community Edition](../../quick-start/) is the best choice for the startup organizations with strong technical operations expertise looking to deploy YugabyteDB into production with traditional DevOps tools.
 
-[Enterprise Edition](../../deploy/enterprise-edition/) includes all the features of the Community Edition as well as additional features such as built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run Yugabyte DB in mission-critical production environments with one or more regions (across both public cloud and on-premises datacenters).
+[Enterprise Edition](../../deploy/enterprise-edition/) includes all the features of the Community Edition as well as additional features such as built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugabyteDB in mission-critical production environments with one or more regions (across both public cloud and on-premises datacenters).
 
 A more detailed comparison of the two editions is available [here](https://www.yugabyte.com/community-edition/#compare-editions).
 
-## How does Yugabyte DB compare to other SQL and NoSQL databases?
+## How does YugabyteDB compare to other SQL and NoSQL databases?
 
-See [Yugabyte DB in Comparison](../../comparisons/)
+See [YugabyteDB in Comparison](../../comparisons/)
 
 - [Google Cloud Spanner](../../comparisons/google-spanner/)
 - [CockroachDB](https://www.yugabyte.com/yugabyte-db-vs-cockroachdb/)

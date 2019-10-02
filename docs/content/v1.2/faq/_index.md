@@ -19,7 +19,7 @@ menu:
         <div class="title">Introduction</div>
       </div>
       <div class="body">
-        Learn Yugabyte DB's unique value proposition.
+        Learn YugabyteDB's unique value proposition.
       </div>
     </a>
   </div>
@@ -67,7 +67,7 @@ menu:
         <div class="title">Enterprise Edition</div>
       </div>
       <div class="body">
-        Running Yugabyte DB using the Enterprise Edition.
+        Running YugabyteDB using the Enterprise Edition.
       </div>
     </a>
   </div>

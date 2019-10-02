@@ -25,7 +25,7 @@ In order to enable use cases such as ordered secondary indexes, support for rang
 
 ## Hash Partitioning Tables
 
-The hash space for hash partitioned Yugabyte DB tables is the 2-byte range from 0x0000 to 0xFFFF. Such
+The hash space for hash partitioned YugabyteDB tables is the 2-byte range from 0x0000 to 0xFFFF. Such
 a table may therefore have at most 64K tablets. We expect this to be sufficient in practice even for
 very large data sets or cluster sizes.
 

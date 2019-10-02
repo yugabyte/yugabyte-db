@@ -60,7 +60,7 @@ Now we should have 5 nodes. Refresh the <a href='http://localhost:7000/tablet-se
 
 ![Tablet count, data and memory sizes with 5 nodes](/images/ce/auto-rebalancing-5-nodes-docker.png)
 
-Yugabyte DB automatically balances the tablet leaders and followers of a universe by moving them in a rate-limited manner into the newly added nodes. This automatic balancing of the data is completely transparent to the application logic.
+YugabyteDB automatically balances the tablet leaders and followers of a universe by moving them in a rate-limited manner into the newly added nodes. This automatic balancing of the data is completely transparent to the application logic.
 
 
 ## 6. Clean up (optional)

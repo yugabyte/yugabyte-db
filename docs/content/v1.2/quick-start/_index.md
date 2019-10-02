@@ -3,7 +3,7 @@ title: Community Edition Quick Start
 linkTitle: Quick Start
 description: Community Edition Quick Start
 image: /images/section_icons/index/quick_start.png
-headcontent: The easiest way to test Yugabyte DB's basic features and APIs is to create a local cluster on a single host.
+headcontent: The easiest way to test YugabyteDB's basic features and APIs is to create a local cluster on a single host.
 type: page
 section: GET STARTED
 menu:
@@ -24,7 +24,7 @@ We do not recommend a local cluster setup on a single host for production deploy
     <a class="section-link icon-offset" href="install/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">1. Install Yugabyte DB</div>
+        <div class="title">1. Install YugabyteDB</div>
       </div>
       <div class="body">
         Install the binary on macOS/Linux or use Docker/Kubernetes to run on any OS of choice.

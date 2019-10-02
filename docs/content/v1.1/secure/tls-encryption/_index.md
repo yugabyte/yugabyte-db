@@ -2,7 +2,7 @@
 title: TLS Encryption
 linkTitle: TLS Encryption
 description: TLS Encryption
-headcontent: Enable TLS encryption over the wire in Yugabyte DB (enterprise edition only).
+headcontent: Enable TLS encryption over the wire in YugabyteDB (enterprise edition only).
 image: /images/section_icons/secure/tls-encryption.png
 menu:
   v1.1:
@@ -14,17 +14,17 @@ menu:
 {{< note title="Note" >}}
 
 
-TLS encryption is only supported in [Yugabyte DB Enterprise Edition](https://www.yugabyte.com/enterprise-edition/).
+TLS encryption is only supported in [YugabyteDB Enterprise Edition](https://www.yugabyte.com/enterprise-edition/).
 {{< /note >}}
 
-Yugabyte DB uses OpenSSL (native to Linux/BSD operating systems) in order to perform TLS encryption. You can configure Yugabyte DB to encrypt all network communication. The following communication is encrypted: 
+YugabyteDB uses OpenSSL (native to Linux/BSD operating systems) in order to perform TLS encryption. You can configure YugabyteDB to encrypt all network communication. The following communication is encrypted: 
 
 * Server to server (for example, between YB-Masters and YB-TServers)
 * Client to server (including connecting to the cluster using a command line shell)
 
 Note that YEDIS does not currently support TLS encryption, however this is on the roadmap. Please [open a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues) if this is of interest.
 
-In this section, we will look at how to setup a 3 node Yugabyte DB cluster with TLS encryption enabled.
+In this section, we will look at how to setup a 3 node YugabyteDB cluster with TLS encryption enabled.
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -67,7 +67,7 @@ In this section, we will look at how to setup a 3 node Yugabyte DB cluster with 
         <div class="title">4. Connect to cluster</div>
       </div>
       <div class="body">
-          Connecting to a Yugabyte DB cluster with TLS encryption enabled.
+          Connecting to a YugabyteDB cluster with TLS encryption enabled.
       </div>
     </a>
   </div>

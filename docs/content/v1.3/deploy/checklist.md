@@ -13,25 +13,25 @@ showAsideToc: true
 
 ## Overview
 
-Yugabyte DB consists of two distributed services - the YB-Master service and the YB-TServer service. The YB-Master service should be brought up first followed by the YB-TServer service. In order to bring up these distributed services, the respective processes (YB-Master or YB-TServer) need to be started across different machines. Below are some considerations and recommendations on starting these services. The *deployment configurations* section below has detailed steps on how to setup Yugabyte clusters.
+YugabyteDB consists of two distributed services - the YB-Master service and the YB-TServer service. The YB-Master service should be brought up first followed by the YB-TServer service. In order to bring up these distributed services, the respective processes (YB-Master or YB-TServer) need to be started across different machines. Below are some considerations and recommendations on starting these services. The *deployment configurations* section below has detailed steps on how to setup Yugabyte clusters.
 
 ## Basics
 
-- Yugabyte DB works on a variety of OSes. For production workloads, the recommended OS is **Centos 7.x** or **RHEL 7.x**.
-- Set the appropriate [system limits using `ulimit`](../manual-deployment/system-config/#setting-ulimits) on each node running a Yugabyte DB process.
+- YugabyteDB works on a variety of OSes. For production workloads, the recommended OS is **Centos 7.x** or **RHEL 7.x**.
+- Set the appropriate [system limits using `ulimit`](../manual-deployment/system-config/#setting-ulimits) on each node running a YugabyteDB process.
 - Use [ntp](../manual-deployment/system-config/#ntp) to synchronize time among the machines.
 
 ## Replication
 
-Yugabyte DB internally replicates data in order to survive node failure without compromising data correctness. The number of copies of the data represents the replication factor.
+YugabyteDB internally replicates data in order to survive node failure without compromising data correctness. The number of copies of the data represents the replication factor.
 
-You would first need to choose a replication factor. You would need at least as many machines as the replication factor. Yugabyte DB works with both hostnames or IP addresses. IP Addresses are preferred at this point, they are more extensively tested. Below are some recommendations relating to the replication factor.
+You would first need to choose a replication factor. You would need at least as many machines as the replication factor. YugabyteDB works with both hostnames or IP addresses. IP Addresses are preferred at this point, they are more extensively tested. Below are some recommendations relating to the replication factor.
 
 - The replication factor should be an odd number
 - The default replication factor is **3**.
     - A replication factor of **3** allows tolerating one machine failure.
     - A replication factor of **5** allows tolerating two machine failures.
-    - More generally, if the replication factor is `n`, Yugabyte DB can survive `(n - 1) / 2` failures without compromising correctness or availability of data.
+    - More generally, if the replication factor is `n`, YugabyteDB can survive `(n - 1) / 2` failures without compromising correctness or availability of data.
 - Number of YB-Master processes running in a cluster should match replication factor. Run each process on a separate machine to prevent losing data on failures.
 - Number of YB-TServer processes running in the cluster should not be less than the replication factor. Run each process on a separate machine to prevent losing data on failures.
 - Specify the replication factor using the `--replication_factor` when bringing up the YB-Master processes.
@@ -40,11 +40,11 @@ See the [yb-master command reference](../manual-deployment/start-masters) for mo
 
 ## Hardware Requirements
 
-Yugabyte DB is designed to run well on bare-metal machines, virtual machines or containers.
+YugabyteDB is designed to run well on bare-metal machines, virtual machines or containers.
 
 ### CPU and RAM
 
-Allocate adequate CPU and RAM. Yugabyte DB has good defaults for running on a wide range of machines, and has been tested from 2 core to 64 core machines, and up to 200GB RAM.
+Allocate adequate CPU and RAM. YugabyteDB has good defaults for running on a wide range of machines, and has been tested from 2 core to 64 core machines, and up to 200GB RAM.
 
 - Minimum configuration: **2 cores** and **2GB RAM**
 - For higher performance:
@@ -54,9 +54,9 @@ Allocate adequate CPU and RAM. Yugabyte DB has good defaults for running on a wi
 ### Disks
 
 - Use SSDs (solid state disks) for good performance.
-- Both local or remote attached storage work with Yugabyte DB. Since Yugabyte DB internally replicates data for fault tolerance, remote attached storage which which does its own additional replication is not a requirement. Local disks often offer better performance at a lower cost.
+- Both local or remote attached storage work with YugabyteDB. Since YugabyteDB internally replicates data for fault tolerance, remote attached storage which which does its own additional replication is not a requirement. Local disks often offer better performance at a lower cost.
 - Multi-disk nodes
-      - Do not use RAID across multiple disks. Yugabyte DB can natively handle multi-disk nodes (JBOD).
+      - Do not use RAID across multiple disks. YugabyteDB can natively handle multi-disk nodes (JBOD).
       - Create a data directory on each of the data disks and specify a comma separated list of those directories to the yb-master and yb-tserver processes via the --fs_data_dirs flag
 - Mount settings
       - XFS is the recommended filesystem
@@ -64,9 +64,9 @@ Allocate adequate CPU and RAM. Yugabyte DB has good defaults for running on a wi
 
 ### Network
 
-Below is a minimal list of default ports (along with the network access required) in order to use Yugabyte DB.
+Below is a minimal list of default ports (along with the network access required) in order to use YugabyteDB.
 
-- Each of the nodes in the Yugabyte DB cluster must be able to communicate with each other using TCP/IP on the following ports
+- Each of the nodes in the YugabyteDB cluster must be able to communicate with each other using TCP/IP on the following ports
       - 7100 (YB-Master RPC communication port)
       - 9100 (YB-Tserver RPC communication port)
 - In order to view the cluster dashboard, you need to be able to navigate to the following ports on the nodes
@@ -100,11 +100,11 @@ In our Enterprise installs, we change the SSH port for added security.
 
 ## Clock Synchronization
 
-For Yugabyte DB to preserve data consistency, the clock drift and clock skew across different nodes must be bounded. This can be achieved by running a clock synchronization software such as [NTP](http://www.ntp.org/). Below are some recommendations on how to configure clock synchronization.
+For YugabyteDB to preserve data consistency, the clock drift and clock skew across different nodes must be bounded. This can be achieved by running a clock synchronization software such as [NTP](http://www.ntp.org/). Below are some recommendations on how to configure clock synchronization.
 
 ### Clock Skew
 
-Set a safe value for the maximum clock skew parameter (`--max_clock_skew_usec`) when starting the Yugabyte DB processes. We recommend setting this parameter to twice the expected maximum clock skew between any two nodes in your deployment.
+Set a safe value for the maximum clock skew parameter (`--max_clock_skew_usec`) when starting the YugabyteDB processes. We recommend setting this parameter to twice the expected maximum clock skew between any two nodes in your deployment.
 
 For example, if the maximum clock skew across nodes is expected to be no more than 250ms, then set the parameter to 500ms (`--max_clock_skew_usec=500000`).
 

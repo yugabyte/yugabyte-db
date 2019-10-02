@@ -122,7 +122,7 @@ out useful/hot data.
 ## Mapping DocDB documents to RocksDB
 
 DocDB is the storage layer that acts as the common backbone of different APIs that are supported by
-Yugabyte DB (currently YCQL, YEDIS, and YSQL(beta)).
+YugabyteDB (currently YCQL, YEDIS, and YSQL(beta)).
 
 
 The documents are stored using a key-value store based on RocksDB, which is typeless. The documents

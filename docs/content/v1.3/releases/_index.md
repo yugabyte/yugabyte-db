@@ -2,7 +2,7 @@
 title: Release history
 linkTitle: Release history
 description: Release history
-headcontent: History of important Yugabyte DB releases.
+headcontent: History of important YugabyteDB releases.
 image: /images/section_icons/quick_start/install.png
 section: RELEASES
 menu:
@@ -11,7 +11,7 @@ menu:
     weight: 2690
 ---
 
-Download Yugabyte DB using the table below and then follow the [Quick Start](../quick-start/) instructions to get started.
+Download YugabyteDB using the table below and then follow the [Quick Start](../quick-start/) instructions to get started.
 
 Release | Date | Binary | Docker Image Tag
 --------|------|-------------------------------|-----------------

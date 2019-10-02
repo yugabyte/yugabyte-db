@@ -30,7 +30,7 @@ Roles that have `LOGIN` privileges are users. As an example, you can create a us
 cassandra@cqlsh> CREATE ROLE IF NOT EXISTS john WITH PASSWORD = 'PasswdForJohn' AND LOGIN = true;
 ```
 
-Read about [how to create users in Yugabyte DB](../../authentication/) in the authentication section.
+Read about [how to create users in YugabyteDB](../../authentication/) in the authentication section.
 
 
 ## 2. Grant roles

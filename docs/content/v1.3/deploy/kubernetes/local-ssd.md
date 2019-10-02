@@ -13,7 +13,7 @@ menu:
 
 Kubernetes gives users the option of using remote disks using dynamic provisioning or local storage which has to be pre-provisioned.
 
-Local storage gives great performance but the data is not replicated and can be lost if the node fails. This option is ideal for databases like Yugabyte DB that manage their own replication and can guarantee HA.
+Local storage gives great performance but the data is not replicated and can be lost if the node fails. This option is ideal for databases like YugabyteDB that manage their own replication and can guarantee HA.
 
 Remote storage has slightly lower performance but the data is resilient to failures. This type of storage is absolutely essential for databases that do not offer HA (for example, traditional RDBMSs like Postgres and MySQL).
 
@@ -31,7 +31,7 @@ Below is a table that summarizes the features and when to use local vs remote st
     <td>Yes</td>
   </tr>
   <tr>
-    <td>Ideal deployment strategy with Yugabyte DB</td>
+    <td>Ideal deployment strategy with YugabyteDB</td>
     <td>Use for latency sensitive apps <br> Add remote storage to increase capacity / cost-efficient tiering</td>
     <td>Use for large disk capacity per node</td>
   </tr>
@@ -62,7 +62,7 @@ Below is a table that summarizes the features and when to use local vs remote st
   </tr>
 </table>
 
-Thus, it is generally preferable to use local storage where possible for higher performance and lower costs. The following section explains how to deploy Yugabyte DB on Kubernetes using local SSDs.
+Thus, it is generally preferable to use local storage where possible for higher performance and lower costs. The following section explains how to deploy YugabyteDB on Kubernetes using local SSDs.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

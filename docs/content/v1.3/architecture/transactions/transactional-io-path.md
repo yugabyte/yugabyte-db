@@ -13,7 +13,7 @@ showAsideToc: true
 
 ## Introduction
 
-For an overview of some common concepts used in Yugabyte DB's implementation of distributed
+For an overview of some common concepts used in YugabyteDB's implementation of distributed
 transactions, see [Distributed ACID transactions](../distributed-txns/) section. In this section, 
 we will go over the write path of a transaction modifying multiple
 keys, and the read path for reading a consistent combination of values from multiple tablets.
@@ -88,7 +88,7 @@ Once all participating tablets have successfully processed these "apply" request
 
 ## Read path
 
-Yugabyte DB is an [MVCC](https://en.wikipedia.org/wiki/Multiversion_concurrency_control) database, which means it internally keeps track of multiple versions of the same value. Read operations don't take any locks, and rely on the MVCC timestamp in order to read a consistent snapshot of the data. A long-running read operation, either single-shard or cross-shard, can proceed concurrently with write operations modifying the same key.
+YugabyteDB is an [MVCC](https://en.wikipedia.org/wiki/Multiversion_concurrency_control) database, which means it internally keeps track of multiple versions of the same value. Read operations don't take any locks, and rely on the MVCC timestamp in order to read a consistent snapshot of the data. A long-running read operation, either single-shard or cross-shard, can proceed concurrently with write operations modifying the same key.
 
 In the [ACID transactions](../) section, we talked about how up-to-date reads are performed from a single shard (tablet). In that case, the most recent value of a key is simply the value written by the last committed Raft log record that the Raft leader knows about. For reading multiple keys from different tablets, though, we have to make sure that the values we read come from a recent consistent snapshot of the database.  Here is a clarification of these two properties of the snapshot we have to choose:
 
@@ -103,7 +103,7 @@ In the [ACID transactions](../) section, we talked about how up-to-date reads ar
 The client's request to either the YCQL or YEDIS or YSQL API arrives at the YQL engine of a tablet server. The YQL engine
 detects that the query requests rows from multiple tablets and starts a read-only transaction.  A hybrid time **ht_read** is selected for the request, which could be either the current hybrid time on the YQL engine's tablet server, or the [safe time](../single-row-transactions/#safe-timestamp-assignment-for-a-read-request) on one of the involved tablets. The latter case would reduce waiting for safe time for at least that tablet and is therefore better for performance. Typically, due to our load-balancing policy, the YQL engine receiving the request will also host some of the tablets that the request is reading, allowing to implement the more performant second option without an additional RPC round-trip.
 
-We also select a point in time we call **global_limit**, computed as `physical_time + max_clock_skew`, which allows us to determine whether a particular record was written *definitely after* our read request started. **max_clock_skew** is a globally configured bound on clock skew between different Yugabyte DB servers. 
+We also select a point in time we call **global_limit**, computed as `physical_time + max_clock_skew`, which allows us to determine whether a particular record was written *definitely after* our read request started. **max_clock_skew** is a globally configured bound on clock skew between different YugabyteDB servers. 
 
 ### 2. Read from all tablets at the chosen hybrid time
 
@@ -159,4 +159,4 @@ appropriate wire protocol.
 
 ## See also
 
-See [Distributed ACID transactions](../distributed-txns/) section to review some common concepts relevant to Yugabyte DB's implementation of distributed transactions.
+See [Distributed ACID transactions](../distributed-txns/) section to review some common concepts relevant to YugabyteDB's implementation of distributed transactions.

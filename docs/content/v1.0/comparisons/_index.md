@@ -3,7 +3,7 @@ title: Comparisons
 linkTitle: Comparisons
 description: Comparisons
 image: /images/section_icons/index/comparisons.png
-headcontent: This page highlights how Yugabyte DB compares against other operational databases in the NoSQL and distributed SQL categories. Click on the database name in the table header to see a more detailed comparison.
+headcontent: This page highlights how YugabyteDB compares against other operational databases in the NoSQL and distributed SQL categories. Click on the database name in the table header to see a more detailed comparison.
 menu:
   v1.0:
     identifier: comparisons
@@ -12,7 +12,7 @@ menu:
 
 ## NoSQL Databases
 
-Feature | [Apache Cassandra](cassandra/) | [Redis](redis/) | [MongoDB](mongodb/) | [Apache HBase](hbase/) |AWS DynamoDB | [MS Azure CosmosDB](azure-cosmos/)| Yugabyte DB
+Feature | [Apache Cassandra](cassandra/) | [Redis](redis/) | [MongoDB](mongodb/) | [Apache HBase](hbase/) |AWS DynamoDB | [MS Azure CosmosDB](azure-cosmos/)| YugabyteDB
 --------|-----------|-------|---------|--------|-------------|--------------|-----------------
 Linear Read &amp; Write Scalability | <i class="fas fa-check"></i> |<i class="fas fa-times"></i>| <i class="fas fa-check"></i> |<i class="fas fa-check"></i>| <i class="fas fa-check"></i> | <i class="fas fa-check"></i> | <i class="fas fa-check"></i>
 Automated Failover &amp; Repair | <i class="fas fa-check"></i> |<i class="fas fa-times"></i>| <i class="fas fa-check"></i> |<i class="fas fa-check"></i>|<i class="fas fa-check"></i> | <i class="fas fa-check"></i> | <i class="fas fa-check"></i>
@@ -31,7 +31,7 @@ Open Source | Apache 2.0 | 3-Clause BSD| AGPL 3.0 | Apache 2.0| <i class="fas fa
 
 ## Distributed SQL Databases
 
-Feature |  Clustrix | CockroachDB | AWS Aurora | [MS Azure CosmosDB](azure-cosmos/) | [Google Spanner](google-spanner/) | Yugabyte DB
+Feature |  Clustrix | CockroachDB | AWS Aurora | [MS Azure CosmosDB](azure-cosmos/) | [Google Spanner](google-spanner/) | YugabyteDB
 --------|---------|-------------|------------|----------------|----------------|-------------
 Linear Write Scalability | <i class="fas fa-check"></i> |  <i class="fas fa-check"></i> | <i class="fas fa-times"></i> |<i class="fas fa-check">| <i class="fas fa-check"></i> | <i class="fas fa-check"></i>
 Linear Read Scalability | <i class="fas fa-check"></i> |  <i class="fas fa-check"></i> | <i class="fas fa-check"></i> |<i class="fas fa-check">| <i class="fas fa-check"></i> | <i class="fas fa-check"></i>

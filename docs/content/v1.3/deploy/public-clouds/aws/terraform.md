@@ -54,7 +54,7 @@ module "yugabyte-db-cluster" {
   vpc_id = "VPC_ID_HERE"
   subnet_ids = ["SUBNET_ID_HERE"]
 
-  # Replication factor of the Yugabyte DB cluster.
+  # Replication factor of the YugabyteDB cluster.
   replication_factor = "3"
 
   # The number of nodes in the cluster, this cannot be lower than the replication factor.
@@ -113,7 +113,7 @@ The following resources are created by this module:
 
 For cluster named `test-cluster`, the instances will be named `yb-ce-test-cluster-n1`, `yb-ce-test-cluster-n2`, `yb-ce-test-cluster-n3`.
 
-- `module.yugabyte-db-cluster.aws_security_group.yugabyte` The security group that allows the various clients to access the Yugabyte DB cluster.
+- `module.yugabyte-db-cluster.aws_security_group.yugabyte` The security group that allows the various clients to access the YugabyteDB cluster.
 
 For cluster named `test-cluster`, this security group will be named `yb-ce-test-cluster` with the ports 7000, 9000, 9042 and 6379 open to all other instances in the same security group.
 
@@ -121,7 +121,7 @@ For cluster named `test-cluster`, this security group will be named `yb-ce-test-
 
 For cluster named `test-cluster`, this security group will be named `yb-ce-test-cluster-intra` with the ports 7100, 9100 open to all other instances in the same security group.
 
-- `module.yugabyte-db-cluster.null_resource.create_yugabyte_universe` A local script that configures the newly created instances to form a new Yugabyte DB universe.
+- `module.yugabyte-db-cluster.null_resource.create_yugabyte_universe` A local script that configures the newly created instances to form a new YugabyteDB universe.
 
 ## 4. [Optional] Destroy the cluster
 

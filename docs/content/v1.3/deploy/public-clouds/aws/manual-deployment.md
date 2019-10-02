@@ -1,4 +1,4 @@
-This page documents the manual deployment of Yugabyte DB on 6 AWS EC2 instances with c5d.4xlarge as the instance type and CentOS 7 as the instance OS. The deployment is configured for multi-AZ (across 3 AZs) and is with replication factor (RF=3). The configuration can be easily changed to handle single-AZ as well as multi-region deployments.
+This page documents the manual deployment of YugabyteDB on 6 AWS EC2 instances with c5d.4xlarge as the instance type and CentOS 7 as the instance OS. The deployment is configured for multi-AZ (across 3 AZs) and is with replication factor (RF=3). The configuration can be easily changed to handle single-AZ as well as multi-region deployments.
 
 ## 1. Prerequisites
 
@@ -16,7 +16,7 @@ We now have 2 VMs each in Availability Zones `us-west-2a`, `us-west-2b`, `us-wes
 
 ### Set environment variables
 
-Now that the 6 nodes have been prepared, the yb-master process will be run on 3 of these nodes (because RF=3) and yb-tserver will be run on all 6 nodes. To learn more about Yugabyte DB’s process architecture, see [here](../../../architecture/concepts/universe/).
+Now that the 6 nodes have been prepared, the yb-master process will be run on 3 of these nodes (because RF=3) and yb-tserver will be run on all 6 nodes. To learn more about YugabyteDB’s process architecture, see [here](../../../architecture/concepts/universe/).
 
 These install steps are written in a way that we assume that you will run the install steps from another node from which you can access the above 6 VMs over “ssh”.
 
@@ -29,7 +29,7 @@ export AZ1_NODES="<ip1> <ip2> ..."
 export AZ2_NODES="<ip2> <ip2> ..."
 export AZ3_NODES="<ip1> <ip2> ..."
 
-# Version of Yugabyte DB you plan to install.
+# Version of YugabyteDB you plan to install.
 export YB_VERSION=1.3.2.1
 
 # Comma separated list of directories available for YB on each node
@@ -44,7 +44,7 @@ export DATA_DIRS=/mnt/d0
 export PEM=~/.ssh/yb-dev-aws-2.pem
 
 # We’ll assume this user has sudo access to mount drives that will
-# be used as data directories for Yugabyte DB, install xfs (or ext4
+# be used as data directories for YugabyteDB, install xfs (or ext4
 # or some reasonable file system), update system ulimits etc.
 #
 # If those steps are done differently and your image already has
@@ -78,11 +78,11 @@ export TAR_FILE=yugabyte-${YB_VERSION}-linux.tar.gz
 
 ### Prepare data drives
 
-If your AMI already has the needed hooks for mounting the devices as directories in some well defined location OR if are just trying to use a vanilla directory as the data drive for a quick experiment and do not need mounting the additional devices on your AWS volume, you can just use an arbitrary directory (like `/home/$USER/` as your data directory), and Yugabyte DB will create a `yb-data` sub-directory there (`/home/$USER/yb-data`) and use that. The steps below are are simply a guide to help use the additional volumes (install a filesystem on those volumes and mount them in some well defined location so that they can be used as data directories by Yugabyte DB).
+If your AMI already has the needed hooks for mounting the devices as directories in some well defined location OR if are just trying to use a vanilla directory as the data drive for a quick experiment and do not need mounting the additional devices on your AWS volume, you can just use an arbitrary directory (like `/home/$USER/` as your data directory), and YugabyteDB will create a `yb-data` sub-directory there (`/home/$USER/yb-data`) and use that. The steps below are are simply a guide to help use the additional volumes (install a filesystem on those volumes and mount them in some well defined location so that they can be used as data directories by YugabyteDB).
 
 #### Locate drives
 
-On each of those nodes, first locate the SSD device(s) that’ll be used as the data directories for Yugabyte DB to store data on (such as RAFT/txn logs, SSTable files, logs, etc.)
+On each of those nodes, first locate the SSD device(s) that’ll be used as the data directories for YugabyteDB to store data on (such as RAFT/txn logs, SSTable files, logs, etc.)
 
 ```sh
 $ lsblk
@@ -203,7 +203,7 @@ done
 
 #### Set ulimits
 
-To ensure proper ulimit settings needed for Yugabyte DB, add these lines to `/etc/security/limits.conf` (or appropriate location based on your OS).
+To ensure proper ulimit settings needed for YugabyteDB, add these lines to `/etc/security/limits.conf` (or appropriate location based on your OS).
 
 ```
 *       -       core    unlimited
@@ -259,7 +259,7 @@ max user processes              (-u) 12000
 core file size          (blocks, -c) unlimited
 ```
 
-## 2. Install Yugabyte DB
+## 2. Install YugabyteDB
 
 Note: The installation need NOT be undertaken by the root or the ADMIN_USER (centos). But in the examples below we are running these commands as the ADMIN_USER.
 
@@ -273,7 +273,7 @@ for ip in $ALL_NODES; do \
 done
 ```
 
-Download the Yugabyte DB package, untar and run post install to patch relative paths on all nodes.
+Download the YugabyteDB package, untar and run post install to patch relative paths on all nodes.
 
 ```sh
 for ip in $ALL_NODES; do \
@@ -661,7 +661,7 @@ http://<any-tserver-ip>:9000/utilz
 
 ### Prerequisite
 
-Create the Yugabyte DB `system_redis.redis` (which is the default Redis database 0) table using `yb-admin` or via `redis-cli`.
+Create the YugabyteDB `system_redis.redis` (which is the default Redis database 0) table using `yb-admin` or via `redis-cli`.
 
 - Using yb-admin
 

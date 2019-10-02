@@ -14,7 +14,7 @@ showAsideToc: true
 ## Introduction
 
 Review the [Distributed ACID Transactions](../distributed-txns/) section
-for an overview of some common concepts used in Yugabyte DB's implementation of distributed
+for an overview of some common concepts used in YugabyteDB's implementation of distributed
 transactions. In this section, we will go over the write path of a transaction modifying multiple
 keys, and the read path for reading a consistent combination of values from multiple tablets.
 
@@ -117,7 +117,7 @@ garbage-collection of old Raft logs soon after this point.
 
 ## Read Path
 
-Yugabyte DB is an [MVCC](https://en.wikipedia.org/wiki/Multiversion_concurrency_control) database,
+YugabyteDB is an [MVCC](https://en.wikipedia.org/wiki/Multiversion_concurrency_control) database,
 which means it internally keeps track of multiple versions of the same value. Read operations don't
 take any locks, and rely on the MVCC timestamp in order to read a consistent snapshot of the data. A
 long-running read operation, either single-shard or cross-shard, can proceed concurrently with write
@@ -163,8 +163,8 @@ implement the more performant second option without an additional RPC round-trip
 We also select a point in time we call **global_limit**, computed as **physical_time +
 max_clock_skew**, which allows us to determine whether a particular record was written *definitely
 after* our read request started. **max_clock_skew** is a globally configured bound on clock skew
-between different Yugabyte DB servers. (We've also designed an adaptive clock skew tracking algorithm
-that allows to avoid the need to specify a global clock skew bound, which is part of [Yugabyte DB
+between different YugabyteDB servers. (We've also designed an adaptive clock skew tracking algorithm
+that allows to avoid the need to specify a global clock skew bound, which is part of [YugabyteDB
 Enterprise Edition](https://www.yugabyte.com/enterprise-edition/)).
 
 ### 2. Read from all tablets at the chosen hybrid time
@@ -224,4 +224,4 @@ appropriate wire protocol.
 ## See also
 
 See the [Distributed ACID Transactions](../distributed-txns/) section
-to review some common concepts relevant to Yugabyte DB's implementation of distributed transactions.
+to review some common concepts relevant to YugabyteDB's implementation of distributed transactions.
