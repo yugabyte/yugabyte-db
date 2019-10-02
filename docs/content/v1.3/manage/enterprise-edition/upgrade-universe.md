@@ -11,7 +11,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte DB powering a universe can be upgraded by clicking `Upgrade Software` from the `More` drop-down on the Universe Detail page. Select the new Yugabyte DB version from the dropdown in the resulting confirmation and let the YugaWare Admin Console upgrade the universe in a rolling manner. 
+YugabyteDB powering a universe can be upgraded by clicking `Upgrade Software` from the `More` drop-down on the Universe Detail page. Select the new YugabyteDB version from the dropdown in the resulting confirmation and let the YugaWare Admin Console upgrade the universe in a rolling manner. 
 
 ![Upgrade Universe Dropdown](/images/ee/upgrade-univ-1.png)
 

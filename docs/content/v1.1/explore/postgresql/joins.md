@@ -11,7 +11,7 @@ menu:
 
 Joins of all kinds including Inner, Outer, Left and Right are supported. However, the computation of the JOINs is not yet pushed down to the individual nodes. This is a performance optimization that we expect to be available in future beta releases.
 
-If you haven't installed Yugabyte DB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
+If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

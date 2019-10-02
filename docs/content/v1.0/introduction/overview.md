@@ -10,21 +10,21 @@ menu:
     weight: 30
 ---
 
-## What is Yugabyte DB?
+## What is YugabyteDB?
 
-Yugabyte DB is Apache 2.0 open source, transactional, high-performance database for planet-scale applications. It is meant to be a system-of-record/authoritative database that geo-distributed applications can rely on for correctness and availability. It allows applications to easily scale up and scale down across multiple regions in the public cloud, on-premises datacenters or across hybrid environments without creating operational complexity or increasing the risk of outages.
+YugabyteDB is Apache 2.0 open source, transactional, high-performance database for planet-scale applications. It is meant to be a system-of-record/authoritative database that geo-distributed applications can rely on for correctness and availability. It allows applications to easily scale up and scale down across multiple regions in the public cloud, on-premises datacenters or across hybrid environments without creating operational complexity or increasing the risk of outages.
 
-In terms of data model and APIs, Yugabyte DB currently supports 3 APIs. 
+In terms of data model and APIs, YugabyteDB currently supports 3 APIs. 
 
 1. [Cassandra-compatible YCQL](../../api/cassandra/) - YCQL is compatible with [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html). It also extends CQL by adding [distributed ACID transactions](../../explore/transactional/), [strongly consistent secondary indexes](../../explore/transactional/secondary-indexes/) and a [native JSON data type](../../explore/transactional/json-documents/).
 
-2. [Redis-compatible YEDIS](../../api/redis/) - Yugabyte DB supports an auto-sharded, clustered, elastic [Redis](https://redis.io/commands)-as-a-Database in a driver compatible manner with its YEDIS API. YEDIS also extends Redis with a new native [Time Series](https://blog.yugabyte.com/extending-redis-with-a-native-time-series-data-type-e5483c7116f8) data type.
+2. [Redis-compatible YEDIS](../../api/redis/) - YugabyteDB supports an auto-sharded, clustered, elastic [Redis](https://redis.io/commands)-as-a-Database in a driver compatible manner with its YEDIS API. YEDIS also extends Redis with a new native [Time Series](https://blog.yugabyte.com/extending-redis-with-a-native-time-series-data-type-e5483c7116f8) data type.
 
 3. [PostgreSQL (Beta)](../../api/postgresql/) - Compatible with the SQL language in PostgreSQL.
 
-## What makes Yugabyte DB unique?
+## What makes YugabyteDB unique?
 
-Yugabyte DB is a single operational database that brings together 3 must-have needs of user-facing cloud applications, namely ACID transactions, high performance and multi-region scalability. Monolithic SQL databases offer transactions and performance but do not have ability to scale across multi-regions. Distributed NoSQL databases offer performance and multi-region scalablility but give up on transactional guarantees. Additionally, it is built for the modern cloud native era and is completely open source both at the core and the API layer.
+YugabyteDB is a single operational database that brings together 3 must-have needs of user-facing cloud applications, namely ACID transactions, high performance and multi-region scalability. Monolithic SQL databases offer transactions and performance but do not have ability to scale across multi-regions. Distributed NoSQL databases offer performance and multi-region scalablility but give up on transactional guarantees. Additionally, it is built for the modern cloud native era and is completely open source both at the core and the API layer.
 
 ### 1. Transactional
 

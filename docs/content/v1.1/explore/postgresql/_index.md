@@ -12,7 +12,7 @@ menu:
     weight: 290
 ---
 
-This section highlights the core features of Yugabyte DB's PostgreSQL-compatible YSQL API.
+This section highlights the core features of YugabyteDB's PostgreSQL-compatible YSQL API.
 
 <br>
 

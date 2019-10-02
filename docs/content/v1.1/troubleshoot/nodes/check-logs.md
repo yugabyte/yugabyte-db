@@ -10,7 +10,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Yugabyte DB base folder
+## YugabyteDB base folder
 
 The logs for each node are found in the yugabyte base directory which may depend on the details of your deployment:
 

@@ -24,9 +24,9 @@ Here are the default values for all the optional arguments.
 Optional Argument | Default | Description
 ----------------------------|-----------|---------------------------------------
 `--binary_dir` | Same directory as the `yb-ctl` binary | Location of the `yb-master` and the `yb-tserver` binaries
-`--data_dir` | `/tmp/yugabyte-local-cluster` | Location of the data directory for the Yugabyte DB
+`--data_dir` | `/tmp/yugabyte-local-cluster` | Location of the data directory for the YugabyteDB
 `--replication_factor` or `--rf`| `3` | Number of replicas for each tablet, should be an odd number (e.g. `1`,`3`,`5`) so that majority consensus can be established
-`--require_clock_sync`| `false` | Tells Yugabyte DB whether to depend on clock synchronization between the nodes in the cluster
+`--require_clock_sync`| `false` | Tells YugabyteDB whether to depend on clock synchronization between the nodes in the cluster
 `--num_shards_per_tserver`| `2` | Number of shards (tablets) per tablet server for each table
 
 ## Creating a cluster

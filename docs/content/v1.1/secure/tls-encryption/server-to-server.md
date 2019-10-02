@@ -19,7 +19,7 @@ To enable server to server encryption, bring up the YB-Master and YB-TServer pro
 
 Flag                           | Process                  | Description                  |
 -------------------------------|--------------------------|------------------------------|
-`use_node_to_node_encryption`  | YB-Master, YB-TServer | Optional, default value is `false`. Set to `true` to enable encryption between the various Yugabyte DB server processes. |
+`use_node_to_node_encryption`  | YB-Master, YB-TServer | Optional, default value is `false`. Set to `true` to enable encryption between the various YugabyteDB server processes. |
 `allow_insecure_connections`   | YB-Master only           | Optional, defaults to `true`. Set to `false` to disallow any process with unencrypted communication from joining this cluster. Default value is `true`. Note that this flag requires the `use_node_to_node_encryption` to be enabled. |
 `certs_dir`                    | YB-Master, YB-TServer | Optional. This directory should contain the configuration that was prepared in the a step for this node to perform encrypted communication with the other nodes. Default value for YB-Masters is `<data drive>/yb-data/master/data/certs` and for YB-TServers this location is `<data drive>/yb-data/tserver/data/certs` |
 
@@ -37,7 +37,7 @@ bin/yb-master                               \
     --use_node_to_node_encryption=true
 ```
 
-You can read more about bringing up the YB-Masters for a deployment in the section on [manual deployment of a Yugabyte DB cluster](../../../deploy/manual-deployment/start-masters/).
+You can read more about bringing up the YB-Masters for a deployment in the section on [manual deployment of a YugabyteDB cluster](../../../deploy/manual-deployment/start-masters/).
 
 
 ## Start the tserver process
@@ -52,7 +52,7 @@ bin/yb-tserver                                  \
     --use_node_to_node_encryption=true &
 ```
 
-You can read more about bringing up the YB-TServers for a deployment in the section on [manual deployment of a Yugabyte DB cluster](../../../deploy/manual-deployment/start-tservers/).
+You can read more about bringing up the YB-TServers for a deployment in the section on [manual deployment of a YugabyteDB cluster](../../../deploy/manual-deployment/start-tservers/).
 
 
 ## Connect to the cluster

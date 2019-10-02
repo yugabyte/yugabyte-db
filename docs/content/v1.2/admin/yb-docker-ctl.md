@@ -174,7 +174,7 @@ $ ./yb-docker-ctl destroy
 
 ## Upgrade container image
 
-The command below upgrades the Yugabyte DB image to the latest version.
+The command below upgrades the YugabyteDB image to the latest version.
 
 ```sh
 $ docker pull yugabytedb/yugabyte

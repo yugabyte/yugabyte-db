@@ -2,7 +2,7 @@
 title: 4. Connect to cluster
 linkTitle: 4. Connect to cluster
 description: 4. Connect to cluster
-headcontent: Connect to Yugabyte DB cluster using cqlsh.
+headcontent: Connect to YugabyteDB cluster using cqlsh.
 image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
 menu:
   v1.3:
@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-You would need to generate client config files to enable the client to connect to Yugabyte DB. The steps are identical to [preparing the per-node configuration](../prepare-nodes/#generate-per-node-config) shown in a previous section.
+You would need to generate client config files to enable the client to connect to YugabyteDB. The steps are identical to [preparing the per-node configuration](../prepare-nodes/#generate-per-node-config) shown in a previous section.
 
 You would need the following files on the client node:
 

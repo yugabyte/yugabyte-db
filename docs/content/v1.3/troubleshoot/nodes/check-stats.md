@@ -52,7 +52,7 @@ $ auditctl -e 1
 
 ## Yugabyte processes state
 
-Yugabyte DB provides web endpoints where the current state of each process is aggregated. This includes logs, gflags as well as memory, disk, and network usage metrics. Additionally, it provides dedicated metrics endpoints for CQL and, respectively, Redis requests.
+YugabyteDB provides web endpoints where the current state of each process is aggregated. This includes logs, gflags as well as memory, disk, and network usage metrics. Additionally, it provides dedicated metrics endpoints for CQL and, respectively, Redis requests.
 
 | Description | URL |
 |-------------|-----|
@@ -61,4 +61,4 @@ Yugabyte DB provides web endpoints where the current state of each process is ag
 | Redis Metrics | `<node-ip>:11000/metrics` |
 | CQL Metrics | `<node-ip>:12000/metrics` |
 
-_Note that, when running `yb-ctl` locally with default settings, it will create three local ips `127.0.0.1`, `127.0.0.2`, and `127.0.0.3`, one for each Yugabyte DB node._
+_Note that, when running `yb-ctl` locally with default settings, it will create three local ips `127.0.0.1`, `127.0.0.2`, and `127.0.0.3`, one for each YugabyteDB node._

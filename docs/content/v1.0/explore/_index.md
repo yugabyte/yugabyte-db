@@ -11,7 +11,7 @@ menu:
 ---
 
 
-{{< tip title="Tip" >}}You can use your [local cluster](../quick-start/) to explore all the core features of Yugabyte DB.{{< /tip >}}<br>
+{{< tip title="Tip" >}}You can use your [local cluster](../quick-start/) to explore all the core features of YugabyteDB.{{< /tip >}}<br>
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">

@@ -1,13 +1,13 @@
-# Yugabyte DB Docs
+# YugabyteDB Docs
 
-This repository contains the documentation for Yugabyte DB available at https://docs.yugabyte.com/
+This repository contains the documentation for YugabyteDB available at https://docs.yugabyte.com/
 
 Please [open an issue](https://github.com/yugabyte/docs/issues) to suggest enhancements.
 
 
-# Contributing to Yugabyte DB Docs
+# Contributing to YugabyteDB Docs
 
-Yugabyte DB docs are based on the Hugo framework and use the Material Docs theme.
+YugabyteDB docs are based on the Hugo framework and use the Material Docs theme.
 
 * Hugo framework: http://gohugo.io/overview/introduction/
 * Material Docs theme: http://themes.gohugo.io/material-docs/

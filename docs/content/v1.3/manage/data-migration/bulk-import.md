@@ -3,7 +3,7 @@ title: Bulk import
 linkTitle: Bulk import
 description: Bulk import
 image: /images/section_icons/manage/enterprise.png
-headcontent: Bulk import data into Yugabyte DB.
+headcontent: Bulk import data into YugabyteDB.
 menu:
   v1.3:
     identifier: manage-bulk-import
@@ -12,7 +12,7 @@ menu:
 ---
 
 
-Depending on the data volume imported, various bulk import tools can be used to bring data into Yugabyte DB.
+Depending on the data volume imported, various bulk import tools can be used to bring data into YugabyteDB.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>

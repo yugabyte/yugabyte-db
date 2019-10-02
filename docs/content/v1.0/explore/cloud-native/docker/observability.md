@@ -39,7 +39,7 @@ global:
   evaluation_interval: 5s # Evaluate rules every 5 seconds. The default is every 1 minute.
   # scrape_timeout is set to the global default (10s).
 
-# Yugabyte DB configuration to scrape Prometheus time-series metrics 
+# YugabyteDB configuration to scrape Prometheus time-series metrics 
 scrape_configs:
   - job_name: 'yugabytedb'
     metrics_path: /prometheus-metrics

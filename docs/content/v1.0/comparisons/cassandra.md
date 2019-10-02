@@ -8,11 +8,11 @@ menu:
     weight: 1080
 ---
 
-Following are the key areas of differences between Yugabyte DB and [Apache Cassandra](http://cassandra.apache.org/). A recent [blog post](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6) also highlights these differences in more detail.
+Following are the key areas of differences between YugabyteDB and [Apache Cassandra](http://cassandra.apache.org/). A recent [blog post](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6) also highlights these differences in more detail.
 
 ## 1. Data Consistency
 
-Yugabyte DB is a strongly consistent system that avoids several pitfalls of an eventually consistent database.
+YugabyteDB is a strongly consistent system that avoids several pitfalls of an eventually consistent database.
 
 1. Dirty reads: Systems with an eventually consistent core offer weaker semantics than even async
 replication. To work around this, many Apache Cassandra deployments use quorum read/write modes, but
@@ -27,12 +27,12 @@ strong-consistency on writes and tunable consistency options for reads.
 
 In eventually consistent systems, anti-entropy, read-repairs, etc. hurt performance and increase cost. But even in steady state, read operations read from a quorum to serve closer to correct responses and fix inconsistencies. For a replication factor of the 3, such a system’s read throughput is essentially ⅓.
 
-With Yugabyte DB, strongly consistent reads (from leaders), as well as timeline consistent/async reads
+With YugabyteDB, strongly consistent reads (from leaders), as well as timeline consistent/async reads
 from followers perform the read operation on only 1 node (and not 3).
 
 ## 3. Read-modify-write Operations
 
-In Apache Cassandra, simple read-modify-write operations such as “increment”, conditional updates, “INSERT …  IF NOT EXISTS” or “UPDATE ... IF EXISTS” use a scheme known as light-weight transactions [which incurs a 4-round-trip cost](https://teddyma.gitbooks.io/learncassandra/content/concurrent/concurrency_control.html) between replicas. With Yugabyte DB, these operations only involve 1-round trip between the quorum members.
+In Apache Cassandra, simple read-modify-write operations such as “increment”, conditional updates, “INSERT …  IF NOT EXISTS” or “UPDATE ... IF EXISTS” use a scheme known as light-weight transactions [which incurs a 4-round-trip cost](https://teddyma.gitbooks.io/learncassandra/content/concurrent/concurrency_control.html) between replicas. With YugabyteDB, these operations only involve 1-round trip between the quorum members.
 
 ## 4. Secondary Indexes
 
@@ -50,10 +50,10 @@ Local secondary indexes in Apache Cassandra ([see blog](https://pantheon.io/blog
 
 ## 6. Operational Flexibility 
 
-At times, you may need to move your database infrastructure to new hardware or you may want to add a sync/async replica in another region or in public cloud. With Yugabyte DB, these operations are simple 1-click intent based operations that are handled seamlessly by the system in a completely online manner. Yugabyte’s core data fabric and its consensus based replication model enables the "data tier” to be very agile/recomposable much like containers/VMs have done for the application or stateless tier.
+At times, you may need to move your database infrastructure to new hardware or you may want to add a sync/async replica in another region or in public cloud. With YugabyteDB, these operations are simple 1-click intent based operations that are handled seamlessly by the system in a completely online manner. Yugabyte’s core data fabric and its consensus based replication model enables the "data tier” to be very agile/recomposable much like containers/VMs have done for the application or stateless tier.
 
 ## 7. Need to Scale Beyond Single or 2-DC Deployments
 
 The current RDBMS solutions (using async replication) and NoSQL solutions work up to 2-DC deployments; but in a very restrictive manner. With Apache Cassandra’s 2-DC deployments, one has to chose between write unavailability on a partition between the DCs, or cope with async replication model where on a DC failure some inflight data is lost. 
 
-Yugabyte DB’s distributed consensus based replication design, in 3-DC deployments for example, enables enterprise to “have their cake and eat it too”. It gives use cases the choice to be highly available for reads and writes even on a complete DC outage, without having to take a down time or resort to an older/asynchronous copy of the data (which may not have all the changes to the system).
+YugabyteDB’s distributed consensus based replication design, in 3-DC deployments for example, enables enterprise to “have their cake and eat it too”. It gives use cases the choice to be highly available for reads and writes even on a complete DC outage, without having to take a down time or resort to an older/asynchronous copy of the data (which may not have all the changes to the system).

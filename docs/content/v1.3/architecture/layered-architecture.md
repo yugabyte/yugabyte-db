@@ -11,16 +11,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte DB architecture follows a layered design. It is comprised of 2 logical layers as shown in the diagram below:
+YugabyteDB architecture follows a layered design. It is comprised of 2 logical layers as shown in the diagram below:
 
 * **Yugabyte Query Layer**
 * **DocDB** distributed document store
 
-![Yugabyte DB Logical Architecture](/images/architecture/yb-arch-new.png)
+![YugabyteDB Logical Architecture](/images/architecture/yb-arch-new.png)
 
 ## Yugabyte Query Layer
 
-The [Yugabyte Query Layer or YQL](../query-layer/) is the upper layer of Yugabyte DB. Applications interact directly with YQL using client drivers. This layer deals with the API specific aspects such as query/command compilation and the run-time (data type representations, built-in operations and more). YQL is built with extensibility in mind, and allows for new APIs to be added.
+The [Yugabyte Query Layer or YQL](../query-layer/) is the upper layer of YugabyteDB. Applications interact directly with YQL using client drivers. This layer deals with the API specific aspects such as query/command compilation and the run-time (data type representations, built-in operations and more). YQL is built with extensibility in mind, and allows for new APIs to be added.
 
 Currently, YQL supports two flavors of distributed SQL APIs.
 
@@ -80,7 +80,7 @@ You can now read about the following:
 
 {{< note title="" >}}
 
-* [The design goals of Yugabyte DB](../design-goals/)
+* [The design goals of YugabyteDB](../design-goals/)
 * [Architecture of DocDB](../docdb/)
 * [Transactions in DocDB](../transactions/)
 * [Design of the query layer](../query-layer/)

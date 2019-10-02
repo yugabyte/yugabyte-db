@@ -23,7 +23,7 @@ YSQL is a distributed SQL API compatible with PostgreSQL. It supports the follow
 - Primitive user-defined datatypes.
 
 ## Example
-The following example illustrates how to use `psql` to connect to Yugabyte DB's PostgreSQL API.
+The following example illustrates how to use `psql` to connect to YugabyteDB's PostgreSQL API.
 It assumes you have [installed Yugabyte](../../quick-start/install/) and started a [PostgreSQL-enabled cluster](../../quick-start/test-postgresql/).
 
 ```sh
@@ -73,7 +73,7 @@ Statement | Description |
 [`REVOKE`](permissions) | Revoke permissions |
 
 ## DML Statements
-Data manipulation language (DML) statements read from and write to the existing database objects. Currently, Yugabyte DB implicitly commits any updates by DML statements.
+Data manipulation language (DML) statements read from and write to the existing database objects. Currently, YugabyteDB implicitly commits any updates by DML statements.
 
 Statement | Description |
 ----------|-------------|

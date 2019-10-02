@@ -32,7 +32,7 @@ $ gcloud config get-value compute/zone
 
 ## 2. Create a regional cluster
 
-Choose a region that has at least 3 zones in it. We will deploy a multi-zone Yugabyte DB cluster in `us-west1` region in this tutorial. To list the various regions and the zones in them run the following command.
+Choose a region that has at least 3 zones in it. We will deploy a multi-zone YugabyteDB cluster in `us-west1` region in this tutorial. To list the various regions and the zones in them run the following command.
 
 ```sh
 $ gcloud compute zones list
@@ -79,7 +79,7 @@ node-pool-multi-zone-yb  n1-standard-8  100           1.8.8-gke.0
 ```
 
 
-Select the labels for the nodes with local SSDs. You should see labels showing their region and zone. As shown below, we will setup the Yugabyte DB cluster in region `us-west1` across zones `us-west1-a`, `us-west1-b` and `us-west1-c`.
+Select the labels for the nodes with local SSDs. You should see labels showing their region and zone. As shown below, we will setup the YugabyteDB cluster in region `us-west1` across zones `us-west1-a`, `us-west1-b` and `us-west1-c`.
 
 ```sh
 $ kubectl get nodes --selector cloud.google.com/gke-local-ssd=true --show-labels

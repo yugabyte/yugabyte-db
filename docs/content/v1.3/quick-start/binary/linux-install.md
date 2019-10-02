@@ -18,7 +18,7 @@ Python 2.7.10
 
 ## Download
 
-Download the Yugabyte DB CE package as shown below.
+Download the YugabyteDB CE package as shown below.
 
 ```sh
 $ wget https://downloads.yugabyte.com/yugabyte-1.3.2.1-linux.tar.gz

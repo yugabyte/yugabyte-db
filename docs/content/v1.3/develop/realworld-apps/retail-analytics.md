@@ -13,7 +13,7 @@ showAsideToc: true
 
 ## 1. Start local cluster with YSQL API enabled
 
-Follow [Quick Start](../../../quick-start/) instructions to run a local Yugabyte DB cluster. Test the YSQL API as [documented](../../../quick-start/explore-ysql/) so that you can confirm that you have the YSQL service running on `localhost:5433`. 
+Follow [Quick Start](../../../quick-start/) instructions to run a local YugabyteDB cluster. Test the YSQL API as [documented](../../../quick-start/explore-ysql/) so that you can confirm that you have the YSQL service running on `localhost:5433`. 
 
 ## 2. Load data
 
@@ -41,7 +41,7 @@ $ ls data/
 orders.sql  products.sql  reviews.sql users.sql
 ```
 
-### Connect to Yugabyte DB using ysqlsh
+### Connect to YugabyteDB using ysqlsh
 
 ```sh
 $ ./bin/ysqlsh

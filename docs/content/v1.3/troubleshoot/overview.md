@@ -11,9 +11,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## 1. Check that Yugabyte DB is running
+## 1. Check that YugabyteDB is running
 
-First, ensure that the expected Yugabyte DB processes are running on the current node.
+First, ensure that the expected YugabyteDB processes are running on the current node.
 At a minimum, the tserver process needs to be running to be able to connect to this node with a CQL client or application.
 
 Additionally, depending on the setup, you might expect a master process to also be running on this node.
