@@ -136,7 +136,10 @@ In this table, you can see that both `postgres` and `yugabyte` users can log in 
 
 As an alternative, you can simply run the `\du` command to see this information in a simpler, easier-to-read format:
 
-```bash
+```plpgsql
+
+yugabyte=#\du
+
                                     List of roles
  Role name |                         Attributes                         | Member of  
 -----------+------------------------------------------------------------+------------
