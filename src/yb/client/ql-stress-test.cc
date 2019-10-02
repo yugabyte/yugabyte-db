@@ -46,17 +46,20 @@
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 DECLARE_double(respond_write_failed_probability);
+DECLARE_bool(allow_preempting_compactions);
 DECLARE_bool(detect_duplicates_for_retryable_requests);
+DECLARE_bool(enable_ondisk_compression);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_bool(combine_batcher_errors);
 DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_int32(retryable_request_range_time_limit_secs);
+DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
+DECLARE_int32(rocksdb_max_background_compactions);
 DECLARE_int32(rocksdb_universal_compaction_min_merge_width);
 DECLARE_int32(rocksdb_universal_compaction_size_ratio);
-DECLARE_int64(db_write_buffer_size);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
@@ -843,6 +846,71 @@ TEST_F_EX(QLStressTest, LongRemoteBootstrap, QLStressTestLongRemoteBootstrap) {
   // Write some more values and check that replica still in touch.
   std::this_thread::sleep_for(5s);
   ASSERT_OK(WaitAllReplicasHaveIndex(cluster_.get(), key.load(std::memory_order_acquire), 1s));
+}
+
+class QLStressDynamicCompactionPriorityTest : public QLStressTest {
+ public:
+  void SetUp() override {
+    FLAGS_allow_preempting_compactions = true;
+    FLAGS_db_write_buffer_size = 16_KB;
+    FLAGS_enable_ondisk_compression = false;
+    FLAGS_rocksdb_max_background_compactions = 1;
+    FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec = 160_KB;
+    QLStressTest::SetUp();
+  }
+
+  int NumTablets() override {
+    return 1;
+  }
+
+  void InitSchemaBuilder(YBSchemaBuilder* builder) override {
+    builder->AddColumn("h")->Type(INT32)->HashPrimaryKey()->NotNull();
+    builder->AddColumn(kValueColumn)->Type(STRING);
+  }
+};
+
+TEST_F_EX(QLStressTest, DynamicCompactionPriority, QLStressDynamicCompactionPriorityTest) {
+  YBSchemaBuilder b;
+  InitSchemaBuilder(&b);
+  CompleteSchemaBuilder(&b);
+
+  TableHandle table2;
+  ASSERT_OK(table2.Create(YBTableName(kTableName.namespace_name(), kTableName.table_name() + "_2"),
+                          NumTablets(), client_.get(), &b));
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &table2, &stop = thread_holder.stop_flag()] {
+    auto session = NewSession();
+    int key = 1;
+    std::string value(FLAGS_db_write_buffer_size, 'X');
+    int left_writes_to_current_table = 0;
+    TableHandle* table = nullptr;
+    while (!stop.load(std::memory_order_acquire)) {
+      if (left_writes_to_current_table == 0) {
+        table = RandomUniformBool() ? &table_ : &table2;
+        left_writes_to_current_table = RandomUniformInt(1, std::max(1, key / 5));
+      } else {
+        --left_writes_to_current_table;
+      }
+      const auto op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+      auto* const req = op->mutable_request();
+      QLAddInt32HashValue(req, key);
+      table_.AddStringColumnValue(req, kValueColumn, value);
+      ASSERT_OK(session->Apply(op));
+      ASSERT_OK(session->Flush());
+      ASSERT_OK(CheckOp(op.get()));
+      std::this_thread::sleep_for(100ms);
+      ++key;
+    }
+  });
+
+  thread_holder.WaitAndStop(60s);
+
+  auto delete_start = CoarseMonoClock::now();
+  ASSERT_OK(client_->DeleteTable(table_->id(), true));
+  MonoDelta delete_time(CoarseMonoClock::now() - delete_start);
+  LOG(INFO) << "Delete time: " << delete_time;
+  ASSERT_LE(delete_time, 10s);
 }
 
 } // namespace client

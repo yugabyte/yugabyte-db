@@ -290,7 +290,7 @@ class StateAndPriorityTaskComparator {
   }
 };
 
-std::atomic<size_t> task_serial_no_(0);
+std::atomic<size_t> task_serial_no_(1);
 
 } // namespace
 
