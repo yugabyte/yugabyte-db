@@ -44,7 +44,10 @@ public class ShellProcessHandler {
     play.Configuration appConfig;
 
 
-    public ShellResponse run(List<String> command, Map<String, String> extraEnvVars) {
+    public ShellResponse run(
+        List<String> command,
+        Map<String, String> extraEnvVars,
+        boolean logCmdOutput) {
         ProcessBuilder pb = new ProcessBuilder(command);
         Map envVars = pb.environment();
         if (!extraEnvVars.isEmpty()) {
@@ -64,8 +67,8 @@ public class ShellProcessHandler {
             pb.redirectError(tempErrorFile);
             Process process = pb.start();
             response.code = process.waitFor();
-            String processOutput = fetchStream(new FileInputStream(tempOutputFile));
-            String processError = fetchStream(new FileInputStream(tempErrorFile));
+            String processOutput = fetchStream(new FileInputStream(tempOutputFile), logCmdOutput);
+            String processError = fetchStream(new FileInputStream(tempErrorFile), logCmdOutput);
             response.message = (response.code == 0) ? processOutput : processError;
         } catch (IOException | InterruptedException e) {
             LOG.error(e.getMessage());
@@ -82,7 +85,13 @@ public class ShellProcessHandler {
         return response;
     }
 
-    private static String fetchStream(InputStream inputStream) throws IOException {
+    public ShellResponse run(List<String> command, Map<String, String> extraEnvVars) {
+        return run(command, extraEnvVars, true /*logCommandOutput*/);
+    }
+
+    private static String fetchStream(
+        InputStream inputStream,
+        boolean logCmdOutput) throws IOException {
         StringBuilder sb = new StringBuilder();
         BufferedReader br = null;
         try {
@@ -90,7 +99,9 @@ public class ShellProcessHandler {
             String line = null;
             while ((line = br.readLine()) != null) {
                 sb.append(line + System.lineSeparator());
-                LOG.info(line);
+                if (logCmdOutput) {
+                    LOG.info(line);
+                }
             }
         } finally {
             br.close();
