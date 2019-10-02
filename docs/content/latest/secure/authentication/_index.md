@@ -21,8 +21,8 @@ Authentication should be enabled to verify the identity of a client that connect
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#ycql" class="nav-link active" id="ysql-tab" data-toggle="tab" role="tab" aria-controls="ysql" aria-selected="true">
-      <i class="icon-cassandra" aria-hidden="true"></i>
+    <a href="#ysql" class="nav-link active" id="ycql-tab" data-toggle="tab" role="tab" aria-controls="ycql" aria-selected="true">
+      <i class="icon-ysql" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
@@ -41,11 +41,18 @@ Authentication should be enabled to verify the identity of a client that connect
 </ul>
 
 <div class="tab-content">
-  <div id="ycql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ycql-tab">
+
+  <div id="ysql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ysql-tab">
+    {{% includeMarkdown "ysql.md" /%}}
+  </div>
+
+  <div id="ycql" class="tab-pane fade" role="tabpanel" aria-labelledby="ycql-tab">
     {{% includeMarkdown "ycql.md" /%}}
   </div>
+
   <div id="yedis" class="tab-pane fade" role="tabpanel" aria-labelledby="yedis-tab">
     {{% includeMarkdown "yedis.md" /%}}
+
   </div>
 </div>
 
