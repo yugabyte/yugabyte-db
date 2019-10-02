@@ -36,7 +36,7 @@ ADD_YB_LIBRARY(yb_rocksutil
 
 add_dependencies(yb_rocksutil gen_version_info)
 
-set(YB_TEST_LINK_LIBS yb_rocksutil ${YB_TEST_LINK_LIBS_EXTENSIONS}  ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_rocksutil ${YB_TEST_LINK_LIBS_EXTENSIONS} ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(yb_rocksdb_logger-test)
 

@@ -84,7 +84,7 @@ class BlockingQueue {
         << "BlockingQueue holds bare pointers at destruction time";
   }
 
-  // Get an element from the queue.  Returns false if we were shut down prior to
+  // Get an element from the queue. Returns false if we were shut down prior to
   // getting the element.
   bool BlockingGet(T *out) {
     MutexLock l(lock_);
@@ -103,7 +103,7 @@ class BlockingQueue {
     }
   }
 
-  // Get an element from the queue.  Returns false if the queue is empty and
+  // Get an element from the queue. Returns false if the queue is empty and
   // we were shut down prior to getting the element.
   bool BlockingGet(gscoped_ptr<T_VAL> *out) {
     T t = NULL;
