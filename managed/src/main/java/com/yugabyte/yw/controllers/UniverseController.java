@@ -246,11 +246,12 @@ public class UniverseController extends AuthenticatedController {
           // Generate encryption master key
           byte[] data = null;
           if (taskParams.encryptionAtRestConfig != null) {
-            boolean forceNewInstance = Boolean.parseBoolean(taskParams.encryptionAtRestConfig.get("force_new_instance"));
+            boolean forceNewInstance = Boolean.parseBoolean(
+                    taskParams.encryptionAtRestConfig.get("force_new_instance")
+            );
             String kmsProvider = taskParams.encryptionAtRestConfig.get("kms_provider");
-            EncryptionAtRestService keyService = forceNewInstance ?
-                    EncryptionAtRestService.getServiceInstance(apiHelper, kmsProvider, true)
-                    : EncryptionAtRestService.getServiceInstance(apiHelper, kmsProvider);
+            EncryptionAtRestService keyService = EncryptionAtRestService
+                    .getServiceInstance(apiHelper, kmsProvider, forceNewInstance);
             if (keyService != null) {
               data = keyService.createAndRetrieveEncryptionKey(
                       universe.universeUUID,

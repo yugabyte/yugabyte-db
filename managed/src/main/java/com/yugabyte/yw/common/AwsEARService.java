@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.common;
 
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.kms.AWSKMS;
 import com.amazonaws.services.kms.AWSKMSClientBuilder;
@@ -24,23 +22,8 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.UUID;
-
-class AwsKMSCredentials {
-    private String accessKey;
-    private String secretKey;
-    private Regions region;
-
-    public String getAccessKey() { return this.accessKey; }
-    public String getSecretKey() { return this.secretKey; }
-    public Regions getRegion() { return this.region; }
-
-    public AwsKMSCredentials(ObjectNode authConfig) {
-        this.accessKey = authConfig.get("AWS_ACCESS_KEY_ID").asText();
-        this.secretKey = authConfig.get("AWS_SECRET_ACCESS_KEY").asText();
-        this.region = Enum.valueOf(Regions.class, authConfig.get("AWS_DEFAULT_REGION").asText());
-    }
-}
 
 enum AwsAlgorithm implements SupportedAlgorithmInterface {
     AES(Arrays.asList(128, 256));
@@ -56,10 +39,6 @@ enum AwsAlgorithm implements SupportedAlgorithmInterface {
     }
 }
 
-// TODO: (Daniel)
-// 1) Provide multiple options for inputting credentials:
-//      a) pass in access_key/secret_key directly
-//      b) use existing AWS cloud provider
 public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
     /**
      * Constructor
@@ -72,21 +51,53 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
     }
 
     /**
+     * Tries to set AWS credential system properties if any exist in authConfig
+     * for the specified customer
+     *
+     * @param customerUUID the customer the authConfig should be retrieved for
+     */
+    private void setUserCredentials(UUID customerUUID) {
+        ObjectNode authConfig = getAuthConfig(customerUUID);
+        if (authConfig == null) return;
+        JsonNode accessKeyId = authConfig.get("AWS_ACCESS_KEY_ID");
+        JsonNode secretAccessKey = authConfig.get("AWS_SECRET_ACCESS_KEY");
+        JsonNode region = authConfig.get("AWS_REGION");
+        Properties p = new Properties(System.getProperties());
+        if (accessKeyId != null && secretAccessKey != null && region != null) {
+            p.setProperty("aws.accessKeyId", accessKeyId.asText());
+            p.setProperty("aws.secretKey", secretAccessKey.asText());
+            p.setProperty("aws.region", region.asText());
+            System.setProperties(p);
+        } else {
+            LOG.info("Defaulting to attempt to use instance profile credentials for AWS client");
+        }
+    }
+
+    /**
      * Instantiates a AWSKMS client to send requests to
      *
      * @param creds are the required credentials to get a client instance
      * @return a AWSKMS client
      */
-    protected AWSKMS getClient(AwsKMSCredentials creds) {
-        final BasicAWSCredentials awsCreds = new BasicAWSCredentials(
-                creds.getAccessKey(),
-                creds.getSecretKey()
-        );
-        return AWSKMSClientBuilder
-                .standard()
-                .withCredentials(new AWSStaticCredentialsProvider(awsCreds))
-                .withRegion(creds.getRegion())
-                .build();
+    protected AWSKMS getClient(UUID customerUUID) {
+        // Rely on the AWS credential provider chain
+        // We set system properties as the first-choice option
+        // To debug, a user can set AWS_ACCESS_KEY_ID, AWS_SECRET_KEY, AWS_REGION env vars
+        // which will override any existing KMS configuration credentials
+        // https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html
+        setUserCredentials(customerUUID);
+        return AWSKMSClientBuilder.defaultClient();
+    }
+
+    /**
+     * A method to prefix an alias base name with the proper format for AWS
+     *
+     * @param aliasName the name of the alias
+     * @return the basename of the alias prefixed with 'alias/'
+     */
+    private String generateAliasName(String aliasName) {
+        final String aliasNameBase = "alias/%s";
+        return String.format(aliasNameBase, aliasName);
     }
 
     /**
@@ -99,9 +110,9 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
     private void createAlias(UUID universeUUID, UUID customerUUID, String kId) {
         final String aliasNameBase = "alias/%s";
         final CreateAliasRequest req = new CreateAliasRequest()
-                .withAliasName(String.format(aliasNameBase, universeUUID.toString()))
+                .withAliasName(generateAliasName(universeUUID.toString()))
                 .withTargetKeyId(kId);
-        getClient(new AwsKMSCredentials(getAuthConfig(customerUUID))).createAlias(req);
+        getClient(customerUUID).createAlias(req);
     }
 
     /**
@@ -112,16 +123,13 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
      * @return the alias if found, or null otherwise
      */
     private AliasListEntry getAlias(UUID customerUUID, String aliasName) {
-        final String aliasNameBase = "alias/%s";
         ListAliasesRequest req = new ListAliasesRequest().withLimit(100);
         AliasListEntry uniAlias = null;
         boolean done = false;
         while (!done) {
-            ListAliasesResult result = getClient(
-                    new AwsKMSCredentials(getAuthConfig(customerUUID))
-            ).listAliases(req);
+            ListAliasesResult result = getClient(customerUUID).listAliases(req);
             for (AliasListEntry alias : result.getAliases()) {
-                if (alias.getAliasName().equals(String.format(aliasNameBase, aliasName))) {
+                if (alias.getAliasName().equals(generateAliasName(aliasName))) {
                     uniAlias = alias;
                     break;
                 }
@@ -144,9 +152,9 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
      */
     private void updateAliasTarget(UUID customerUUID, UUID universeUUID, String newTargetKeyId) {
         UpdateAliasRequest req = new UpdateAliasRequest()
-                .withAliasName(universeUUID.toString())
+                .withAliasName(generateAliasName(universeUUID.toString()))
                 .withTargetKeyId(newTargetKeyId);
-        getClient(new AwsKMSCredentials(getAuthConfig(customerUUID))).updateAlias(req);
+        getClient(customerUUID).updateAlias(req);
     }
 
     /**
@@ -186,9 +194,7 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
         ByteBuffer encryptedKeyBuffer = ByteBuffer.wrap(encryptedUniverseKey);
         encryptedKeyBuffer.rewind();
         final DecryptRequest req = new DecryptRequest().withCiphertextBlob(encryptedKeyBuffer);
-        ByteBuffer decryptedKeyBuffer = getClient(
-                new AwsKMSCredentials(getAuthConfig(customerUUID))
-        ).decrypt(req).getPlaintext();
+        ByteBuffer decryptedKeyBuffer = getClient(customerUUID).decrypt(req).getPlaintext();
         decryptedKeyBuffer.rewind();
         byte[] decryptedUniverseKey = new byte[decryptedKeyBuffer.remaining()];
         decryptedKeyBuffer.get(decryptedUniverseKey);
@@ -223,7 +229,7 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
                                 String.format(keySpecBase, algorithm, Integer.toString(keySize))
                         );
         ByteBuffer encryptedKeyBuffer =
-                getClient(new AwsKMSCredentials(getAuthConfig(customerUUID)))
+                getClient(customerUUID)
                         .generateDataKeyWithoutPlaintext(dataKeyRequest)
                         .getCiphertextBlob();
         encryptedKeyBuffer.rewind();
@@ -244,9 +250,7 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
         final CreateKeyRequest req = new CreateKeyRequest()
                 .withDescription("Yugaware KMS Integration")
                 .withPolicy(config.get("cmk_policy"));
-        final CreateKeyResult result = getClient(
-                new AwsKMSCredentials(getAuthConfig(customerUUID))
-        ).createKey(req);
+        final CreateKeyResult result = getClient(customerUUID).createKey(req);
         final String kId = result.getKeyMetadata().getKeyId();
         if (getAlias(customerUUID, universeUUID.toString()) == null) {
             createAlias(universeUUID, customerUUID, kId);
@@ -287,7 +291,7 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
             );
         } catch (Exception e) {
             final String errMsg = "Could not recover encryption key";
-            LOG.error(errMsg, e);
+            LOG.warn(errMsg, e);
         }
         return result;
     }

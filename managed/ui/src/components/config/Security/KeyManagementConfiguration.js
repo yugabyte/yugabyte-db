@@ -72,7 +72,7 @@ class KeyManagementConfiguration extends Component {
       const data = {
         'AWS_ACCESS_KEY_ID': values.accessKeyId,
         'AWS_SECRET_ACCESS_KEY': values.secretKeyId,
-        'AWS_DEFAULT_REGION': values.region.value,
+        'AWS_REGION': values.region.value,
       };
       setKMSConfig(kmsProvider.value, data)
         .then(() => {
