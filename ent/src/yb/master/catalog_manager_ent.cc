@@ -21,6 +21,7 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
+#include "yb/client/table_alterer.h"
 #include "yb/common/common.pb.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/strings/substitute.h"
@@ -46,6 +47,10 @@ using strings::Substitute;
 DEFINE_uint64(cdc_state_table_num_tablets, 0,
     "Number of tablets to use when creating the CDC state table."
     "0 to use the same default num tablets as for regular tables.");
+
+DEFINE_int32(cdc_wal_retention_time_secs, 4 * 3600,
+             "WAL retention time in seconds to be used for tables for which a CDC stream was "
+             "created.");
 
 namespace yb {
 
@@ -1413,6 +1418,17 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
     }
   }
 
+  AlterTableRequestPB alter_table_req;
+  alter_table_req.mutable_table()->set_table_id(req->table_id());
+  alter_table_req.set_wal_retention_secs(FLAGS_cdc_wal_retention_time_secs);
+  AlterTableResponsePB alter_table_resp;
+  Status s = this->AlterTable(&alter_table_req, &alter_table_resp, rpc);
+  if (!s.ok()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR,
+        STATUS_SUBSTITUTE(InternalError,
+            "Unable to change the WAL retention time for table $0", req->table_id()));
+  }
+
   scoped_refptr<CDCStreamInfo> stream;
   {
     TRACE("Acquired catalog manager lock");
@@ -1433,7 +1449,7 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
   TRACE("Inserted new CDC stream into CatalogManager maps");
 
   // Update the on-disk system catalog.
-  Status s = sys_catalog_->AddItem(stream.get(), leader_ready_term_);
+  s = sys_catalog_->AddItem(stream.get(), leader_ready_term_);
   if (!s.ok()) {
     s = s.CloneAndPrepend(Substitute(
         "An error occurred while inserting CDC stream into sys-catalog: $0", s.ToString()));

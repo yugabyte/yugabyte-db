@@ -30,12 +30,13 @@
 // under the License.
 //
 
-#include <boost/assign/list_of.hpp>
-#include <gtest/gtest.h>
-#include <rapidjson/document.h>
 #include <string>
 #include <unordered_set>
 #include <vector>
+
+#include <boost/assign/list_of.hpp>
+#include <gtest/gtest.h>
+#include <rapidjson/document.h>
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
@@ -310,7 +311,8 @@ TEST_F(MetricsTest, TestDumpJsonPrototypes) {
   int num_entities = d["entities"].Size();
   LOG(INFO) << "Parsed " << num_metrics << " metrics and " << num_entities << " entities";
   ASSERT_GT(num_metrics, 5);
-  ASSERT_EQ(num_entities, 2);
+  // Expected entities: server, tablet, test_entity.
+  ASSERT_EQ(num_entities, 3);
 
   // Spot-check that some metrics were properly registered and that the JSON was properly
   // formed.

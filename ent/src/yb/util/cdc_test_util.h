@@ -17,7 +17,9 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
+#include "yb/integration-tests/mini_cluster.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/tserver/mini_tablet_server.h"
 
 namespace yb {
 namespace cdc {
@@ -27,8 +29,14 @@ void AssertIntKey(const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>&
 
 void CreateCDCStream(const std::unique_ptr<CDCServiceProxy>& cdc_proxy,
                      const TableId& table_id,
-                     boost::optional<uint32_t> wal_retention_secs,
                      CDCStreamId* stream_id);
+
+// For any tablet that belongs to a table whose name starts with 'table_name_start', this method
+// will verify that its WAL retention time matches the provided time.
+// It will also verify that at least one WAL retention time was checked.
+void VerifyWalRetentionTime(yb::MiniCluster* cluster,
+                            const std::string& table_name_start,
+                            uint32_t expected_wal_retention_secs);
 
 } // namespace cdc
 } // namespace yb

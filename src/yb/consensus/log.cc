@@ -130,6 +130,16 @@ DEFINE_test_flag(bool, log_consider_all_ops_safe, false,
             "for the opId to apply to the local log. i.e. WaitForSafeOpIdToApply "
             "becomes a noop.");
 
+// TaskStream flags.
+// We have to make the queue length really long.
+// TODO: Create new flags log_taskstream_queue_max_size and log_taskstream_queue_max_wait_ms
+// and deprecate these flags.
+DEFINE_int32(taskstream_queue_max_size, 100000,
+             "Maximum number of operations waiting in the taskstream queue.");
+
+DEFINE_int32(taskstream_queue_max_wait_ms, 1000,
+             "Maximum time in ms to wait for items in the taskstream queue to arrive.");
+
 // Validate that log_min_segments_to_retain >= 1
 static bool ValidateLogsToRetain(const char* flagname, int value) {
   if (value >= 1) {
@@ -201,7 +211,9 @@ class Log::Appender {
 Log::Appender::Appender(Log *log, ThreadPool* append_thread_pool)
     : log_(log),
       task_stream_(new TaskStream<LogEntryBatch>(
-          std::bind(&Log::Appender::ProcessBatch, this, _1), append_thread_pool)) {
+          std::bind(&Log::Appender::ProcessBatch, this, _1), append_thread_pool,
+          FLAGS_taskstream_queue_max_size,
+          MonoDelta::FromMilliseconds(FLAGS_taskstream_queue_max_wait_ms))) {
   DCHECK(dummy);
 }
 
@@ -786,7 +798,7 @@ Status Log::WaitUntilAllFlushed() {
 }
 
 void Log::set_wal_retention_secs(uint32_t wal_retention_secs) {
-  LOG(INFO) << "Setting wal retention time to " << wal_retention_secs << " seconds";
+  LOG_WITH_PREFIX(INFO) << "Setting log wal retention time to " << wal_retention_secs << " seconds";
   wal_retention_secs_.store(wal_retention_secs, std::memory_order_release);
 }
 
