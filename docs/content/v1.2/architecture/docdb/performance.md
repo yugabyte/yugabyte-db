@@ -15,7 +15,7 @@ DocDB uses a highly customized version of [RocksDB](http://rocksdb.org/), a log-
 
 ![DocDB Document Storage Layer](/images/architecture/docdb-rocksdb.png)
 
-A number of enhancements or customizations were done to RocksDB in order to schieve scale and performance. These are described below.
+A number of enhancements or customizations were done to RocksDB in order to achieve scale and performance. These are described below.
 
 ## Enhancements to RocksDB
 
