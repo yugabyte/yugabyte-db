@@ -2828,6 +2828,9 @@ void RaftConsensus::NonTxRoundReplicationFinished(ConsensusRound* round,
         LOG(WARNING) << "Could not clear pending state : " << s.ToString();
       }
     }
+  } else if (IsChangeConfigOperation(op_type) && change_config_replicated_listener_) {
+    // Notify the TabletPeer owner object.
+    change_config_replicated_listener_(state_->GetCommittedConfigUnlocked());
   }
 
   client_cb(status);
@@ -2947,6 +2950,11 @@ void RaftConsensus::SetPropagatedSafeTimeProvider(std::function<HybridTime()> pr
 
 void RaftConsensus::SetMajorityReplicatedListener(std::function<void()> updater) {
   majority_replicated_listener_ = std::move(updater);
+}
+
+void RaftConsensus::SetChangeConfigReplicatedListener(
+    std::function<void(const RaftConfigPB&)> listener) {
+  change_config_replicated_listener_ = std::move(listener);
 }
 
 yb::OpId RaftConsensus::MinRetryableRequestOpId() {

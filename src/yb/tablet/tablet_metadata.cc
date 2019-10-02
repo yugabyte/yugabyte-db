@@ -74,7 +74,6 @@ using base::subtle::Barrier_AtomicIncrement;
 using strings::Substitute;
 
 using yb::consensus::MinimumOpId;
-using yb::consensus::RaftConfigPB;
 
 namespace yb {
 namespace tablet {

@@ -287,6 +287,13 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
         mvcc_manager->UpdatePropagatedSafeTimeOnLeader(ht_lease);
       }
     });
+
+    auto mvcc_leader_only_mode_updater = [this](const RaftConfigPB& config) {
+      tablet_->mvcc_manager()->SetLeaderOnlyMode(config.peers_size() == 1);
+    };
+
+    mvcc_leader_only_mode_updater(RaftConfig()); // Set initial flag value.
+    consensus_->SetChangeConfigReplicatedListener(mvcc_leader_only_mode_updater);
   }
 
   RETURN_NOT_OK(prepare_thread_->Start());
@@ -1004,7 +1011,7 @@ HybridTime TabletPeer::HtLeaseExpiration() const {
 
 TableType TabletPeer::table_type() {
   // TODO: what if tablet is not set?
-  return tablet()->table_type();
+  return DCHECK_NOTNULL(tablet())->table_type();
 }
 
 void TabletPeer::SetFailed(const Status& error) {
