@@ -19,7 +19,7 @@ After creating a password for `yugabyte`, you can start, or restart, your Yugaby
 
 ## Enable YSQL authentication
 
-### yb-ctl
+### Start local cluster with YSQL authentication enabled
 
 To enable YSQL authentication in your local YugabyteDB clusters, you can  use the `--tserver_flags` option with the `yb-ctl create` and `yb-ctl start` commands.
 
@@ -35,7 +35,7 @@ After your local cluster has been created, you can enable YSQL authentication by
 ./bin/yb-ctl start --tserver_flags ysql_enable_auth=true
 ```
 
-### yb-tserver
+### Start YB-TServer services with YSQL authentication enabled
 
 To enable YSQL authentication in deployable YugabyteDB clusters, you need to start your `yb-tserver` services using the `--ysql_enable_auth=true` flag. Your command should look similar to this command:
 
@@ -67,6 +67,8 @@ yugabyte=#
 ```
 
 ## Common user authentication tasks
+
+Here are some common authentication-related tasks. For authorization-related tasks, see [Authorization](../authorization).
 
 ### Creating users
 
@@ -136,9 +138,7 @@ In this table, you can see that both `postgres` and `yugabyte` users can log in 
 
 As an alternative, you can simply run the `\du` command to see this information in a simpler, easier-to-read format:
 
-```plpgsql
-
-yugabyte=#\du
+```
 
                                     List of roles
  Role name |                         Attributes                         | Member of  
@@ -150,7 +150,7 @@ yugabyte=#\du
  yugabyte  | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
  ```
 
-## 5. Connect to ysqlsh using non-default credentials
+### Connect to ysqlsh using non-default credentials
 
 You can connect to a YSQL cluster with authentication enabled as follows:
 
@@ -166,11 +166,11 @@ As an example of connecting as a user, we can login with the credentials of the 
 $ ysqlsh -u john
 ```
 
-## 5. Edit user accounts
+### Edit user accounts
 
 You can edit existing user accounts using the [ALTER ROLE](../../api/ysql/commands/ddl_alter_role/) command. Note that the role making these changes should have sufficient privileges to modify the target role.
 
-### Changing password for a user
+#### Changing password for a user
 
 To change the password for `john` above, you can do:
 
@@ -178,40 +178,68 @@ To change the password for `john` above, you can do:
 yugabyte=# ALTER ROLE john WITH PASSWORD = 'new-password';
 ```
 
-### Granting and removing superuser privileges
+#### Granting and removing superuser privileges
 
-In the example above, we can verify that `john` is not a superuser:
+In the example above, we can verify that `john` is not a superuser using the following `SELECT` statement:
 
 ```sql
 yugabyte=# SELECT rolname, rolsuper, rolcanlogin FROM pg_roles WHERE rolname='john';
 ```
 
 ```
-yugabyte=# SELECT rolname, rolsuper, rolcanlogin FROM pg_roles WHERE rolname='steve';
- rolname | rolsuper | rolcanlogin 
+ rolname | rolsuper | rolcanlogin
 ---------+----------+-------------
  john    | f        | t
 (1 row)
 ```
 
+Even easier, you can use the YSQL `\du` meta command to display information about the users:
+
+```bash
+yugabyte=# \du
+```
+
+```
+                                      List of roles
+   Role name    |                         Attributes                         | Member of  
+----------------+------------------------------------------------------------+------------
+ john           |                                                            | {}
+ postgres       | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+ sysadmin       | Create role, Create DB                                     | {}
+ yugabyte       | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+```
+
+Users with `SUPERUSER` status display "Superuser" in the list of attributes for each role.
+
 To grant superuser privileges to `john`, run the following command.
 
 ```sql
-yugabyte=# ALTER ROLE john WITH SUPERUSER = true;
+yugabyte=# ALTER ROLE john SUPERUSER;
 ```
 
 We can now verify that john is now a superuser.
 
-```sql
-yugabyte=# SELECT rolname, rolsuper, rolcanlogin FROM pg_roles WHERE rolname='john';
+```bash
+yugabyte=#\du
 ```
 
 ```
- rolname | rolsuper | rolcanlogin 
----------+----------+-------------
- john    | t        | t
+                                      List of roles
+   Role name    |                         Attributes                         | Member of  
+----------------+------------------------------------------------------------+------------
+ john           | Superuser                                                           | {}
+ postgres       | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+ sysadmin       | Create role, Create DB                                     | {}
+ yugabyte       | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+```t        | t
 (1 row)
 ```
+
+{{< note title="Note" >}}
+
+In YugabyteDB (just as in PostgreSQL), `SUPERUSER` status includes all of the following attributes: `CREATEROLE` ("Create role"), `CREATEDB` ("Create DB"), `REPLICATION` ("Replication"), and BYPASSRLS ("Bypass RLS"). Whether these attributes display or not, all superusers have these attributes. 
+
+{{< /note >}}
 
 Similarly, you can revoke superuser privileges by running:
 
