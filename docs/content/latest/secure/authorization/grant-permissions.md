@@ -111,7 +111,9 @@ You should see something like the following output.
 The above shows the various permissions the `cassandra` role has. Since `cassandra` is a superuser, it has all permissions on all keyspaces, including `ALTER`, `AUTHORIZE` and `DROP` on the roles we created (`engineering`, `developer`, `qa` and `db_admin`).
 
 {{< note title="Note" >}}
+
 For the sake of brevity, we will drop the `cassandra` role related entries in the remainder of this article.
+
 {{< /note >}}
 
 ## 3. Grant permissions to roles
@@ -147,7 +149,9 @@ The output should look similar to below, where we see that the `engineering` rol
 ```
 
 {{< note title="Note" >}}
+
 The resource `data` represents *all keyspaces and tables*.
+
 {{< /note >}}
 
 Granting the role `engineering` to any other role will cause all those roles to inherit the `SELECT` permissions. Thus, `developer`, `qa` and `db_admin` will all inherit the `SELECT` permission.
@@ -208,9 +212,11 @@ We should see a new row added, which grants the `ALTER` permission on the resour
 ```
 
 {{< note title="Note" >}}
+
 The resource `data/dev_keyspace/integration_tests` denotes the hierarchy:
 
 All Keyspaces (`data`) > keyspace (`dev_keyspace`) > table (`integration_tests`)
+
 {{< /note >}}
 
 ### Grant all privileges

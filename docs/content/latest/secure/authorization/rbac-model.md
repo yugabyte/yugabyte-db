@@ -27,7 +27,6 @@ Roles in YCQL can represent individual users or a group of users. They encapsula
 
 * Roles inherit the permissions of all other roles granted to them.
 
-
 ## Resources
 
 YCQL defines a number of specific resources, that represent underlying database objects. A resource can denote one object or a collection of objects. YCQL resources are hierarchical as described below:
@@ -45,12 +44,9 @@ Resource        | Description |
 `ALL KEYSPACES` | Collection of all keyspaces in the database. |
 `ALL ROLES`     | Collection of all roles in the database. |
 
-
-
 ## Permissions
 
 Permissions are necessary to execute operations on database objects. Permissions can be granted at any level of the database hierarchy and are inherited downwards. The set of permissions include:
-
 
 Permission  | Objects                      | Operations                          |
 ------------|------------------------------|-------------------------------------|
@@ -63,7 +59,9 @@ Permission  | Objects                      | Operations                         
 `DESCRIBE` (not implemented)  | role       | LIST ROLES                          |
 
 {{< note title="Note" >}}
+
 The `ALTER` permission on the base table is required in order to `CREATE` or `DROP` indexes on it.
+
 {{< /note >}}
 
 Read more about [YCQL permissions](../../api/ycql/ddl_grant_permission/#permissions).

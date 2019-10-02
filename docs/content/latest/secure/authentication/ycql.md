@@ -1,7 +1,7 @@
 
 ## Overview
 
-YCQL authentication, identifying that a user is who they say they are, is based on roles. Roles can be created with superuser, non-superuser and login privileges. Administrators can create new roles and alter, or drop, existing ones using YCQL commands (`CREATE USER`,`CREATE ROLE`,`GRANT`,and `REVOKE`).
+YCQL authentication, identifying that a user is who they say they are, is based on roles. Roles can be created with superuser, non-superuser and login privileges. Administrators can create new roles and alter, or drop, existing ones using YCQL commands (`CREATE USER`,`CREATE ROLE`,`ALTER ROLE`,`GRANT`,and `REVOKE`).
 
 ## 1. Enable YCQL authentication
 
@@ -34,13 +34,6 @@ To enable YSQL authentication, start your `yb-tserver` services with the `--ysql
   --ysql_enable_auth=true \
   >& /home/centos/disk1/yb-tserver.out &
 ```
-
-{{< note title="Note" >}}
-
-When you enable YSL authentication using this gflag, YCQL authentication is also enabled.
-
-{{< /note >}}
-
 
 You can read more about bringing up YB-TServer services for deployments in the section on [manual deployment of a YugabyteDB cluster](../../deploy/manual-deployment/start-tservers/).
 

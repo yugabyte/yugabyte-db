@@ -15,7 +15,7 @@ menu:
 
 Authentication should be enabled to verify the identity of a client that connects to YugabyteDB. Note the following:
 
-- Authentication is implemented for YCQL (Cassandra-compatible) and YEDIS (Redis-compatible) APIs currently.
+- Authentication is implemented for YSQL (PostgreSQL-compatible), YCQL (Cassandra-compatible) and YEDIS (Redis-compatible) APIs currently.
 
 - For YSQL and YCQL, enabling authentication automatically enables authorization or role based access control (RBAC) to determine the access privileges. Authentication verifies the identity of a user while authorization determines the verified user’s database access privileges.
 
