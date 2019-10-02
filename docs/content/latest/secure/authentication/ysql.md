@@ -51,13 +51,13 @@ You can also enable YSQL authentication by adding the `--ysql_enable_auth=true` 
 
 ## Connect with the default admin credentials
 
-A YugabyteDB cluster with authentication enabled starts with `yugabyte` as the default admin user. Note that the users `yugabyte` and `postgres` have `SUPERUSER` privileges. You can connect to this cluster using `ysqlsh` as follows:
+A YugabyteDB cluster with authentication enabled starts with the default admin user of `yugabyte` and the default database of `yugabyte`. You can connect to the cluster and use the YSQL shell by running the following `ysqlsh` script from the YugabyteDB home directory:
 
 ```sh
-$ ysqlsh -U yugabyte -p yugabyte
+$ ./bin/ysqlsh -U yugabyte
 ```
 
-Upon opening the YSQL shell, you will see the following, displaying the `yugabyte` user in the prompt.
+You will be prompted to enter the password. Upon successful login to YSQL shell, you will see the following, displaying the `yugabyte` user in the prompt.
 
 ```
 ysqlsh (11.2-YB-2.0.0.0-b16)
@@ -70,19 +70,19 @@ yugabyte=#
 
 ### Creating users
 
-To add a new user, run the [CREATE ROLE statement](../../api/ysql/commands/ddl_create_role/). Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all the YSQL commands on any of the database resources.
+To add a new user, run the [`CREATE ROLE` statement](../../api/ysql/commands/ddl_create_role/) or its alias, the `CREATE USER` statement. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all of the YSQL statements on any of the database resources.
 
 **NOTE** By default, creating a role does not grant the `LOGIN` or the `SUPERUSER` privileges, these need to be explicitly granted.
 
 #### Create a regular user
 
-To add a new regular user named `john`, with the password `PasswdForJohn` and grant him `LOGIN` privileges, run the following command.
+To add a new regular user (with NONSUPERUSER privileges) named `john`, with the password `PasswdForJohn`, and grant him `LOGIN` privileges, run the following command.
 
 ```sql
 yugabyte=# CREATE ROLE john WITH LOGIN PASSWORD 'PasswdForJohn';
 ```
 
-If the role `john` already existed, the above statement will not error out since we have added the `IF NOT EXISTS` clause. To verify the user account just created, run the following query:
+To verify the user account just created, you can run a query similar like this:
 
 ```sql
 yugabyte=# SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
@@ -108,7 +108,7 @@ The `SUPERUSER` status should be given only to a limited number of users. Applic
 To create a superuser `admin` with the `LOGIN` privilege, run the following command using a superuser account:
 
 ```sql
-yugabyte=# CREATE ROLE admin WITH PASSWORD = 'PasswdForAdmin' AND LOGIN, SUPERUSER;
+yugabyte=# CREATE ROLE admin WITH LOGIN SUPERUSER PASSWORD = 'PasswdForAdmin';
 ```
 
 To verify the `admin` account just created, run the following query.
