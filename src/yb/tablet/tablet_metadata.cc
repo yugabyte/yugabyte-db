@@ -711,6 +711,8 @@ void RaftGroupMetadata::set_wal_retention_secs(uint32 wal_retention_secs) {
     return;
   }
   it->second->wal_retention_secs = wal_retention_secs;
+  LOG_WITH_PREFIX(INFO) << "Set RaftGroupMetadata wal retention time to "
+                        << wal_retention_secs << " seconds";
 }
 
 uint32_t RaftGroupMetadata::wal_retention_secs() const {

@@ -93,11 +93,6 @@ message CreateCDCStreamRequestPB {
   optional string table_id = 1;
   optional CDCRecordType record_type = 2 [default = CHANGE];
   optional CDCRecordFormat record_format = 3 [default = JSON];
-
-  // Time period for which CDC changes will be retained on producer.
-  // Calling GetChanges() with a checkpoint older than "retention" will result in
-  // CHECKPOINT_TOO_OLD error.
-  optional uint32 retention_sec = 4;
 }
 
 message CreateCDCStreamResponsePB {

@@ -52,9 +52,6 @@ TAG_FLAG(cdc_ybclient_reactor_threads, advanced);
 DEFINE_test_flag(bool, mock_get_changes_response_for_consumer_testing, false,
                  "Mock a successful response to consumer before stream id integration is set up.");
 
-DEFINE_int32(cdc_wal_retention_time_secs, 4 * 3600,
-             "WAL retention time in seconds to be used for tables for which a CDC stream was "
-             "created.");
 DEFINE_int32(cdc_state_checkpoint_update_interval_ms, 15 * 1000,
              "Rate at which CDC state's checkpoint is updated.");
 
@@ -162,25 +159,10 @@ void CDCServiceImpl::CreateCDCStream(const CreateCDCStreamRequestPB* req,
         context);
   }
 
-  std::unique_ptr<client::YBTableAlterer> table_alterer(
-      async_client_init_->client()->NewTableAlterer(table->name()));
-
-  // Increase WAL retention. Fail the request if we fail to set the WAL retention.
-  auto wal_retention_secs = 0;
-  if (req->has_retention_sec()) {
-    wal_retention_secs = req->retention_sec();
-  } else {
-    wal_retention_secs = static_cast<uint32>(FLAGS_cdc_wal_retention_time_secs);
-  }
-
-  auto status = table_alterer->SetWalRetentionSecs(wal_retention_secs)->Alter();
-  RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
-
   std::unordered_map<std::string, std::string> options;
-  options.reserve(3);
+  options.reserve(2);
   options.emplace(kRecordType, CDCRecordType_Name(req->record_type()));
   options.emplace(kRecordFormat, CDCRecordFormat_Name(req->record_format()));
-  options.emplace(kRetentionSec, std::to_string(wal_retention_secs));
 
   auto result = async_client_init_->client()->CreateCDCStream(req->table_id(), options);
   RPC_CHECK_AND_RETURN_ERROR(result.ok(), result.status(), resp->mutable_error(),

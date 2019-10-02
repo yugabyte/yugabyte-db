@@ -54,6 +54,7 @@
 
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/util/atomic.h"
+#include "yb/util/cdc_test_util.h"
 #include "yb/util/faststring.h"
 #include "yb/util/random.h"
 #include "yb/util/stopwatch.h"
@@ -63,6 +64,7 @@ DECLARE_int32(replication_factor);
 DECLARE_int32(cdc_rpc_timeout_ms);
 DECLARE_bool(mock_get_changes_response_for_consumer_testing);
 DECLARE_bool(twodc_write_hybrid_time_override);
+DECLARE_int32(cdc_wal_retention_time_secs);
 
 namespace yb {
 
@@ -733,6 +735,34 @@ TEST_F(TwoDCTest, TestDeleteUniverse) {
       FLAGS_cdc_rpc_timeout_ms * 2));
 
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 0));
+
+  Destroy();
+}
+
+TEST_F(TwoDCTest, TestWalRetentionSet) {
+  FLAGS_mock_get_changes_response_for_consumer_testing = true;
+  FLAGS_cdc_wal_retention_time_secs = 8 * 3600;
+
+  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4, 4, 12}, {8, 4, 12, 8}, 3));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer tables from the list.
+  producer_tables.reserve(tables.size() / 2);
+  for (int i = 0; i < tables.size(); i += 2) {
+    producer_tables.push_back(tables[i]);
+  }
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+  // Verify that universe was setup on consumer.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+
+  // After creating the cluster, make sure all 32 tablets being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 32));
+
+  cdc::VerifyWalRetentionTime(producer_cluster(), "test_table_", FLAGS_cdc_wal_retention_time_secs);
 
   Destroy();
 }
