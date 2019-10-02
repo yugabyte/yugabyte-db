@@ -139,7 +139,7 @@ public class Util {
     }
     return toBeAddedAzUUIDToNumNodes;
   }
-  
+
   /**
    * Create a custom node prefix name from the given parameters.
    * @param  custId customer id owing the universe.
@@ -192,8 +192,8 @@ public class Util {
   }
 
   /**
-   * API detects if addition of a master to the same AZ of current node makes master quorum get closer to 
-   * satisfying the replication factor requirements.
+   * API detects if addition of a master to the same AZ of current node makes master quorum get
+   * closer to satisfying the replication factor requirements.
    * @param currentNode the node whose AZ is checked.
    * @param nodeDetailsSet collection of nodes in a universe.
    * @param numMastersToBeAdded number of masters to be added.

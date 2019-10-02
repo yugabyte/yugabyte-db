@@ -108,12 +108,23 @@ public class YBMetricQueryComponent {
   private static final String QUERY_FORMAT = "select * from %s where metric = '%s' " +
                                              "and node = '%s' and ts >= %d and ts < %d";
 
+  // Array of metrics whose values should be retrieved from details column instead of value column.
+  private static final List<String> METRICS_WITH_DETAILS_VALUE = Arrays.asList(
+    "cpu_usage_user", "cpu_usage_system");
+
+  private static final long BYTES_IN_GB = 1024 * 1024 * 1024;
+
   public List<String> serviceMethods = Arrays.asList("Read", "Write");
 
   // The count checks the number of RPCs.
-  public String countMetricString = "handler_latency_yb_tserver_TabletServerService_%s_count";
+  public String COUNT_METRIC_STRING = "handler_latency_yb_tserver_TabletServerService_%s_count";
   // The sum checks the total time taken for each RPC.
-  public String sumMetricString = "handler_latency_yb_tserver_TabletServerService_%s_sum";
+  public String SUM_METRIC_STRING = "handler_latency_yb_tserver_TabletServerService_%s_sum";
+  public String TOTAL_DISK_STRING = "total_disk";
+  public String FREE_DISK_STRING = "free_disk";
+  public String CPU_USAGE_USER_STRING = "cpu_usage_user";
+  public String CPU_USAGE_SYSTEM_STRING = "cpu_usage_system";
+
 
   @Inject
   YBClientService ybService;
@@ -146,6 +157,14 @@ public class YBMetricQueryComponent {
     LOG.info("Creating a session...");
     cc.session = cc.cluster.connect();
     return cc;
+  }
+
+  private Double getValue(Row r) {
+    if (METRICS_WITH_DETAILS_VALUE.contains(r.getString("metric"))) {
+      return Util.convertStringToJson(r.getString("details")).get("value").asDouble();
+    } else {
+      return (double) r.getLong("value");
+    }
   }
 
   private Map<String, String> getTservers(Universe universe) {
@@ -210,61 +229,59 @@ public class YBMetricQueryComponent {
   public NavigableMap<Long, Double> calculateRate(List<ResultSet> results, Function function,
                                               int numTservers) {
     NavigableMap<Long, Double> timeRangeMap = new TreeMap<>();
-    List<String> metricResults = new ArrayList<>();
     for (ResultSet rs : results) {
-      List<String> vals = new ArrayList<>();
-      long currTimestamp = 0;
-      long prevTimestamp = 0;
+      long currTimestampSec = 0;
+      long prevTimestampSec = 0;
       double currRate;
-      long currVal = 0;
-      long prevVal = 0;
+      double currVal = 0;
+      double prevVal = 0;
       boolean start = true;
       Iterator<Row> rowIter = rs.iterator();
       while (rowIter.hasNext()) {
         Row row = rowIter.next();
-        currTimestamp = row.getTimestamp("ts").getTime() / 1000;
-        currVal = row.getLong("value");
+        currTimestampSec = row.getTimestamp("ts").getTime() / 1000;
+        currVal = getValue(row);
         if (start) {
           if (!rowIter.hasNext()) {
             return timeRangeMap;
           }
           row = rowIter.next();
           prevVal = currVal;
-          prevTimestamp = currTimestamp;
-          currTimestamp = row.getTimestamp("ts").getTime() / 1000;
-          currVal = row.getLong("value");
+          prevTimestampSec = currTimestampSec;
+          currTimestampSec = row.getTimestamp("ts").getTime() / 1000;
+          currVal = getValue(row);
           start = false;
         }
         if (!rowIter.hasNext()) {
           break;
         } else {
-          currRate = ((double) prevVal - (double) currVal) /
-                     ((double) prevTimestamp - (double) currTimestamp);
+          currRate = (prevVal - currVal) /
+                     (prevTimestampSec - currTimestampSec);
         }
-        Entry<Long, Double> entry = timeRangeMap.floorEntry(currTimestamp);
+        Entry<Long, Double> entry = timeRangeMap.floorEntry(currTimestampSec);
         // In case there is no entry lower than that, or the entry lower than the key
         // is older than the range for the same timestamped metric.
-        if (entry == null || currTimestamp - entry.getKey() > TIMESTAMP_RANGE_SECS) {
+        if (entry == null || currTimestampSec - entry.getKey() > TIMESTAMP_RANGE_SECS) {
           double calcVal = compute(function, 0.0, currRate, numTservers);
-          timeRangeMap.put(currTimestamp, calcVal);
+          timeRangeMap.put(currTimestampSec, calcVal);
         } else {
           double calcVal = compute(function, entry.getValue(), currRate, numTservers);
           timeRangeMap.put(entry.getKey(), calcVal);
         }
         prevVal = currVal;
-        prevTimestamp = currTimestamp;
+        prevTimestampSec = currTimestampSec;
       }
     }
     return timeRangeMap;
   }
 
-  private TreeMap<Long, Double> metricDivide(NavigableMap<Long, Double> metricsCount,
-                                             NavigableMap<Long, Double> metricsSum) {
+  private TreeMap<Long, Double> metricDivide(NavigableMap<Long, Double> metricsNum,
+                                             NavigableMap<Long, Double> metricsDenom) {
     TreeMap<Long, Double> timeToVal = new TreeMap<>();
-    for (Entry<Long, Double> entry : metricsCount.entrySet()) {
-      Entry<Long, Double> entry2 = metricsSum.floorEntry(entry.getKey());
-      if (entry2 != null && Math.abs(entry2.getKey() - entry.getKey()) < TIMESTAMP_RANGE_SECS) {
-        Double val = entry2.getValue() / entry.getValue();
+    for (Entry<Long, Double> entry : metricsNum.entrySet()) {
+      Entry<Long, Double> entry2 = metricsDenom.floorEntry(entry.getKey());
+      if (entry2 != null && Math.abs(entry.getKey() - entry2.getKey()) < TIMESTAMP_RANGE_SECS) {
+        Double val = entry.getValue() / entry2.getValue();
         // Due to the metrics being written and read into/from a user table, we get
         // some rpcs when no workload is running. This causes the latency
         // graph to be jittery. The following code can be uncommented if we want
@@ -272,14 +289,32 @@ public class YBMetricQueryComponent {
         // significant.
         /*
         Double val = 0.0;
-        if (entry.getValue() > 10) {
-          val = entry2.getValue() / entry.getValue();
+        if (entry2.getValue() > 10) {
+          val = entry.getValue() / entry2.getValue();
         }
         */
-        timeToVal.put(entry.getKey(), val);
+        timeToVal.put(entry2.getKey(), val);
       }
     }
     return timeToVal;
+  }
+
+  private NavigableMap<Long, Double> convertToGb(List<ResultSet> results) {
+    return divideByConstant(results, BYTES_IN_GB);
+  }
+
+  private NavigableMap<Long, Double> divideByConstant(List<ResultSet> results, double denom) {
+    NavigableMap<Long, Double> timeRangeMap = new TreeMap<>();
+    for (ResultSet rs : results) {
+      Iterator<Row> rowIter = rs.iterator();
+      while (rowIter.hasNext()) {
+        Row row = rowIter.next();
+        long timestampSec = row.getTimestamp("ts").getTime() / 1000;
+        double val = (double) getValue(row) / denom;
+        timeRangeMap.put(timestampSec, val);
+      }
+    }
+    return timeRangeMap;
   }
 
   private List<ResultSet> queryRunner(String metricName, Session session,
@@ -309,6 +344,17 @@ public class YBMetricQueryComponent {
       }
     }
     return results;
+  }
+
+  /**
+   * Utility function for inserting calculated metrics with the proper formatting.
+   */
+  private void insertMetrics(List<String> totalMetrics, Map<Long, Double> newVals,
+                             String method) {
+    if (!newVals.isEmpty()) {
+      totalMetrics.add(String.format(METRIC_DATA_FORMAT, method,
+                                      mapToStringList(newVals)));
+    }
   }
 
   /**
@@ -355,15 +401,12 @@ public class YBMetricQueryComponent {
           universe = Universe.get(universe.universeUUID);
           tserverNameToUUID = getTservers(universe);
           for (String method : serviceMethods) {
-            String metricName = String.format(countMetricString, method);
+            String metricName = String.format(COUNT_METRIC_STRING, method);
             List<ResultSet> results = queryRunner(metricName, cc.session, tserverNameToUUID, params,
                                                   universe, startTime, endTime);
             NavigableMap<Long, Double> metricsVals = calculateRate(results, Function.Sum,
                                                                    results.size());
-            if (!metricsVals.isEmpty()) {
-              metricResults.add(String.format(METRIC_DATA_FORMAT, method,
-                                              mapToStringList(metricsVals)));
-            }
+            insertMetrics(metricResults, metricsVals, method);
           }
           break;
         case "tserver_ops_latency":
@@ -374,8 +417,8 @@ public class YBMetricQueryComponent {
           universe = Universe.get(universe.universeUUID);
           tserverNameToUUID = getTservers(universe);
           for (String method : serviceMethods) {
-            String metricCount = String.format(countMetricString, method);
-            String metricSum = String.format(sumMetricString, method);
+            String metricCount = String.format(COUNT_METRIC_STRING, method);
+            String metricSum = String.format(SUM_METRIC_STRING, method);
             List<ResultSet> resultCount = queryRunner(metricCount, cc.session, tserverNameToUUID,
                                                       params, universe, startTime, endTime);
             List<ResultSet> resultSum = queryRunner(metricSum, cc.session, tserverNameToUUID,
@@ -384,14 +427,47 @@ public class YBMetricQueryComponent {
                                                                     resultCount.size());
             NavigableMap<Long, Double> metricsSum = calculateRate(resultSum, Function.Average,
                                                                   resultSum.size());
-            TreeMap<Long, Double> metricsVals = metricDivide(metricsCount, metricsSum);
-            if (!metricsVals.isEmpty()) {
-              metricResults.add(String.format(METRIC_DATA_FORMAT, method,
-                                              mapToStringList(metricsVals)));
-            }
+            TreeMap<Long, Double> metricsVals = metricDivide(metricsSum, metricsCount);
+            insertMetrics(metricResults, metricsVals, method);
           }
           break;
-        default:
+        case "disk_usage":
+          cc = createCassandraConnection(universe.universeUUID);
+          if (cc.session == null) {
+            return responseJson;
+          }
+          universe = Universe.get(universe.universeUUID);
+          tserverNameToUUID = getTservers(universe);
+          List<ResultSet> totalDiskRaw = queryRunner(TOTAL_DISK_STRING, cc.session,
+                                                     tserverNameToUUID, params, universe,
+                                                     startTime, endTime);
+          List<ResultSet> freeDiskRaw = queryRunner(FREE_DISK_STRING, cc.session,
+                                                    tserverNameToUUID, params, universe,
+                                                    startTime, endTime);
+          NavigableMap<Long, Double> totalDiskMetrics = convertToGb(totalDiskRaw);
+          NavigableMap<Long, Double> freeDiskMetrics = convertToGb(freeDiskRaw);
+          insertMetrics(metricResults, totalDiskMetrics, "size");
+          insertMetrics(metricResults, freeDiskMetrics, "free");
+          break;
+        case "cpu_usage":
+          cc = createCassandraConnection(universe.universeUUID);
+          if (cc.session == null) {
+            return responseJson;
+          }
+          universe = Universe.get(universe.universeUUID);
+          tserverNameToUUID = getTservers(universe);
+          List<ResultSet> userCpuRaw = queryRunner(CPU_USAGE_USER_STRING, cc.session,
+                                                    tserverNameToUUID, params, universe,
+                                                    startTime, endTime);
+          List<ResultSet> systemCpuRaw = queryRunner(CPU_USAGE_SYSTEM_STRING, cc.session,
+                                                    tserverNameToUUID, params, universe,
+                                                    startTime, endTime);
+          NavigableMap<Long, Double> userCpuMetrics = divideByConstant(userCpuRaw, 0.01);
+          NavigableMap<Long, Double> systemCpuMetrics = divideByConstant(systemCpuRaw, 0.01);
+          insertMetrics(metricResults, userCpuMetrics, "user");
+          insertMetrics(metricResults, systemCpuMetrics, "system");
+          break;
+      default:
           LOG.warn("Query: " + queryKey + " not supported.");
       }
       if (cc != null) {
