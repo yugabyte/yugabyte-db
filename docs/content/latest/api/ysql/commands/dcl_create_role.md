@@ -74,19 +74,19 @@ Note that password is always stored encrypted in system catalogs and the optiona
 
 - Create a role that can login.
 
-```sql
+```postgresql
 yugabyte=# CREATE ROLE John LOGIN;
 ```
 
 - Create a role that can login and has a password.
 
-```sql
+```postgresql
 yugabyte=# CREATE ROLE Jane LOGIN PASSWORD 'password';
 ```
 
 - Create a role that can manage databases and roles.
 
-```sql
+```postgresql
 yugabyte=# CREATE ROLE SysAdmin CREATEDB CREATEROLE;
 ```
 

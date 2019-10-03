@@ -80,7 +80,7 @@ Details about each of these life cycle phases follows.
 
 In order to set up a 2DC asynchronous replication, the user runs a command similar to the one here:
 
-```bash
+```sh
 yb-admin -master_addresses <consumer_universe_master_addresses>
 setup_universe_replication <producer_universe_uuid>
   <producer_universe_master_addresses>

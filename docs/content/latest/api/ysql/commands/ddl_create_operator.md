@@ -51,7 +51,7 @@ See the semantics of each option in the [PostgreSQL docs][postgresql-docs-create
 
 Basic example.
 
-```sql
+```postgresql
 yugabyte=# CREATE OPERATOR @#@ (
              rightarg = int8,
              procedure = numeric_fac

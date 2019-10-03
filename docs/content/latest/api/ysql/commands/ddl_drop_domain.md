@@ -67,25 +67,25 @@ Refuse to drop the domain if objects depend on it (default).
 
 ### Example 1
 
-```sql
+```postgresql
 yugabyte=# CREATE DOMAIN idx DEFAULT 5 CHECK (VALUE > 0);
 ```
 
-```sql
+```postgresql
 yugabyte=# DROP DOMAIN idx;
 ```
 
 ### Example 2
 
-```sql
+```postgresql
 yugabyte=# CREATE DOMAIN idx DEFAULT 5 CHECK (VALUE > 0);
 ```
 
-```sql
+```postgresql
 yugabyte=# CREATE TABLE t (k idx primary key);
 ```
 
-```sql
+```postgresql
 yugabyte=# DROP DOMAIN idx CASCADE;
 ```
 
