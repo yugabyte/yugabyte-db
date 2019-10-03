@@ -64,14 +64,8 @@ class PgDml : public PgStatement {
                        bool *has_data);
   CHECKED_STATUS WritePgTuple(PgTuple *pg_tuple);
 
-  // Add primary column to be used in construction of tuple id (ybctid).
-  CHECKED_STATUS AddYBTupleIdColumn(int attr_num,
-                                    uint64_t datum,
-                                    bool is_null,
-                                    const YBCPgTypeEntity *type_entity);
-
-  // Get tuple id (ybctid) of the given Postgres tuple.
-  Result<std::string> GetYBTupleId();
+  // Build tuple id (ybctid) of the given Postgres tuple.
+  Result<std::string> BuildYBTupleId(const PgAttrValueDescriptor *attrs, int32_t nattrs);
 
   virtual void SetCatalogCacheVersion(uint64_t catalog_cache_version) = 0;
 
@@ -154,15 +148,6 @@ class PgDml : public PgStatement {
   //
   // These members are not used internally by the statement and are simply a utility for computing
   // the tuple id (ybctid).
-
-  // Hashed values used to compute tuple id (ybctid).
-  google::protobuf::RepeatedPtrField<PgsqlExpressionPB> hashed_values_;
-
-  // Hashed components used to compute tuple id (ybctid).
-  vector<docdb::PrimitiveValue> hashed_components_;
-
-  // Range components used to compute tuple id (ybctid).
-  vector<docdb::PrimitiveValue> range_components_;
 };
 
 }  // namespace pggate
