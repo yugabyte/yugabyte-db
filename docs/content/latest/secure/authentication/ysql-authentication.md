@@ -1,7 +1,21 @@
+---
+title: YSQL authentication
+linkTitle: YSQL authentication
+description: YSQL authentication
+headcontent: Identify that your YSQL users are who they say they are
+image: /images/section_icons/secure/authentication.png
+menu:
+  latest:
+    identifier: ysql-authentication
+    parent: authentication
+    weight: 10
+isTocNested: true
+showAsideToc: true
+---
 
 ## Overview
 
-YSQL authentication is the process of identifying that a YSQL user is who they say they are, is based on roles. Users and roles can be created with superuser, non-superuser, and login privileges. Administrators can create users and roles using the [`CREATE ROLE`](../../api/ysql/ddl_create_role/) statement (or its alias, [`CREATE USER`](../../api/ysql/ddl_create_user/)). After users and roles have been created, the [`ALTER ROLE`](../../api/ysql/ddl_alter_role/) and [`DROP ROLE`](../../api/ysql/ddl_drop_role/) statements are used to change or remove users and roles. 
+YSQL authentication — identifying that YSQL users are who they say they are — is based on roles. Users and roles can be created with superuser, non-superuser, and login privileges. Administrators can create users and roles using the [`CREATE ROLE`](../../api/ysql/ddl_create_role/) statement (or its alias, [`CREATE USER`](../../api/ysql/ddl_create_user/)). After users and roles have been created, the [`ALTER ROLE`](../../api/ysql/ddl_alter_role/) and [`DROP ROLE`](../../api/ysql/ddl_drop_role/) statements are used to change or remove users and roles. 
 
 YSQL authorization is the process of access control created by granting or revoking privileges to YSQL users and roles, see [Authorization](../authorization). Privileges are managed using [`GRANT`](../../api/ysql/ddl_grant/), [`REVOKE`](../../api/ysql/ddl_revoke/), [`CREATE ROLE`](../../api/ysql/ddl_create_role/), [`ALTER ROLE`](../../api/ysql/ddl_alter_role/), and [`DROP ROLE`](../../api/ysql/ddl_drop_role/).
 

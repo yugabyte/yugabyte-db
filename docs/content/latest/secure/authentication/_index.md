@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: secure-authentication
     parent: secure
-    weight: 710
+    weight: 1
 ---
 
 Authentication should be enabled to verify the identity of a client that connects to YugabyteDB. Note the following:
@@ -19,39 +19,38 @@ Authentication should be enabled to verify the identity of a client that connect
 
 - For YSQL and YCQL, enabling authentication automatically enables authorization or role based access control (RBAC) to determine the access privileges. Authentication verifies the identity of a user while authorization determines the verified user’s database access privileges.
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#ysql" class="nav-link active" id="ycql-tab" data-toggle="tab" role="tab" aria-controls="ycql" aria-selected="true">
-      <i class="icon-ysql" aria-hidden="true"></i>
-      YSQL
+<div class="row">
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="ysql-authentication/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
+        <div class="title">YSQL authentication</div>
+      </div>
+      <div class="body">
+          Enable YSQL authentication to identify that a YSQL user is who they say they are.
+      </div>
     </a>
-  </li>
-  <li >
-    <a href="#ycql" class="nav-link" id="ycql-tab" data-toggle="tab" role="tab" aria-controls="ycql" aria-selected="true">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-  <li>
-    <a href="#yedis" class="nav-link" id="ycql-tab" data-toggle="tab" role="tab" aria-controls="ycql" aria-selected="false">
-      <i class="icon-redis" aria-hidden="true"></i>
-      YEDIS
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-
-  <div id="ysql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ysql-tab">
-    {{% includeMarkdown "ysql.md" /%}}
   </div>
-
-  <div id="ycql" class="tab-pane fade" role="tabpanel" aria-labelledby="ycql-tab">
-    {{% includeMarkdown "ycql.md" /%}}
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="ycql-authentication/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
+        <div class="title">Host-based authentication using yb_hba.conf</div>
+      </div>
+      <div class="body">
+          Configure yb_hba.conf to control access to remote clients with host-based authentication.
+      </div>
+    </a>
   </div>
-
-  <div id="yedis" class="tab-pane fade" role="tabpanel" aria-labelledby="yedis-tab">
-    {{% includeMarkdown "yedis.md" /%}}
-
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="ycql-authentication/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
+        <div class="title">YCQL authentication</div>
+      </div>
+      <div class="body">
+          Enable YSQL authentication to identify that a YCQL user is who they say they are.
+      </div>
+    </a>
   </div>
 </div>

@@ -1,3 +1,19 @@
+---
+title: YEDIS authentication
+linkTitle: YEDIS authentication
+description: YEDIS authentication
+headcontent: Identify that your YEDIS users are who they say they are
+image: /images/section_icons/secure/authentication.png
+aliases:
+  - /secure/authentication/yedis
+menu:
+  latest:
+    identifier: yedis-authentication
+    parent: authentication
+    weight: 40
+isTocNested: true
+showAsideToc: true
+---
 
 ## Overview
 

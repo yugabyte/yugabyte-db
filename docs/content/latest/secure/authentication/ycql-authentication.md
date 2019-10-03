@@ -1,3 +1,19 @@
+---
+title: YCQL authentication
+linkTitle: YCQL authentication
+description: YCQL authentication
+headcontent: Identify that your YCQL users are who they say they are
+image: /images/section_icons/secure/authentication.png
+aliases:
+  - /secure/authentication/ycql
+menu:
+  latest:
+    identifier: ycql-authentication
+    parent: authentication
+    weight: 30
+isTocNested: true
+showAsideToc: true
+---
 
 ## Overview
 
