@@ -110,7 +110,7 @@ public class CustomerController extends AuthenticatedController {
     if (config == null && formData.get().alertingData != null) {
       config = CustomerConfig.createAlertConfig(
               customerUUID, Json.toJson(formData.get().alertingData));
-    } else if (config != null) {
+    } else if (config != null && formData.get().alertingData != null) {
       config.data = Json.toJson(formData.get().alertingData);
       config.update();
     }
@@ -124,6 +124,7 @@ public class CustomerController extends AuthenticatedController {
     CustomerConfig.upsertCallhomeConfig(customerUUID, formData.get().callhomeLevel);
 
     customer.name = formData.get().name;
+    customer.email = formData.get().email;
     customer.update();
 
     return ok(Json.toJson(customer));

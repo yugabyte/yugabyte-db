@@ -266,3 +266,25 @@ pre {
     }
   }
 }
+
+.api-token-component {
+  position: relative;
+
+  button {
+    position: absolute;
+    top: 35px;
+    right: 12px;
+    z-index: 1000;
+  }
+}
+.btn-api-token {
+  margin-left: 10px;
+  margin-top: 24px;
+  min-width: 120px;
+}
+
+.yb-dissapear {
+  visibility: hidden;
+  opacity: 0;
+  transition: visibility 0s 2s, opacity 1s linear 1s;
+}

@@ -8,7 +8,7 @@ class Profile extends Component {
   render() {
     return (
       <div className="dashboard-container">
-        <CustomerProfileContainer />
+        <CustomerProfileContainer {...this.props} />
       </div>
     );
   }

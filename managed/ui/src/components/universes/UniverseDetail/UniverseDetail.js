@@ -275,7 +275,7 @@ class UniverseDetail extends Component {
         isNotHidden(currentCustomer.data.features, "universes.details.health") &&
           <Tab.Pane
             eventKey={"health"}
-            title="Health"x
+            title="Health"
             key="health-tab"
             mountOnEnter={true}
             unmountOnExit={true}
