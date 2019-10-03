@@ -1,16 +1,16 @@
 ## 1. Create a universe
 
-If you have a previously running local universe, destroy it using the following.
+If you have a currently running local universe, destroy it using the following.
 
 ```sh
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local universe with a replication factor of 1 (rf=1). We are passing the following options/flags:
+Start a new local universe with a replication factor of 1 (rf=1). We are passing the following options:
 
 - `--rf 1` This creates a universe with a replication factor of 1.
-- `--num_shards_per_tserver 4`  This option controls the total number of tablets (or partitions) when creating a new table. By making this number 4, we will end up creating 12 tablets on a 3 node cluster.
-- `--tserver_flags "memstore_size_mb=1"` This sets the total size of memstores on the tablet-servers to 1MB. We do this in order to force a flush of the data to disk when we insert a value more than 1MB, so that we can observe which tablets the data gets written to.
+- `--num_shards_per_tserver 4`  This option controls the total number of tablets (or partitions) when creating a new table. By setting the value to `4`, 12 tablets will be created on a 3-node cluster.
+- `--tserver_flags "memstore_size_mb=1"` This sets the total size of memstores on the tablet-servers to `1MB`. This will force a flush of the data to disk when a value greater than 1MB is added, so that we can observe which tablets the data is written to.
 
 You can do this as shown below.
 
@@ -19,7 +19,7 @@ $ ./bin/yb-ctl --rf 1 --num_shards_per_tserver 4 create \
              --tserver_flags "memstore_size_mb=1"
 ```
 
-The above command creates a universe with one node. Let us add 2 more nodes to make this a 3-node, rf=1 universe. We need to pass the memstore size flag to each new tserver we add. You can do that by running the following:
+This example creates a universe with one node. Now, let's add two more nodes to make this a 3-node, rf=1 universe. We need to pass the memstore size flag to each of the added YB-TServer nodes. You can do that by running the following:
 
 ```sh
 $ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
@@ -29,8 +29,7 @@ $ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
 $ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
 ```
 
-
-We can check the status of the cluster to confirm that we have 3 tservers.
+We can check the status of the cluster to confirm that we have three YB-TServer nodes.
 
 ```sh
 $ ./bin/yb-ctl status
@@ -82,7 +81,7 @@ $ ./bin/yb-ctl status
 
 ## 2. Create a table
 
-Create a YCQL table. The keyspace and table name below must created exactly as shown below, since we will be using the sample application to write data into this table.
+Create a YCQL table. Since we will be using the sample application to write data into this table, the keyspace and table name below must created exactly as shown.
 
 ```sh
 $ ./bin/cqlsh
@@ -96,7 +95,7 @@ cqlsh> CREATE KEYSPACE ybdemo_keyspace;
 cqlsh> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (k text PRIMARY KEY, v blob);
 ```
 
-For each table, we have instructed YugabyteDB to create 4 shards per tserver present in the universe. Since we have 3 nodes, we expect 12 tablets for the `ybdemo_keyspace.cassandrakeyvalue` table.
+For each table, we have instructed YugabyteDB to create four shards for each YB-TServer in this universe. Because we have three nodes, we expect 12 tablets for the `ybdemo_keyspace.cassandrakeyvalue` table.
 
 ## 3. Explore tablets
 
@@ -121,22 +120,22 @@ What we see here is that there are 12 tablets as expected, and the key ranges ow
 Let us list out all the tablet directories and see their sizes. This can be done as follows.
 
 ```sh
-$ du -hs /tmp/yugabyte-local-cluster/node*/disk*/yb-data/tserver/data/rocksdb/table*/* | grep -v '0B'
+$ du -hs /yugabyte-data/node*/disk*/yb-data/tserver/data/rocksdb/table*/* | grep -v '0B'
 ```
 
 ```
- 20K    /tmp/yugabyte-local-cluster/node-1/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-439ae3bde90049d6812e198e76ad29a4
- 20K    /tmp/yugabyte-local-cluster/node-1/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-eecd01f0a7cd4537ba571bdb85d0c094
- 20K    /tmp/yugabyte-local-cluster/node-1/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-4ea334056a3845518cc6614baef96966
- 20K    /tmp/yugabyte-local-cluster/node-1/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-52642a3a9d7b4d38a103dff5dd77a3c6
- 20K    /tmp/yugabyte-local-cluster/node-2/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-4e31e26b3b204e34a1e0cfd6f7500525
- 20K    /tmp/yugabyte-local-cluster/node-2/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-b7ac08a983aa45a3843ab92b1719799a
- 20K    /tmp/yugabyte-local-cluster/node-2/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-22c349a07afb48e3844b570c24455431
- 20K    /tmp/yugabyte-local-cluster/node-2/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-8955db9e1ec841f3a30535b77d707586
- 20K    /tmp/yugabyte-local-cluster/node-3/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-adac9f92466b4d288a4ae346aaad3880
- 20K    /tmp/yugabyte-local-cluster/node-3/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-f04a6d5113a74ba79a04f01c80423ef5
- 20K    /tmp/yugabyte-local-cluster/node-3/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-1c472c1204fe40afbc7948dadce22be8
- 20K    /tmp/yugabyte-local-cluster/node-3/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-5aaeb96381044aa2b09ed9973830bb27
+ 20K    /yugabyte-data/node-1/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-439ae3bde90049d6812e198e76ad29a4
+ 20K    /yugabyte-data/node-1/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-eecd01f0a7cd4537ba571bdb85d0c094
+ 20K    /yugabyte-data/node-1/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-4ea334056a3845518cc6614baef96966
+ 20K    /yugabyte-data/node-1/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-52642a3a9d7b4d38a103dff5dd77a3c6
+ 20K    /yugabyte-data/node-2/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-4e31e26b3b204e34a1e0cfd6f7500525
+ 20K    /yugabyte-data/node-2/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-b7ac08a983aa45a3843ab92b1719799a
+ 20K    /yugabyte-data/node-2/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-22c349a07afb48e3844b570c24455431
+ 20K    /yugabyte-data/node-2/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-8955db9e1ec841f3a30535b77d707586
+ 20K    /yugabyte-data/node-3/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-adac9f92466b4d288a4ae346aaad3880
+ 20K    /yugabyte-data/node-3/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-f04a6d5113a74ba79a04f01c80423ef5
+ 20K    /yugabyte-data/node-3/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-1c472c1204fe40afbc7948dadce22be8
+ 20K    /yugabyte-data/node-3/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-5aaeb96381044aa2b09ed9973830bb27
  ```
 
 ## 4. Insert and query a table
@@ -195,7 +194,7 @@ cqlsh> SELECT k FROM ybdemo_keyspace.cassandrakeyvalue;
 Now let us check the sizes of the various tablets:
 
 ```sh
-$ du -hs /tmp/yugabyte-local-cluster/node*/disk*/yb-data/tserver/data/rocksdb/table*/* | grep -v '0B'
+$ du -hs /yugabyte-data/node*/disk*/yb-data/tserver/data/rocksdb/table*/* | grep -v '0B'
 ```
 
 ```
