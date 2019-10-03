@@ -1,15 +1,15 @@
 ---
-title: 1. RBAC Model
-linkTitle: 1. RBAC Model
-description: 1. RBAC Model
+title: 1. RBAC model
+linkTitle: 1. RBAC model
+description: 1. RBAC model
 headcontent: How role-based access control works in YCQL
 image: /images/section_icons/secure/rbac-model.png
 aliases:
   - /secure/authorization/rbac-model/
 menu:
   latest:
-    identifier: secure-authorization-rbac-model
-    parent: secure-authorization
+    identifier: rbac-model
+    parent: authorization
     weight: 716
 isTocNested: true
 showAsideToc: true

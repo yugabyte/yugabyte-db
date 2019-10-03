@@ -8,8 +8,8 @@ aliases:
   - /secure/tls-encryption/connect-to-cluster
 menu:
   latest:
-    identifier: secure-tls-encryption-connect-to-cluster
-    parent: secure-tls-encryption
+    identifier: connect-to-cluster
+    parent: tls-encryption
     weight: 724
 isTocNested: true
 showAsideToc: true

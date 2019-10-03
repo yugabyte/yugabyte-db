@@ -8,8 +8,8 @@ aliases:
   - /secure/authorization/create-roles/
 menu:
   latest:
-    identifier: secure-authorization-create-roles
-    parent: secure-authorization
+    identifier: create-roles
+    parent: authorization
     weight: 717
 isTocNested: true
 showAsideToc: true

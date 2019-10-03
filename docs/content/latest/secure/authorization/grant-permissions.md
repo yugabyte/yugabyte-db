@@ -8,8 +8,8 @@ aliases:
   - /secure/authorization/grant-permissions/
 menu:
   latest:
-    identifier: secure-authorization-grant-permissions
-    parent: secure-authorization
+    identifier: grant-permissions
+    parent: authorization
     weight: 718
 isTocNested: true
 showAsideToc: true
