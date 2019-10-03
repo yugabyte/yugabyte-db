@@ -875,7 +875,7 @@ class YBTransaction::Impl final {
     }
 
     bool HasMetadata() const {
-      return metadata_state == InvolvedTabletMetadataState::EXIST;
+      return true;
     }
 
     std::string ToString() const {
