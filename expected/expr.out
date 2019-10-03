@@ -32,3 +32,15 @@ ERROR:  list literal parsed
 LINE 1: SELECT * FROM cypher($$RETURN ['str', 1, 1.0, true, null]$$)...
                                       ^
 DETAIL:  ({A_CONST :val "str" :location 8} {A_CONST :val 1 :location 15} {A_CONST :val 1.0 :location 18} {EXTENSIBLENODE :extnodename cypher_bool_const :boolean true :location 23} {A_CONST :val NULL :location 29})
+--
+-- Test transform logic for operators
+--
+SELECT * FROM cypher(
+$$ RETURN (-(3 * 2 - 4.0) ^ ((10 / 5) + 1)) % -3 $$
+)
+AS r(result agtype);
+ result 
+--------
+ -2.0
+(1 row)
+

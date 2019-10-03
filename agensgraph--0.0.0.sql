@@ -81,3 +81,109 @@ PREFERRED = FALSE,
 DELIMITER = ',',
 COLLATABLE = FALSE
 );
+
+--
+-- agtype operator functions
+--
+
+CREATE FUNCTION agtype_add(agtype, agtype)
+RETURNS agtype
+LANGUAGE C
+STABLE
+STRICT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION agtype_sub(agtype, agtype)
+RETURNS agtype
+LANGUAGE C
+STABLE
+STRICT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION agtype_neg(agtype)
+RETURNS agtype
+LANGUAGE C
+STABLE
+STRICT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION agtype_mul(agtype, agtype)
+RETURNS agtype
+LANGUAGE C
+STABLE
+STRICT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION agtype_div(agtype, agtype)
+RETURNS agtype
+LANGUAGE C
+STABLE
+STRICT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION agtype_mod(agtype, agtype)
+RETURNS agtype
+LANGUAGE C
+STABLE
+STRICT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION agtype_pow(agtype, agtype)
+RETURNS agtype
+LANGUAGE C
+STABLE
+STRICT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+--
+-- agtype operator definitions
+--
+CREATE OPERATOR + (
+    LEFTARG = agtype,
+    RIGHTARG = agtype,
+    FUNCTION = agtype_add,
+    COMMUTATOR = +
+);
+
+CREATE OPERATOR - (
+    LEFTARG = agtype,
+    RIGHTARG = agtype,
+    FUNCTION = agtype_sub
+);
+
+CREATE OPERATOR - (
+    RIGHTARG = agtype,
+    FUNCTION = agtype_neg
+);
+
+CREATE OPERATOR * (
+    LEFTARG = agtype,
+    RIGHTARG = agtype,
+    FUNCTION = agtype_mul,
+    COMMUTATOR = *
+);
+
+CREATE OPERATOR / (
+    LEFTARG = agtype,
+    RIGHTARG = agtype,
+    FUNCTION = agtype_div
+);
+
+CREATE OPERATOR % (
+    LEFTARG = agtype,
+    RIGHTARG = agtype,
+    FUNCTION = agtype_mod
+);
+
+CREATE OPERATOR ^ (
+    LEFTARG = agtype,
+    RIGHTARG = agtype,
+    FUNCTION = agtype_pow
+);

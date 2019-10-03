@@ -46,6 +46,7 @@ INSERT INTO agtype_table VALUES('object', '{"bool":true, "null":null, "string":"
 
 --
 -- Special float values: NaN, +/- Infinity
+--
 INSERT INTO agtype_table VALUES ('float  nan', 'nan');
 INSERT INTO agtype_table VALUES ('float  Infinity', 'Infinity');
 INSERT INTO agtype_table VALUES ('float -Infinity', '-Infinity');
@@ -62,6 +63,65 @@ INSERT INTO agtype_table VALUES ('bad integer', '-9223372036854775809');
 INSERT INTO agtype_table VALUES ('bad float', '-NaN');
 INSERT INTO agtype_table VALUES ('bad float', 'Infi');
 INSERT INTO agtype_table VALUES ('bad float', '-Infi');
+
+--
+-- Test agtype mathematical operator functions
+-- +, -, unary -, *, /, %, and ^
+--
+SELECT agtype_add('1', '-1');
+SELECT agtype_add('1', '-1.0');
+SELECT agtype_add('1.0', '-1');
+SELECT agtype_add('1.0', '-1.0');
+
+SELECT agtype_sub('-1', '-1');
+SELECT agtype_sub('-1', '-1.0');
+SELECT agtype_sub('-1.0', '-1');
+SELECT agtype_sub('-1.0', '-1.0');
+
+SELECT agtype_neg('-1');
+SELECT agtype_neg('-1.0');
+SELECT agtype_neg('0');
+SELECT agtype_neg('0.0');
+
+SELECT agtype_mul('-2', '3');
+SELECT agtype_mul('2', '-3.0');
+SELECT agtype_mul('-2.0', '3');
+SELECT agtype_mul('2.0', '-3.0');
+
+SELECT agtype_div('-4', '3');
+SELECT agtype_div('4', '-3.0');
+SELECT agtype_div('-4.0', '3');
+SELECT agtype_div('4.0', '-3.0');
+
+SELECT agtype_pow('-2', '3');
+SELECT agtype_pow('2', '-1.0');
+SELECT agtype_pow('2.0', '3');
+SELECT agtype_pow('2.0', '-1.0');
+
+--
+-- Should fail with divide by zero
+--
+SELECT agtype_div('1', '0');
+SELECT agtype_div('1', '0.0');
+SELECT agtype_div('1.0', '0');
+SELECT agtype_div('1.0', '0.0');
+
+--
+-- Should get Infinity
+--
+SELECT agtype_pow('0', '-1');
+SELECT agtype_pow('-0.0', '-1');
+
+--
+-- Test operators +, -, unary -, *, /, %, and ^
+--
+SELECT '3.14'::agtype + '3.14'::agtype;
+SELECT '3.14'::agtype - '3.14'::agtype;
+SELECT -'3.14'::agtype;
+SELECT '3.14'::agtype * '3.14'::agtype;
+SELECT '3.14'::agtype / '3.14'::agtype;
+SELECT '3.14'::agtype % '3.14'::agtype;
+SELECT '3.14'::agtype ^ '2'::agtype;
 
 --
 -- Cleanup

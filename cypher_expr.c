@@ -2,10 +2,12 @@
 
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/parsenodes.h"
 #include "nodes/value.h"
 #include "parser/parse_node.h"
+#include "parser/parse_oper.h"
 #include "utils/builtins.h"
 #include "utils/int8.h"
 
@@ -20,6 +22,7 @@ static Datum float_to_agtype(ParseState *pstate, char *f, int location);
 static Datum string_to_agtype(ParseState *pstate, char *s, int location);
 static Node *transform_cypher_bool_const(ParseState *pstate,
                                          cypher_bool_const *bc);
+static Node *transform_AEXPR_OP(ParseState *pstate, A_Expr *a);
 
 Node *transform_cypher_expr(ParseState *pstate, Node *expr,
                             ParseExprKind expr_kind)
@@ -51,6 +54,18 @@ static Node *transform_cypher_expr_recurse(ParseState *pstate, Node *expr)
     {
     case T_A_Const:
         return transform_A_Const(pstate, (A_Const *)expr);
+    case T_A_Expr:
+    {
+        A_Expr *a = (A_Expr *)expr;
+
+        switch (a->kind)
+        {
+        case AEXPR_OP:
+            return transform_AEXPR_OP(pstate, a);
+        default:
+            ereport(ERROR, (errmsg("unrecognized A_Expr kind: %d", a->kind)));
+        }
+    }
     case T_ExtensibleNode:
         if (is_ag_node(expr, cypher_bool_const))
         {
@@ -65,8 +80,8 @@ static Node *transform_cypher_expr_recurse(ParseState *pstate, Node *expr)
         }
     default:
         ereport(ERROR, (errmsg("unrecognized node type: %d", nodeTag(expr))));
-        return NULL;
     }
+    return NULL;
 }
 
 static Node *transform_A_Const(ParseState *pstate, A_Const *ac)
@@ -83,16 +98,16 @@ static Node *transform_A_Const(ParseState *pstate, A_Const *ac)
         d = integer_to_agtype(pstate, (int64)intVal(v), location);
         break;
     case T_Float:
-        {
-            char *n = strVal(v);
-            int64 i;
+    {
+        char *n = strVal(v);
+        int64 i;
 
-            if (scanint8(n, true, &i))
-                d = integer_to_agtype(pstate, i, location);
-            else
-                d = float_to_agtype(pstate, n, location);
-        }
-        break;
+        if (scanint8(n, true, &i))
+            d = integer_to_agtype(pstate, i, location);
+        else
+            d = float_to_agtype(pstate, n, location);
+    }
+    break;
     case T_String:
         d = string_to_agtype(pstate, strVal(v), location);
         break;
@@ -190,4 +205,41 @@ static Node *transform_cypher_bool_const(ParseState *pstate,
     c->location = bc->location;
 
     return (Node *)c;
+}
+
+static Node *transform_AEXPR_OP(ParseState *pstate, A_Expr *a)
+{
+    Node *last_srf = pstate->p_last_srf;
+    Node *lexpr = transform_cypher_expr_recurse(pstate, a->lexpr);
+    Node *rexpr = transform_cypher_expr_recurse(pstate, a->rexpr);
+
+    if (list_length(a->name) == 1)
+    {
+        const char *opname = strVal(linitial(a->name));
+
+        if (strcmp(opname, "+") == 0 || strcmp(opname, "-") == 0 ||
+            strcmp(opname, "*") == 0 || strcmp(opname, "/") == 0 ||
+            strcmp(opname, "%") == 0 || strcmp(opname, "^") == 0)
+        {
+            return (Node *)make_op(pstate, a->name, lexpr, rexpr, last_srf,
+                                   a->location);
+        }
+        else if (strcmp(opname, "=") == 0 || strcmp(opname, "<>") == 0 ||
+                 strcmp(opname, "<") == 0 || strcmp(opname, ">") == 0 ||
+                 strcmp(opname, "<=") == 0 || strcmp(opname, ">=") == 0)
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                     errmsg("comparison operator not yet implemented: %s",
+                            opname)));
+        }
+        else
+            ereport(ERROR, (errmsg("unknown operator: %s", opname)));
+
+        return NULL;
+    }
+
+    ereport(ERROR, (errmsg("invalid list length: %d", list_length(a->name))));
+
+    return NULL;
 }

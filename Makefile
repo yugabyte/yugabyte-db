@@ -3,7 +3,8 @@ MODULE_big = agensgraph
 OBJS = ag_catalog.o \
        ag_graph.o \
        agtype.o \
-	   agtype_ext.o \
+       agtype_ext.o \
+       agtype_ops.o \
        agtype_parser.o \
        agtype_util.o \
        agensgraph.o \

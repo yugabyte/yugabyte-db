@@ -21,8 +21,8 @@
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
 
-#include "agtype_parser.h"
 #include "agtype.h"
+#include "agtype_parser.h"
 
 typedef struct agtype_in_state
 {

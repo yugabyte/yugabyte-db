@@ -36,6 +36,7 @@ INSERT INTO agtype_table VALUES('mixed array', '[true, false, null, "string", 1,
 INSERT INTO agtype_table VALUES('object', '{"bool":true, "null":null, "string":"string", "integer":1, "float":1.2, "arrayi":[-1,0,1], "arrayf":[-1.0, 0.0, 1.0], "object":{"bool":true, "null":null, "string":"string", "int":1, "float":8.0}}');
 --
 -- Special float values: NaN, +/- Infinity
+--
 INSERT INTO agtype_table VALUES ('float  nan', 'nan');
 INSERT INTO agtype_table VALUES ('float  Infinity', 'Infinity');
 INSERT INTO agtype_table VALUES ('float -Infinity', '-Infinity');
@@ -99,6 +100,225 @@ LINE 1: INSERT INTO agtype_table VALUES ('bad float', '-Infi');
                                                       ^
 DETAIL:  Token "-Infi" is invalid.
 CONTEXT:  AGTYPE data, line 1: -Infi
+--
+-- Test agtype mathematical operator functions
+-- +, -, unary -, *, /, %, and ^
+--
+SELECT agtype_add('1', '-1');
+ agtype_add 
+------------
+ 0
+(1 row)
+
+SELECT agtype_add('1', '-1.0');
+ agtype_add 
+------------
+ 0.0
+(1 row)
+
+SELECT agtype_add('1.0', '-1');
+ agtype_add 
+------------
+ 0.0
+(1 row)
+
+SELECT agtype_add('1.0', '-1.0');
+ agtype_add 
+------------
+ 0.0
+(1 row)
+
+SELECT agtype_sub('-1', '-1');
+ agtype_sub 
+------------
+ 0
+(1 row)
+
+SELECT agtype_sub('-1', '-1.0');
+ agtype_sub 
+------------
+ 0.0
+(1 row)
+
+SELECT agtype_sub('-1.0', '-1');
+ agtype_sub 
+------------
+ 0.0
+(1 row)
+
+SELECT agtype_sub('-1.0', '-1.0');
+ agtype_sub 
+------------
+ 0.0
+(1 row)
+
+SELECT agtype_neg('-1');
+ agtype_neg 
+------------
+ 1
+(1 row)
+
+SELECT agtype_neg('-1.0');
+ agtype_neg 
+------------
+ 1.0
+(1 row)
+
+SELECT agtype_neg('0');
+ agtype_neg 
+------------
+ 0
+(1 row)
+
+SELECT agtype_neg('0.0');
+ agtype_neg 
+------------
+ -0.0
+(1 row)
+
+SELECT agtype_mul('-2', '3');
+ agtype_mul 
+------------
+ -6
+(1 row)
+
+SELECT agtype_mul('2', '-3.0');
+ agtype_mul 
+------------
+ -6.0
+(1 row)
+
+SELECT agtype_mul('-2.0', '3');
+ agtype_mul 
+------------
+ -6.0
+(1 row)
+
+SELECT agtype_mul('2.0', '-3.0');
+ agtype_mul 
+------------
+ -6.0
+(1 row)
+
+SELECT agtype_div('-4', '3');
+ agtype_div 
+------------
+ -1
+(1 row)
+
+SELECT agtype_div('4', '-3.0');
+    agtype_div     
+-------------------
+ -1.33333333333333
+(1 row)
+
+SELECT agtype_div('-4.0', '3');
+    agtype_div     
+-------------------
+ -1.33333333333333
+(1 row)
+
+SELECT agtype_div('4.0', '-3.0');
+    agtype_div     
+-------------------
+ -1.33333333333333
+(1 row)
+
+SELECT agtype_pow('-2', '3');
+ agtype_pow 
+------------
+ -8.0
+(1 row)
+
+SELECT agtype_pow('2', '-1.0');
+ agtype_pow 
+------------
+ 0.5
+(1 row)
+
+SELECT agtype_pow('2.0', '3');
+ agtype_pow 
+------------
+ 8.0
+(1 row)
+
+SELECT agtype_pow('2.0', '-1.0');
+ agtype_pow 
+------------
+ 0.5
+(1 row)
+
+--
+-- Should fail with divide by zero
+--
+SELECT agtype_div('1', '0');
+ERROR:  division by zero
+SELECT agtype_div('1', '0.0');
+ERROR:  division by zero
+SELECT agtype_div('1.0', '0');
+ERROR:  division by zero
+SELECT agtype_div('1.0', '0.0');
+ERROR:  division by zero
+--
+-- Should get Infinity
+--
+SELECT agtype_pow('0', '-1');
+ agtype_pow 
+------------
+ Infinity
+(1 row)
+
+SELECT agtype_pow('-0.0', '-1');
+ agtype_pow 
+------------
+ -Infinity
+(1 row)
+
+--
+-- Test operators +, -, unary -, *, /, %, and ^
+--
+SELECT '3.14'::agtype + '3.14'::agtype;
+ ?column? 
+----------
+ 6.28
+(1 row)
+
+SELECT '3.14'::agtype - '3.14'::agtype;
+ ?column? 
+----------
+ 0.0
+(1 row)
+
+SELECT -'3.14'::agtype;
+ ?column? 
+----------
+ -3.14
+(1 row)
+
+SELECT '3.14'::agtype * '3.14'::agtype;
+ ?column? 
+----------
+ 9.8596
+(1 row)
+
+SELECT '3.14'::agtype / '3.14'::agtype;
+ ?column? 
+----------
+ 1.0
+(1 row)
+
+SELECT '3.14'::agtype % '3.14'::agtype;
+ ?column? 
+----------
+ 0.0
+(1 row)
+
+SELECT '3.14'::agtype ^ '2'::agtype;
+ ?column? 
+----------
+ 9.8596
+(1 row)
+
 --
 -- Cleanup
 --
