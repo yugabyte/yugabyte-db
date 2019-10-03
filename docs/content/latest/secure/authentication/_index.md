@@ -8,9 +8,9 @@ aliases:
   - /secure/authentication/
 menu:
   latest:
-    identifier: secure-authentication
+    identifier: authentication
     parent: secure
-    weight: 1
+    weight: 710
 ---
 
 Authentication should be enabled to verify the identity of a client that connects to YugabyteDB. Note the following:
