@@ -62,15 +62,15 @@ yugabyte=#
 
 ### Create a database
 
-```sql
+```postgresql
 yugabyte=# CREATE DATABASE yb_demo;
 ```
 
-```sql
+```postgresql
 yugabyte=# GRANT ALL ON DATABASE yb_demo to postgres;
 ```
 
-```sql
+```postgresql
 yugabyte=# \c yb_demo;
 ```
 
@@ -78,25 +78,25 @@ yugabyte=# \c yb_demo;
 
 First create the 4 tables necessary to store the data.
 
-```sql
+```postgresql
 yugabyte=# \i 'schema.sql';
 ```
 
 Now load the data into the tables.
 
-```sql
+```postgresql
 yugabyte=# \i 'data/products.sql'
 ```
 
-```sql
+```postgresql
 yugabyte=# \i 'data/users.sql'
 ```
 
-```sql
+```postgresql
 yugabyte=# \i 'data/orders.sql'
 ```
 
-```sql
+```postgresql
 yugabyte=# \i 'data/reviews.sql'
 ```
 

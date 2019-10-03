@@ -59,26 +59,26 @@ Other kinds of objects may be created in separate commands after the schema is c
 
 - Create a new schema.
 
-```sql
+```postgresql
 yugabyte=# CREATE SCHEMA IF NOT EXIST branch;
 ```
 
 - Create a schema for a user.
 
-```sql
+```postgresql
 yugabyte=# CREATE ROLE John;
 yugabyte=# CREATE SCHEMA AUTHORIZATION john;
 ```
 
 - Create a schema that will be owned by another role.
 
-```sql
+```postgresql
 yugabyte=# CREATE SCHEMA branch AUTHORIZATION john;
 ```
 
 - Create a schema and an object within that schema.
 
-```sql
+```postgresql
 yugabyte=# CREATE SCHEMA branch
                CREATE TABLE dept(
                    dept_id INT NOT NULL,

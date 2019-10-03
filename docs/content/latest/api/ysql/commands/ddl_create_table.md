@@ -91,7 +91,7 @@ This is ignored and only present for compatibility with Postgres.
 
 ### Table with primary key.
 
-```sql
+```postgresql
 yugabyte=# CREATE TABLE sample(k1 int,
                                k2 int,
                                v1 int,
@@ -114,7 +114,7 @@ Indexes:
 ```
 
 ### Table with range primary key.
-```sql
+```postgresql
 yugabyte=# CREATE TABLE range(k1 int,
                               k2 int,
                               v1 int,
@@ -124,7 +124,7 @@ yugabyte=# CREATE TABLE range(k1 int,
 
 ### Table with check constraint.
 
-```sql
+```postgresql
 yugabyte=# CREATE TABLE student_grade(student_id int,
                                       class_id int,
                                       term_id int,
@@ -134,7 +134,7 @@ yugabyte=# CREATE TABLE student_grade(student_id int,
 
 ### Table with default value.
 
-```sql
+```postgresql
 yugabyte=# CREATE TABLE cars(id int PRIMARY KEY,
                              brand text CHECK (brand in ('X', 'Y', 'Z')),
                              model text NOT NULL,
@@ -144,7 +144,7 @@ yugabyte=# CREATE TABLE cars(id int PRIMARY KEY,
 ### Table with foreign key constraint.
 
 Define two tables with a foreign keys constraint.
-```sql
+```postgresql
 yugabyte=# CREATE TABLE products(id int PRIMARY KEY,
                                  descr text);
 yugabyte=# CREATE TABLE orders(id int PRIMARY KEY,
@@ -154,7 +154,7 @@ yugabyte=# CREATE TABLE orders(id int PRIMARY KEY,
 ```
 
 Insert some rows.
-```sql
+```postgresql
 yugabyte=# SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 yugabyte=# INSERT INTO products VALUES (1, 'Phone X'), (2, 'Tablet Z');
 yugabyte=# INSERT INTO orders VALUES (1, 1, 3), (2, 1, 3), (3, 2, 2);
@@ -171,7 +171,7 @@ order_id | product_id |  descr   | amount
 ```
 
 Inserting a row referencing a non-existent product is not allowed.
-```sql
+```postgresql
 yugabyte=# INSERT INTO orders VALUES (1, 3, 3);
 ```
 ```
@@ -181,7 +181,7 @@ DETAIL:  Key (pid)=(3) is not present in table "products".
 
 Deleting a product will cascade to all orders (as defined in the `CREATE TABLE` statement above).
 
-```sql
+```postgresql
 yugabyte=# DELETE from products where id = 1;
 yugabyte=# SELECT o.id AS order_id, p.id as product_id, p.descr, o.amount FROM products p, orders o WHERE o.pid = p.id;
 ```
@@ -195,7 +195,7 @@ yugabyte=# SELECT o.id AS order_id, p.id as product_id, p.descr, o.amount FROM p
 
 ### Table with unique constraint.
 
-```sql
+```postgresql
 yugabyte=# CREATE TABLE translations(message_id int UNIQUE,
                                      message_txt text);
 ```

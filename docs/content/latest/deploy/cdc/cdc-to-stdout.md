@@ -29,7 +29,7 @@ A JRE (or JDK), for Java 8 or later, is installed. JDK and JRE installers for Li
 
 Start your local YugabyteDB cluster and add a table, named `users`, to the default `yugabyte` database.
 
-```sql
+```postgresql
 
 ```
 
@@ -41,7 +41,7 @@ Download the [Yugabyte CDC connector (JAR file)](https://github.com/yugabyte/yb-
 
 Run the command below to to start the YugabyteDB CDC connector and stream the output from the `cdc` table to `stdout`.
 
-```bash
+```sh
 java -jar yb_cdc_connector.jar
 --table_name yugabyte.users
 --log_only

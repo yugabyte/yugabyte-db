@@ -53,7 +53,7 @@ docs][postgresql-docs-xindex].
 
 Basic example.
 
-```sql
+```postgresql
 yugabyte=# CREATE OPERATOR CLASS my_op_class
            FOR TYPE int4
            USING btree AS

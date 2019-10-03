@@ -51,7 +51,7 @@ See the semantics of each option in the [PostgreSQL docs][postgresql-docs-drop-o
 
 Basic example.
 
-```sql
+```postgresql
 yugabyte=# CREATE OPERATOR CLASS my_op_class
            FOR TYPE int4
            USING btree AS

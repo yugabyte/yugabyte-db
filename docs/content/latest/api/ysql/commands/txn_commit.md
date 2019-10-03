@@ -63,27 +63,27 @@ Add optional keyword — has no effect.
 
 Create a sample table.
 
-```sql
+```postgresql
 CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
 
 Begin a transaction and insert some rows.
 
-```sql
+```postgresql
 BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ; 
 ```
 
-```sql
+```postgresql
 INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (1, 3.0, 4, 'b');
 ```
 
 Start a new shell  with `ysqlsh` and begin another transaction to insert some more rows.
 
-```sql
+```postgresql
 yugabyte=# BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ; 
 ```
 
-```sql
+```postgresql
 INSERT INTO sample(k1, k2, v1, v2) VALUES (2, 2.0, 3, 'a'), (2, 3.0, 4, 'b');
 ```
 
@@ -91,7 +91,7 @@ In each shell, check the only the rows from the current transaction are visible.
 
 1st shell.
 
-```sql
+```postgresql
 yugabyte=# SELECT * FROM sample; -- run in first shell
 ```
 
@@ -104,7 +104,7 @@ yugabyte=# SELECT * FROM sample; -- run in first shell
 ```
 2nd shell
 
-```sql
+```postgresql
 yugabyte=# SELECT * FROM sample; -- run in second shell
 ```
 
@@ -118,19 +118,19 @@ yugabyte=# SELECT * FROM sample; -- run in second shell
 
 Commit the first transaction and abort the second one.
 
-```sql
+```postgresql
 COMMIT TRANSACTION; -- run in first shell.
 ```
 
 Abort the current transaction (from the first shell).
 
-```sql
+```postgresql
 ABORT TRANSACTION; -- run second shell.
 ```
 
 In each shell check that only the rows from the committed transaction are visible.
 
-```sql
+```postgresql
 yugabyte=# SELECT * FROM sample; -- run in first shell.
 ```
 
@@ -142,7 +142,7 @@ yugabyte=# SELECT * FROM sample; -- run in first shell.
 (2 rows)
 ```
 
-```sql
+```postgresql
 yugabyte=# SELECT * FROM sample; -- run in second shell.
 ```
 

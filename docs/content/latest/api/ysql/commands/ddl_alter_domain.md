@@ -59,19 +59,19 @@ Specify the name of the domain. An error is raised if DOMAIN `name` does not exi
 
 ## Examples
 
-```sql
+```postgresql
 yugabyte=# CREATE DOMAIN idx DEFAULT 5 CHECK (VALUE > 0);
 ```
 
-```sql
+```postgresql
 yugabyte=# ALTER DOMAIN idx DROP DEFAULT;
 ```
 
-```sql
+```postgresql
 yugabyte=# ALTER DOMAIN idx RENAME TO idx_new;
 ```
 
-```sql
+```postgresql
 yugabyte=# DROP DOMAIN idx_new;
 ```
 

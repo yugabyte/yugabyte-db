@@ -101,7 +101,7 @@ Follow the steps to create a database and load sample data.
 
 1. Create a database named `yb_demo` by using the following `CREATE DATABASE` command.
 
-    ```sql
+    ```postgresql
     yugabyte=# CREATE DATABASE yb_demo;
     ```
 
@@ -167,7 +167,7 @@ Indexes:
 
 To see how many products there are in this table, you can run the following query.
 
-```sql
+```postgresql
 yb_demo=# SELECT count(*) FROM products;
 ```
 
@@ -182,7 +182,7 @@ You should see an output which looks like the following:
 
 Now let us run a query to select the `id`, `title`, `category` and `price` columns for the first five products.
 
-```sql
+```postgresql
 yb_demo=# SELECT id, title, category, price, rating
           FROM products
           LIMIT 5;
@@ -203,7 +203,7 @@ You should see an output like the following:
 
 To view the next 3 products, we simply add an `OFFSET 5` clause to start from the fifth product.
 
-```sql
+```postgresql
 yb_demo=# SELECT id, title, category, price, rating
           FROM products
           LIMIT 3 OFFSET 5;
@@ -226,7 +226,7 @@ A JOIN clause is used to combine rows from two or more tables, based on a relate
 
 From the `orders` table, we are going to select the `total` column that represents the total amount the user paid. For each of these orders, we are going to fetch the `id`, the `name` and the `email` from the `users` table of the corresponding users that placed those orders. The related column between the two tables is the user's id. This can be expressed as the following join query:
 
-```sql
+```postgresql
 yb_demo=# SELECT users.id, users.name, users.email, orders.id, orders.total
           FROM orders INNER JOIN users ON orders.user_id=users.id
           LIMIT 10;
@@ -257,7 +257,7 @@ Imagine the user with id `1` wants to order for `10` units of the product with i
 
 Before running the transaction, we can verify that we have `5000` units of product `2` in stock by running the following query:
 
-```sql
+```postgresql
 yb_demo=# SELECT id, category, price, quantity FROM products WHERE id=2;
 ```
 
@@ -271,7 +271,7 @@ SELECT id, category, price, quantity FROM products WHERE id=2;
 
 Now, to place the order, we can run the following transaction:
 
-```sql
+```postgresql
 yb_demo=# BEGIN TRANSACTION;
 
 /* First insert a new order into the orders table. */
@@ -297,11 +297,11 @@ COMMIT;
 
 We can verify that the order got inserted by running the following:
 
-```sql
+```postgresql
 yb_demo=# select * from orders where id = (select max(id) from orders);
 ```
 
-```sql
+```postgresql
 select * from orders where id = (select max(id) from orders);
   id   |        created_at         | user_id | product_id | discount | quantity |     subtotal     | tax |      total
 -------+---------------------------+---------+------------+----------+----------+------------------+-----+------------------
@@ -311,11 +311,11 @@ select * from orders where id = (select max(id) from orders);
 
 We can also verify that total quantity of product id `2` in the inventory is `4990` by running the following query.
 
-```sql
+```postgresql
 yb_demo=# SELECT id, category, price, quantity FROM products WHERE id=2;
 ```
 
-```sql
+```postgresql
 SELECT id, category, price, quantity FROM products WHERE id=2;
  id | category  |      price       | quantity
 ----+-----------+------------------+----------
@@ -331,7 +331,7 @@ YSQL supports a rich set of built-in functions. In this example, we will look at
 
 To answer this question, we should list the unique set of `source` channels present in the database. This can be achieved as follows:
 
-```sql
+```postgresql
 yb_demo=# SELECT DISTINCT(source) FROM users;
 ```
 
@@ -348,7 +348,7 @@ source
 
 - What is the min, max and average price of products in the store?
 
-```sql
+```postgresql
 yb_demo=# SELECT MIN(price), MAX(price), AVG(price) FROM products;
 ```
 
@@ -365,7 +365,7 @@ The `GROUP BY` clause is commonly used to perform aggregations. Below are a coup
 
 - What is the most effective channel for user signups?
 
-```sql
+```postgresql
 yb_demo=# SELECT source, count(*) AS num_user_signups
           FROM users
           GROUP BY source
@@ -385,7 +385,7 @@ source     | num_user_signups
 
 - What are the most effective channels for product sales by revenue?
 
-```sql
+```postgresql
 yb_demo=# SELECT source, ROUND(SUM(orders.total)) AS total_sales
           FROM users, orders WHERE users.id=orders.user_id
           GROUP BY source
@@ -409,7 +409,7 @@ Let us answer the questions below by creating a view.
 
 - What percentage of the total sales is from the Facebook channel?
 
-```sql
+```postgresql
 yb_demo=# CREATE VIEW channel AS
             (SELECT source, ROUND(SUM(orders.total)) AS total_sales
              FROM users, orders
@@ -420,7 +420,7 @@ yb_demo=# CREATE VIEW channel AS
 
 Now that the view is created, we can see it in our list of relations.
 
-```sql
+```postgresql
 yb_demo=# \d
 ```
 
@@ -440,7 +440,7 @@ yb_demo=# \d
 (9 rows)
 ```
 
-```sql
+```postgresql
 yb_demo=# SELECT source, 
             total_sales * 100.0 / (SELECT SUM(total_sales) FROM channel) AS percent_sales
           FROM channel

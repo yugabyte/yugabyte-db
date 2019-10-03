@@ -57,7 +57,7 @@ yugabyte=#
 
 To create the `exercises` database, run the following SQL `CREATE DATABASE` command.
 
-```sql
+```postgresql
 CREATE DATABASE exercises;
 ```
 

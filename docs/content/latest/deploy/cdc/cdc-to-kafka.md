@@ -41,7 +41,7 @@ To get a local Confluent Platform (with Apache Kafka) up and running quickly, fo
 
 With your local YugabyteDB cluster running, create a table, called `users`, in the default database (`yugabyte`).
 
-```sql
+```postgresql
 CREATE TABLE users (name text, pass text, id int, primary key (id));
 ```
 
@@ -85,13 +85,13 @@ You can use the following two Avro schema examples that will work with the `user
 
 1. Create a Kafka topic.
 
-    ```bash
+    ```sh
     ./bin/kafka-topics --create --partitions 1 --topic users_topic --bootstrap-server localhost:9092 --replication-factor 1
     ```
 
 2. Start the Kafka consumer service.
 
-    ```bash
+    ```sh
     bin/kafka-avro-console-consumer --bootstrap-server localhost:9092 --topic users_topic --key-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer     --value-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer
     ```
 
@@ -103,7 +103,7 @@ Download the [Yugabyte CDC connector (JAR file)](https://github.com/yugabyte/yb-
 
 Run the following command to start logging an output stream of data changes from YugabyteDB to Apache Kafka.
 
-```bash
+```sh
 java -jar target/yb_cdc_connector.jar
 --table_name yugabyte.cdc
 --topic_name cdc-test
