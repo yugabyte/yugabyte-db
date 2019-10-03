@@ -767,5 +767,42 @@ TEST_F(TwoDCTest, TestWalRetentionSet) {
   Destroy();
 }
 
+TEST_F(TwoDCTest, TestProducerUniverseExpansion) {
+  // Test that after new node(s) are added to producer universe, we are able to get replicated data
+  // from the new node(s).
+  auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, 1));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer table from the list.
+  producer_tables.reserve(1);
+  producer_tables.push_back(tables[0]);
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+  // After creating the cluster, make sure all producer tablets are being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
+
+  WriteWorkload(0, 5, producer_client(), tables[0]->name());
+
+  // Add new node and wait for tablets to be rebalanced.
+  // After rebalancing, each node will be leader for 1 tablet.
+  ASSERT_OK(producer_cluster_->AddTabletServer());
+  ASSERT_OK(producer_cluster_->WaitForTabletServerCount(2));
+  ASSERT_OK(WaitFor([&] () { return producer_client()->IsLoadBalanced(2); },
+                    MonoDelta::FromSeconds(kRpcTimeout), "IsLoadBalanced"));
+
+  // Check that all tablets continue to be polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
+
+  // Write some more rows. Note that some of these rows will have the new node as the tablet leader.
+  WriteWorkload(6, 10, producer_client(), tables[0]->name());
+
+  // Verify that both clusters have the same records.
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+
+  Destroy();
+}
+
 } // namespace enterprise
 } // namespace yb
