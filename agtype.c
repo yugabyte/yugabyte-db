@@ -1,15 +1,9 @@
-/*-------------------------------------------------------------------------
+/*
+ * I/O routines for agtype type
  *
- * agtype.c
- *		I/O routines for agtype type
- *
- * Copyright (c) 2014-2018, PostgreSQL Global Development Group
- *
- * IDENTIFICATION
- *	  agtype.c
- *
- *-------------------------------------------------------------------------
+ * Portions Copyright (c) 2014-2018, PostgreSQL Global Development Group
  */
+
 #include "postgres.h"
 
 #include "access/htup_details.h"
@@ -30,7 +24,6 @@ typedef struct agtype_in_state
     agtype_value *res;
 } agtype_in_state;
 
-/* unlike with json categories, we need to treat json and jsonb differently */
 typedef enum /* type categories for datum_to_agtype */
 {
     AGT_TYPE_NULL, /* null, so we didn't bother to identify */
@@ -49,7 +42,7 @@ typedef enum /* type categories for datum_to_agtype */
     AGT_TYPE_OTHER /* all else */
 } agt_type_category;
 
-static inline Datum agtype_from_cstring(char *agtype, int len);
+static inline Datum agtype_from_cstring(char *str, int len);
 static size_t check_string_length(size_t len);
 static void agtype_in_object_start(void *pstate);
 static void agtype_in_object_end(void *pstate);
@@ -58,6 +51,8 @@ static void agtype_in_array_end(void *pstate);
 static void agtype_in_object_field_start(void *pstate, char *fname,
                                          bool isnull);
 static void agtype_put_escaped_value(StringInfo out, agtype_value *scalar_val);
+static void escape_agtype(StringInfo buf, const char *str);
+static bool is_decimal_needed(char *numstr);
 static void agtype_in_scalar(void *pstate, char *token,
                              agtype_token_type tokentype);
 static void agtype_categorize_type(Oid typoid, agt_type_category *tcategory,
@@ -74,8 +69,6 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
 static char *agtype_to_cstring_worker(StringInfo out, agtype_container *in,
                                       int estimated_len, bool indent);
 static void add_indent(StringInfo out, bool indent, int level);
-static bool is_decimal_needed(char *string);
-static void escape_agtype(StringInfo buf, const char *str);
 
 PG_FUNCTION_INFO_V1(agtype_in);
 
@@ -84,9 +77,9 @@ PG_FUNCTION_INFO_V1(agtype_in);
  */
 Datum agtype_in(PG_FUNCTION_ARGS)
 {
-    char *agtype = PG_GETARG_CSTRING(0);
+    char *str = PG_GETARG_CSTRING(0);
 
-    return agtype_from_cstring(agtype, strlen(agtype));
+    return agtype_from_cstring(str, strlen(str));
 }
 
 PG_FUNCTION_INFO_V1(agtype_out);
@@ -107,11 +100,11 @@ Datum agtype_out(PG_FUNCTION_ARGS)
 /*
  * agtype_from_cstring
  *
- * Turns agtype string into a agtype Datum.
+ * Turns agtype string into an agtype Datum.
  *
  * Uses the agtype parser (with hooks) to construct an agtype.
  */
-static inline Datum agtype_from_cstring(char *agtype, int len)
+static inline Datum agtype_from_cstring(char *str, int len)
 {
     agtype_lex_context *lex;
     agtype_in_state state;
@@ -119,7 +112,7 @@ static inline Datum agtype_from_cstring(char *agtype, int len)
 
     memset(&state, 0, sizeof(state));
     memset(&sem, 0, sizeof(sem));
-    lex = make_agtype_lex_context_cstring_len(agtype, len, true);
+    lex = make_agtype_lex_context_cstring_len(str, len, true);
 
     sem.semstate = (void *)&state;
 
@@ -139,6 +132,7 @@ static inline Datum agtype_from_cstring(char *agtype, int len)
 static size_t check_string_length(size_t len)
 {
     if (len > AGTENTRY_OFFLENMASK)
+    {
         ereport(
             ERROR,
             (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
@@ -146,6 +140,7 @@ static size_t check_string_length(size_t len)
              errdetail(
                  "Due to an implementation restriction, agtype strings cannot exceed %d bytes.",
                  AGTENTRY_OFFLENMASK)));
+    }
 
     return len;
 }
@@ -196,28 +191,9 @@ static void agtype_in_object_field_start(void *pstate, char *fname,
     _state->res = push_agtype_value(&_state->parse_state, WAGT_KEY, &v);
 }
 
-static bool is_decimal_needed(char *string)
-{
-    int i;
-
-    if (string == NULL)
-        return false;
-
-    i = (string[0] == '-') ? 1 : 0;
-
-    while (string[i] != 0)
-    {
-        if (string[i] < '0' || string[i] > '9')
-            return false;
-        i++;
-    }
-
-    return true;
-}
-
 static void agtype_put_escaped_value(StringInfo out, agtype_value *scalar_val)
 {
-    char *temp_string = NULL;
+    char *numstr;
 
     switch (scalar_val->type)
     {
@@ -239,11 +215,11 @@ static void agtype_put_escaped_value(StringInfo out, agtype_value *scalar_val)
                      int8out, Int64GetDatum(scalar_val->val.int_value))));
         break;
     case AGTV_FLOAT:
-        temp_string = DatumGetCString(DirectFunctionCall1(
+        numstr = DatumGetCString(DirectFunctionCall1(
             float8out, Float8GetDatum(scalar_val->val.float_value)));
-        appendStringInfoString(out, temp_string);
+        appendStringInfoString(out, numstr);
 
-        if (is_decimal_needed(temp_string))
+        if (is_decimal_needed(numstr))
             appendBinaryStringInfo(out, ".0", 2);
         break;
     case AGTV_BOOL:
@@ -255,6 +231,69 @@ static void agtype_put_escaped_value(StringInfo out, agtype_value *scalar_val)
     default:
         elog(ERROR, "unknown agtype scalar type");
     }
+}
+
+/*
+ * Produce an agtype string literal, properly escaping characters in the text.
+ */
+static void escape_agtype(StringInfo buf, const char *str)
+{
+    const char *p;
+
+    appendStringInfoCharMacro(buf, '"');
+    for (p = str; *p; p++)
+    {
+        switch (*p)
+        {
+        case '\b':
+            appendStringInfoString(buf, "\\b");
+            break;
+        case '\f':
+            appendStringInfoString(buf, "\\f");
+            break;
+        case '\n':
+            appendStringInfoString(buf, "\\n");
+            break;
+        case '\r':
+            appendStringInfoString(buf, "\\r");
+            break;
+        case '\t':
+            appendStringInfoString(buf, "\\t");
+            break;
+        case '"':
+            appendStringInfoString(buf, "\\\"");
+            break;
+        case '\\':
+            appendStringInfoString(buf, "\\\\");
+            break;
+        default:
+            if ((unsigned char)*p < ' ')
+                appendStringInfo(buf, "\\u%04x", (int)*p);
+            else
+                appendStringInfoCharMacro(buf, *p);
+            break;
+        }
+    }
+    appendStringInfoCharMacro(buf, '"');
+}
+
+static bool is_decimal_needed(char *numstr)
+{
+    int i;
+
+    Assert(numstr);
+
+    i = (numstr[0] == '-') ? 1 : 0;
+
+    while (numstr[i] != '\0')
+    {
+        if (numstr[i] < '0' || numstr[i] > '9')
+            return false;
+
+        i++;
+    }
+
+    return true;
 }
 
 /*
@@ -339,7 +378,7 @@ static void agtype_in_scalar(void *pstate, char *token,
 
 /*
  * agtype_to_cstring
- *	   Converts agtype value to a C-string.
+ *     Converts agtype value to a C-string.
  *
  * If 'out' argument is non-null, the resulting C-string is stored inside the
  * StringBuffer.  The resulting string is always returned.
@@ -380,9 +419,9 @@ static char *agtype_to_cstring_worker(StringInfo out, agtype_container *in,
     int ispaces = indent ? 1 : 2;
 
     /*
-	 * Don't indent the very first item. This gets set to the indent flag at
-	 * the bottom of the loop.
-	 */
+     * Don't indent the very first item. This gets set to the indent flag at
+     * the bottom of the loop.
+     */
     bool use_indent = false;
     bool raw_scalar = false;
     bool last_was_key = false;
@@ -410,7 +449,9 @@ static char *agtype_to_cstring_worker(StringInfo out, agtype_container *in,
                 appendStringInfoCharMacro(out, '[');
             }
             else
+            {
                 raw_scalar = true;
+            }
 
             first = true;
             level++;
@@ -520,11 +561,11 @@ static void agtype_categorize_type(Oid typoid, agt_type_category *tcategory,
     *outfuncoid = InvalidOid;
 
     /*
-	 * We need to get the output function for everything except date and
-	 * timestamp types, booleans, array and composite types, json and jsonb,
-	 * and non-builtin types where there's a cast to json. In this last case
-	 * we return the oid of the cast function instead.
-	 */
+     * We need to get the output function for everything except date and
+     * timestamp types, booleans, array and composite types, json and jsonb,
+     * and non-builtin types where there's a cast to json. In this last case
+     * we return the oid of the cast function instead.
+     */
 
     switch (typoid)
     {
@@ -574,18 +615,22 @@ static void agtype_categorize_type(Oid typoid, agt_type_category *tcategory,
         /* Check for arrays and composites */
         if (OidIsValid(get_element_type(typoid)) || typoid == ANYARRAYOID ||
             typoid == RECORDARRAYOID)
+        {
             *tcategory = AGT_TYPE_ARRAY;
+        }
         else if (type_is_rowtype(typoid)) /* includes RECORDOID */
+        {
             *tcategory = AGT_TYPE_COMPOSITE;
+        }
         else
         {
             /* It's probably the general case ... */
             *tcategory = AGT_TYPE_OTHER;
 
             /*
-				 * but first let's look for a cast to json (note: not to
-				 * jsonb) if it's not built-in.
-				 */
+             * but first let's look for a cast to json (note: not to
+             * jsonb) if it's not built-in.
+             */
             if (typoid >= FirstNormalObjectId)
             {
                 Oid castfunc;
@@ -629,16 +674,16 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
 {
     char *outputstr;
     bool numeric_error;
-    agtype_value agt;
+    agtype_value agtv;
     bool scalar_agtype = false;
 
     check_stack_depth();
 
-    /* Convert val to a agtype_value in agt (in most cases) */
+    /* Convert val to an agtype_value in agtv (in most cases) */
     if (is_null)
     {
         Assert(!key_scalar);
-        agt.type = AGTV_NULL;
+        agtv.type = AGTV_NULL;
     }
     else if (key_scalar &&
              (tcategory == AGT_TYPE_ARRAY || tcategory == AGT_TYPE_COMPOSITE ||
@@ -668,31 +713,31 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
             if (key_scalar)
             {
                 outputstr = DatumGetBool(val) ? "true" : "false";
-                agt.type = AGTV_STRING;
-                agt.val.string.len = strlen(outputstr);
-                agt.val.string.val = outputstr;
+                agtv.type = AGTV_STRING;
+                agtv.val.string.len = strlen(outputstr);
+                agtv.val.string.val = outputstr;
             }
             else
             {
-                agt.type = AGTV_BOOL;
-                agt.val.boolean = DatumGetBool(val);
+                agtv.type = AGTV_BOOL;
+                agtv.val.boolean = DatumGetBool(val);
             }
             break;
         case AGT_TYPE_INTEGER:
             outputstr = OidOutputFunctionCall(outfuncoid, val);
             if (key_scalar)
             {
-                agt.type = AGTV_STRING;
-                agt.val.string.len = strlen(outputstr);
-                agt.val.string.val = outputstr;
+                agtv.type = AGTV_STRING;
+                agtv.val.string.len = strlen(outputstr);
+                agtv.val.string.val = outputstr;
             }
             else
             {
                 Datum intd;
 
                 intd = DirectFunctionCall1(int8in, CStringGetDatum(outputstr));
-                agt.type = AGTV_INTEGER;
-                agt.val.int_value = DatumGetInt64(intd);
+                agtv.type = AGTV_INTEGER;
+                agtv.val.int_value = DatumGetInt64(intd);
                 pfree(outputstr);
             }
             break;
@@ -700,14 +745,14 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
             outputstr = OidOutputFunctionCall(outfuncoid, val);
             if (key_scalar)
             {
-                agt.type = AGTV_STRING;
-                agt.val.string.len = strlen(outputstr);
-                agt.val.string.val = outputstr;
+                agtv.type = AGTV_STRING;
+                agtv.val.string.len = strlen(outputstr);
+                agtv.val.string.val = outputstr;
             }
             else
             {
-                agt.type = AGTV_FLOAT;
-                agt.val.float_value = DatumGetFloat8(val);
+                agtv.type = AGTV_FLOAT;
+                agtv.val.float_value = DatumGetFloat8(val);
             }
             break;
         case AGT_TYPE_NUMERIC:
@@ -715,60 +760,66 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
             if (key_scalar)
             {
                 /* always quote keys */
-                agt.type = AGTV_STRING;
-                agt.val.string.len = strlen(outputstr);
-                agt.val.string.val = outputstr;
+                agtv.type = AGTV_STRING;
+                agtv.val.string.len = strlen(outputstr);
+                agtv.val.string.val = outputstr;
             }
             else
             {
                 /*
-					 * Make it numeric if it's a valid AGTYPE number, otherwise
-					 * a string. Invalid numeric output will always have an
-					 * 'N' or 'n' in it (I think).
-					 */
+                 * Make it numeric if it's a valid agtype number, otherwise
+                 * a string. Invalid numeric output will always have an
+                 * 'N' or 'n' in it (I think).
+                 */
                 numeric_error = (strchr(outputstr, 'N') != NULL ||
                                  strchr(outputstr, 'n') != NULL);
                 if (!numeric_error)
                 {
                     Datum numd;
 
-                    agt.type = AGTV_NUMERIC;
+                    agtv.type = AGTV_NUMERIC;
                     numd = DirectFunctionCall3(numeric_in,
                                                CStringGetDatum(outputstr),
                                                ObjectIdGetDatum(InvalidOid),
                                                Int32GetDatum(-1));
-                    agt.val.numeric = DatumGetNumeric(numd);
+                    agtv.val.numeric = DatumGetNumeric(numd);
                     pfree(outputstr);
                 }
                 else
                 {
-                    agt.type = AGTV_STRING;
-                    agt.val.string.len = strlen(outputstr);
-                    agt.val.string.val = outputstr;
+                    agtv.type = AGTV_STRING;
+                    agtv.val.string.len = strlen(outputstr);
+                    agtv.val.string.val = outputstr;
                 }
             }
             break;
         case AGT_TYPE_DATE:
-            agt.type = AGTV_STRING;
-            agt.val.string.val = agtype_encode_date_time(NULL, val, DATEOID);
-            agt.val.string.len = strlen(agt.val.string.val);
+            agtv.type = AGTV_STRING;
+            agtv.val.string.val = agtype_encode_date_time(NULL, val, DATEOID);
+            agtv.val.string.len = strlen(agtv.val.string.val);
             break;
         case AGT_TYPE_TIMESTAMP:
-            agt.type = AGTV_STRING;
-            agt.val.string.val = agtype_encode_date_time(NULL, val,
+            agtv.type = AGTV_STRING;
+            agtv.val.string.val = agtype_encode_date_time(NULL, val,
                                                          TIMESTAMPOID);
-            agt.val.string.len = strlen(agt.val.string.val);
+            agtv.val.string.len = strlen(agtv.val.string.val);
             break;
         case AGT_TYPE_TIMESTAMPTZ:
-            agt.type = AGTV_STRING;
-            agt.val.string.val = agtype_encode_date_time(NULL, val,
+            agtv.type = AGTV_STRING;
+            agtv.val.string.val = agtype_encode_date_time(NULL, val,
                                                          TIMESTAMPTZOID);
-            agt.val.string.len = strlen(agt.val.string.val);
+            agtv.val.string.len = strlen(agtv.val.string.val);
             break;
         case AGT_TYPE_JSONCAST:
         case AGT_TYPE_JSON:
         {
-            /* parse the json right into the existing result object */
+            /*
+             * Parse the json right into the existing result object.
+             * We can handle it as an agtype because agtype is currently an
+             * extension of json.
+             * Unlike AGT_TYPE_JSONB, numbers will be stored as either
+             * an integer or a float, not a numeric.
+             */
             agtype_lex_context *lex;
             agtype_sem_action sem;
             text *json = DatumGetTextPP(val);
@@ -794,43 +845,52 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
             agtype *jsonb = DATUM_GET_AGTYPE_P(val);
             agtype_iterator *it;
 
+            /*
+             * val is actually jsonb datum but we can handle it as an agtype
+             * datum because agtype is currently an extension of jsonb.
+             */
+
             it = agtype_iterator_init(&jsonb->root);
 
             if (AGT_ROOT_IS_SCALAR(jsonb))
             {
-                (void)agtype_iterator_next(&it, &agt, true);
-                Assert(agt.type == AGTV_ARRAY);
-                (void)agtype_iterator_next(&it, &agt, true);
+                (void)agtype_iterator_next(&it, &agtv, true);
+                Assert(agtv.type == AGTV_ARRAY);
+                (void)agtype_iterator_next(&it, &agtv, true);
                 scalar_agtype = true;
             }
             else
             {
                 agtype_iterator_token type;
 
-                while ((type = agtype_iterator_next(&it, &agt, false)) !=
+                while ((type = agtype_iterator_next(&it, &agtv, false)) !=
                        WAGT_DONE)
                 {
                     if (type == WAGT_END_ARRAY || type == WAGT_END_OBJECT ||
                         type == WAGT_BEGIN_ARRAY || type == WAGT_BEGIN_OBJECT)
+                    {
                         result->res = push_agtype_value(&result->parse_state,
                                                         type, NULL);
+                    }
                     else
+                    {
                         result->res = push_agtype_value(&result->parse_state,
-                                                        type, &agt);
+                                                        type, &agtv);
+                    }
                 }
             }
         }
         break;
         default:
             outputstr = OidOutputFunctionCall(outfuncoid, val);
-            agt.type = AGTV_STRING;
-            agt.val.string.len = check_string_length(strlen(outputstr));
-            agt.val.string.val = outputstr;
+            agtv.type = AGTV_STRING;
+            agtv.val.string.len = check_string_length(strlen(outputstr));
+            agtv.val.string.val = outputstr;
             break;
         }
     }
 
-    /* Now insert agt into result, unless we did it recursively */
+    /* Now insert agtv into result, unless we did it recursively */
     if (!is_null && !scalar_agtype && tcategory >= AGT_TYPE_JSON &&
         tcategory <= AGT_TYPE_JSONCAST)
     {
@@ -848,7 +908,7 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
 
         result->res = push_agtype_value(&result->parse_state, WAGT_BEGIN_ARRAY,
                                         &va);
-        result->res = push_agtype_value(&result->parse_state, WAGT_ELEM, &agt);
+        result->res = push_agtype_value(&result->parse_state, WAGT_ELEM, &agtv);
         result->res = push_agtype_value(&result->parse_state, WAGT_END_ARRAY,
                                         NULL);
     }
@@ -860,12 +920,12 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
         {
         case AGTV_ARRAY:
             result->res = push_agtype_value(&result->parse_state, WAGT_ELEM,
-                                            &agt);
+                                            &agtv);
             break;
         case AGTV_OBJECT:
             result->res = push_agtype_value(&result->parse_state,
                                             key_scalar ? WAGT_KEY : WAGT_VALUE,
-                                            &agt);
+                                            &agtv);
             break;
         default:
             elog(ERROR, "unexpected parent of nested structure");
@@ -910,7 +970,7 @@ static void array_dim_to_agtype(agtype_in_state *result, int dim, int ndims,
 }
 
 /*
- * Turn an array into AGTYPE.
+ * Turn an array into agtype.
  */
 static void array_to_agtype_internal(Datum array, agtype_in_state *result)
 {
@@ -956,7 +1016,7 @@ static void array_to_agtype_internal(Datum array, agtype_in_state *result)
 }
 
 /*
- * Turn a composite / record into AGTYPE.
+ * Turn a composite / record into agtype.
  */
 static void composite_to_agtype(Datum composite, agtype_in_state *result)
 {
@@ -998,7 +1058,10 @@ static void composite_to_agtype(Datum composite, agtype_in_state *result)
         attname = NameStr(att->attname);
 
         v.type = AGTV_STRING;
-        /* don't need check_string_length here - can't exceed maximum name length */
+        /*
+         * don't need check_string_length here
+         * - can't exceed maximum name length
+         */
         v.val.string.len = strlen(attname);
         v.val.string.val = attname;
 
@@ -1012,7 +1075,9 @@ static void composite_to_agtype(Datum composite, agtype_in_state *result)
             outfuncoid = InvalidOid;
         }
         else
+        {
             agtype_categorize_type(att->atttypid, &tcategory, &outfuncoid);
+        }
 
         datum_to_agtype(val, isnull, result, tcategory, outfuncoid, false);
     }
@@ -1020,48 +1085,4 @@ static void composite_to_agtype(Datum composite, agtype_in_state *result)
     result->res = push_agtype_value(&result->parse_state, WAGT_END_OBJECT,
                                     NULL);
     ReleaseTupleDesc(tupdesc);
-}
-
-/*
- * Produce an AGTYPE string literal, properly escaping characters in the text.
- */
-static void escape_agtype(StringInfo buf, const char *str)
-{
-    const char *p;
-
-    appendStringInfoCharMacro(buf, '"');
-    for (p = str; *p; p++)
-    {
-        switch (*p)
-        {
-        case '\b':
-            appendStringInfoString(buf, "\\b");
-            break;
-        case '\f':
-            appendStringInfoString(buf, "\\f");
-            break;
-        case '\n':
-            appendStringInfoString(buf, "\\n");
-            break;
-        case '\r':
-            appendStringInfoString(buf, "\\r");
-            break;
-        case '\t':
-            appendStringInfoString(buf, "\\t");
-            break;
-        case '"':
-            appendStringInfoString(buf, "\\\"");
-            break;
-        case '\\':
-            appendStringInfoString(buf, "\\\\");
-            break;
-        default:
-            if ((unsigned char)*p < ' ')
-                appendStringInfo(buf, "\\u%04x", (int)*p);
-            else
-                appendStringInfoCharMacro(buf, *p);
-            break;
-        }
-    }
-    appendStringInfoCharMacro(buf, '"');
 }

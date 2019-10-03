@@ -1,16 +1,9 @@
-/*-------------------------------------------------------------------------
+/*
+ * converting between agtype and agtype_values, and iterating.
  *
- * agtype_util.c
- *	  converting between agtype and agtype_values, and iterating.
- *
- * Copyright (c) 2014-2018, PostgreSQL Global Development Group
- *
- *
- * IDENTIFICATION
- *	  agtype_util.c
- *
- *-------------------------------------------------------------------------
+ * Portions Copyright (c) 2014-2018, PostgreSQL Global Development Group
  */
+
 #include "postgres.h"
 
 #include "access/hash.h"
@@ -20,8 +13,9 @@
 #include "utils/memutils.h"
 #include "utils/varlena.h"
 
-#include "agtype_ext.h"
 #include "agtype.h"
+#include "agtype_ext.h"
+
 /*
  * Maximum number of elements in an array (or key/value pairs in an object).
  * This is limited by two things: the size of the agtentry array must fit
@@ -42,11 +36,11 @@ static int compare_agtype_scalar_value(agtype_value *a, agtype_value *b);
 static agtype *convert_to_agtype(agtype_value *val);
 static void convert_agtype_value(StringInfo buffer, agtentry *header,
                                  agtype_value *val, int level);
-static void convert_agtype_array(StringInfo buffer, agtentry *header,
+static void convert_agtype_array(StringInfo buffer, agtentry *pheader,
                                  agtype_value *val, int level);
-static void convert_agtype_object(StringInfo buffer, agtentry *header,
+static void convert_agtype_object(StringInfo buffer, agtentry *pheader,
                                   agtype_value *val, int level);
-static void convert_agtype_scalar(StringInfo buffer, agtentry *header,
+static void convert_agtype_scalar(StringInfo buffer, agtentry *entry,
                                   agtype_value *scalar_val);
 
 static void append_to_buffer(StringInfo buffer, const char *data, int len);
@@ -57,29 +51,30 @@ static agtype_iterator *iterator_from_container(agtype_container *container,
                                                 agtype_iterator *parent);
 static agtype_iterator *free_and_get_parent(agtype_iterator *it);
 static agtype_parse_state *push_state(agtype_parse_state **pstate);
-static void append_key(agtype_parse_state *pstate, agtype_value *scalar_val);
+static void append_key(agtype_parse_state *pstate, agtype_value *string);
 static void append_value(agtype_parse_state *pstate, agtype_value *scalar_val);
 static void append_element(agtype_parse_state *pstate,
                            agtype_value *scalar_val);
 static int length_compare_agtype_string_value(const void *a, const void *b);
-static int length_compare_agtype_pair(const void *a, const void *b, void *arg);
+static int length_compare_agtype_pair(const void *a, const void *b,
+                                      void *binequal);
 static void uniqueify_agtype_object(agtype_value *object);
 static agtype_value *push_agtype_value_scalar(agtype_parse_state **pstate,
                                               agtype_iterator_token seq,
                                               agtype_value *scalar_val);
 
 /*
- * Turn an in-memory agtype_value into a agtype for on-disk storage.
+ * Turn an in-memory agtype_value into an agtype for on-disk storage.
  *
  * There isn't an agtype_to_agtype_value(), because generally we find it more
  * convenient to directly iterate through the agtype representation and only
- * really convert nested scalar values.  agtype_iterator_next() does this, so that
- * clients of the iteration code don't have to directly deal with the binary
- * representation (agtype_deep_contains() is a notable exception, although all
- * exceptions are internal to this module).  In general, functions that accept
- * a agtype_value argument are concerned with the manipulation of scalar values,
- * or simple containers of scalar values, where it would be inconvenient to
- * deal with a great amount of other state.
+ * really convert nested scalar values.  agtype_iterator_next() does this, so
+ * that clients of the iteration code don't have to directly deal with the
+ * binary representation (agtype_deep_contains() is a notable exception,
+ * although all exceptions are internal to this module).  In general, functions
+ * that accept an agtype_value argument are concerned with the manipulation of
+ * scalar values, or simple containers of scalar values, where it would be
+ * inconvenient to deal with a great amount of other state.
  */
 agtype *agtype_value_to_agtype(agtype_value *val)
 {
@@ -118,7 +113,7 @@ agtype *agtype_value_to_agtype(agtype_value *val)
 }
 
 /*
- * Get the offset of the variable-length portion of a agtype node within
+ * Get the offset of the variable-length portion of an agtype node within
  * the variable-length-data part of its container.  The node is identified
  * by index within the container's agtentry array.
  */
@@ -128,10 +123,10 @@ uint32 get_agtype_offset(const agtype_container *agtc, int index)
     int i;
 
     /*
-	 * Start offset of this entry is equal to the end offset of the previous
-	 * entry.  Walk backwards to the most recent entry stored as an end
-	 * offset, returning that offset plus any lengths in between.
-	 */
+     * Start offset of this entry is equal to the end offset of the previous
+     * entry.  Walk backwards to the most recent entry stored as an end
+     * offset, returning that offset plus any lengths in between.
+     */
     for (i = index - 1; i >= 0; i--)
     {
         offset += AGTE_OFFLENFLD(agtc->children[i]);
@@ -143,7 +138,7 @@ uint32 get_agtype_offset(const agtype_container *agtc, int index)
 }
 
 /*
- * Get the length of the variable-length portion of a agtype node.
+ * Get the length of the variable-length portion of an agtype node.
  * The node is identified by index within the container's agtentry array.
  */
 uint32 get_agtype_length(const agtype_container *agtc, int index)
@@ -152,17 +147,19 @@ uint32 get_agtype_length(const agtype_container *agtc, int index)
     uint32 len;
 
     /*
-	 * If the length is stored directly in the agtentry, just return it.
-	 * Otherwise, get the begin offset of the entry, and subtract that from
-	 * the stored end+1 offset.
-	 */
+     * If the length is stored directly in the agtentry, just return it.
+     * Otherwise, get the begin offset of the entry, and subtract that from
+     * the stored end+1 offset.
+     */
     if (AGTE_HAS_OFF(agtc->children[index]))
     {
         off = get_agtype_offset(agtc, index);
         len = AGTE_OFFLENFLD(agtc->children[index]) - off;
     }
     else
+    {
         len = AGTE_OFFLENFLD(agtc->children[index]);
+    }
 
     return len;
 }
@@ -179,7 +176,8 @@ uint32 get_agtype_length(const agtype_container *agtc, int index)
  */
 int compare_agtype_containers(agtype_container *a, agtype_container *b)
 {
-    agtype_iterator *ita, *itb;
+    agtype_iterator *ita;
+    agtype_iterator *itb;
     int res = 0;
 
     ita = agtype_iterator_init(a);
@@ -187,8 +185,10 @@ int compare_agtype_containers(agtype_container *a, agtype_container *b)
 
     do
     {
-        agtype_value va, vb;
-        agtype_iterator_token ra, rb;
+        agtype_value va;
+        agtype_value vb;
+        agtype_iterator_token ra;
+        agtype_iterator_token rb;
 
         ra = agtype_iterator_next(&ita, &va, false);
         rb = agtype_iterator_next(&itb, &vb, false);
@@ -204,11 +204,11 @@ int compare_agtype_containers(agtype_container *a, agtype_container *b)
             if (ra == WAGT_END_ARRAY || ra == WAGT_END_OBJECT)
             {
                 /*
-				 * There is no array or object to compare at this stage of
-				 * processing.  AGTV_ARRAY/AGTV_OBJECT values are compared
-				 * initially, at the WAGT_BEGIN_ARRAY and WAGT_BEGIN_OBJECT
-				 * tokens.
-				 */
+                 * There is no array or object to compare at this stage of
+                 * processing.  AGTV_ARRAY/AGTV_OBJECT values are compared
+                 * initially, at the WAGT_BEGIN_ARRAY and WAGT_BEGIN_OBJECT
+                 * tokens.
+                 */
                 continue;
             }
 
@@ -227,30 +227,32 @@ int compare_agtype_containers(agtype_container *a, agtype_container *b)
                 case AGTV_ARRAY:
 
                     /*
-						 * This could be a "raw scalar" pseudo array.  That's
-						 * a special case here though, since we still want the
-						 * general type-based comparisons to apply, and as far
-						 * as we're concerned a pseudo array is just a scalar.
-						 */
+                     * This could be a "raw scalar" pseudo array.  That's
+                     * a special case here though, since we still want the
+                     * general type-based comparisons to apply, and as far
+                     * as we're concerned a pseudo array is just a scalar.
+                     */
                     if (va.val.array.raw_scalar != vb.val.array.raw_scalar)
                         res = (va.val.array.raw_scalar) ? -1 : 1;
                     if (va.val.array.num_elems != vb.val.array.num_elems)
-                        res = (va.val.array.num_elems >
-                               vb.val.array.num_elems) ?
-                                  1 :
-                                  -1;
+                    {
+                        if (va.val.array.num_elems > vb.val.array.num_elems)
+                            res = 1;
+                        else
+                            res = -1;
+                    }
                     break;
                 case AGTV_OBJECT:
                     if (va.val.object.num_pairs != vb.val.object.num_pairs)
-                        res = (va.val.object.num_pairs >
-                               vb.val.object.num_pairs) ?
-                                  1 :
-                                  -1;
+                    {
+                        if (va.val.object.num_pairs > vb.val.object.num_pairs)
+                            res = 1;
+                        else
+                            res = -1;
+                    }
                     break;
                 case AGTV_BINARY:
                     elog(ERROR, "unexpected AGTV_BINARY value");
-                default:
-                    elog(ERROR, "unexpected agtype_value_type");
                 }
             }
             else
@@ -262,20 +264,20 @@ int compare_agtype_containers(agtype_container *a, agtype_container *b)
         else
         {
             /*
-			 * It's safe to assume that the types differed, and that the va
-			 * and vb values passed were set.
-			 *
-			 * If the two values were of the same container type, then there'd
-			 * have been a chance to observe the variation in the number of
-			 * elements/pairs (when processing WAGT_BEGIN_OBJECT, say). They're
-			 * either two heterogeneously-typed containers, or a container and
-			 * some scalar type.
-			 *
-			 * We don't have to consider the WAGT_END_ARRAY and WAGT_END_OBJECT
-			 * cases here, because we would have seen the corresponding
-			 * WAGT_BEGIN_ARRAY and WAGT_BEGIN_OBJECT tokens first, and
-			 * concluded that they don't match.
-			 */
+             * It's safe to assume that the types differed, and that the va
+             * and vb values passed were set.
+             *
+             * If the two values were of the same container type, then there'd
+             * have been a chance to observe the variation in the number of
+             * elements/pairs (when processing WAGT_BEGIN_OBJECT, say). They're
+             * either two heterogeneously-typed containers, or a container and
+             * some scalar type.
+             *
+             * We don't have to consider the WAGT_END_ARRAY and WAGT_END_OBJECT
+             * cases here, because we would have seen the corresponding
+             * WAGT_BEGIN_ARRAY and WAGT_BEGIN_OBJECT tokens first, and
+             * concluded that they don't match.
+             */
             Assert(ra != WAGT_END_ARRAY && ra != WAGT_END_OBJECT);
             Assert(rb != WAGT_END_ARRAY && rb != WAGT_END_OBJECT);
 
@@ -314,7 +316,7 @@ int compare_agtype_containers(agtype_container *a, agtype_container *b)
  *
  * This exported utility function exists to facilitate various cases concerned
  * with "containment".  If asked to look through an object, the caller had
- * better pass a agtype String, because their keys can only be strings.
+ * better pass an agtype String, because their keys can only be strings.
  * Otherwise, for an array, any type of agtype_value will do.
  *
  * In order to proceed with the search, it is necessary for callers to have
@@ -325,7 +327,7 @@ int compare_agtype_containers(agtype_container *a, agtype_container *b)
  * most one can make sense, because the container either points to an array
  * (possibly a "raw scalar" pseudo array) or an object.)
  *
- * Note that we can return a AGTV_BINARY agtype_value if this is called on an
+ * Note that we can return an AGTV_BINARY agtype_value if this is called on an
  * object, but we never do so on an array.  If the caller asks to look through
  * a container type that is not of the type pointed to by the container,
  * immediately fall through and return NULL.  If we cannot find the value,
@@ -369,7 +371,8 @@ agtype_value *find_agtype_value_from_container(agtype_container *container,
     {
         /* Since this is an object, account for *Pairs* of AGTentrys */
         char *base_addr = (char *)(children + count * 2);
-        uint32 stop_low = 0, stop_high = count;
+        uint32 stop_low = 0;
+        uint32 stop_high = count;
 
         /* Object key passed by caller must be a string */
         Assert(key->type == AGTV_STRING);
@@ -417,7 +420,7 @@ agtype_value *find_agtype_value_from_container(agtype_container *container,
 }
 
 /*
- * Get i-th value of a agtype array.
+ * Get i-th value of an agtype array.
  *
  * Returns palloc()'d copy of the value, or NULL if it does not exist.
  */
@@ -446,7 +449,7 @@ agtype_value *get_ith_agtype_value_from_container(agtype_container *container,
 }
 
 /*
- * A helper function to fill in a agtype_value to represent an element of an
+ * A helper function to fill in an agtype_value to represent an element of an
  * array, or a key or value of an object.
  *
  * The node's agtentry is at container->children[index], and its variable-length
@@ -480,10 +483,10 @@ static void fill_agtype_value(agtype_container *container, int index,
         result->val.numeric = (Numeric)(base_addr + INTALIGN(offset));
     }
     /*
-	 * If this is an AGTYPE.
-	 * This is needed because we allow the original jsonb type to be
-	 * passed in.
-	 */
+     * If this is an agtype.
+     * This is needed because we allow the original jsonb type to be
+     * passed in.
+     */
     else if (AGTE_IS_AGTYPE(entry))
     {
         ag_deserialize_extended_type(base_addr, offset, result);
@@ -513,13 +516,13 @@ static void fill_agtype_value(agtype_container *container, int index,
 /*
  * Push agtype_value into agtype_parse_state.
  *
- * Used when parsing AGTYPE tokens to form agtype, or when converting an
+ * Used when parsing agtype tokens to form agtype, or when converting an
  * in-memory agtype_value to an agtype.
  *
  * Initial state of *agtype_parse_state is NULL, since it'll be allocated here
  * originally (caller will get agtype_parse_state back by reference).
  *
- * Only sequential tokens pertaining to non-container types should pass a
+ * Only sequential tokens pertaining to non-container types should pass an
  * agtype_value.  There is one exception -- WAGT_BEGIN_ARRAY callers may pass a
  * "raw scalar" pseudo array to append it - the actual scalar should be passed
  * next and it will be added as the only member of the array.
@@ -546,8 +549,10 @@ agtype_value *push_agtype_value(agtype_parse_state **pstate,
     /* unpack the binary and add each piece to the pstate */
     it = agtype_iterator_init(agtval->val.binary.data);
     while ((tok = agtype_iterator_next(&it, &v, false)) != WAGT_DONE)
+    {
         res = push_agtype_value_scalar(pstate, tok,
                                        tok < WAGT_BEGIN_ARRAY ? &v : NULL);
+    }
 
     return res;
 }
@@ -616,9 +621,9 @@ static agtype_value *push_agtype_value_scalar(agtype_parse_state **pstate,
         result = &(*pstate)->cont_val;
 
         /*
-			 * Pop stack and push current array/object as value in parent
-			 * array/object
-			 */
+         * Pop stack and push current array/object as value in parent
+         * array/object
+         */
         *pstate = (*pstate)->next;
         if (*pstate)
         {
@@ -654,7 +659,8 @@ static agtype_parse_state *push_state(agtype_parse_state **pstate)
 }
 
 /*
- * push_agtype_value() worker:  Append a pair key to state when generating agtype
+ * push_agtype_value() worker:  Append a pair key to state when generating
+ *                              agtype
  */
 static void append_key(agtype_parse_state *pstate, agtype_value *string)
 {
@@ -685,7 +691,7 @@ static void append_key(agtype_parse_state *pstate, agtype_value *string)
 
 /*
  * push_agtype_value() worker:  Append a pair value to state when generating an
- * agtype
+ *                              agtype
  */
 static void append_value(agtype_parse_state *pstate, agtype_value *scalar_val)
 {
@@ -699,7 +705,7 @@ static void append_value(agtype_parse_state *pstate, agtype_value *scalar_val)
 
 /*
  * push_agtype_value() worker:  Append an element to state when generating an
- * agtype
+ *                              agtype
  */
 static void append_element(agtype_parse_state *pstate,
                            agtype_value *scalar_val)
@@ -727,7 +733,7 @@ static void append_element(agtype_parse_state *pstate,
 }
 
 /*
- * Given a agtype_container, expand to agtype_iterator to iterate over items
+ * Given an agtype_container, expand to agtype_iterator to iterate over items
  * fully expanded to in-memory representation for manipulation.
  *
  * See agtype_iterator_next() for notes on memory management.
@@ -760,9 +766,9 @@ agtype_iterator *agtype_iterator_init(agtype_container *container)
  *
  * Clients of this function should not have to handle any AGTV_BINARY values
  * (since recursive calls will deal with this), provided skip_nested is false.
- * It is our job to expand the AGTV_BINARY representation without bothering them
- * with it.  However, clients should not take it upon themselves to touch array
- * or Object element/pair buffers, since their element/pair pointers are
+ * It is our job to expand the AGTV_BINARY representation without bothering
+ * them with it.  However, clients should not take it upon themselves to touch
+ * array or Object element/pair buffers, since their element/pair pointers are
  * garbage.  Also, *val will not be set when returning WAGT_END_ARRAY or
  * WAGT_END_OBJECT, on the assumption that it's only useful to access values
  * when recursing in.
@@ -774,11 +780,11 @@ agtype_iterator_token agtype_iterator_next(agtype_iterator **it,
         return WAGT_DONE;
 
     /*
-	 * When stepping into a nested container, we jump back here to start
-	 * processing the child. We will not recurse further in one call, because
-	 * processing the child will always begin in AGTI_ARRAY_START or
-	 * AGTI_OBJECT_START state.
-	 */
+     * When stepping into a nested container, we jump back here to start
+     * processing the child. We will not recurse further in one call, because
+     * processing the child will always begin in AGTI_ARRAY_START or
+     * AGTI_OBJECT_START state.
+     */
 recurse:
     switch ((*it)->state)
     {
@@ -788,9 +794,9 @@ recurse:
         val->val.array.num_elems = (*it)->num_elems;
 
         /*
-			 * v->val.array.elems is not actually set, because we aren't doing
-			 * a full conversion
-			 */
+         * v->val.array.elems is not actually set, because we aren't doing
+         * a full conversion
+         */
         val->val.array.raw_scalar = (*it)->is_scalar;
         (*it)->curr_index = 0;
         (*it)->curr_data_offset = 0;
@@ -803,11 +809,11 @@ recurse:
         if ((*it)->curr_index >= (*it)->num_elems)
         {
             /*
-				 * All elements within array already processed.  Report this
-				 * to caller, and give it back original parent iterator (which
-				 * independently tracks iteration progress at its level of
-				 * nesting).
-				 */
+             * All elements within array already processed.  Report this
+             * to caller, and give it back original parent iterator (which
+             * independently tracks iteration progress at its level of
+             * nesting).
+             */
             *it = free_and_get_parent(*it);
             return WAGT_END_ARRAY;
         }
@@ -828,9 +834,9 @@ recurse:
         else
         {
             /*
-				 * Scalar item in array, or a container and caller didn't want
-				 * us to recurse into it.
-				 */
+             * Scalar item in array, or a container and caller didn't want
+             * us to recurse into it.
+             */
             return WAGT_ELEM;
         }
 
@@ -840,9 +846,9 @@ recurse:
         val->val.object.num_pairs = (*it)->num_elems;
 
         /*
-			 * v->val.object.pairs is not actually set, because we aren't
-			 * doing a full conversion
-			 */
+         * v->val.object.pairs is not actually set, because we aren't
+         * doing a full conversion
+         */
         (*it)->curr_index = 0;
         (*it)->curr_data_offset = 0;
         (*it)->curr_value_offset = get_agtype_offset((*it)->container,
@@ -855,11 +861,11 @@ recurse:
         if ((*it)->curr_index >= (*it)->num_elems)
         {
             /*
-				 * All pairs within object already processed.  Report this to
-				 * caller, and give it back original containing iterator
-				 * (which independently tracks iteration progress at its level
-				 * of nesting).
-				 */
+             * All pairs within object already processed.  Report this to
+             * caller, and give it back original containing iterator
+             * (which independently tracks iteration progress at its level
+             * of nesting).
+             */
             *it = free_and_get_parent(*it);
             return WAGT_END_OBJECT;
         }
@@ -893,17 +899,19 @@ recurse:
         (*it)->curr_index++;
 
         /*
-			 * Value may be a container, in which case we recurse with new,
-			 * child iterator (unless the caller asked not to, by passing
-			 * skip_nested).
-			 */
+         * Value may be a container, in which case we recurse with new,
+         * child iterator (unless the caller asked not to, by passing
+         * skip_nested).
+         */
         if (!IS_A_AGTYPE_SCALAR(val) && !skip_nested)
         {
             *it = iterator_from_container(val->val.binary.data, *it);
             goto recurse;
         }
         else
+        {
             return WAGT_VALUE;
+        }
     }
 
     elog(ERROR, "invalid iterator state");
@@ -952,8 +960,8 @@ static agtype_iterator *iterator_from_container(agtype_container *container,
 }
 
 /*
- * agtype_iterator_next() worker:	Return parent, while freeing memory for current
- * iterator
+ * agtype_iterator_next() worker: Return parent, while freeing memory for
+ *                                current iterator
  */
 static agtype_iterator *free_and_get_parent(agtype_iterator *it)
 {
@@ -972,20 +980,22 @@ static agtype_iterator *free_and_get_parent(agtype_iterator *it)
  * "belong" to those values in the sense that they've just been initialized in
  * respect of them by the caller (perhaps in a nested fashion).
  *
- * "val" is lhs agtype, and m_contained is rhs agtype when called from top level.
- * We determine if m_contained is contained within val.
+ * "val" is lhs agtype, and m_contained is rhs agtype when called from top
+ * level. We determine if m_contained is contained within val.
  */
 bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **m_contained)
 {
-    agtype_value vval, vcontained;
-    agtype_iterator_token rval, rcont;
+    agtype_value vval;
+    agtype_value vcontained;
+    agtype_iterator_token rval;
+    agtype_iterator_token rcont;
 
     /*
-	 * Guard against stack overflow due to overly complex agtype.
-	 *
-	 * Functions called here independently take this precaution, but that
-	 * might not be sufficient since this is also a recursive function.
-	 */
+     * Guard against stack overflow due to overly complex agtype.
+     *
+     * Functions called here independently take this precaution, but that
+     * might not be sufficient since this is also a recursive function.
+     */
     check_stack_depth();
 
     rval = agtype_iterator_next(val, &vval, false);
@@ -994,11 +1004,11 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **m_contained)
     if (rval != rcont)
     {
         /*
-		 * The differing return values can immediately be taken as indicating
-		 * two differing container types at this nesting level, which is
-		 * sufficient reason to give up entirely (but it should be the case
-		 * that they're both some container type).
-		 */
+         * The differing return values can immediately be taken as indicating
+         * two differing container types at this nesting level, which is
+         * sufficient reason to give up entirely (but it should be the case
+         * that they're both some container type).
+         */
         Assert(rval == WAGT_BEGIN_OBJECT || rval == WAGT_BEGIN_ARRAY);
         Assert(rcont == WAGT_BEGIN_OBJECT || rcont == WAGT_BEGIN_ARRAY);
         return false;
@@ -1009,12 +1019,12 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **m_contained)
         Assert(vcontained.type == AGTV_OBJECT);
 
         /*
-		 * If the lhs has fewer pairs than the rhs, it can't possibly contain
-		 * the rhs.  (This conclusion is safe only because we de-duplicate
-		 * keys in all agtype objects; thus there can be no corresponding
-		 * optimization in the array case.)  The case probably won't arise
-		 * often, but since it's such a cheap check we may as well make it.
-		 */
+         * If the lhs has fewer pairs than the rhs, it can't possibly contain
+         * the rhs.  (This conclusion is safe only because we de-duplicate
+         * keys in all agtype objects; thus there can be no corresponding
+         * optimization in the array case.)  The case probably won't arise
+         * often, but since it's such a cheap check we may as well make it.
+         */
         if (vval.val.object.num_pairs < vcontained.val.object.num_pairs)
             return false;
 
@@ -1026,10 +1036,10 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **m_contained)
             rcont = agtype_iterator_next(m_contained, &vcontained, false);
 
             /*
-			 * When we get through caller's rhs "is it contained within?"
-			 * object without failing to find one of its values, it's
-			 * contained.
-			 */
+             * When we get through caller's rhs "is it contained within?"
+             * object without failing to find one of its values, it's
+             * contained.
+             */
             if (rcont == WAGT_END_OBJECT)
                 return true;
 
@@ -1043,17 +1053,17 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **m_contained)
                 return false;
 
             /*
-			 * ...at this stage it is apparent that there is at least a key
-			 * match for this rhs pair.
-			 */
+             * ...at this stage it is apparent that there is at least a key
+             * match for this rhs pair.
+             */
             rcont = agtype_iterator_next(m_contained, &vcontained, true);
 
             Assert(rcont == WAGT_VALUE);
 
             /*
-			 * Compare rhs pair's value with lhs pair's value just found using
-			 * key
-			 */
+             * Compare rhs pair's value with lhs pair's value just found using
+             * key
+             */
             if (lhs_val->type != vcontained.type)
             {
                 return false;
@@ -1066,7 +1076,8 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **m_contained)
             else
             {
                 /* Nested container value (object or array) */
-                agtype_iterator *nestval, *nest_contained;
+                agtype_iterator *nestval;
+                agtype_iterator *nest_contained;
 
                 Assert(lhs_val->type == AGTV_BINARY);
                 Assert(vcontained.type == AGTV_BINARY);
@@ -1076,25 +1087,25 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **m_contained)
                     agtype_iterator_init(vcontained.val.binary.data);
 
                 /*
-				 * Match "value" side of rhs datum object's pair recursively.
-				 * It's a nested structure.
-				 *
-				 * Note that nesting still has to "match up" at the right
-				 * nesting sub-levels.  However, there need only be zero or
-				 * more matching pairs (or elements) at each nesting level
-				 * (provided the *rhs* pairs/elements *all* match on each
-				 * level), which enables searching nested structures for a
-				 * single String or other primitive type sub-datum quite
-				 * effectively (provided the user constructed the rhs nested
-				 * structure such that we "know where to look").
-				 *
-				 * In other words, the mapping of container nodes in the rhs
-				 * "vcontained" agtype to internal nodes on the lhs is
-				 * injective, and parent-child edges on the rhs must be mapped
-				 * to parent-child edges on the lhs to satisfy the condition
-				 * of containment (plus of course the mapped nodes must be
-				 * equal).
-				 */
+                 * Match "value" side of rhs datum object's pair recursively.
+                 * It's a nested structure.
+                 *
+                 * Note that nesting still has to "match up" at the right
+                 * nesting sub-levels.  However, there need only be zero or
+                 * more matching pairs (or elements) at each nesting level
+                 * (provided the *rhs* pairs/elements *all* match on each
+                 * level), which enables searching nested structures for a
+                 * single String or other primitive type sub-datum quite
+                 * effectively (provided the user constructed the rhs nested
+                 * structure such that we "know where to look").
+                 *
+                 * In other words, the mapping of container nodes in the rhs
+                 * "vcontained" agtype to internal nodes on the lhs is
+                 * injective, and parent-child edges on the rhs must be mapped
+                 * to parent-child edges on the lhs to satisfy the condition
+                 * of containment (plus of course the mapped nodes must be
+                 * equal).
+                 */
                 if (!agtype_deep_contains(&nestval, &nest_contained))
                     return false;
             }
@@ -1109,15 +1120,15 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **m_contained)
         Assert(vcontained.type == AGTV_ARRAY);
 
         /*
-		 * Handle distinction between "raw scalar" pseudo arrays, and real
-		 * arrays.
-		 *
-		 * A raw scalar may contain another raw scalar, and an array may
-		 * contain a raw scalar, but a raw scalar may not contain an array. We
-		 * don't do something like this for the object case, since objects can
-		 * only contain pairs, never raw scalars (a pair is represented by an
-		 * rhs object argument with a single contained pair).
-		 */
+         * Handle distinction between "raw scalar" pseudo arrays, and real
+         * arrays.
+         *
+         * A raw scalar may contain another raw scalar, and an array may
+         * contain a raw scalar, but a raw scalar may not contain an array. We
+         * don't do something like this for the object case, since objects can
+         * only contain pairs, never raw scalars (a pair is represented by an
+         * rhs object argument with a single contained pair).
+         */
         if (vval.val.array.raw_scalar && !vcontained.val.array.raw_scalar)
             return false;
 
@@ -1127,10 +1138,10 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **m_contained)
             rcont = agtype_iterator_next(m_contained, &vcontained, true);
 
             /*
-			 * When we get through caller's rhs "is it contained within?"
-			 * array without failing to find one of its values, it's
-			 * contained.
-			 */
+             * When we get through caller's rhs "is it contained within?"
+             * array without failing to find one of its values, it's
+             * contained.
+             */
             if (rcont == WAGT_END_ARRAY)
                 return true;
 
@@ -1147,9 +1158,9 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **m_contained)
                 uint32 i;
 
                 /*
-				 * If this is first container found in rhs array (at this
-				 * depth), initialize temp lhs array of containers
-				 */
+                 * If this is first container found in rhs array (at this
+                 * depth), initialize temp lhs array of containers
+                 */
                 if (lhs_conts == NULL)
                 {
                     uint32 j = 0;
@@ -1179,7 +1190,8 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **m_contained)
                 for (i = 0; i < num_lhs_elems; i++)
                 {
                     /* Nested container value (object or array) */
-                    agtype_iterator *nestval, *nest_contained;
+                    agtype_iterator *nestval;
+                    agtype_iterator *nest_contained;
                     bool contains;
 
                     nestval =
@@ -1198,9 +1210,9 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **m_contained)
                 }
 
                 /*
-				 * Report rhs container value is not contained if couldn't
-				 * match rhs container to *some* lhs cont
-				 */
+                 * Report rhs container value is not contained if couldn't
+                 * match rhs container to *some* lhs cont
+                 */
                 if (i == num_lhs_elems)
                     return false;
             }
@@ -1244,7 +1256,6 @@ void agtype_hash_scalar_value(const agtype_value *scalar_val, uint32 *hash)
         break;
     case AGTV_BOOL:
         tmp = scalar_val->val.boolean ? 0x02 : 0x04;
-
         break;
     case AGTV_INTEGER:
         tmp = DatumGetUInt32(DirectFunctionCall1(
@@ -1254,7 +1265,6 @@ void agtype_hash_scalar_value(const agtype_value *scalar_val, uint32 *hash)
         tmp = DatumGetUInt32(DirectFunctionCall1(
             hashfloat8, Float8GetDatum(scalar_val->val.float_value)));
         break;
-
     default:
         elog(ERROR, "invalid agtype scalar type");
         tmp = 0; /* keep compiler quiet */
@@ -1262,10 +1272,10 @@ void agtype_hash_scalar_value(const agtype_value *scalar_val, uint32 *hash)
     }
 
     /*
-	 * Combine hash values of successive keys, values and elements by rotating
-	 * the previous value left 1 bit, then XOR'ing in the new
-	 * key/value/element's hash value.
-	 */
+     * Combine hash values of successive keys, values and elements by rotating
+     * the previous value left 1 bit, then XOR'ing in the new
+     * key/value/element's hash value.
+     */
     *hash = (*hash << 1) | (*hash >> 31);
     *hash ^= tmp;
 }
@@ -1296,12 +1306,15 @@ void agtype_hash_scalar_value_extended(const agtype_value *scalar_val,
         break;
     case AGTV_BOOL:
         if (seed)
+        {
             tmp = DatumGetUInt64(DirectFunctionCall2(
                 hashcharextended, BoolGetDatum(scalar_val->val.boolean),
                 UInt64GetDatum(seed)));
+        }
         else
+        {
             tmp = scalar_val->val.boolean ? 0x02 : 0x04;
-
+        }
         break;
     case AGTV_INTEGER:
         tmp = DatumGetUInt64(DirectFunctionCall2(
@@ -1325,28 +1338,26 @@ void agtype_hash_scalar_value_extended(const agtype_value *scalar_val,
 /*
  * Are two scalar agtype_values of the same type a and b equal?
  */
-static bool equals_agtype_scalar_value(agtype_value *a_scalar,
-                                       agtype_value *b_scalar)
+static bool equals_agtype_scalar_value(agtype_value *a, agtype_value *b)
 {
-    if (a_scalar->type == b_scalar->type)
+    if (a->type == b->type)
     {
-        switch (a_scalar->type)
+        switch (a->type)
         {
         case AGTV_NULL:
             return true;
         case AGTV_STRING:
-            return length_compare_agtype_string_value(a_scalar, b_scalar) == 0;
+            return length_compare_agtype_string_value(a, b) == 0;
         case AGTV_NUMERIC:
             return DatumGetBool(DirectFunctionCall2(
-                numeric_eq, PointerGetDatum(a_scalar->val.numeric),
-                PointerGetDatum(b_scalar->val.numeric)));
+                numeric_eq, PointerGetDatum(a->val.numeric),
+                PointerGetDatum(b->val.numeric)));
         case AGTV_BOOL:
-            return a_scalar->val.boolean == b_scalar->val.boolean;
+            return a->val.boolean == b->val.boolean;
         case AGTV_INTEGER:
-            return a_scalar->val.int_value == b_scalar->val.int_value;
+            return a->val.int_value == b->val.int_value;
         case AGTV_FLOAT:
-            return a_scalar->val.float_value == b_scalar->val.float_value;
-
+            return a->val.float_value == b->val.float_value;
         default:
             elog(ERROR, "invalid agtype scalar type");
         }
@@ -1361,46 +1372,43 @@ static bool equals_agtype_scalar_value(agtype_value *a_scalar,
  * Strings are compared using the default collation.  Used by B-tree
  * operators, where a lexical sort order is generally expected.
  */
-static int compare_agtype_scalar_value(agtype_value *a_scalar,
-                                       agtype_value *b_scalar)
+static int compare_agtype_scalar_value(agtype_value *a, agtype_value *b)
 {
-    if (a_scalar->type == b_scalar->type)
+    if (a->type == b->type)
     {
-        switch (a_scalar->type)
+        switch (a->type)
         {
         case AGTV_NULL:
             return 0;
         case AGTV_STRING:
-            return varstr_cmp(a_scalar->val.string.val,
-                              a_scalar->val.string.len,
-                              b_scalar->val.string.val,
-                              b_scalar->val.string.len, DEFAULT_COLLATION_OID);
+            return varstr_cmp(a->val.string.val, a->val.string.len,
+                              b->val.string.val, b->val.string.len,
+                              DEFAULT_COLLATION_OID);
         case AGTV_NUMERIC:
             return DatumGetInt32(DirectFunctionCall2(
-                numeric_cmp, PointerGetDatum(a_scalar->val.numeric),
-                PointerGetDatum(b_scalar->val.numeric)));
+                numeric_cmp, PointerGetDatum(a->val.numeric),
+                PointerGetDatum(b->val.numeric)));
         case AGTV_BOOL:
-            if (a_scalar->val.boolean == b_scalar->val.boolean)
+            if (a->val.boolean == b->val.boolean)
                 return 0;
-            else if (a_scalar->val.boolean > b_scalar->val.boolean)
+            else if (a->val.boolean > b->val.boolean)
                 return 1;
             else
                 return -1;
         case AGTV_INTEGER:
-            if (a_scalar->val.int_value == b_scalar->val.int_value)
+            if (a->val.int_value == b->val.int_value)
                 return 0;
-            else if (a_scalar->val.int_value > b_scalar->val.int_value)
+            else if (a->val.int_value > b->val.int_value)
                 return 1;
             else
                 return -1;
         case AGTV_FLOAT:
-            if (a_scalar->val.float_value == b_scalar->val.float_value)
+            if (a->val.float_value == b->val.float_value)
                 return 0;
-            else if (a_scalar->val.float_value > b_scalar->val.float_value)
+            else if (a->val.float_value > b->val.float_value)
                 return 1;
             else
                 return -1;
-
         default:
             elog(ERROR, "invalid agtype scalar type");
         }
@@ -1433,9 +1441,9 @@ int reserve_from_buffer(StringInfo buffer, int len)
     buffer->len += len;
 
     /*
-	 * Keep a trailing null in place, even though it's not useful for us; it
-	 * seems best to preserve the invariants of StringInfos.
-	 */
+     * Keep a trailing null in place, even though it's not useful for us; it
+     * seems best to preserve the invariants of StringInfos.
+     */
     buffer->data[buffer->len] = '\0';
 
     return offset;
@@ -1467,7 +1475,9 @@ static void append_to_buffer(StringInfo buffer, const char *data, int len)
  */
 short pad_buffer_to_int(StringInfo buffer)
 {
-    int padlen, p, offset;
+    int padlen;
+    int p;
+    int offset;
 
     padlen = INTALIGN(buffer->len) - buffer->len;
 
@@ -1501,10 +1511,10 @@ static agtype *convert_to_agtype(agtype_value *val)
     convert_agtype_value(&buffer, &aentry, val, 0);
 
     /*
-	 * Note: the agtentry of the root is discarded. Therefore the root
-	 * agtype_container struct must contain enough information to tell what kind
-	 * of value it is.
-	 */
+     * Note: the agtentry of the root is discarded. Therefore the root
+     * agtype_container struct must contain enough information to tell what
+     * kind of value it is.
+     */
 
     res = (agtype *)buffer.data;
 
@@ -1533,11 +1543,11 @@ static void convert_agtype_value(StringInfo buffer, agtentry *header,
         return;
 
     /*
-	 * A agtype_value passed as val should never have a type of AGTV_BINARY, and
-	 * neither should any of its sub-components. Those values will be produced
-	 * by convert_agtype_array and convert_agtype_object, the results of which will
-	 * not be passed back to this function as an argument.
-	 */
+     * An agtype_value passed as val should never have a type of AGTV_BINARY,
+     * and neither should any of its sub-components. Those values will be
+     * produced by convert_agtype_array and convert_agtype_object, the results
+     * of which will not be passed back to this function as an argument.
+     */
 
     if (IS_A_AGTYPE_SCALAR(val))
         convert_agtype_scalar(buffer, header, val);
@@ -1566,9 +1576,9 @@ static void convert_agtype_array(StringInfo buffer, agtentry *pheader,
     pad_buffer_to_int(buffer);
 
     /*
-	 * Construct the header AGTentry and store it in the beginning of the
-	 * variable-length payload.
-	 */
+     * Construct the header agtentry and store it in the beginning of the
+     * variable-length payload.
+     */
     header = num_elems | AGT_FARRAY;
     if (val->val.array.raw_scalar)
     {
@@ -1579,7 +1589,7 @@ static void convert_agtype_array(StringInfo buffer, agtentry *pheader,
 
     append_to_buffer(buffer, (char *)&header, sizeof(uint32));
 
-    /* Reserve space for the AGTEntries of the elements. */
+    /* Reserve space for the agtentrys of the elements. */
     agtentry_offset = reserve_from_buffer(buffer,
                                           sizeof(agtentry) * num_elems);
 
@@ -1605,12 +1615,14 @@ static void convert_agtype_array(StringInfo buffer, agtentry *pheader,
          * once at the end, to forestall possible integer overflow.
          */
         if (totallen > AGTENTRY_OFFLENMASK)
+        {
             ereport(
                 ERROR,
                 (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
                  errmsg(
                      "total size of agtype array elements exceeds the maximum of %u bytes",
                      AGTENTRY_OFFLENMASK)));
+        }
 
         /*
          * Convert each AGT_OFFSET_STRIDE'th length to an offset.
@@ -1628,12 +1640,14 @@ static void convert_agtype_array(StringInfo buffer, agtentry *pheader,
 
     /* Check length again, since we didn't include the metadata above */
     if (totallen > AGTENTRY_OFFLENMASK)
+    {
         ereport(
             ERROR,
             (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
              errmsg(
                  "total size of agtype array elements exceeds the maximum of %u bytes",
                  AGTENTRY_OFFLENMASK)));
+    }
 
     /* Initialize the header of this node in the container's agtentry array */
     *pheader = AGTENTRY_IS_CONTAINER | totallen;
@@ -1656,20 +1670,20 @@ static void convert_agtype_object(StringInfo buffer, agtentry *pheader,
     pad_buffer_to_int(buffer);
 
     /*
-	 * Construct the header agtentry and store it in the beginning of the
-	 * variable-length payload.
-	 */
+     * Construct the header agtentry and store it in the beginning of the
+     * variable-length payload.
+     */
     header = num_pairs | AGT_FOBJECT;
     append_to_buffer(buffer, (char *)&header, sizeof(uint32));
 
-    /* Reserve space for the AGTEntries of the keys and values. */
+    /* Reserve space for the agtentrys of the keys and values. */
     agtentry_offset = reserve_from_buffer(buffer,
                                           sizeof(agtentry) * num_pairs * 2);
 
     /*
-	 * Iterate over the keys, then over the values, since that is the ordering
-	 * we want in the on-disk representation.
-	 */
+     * Iterate over the keys, then over the values, since that is the ordering
+     * we want in the on-disk representation.
+     */
     totallen = 0;
     for (i = 0; i < num_pairs; i++)
     {
@@ -1678,30 +1692,32 @@ static void convert_agtype_object(StringInfo buffer, agtentry *pheader,
         agtentry meta;
 
         /*
-		 * Convert key, producing a agtentry and appending its variable-length
-		 * data to buffer
-		 */
+         * Convert key, producing an agtentry and appending its variable-length
+         * data to buffer
+         */
         convert_agtype_scalar(buffer, &meta, &pair->key);
 
         len = AGTE_OFFLENFLD(meta);
         totallen += len;
 
         /*
-		 * Bail out if total variable-length data exceeds what will fit in a
-		 * agtentry length field.  We check this in each iteration, not just
-		 * once at the end, to forestall possible integer overflow.
-		 */
+         * Bail out if total variable-length data exceeds what will fit in a
+         * agtentry length field.  We check this in each iteration, not just
+         * once at the end, to forestall possible integer overflow.
+         */
         if (totallen > AGTENTRY_OFFLENMASK)
+        {
             ereport(
                 ERROR,
                 (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
                  errmsg(
                      "total size of agtype object elements exceeds the maximum of %u bytes",
                      AGTENTRY_OFFLENMASK)));
+        }
 
         /*
-		 * Convert each AGT_OFFSET_STRIDE'th length to an offset.
-		 */
+         * Convert each AGT_OFFSET_STRIDE'th length to an offset.
+         */
         if ((i % AGT_OFFSET_STRIDE) == 0)
             meta = (meta & AGTENTRY_TYPEMASK) | totallen | AGTENTRY_HAS_OFF;
 
@@ -1716,30 +1732,32 @@ static void convert_agtype_object(StringInfo buffer, agtentry *pheader,
         agtentry meta;
 
         /*
-		 * Convert value, producing a agtentry and appending its variable-length
-		 * data to buffer
-		 */
+         * Convert value, producing an agtentry and appending its
+         * variable-length data to buffer
+         */
         convert_agtype_value(buffer, &meta, &pair->value, level + 1);
 
         len = AGTE_OFFLENFLD(meta);
         totallen += len;
 
         /*
-		 * Bail out if total variable-length data exceeds what will fit in a
-		 * agtentry length field.  We check this in each iteration, not just
-		 * once at the end, to forestall possible integer overflow.
-		 */
+         * Bail out if total variable-length data exceeds what will fit in a
+         * agtentry length field.  We check this in each iteration, not just
+         * once at the end, to forestall possible integer overflow.
+         */
         if (totallen > AGTENTRY_OFFLENMASK)
+        {
             ereport(
                 ERROR,
                 (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
                  errmsg(
                      "total size of agtype object elements exceeds the maximum of %u bytes",
                      AGTENTRY_OFFLENMASK)));
+        }
 
         /*
-		 * Convert each AGT_OFFSET_STRIDE'th length to an offset.
-		 */
+         * Convert each AGT_OFFSET_STRIDE'th length to an offset.
+         */
         if (((i + num_pairs) % AGT_OFFSET_STRIDE) == 0)
             meta = (meta & AGTENTRY_TYPEMASK) | totallen | AGTENTRY_HAS_OFF;
 
@@ -1753,18 +1771,20 @@ static void convert_agtype_object(StringInfo buffer, agtentry *pheader,
 
     /* Check length again, since we didn't include the metadata above */
     if (totallen > AGTENTRY_OFFLENMASK)
+    {
         ereport(
             ERROR,
             (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
              errmsg(
                  "total size of agtype object elements exceeds the maximum of %u bytes",
                  AGTENTRY_OFFLENMASK)));
+    }
 
     /* Initialize the header of this node in the container's agtentry array */
     *pheader = AGTENTRY_IS_CONTAINER | totallen;
 }
 
-static void convert_agtype_scalar(StringInfo buffer, agtentry *aentry,
+static void convert_agtype_scalar(StringInfo buffer, agtentry *entry,
                                   agtype_value *scalar_val)
 {
     int numlen;
@@ -1774,14 +1794,14 @@ static void convert_agtype_scalar(StringInfo buffer, agtentry *aentry,
     switch (scalar_val->type)
     {
     case AGTV_NULL:
-        *aentry = AGTENTRY_IS_NULL;
+        *entry = AGTENTRY_IS_NULL;
         break;
 
     case AGTV_STRING:
         append_to_buffer(buffer, scalar_val->val.string.val,
                          scalar_val->val.string.len);
 
-        *aentry = scalar_val->val.string.len;
+        *entry = scalar_val->val.string.len;
         break;
 
     case AGTV_NUMERIC:
@@ -1790,17 +1810,17 @@ static void convert_agtype_scalar(StringInfo buffer, agtentry *aentry,
 
         append_to_buffer(buffer, (char *)scalar_val->val.numeric, numlen);
 
-        *aentry = AGTENTRY_IS_NUMERIC | (padlen + numlen);
+        *entry = AGTENTRY_IS_NUMERIC | (padlen + numlen);
         break;
 
     case AGTV_BOOL:
-        *aentry = (scalar_val->val.boolean) ? AGTENTRY_IS_BOOL_TRUE :
+        *entry = (scalar_val->val.boolean) ? AGTENTRY_IS_BOOL_TRUE :
                                               AGTENTRY_IS_BOOL_FALSE;
         break;
 
     default:
         /* returns true if there was a valid extended type processed */
-        status = ag_serialize_extended_type(buffer, aentry, scalar_val);
+        status = ag_serialize_extended_type(buffer, entry, scalar_val);
         /* if nothing was found, error log out */
         if (!status)
             elog(ERROR, "invalid agtype scalar type");
@@ -1864,9 +1884,9 @@ static int length_compare_agtype_pair(const void *a, const void *b,
         *((bool *)binequal) = true;
 
     /*
-	 * Guarantee keeping order of equal pair.  Unique algorithm will prefer
-	 * first element as value.
-	 */
+     * Guarantee keeping order of equal pair.  Unique algorithm will prefer
+     * first element as value.
+     */
     if (res == 0)
         res = (pa->order > pb->order) ? -1 : 1;
 
@@ -1889,8 +1909,8 @@ static void uniqueify_agtype_object(agtype_value *object)
 
     if (has_non_uniq)
     {
-        agtype_pair *ptr = object->val.object.pairs + 1,
-                    *res = object->val.object.pairs;
+        agtype_pair *ptr = object->val.object.pairs + 1;
+        agtype_pair *res = object->val.object.pairs;
 
         while (ptr - object->val.object.pairs < object->val.object.num_pairs)
         {

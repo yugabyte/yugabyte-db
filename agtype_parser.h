@@ -1,14 +1,8 @@
-/*-------------------------------------------------------------------------
- *
- * agtype_parser.h
- *	  Declarations for AGTYPE Parser API support.
+/*
+ * Declarations for agtype parser.
  *
  * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
- *
- * agtype_parser.h
- *
- *-------------------------------------------------------------------------
  */
 
 #ifndef AG_AGTYPE_PARSER_H
@@ -95,13 +89,13 @@ typedef struct agtype_sem_action
 /*
  * parse_agtype will parse the string in the lex calling the
  * action functions in sem at the appropriate points. It is
- * up to them to keep what state they need	in semstate. If they
+ * up to them to keep what state they need in semstate. If they
  * need access to the state of the lexer, then its pointer
  * should be passed to them as a member of whatever semstate
  * points to. If the action pointers are NULL the parser
  * does nothing and just continues.
  */
-extern void parse_agtype(agtype_lex_context *lex, agtype_sem_action *sem);
+void parse_agtype(agtype_lex_context *lex, agtype_sem_action *sem);
 
 /*
  * constructors for agtype_lex_context, with or without strval element.
@@ -112,18 +106,17 @@ extern void parse_agtype(agtype_lex_context *lex, agtype_sem_action *sem);
  * If you already have the agtype as a text* value, use the first of these
  * functions, otherwise use ag_make_agtype_lex_context_cstring_len().
  */
-extern agtype_lex_context *make_agtype_lex_context(text *agtype,
-                                                   bool need_escapes);
-extern agtype_lex_context *
-make_agtype_lex_context_cstring_len(char *agtype, int len, bool need_escapes);
+agtype_lex_context *make_agtype_lex_context(text *t, bool need_escapes);
+agtype_lex_context *make_agtype_lex_context_cstring_len(char *str, int len,
+                                                        bool need_escapes);
 
 /*
- * Utility function to check if a string is a valid AGTYPE number.
+ * Utility function to check if a string is a valid agtype number.
  *
- * str argument does not need to be nul-terminated.
+ * str argument does not need to be null-terminated.
  */
 extern bool is_valid_agtype_number(const char *str, int len);
 
 extern char *agtype_encode_date_time(char *buf, Datum value, Oid typid);
 
-#endif /* AG_AGTYPE_PARSER_H */
+#endif

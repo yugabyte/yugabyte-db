@@ -87,19 +87,19 @@ ERROR:  invalid input syntax for type agtype
 LINE 1: INSERT INTO agtype_table VALUES ('bad float', '-NaN');
                                                       ^
 DETAIL:  Token "-NaN" is invalid.
-CONTEXT:  AGTYPE data, line 1: -NaN
+CONTEXT:  agtype data, line 1: -NaN
 INSERT INTO agtype_table VALUES ('bad float', 'Infi');
 ERROR:  invalid input syntax for type agtype
 LINE 1: INSERT INTO agtype_table VALUES ('bad float', 'Infi');
                                                       ^
 DETAIL:  Token "Infi" is invalid.
-CONTEXT:  AGTYPE data, line 1: Infi
+CONTEXT:  agtype data, line 1: Infi
 INSERT INTO agtype_table VALUES ('bad float', '-Infi');
 ERROR:  invalid input syntax for type agtype
 LINE 1: INSERT INTO agtype_table VALUES ('bad float', '-Infi');
                                                       ^
 DETAIL:  Token "-Infi" is invalid.
-CONTEXT:  AGTYPE data, line 1: -Infi
+CONTEXT:  agtype data, line 1: -Infi
 --
 -- Test agtype mathematical operator functions
 -- +, -, unary -, *, /, %, and ^

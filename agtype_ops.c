@@ -1,20 +1,14 @@
 /*
- * agtype_ops.c
- *    Functions for operators in Cypher expressions.
- *
- * Copyright (c) 2017 by Bitnine Global, Inc.
- *
- * IDENTIFICATION
- *    agtype_ops.c
+ * Functions for operators in Cypher expressions.
  */
 
 #include "postgres.h"
 
+#include <math.h>
+
 #include "utils/numeric.h"
 
 #include "agtype.h"
-
-#include <math.h>
 
 PG_FUNCTION_INFO_V1(agtype_add);
 

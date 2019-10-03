@@ -20,4 +20,4 @@ bool ag_serialize_extended_type(StringInfo buffer, agtentry *agtentry,
 void ag_deserialize_extended_type(char *base_addr, uint32 offset,
                                   agtype_value *result);
 
-#endif /* AG_AGTYPE_EXT_H */
+#endif
