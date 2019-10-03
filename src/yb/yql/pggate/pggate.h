@@ -301,7 +301,8 @@ class PgApiImpl {
 
 
   // This function returns the tuple id (ybctid) of a Postgres tuple.
-  CHECKED_STATUS DmlGetYBTupleId(PgStatement *handle, uint64_t *ybctid);
+  CHECKED_STATUS DmlBuildYBTupleId(PgStatement *handle, const PgAttrValueDescriptor *attrs,
+                                   int32_t nattrs, uint64_t *ybctid);
 
   // DB Operations: SET, WHERE, ORDER_BY, GROUP_BY, etc.
   // + The following operations are run by DocDB.

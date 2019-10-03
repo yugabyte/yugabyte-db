@@ -186,6 +186,13 @@ typedef struct PgExecParameters {
   bool limit_use_default;
 } YBCPgExecParameters;
 
+typedef struct PgAttrValueDescriptor {
+  int attr_num;
+  uint64_t datum;
+  bool is_null;
+  const YBCPgTypeEntity *type_entity;
+} YBCPgAttrValueDescriptor;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

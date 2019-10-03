@@ -67,7 +67,7 @@ Status PgSelect::Prepare(PreventRestart prevent_restart) {
 
 void PgSelect::PrepareColumns() {
   // When reading, only values of partition columns are special-cased in protobuf.
-  // Because Kudu API requires that partition columns must be listed in their created-order, the
+  // Because DocDB API requires that partition columns must be listed in their created-order, the
   // slots for partition column bind expressions are allocated here in correct order.
   if (index_id_.IsValid()) {
     for (PgColumn &col : index_desc_->columns()) {
