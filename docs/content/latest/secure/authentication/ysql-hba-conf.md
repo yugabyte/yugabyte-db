@@ -1,14 +1,16 @@
 ---
 title: Host-based authentication
 linkTitle: Host-based authentication
-description: Host-based authentication using ysql_hba_conf
-headcontent: Enabling host-based authentication in YugabyteDB.
+description: Host-based authentication
+headcontent: Enable encryption at rest with a user generated key
 image: /images/section_icons/secure/authentication.png
 menu:
   latest:
-    identifier: host-based-authentication
-    parent: secure
-    weight: 750
+    identifier: ycql-authentication
+    parent: authentication
+    weight: 20
+isTocNested: true
+showAsideToc: true
 ---
 
 Start yb-tserver with 
