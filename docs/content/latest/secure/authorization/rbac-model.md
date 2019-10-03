@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: rbac-model
     parent: authorization
-    weight: 716
+    weight: 10
 isTocNested: true
 showAsideToc: true
 ---

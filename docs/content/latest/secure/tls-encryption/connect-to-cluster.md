@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: connect-to-cluster
     parent: tls-encryption
-    weight: 724
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---

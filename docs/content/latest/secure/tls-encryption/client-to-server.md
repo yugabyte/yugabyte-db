@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: client-to-server
     parent: tls-encryption
-    weight: 723
+    weight: 30
 isTocNested: true
 showAsideToc: true
 ---
