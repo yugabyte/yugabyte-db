@@ -65,7 +65,7 @@ To use the Yugabyte CDC connector, run the `yb_cdc_connector` JAR file.
 
 ### Syntax for Apache Kafka
 
-```bash
+```sh
 java -jar target/yb_cdc_connector.jar
 --table_name <namespace>.<table>
 --master_addrs <yb-master-addresses>
@@ -79,7 +79,7 @@ java -jar target/yb_cdc_connector.jar
 
 ### Syntax for stdout
 
-```bash
+```sh
 java -jar yb_cdc_connector.jar
 --table_name <namespace>.<table>
 --master_addrs <yb-master-addresses>
@@ -135,7 +135,7 @@ To get the stream ID, run the YugabyteDB CDC connector and the first time you ca
 
 The following command will start the Yugabyte CDC connector and send an output stream from a 3-node YugabyteDB cluster to `stdout`.
 
-```bash
+```sh
 java -jar yb_cdc_connector.jar
 --master_addrs 127.0.0.1,127.0.0.2,127.0.0.3
 --table_name yugabyte.users
@@ -146,7 +146,7 @@ java -jar yb_cdc_connector.jar
 
 The following command will start the Yugabyte CDC connector and send an output stream from a 3-node YugabyteDB cluster to a Kafka topic.
 
-```bash
+```sh
 java -jar target/yb_cdc_connector.jar
 --table_name yugabyte.users
 --master_addrs 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100

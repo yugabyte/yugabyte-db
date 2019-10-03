@@ -29,7 +29,7 @@ To use Hasura with YugabyteDB, the configuration should be similar to PostgreSQL
 
 For a local Mac setup, the configuration should be:
 
-```
+```sh
 docker run -d -p 8080:8080 \
        -e HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:@host.docker.internal:5433/postgres \
        -e HASURA_GRAPHQL_ENABLE_CONSOLE=true \
@@ -47,7 +47,7 @@ Make sure that the release version specified for `hasura/graphql-engine` matches
 
 To start Hasura, run the following script:
 
-```bash
+```sh
 ./docker-run.sh
 ```
 
@@ -57,7 +57,7 @@ This initialization step may take a minute or more.
 
 To check the Docker logs, you can use the container ID returned by the command above:
 
-```bash
+```sh
 docker logs <container-id>
 ```
 
@@ -113,13 +113,13 @@ Click **Add**, and then click **Save**.
 
 1. On the command line, change your directory to the root `yugabyte` directory, and then open `ysqlsh` (the YSQL CLI) to connect to the YugabyteDB cluster:
 
-```bash
+```sh
 ./bin/ysqlsh
 ```
 
 2. Copy the commands below into the shell and press **Enter**.
 
-```sql
+```postgresql
 SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE
 INSERT INTO author(name) VALUES ('John Doe'), ('Jane Doe')
 INSERT INTO article(title, content, rating, author_id) 
@@ -144,7 +144,7 @@ Go back to the Hasura UI, click the **GRAPHQL** tab on top.
 
 Fetch a list of articles and sort each article’s author in descending order and by rating.
 
-```json
+```graphql
 {
   article(order_by: {rating: desc}) {
     id
@@ -163,7 +163,7 @@ Fetch a list of articles and sort each article’s author in descending order an
 
 Fetch a list of authors and a nested list of each author’s articles where the authors are ordered by descending by the average ratings of their articles, and their article lists are ordered by title.
 
- ```json
+ ```graphql
  {
    author(order_by: {articles_aggregate: {avg: {rating: desc}}}) {
      name
@@ -184,24 +184,24 @@ Now that you're done with this exploration, you can clean up the pieces for your
 
 1. Stop the YugabyteDB cluster by running the `yb-ctl stop` command.
 
-    ```bash
+    ```sh
     ./bin/yb-ctl stop
     ```
 
     Note: To completely remove all YugabyteDB data/cluster-state you can instead run:
 
-    ```bash
+    ```sh
     ./bin/yb-ctl destroy
     ```
 
 2. Stop The Hasura container,
 
-    ```bash
+    ```sh
     docker stop <container-id>
     ```
 
     You can list running containers using the following command:
 
-    ```bash
+    ```sh
     docker ps
     ```

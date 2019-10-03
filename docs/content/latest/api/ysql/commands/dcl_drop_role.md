@@ -56,7 +56,7 @@ It is, however, not necessary to remove role memberships involving the role. `DR
 
 - Drop a role.
 
-```sql
+```postgresql
 yugabyte=# DROP ROLE John;
 ```
 

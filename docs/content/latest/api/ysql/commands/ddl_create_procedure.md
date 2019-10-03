@@ -54,7 +54,7 @@ Use the `CREATE PROCEDURE` statement to define a new procedure in a database.
 ## Examples
 
 - Set up an accounts table.
-    ```sql
+    ```postgresql
     CREATE TABLE accounts (
       id integer PRIMARY KEY,
       name text NOT NULL,
@@ -76,7 +76,7 @@ Use the `CREATE PROCEDURE` statement to define a new procedure in a database.
     ```
 - Define a `transfer` procedure to transfer money from one account to another.
 
-    ```sql
+    ```postgresql
     CREATE OR REPLACE PROCEDURE transfer(integer, integer, decimal)
     LANGUAGE plpgsql
     AS $$
@@ -91,7 +91,7 @@ Use the `CREATE PROCEDURE` statement to define a new procedure in a database.
     ```
 
 - Transfer `$20.00` from Jane to John.
-```sql
+```postgresql
 CALL transfer(1, 2, 20.00);
 SELECT * from accounts;
 ```
@@ -105,7 +105,7 @@ SELECT * from accounts;
 ```
 
 - Errors will be thrown for unsupported argument values.
-```sql
+```postgresql
 CALL transfer(2, 2, 20.00);
 ```
 ```
@@ -113,7 +113,7 @@ ERROR:  Sender and receiver cannot be the same
 CONTEXT:  PL/pgSQL function transfer(integer,integer,numeric) line 4 at RAISE
 ```
 
-```sql
+```postgresql
 yugabyte=# CALL transfer(1, 2, -20.00);
 ```
 
