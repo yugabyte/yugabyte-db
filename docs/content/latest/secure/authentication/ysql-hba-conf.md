@@ -6,7 +6,7 @@ headcontent: Enable encryption at rest with a user generated key
 image: /images/section_icons/secure/authentication.png
 menu:
   latest:
-    identifier: ycql-authentication
+    identifier: ysql-hba-conf
     parent: authentication
     weight: 20
 isTocNested: true
