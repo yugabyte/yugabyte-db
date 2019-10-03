@@ -30,7 +30,7 @@ class TaskDetail extends Component {
   };
 
   componentWillMount() {
-    const {params} = this.props;
+    const { params } = this.props;
     const currentTaskUUID = params.taskUUID;
     if (isNonEmptyString(currentTaskUUID)) {
       this.props.fetchCurrentTaskDetail(currentTaskUUID);
@@ -38,7 +38,7 @@ class TaskDetail extends Component {
     }
   }
   render() {
-    const {tasks: {failedTasks, taskProgressData}} = this.props;
+    const { tasks: { failedTasks, taskProgressData }} = this.props;
     const self = this;
     const currentTaskData = taskProgressData.data;
     const formatDateField = function(cell) {

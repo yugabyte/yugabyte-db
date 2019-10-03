@@ -41,10 +41,12 @@
 }
 
 .btn-orange {
-  background: $YB_ORANGE;
-  color: white;
-  font-weight: 600;
-  @include transition(0.35s);
+  &, &:focus {
+    background: $YB_ORANGE;
+    color: white;
+    font-weight: 600;
+    @include transition(0.35s);
+  }
   i {
     color: #fff;
     margin-left: 0;
@@ -59,7 +61,7 @@
       color: rgba(white, 0.5);
     }
   }
-  &:active:focus, &:focus, &:active {
+  &:active:focus, &:active {
     background-color: darken($YB_ORANGE_HOVER, 2%);
     color: #fff;
     box-shadow: none;
