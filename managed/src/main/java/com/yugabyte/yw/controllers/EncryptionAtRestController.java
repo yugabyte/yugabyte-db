@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.EncryptionAtRestService;
 import com.yugabyte.yw.models.CustomerConfig;
 import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -95,7 +96,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
         ));
     }
 
-    public Result recoverEncryptionKey(UUID customerUUID, UUID universeUUID, String keyProvider) {
+    public Result recoverKey(UUID customerUUID, UUID universeUUID, String keyProvider) {
         EncryptionAtRestService keyService = null;
         byte[] recoveredKey = null;
         try {
@@ -117,7 +118,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
                 );
                 throw new RuntimeException(errMsg);
             }
-            ObjectNode result = Json.newObject().put("value", recoveredKey);
+            ObjectNode result = Json.newObject()
+                    .put("value", Base64.getEncoder().encodeToString(recoveredKey));
             return ApiResponse.success(result);
         } catch (Exception e) {
             final String errMsg = String.format(
@@ -153,7 +155,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
                 final String errMsg = "Error creating encryption key";
                 throw new RuntimeException(errMsg);
             }
-            ObjectNode result = Json.newObject().put("value", encryptionKey);
+            ObjectNode result = Json.newObject()
+                    .put("value", Base64.getEncoder().encodeToString(encryptionKey));
             return ApiResponse.success(result);
         } catch (Exception e) {
             final String errMsg = String.format(
