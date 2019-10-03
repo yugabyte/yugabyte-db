@@ -111,19 +111,6 @@ bool CDCServiceImpl::CheckOnline(const ReqType* req, RespType* resp, rpc::RpcCon
   return true;
 }
 
-template <class RespType>
-Result<std::shared_ptr<tablet::TabletPeer>> CDCServiceImpl::GetTabletPeer(
-    const std::string& tablet_id,
-    RespType* resp,
-    rpc::RpcContext* rpc) {
-  std::shared_ptr<tablet::TabletPeer> peer;
-  RETURN_NOT_OK(tablet_manager_->GetTabletPeer(tablet_id, &peer));
-
-  // Check if tablet is running.
-  RETURN_NOT_OK(peer->CheckRunning());
-  return peer;
-}
-
 void CDCServiceImpl::CreateCDCStream(const CreateCDCStreamRequestPB* req,
                                      CreateCDCStreamResponsePB* resp,
                                      RpcContext context) {
@@ -311,12 +298,10 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
   Status s = CheckTabletValidForStream(req->stream_id(), req->tablet_id());
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
-  auto result = GetTabletPeer(req->tablet_id(), resp, &context);
-  RPC_CHECK_AND_RETURN_ERROR(result.ok(), result.status(), resp->mutable_error(),
-                             CDCErrorPB::TABLET_NOT_RUNNING, context);
-  auto tablet_peer = *result;
+  std::shared_ptr<tablet::TabletPeer> tablet_peer;
+  s = tablet_manager_->GetTabletPeer(req->tablet_id(), &tablet_peer);
 
-  if (!IsTabletPeerLeader(tablet_peer)) {
+  if (s.IsNotFound() || !IsTabletPeerLeader(tablet_peer)) {
     // Forward GetChanges() to tablet leader.
     // TODO: Remove this once cdc consumer has meta cache and is able to direct requests to tablet
     // leader. Once that is done, we should return NOT_LEADER error here.
@@ -421,12 +406,14 @@ void CDCServiceImpl::TabletLeaderGetChanges(const GetChangesRequestPB* req,
   // Check that tablet leader identified by master is not current tablet peer.
   // This can happen during tablet rebalance if master and tserver have different views of
   // leader. We need to avoid self-looping in this case.
-  RPC_CHECK_NE_AND_RETURN_ERROR(ts_leader->permanent_uuid(), peer->permanent_uuid(),
-                                STATUS(IllegalState,
-                                       Format("Tablet leader changed: leader=$0, peer=$1",
-                                              ts_leader->permanent_uuid(),
-                                              peer->permanent_uuid())),
-                                resp->mutable_error(), CDCErrorPB::NOT_LEADER, *context);
+  if (peer) {
+    RPC_CHECK_NE_AND_RETURN_ERROR(ts_leader->permanent_uuid(), peer->permanent_uuid(),
+                                  STATUS(IllegalState,
+                                         Format("Tablet leader changed: leader=$0, peer=$1",
+                                                ts_leader->permanent_uuid(),
+                                                peer->permanent_uuid())),
+                                  resp->mutable_error(), CDCErrorPB::NOT_LEADER, *context);
+  }
 
   auto cdc_proxy = GetCDCServiceProxy(ts_leader);
   rpc::RpcController rpc;
@@ -449,12 +436,14 @@ void CDCServiceImpl::TabletLeaderGetCheckpoint(const GetCheckpointRequestPB* req
   // Check that tablet leader identified by master is not current tablet peer.
   // This can happen during tablet rebalance if master and tserver have different views of
   // leader. We need to avoid self-looping in this case.
-  RPC_CHECK_NE_AND_RETURN_ERROR(ts_leader->permanent_uuid(), peer->permanent_uuid(),
-                                STATUS(IllegalState,
-                                       Format("Tablet leader changed: leader=$0, peer=$1",
-                                              ts_leader->permanent_uuid(),
-                                              peer->permanent_uuid())),
-                                resp->mutable_error(), CDCErrorPB::NOT_LEADER, *context);
+  if (peer) {
+    RPC_CHECK_NE_AND_RETURN_ERROR(ts_leader->permanent_uuid(), peer->permanent_uuid(),
+                                  STATUS(IllegalState,
+                                         Format("Tablet leader changed: leader=$0, peer=$1",
+                                                ts_leader->permanent_uuid(),
+                                                peer->permanent_uuid())),
+                                  resp->mutable_error(), CDCErrorPB::NOT_LEADER, *context);
+  }
 
   auto cdc_proxy = GetCDCServiceProxy(ts_leader);
   rpc::RpcController rpc;
@@ -483,12 +472,10 @@ void CDCServiceImpl::GetCheckpoint(const GetCheckpointRequestPB* req,
                              CDCErrorPB::INVALID_REQUEST,
                              context);
 
-  auto res = GetTabletPeer(req->tablet_id(), resp, &context);
-  RPC_CHECK_AND_RETURN_ERROR(res.ok(), res.status(), resp->mutable_error(),
-                             CDCErrorPB::TABLET_NOT_RUNNING, context);
-  auto tablet_peer = *res;
+  std::shared_ptr<tablet::TabletPeer> tablet_peer;
+  Status s = tablet_manager_->GetTabletPeer(req->tablet_id(), &tablet_peer);
 
-  if (!IsTabletPeerLeader(tablet_peer)) {
+  if (s.IsNotFound() || !IsTabletPeerLeader(tablet_peer)) {
     // Forward GetCheckpoint() to tablet leader.
     // TODO: Remove this once cdc consumer has meta cache and is able to direct requests to tablet
     // leader. Once that is done, we should return NOT_LEADER error here.
@@ -497,7 +484,7 @@ void CDCServiceImpl::GetCheckpoint(const GetCheckpointRequestPB* req,
   }
 
   // Check that requested tablet_id is part of the CDC stream.
-  Status s = CheckTabletValidForStream(req->stream_id(), req->tablet_id());
+  s = CheckTabletValidForStream(req->stream_id(), req->tablet_id());
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
   auto session = async_client_init_->client()->NewSession();

@@ -79,10 +79,6 @@ class CDCServiceImpl : public CDCServiceIf {
   template <class ReqType, class RespType>
   bool CheckOnline(const ReqType* req, RespType* resp, rpc::RpcContext* rpc);
 
-  template <class RespType>
-  Result<std::shared_ptr<tablet::TabletPeer>> GetTabletPeer(
-      const std::string& tablet_id, RespType* resp, rpc::RpcContext* rpc);
-
   Result<OpIdPB> GetLastCheckpoint(const std::string& stream_id,
                                    const std::string& tablet_id,
                                    const std::shared_ptr<client::YBSession>& session);
