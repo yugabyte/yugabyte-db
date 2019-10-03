@@ -454,5 +454,57 @@ TEST_F(CDCServiceTest, TestOnlyGetLocalChanges) {
 
 }
 
+TEST_F(CDCServiceTest, TestCheckpointUpdatedForRemoteRows) {
+  CDCStreamId stream_id;
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+
+  std::string tablet_id;
+  GetTablet(&tablet_id);
+
+  const auto& proxy = cluster_->mini_tablet_server(0)->server()->proxy();
+
+  {
+    // Insert remote test rows.
+    tserver::WriteRequestPB write_req;
+    tserver::WriteResponsePB write_resp;
+    write_req.set_tablet_id(tablet_id);
+    // Apply at the lowest possible hybrid time.
+    write_req.set_external_hybrid_time(yb::kInitialHybridTimeValue);
+
+    RpcController rpc;
+    AddTestRowInsert(1, 11, "key1_ext", &write_req);
+    AddTestRowInsert(3, 33, "key3_ext", &write_req);
+
+    SCOPED_TRACE(write_req.DebugString());
+    ASSERT_OK(proxy->Write(write_req, &write_resp, &rpc));
+    SCOPED_TRACE(write_resp.DebugString());
+    ASSERT_FALSE(write_resp.has_error());
+  }
+
+  auto CheckChanges = [&]() {
+    // Get CDC changes.
+    GetChangesRequestPB change_req;
+    GetChangesResponsePB change_resp;
+
+    change_req.set_tablet_id(tablet_id);
+    change_req.set_stream_id(stream_id);
+    change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
+    change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
+
+    {
+      // Make sure that checkpoint is updated even when there are no CDC records.
+      RpcController rpc;
+      SCOPED_TRACE(change_req.DebugString());
+      ASSERT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
+      SCOPED_TRACE(change_resp.DebugString());
+      ASSERT_FALSE(change_resp.has_error());
+      ASSERT_EQ(change_resp.records_size(), 0);
+      ASSERT_GT(change_resp.checkpoint().op_id().index(), 0);
+    }
+  };
+
+  ASSERT_NO_FATALS(CheckChanges());
+}
+
 } // namespace cdc
 } // namespace yb

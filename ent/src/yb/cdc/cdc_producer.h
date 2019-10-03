@@ -92,12 +92,15 @@ class CDCProducer {
   // T5: APPLYING TXN1
   // T6: WRITE K4
   // The order in which keys are written to DB in this example is K0, K3, K2, K1, K4.
+  // This method will also set checkpoint to the op id of last processed record.
   static Result<consensus::ReplicateMsgs> SortWrites(const consensus::ReplicateMsgs& msgs,
-                                                     const TxnStatusMap& txn_map);
+                                                     const TxnStatusMap& txn_map,
+                                                     OpIdPB* checkpoint);
 
   static Result<std::vector<RecordTimeIndex>> GetCommittedRecordIndexes(
       const consensus::ReplicateMsgs& msgs,
-      const TxnStatusMap& txn_map);
+      const TxnStatusMap& txn_map,
+      OpIdPB* checkpoint);
 
   // Build transaction status as of hybrid_time.
   static Result<TxnStatusMap> BuildTxnStatusMap(const consensus::ReplicateMsgs& messages,

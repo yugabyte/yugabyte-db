@@ -78,7 +78,11 @@ Status CDCProducer::GetChanges(const std::string& stream_id,
 
   TxnStatusMap txn_map = VERIFY_RESULT(BuildTxnStatusMap(
       messages, have_more_messages, tablet_peer->Now(), txn_participant));
-  auto ordered_msgs = VERIFY_RESULT(SortWrites(messages, txn_map));
+
+  OpIdPB checkpoint;
+  checkpoint.set_term(0);
+  checkpoint.set_index(0);
+  auto ordered_msgs = VERIFY_RESULT(SortWrites(messages, txn_map, &checkpoint));
 
   for (const auto& msg : ordered_msgs) {
     switch (msg->op_type()) {
@@ -98,14 +102,16 @@ Status CDCProducer::GetChanges(const std::string& stream_id,
   }
 
   resp->mutable_checkpoint()->mutable_op_id()->CopyFrom(
-      ordered_msgs.empty() ? from_op_id : ordered_msgs.back()->id());
+      checkpoint.index() > 0 ? checkpoint : from_op_id);
   return Status::OK();
 }
 
 Result<ReplicateMsgs> CDCProducer::SortWrites(const ReplicateMsgs& msgs,
-                                              const TxnStatusMap& txn_map) {
+                                              const TxnStatusMap& txn_map,
+                                              OpIdPB* checkpoint) {
 
-  std::vector<RecordTimeIndex> records = VERIFY_RESULT(GetCommittedRecordIndexes(msgs, txn_map));
+  std::vector<RecordTimeIndex> records = VERIFY_RESULT(GetCommittedRecordIndexes(
+      msgs, txn_map, checkpoint));
   std::sort(records.begin(), records.end());
 
   ReplicateMsgs ordered_msgs;
@@ -117,15 +123,16 @@ Result<ReplicateMsgs> CDCProducer::SortWrites(const ReplicateMsgs& msgs,
 }
 
 Result<std::vector<RecordTimeIndex>> CDCProducer::GetCommittedRecordIndexes(
-    const ReplicateMsgs& msgs,
-    const TxnStatusMap& txn_map) {
+    const ReplicateMsgs& msgs, const TxnStatusMap& txn_map, OpIdPB* checkpoint) {
   size_t index = 0;
   std::vector<RecordTimeIndex> records;
 
   // Order ReplicateMsgs based on commit time.
   for (const auto &msg : msgs) {
     if (msg->write_request().has_external_hybrid_time()) {
-      // If the message came from an external source, ignore it when producing change list.
+      // If the message came from an external source, ignore it when producing change list
+      // but update checkpoint.
+      *checkpoint = msg->id();
       index++;
       continue;
     }
@@ -133,6 +140,7 @@ Result<std::vector<RecordTimeIndex>> CDCProducer::GetCommittedRecordIndexes(
       case consensus::OperationType::UPDATE_TRANSACTION_OP:
         if (msg->transaction_state().status() == TransactionStatus::APPLYING) {
           records.emplace_back(msg->transaction_state().commit_hybrid_time(), index);
+          *checkpoint = msg->id();
         }
         break;
 
@@ -157,9 +165,11 @@ Result<std::vector<RecordTimeIndex>> CDCProducer::GetCommittedRecordIndexes(
             // T2: APPLYING TXN1
             // Here, WRITE K2 appears after WRITE K1 but is committed before K1.
             records.emplace_back(txn_status->second.status_time.ToUint64(), index);
+            *checkpoint = msg->id();
           }
         } else {
           records.emplace_back(msg->hybrid_time(), index);
+          *checkpoint = msg->id();
         }
         break;
       }
