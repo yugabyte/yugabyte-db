@@ -13,19 +13,20 @@ import './RegisterForm.scss';
 
 class RegisterForm extends Component {
   componentWillReceiveProps(nextProps) {
-    const {customer: {authToken}} =  nextProps;
-    if (getPromiseState(authToken).isSuccess()) {
+    const { customer: { authToken }} =  nextProps;
+    const location = Object.assign({}, browserHistory.getCurrentLocation());
+    if (getPromiseState(authToken).isSuccess() && location.pathname !== '/') {
       browserHistory.push('/');
     }
   }
 
   submitRegister = formValues => {
-    const {registerCustomer} = this.props;
+    const { registerCustomer } = this.props;
     registerCustomer(formValues);
   };
 
   render() {
-    const { customer: {authToken} } = this.props;
+    const { customer: { authToken }} = this.props;
 
     const validationSchema = Yup.object().shape({
       code: Yup.string()
