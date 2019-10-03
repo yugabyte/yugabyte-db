@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: create-roles
     parent: authorization
-    weight: 717
+    weight: 20
 isTocNested: true
 showAsideToc: true
 ---

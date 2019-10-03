@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: manage-upgrade-deployment
     parent: manage
-    weight: 705
+    6
 isTocNested: true
 showAsideToc: true
 ---

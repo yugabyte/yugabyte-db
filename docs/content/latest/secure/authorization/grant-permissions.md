@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: grant-permissions
     parent: authorization
-    weight: 718
+    weight: 30
 isTocNested: true
 showAsideToc: true
 ---
