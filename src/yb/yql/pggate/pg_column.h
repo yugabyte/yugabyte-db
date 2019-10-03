@@ -109,7 +109,7 @@ class PgColumn {
 
   // Protobuf code.
   // Input binds. For now these are just literal values of the columns.
-  // - In Kudu API, for primary columns, their associated values in protobuf expression list must
+  // - In DocDB API, for primary columns, their associated values in protobuf expression list must
   //   strictly follow the order that was specified by CREATE TABLE statement while Postgres DML
   //   statements will not follow this order. Therefore, we reserve the spaces in protobuf
   //   structures for associated expressions of the primary columns in the specified order.

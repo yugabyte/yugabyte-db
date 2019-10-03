@@ -1,0 +1,76 @@
+-- Test primary key column order differs table creation column order --
+CREATE TABLE st_keys(k4 int, k3 int, k2 int, k1 int, value int, PRIMARY KEY(k1, k2, k3, k4));
+CREATE INDEX ON st_keys(k4);
+CREATE UNIQUE INDEX ON st_keys(value);
+INSERT INTO st_keys VALUES(4, 3, 2, 1, 100), (40, 30, 20, 10, 200), (400, 300, 200, 100, 300);
+SELECT * FROM st_keys ORDER BY k1;
+ k4  | k3  | k2  | k1  | value
+-----+-----+-----+-----+-------
+   4 |   3 |   2 |   1 |   100
+  40 |  30 |  20 |  10 |   200
+ 400 | 300 | 200 | 100 |   300
+(3 rows)
+
+EXPLAIN(COSTS OFF) SELECT * FROM st_keys WHERE value = 200 ORDER BY k1;
+                     QUERY PLAN
+-----------------------------------------------------
+ Sort
+   Sort Key: k1
+   ->  Index Scan using st_keys_value_idx on st_keys
+         Index Cond: (value = 200)
+(4 rows)
+
+SELECT * FROM st_keys WHERE value = 200 ORDER BY k1;
+ k4 | k3 | k2 | k1 | value
+----+----+----+----+-------
+ 40 | 30 | 20 | 10 |   200
+(1 row)
+
+EXPLAIN(COSTS OFF) SELECT * FROM st_keys WHERE k4 = 400 ORDER BY k1;
+                    QUERY PLAN
+--------------------------------------------------
+ Sort
+   Sort Key: k1
+   ->  Index Scan using st_keys_k4_idx on st_keys
+         Index Cond: (k4 = 400)
+(4 rows)
+
+SELECT * FROM st_keys WHERE k4 = 400 ORDER BY k1;
+ k4  | k3  | k2  | k1  | value
+-----+-----+-----+-----+-------
+ 400 | 300 | 200 | 100 |   300
+(1 row)
+
+UPDATE st_keys SET value=0 WHERE k2 = 20;
+SELECT k1, k2, k3, k4, value FROM st_keys ORDER BY k1;
+ k1  | k2  | k3  | k4  | value
+-----+-----+-----+-----+-------
+   1 |   2 |   3 |   4 |   100
+  10 |  20 |  30 |  40 |     0
+ 100 | 200 | 300 | 400 |   300
+(3 rows)
+
+DELETE FROM st_keys WHERE k4 = 400;
+SELECT value, k4, k3, k2, k1 FROM st_keys ORDER BY k1;
+ value | k4 | k3 | k2 | k1
+-------+----+----+----+----
+   100 |  4 |  3 |  2 |  1
+     0 | 40 | 30 | 20 | 10
+(2 rows)
+
+CREATE TABLE dt_keys(k3 int, k2 text, k1 int, PRIMARY KEY(k1, k2, k3));
+INSERT INTO dt_keys VALUES(3, 'value_2', 1);
+INSERT INTO dt_keys(k1, k2, k3) VALUES(10, 'value_20', 30);
+SELECT * FROM dt_keys ORDER BY k1;
+ k3 |    k2    | k1
+----+----------+----
+  3 | value_2  |  1
+ 30 | value_20 | 10
+(2 rows)
+
+SELECT k1, k2, k3 FROM dt_keys ORDER BY k1;
+ k1 |    k2    | k3
+----+----------+----
+  1 | value_2  |  3
+ 10 | value_20 | 30
+(2 rows)
