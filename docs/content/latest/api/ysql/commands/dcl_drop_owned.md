@@ -57,7 +57,7 @@ This is the default mode and will raise an error if there are other database obj
 
 - Drop all objects owned by john.
 
-```sql
+```postgresql
 yugabyte=# drop owned by john;
 ```
 

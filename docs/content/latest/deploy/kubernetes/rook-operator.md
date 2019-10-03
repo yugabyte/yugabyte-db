@@ -26,7 +26,7 @@ Verify that your Kubernetes cluster is ready for Rook by reviewing the [Kubernet
 
 Rook must be installed — see the [Rook GitHub Repository](https://github.com/rook/rook). You can install Rook by running the following command:
 
-```bash
+```sh
 git clone git@github.com:rook/rook.git
 ```
 
@@ -36,19 +36,19 @@ To deploy the YugabyteDB operator:
 
 1. Change your directory to the Rook directory containing the YugabyteDB example files.
 
-    ```bash
+    ```sh
     cd cluster/examples/kubernetes/yugabytedb
     ```
 
 2. Create the Rook YugabyteDB operator by running the following command:
 
-    ```bash
+    ```sh
     kubectl create -f operator.yaml
     ```
 
 3. Observe the Rook operator by running the following command:
 
-    ```bash
+    ```sh
     kubectl -n rook-yugabytedb-system get pods
     ```
 
@@ -58,7 +58,7 @@ When using the Rook YugabyteDB operator, your YugabyteDB clusters are controlled
 
 A sample Custom Resource Definition (CRD) file, called `cluster.yaml`, is located in the following Rook directory:
 
-```bash
+```sh
 cluster/examples/kubernetes/yugabytedb
 ```
 
@@ -68,19 +68,19 @@ Make a copy of the sample CRD file (`cluster.yaml`)  and modify it as needed. Fo
 
 1. Create your YugabyteDB cluster by running the following command:
 
-    ```bash
+    ```sh
     kubectl create -f cluster.yaml
     ```
 
 2. Verify that the custom resource object was created by using the following command:
 
-    ```bash
+    ```sh
     kubectl -n rook-yugabytedb get ybclusters.yugabytedb.rook.io
     ```
 
 3. Verify that the number of YB-Master and YB- TServer services that are running match the number you specified in the `cluster.yaml` file by running the following command:
 
-    ```bash
+    ```sh
     kubectl -n rook-yugabytedb get pods
     ```
 
@@ -116,7 +116,7 @@ Manually delete any Persistent Volumes that were created for this YugabyteDB clu
 
 If the cluster does not start,  run following command to take a look at operator logs.
 
-```bash
+```sh
 kubectl -n rook-yugabytedb-system logs -l app=rook-yugabytedb-operator
 ```
 
@@ -124,7 +124,7 @@ kubectl -n rook-yugabytedb-system logs -l app=rook-yugabytedb-operator
 
 If everything is OK in the operator logs, check the YugabyteDB logs for YB-Master and YB-TServer.
 
-```bash
+```sh
 kubectl -n rook-yugabytedb logs -l app=yb-master-rook-yugabytedb
 kubectl -n rook-yugabytedb logs -l app=yb-tserver-rook-yugabytedb
 ```

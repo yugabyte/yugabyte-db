@@ -47,7 +47,7 @@ After creating the required tables, you can now set up the replication behavior.
 
 2. Run the following `yb-admin` command.
 
-```bash
+```sh
 yb-admin -master_addresses <consumer_universe_master_addresses>
 setup_universe_replication <producer_universe_uuid>
   <producer_universe_master_addresses>
@@ -56,7 +56,7 @@ setup_universe_replication <producer_universe_uuid>
 
 ### Example
 
-```bash
+```sh
 yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
 ```
 
@@ -78,13 +78,13 @@ Note that this time, “yugabyte-producer” will be set up to consume data from
 
 #### YSQL example
 
-```bash
+```sh
 java -jar target/yb-sample-apps.jar --workload SqlSecondaryIndex  --nodes 127.0.0.1:5433
 ```
 
 #### YCQL example
 
-```bash
+```sh
 java -jar target/yb-sample-apps.jar --workload CassandraBatchKeyValue --nodes 127.0.0.1:9042
 ```
 

@@ -53,7 +53,7 @@ yugabyte=#
 
 To create the `sportsdb` database, run the following YSQL command
 
-```sql
+```postgresql
 CREATE DATABASE sportsdb;
 ```
 

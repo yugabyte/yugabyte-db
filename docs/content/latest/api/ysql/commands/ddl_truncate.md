@@ -58,15 +58,15 @@ Specify the name of the table to be truncated.
 
 ## Examples
 
-```sql
+```postgresql
 yugabyte=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
 
-```sql
+```postgresql
 yugabyte=# INSERT INTO sample VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
 
-```sql
+```postgresql
 yugabyte=# SELECT * FROM sample ORDER BY k1;
 ```
 
@@ -79,11 +79,11 @@ yugabyte=# SELECT * FROM sample ORDER BY k1;
 (3 rows)
 ```
 
-```sql
+```postgresql
 yugabyte=# TRUNCATE sample;
 ```
 
-```sql
+```postgresql
 yugabyte=# SELECT * FROM sample;
 ```
 
