@@ -192,6 +192,9 @@ Make sure to get the master ip from `$ ./bin/yb-ctl status` since we have multip
 {{< /note >}}
 
 ### Step 5: Triggering snapshot import
+{{< note title="Tip" >}}
+The `keyspace` and `table` can be different from the exported one.
+{{< /note >}}
 First we need to import the snapshot file into yugabyte.
 ```
 $ ./bin/yb-admin import_snapshot test_tb.snapshot ydb test_tb
@@ -211,10 +214,9 @@ Snapshot         	4963ed18fc1e4f1ba38c8fcf4058b295 	4963ed18fc1e4f1ba38c8fcf4058
 After importing the `metadata file` we see some changes:
  
 1. `Old ID` and `New ID` for table and tablets.
-2. Snapshot has changed the `id` so we need to use the new one when restoring or deleting.
-3. `table_id` and `tablet_id` have chaged so we have a different paths from previously
-4. Each `tablet_id` has changed, so we have different `tablet-<tablet_id>` directories.
-5. When restoring we have to use the new IDs to get the right paths to move data.
+2. `table_id` and `tablet_id` have chaged so we have a different paths from previously
+3. Each `tablet_id` has changed, so we have different `tablet-<tablet_id>` directories.
+4. When restoring we have to use the new IDs to get the right paths to move data.
 
 Using these IDs, we can restore the previous `.snapshot` folders to the new paths. 
 
