@@ -136,7 +136,7 @@ class TabletPeerTest : public YBTabletTest,
             Bind(
                 &TabletPeerTest::TabletPeerStateChangedCallback,
                 Unretained(this),
-                tablet()->tablet_id())));
+                tablet()->tablet_id()), &metric_registry_));
 
     // Make TabletPeer use the same LogAnchorRegistry as the Tablet created by the harness.
     // TODO: Refactor TabletHarness to allow taking a LogAnchorRegistry, while also providing

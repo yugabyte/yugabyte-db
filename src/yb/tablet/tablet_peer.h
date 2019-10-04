@@ -103,7 +103,8 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
              const consensus::RaftPeerPB& local_peer_pb,
              const scoped_refptr<server::Clock> &clock,
              const std::string& permanent_uuid,
-             Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk);
+             Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
+             MetricRegistry* metric_registry);
 
   ~TabletPeer();
 
@@ -420,6 +421,8 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
 
  private:
   HybridTime ReportReadRestart() override;
+
+  MetricRegistry* metric_registry_;
 
   bool IsLeader() override {
     return LeaderTerm() != OpId::kUnknownTerm;
