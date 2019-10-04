@@ -205,7 +205,7 @@ Keyspace         	c478ed4f570841489dd973aacf0b3799 	c478ed4f570841489dd973aacf0b
 Table            	ff4389ee7a9d47ff897d3cec2f18f720 	ff4389ee7a9d47ff897d3cec2f18f720
 Tablet 0         	cea3aaac2f10460a880b0b4a2a4b652a 	cea3aaac2f10460a880b0b4a2a4b652a
 Tablet 1         	e509cf8eedba410ba3b60c7e9138d479 	e509cf8eedba410ba3b60c7e9138d479
-Snapshot         	4963ed18fc1e4f1ba38c8fcf4058b295 	49b539f60f7d493794132c2fd76e2e81
+Snapshot         	4963ed18fc1e4f1ba38c8fcf4058b295 	4963ed18fc1e4f1ba38c8fcf4058b295
 ```
 
 After importing the `metadata file` we see some changes:
@@ -216,23 +216,23 @@ After importing the `metadata file` we see some changes:
 4. Each `tablet_id` has changed, so we have different `tablet-<tablet_id>` directories.
 5. When restoring we have to use the new IDs to get the right paths to move data.
 
-Using these new IDs, we can restore the previous `.snapshot` folders to the new paths. 
+Using these IDs, we can restore the previous `.snapshot` folders to the new paths. 
 
 {{< note title="Tip" >}}
 For each tablet we have to copy the snapshots folder on all replicas.
 {{< /note >}}
 
 
-We get the New ID of the snapshot. Then we can use this id to restore it:
+Now we can start restoring the snapshot:
 ```
-$ ./bin/yb-admin restore_snapshot 49b539f60f7d493794132c2fd76e2e81
-Started restoring snapshot: 49b539f60f7d493794132c2fd76e2e81
+$ ./bin/yb-admin restore_snapshot 4963ed18fc1e4f1ba38c8fcf4058b295
+Started restoring snapshot: 4963ed18fc1e4f1ba38c8fcf4058b295
 ```
 After some time we can see that the restore has completed:
 ```
 $ ./bin/yb-admin list_snapshots
 Snapshot UUID                    	State
-49b539f60f7d493794132c2fd76e2e81 	COMPLETE
+4963ed18fc1e4f1ba38c8fcf4058b295 	COMPLETE
 ```
 
 ### Step 6: Verifying the data
