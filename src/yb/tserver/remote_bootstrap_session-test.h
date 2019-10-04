@@ -143,7 +143,7 @@ class RemoteBootstrapTest : public YBTabletTest {
             Bind(
                 &RemoteBootstrapTest::TabletPeerStateChangedCallback,
                 Unretained(this),
-                tablet()->tablet_id())));
+                tablet()->tablet_id()), &metric_registry_));
 
     // TODO similar to code in tablet_peer-test, consider refactor.
     RaftConfigPB config;

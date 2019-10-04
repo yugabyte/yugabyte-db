@@ -143,7 +143,8 @@ TabletPeer::TabletPeer(
     const consensus::RaftPeerPB& local_peer_pb,
     const scoped_refptr<server::Clock> &clock,
     const std::string& permanent_uuid,
-    Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk)
+    Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
+    MetricRegistry* metric_registry)
   : meta_(meta),
     tablet_id_(meta->raft_group_id()),
     local_peer_pb_(local_peer_pb),
@@ -152,7 +153,8 @@ TabletPeer::TabletPeer(
     clock_(clock),
     log_anchor_registry_(new LogAnchorRegistry()),
     mark_dirty_clbk_(std::move(mark_dirty_clbk)),
-    permanent_uuid_(permanent_uuid) {}
+    permanent_uuid_(permanent_uuid),
+    metric_registry_(metric_registry) {}
 
 TabletPeer::~TabletPeer() {
   std::lock_guard<simple_spinlock> lock(lock_);
@@ -311,6 +313,12 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
 
     VLOG(2) << "RaftConfig before starting: " << consensus_->CommittedConfig().DebugString();
 
+    // If tablet was previously considered shutdown w.r.t. metrics,
+    // fix that for a tablet now being reinstated.
+    DVLOG_WITH_PREFIX(3)
+      << "Remove from set of tablets that have been shutdown so as to allow reporting metrics";
+    metric_registry_->tablets_shutdown_erase(tablet_id());
+
     RETURN_NOT_OK(consensus_->Start(bootstrap_info));
     RETURN_NOT_OK(UpdateState(RaftGroupStatePB::BOOTSTRAPPING, RaftGroupStatePB::RUNNING,
                               "Incorrect state to start TabletPeer, "));
@@ -411,6 +419,12 @@ void TabletPeer::CompleteShutdown() {
     LOG_IF_WITH_PREFIX(DFATAL, state != RaftGroupStatePB::QUIESCING) <<
         "Bad state when completing shutdown: " << RaftGroupStatePB_Name(state);
     state_.store(RaftGroupStatePB::SHUTDOWN, std::memory_order_release);
+
+    if (metric_registry_) {
+      DVLOG_WITH_PREFIX(3)
+        << "Add to set of tablets that have been shutdown so as to avoid reporting metrics";
+      metric_registry_->tablets_shutdown_insert(tablet_id());
+    }
   }
 }
 
@@ -433,6 +447,12 @@ void TabletPeer::WaitUntilShutdown() {
     }
     SleepFor(kSingleWait);
     waited += kSingleWait;
+  }
+
+  if (metric_registry_) {
+    DVLOG_WITH_PREFIX(3)
+      << "Add to set of tablets that have been shutdown so as to avoid reporting metrics";
+    metric_registry_->tablets_shutdown_insert(tablet_id());
   }
 }
 
