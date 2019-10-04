@@ -6,6 +6,7 @@
           "bin/bulk_load_helper.sh",
           "bin/log_cleanup.sh",
           "bin/yb-check-failed-tablets.sh",
+          "bin/yb-check-consistency.py",
           "bin/configure",
           "bin/yugabyted",
           "submodules/yugabyte-installation/bin/yb-ctl",
