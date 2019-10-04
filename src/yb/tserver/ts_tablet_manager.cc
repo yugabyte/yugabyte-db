@@ -917,7 +917,8 @@ Result<TabletPeerPtr> TSTabletManager::CreateAndRegisterTabletPeer(
     const RaftGroupMetadataPtr& meta, RegisterTabletPeerMode mode) {
   TabletPeerPtr tablet_peer(new tablet::TabletPeer(
       meta, local_peer_pb_, scoped_refptr<server::Clock>(server_->clock()), fs_manager_->uuid(),
-      Bind(&TSTabletManager::ApplyChange, Unretained(this), meta->raft_group_id())));
+      Bind(&TSTabletManager::ApplyChange, Unretained(this), meta->raft_group_id()),
+      metric_registry_));
   RETURN_NOT_OK(RegisterTablet(meta->raft_group_id(), tablet_peer, mode));
   return tablet_peer;
 }
