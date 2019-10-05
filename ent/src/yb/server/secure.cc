@@ -97,5 +97,11 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
   return std::move(result);
 }
 
+Result<std::unique_ptr<rpc::SecureContext>> SetupClientSecureContext(
+    rpc::MessengerBuilder* builder) {
+  return SetupSecureContext(
+      std::string(), std::string(), server::SecureContextType::kClientToServer, builder);
+}
+
 } // namespace server
 } // namespace yb

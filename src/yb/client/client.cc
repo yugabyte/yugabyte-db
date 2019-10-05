@@ -43,6 +43,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/client/client_utils.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/session.h"
 #include "yb/client/table_alterer.h"
@@ -160,8 +161,6 @@ TAG_FLAG(client_suppress_created_logs, hidden);
 
 DEFINE_test_flag(int32, yb_num_total_tablets, 0,
                  "The total number of tablets per table when a table is created.");
-
-DECLARE_bool(running_test);
 
 namespace yb {
 namespace client {
@@ -333,15 +332,10 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
     c->data_->messenger_holder_ = nullptr;
     c->data_->messenger_ = messenger;
   } else {
-    MessengerBuilder builder(data_->client_name_);
-    builder.set_num_reactors(data_->num_reactors_);
-    builder.set_metric_entity(data_->metric_entity_);
-    builder.UseDefaultConnectionContextFactory(data_->parent_mem_tracker_);
-    c->data_->messenger_holder_ = VERIFY_RESULT(builder.Build());
+    c->data_->messenger_holder_ = VERIFY_RESULT(client::CreateClientMessenger(
+        data_->client_name_, data_->num_reactors_,
+        data_->metric_entity_, data_->parent_mem_tracker_));
     c->data_->messenger_ = c->data_->messenger_holder_.get();
-    if (FLAGS_running_test) {
-      c->data_->messenger_->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress("127.0.0.1")));
-    }
   }
   c->data_->proxy_cache_ = std::make_unique<rpc::ProxyCache>(c->data_->messenger_);
   c->data_->metric_entity_ = data_->metric_entity_;
