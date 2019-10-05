@@ -60,6 +60,7 @@ class RpcService;
 class Rpcs;
 class Protocol;
 class Scheduler;
+class SecureContext;
 class ServicePoolImpl;
 class Stream;
 class StreamReadBuffer;

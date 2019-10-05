@@ -42,6 +42,9 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
     const std::string& root_dir, const std::string& name, SecureContextType type,
     rpc::MessengerBuilder* builder);
 
+Result<std::unique_ptr<rpc::SecureContext>> SetupClientSecureContext(
+    rpc::MessengerBuilder* builder);
+
 } // namespace server
 } // namespace yb
 

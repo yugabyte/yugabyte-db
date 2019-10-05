@@ -166,7 +166,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  private Map<String, String> getMasterAndTServerFlags() {
+  protected Map<String, String> getMasterAndTServerFlags() {
     Map<String, String> flagMap = new TreeMap<>();
     flagMap.put(
         "retryable_rpc_single_call_timeout_ms",
