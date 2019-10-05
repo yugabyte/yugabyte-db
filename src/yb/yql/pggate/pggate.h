@@ -31,6 +31,8 @@
 #include "yb/client/async_initializer.h"
 #include "yb/server/server_base_options.h"
 
+#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
@@ -392,6 +394,11 @@ class PgApiImpl {
                              PgExpr **op_handle);
   CHECKED_STATUS OperatorAppendArg(PgExpr *op_handle, PgExpr *arg);
 
+  struct MessengerHolder {
+    std::unique_ptr<rpc::SecureContext> security_context;
+    std::unique_ptr<rpc::Messenger> messenger;
+  };
+
  private:
   // Control variables.
   PggateOptions pggate_options_;
@@ -402,6 +409,8 @@ class PgApiImpl {
 
   // Memory tracker.
   std::shared_ptr<MemTracker> mem_tracker_;
+
+  MessengerHolder messenger_holder_;
 
   // YBClient is to communicate with either master or tserver.
   yb::client::AsyncClientInitialiser async_client_init_;

@@ -18,13 +18,25 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/rpc/rpc_fwd.h"
+
 namespace yb {
+
+class MemTracker;
+
 namespace client {
 
 // Lookup first tablet of specified table.
-std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(const YBTable* table);
+std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(const YBTable *table);
 
-}
-}
+Result<std::unique_ptr<rpc::Messenger>> CreateClientMessenger(
+    const string &client_name,
+    int32_t num_reactors,
+    const scoped_refptr<MetricEntity> &metric_entity,
+    const std::shared_ptr<MemTracker> &parent_mem_tracker,
+    std::unique_ptr<rpc::SecureContext> *secure_context = nullptr);
+
+} // namespace client
+} // namespace yb
 
 #endif // YB_CLIENT_CLIENT_UTILS_H
