@@ -1,6 +1,7 @@
 4.2.1
 -- Fix bug in partition_data_time causing never-ending loop while calculating partition range for natively partitioned tables. Github issue #273
 
+
 4.2.0
 -- Preliminary compatability with PostgreSQL 12.
 
