@@ -572,8 +572,7 @@ void QLTransactionTest::TestReadOnlyTablets(IsolationLevel isolation_level,
 }
 
 TEST_F(QLTransactionTest, ReadOnlyTablets) {
-  // TODO(dtxn) restore to true after issue #2501 resolved.
-  FLAGS_fail_in_apply_if_no_metadata = false;
+  FLAGS_fail_in_apply_if_no_metadata = true;
 
   // In snapshot isolation, tablets only read from will not have metadata written, so applying
   // intents on this tablet would cause the test to fail.

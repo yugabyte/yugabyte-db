@@ -32,6 +32,7 @@
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
@@ -45,6 +46,9 @@ DEFINE_bool(transaction_disable_heartbeat_in_tests, false, "Disable heartbeat du
 DEFINE_bool(transaction_disable_proactive_cleanup_in_tests, false,
             "Disable cleanup of intents in abort path.");
 DECLARE_uint64(max_clock_skew_usec);
+
+DEFINE_test_flag(int32, TEST_transaction_inject_flushed_delay_ms, 0,
+                 "Inject delay before processing flushed operations by transaction.");
 
 namespace yb {
 namespace client {
@@ -261,6 +265,9 @@ class YBTransaction::Impl final {
     VLOG_WITH_PREFIX(5)
         << "Flushed: " << yb::ToString(ops) << ", used_read_time: " << used_read_time
         << ", status: " << status;
+    if (FLAGS_TEST_transaction_inject_flushed_delay_ms > 0) {
+      std::this_thread::sleep_for(FLAGS_TEST_transaction_inject_flushed_delay_ms * 1ms);
+    }
 
     if (status.ok()) {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -469,7 +476,7 @@ class YBTransaction::Impl final {
 
   bool HasTabletsWithIntents() {
     for (const auto& tablet : tablets_) {
-      if (tablet.second.HasMetadata()) {
+      if (tablet.second.HasMetadata(&log_prefix_)) {
         return true;
       }
     }
@@ -514,7 +521,7 @@ class YBTransaction::Impl final {
     for (const auto& tablet : tablets_) {
       // If metadata is missing then the tablet does not contain intents, so does not
       // need to be involved in Apply/Cleanup.
-      if (tablet.second.HasMetadata()) {
+      if (tablet.second.HasMetadata(&log_prefix_)) {
         state.add_tablets(tablet.first);
       }
     }
@@ -570,7 +577,7 @@ class YBTransaction::Impl final {
       for (const auto& tablet : tablets_) {
         // If metadata is missing then the tablet does not contain intents, so does not
         // need to be involved in Abort/Cleanup.
-        if (tablet.second.HasMetadata()) {
+        if (tablet.second.HasMetadata(nullptr)) {
           tablet_ids.push_back(tablet.first);
         }
       }
@@ -874,7 +881,19 @@ class YBTransaction::Impl final {
       }
     }
 
-    bool HasMetadata() const {
+    // If this function is invoked as part of commit, then log_prefix should be set to non null.
+    bool HasMetadata(const std::string* log_prefix) const {
+      switch (metadata_state) {
+        case InvolvedTabletMetadataState::EXIST:
+          return true;
+        case InvolvedTabletMetadataState::MISSING:
+          return false;
+        case InvolvedTabletMetadataState::MAY_EXIST:
+          LOG_IF(DFATAL, log_prefix)
+              << *log_prefix << "Commit transaction with may exist metadata state";
+          return true;
+      }
+      FATAL_INVALID_ENUM_VALUE(InvolvedTabletMetadataState, metadata_state);
       return true;
     }
 

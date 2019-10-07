@@ -145,6 +145,8 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   CHECKED_STATUS GetTabletStatus(const GetTabletStatusRequestPB* req,
                                  GetTabletStatusResponsePB* resp) const override;
 
+  bool LeaderAndReady(const TabletId& tablet_id) const override;
+
   const std::string& permanent_uuid() const { return fs_manager_->uuid(); }
 
   // Returns the proxy to call this tablet server locally.
