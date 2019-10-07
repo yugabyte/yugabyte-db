@@ -44,6 +44,8 @@ class MasterTabletServer : public tserver::TabletServerIf,
   CHECKED_STATUS GetTabletStatus(const tserver::GetTabletStatusRequestPB* req,
                                  tserver::GetTabletStatusResponsePB* resp) const override;
 
+  bool LeaderAndReady(const TabletId& tablet_id) const override;
+
   const NodeInstancePB& NodeInstance() const override;
 
   CHECKED_STATUS GetRegistration(ServerRegistrationPB* reg) const override;

@@ -636,19 +636,18 @@ void Batcher::AddOpCountMismatchError() {
 
 void Batcher::RemoveInFlightOpsAfterFlushing(
     const InFlightOps& ops, const Status& status, FlushExtraResult flush_extra_result) {
-  {
-    std::lock_guard<decltype(mutex_)> lock(mutex_);
-    for (auto& op : ops) {
-      CHECK_EQ(1, ops_.erase(op))
-        << "Could not remove op " << op->ToString() << " from in-flight list";
-    }
-  }
   auto transaction = this->transaction();
   if (transaction) {
     transaction->Flushed(ops, flush_extra_result.used_read_time, status);
   }
   if (status.ok() && read_point_) {
     read_point_->UpdateClock(flush_extra_result.propagated_hybrid_time);
+  }
+
+  std::lock_guard<decltype(mutex_)> lock(mutex_);
+  for (auto& op : ops) {
+    CHECK_EQ(1, ops_.erase(op))
+      << "Could not remove op " << op->ToString() << " from in-flight list";
   }
 }
 

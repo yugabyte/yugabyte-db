@@ -369,6 +369,10 @@ void RemoteTablet::GetRemoteTabletServers(
                 }
                 continue;
               }
+              if (!replica.ts->local_tserver()->LeaderAndReady(tablet_id_)) {
+                // Should continue here because otherwise failed state will be cleared.
+                continue;
+              }
             } else if ((MonoTime::Now() - replica.last_failed_time) <
                        FLAGS_retry_failed_replica_ms * 1ms) {
               continue;
