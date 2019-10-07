@@ -1,6 +1,11 @@
 Revision history for pgTAP
 ==========================
 
+1.1.0
+--------------------------
+* Fix pgtap_version(), which incorrectly returned 0.99 when upgrading from
+  version 0.99.0 to 1.0.0.
+
 1.0.0 2019-02-21T22:39:42Z
 --------------------------
 * Fixed uninstall script generation to properly emit `DROP TYPE` statements.

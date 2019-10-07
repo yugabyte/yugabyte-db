@@ -1,3 +1,7 @@
+CREATE OR REPLACE FUNCTION pgtap_version()
+RETURNS NUMERIC AS 'SELECT 1.0;'
+LANGUAGE SQL IMMUTABLE;
+
 CREATE OR REPLACE FUNCTION _array_to_sorted_string( name[], text )
 RETURNS text AS $$
     SELECT array_to_string(ARRAY(
