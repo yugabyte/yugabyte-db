@@ -233,6 +233,10 @@ class NODISCARD_CLASS Result {
     return Status::OK();
   }
 
+  std::string ToString() const {
+    return ok() ? AsString(**this) : status().ToString();
+  }
+
   ~Result() {
     if (success_) {
       Traits::Destroy(&value_);

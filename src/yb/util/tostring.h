@@ -332,6 +332,11 @@ std::string CollectionToString(const Collection& collection) {
   return result;
 }
 
+template <class T>
+std::string AsString(const T& t) {
+  return ToString(t);
+}
+
 } // namespace yb
 
 #endif // YB_UTIL_TOSTRING_H
