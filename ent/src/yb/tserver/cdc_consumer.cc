@@ -50,6 +50,7 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
 
   auto client = VERIFY_RESULT(client::YBClientBuilder()
       .master_server_addrs(hostport_strs)
+      .set_client_name("CDCConsumer")
       .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_rpc_timeout_ms))
       .Build());
 
@@ -69,7 +70,7 @@ CDCConsumer::CDCConsumer(std::function<bool(const std::string&)> is_leader_for_t
                          std::unique_ptr<client::YBClient> client) :
   is_leader_for_tablet_(std::move(is_leader_for_tablet)),
   proxy_manager_(std::make_unique<cdc::CDCConsumerProxyManager>(proxy_cache)),
-  log_prefix_(Format("[TS $0]:", ts_uuid)),
+  log_prefix_(Format("[TS $0]: ", ts_uuid)),
   client_(std::move(client)) {}
 
 CDCConsumer::~CDCConsumer() {
@@ -77,20 +78,21 @@ CDCConsumer::~CDCConsumer() {
 }
 
 void CDCConsumer::Shutdown() {
-  LOG(INFO) << "Shutting down CDC Consumer";
+  LOG_WITH_PREFIX(INFO) << "Shutting down CDC Consumer";
   {
     std::lock_guard<std::mutex> l(should_run_mutex_);
     should_run_ = false;
   }
   cond_.notify_all();
 
-  if (run_trigger_poll_thread_) {
-    WARN_NOT_OK(ThreadJoiner(run_trigger_poll_thread_.get()).Join(), "Could not join thread");
-  }
-
   {
     std::unique_lock<rw_spinlock> lock(master_data_mutex_);
     producer_consumer_tablet_map_from_master_.clear();
+    client_->Shutdown();
+  }
+
+  if (run_trigger_poll_thread_) {
+    WARN_NOT_OK(ThreadJoiner(run_trigger_poll_thread_.get()).Join(), "Could not join thread");
   }
 
   if (thread_pool_) {
@@ -137,15 +139,16 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
     return;
   }
 
-  LOG(INFO) << "Updating CDC consumer registry: " << consumer_registry->DebugString();
-
   cluster_config_version_.store(cluster_config_version, std::memory_order_release);
   producer_consumer_tablet_map_from_master_.clear();
 
   if (!consumer_registry) {
+    LOG_WITH_PREFIX(INFO) << "Given empty CDC consumer registry: removing Pollers";
     cond_.notify_all();
     return;
   }
+
+  LOG_WITH_PREFIX(INFO) << "Updating CDC consumer registry: " << consumer_registry->DebugString();
 
   for (const auto& producer_map : DCHECK_NOTNULL(consumer_registry)->producer_map()) {
     const auto& producer_entry_pb = producer_map.second;

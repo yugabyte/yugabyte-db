@@ -123,7 +123,7 @@ message ListTabletsResponsePB {
 message CDCTabletPB {
   message ReplicaPB {
     repeated HostPortPB broadcast_addresses = 1;
-    repeated HostPortPB private_rpc_addresses = 2;
+    // Don't use private_rpc_addresses since we're cross-universe
   }
   optional bytes tablet_id = 1;
   // Tservers holding data for the tablet.
