@@ -54,8 +54,18 @@ Status RegisterTableSubscriber(
     *producer_tablets.add_tablets() = producer;
     (*mutable_map)[consumer] = producer_tablets;
     for (const auto& replica : producer_table_locations.Get(i).replicas()) {
-      for (const auto& addr : replica.ts_info().private_rpc_addresses()) {
+      // Use the public IP addresses since we're cross-universe
+      for (const auto& addr : replica.ts_info().broadcast_addresses()) {
         tserver_addrs->insert(HostPortFromPB(addr));
+      }
+      // Rarely a viable setup for production replication, but used in testing...
+      if (tserver_addrs->empty()) {
+        LOG(WARNING) << "No public broadcast addresses found for "
+                     << replica.ts_info().permanent_uuid()
+                     << ".  Using private addresses instead.";
+        for (const auto& addr : replica.ts_info().private_rpc_addresses()) {
+          tserver_addrs->insert(HostPortFromPB(addr));
+        }
       }
     }
   }
