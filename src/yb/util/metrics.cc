@@ -413,7 +413,7 @@ MetricRegistry::~MetricRegistry() {
 
 bool MetricRegistry::TabletHasBeenShutdown(const scoped_refptr<MetricEntity> entity) const {
     if (strcmp(entity->prototype_->name(), "tablet") == 0 && tablets_shutdown_find(entity->id())) {
-      YB_LOG_EVERY_N_SECS(INFO, 5) << "Do not report metrics for shutdown tablet " << entity->id();
+      DVLOG(5) << "Do not report metrics for shutdown tablet " << entity->id();
       return true;
     }
 
