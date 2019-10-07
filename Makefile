@@ -38,7 +38,3 @@ include $(PGXS)
 cypher_gram.c: BISONFLAGS += --defines=$(basename $@)_def.h
 
 scan.c: FLEX_NO_BACKUP=yes
-
-.PHONY: doc-html
-doc-html:
-	make -C doc html
