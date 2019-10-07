@@ -18,6 +18,7 @@ bbin
 /sql/pgtap--0.95.0--0.96.0.sql
 /sql/pgtap--0.96.0--0.97.0.sql
 /sql/pgtap--0.97.0--0.98.0.sql
+/sql/pgtap--0.98.0--0.99.0.sql
 /sql/pgtap--0.99.0--1.0.0.sql
 /sql/pgtap-static.sql
 

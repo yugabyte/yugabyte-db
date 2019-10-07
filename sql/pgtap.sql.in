@@ -2473,6 +2473,26 @@ RETURNS TEXT AS $$
     SELECT fk_ok( $1, ARRAY[$2], $3, ARRAY[$4] );
 $$ LANGUAGE sql;
 
+/*
+ * tap_funky used to just be a simple view, but the problem with that is the
+ * definition of pg_proc changed in version 11. Thanks to how pg_dump (and
+ * hence pg_upgrade) works, this made it impossible to upgrade Postgres if
+ * pgTap was installed. In order to fix that, we need code that will actually
+ * work on both < PG11 and >= PG11.
+ */
+CREATE OR REPLACE FUNCTION _prokind( p_oid oid )
+RETURNS "char" AS $$
+BEGIN
+    IF pg_version_num() >= 110000 THEN
+        RETURN prokind FROM pg_catalog.pg_proc WHERE oid = p_oid;
+    ELSE
+        RETURN CASE proisagg WHEN true THEN 'a' WHEN false THEN 'f' END
+            FROM pg_catalog.pg_proc WHERE oid = p_oid;
+    END IF;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+
 CREATE OR REPLACE VIEW tap_funky
  AS SELECT p.oid         AS oid,
            n.nspname     AS schema,
@@ -2483,7 +2503,7 @@ CREATE OR REPLACE VIEW tap_funky
              || p.prorettype::regtype AS returns,
            p.prolang     AS langoid,
            p.proisstrict AS is_strict,
-           p.prokind     AS kind,
+           _prokind(p.oid) AS kind,
            p.prosecdef   AS is_definer,
            p.proretset   AS returns_set,
            p.provolatile::char AS volatility,
