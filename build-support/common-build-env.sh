@@ -1092,7 +1092,7 @@ find_compiler_by_type() {
     clang)
       if [[ -n ${YB_CLANG_PREFIX:-} ]]; then
         if [[ ! -d $YB_CLANG_PREFIX/bin ]]; then
-          fatal "Directory YB_CLANG_PREFIX/bin ($YB_CLANG_PREFIX/bin) does not exist"
+          fatal "Directory \$YB_CLANG_PREFIX/bin ($YB_CLANG_PREFIX/bin) does not exist"
         fi
         cc_executable=$YB_CLANG_PREFIX/bin/clang
       elif [[ $OSTYPE =~ ^darwin ]]; then
@@ -1134,6 +1134,11 @@ find_compiler_by_type() {
     *)
       fatal "Unknown compiler type '$compiler_type'"
   esac
+
+  # -----------------------------------------------------------------------------------------------
+  # Validate existence of compiler executables.
+  # -----------------------------------------------------------------------------------------------
+
   local compiler_var_name
   for compiler_var_name in cc_executable cxx_executable; do
     if [[ -n ${!compiler_var_name:-} ]]; then
