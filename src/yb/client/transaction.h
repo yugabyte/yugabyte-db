@@ -110,9 +110,6 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   bool IsRestartRequired() const;
 
-  // Return true if there were operations executed with this transaction.
-  bool HasOperations() const;
-
   // Creates restarted transaction, this transaction should be in the "restart required" state.
   Result<YBTransactionPtr> CreateRestartedTransaction();
 

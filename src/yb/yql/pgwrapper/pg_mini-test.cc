@@ -138,5 +138,15 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(WriteRetry)) {
   ASSERT_STR_CONTAINS(status.ToString(), "duplicate key value violates unique constraint");
 }
 
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(With)) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test (k int PRIMARY KEY, v int)"));
+
+  ASSERT_OK(conn.Execute(
+      "WITH test2 AS (UPDATE test SET v = 2 WHERE k = 1) "
+      "UPDATE test SET v = 3 WHERE k = 1"));
+}
+
 } // namespace pgwrapper
 } // namespace yb
