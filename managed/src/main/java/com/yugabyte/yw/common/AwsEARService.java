@@ -1,8 +1,15 @@
-// Copyright (c) YugaByte, Inc.
+/*
+ * Copyright 2019 YugaByte, Inc. and Contributors
+ *
+ * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+ * may not use this file except in compliance with the License. You
+ * may obtain a copy of the License at
+ *
+ *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ */
 
 package com.yugabyte.yw.common;
 
-import com.amazonaws.regions.Regions;
 import com.amazonaws.services.kms.AWSKMS;
 import com.amazonaws.services.kms.AWSKMSClientBuilder;
 import com.amazonaws.services.kms.model.AliasListEntry;
@@ -15,9 +22,8 @@ import com.amazonaws.services.kms.model.ListAliasesRequest;
 import com.amazonaws.services.kms.model.ListAliasesResult;
 import com.amazonaws.services.kms.model.UpdateAliasRequest;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.EncryptionAtRestManager.KeyProvider;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
@@ -46,8 +52,12 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
      * @param apiHelper is a library to make requests against a third party encryption key provider
      * @param keyProvider is a String representation of "SMARTKEY" (if it is valid in this context)
      */
-    public AwsEARService(ApiHelper apiHelper, String keyProvider) {
-        super(apiHelper, keyProvider);
+    public AwsEARService(
+            ApiHelper apiHelper,
+            KeyProvider keyProvider,
+            EncryptionAtRestManager util
+    ) {
+        super(apiHelper, keyProvider, util);
     }
 
     /**
@@ -169,9 +179,8 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
             UUID customerUUID,
             UUID universeUUID
     ) throws Exception {
-        final ObjectNode authConfig = getAuthConfig(customerUUID);
-        final JsonNode serializedKeyBytes = authConfig.get(getUniverseMasterKeyName(universeUUID));
-        if (serializedKeyBytes == null) {
+        final byte[] serializedKeyBytes = getKeyRef(customerUUID, universeUUID);
+        if (serializedKeyBytes == null || serializedKeyBytes.length == 0) {
             final String errMsg = String.format(
                     "No universe master key exists locally for customer %s and universe %s",
                     customerUUID.toString(),
@@ -179,7 +188,7 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
             );
             LOG.warn(errMsg);
         }
-        return serializedKeyBytes == null ? null : serializedKeyBytes.binaryValue();
+        return serializedKeyBytes;
     }
 
     /**
@@ -199,16 +208,6 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
         byte[] decryptedUniverseKey = new byte[decryptedKeyBuffer.remaining()];
         decryptedKeyBuffer.get(decryptedUniverseKey);
         return decryptedUniverseKey;
-    }
-
-    /**
-     * Generates the field name to store the ciphertext universe master key under
-     *
-     * @param universeUUID the universe the master key is associated to
-     * @return the field name
-     */
-    private String getUniverseMasterKeyName(UUID universeUUID) {
-        return String.format("universe_key_%s", universeUUID.toString());
     }
 
     /**
@@ -242,7 +241,7 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
     protected AwsAlgorithm[] getSupportedAlgorithms() { return AwsAlgorithm.values(); }
 
     @Override
-    protected String createEncryptionKeyWithService(
+    protected byte[] createKeyWithService(
             UUID universeUUID,
             UUID customerUUID,
             Map<String, String> config
@@ -257,41 +256,44 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
         } else {
             updateAliasTarget(customerUUID, universeUUID, kId);
         }
-        return kId;
-    }
-
-    @Override
-    protected byte[] getEncryptionKeyWithService(
-            String kId,
-            UUID customerUUID,
-            UUID universeUUID,
-            Map<String, String> config
-    ) {
         final String algorithm = config.get("algorithm");
         final int keySize = Integer.parseInt(config.get("key_size"));
-        final byte[] encryptedKeyBytes = generateDataKey(customerUUID, kId, algorithm, keySize);
-        final ObjectMapper mapper = new ObjectMapper();
-        updateAuthConfig(customerUUID, ImmutableMap.of(
-                getUniverseMasterKeyName(universeUUID), mapper.valueToTree(encryptedKeyBytes)
-        ));
-        return recoverEncryptionKeyWithService(customerUUID, universeUUID, config);
+        return generateDataKey(customerUUID, kId, algorithm, keySize);
     }
 
     @Override
-    public byte[] recoverEncryptionKeyWithService(
+    protected byte[] rotateKeyWithService(
             UUID customerUUID,
             UUID universeUUID,
             Map<String, String> config
     ) {
+        final AliasListEntry alias = getAlias(customerUUID, universeUUID.toString());
+        final String cmkId = alias.getTargetKeyId();
+        final String algorithm = config.get("algorithm");
+        final int keySize = Integer.parseInt(config.get("key_size"));
+        return generateDataKey(customerUUID, cmkId, algorithm, keySize);
+    }
+
+    @Override
+    public byte[] retrieveKey(UUID customerUUID, UUID universeUUID) {
         byte[] result = null;
         try {
             result = decryptUniverseKey(
                     customerUUID,
                     retrieveEncryptedUniverseKeyLocal(customerUUID, universeUUID)
             );
+            if (result == null) {
+                final String errMsg = String.format(
+                        "No key exists with customer %s for universe %s",
+                        customerUUID.toString(),
+                        universeUUID.toString()
+                );
+                LOG.warn(errMsg);
+            }
         } catch (Exception e) {
-            final String errMsg = "Could not recover encryption key";
-            LOG.warn(errMsg, e);
+            final String errMsg = "Error occurred retrieving encryption key";
+            LOG.error(errMsg, e);
+            throw new RuntimeException(errMsg, e);
         }
         return result;
     }

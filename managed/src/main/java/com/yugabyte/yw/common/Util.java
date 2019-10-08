@@ -291,16 +291,6 @@ public class Util {
     }
   }
 
-  public static String generateSalt(UUID customerUUID, String keyProvider) {
-    final String saltBase = "%s%s";
-    final String salt = String.format(
-            saltBase,
-            customerUUID.toString().replace("-", ""),
-            keyProvider.hashCode()
-    );
-    return salt.length() % 2 == 0 ? salt : salt + "0";
-  }
-
   public static String buildURL(String host, String endpoint) {
     try {
       return new URL("https", host, endpoint).toString();
