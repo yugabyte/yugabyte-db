@@ -591,8 +591,6 @@ class PostgresBuilder:
 
     def postprocess_pg_compile_command(self, compile_command_item):
         directory = compile_command_item['directory']
-        if 'catalog_manager.cc' in str(compile_command_item):
-            logging.info(json.dumps(compile_command_item))
         if 'command' not in compile_command_item and 'arguments' not in compile_command_item:
             raise ValueError(
                 "Invalid compile command item: %s (neither 'command' nor 'arguments' are present)" %

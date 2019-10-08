@@ -1213,10 +1213,15 @@ if [[ $build_type == "compilecmds" ]]; then
     fatal "Cannot specify custom Make targets for the 'compilecmds' build type, got: " \
           "${make_targets[*]}"
   fi
-  # We need to add anything that generates header files, and also the postgres build because it goes
-  # through the build_postgres.py script and that's also where we create the overall
-  # compile_commands.json file.
-  make_targets+=( gen_proto postgres yb_bfpg yb_bfql )
+  # We need to add anything that generates header files:
+  # - Protobuf
+  # - Built-in functions for YSQL and YCQL
+  # - YCQL parser flex and bison output files.
+  # If we don't do this, we'll get indexing errors in the files relying on the generated headers.
+  #
+  # Also we need to add postgres as a dependency, because it goes through the build_postgres.py
+  # script and that is where the top-level combined compile_commands.json file is created.
+  make_targets+=( gen_proto postgres yb_bfpg yb_bfql ql_parser_flex_bison_output)
   build_java=false
 fi
 
