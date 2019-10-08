@@ -1,22 +1,31 @@
-// Copyright (c) YugaByte, Inc.
+/*
+ * Copyright 2019 YugaByte, Inc. and Contributors
+ *
+ * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+ * may not use this file except in compliance with the License. You
+ * may obtain a copy of the License at
+ *
+ *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ */
 
 package com.yugabyte.yw.common;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.models.CustomerConfig;
-import java.lang.InstantiationException;
-import java.lang.reflect.Constructor;
+import com.yugabyte.yw.common.EncryptionAtRestManager.KeyProvider;
+import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.KmsHistory;
+import com.yugabyte.yw.models.KmsHistoryId;
 import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.crypto.encrypt.Encryptors;
-import org.springframework.security.crypto.encrypt.TextEncryptor;
 import play.libs.Json;
 
 /**
@@ -43,38 +52,14 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
     protected ApiHelper apiHelper;
 
     /**
-     * A human-friendly representation of a given instance's service provider
+     * A util storing useful util methods for the encryption at rest service
      */
-    protected String keyProvider;
+    protected EncryptionAtRestManager util;
 
     /**
-     * A list of third party encryption key providers that YB currently supports and the
-     * corresponding service impl and any already instantiated classes
-     * (such that each impl is a singleton)
+     * A human-friendly representation of a given instance's service provider
      */
-    public enum KeyProvider {
-        AWS(AwsEARService.class),
-        SMARTKEY(SmartKeyEARService.class);
-
-        private Class providerService;
-
-        private EncryptionAtRestService instance;
-
-        public Class getProviderService() {
-            return this.providerService;
-        }
-
-        public EncryptionAtRestService getServiceInstance() { return this.instance; }
-
-        public void setServiceInstance(EncryptionAtRestService instance) {
-            this.instance = instance;
-        }
-
-        private KeyProvider(Class providerService) {
-            this.providerService = providerService;
-            this.instance = null;
-        }
-    }
+    protected KeyProvider keyProvider;
 
     /**
      * A helper to retrieve the supported encryption algorithms for a given key provider
@@ -121,26 +106,9 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      * @return an encryption key Id that can be used to retrieve the key if everything succeeds
      * during creation
      */
-    protected abstract String createEncryptionKeyWithService(
+    protected abstract byte[] createKeyWithService(
             UUID universeUUID,
             UUID customerUUID,
-            Map<String, String> config
-    );
-
-    /**
-     * A method that attempts to remotely retrieve a created encryption key from
-     * the key provider
-     *
-     * @param kId is the third-party pkId for the remotely-created object
-     * @param customerUUID is the customer that we should attempt to retrieve the encryption
-     *                     key for
-     * @param config contains provider and key specific parameters to help locate the key
-     * @return the value of the encryption key
-     */
-    protected abstract byte[] getEncryptionKeyWithService(
-            String kId,
-            UUID customerUUID,
-            UUID universeUUID,
             Map<String, String> config
     );
 
@@ -152,26 +120,19 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      * @param config contains any needed parameters for creating an encryption key
      * @return the encryption key value
      */
-    public byte[] createAndRetrieveEncryptionKey(
-            UUID universeUUID,
-            UUID customerUUID,
-            Map<String, String> config
-    ) {
+    public byte[] createKey(UUID universeUUID, UUID customerUUID, Map<String, String> config) {
+        byte[] key = null;
         try {
             final String algorithm = config.get("algorithm");
             final int keySize = Integer.parseInt(config.get("key_size"));
-            final byte[] existingEncryptionKey = recoverEncryptionKeyWithService(
-                    customerUUID,
-                    universeUUID,
-                    config
-            );
+            final byte[] existingEncryptionKey = retrieveKey(customerUUID, universeUUID);
             if (existingEncryptionKey != null && existingEncryptionKey.length > 0) {
                 final String errMsg = String.format(
                         "Encryption key for customer %s and universe %s already exists" +
                                 " with provider %s",
                         customerUUID.toString(),
                         universeUUID.toString(),
-                        this.keyProvider
+                        this.keyProvider.name()
                 );
                 LOG.error(errMsg);
                 throw new IllegalArgumentException(errMsg);
@@ -187,26 +148,56 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
                 LOG.error(errMsg);
                 throw new IllegalArgumentException(errMsg);
             }
-            final String kId = createEncryptionKeyWithService(
-                    universeUUID,
-                    customerUUID,
-                    config
-            );
-            if (kId == null || kId.isEmpty()) {
-                final String errMsg = String.format(
-                        "Error remotely creating encryption key through %s for universe %s",
-                        this.keyProvider,
-                        universeUUID
-                );
+            final byte[] ref = createKeyWithService(universeUUID, customerUUID, config);
+            if (ref == null || ref.length == 0) {
+                final String errMsg = "createKeyWithService returned empty key ref";
                 LOG.error(errMsg);
                 throw new RuntimeException(errMsg);
             }
-            return getEncryptionKeyWithService(kId, customerUUID, universeUUID, config);
+            addKeyRef(customerUUID, universeUUID, ref);
+            key = retrieveKey(customerUUID, universeUUID);
         } catch (Exception e) {
             LOG.error("Error occured attempting to create encryption key", e);
-            return null;
         }
+        return key;
     }
+
+    /**
+     * This method can be used to rotate the universe key associated with a customer & universe
+     *
+     * @param customerUUID the customer the key is for
+     * @param universeUUID the universe the key is for
+     * @param config the parameters of the new key to be rotated to (i.e. algorithm/keySize)
+     * @return a newly created universe key still associated under the same name/alias as the
+     * previous key that has now been rotated
+     */
+    public byte[] rotateKey(UUID customerUUID, UUID universeUUID, Map<String, String> config) {
+        byte[] key = null;
+        final byte[] ref = rotateKeyWithService(customerUUID, universeUUID, config);
+        if (ref == null || ref.length == 0) {
+            final String errMsg = "rotateKeyWithService returned empty key ref";
+            LOG.error(errMsg);
+            throw new RuntimeException(errMsg);
+        }
+        addKeyRef(customerUUID, universeUUID, ref);
+        return retrieveKey(customerUUID, universeUUID);
+    }
+
+    /**
+     * This method should be implemented for each specific integration to rotate a universe
+     * key with a new value
+     *
+     * @param customerUUID the customer the key is for
+     * @param universeUUID the universe the key is for
+     * @param config the parameters of the new key to be rotated to (i.e. algorithm/keySize)
+     * @return a newly created universe key associated under the same name/alias as the
+     * previous key that has now been rotated
+     */
+    protected abstract byte[] rotateKeyWithService(
+            UUID customerUUID,
+            UUID universeUUID,
+            Map<String, String> config
+    );
 
     /**
      * Base Encryption Service Constructor
@@ -215,9 +206,14 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      * @param keyProvider is the String representation of the KeyProvider enum that this interface
      *                    has been instantiated for
      */
-    protected EncryptionAtRestService(ApiHelper apiHelper, String keyProvider) {
+    protected EncryptionAtRestService(
+            ApiHelper apiHelper,
+            KeyProvider keyProvider,
+            EncryptionAtRestManager util
+    ) {
         this.apiHelper = apiHelper;
         this.keyProvider = keyProvider;
+        this.util = util;
     }
 
     /**
@@ -240,7 +236,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
         } else if (!validateKeySize(keySize, encryptionAlgorithm)) {
             final String errMsg = String.format(
                     "Requested key size %d bits is not supported by requested encryption " +
-                            "algorithm %s",
+                            "algorithm \"%s\"",
                     keySize,
                     algorithm
             );
@@ -253,113 +249,117 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
     }
 
     /**
-     * A method that processes config data depending on the key provider to encrypt any sensitive
-     * data before storing
-     *
-     * Uses "stronger" password-based encryption
-     *
-     * @param customerUUID is the customer that the KMS config is associated to
-     * @param config is the data field of the KMS config that should be encrypted
-     * @return an encrypted representation of config
-     */
-    protected ObjectNode encryptConfigData(UUID customerUUID, ObjectNode config) {
-        try {
-            final ObjectMapper mapper = new ObjectMapper();
-            final String salt = Util.generateSalt(customerUUID, this.keyProvider);
-            final TextEncryptor encryptor = Encryptors.delux(customerUUID.toString(), salt);
-            final String encryptedConfig = encryptor.encrypt(mapper.writeValueAsString(config));
-            return Json.newObject().put("encrypted_config", encryptedConfig);
-        } catch (Exception e) {
-            final String errMsg = String.format(
-                    "Could not encrypt %s KMS configuration for customer %s",
-                    this.keyProvider,
-                    customerUUID.toString()
-            );
-            LOG.error(errMsg, e);
-            return null;
-        }
-    }
-
-    /**
-     * A method that processes config data depending on the key provider to decrypt any sensitive
-     * data that had been encrypted before storing
-     *
-     * Uses "stronger" password-based encryption
-     *
-     * @param customerUUID is the customer that the KMS config is associated to
-     * @param config is the data field of the KMS config that should be decrypted
-     * @return a decrypted representation of config
-     */
-    protected ObjectNode decryptConfigData(UUID customerUUID, ObjectNode config) {
-        try {
-            final ObjectMapper mapper = new ObjectMapper();
-            final String encryptedConfig = config.get("encrypted_config").asText();
-            final String salt = Util.generateSalt(customerUUID, this.keyProvider);
-            final TextEncryptor encryptor = Encryptors.delux(customerUUID.toString(), salt);
-            final String decryptedConfig = encryptor.decrypt(encryptedConfig);
-            return mapper.readValue(decryptedConfig, ObjectNode.class);
-        } catch (Exception e) {
-            final String errMsg = String.format(
-                    "Could not decrypt %s KMS configuration for customer %s",
-                    this.keyProvider,
-                    customerUUID.toString()
-            );
-            LOG.error(errMsg, e);
-            return null;
-        }
-    }
-
-    /**
-     * This method attempts to create a CustomerConfig for the specified customer to be used to
+     * This method attempts to create a KmsConfig for the specified customer to be used to
      * store authentication information for communicating with a third party encryption service
      * provider
      *
      * @param customerUUID is the customer UUID that the auth config will be created for
      * @param config is the third party service provider authentication configuration params
      */
-    public CustomerConfig createAuthConfig(UUID customerUUID, ObjectNode config) {
-        final CustomerConfig existingConfig = CustomerConfig.getKMSConfig(
+    public KmsConfig createAuthConfig(UUID customerUUID, ObjectNode config) {
+        final KmsConfig existingConfig = getKMSConfig(customerUUID);
+        if (existingConfig != null) return null;
+        final ObjectNode encryptedConfig = this.util.maskConfigData(
                 customerUUID,
+                config,
                 this.keyProvider
         );
-        if (existingConfig != null) return null;
-        final ObjectNode encryptedConfig = encryptConfigData(customerUUID, config);
-        return CustomerConfig.createKMSConfig(customerUUID, this.keyProvider, encryptedConfig);
+        return KmsConfig.createKMSConfig(customerUUID, this.keyProvider, encryptedConfig);
     }
 
     /**
-     * This method attempts to retrieve CustomerConfig data representing the authentication
+     * This method attempts to retrieve KmsConfig data representing the authentication
      * information for the given encryption service provider
      *
      * @param customerUUID the UUID of the customer that this config is for
      * @return an ObjectNode containing authentication information, or null if none exists
      */
     public ObjectNode getAuthConfig(UUID customerUUID) {
-        final ObjectNode config = CustomerConfig.getKMSAuthObj(customerUUID, this.keyProvider);
-        if (config == null) {
-            return null;
-        }
-        return decryptConfigData(customerUUID, config);
+        final ObjectNode config = KmsConfig.getKMSAuthObj(customerUUID, this.keyProvider);
+        return (ObjectNode) this.util.unmaskConfigData(customerUUID, config, this.keyProvider);
     }
 
     /**
-     * This method updates a KMS CustomerConfig entry's data field with whatever newValues contains
+     * A method to retrieve an encrypted at rest universe's key ref rotation history
      *
-     * @param customerUUID is the customer the configuration is associated to
-     * @param newValues is a map of field name -> field value of updated data field values
-     * @return a copy of the updated CustomerConfig (with data field encrypted)
+     * @param customerUUID the customer the KMS configuration belongs to
+     * @param universeUUID the universe that is encrypted at rest
+     * @return an array of key refs representing each key that has at one time been associated to
+     * the universe
      */
-    public ObjectNode updateAuthConfig(UUID customerUUID, Map<String, JsonNode> newValues) {
-        ObjectNode config = getAuthConfig(customerUUID);
-        for (Map.Entry<String, JsonNode> newValue : newValues.entrySet()) {
-            config.put(newValue.getKey(), newValue.getValue());
+    public List<KmsHistory> getKeyRotationHistory(UUID customerUUID, UUID universeUUID) {
+        KmsConfig config = getKMSConfig(customerUUID);
+        List<KmsHistory> rotationHistory = KmsHistory.getAllTargetKeyRefs(
+                config.configUUID,
+                universeUUID,
+                KmsHistoryId.TargetType.UNIVERSE_KEY
+        );
+        if (rotationHistory == null) {
+            LOG.warn(String.format(
+                    "No rotation history exists for universe %s",
+                    universeUUID.toString()
+            ));
+            rotationHistory = new ArrayList<KmsHistory>();
         }
-        final ObjectNode encryptedConfig = encryptConfigData(customerUUID, config);
-        return CustomerConfig.updateKMSAuthObj(
-                customerUUID,
-                this.keyProvider,
-                encryptedConfig
-        ).getData().deepCopy();
+        return rotationHistory;
+    }
+
+    /**
+     * This method clears out the keyRef history for the given universe
+     *
+     * @param customerUUID the customer that the KMS configuration for the universe is
+     *                     associated to
+     * @param universeUUID the universe that will have it's key ref history cleared
+     */
+    public void removeKeyRotationHistory(UUID customerUUID, UUID universeUUID) {
+        KmsConfig config = getKMSConfig(customerUUID);
+        if (config != null) KmsHistory.deleteAllTargetKeyRefs(
+                config.configUUID,
+                universeUUID,
+                KmsHistoryId.TargetType.UNIVERSE_KEY
+        );
+    }
+
+    /**
+     * This method is used to retrieve historically-rotated universe key data
+     *
+     * @param customerUUID the customer the universe was created for
+     * @param universeUUID the universe that should have its key history retrieved
+     * @return a keyRef object if any exists, or null if none does
+     */
+    public byte[] getKeyRef(UUID customerUUID, UUID universeUUID) {
+        byte[] keyRef = null;
+        try {
+            KmsConfig config = getKMSConfig(customerUUID);
+            KmsHistory currentRef = KmsHistory.getCurrentKeyRef(
+                    config.configUUID,
+                    universeUUID,
+                    KmsHistoryId.TargetType.UNIVERSE_KEY
+            );
+            if (currentRef != null) keyRef = Base64.getDecoder().decode(currentRef.keyRef);
+        } catch (Exception e) {
+            final String errMsg = "Could not get key ref";
+            LOG.error(errMsg, e);
+        }
+        return keyRef;
+    }
+
+    /**
+     * This method adds a newly created key (usually from key rotation) to the key ref
+     * history
+     *
+     * @param customerUUID is the customer that has the universe associated to them
+     * @param universeUUID is the universe the key history is for
+     * @param ref is some KMS provider - specific key reference
+     */
+    public void addKeyRef(UUID customerUUID, UUID universeUUID, byte[] ref) {
+        KmsConfig config = getKMSConfig(customerUUID);
+        KmsHistory.createKmsHistory(
+                config.configUUID,
+                universeUUID,
+                KmsHistoryId.TargetType.UNIVERSE_KEY,
+                Base64.getEncoder().encodeToString(ref)
+        );
     }
 
     /**
@@ -368,19 +368,26 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      * @param customerUUID is the customer that the configuration should be deleted for
      */
     public void deleteKMSConfig(UUID customerUUID) {
-        CustomerConfig config = getKMSConfig(customerUUID);
-        if (config != null) config.delete();
+        if (!configInUse(customerUUID)) {
+            final KmsConfig config = getKMSConfig(customerUUID);
+            if (config != null) config.delete();
+        } else throw new IllegalArgumentException(String.format(
+                "Cannot delete %s KMS Configuration for customer %s since at least 1 universe" +
+                        " exists using encryptionAtRest with this KMS Configuration",
+                this.keyProvider.name(),
+                customerUUID.toString()
+        ));
     }
 
     /**
-     * This method attempts to retrieve a CustomerConfig containing authentication
+     * This method attempts to retrieve a KmsConfig containing authentication
      * information for the given encryption service provider
      *
      * @param customerUUID the UUID of the customer that this config is for
-     * @return a CustomerConfig instance containing authentication JSON as a data field
+     * @return a KmsConfig instance containing authentication JSON as a data field
      */
-    public CustomerConfig getKMSConfig(UUID customerUUID) {
-        return CustomerConfig.getKMSConfig(customerUUID, this.keyProvider);
+    public KmsConfig getKMSConfig(UUID customerUUID) {
+        return KmsConfig.getKMSConfig(customerUUID, this.keyProvider);
     }
 
     /**
@@ -390,112 +397,22 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      * @param customerUUID is the customer that the encryption keyt should be recovered for
      * @param universeUUID is the UUID of the universe that we want to recover the encryption
      *                     key for
-     * @param config is a service-specific map of keys/values to help identify the key
      * @return the value of the encryption key if a matching key is found
      */
-    public abstract byte[] recoverEncryptionKeyWithService(
-            UUID customerUUID,
-            UUID universeUUID,
-            Map<String, String> config
-    );
+    public abstract byte[] retrieveKey(UUID customerUUID, UUID universeUUID);
 
     /**
-     * This method iterates through a service provider's defined public constructors, and tries to
-     * find one with a signature that is matching what is expected by the service
+     * This method checks whether any key ref rotation history entries exist for any universe
+     * in the KMS config
      *
-     * @param serviceClass is the service provider's implementation class
-     * @return a constructor that is valid, or null if none are found
+     * @param customerUUID the customer that the KMS config is associated to
+     * @return true if the config is associated to any universes, false otherwise
      */
-    private static Constructor getConstructor(Class serviceClass) {
-        Constructor serviceConstructor = null;
-        Class[] parameterTypes;
-        for (Constructor constructor : serviceClass.getConstructors()) {
-            parameterTypes = constructor.getParameterTypes();
-            if (
-                    constructor.getParameterCount() == 2 &&
-                    ApiHelper.class.isAssignableFrom(parameterTypes[0]) &&
-                    String.class.isAssignableFrom(parameterTypes[1])
-            ) {
-                serviceConstructor = constructor;
-                break;
-            }
-        }
-        return serviceConstructor;
-    }
-
-    public static EncryptionAtRestService getServiceInstance(
-            ApiHelper apiHelper,
-            String keyProvider
-    ) { return getServiceInstance(apiHelper, keyProvider, false); }
-
-    /**
-     * This is the entry point into the service. All service instances should be retrieved through
-     * this method. Will maintain a mapping of KeyProvider -> Instances such that there will be AT
-     * MOST one instance per encryption service provider per Yugaware instance
-     *
-     * @param apiHelper a utility library used to make requests
-     * @param keyProvider is the service provider that should have a service instance
-     *                    returned for
-     * @return a properly configured and instantiated service if everything succeeded,
-     * null otherwise
-     */
-    public static EncryptionAtRestService getServiceInstance(
-            ApiHelper apiHelper,
-            String keyProvider,
-            boolean forceNewInstance
-    ) {
-        KeyProvider serviceProvider = null;
-        EncryptionAtRestService serviceInstance = null;
-        try {
-            for (KeyProvider providerImpl : KeyProvider.values()) {
-                if (providerImpl.name().equals(keyProvider)) {
-                    serviceProvider = providerImpl;
-                    break;
-                }
-            }
-            if (serviceProvider == null) {
-                final String errMsg = String.format(
-                        "Encryption service provider %s is not supported",
-                        keyProvider
-                );
-                LOG.error(errMsg);
-                throw new IllegalArgumentException(errMsg);
-            }
-            serviceInstance = serviceProvider.getServiceInstance();
-            if (forceNewInstance || serviceInstance == null) {
-                final Class serviceClass = serviceProvider.getProviderService();
-                if (serviceClass == null) {
-                    final String errMsg = String.format(
-                            "Encryption service provider %s has not been implemented yet",
-                            keyProvider
-                    );
-                    LOG.error(errMsg);
-                    throw new IllegalArgumentException(errMsg);
-                }
-                final Constructor serviceConstructor = getConstructor(serviceClass);
-                if (serviceConstructor == null) {
-                    final String errMsg = String.format(
-                            "No suitable public constructor found for service provider %s",
-                            keyProvider
-                    );
-                    LOG.error(errMsg);
-                    throw new InstantiationException(errMsg);
-                }
-                serviceInstance = (EncryptionAtRestService) serviceConstructor.newInstance(
-                        apiHelper,
-                        keyProvider
-                );
-                if (serviceInstance != null) serviceProvider.setServiceInstance(serviceInstance);
-            }
-        } catch (Exception e) {
-            final String errMsg = String.format(
-                    "Error occurred attempting to retrieve encryption key service for " +
-                            "key provider %s",
-                    keyProvider
-            );
-            LOG.error(errMsg, e);
-            serviceInstance = null;
-        }
-        return serviceInstance;
+    public boolean configInUse(UUID customerUUID) {
+        boolean result = false;
+        final KmsConfig config = getKMSConfig(customerUUID);
+        if (config != null) result = KmsHistory
+                .configHasHistory(config.configUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
+        return result;
     }
 }

@@ -74,7 +74,12 @@ import org.mockito.Matchers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.SmartKeyEARService;
+import com.yugabyte.yw.common.AwsEARService;
+import com.yugabyte.yw.common.EncryptionAtRestManager;
+import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -105,6 +110,9 @@ public class UniverseControllerTest extends WithApplication {
   private YBClientService mockService;
   private YBClient mockClient;
   private ApiHelper mockApiHelper;
+  private CallHome mockCallHome;
+  private HealthChecker mockHealthChecker;
+  private EncryptionAtRestManager mockEARManager;
 
   @Override
   protected Application provideApplication() {
@@ -113,11 +121,16 @@ public class UniverseControllerTest extends WithApplication {
     mockClient = mock(YBClient.class);
     mockService = mock(YBClientService.class);
     mockApiHelper = mock(ApiHelper.class);
+    mockCallHome = mock(CallHome.class);
+    mockEARManager = mock(EncryptionAtRestManager.class);
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
         .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
         .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
+        .overrides(bind(CallHome.class).toInstance(mockCallHome))
+        .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
+        .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
         .build();
   }
 
@@ -178,6 +191,16 @@ public class UniverseControllerTest extends WithApplication {
   public void setUp() {
     customer = ModelFactory.testCustomer();
     authToken = customer.createAuthToken();
+    when(mockEARManager.getServiceInstance("SMARTKEY")).thenReturn(new SmartKeyEARService(
+            mockApiHelper,
+            EncryptionAtRestManager.KeyProvider.SMARTKEY,
+            mockEARManager
+    ));
+    when(mockEARManager.getServiceInstance("AWS")).thenReturn(new AwsEARService(
+            mockApiHelper,
+            EncryptionAtRestManager.KeyProvider.AWS,
+            mockEARManager
+    ));
   }
 
   @After
@@ -1601,6 +1624,11 @@ public class UniverseControllerTest extends WithApplication {
 
   @Test
   public void testCreateUniverseEncryptionAtRestWithEncryptionAtRestKMSConfigExists() {
+    when(mockEARManager.maskConfigData(
+            eq(customer.uuid),
+            any(JsonNode.class),
+            eq(EncryptionAtRestManager.KeyProvider.SMARTKEY)
+    )).thenReturn(Json.newObject());
     String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
     ObjectNode kmsConfigReq = Json.newObject()
             .put("base_url", "some_base_url")
@@ -1660,12 +1688,133 @@ public class UniverseControllerTest extends WithApplication {
     assertTrue(key.exists());
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
     verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), argCaptor.capture());
-    // Verify that the KMS provider service started to run (it should fail as the credentials provided in the
-    //  sample config are not valid
-    verify(mockApiHelper, times(1)).postRequest(
-            "https://some_base_url/sys/v1/session/auth",
-            null,
-            ImmutableMap.of("Authorization", "Basic some_api_token")
+    // Verify that the KMS provider service started to run for the correct provider
+    verify(mockEARManager, times(1)).getServiceInstance("SMARTKEY");
+    verify(mockEARManager, times(1)).maskConfigData(
+            eq(customer.uuid),
+            any(JsonNode.class),
+            eq(EncryptionAtRestManager.KeyProvider.SMARTKEY)
+    );
+  }
+
+  @Test
+  public void testUniverseRotateKey() {
+    when(mockEARManager.maskConfigData(
+            eq(customer.uuid),
+            any(JsonNode.class),
+            eq(EncryptionAtRestManager.KeyProvider.SMARTKEY)
+    )).thenReturn(Json.newObject());
+    // Create KMS Configuration
+    String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
+    ObjectNode kmsConfigReq = Json.newObject()
+            .put("base_url", "some_base_url")
+            .put("api_key", "some_api_token");
+    Result createKMSResult = doRequestWithAuthTokenAndBody(
+            "POST",
+            kmsConfigUrl,
+            authToken,
+            kmsConfigReq
+    );
+    assertOk(createKMSResult);
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class),
+            Matchers.any(UniverseDefinitionTaskParams.class)))
+            .thenReturn(fakeTaskUUID);
+    when(mockAppConfig.getString("yb.storage.path")).thenReturn("/opt/yugaware");
+
+    // Create the universe with encryption enabled through SMARTKEY KMS provider
+    Provider p = ModelFactory.awsProvider(customer);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
+    InstanceType i = InstanceType
+            .upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    UniverseDefinitionTaskParams createTaskParams = new UniverseDefinitionTaskParams();
+    ObjectNode createBodyJson = (ObjectNode) Json.toJson(createTaskParams);
+
+    ObjectNode userIntentJson = Json.newObject()
+            .put("universeName", "encryptionAtRestUniverse")
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("enableNodeToNodeEncrypt", true)
+            .put("enableClientToNodeEncrypt", true)
+            .put("enableEncryptionAtRest", true)
+            .put("replicationFactor", 3)
+            .put("numNodes", 3)
+            .put("provider", p.uuid.toString());
+
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    ArrayNode clustersJsonArray = Json.newArray()
+            .add(Json.newObject().set("userIntent", userIntentJson));
+    ArrayNode nodeDetails = Json.newArray().add(Json.newObject().put("nodeName", "testing-1"));
+    createBodyJson.set("clusters", clustersJsonArray);
+    createBodyJson.set("nodeDetailsSet", nodeDetails);
+    createBodyJson.put("nodePrefix", "demo-node");
+    createBodyJson.put(
+            "encryptionAtRestConfig",
+            Json.newObject()
+                    .put("kms_provider", "SMARTKEY")
+                    .put("algorithm", "AES")
+                    .put("key_size", "256")
+                    .put("force_new_instance", "true")
+    );
+
+    String createUrl = "/api/customers/" + customer.uuid + "/universes";
+    String mockEncodedEncryptionKey =
+            "RjZiNzVGekljNFh5Zmh0NC9FQ1dpM0FaZTlMVGFTbW1Wa1dnaHRzdDhRVT0=";
+
+    final ArrayNode keyOps = Json.newArray()
+            .add("EXPORT")
+            .add("APPMANAGEABLE");
+    ObjectNode createPayload = Json.newObject()
+            .put("name", "some name")
+            .put("obj_type", "AES")
+            .put("key_size", "256");
+    createPayload.set("key_ops", keyOps);
+    when(mockApiHelper.postRequest(any(String.class), any(ObjectNode.class), any(Map.class)))
+            .thenReturn(
+                    Json.newObject()
+                            .put("kid", "some_kid")
+                            .put("access_token", "some_access_token")
+            );
+    when(mockApiHelper.getRequest(any(String.class), any(Map.class)))
+            .thenReturn(Json.newObject().put("value", mockEncodedEncryptionKey));
+
+    Result createResult = doRequestWithAuthTokenAndBody(
+            "POST",
+            createUrl,
+            authToken,
+            createBodyJson
+    );
+    assertOk(createResult);
+    JsonNode json = Json.parse(contentAsString(createResult));
+    assertNotNull(json.get("universeUUID"));
+    String testUniUUID = json.get("universeUUID").asText();
+
+    // Rotate the universe key
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    ObjectNode bodyJson = (ObjectNode) Json.toJson(taskParams);
+    bodyJson.set("clusters", Json.newArray());
+    bodyJson.put("universeUUID", testUniUUID);
+    bodyJson.put("encryptionAtRestConfig", Json.newObject()
+            .put("kms_provider", "SMARTKEY")
+            .put("algorithm", "AES")
+            .put("key_size", "256")
+            .put("force_new_instance", "true")
+    );
+    String url = "/api/customers/" + customer.uuid + "/universes/" + testUniUUID + "/rotate_key";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertOk(result);
+    ArgumentCaptor<UniverseTaskParams> argCaptor = ArgumentCaptor
+            .forClass(UniverseTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.RotateUniverseKey), argCaptor.capture());
+    verify(mockEARManager, times(1)).getServiceInstance("SMARTKEY");
+    verify(mockEARManager, times(1)).maskConfigData(
+            eq(customer.uuid),
+            any(JsonNode.class),
+            eq(EncryptionAtRestManager.KeyProvider.SMARTKEY)
     );
   }
 }

@@ -55,6 +55,10 @@ public enum TaskType {
 
   ReleaseInstanceFromUniverse("ReleaseInstanceFromUniverse"),
 
+  RotateUniverseKey("RotateUniverseKey"),
+
+  RotateKubernetesUniverseKey("RotateKubernetesUniverseKey"),
+
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
 
