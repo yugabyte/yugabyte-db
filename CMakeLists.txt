@@ -35,6 +35,8 @@
 # Require cmake that includes FindICU module (https://cmake.org/cmake/help/v3.7/release/3.7.html)
 cmake_minimum_required(VERSION 3.7.0)
 
+project(YugabyteDB)
+
 # =================================================================================================
 # Functions
 # =================================================================================================
@@ -115,7 +117,7 @@ function(DETECT_BREW)
       message("Custom Homebrew installation found at ${CUSTOM_HOMEBREW_DIR}")
       set(USING_CUSTOM_HOMEBREW TRUE)
     else()
-      message("Not using custom Homebrew: no valid Homebewr installation found at "
+      message("Not using custom Homebrew: no valid Homebrew installation found at "
               "${CUSTOM_HOMEBREW_DIR}")
     endif()
   else()

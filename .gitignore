@@ -90,3 +90,5 @@ test_failures.json
 
 # Diagram generator for docs
 rrdiagram*.jar*
+
+.clangd
