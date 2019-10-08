@@ -33,7 +33,7 @@ Use the `--help` option to see all of the supported commands.
 $ ./bin/yb-tserver --help
 ```
 
-## Configuration flags
+## Configuration options (flags)
 
 ### General
 
@@ -47,7 +47,7 @@ Displays help on modules named by the specified flag value.
 
 #### `--flagfile`
 
-Specifies file to load flags from.
+Specifies the file to load flags from.
 
 #### `--version`
 
