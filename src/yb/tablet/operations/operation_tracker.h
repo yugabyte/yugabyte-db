@@ -42,6 +42,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/tablet/operations/operation.h"
 #include "yb/util/locks.h"
+#include "yb/util/opid.h"
 
 namespace yb {
 
@@ -59,7 +60,7 @@ class OperationDriver;
 // It will remove itself by calling Release().
 class OperationTracker {
  public:
-  OperationTracker();
+  explicit OperationTracker(const std::string& log_prefix);
   ~OperationTracker();
 
   // Adds a operation to the set of tracked operations.
@@ -70,7 +71,7 @@ class OperationTracker {
 
   // Removes the operation from the pending list.
   // Also triggers the deletion of the Operation object, if its refcount == 0.
-  void Release(OperationDriver* driver);
+  void Release(OperationDriver* driver, OpIds* applied_op_ids);
 
   // Populates list of currently-running operations into 'pending_out' vector.
   std::vector<scoped_refptr<OperationDriver>> GetPendingOperations() const;
@@ -83,6 +84,17 @@ class OperationTracker {
 
   void StartInstrumentation(const scoped_refptr<MetricEntity>& metric_entity);
   void StartMemoryTracking(const std::shared_ptr<MemTracker>& parent_mem_tracker);
+
+  // Post tracker in called when operation tracker finishes tracking memory for corresponding op id.
+  // So post tracker could start tracking this memory in case it is still keeping memory for this
+  // op id.
+  void SetPostTracker(std::function<void(const OpId&)> post_tracker) {
+    post_tracker_ = std::move(post_tracker);
+  }
+
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
 
  private:
   struct Metrics {
@@ -100,14 +112,14 @@ class OperationTracker {
   // Decrements relevant metric counters.
   void DecrementCounters(const OperationDriver& driver) const;
 
+  const std::string log_prefix_;
+
   mutable simple_spinlock lock_;
 
   // Per-operation state that is tracked along with the operation itself.
   struct State {
-    State();
-
     // Approximate memory footprint of the operation.
-    int64_t memory_footprint;
+    int64_t memory_footprint = 0;
   };
 
   // Protected by 'lock_'.
@@ -121,6 +133,8 @@ class OperationTracker {
   gscoped_ptr<Metrics> metrics_;
 
   std::shared_ptr<MemTracker> mem_tracker_;
+
+  std::function<void(const OpId&)> post_tracker_;
 
   DISALLOW_COPY_AND_ASSIGN(OperationTracker);
 };

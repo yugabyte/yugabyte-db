@@ -252,6 +252,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   CHECKED_STATUS ReadReplicatedMessagesForCDC(const OpId& from, ReplicateMsgs* msgs,
                                               bool* have_more_messages) override;
 
+  // Start memory tracking of following operation in case it is still present in our caches.
+  void TrackOperationMemory(const yb::OpId& op_id);
+
  protected:
   // Trigger that a non-Operation ConsensusRound has finished replication.
   // If the replication was successful, an status will be OK. Otherwise, it
@@ -610,7 +613,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // The queue of messages that must be sent to peers.
   gscoped_ptr<PeerMessageQueue> queue_;
 
-  gscoped_ptr<ReplicaState> state_;
+  std::unique_ptr<ReplicaState> state_;
 
   Random rng_;
 

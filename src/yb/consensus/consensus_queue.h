@@ -319,6 +319,9 @@ class PeerMessageQueue {
   size_t LogCacheSize();
   size_t EvictLogCache(size_t bytes_to_evict);
 
+  // Start memory tracking of following operations in case they are still present in our caches.
+  void TrackOperationsMemory(const OpIds& op_ids);
+
  private:
   FRIEND_TEST(ConsensusQueueTest, TestQueueAdvancesCommittedIndex);
   FRIEND_TEST(ConsensusQueueTest, TestReadReplicatedMessagesForCDC);

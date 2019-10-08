@@ -164,6 +164,9 @@ class LogCache {
   // Returns another bad Status if the log index fails to load (eg. due to an IO error).
   CHECKED_STATUS LookupOpId(int64_t op_index, OpId* op_id) const;
 
+  // Start memory tracking of following operations in case they are still present in cache.
+  void TrackOperationsMemory(const OpIds& op_ids);
+
  private:
   FRIEND_TEST(LogCacheTest, TestAppendAndGetMessages);
   FRIEND_TEST(LogCacheTest, TestGlobalMemoryLimit);
@@ -176,6 +179,9 @@ class LogCache {
     // The cached value of msg->SpaceUsedLong(). This method is expensive
     // to compute, so we compute it only once upon insertion.
     int64_t mem_usage;
+
+    // Did we start memory tracking for this entry.
+    bool tracked = false;
   };
 
   // Try to evict the oldest operations from the queue, stopping either when
@@ -195,7 +201,6 @@ class LogCache {
   std::string LogPrefixUnlocked() const;
 
   void LogCallback(int64_t last_idx_in_batch,
-                   bool borrowed_memory,
                    const StatusCallback& user_callback,
                    const Status& log_status);
 
@@ -204,8 +209,6 @@ class LogCache {
     int64_t mem_required = 0;
     // Last idx in batch of provided operations.
     int64_t last_idx_in_batch = -1;
-    // true if we exceeded mem tracker limit while preparing provided operations.
-    bool borrowed_memory = false;
   };
 
   Result<PrepareAppendResult> PrepareAppendOperations(const ReplicateMsgs& msgs);
