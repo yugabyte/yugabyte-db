@@ -2,7 +2,7 @@
 create table alert (
   uuid                          uuid not null,
   customer_uuid                 uuid not null,
-  create_time                   timestamp not null,
+  create_time                    timestamp not null,
   type                          varchar(255) not null,
   message                       TEXT not null,
   constraint pk_alerts primary key (uuid),
