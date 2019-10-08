@@ -70,6 +70,9 @@ DEFINE_int32(global_log_cache_size_limit_mb, 1024,
              "caching log entries across all tablets is kept under this threshold.");
 TAG_FLAG(global_log_cache_size_limit_mb, advanced);
 
+DEFINE_test_flag(bool, TEST_log_cache_skip_eviction, false,
+                 "Don't evict log entries in tests.");
+
 using strings::Substitute;
 
 namespace yb {
@@ -172,29 +175,6 @@ Result<LogCache::PrepareAppendResult> LogCache::PrepareAppendOperations(const Re
     }
   }
 
-  // Try to consume the memory. If it can't be consumed, we may need to evict.
-  if (!tracker_->TryConsume(result.mem_required)) {
-    int spare = tracker_->SpareCapacity();
-    int need_to_free = result.mem_required - spare;
-    VLOG_WITH_PREFIX_UNLOCKED(1)
-        << "Memory limit would be exceeded trying to append "
-        << HumanReadableNumBytes::ToString(result.mem_required)
-        << " to log cache (available="
-        << HumanReadableNumBytes::ToString(spare)
-        << "): attempting to evict some operations...";
-
-    // TODO: we should also try to evict from other tablets - probably better to evict really old
-    // ops from another tablet than evict recent ops from this one.
-    EvictSomeUnlocked(min_pinned_op_index_, need_to_free);
-
-    // Force consuming, so that we don't refuse appending data. We might blow past our limit a
-    // little bit (as much as the number of tablets times the amount of in-flight data in the log),
-    // but until implementing the above TODO, it's difficult to solve this issue.
-    tracker_->Consume(result.mem_required);
-
-    result.borrowed_memory = parent_tracker_->LimitExceeded();
-  }
-
   for (auto& e : entries_to_insert) {
     auto index = e.msg->id().index();
     EmplaceOrDie(&cache_, index, std::move(e));
@@ -210,26 +190,24 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& com
   PrepareAppendResult prepare_result;
   if (!msgs.empty()) {
     prepare_result = VERIFY_RESULT(PrepareAppendOperations(msgs));
-    metrics_.log_cache_size->IncrementBy(prepare_result.mem_required);
-    metrics_.log_cache_num_ops->IncrementBy(msgs.size());
   }
 
   Status log_status = log_->AsyncAppendReplicates(
     msgs, committed_op_id, batch_mono_time,
-    Bind(&LogCache::LogCallback, Unretained(this), prepare_result.last_idx_in_batch,
-         prepare_result.borrowed_memory, callback));
+    Bind(&LogCache::LogCallback, Unretained(this), prepare_result.last_idx_in_batch, callback));
 
   if (!log_status.ok()) {
-    LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Couldn't append to log: " << log_status.ToString();
-    tracker_->Release(prepare_result.mem_required);
+    LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Couldn't append to log: " << log_status;
     return log_status;
   }
+
+  metrics_.log_cache_size->IncrementBy(prepare_result.mem_required);
+  metrics_.log_cache_num_ops->IncrementBy(msgs.size());
 
   return Status::OK();
 }
 
 void LogCache::LogCallback(int64_t last_idx_in_batch,
-                           bool borrowed_memory,
                            const StatusCallback& user_callback,
                            const Status& log_status) {
   if (log_status.ok()) {
@@ -237,15 +215,6 @@ void LogCache::LogCallback(int64_t last_idx_in_batch,
     if (min_pinned_op_index_ <= last_idx_in_batch) {
       VLOG_WITH_PREFIX_UNLOCKED(1) << "Updating pinned index to " << (last_idx_in_batch + 1);
       min_pinned_op_index_ = last_idx_in_batch + 1;
-    }
-
-    // If we went over the global limit in order to log this batch, evict some to get back down
-    // under the limit.
-    if (borrowed_memory) {
-      int64_t spare_capacity = parent_tracker_->SpareCapacity();
-      if (spare_capacity < 0) {
-        EvictSomeUnlocked(min_pinned_op_index_, -spare_capacity);
-      }
     }
   }
   user_callback.Run(log_status);
@@ -399,6 +368,10 @@ size_t LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_ev
                       << " or " << HumanReadableNumBytes::ToString(bytes_to_evict)
                       << ": before state: " << ToStringUnlocked();
 
+  if (ANNOTATE_UNPROTECTED_READ(FLAGS_TEST_log_cache_skip_eviction)) {
+    return 0;
+  }
+
   int64_t bytes_evicted = 0;
   for (auto iter = cache_.begin(); iter != cache_.end();) {
     const CacheEntry& entry = iter->second;
@@ -413,13 +386,6 @@ size_t LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_ev
 
     if (msg_index > stop_after_index || msg_index >= min_pinned_op_index_) {
       break;
-    }
-
-    if (!msg.unique()) {
-      VLOG_WITH_PREFIX_UNLOCKED(2) << "Evicting cache: cannot remove " << msg->id()
-                                   << " because it is in-use by a peer.";
-      ++iter;
-      continue;
     }
 
     VLOG_WITH_PREFIX_UNLOCKED(2) << "Evicting cache. Removing: " << msg->id();
@@ -437,7 +403,9 @@ size_t LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_ev
 }
 
 void LogCache::AccountForMessageRemovalUnlocked(const CacheEntry& entry) {
-  tracker_->Release(entry.mem_usage);
+  if (entry.tracked) {
+    tracker_->Release(entry.mem_usage);
+  }
   metrics_.log_cache_size->DecrementBy(entry.mem_usage);
   metrics_.log_cache_num_ops->Decrement();
 }
@@ -515,6 +483,45 @@ void LogCache::DumpToHtml(std::ostream& out) const {
                       msg->ByteSize(), msg->id().ShortDebugString()) << endl;
   }
   out << "</table>";
+}
+
+void LogCache::TrackOperationsMemory(const OpIds& op_ids) {
+  if (op_ids.empty()) {
+    return;
+  }
+
+  std::lock_guard<simple_spinlock> lock(lock_);
+
+  int mem_required = 0;
+  for (const auto& op_id : op_ids) {
+    auto it = cache_.find(op_id.index);
+    if (it != cache_.end() && it->second.msg->id().term() == op_id.term) {
+      mem_required += it->second.mem_usage;
+      it->second.tracked = true;
+    }
+  }
+
+  if (mem_required == 0) {
+    return;
+  }
+
+  // Try to consume the memory. If it can't be consumed, we may need to evict.
+  if (!tracker_->TryConsume(mem_required)) {
+    int spare = tracker_->SpareCapacity();
+    int need_to_free = mem_required - spare;
+    VLOG_WITH_PREFIX_UNLOCKED(1)
+        << "Memory limit would be exceeded trying to append "
+        << HumanReadableNumBytes::ToString(mem_required)
+        << " to log cache (available="
+        << HumanReadableNumBytes::ToString(spare)
+        << "): attempting to evict some operations...";
+
+    tracker_->Consume(mem_required);
+
+    // TODO: we should also try to evict from other tablets - probably better to evict really old
+    // ops from another tablet than evict recent ops from this one.
+    EvictSomeUnlocked(min_pinned_op_index_, need_to_free);
+  }
 }
 
 #define INSTANTIATE_METRIC(x) \

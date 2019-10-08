@@ -133,6 +133,8 @@ class LogCacheTest : public YBTest {
       RETURN_NOT_OK(cache_->AppendOperations(
           msgs, yb::OpId() /* committed_op_id */, RestartSafeCoarseMonoClock().Now(),
           Bind(&FatalOnError)));
+      cache_->TrackOperationsMemory({yb::OpId::FromPB(msgs[0]->id())});
+      std::this_thread::sleep_for(100ms);
     }
     return Status::OK();
   }
