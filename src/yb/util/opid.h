@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <iosfwd>
+#include <vector>
 
 namespace yb {
 
@@ -105,6 +106,8 @@ struct OpIdHash {
     return hash_value(v);
   }
 };
+
+typedef std::vector<OpId> OpIds;
 
 } // namespace yb
 

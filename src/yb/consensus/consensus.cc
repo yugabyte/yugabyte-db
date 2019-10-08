@@ -64,9 +64,10 @@ ConsensusRound::ConsensusRound(Consensus* consensus,
   DCHECK_NOTNULL(replicate_msg_.get());
 }
 
-void ConsensusRound::NotifyReplicationFinished(const Status& status, int64_t leader_term) {
+void ConsensusRound::NotifyReplicationFinished(
+    const Status& status, int64_t leader_term, OpIds* applied_op_ids) {
   if (PREDICT_FALSE(replicated_cb_ == nullptr)) return;
-  replicated_cb_(status, leader_term);
+  replicated_cb_(status, leader_term, applied_op_ids);
 }
 
 Status ConsensusRound::CheckBoundTerm(int64_t current_term) const {

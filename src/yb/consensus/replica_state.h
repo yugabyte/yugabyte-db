@@ -117,7 +117,8 @@ class ReplicaState {
                std::unique_ptr<ConsensusMetadata> cmeta,
                ReplicaOperationFactory* operation_factory,
                SafeOpIdWaiter* safe_op_id_waiter,
-               RetryableRequests* retryable_requests);
+               RetryableRequests* retryable_requests,
+               std::function<void(const OpIds&)> applied_ops_tracker);
 
   ~ReplicaState();
 
@@ -424,7 +425,8 @@ class ReplicaState {
   void ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round);
 
   void NotifyReplicationFinishedUnlocked(
-      const ConsensusRoundPtr& round, const Status& status, int64_t leader_term);
+      const ConsensusRoundPtr& round, const Status& status, int64_t leader_term,
+      OpIds* applied_op_ids);
 
   consensus::LeaderState RefreshLeaderStateCacheUnlocked(
       CoarseTimePoint* now) const ATTRIBUTE_NONNULL(2);
@@ -509,6 +511,8 @@ class ReplicaState {
   // This leader is ready to serve only if NoOp was successfully committed
   // after the new leader successful election.
   bool leader_no_op_committed_ = false;
+
+  std::function<void(const OpIds&)> applied_ops_tracker_;
 
   struct LeaderStateCache {
     static constexpr size_t kStatusBits = 3;
