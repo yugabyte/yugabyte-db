@@ -145,7 +145,7 @@ Default: `cloud1`
 
 #### `--enable_ysql`
 
-Specifies to enable YSQL API. Default is `false`. Replaces deprecated `--start_pgsql_proxy` option.
+Specifies to enable YSQL API. Default is `false`. Replaces the deprecated `--start_pgsql_proxy` option.
 
 Default: `false`
 
