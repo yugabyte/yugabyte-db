@@ -6252,6 +6252,16 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
     bool blacklist_leader) {
   BlacklistState& state = (blacklist_leader) ? leaderBlacklistState : blacklistState;
   int64_t blacklist_replicas = GetNumRelevantReplicas(state, blacklist_leader);
+
+  // On change of master leader, initial_load_ information may be lost temporarily. Reset to
+  // current value to avoid reporting progress percent as 100. Note that doing so will report
+  // progress percent as 0 instead.
+  if (state.initial_load_ < blacklist_replicas) {
+    LOG(INFO) << "Reset blacklist initial load from " << state.initial_load_
+      <<  " to " << blacklist_replicas;
+    state.initial_load_ = blacklist_replicas;
+  }
+
   LOG(INFO) << "Blacklisted count " << blacklist_replicas << " in " << tablet_map_.size()
             << " tablets, across " << state.tservers_.size()
             << " servers, with initial load " << state.initial_load_;
@@ -6264,6 +6274,8 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
 
   resp->set_percent(
       100 - (static_cast<double>(blacklist_replicas) * 100 / state.initial_load_));
+  resp->set_remaining(blacklist_replicas);
+  resp->set_total(state.initial_load_);
 
   return Status::OK();
 }

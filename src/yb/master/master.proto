@@ -1132,7 +1132,12 @@ message GetLeaderBlacklistPercentRequestPB {
 // When no errors, the percent reflects the progress of load removal from the blacklisted tservers.
 message GetLoadMovePercentResponsePB {
   optional MasterErrorPB error = 1;
+
+  // To be deprecated. Replaced by "100 * (total - remaining) / total".
   optional double percent = 2;
+
+  optional uint64 remaining = 3;
+  optional uint64 total = 4;
 }
 
 // Is load balancer idle.

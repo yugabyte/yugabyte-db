@@ -395,7 +395,8 @@ public class YBCliCommands implements CommandMarker {
         return "Failed: " + resp.errorMessage();
       }
 
-      return "Percent completed = " + resp.getPercentCompleted();
+      return "Percent completed = " + resp.getPercentCompleted() +
+        " : Remaining = " + resp.getRemaining() + " out of Total = " + resp.getTotal();
     } catch (Exception e) {
       LOG.error("Caught exception ", e);
       return "Failed: " + e.toString() + "\n";
