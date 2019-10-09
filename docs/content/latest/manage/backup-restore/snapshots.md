@@ -27,13 +27,6 @@ This page covers backups for YugaByte DB using snapshots. Here are some points t
 
 
 In this tutorial we'll be using YCQL but the same apis are used in YSQL. 
-1. We will create a single-node cluster
-2. Insert data
-3. Make a snapshot
-4. Destroy the cluster & create a different cluster(3 replicas)
-5. Restore the snapshot
-6. Verifying the data and deleting the snapshot
-
 
 ### Step 1: Create a 1=node local cluster
 Read [creating a local cluster](../../quick-start/create-local-cluster.md) on how to quickstart a a local cluster.
