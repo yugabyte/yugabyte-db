@@ -345,7 +345,8 @@ Status ClusterAdminClient::GetLoadMoveCompletion() {
   const auto resp = VERIFY_RESULT(InvokeRpc(
       &MasterServiceProxy::GetLoadMoveCompletion, master_proxy_.get(),
       master::GetLoadMovePercentRequestPB()));
-  cout << "Percent complete = " << resp.percent() << endl;
+  cout << "Percent complete = " << resp.percent() << " : "
+    << resp.remaining() << " remaining out of " << resp.total() << endl;
   return Status::OK();
 }
 
@@ -354,7 +355,8 @@ Status ClusterAdminClient::GetLeaderBlacklistCompletion() {
   const auto resp = VERIFY_RESULT(InvokeRpc(
       &MasterServiceProxy::GetLeaderBlacklistCompletion, master_proxy_.get(),
       master::GetLeaderBlacklistPercentRequestPB()));
-  cout << "Percent complete = " << resp.percent() << endl;
+  cout << "Percent complete = " << resp.percent() << " : "
+    << resp.remaining() << " remaining out of " << resp.total() << endl;
   return Status::OK();
 }
 
