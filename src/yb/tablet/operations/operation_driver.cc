@@ -100,7 +100,8 @@ Status OperationDriver::Init(std::unique_ptr<Operation>* operation, int64_t term
 
   if (term == OpId::kUnknownTerm) {
     if (operation_) {
-      op_id_copy_.store(yb::OpId::FromPB(operation_->state()->op_id()), std::memory_order_release);
+      op_id_copy_.store(yb::OpId::FromPB(operation_->state()->op_id()),
+                                         boost::memory_order_release);
     }
     replication_state_ = REPLICATING;
   } else {
@@ -124,7 +125,7 @@ Status OperationDriver::Init(std::unique_ptr<Operation>* operation, int64_t term
 }
 
 yb::OpId OperationDriver::GetOpId() {
-  return op_id_copy_.load(std::memory_order_acquire);
+  return op_id_copy_.load(boost::memory_order_acquire);
 }
 
 const OperationState* OperationDriver::state() const {
@@ -200,7 +201,7 @@ bool OperationDriver::StartOperation() {
   if (operation_) {
     operation_->Start();
     std::lock_guard<simple_spinlock> lock(lock_);
-    op_id_copy_.store(yb::OpId::FromPB(operation_->state()->op_id()), std::memory_order_release);
+    op_id_copy_.store(yb::OpId::FromPB(operation_->state()->op_id()), boost::memory_order_release);
   }
   if (propagated_safe_time_) {
     mvcc_->SetPropagatedSafeTimeOnFollower(propagated_safe_time_);
@@ -347,7 +348,7 @@ void OperationDriver::ReplicationFinished(
     const Status& status, int64_t leader_term, OpIds* applied_op_ids) {
   auto op_id_local = DCHECK_NOTNULL(mutable_state()->consensus_round())->id();
   DCHECK(!status.ok() || op_id_local.IsInitialized());
-  op_id_copy_.store(yb::OpId::FromPB(op_id_local), std::memory_order_release);
+  op_id_copy_.store(yb::OpId::FromPB(op_id_local), boost::memory_order_release);
 
   PrepareState prepare_state_copy;
   {
@@ -401,7 +402,7 @@ Status OperationDriver::ApplyOperation(
     DCHECK_EQ(prepare_state_, PREPARED);
     if (operation_status_.ok()) {
       DCHECK_EQ(replication_state_, REPLICATED);
-      order_verifier_->CheckApply(op_id_copy_.load(std::memory_order_relaxed).index,
+      order_verifier_->CheckApply(op_id_copy_.load(boost::memory_order_relaxed).index,
                                   prepare_physical_hybrid_time_);
     } else {
       DCHECK_EQ(replication_state_, REPLICATION_FAILED);
