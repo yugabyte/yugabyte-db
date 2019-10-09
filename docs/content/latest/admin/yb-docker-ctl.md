@@ -26,65 +26,66 @@ $ mkdir ~/yugabyte && cd ~/yugabyte
 $ wget https://downloads.yugabyte.com/yb-docker-ctl && chmod +x yb-docker-ctl
 ```
 
-## Help command
+## Online help
 
-Run `yb-docker-ctl --help` to see the online help for supported commands.
+Run `yb-docker-ctl --help` to display the online help.
 
 ```sh
 $ ./yb-docker-ctl -h
 ```
 
-```
-usage: yb-docker-ctl [-h]
-                     {create,add_node,status,destroy,stop_node,start_node,stop,start,remove_node}
-                     ...
+## Syntax
+
+```sh
+yb-docker-ctl [ command ] [ arguments ]
+
 ```
 
 ## Commands
 
-### `create`
+### create
 
 Creates a local YugabyteDB cluster.
 
-### `add_node`
+### add_node
 
 Adds a new local YugabyteDB cluster node.
 
-### `status`
+### status
 
 Displays the current status of the local YugabyteDB cluster.
 
-### `destroy`
+### destroy
 
 Destroys the local YugabyteDB cluster.
 
-### `stop_node`
+### stop_node
 
 Stops the specified local YugabyteDB cluster node.
 
-### `start_node`
+### start_node
 
 Starts the specified local YugabyteDB cluster node.
 
-### `stop`
+### stop
 
 Stops the local YugabyteDB cluster so that it can be started later.
 
-### `start`
+### start
 
 Starts the local YugabyteDB cluster, if it already exists.
 
-### `remove_node`
+### remove_node
 
 Stops the specified local YugabyteDB cluster node.
 
 ## Optional arguments
 
-### `-h` | `--help`
+### --help | -h
 
 Displays the online help and then exits.
 
-### `--tag`
+### --tag
 
 Use with `create` and `add_node` commands to specify a specific Docker image tag (version). If not included, then latest Docker image is used.
 

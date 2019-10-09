@@ -25,117 +25,123 @@ $ ./bin/yb-tserver \
 --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" &
 ```
 
-## Help
+## Online help
 
-Use the `--help` option to see all of the supported commands.
+Run `yb-tserver --help` to display the online help.
 
 ```sh
 $ ./bin/yb-tserver --help
 ```
 
-## Configuration options (flags)
+## Syntax
 
-### General
+```sh
+yb-tserver [ options ]
+```
 
-#### `--help`
+## Configuration options
 
-Displays help on all flags.
+### General options
 
-#### `--helpon`
+#### --help
 
-Displays help on modules named by the specified flag value.
+Displays help on all options.
 
-#### `--flagfile`
+#### --helpon
 
-Specifies the file to load flags from.
+Displays help on modules named by the specified option (or flag) value.
 
-#### `--version`
+#### --flagfile
+
+Specifies the file to load options (or flags) from.
+
+#### --version
 
 Shows version and build info, then exits.
 
-#### `--tserver_master_addrs`
+#### --tserver_master_addrs
 
 Comma-separated list of all the `yb-master` RPC addresses. Mandatory.
 
-#### `--fs_data_dirs` 
+#### --fs_data_dirs
 
 Comma-separated list of directories where the `yb-tserver` will place it's `yb-data/tserver` data directory. Mandatory.
 
-#### `--fs_wal_dirs`
+#### --fs_wal_dirs
 
 Default: Same as `--fs_data_dirs`
 
 The directory where the `yb-tserver` will place its write-ahead logs. May be the same as one of the directories listed in `--fs_data_dirs`, but not a sub-directory of a data directory.
 
-#### `--max_clock_skew_usec`
+#### --max_clock_skew_usec
 
 Specifies the expected maximum clock skew between any two nodes in your deployment.
 
-Default: `50000` (50ms) 
+Default: `50000` (50ms)
 
-#### `--rpc_bind_addresses` 
+#### --rpc_bind_addresses
 
 Specifies the comma-separated list of addresses to bind to for RPC connections.
 
 Default: `0.0.0.0:9100`
 
-#### `--server_broadcast_addresses`
+#### --server_broadcast_addresses
 
 Public IP or DNS hostname of the server (along with an optional port).
 
 Default: `0.0.0.0:9100`
 
-#### `--use_private_ip`
+#### --use_private_ip
 
-Determines when to use private IP addresses. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the `placement_*` config flags listed in this table. 
+Determines when to use private IP addresses. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the [placement (`--placement_*`) configuration options](#placement-options).
 
 Default: `never`
 
-#### `--webserver_interface`
+#### --webserver_interface
 
 Address to bind for the web server user interface.
 
 Default: `0.0.0.0`
 
-#### `--webserver_port` 
+#### --webserver_port
 
 The port for monitoring the web server.
 
 Default: `7000`
 
-#### `--webserver_doc_root`
+#### --webserver_doc_root
 
 Monitoring web server home.
 
 Default: The `www` directory in the YugabyteDB home directory.
 
-### Logging
+### Logging options
 
-#### `--logtostderr`
+#### --logtostderr
 
-Log to standard error (`stderr`).
+Flag to log to standard error (`stderr`).
 
-#### `--log_dir`
+#### --log_dir
 
 Specifies the directory to store `yb-tserver` log files.
 
-Default: Same as `--fs_data_dirs`
+Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
 
-### Deployment
+### Placement options
 
-#### `--placement_zone`
+#### --placement_zone
 
 Specifies the name of the availability zone, or rack, where this instance is deployed.
 
 Default: `rack1`
 
-#### `--placement_region`
+#### --placement_region
 
 Specifies the name of the region, or data center, where this instance is deployed.
 
 Default: `datacenter1`
 
-#### `--placement_cloud`
+#### --placement_cloud
 
 Specifies the name of the cloud where this instance is deployed.
 
@@ -143,142 +149,157 @@ Default: `cloud1`
 
 ### YSQL
 
-#### `--enable_ysql`
+The following settings manage the Yugabyte Structured Query Language (YSQL).
 
-Specifies to enable YSQL API. Default is `false`. Replaces the deprecated `--start_pgsql_proxy` option.
+#### --enable_ysql
+
+Specifies to enable YSQL API. Replaces the deprecated `--start_pgsql_proxy` option.
 
 Default: `false`
 
-#### `--pgsql_proxy_bind_address`
+#### --pgsql_proxy_bind_address
 
-Specifies the bind address for YSQL API. Default value is `0.0.0.0:5433`.
+Specifies the bind address for YSQL API.
 
 Default: `0.0.0.0:5433`
 
-#### `--pgsql_proxy_webserver_port`
+#### --pgsql_proxy_webserver_port
 
 Specifies the web server port for YSQL metrics monitoring.
 
 Default: `13000`
 
-#### `--ysql_enable_auth`
+#### --ysql_enable_auth
 
 Enable YSQL authentication.
 
 Default: `false`
 
-#### `--ysql_hba_conf`
+#### --ysql_hba_conf
 
-Specify a comma-separated list of YugabyteDB setting assignments. 
+Specify a comma-separated list of YugabyteDB setting assignments.
 
 Default: `""`
 
-#### `--ysql_pg_conf`
+#### --ysql_pg_conf
 
-Comma-separated list of PostgreSQL setting assignments. Default is `""`. 
+Comma-separated list of PostgreSQL setting assignments. 
 
-#### `--ysql_timezone`
+Default: `""`
+
+#### --ysql_timezone
 
 Specifies the time zone for displaying and interpreting timestamps.
 
-Default: `""` — uses the YSQL time zone.
+Default: `""` — Uses the YSQL time zone.
 
-#### `--ysql_datestyle`
+#### --ysql_datestyle
 
-Specifies the display format for data and time values. 
+Specifies the display format for data and time values.
 
-Default: `""` — uses the YSQL display format.
+Default: `""` — Uses the YSQL display format.
 
-#### `--ysql_max_connections`
+#### --ysql_max_connections
 
 Specifies the maximum number of concurrent YSQL connections. 
 
 Default: `0`
 
-`--ysql_default_transaction_isolation`
+#### --ysql_default_transaction_isolation
 
 Specifies the default transaction isolation level.
 
 Default: `""`
 
-#### `--ysql_log_statement`
+#### --ysql_log_statement
 
-Specifies the types of YSQL statements that should be logged. 
+Specifies the types of YSQL statements that should be logged.
 
 Default: `""`
 
-#### `--ysql_log_min_messages`
+#### --ysql_log_min_messages
 
-Specifies the lowest YSQL message level to log. Default is `""`.
+Specifies the lowest YSQL message level to log. 
+
+Default: `""`
 
 ### YCQL
 
-#### `--cql_proxy_bind_address`
+The following options support the use of YCQL.
 
-Specifies the bind address for the YCQL API.
-
-Default: `0.0.0.0:9042`
-
-#### `--cql_proxy_webserver_port`
-
-Specifies the port for monitoring YCQL metrics.
-
-Default: `12000`
-
-#### `--use_cassandra_authentication`
+#### --use_cassandra_authentication
 
 Specify `true` to enable YCQL authentication (`username` and `password`), enable YCQL security statements (`CREATE ROLE`, `DROP ROLE`, `GRANT ROLE`, `REVOKE ROLE`, `GRANT PERMISSION`, and `REVOKE PERMISSION`), and enforce permissions for YCQL statements.
 
 Default: `false`
 
-### YEDIS
+#### --cql_proxy_bind_address
 
-#### `--redis_proxy_bind_address`
+Specifies the bind address for the YCQL API.
+
+Default: `0.0.0.0:9042`
+
+#### --cql_proxy_webserver_port
+
+Specifies the port for monitoring YCQL metrics.
+
+Default: `12000`
+
+### YEDIS options
+
+#### --redis_proxy_bind_address
 
 Specifies the bind address for the YEDIS API.
 
 Default: `0.0.0.0:6379`
 
-#### `--redis_proxy_webserver_port`
+#### --redis_proxy_webserver_port
 
 Specifies the port for monitoring YEDIS metrics.
 
 Default: `11000`
 
-### Performance
+### Performance options
 
-#### `--rocksdb_compact_flush_rate_limit_bytes_per_sec` 
+#### --rocksdb_compact_flush_rate_limit_bytes_per_sec
 
 Used to control rate of memstore flush and SSTable file compaction.
 
 Default: `256MB`
 
-#### `--remote_bootstrap_rate_limit_bytes_per_sec` | N | `256MB` | 
+#### --remote_bootstrap_rate_limit_bytes_per_sec
 
 Rate control across all tablets being remote bootstrapped from or to this process.
 
-#### `--yb_num_shards_per_tserver` | N | `-1` | 
+Default: `256MB`
 
-The number of shards per yb-tserver per table when a user table is created. Server automatically picks a valid default internally.
+#### --yb_num_shards_per_tserver
 
-### Write Ahead Log (WAL)
+The number of shards per YB-TServer per table when a user table is created.
 
-#### `--durable_wal_write`
+Default: `-1` — Server automatically picks a valid default internally.
+
+### Write Ahead Log (WAL) options
+
+#### --durable_wal_write
 
 If set to `false`, the writes to the Raft log are synced to disk every `interval_durable_wal_write_ms` milliseconds or every `bytes_durable_wal_write_mb` MB, whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the zones/regions are independent failure domains and there isn't a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
 
 Default: `false`
 
-#### `--interval_durable_wal_write_ms`
+#### --interval_durable_wal_write_ms
 
-When `durable_wal_write` is false, writes to the Raft log are synced to disk every `interval_durable_wal_write_ms` milliseconds or `bytes_durable_wal_write_mb` MB whichever comes first.
-`--bytes_durable_wal_write_mb` | N | `1MB` | When `durable_wal_write` is false, writes to the Raft log are synced to disk every `bytes_durable_wal_write_mb` MB or `interval_durable_wal_write_ms` milliseconds whichever comes first.
+When [`--durable_wal_write`](#durable-wal-write) is false, writes to the Raft log are synced to disk every `--interval_durable_wal_write_ms` or [`--bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb), whichever comes first.
 
-Default: `1000ms`
+#### --bytes_durable_wal_write_mb
+
+When `--durable_wal_write` is `false`, writes to the Raft log are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
+
+Default: `1000ms` or `1MB`
 
 ## Admin UI
 
-The Admin UI for the YB-TServer is available at http://localhost:9000.
+The Admin UI for the YB-TServer is available at `http://localhost:9000`.
 
 ### Home
 

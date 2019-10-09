@@ -16,30 +16,35 @@ showAsideToc: true
 
 The `yb-ctl` utility, located in the bin directory of YugabyteDB home, provides a simple command line interface for administering local clusters used for development and learning. It invokes the [`yb-master`](../admin/yb-master/) and [`yb-tserver`](../admin/yb-tserver/) binaries to perform the necessary administration.
 
-Use the `--help` option to see all of the supported commands.
+## Online help
+
+Run `yb-ctl --help` to display the online help.
 
 ```sh
 $ ./bin/yb-ctl --help
 ```
 
+## Syntax
+
 ```sh
-usage: yb-ctl [-h] [--binary_dir BINARY_DIR] [--data_dir DATA_DIR]
-              [--replication_factor REPLICATION_FACTOR]
-              [--num_shards_per_tserver NUM_SHARDS_PER_TSERVER]
-              [--timeout TIMEOUT] [--verbose] [--install-if-needed]
-              {create,start,stop,destroy,restart,wipe_restart,add_node,remove_node,start_node,stop_node,restart_node,status,setup_redis}
-              ...
+yb-ctl [ command ] [ argument ]
 ```
 
-## Global options
-
-
+```
+yb-ctl 
+```
 
 ## Commands
 
 ### create
 
-Creates a cluster.
+Creates a local cluster.
+
+For more details and examples, see:
+
+- [Create a local cluster](#create-a-local-cluster)
+- [Create a cluster across multiple zones, regions, and clouds](#Create-a-cluster-across-multiple-zones-regions-and-clouds)
+- [Create a cluster with custom flags](#Create-a-cluster-with-custom-flags).
 
 ### start
 
@@ -53,25 +58,51 @@ Stops the cluster, if running.
 
 Destroys the current cluster.
 
+For details and examples, see:
+
+- [Destroy a local cluster](#destroy-a-local-cluster)
+
 ### status
 
 Display the current status of the cluster.
+
+For details and examples, see:
+
+- [Check cluster status](#check-cluster-status)
 
 ### restart
 
 Restarts the current cluster all at once.
 
+For details and examples, see:
+
+- [Restart a cluster](#restart-a-cluster)
+- [Restart with custom tags](#restart-with-custom-tags)
+
 ### wipe_restart
 
 Stops the current cluster, wipes all data files and starts the cluster as before (losing all flags).
+
+For details and examples, see:
+
+- [Wipe and restart with placement info flags](#wipe-and-restart-with-placement-info-flags)
 
 ### add_node
 
 Adds a new node to the current cluster.
 
+For details and examples, see:
+
+- [Add nodes](#add-nodes)
+- [Create a cluster across multiple zones, regions, and clouds](#create-a-cluster-across-multiple-zones-regions-and-clouds)
+
 ### remove_node
 
 Stops a particular node in the running cluster.
+
+For details and examples, see:
+
+- [Stop and remove nodes](#stop-and-remove-nodes)
 
 ### start_node
 
@@ -81,33 +112,67 @@ Starts a specified node in the running cluster.
 
 Stops the specified node in the running cluster.
 
+For details and examples, see:
+
+- [Stop and remove nodes](#stop-and-remove-nodes)
+
 ### restart_node
 
 Restarts the specified node in a running cluster.
+
+For details and examples, see:
+
+- [Restart node with placement information](#restart-node-with-placement-information)
 
 ### setup_redis
 
 Set up YugabyteDB to support the Redis-compatible YEDIS API.
 
-### Optional arguments
+For details and examples, see [Initialize the YEDIS API](#initialize-the-yedis-api)
 
-### `-h` | `--help`
+## Optional arguments
+
+### --help | -h
 
 Shows the help message and then exits.
 
-### `--binary_dir BINARY_DIR`
+### --binary_dir
 
 Specifies the directory in which to find the YugabyteDB `yb-master` and `yb-tserver` binary files.
 
 Default: `yugabyte-home/bin/`
 
-### `--data_dir DATA_DIR`
+### --data_dir
 
 Specifies the data directory for YugabyteDB.
 
-Default: `/yugabyte-data`
+Default: `yugabyte-data/`
 
-### `--replication_factor REPLICATION_FACTOR` | `--rf REPLICATION_FACTOR`
+### --master_flags
+
+Specifies a list of YB-Master flags, separated by commas.
+
+For details and examples, see [Create a cluster with custom flags](#create-a-cluster-with-custom-flags).
+
+### --tserver_flags
+
+Specifies a list of YB-TServer flags, separated by commas.
+
+For details and examples, see [Create a cluster with custom flags](#create-a-cluster-with-custom-flags).
+
+### --placement_info
+
+Specifies the cloud, region, and zone as `cloud.region.zone`, separated by commas.
+
+Default: `cloud1.datacenter1.rack1`
+
+For details and examples, see:
+
+- [Create a cluster across multiple zones, regions, and clouds](#create-a-cluster-across-multiple-zones-regions-and-clouds)
+- [Restart node with placement information](#restart-node-with-placement-information)
+- [Wipe and restart with placement info flags](#wipe-and-restart-with-placement-info-flags)
+
+### --replication_factor | -rf
 
 Specifies the number of replicas for each tablet. Should be an odd number (for example, `1`, `3`, or `5`) so that majority consensus can be established.
 
@@ -115,31 +180,35 @@ Replication factor for the cluster as well as default number of YB-Master servic
 
 Default: `1`
 
-### `--require_clock_sync`
+### --require_clock_sync
 
 Specifies whether YugabyteDB requires clock synchronization between the nodes in the cluster.
 
 Default: `false`
 
-### `--num_shards_per_tserver NUM_SHARDS_PER_TSERVER`
+### --num_shards_per_tserver
 
 Number of shards (tablets) to start per tablet server for each table.
 
 Default: `2`
 
-### --timeout TIMEOUT
+### --timeout-yb-admin-sec
 
-Timeout in seconds for operations that wait on the cluster.
+Timeout, in seconds, for operations that call `yb-admin` and wait on the cluster.
 
-### `--verbose`
+### --timeout-processes-running-sec
 
-If specified, will log internal debug messages to `stderr`.
+Timeout, in seconds, for operations that wait on the cluster.
+
+### --verbose
+
+Flag to log internal debug messages to `stderr`.
   
-### `--install-if-needed`
+### --install-if-needed
 
 With this option, if YugabyteDB is not yet installed on the system, the latest version will be downloaded and installed automatically.
 
-## Create a cluster
+## Create a local cluster
 
 To quickly create a local YugabyteDB cluster for development and learning, use the `yb-ctl create` command.
 
@@ -147,7 +216,7 @@ In order to ensure that all of the replicas for a given tablet can be placed on 
 
 Each of these initial nodes run a `yb-tserver` service and a `yb-master` service. Note that the number of YB-Master services in a cluster must equal the replication factor for the cluster to be considered operating normally.
 
-### Create a local cluster with RF=1
+### Create a local 1-node cluster with replication factor of 1
 
 ```sh
 $ ./bin/yb-ctl create
@@ -155,7 +224,7 @@ $ ./bin/yb-ctl create
 
 Note that the default replication factor is 1.
 
-### Create a 4-node cluster with RF=3
+### Create a 4-node cluster with replication factor of 3
 
 First create 3-node cluster with replication factor of `3`.
 
@@ -282,10 +351,9 @@ $ ./bin/yb-ctl stop_node 4
 
 At this point of time `remove_node` and `stop_node` do the same thing. So they can be used interchangeably.
 
-## Destroy a cluster
+## Destroy a local cluster
 
-You can use the `yb-ctl destroy` command to destroy a cluster. This command stops all the nodes and
-deletes the data directory of the cluster.
+You can use the `yb-ctl destroy` command to destroy a local cluster. This command stops all the nodes and deletes the data directory of the cluster.
 
 ```sh
 $ ./bin/yb-ctl destroy
@@ -349,7 +417,7 @@ $ ./bin/yb-ctl restart
 $ ./bin/yb-ctl restart --placement_info "cloud1.region1.zone1" 
 ```
 
-- Restart with custom flags
+### Restart with custom flags
 
 ```sh
 $ ./bin/yb-ctl restart --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20,master_backup_svc_queue_length=70" --tserver_flags "log_inject_latency=false,log_segment_size_mb=128,raft_heartbeat_interval_ms=1000"

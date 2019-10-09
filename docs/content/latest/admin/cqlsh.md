@@ -33,9 +33,11 @@ $ ./bin/cqlsh --execute "select cluster_name, data_center, rack from system.loca
  local cluster | datacenter1 | rack1
 ```
 
-## Command line options
+## Online help
 
-Run `cqlsh --help` to see all the supported command line options.
+Run `cqlsh --help` to display the online help.
+
+## Syntax
 
 ```sh
 cqlsh [options] [host [port]]

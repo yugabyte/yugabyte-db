@@ -41,6 +41,6 @@ menu:
 blackfriday:
   smartypants: true
   fractions: true
-  smartDashes: true
+  smartDashes: false
   plainIDAnchors: true
 ---

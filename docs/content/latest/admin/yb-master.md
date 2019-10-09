@@ -25,121 +25,129 @@ $ ./bin/yb-master \
 --replication_factor=3 &
 ```
 
-## Help
+## Online help
 
-Use the `--help` option to see all the commands supported.
+Run `yb-master --help` to display the online help.
 
 ```sh
 $ ./bin/yb-master --help
 ```
 
-## Configuration options (flags)
+## Syntax
 
-### General
+```sh
+yb-master [ option  ] | [ option ]
+```
 
-#### `--version`
+## Configuration options
+
+### General options
+
+#### --version
 
 Shows version and build info, then exits.
 
-#### `--master_addresses`
+#### --master_addresses
 
 Comma-separated list of all the RPC addresses for `yb-master` consensus-configuration. Mandatory.
 
-#### `--fs_data_dirs`
+#### --fs_data_dirs
 
 Comma-separated list of directories where the `yb-master` will place all it's `yb-data/master` data directory. Mandatory.
 
-#### `--fs_wal_dirs`
+#### --fs_wal_dirs
 
 The directory where the `yb-master` will place its write-ahead logs. May be the same as one of the directories listed in `--fs_data_dirs`, but not a sub-directory of a data directory. 
 
 Default: Same value as `--fs_data_dirs`
 
-#### `--rpc_bind_addresses`
+#### --rpc_bind_addresses
 
 Comma-separated list of addresses to bind to for RPC connections. Mandatory.
 
 Default: `0.0.0.0:7100`
 
-#### `--server_broadcast_addresses`| N |`0.0.0.0:7100` | 
+#### --server_broadcast_addresses
 
 Public IP or DNS hostname of the server (along with an optional port).
 
-#### `--webserver_interface`
+Default: `0.0.0.0:7100`
+
+#### --webserver_interface
 
 Address to bind for server UI access.
 
 Default: `0.0.0.0`
 
-#### `--webserver_port`
+#### --webserver_port
 
 Monitoring web server port.
 
 Default: `7000`
 
-#### `--webserver_doc_root`
+#### --webserver_doc_root
 
 Monitoring web server home.
 
 Default: The `www` directory in the YugabyteDB home directory
 
-#### `--flagfile`
+#### --flagfile
 
-Specifies file to load flags from.
+Specifies the file to load flags from.
 
-### Logging
+### Logging options
 
-#### `--log_dir`
+#### --log_dir
 
 The directory to store `yb-master` log files.
 
 Default: Same value as `--fs_data_dirs`
 
-#### `--logtostderr`
+#### --logtostderr
 
 Switches to log to standard error (`stderr`).
 
-### Cluster
+### Cluster options
 
-#### `--yb_num_shards_per_tserver`
+#### --yb_num_shards_per_tserver
 
 Specifies the number of shards per yb-tserver per table when a user table is created. Server automatically picks a valid default internally.
 
 Default: `-1`
 
-#### `--max_clock_skew_usec`
+#### --max_clock_skew_usec
 
 The expected maximum clock skew between any two nodes in your deployment.
 
 Default: `50000` (50ms)
 
-##### `--replication_factor`
+##### --replication_factor
 
 Number of replicas to store for each tablet in the universe.
 
 Default: `3`
 
-### Deployment
+### Placement options
 
-#### `--placement_zone`
+#### --placement_zone
 
 Name of the availability zone or rack where this instance is deployed.
 
 Default: `rack1`
 
-#### `--placement_region`
+#### --placement_region
 
 Name of the region or data center where this instance is deployed.
 
 Default: `datacenter1`
 
-#### `--placement_cloud`
+#### --placement_cloud
 
 Name of the cloud where this instance is deployed.
 
 Default: `cloud1`
 
-#### `--use_private_ip`
+#### --use_private_ip
 
 Determines when to use private IP addresses. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the `placement_*` configuration options.
 
