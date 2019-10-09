@@ -1,17 +1,18 @@
-``---
+---
 title: Backing Up Data using Snapshots
 linkTitle: Backing Up Data using Snapshots
 description: Backing Up Data using Snapshots
 image: /images/section_icons/manage/enterprise.png
 headcontent: Backing up data using Snapshots
 aliases:
-  - manage/backup-restore/snapshots
-
+  - manage/backup-restore/manage-snapshots
 menu:
   latest:
-    identifier: manage-change-cluster-config
-    parent: manage/backup-restore
-    weight: 704
+    identifier: manage-backup-restore-manage-snapshots
+    parent: manage-backup-restore
+    weight: 705
+isTocNested: true
+showAsideToc: true
 ---
 
 This page covers backups for YugaByte DB using snapshots. Here are some points to keep in mind.
@@ -24,18 +25,11 @@ This page covers backups for YugaByte DB using snapshots. Here are some points t
   - Snapshoting is broken in YSQL [#2083](https://github.com/YugaByte/yugabyte-db/issues/2083)
   - The platform edition (enterprise) automates all this for you
 
-### Example scenario tutorial
 
 In this tutorial we'll be using YCQL but the same apis are used in YSQL. 
-1. We will create a single-node cluster
-2. Insert data
-3. Make a snapshot
-4. Destroy the cluster & create a different cluster(3 replicas)
-5. Restore the snapshot
-6. Verifying the data and deleting the snapshot
 
-#### Step 1: Create a 1=node local cluster
-Read {{< ref "../../quick-start/create-local-cluster.md" >}} how to quickstart a a local cluster.
+### Step 1: Create a 1=node local cluster
+Read [creating a local cluster](../../quick-start/create-local-cluster.md) on how to quickstart a a local cluster.
 
 ```
 $ ./bin/yb-ctl create
@@ -55,13 +49,10 @@ Waiting for cluster to be ready.
 For more info, please use: yb-ctl status
 ```
 
-See {{< ref "../../admin/yb-ctl.md" >}} for yb-ctl reference
+See [yb-ctl reference](../../admin/yb-ctl.md) for all options.
 
 ### Step 2: Creating a table with data
-Read {{< ref "/api/ycql/quick-start.md" >}} for a quick start on YCQL api.
-
-Log into cqlsh. 
-
+After [getting started on YCQL api](../../api/ycql/quick-start/) log into cqlsh:
 ```
 $ ./bin/cqlsh
 ```
