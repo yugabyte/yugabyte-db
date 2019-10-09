@@ -557,6 +557,8 @@ INSERT INTO t1 (c1) VALUES (5); -- fail, but see columns being inserted or have 
 ERROR:  null value in column "c2" violates not-null constraint
 DETAIL:  Failing row contains (c1) = (5).
 UPDATE t1 SET c3 = 10; -- fail, but see columns with SELECT rights, or being modified
+ERROR:  new row for relation "t1" violates check constraint "t1_c3_check"
+DETAIL:  Failing row contains (c1, c3) = (1, 10).
 SET SESSION AUTHORIZATION regress_priv_user1;
 DROP TABLE t1;
 -- test column-level privileges when involved with DELETE
