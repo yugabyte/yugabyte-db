@@ -43,4 +43,5 @@ blackfriday:
   fractions: true
   smartDashes: false
   plainIDAnchors: true
+  noIntraEmphasis: true
 ---

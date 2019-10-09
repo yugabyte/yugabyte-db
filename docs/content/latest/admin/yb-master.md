@@ -49,11 +49,11 @@ Shows version and build info, then exits.
 
 #### --master_addresses
 
-Comma-separated list of all the RPC addresses for `yb-master` consensus-configuration. Mandatory.
+Specifies a comma-separated list of all the RPC addresses for `yb-master` consensus-configuration. Mandatory.
 
 #### --fs_data_dirs
 
-Comma-separated list of directories where the `yb-master` will place all it's `yb-data/master` data directory. Mandatory.
+Specifies a comma-separated list of directories where the `yb-master` will place all it's `yb-data/master` data directory. Mandatory.
 
 #### --fs_wal_dirs
 
@@ -63,13 +63,13 @@ Default: Same value as `--fs_data_dirs`
 
 #### --rpc_bind_addresses
 
-Comma-separated list of addresses to bind to for RPC connections. Mandatory.
+Speicies a comma-separated list of addresses to bind to for RPC connections. Mandatory.
 
 Default: `0.0.0.0:7100`
 
 #### --server_broadcast_addresses
 
-Public IP or DNS hostname of the server (along with an optional port).
+Specifies the public IP or DNS hostname of the server (along with an optional port).
 
 Default: `0.0.0.0:7100`
 
@@ -128,6 +128,8 @@ Number of replicas to store for each tablet in the universe.
 Default: `3`
 
 ### Placement options
+
+The placement options, or flags, provide 
 
 #### --placement_zone
 

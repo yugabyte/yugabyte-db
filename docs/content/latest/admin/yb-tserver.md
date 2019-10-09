@@ -201,7 +201,7 @@ Default: `""` — Uses the YSQL display format.
 
 #### --ysql_max_connections
 
-Specifies the maximum number of concurrent YSQL connections. 
+Specifies the maximum number of concurrent YSQL connections.
 
 Default: `0`
 
@@ -219,7 +219,7 @@ Default: `""`
 
 #### --ysql_log_min_messages
 
-Specifies the lowest YSQL message level to log. 
+Specifies the lowest YSQL message level to log.
 
 Default: `""`
 

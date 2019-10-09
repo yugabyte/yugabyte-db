@@ -27,11 +27,7 @@ $ ./bin/yb-ctl --help
 ## Syntax
 
 ```sh
-yb-ctl [ command ] [ argument ]
-```
-
-```
-yb-ctl 
+yb-ctl [ command ] [ argument, argument2, ... ]
 ```
 
 ## Commands
