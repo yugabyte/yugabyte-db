@@ -42,3 +42,8 @@ $ cd <yugabyte-data-directory>/disk1/yb-data/tserver/logs/
 ```
 
 Logs are organized by error severity: `FATAL`, `ERROR`, `WARNING`, `INFO`. In case of issues, the `FATAL` and `ERROR` logs are most likely to be relevant.
+
+
+## Logs management
+
+Logs are rotated every day or when the filesize grows to 10MB. Log purging is only done in Yugabyte Platform.
