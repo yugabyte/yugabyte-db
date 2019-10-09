@@ -2161,6 +2161,31 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     checkConnectivity(true, anotherUsername, newPassword, false);
   }
 
+
+  // Test for https://github.com/yugabyte/yugabyte-db/issues/2505.
+  @Test
+  public void testAlterOwnSuperuserStatusFails() throws Exception {
+    thrown.expect(UnauthorizedException.class);
+    thrown.expectMessage("Unauthorized. You aren't allowed to alter your own superuser status or " +
+            "that of a role granted to you");
+    s.execute("ALTER ROLE cassandra WITH SUPERUSER = false");
+  }
+
+  // Test for https://github.com/yugabyte/yugabyte-db/issues/2505.
+  @Test
+  public void testAlterSuperuserStatusOfGrantedRoleFails() throws Exception {
+    testCreateRoleHelperWithSession("parent", "", false, true, false, s);
+    testCreateRoleHelperWithSession("grandparent", "", false, true, false, s);
+
+    s.execute("GRANT grandparent TO parent");
+    s.execute("GRANT parent TO cassandra");
+
+    thrown.expect(UnauthorizedException.class);
+    thrown.expectMessage("Unauthorized. You aren't allowed to alter your own superuser status or " +
+            "that of a role granted to you");
+    s.execute("ALTER ROLE grandparent WITH SUPERUSER = false");
+  }
+
   @Test
   public void testNotEmptyResourcesInSytemAuthRolePermissionsTable() throws Exception {
     testCreateRoleHelperWithSession(anotherUsername, "", false, false, false, s);

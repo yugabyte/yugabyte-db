@@ -373,11 +373,7 @@ Status PermissionsManager::AlterRole(
   // If the role we are trying to alter is a SUPERUSER, and the request is trying to alter the
   // SUPERUSER field for that role, the role requesting the alter operation must be a SUPERUSER
   // too.
-  // TODO(hector): Once "ENG-2663 Support for REVOKE PERMISSIONS and REVOKE ROLE commands" gets
-  // committed, we need to enhance this codepath to also check that current_role is not trying to
-  // alter the SUPERUSER field of any of the roles granted to it either directly or indirectly
-  // through inheritance.
-  if (l->mutable_data()->pb.is_superuser() && req->has_superuser()) {
+  if (req->has_superuser()) {
     auto current_role = FindPtrOrNull(roles_map_, req->current_role());
     if (current_role == nullptr) {
       s = STATUS_SUBSTITUTE(NotFound, "Internal error: role $0 does not exist",
@@ -385,6 +381,18 @@ Status PermissionsManager::AlterRole(
       return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
     }
 
+    // Fix for https://github.com/yugabyte/yugabyte-db/issues/2505.
+    // A role cannot modify its own superuser status, nor the superuser status of any role granted
+    // to it directly or through inheritance. This check should happen before the next check that
+    // verifies that the role requesting the modification is a superuser.
+    if (l->data().pb.role() == req->current_role() ||
+        IsMemberOf(l->data().pb.role(), req->current_role())) {
+      s = STATUS(NotAuthorized,
+          "You aren't allowed to alter your own superuser status or that of a role granted to you");
+      return SetupError(resp->mutable_error(), MasterErrorPB::NOT_AUTHORIZED, s);
+    }
+
+    // Don't allow a non-superuser role to modify the superuser status of another role.
     auto clr = current_role->LockForRead();
     if (!clr->data().pb.is_superuser()) {
       s = STATUS(NotAuthorized, "Only superusers are allowed to alter superuser status");
