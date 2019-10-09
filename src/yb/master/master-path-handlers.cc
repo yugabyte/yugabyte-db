@@ -480,9 +480,11 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
 
         jw.StartObject();
 
-        const string time_since_hb = StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds());
+        // Some stats may be repeated as strings due to backwards compatability.
         jw.String("time_since_hb");
-        jw.String(time_since_hb);
+        jw.String(StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds()));
+        jw.String("time_since_hb_sec");
+        jw.Double(desc->TimeSinceHeartbeat().ToSeconds());
 
         if (master_->ts_manager()->IsTSLive(desc)) {
           jw.String("status");
@@ -500,15 +502,21 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
 
         jw.String("ram_used");
         jw.String(BytesToHumanReadable(desc->total_memory_usage()));
+        jw.String("ram_used_bytes");
+        jw.Uint64(desc->total_memory_usage());
 
         jw.String("num_sst_files");
         jw.Uint64(desc->num_sst_files());
 
         jw.String("total_sst_file_size");
         jw.String(BytesToHumanReadable(desc->total_sst_file_size()));
+        jw.String("total_sst_file_size_bytes");
+        jw.Uint64(desc->total_sst_file_size());
 
         jw.String("uncompressed_sst_file_size");
         jw.String(BytesToHumanReadable(desc->uncompressed_sst_file_size()));
+        jw.String("uncompressed_sst_file_size_bytes");
+        jw.Uint64(desc->uncompressed_sst_file_size());
 
         jw.String("read_ops_per_sec");
         jw.Double(desc->read_ops_per_sec());
