@@ -55,7 +55,7 @@ spec:
     app: yb-master
   type: LoadBalancer
 ---
-apiVersion: apps/v1beta1
+apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: yb-master
@@ -91,7 +91,7 @@ spec:
         image: yugabytedb/yugabyte:latest
         imagePullPolicy: Always
         env:
-        - name: POD_NAMESPACE
+        - name: NAMESPACE
           valueFrom:
             fieldRef:
                 fieldPath: metadata.namespace
@@ -103,8 +103,8 @@ spec:
           - "/home/yugabyte/bin/yb-master"
           - "--fs_data_dirs=/mnt/disk0,/mnt/disk1"
           - "--rpc_bind_addresses=$(POD_IP)"
-          - "--master_addresses=yb-masters.$(POD_NAMESPACE).svc.cluster.local:7100"
-          - "--master_replication_factor=3"
+          # FQDNs of each master. Update this in case your desired RF != 3.
+          - "--master_addresses=yb-master-0.yb-masters.$(NAMESPACE).svc.cluster.local:7100,yb-master-1.yb-masters.$(NAMESPACE).svc.cluster.local:7100,yb-master-2.yb-masters.$(NAMESPACE).svc.cluster.local:7100"
           - "--replication_factor=3"
         ports:
         - containerPort: 7000
@@ -162,7 +162,7 @@ spec:
   selector:
     app: yb-tserver
 ---
-apiVersion: apps/v1beta1
+apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: yb-tserver
@@ -198,15 +198,15 @@ spec:
         image: yugabytedb/yugabyte:latest
         imagePullPolicy: Always
         env:
-        - name: POD_NAMESPACE
+        - name: NAMESPACE
           valueFrom:
             fieldRef:
                 fieldPath: metadata.namespace
         command:
           - "/home/yugabyte/bin/yb-tserver"
           - "--fs_data_dirs=/mnt/disk0,/mnt/disk1"
-          - "--tserver_master_addrs=yb-masters.$(POD_NAMESPACE).svc.cluster.local:7100"
-          - "--tserver_master_replication_factor=3"
+          # FQDNs of each master. Update this in case your desired RF != 3.
+          - "--tserver_master_addrs=yb-master-0.yb-masters.$(NAMESPACE).svc.cluster.local:7100,yb-master-1.yb-masters.$(NAMESPACE).svc.cluster.local:7100,yb-master-2.yb-masters.$(NAMESPACE).svc.cluster.local:7100"
         ports:
         - containerPort: 9000
           name: tserver-ui
