@@ -147,15 +147,15 @@ $(document).ready(() => {
     const $codes = document.querySelectorAll('pre');
     const addCopyButton = element => {
       const container = element.getElementsByTagName('code')[0];
-      const languageDescriptor = container.classList[0];
+      const languageDescriptor = container.dataset.lang;
       let regExpCopy = /a^/;
       if (languageDescriptor) {
         // Then apply copy button
-        if (languageDescriptor === 'sql') {
+        if (['postgresql', 'sql', 'postgres'].includes(languageDescriptor)) {
           if (element.textContent.match(/^[0-9a-z_.:@=^]{1,30}[>|#]\s/gm)) {
             regExpCopy = /^[0-9a-z_.:@=^]{1,30}[>|#]\s/gm;
           }
-        } else if (languageDescriptor === 'sh') {
+        } else if (['sh', 'bash', 'shell'].includes(languageDescriptor)) {
           if (element.textContent.match(/^\$\s/gm)) {
             regExpCopy = /^\$\s/gm;
           } else if (element.textContent.match(/^[0-9a-z_.:@=^]{1,30}[>|#]\s/gm)) {
