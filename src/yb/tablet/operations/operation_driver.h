@@ -35,6 +35,8 @@
 
 #include <string>
 
+#include <boost/atomic.hpp>
+
 #include "yb/consensus/consensus_types.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/walltime.h"
@@ -265,7 +267,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // receives one from Consensus and uninitialized until then.
   // TODO(todd): we have three separate copies of this now -- in OperationState,
   // CommitMsg, and here... we should be able to consolidate!
-  std::atomic<yb::OpId> op_id_copy_{yb::OpId::Invalid()};
+  boost::atomic<yb::OpId> op_id_copy_{yb::OpId::Invalid()};
 
   // The operation to be executed by this driver.
   std::unique_ptr<Operation> operation_;
