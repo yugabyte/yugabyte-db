@@ -58,17 +58,13 @@ Stops the cluster, if running.
 
 Destroys the current cluster.
 
-For details and examples, see:
-
-- [Destroy a local cluster](#destroy-a-local-cluster)
+For details and examples, see [Destroy a local cluster](#destroy-a-local-cluster).
 
 ### status
 
 Display the current status of the cluster.
 
-For details and examples, see:
-
-- [Check cluster status](#check-cluster-status)
+For details and examples, see [Check cluster status](#check-cluster-status).
 
 ### restart
 
@@ -83,9 +79,7 @@ For details and examples, see:
 
 Stops the current cluster, wipes all data files and starts the cluster as before (losing all flags).
 
-For details and examples, see:
-
-- [Wipe and restart with placement info flags](#wipe-and-restart-with-placement-info-flags)
+For details and examples, see [Wipe and restart with placement info flags](#wipe-and-restart-with-placement-info-flags).
 
 ### add_node
 

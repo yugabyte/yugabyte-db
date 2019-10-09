@@ -147,19 +147,25 @@ Specifies the name of the cloud where this instance is deployed.
 
 Default: `cloud1`
 
-### YSQL
+### YSQL options
 
-The following settings manage the Yugabyte Structured Query Language (YSQL).
+The following options, or flags, support the use of the [YSQL API](../../api/ysql/).
 
 #### --enable_ysql
 
-Specifies to enable YSQL API. Replaces the deprecated `--start_pgsql_proxy` option.
+Enables the YSQL API. Replaces the deprecated `--start_pgsql_proxy` option.
+
+Default: `false`
+
+#### --ysql_enable_auth
+
+Enables YSQL authentication.
 
 Default: `false`
 
 #### --pgsql_proxy_bind_address
 
-Specifies the bind address for YSQL API.
+Specifies the bind address for the YSQL API.
 
 Default: `0.0.0.0:5433`
 
@@ -169,12 +175,6 @@ Specifies the web server port for YSQL metrics monitoring.
 
 Default: `13000`
 
-#### --ysql_enable_auth
-
-Enable YSQL authentication.
-
-Default: `false`
-
 #### --ysql_hba_conf
 
 Specify a comma-separated list of YugabyteDB setting assignments.
@@ -183,7 +183,7 @@ Default: `""`
 
 #### --ysql_pg_conf
 
-Comma-separated list of PostgreSQL setting assignments. 
+Comma-separated list of PostgreSQL setting assignments.
 
 Default: `""`
 
@@ -223,9 +223,9 @@ Specifies the lowest YSQL message level to log.
 
 Default: `""`
 
-### YCQL
+### YCQL options
 
-The following options support the use of YCQL.
+The following options, or flags, support the use of the [YCQL API](../../api/ycql/).
 
 #### --use_cassandra_authentication
 
@@ -246,6 +246,8 @@ Specifies the port for monitoring YCQL metrics.
 Default: `12000`
 
 ### YEDIS options
+
+The following options, or flags, support the use of the YEDIS API.
 
 #### --redis_proxy_bind_address
 
