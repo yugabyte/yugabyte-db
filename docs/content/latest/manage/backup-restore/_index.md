@@ -41,3 +41,16 @@ This section goes into details of backing up data and restoring it from Yugabyte
     </a>
   </div>
 </div>
+<div class="row">
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="snapshots/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">Manage snapshots</div>
+      </div>
+      <div class="body">
+        This section describes how to use snapshots for distributed backup/restore.
+      </div>
+    </a>
+  </div>
+</div>
