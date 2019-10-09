@@ -14,7 +14,7 @@ def cleanNodeModules(implicit dir: File): Int = Process("rm -rf node_modules", d
 // Execute `npm ci` command to install all node module dependencies. Return 0 if success.
 def runNpmInstall(implicit dir: File): Int =
   if (cleanNodeModules != 0) throw new Exception("node_modules not cleaned up")
-  else Process("npm ci --loglevel silly", dir)!
+  else Process("npm ci --loglevel silly --timing", dir)!
 
 // Execute `npm run build` command to build the production build of the UI code. Return 0 if success.
 def runNpmBuild(implicit dir: File): Int =
