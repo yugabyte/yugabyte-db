@@ -32,6 +32,7 @@ import java.util.*;
 
 import static junit.framework.TestCase.*;
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.fail;
 
 public class TestClusterBase extends BaseCQLTest {
@@ -423,7 +424,8 @@ public class TestClusterBase extends BaseCQLTest {
     verifyExpectedLiveTServers(numTabletServers);
   }
 
-  private void removeTServers(Map<HostAndPort, MiniYBDaemon> originalTServers) throws Exception {
+  private void removeTServers(Map<HostAndPort, MiniYBDaemon> originalTServers,
+      boolean killMaster) throws Exception {
     // Retrieve existing config, set blacklist and reconfigure cluster.
     List<Common.HostPortPB> blacklisted_hosts = new ArrayList<>();
     for (Map.Entry<HostAndPort, MiniYBDaemon> ts : originalTServers.entrySet()) {
@@ -443,15 +445,46 @@ public class TestClusterBase extends BaseCQLTest {
       fail(e.getMessage());
     }
 
+    if (killMaster) {
+      long totalBeforeKillMaster = client.getLoadMoveCompletion().getTotal();
+
+      // Wait for some tablets to get moved from blacklisted tservers.
+      TestUtils.waitFor(() -> {
+        final long moveRemaining = client.getLoadMoveCompletion().getRemaining();
+        final long moveTotal = client.getLoadMoveCompletion().getTotal();
+        LOG.info("Move remaining: " + moveRemaining + " - out of - total: ", moveTotal);
+        return moveRemaining < moveTotal;
+      }, CLUSTER_MOVE_TIMEOUT_MS);
+
+      assertLessThan(client.getLoadMoveCompletion().getRemaining(),
+          client.getLoadMoveCompletion().getTotal());
+
+      HostAndPort leaderHostPort = client.getLeaderMasterHostAndPort();
+      removeMaster(leaderHostPort);
+
+      long totalAfterKillMaster = client.getLoadMoveCompletion().getTotal();
+
+      // Killing master leader should reset the total count to be the same as remaining.
+      // Hence the new total should be strictly less than old total.
+      assertLessThan(totalAfterKillMaster, totalBeforeKillMaster);
+      // And there should be work remaining to do.
+      assertLessThan((long)0, client.getLoadMoveCompletion().getRemaining());
+    }
+
     // Wait for the move to complete.
     TestUtils.waitFor(() -> {
       verifyExpectedLiveTServers(2 * NUM_TABLET_SERVERS);
-      final double move_completion = client.getLoadMoveCompletion().getPercentCompleted();
-      LOG.info("Move completion percent: " + move_completion);
-      return move_completion >= 100;
+      final double moveCompletion = client.getLoadMoveCompletion().getPercentCompleted();
+      LOG.info("Move completion percent: " + moveCompletion);
+      final long moveRemaining = client.getLoadMoveCompletion().getRemaining();
+      final long moveTotal = client.getLoadMoveCompletion().getTotal();
+      LOG.info("Move remaining: " + moveRemaining + " - out of - total: ", moveTotal);
+      return moveCompletion >= 100 && moveRemaining == 0 && moveTotal > 0;
     }, CLUSTER_MOVE_TIMEOUT_MS);
 
     assertEquals(100, (int) client.getLoadMoveCompletion().getPercentCompleted());
+    assertEquals(0, client.getLoadMoveCompletion().getRemaining());
+    assertLessThan((long)0, client.getLoadMoveCompletion().getTotal());
 
     // Wait for the partition metadata to refresh.
     Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
@@ -492,12 +525,17 @@ public class TestClusterBase extends BaseCQLTest {
     // Wait for the move to complete.
     TestUtils.waitFor(() -> {
       verifyExpectedLiveTServers(NUM_TABLET_SERVERS + 1);
-      final double move_completion = client.getLeaderBlacklistCompletion().getPercentCompleted();
-      LOG.info("Move completion percent: " + move_completion);
-      return move_completion >= 100;
+      final double moveCompletion = client.getLeaderBlacklistCompletion().getPercentCompleted();
+      LOG.info("Move completion percent: " + moveCompletion);
+      final double moveRemaining = client.getLeaderBlacklistCompletion().getRemaining();
+      final double moveTotal = client.getLeaderBlacklistCompletion().getTotal();
+      LOG.info("Move remaining: " + moveRemaining + " - out of - total: ", moveTotal);
+      return moveCompletion >= 100 && moveRemaining == 0 && moveTotal > 0;
     }, CLUSTER_MOVE_TIMEOUT_MS);
 
     assertEquals(100, (int) client.getLeaderBlacklistCompletion().getPercentCompleted());
+    assertEquals(0, client.getLeaderBlacklistCompletion().getRemaining());
+    assertLessThan((long)0, client.getLeaderBlacklistCompletion().getTotal());
 
     // Wait for the partition metadata to refresh.
     Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
@@ -580,12 +618,16 @@ public class TestClusterBase extends BaseCQLTest {
     // Wait for the move to complete.
     TestUtils.waitFor(() -> {
       verifyExpectedLiveTServers(NUM_TABLET_SERVERS + 1);
-      final double move_completion = client.getLeaderBlacklistCompletion().getPercentCompleted();
-      LOG.info("Move completion percent: " + move_completion);
-      return move_completion >= 100;
+      final double moveCompletion = client.getLeaderBlacklistCompletion().getPercentCompleted();
+      LOG.info("Move completion percent: " + moveCompletion);
+      final long moveRemaining = client.getLeaderBlacklistCompletion().getRemaining();
+      final long moveTotal = client.getLeaderBlacklistCompletion().getTotal();
+      LOG.info("Move remaining: " + moveRemaining + " - out of - total: ", moveTotal);
+      return moveCompletion >= 100 && moveRemaining == 0;
     }, CLUSTER_MOVE_TIMEOUT_MS);
 
     assertEquals(100, (int) client.getLeaderBlacklistCompletion().getPercentCompleted());
+    assertEquals(0, client.getLeaderBlacklistCompletion().getRemaining());
 
     // Wait for the partition metadata to refresh.
     Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
@@ -660,6 +702,10 @@ public class TestClusterBase extends BaseCQLTest {
   }
 
   protected void performTServerExpandShrink(boolean fullMove) throws Exception {
+    performTServerExpandShrink(fullMove, /* killMaster */ false);
+  }
+
+  protected void performTServerExpandShrink(boolean fullMove, boolean killMaster) throws Exception {
     // Create a copy to store original tserver list.
     Map<HostAndPort, MiniYBDaemon> originalTServers = new HashMap<>(miniCluster.getTabletServers());
     assertEquals(NUM_TABLET_SERVERS, originalTServers.size());
@@ -682,7 +728,7 @@ public class TestClusterBase extends BaseCQLTest {
 
     LOG.info("Cluster Expand Done!");
 
-    removeTServers(originalTServers);
+    removeTServers(originalTServers, killMaster);
 
     LOG.info("Cluster Shrink Done!");
   }

@@ -62,6 +62,8 @@ class GetLeaderBlacklistPercentRequest extends YRpc<GetLoadMovePercentResponse> 
           deadlineTracker.getElapsedMillis(),
           masterUUID,
           hasErr ? 0 : respBuilder.getPercent(),
+          hasErr ? 0 : respBuilder.getRemaining(),
+          hasErr ? 0 : respBuilder.getTotal(),
           hasErr ? respBuilder.getErrorBuilder().build() : null);
     return new Pair<GetLoadMovePercentResponse, Object>(response,
                                                         hasErr ? respBuilder.getError() : null);
