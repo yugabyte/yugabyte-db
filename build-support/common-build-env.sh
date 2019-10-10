@@ -1774,6 +1774,10 @@ handle_predefined_build_root() {
     return
   fi
 
+  if [[ -L $predefined_build_root ]]; then
+    predefined_build_root=$( readlink "$predefined_build_root" )
+  fi
+
   if [[ -d $predefined_build_root ]]; then
     predefined_build_root=$( cd "$predefined_build_root" && pwd )
   fi
@@ -1800,10 +1804,10 @@ handle_predefined_build_root() {
   fi
 
   if [[ -z ${build_type:-} ]]; then
+    build_type=$_build_type
     if ! "$handle_predefined_build_root_quietly"; then
       log "Setting build type to '$build_type' based on predefined build root ('$basename')"
     fi
-    build_type=$_build_type
     validate_build_type "$build_type"
   elif [[ $build_type != $_build_type ]]; then
     fatal "Build type from the build root ('$_build_type' from '$predefined_build_root') does " \
