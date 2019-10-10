@@ -14,7 +14,7 @@ showAsideToc: true
 
 ---
 
-The `yb-docker-ctl` utility provides a simple command line interface (CLI), or shell, for administering local Docker-based clusters for development and learning. It manages the [YB-Master](../yb-master/) and [YB-TServer](../yb-tserver/) containers to perform the necessary administration.
+The YugabyteDB `yb-docker-ctl` utility provides a simple command line interface (CLI), or shell, for administering a local Docker-based cluster for development and learning. It manages the [YB-Master](../yb-master/) and [YB-TServer](../yb-tserver/) containers to perform the necessary administration.
 
 ## Download
 
@@ -26,45 +26,74 @@ $ mkdir ~/yugabyte && cd ~/yugabyte
 $ wget https://downloads.yugabyte.com/yb-docker-ctl && chmod +x yb-docker-ctl
 ```
 
-## Help command
+## Online help
 
-Use the `-\-help` option to see all of the supported commands.
+Run `yb-docker-ctl --help` to display the online help.
 
 ```sh
 $ ./yb-docker-ctl -h
 ```
 
+## Syntax
+
+```sh
+yb-docker-ctl [ command ] [ arguments ]
+
 ```
-usage: yb-docker-ctl [-h]
-                     {create,add_node,status,destroy,stop_node,start_node,stop,start,remove_node}
-                     ...
 
-YugabyteDB Docker Container Control
+## Commands
 
-positional arguments:
-  {create,add_node,status,destroy,stop_node,start_node,stop,start,remove_node}
-                        Commands
-    create              Create Yugabyte Cluster
-    add_node            Add a new Yugabyte Cluster Node
-    status              Check Yugabyte Cluster status
-    destroy             Destroy Yugabyte Cluster
-    stop_node           Stop a Yugabyte Cluster Node
-    start_node          Start a Yugabyte Cluster Node
-    stop                Stop Yugabyte Cluster so that it can be started later
-    start               Start Yugabyte Cluster if one already exists
-    remove_node         Stop a Yugabyte Cluster Node
+### create
 
-optional arguments:
-  -h, --help            Show the online help and exit
-  --tag                 Use with `create` and `add_node` commands to
-                          specify a specific Docker image tag (version). If not included, then latest Docker image is used.
-```
+Creates a local YugabyteDB cluster.
+
+### add_node
+
+Adds a new local YugabyteDB cluster node.
+
+### status
+
+Displays the current status of the local YugabyteDB cluster.
+
+### destroy
+
+Destroys the local YugabyteDB cluster.
+
+### stop_node
+
+Stops the specified local YugabyteDB cluster node.
+
+### start_node
+
+Starts the specified local YugabyteDB cluster node.
+
+### stop
+
+Stops the local YugabyteDB cluster so that it can be started later.
+
+### start
+
+Starts the local YugabyteDB cluster, if it already exists.
+
+### remove_node
+
+Stops the specified local YugabyteDB cluster node.
+
+## Optional arguments
+
+### --help | -h
+
+Displays the online help and then exits.
+
+### --tag
+
+Use with `create` and `add_node` commands to specify a specific Docker image tag (version). If not included, then latest Docker image is used.
 
 ## Create a cluster
 
 Use the `yb-docker-ctl create` command to create a local Docker-based cluster for development and learning.
 
-The number of nodes created when you use the `yb-dockter-ctl create` command is always equal to the replication factor (RF), ensuring that all of the replicas for a given tablet can be placed on different nodes. With the [`add_node`](#add-a-node) and [`remove_node`](#remove-a-node) commands, the size of the cluster can thereafter be expanded or shrunk as needed.
+The number of nodes created when you use the `yb-docker-ctl create` command is always equal to the replication factor (RF), ensuring that all of the replicas for a given tablet can be placed on different nodes. With the [`add_node`](#add-a-node) and [`remove_node`](#remove-a-node) commands, the size of the cluster can thereafter be expanded or shrunk as needed.
 
 ### Specify a docker image tag
 
@@ -80,15 +109,15 @@ $yb-docker-ctl create --tag 1.3.2.1-b2
 
 To get the correct tag value, see the [Docker Hub listing of tags for `yugabytedb/yugabyte`](https://hub.docker.com/r/yugabytedb/yugabyte/tags).
 
-### Create a 1-node local cluster with RF of 1
+### Create a 1-node local cluster with RF=1
 
-To create a 1-node local cluster for development and learning YugabyteDB, run the default `yb-docker-ctl` command. By default, this creates a 1-node cluster with a replication factor (RF) of 1. Note that the `yb-docker-ctl create` command pulls the latest `yugabytedb/yugabyte` image at the outset, in case the image has not yet downloaded or is not the latest version.
+To create a 1-node local YugabyteDB cluster for development and learning, run the default `yb-docker-ctl` command. By default, this creates a 1-node cluster with a replication factor (RF) of 1. Note that the `yb-docker-ctl create` command pulls the latest `yugabytedb/yugabyte` image at the outset, in case the image has not yet downloaded or is not the latest version.
 
 ```sh
 $ ./yb-docker-ctl create
 ```
 
-### Create a 3-node local cluster with RF of 3
+### Create a 3-node local cluster with RF=3
 
 When you create a 3-node local Docker-based cluster using the `yb-docker-ctl create` command, each of the initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of YB-Masters in a cluster has to equal to the replication factor (RF) for the cluster to be considered as operating normally and the number of YB-TServers is equal to be the number of nodes.
 
