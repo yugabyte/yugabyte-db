@@ -21,7 +21,9 @@
 
 #include "yb/client/async_initializer.h"
 
+#include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_context.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
@@ -105,8 +107,13 @@ class CDCServiceImpl : public CDCServiceIf {
 
   void TabletLeaderGetChanges(const GetChangesRequestPB* req,
                               GetChangesResponsePB* resp,
-                              rpc::RpcContext* context,
+                              const std::shared_ptr<rpc::RpcContext>& context,
                               const std::shared_ptr<tablet::TabletPeer>& peer);
+  void TabletLeaderGetChangesFinished(const Status& new_status,
+                              const cdc::GetChangesResponsePB& new_resp,
+                              GetChangesResponsePB* orig_resp,
+                              std::shared_ptr<rpc::RpcContext> orig_context,
+                              rpc::Rpcs::Handle handle);
   void TabletLeaderGetCheckpoint(const GetCheckpointRequestPB* req,
                                  GetCheckpointResponsePB* resp,
                                  rpc::RpcContext* context,
@@ -114,6 +121,8 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Result<client::internal::RemoteTabletServer *> GetLeaderTServer(const TabletId& tablet_id);
   std::shared_ptr<CDCServiceProxy> GetCDCServiceProxy(client::internal::RemoteTabletServer* ts);
+
+  yb::rpc::Rpcs rpcs_;
 
   tserver::TSTabletManager* tablet_manager_;
 

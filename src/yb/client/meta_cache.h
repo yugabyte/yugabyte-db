@@ -140,6 +140,7 @@ class RemoteTabletServer {
   // Return the current proxy to this tablet server. Requires that InitProxy()
   // be called prior to this.
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy() const;
+  ::yb::HostPort ProxyEndpoint() const;
 
   std::string ToString() const;
 
@@ -164,6 +165,7 @@ class RemoteTabletServer {
   google::protobuf::RepeatedPtrField<HostPortPB> private_rpc_hostports_;
   yb::CloudInfoPB cloud_info_pb_;
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy_;
+  ::yb::HostPort proxy_endpoint_;
   const tserver::LocalTabletServer* const local_tserver_ = nullptr;
   scoped_refptr<Histogram> dns_resolve_histogram_;
   std::vector<CapabilityId> capabilities_;

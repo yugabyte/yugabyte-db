@@ -20,6 +20,8 @@
 
 #include "yb/cdc/cdc_producer.h"
 #include "yb/cdc/cdc_service.proxy.h"
+#include "yb/cdc/cdc_rpc.h"
+
 #include "yb/common/entity_ids.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/wire_protocol.h"
@@ -296,10 +298,9 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
   s = tablet_manager_->GetTabletPeer(req->tablet_id(), &tablet_peer);
 
   if (s.IsNotFound() || !IsTabletPeerLeader(tablet_peer)) {
-    // Forward GetChanges() to tablet leader.
-    // TODO: Remove this once cdc consumer has meta cache and is able to direct requests to tablet
-    // leader. Once that is done, we should return NOT_LEADER error here.
-    TabletLeaderGetChanges(req, resp, &context, tablet_peer);
+    // Forward GetChanges() to tablet leader. This happens often in Kubernetes setups.
+    auto context_ptr = std::make_shared<RpcContext>(std::move(context));
+    TabletLeaderGetChanges(req, resp, context_ptr, tablet_peer);
     return;
   }
 
@@ -390,11 +391,11 @@ std::shared_ptr<CDCServiceProxy> CDCServiceImpl::GetCDCServiceProxy(RemoteTablet
 
 void CDCServiceImpl::TabletLeaderGetChanges(const GetChangesRequestPB* req,
                                             GetChangesResponsePB* resp,
-                                            RpcContext* context,
+                                            const std::shared_ptr<RpcContext>& context,
                                             const std::shared_ptr<tablet::TabletPeer>& peer) {
   auto result = GetLeaderTServer(req->tablet_id());
   RPC_CHECK_AND_RETURN_ERROR(result.ok(), result.status(), resp->mutable_error(),
-                             CDCErrorPB::TABLET_NOT_FOUND, *context);
+                             CDCErrorPB::TABLET_NOT_FOUND, *context.get());
 
   auto ts_leader = *result;
   // Check that tablet leader identified by master is not current tablet peer.
@@ -406,16 +407,30 @@ void CDCServiceImpl::TabletLeaderGetChanges(const GetChangesRequestPB* req,
                                          Format("Tablet leader changed: leader=$0, peer=$1",
                                                 ts_leader->permanent_uuid(),
                                                 peer->permanent_uuid())),
-                                  resp->mutable_error(), CDCErrorPB::NOT_LEADER, *context);
+                                  resp->mutable_error(), CDCErrorPB::NOT_LEADER, *context.get());
   }
 
-  auto cdc_proxy = GetCDCServiceProxy(ts_leader);
-  rpc::RpcController rpc;
-  rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_rpc_timeout_ms));
-  cdc_proxy->GetChanges(*req, resp, &rpc);
-  RPC_STATUS_RETURN_ERROR(rpc.status(), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
-                          *context);
-  context->RespondSuccess();
+  auto rpc_handle = rpcs_.Prepare();
+  RPC_CHECK_AND_RETURN_ERROR(rpc_handle != rpcs_.InvalidHandle(),
+      STATUS(Busy,
+          Format("Could not create valid handle for GetChangesCDCRpc: leader=$0, peer=$1",
+                 ts_leader->permanent_uuid(),
+                 peer->permanent_uuid())),
+      resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, *context.get());
+  GetChangesRequestPB new_req;
+  new_req.CopyFrom(*req);
+  *rpc_handle = GetChangesCDCRpc(
+      context->GetClientDeadline(),
+      nullptr, /* RemoteTablet: will get this from 'new_req' */
+      async_client_init_->client(),
+      &new_req,
+      [=] (const Status& status, const GetChangesResponsePB& new_resp) {
+        auto retained = rpcs_.Unregister(rpc_handle);
+        resp->CopyFrom(new_resp);
+        RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
+                                *context.get());
+        context->RespondSuccess();
+      });
 }
 
 void CDCServiceImpl::TabletLeaderGetCheckpoint(const GetCheckpointRequestPB* req,
@@ -442,6 +457,7 @@ void CDCServiceImpl::TabletLeaderGetCheckpoint(const GetCheckpointRequestPB* req
   auto cdc_proxy = GetCDCServiceProxy(ts_leader);
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_rpc_timeout_ms));
+  // TODO(NIC): Change to GetCheckpointAsync like CDCPoller::DoPoll.
   cdc_proxy->GetCheckpoint(*req, resp, &rpc);
   RPC_STATUS_RETURN_ERROR(rpc.status(), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
                           *context);
@@ -470,9 +486,7 @@ void CDCServiceImpl::GetCheckpoint(const GetCheckpointRequestPB* req,
   Status s = tablet_manager_->GetTabletPeer(req->tablet_id(), &tablet_peer);
 
   if (s.IsNotFound() || !IsTabletPeerLeader(tablet_peer)) {
-    // Forward GetCheckpoint() to tablet leader.
-    // TODO: Remove this once cdc consumer has meta cache and is able to direct requests to tablet
-    // leader. Once that is done, we should return NOT_LEADER error here.
+    // Forward GetChanges() to tablet leader. This happens often in Kubernetes setups.
     TabletLeaderGetCheckpoint(req, resp, &context, tablet_peer);
     return;
   }
@@ -492,6 +506,7 @@ void CDCServiceImpl::GetCheckpoint(const GetCheckpointRequestPB* req,
 
 void CDCServiceImpl::Shutdown() {
   async_client_init_->Shutdown();
+  rpcs_.Shutdown();
 }
 
 Result<OpIdPB> CDCServiceImpl::GetLastCheckpoint(
