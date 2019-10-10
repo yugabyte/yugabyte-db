@@ -136,7 +136,7 @@ Default: `yugabyte-home/bin/`
 
 Specifies the data directory for YugabyteDB.
 
-Default: `yugabyte-data/`
+Default: `$HOME/yugabyte-data/`
 
 ### --master_flags
 
