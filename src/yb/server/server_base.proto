@@ -93,6 +93,18 @@ message SetFlagResponsePB {
   optional string old_value = 3;
 }
 
+// Get the value of the gflag with the given flag name.
+message GetFlagRequestPB {
+  optional string flag = 1;
+}
+
+// If the flag name is valid, the value is set to its current value.
+// Else the valid field will be set to false.
+message GetFlagResponsePB {
+  optional bool valid = 1 [default = true];
+  optional string value = 2;
+}
+
 // Attempt to flush coverage information to disk, if running a coverage build.
 message FlushCoverageRequestPB {
 }
@@ -125,6 +137,9 @@ message PingResponsePB {
 service GenericService {
   rpc SetFlag(SetFlagRequestPB)
     returns (SetFlagResponsePB);
+
+  rpc GetFlag(GetFlagRequestPB)
+    returns (GetFlagResponsePB);
 
   rpc FlushCoverage(FlushCoverageRequestPB)
     returns (FlushCoverageResponsePB);
