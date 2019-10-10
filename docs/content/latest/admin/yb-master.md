@@ -113,7 +113,7 @@ Switches to log to standard error (`stderr`).
 
 Specifies the number of shards per yb-tserver per table when a user table is created. Server automatically picks a valid default internally.
 
-Default: `-1`
+Default: Server automatically picks a valid default internally, typically 8.
 
 #### --max_clock_skew_usec
 
