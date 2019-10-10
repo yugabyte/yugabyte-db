@@ -179,7 +179,7 @@ Default: `13000`
 
 Specifies a comma-separated list of PostgreSQL client authentication settings.
 
-Default: `""`
+Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
 
 #### --ysql_pg_conf
 
