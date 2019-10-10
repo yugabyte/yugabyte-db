@@ -104,6 +104,7 @@ message ListTabletsForTabletServerResponsePB {
     optional bool is_leader = 3;
     optional tablet.RaftGroupStatePB state = 4;
     optional uint64 num_sst_files = 5;
+    optional uint64 num_log_segments = 6;
   }
 
   repeated Entry entries = 1;
