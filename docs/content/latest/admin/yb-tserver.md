@@ -279,7 +279,7 @@ Default: `256MB`
 
 The number of shards per YB-TServer per table when a user table is created.
 
-Default: `-1` — Server automatically picks a valid default internally.
+Default: Server automatically picks a valid default internally, typically 8.
 
 ### Write Ahead Log (WAL) options
 
