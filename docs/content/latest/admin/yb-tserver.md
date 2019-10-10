@@ -179,25 +179,21 @@ Default: `13000`
 
 Specifies a comma-separated list of PostgreSQL client authentication settings.
 
-Default: `""`
-
 #### --ysql_pg_conf
 
 Comma-separated list of PostgreSQL setting assignments.
-
-Default: `""`
 
 #### --ysql_timezone
 
 Specifies the time zone for displaying and interpreting timestamps.
 
-Default: `""` — Uses the YSQL time zone.
+Default: Uses the YSQL time zone.
 
 #### --ysql_datestyle
 
 Specifies the display format for data and time values.
 
-Default: `""` — Uses the YSQL display format.
+Default: Uses the YSQL display format.
 
 #### --ysql_max_connections
 
@@ -209,19 +205,23 @@ Default: `0`
 
 Specifies the default transaction isolation level.
 
-Default: `""`
+Valid values: `READ UNCOMMITTED`, `READ COMMITTED`, `REPEATABLE READ`, and `SERIALIZABLE`.
+
+Default: `READ COMMITTED` (implemented in YugabyteDB as `REPEATABLE READ`)
+
+{{< note title="Note" >}}
+
+YugabyteDB supports two transaction isolation levels: `REPEATABLE READ` (aka snapshot) and `SERIALIZABLE`. The PostgreSQL transaction isolation level of `READ COMMITTED` is implemented in YugabyteDB as `REPEATABLE READ`.
+
+{{< /note >}}
 
 #### --ysql_log_statement
 
-Specifies the types of YSQL statements that should be logged.
-
-Default: `""`
+Specifies the types of YSQL statements that should be logged
 
 #### --ysql_log_min_messages
 
 Specifies the lowest YSQL message level to log.
-
-Default: `""`
 
 ### YCQL options
 

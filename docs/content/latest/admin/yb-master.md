@@ -45,37 +45,47 @@ yb-master [ option  ] | [ option ]
 
 #### --version
 
-Shows version and build info, then exits.
+Shows version and build information, then exits.
 
 #### --master_addresses
 
-Specifies a comma-separated list of all the RPC addresses for `yb-master` consensus-configuration. Mandatory.
+Specifies a comma-separated list of all the RPC addresses for `yb-master` consensus-configuration. 
+
+Mandatory.
 
 #### --fs_data_dirs
 
-Specifies a comma-separated list of directories where the `yb-master` will place all it's `yb-data/master` data directory. Mandatory.
+Specifies a comma-separated list of directories where the `yb-master` will place all it's `yb-data/master` data directory. 
+
+Mandatory.
 
 #### --fs_wal_dirs
 
-The directory where the `yb-master` will place its write-ahead logs. May be the same as one of the directories listed in `--fs_data_dirs`, but not a sub-directory of a data directory. 
+The directory where the `yb-master` will place its write-ahead logs. May be the same as one of the directories listed in `--fs_data_dirs`, but not a sub-directory of a data directory.
 
 Default: Same value as `--fs_data_dirs`
 
 #### --rpc_bind_addresses
 
-Speicies a comma-separated list of addresses to bind to for RPC connections. Mandatory.
+Specifies a comma-separated list of addresses to bind to for RPC connections.
+
+Mandatory.
 
 Default: `0.0.0.0:7100`
 
+#### --flagfile
+
+Specifies the configuration file to load flags from.
+
 #### --server_broadcast_addresses
 
-Specifies the public IP or DNS hostname of the server (along with an optional port).
+Specifies the public IP address, or DNS hostname, of the server (along with an optional port).
 
 Default: `0.0.0.0:7100`
 
 #### --webserver_interface
 
-Address to bind for server UI access.
+Address to bind for web server user interface access.
 
 Default: `0.0.0.0`
 
@@ -89,11 +99,7 @@ Default: `7000`
 
 Monitoring web server home.
 
-Default: The `www` directory in the YugabyteDB home directory
-
-#### --flagfile
-
-Specifies the file to load flags from.
+Default: The `www` directory in the YugabyteDB home directory.
 
 ### Logging options
 
