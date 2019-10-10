@@ -960,6 +960,10 @@ uint64_t TabletPeer::OnDiskSize() const {
   return ret;
 }
 
+int TabletPeer::GetNumLogSegments() const {
+  return (log_) ? log_->num_segments() : 0;
+}
+
 std::string TabletPeer::LogPrefix() const {
   return Substitute("T $0 P $1 [state=$2]: ",
       tablet_id_, permanent_uuid_, RaftGroupStatePB_Name(state()));
