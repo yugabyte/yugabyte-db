@@ -1817,6 +1817,10 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
     std::shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
     data_entry->set_is_leader(consensus && consensus->role() == consensus::RaftPeerPB::LEADER);
     data_entry->set_state(status.state());
+
+    auto tablet = peer->shared_tablet();
+    uint64_t num_sst_files = (tablet) ? tablet->GetCurrentVersionNumSSTFiles() : 0;
+    data_entry->set_num_sst_files(num_sst_files);
   }
 
   context.RespondSuccess();
