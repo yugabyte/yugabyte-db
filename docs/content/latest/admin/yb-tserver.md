@@ -177,7 +177,7 @@ Default: `13000`
 
 #### --ysql_hba_conf
 
-Specify a comma-separated list of YugabyteDB setting assignments.
+Specifies a comma-separated list of PostgreSQL client authentication settings.
 
 Default: `""`
 
