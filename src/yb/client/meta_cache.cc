@@ -160,6 +160,7 @@ Status RemoteTabletServer::InitProxy(YBClient* client) {
   CHECK(!hostport.host().empty());
   ScopedDnsTracker dns_tracker(dns_resolve_histogram_.get());
   proxy_.reset(new TabletServerServiceProxy(client->data_->proxy_cache_.get(), hostport));
+  proxy_endpoint_ = hostport;
 
   return Status::OK();
 }
@@ -200,6 +201,11 @@ const google::protobuf::RepeatedPtrField<HostPortPB>&
 shared_ptr<TabletServerServiceProxy> RemoteTabletServer::proxy() const {
   SharedLock<rw_spinlock> lock(mutex_);
   return proxy_;
+}
+
+::yb::HostPort RemoteTabletServer::ProxyEndpoint() const {
+  std::shared_lock<rw_spinlock> lock(mutex_);
+  return proxy_endpoint_;
 }
 
 string RemoteTabletServer::ToString() const {

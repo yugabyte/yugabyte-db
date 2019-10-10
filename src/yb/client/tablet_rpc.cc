@@ -364,6 +364,10 @@ std::shared_ptr<tserver::TabletServerServiceProxy> TabletInvoker::proxy() const 
   return current_ts_->proxy();
 }
 
+::yb::HostPort TabletInvoker::ProxyEndpoint() const {
+  return current_ts_->ProxyEndpoint();
+}
+
 void TabletInvoker::LookupTabletCb(const Result<RemoteTabletPtr>& result) {
   VLOG(1) << "LookupTabletCb(" << yb::ToString(result) << ")";
 

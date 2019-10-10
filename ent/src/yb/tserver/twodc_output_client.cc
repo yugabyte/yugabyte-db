@@ -15,13 +15,13 @@
 #include <shared_mutex>
 
 #include "yb/cdc/cdc_util.h"
+#include "yb/cdc/cdc_rpc.h"
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/tserver/cdc_consumer.h"
-#include "yb/tserver/cdc_rpc.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"

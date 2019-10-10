@@ -13,8 +13,8 @@
 //
 //
 
-#ifndef ENT_SRC_YB_TSERVER_CDC_RPC_H
-#define ENT_SRC_YB_TSERVER_CDC_RPC_H
+#ifndef ENT_SRC_YB_CDC_CDC_RPC_H
+#define ENT_SRC_YB_CDC_CDC_RPC_H
 
 #include <functional>
 
@@ -26,20 +26,20 @@
 
 namespace yb {
 
-namespace cdc {
-
-class CDCRecordPB;
-
-} // namespace cdc
-
 namespace tserver {
 
 class WriteRequestPB;
 class WriteResponsePB;
 
-namespace enterprise {
+} // namespace tserver
 
-typedef std::function<void(const Status&, const WriteResponsePB&)> WriteCDCRecordCallback;
+namespace cdc {
+
+class CDCRecordPB;
+class GetChangesRequestPB;
+class GetChangesResponsePB;
+
+typedef std::function<void(const Status&, const tserver::WriteResponsePB&)> WriteCDCRecordCallback;
 
 // deadline - operation deadline, i.e. timeout.
 // tablet - tablet to write the CDC record to.
@@ -49,11 +49,20 @@ MUST_USE_RESULT rpc::RpcCommandPtr WriteCDCRecord(
     CoarseTimePoint deadline,
     client::internal::RemoteTablet* tablet,
     client::YBClient* client,
-    WriteRequestPB* req,
+    tserver::WriteRequestPB* req,
     WriteCDCRecordCallback callback);
 
-} // namespace enterprise
-} // namespace tserver
+
+typedef std::function<void(const Status&, const GetChangesResponsePB&)> GetChangesCDCRpcCallback;
+
+MUST_USE_RESULT rpc::RpcCommandPtr GetChangesCDCRpc(
+    CoarseTimePoint deadline,
+    client::internal::RemoteTablet* tablet,
+    client::YBClient* client,
+    GetChangesRequestPB* req,
+    GetChangesCDCRpcCallback callback);
+
+} // namespace cdc
 } // namespace yb
 
-#endif // ENT_SRC_YB_TSERVER_CDC_RPC_H
+#endif // ENT_SRC_YB_CDC_CDC_RPC_H
