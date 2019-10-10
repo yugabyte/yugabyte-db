@@ -194,6 +194,17 @@ bool QLProcessor::CheckPermissions(const ParseTree& parse_tree, StatementExecute
                                           PermissionType::CREATE_PERMISSION, keyspace);
         break;
       }
+      case TreeNodeOpcode::kPTCreateType:
+        // Check has AllKeyspaces permission.
+        s = ql_env_.HasResourcePermission("data", OBJECT_SCHEMA, PermissionType::CREATE_PERMISSION);
+        if (!s.ok()) {
+          const string keyspace =
+              static_cast<const PTCreateType*>(tnode)->yb_type_name().namespace_name();
+          // Check has Keyspace permission.
+          s = ql_env_.HasResourcePermission(get_canonical_keyspace(keyspace),
+              OBJECT_SCHEMA, PermissionType::CREATE_PERMISSION, keyspace);
+        }
+        break;
       case TreeNodeOpcode::kPTCreateIndex: {
         const YBTableName indexed_table_name =
             static_cast<const PTCreateIndex*>(tnode)->indexed_table_name();
@@ -303,12 +314,21 @@ bool QLProcessor::CheckPermissions(const ParseTree& parse_tree, StatementExecute
             s = ql_env_.HasTablePermission(drop_stmt->yb_table_name(),
                                            PermissionType::DROP_PERMISSION);
             break;
-          case OBJECT_TYPE: FALLTHROUGH_INTENDED;
+          case OBJECT_TYPE:
+            // Check has AllKeyspaces permission.
+            s = ql_env_.HasResourcePermission(
+                "data", OBJECT_SCHEMA, PermissionType::DROP_PERMISSION);
+            if (!s.ok()) {
+              const string keyspace = drop_stmt->yb_table_name().namespace_name();
+              // Check has Keyspace permission.
+              s = ql_env_.HasResourcePermission(get_canonical_keyspace(keyspace),
+                  OBJECT_SCHEMA, PermissionType::DROP_PERMISSION, keyspace);
+            }
+            break;
           case OBJECT_INDEX: {
             bool cache_used = false;
-            YBTableName table_name(drop_stmt->yb_table_name().namespace_name(),
-                                   drop_stmt->yb_table_name().table_name());
-            std::shared_ptr<client::YBTable> table = ql_env_.GetTableDesc(table_name, &cache_used);
+            std::shared_ptr<client::YBTable> table = ql_env_.GetTableDesc(
+                drop_stmt->yb_table_name(), &cache_used);
 
             // If the table is not found, or if it's not an index, let the operation go through
             // so that we can return a "not found" error.s
