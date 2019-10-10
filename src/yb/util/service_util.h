@@ -28,7 +28,7 @@
 // Utility macro to setup error response and return if status is not OK.
 #define RPC_STATUS_RETURN_ERROR(s, error, code, context) do { \
     auto s_tmp = (s); \
-    if (!s_tmp.ok()) { \
+    if (PREDICT_FALSE(!s_tmp.ok())) { \
       SetupErrorAndRespond(error, s_tmp, code, &(context)); \
       return; \
     } \

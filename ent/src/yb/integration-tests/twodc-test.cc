@@ -87,7 +87,7 @@ using tserver::enterprise::CDCConsumer;
 
 namespace enterprise {
 
-constexpr int kRpcTimeout = 30;
+constexpr int kRpcTimeout = NonTsanVsTsan(30, 60);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 
