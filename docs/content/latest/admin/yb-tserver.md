@@ -203,7 +203,7 @@ Default: `""` — Uses the YSQL display format.
 
 Specifies the maximum number of concurrent YSQL connections.
 
-Default: `0`
+Default: `300`
 
 #### --ysql_default_transaction_isolation
 
