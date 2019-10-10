@@ -179,6 +179,8 @@ Default: `13000`
 
 Specifies a comma-separated list of PostgreSQL client authentication settings.
 
+Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
+
 #### --ysql_pg_conf
 
 Comma-separated list of PostgreSQL setting assignments.
@@ -199,7 +201,7 @@ Default: Uses the YSQL display format.
 
 Specifies the maximum number of concurrent YSQL connections.
 
-Default: `0`
+Default: `300`
 
 #### --ysql_default_transaction_isolation
 
@@ -279,7 +281,7 @@ Default: `256MB`
 
 The number of shards per YB-TServer per table when a user table is created.
 
-Default: `-1` — Server automatically picks a valid default internally.
+Default: Server automatically picks a valid default internally, typically 8.
 
 ### Write Ahead Log (WAL) options
 
