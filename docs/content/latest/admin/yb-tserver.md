@@ -10,7 +10,7 @@ menu:
 aliases:
   - admin/yb-tserver
 isTocNested: false
-showAsideToc: false
+showAsideToc: true
 ---
 
 The [YB-TServer](../../architecture/concepts/universe/#yb-tserver) binary (`yb-tserver`) is located in the `bin` directory of YugabyteDB home.
