@@ -34,13 +34,9 @@ yb-ctl [ command ] [ argument, argument2, ... ]
 
 ### create
 
-Creates a local cluster.
+Creates a local YugabyteDB cluster. With no optional arguments, creates a 1-node cluster.
 
-For more details and examples, see:
-
-- [Create a local cluster](#create-a-local-cluster)
-- [Create a cluster across multiple zones, regions, and clouds](#Create-a-cluster-across-multiple-zones-regions-and-clouds)
-- [Create a cluster with custom flags](#Create-a-cluster-with-custom-flags).
+For more details and examples, see [Create a local cluster](#create-a-local-cluster), [Create a cluster across multiple zones, regions, and clouds](#Create-a-cluster-across-multiple-zones-regions-and-clouds), and [Create a cluster with custom flags](#Create-a-cluster-with-custom-flags).
 
 ### start
 
@@ -58,7 +54,7 @@ For details and examples, see [Destroy a local cluster](#destroy-a-local-cluster
 
 ### status
 
-Display the current status of the cluster.
+Displays the current status of the cluster.
 
 For details and examples, see [Check cluster status](#check-cluster-status).
 
@@ -66,10 +62,7 @@ For details and examples, see [Check cluster status](#check-cluster-status).
 
 Restarts the current cluster all at once.
 
-For details and examples, see:
-
-- [Restart a cluster](#restart-a-cluster)
-- [Restart with custom tags](#restart-with-custom-tags)
+For details and examples, see [Restart a cluster](#restart-a-cluster) and [Restart with custom tags](#restart-with-custom-tags).
 
 ### wipe_restart
 
@@ -81,18 +74,13 @@ For details and examples, see [Wipe and restart with placement info flags](#wipe
 
 Adds a new node to the current cluster.
 
-For details and examples, see:
-
-- [Add nodes](#add-nodes)
-- [Create a cluster across multiple zones, regions, and clouds](#create-a-cluster-across-multiple-zones-regions-and-clouds)
+For details and examples, see [Add nodes](#add-nodes) and [Create a cluster across multiple zones, regions, and clouds](#create-a-cluster-across-multiple-zones-regions-and-clouds).
 
 ### remove_node
 
 Stops a particular node in the running cluster.
 
-For details and examples, see:
-
-- [Stop and remove nodes](#stop-and-remove-nodes)
+For details and examples, see [Stop and remove nodes](#stop-and-remove-nodes).
 
 ### start_node
 
@@ -102,23 +90,19 @@ Starts a specified node in the running cluster.
 
 Stops the specified node in the running cluster.
 
-For details and examples, see:
-
-- [Stop and remove nodes](#stop-and-remove-nodes)
+For details and examples, see [Stop and remove nodes](#stop-and-remove-nodes).
 
 ### restart_node
 
 Restarts the specified node in a running cluster.
 
-For details and examples, see:
-
-- [Restart node with placement information](#restart-node-with-placement-information)
+For details and examples, see [Restart node with placement information](#restart-node-with-placement-information).
 
 ### setup_redis
 
-Set up YugabyteDB to support the Redis-compatible YEDIS API.
+Enables YugabyteDB support for the Redis-compatible YEDIS API.
 
-For details and examples, see [Initialize the YEDIS API](#initialize-the-yedis-api)
+For details and examples, see [Initialize the YEDIS API](#initialize-the-yedis-api).
 
 ## Optional arguments
 
@@ -156,15 +140,12 @@ Specifies the cloud, region, and zone as `cloud.region.zone`, separated by comma
 
 Default: `cloud1.datacenter1.rack1`
 
-For details and examples, see:
-
-- [Create a cluster across multiple zones, regions, and clouds](#create-a-cluster-across-multiple-zones-regions-and-clouds)
-- [Restart node with placement information](#restart-node-with-placement-information)
-- [Wipe and restart with placement info flags](#wipe-and-restart-with-placement-info-flags)
+For details and examples, see [Create a cluster across multiple zones, regions, and clouds](#create-a-cluster-across-multiple-zones-regions-and-clouds), [Restart node with placement information](#restart-node-with-placement-information),
+and [Wipe and restart with placement info flags](#wipe-and-restart-with-placement-info-flags).
 
 ### --replication_factor | -rf
 
-Specifies the number of replicas for each tablet. Should be an odd number (for example, `1`, `3`, or `5`) so that majority consensus can be established.
+Specifies the number of replicas for each tablet. Should be an odd number of least `3` or  (for example, `3` or `5`) so that a majority consensus can be established.
 
 Replication factor for the cluster as well as default number of YB-Master services.
 
@@ -234,7 +215,7 @@ $ ./bin/yb-ctl add_node
 $ ./bin/yb-ctl --rf 5 create
 ```
 
-## Default directories for clusters created by `yb-ctl`
+## Default directories for local clusters
 
 YugabyteDB clusters created with the `yb-ctl` utility are created locally on the same host and simulate a distributed multi-host cluster.
 

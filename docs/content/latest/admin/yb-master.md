@@ -49,13 +49,13 @@ Shows version and build information, then exits.
 
 #### --master_addresses
 
-Specifies a comma-separated list of all the RPC addresses for `yb-master` consensus-configuration. 
+Specifies a comma-separated list of all the RPC addresses for `yb-master` consensus-configuration.
 
 Mandatory.
 
 #### --fs_data_dirs
 
-Specifies a comma-separated list of directories where the `yb-master` will place all it's `yb-data/master` data directory. 
+Specifies a comma-separated list of directories where the `yb-master` will place all it's `yb-data/master` data directory.
 
 Mandatory.
 

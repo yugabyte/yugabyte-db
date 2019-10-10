@@ -109,7 +109,7 @@ $yb-docker-ctl create --tag 1.3.2.1-b2
 
 To get the correct tag value, see the [Docker Hub listing of tags for `yugabytedb/yugabyte`](https://hub.docker.com/r/yugabytedb/yugabyte/tags).
 
-### Create a 1-node local cluster with RF=1
+### Create a 1-node local cluster with replication factor of 1
 
 To create a 1-node local YugabyteDB cluster for development and learning, run the default `yb-docker-ctl` command. By default, this creates a 1-node cluster with a replication factor (RF) of 1. Note that the `yb-docker-ctl create` command pulls the latest `yugabytedb/yugabyte` image at the outset, in case the image has not yet downloaded or is not the latest version.
 
@@ -117,7 +117,7 @@ To create a 1-node local YugabyteDB cluster for development and learning, run th
 $ ./yb-docker-ctl create
 ```
 
-### Create a 3-node local cluster with RF=3
+### Create a 3-node local cluster with replication factor of 3
 
 When you create a 3-node local Docker-based cluster using the `yb-docker-ctl create` command, each of the initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of YB-Masters in a cluster has to equal to the replication factor (RF) for the cluster to be considered as operating normally and the number of YB-TServers is equal to be the number of nodes.
 
