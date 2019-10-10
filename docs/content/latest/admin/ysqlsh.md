@@ -17,11 +17,11 @@ showAsideToc: true
 
 ## Overview
 
-`ysqlsh` is a command line interface (CLI), or shell, for interacting with YugabyteDB through [YSQL](../../api/ysql/). It is derived from [`psql`](https://www.postgresql.org/docs/11/app-psql.html), the PostgreSQL shell.
+The YSQL shell (`ysqlsh`) is a YugabyteDB command line interface (CLI), or shell, for using [YSQL](../../api/ysql/). The YSQL shell is derived from [`psql`](https://www.postgresql.org/docs/11/app-psql.html), the PostgreSQL shell.
 
 ## Download
 
-`ysqlsh` is installed as part of YugabyteDB and is located in the bin directory of YugabyteDB home.
+The YSQL shell (`ysqlsh`) is installed with YugabyteDB and is located in the `bin` directory of YugabyteDB home.
 
 ## Example
 
@@ -36,12 +36,10 @@ Type "help" for help.
 yugabyte=#
 ```
 
-## Defaults
+## Default options (flags)
 
-`ysqlsh` defaults the following flags so that the user does not have to specify them.
+When you open `ysqlsh`, the following flags are set so that the user does not have to specify them.
 
-```
--h 127.0.0.1 
--p 5433 
--U postgres
-```
+- Host: `-h 127.0.0.1`
+- Port: `-p 5433`
+- User: `-U yugabyte`

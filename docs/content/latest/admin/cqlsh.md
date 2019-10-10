@@ -17,11 +17,11 @@ showAsideToc: true
 
 ## Overview
 
-The `cqlsh` shell provides a command line interface (CLI) for interacting with YugabyteDB through [YCQL](../../api/ycql/).
+The YugabyteDB CQL shell (`cqlsh`) provides a command line interface (CLI) for interacting with YugabyteDB using [YCQL](../../api/ycql/).
 
 ## Download
 
-`cqlsh` is installed as part of YugabyteDB and is located in the `bin` directory of YugabyteDB home. It is also available for download and install from YugabyteDB's [GitHub repository](https://github.com/yugabyte/cqlsh/releases).
+The `cqlsh` shell is installed as part of YugabyteDB and is located in the `bin` directory of YugabyteDB home. It is also available for download and install from YugabyteDB's [GitHub repository](https://github.com/yugabyte/cqlsh/releases).
 
 ## Example
 
@@ -33,9 +33,11 @@ $ ./bin/cqlsh --execute "select cluster_name, data_center, rack from system.loca
  local cluster | datacenter1 | rack1
 ```
 
-## Command line options
+## Online help
 
-Use the **-\-help** option to see all the command line options supported.
+Run `cqlsh --help` to display the online help.
+
+## Syntax
 
 ```sh
 cqlsh [options] [host [port]]
