@@ -336,6 +336,9 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // Caller should hold the lock_.
   uint64_t OnDiskSize() const;
 
+  // Returns the number of segments in log_.
+  int GetNumLogSegments() const;
+
   std::string LogPrefix() const;
 
  protected:

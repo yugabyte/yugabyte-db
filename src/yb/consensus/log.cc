@@ -999,6 +999,11 @@ Status Log::Close() {
   }
 }
 
+const int Log::num_segments() const {
+  boost::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
+  return (reader_) ? reader_->num_segments() : 0;
+}
+
 scoped_refptr<ReadableLogSegment> Log::GetSegmentBySequenceNumber(int64_t seq) const {
   boost::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
   if (!reader_) {
