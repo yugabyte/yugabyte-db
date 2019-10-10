@@ -79,7 +79,7 @@ Specifies the configuration file to load flags from.
 
 #### --server_broadcast_addresses
 
-Specifies the public IP address, or DNS hostname, of the server (along with an optional port).
+Specifies the public IP or DNS hostname of the server (along with an optional port).
 
 Default: `0.0.0.0:7100`
 

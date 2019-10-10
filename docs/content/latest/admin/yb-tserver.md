@@ -219,7 +219,11 @@ YugabyteDB supports two transaction isolation levels: `REPEATABLE READ` (aka sna
 
 #### --ysql_log_statement
 
-Specifies the types of YSQL statements that should be logged
+Specifies the types of YSQL statements that should be logged.
+
+#### --ysql_log_statement
+
+Specifies the types of YSQL statements that should be logged.
 
 #### --ysql_log_min_messages
 

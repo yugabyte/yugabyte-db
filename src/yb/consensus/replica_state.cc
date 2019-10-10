@@ -74,12 +74,14 @@ ReplicaState::ReplicaState(ConsensusOptions options, string peer_uuid,
                            std::unique_ptr<ConsensusMetadata> cmeta,
                            ReplicaOperationFactory* operation_factory,
                            SafeOpIdWaiter* safe_op_id_waiter,
-                           RetryableRequests* retryable_requests)
+                           RetryableRequests* retryable_requests,
+                           std::function<void(const OpIds&)> applied_ops_tracker)
     : options_(std::move(options)),
       peer_uuid_(std::move(peer_uuid)),
       cmeta_(std::move(cmeta)),
       operation_factory_(operation_factory),
-      safe_op_id_waiter_(safe_op_id_waiter) {
+      safe_op_id_waiter_(safe_op_id_waiter),
+      applied_ops_tracker_(std::move(applied_ops_tracker)) {
   CHECK(cmeta_) << "ConsensusMeta passed as NULL";
   if (retryable_requests) {
     retryable_requests_ = std::move(*retryable_requests);
@@ -521,7 +523,8 @@ Status ReplicaState::CancelPendingOperations() {
         LOG_WITH_PREFIX(INFO) << "Aborting operation because of shutdown: "
                               << round->replicate_msg()->ShortDebugString();
       }
-      NotifyReplicationFinishedUnlocked(round, abort_status, yb::OpId::kUnknownTerm);
+      NotifyReplicationFinishedUnlocked(round, abort_status, yb::OpId::kUnknownTerm,
+                                        nullptr /* applied_op_ids */);
     }
   }
   return Status::OK();
@@ -590,7 +593,8 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
     const scoped_refptr<ConsensusRound>& round = *it;
     LOG_WITH_PREFIX(INFO) << "Aborting uncommitted operation due to leader change: "
                           << round->replicate_msg()->id();
-    NotifyReplicationFinishedUnlocked(round, abort_status, yb::OpId::kUnknownTerm);
+    NotifyReplicationFinishedUnlocked(round, abort_status, yb::OpId::kUnknownTerm,
+                                      nullptr /* applied_op_ids */);
   }
   // Clear entries from pending operations.
   pending_operations_.erase(preceding_op_iter, pending_operations_.end());
@@ -811,6 +815,9 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(
   }
   auto leader_term = GetLeaderStateUnlocked().term;
 
+  OpIds applied_op_ids;
+  applied_op_ids.reserve(committed_op_id.index - prev_id.index);
+
   while (!pending_operations_.empty()) {
     auto round = pending_operations_.front();
     auto current_id = yb::OpId::FromPB(round->id());
@@ -847,10 +854,12 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(
     }
 
     prev_id = current_id;
-    NotifyReplicationFinishedUnlocked(round, Status::OK(), leader_term);
+    NotifyReplicationFinishedUnlocked(round, Status::OK(), leader_term, &applied_op_ids);
   }
 
   SetLastCommittedIndexUnlocked(prev_id);
+
+  applied_ops_tracker_(applied_op_ids);
 
   return Status::OK();
 }
@@ -1228,8 +1237,9 @@ yb::OpId ReplicaState::MinRetryableRequestOpId() {
 }
 
 void ReplicaState::NotifyReplicationFinishedUnlocked(
-    const ConsensusRoundPtr& round, const Status& status, int64_t leader_term) {
-  round->NotifyReplicationFinished(status, leader_term);
+    const ConsensusRoundPtr& round, const Status& status, int64_t leader_term,
+    OpIds* applied_op_ids) {
+  round->NotifyReplicationFinished(status, leader_term, applied_op_ids);
 
   retryable_requests_.ReplicationFinished(*round->replicate_msg(), status, leader_term);
 }

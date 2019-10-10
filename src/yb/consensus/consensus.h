@@ -88,7 +88,9 @@ class ReplicaOperationFactory;
 
 typedef int64_t ConsensusTerm;
 
-typedef std::function<void(const Status& status, int64_t leader_term)> ConsensusReplicatedCallback;
+typedef std::function<void(
+    const Status& status, int64_t leader_term, OpIds* applied_op_ids)>
+        ConsensusReplicatedCallback;
 
 // After completing bootstrap, some of the results need to be plumbed through
 // into the consensus implementation.
@@ -520,7 +522,8 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
   }
 
   // If a continuation was set, notifies it that the round has been replicated.
-  void NotifyReplicationFinished(const Status& status, int64_t leader_term);
+  void NotifyReplicationFinished(
+      const Status& status, int64_t leader_term, OpIds* applied_op_ids);
 
   // Binds this round such that it may not be eventually executed in any term
   // other than 'term'.

@@ -100,7 +100,14 @@ void CDCPoller::DoPoll() {
 
   cdc::CDCCheckpointPB checkpoint;
   *checkpoint.mutable_op_id() = op_id_;
-  *req.mutable_from_checkpoint() = checkpoint;
+  if (checkpoint.op_id().index() > 0 || checkpoint.op_id().term() > 0) {
+    // Only send non-zero checkpoints in request.
+    // If we don't know the latest checkpoint, then CDC producer can use the checkpoint from
+    // cdc_state table.
+    // This is useful in scenarios where a new tablet peer becomes replication leader for a
+    // producer tablet and is not aware of the last checkpoint.
+    *req.mutable_from_checkpoint() = checkpoint;
+  }
 
   auto* proxy = get_proxy_();
   resp_ = std::make_unique<cdc::GetChangesResponsePB>();

@@ -29,6 +29,8 @@
 #include "yb/rpc/secure_stream.h"
 #include "yb/yql/pggate/pggate_flags.h"
 
+DECLARE_string(rpc_bind_addresses);
+
 namespace yb {
 namespace pggate {
 namespace {
@@ -74,8 +76,11 @@ PggateOptions::PggateOptions() {
   rpc_opts.connection_keepalive_time_ms = FLAGS_pgsql_rpc_keepalive_time_ms;
 
   if (FLAGS_pggate_proxy_bind_address.empty()) {
-    FLAGS_pggate_proxy_bind_address = strings::Substitute("0.0.0.0:$0",
-                                                          PggateOptions::kDefaultPort);
+    HostPort host_port;
+    CHECK_OK(host_port.ParseString(FLAGS_rpc_bind_addresses, 0));
+    host_port.set_port(PggateOptions::kDefaultPort);
+    FLAGS_pggate_proxy_bind_address = host_port.ToString();
+    LOG(INFO) << "Reset YSQL bind address to " << FLAGS_pggate_proxy_bind_address;
   }
   rpc_opts.rpc_bind_addresses = FLAGS_pggate_proxy_bind_address;
   master_addresses_flag = FLAGS_pggate_master_addresses;

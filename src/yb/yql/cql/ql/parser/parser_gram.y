@@ -917,9 +917,14 @@ stmt:
   | IndexStmt {
     $$ = $1;
   }
-  | SelectStmt {
+  | SelectStmt { // SelectStmt rule is used to define a tuple (collection of data),
+                 // so it might be either SELECT statement or VALUES clause.
     if ($1 != nullptr) {
-      parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
+      if ($1->IsDml()) {
+        parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
+      } else { // PTInsertValuesClause, etc.
+        PARSER_UNSUPPORTED(@1);
+      }
     }
     $$ = $1;
   }

@@ -149,6 +149,7 @@ TabletPeer::TabletPeer(
     tablet_id_(meta->raft_group_id()),
     local_peer_pb_(local_peer_pb),
     state_(RaftGroupStatePB::NOT_STARTED),
+    operation_tracker_(Format("T $0 P $1: ", tablet_id_, permanent_uuid)),
     status_listener_(new TabletStatusListener(meta)),
     clock_(clock),
     log_anchor_registry_(new LogAnchorRegistry()),
@@ -265,6 +266,8 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
       return HybridTime(lease_micros, /* logical */ 0);
     };
     tablet_->SetHybridTimeLeaseProvider(ht_lease_provider);
+    operation_tracker_.SetPostTracker(
+        std::bind(&RaftConsensus::TrackOperationMemory, consensus_.get(), _1));
 
     auto* mvcc_manager = tablet_->mvcc_manager();
     consensus_->SetPropagatedSafeTimeProvider([mvcc_manager, ht_lease_provider] {
@@ -674,7 +677,7 @@ void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
     }
 
     consensus::OperationStatusPB status_pb;
-    status_pb.mutable_op_id()->CopyFrom(driver->GetOpId());
+    driver->GetOpId().ToPB(status_pb.mutable_op_id());
     status_pb.set_operation_type(MapOperationTypeToPB(op_type));
     status_pb.set_description(driver->ToString());
     int64_t running_for_micros =
@@ -713,11 +716,11 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex() const {
 
   // Next, interrogate the OperationTracker.
   for (const auto& driver : operation_tracker_.GetPendingOperations()) {
-    OpId tx_op_id = driver->GetOpId();
+    auto tx_op_id = driver->GetOpId();
     // A operation which doesn't have an opid hasn't been submitted for replication yet and
     // thus has no need to anchor the log.
-    if (tx_op_id.IsInitialized()) {
-      min_index = std::min(min_index, tx_op_id.index());
+    if (tx_op_id != yb::OpId::Invalid()) {
+      min_index = std::min(min_index, tx_op_id.index);
     }
   }
 
@@ -860,7 +863,7 @@ Status TabletPeer::StartReplicaOperation(
 
   // Unretained is required to avoid a refcount cycle.
   state->consensus_round()->SetConsensusReplicatedCallback(
-      std::bind(&OperationDriver::ReplicationFinished, driver.get(), _1, _2));
+      std::bind(&OperationDriver::ReplicationFinished, driver.get(), _1, _2, _3));
 
   if (propagated_safe_time) {
     driver->SetPropagatedSafeTime(propagated_safe_time, tablet_->mvcc_manager());

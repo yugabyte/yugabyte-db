@@ -48,10 +48,6 @@ DEFINE_int32(cdc_ybclient_reactor_threads, 50,
              "requests for CDC.");
 TAG_FLAG(cdc_ybclient_reactor_threads, advanced);
 
-// TODO(Rahul): Remove this flag once the master handshake has been landed.
-DEFINE_test_flag(bool, mock_get_changes_response_for_consumer_testing, false,
-                 "Mock a successful response to consumer before stream id integration is set up.");
-
 DEFINE_int32(cdc_state_checkpoint_update_interval_ms, 15 * 1000,
              "Rate at which CDC state's checkpoint is updated.");
 
@@ -227,7 +223,11 @@ void CDCServiceImpl::ListTablets(const ListTabletsRequestPB* req,
     for (const auto& replica : tablet.replicas()) {
       auto tserver =  res->add_tservers();
       tserver->mutable_broadcast_addresses()->CopyFrom(replica.ts_info().broadcast_addresses());
-      tserver->mutable_private_rpc_addresses()->CopyFrom(replica.ts_info().private_rpc_addresses());
+      if (tserver->broadcast_addresses_size() == 0) {
+        LOG(WARNING) << "No public broadcast addresses found for "
+                     << replica.ts_info().permanent_uuid() << ".  Using private addresses instead.";
+        tserver->mutable_broadcast_addresses()->CopyFrom(replica.ts_info().private_rpc_addresses());
+      }
     }
   }
 
@@ -273,12 +273,6 @@ Result<std::shared_ptr<std::unordered_set<std::string>>> CDCServiceImpl::GetTabl
 void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
                                 GetChangesResponsePB* resp,
                                 RpcContext context) {
-  if (FLAGS_mock_get_changes_response_for_consumer_testing) {
-    *resp->mutable_checkpoint()->mutable_op_id() = consensus::MinimumOpId();
-    context.RespondSuccess();
-    return;
-  }
-
   if (!CheckOnline(req, resp, &context)) {
     return;
   }

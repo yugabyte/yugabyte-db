@@ -259,7 +259,8 @@ class RaftConsensusQuorumTest : public YBTest {
 
     // Use a latch in place of a Transaction callback.
     gscoped_ptr<Synchronizer> sync(new Synchronizer());
-    *round = peer->NewRound(std::move(msg), [sync = sync.get()](const Status& status, int64_t) {
+    *round = peer->NewRound(std::move(msg),
+        [sync = sync.get()](const Status& status, int64_t, OpIds*) {
       sync->StatusCB(status);
     });
     InsertOrDie(&syncs_, round->get(), sync.release());

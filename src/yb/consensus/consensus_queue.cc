@@ -1264,5 +1264,9 @@ size_t PeerMessageQueue::EvictLogCache(size_t bytes_to_evict) {
   return log_cache_.EvictThroughOp(std::numeric_limits<int64_t>::max(), bytes_to_evict);
 }
 
+void PeerMessageQueue::TrackOperationsMemory(const OpIds& op_ids) {
+  log_cache_.TrackOperationsMemory(op_ids);
+}
+
 }  // namespace consensus
 }  // namespace yb

@@ -2161,6 +2161,31 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     checkConnectivity(true, anotherUsername, newPassword, false);
   }
 
+
+  // Test for https://github.com/yugabyte/yugabyte-db/issues/2505.
+  @Test
+  public void testAlterOwnSuperuserStatusFails() throws Exception {
+    thrown.expect(UnauthorizedException.class);
+    thrown.expectMessage("Unauthorized. You aren't allowed to alter your own superuser status or " +
+            "that of a role granted to you");
+    s.execute("ALTER ROLE cassandra WITH SUPERUSER = false");
+  }
+
+  // Test for https://github.com/yugabyte/yugabyte-db/issues/2505.
+  @Test
+  public void testAlterSuperuserStatusOfGrantedRoleFails() throws Exception {
+    testCreateRoleHelperWithSession("parent", "", false, true, false, s);
+    testCreateRoleHelperWithSession("grandparent", "", false, true, false, s);
+
+    s.execute("GRANT grandparent TO parent");
+    s.execute("GRANT parent TO cassandra");
+
+    thrown.expect(UnauthorizedException.class);
+    thrown.expectMessage("Unauthorized. You aren't allowed to alter your own superuser status or " +
+            "that of a role granted to you");
+    s.execute("ALTER ROLE grandparent WITH SUPERUSER = false");
+  }
+
   @Test
   public void testNotEmptyResourcesInSytemAuthRolePermissionsTable() throws Exception {
     testCreateRoleHelperWithSession(anotherUsername, "", false, false, false, s);
@@ -2179,6 +2204,55 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
         "WHERE role = 'cassandra' and resource = '%s';", canonicalResource);
     List<Row> rows = s.execute(stmt).all();
     assert(rows.isEmpty());
+  }
+
+  @Test
+  public void testInheritedPermissions() throws Exception {
+    String level0 = "level0";
+    String level1 = "level1";
+    String level2 = "level2";
+    String level3_0 = "level3_0";
+    String level3_1 = "level3_1";
+
+    testCreateRoleHelperWithSession(level0, password, /* canLogin */ true,
+            /* isSuperuser */false, /*verifyConnectivity */ false, /* session */ s);
+    testCreateRoleHelperWithSession(level1, "", false, false, false, s);
+    testCreateRoleHelperWithSession(level2, "", false, false, false, s);
+    testCreateRoleHelperWithSession(level3_0, "", false, false, false, s);
+    testCreateRoleHelperWithSession(level3_1, "", false, false, false, s);
+
+    s.execute(String.format("GRANT %s TO %s", level3_0, level2));
+    s.execute(String.format("GRANT %s TO %s", level3_1, level2));
+    s.execute(String.format("GRANT %s TO %s", level2, level1));
+    s.execute(String.format("GRANT %s TO %s", level1, level0));
+
+    s.execute(String.format("GRANT CREATE ON ALL KEYSPACES TO %s", level3_0));
+
+    // Sleep to give the cache some time to be refreshed.
+    Thread.sleep(TIME_SLEEP_MS);
+
+    // Verify that level0 can create a keyspace since it has inherited that permissions from
+    // level3_0.
+    Session level0Session = getSession(level0, password);
+    level0Session.execute("CREATE KEYSPACE somekeyspace");
+
+
+    // Grant CREATE ON ALL ROLES to level3_1 and verify that level0 role can create a role.
+    s.execute(String.format("GRANT CREATE ON ALL ROLES TO %s", level3_1));
+
+    // Sleep to give the cache some time to be refreshed.
+    Thread.sleep(TIME_SLEEP_MS);
+
+    level0Session.execute("CREATE ROLE somerole");
+
+    s.execute(String.format("GRANT DROP ON ALL KEYSPACES TO %s", level3_1));
+
+    // Sleep to give the cache some time to be refreshed.
+    Thread.sleep(TIME_SLEEP_MS);
+
+    // Verify again that level0 can create a keyspace since it is now inheriting two different
+    // permissions on ALL KEYSPACES from two different roles.
+    level0Session.execute("CREATE KEYSPACE somekeyspace2");
   }
 
   public void testGrantAllGrantsCorrectPermissions() throws Exception {

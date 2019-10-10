@@ -314,12 +314,14 @@ RaftConsensus::RaftConsensus(
         MonoDelta::FromSeconds(FLAGS_follower_reject_update_consensus_requests_seconds);
   }
 
-  state_.reset(new ReplicaState(options,
-                                peer_uuid,
-                                std::move(cmeta),
-                                DCHECK_NOTNULL(operation_factory),
-                                this,
-                                retryable_requests));
+  state_ = std::make_unique<ReplicaState>(
+      options,
+      peer_uuid,
+      std::move(cmeta),
+      DCHECK_NOTNULL(operation_factory),
+      this,
+      retryable_requests,
+      std::bind(&PeerMessageQueue::TrackOperationsMemory, queue_.get(), _1));
 
   peer_manager_->SetConsensus(this);
 }
@@ -2961,6 +2963,10 @@ size_t RaftConsensus::EvictLogCache(size_t bytes_to_evict) {
 
 RetryableRequestsCounts RaftConsensus::TEST_CountRetryableRequests() {
   return state_->TEST_CountRetryableRequests();
+}
+
+void RaftConsensus::TrackOperationMemory(const yb::OpId& op_id) {
+  queue_->TrackOperationsMemory({op_id});
 }
 
 }  // namespace consensus
