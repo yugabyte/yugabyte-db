@@ -130,7 +130,7 @@ Shows the help message and then exits.
 
 Specifies the directory in which to find the YugabyteDB `yb-master` and `yb-tserver` binary files.
 
-Default: `yugabyte-home/bin/`
+Default: `<yugabyte-installation-dir>/bin/`
 
 ### --data_dir
 
