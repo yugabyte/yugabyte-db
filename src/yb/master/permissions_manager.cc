@@ -664,18 +664,20 @@ void PermissionsManager::BuildResourcePermissionsUnlocked() {
     auto granted_roles = e.second;
     granted_roles.insert(role_name);
     auto* role_permissions = response->add_role_permissions();
+    role_permissions->set_role(role_name);
+
+    // No permissions on ALL ROLES and ALL KEYSPACES by default.
+    role_permissions->set_all_keyspaces_permissions(0);
+    role_permissions->set_all_roles_permissions(0);
+
     for (const auto& granted_role : granted_roles) {
       const auto& role_info = roles_map_[granted_role];
       auto l = role_info->LockForRead();
       const auto& pb = l->data().pb;
-      role_permissions->set_role(role_name);
 
-      // No permissions on ALL ROLES and ALL KEYSPACES by default.
-      role_permissions->set_all_keyspaces_permissions(0);
-      role_permissions->set_all_roles_permissions(0);
+      Permissions all_roles_permissions_bitset(role_permissions->all_roles_permissions());
+      Permissions all_keyspaces_permissions_bitset(role_permissions->all_keyspaces_permissions());
 
-      Permissions all_roles_permissions_bitset;
-      Permissions all_keyspaces_permissions_bitset;
       for (const auto& resource : pb.resources()) {
         Permissions resource_permissions_bitset;
 
@@ -700,7 +702,14 @@ void PermissionsManager::BuildResourcePermissionsUnlocked() {
       }
 
       role_permissions->set_all_keyspaces_permissions(all_keyspaces_permissions_bitset.to_ullong());
+      VLOG(2) << "Setting all_keyspaces_permissions to "
+              << role_permissions->all_keyspaces_permissions()
+              << " for role " << role_name;
+
       role_permissions->set_all_roles_permissions(all_roles_permissions_bitset.to_ullong());
+      VLOG(2) << "Setting all_roles_permissions to "
+              << role_permissions->all_roles_permissions()
+              << " for role " << role_name;
 
       // TODO: since this gets checked first when enforcing permissions, there is no point in
       // populating the rest of the permissions. Furthermore, we should remove any specific
