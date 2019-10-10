@@ -104,17 +104,31 @@ DECLARE_int64(remote_boostrap_rate_limit_bytes_per_sec);
 
 namespace yb {
 namespace tserver {
+namespace {
 
-static int TabletServerMain(int argc, char** argv) {
+void SetProxyAddress(std::string* flag, const std::string& name, uint16_t port) {
+  if (flag->empty()) {
+    HostPort host_port;
+    CHECK_OK(host_port.ParseString(FLAGS_rpc_bind_addresses, 0));
+    host_port.set_port(port);
+    *flag = host_port.ToString();
+    LOG(INFO) << "Reset " << name << " bind address to " << *flag;
+  }
+}
+
+// Helper function to set the proxy rpc addresses based on rpc_bind_addresses.
+void SetProxyAddresses() {
+  LOG(INFO) << "Using parsed rpc = " << FLAGS_rpc_bind_addresses;
+  SetProxyAddress(&FLAGS_redis_proxy_bind_address, "YEDIS", RedisServer::kDefaultPort);
+  SetProxyAddress(&FLAGS_cql_proxy_bind_address, "YCQL", CQLServer::kDefaultPort);
+}
+
+int TabletServerMain(int argc, char** argv) {
   // Reset some default values before parsing gflags.
   FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0",
                                                  TabletServer::kDefaultPort);
   FLAGS_webserver_port = TabletServer::kDefaultWebPort;
-
-  FLAGS_redis_proxy_bind_address = strings::Substitute("0.0.0.0:$0", RedisServer::kDefaultPort);
   FLAGS_redis_proxy_webserver_port = RedisServer::kDefaultWebPort;
-
-  FLAGS_cql_proxy_bind_address = strings::Substitute("0.0.0.0:$0", CQLServer::kDefaultPort);
   FLAGS_cql_proxy_webserver_port = CQLServer::kDefaultWebPort;
   // Do not sync GLOG to disk for INFO, WARNING.
   // ERRORs, and FATALs will still cause a sync to disk.
@@ -150,6 +164,8 @@ static int TabletServerMain(int argc, char** argv) {
 #endif
 
   CHECK_OK(GetPrivateIpMode());
+
+  SetProxyAddresses();
 
   auto tablet_server_options = TabletServerOptions::CreateTabletServerOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(tablet_server_options);
@@ -247,6 +263,7 @@ static int TabletServerMain(int argc, char** argv) {
   return 0;
 }
 
+}  // namespace
 }  // namespace tserver
 }  // namespace yb
 

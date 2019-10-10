@@ -116,6 +116,20 @@ void GenericServiceImpl::SetFlag(const SetFlagRequestPB* req,
   rpc.RespondSuccess();
 }
 
+void GenericServiceImpl::GetFlag(const GetFlagRequestPB* req,
+                                 GetFlagResponsePB* resp,
+                                 rpc::RpcContext rpc) {
+  // Validate that the flag exists and get the current value.
+  string val;
+  if (!google::GetCommandLineOption(req->flag().c_str(), &val)) {
+    resp->set_valid(false);
+    rpc.RespondSuccess();
+    return;
+  }
+  resp->set_value(val);
+  rpc.RespondSuccess();
+}
+
 void GenericServiceImpl::FlushCoverage(const FlushCoverageRequestPB* req,
                                        FlushCoverageResponsePB* resp,
                                        rpc::RpcContext rpc) {
