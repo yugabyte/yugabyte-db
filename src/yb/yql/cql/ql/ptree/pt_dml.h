@@ -488,7 +488,8 @@ class PTDmlStmt : public PTCollection {
   // Load table schema into symbol table.
   static void LoadSchema(SemContext *sem_context,
                          const client::YBTablePtr& table,
-                         MCColumnMap* column_map);
+                         MCColumnMap* column_map,
+                         bool is_index);
 
   // Semantic-analyzing the where clause.
   CHECKED_STATUS AnalyzeWhereClause(SemContext *sem_context);

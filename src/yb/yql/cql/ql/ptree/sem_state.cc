@@ -36,6 +36,7 @@ SemState::SemState(SemContext *sem_context,
       lhs_col_(lhs_col) {
   // Passing down state variables that stay the same until they are set or reset.
   if (sem_context->sem_state() != nullptr) {
+    selecting_from_index_ = sem_context_->selecting_from_index();
     processing_if_clause_ = sem_context_->processing_if_clause();
     processing_set_clause_ = sem_context_->processing_set_clause();
     processing_assignee_ = sem_context_->processing_assignee();

@@ -59,14 +59,14 @@ PTBcall::PTBcall(MemoryContext *memctx,
 PTBcall::~PTBcall() {
 }
 
-string PTBcall::QLName() const {
+string PTBcall::QLName(QLNameOption option) const {
   string arg_names;
   string keyspace;
 
   // cql_cast() is displayed as "cast(<col> as <type>)".
   if (strcmp(name_->c_str(), bfql::kCqlCastFuncName) == 0) {
     CHECK_GE(args_->size(), 2);
-    const string column_name = args_->element(0)->QLName();
+    const string column_name = args_->element(0)->QLName(option);
     const string type =  QLType::ToCQLString(args_->element(1)->ql_type()->type_info()->type());
     return strings::Substitute("cast($0 as $1)", column_name, type);
   }
@@ -75,7 +75,7 @@ string PTBcall::QLName() const {
     if (!arg_names.empty()) {
       arg_names += ", ";
     }
-    arg_names += arg->QLName();
+    arg_names += arg->QLName(option);
   }
   if (IsAggregateCall()) {
     // count(*) is displayed as "count".
@@ -92,6 +92,11 @@ bool PTBcall::IsAggregateCall() const {
 }
 
 CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
+  // Before traversing the expression, check if this whole expression is actually a column.
+  if (CheckIndexColumn(sem_context)) {
+    return Status::OK();
+  }
+
   RETURN_NOT_OK(CheckOperator(sem_context));
 
   // Analyze arguments of the function call.
@@ -332,6 +337,18 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
 
   internal_type_ = yb::client::YBColumnSchema::ToInternalDataType(ql_type_);
   return CheckExpectedTypeCompatibility(sem_context);
+}
+
+bool PTBcall::HaveColumnRef() const {
+  const MCList<PTExpr::SharedPtr>& exprs = args_->node_list();
+  vector<PTExpr::SharedPtr> params(exprs.size());
+  for (const PTExpr::SharedPtr& expr : exprs) {
+    if (expr->HaveColumnRef()) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 CHECKED_STATUS PTBcall::CheckOperator(SemContext *sem_context) {

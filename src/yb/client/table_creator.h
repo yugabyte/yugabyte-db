@@ -89,6 +89,12 @@ class YBTableCreator {
   // For index table: sets whether this is a unique index.
   YBTableCreator& is_unique_index(bool is_unique_index);
 
+  // For index table: indicates whether this index has mangled column name.
+  // - Older index supports only ColumnRef, and its name is identical with colum name.
+  // - Newer index supports expressions including ColumnRef, and its name is a mangled name of
+  //   the expression. For example, ColumnRef name = "$C_" + escape_column_name.
+  YBTableCreator& use_mangled_column_name(bool value);
+
   // Return index_info for caller to fill index information.
   IndexInfoPB* mutable_index_info() {
     return &index_info_;

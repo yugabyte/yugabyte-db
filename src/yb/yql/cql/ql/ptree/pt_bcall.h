@@ -94,12 +94,14 @@ class PTBcall : public PTExpr {
 
   CHECKED_STATUS CheckOperatorAfterArgAnalyze(SemContext *sem_context);
 
-  virtual std::string QLName() const override;
+  virtual string QLName(QLNameOption option = QLNameOption::kUserOriginalName) const override;
   virtual bool IsAggregateCall() const override;
   virtual yb::bfql::TSOpcode aggregate_opcode() const override {
     return is_server_operator_ ? static_cast<yb::bfql::TSOpcode>(bfopcode_)
                                : yb::bfql::TSOpcode::kNoOp;
   }
+
+  virtual bool HaveColumnRef() const override;
 
  private:
   // Builtin function name.

@@ -69,7 +69,8 @@ Status SemContext::LoadSchema(const shared_ptr<YBTable>& table,
                               col.is_static(),
                               col.is_counter(),
                               col.type(),
-                              YBColumnSchema::ToInternalDataType(col.type()));
+                              YBColumnSchema::ToInternalDataType(col.type()),
+                              schema.table_properties().use_mangled_column_name());
 
       // Insert the column descriptor, and column definition if requested, to symbol table.
       MCSharedPtr<MCString> col_name = MCMakeShared<MCString>(PSemMem(), col.name().c_str());

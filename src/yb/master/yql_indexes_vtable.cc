@@ -12,6 +12,7 @@
 //
 
 #include "yb/common/ql_value.h"
+#include "yb/common/ql_name.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/yql_indexes_vtable.h"
 #include "yb/master/catalog_manager.h"
@@ -71,7 +72,13 @@ Status YQLIndexesVTable::RetrieveData(const QLReadRequestPB& request,
     string target;
     IndexInfo index_info = indexed_table->GetIndexInfo(table->id());
     for (size_t i = 0; i < index_info.hash_column_count(); i++) {
-      target += ColumnName(indexed_schema, index_info.columns()[i].indexed_column_id);
+      if (index_info.use_mangled_column_name()) {
+        // Newer IndexInfo uses mangled name of expression instead of column ID of the table
+        // that was indexed.
+        target += YcqlName::DemangleName(index_info.columns()[i].column_name);
+      } else {
+        target += ColumnName(indexed_schema, index_info.columns()[i].indexed_column_id);
+      }
       if (i != index_info.hash_column_count() - 1) {
         target += ", ";
       }
@@ -82,13 +89,25 @@ Status YQLIndexesVTable::RetrieveData(const QLReadRequestPB& request,
     for (size_t i = index_info.hash_column_count();
          i < index_info.hash_column_count() + index_info.range_column_count(); i++) {
       target += ", ";
-      target += ColumnName(indexed_schema, index_info.columns()[i].indexed_column_id);
+      if (index_info.use_mangled_column_name()) {
+        // Newer IndexInfo uses mangled name of expression instead of column ID of the table
+        // that was indexed.
+        target += YcqlName::DemangleName(index_info.columns()[i].column_name);
+      } else {
+        target += ColumnName(indexed_schema, index_info.columns()[i].indexed_column_id);
+      }
     }
 
     string include;
     for (size_t i = index_info.hash_column_count() + index_info.range_column_count();
          i < index_info.columns().size(); i++) {
-      include += ColumnName(indexed_schema, index_info.columns()[i].indexed_column_id);
+      if (index_info.use_mangled_column_name()) {
+        // Newer IndexInfo uses mangled name of expression instead of column ID of the table
+        // that was indexed.
+        include += YcqlName::DemangleName(index_info.columns()[i].column_name);
+      } else {
+        include += ColumnName(indexed_schema, index_info.columns()[i].indexed_column_id);
+      }
       if (i != index_info.columns().size() - 1) {
         include += ", ";
       }

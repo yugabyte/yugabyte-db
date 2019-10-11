@@ -74,7 +74,8 @@ IndexInfo::IndexInfo(const IndexInfoPB& pb)
       hash_column_count_(pb.hash_column_count()),
       range_column_count_(pb.range_column_count()),
       indexed_hash_column_ids_(ColumnIdsFromPB(pb.indexed_hash_column_ids())),
-      indexed_range_column_ids_(ColumnIdsFromPB(pb.indexed_range_column_ids())) {
+      indexed_range_column_ids_(ColumnIdsFromPB(pb.indexed_range_column_ids())),
+      use_mangled_column_name_(pb.use_mangled_column_name()) {
   for (const IndexInfo::IndexColumn &index_col : columns_) {
     covered_column_ids_.insert(index_col.indexed_column_id);
   }
@@ -97,6 +98,7 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
   for (const auto id : indexed_range_column_ids_) {
     pb->add_indexed_range_column_ids(id);
   }
+  pb->set_use_mangled_column_name(use_mangled_column_name_);
 }
 
 vector<ColumnId> IndexInfo::index_key_column_ids() const {
@@ -128,30 +130,41 @@ bool IndexInfo::IsColumnCovered(const ColumnId column_id) const {
   return covered_column_ids_.find(column_id) != covered_column_ids_.end();
 }
 
-int32_t IndexInfo::IsExprCovered(const string& expr_content) const {
-  // TODO(Oleg) INDEX SUPPORT
-  // - For this function to worl properly, the expression name MUST be serialized in a way that
-  //   guarantees its uniqueness.
+int32_t IndexInfo::IsExprCovered(const string& expr_name) const {
+  // CHECKING if an expression is covered.
+  // - If IndexColumn name is a substring of "expr_name", the given expression is covered. That is,
+  //   it can be computed using the value of this column.
+  //
+  // - For this function to work properly, the column and expression name MUST be serialized in a
+  //   way that guarantees their uniqueness. Function PTExpr::MangledName() resolves this issue.
   //
   // - Example:
   //     CREATE TABLE tab (pk int primary key, a int, j jsonb);
+  //     CREATE INDEX a_index ON tab (a);
+  //     SELECT pk FROM tab WHERE j->'b'->>'a' = '99';
+  //   In this example, clearly "a_index" doesn't cover the seleted json expression, but the name
+  //   "a" is a substring of "j->b->>a", and this function would return TRUE, which is wrong. To
+  //   avoid this issue, <column names> and JSONB <attribute names> must be escaped uniquely and
+  //   differently. To cover the above SELECT, the following index must be defined.
   //     CREATE INDEX jindex on tab(j->'b'->>'a');
-  //     SELECT a from tab;
-  //   In this example, clearly "jindex" doesn't cover column "a", but the name "a" is a substring
-  //   of "j->b->>a", so this function would return TRUE, which is wrong. To avoid this issue,
-  //   <column names> and JSONB <attribute names> must be escaped uniquely and differently.
-  //
-  // - Function "virtual string IndexColumnName() const" in "pt_expr.h" must be reimplemented
-  //   to avoid this issue.
-  LOG(FATAL) << "This function should not be activated before the above issue is addressed";
-
   int32_t idx = 0;
-  for (auto col : columns_) {
-    if (expr_content.find(col.column_name) != expr_content.npos) {
-      // Column that is referenced by the expression is found in the index.
+  for (const auto &col : columns_) {
+    if (expr_name.find(col.column_name) != expr_name.npos) {
       return idx;
     }
     idx++;
+  }
+
+  return -1;
+}
+
+int32_t IndexInfo::FindKeyIndex(const string& key_expr_name) const {
+  for (int32_t idx = 0; idx < key_column_count(); idx++) {
+    const auto& col = columns_[idx];
+    if (key_expr_name.find(col.column_name) != key_expr_name.npos) {
+      // Return the found key column that is referenced by the expression.
+      return idx;
+    }
   }
 
   return -1;
