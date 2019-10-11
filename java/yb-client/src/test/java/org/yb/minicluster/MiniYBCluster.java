@@ -252,6 +252,12 @@ public class MiniYBCluster implements AutoCloseable {
       commonFlags.add("--replication_factor=" + replicationFactor);
     }
 
+    if (startPgSqlProxy) {
+      commonFlags.add("--enable_ysql=true");
+    } else {
+      commonFlags.add("--enable_ysql=false");
+    }
+
     return commonFlags;
   }
 
@@ -552,8 +558,7 @@ public class MiniYBCluster implements AutoCloseable {
 
     if (startPgSqlProxy) {
       tsCmdLine.addAll(Lists.newArrayList(
-          "--pgsql_proxy_bind_address=" + tserverBindAddress + ":" + postgresPort,
-          "--enable_ysql"
+          "--pgsql_proxy_bind_address=" + tserverBindAddress + ":" + postgresPort
       ));
       if (pgTransactionsEnabled) {
         tsCmdLine.add("--pg_transactions_enabled");
@@ -602,7 +607,6 @@ public class MiniYBCluster implements AutoCloseable {
       "--rpc_slow_query_threshold_ms=" + RPC_SLOW_QUERY_THRESHOLD,
       "--webserver_port=" + masterWebPort,
       "--callhome_enabled=false");
-    masterCmdLine.addAll(getCommonDaemonFlags());
     addFlagsFromEnv(masterCmdLine, "YB_EXTRA_MASTER_FLAGS");
     return masterCmdLine;
   }
