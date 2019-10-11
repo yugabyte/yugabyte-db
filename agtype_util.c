@@ -6,6 +6,8 @@
 
 #include "postgres.h"
 
+#include <math.h>
+
 #include "access/hash.h"
 #include "catalog/pg_collation.h"
 #include "miscadmin.h"
@@ -32,7 +34,7 @@ static void fill_agtype_value(agtype_container *container, int index,
                               char *base_addr, uint32 offset,
                               agtype_value *result);
 static bool equals_agtype_scalar_value(agtype_value *a, agtype_value *b);
-static int compare_agtype_scalar_value(agtype_value *a, agtype_value *b);
+static int compare_agtype_scalar_values(agtype_value *a, agtype_value *b);
 static agtype *convert_to_agtype(agtype_value *val);
 static void convert_agtype_value(StringInfo buffer, agtentry *header,
                                  agtype_value *val, int level);
@@ -62,6 +64,8 @@ static void uniqueify_agtype_object(agtype_value *object);
 static agtype_value *push_agtype_value_scalar(agtype_parse_state **pstate,
                                               agtype_iterator_token seq,
                                               agtype_value *scalar_val);
+static int compare_two_floats_orderability(float8 lhs, float8 rhs);
+static int get_type_sort_priority(enum agtype_value_type type);
 
 /*
  * Turn an in-memory agtype_value into an agtype for on-disk storage.
@@ -165,6 +169,27 @@ uint32 get_agtype_length(const agtype_container *agtc, int index)
 }
 
 /*
+ * Helper function to generate the sort priorty of a type. Larger
+ * numbers have higher priority.
+ */
+static int get_type_sort_priority(enum agtype_value_type type)
+{
+    if (type == AGTV_OBJECT)
+        return 0;
+    if (type == AGTV_ARRAY)
+        return 1;
+    if (type == AGTV_STRING)
+        return 2;
+    if (type == AGTV_BOOL)
+        return 3;
+    if (type == AGTV_NUMERIC || type == AGTV_INTEGER || type == AGTV_FLOAT)
+        return 4;
+    if (type == AGTV_NULL)
+        return 5;
+    return -1;
+}
+
+/*
  * BT comparator worker function.  Returns an integer less than, equal to, or
  * greater than zero, indicating whether a is less than, equal to, or greater
  * than b.  Consistent with the requirements for a B-Tree operator class
@@ -174,7 +199,8 @@ uint32 get_agtype_length(const agtype_container *agtc, int index)
  * called from B-Tree support function 1, we're careful about not leaking
  * memory here.
  */
-int compare_agtype_containers(agtype_container *a, agtype_container *b)
+int compare_agtype_containers_orderability(agtype_container *a,
+                                           agtype_container *b)
 {
     agtype_iterator *ita;
     agtype_iterator *itb;
@@ -212,7 +238,9 @@ int compare_agtype_containers(agtype_container *a, agtype_container *b)
                 continue;
             }
 
-            if (va.type == vb.type)
+            if ((va.type == vb.type) ||
+                ((va.type == AGTV_INTEGER || va.type == AGTV_FLOAT) &&
+                 (vb.type == AGTV_INTEGER || vb.type == AGTV_FLOAT)))
             {
                 switch (va.type)
                 {
@@ -222,7 +250,7 @@ int compare_agtype_containers(agtype_container *a, agtype_container *b)
                 case AGTV_BOOL:
                 case AGTV_INTEGER:
                 case AGTV_FLOAT:
-                    res = compare_agtype_scalar_value(&va, &vb);
+                    res = compare_agtype_scalar_values(&va, &vb);
                     break;
                 case AGTV_ARRAY:
 
@@ -233,32 +261,40 @@ int compare_agtype_containers(agtype_container *a, agtype_container *b)
                      * as we're concerned a pseudo array is just a scalar.
                      */
                     if (va.val.array.raw_scalar != vb.val.array.raw_scalar)
-                        res = (va.val.array.raw_scalar) ? -1 : 1;
-                    if (va.val.array.num_elems != vb.val.array.num_elems)
                     {
-                        if (va.val.array.num_elems > vb.val.array.num_elems)
-                            res = 1;
+                        if (va.val.array.raw_scalar)
+                        {
+                            /* advance iterator ita and get contained type */
+                            ra = agtype_iterator_next(&ita, &va, false);
+                            res = (get_type_sort_priority(va.type) <
+                                   get_type_sort_priority(vb.type)) ?
+                                      -1 :
+                                      1;
+                        }
                         else
-                            res = -1;
+                        {
+                            /* advance iterator itb and get contained type */
+                            rb = agtype_iterator_next(&itb, &vb, false);
+                            res = (get_type_sort_priority(va.type) <
+                                   get_type_sort_priority(vb.type)) ?
+                                      -1 :
+                                      1;
+                        }
                     }
                     break;
                 case AGTV_OBJECT:
-                    if (va.val.object.num_pairs != vb.val.object.num_pairs)
-                    {
-                        if (va.val.object.num_pairs > vb.val.object.num_pairs)
-                            res = 1;
-                        else
-                            res = -1;
-                    }
                     break;
                 case AGTV_BINARY:
-                    elog(ERROR, "unexpected AGTV_BINARY value");
+                    ereport(ERROR, (errmsg("unexpected AGTV_BINARY value")));
                 }
             }
             else
             {
                 /* Type-defined order */
-                res = (va.type > vb.type) ? 1 : -1;
+                res = (get_type_sort_priority(va.type) <
+                       get_type_sort_priority(vb.type)) ?
+                          -1 :
+                          1;
             }
         }
         else
@@ -272,20 +308,32 @@ int compare_agtype_containers(agtype_container *a, agtype_container *b)
              * elements/pairs (when processing WAGT_BEGIN_OBJECT, say). They're
              * either two heterogeneously-typed containers, or a container and
              * some scalar type.
-             *
-             * We don't have to consider the WAGT_END_ARRAY and WAGT_END_OBJECT
-             * cases here, because we would have seen the corresponding
-             * WAGT_BEGIN_ARRAY and WAGT_BEGIN_OBJECT tokens first, and
-             * concluded that they don't match.
              */
-            Assert(ra != WAGT_END_ARRAY && ra != WAGT_END_OBJECT);
-            Assert(rb != WAGT_END_ARRAY && rb != WAGT_END_OBJECT);
+
+            /*
+             * Check for the premature array or object end.
+             * If left side is shorter, less than.
+             */
+            if (ra == WAGT_END_ARRAY || ra == WAGT_END_OBJECT)
+            {
+                res = -1;
+                break;
+            }
+            /* If right side is shorter, greater than */
+            if (rb == WAGT_END_ARRAY || rb == WAGT_END_OBJECT)
+            {
+                res = 1;
+                break;
+            }
 
             Assert(va.type != vb.type);
             Assert(va.type != AGTV_BINARY);
             Assert(vb.type != AGTV_BINARY);
             /* Type-defined order */
-            res = (va.type > vb.type) ? 1 : -1;
+            res = (get_type_sort_priority(va.type) <
+                   get_type_sort_priority(vb.type)) ?
+                      -1 :
+                      1;
         }
     } while (res == 0);
 
@@ -432,7 +480,7 @@ agtype_value *get_ith_agtype_value_from_container(agtype_container *container,
     uint32 nelements;
 
     if (!AGTYPE_CONTAINER_IS_ARRAY(container))
-        elog(ERROR, "not an agtype array");
+        ereport(ERROR, (errmsg("container is not an agtype array")));
 
     nelements = AGTYPE_CONTAINER_SIZE(container);
     base_addr = (char *)&container->children[nelements];
@@ -636,12 +684,14 @@ static agtype_value *push_agtype_value_scalar(agtype_parse_state **pstate,
                 append_value(*pstate, result);
                 break;
             default:
-                elog(ERROR, "invalid agtype container type");
+                ereport(ERROR, (errmsg("invalid agtype container type %d",
+                                       (*pstate)->cont_val.type)));
             }
         }
         break;
     default:
-        elog(ERROR, "unrecognized agtype sequential processing token");
+        ereport(ERROR,
+                (errmsg("unrecognized agtype sequential processing token")));
     }
 
     return result;
@@ -876,7 +926,9 @@ recurse:
                               (*it)->data_proper, (*it)->curr_data_offset,
                               val);
             if (val->type != AGTV_STRING)
-                elog(ERROR, "unexpected agtype type as object key");
+                ereport(ERROR,
+                        (errmsg("unexpected agtype type as object key %d",
+                                val->type)));
 
             /* Set state for next call */
             (*it)->state = AGTI_OBJECT_VALUE;
@@ -914,7 +966,7 @@ recurse:
         }
     }
 
-    elog(ERROR, "invalid iterator state");
+    ereport(ERROR, (errmsg("invalid iterator state %d", (*it)->state)));
     return -1;
 }
 
@@ -953,7 +1005,9 @@ static agtype_iterator *iterator_from_container(agtype_container *container,
         break;
 
     default:
-        elog(ERROR, "unknown type of agtype container");
+        ereport(ERROR,
+                (errmsg("unknown type of agtype container %d",
+                        container->header & (AGT_FARRAY | AGT_FOBJECT))));
     }
 
     return it;
@@ -1220,10 +1274,10 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **m_contained)
     }
     else
     {
-        elog(ERROR, "invalid agtype container type");
+        ereport(ERROR, (errmsg("invalid agtype container type")));
     }
 
-    elog(ERROR, "unexpectedly fell off end of agtype container");
+    ereport(ERROR, (errmsg("unexpectedly fell off end of agtype container")));
     return false;
 }
 
@@ -1266,7 +1320,8 @@ void agtype_hash_scalar_value(const agtype_value *scalar_val, uint32 *hash)
             hashfloat8, Float8GetDatum(scalar_val->val.float_value)));
         break;
     default:
-        elog(ERROR, "invalid agtype scalar type");
+        ereport(ERROR, (errmsg("invalid agtype scalar type %d to compute hash",
+                               scalar_val->type)));
         tmp = 0; /* keep compiler quiet */
         break;
     }
@@ -1327,12 +1382,46 @@ void agtype_hash_scalar_value_extended(const agtype_value *scalar_val,
             UInt64GetDatum(seed)));
         break;
     default:
-        elog(ERROR, "invalid agtype scalar type");
+        ereport(
+            ERROR,
+            (errmsg("invalid agtype scalar type %d to compute hash extended",
+                    scalar_val->type)));
         break;
     }
 
     *hash = ROTATE_HIGH_AND_LOW_32BITS(*hash);
     *hash ^= tmp;
+}
+
+/*
+ * Function to compare two floats, obviously. However, there are a few
+ * special cases that we need to cover with regards to NaN and +/-Infinity.
+ * NaN is not equal to any other number, including itself. However, for
+ * ordering, we need to allow NaN = NaN and NaN > any number including
+ * positive infinity -
+ *
+ *     -Infinity < any number < +Infinity < NaN
+ *
+ * Note: We use the fact that NaN != NaN to test for it (x != x)
+ */
+static int compare_two_floats_orderability(float8 lhs, float8 rhs)
+{
+    /* numbers and infinities compare normally */
+    if (lhs == rhs)
+        return 0;
+    else if (lhs > rhs)
+        return 1;
+    else if (lhs < rhs)
+        return -1;
+    /* at this point, one or both are NaN, check if both are */
+    else if (isnan(lhs) && isnan(rhs))
+        return 0;
+    /* at this point, only one is NaN, the other is a number or infinity */
+    else if (isnan(lhs))
+        return 1;
+    /* rhs is NaN */
+    else
+        return -1;
 }
 
 /*
@@ -1359,10 +1448,11 @@ static bool equals_agtype_scalar_value(agtype_value *a, agtype_value *b)
         case AGTV_FLOAT:
             return a->val.float_value == b->val.float_value;
         default:
-            elog(ERROR, "invalid agtype scalar type");
+            ereport(ERROR, (errmsg("invalid agtype scalar type %d for equals",
+                                   a->type)));
         }
     }
-    elog(ERROR, "agtype scalar type mismatch");
+    ereport(ERROR, (errmsg("agtype input scalars must be of same type")));
     return -1;
 }
 
@@ -1372,7 +1462,7 @@ static bool equals_agtype_scalar_value(agtype_value *a, agtype_value *b)
  * Strings are compared using the default collation.  Used by B-tree
  * operators, where a lexical sort order is generally expected.
  */
-static int compare_agtype_scalar_value(agtype_value *a, agtype_value *b)
+static int compare_agtype_scalar_values(agtype_value *a, agtype_value *b)
 {
     if (a->type == b->type)
     {
@@ -1403,17 +1493,23 @@ static int compare_agtype_scalar_value(agtype_value *a, agtype_value *b)
             else
                 return -1;
         case AGTV_FLOAT:
-            if (a->val.float_value == b->val.float_value)
-                return 0;
-            else if (a->val.float_value > b->val.float_value)
-                return 1;
-            else
-                return -1;
+            return compare_two_floats_orderability(a->val.float_value,
+                                                   b->val.float_value);
         default:
-            elog(ERROR, "invalid agtype scalar type");
+            ereport(ERROR, (errmsg("invalid agtype scalar type %d for compare",
+                                   a->type)));
         }
     }
-    elog(ERROR, "agtype scalar type mismatch");
+    /* check for integer compared to float */
+    if (a->type == AGTV_INTEGER && b->type == AGTV_FLOAT)
+        return compare_two_floats_orderability((float8)a->val.int_value,
+                                               b->val.float_value);
+    /* check for float compared to integer */
+    if (a->type == AGTV_FLOAT && b->type == AGTV_INTEGER)
+        return compare_two_floats_orderability(a->val.float_value,
+                                               (float8)b->val.int_value);
+
+    ereport(ERROR, (errmsg("agtype input scalar type mismatch")));
     return -1;
 }
 
@@ -1556,7 +1652,8 @@ static void convert_agtype_value(StringInfo buffer, agtentry *header,
     else if (val->type == AGTV_OBJECT)
         convert_agtype_object(buffer, header, val, level);
     else
-        elog(ERROR, "unknown type of agtype container to convert");
+        ereport(ERROR,
+                (errmsg("unknown agtype type %d to convert", val->type)));
 }
 
 static void convert_agtype_array(StringInfo buffer, agtentry *pheader,
@@ -1815,7 +1912,7 @@ static void convert_agtype_scalar(StringInfo buffer, agtentry *entry,
 
     case AGTV_BOOL:
         *entry = (scalar_val->val.boolean) ? AGTENTRY_IS_BOOL_TRUE :
-                                              AGTENTRY_IS_BOOL_FALSE;
+                                             AGTENTRY_IS_BOOL_FALSE;
         break;
 
     default:
@@ -1823,7 +1920,8 @@ static void convert_agtype_scalar(StringInfo buffer, agtentry *entry,
         status = ag_serialize_extended_type(buffer, entry, scalar_val);
         /* if nothing was found, error log out */
         if (!status)
-            elog(ERROR, "invalid agtype scalar type");
+            ereport(ERROR, (errmsg("invalid agtype scalar type %d to convert",
+                                   scalar_val->type)));
     }
 }
 

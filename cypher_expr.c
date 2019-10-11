@@ -10,6 +10,7 @@
 #include "parser/parse_oper.h"
 #include "utils/builtins.h"
 #include "utils/int8.h"
+#include "utils/lsyscache.h"
 
 #include "agtype.h"
 #include "cypher_expr.h"
@@ -78,6 +79,16 @@ static Node *transform_cypher_expr_recurse(ParseState *pstate, Node *expr)
                                    ((ExtensibleNode *)expr)->extnodename)));
             return NULL;
         }
+    case T_NullTest:
+    {
+        NullTest *n = (NullTest *)expr;
+
+        n->arg = (Expr *)transform_cypher_expr_recurse(pstate, (Node *)n->arg);
+        n->argisrow = type_is_rowtype(exprType((Node *)n->arg));
+
+        return expr;
+    }
+
     default:
         ereport(ERROR, (errmsg("unrecognized node type: %d", nodeTag(expr))));
     }
@@ -228,10 +239,8 @@ static Node *transform_AEXPR_OP(ParseState *pstate, A_Expr *a)
                  strcmp(opname, "<") == 0 || strcmp(opname, ">") == 0 ||
                  strcmp(opname, "<=") == 0 || strcmp(opname, ">=") == 0)
         {
-            ereport(ERROR,
-                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                     errmsg("comparison operator not yet implemented: %s",
-                            opname)));
+            return (Node *)make_op(pstate, a->name, lexpr, rexpr, last_srf,
+                                   a->location);
         }
         else
             ereport(ERROR, (errmsg("unknown operator: %s", opname)));

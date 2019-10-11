@@ -124,6 +124,86 @@ SELECT '3.14'::agtype % '3.14'::agtype;
 SELECT '3.14'::agtype ^ '2'::agtype;
 
 --
+-- Test orderability of comparison operators =, <>, <, >, <=, >=
+-- These should all return true
+-- Integer
+SELECT agtype_in('1') = agtype_in('1');
+SELECT agtype_in('1') <> agtype_in('2');
+SELECT agtype_in('1') <> agtype_in('-2');
+SELECT agtype_in('1') < agtype_in('2');
+SELECT agtype_in('1') > agtype_in('-2');
+SELECT agtype_in('1') <= agtype_in('2');
+SELECT agtype_in('1') >= agtype_in('-2');
+
+-- Float
+SELECT agtype_in('1.01') = agtype_in('1.01');
+SELECT agtype_in('1.01') <> agtype_in('1.001');
+SELECT agtype_in('1.01') <> agtype_in('1.011');
+SELECT agtype_in('1.01') < agtype_in('1.011');
+SELECT agtype_in('1.01') > agtype_in('1.001');
+SELECT agtype_in('1.01') <= agtype_in('1.011');
+SELECT agtype_in('1.01') >= agtype_in('1.001');
+SELECT agtype_in('1.01') < agtype_in('Infinity');
+SELECT agtype_in('1.01') > agtype_in('-Infinity');
+-- NaN, under ordering, is considered to be the biggest numeric value
+-- greater than positive infinity. So, greater than any other number.
+SELECT agtype_in('1.01') < agtype_in('NaN');
+SELECT agtype_in('NaN') > agtype_in('Infinity');
+SELECT agtype_in('NaN') > agtype_in('-Infinity');
+SELECT agtype_in('NaN') = agtype_in('NaN');
+
+-- Mixed Integer and Float
+SELECT agtype_in('1') = agtype_in('1.0');
+SELECT agtype_in('1') <> agtype_in('1.001');
+SELECT agtype_in('1') <> agtype_in('0.999999');
+SELECT agtype_in('1') < agtype_in('1.001');
+SELECT agtype_in('1') > agtype_in('0.999999');
+SELECT agtype_in('1') <= agtype_in('1.001');
+SELECT agtype_in('1') >= agtype_in('0.999999');
+SELECT agtype_in('1') < agtype_in('Infinity');
+SELECT agtype_in('1') > agtype_in('-Infinity');
+SELECT agtype_in('1') < agtype_in('NaN');
+
+-- Mixed Float and Integer
+SELECT agtype_in('1.0') = agtype_in('1');
+SELECT agtype_in('1.001') <> agtype_in('1');
+SELECT agtype_in('0.999999') <> agtype_in('1');
+SELECT agtype_in('1.001') > agtype_in('1');
+SELECT agtype_in('0.999999') < agtype_in('1');
+
+-- Strings
+SELECT agtype_in('"a"') = agtype_in('"a"');
+SELECT agtype_in('"a"') <> agtype_in('"b"');
+SELECT agtype_in('"a"') < agtype_in('"aa"');
+SELECT agtype_in('"b"') > agtype_in('"aa"');
+SELECT agtype_in('"a"') <= agtype_in('"aa"');
+SELECT agtype_in('"b"') >= agtype_in('"aa"');
+
+-- Lists
+SELECT agtype_in('[0, 1, null, 2]') = agtype_in('[0, 1, null, 2]');
+SELECT agtype_in('[0, 1, null, 2]') <> agtype_in('[2, null, 1, 0]');
+SELECT agtype_in('[0, 1, null]') < agtype_in('[0, 1, null, 2]');
+SELECT agtype_in('[1, 1, null, 2]') > agtype_in('[0, 1, null, 2]');
+
+-- Objects (Maps)
+SELECT agtype_in('{"bool":true, "null": null}') = agtype_in('{"null":null, "bool":true}');
+SELECT agtype_in('{"bool":true}') < agtype_in('{"bool":true, "null": null}');
+
+-- Comparisons between types
+-- Object < List < String < Boolean < Integer = Float = Numeric < Null
+SELECT agtype_in('1') < agtype_in('null');
+SELECT agtype_in('NaN') < agtype_in('null');
+SELECT agtype_in('Infinity') < agtype_in('null');
+SELECT agtype_in('true') < agtype_in('1');
+SELECT agtype_in('true') < agtype_in('NaN');
+SELECT agtype_in('true') < agtype_in('Infinity');
+SELECT agtype_in('"string"') < agtype_in('true');
+SELECT agtype_in('[1,3,5,7,9,11]') < agtype_in('"string"');
+SELECT agtype_in('{"bool":true, "integer":1}') < agtype_in('[1,3,5,7,9,11]');
+SELECT agtype_in('[1, "string"]') < agtype_in('[1, 1]');
+SELECT agtype_in('{"bool":true, "integer":1}') < agtype_in('{"bool":true, "integer":null}');
+
+--
 -- Cleanup
 --
 DROP TABLE agtype_table;

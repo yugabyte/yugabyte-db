@@ -145,6 +145,7 @@ AS 'MODULE_PATHNAME';
 --
 -- agtype operator definitions
 --
+
 CREATE OPERATOR + (
     LEFTARG = agtype,
     RIGHTARG = agtype,
@@ -186,4 +187,96 @@ CREATE OPERATOR ^ (
     LEFTARG = agtype,
     RIGHTARG = agtype,
     FUNCTION = agtype_pow
+);
+
+--
+-- agtype comparator functions
+--
+
+CREATE FUNCTION agtype_eq(agtype, agtype)
+RETURNS boolean
+LANGUAGE C
+STABLE
+STRICT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION agtype_ne(agtype, agtype)
+RETURNS boolean
+LANGUAGE C
+STABLE
+STRICT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION agtype_lt(agtype, agtype)
+RETURNS boolean
+LANGUAGE C
+STABLE
+STRICT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION agtype_gt(agtype, agtype)
+RETURNS boolean
+LANGUAGE C
+STABLE
+STRICT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION agtype_le(agtype, agtype)
+RETURNS boolean
+LANGUAGE C
+STABLE
+STRICT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION agtype_ge(agtype, agtype)
+RETURNS boolean
+LANGUAGE C
+STABLE
+STRICT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+--
+-- agtype comparator definitions
+--
+
+CREATE OPERATOR = (
+    LEFTARG = agtype,
+    RIGHTARG = agtype,
+    FUNCTION = agtype_eq
+);
+
+CREATE OPERATOR <> (
+    LEFTARG = agtype,
+    RIGHTARG = agtype,
+    FUNCTION = agtype_ne
+);
+
+CREATE OPERATOR < (
+    LEFTARG = agtype,
+    RIGHTARG = agtype,
+    FUNCTION = agtype_lt
+);
+
+CREATE OPERATOR > (
+    LEFTARG = agtype,
+    RIGHTARG = agtype,
+    FUNCTION = agtype_gt
+);
+
+CREATE OPERATOR <= (
+    LEFTARG = agtype,
+    RIGHTARG = agtype,
+    FUNCTION = agtype_le
+);
+
+CREATE OPERATOR >= (
+    LEFTARG = agtype,
+    RIGHTARG = agtype,
+    FUNCTION = agtype_ge
 );

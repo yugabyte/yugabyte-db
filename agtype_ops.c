@@ -25,9 +25,8 @@ Datum agtype_add(PG_FUNCTION_ARGS)
 
     if (!(AGT_ROOT_IS_SCALAR(lhs)) || !(AGT_ROOT_IS_SCALAR(rhs)))
     {
-        ereport(ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("must be scalar value, not array or object")));
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("must be scalar value, not array or object")));
 
         PG_RETURN_NULL();
     }
@@ -63,9 +62,8 @@ Datum agtype_add(PG_FUNCTION_ARGS)
         AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
 
-    ereport(ERROR,
-            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg("Invalid input parameter types for agtype_add")));
+    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                    errmsg("Invalid input parameter types for agtype_add")));
 
     PG_RETURN_NULL();
 }
@@ -85,9 +83,8 @@ Datum agtype_sub(PG_FUNCTION_ARGS)
 
     if (!(AGT_ROOT_IS_SCALAR(lhs)) || !(AGT_ROOT_IS_SCALAR(rhs)))
     {
-        ereport(ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("must be scalar value, not array or object")));
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("must be scalar value, not array or object")));
 
         PG_RETURN_NULL();
     }
@@ -124,9 +121,8 @@ Datum agtype_sub(PG_FUNCTION_ARGS)
         AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
 
-    ereport(ERROR,
-			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			 errmsg("Invalid input parameter types for agtype_sub")));
+    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                    errmsg("Invalid input parameter types for agtype_sub")));
 
     PG_RETURN_NULL();
 }
@@ -144,9 +140,8 @@ Datum agtype_neg(PG_FUNCTION_ARGS)
 
     if (!(AGT_ROOT_IS_SCALAR(v)))
     {
-        ereport(ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("must be scalar value, not array or object")));
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("must be scalar value, not array or object")));
 
         PG_RETURN_NULL();
     }
@@ -166,9 +161,8 @@ Datum agtype_neg(PG_FUNCTION_ARGS)
         AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
 
-    ereport(ERROR,
-            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg("Invalid input parameter type for agtype_neg")));
+    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                    errmsg("Invalid input parameter type for agtype_neg")));
 
     PG_RETURN_NULL();
 }
@@ -188,9 +182,8 @@ Datum agtype_mul(PG_FUNCTION_ARGS)
 
     if (!(AGT_ROOT_IS_SCALAR(lhs)) || !(AGT_ROOT_IS_SCALAR(rhs)))
     {
-        ereport(ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("must be scalar value, not array or object")));
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("must be scalar value, not array or object")));
 
         PG_RETURN_NULL();
     }
@@ -227,9 +220,8 @@ Datum agtype_mul(PG_FUNCTION_ARGS)
         AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
 
-    ereport(ERROR,
-            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg("Invalid input parameter types for agtype_mul")));
+    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                    errmsg("Invalid input parameter types for agtype_mul")));
 
     PG_RETURN_NULL();
 }
@@ -249,9 +241,8 @@ Datum agtype_div(PG_FUNCTION_ARGS)
 
     if (!(AGT_ROOT_IS_SCALAR(lhs)) || !(AGT_ROOT_IS_SCALAR(rhs)))
     {
-        ereport(ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("must be scalar value, not array or object")));
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("must be scalar value, not array or object")));
 
         PG_RETURN_NULL();
     }
@@ -316,9 +307,8 @@ Datum agtype_div(PG_FUNCTION_ARGS)
         AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
 
-    ereport(ERROR,
-            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg("Invalid input parameter types for agtype_div")));
+    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                    errmsg("Invalid input parameter types for agtype_div")));
 
     PG_RETURN_NULL();
 }
@@ -338,9 +328,8 @@ Datum agtype_mod(PG_FUNCTION_ARGS)
 
     if (!(AGT_ROOT_IS_SCALAR(lhs)) || !(AGT_ROOT_IS_SCALAR(rhs)))
     {
-        ereport(ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("must be scalar value, not array or object")));
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("must be scalar value, not array or object")));
 
         PG_RETURN_NULL();
     }
@@ -377,9 +366,8 @@ Datum agtype_mod(PG_FUNCTION_ARGS)
         AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
 
-    ereport(ERROR,
-            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg("Invalid input parameter types for agtype_mod")));
+    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                    errmsg("Invalid input parameter types for agtype_mod")));
 
     PG_RETURN_NULL();
 }
@@ -399,9 +387,8 @@ Datum agtype_pow(PG_FUNCTION_ARGS)
 
     if (!(AGT_ROOT_IS_SCALAR(lhs)) || !(AGT_ROOT_IS_SCALAR(rhs)))
     {
-        ereport(ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("must be scalar value, not array or object")));
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("must be scalar value, not array or object")));
 
         PG_RETURN_NULL();
     }
@@ -438,9 +425,110 @@ Datum agtype_pow(PG_FUNCTION_ARGS)
         AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
 
-    ereport(ERROR,
-            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg("Invalid input parameter types for agtype_pow")));
+    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                    errmsg("Invalid input parameter types for agtype_pow")));
 
     PG_RETURN_NULL();
+}
+
+PG_FUNCTION_INFO_V1(agtype_eq);
+
+Datum agtype_eq(PG_FUNCTION_ARGS)
+{
+    agtype *agtype_lhs = AG_GET_ARG_AGTYPE_P(0);
+    agtype *agtype_rhs = AG_GET_ARG_AGTYPE_P(1);
+    bool result;
+
+    result = (compare_agtype_containers_orderability(&agtype_lhs->root,
+                                                     &agtype_rhs->root) == 0);
+
+    PG_FREE_IF_COPY(agtype_lhs, 0);
+    PG_FREE_IF_COPY(agtype_rhs, 1);
+
+    PG_RETURN_BOOL(result);
+}
+
+PG_FUNCTION_INFO_V1(agtype_ne);
+
+Datum agtype_ne(PG_FUNCTION_ARGS)
+{
+    agtype *agtype_lhs = AG_GET_ARG_AGTYPE_P(0);
+    agtype *agtype_rhs = AG_GET_ARG_AGTYPE_P(1);
+    bool result = true;
+
+    result = (compare_agtype_containers_orderability(&agtype_lhs->root,
+                                                     &agtype_rhs->root) != 0);
+
+    PG_FREE_IF_COPY(agtype_lhs, 0);
+    PG_FREE_IF_COPY(agtype_rhs, 1);
+
+    PG_RETURN_BOOL(result);
+}
+
+PG_FUNCTION_INFO_V1(agtype_lt);
+
+Datum agtype_lt(PG_FUNCTION_ARGS)
+{
+    agtype *agtype_lhs = AG_GET_ARG_AGTYPE_P(0);
+    agtype *agtype_rhs = AG_GET_ARG_AGTYPE_P(1);
+    bool result;
+
+    result = (compare_agtype_containers_orderability(&agtype_lhs->root,
+                                                     &agtype_rhs->root) < 0);
+
+    PG_FREE_IF_COPY(agtype_lhs, 0);
+    PG_FREE_IF_COPY(agtype_rhs, 1);
+
+    PG_RETURN_BOOL(result);
+}
+
+PG_FUNCTION_INFO_V1(agtype_gt);
+
+Datum agtype_gt(PG_FUNCTION_ARGS)
+{
+    agtype *agtype_lhs = AG_GET_ARG_AGTYPE_P(0);
+    agtype *agtype_rhs = AG_GET_ARG_AGTYPE_P(1);
+    bool result;
+
+    result = (compare_agtype_containers_orderability(&agtype_lhs->root,
+                                                     &agtype_rhs->root) > 0);
+
+    PG_FREE_IF_COPY(agtype_lhs, 0);
+    PG_FREE_IF_COPY(agtype_rhs, 1);
+
+    PG_RETURN_BOOL(result);
+}
+
+PG_FUNCTION_INFO_V1(agtype_le);
+
+Datum agtype_le(PG_FUNCTION_ARGS)
+{
+    agtype *agtype_lhs = AG_GET_ARG_AGTYPE_P(0);
+    agtype *agtype_rhs = AG_GET_ARG_AGTYPE_P(1);
+    bool result;
+
+    result = (compare_agtype_containers_orderability(&agtype_lhs->root,
+                                                     &agtype_rhs->root) <= 0);
+
+    PG_FREE_IF_COPY(agtype_lhs, 0);
+    PG_FREE_IF_COPY(agtype_rhs, 1);
+
+    PG_RETURN_BOOL(result);
+}
+
+PG_FUNCTION_INFO_V1(agtype_ge);
+
+Datum agtype_ge(PG_FUNCTION_ARGS)
+{
+    agtype *agtype_lhs = AG_GET_ARG_AGTYPE_P(0);
+    agtype *agtype_rhs = AG_GET_ARG_AGTYPE_P(1);
+    bool result;
+
+    result = (compare_agtype_containers_orderability(&agtype_lhs->root,
+                                                     &agtype_rhs->root) >= 0);
+
+    PG_FREE_IF_COPY(agtype_lhs, 0);
+    PG_FREE_IF_COPY(agtype_rhs, 1);
+
+    PG_RETURN_BOOL(result);
 }

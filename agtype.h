@@ -377,7 +377,8 @@ int reserve_from_buffer(StringInfo buffer, int len);
 short pad_buffer_to_int(StringInfo buffer);
 uint32 get_agtype_offset(const agtype_container *agtc, int index);
 uint32 get_agtype_length(const agtype_container *agtc, int index);
-int compare_agtype_containers(agtype_container *a, agtype_container *b);
+int compare_agtype_containers_orderability(agtype_container *a,
+                                           agtype_container *b);
 agtype_value *find_agtype_value_from_container(agtype_container *container,
                                                uint32 flags,
                                                agtype_value *key);
@@ -396,7 +397,6 @@ bool agtype_deep_contains(agtype_iterator **val,
 void agtype_hash_scalar_value(const agtype_value *scalar_val, uint32 *hash);
 void agtype_hash_scalar_value_extended(const agtype_value *scalar_val,
                                        uint64 *hash, uint64 seed);
-
 /* agtype.c support functions */
 char *agtype_to_cstring(StringInfo out, agtype_container *in,
                         int estimated_len);
