@@ -18,7 +18,7 @@
     To install `wget` on your Mac, you can run the following command if you use Homebrew:
 
     ```sh
-    $ brew install wget`
+    $ brew install wget
     ```     
 
 4. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure that this command shows a big enough value.
