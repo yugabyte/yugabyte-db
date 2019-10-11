@@ -13,14 +13,14 @@ showAsideToc: true
 
 ## Introduction
 
-[VSCode-Cassandra](https://marketplace.visualstudio.com/items?itemName=kdcro101.vscode-cassandra#quick-start) 
+[Cassandra Workbench](https://marketplace.visualstudio.com/items?itemName=kdcro101.vscode-cassandra#quick-start)
 Design and query Apache Cassandra database and Yugabyte YCQL with help of generated templates, autocomplete and inline code decorations. 
 
-In this tutorial, we will show how to install Apache Cassandra Workbench in Visual Studio Code and configure a connection using authentication or not.
+In this tutorial, we will show how to install the Apache Cassandra Workbench extension in Visual Studio Code and configure a connection using authentication or not.
 
-## Install Extension
+## Install extension
 
-Open Visual Studio Code (you can download it in https://code.visualstudio.com for Windows, Mac or Linux Distros) and press Control + P
+Open Visual Studio Code (you can download it in https://code.visualstudio.com for Windows, Mac or Linux) and press Control + P
 
 ![VSCode Quick Open](/images/develop/tools/vscodeworkbench/vscode_control_p.png)
 
@@ -32,7 +32,7 @@ ext install kdcro101.vscode-cassandra
 
 This will install the extension, but you will need to configure the connection details of the clusters, so go to the next step and configure connections.
 
-## Create a Configuration
+## Create a configuration
 
 Click in cloud icon in the left bar in VSCode to show Cassandra Workbench:
 
