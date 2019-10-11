@@ -667,6 +667,9 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
 
 Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                             ChangeEncryptionInfoResponsePB* resp) {
+
+  LOG(INFO) << "CatalogManager: ChangeEncryptionInfo: req=[" << req->DebugString() << "]";
+
   auto l = cluster_config_->LockForWrite();
   auto encryption_info = l->mutable_data()->pb.mutable_encryption_info();
 
