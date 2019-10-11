@@ -37,6 +37,12 @@ CHECKED_STATUS RotateUniverseKey(const ChangeEncryptionInfoRequestPB* req,
                                  ChangeEncryptionInfoResponsePB* resp) {
   bool prev_enabled = encryption_info->encryption_enabled();
 
+  LOG(INFO) << "RotateUniverseKey" << ": req=[" << req->DebugString()
+                                  << "] prev enabled=[" << prev_enabled
+                                  << "] prev key path=["
+                                  << (prev_enabled ? encryption_info->key_path() : "none")
+                                  << "]";
+
   if (!prev_enabled && !req->encryption_enabled()) {
     return STATUS(InvalidArgument, "Cannot disable encryption for an already plaintext cluster.");
   }
@@ -70,6 +76,7 @@ CHECKED_STATUS RotateUniverseKey(const ChangeEncryptionInfoRequestPB* req,
     params->ToEncryptionParamsPB(&params_pb);
     (*universe_key_registry.mutable_universe_keys())[universe_key_id] = params_pb;
     universe_key_registry.set_latest_version_id(universe_key_id);
+    LOG(INFO) << "RotateUniverseKey" << ": new universe id=[" << universe_key_id << "]";
     if (!pb_util::SerializeToString(universe_key_registry, &encoded)) {
       return STATUS(InvalidArgument, "Registry could not be encoded.");
     }
