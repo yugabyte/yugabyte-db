@@ -108,6 +108,9 @@ class SemState {
   bool processing_assignee() const { return processing_assignee_; }
   void set_processing_assignee(bool value) { processing_assignee_ = value; }
 
+  void set_selecting_from_index(bool val) { selecting_from_index_ = val; }
+  bool selecting_from_index() const { return selecting_from_index_; }
+
   void set_processing_column_definition(bool val) { processing_column_definition_ = val; }
   bool processing_column_definition() const { return processing_column_definition_; }
 
@@ -149,6 +152,9 @@ class SemState {
 
   // State variables for where expression.
   WhereExprState *where_state_ = nullptr;
+
+  // Predicate for selecting data from an index instead of a user table.
+  bool selecting_from_index_ = false;
 
   // Predicate for processing a column definition in a table.
   bool processing_column_definition_ = false;

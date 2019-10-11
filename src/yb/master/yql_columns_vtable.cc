@@ -13,6 +13,7 @@
 
 #include "yb/master/yql_columns_vtable.h"
 
+#include "yb/common/ql_name.h"
 #include "yb/common/ql_value.h"
 #include "yb/master/catalog_manager.h"
 
@@ -30,7 +31,13 @@ Status YQLColumnsVTable::PopulateColumnInformation(const Schema& schema,
                                                    QLRow* const row) const {
   RETURN_NOT_OK(SetColumnValue(kKeyspaceName, keyspace_name, row));
   RETURN_NOT_OK(SetColumnValue(kTableName, table_name, row));
-  RETURN_NOT_OK(SetColumnValue(kColumnName, schema.column(col_idx).name(), row));
+  if (schema.table_properties().use_mangled_column_name()) {
+    RETURN_NOT_OK(SetColumnValue(kColumnName,
+                                 YcqlName::DemangleName(schema.column(col_idx).name()),
+                                 row));
+  } else {
+    RETURN_NOT_OK(SetColumnValue(kColumnName, schema.column(col_idx).name(), row));
+  }
   RETURN_NOT_OK(SetColumnValue(kClusteringOrder, schema.column(col_idx).sorting_type_string(),
                                row));
   const ColumnSchema& column = schema.column(col_idx);

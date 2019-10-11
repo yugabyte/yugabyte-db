@@ -51,17 +51,17 @@ const std::map<std::string, PTTableProperty::KVProperty> PTTableProperty::kPrope
 };
 
 PTTableProperty::PTTableProperty(MemoryContext *memctx,
-                   YBLocation::SharedPtr loc,
-                   const MCSharedPtr<MCString>& lhs,
-                   const PTExpr::SharedPtr& rhs)
+                                 YBLocation::SharedPtr loc,
+                                 const MCSharedPtr<MCString>& lhs,
+                                 const PTExpr::SharedPtr& rhs)
     : PTProperty(memctx, loc, lhs, rhs),
       property_type_(PropertyType::kTableProperty) {}
 
 PTTableProperty::PTTableProperty(MemoryContext *memctx,
                                  YBLocation::SharedPtr loc,
-                                 const MCSharedPtr<MCString>& name,
+                                 const PTExpr::SharedPtr& expr,
                                  const PTOrderBy::Direction direction)
-    : PTProperty(memctx, loc), name_(name), direction_(direction),
+    : PTProperty(memctx, loc), order_expr_(expr), direction_(direction),
       property_type_(PropertyType::kClusteringOrder) {}
 
 PTTableProperty::PTTableProperty(MemoryContext *memctx,
@@ -293,18 +293,18 @@ CHECKED_STATUS PTTablePropertyListNode::Analyze(SemContext *sem_context) {
         break;
       }
       case PropertyType::kClusteringOrder: {
-        const auto &column_name = tnode->name().c_str();
-        const PTColumnDefinition *col = sem_context->GetColumnDefinition(tnode->name());
+        const MCString column_name(tnode->name().c_str(), sem_context->PTempMem());
+        const PTColumnDefinition *col = sem_context->GetColumnDefinition(column_name);
         if (col == nullptr || !col->is_primary_key() || col->is_hash_key()) {
           return sem_context->Error(tnode, "Not a clustering key column",
                                     ErrorCode::INVALID_TABLE_PROPERTY);
         }
         // Insert column_name only the first time we see it.
-        if (order_tnodes.find(column_name) == order_tnodes.end()) {
-          order_columns.push_back(column_name);
+        if (order_tnodes.find(column_name.c_str()) == order_tnodes.end()) {
+          order_columns.push_back(column_name.c_str());
         }
         // If a column ordering was set more than once, we use the last order provided.
-        order_tnodes[column_name] = tnode;
+        order_tnodes[column_name.c_str()] = tnode;
         break;
       }
     }

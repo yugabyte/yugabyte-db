@@ -107,8 +107,11 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
   // they should be added as non-primary-key columns.
   const YBSchema& schema = table_->schema();
   for (int idx = 0; idx < schema.num_key_columns(); idx++) {
+    // Not adding key-column schema.columns(idx) to the INDEX metadata if it is already referred to
+    // by one of the index-columns.
     const MCString key_name(schema.Column(idx).name().c_str(), sem_context->PTempMem());
-    if (sem_context->GetColumnDefinition(key_name)) {
+    PTColumnDefinition *coldef = sem_context->GetColumnDefinition(key_name);
+    if (coldef && coldef->colexpr()->opcode() == TreeNodeOpcode::kPTRef) {
       // Column is already defined as a part of INDEX.
       continue;
     }
@@ -205,6 +208,7 @@ void PTCreateIndex::PrintSemanticAnalysisResult(SemContext *sem_context) {
 
 Status PTCreateIndex::ToTableProperties(TableProperties *table_properties) const {
   table_properties->SetTransactional(true);
+  table_properties->SetUseMangledColumnName(true);
   return PTCreateTable::ToTableProperties(table_properties);
 }
 

@@ -32,7 +32,7 @@ class IndexInfo {
   // Index column mapping.
   struct IndexColumn {
     ColumnId column_id;         // Column id in the index table.
-    string column_name;         // Column name in the index table, PTExpr::QLName().
+    string column_name;         // Column name in the index table - colexpr.MangledName().
     ColumnId indexed_column_id; // Corresponding column id in indexed table.
     QLExpressionPB colexpr;     // Index expression.
 
@@ -80,6 +80,13 @@ class IndexInfo {
   // - Otherwise, return -1.
   int32_t IsExprCovered(const string& expr_content) const;
 
+  // Same as "IsExprCovered" but only search the key columns.
+  int32_t FindKeyIndex(const string& key_name) const;
+
+  bool use_mangled_column_name() const {
+    return use_mangled_column_name_;
+  }
+
  private:
   const TableId table_id_;            // Index table id.
   const TableId indexed_table_id_;    // Indexed table id.
@@ -94,6 +101,9 @@ class IndexInfo {
 
   // Column ids covered by the index (include indexed columns).
   std::unordered_set<ColumnId> covered_column_ids_;
+
+  // Newer INDEX use mangled column name instead of ID.
+  bool use_mangled_column_name_ = false;
 };
 
 // A map to look up an index by its index table id.

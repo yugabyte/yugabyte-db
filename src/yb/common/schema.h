@@ -426,6 +426,14 @@ class TableProperties {
     copartition_table_id_ = copartition_table_id;
   }
 
+  void SetUseMangledColumnName(bool value) {
+    use_mangled_column_name_ = value;
+  }
+
+  bool use_mangled_column_name() const {
+    return use_mangled_column_name_;
+  }
+
   void ToTablePropertiesPB(TablePropertiesPB *pb) const;
 
   static TableProperties FromTablePropertiesPB(const TablePropertiesPB& pb);
@@ -442,6 +450,7 @@ class TableProperties {
   YBConsistencyLevel consistency_level_ = YBConsistencyLevel::STRONG;
   TableId copartition_table_id_ = kNoCopartitionTableId;
   boost::optional<uint32_t> wal_retention_secs_;
+  bool use_mangled_column_name_ = false;
 };
 
 // The schema for a set of rows.
