@@ -372,6 +372,11 @@ Status PgWrapper::CheckExecutableValid(const std::string& executable_path) {
 }
 
 void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
+  // Used to resolve relative paths during YB init within PG code.
+  // Needed because PG changes its current working dir to a data dir.
+  char cwd[PATH_MAX];
+  CHECK(getcwd(cwd, sizeof(cwd)) != nullptr);
+  proc->SetEnv("YB_WORKING_DIR", cwd);
   // A temporary workaround for a failure to look up a user name by uid in an LDAP environment.
   proc->SetEnv("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
   proc->SetEnv("YB_PG_ALLOW_RUNNING_AS_ANY_USER", "1");
