@@ -144,10 +144,10 @@ struct ExternalMiniClusterOptions {
   // Default : 10sec
   MonoDelta timeout = MonoDelta::FromSeconds(10);
 
-  static constexpr bool kDefaultStartPgsqlProxy = false;
+  static constexpr bool kDefaultEnableYsql = false;
   static constexpr bool kDefaultStartCqlProxy = true;
 
-  bool start_pgsql_proxy = kDefaultStartPgsqlProxy;
+  bool enable_ysql = kDefaultEnableYsql;
 
   // If true logs will be writen in both stderr and file
   bool log_to_file = false;
@@ -198,8 +198,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Add a new TS to the cluster. The new TS is started.  Requires that the master is already
   // running.
   CHECKED_STATUS AddTabletServer(
-      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-      bool start_pgsql_proxy = ExternalMiniClusterOptions::kDefaultStartPgsqlProxy);
+      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy);
 
   // Shuts down the whole cluster or part of it, depending on the selected 'mode'.  Currently, this
   // uses SIGKILL on each daemon for a non-graceful shutdown.
@@ -679,13 +678,11 @@ class ExternalTabletServer : public ExternalDaemon {
 
   CHECKED_STATUS Start(
       bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-      bool start_pgsql_proxy = ExternalMiniClusterOptions::kDefaultStartPgsqlProxy,
       bool set_proxy_addrs = true);
 
   // Restarts the daemon. Requires that it has previously been shutdown.
   CHECKED_STATUS Restart(
-      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-      bool start_pgsql_proxy = ExternalMiniClusterOptions::kDefaultStartPgsqlProxy);
+      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy);
 
   // IP addresses to bind to.
   const std::string& bind_host() const {
@@ -751,7 +748,6 @@ class ExternalTabletServer : public ExternalDaemon {
   const uint16_t cql_rpc_port_;
   const uint16_t cql_http_port_;
   bool start_cql_proxy_ = true;
-  bool enable_ysql_ = false;
   std::unique_ptr<server::ServerStatusPB> cqlserver_status_;
 
   friend class RefCountedThreadSafe<ExternalTabletServer>;

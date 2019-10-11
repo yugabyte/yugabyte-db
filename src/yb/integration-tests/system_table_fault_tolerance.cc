@@ -57,8 +57,7 @@ class SystemTableFaultTolerance : public YBTest {
     opts.extra_master_flags = extra_master_flags;
     // Master failovers should not be happening concurrently with us trying to load an initial sys
     // catalog snapshot. At least this is not supported as of 05/27/2019.
-    opts.extra_master_flags.push_back("--use_initial_sys_catalog_snapshot=false");
-    opts.extra_master_flags.push_back("--enable_ysql=false");
+    opts.enable_ysql = false;
     cluster_.reset(new ExternalMiniCluster(opts));
   }
 };

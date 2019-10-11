@@ -277,7 +277,7 @@ class PgWrapperOneNodeClusterTest : public YBMiniClusterTestBase<ExternalMiniClu
     YBMiniClusterTestBase::SetUp();
 
     ExternalMiniClusterOptions opts;
-    opts.start_pgsql_proxy = true;
+    opts.enable_ysql = true;
     opts.num_tablet_servers = 1;
 
     cluster_.reset(new ExternalMiniCluster(opts));
@@ -322,7 +322,7 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
   opts.mode = Env::CREATE_IF_NON_EXISTING_TRUNCATE;
 
   ASSERT_OK(env_->NewRWFile(opts, pid_file, &file));
-  ASSERT_OK(pg_ts_->Start(false /* start_cql_proxy */, true /* start_pgsql_proxy */));
+  ASSERT_OK(pg_ts_->Start(false /* start_cql_proxy */));
   ASSERT_OK(cluster_->WaitForTabletServerCount(tserver_count, timeout));
 
   // Shutdown tserver and wait for postgres server to shutdown and delete postmaster.pid file
@@ -338,7 +338,7 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
   ASSERT_OK(file->Write(0, "abcde\n" + pid_file));
   ASSERT_OK(file->Close());
 
-  ASSERT_OK(pg_ts_->Start(false /* start_cql_proxy */, true /* start_pgsql_proxy */));
+  ASSERT_OK(pg_ts_->Start(false /* start_cql_proxy */));
   ASSERT_OK(cluster_->WaitForTabletServerCount(tserver_count, timeout));
 
   // Shutdown tserver and wait for postgres server to shutdown and delete postmaster.pid file
@@ -354,7 +354,7 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
   ASSERT_OK(file->Write(0, "1002\n" + pid_file));
   ASSERT_OK(file->Close());
 
-  ASSERT_OK(pg_ts_->Start(false /* start_cql_proxy */, true /* start_pgsql_proxy */));
+  ASSERT_OK(pg_ts_->Start(false /* start_cql_proxy */));
   ASSERT_OK(cluster_->WaitForTabletServerCount(tserver_count, timeout));
 }
 
