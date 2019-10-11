@@ -1410,7 +1410,7 @@ index_column:
   | columnref json_ref {
     // Declare an index column here as generic expressions are not mapped to any pre-defined column.
     PTExpr::SharedPtr expr = MAKE_NODE(@1, PTJsonColumnWithOperators, $1->name(), $2);
-    $$ = MAKE_NODE(@1, PTIndexColumn, parser_->MakeString(expr->IndexColumnName().c_str()), expr);
+    $$ = MAKE_NODE(@1, PTIndexColumn, parser_->MakeString(expr->QLName().c_str()), expr);
   }
 ;
 
@@ -1689,7 +1689,14 @@ orderingList:
 
 column_ordering:
   ColId opt_asc_desc {
-    $$ = MAKE_NODE(@1, PTTableProperty, $1, PTOrderBy::Direction($2));
+    PTQualifiedName::SharedPtr name_node = MAKE_NODE(@1, PTQualifiedName, $1);
+    PTExpr::SharedPtr expr = MAKE_NODE(@1, PTRef, name_node);
+    $$ = MAKE_NODE(@1, PTTableProperty, expr, PTOrderBy::Direction($2));
+  }
+  | ColId json_ref opt_asc_desc {
+    PTQualifiedName::SharedPtr name_node = MAKE_NODE(@1, PTQualifiedName, $1);
+    PTExpr::SharedPtr expr = MAKE_NODE(@1, PTJsonColumnWithOperators, name_node, $2);
+    $$ = MAKE_NODE(@1, PTTableProperty, expr, PTOrderBy::Direction($3));
   }
 ;
 

@@ -225,6 +225,15 @@ class JsonColumnOp : public JsonColumnArg {
     return yb_op_;
   }
 
+  // Name of a Catalog::IndexTable::ExprColumn is created by mangling original name from users.
+  string IndexExprToColumnName() const {
+    string index_column_name = desc_->MangledName();
+    for (const PTExpr::SharedPtr &arg : args_->node_list()) {
+      index_column_name += arg->MangledName();
+    }
+    return index_column_name;
+  }
+
  private:
   yb::QLOperator yb_op_;
 };
@@ -259,6 +268,11 @@ class SubscriptedColumnOp : public SubscriptedColumnArg {
 
   yb::QLOperator yb_op() const {
     return yb_op_;
+  }
+
+  string IndexExprToColumnName() const {
+    LOG(FATAL) << "Mangling name for subscript operator is not yet supported";
+    return "expr";
   }
 
  private:

@@ -394,10 +394,13 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   YBSchema schema;
   YBSchemaBuilder b;
   shared_ptr<YBTableCreator> table_creator(ql_env_->NewTableCreator());
+  // Table properties is kept in the metadata of the IndexTable.
+  TableProperties table_properties;
+  // IndexInfo is kept in the metadata of the Table that is being indexed.
+  IndexInfoPB *index_info = nullptr;
 
   // When creating an index, we construct IndexInfo and associated it with the data-table. Later,
   // when operating on the data-table, we can decide if updating the index-tables are needed.
-  IndexInfoPB *index_info = nullptr;
   if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
     const PTCreateIndex *index_node = static_cast<const PTCreateIndex*>(tnode);
 
@@ -407,6 +410,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
     index_info->set_is_unique(index_node->is_unique());
     index_info->set_hash_column_count(tnode->hash_columns().size());
     index_info->set_range_column_count(tnode->primary_columns().size());
+    index_info->set_use_mangled_column_name(true);
 
     // List key columns of data-table being indexed.
     for (const auto& col_desc : index_node->column_descs()) {
@@ -422,7 +426,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
     if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
       return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
     }
-    b.AddColumn(column->yb_name())
+    b.AddColumn(column->coldef_name().c_str())
       ->Type(column->ql_type())
       ->HashPrimaryKey()
       ->Order(column->order());
@@ -430,7 +434,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   }
 
   for (const auto& column : tnode->primary_columns()) {
-    b.AddColumn(column->yb_name())
+    b.AddColumn(column->coldef_name().c_str())
       ->Type(column->ql_type())
       ->PrimaryKey()
       ->Order(column->order())
@@ -442,7 +446,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
     if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
       return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
     }
-    YBColumnSpec *column_spec = b.AddColumn(column->yb_name())
+    YBColumnSpec *column_spec = b.AddColumn(column->coldef_name().c_str())
                                   ->Type(column->ql_type())
                                   ->Nullable()
                                   ->Order(column->order());
@@ -455,7 +459,6 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
     RETURN_NOT_OK(AddColumnToIndexInfo(index_info, column));
   }
 
-  TableProperties table_properties;
   s = tnode->ToTableProperties(&table_properties);
   if (!s.ok()) {
     return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
@@ -519,7 +522,7 @@ Status Executor::AddColumnToIndexInfo(IndexInfoPB *index_info, const PTColumnDef
     // Note that column_id is assigned by master server, so we don't have it yet. When processing
     // create index request, server will update IndexInfo with proper column_id.
     auto *col = index_info->add_columns();
-    col->set_column_name(column->yb_name());
+    col->set_column_name(column->coldef_name().c_str());
     col->set_indexed_column_id(column->indexed_ref());
     RETURN_NOT_OK(PTExprToPB(column->colexpr(), col->mutable_colexpr()));
   }

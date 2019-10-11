@@ -1033,9 +1033,6 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
             key_column->mutable_value()->CopyFrom(*result);
           }
         } else {
-          // TODO(Oleg) INDEX SUPPORT - Remove the error STATUS and update the code accordingly.
-          return STATUS(NotSupported, "Indexing by expression is not yet supported");
-
           QLValue result;
           if (existing_row.IsEmpty()) {
             RETURN_NOT_OK(EvalExpr(index_column.colexpr, new_row, &result));
@@ -1085,13 +1082,9 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
         // For new message expr_case == kColumnId when indexing expression is a column-ref.
         if (index_column.colexpr.expr_case() != QLExpressionPB::ExprCase::EXPR_NOT_SET &&
             index_column.colexpr.expr_case() != QLExpressionPB::ExprCase::kColumnId) {
-          // TODO(Oleg) INDEX SUPPORT - Remove the error STATUS and update the code accordingly.
-          return STATUS(NotSupported, "Indexing expression is not yet supported");
-
           QLValue result;
           RETURN_NOT_OK(EvalExpr(index_column.colexpr, existing_row, &result));
           key_column->mutable_value()->CopyFrom(result.value());
-
         } else {
           auto result = existing_row.GetValue(index_column.indexed_column_id);
           if (result) {

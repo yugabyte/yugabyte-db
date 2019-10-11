@@ -208,6 +208,11 @@ class SemContext : public ProcessContext {
     return sem_state_->where_state();
   }
 
+  bool selecting_from_index() const {
+    DCHECK(sem_state_) << "State variable is not set";
+    return sem_state_->selecting_from_index();
+  }
+
   bool processing_column_definition() const {
     DCHECK(sem_state_) << "State variable is not set";
     return sem_state_->processing_column_definition();
