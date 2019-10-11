@@ -346,8 +346,7 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
 
     for (int i = 1; i <= opts_.num_tablet_servers; i++) {
       RETURN_NOT_OK_PREPEND(
-          AddTabletServer(ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-                          opts_.start_pgsql_proxy),
+          AddTabletServer(ExternalMiniClusterOptions::kDefaultStartCqlProxy),
           Substitute("Failed starting tablet server $0", i));
     }
     RETURN_NOT_OK(WaitForTabletServerCount(
@@ -962,8 +961,11 @@ Status ExternalMiniCluster::StartMasters() {
   string peer_addrs_str = JoinStrings(peer_addrs, ",");
   vector<string> flags = opts_.extra_master_flags;
   flags.push_back("--enable_leader_failure_detection=true");
-  if (opts_.start_pgsql_proxy) {
+  if (opts_.enable_ysql) {
+    flags.push_back("--enable_ysql=true");
     flags.push_back("--master_auto_run_initdb");
+  } else {
+    flags.push_back("--enable_ysql=false");
   }
   string exe = GetBinaryPath(kMasterBinaryName);
 
@@ -986,7 +988,7 @@ Status ExternalMiniCluster::StartMasters() {
     masters_.push_back(peer);
   }
 
-  if (opts_.start_pgsql_proxy) {
+  if (opts_.enable_ysql) {
     RETURN_NOT_OK(WaitForInitDb());
   }
   return Status::OK();
@@ -1045,7 +1047,7 @@ string ExternalMiniCluster::GetBindIpForTabletServer(int index) const {
   }
 }
 
-Status ExternalMiniCluster::AddTabletServer(bool start_cql_proxy, bool start_pgsql_proxy) {
+Status ExternalMiniCluster::AddTabletServer(bool start_cql_proxy) {
   CHECK(GetLeaderMaster() != nullptr)
       << "Must have started at least 1 master before adding tablet servers";
 
@@ -1087,14 +1089,21 @@ Status ExternalMiniCluster::AddTabletServer(bool start_cql_proxy, bool start_pgs
     pgsql_http_port = AllocateFreePort();
   }
 
+  vector<string> flags = opts_.extra_tserver_flags;
+  if (opts_.enable_ysql) {
+    flags.push_back("--enable_ysql=true");
+  } else {
+    flags.push_back("--enable_ysql=false");
+  }
+
   scoped_refptr<ExternalTabletServer> ts = new ExternalTabletServer(
       idx, messenger_, proxy_cache_.get(),
       exe, GetDataPath(Substitute("ts-$0", idx)), GetBindIpForTabletServer(idx),
       ts_rpc_port, ts_http_port, redis_rpc_port, redis_http_port,
       cql_rpc_port, cql_http_port,
       pgsql_rpc_port, pgsql_http_port,
-      master_hostports, SubstituteInFlags(opts_.extra_tserver_flags, idx));
-  RETURN_NOT_OK(ts->Start(start_cql_proxy, start_pgsql_proxy));
+      master_hostports, SubstituteInFlags(flags, idx));
+  RETURN_NOT_OK(ts->Start(start_cql_proxy));
   tablet_servers_.push_back(ts);
   return Status::OK();
 }
@@ -2154,10 +2163,8 @@ ExternalTabletServer::ExternalTabletServer(
 ExternalTabletServer::~ExternalTabletServer() {
 }
 
-Status ExternalTabletServer::Start(bool start_cql_proxy, bool start_pgsql_proxy,
-    bool set_proxy_addrs) {
+Status ExternalTabletServer::Start(bool start_cql_proxy, bool set_proxy_addrs) {
   start_cql_proxy_ = start_cql_proxy;
-  enable_ysql_ = start_pgsql_proxy;
   Flags flags;
   flags.Add("fs_data_dirs", data_dir_);
   flags.AddHostPort("rpc_bind_addresses", bind_host_, rpc_port_);
@@ -2174,8 +2181,6 @@ Status ExternalTabletServer::Start(bool start_cql_proxy, bool start_pgsql_proxy,
   }
 
   flags.Add("start_cql_proxy", start_cql_proxy_);
-  flags.Add("start_pgsql_proxy", enable_ysql_);
-  flags.Add("enable_ysql", enable_ysql_);
   flags.Add("tserver_master_addrs", master_addrs_);
 
   // Use conservative number of threads for the mini cluster for unit test env
@@ -2218,7 +2223,7 @@ Status ExternalTabletServer::DeleteServerInfoPaths() {
   return Status::OK();
 }
 
-Status ExternalTabletServer::Restart(bool start_cql_proxy, bool start_pgsql_proxy) {
+Status ExternalTabletServer::Restart(bool start_cql_proxy) {
   LOG_WITH_PREFIX(INFO) << "Restart: start_cql_proxy=" << start_cql_proxy;
   if (!IsProcessAlive()) {
     // Make sure this function could be safely called if the process has already crashed.
@@ -2228,7 +2233,7 @@ Status ExternalTabletServer::Restart(bool start_cql_proxy, bool start_pgsql_prox
   if (bound_rpc_.port() == 0) {
     return STATUS(IllegalState, "Tablet server cannot be restarted. Must call Shutdown() first.");
   }
-  return Start(start_cql_proxy, start_pgsql_proxy);
+  return Start(start_cql_proxy);
 }
 
 }  // namespace yb
