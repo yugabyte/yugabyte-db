@@ -14,18 +14,17 @@ $ gcloud components install kubectl
 
 - Configure defaults for gcloud
 
-Set the project id as `yugabyte`. You can change this as per your need.
+Set the project ID as `yugabyte`. You can change this as per your need.
 
 ```sh
 $ gcloud config set project yugabyte
 ```
 
-Set the defaut compute zone as `us-west1-b`. You can change this as per your need.
+Set the default compute zone as `us-west1-b`. You can change this as per your need.
 
 ```sh
 $ gcloud config set compute/zone us-west1-b
 ```
-
 
 ## 1. Create a GKE cluster
 
@@ -34,7 +33,6 @@ Create a Kubernetes cluster if you have not already done so by running the follo
 ```sh
 $ gcloud container clusters create yugabyte
 ```
-
 
 ## 2. Create a YugabyteDB cluster
 

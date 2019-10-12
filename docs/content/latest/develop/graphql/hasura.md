@@ -117,7 +117,7 @@ Click **Add**, and then click **Save**.
 ./bin/ysqlsh
 ```
 
-2. Copy the commands below into the shell and press **Enter**.
+1. Copy the commands below into the shell and press **Enter**.
 
 ```postgresql
 SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE

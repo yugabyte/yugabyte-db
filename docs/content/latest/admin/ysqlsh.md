@@ -43,3 +43,9 @@ When you open `ysqlsh`, the following flags are set so that the user does not ha
 - Host: `-h 127.0.0.1`
 - Port: `-p 5433`
 - User: `-U yugabyte`
+
+{{< note title="Note" >}}
+
+Starting with YugabyteDB 2.0.1, you are prompted for a password for the `yugabyte` user — the default password is `yugabyte`. Prior to this release, no password was required.
+
+{{< /note >}}
