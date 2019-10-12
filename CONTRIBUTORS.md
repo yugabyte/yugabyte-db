@@ -80,4 +80,6 @@ This is a list of people who have contributed code to the [YugaByte DB](https://
 * [samkulkarni20](https://github.com/samkulkarni20)
 * [fabiocmazzo](https://github.com/fabiocmazzo)
 * [dashaun](https://github.com/dashaun)
+* [aegershman](https://github.com/aegershman)
+
 
