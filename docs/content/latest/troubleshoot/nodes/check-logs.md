@@ -46,4 +46,14 @@ Logs are organized by error severity: `FATAL`, `ERROR`, `WARNING`, `INFO`. In ca
 
 ## Logs management
 
-Logs are rotated every day or when the filesize grows to 10MB. Log purging is only done in Yugabyte Platform.
+There are 3 types of logs:
+
+For yb-tserver/yb-master the log rotation size is controlled by the --max_log_size gflag.
+
+`--max_log_size=256` will limit each file to 256MB.
+The default size is 1.8GB if someone is not passing this argument.
+
+For YSQL, we also have the additional postgres*log . 
+These logs have daily and size based log rotation - i.e. a new log file will be created each day or a log reaches 10MB size.
+
+Automatic purging of older log files is currently only available in Yugabyte Platform.
