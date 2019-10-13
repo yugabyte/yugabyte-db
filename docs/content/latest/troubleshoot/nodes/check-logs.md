@@ -53,6 +53,7 @@ For yb-tserver/yb-master the log rotation size is controlled by the --max_log_si
 `--max_log_size=256` will limit each file to 256MB.
 The default size is 1.8GB if someone is not passing this argument.
 
-YSQL (we also have the additional postgres.log) has daily and size based log rotation for postgres*.log files - i.e. a new log file will be created per day (or after 10 MB size). 
+For YSQL, we also have the additional postgres*log . 
+These logs have daily and size based log rotation - i.e. a new log file will be created each day or a log reaches 10MB size.
 
-Purging of older log files is only available in Yugabyte Platform.
+Automatic purging of older log files is currently only available in Yugabyte Platform.
