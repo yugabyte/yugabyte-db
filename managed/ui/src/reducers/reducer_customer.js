@@ -108,7 +108,7 @@ export default function(state = INITIAL_STATE, action) {
     case ADD_TLS_CERT_RESPONSE:
       if (action.payload.status !== 200) {
         if (isDefinedNotNull(action.payload.data)) {
-          return setFailureState(state, "addCertificate", action.payload.data.error);
+          return setFailureState(state, "addCertificate", action.payload.response.data.error);
         } else {
           return state;
         }

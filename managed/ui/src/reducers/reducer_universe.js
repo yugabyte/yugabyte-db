@@ -140,7 +140,7 @@ export default function(state = INITIAL_STATE, action) {
     case ROLLING_UPGRADE_RESPONSE:
       return setPromiseResponse(state, "rollingUpgrade", action);
     case RESET_ROLLING_UPGRADE:
-      return { ...state, error: null, "rollingUpgrade": setInitialState({})};
+      return { ...state, error: null, "rollingUpgrade": getInitialState({})};
 
     // Universe I/O Metrics Operations
     case SET_UNIVERSE_METRICS:
