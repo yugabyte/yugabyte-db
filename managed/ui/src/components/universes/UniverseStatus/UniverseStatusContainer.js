@@ -17,8 +17,6 @@ const mapDispatchToProps = (dispatch) => {
 
 function mapStateToProps(state) {
   return {
-    universe: state.universe,
-    graph: state.graph,
     tasks: state.tasks
   };
 }

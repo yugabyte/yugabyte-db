@@ -363,8 +363,10 @@ class NodePicker extends Component {
   render() {
     const { selectedUniverse, nodeItemChanged, selectedNode } = this.props;
     
-    let nodeItems =[];
-    if (isNonEmptyObject(selectedUniverse) && selectedUniverse!== "all") {
+    let nodeItems = [];
+    if (isNonEmptyObject(selectedUniverse) &&
+       selectedUniverse!== "all" &&
+       selectedUniverse.universeDetails.nodeDetailsSet) {
       nodeItems = selectedUniverse.universeDetails.nodeDetailsSet
         .sort((a, b) => {
           if (a.nodeName === null) {
