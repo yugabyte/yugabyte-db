@@ -32,7 +32,7 @@ export default function(state = INITIAL_STATE, action) {
       });
       return {...state, customerTaskList: taskListResultArray.sort((a, b) => b.createTime - a.createTime)};
     case FETCH_CUSTOMER_TASKS_FAILURE:
-      return {...state, customerTaskList: action.payload.error};
+      return {...state, customerTaskList: action.payload.response.data.error};
     case FETCH_FAILED_TASK_DETAIL:
       return setLoadingState(state, "failedTasks", []);
     case FETCH_FAILED_TASK_DETAIL_RESPONSE:

@@ -21,9 +21,11 @@ const mapDispatchToProps = (dispatch) => {
      * @param reset function that sets the value of the form to pristine state
      */
     submitRollingUpgradeForm: (values, universeUUID, reset) => {
-      dispatch(closeDialog());
-      dispatch(closeUniverseDialog());
       dispatch(rollingUpgrade(values, universeUUID)).then((response) => {
+        if (!response.error) {
+          dispatch(closeDialog());
+          dispatch(closeUniverseDialog());
+        }
         dispatch(rollingUpgradeResponse(response.payload));
         // Reset the Rolling upgrade form fields to pristine state,
         // component may be called multiple times within the context of Universe Detail.
