@@ -4,7 +4,7 @@ import { GET_REGION_LIST, GET_REGION_LIST_RESPONSE, GET_PROVIDER_LIST, GET_PROVI
   GET_INSTANCE_TYPE_LIST, GET_INSTANCE_TYPE_LIST_RESPONSE, RESET_PROVIDER_LIST,
   GET_SUPPORTED_REGION_DATA, GET_SUPPORTED_REGION_DATA_RESPONSE, CREATE_PROVIDER,
   CREATE_PROVIDER_RESPONSE, CREATE_REGION, CREATE_REGION_RESPONSE, CREATE_ACCESS_KEY,
-  CREATE_ACCESS_KEY_RESPONSE, INITIALIZE_PROVIDER, INITIALIZE_PROVIDER_SUCCESS,
+  CREATE_ACCESS_KEY_RESPONSE, CREATE_ACCESS_KEY_FAILURE, INITIALIZE_PROVIDER, INITIALIZE_PROVIDER_SUCCESS,
   INITIALIZE_PROVIDER_FAILURE, DELETE_PROVIDER, DELETE_PROVIDER_SUCCESS, DELETE_PROVIDER_FAILURE,
   DELETE_PROVIDER_RESPONSE, RESET_PROVIDER_BOOTSTRAP, LIST_ACCESS_KEYS, LIST_ACCESS_KEYS_RESPONSE,
   GET_EBS_TYPE_LIST, GET_EBS_TYPE_LIST_RESPONSE, GET_GCP_TYPE_LIST, GET_GCP_TYPE_LIST_RESPONSE, CREATE_DOCKER_PROVIDER,
@@ -145,10 +145,9 @@ export default function(state = INITIAL_STATE, action) {
     case CREATE_ACCESS_KEY:
       return setLoadingState(state, "bootstrap", {type: "accessKey", response: null});
     case CREATE_ACCESS_KEY_RESPONSE:
-      if (action.payload.status === 200) {
-        return setSuccessState(state, "bootstrap", {type: "accessKey", response: action.payload.data});
-      }
-      return setFailureState(state, "bootstrap", action.payload.data.error, {type: "accessKey"});
+      return setSuccessState(state, "bootstrap", {type: "accessKey", response: action.payload.data});
+    case CREATE_ACCESS_KEY_FAILURE:
+      return setFailureState(state, "bootstrap", action.payload, {type: "accessKey"});
 
     case INITIALIZE_PROVIDER:
       return setLoadingState(state, "bootstrap", {type: "initialize", response: null});

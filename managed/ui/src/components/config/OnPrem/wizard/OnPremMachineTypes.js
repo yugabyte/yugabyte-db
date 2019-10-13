@@ -88,10 +88,14 @@ export default class OnPremMachineTypes extends Component {
     this.props.submitOnPremMachineTypes(values);
   };
 
+  componentDidMount() {
+    document.getElementById('onprem-machine-type-form').scrollIntoView(false);
+  }
+
   render() {
     const {handleSubmit, switchToJsonEntry, isEditProvider} = this.props;
     return (
-      <div className="on-prem-provider-form-container">
+      <div id="onprem-machine-type-form" className="on-prem-provider-form-container">
         <form name="onPremConfigForm" onSubmit={handleSubmit(this.props.submitOnPremMachineTypes)}>
           <div className="on-prem-form-text">
             Add one or more machine types to define your hardware configuration.
