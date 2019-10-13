@@ -40,7 +40,9 @@ export default class UniverseAppsModal extends Component {
     const { currentUniverse: {universeDetails}, button, closeModal, modal: { showModal, visibleModal } } = this.props;
     const enableYSQL = universeDetails.clusters[0].userIntent.enableYSQL;
     const isItKubernetesUniverse = isKubernetesUniverse(this.props.currentUniverse);
-    const nodeDetails = universeDetails.nodeDetailsSet.filter((nodeDetails) => nodeDetails.isTserver);
+    const nodeDetails = universeDetails.nodeDetailsSet ?
+      universeDetails.nodeDetailsSet.filter((nodeDetails) => nodeDetails.isTserver) :
+      [];
     const cassandraHosts = nodeDetails.map(function(nodeDetail) {
       if (nodeDetail.state === "Live" && nodeDetail.cloudInfo && isValidObject(nodeDetail.cloudInfo.private_ip))
         return nodeDetail.cloudInfo.private_ip + ":" + nodeDetail.yqlServerRpcPort;
