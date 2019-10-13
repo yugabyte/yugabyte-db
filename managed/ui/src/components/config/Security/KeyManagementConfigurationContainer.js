@@ -46,7 +46,7 @@ const mapDispatchToProps = (dispatch) => {
         }
         console.warn('Warning: Deleting configuration returned unsuccessful response.');
       })
-      .catch(err => console.err(err))
+      .catch(err => console.err(err));
     }
   };
 };

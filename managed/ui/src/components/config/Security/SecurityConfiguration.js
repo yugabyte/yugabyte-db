@@ -11,9 +11,9 @@ class SecurityConfiguration extends Component {
 
   render() {
     const activeTab = this.props.activeTab || securitySubgroups[0].toLowerCase();
-    const tabHeader = <div className="on-premise">
+    const tabHeader = (<div className="on-premise">
       <i className="fa fa-lock"></i>Encryption <br /> At Rest
-    </div>
+    </div>);
     return (
       <YBTabsPanel
           defaultTab={securitySubgroups[0].toLowerCase()}

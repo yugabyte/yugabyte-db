@@ -37,7 +37,7 @@ export default class AZSelectorTable extends Component {
   };
 
   resetAZSelectionConfig = () => {
-    const {universe: {universeConfigTemplate}, clusterType} = this.props;
+    const { universe: { universeConfigTemplate }, clusterType } = this.props;
     const clusters = _.clone(universeConfigTemplate.data.clusters);
     const currentTemplate = _.clone(universeConfigTemplate.data, true);
     if (isNonEmptyArray(clusters)) {
@@ -95,8 +95,17 @@ export default class AZSelectorTable extends Component {
   }
 
   updatePlacementInfo = (currentAZState, universeConfigTemplate) => {
-    const {universe: {currentUniverse}, cloud, numNodesChangedViaAzList, currentProvider, maxNumNodes,
-           minNumNodes, clusterType} = this.props;
+    const {
+      universe: {
+        currentUniverse
+      },
+      cloud,
+      numNodesChangedViaAzList,
+      currentProvider,
+      maxNumNodes,
+      minNumNodes,
+      clusterType
+    } = this.props;
     this.setState({azItemState: currentAZState});
     let totalNodesInConfig = 0;
     currentAZState.forEach(function(item){
@@ -110,7 +119,7 @@ export default class AZSelectorTable extends Component {
 
     if ((currentProvider.code !== "onprem" || totalNodesInConfig <= maxNumNodes) &&
         totalNodesInConfig >= minNumNodes && isNonEmptyObject(cluster)) {
-      const newPlacementInfo = _.clone(cluster.placementInfo, true);
+      const newPlacementInfo = _.cloneDeep(cluster.placementInfo, true);
       const newRegionList = [];
       cloud.regions.data.forEach(function (regionItem) {
         const newAzList = [];
@@ -140,7 +149,7 @@ export default class AZSelectorTable extends Component {
         }
       });
       newPlacementInfo.cloudList[0].regionList = newRegionList;
-      const newTaskParams = _.clone(universeConfigTemplate, true);
+      const newTaskParams = _.cloneDeep(universeConfigTemplate, true);
       if (isNonEmptyArray(newTaskParams.clusters)) {
         newTaskParams.clusters.forEach((cluster) => {
           if (clusterType === "primary" && cluster.clusterType === 'PRIMARY') {
@@ -164,6 +173,12 @@ export default class AZSelectorTable extends Component {
         newTaskParams.expectedUniverseVersion = currentUniverse.data.version;
         newTaskParams.userAZSelected = true;
         newTaskParams.resetAZConfig = false;
+        if (_.isEqual(
+          getClusterByType(newTaskParams.clusters, clusterType).placementInfo,
+          getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType).placementInfo)
+        ) {
+          newTaskParams.resetAZConfig = true;
+        }
         this.props.submitConfigureUniverse(newTaskParams);
       } else {
         const placementStatusObject = {
