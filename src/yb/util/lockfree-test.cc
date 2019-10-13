@@ -376,6 +376,11 @@ class QueuePerformanceHelper {
     if (!wait_result) {
       pushes.fetch_add(kEntries, std::memory_order_acq_rel);
       pops.fetch_add(kEntries, std::memory_order_acq_rel);
+      // Cleanup queue, since some of implementations could hang on queue overflow.
+      while (!finish_latch.WaitFor(10ms)) {
+        typename T::value_type entry;
+        while (queue->pop(entry)) {}
+      }
     }
 
     for (auto& thread : threads) {
