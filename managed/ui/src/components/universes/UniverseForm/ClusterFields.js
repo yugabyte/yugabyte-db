@@ -610,7 +610,7 @@ export default class ClusterFields extends Component {
         }
       } else {
         // Create flow
-        if (isEmptyObject(universeConfigTemplate.data)) {
+        if (isEmptyObject(universeConfigTemplate.data) || universeConfigTemplate.data == null) {
           this.props.submitConfigureUniverse(universeTaskParams);
         } else {
           const currentClusterConfiguration = getClusterByType(universeConfigTemplate.data.clusters, clusterType);

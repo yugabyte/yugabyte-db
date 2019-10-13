@@ -179,7 +179,10 @@ class OnPremNodesList extends Component {
           </div>
         );
       }) : null;
-
+    const deleteConfirmationText = `Are you sure you want to delete node${isNonEmptyObject(this.state.nodeToBeDeleted)
+      && this.state.nodeToBeDeleted.nodeName
+      ? ' ' + this.state.nodeToBeDeleted.nodeName
+      : ''}?`;
     return (
       <div>
         <span className="buttons pull-right">
@@ -214,11 +217,10 @@ class OnPremNodesList extends Component {
           </div>
           {regionFormTemplate}
         </YBModal>
-
         <YBConfirmModal name={"confirmDeleteNodeInstance"} title={"Delete Node"} hideConfirmModal={this.hideDeleteNodeModal}
                         currentModal={"confirmDeleteNodeInstance"} visibleModal={visibleModal}
                         onConfirm={this.deleteInstance} confirmLabel={"Delete"} cancelLabel={"Cancel"}>
-          Are you sure you want to delete node {isNonEmptyObject(this.state.nodeToBeDeleted) ? this.state.nodeToBeDeleted.nodeName : ""}
+          {deleteConfirmationText}
         </YBConfirmModal>
       </div>
     );
