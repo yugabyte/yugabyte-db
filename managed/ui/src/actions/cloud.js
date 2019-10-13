@@ -43,6 +43,7 @@ export const CREATE_NODE_INSTANCES_RESPONSE = 'CREATE_NODE_INSTANCE_RESPONSES';
 
 export const CREATE_ACCESS_KEY = 'CREATE_ACCESS_KEY';
 export const CREATE_ACCESS_KEY_RESPONSE = 'CREATE_ACCESS_KEY_RESPONSE';
+export const CREATE_ACCESS_KEY_FAILURE = 'CREATE_ACCESS_KEY_FAILURE';
 
 export const INITIALIZE_PROVIDER = 'INITIALIZE_PROVIDER';
 export const INITIALIZE_PROVIDER_SUCCESS = 'INITIALIZE_PROVIDER_SUCCESS';
@@ -310,6 +311,13 @@ export function createAccessKeyResponse(result) {
     type: CREATE_ACCESS_KEY_RESPONSE,
     payload: result
   };
+}
+
+export function createAccessKeyFailure(error) {
+  return {
+    type: CREATE_ACCESS_KEY_FAILURE,
+    payload: error
+  }
 }
 
 export function fetchAuthConfigList() {
