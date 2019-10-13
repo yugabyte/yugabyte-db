@@ -2,11 +2,12 @@
 
 import React, { Component } from 'react';
 import { Field, FieldArray } from 'redux-form';
-import { Row, Col, Tabs, Tab } from 'react-bootstrap';
+import { Row, Col, Tabs, Tab, Alert } from 'react-bootstrap';
 import { YBModal, YBInputField, YBAddRowButton, YBSelectWithLabel, YBToggle, YBCheckBox } from '../fields';
-import { isNonEmptyArray } from 'utils/ObjectUtils';
-import {getPromiseState} from 'utils/PromiseUtils';
+import { isNonEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
+import { getPromiseState } from 'utils/PromiseUtils';
 import './RollingUpgradeForm.scss';
+import _ from 'lodash';
 import { getPrimaryCluster } from "../../../../utils/UniverseUtils";
 import { isDefinedNotNull, isNonEmptyObject } from "../../../../utils/ObjectUtils";
 
@@ -70,25 +71,52 @@ export default class RollingUpgradeForm extends Component {
   }
 
   softwareVersionChanged(value) {
+    const { universe } = this.props;
     this.setState({
       pickedVersion: value
     });
+    if (getPromiseState(universe.rollingUpgrade).isError()) {
+      this.props.resetRollingUpgrade();
+    };
   }
 
   toggleConfirmValidation = () => {
+    const { universe } = this.props;
     this.setState({
       formConfirmed: !this.state.formConfirmed
     });
+    if (getPromiseState(universe.rollingUpgrade).isError()) {
+      this.props.resetRollingUpgrade();
+    };
   }
 
   componentWillReceiveProps(nextProps) {
-    const { universe: { rollingUpgrade, currentUniverse: { data: { universeUUID }}}} = nextProps;
+    const { universe, universe: { rollingUpgrade, currentUniverse: { data: { universeUUID }}}} = nextProps;
     if (getPromiseState(rollingUpgrade).isSuccess() && getPromiseState(this.props.universe.rollingUpgrade).isLoading()) {
       this.props.fetchCurrentUniverse(universeUUID);
       this.props.fetchUniverseMetadata();
       this.props.fetchCustomerTasks();
       this.props.fetchUniverseTasks(universeUUID);
     }
+
+    let currentVersion = null;
+    if(isDefinedNotNull(universe.currentUniverse.data) && isNonEmptyObject(universe.currentUniverse.data)) {
+      const primaryCluster = getPrimaryCluster(universe.currentUniverse.data.universeDetails.clusters);
+      currentVersion = primaryCluster && (primaryCluster.userIntent.ybSoftwareVersion || undefined);
+    }
+
+    if (getPromiseState(rollingUpgrade).isError()) {
+      this.setState({
+        formConfirmed: false,
+        formValidated: false,
+        pickedVersion: currentVersion
+      });
+    }
+  }
+
+  componentWillUnmount () {
+    const { resetRollingUpgrade } = this.props;
+    resetRollingUpgrade();
   }
 
   componentDidMount = () => {
@@ -119,7 +147,7 @@ export default class RollingUpgradeForm extends Component {
     } else {
       return;
     }
-    const primaryCluster = getPrimaryCluster(clusters);
+    const primaryCluster = _.cloneDeep(getPrimaryCluster(clusters));
     if (!isDefinedNotNull(primaryCluster)) {
       return;
     }
@@ -159,7 +187,7 @@ export default class RollingUpgradeForm extends Component {
   render() {
     const self = this;
     const {onHide, modalVisible, handleSubmit, universe, modal: { visibleModal }, 
-      universe: { error}, resetRollingUpgrade, softwareVersions} = this.props;
+      universe: { error }, resetRollingUpgrade, softwareVersions} = this.props;
 
     let currentVersion = null;
     if(isDefinedNotNull(universe.currentUniverse.data) && isNonEmptyObject(universe.currentUniverse.data)) {
@@ -177,6 +205,7 @@ export default class RollingUpgradeForm extends Component {
     const formCloseAction = function() {
       onHide();
       self.props.reset();
+      self.props.resetRollingUpgrade();
       self.setState({
         formConfirmed: false,
         formValidated: false,
@@ -221,16 +250,38 @@ export default class RollingUpgradeForm extends Component {
     }
     return (
       visibleModal === "softwareUpgradesModal" ?
-        <YBModal visible={modalVisible} formName={"RollingUpgradeForm"}
-                onHide={formCloseAction} submitLabel={'Upgrade'} showCancelButton={true} title={title} onFormSubmit={submitAction} error={error}
-                footerAccessory={ this.state.pickedVersion !== currentVersion
-                                    ? <YBCheckBox label={"Confirm software upgrade"} className="footer-accessory" input={{onChange: this.toggleConfirmValidation}} />
-                                    : <span>{"Latest software is installed"}</span>} asyncValidating={!this.state.formConfirmed}>
+        <YBModal
+          className={getPromiseState(universe.rollingUpgrade).isError() ? "modal-shake" : ""}
+          visible={modalVisible}
+          formName={"RollingUpgradeForm"}
+          onHide={formCloseAction}
+          submitLabel={'Upgrade'}
+          showCancelButton={true}
+          title={title}
+          onFormSubmit={submitAction}
+          error={error}
+          footerAccessory={ this.state.pickedVersion !== currentVersion
+            ? <YBCheckBox label={"Confirm software upgrade"} className="footer-accessory" input={{ checked: this.state.formConfirmed, onChange: this.toggleConfirmValidation}} />
+            : <span>{"Latest software is installed"}</span>} asyncValidating={!this.state.formConfirmed}>
           {formBody}
+          { getPromiseState(universe.rollingUpgrade).isError() &&
+            isNonEmptyString(universe.rollingUpgrade.error) &&
+            <Alert bsStyle={'danger'} variant={'danger'}>
+              Certificate adding has been failed:<br/>
+              {JSON.stringify(universe.rollingUpgrade.error)}
+            </Alert>
+          }
         </YBModal> :
         <YBModal visible={modalVisible} formName={"RollingUpgradeForm"}
                   onHide={formCloseAction} title={title} onFormSubmit={submitAction} error={error}>
           {formBody}
+          { getPromiseState(universe.rollingUpgrade).isError() &&
+            isNonEmptyString(universe.rollingUpgrade.error) &&
+            <Alert bsStyle={'danger'} variant={'danger'}>
+              Certificate adding has been failed:<br/>
+              {JSON.stringify(universe.rollingUpgrade.error)}
+            </Alert>
+          }
         </YBModal>
     );
   }

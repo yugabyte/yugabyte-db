@@ -59,7 +59,7 @@ export default function(state = INITIAL_STATE, action) {
     case GET_PROVIDER_LIST_RESPONSE:
       if (action.payload.status !== 200) {
         if (isDefinedNotNull(action.payload.data)) {
-          return {...setFailureState(state, "providers", action.payload.data.error), fetchMetadata: false};
+          return {...setFailureState(state, "providers", action.payload.response.data.error), fetchMetadata: false};
         } else {
           return state;
         }
@@ -70,7 +70,7 @@ export default function(state = INITIAL_STATE, action) {
       return setLoadingState(state, "regions", []);
     case GET_REGION_LIST_RESPONSE:
       if (action.payload.status !== 200) {
-        return setFailureState(state, "regions", action.payload.data.error);
+        return setFailureState(state, "regions", action.payload.response.data.error);
       }
       return setSuccessState(state, "regions", _.sortBy(action.payload.data, "name"));
 
@@ -78,7 +78,7 @@ export default function(state = INITIAL_STATE, action) {
       return setLoadingState(state, "instanceTypes", []);
     case GET_INSTANCE_TYPE_LIST_RESPONSE:
       if (action.payload.status !== 200) {
-        return setFailureState(state, "instanceTypes", action.payload.data.error);
+        return setFailureState(state, "instanceTypes", action.payload.response.data.error);
       }
       return setSuccessState(state, "instanceTypes", sortInstanceTypeList(action.payload.data));
 
@@ -104,7 +104,7 @@ export default function(state = INITIAL_STATE, action) {
       if (action.payload.status === 200) {
         return setSuccessState(state, "bootstrap", {type: "provider", response: action.payload.data});
       }
-      return setFailureState(state, "bootstrap", action.payload.data.error, {type: "provider"});
+      return setFailureState(state, "bootstrap", action.payload.response.data.error, {type: "provider"});
     case BOOTSTRAP_PROVIDER:
       return setLoadingState(state, "bootstrapProvider", {});
     case BOOTSTRAP_PROVIDER_RESPONSE:
@@ -116,7 +116,7 @@ export default function(state = INITIAL_STATE, action) {
       if (action.payload.status === 200) {
         return setSuccessState(state, "bootstrap", {type: "instanceType", response: action.payload.data});
       }
-      return setFailureState(state, "bootstrap", action.payload.data.error, {type: "instanceType"});
+      return setFailureState(state, "bootstrap", action.payload.response.data.error, {type: "instanceType"});
 
     case CREATE_REGION:
       return setLoadingState(state, "bootstrap", {type: "region", response: null});
@@ -124,7 +124,7 @@ export default function(state = INITIAL_STATE, action) {
       if (action.payload.status === 200) {
         return setSuccessState(state, "bootstrap", {type: "region", response: action.payload.data});
       }
-      return setFailureState(state, "bootstrap", action.payload.data.error, {type: "region"});
+      return setFailureState(state, "bootstrap", action.payload.response.data.error, {type: "region"});
 
     case CREATE_ZONES:
       return setLoadingState(state, "bootstrap", {type: "zones", response: null});
@@ -132,7 +132,7 @@ export default function(state = INITIAL_STATE, action) {
       if (action.payload.status === 200) {
         return setSuccessState(state, "bootstrap", {type: "zones", response: action.payload.data});
       }
-      return setFailureState(state, "bootstrap", action.payload.data.error, {type: "zone"});
+      return setFailureState(state, "bootstrap", action.payload.response.data.error, {type: "zone"});
 
     case CREATE_NODE_INSTANCES:
       return setLoadingState(state, "bootstrap", {type: "node", response: null});
@@ -140,12 +140,15 @@ export default function(state = INITIAL_STATE, action) {
       if (action.payload.status === 200) {
         return setSuccessState(state, "bootstrap", {type: "node", response: action.payload.data});
       }
-      return setFailureState(state, "bootstrap", action.payload.data.error, {type: "node"});
+      return setFailureState(state, "bootstrap", action.payload.response.data.error, {type: "node"});
 
     case CREATE_ACCESS_KEY:
       return setLoadingState(state, "bootstrap", {type: "accessKey", response: null});
     case CREATE_ACCESS_KEY_RESPONSE:
-      return setSuccessState(state, "bootstrap", {type: "accessKey", response: action.payload.data});
+      if (action.payload.status === 200) {
+        return setSuccessState(state, "bootstrap", {type: "accessKey", response: action.payload.data});
+      }
+      return setFailureState(state, "bootstrap", action.payload.response.data.error, {type: "accessKey"});
     case CREATE_ACCESS_KEY_FAILURE:
       return setFailureState(state, "bootstrap", action.payload, {type: "accessKey"});
 
@@ -154,19 +157,19 @@ export default function(state = INITIAL_STATE, action) {
     case INITIALIZE_PROVIDER_SUCCESS:
       return setSuccessState(state, "bootstrap", {type: "initialize", response: action.payload.data});
     case INITIALIZE_PROVIDER_FAILURE:
-      return setFailureState(state, "bootstrap", action.payload.data.error, {type: "initialize"});
+      return setFailureState(state, "bootstrap", action.payload.response.data.error, {type: "initialize"});
 
     case DELETE_PROVIDER:
       return setLoadingState(state, "bootstrap", {type: "cleanup", response: null});
     case DELETE_PROVIDER_SUCCESS:
       return setSuccessState(state, "bootstrap", {type: "cleanup", response: action.payload.data});
     case DELETE_PROVIDER_FAILURE:
-      return setFailureState(state, "bootstrap", action.payload.data.error, {type: "cleanup"});
+      return setFailureState(state, "bootstrap", action.payload.response.data.error, {type: "cleanup"});
     case DELETE_PROVIDER_RESPONSE:
       if (action.payload.status === 200) {
         return setSuccessState(state, "bootstrap", {type: "cleanup", response: action.payload.data});
       }
-      return setFailureState(state, "bootstrap", action.payload.data.error, {type: "cleanup"});
+      return setFailureState(state, "bootstrap", action.payload.response.data.error, {type: "cleanup"});
 
     case RESET_PROVIDER_BOOTSTRAP:
       return setInitialState(state, "bootstrap");

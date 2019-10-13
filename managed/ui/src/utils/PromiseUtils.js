@@ -60,10 +60,10 @@ export function getPromiseState(dataObject) {
 }
 
 export function setPromiseResponse(state, object, response) {
-  const { payload: { data, status }} = response;
+  const { payload, payload: { data, status, isAxiosError }} = response;
   const objectState = _.omit(response, ['payload', 'type']);
-  if (status !== 200 || (isDefinedNotNull(data) && isDefinedNotNull(data.error))) {
-    _.merge(objectState, { data: null, error: data && data.error, promiseState: PromiseState.ERROR });
+  if (status !== 200 || isAxiosError || (isDefinedNotNull(data) && isDefinedNotNull(data.error))) {
+    _.merge(objectState, { data: null, error: payload.response.data && payload.response.data.error, promiseState: PromiseState.ERROR });
   } else {
     _.merge(objectState, {data: data, error: null, promiseState: PromiseState.SUCCESS});
   }
