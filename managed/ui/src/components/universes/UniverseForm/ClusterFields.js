@@ -113,8 +113,8 @@ export default class ClusterFields extends Component {
   }
 
   componentWillMount() {
-    const {formValues, clusterType, updateFormField, type} = this.props;
-    const {universe: {currentUniverse: {data: {universeDetails}}}} = this.props;
+    const { formValues, clusterType, updateFormField, type } = this.props;
+    const { universe: { currentUniverse: { data: { universeDetails }}}} = this.props;
     // Set default software version in case of create
     if (isNonEmptyArray(this.props.softwareVersions) && !isNonEmptyString(this.state.ybSoftwareVersion) && type === "Create") {
       this.setState({ybSoftwareVersion: this.props.softwareVersions[0]});
@@ -165,7 +165,7 @@ export default class ClusterFields extends Component {
         this.props.fetchNodeInstanceList(providerUUID);
       }
       // If Edit Case Set Initial Configuration
-      this.props.getExistingUniverseConfiguration(universeDetails);
+      this.props.getExistingUniverseConfiguration(_.cloneDeep(universeDetails));
     } else {
       this.props.getKMSConfigs();
       // Repopulate the form fields when switching back to the view
@@ -212,7 +212,7 @@ export default class ClusterFields extends Component {
   }
 
   componentWillReceiveProps(nextProps) {
-    const {universe: {currentUniverse}, cloud: {nodeInstanceList, instanceTypes}, clusterType, formValues } = nextProps;
+    const { universe: { currentUniverse }, cloud: { nodeInstanceList, instanceTypes }, clusterType, formValues } = nextProps;
 
     const currentFormValues = formValues[clusterType];
     let providerSelected = this.state.providerSelected;
@@ -378,7 +378,7 @@ export default class ClusterFields extends Component {
 
 
   numNodesChangedViaAzList(value) {
-    const {updateFormField, clusterType} = this.props;
+    const { updateFormField, clusterType } = this.props;
     this.setState({nodeSetViaAZList: true, numNodes: value});
     updateFormField(`${clusterType}.numNodes`, value);
   }
@@ -445,13 +445,13 @@ export default class ClusterFields extends Component {
   };
 
   softwareVersionChanged(value) {
-    const {updateFormField, clusterType} = this.props;
+    const { updateFormField, clusterType } = this.props;
     this.setState({ybSoftwareVersion: value});
     updateFormField(`${clusterType}.ybSoftwareVersion`, value);
   }
 
   storageTypeChanged(storageValue) {
-    const {updateFormField, clusterType} = this.props;
+    const { updateFormField, clusterType } = this.props;
     const currentDeviceInfo = _.clone(this.state.deviceInfo);
     currentDeviceInfo.storageType = storageValue;
     if (currentDeviceInfo.storageType === "IO1" && currentDeviceInfo.diskIops == null) {
@@ -492,7 +492,7 @@ export default class ClusterFields extends Component {
 
 
   toggleAssignPublicIP(event) {
-    const {updateFormField, clusterType} = this.props;
+    const { updateFormField, clusterType } = this.props;
     // Right now we only let primary cluster to update this flag, and
     // keep the async cluster to use the same value as primary.
     if (clusterType === "primary") {
@@ -503,7 +503,7 @@ export default class ClusterFields extends Component {
   }
 
   toggleEnableYSQL(event) {
-    const {updateFormField, clusterType} = this.props;
+    const { updateFormField, clusterType } = this.props;
     // Right now we only let primary cluster to update this flag, and
     // keep the async cluster to use the same value as primary.
     if (clusterType === "primary") {
@@ -514,7 +514,7 @@ export default class ClusterFields extends Component {
   }
 
   toggleEnableNodeToNodeEncrypt(event) {
-    const {updateFormField, clusterType} = this.props;
+    const { updateFormField, clusterType } = this.props;
     // Right now we only let primary cluster to update this flag, and
     // keep the async cluster to use the same value as primary.
     if (clusterType === "primary") {
@@ -525,7 +525,7 @@ export default class ClusterFields extends Component {
   }
 
   toggleEnableClientToNodeEncrypt(event) {
-    const {updateFormField, clusterType} = this.props;
+    const { updateFormField, clusterType } = this.props;
     // Right now we only let primary cluster to update this flag, and
     // keep the async cluster to use the same value as primary.
     if (clusterType === "primary") {
@@ -560,7 +560,7 @@ export default class ClusterFields extends Component {
   }
 
   replicationFactorChanged = value => {
-    const {updateFormField, clusterType, universe: {currentUniverse: {data}}} = this.props;
+    const { updateFormField, clusterType, universe: { currentUniverse: { data }}} = this.props;
     const clusterExists = isDefinedNotNull(data.universeDetails) ? isEmptyObject(getClusterByType(data.universeDetails.clusters, clusterType)) : null;
     const self = this;
 
@@ -576,7 +576,7 @@ export default class ClusterFields extends Component {
   };
 
   hasFieldChanged = () => {
-    const {universe: {currentUniverse}, clusterType} = this.props;
+    const { universe: { currentUniverse }, clusterType } = this.props;
     if (isEmptyObject(currentUniverse.data) || isEmptyObject(currentUniverse.data.universeDetails)) {
       return true;
     }
@@ -589,7 +589,7 @@ export default class ClusterFields extends Component {
   };
 
   handleUniverseConfigure(universeTaskParams) {
-    const {universe: {universeConfigTemplate, currentUniverse}, formValues, clusterType} = this.props;
+    const { universe: { universeConfigTemplate, currentUniverse }, formValues, clusterType } = this.props;
 
     const instanceType = formValues[clusterType].instanceType;
     const regionList = formValues[clusterType].regionList;
@@ -647,7 +647,7 @@ export default class ClusterFields extends Component {
   }
 
   configureUniverseNodeList() {
-    const {universe: {universeConfigTemplate, currentUniverse}, formValues, clusterType} = this.props;
+    const { universe: { universeConfigTemplate, currentUniverse }, formValues, clusterType } = this.props;
     const { hasInstanceTypeChanged } = this.state;
     const currentProviderUUID = this.state.providerSelected;
     let universeTaskParams = {};

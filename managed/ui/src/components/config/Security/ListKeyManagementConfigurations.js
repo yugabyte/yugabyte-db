@@ -48,8 +48,8 @@ class ListKeyManagementConfiguration extends Component {
           }}>Show details</a>
           <span title={displayed.join(', ')} className="yb-hidden">{displayed.join(', ')}</span>
         </div>
-      )
-    }
+      );
+    };
 
     return (
       <div>
@@ -95,7 +95,7 @@ class ListKeyManagementConfiguration extends Component {
           <p>Are you sure you want to delete this AWS KMS configuration?</p>
         </YBConfirmModal>
       </div>
-    )
+    );
   }
 }
 export default ListKeyManagementConfiguration;
