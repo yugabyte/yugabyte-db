@@ -9,7 +9,7 @@ import { getPromiseState } from 'utils/PromiseUtils';
 import ListKeyManagementConfigurations from './ListKeyManagementConfigurations';
 import * as Yup from 'yup';
 
-import { regionsData } from '../../config/PublicCloud/views/providerRegionsData'
+import { regionsData } from '../../config/PublicCloud/views/providerRegionsData';
 
 const kmsConfigTypes = [
   { value: 'SMARTKEY', label: 'Equinix SmartKey' },
@@ -153,7 +153,7 @@ class KeyManagementConfiguration extends Component {
           </Col>
         </Row>
       </Fragment>
-    )
+    );
   }
 
   displayFormContent = (provider) => {
@@ -188,15 +188,16 @@ class KeyManagementConfiguration extends Component {
     const { configList } = this.props;
     const { listView } = this.state;
     if (getPromiseState(configList).isInit() || getPromiseState(configList).isLoading()) {
-      return <YBLoadingCircleIcon />
+      return <YBLoadingCircleIcon />;
     }
     if (listView) {
       return (
-      <ListKeyManagementConfigurations
-        configs={configList}
-        onCreate={this.openCreateConfigForm}
-        onDelete={this.deleteAuthConfig}
-      />);
+        <ListKeyManagementConfigurations
+          configs={configList}
+          onCreate={this.openCreateConfigForm}
+          onDelete={this.deleteAuthConfig}
+        />
+      );
     }
 
     return (
