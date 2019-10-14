@@ -1,4 +1,4 @@
-<img src="https://github.com/yugabyte/yugabyte-db/raw/master/architecture/images/ybDB_horizontal.jpg" align="center" alt="Yugabyte DB"/>
+<img src="https://github.com/yugabyte/yugabyte-db/raw/master/architecture/images/ybDB_horizontal.jpg" align="center" alt="YugabyteDB"/>
 
 ---------------------------------------
 
@@ -8,7 +8,7 @@
 [![Slack chat](https://img.shields.io/badge/Slack:-%23yugabyte_db-blueviolet.svg?logo=slack)](https://www.yugabyte.com/slack)
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/home?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)
 
-- [What is Yugabyte DB?](#what-is-yugabyte-db)
+- [What is YugabyteDB?](#what-is-yugabytedb)
 - [Get Started](#get-started)
 - [Build Apps](#build-apps)
 - [Architecture](#architecture)
@@ -17,9 +17,9 @@
 - [License](#license)
 - [Read More](#read-more)
 
-# What is Yugabyte DB?
+# What is YugabyteDB?
 
-Yugabyte DB is a high-performance, cloud-native distributed SQL database. Here are its salient points:
+YugabyteDB is a high-performance, cloud-native distributed SQL database. Here are its salient points:
 * Has a pluggable query layer, and supports two distributed SQL APIs:
     * **[Yugabyte SQL (YSQL)](https://docs.yugabyte.com/latest/api/ysql/)** - PostgreSQL-compatible fully relational API
     * **[Yugabyte Cloud QL (YCQL)](https://docs.yugabyte.com/latest/api/ycql/)** - Semi-relational SQL-like API with documents/indexing support and Apache Cassandra QL roots 
@@ -32,11 +32,11 @@ Yugabyte DB is a high-performance, cloud-native distributed SQL database. Here a
 * Best fit for powering massively-scalable, globally-distributed, cloud-native applications that require absolute data correctness and high tolerance to failures
 * 100% open source under the [Apache 2.0 license](https://github.com/yugabyte/yugabyte-db/blob/master/LICENSE.md)
 
-Read more about Yugabyte DB in our [Docs](https://docs.yugabyte.com/latest/introduction/).
+Read more about YugabyteDB in our [Docs](https://docs.yugabyte.com/latest/introduction/).
 
 # Get Started
 
-* [Install Yugabyte DB](https://docs.yugabyte.com/latest/quick-start/install/)
+* [Install YugabyteDB](https://docs.yugabyte.com/latest/quick-start/install/)
 * [Create a local cluster](https://docs.yugabyte.com/latest/quick-start/create-local-cluster/)
 * [Connect and try out SQL commands](https://docs.yugabyte.com/latest/quick-start/explore-ysql/)
 * [Build an app](https://docs.yugabyte.com/latest/quick-start/build-apps/) using a PostgreSQL-compatible driver or ORM.
@@ -48,7 +48,7 @@ Cannot find what you are looking for? Have a question? Please post your question
 
 # Build Apps
 
-Yugabyte DB supports a number of languages and client drivers. Below is a brief list.
+YugabyteDB supports a number of languages and client drivers. Below is a brief list.
 
 | Language  | ORM | YSQL Drivers | YCQL Drivers |
 | --------- | --- | ------------ | ------------ |
@@ -63,7 +63,7 @@ Yugabyte DB supports a number of languages and client drivers. Below is a brief 
 
 # Architecture
 
-<img src="https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/architecture/images/yb-architecture.jpg" align="center" alt="Yugabyte DB Architecture"/>
+<img src="https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/architecture/images/yb-architecture.jpg" align="center" alt="YugabyteDB Architecture"/>
 
 Review detailed architecture in our [Docs](https://docs.yugabyte.com/latest/architecture/).
 
@@ -91,4 +91,4 @@ The build produces two sets of binaries:
 # Read More
 
 * To see our updates, go to [The Distributed SQL Blog](https://blog.yugabyte.com/).
-* See how Yugabyte DB [compares with other databases](https://docs.yugabyte.com/latest/comparisons/). 
+* See how YugabyteDB [compares with other databases](https://docs.yugabyte.com/latest/comparisons/). 
