@@ -1,12 +1,12 @@
 ---
-title: Client authentication for YSQL
-linkTitle: Client authentication for YSQL
-description: Client authentication for YSQL
-headcontent: Enable YSQL client connections by configuring yb_hba.conf
+title: Configure YSQL client connections
+linkTitle: Configure YSQL client connections
+description: Configure YSQL client connections
+headcontent: How to configure fine-grained access control for YSQL clients
 image: /images/section_icons/secure/authentication.png
 menu:
   latest:
-    identifier: ysql-hba-conf
+    identifier: ysql-client-authentication
     parent: authentication
     weight: 20
 draft: true

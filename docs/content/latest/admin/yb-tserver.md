@@ -53,7 +53,7 @@ Displays help on modules named by the specified option (or flag) value.
 
 #### --flagfile
 
-Specifies the file to load options (or flags) from.
+Specifies the file to load the configuration options (or flags) from. The configuration settings, or flags, must be in the same format as supported by the command line options.
 
 #### --version
 
@@ -69,9 +69,9 @@ Comma-separated list of directories where the `yb-tserver` will place it's `yb-d
 
 #### --fs_wal_dirs
 
-Default: Same as `--fs_data_dirs`
-
 The directory where the `yb-tserver` will place its write-ahead logs. May be the same as one of the directories listed in `--fs_data_dirs`, but not a sub-directory of a data directory.
+
+Default: Same as `--fs_data_dirs`
 
 #### --max_clock_skew_usec
 
@@ -87,7 +87,7 @@ Default: `0.0.0.0:9100`
 
 #### --server_broadcast_addresses
 
-Public IP or DNS hostname of the server (along with an optional port).
+Public IP or DNS hostname of the server (with an optional port).
 
 Default: `0.0.0.0:9100`
 
@@ -101,7 +101,7 @@ Default: `never`
 
 Address to bind for the web server user interface.
 
-Default: `0.0.0.0`
+Default: `0.0.0.0` (`127.0.0.1`)
 
 #### --webserver_port
 
@@ -159,15 +159,31 @@ Default: `false`
 
 #### --ysql_enable_auth
 
-Enables YSQL authentication.
+Enables YSQL authentication. 
+
+{{< note title="Note" >}}
+
+**Yugabyte 2.0:** Assign a password for the default `yugabyte` user to be able to sign in after enabling YSQL authentication.
+
+**Yugabyte 2.0.1:** When YSQL authentication is enabled, you can sign into `ysqlsh` using the default `yugabyte` user that has a default password of `yugabyte".
+
+{{< /note >}}
 
 Default: `false`
 
 #### --pgsql_proxy_bind_address
 
-Specifies the bind address for the YSQL API.
+Specifies the TCP/IP bind addresses for the YSQL API. The default value of `0.0.0.0:5433` allows listening for all IPv4 addresses access to localhost on port `5433`. The `--pgsql_proxy_bind_address` value overwrites `listen_addresses` (default value of `127.0.0.1:5433`) that controls which interfaces accept connection attempts.
+
+To specify fine-grained access control over who can access the server, use [`--ysql_hba_conf`](#ysql-hba-conf).
 
 Default: `0.0.0.0:5433`
+
+{{< note title="Note" >}}
+
+When using local YugabyteDB clusters built using the
+
+{{< /note >}}
 
 #### --pgsql_proxy_webserver_port
 
@@ -177,7 +193,9 @@ Default: `13000`
 
 #### --ysql_hba_conf
 
-Specifies a comma-separated list of PostgreSQL client authentication settings.
+Specifies a comma-separated list of PostgreSQL client authentication settings that is written to the `ysql_hba.conf` file.
+
+For details on using `--ysql_hba_conf` to specify client authentication, see [Configure YSQL client authentication](../secure/authentication/ysql-client-authentication.md).
 
 Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
 
@@ -213,7 +231,7 @@ Default: `READ COMMITTED` (implemented in YugabyteDB as `REPEATABLE READ`)
 
 {{< note title="Note" >}}
 
-YugabyteDB supports two transaction isolation levels: `REPEATABLE READ` (aka snapshot) and `SERIALIZABLE`. The PostgreSQL transaction isolation level of `READ COMMITTED` is implemented in YugabyteDB as `REPEATABLE READ`.
+YugabyteDB supports two transaction isolation levels: `REPEATABLE READ` (aka snapshot) and `SERIALIZABLE`. The transaction isolation levels of `READ UNCOMMITTED` and `READ COMMITTED` are implemented in YugabyteDB as `REPEATABLE READ`.
 
 {{< /note >}}
 

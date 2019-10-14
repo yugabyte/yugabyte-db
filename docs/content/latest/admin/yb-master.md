@@ -85,13 +85,13 @@ Default: `0.0.0.0:7100`
 
 #### --webserver_interface
 
-Address to bind for web server user interface access.
+Specifies the bind address for web server user interface access.
 
 Default: `0.0.0.0`
 
 #### --webserver_port
 
-Monitoring web server port.
+Specifies the web server monitoring port.
 
 Default: `7000`
 
@@ -117,15 +117,15 @@ Switches to log to standard error (`stderr`).
 
 #### --yb_num_shards_per_tserver
 
-Specifies the number of shards per yb-tserver per table when a user table is created. Server automatically picks a valid default internally.
+Specifies the number of shards per yb-tserver per table when a user table is created.
 
 Default: Server automatically picks a valid default internally, typically 8.
 
 #### --max_clock_skew_usec
 
-The expected maximum clock skew between any two nodes in your deployment.
+The expected maximum clock skew, in microseconds (µs), between any two nodes in your deployment.
 
-Default: `50000` (50ms)
+Default: `50000` (50,000 µs = 50ms)
 
 ##### --replication_factor
 
@@ -135,11 +135,9 @@ Default: `3`
 
 ### Placement options
 
-The placement options, or flags, provide 
-
 #### --placement_zone
 
-Name of the availability zone or rack where this instance is deployed.
+The name of the availability zone (AZ), or rack, where this instance is deployed.
 
 Default: `rack1`
 
