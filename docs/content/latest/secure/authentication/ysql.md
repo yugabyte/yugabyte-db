@@ -1,13 +1,23 @@
 
 ## Overview
 
-YSQL authentication, identifying that a YugabyteDB user is who they say they are, is based on roles. Roles can be created with superuser, non-superuser, and login privileges. Administrators can create new roles and alter, or drop, existing ones using YCQL commands (`CREATE USER`,`CREATE ROLE`,`GRANT`,and `REVOKE`).
+YSQL authentication is the process of identifying that a YSQL user is who they say they are, is based on roles. Users and roles can be created with superuser, non-superuser, and login privileges. Administrators can create users and roles using the [`CREATE ROLE`](../../api/ysql/ddl_create_role/) statement (or its alias, [`CREATE USER`](../../api/ysql/ddl_create_user/)). After users and roles have been created, the [`ALTER ROLE`](../../api/ysql/ddl_alter_role/) and [`DROP ROLE`](../../api/ysql/ddl_drop_role/) statements are used to change or remove users and roles. 
 
-## 1. Specify the default admin user and password
+YSQL authorization is the process of access control created by granting or revoking privileges to YSQL users and roles, see [Authorization](../authorization). Privileges are managed using [`GRANT`](../../api/ysql/ddl_grant/), [`REVOKE`](../../api/ysql/ddl_revoke/), [`CREATE ROLE`](../../api/ysql/ddl_create_role/), [`ALTER ROLE`](../../api/ysql/ddl_alter_role/), and [`DROP ROLE`](../../api/ysql/ddl_drop_role/).
 
-Before enabling YSQL authentication, you need to specify a password for the default `yugabyte` user. When authentication is enabled, the default of no password will not work to authenticate.
+## Specify a password for the default user
 
-## 2. Enable YSQL authentication
+When you start your YugabyteDB cluster, the YB-Master and YB-TServer services are launched using the default user, named `yugabyte`, and then this user is connected to the default database, also named `yugabyte`. When YSQL authentication is enabled, all users (including `yugabyte`) require a password to log into a YugabyteDB database. So, before starting up YugabyteDB with YSQL authentication enabled, you need to specify a password for the `yugabyte` user.
+
+To add a password to the `yugabyte` user, launch `ysqlsh` and then run the following command, specifying a password of your choice.
+
+```sql
+yugabyte=# ALTER ROLE yugabyte with password 'yugabyte';
+```
+
+After creating a password for `yugabyte`, you can start, or restart, your YugabyteDB cluster with YSQL authentication enabled.
+
+## Enable YSQL authentication
 
 ### yb-ctl
 
@@ -16,13 +26,13 @@ To enable YSQL authentication in your local YugabyteDB clusters, you can  use th
 When you create a local cluster, you can run a command like this to enable YSQL authentication in the newly-created cluster.
 
 ```bash
-./bin/yb-ctl create --tserver_flags ysql_enable-auth=true
+./bin/yb-ctl create --tserver_flags ysql_enable_auth=true
 ```
 
 After your local cluster has been created, you can enable YSQL authentication by starting your cluster with a command like this:
 
 ```bash
-./bin/yb-ctl start --tserver_flags ysql_enable-auth=true
+./bin/yb-ctl start --tserver_flags ysql_enable_auth=true
 ```
 
 ### yb-tserver
@@ -37,37 +47,39 @@ To enable YSQL authentication in deployable YugabyteDB clusters, you need to sta
   >& /home/centos/disk1/yb-tserver.out &
 ```
 
-For details on configuring YSQL authentication in the YB-TServer configuration file (`tserver.conf`), see [Start YB-TServers](../../deploy/manual-deployment/start-tservers/).
+You can also enable YSQL authentication by adding the `--ysql_enable_auth=true` to the YB-TServer configuration file (`tserver.conf`). For more information, see [Start YB-TServers](../../deploy/manual-deployment/start-tservers/).
 
-## 3. Connect with the default admin credentials
+## Connect with the default admin credentials
 
-A new YugabyteDB cluster with authentication enabled starts using the default admin user, the default username and password for this admin user is `yugabyte`/`<no password>`. Note that this default user has `SUPERUSER` privilege. You can connect to this cluster using `ysqlsh` as follows:
+A YugabyteDB cluster with authentication enabled starts with `yugabyte` as the default admin user. Note that the users `yugabyte` and `postgres` have `SUPERUSER` privileges. You can connect to this cluster using `ysqlsh` as follows:
 
 ```sh
 $ ysqlsh -U yugabyte -p yugabyte
 ```
 
-You should see the cluster connect and the following prompt:
+Upon opening the YSQL shell, you will see the following, displaying the `yugabyte` user in the prompt.
 
 ```
-ysqlsh (11.2-YB-2.0.0.0-b0)
+ysqlsh (11.2-YB-2.0.0.0-b16)
 Type "help" for help.
 
 yugabyte=#
 ```
 
-## 4. Create a new user
+## Common user authentication tasks
 
-Use the [CREATE ROLE statement](../../api/ysql/commands/ddl_create_role/) to create a new role. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all the YSQL commands on any of the database resources.
+### Creating users
+
+To add a new user, run the [CREATE ROLE statement](../../api/ysql/commands/ddl_create_role/). Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all the YSQL commands on any of the database resources.
 
 **NOTE** By default, creating a role does not grant the `LOGIN` or the `SUPERUSER` privileges, these need to be explicitly granted.
 
-### Creating a user
+#### Create a regular user
 
-For example, to create a regular user `john` with the password `PasswdForJohn` and grant login privileges, run the following command.
+To add a new regular user named `john`, with the password `PasswdForJohn` and grant him `LOGIN` privileges, run the following command.
 
 ```sql
-yugabyte=# CREATE ROLE IF NOT EXISTS john WITH PASSWORD = 'PasswdForJohn' AND LOGIN = true;
+yugabyte=# CREATE ROLE john WITH LOGIN PASSWORD 'PasswdForJohn';
 ```
 
 If the role `john` already existed, the above statement will not error out since we have added the `IF NOT EXISTS` clause. To verify the user account just created, run the following query:
@@ -79,15 +91,15 @@ yugabyte=# SELECT role, can_login, is_superuser, member_of FROM system_auth.role
 You should see the following output.
 
 ```
- role      | can_login | is_superuser | member_of
+ role     | can_login | is_superuser | member_of
 -----------+-----------+--------------+-----------
-      john |      True |        False |          []
+     john |      True |        False |          []
  yugabyte |      True |         True |          []
 
 (2 rows)
 ```
 
-### Creating a superuser
+#### Create a user with SUPERUSER status
 
 The `SUPERUSER` status should be given only to a limited number of users. Applications should generally not access the database using an account that has the superuser privilege.
 
@@ -96,26 +108,44 @@ The `SUPERUSER` status should be given only to a limited number of users. Applic
 To create a superuser `admin` with the `LOGIN` privilege, run the following command using a superuser account:
 
 ```sql
-yugabyte=# CREATE ROLE admin WITH PASSWORD = 'PasswdForAdmin' AND LOGIN = true AND SUPERUSER = true;
+yugabyte=# CREATE ROLE admin WITH PASSWORD = 'PasswdForAdmin' AND LOGIN, SUPERUSER;
 ```
 
-To verify the admin account just created, run the following query.
+To verify the `admin` account just created, run the following query.
 
 ```sql
-yugabyte=# SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
+yugabyte=# SELECT rolname, rolsuper, rolcanlogin FROM pg_roles;
 ```
 
-You should see the following output.
+To see all of the information available in the `pg_roles` table, run `SELECT * from pg_roles`.
+
+You should see a table output similar to this:
 
 ```
- role      | can_login | is_superuser | member_of
------------+-----------+--------------+-----------
-     admin |      True |         True |          []
-      john |      True |        False |          []
-  yugabyte |      True |         True |          []
-
-(3 rows)
+          rolname          | rolsuper | rolcanlogin 
+---------------------------+----------+-------------
+ postgres                  | t        | t
+ ...
+ yugabyte                  | t        | t
+ steve                     | f        | t
+ john                      | f        | t
+(13 rows)
 ```
+
+In this table, you can see that both `postgres` and `yugabyte` users can log in and have `SUPERUSER` status.
+
+As an alternative, you can simply run the `\du` command to see this information in a simpler, easier-to-read format:
+
+```bash
+                                    List of roles
+ Role name |                         Attributes                         | Member of  
+-----------+------------------------------------------------------------+------------
+ john      | Cannot login                                               | {}
+ postgres  | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+ steve     | Superuser                                                  | {sysadmin}
+ sysadmin  | Create role, Create DB                                     | {}
+ yugabyte  | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+ ```
 
 ## 5. Connect to ysqlsh using non-default credentials
 
@@ -131,12 +161,6 @@ As an example of connecting as a user, we can login with the credentials of the 
 
 ```sh
 $ ysqlsh -u john
-```
-
-As an example of connecting as the `admin` user, we can run the following command.
-
-```sh
-$ ysqlsh -u admin -p PasswdForAdmin
 ```
 
 ## 5. Edit user accounts
@@ -156,15 +180,15 @@ yugabyte=# ALTER ROLE john WITH PASSWORD = 'new-password';
 In the example above, we can verify that `john` is not a superuser:
 
 ```sql
-yugabyte=# SELECT role, can_login, is_superuser, member_of FROM system_auth.roles WHERE role='john';
+yugabyte=# SELECT rolname, rolsuper, rolcanlogin FROM pg_roles WHERE rolname='john';
 ```
 
 ```
- role | can_login | is_superuser | member_of
-------+-----------+--------------+-----------
- john |      True |        False |          []
-
-(1 rows)
+yugabyte=# SELECT rolname, rolsuper, rolcanlogin FROM pg_roles WHERE rolname='steve';
+ rolname | rolsuper | rolcanlogin 
+---------+----------+-------------
+ john    | f        | t
+(1 row)
 ```
 
 To grant superuser privileges to `john`, run the following command.
@@ -176,33 +200,32 @@ yugabyte=# ALTER ROLE john WITH SUPERUSER = true;
 We can now verify that john is now a superuser.
 
 ```sql
-yugabyte=# SELECT role, can_login, is_superuser, member_of FROM system_auth.roles WHERE role='john';
+yugabyte=# SELECT rolname, rolsuper, rolcanlogin FROM pg_roles WHERE rolname='john';
 ```
 
 ```
- role | can_login | is_superuser | member_of
-------+-----------+--------------+-----------
- john |      True |         True |          []
-
-(1 rows)
+ rolname | rolsuper | rolcanlogin 
+---------+----------+-------------
+ john    | t        | t
+(1 row)
 ```
 
 Similarly, you can revoke superuser privileges by running:
 
 ```sql
-yugabyte=# ALTER ROLE john WITH SUPERUSER = false;
+yugabyte=# ALTER ROLE john WITH NOSUPERUSER;
 ```
 
 ### Enable and disable login privileges
 
-In the example above, we can verify that `john` is can login to the database by doing the following:
+In the example above, we can verify that `john` can login to the database by doing the following:
 
 ```sql
-yugabyte=# SELECT role, can_login, is_superuser, member_of FROM system_auth.roles WHERE role='john';
+yugabyte=# SELECT role, rolcanlogin FROM pg_roles WHERE role='john';
 ```
 
 ```
- role | can_login | is_superuser | member_of
+ role | canlogin | is_superuser | member_of
 ------+-----------+--------------+-----------
  john |      True |        False |          []
 
@@ -212,63 +235,41 @@ yugabyte=# SELECT role, can_login, is_superuser, member_of FROM system_auth.role
 To disable login privileges for `john`, run the following command.
 
 ```sql
-yugabyte=# ALTER ROLE john WITH LOGIN = false;
+yugabyte=# ALTER ROLE john WITH NOLOGIN;
 ```
 
 You can verify this as follows.
 
 ```sql
-yugabyte=# SELECT role, can_login, is_superuser, member_of FROM system_auth.roles WHERE role='john';
+yugabyte=# SELECT rolname, rolcanlogin FROM pg_roles WHERE rolname='john';
 ```
 
 ```
- role | can_login | is_superuser | member_of
-------+-----------+--------------+-----------
- john |     False |        False |          []
-
-(1 rows)
+ rolname | rolcanlogin 
+---------+-------------
+ john    | f
+(1 row)
 ```
 
 Trying to login as `john` using `cqlsh` will throw the following error.
 
-```sh
-$ cqlsh -u john
-Password:
-Connection error:
-  ... message="john is not permitted to log in"
+```bash
+yugabyte=# ./bin/ysqlsh -U john
+Password for user john:
+```
+After entering the correct password, John would see the following message:
+
+```
+ysqlsh: FATAL:  role "john" is not permitted to log in
 ```
 
 To re-enable login privileges for `john`, run the following command.
 
 ```sql
-yugabyte=#  ALTER ROLE john WITH LOGIN = true;
+yugabyte=#  ALTER ROLE john WITH LOGIN;
 ```
 
-## 6. Change default admin credentials
-
-It is highly recommended to change at least the default password for the superadmin user in real world deployments to keep the database cluster secure.
-
-As an example, let us say we want to change the `yugabyte` user's password from `yugabyte` to `new_password`. You can do that as follows:
-
-```sql
-yugabyte=# ALTER ROLE yugabyte WITH PASSWORD = 'new_password';
-```
-
-Connecting to the cluster with the default password would no longer work:
-
-```
-$ bin/cqlsh -u yugabyte -p yugabyte
-Connection error:
-  ... Provided username yugabyte and/or password are incorrect ...
-```
-
-You can now connect to the cluster using the new password:
-
-```sh
-$ cqlsh -u yugabyte -p new_password
-```
-
-## 7. Deleting a user
+### Delete a user
 
 You can delete a user with the [DROP ROLE](../../api/ysql/ddl_drop_role/) command.
 
@@ -278,17 +279,25 @@ For example, to drop the user `john` in the above example, run the following com
 yugabyte=# DROP ROLE IF EXISTS john;
 ```
 
-You can verify that the `john` role was dropped as follows:
+You can quickly verify that the `john` role was dropped by running the `\du` command:
 
-```sql
-yugabyte=# SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
+```bash
+yugabyte=# \du
 ```
 
 ```
- role      | can_login | is_superuser | member_of
------------+-----------+--------------+-----------
-     admin |      True |         True |          []
- yugabyte |      True |         True |          []
-
-(2 rows)
+                                    List of roles
+ Role name |                         Attributes                         | Member of  
+-----------+------------------------------------------------------------+------------
+ postgres  | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+ sysadmin  | Create role, Create DB                                     | {}
+ yugabyte  | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
 ```
+
+## Related topics
+
+- [CREATE ROLE](../../api/ysql/ddl_create_role/)
+- [ALTER ROLE](../../api/ysql/ddl_alter_role/)
+- [DROP ROLE](../../api/ysql/ddl_drop_role/)
+- [GRANT](../../api/ysql/ddl_grant/)
+- [REVOKE](../../api/ysql/ddl_revoke/)
