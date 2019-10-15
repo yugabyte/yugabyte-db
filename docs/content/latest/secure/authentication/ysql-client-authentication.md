@@ -1,55 +1,44 @@
 ---
-title: Configure YSQL client connections
-linkTitle: Configure YSQL client connections
-description: Configure YSQL client connections
-headcontent: How to configure fine-grained access control for YSQL clients
+title: YSQL client connections
+linkTitle: YSQL client connections
+description: YSQL client connections
+headcontent: Configure fine-grained access control for YSQL clients
 image: /images/section_icons/secure/authentication.png
 menu:
   latest:
     identifier: ysql-client-authentication
     parent: authentication
     weight: 20
-draft: true
 isTocNested: true
 showAsideToc: true
 ---
 
-YugabyteDB client authentication for YSQL is managed by two settings c
+YugabyteDB client authentication for YSQL manages access control for primarily for remote clients. By default, client authentication is restricted to localhost connections. The two
 
-ontrolled by the host-based configuration file (`yb_hba.conf`), which contains records that specify allowed connection types, users, client IP addresses, and the authentication method. Unlike PostgreSQL, in YugabyteDB you manage the contents of this file using the configuration flag `--ysql_hba_conf`
+This client authentication is managed in YugabyteDB by the YB-TServer's configuration flag [`--ysql_hba_conf`](../../admin/yb-tserver#ysql-hba-conf), which works similar to the `pg_hb.conf` file in PostgreSQL. The settings include records that specify allowed connection types, users, client IP addresses, and the authentication method.
 
-Before you can managed remote client authentication
-The default setting for `listen_addresses, YugabyteDB accepts connections only from `localhost`, To allow remote connections, you must add client authentication records to the host-based authentication configuration file (`yb_hba.conf`), located in the YugabyteDB data directory (`yugabyte-data`).
+The default setting for `listen_addresses` in YugabyteDB accepts connections only from `localhost`. To allow remote connections, you must add client authentication records to the YB-TServer `==ysql_hba_conf` configuration settings.
 
 When a connection request is received by YugabyteDB, the following steps occur:
 
 1. A connection request is received
-2. YugabyteDB searches through the `yb_hba.conf` records serially until the first record with a matching connection type, client address, requested database, and username is found.
+2. YugabyteDB searches through the `--yb_hba_conf` records serially until the first record with a matching connection type, client address, requested database, and username is found.
 3. Authentication is performed based on the matching record.
 4. If the information provided in the connection request matches the expected content, access is allowed. If authentication fails, then subsequent records are not evaluated and access is denied.
 
-{{< note title="Note" >}}
-
 ## For local clusters
 
-For local clusters created using the `yb-ctl` utility, remote client connections are not permitted. The default `listen_addresses='127.0.0.1'` cannot be changed to specify any remote clients.
-
-To configure localhost client connections:
-
-1. Start your YugabyteDB cluster using the `--ysql_hba_conf` option set with any 
-
-="host all yugabyte 0.0.0.0/0 trust,
-                 host all all 0.0.0.0/0 md5,
-                 host all yugabyte ::0/0 trust,
-                 host all all ::0/0 md5"
-
-`--ysql_enable_auth` configuration option during ???
+For local clusters created using the `yb-ctl` utility, remote client connections are not supported. By default, the `listen_addresses` setting, which determines w is set to `127.0.0.1`, that is the localhost. With YSQL authentication enabled, all users are required to use a username and password to connect and use YugabyteDB databases. You can also configure the `--ysql_hba_conf` setting, depending on special requirements for fine-grained authentication for localhost connections.
 
 ## For deployable clusters
 
-YugabyteDB clusters that are manually deployed can allow remote client authentication by changing the `listen_addresses` to  and the 
+YugabyteDB clusters that are manually deployed can allow remote client authentication by changing the `listen_addresses` to support all connections using an asterisk (`*`) or a list of comma-separated addresses. In order to configure the `listen_addresses`, you must configure the YB-TServer configuration setting [`--pgsql_proxy_bind_address`](../../../admin/yb-tserver#pgsql-proxy-bind-address). For example, setting the following:
 
-To ???
+```sh
+yb-tserver --pgsql_proxy_bind_address='*'
+```
+
+This example will generate a `listen_address` value of `*`, which will accept all connection attempts for evaluation by the `--ysql_hba_conf` settings.
 
 Records in YugabyteDB's `yb_hba.conf` are auto-generated based on the values included in the `--ysql_hba_conf` option. For example, starting a YB-TServer with the following `--ysql_hba_conf` command line option will enable authorization for all users except `yugabyte`:
 
@@ -66,9 +55,7 @@ OR (easier to read), you can add the following to your `tserver.conf` file and s
                  host all all ::0/0 md5"
 ```
 
-{{< /note >}}
-
-You can display the current settings for the `yb_hba.conf` file by getting the file location using the SHOW statement:
+You can display the current settings for the `yb_hba.conf` file by getting the file location using the following SHOW statement:
 
 ```
 yugabyte=# SHOW hba_file;
@@ -78,19 +65,10 @@ yugabyte=# SHOW hba_file;
 (1 row)
 ```
 
-and then
-
-```
-yugabyte=# sho hba
-# This is an autogenerated file, do not edit manually!
-host all all 0.0.0.0/0 trust
-host all all ::0/0 trust
-/Users/yugabyte/yugabyte-data/node-1/disk-1/pg_data/ysql_hba.conf (END)
+and then view the file. But since the file is autogenerated, do not edit the file.
 
 
-
-The following statement will display the location of the yb_hba.conf`
-SHOW hba_file
+In the `yb_hba.conf` are the records autogenerated based on your `--ysql_hba_conf` setting. Here is an example.
 
 ```
 # This is an autogenerated file, do not edit manually!
@@ -98,11 +76,10 @@ host all all 0.0.0.0/0 trust
 host all all ::0/0 trust
 /Users/yugabyte/yugabyte-data/node-1/disk-1/pg_data/ysql_hba.conf (END)
 ```
-
 
 ## Record formats
 
-Each record in the `yb_hba.conf` configuration file must match one of the seven record formats available for local, IP addresses, or CIDR addresses.
+Each record in the `--ysql_hba_conf` configuration settings must match one of the seven record formats available for local, IP addresses, or CIDR addresses.
 
 ### local
 
@@ -152,33 +129,72 @@ hostnossl database user IP-address netmask auth-method  [auth-option]
 
 #### local
 
+This record matches connection attempts using Unix-domain sockets. Without a record of this type, Unix-domain socket connections are disallowed.
+
 #### host
+
+This record matches connection attempts made using TCP/IP. `host` records match either SSL or non-SSL connection attempts.
 
 #### hostssl
 
-Specify a local or remote host that can connect to YugaByteDB cluster using SSL.
+This record specifies a local or remote host that can connect to a YugaByteDB cluster using SSL.
 
 #### hostnossl
 
+This record only matches connection attempts made over TCP/IP that do not use SSL.
+
 #### *database*
+
+Specifies which database names this record matches. Valid values include:
+
+- `all`: Specifies that it matches all databases.
+- `sameuser`: Specifies that the record matches if the requested database has the same name as the requested user.
+- `samerole`: Specifies that the requested user must be a member of the role with the same name as the requested database. Superusers are not considered to be members of a role for the purposes of `samerole` unless they are explicitly members of the role, directly or indirectly, and not just by virtue of being a superuser.
+- `replication`: Specifies that the record matches if a physical replication connection is requested (note that replication connections do not specify any particular database). Otherwise, this is the name of a specific PostgreSQL database.
+
+Multiple database names can be supplied by separating them with commas. A separate file containing database names can be specified by preceding the file name with `@`.
 
 #### *user*
 
+Specifies which database user name(s) this record matches. Valid values include:
+
+The value `all` specifies that it matches all users. Otherwise, this is either the name of a specific database user, or a group name preceded by +. (Recall that there is no real distinction between users and groups in YugabyteDB; a `+` mark really means “match any of the roles that are directly or indirectly members of this role”, while a name without a `+` mark matches only that specific role.) For this purpose, a superuser is only considered to be a member of a role if they are explicitly a member of the role, directly or indirectly, and not just by virtue of being a superuser. 
+
+Multiple user names can be supplied by separating them with commas.
+
+A separate file containing user names can be specified by preceding the file name with `@`.
+
 #### *address*
 
-#### *IP-address* 
+Specifies the client machine addresses that this record matches. This field can contain either a host name, an IP address range, or one of the special key words mentioned below.
 
-#### *netmask*
+An IP address range is specified using standard numeric notation for the range's starting address, then a slash (/) and a CIDR mask length. The mask length indicates the number of high-order bits of the client IP address that must match. Bits to the right of this should be zero in the given IP address. There must not be any white space between the IP address, the `/`, and the CIDR mask length.
 
-Specify the netmask, or subnet mask, that defines the host part of
+Typical examples of an IPv4 address range specified this way are `172.20.143.89/32` for a single host, or `172.20.143.0/24` for a small network, or `10.6.0.0/16` for a larger one. An IPv6 address range might look like `::1/128` for a single host (in this case the IPv6 loopback address) or `fe80::7a31:c1ff:0000:0000/96` for a small network. `0.0.0.0/0` represents all IPv4 addresses, and `::0/0` represents all IPv6 addresses. To specify a single host, use a mask length of 32 for IPv4 or 128 for IPv6. In a network address, do not omit trailing zeroes.
 
-Applies to host, hostssl, and hostnossl records.
+An entry given in IPv4 format will match only IPv4 connections, and an entry given in IPv6 format will match only IPv6 connections, even if the represented address is in the IPv4-in-IPv6 range. Note that entries in IPv6 format will be rejected if the system's C library does not have support for IPv6 addresses.
+
+You can also write `all` to match any IP address, `samehost` to match any of the server's own IP addresses, or `samenet` to match any address in any subnet that the server is directly connected to.
+
+If a host name is specified (anything that is not an IP address range or a special key word is treated as a host name), that name is compared with the result of a reverse name resolution of the client's IP address (e.g., reverse DNS lookup, if DNS is used). Host name comparisons are case insensitive. If there is a match, then a forward name resolution (e.g., forward DNS lookup) is performed on the host name to check whether any of the addresses it resolves to are equal to the client's IP address. If both directions match, then the entry is considered to match. (The host name that is specified in the `--pg_hba_conf` configuration setting should be the one that address-to-name resolution of the client's IP address returns, otherwise the line won't be matched. Some host name databases allow associating an IP address with multiple host names, but the operating system will only return one host name when asked to resolve an IP address.)
+
+A host name specification that starts with a dot (`.`) matches a suffix of the actual host name. So `.example.com` would match `foo.example.com` (but not just `example.com`).
+
+When host names are specified in `--pg_hba_conf`, you should make sure that name resolution is reasonably fast. It can be of advantage to set up a local name resolution cache such as `nscd`. Also, you may wish to enable the configuration parameter `log_hostname` to see the client's host name instead of the IP address in the log.
+
+This field only applies to `host`, `hostssl`, and `hostnossl` records.
+
+#### *IP-address* | *netmask*
+
+These two fields can be used as an alternative to the **IP-address/mask-length** notation. Instead of specifying the mask length, the actual mask is specified in a separate column. For example, `255.0.0.0` represents an IPv4 CIDR mask length of `8`, and `255.255.255.255` represents a CIDR mask length of `32`.
+
+Applies to `host`, `hostssl`, and `hostnossl` records.
 
 When there is only one host, the netmask is `255.255.255.255`, representing a single IP address. For more information, see [Netmask Quick Reference](http://www.unixwiz.net/techtips/netmask-ref.html).
 
 #### *auth-method*
 
-Specify the authentication method the server should use for a user trying to connect to the server.
+Specifies the authentication method to use when a connection matches this record.
 
 ##### trust
 
@@ -186,31 +202,39 @@ Specify that any user from the defined host can connect to a YugabyteDB database
 
 ##### reject
 
-Specify that the host or user should be rejected.
+Specify that the host or user should be rejected. Reject the connection unconditionally. This is useful for “filtering out” certain hosts from a group, for example a reject line could block a specific host from connecting, while a later line allows the remaining hosts in a specific network to connect.
 
 ##### password
 
 Specify that for a connecting user, the password supplied must match the password in the global `yb_show` system table for the username. The password must be sent in clear text.
 
-##### crypt
-
-##### krb4 | krb5
-
-Specify a ???
-
 ##### ident
+
+Obtain the operating system user name of the client by contacting the ident server on the client and check if it matches the requested database user name. Ident authentication can only be used on TCP/IP connections. When specified for local connections, peer authentication will be used instead. 
+
+##### peer
+
+Obtain the client's operating system user name from the operating system and check if it matches the requested database user name. This is only available for local connections. 
 
 #### *auth-options*
 
-## Add a record
+After the [auth-method](#auth-method) field, there can be fields of the form `name=value` that specify options for the authentication method. Details about which options are available for which authentication methods appear below.
 
-- One record per line.
-- Blank lines are ignored.
-- Text after the comment character (`#`) is ignored.
-- Each record is composed of fields, separated by spaces or tabs.
-- Fields can contain white space if the field value is double-quoted.
+In addition to the method-specific options listed below, there is one method-independent authentication option `clientcert`, which can be specified in any `hostssl` record. When set to 1, this option requires the client to present a valid (trusted) SSL certificate, in addition to the other requirements of the authentication method.
 
+Files included by `@` constructs are read as lists of names, which can be separated by either whitespace or commas. Comments are introduced by `#`, just as in the `pg_hba_conf` configuration setting, and nested `@` constructs are allowed. Unless the file name following `@` is an absolute path, it is taken to be relative to the directory containing the referencing file.
 
+Since the `--pg hba conf` records are examined sequentially for each connection attempt, the order of the records is significant. Typically, earlier records will have tight connection match parameters and weaker authentication methods, while later records will have looser match parameters and stronger authentication methods. For example, one might wish to use trust authentication for local TCP/IP connections but require a password for remote TCP/IP connections. In this case a record specifying `trust` authentication for connections from `127.0.0.1` would appear before a record specifying password authentication for a wider range of allowed client IP addresses.
+
+The `--pg_hba_conf` configuration setting is read on start-up and when the main server process receives a SIGHUP signal. If you edit the file on an active system, you will need to signal the postmaster (using `pg_ctl` reload, calling the SQL function `pg_reload_conf()`, or using `kill -HUP`) to make it re-read the file.
+
+The system view pg_hba_file_rules can be helpful for pre-testing changes to the pg_hba.conf file, or for diagnosing problems if loading of the file did not have the desired effects. Rows in the view with non-null error fields indicate problems in the corresponding lines of the file.
+
+{{< note title="Tip" >}}
+
+To connect to a particular database, a user must not only pass the `--pg_hba_conf` checks, but must have the `CONNECT` privilege for the database. If you wish to restrict which users can connect to which databases, it's usually easier to control this by granting or revoking `CONNECT` privilege than to put the rules in pg_hba_conf` entries.
+
+{{< /note >}}
 
 ## Examples
 
@@ -218,13 +242,13 @@ Specify a ???
 
 The following record allows a single host with the IP address `192.168.1.10` to connect to any database (`all`) as any user (`all`) without a password (`trust`).
 
-```text
+```
 host all 192.168.1.10 255.255.255.255 trust
 ```
 
 ### Check user permissions
 
-```
+```postgresql
 testdb=#
 SELECT relname as "Relation", relacl as "Access permissions"
 
@@ -249,7 +273,7 @@ testdb-#
 
 ------
 
-Start yb-tserver with:
+Start yb-tserver with the following `--ysql_hba_conf` setting:
 
 ```
 --ysql_hba_conf="host all yugabyte 0.0.0.0/0 trust,host all all 0.0.0.0/0 md5,host all yugabyte ::0/0 trust,host all all ::0/0 md5"
