@@ -37,7 +37,7 @@ Authentication should be enabled to verify the identity of a client that connect
         <div class="title">YSQL client authentication</div>
       </div>
       <div class="body">
-          Configure yb_hba.conf to control access to remote clients with host-based authentication.
+          Configure access control for remote clients.
       </div>
     </a>
   </div>
