@@ -187,6 +187,9 @@ message QLReadRequestPB {
   // Where clause condition
   optional QLExpressionPB where_expr = 6;
 
+  // If clause condition
+  optional QLExpressionPB if_expr = 21;
+
   // TODO(neil) Currently, we need only the datatypes of the rsrow descriptor. However, when we
   // optimize our execution pipeline to bypass QL layer, we might need to send the name as part
   // of the prepared protobuf so that server know how to form result set without the help from QL.

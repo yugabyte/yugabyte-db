@@ -480,6 +480,9 @@ CHECKED_STATUS PTLogicExpr::SetupSemStateForOp1(SemState *sem_state) {
   // Expect "bool" datatype for logic expression.
   sem_state->SetExprState(QLType::Create(BOOL), InternalType::kBoolValue);
 
+  // Pass down the state variables for IF clause "if_state".
+  sem_state->CopyPreviousIfState();
+
   // If this is OP_AND, we need to pass down the state variables for where clause "where_state".
   if (ql_op_ == QL_OP_AND) {
     sem_state->CopyPreviousWhereState();
@@ -490,6 +493,9 @@ CHECKED_STATUS PTLogicExpr::SetupSemStateForOp1(SemState *sem_state) {
 CHECKED_STATUS PTLogicExpr::SetupSemStateForOp2(SemState *sem_state) {
   // Expect "bool" datatype for logic expression.
   sem_state->SetExprState(QLType::Create(BOOL), InternalType::kBoolValue);
+
+  // Pass down the state variables for IF clause "if_state".
+  sem_state->CopyPreviousIfState();
 
   // If this is OP_AND, we need to pass down the state variables for where clause "where_state".
   if (ql_op_ == QL_OP_AND) {
@@ -543,6 +549,9 @@ CHECKED_STATUS PTLogicExpr::AnalyzeOperator(SemContext *sem_context,
 // Relations expressions: ==, !=, >, >=, between, ...
 
 CHECKED_STATUS PTRelationExpr::SetupSemStateForOp1(SemState *sem_state) {
+  // Pass down the state variables for IF clause "if_state".
+  sem_state->CopyPreviousIfState();
+
   // passing down where state
   sem_state->CopyPreviousWhereState();
   sem_state->set_allowing_column_refs(true);
@@ -724,6 +733,20 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
                                 ErrorCode::CQL_STATEMENT_INVALID);
   }
 
+  // Add filtering expressions in IF clause for indexing operations.
+  IfExprState *if_state = sem_context->if_state();
+  if (if_state != nullptr) {
+    if (op1->index_desc()) {
+      if_state->AddFilteringExpr(sem_context, this);
+    } else if (op1->expr_op() == ExprOperator::kRef) {
+      if_state->AddFilteringExpr(sem_context, this);
+    } else if (op1->expr_op() == ExprOperator::kSubColRef) {
+      if_state->AddFilteringExpr(sem_context, this);
+    } else if (op1->expr_op() == ExprOperator::kJsonOperatorRef) {
+      if_state->AddFilteringExpr(sem_context, this);
+    }
+  }
+
   WhereExprState *where_state = sem_context->where_state();
   if (where_state != nullptr) {
     // CheckLhsExpr already checks that this is either kRef or kBcall
@@ -768,6 +791,7 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
       }
     }
   }
+
   return Status::OK();
 }
 
@@ -973,8 +997,9 @@ CHECKED_STATUS PTRef::AnalyzeOperator(SemContext *sem_context) {
 
 CHECKED_STATUS PTRef::CheckLhsExpr(SemContext *sem_context) {
   // When CQL IF clause is being processed. In that case, disallow reference to primary key columns
-  // and counters.
-  if (sem_context->processing_if_clause()) {
+  // and counters. No error checking is needed when processing SELECT against INDEX table because
+  // we already check it against the UserTable.
+  if (sem_context->processing_if_clause() && !sem_context->selecting_from_index()) {
     if (desc_->is_primary()) {
       return sem_context->Error(this, "Primary key column reference is not allowed in if clause",
                                 ErrorCode::CQL_STATEMENT_INVALID);

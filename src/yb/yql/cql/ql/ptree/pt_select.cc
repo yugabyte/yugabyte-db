@@ -248,12 +248,13 @@ PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
                            PTExprListNode::SharedPtr selected_exprs,
                            PTTableRefListNode::SharedPtr from_clause,
                            PTExpr::SharedPtr where_clause,
+                           PTExpr::SharedPtr if_clause,
                            PTListNode::SharedPtr group_by_clause,
                            PTListNode::SharedPtr having_clause,
                            PTOrderByListNode::SharedPtr order_by_clause,
                            PTExpr::SharedPtr limit_clause,
                            PTExpr::SharedPtr offset_clause)
-    : PTDmlStmt(memctx, loc, where_clause),
+    : PTDmlStmt(memctx, loc, where_clause, if_clause),
       distinct_(distinct),
       selected_exprs_(selected_exprs),
       from_clause_(from_clause),
@@ -268,12 +269,14 @@ PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
 // Construct a nested select tnode to select from the index. Only the syntactic information
 // populated by the parser should be cloned or set here. Semantic information should be left in
 // the initial state to be populated when this tnode is analyzed.
+// NOTE:
+//   Only copy and execute IF clause on IndexTable if all expressions are fully covered.
 PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
                            const PTSelectStmt& other,
                            PTExprListNode::SharedPtr selected_exprs,
                            const TableId& index_id,
                            const bool covers_fully)
-    : PTDmlStmt(memctx, other),
+    : PTDmlStmt(memctx, other, covers_fully),
       distinct_(other.distinct_),
       selected_exprs_(selected_exprs),
       from_clause_(other.from_clause_),
@@ -367,6 +370,9 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
 
   // Run error checking on the WHERE conditions.
   RETURN_NOT_OK(AnalyzeWhereClause(sem_context));
+
+  // Run error checking on the IF conditions.
+  RETURN_NOT_OK(AnalyzeIfClause(sem_context));
 
   // Check if there is an index to use. If there is and it covers the query fully, we will query
   // just the index and that is it.
