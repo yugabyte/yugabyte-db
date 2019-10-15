@@ -82,6 +82,7 @@ CHECKED_STATUS YQLVirtualTable::BuildYQLScanSpec(
   }
   spec->reset(new common::QLScanSpec(
       request.has_where_expr() ? &request.where_expr().condition() : nullptr,
+      request.has_if_expr() ? &request.if_expr().condition() : nullptr,
       request.is_forward_scan()));
   return Status::OK();
 }

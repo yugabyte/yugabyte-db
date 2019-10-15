@@ -138,6 +138,7 @@ class PTSelectStmt : public PTDmlStmt {
                PTExprListNode::SharedPtr selected_exprs,
                PTTableRefListNode::SharedPtr from_clause,
                PTExpr::SharedPtr where_clause,
+               PTExpr::SharedPtr if_clause,
                PTListNode::SharedPtr group_by_clause,
                PTListNode::SharedPtr having_clause,
                PTOrderByListNode::SharedPtr order_by_clause,

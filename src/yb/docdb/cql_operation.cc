@@ -852,6 +852,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
                            hash_code, // max hash code.
                            hashed_components,
                            request_.has_where_expr() ? &request_.where_expr().condition() : nullptr,
+                           nullptr,
                            request_.query_id());
 
         // Create iterator.

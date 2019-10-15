@@ -484,6 +484,15 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     }
   }
 
+  protected String runValidSelect(String stmt) {
+    ResultSet rs = session.execute(stmt);
+    String result = "";
+    for (Row row : rs) {
+      result += row.toString();
+    }
+    return result;
+  }
+
   protected String runInvalidStmt(Statement stmt) {
     return runInvalidStmt(stmt, session);
   }

@@ -85,6 +85,12 @@ void SemState::CopyPreviousWhereState() {
   }
 }
 
+void SemState::CopyPreviousIfState() {
+  if (previous_state_ != nullptr) {
+    if_state_ = previous_state_->if_state_;
+  }
+}
+
 void SemState::set_bindvar_name(string name) {
   bindvar_name_ = MCMakeShared<MCString>(sem_context_->PSemMem(), name.data(), name.size());
 }
