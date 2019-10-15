@@ -17,11 +17,11 @@ showAsideToc: true
 
 YSQL authentication, the process of identifying that YSQL users are who they say they are, is based on roles. Users, groups, and roles within YugabyteDB are created using roles. Typically, a role that has login privileges is known as a *user*, while a *group* is a role that can have multiple users as members. 
 
-Users, roles, and groups allow administrators to verify whether a particular user or role is authorized to create, access, change, or remove databases or manage users and roles. [Authorization](../authorization) is the process of managing access controls based on roles. For YSQL, enabling authentication automatically enables authorization and the [role-based access control (RBAC) model](../authorization/rbac-model), to determine the access privileges. Authentication verifies the identity of a user while authorization determines the verified user’s database access privileges.
+Users, roles, and groups allow administrators to verify whether a particular user or role is authorized to create, access, change, or remove databases or manage users and roles. [Authorization](../../authorization/) is the process of managing access controls based on roles. For YSQL, enabling authentication automatically enables authorization and the [role-based access control (RBAC) model](../../authorization/rbac-model/), to determine the access privileges. Authentication verifies the identity of a user while authorization determines the verified user’s database access privileges.
 
-Users and roles can be created with superuser, non-superuser, and login privileges, and the roles that users have are used to determine what access privileges are available. Administrators can create users and roles using the [`CREATE ROLE`](../../api/ysql/ddl_create_role/) statement (or its alias, [`CREATE USER`](../../api/ysql/ddl_create_user/)). After users and roles have been created, [`ALTER ROLE`](../../api/ysql/ddl_alter_role/) and [`DROP ROLE`](../../api/ysql/ddl_drop_role/) statements are used to change or remove users and roles.
+Users and roles can be created with superuser, non-superuser, and login privileges, and the roles that users have are used to determine what access privileges are available. Administrators can create users and roles using the [`CREATE ROLE`](../../../api/ysql/commands/dcl_create_role/) statement (or its alias, [`CREATE USER`](../../../api/ysql/commands/dcl_create_user/)). After users and roles have been created, [`ALTER ROLE`](../../../api/ysql/commands/dcl_alter_role/) and [`DROP ROLE`](../../../api/ysql/commands/dcl_drop_role/) statements are used to change or remove users and roles.
 
-YSQL authorization is the process of access control created by granting or revoking privileges to YSQL users and roles, see [Authorization](../authorization). Privileges are managed using [`GRANT`](../../api/ysql/ddl_grant/), [`REVOKE`](../../api/ysql/ddl_revoke/), [`CREATE ROLE`](../../api/ysql/ddl_create_role/), [`ALTER ROLE`](../../api/ysql/ddl_alter_role/), and [`DROP ROLE`](../../api/ysql/ddl_drop_role/).
+YSQL authorization is the process of access control created by granting or revoking privileges to YSQL users and roles, see [Authorization](../authorization). Privileges are managed using [`GRANT`](../../../api/ysql/commands/dcl_grant/), [`REVOKE`](../../../api/ysql/commands/dcl_revoke/), [`CREATE ROLE`](../../../api/ysql/commands/dcl_create_role/), [`ALTER ROLE`](../../../api/ysql/commands/dcl_alter_role/), and [`DROP ROLE`](../../../api/ysql/commands/dcl_drop_role/).
 
 ## Specify a password for the default user
 
@@ -34,7 +34,7 @@ If you are using YugabyteDB 2.0 (and **not** 2.0.1 or later) and have not assign
 1. With your YugabyteDB cluster up and running, open `ysqlsh`.
 2. Run the following `ALTER ROLE` statement, specifying a password (`yugabyte` or a password of your choice).
 
-    ```sql
+    ```postgresql
     yugabyte=# ALTER ROLE yugabyte with password 'yugabyte';
     ```
 
@@ -44,7 +44,7 @@ Assuming that you've successfully added a password for the `yugabyte` user, you 
 
 ### Start local clusters with YSQL authentication enabled
 
-To enable YSQL authentication in your local YugabyteDB clusters, you can use the [`--tserver_flags` option](../../admin/yb-ctl#--tserver-flags) with the `yb-ctl create`, `yb-ctl start`, and `yb-ctl restart` commands to add the [`--ysql_auth_enabled` option](../../admin/yb-tserver#ysql-auth-enabled).
+To enable YSQL authentication in your local YugabyteDB clusters, you can use the [`--tserver_flags` option](../../../admin/yb-ctl#--tserver-flags) with the `yb-ctl create`, `yb-ctl start`, and `yb-ctl restart` commands to add the [`--ysql_auth_enabled` option](../../../admin/yb-tserver#ysql-auth-enabled).
 
 When you create a local cluster, you can run the `yb-ctl create` command like this to enable YSQL authentication in the newly-created cluster.
 
@@ -66,7 +66,9 @@ To restart your cluster, you can run the `yb-ctl restart` command with  the `--t
 
 ### Start YB-TServer services with YSQL authentication enabled
 
-To enable YSQL authentication in deployable YugabyteDB clusters, you need to start your `yb-tserver` services using the [`--ysql_auth_enabled` option](../../admin/yb-tserver#ysql-auth-enabled). Your command should look similar to this command:
+To enable YSQL authentication in deployable YugabyteDB clusters, you need to start your `yb-tserver` services using the [`--ysql_enable_auth` option](../../admin/yb-tserver#ysql-enable-auth). Your command should look similar to this command:
+
+http://localhost:1313/latest/admin/yb-tserver/#ysql-enable-auth
 
 ```sh
 ./bin/yb-tserver \
@@ -80,7 +82,7 @@ You can also enable YSQL authentication by adding the `--ysql_enable_auth=true` 
 
 ## Open the YSQL shell (ysqlsh) using the default admin credentials
 
-A YugabyteDB cluster with authentication enabled starts with the default admin user of `yugabyte` and the default database of `yugabyte`. You can connect to the cluster and use the YSQL shell by running the following `ysqlsh` script from the YugabyteDB home directory:
+A YugabyteDB cluster with authentication enabled starts with the default admin user of `yugabyte` and the default database of `yugabyte`. You can connect to the cluster and use the YSQL shell by running the following `ysqlsh` command from the YugabyteDB home directory:
 
 ```sh
 $ ./bin/ysqlsh -U yugabyte
@@ -101,7 +103,7 @@ Here are some common authentication-related tasks. For authorization-related tas
 
 ### Creating users
 
-To add a new user, run the [`CREATE ROLE` statement](../../api/ysql/commands/ddl_create_role/) or its alias, the `CREATE USER` statement. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all of the YSQL statements on any of the database resources.
+To add a new user, run the [`CREATE ROLE` statement](../../../api/ysql/commands/dcl_create_role/) or its alias, the `CREATE USER` statement. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all of the YSQL statements on any of the database resources.
 
 **NOTE** By default, creating a role does not grant the `LOGIN` or the `SUPERUSER` privileges — these need to be explicitly granted.
 
@@ -138,13 +140,13 @@ The `SUPERUSER` status should be given only to a limited number of users. Applic
 
 To create a superuser `admin` with the `LOGIN` privilege, run the following command using a superuser account:
 
-```sql
+```postgresql
 yugabyte=# CREATE ROLE admin WITH LOGIN SUPERUSER PASSWORD = 'PasswdForAdmin';
 ```
 
 To verify the `admin` account just created, run the following query.
 
-```sql
+```postgresql
 yugabyte=# SELECT rolname, rolsuper, rolcanlogin FROM pg_roles;
 ```
 
@@ -168,7 +170,6 @@ In this table, you can see that both `postgres` and `yugabyte` users can log in 
 As an easier alternative, you can simply run the `\du` command to see this information in a simpler, easier-to-read format:
 
 ```
-
                                     List of roles
  Role name |                         Attributes                         | Member of  
 -----------+------------------------------------------------------------+------------
@@ -197,7 +198,7 @@ $ ysqlsh -U john
 
 ### Edit user accounts
 
-You can edit existing user accounts using the [ALTER ROLE](../../api/ysql/commands/ddl_alter_role/) command. Note that the role making these changes should have sufficient privileges to modify the target role.
+You can edit existing user accounts using the [ALTER ROLE](../../../api/ysql/commands/dcl_alter_role/) command. Note that the role making these changes should have sufficient privileges to modify the target role.
 
 #### Changing password for a user
 
@@ -224,7 +225,7 @@ yugabyte=# SELECT rolname, rolsuper, rolcanlogin FROM pg_roles WHERE rolname='jo
 
 Even easier, you can use the YSQL `\du` meta command to display information about the users:
 
-```bash
+```sh
 yugabyte=# \du
 ```
 
@@ -242,13 +243,13 @@ Users with `SUPERUSER` status display "Superuser" in the list of attributes for 
 
 To grant `SUPERUSER` privileges to `john`, run the following `ALTER ROLE` command.
 
-```sql
+```postgresql
 yugabyte=# ALTER ROLE john SUPERUSER;
 ```
 
 You can now verify that john is now a superuser by running the `\du` command.
 
-```bash
+```sh
 yugabyte=#\du
 ```
 
@@ -284,10 +285,9 @@ yugabyte=# SELECT role, rolcanlogin FROM pg_roles WHERE role='john';
 ```
 
 ```
- role | rolcanlogin
-------+-------------
- john |  t
-
+ rolname | rolcanlogin
+---------+-------------
+ john    |  t
 (1 rows)
 ```
 
@@ -331,12 +331,12 @@ yugabyte=#  ALTER ROLE john WITH LOGIN;
 
 ### Delete a user
 
-You can delete a user with the [DROP ROLE](../../api/ysql/ddl_drop_role/) command.
+You can delete a user with the [DROP ROLE](../../../api/ysql/dcl_drop_role/) command.
 
 For example, to drop the user `john` in the above example, run the following command as a superuser:
 
 ```postgresql
-yugabyte=# DROP ROLE IF EXISTS john;
+yugabyte=# DROP ROLE john;
 ```
 
 You can quickly verify that the `john` role was dropped by running the `\du` command:
@@ -356,8 +356,8 @@ yugabyte=# \du
 
 ## Related topics
 
-- [CREATE ROLE](../../api/ysql/ddl_create_role/)
-- [ALTER ROLE](../../api/ysql/ddl_alter_role/)
-- [DROP ROLE](../../api/ysql/ddl_drop_role/)
-- [GRANT](../../api/ysql/ddl_grant/)
-- [REVOKE](../../api/ysql/ddl_revoke/)
+- [CREATE ROLE](../../../api/ysql/commands/dcl_create_role/)
+- [ALTER ROLE](../../../api/ysql/commands/dcl_alter_role/)
+- [DROP ROLE](../../../api/ysql/commands/dcl_drop_role/)
+- [GRANT](../../../api/ysql/commands/dcl_grant/)
+- [REVOKE](../../../api/ysql/commands/dcl_revoke/)

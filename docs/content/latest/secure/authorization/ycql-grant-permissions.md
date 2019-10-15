@@ -1,14 +1,14 @@
 ---
-title: 3. Grant permissions
-linkTitle: 3. Grant permissions
-description: 3. Grant permissions
+title: 3. Grant permissions in YCQL
+linkTitle: 3. Grant permissions in YCQL
+description: 3. Grant permissions in YCQL
 headcontent: Grant permissions in YCQL
 image: /images/section_icons/secure/grant-permissions.png
 aliases:
   - /secure/authorization/grant-permissions/
 menu:
   latest:
-    identifier: grant-permissions
+    identifier: ycql-grant-permissions
     parent: authorization
     weight: 30
 isTocNested: true

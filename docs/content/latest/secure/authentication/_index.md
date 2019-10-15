@@ -34,7 +34,7 @@ Authentication should be enabled to verify the identity of a client that connect
     <a class="section-link icon-offset" href="ysql-client-authentication/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">Configure YSQL client authentication</div>
+        <div class="title">YSQL client authentication</div>
       </div>
       <div class="body">
           Configure yb_hba.conf to control access to remote clients with host-based authentication.
