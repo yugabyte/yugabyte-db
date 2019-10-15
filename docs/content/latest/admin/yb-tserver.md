@@ -75,9 +75,9 @@ Default: Same as `--fs_data_dirs`
 
 #### --max_clock_skew_usec
 
-Specifies the expected maximum clock skew between any two nodes in your deployment.
+Specifies the expected maximum clock skew, in microseconds (µs) between any two nodes in your deployment.
 
-Default: `50000` (50ms)
+Default: `50000` (50,000 µs = 50ms)
 
 #### --rpc_bind_addresses
 
@@ -107,7 +107,7 @@ Default: `0.0.0.0` (`127.0.0.1`)
 
 The port for monitoring the web server.
 
-Default: `7000`
+Default: `9000`
 
 #### --webserver_doc_root
 
@@ -239,10 +239,6 @@ YugabyteDB supports two transaction isolation levels: `REPEATABLE READ` (aka sna
 
 Specifies the types of YSQL statements that should be logged.
 
-#### --ysql_log_statement
-
-Specifies the types of YSQL statements that should be logged.
-
 #### --ysql_log_min_messages
 
 Specifies the lowest YSQL message level to log.
@@ -261,7 +257,7 @@ Default: `false`
 
 Specifies the bind address for the YCQL API.
 
-Default: `0.0.0.0:9042`
+Default: `0.0.0.0:9042` (`127.0.0.1:9042`)
 
 #### --cql_proxy_webserver_port
 

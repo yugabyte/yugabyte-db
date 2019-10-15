@@ -117,7 +117,7 @@ Switches to log to standard error (`stderr`).
 
 #### --yb_num_shards_per_tserver
 
-Specifies the number of shards per yb-tserver per table when a user table is created.
+Specifies the number of shards per YB-TServer per table when a user table is created.
 
 Default: Server automatically picks a valid default internally, typically 8.
 
