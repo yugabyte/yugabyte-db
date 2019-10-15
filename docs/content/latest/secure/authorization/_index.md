@@ -8,8 +8,7 @@ aliases:
   - /secure/authorization/
 menu:
   latest:
-    identifier: secure-authorization
-    parent: secure
+    identifier: authorization
     weight: 715
 ---
 

@@ -8,8 +8,7 @@ aliases:
   - /secure/tls-encryption/
 menu:
   latest:
-    identifier: secure-tls-encryption
-    parent: secure
+    identifier: tls-encryption
     weight: 720
 ---
 
