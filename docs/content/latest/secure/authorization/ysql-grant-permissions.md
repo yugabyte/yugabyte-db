@@ -1,17 +1,3 @@
----
-title: 3. Grant privileges in YSQL
-linkTitle: 3. Grant privileges in YSQL
-description: 3. Grant privileges in YSQL
-headcontent: Grant privileges in YSQL
-image: /images/section_icons/secure/grant-permissions.png
-menu:
-  latest:
-    identifier: ysql-grant-privileges
-    parent: authorization
-    weight: 30
-isTocNested: true
-showAsideToc: true
----
 
 In this tutorial, we shall run through a scenario. Assume a company has an engineering organization, with three sub-teams - developers, qa and DB admins. We are going to create a role for each of these entities.
 

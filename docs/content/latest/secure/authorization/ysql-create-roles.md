@@ -1,20 +1,3 @@
----
-title: 2. Create roles
-linkTitle: 2. Create roles
-description: 2. Create roles
-headcontent: Creating roles in YSQL
-image: /images/section_icons/secure/create-roles.png
-aliases:
-  - /secure/authorization/create-roles/
-menu:
-  latest:
-    identifier: ysql-create-roles
-    parent: authorization
-    weight: 20
-isTocNested: true
-showAsideToc: true
----
-
 ## 1. Create roles
 
 Create a role with a password. You can do this with the [CREATE ROLE](../../api/YSQL/ddl_create_role/) command.

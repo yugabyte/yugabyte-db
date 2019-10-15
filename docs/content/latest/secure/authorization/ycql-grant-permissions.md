@@ -1,19 +1,3 @@
----
-title: 3. Grant permissions in YCQL
-linkTitle: 3. Grant permissions in YCQL
-description: 3. Grant permissions in YCQL
-headcontent: Grant permissions in YCQL
-image: /images/section_icons/secure/grant-permissions.png
-aliases:
-  - /secure/authorization/grant-permissions/
-menu:
-  latest:
-    identifier: ycql-grant-permissions
-    parent: authorization
-    weight: 30
-isTocNested: true
-showAsideToc: true
----
 
 In this tutorial, we shall run through a scenario. Assume a company has an engineering organization, with three sub-teams - developers, qa and DB admins. We are going to create a role for each of these entities.
 

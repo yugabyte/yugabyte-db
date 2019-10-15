@@ -1,19 +1,3 @@
----
-title: 1. RBAC model
-linkTitle: 1. RBAC model
-description: 1. RBAC model
-headcontent: How role-based access control works in YCQL
-image: /images/section_icons/secure/rbac-model.png
-aliases:
-  - /secure/authorization/rbac-model/
-menu:
-  latest:
-    identifier: rbac-model
-    parent: authorization
-    weight: 10
-isTocNested: true
-showAsideToc: true
----
 
 The role-based access control model in YCQL is a collection of permissions on resources given to roles. Thus, the entire RBAC model is built around **roles**, **resources** and **permissions**. It is essential to understand these concepts in order to understand the RBAC model.
 

@@ -2,7 +2,7 @@
 title: 2. Create Roles
 linkTitle: 2. Create Roles
 description: 2. Create Roles
-headcontent: Creating roles in YCQL
+headcontent: Creating roles
 image: /images/section_icons/secure/create-roles.png
 menu:
   v1.3:

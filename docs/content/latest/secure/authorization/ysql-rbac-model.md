@@ -1,19 +1,5 @@
----
-title: 1. RBAC model in YSQL
-linkTitle: 1. RBAC model in YSQL
-description: 1. RBAC model in YSQL
-headcontent: How role-based access control works in YSQL
-image: /images/section_icons/secure/rbac-model.png
-menu:
-  latest:
-    identifier: ysql-rbac-model
-    parent: authorization
-    weight: 10
-isTocNested: true
-showAsideToc: true
----
 
-The role-based access control model in YSQL is a collection of privileges on resources given to roles. Thus, the entire RBAC model is built around **roles**, **resources** and **privileges**. It is essential to understand these concepts in order to understand the RBAC model.
+The role-based access control model in YSQL is a collection of privileges on resources given to roles. Thus, the entire RBAC model is built around roles, resources, and privileges. It is essential to understand these concepts in order to understand the RBAC model.
 
 ## Roles
 
