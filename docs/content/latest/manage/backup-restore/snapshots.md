@@ -28,7 +28,7 @@ This page covers backups for YugaByte DB using snapshots. Here are some points t
 
 In this tutorial we'll be using YCQL but the same apis are used in YSQL. 
 
-### Step 1: Create a 1=node local cluster
+### Step 1: Create a 1 node local cluster
 Read [creating a local cluster](../../quick-start/create-local-cluster.md) on how to quickstart a a local cluster.
 
 ```
