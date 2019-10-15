@@ -104,6 +104,7 @@ class QLScanSpec : public YQLScanSpec {
 
   // Scan for the given hash key and a condition.
   QLScanSpec(const QLConditionPB* condition,
+             const QLConditionPB* if_condition,
              const bool is_forward_scan,
              QLExprExecutor::SharedPtr executor = nullptr);
 
@@ -122,6 +123,7 @@ class QLScanSpec : public YQLScanSpec {
 
  protected:
   const QLConditionPB* condition_;
+  const QLConditionPB* if_condition_;
   const bool is_forward_scan_;
   QLExprExecutor::SharedPtr executor_;
 };

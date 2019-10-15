@@ -29,6 +29,7 @@ namespace yb {
 namespace ql {
 
 class WhereExprState;
+class IfExprState;
 class PTColumnDefinition;
 
 //--------------------------------------------------------------------------------------------------
@@ -77,6 +78,12 @@ class SemState {
   }
   WhereExprState *where_state() const { return where_state_; }
 
+  // Update state variable for if clause.
+  void SetIfState(IfExprState *if_state) {
+    if_state_ = if_state;
+  }
+  IfExprState *if_state() const { return if_state_; }
+
   // Update the expr states.
   void SetExprState(const std::shared_ptr<QLType>& ql_type,
                     InternalType internal_type,
@@ -88,6 +95,9 @@ class SemState {
 
   // Set the current state using previous state's values.
   void CopyPreviousWhereState();
+
+  // Set the current state using previous state's values.
+  void CopyPreviousIfState();
 
   // Access function for expression states.
   const std::shared_ptr<QLType>& expected_ql_type() const { return expected_ql_type_; }
@@ -152,6 +162,9 @@ class SemState {
 
   // State variables for where expression.
   WhereExprState *where_state_ = nullptr;
+
+  // State variables for if expression.
+  IfExprState *if_state_ = nullptr;
 
   // Predicate for selecting data from an index instead of a user table.
   bool selecting_from_index_ = false;

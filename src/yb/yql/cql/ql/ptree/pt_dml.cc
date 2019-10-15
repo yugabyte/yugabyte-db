@@ -62,10 +62,10 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
 // Clone a DML tnode for re-analysis. Only the syntactic information populated by the parser should
 // be cloned here. Semantic information should be left in the initial state to be populated when
 // this tnode is analyzed.
-PTDmlStmt::PTDmlStmt(MemoryContext *memctx, const PTDmlStmt& other)
+PTDmlStmt::PTDmlStmt(MemoryContext *memctx, const PTDmlStmt& other, bool copy_if_clause)
     : PTCollection(memctx, other.loc_ptr()),
       where_clause_(other.where_clause_),
-      if_clause_(other.if_clause_),
+      if_clause_(copy_if_clause ? other.if_clause_ : nullptr),
       else_error_(other.else_error_),
       using_clause_(other.using_clause_),
       returns_status_(other.returns_status_),
@@ -345,8 +345,10 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
 
 Status PTDmlStmt::AnalyzeIfClause(SemContext *sem_context) {
   if (if_clause_) {
+    IfExprState if_state(&filtering_exprs_);
     SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
     sem_state.set_processing_if_clause(true);
+    sem_state.SetIfState(&if_state);
     return if_clause_->Analyze(sem_context);
   }
   return Status::OK();

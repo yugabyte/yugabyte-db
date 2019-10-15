@@ -805,6 +805,14 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
     return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
+  // Set the IF clause.
+  if (tnode->if_clause() != nullptr) {
+    s = PTExprToPB(tnode->if_clause(), select_op->mutable_request()->mutable_if_expr());
+    if (PREDICT_FALSE(!s.ok())) {
+      return exec_context_->Error(tnode->if_clause(), s, ErrorCode::INVALID_ARGUMENTS);
+    }
+  }
+
   // Specify distinct columns or non.
   req->set_distinct(tnode->distinct());
 

@@ -39,7 +39,8 @@ class DocQLScanSpec : public common::QLScanSpec {
   DocQLScanSpec(const Schema& schema, boost::optional<int32_t> hash_code,
       boost::optional<int32_t> max_hash_code,
       const std::vector<PrimitiveValue>& hashed_components,
-      const QLConditionPB* req, rocksdb::QueryId query_id, bool is_forward_scan = true,
+      const QLConditionPB* req, const QLConditionPB* if_req,
+      rocksdb::QueryId query_id, bool is_forward_scan = true,
       bool include_static_columns = false, const DocKey& start_doc_key = DocKey());
 
   // Return the inclusive lower and upper bounds of the scan.

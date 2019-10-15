@@ -281,7 +281,7 @@ using namespace yb::ql;
 %type <PInsertJsonClause>       json_clause
 
 %type <PExpr>             // Expression clause. These expressions are used in a specific context.
-                          if_clause
+                          if_clause opt_if_clause
                           where_clause opt_where_clause
                           where_or_current_clause opt_where_or_current_clause
                           limit_clause select_limit_value
@@ -2160,13 +2160,13 @@ select_clause:
 // NOTE: only the leftmost component SelectStmt should have INTO.
 // However, this is not checked by the grammar; parse analysis must check it.
 simple_select:
-  SELECT opt_all_clause target_list into_clause from_clause opt_where_clause
+  SELECT opt_all_clause target_list into_clause from_clause opt_where_clause opt_if_clause
   group_clause having_clause opt_window_clause {
-    $$ = MAKE_NODE(@1, PTSelectStmt, false, $3, $5, $6, $7, $8, nullptr, nullptr, nullptr);
+    $$ = MAKE_NODE(@1, PTSelectStmt, false, $3, $5, $6, $7, $8, $9, nullptr, nullptr, nullptr);
   }
-  | SELECT distinct_clause target_list into_clause from_clause opt_where_clause
+  | SELECT distinct_clause target_list into_clause from_clause opt_where_clause opt_if_clause
   group_clause having_clause opt_window_clause {
-    $$ = MAKE_NODE(@1, PTSelectStmt, true, $3, $5, $6, $7, $8, nullptr, nullptr, nullptr);
+    $$ = MAKE_NODE(@1, PTSelectStmt, true, $3, $5, $6, $7, $8, $9, nullptr, nullptr, nullptr);
   }
   | TABLE relation_expr {
     PARSER_UNSUPPORTED(@1);
@@ -3139,6 +3139,11 @@ where_clause:
 
 if_clause:
   IF_P a_expr                   { $$ = $2; }
+;
+
+opt_if_clause:
+  /*EMPTY*/                     { $$ = nullptr; }
+  | if_clause                   { $$ = $1; }
 ;
 
 /* variant for UPDATE and DELETE */
@@ -5069,7 +5074,6 @@ unreserved_keyword:
   | HOLD { $$ = $1; }
   | HOUR_P { $$ = $1; }
   | IDENTITY_P { $$ = $1; }
-  | IF_P { $$ = $1; }
   | IMMEDIATE { $$ = $1; }
   | IMMUTABLE { $$ = $1; }
   | IMPLICIT_P { $$ = $1; }
@@ -5411,6 +5415,7 @@ reserved_keyword:
   | GRANT { $$ = $1; }
   | GROUP_P { $$ = $1; }
   | HAVING { $$ = $1; }
+  | IF_P { $$ = $1; }
   | IN_P { $$ = $1; }
   | INFINITY { $$ = $1; }
   | INITIALLY { $$ = $1; }
