@@ -22,17 +22,17 @@ showAsideToc: true
   </li>
   <li>
     <a href="#ycql" class="nav-link" id="ycql-tab" data-toggle="tab" role="tab" aria-controls="ycql" aria-selected="false">
-      <i class="icon-cassandra" aria-hidden="true"></i>
+      <i class="icon-ycql" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div id="ycql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ysql-tab">
+  <div id="ysql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ysql-tab">
     {{% includeMarkdown "ysql-rbac-model.md" /%}}
   </div>
-  <div id="yedis" class="tab-pane fade" role="tabpanel" aria-labelledby="ycql-tab">
+  <div id="ycql" class="tab-pane fade" role="tabpanel" aria-labelledby="ycql-tab">
     {{% includeMarkdown "ycql-rbac-model.md" /%}}
   </div>
 </div>
