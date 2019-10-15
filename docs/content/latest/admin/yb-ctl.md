@@ -221,31 +221,40 @@ YugabyteDB clusters created with the `yb-ctl` utility are created locally on the
 
 ### Data directory
 
-YugabyteDB cluster data is installed in `$HOME/yugabyte-data/`.
+YugabyteDB cluster data is installed in `$HOME/yugabyte-data/`, containing the following:
+
+```sh
+cluster_config.json
+initdb.log
+node-#/
+node-#/disk-#/
+```
 
 #### Node directories
 
 For each simulated YugabyteDB node, a `yugabyte-data` subdirectory, named `node-#` (where # is the number of the node), is created.
 
-`/yugabyte-data/node-#/`
+Example: `/yugabyte-data/node-#/`
 
 Each `node-#` directory contains the following:
 
 ```sh
 yugabyte-data/node-#/disk-#/
-initdb.log
-cluster_config.json
 ```
 
 #### Disk directories
 
-For each simulated disk, a `disk-#` subdirectory is created in each "node" directory. `/yugabyte-data/node-#/disk-#/` .
+For each simulated disk, a `disk-#` subdirectory is created in each `/yugabyte-data/node-#` directory.
 
 Each `disk-#` directory contains the following:
 
 ```sh
-yugabyte-data/node-#/disk-#/pg_data/
-yugabyte-data/node-#/disk-#/yb-data/ 
+master.err
+master.out
+pg_data/
+tserver.err
+tserver.out
+yb-data/
 ```
 
 ### Logs
@@ -255,7 +264,6 @@ YB-Master logs are added in the following location:
 ```sh
 yugabyte-data/node-#/disk-#/yb-data/master.out
 yugabyte-data/node-#/disk-#/yb-data/master/logs
-
 ```
 
 YB-TServer logs are added in the following location:
@@ -263,7 +271,6 @@ YB-TServer logs are added in the following location:
 ```sh
 yugabyte-data/node-#/disk-#/yb-data/tserver.out
 yugabyte-data/node-#/disk-#/yb-data/tserver/logs
-
 ```
 
 ## Start and stop an existing cluster

@@ -33,7 +33,7 @@ menu:
         <div class="title">Authentication</div>
       </div>
       <div class="body">
-          Verify the identity of the client connecting to the database by enabling authentication.
+          Verify the identity of users and clients connecting to YugabyteDB databases.
       </div>
     </a>
   </div>

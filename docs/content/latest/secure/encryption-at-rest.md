@@ -8,9 +8,9 @@ aliases:
   - /secure/encryption-at-rest
 menu:
   latest:
-    identifier: secure-encryption-at-rest
+    identifier: encryption-at-rest
     parent: secure
-    weight: 800
+    weight: 730
 isTocNested: true
 showAsideToc: true
 ---

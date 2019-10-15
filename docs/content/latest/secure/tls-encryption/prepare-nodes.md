@@ -8,9 +8,9 @@ aliases:
   - /secure/tls-encryption/prepare-nodes
 menu:
   latest:
-    identifier: secure-tls-encryption-prepare-nodes
-    parent: secure-tls-encryption
-    weight: 721
+    identifier: prepare-nodes
+    parent: tls-encryption
+    weight: 10
 isTocNested: true
 showAsideToc: true
 ---
