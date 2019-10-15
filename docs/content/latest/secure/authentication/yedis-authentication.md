@@ -1,19 +1,36 @@
+---
+title: YEDIS authentication
+linkTitle: YEDIS authentication
+description: YEDIS authentication
+headcontent: Identify that your YEDIS users are who they say they are
+image: /images/section_icons/secure/authentication.png
+aliases:
+  - /secure/authentication/yedis
+menu:
+  latest:
+    identifier: yedis-authentication
+    parent: authentication
+    weight: 40
+isTocNested: true
+showAsideToc: true
+---
 
 ## Overview
 
 YEDIS authentication is based on passwords. Each client connecting using the YEDIS API should provide a valid password in order to execute any command successfully.
 
-**NOTE:** YEDIS implements a password-only authentication scheme. From the [Redis security docs page ("Authentication feature" section)](https://redis.io/topics/security), Open-source Redis does not try to implement Access Control, it provides a tiny layer of authentication that is optionally turned on editing the redis.conf file.
+**NOTE:** YEDIS implements a password-only authentication scheme. From the [Redis security docs page ("Authentication feature" section)](https://redis.io/topics/security), the open source version of Redis does not try to implement authentication, providing a small layer of authentication that can optionally be enabled in the `redis.conf` file.
 
 ## 1. Enable YEDIS authentication
 
-You can enable access control to enforce password based authentication in YEDIS API using the [CONFIG](../../api/yedis/config/) command.
+You can enable password-based authentication in YEDIS API using the [CONFIG](../../api/yedis/config/) command.
 
 To do so, connect to the cluster using `redis-cli` and run the following command:
 
 ```sql
 127.0.0.1:6379> CONFIG SET requirepass "password"
 ```
+
 ```
 "OK"
 ```
