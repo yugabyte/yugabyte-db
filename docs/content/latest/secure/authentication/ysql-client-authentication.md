@@ -1,15 +1,14 @@
 ---
-title: Configure YSQL client connections
-linkTitle: Configure YSQL client connections
-description: Configure YSQL client connections
-headcontent: How to configure fine-grained access control for YSQL clients
+title: YSQL client connections
+linkTitle: YSQL client connections
+description: YSQL client connections
+headcontent: Configure fine-grained access control for YSQL clients
 image: /images/section_icons/secure/authentication.png
 menu:
   latest:
     identifier: ysql-client-authentication
     parent: authentication
     weight: 20
-draft: true
 isTocNested: true
 showAsideToc: true
 ---
@@ -18,8 +17,7 @@ YugabyteDB client authentication for YSQL manages access control for primarily f
 
 This client authentication is managed in YugabyteDB by the YB-TServer's configuration flag [`--ysql_hba_conf`](../../admin/yb-tserver#ysql-hba-conf), which works similar to the `pg_hb.conf` file in PostgreSQL. The settings include records that specify allowed connection types, users, client IP addresses, and the authentication method.
 
-Before you can managed remote client authentication
-The default setting for `listen_addresses, YugabyteDB accepts connections only from `localhost`, To allow remote connections, you must add client authentication records to the host-based authentication configuration file (`yb_hba.conf`), located in the YugabyteDB data directory (`yugabyte-data`).
+The default setting for `listen_addresses` in YugabyteDB accepts connections only from `localhost`. To allow remote connections, you must add client authentication records to the YB-TServer `==ysql_hba_conf` configuration settings.
 
 When a connection request is received by YugabyteDB, the following steps occur:
 
@@ -30,13 +28,17 @@ When a connection request is received by YugabyteDB, the following steps occur:
 
 ## For local clusters
 
-For local clusters created using the `yb-ctl` utility, remote client connections are not supported. By default, the `listen_addresses` setting, which determines w is set to `127.0.0.1`, that is the localhost. With YSQL authentication enabled, all users are required to use a username and password to connect and use YugabyteDB databases.
+For local clusters created using the `yb-ctl` utility, remote client connections are not supported. By default, the `listen_addresses` setting, which determines w is set to `127.0.0.1`, that is the localhost. With YSQL authentication enabled, all users are required to use a username and password to connect and use YugabyteDB databases. You can also configure the `--ysql_hba_conf` setting, depending on special requirements for fine-grained authentication for localhost connections.
 
 ## For deployable clusters
 
-YugabyteDB clusters that are manually deployed can allow remote client authentication by changing the `listen_addresses` to  and the 
+YugabyteDB clusters that are manually deployed can allow remote client authentication by changing the `listen_addresses` to support all connections using an asterisk (`*`) or a list of comma-separated addresses. In order to configure the `listen_addresses`, you must configure the YB-TServer configuration setting [`--pgsql_proxy_bind_address`](../../../admin/yb-tserver#pgsql-proxy-bind-address). For example, setting the following:
 
-To ???
+```sh
+yb-tserver --pgsql_proxy_bind_address='*'
+```
+
+This example will generate a `listen_address` value of `*`, which will accept all connection attempts for evaluation by the `--ysql_hba_conf` settings.
 
 Records in YugabyteDB's `yb_hba.conf` are auto-generated based on the values included in the `--ysql_hba_conf` option. For example, starting a YB-TServer with the following `--ysql_hba_conf` command line option will enable authorization for all users except `yugabyte`:
 
