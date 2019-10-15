@@ -69,7 +69,7 @@ class UniverseForm extends Component {
   }
 
   transitionToDefaultRoute = () => {
-    const {universe: {currentUniverse: {data: {universeUUID}}}} = this.props;
+    const { universe: { currentUniverse: { data: { universeUUID }}}} = this.props;
     if (this.props.type === "Create") {
       if (this.context.prevPath) {
         browserHistory.push(this.context.prevPath);
@@ -95,7 +95,7 @@ class UniverseForm extends Component {
       this.createUniverse();
       this.transitionToDefaultRoute();
     } else if (type === "Async") {
-      const {universe: {currentUniverse: {data: {universeDetails}}}} = this.props;
+      const { universe: { currentUniverse: { data: { universeDetails }}}} = this.props;
       const readOnlyCluster = universeDetails && getReadOnlyCluster(universeDetails.clusters);
       if (isNonEmptyObject(readOnlyCluster)) {
         this.editReadReplica();
@@ -142,13 +142,13 @@ class UniverseForm extends Component {
   // For Async clusters, we need to fetch the universe name from the
   // primary cluster metadata
   getUniverseName = () => {
-    const {formValues, universe} = this.props;
+    const { formValues, universe } = this.props;
 
     if (isNonEmptyObject(formValues['primary'])) {
       return formValues['primary'].universeName;
     }
 
-    const {currentUniverse: {data: {universeDetails}}} = universe;
+    const { currentUniverse: { data: { universeDetails }}} = universe;
     if (isNonEmptyObject(universeDetails)) {
       const primaryCluster = getPrimaryCluster(universeDetails.clusters);
       return primaryCluster.userIntent.universeName;
@@ -158,13 +158,13 @@ class UniverseForm extends Component {
   }
 
   getYSQLstate = () => {
-    const {formValues, universe} = this.props;
+    const { formValues, universe } = this.props;
 
     if (isNonEmptyObject(formValues['primary'])) {
       return formValues['primary'].enableYSQL;
     }
 
-    const {currentUniverse: {data: {universeDetails}}} = universe;
+    const { currentUniverse: { data: { universeDetails }}} = universe;
     if (isNonEmptyObject(universeDetails)) {
       const primaryCluster = getPrimaryCluster(universeDetails.clusters);
       return primaryCluster.userIntent.enableYSQL;

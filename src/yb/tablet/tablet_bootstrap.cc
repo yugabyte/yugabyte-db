@@ -349,7 +349,7 @@ Status TabletBootstrap::Bootstrap(shared_ptr<TabletClass>* rebuilt_tablet,
 
   bool needs_recovery;
   RETURN_NOT_OK(PrepareToReplay(&needs_recovery));
-  if (needs_recovery) {
+  if (needs_recovery && !skip_wal_rewrite_) {
     RETURN_NOT_OK(OpenLogReader());
   }
 
@@ -847,13 +847,13 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
                           << state.intents_stored_op_id.ShortDebugString();
   }
 
-  log::SegmentSequence segments;
-  RETURN_NOT_OK(log_reader_->GetSegmentsSnapshot(&segments));
-
   // Open a new log. If skip_wal_rewrite is false, append each replayed entry to this new log.
   // Otherwise, defer appending to this log until bootstrap is finished to preserve the state of
   // old log.
   RETURN_NOT_OK_PREPEND(OpenNewLog(), "Failed to open new log");
+
+  log::SegmentSequence segments;
+  RETURN_NOT_OK(log_->GetSegmentsSnapshot(&segments));
 
   // Find the earliest log segment we need to read, so the rest can be ignored
   auto iter = FLAGS_skip_flushed_entries ? segments.end() : segments.begin();
@@ -944,7 +944,7 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
     // number of MB processed, but this is better than nothing.
     listener_->StatusMessage(Substitute("Bootstrap replayed $0/$1 log segments. "
                                         "Stats: $2. Pending: $3 replicates",
-                                        segment_count + 1, log_reader_->num_segments(),
+                                        segment_count + 1, segments.size(),
                                         stats_.ToString(),
                                         state.pending_replicates.size()));
     segment_count++;
