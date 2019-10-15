@@ -45,6 +45,7 @@ public class BackupUniverse extends UniverseTaskBase {
       if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {
         groupType = UserTaskDetails.SubTaskGroupType.CreatingTableBackup;
         updateBackupState(true);
+        unlockUniverseForUpdate();
       } else if (taskParams().actionType == BackupTableParams.ActionType.RESTORE) {
         groupType = UserTaskDetails.SubTaskGroupType.RestoringTableBackup;
       } else {
