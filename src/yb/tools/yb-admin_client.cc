@@ -1125,10 +1125,7 @@ Status ClusterAdminClient::ModifyPlacementInfo(
     pb->mutable_cloud_info()->set_placement_zone(block[2]);
     pb->set_min_num_replicas(1);
   }
-  master::ReplicationInfoPB* replication_info_pb = new master::ReplicationInfoPB;
-  replication_info_pb->set_allocated_live_replicas(live_replicas);
-  sys_cluster_config_entry->clear_replication_info();
-  sys_cluster_config_entry->set_allocated_replication_info(replication_info_pb);
+  sys_cluster_config_entry->mutable_replication_info()->set_allocated_live_replicas(live_replicas);
   req_new_cluster_config.mutable_cluster_config()->CopyFrom(*sys_cluster_config_entry);
 
   RETURN_NOT_OK(InvokeRpc(&MasterServiceProxy::ChangeMasterClusterConfig,
