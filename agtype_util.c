@@ -1402,26 +1402,37 @@ void agtype_hash_scalar_value_extended(const agtype_value *scalar_val,
  *
  *     -Infinity < any number < +Infinity < NaN
  *
- * Note: We use the fact that NaN != NaN to test for it (x != x)
+ * Note: This is copied from float8_cmp_internal.
+ * Note: Special float values can cause exceptions, hence the order of the
+ *       comparisons.
  */
 static int compare_two_floats_orderability(float8 lhs, float8 rhs)
 {
-    /* numbers and infinities compare normally */
-    if (lhs == rhs)
-        return 0;
-    else if (lhs > rhs)
-        return 1;
-    else if (lhs < rhs)
-        return -1;
-    /* at this point, one or both are NaN, check if both are */
-    else if (isnan(lhs) && isnan(rhs))
-        return 0;
-    /* at this point, only one is NaN, the other is a number or infinity */
-    else if (isnan(lhs))
-        return 1;
-    /* rhs is NaN */
+    /*
+     * We consider all NANs to be equal and larger than any non-NAN. This is
+     * somewhat arbitrary; the important thing is to have a consistent sort
+     * order.
+     */
+    if (isnan(lhs))
+    {
+        if (isnan(rhs))
+            return 0; /* NAN = NAN */
+        else
+            return 1; /* NAN > non-NAN */
+    }
+    else if (isnan(rhs))
+    {
+        return -1; /* non-NAN < NAN */
+    }
     else
-        return -1;
+    {
+        if (lhs > rhs)
+            return 1;
+        else if (lhs < rhs)
+            return -1;
+        else
+            return 0;
+    }
 }
 
 /*
