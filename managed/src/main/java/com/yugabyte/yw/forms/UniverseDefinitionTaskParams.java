@@ -74,6 +74,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // Flag for creating encryption-at-rest key file
   public String encryptionKeyFilePath;
 
+  // Flag for if it is a kubernetes provided universe
+  public boolean isKubernetesUniverse = false;
+
   // Store encryption key provider specific configuration/authorization values
   public Map<String, String> encryptionAtRestConfig;
 

@@ -229,6 +229,7 @@ public class UniverseController extends AuthenticatedController {
       if (primaryCluster != null) {
         if (primaryCluster.userIntent.providerType.equals(CloudType.kubernetes)) {
           taskType = TaskType.CreateKubernetesUniverse;
+          taskParams.isKubernetesUniverse = true;
         }
 
         if (primaryCluster.userIntent.enableNodeToNodeEncrypt ||

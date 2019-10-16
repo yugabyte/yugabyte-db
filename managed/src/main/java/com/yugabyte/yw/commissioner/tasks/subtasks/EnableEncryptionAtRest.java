@@ -9,7 +9,6 @@
  */
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
-
 import java.io.File;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -57,7 +56,11 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
         LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
         client = ybService.getClient(hostPorts, certificate);
         File tempKeyFile = new File(taskParams().encryptionKeyFilePath);
-        client.enableEncryptionAtRest("/home/yugabyte/encryption-key-dir/" + tempKeyFile.getName());
+        String nodeFilePath = "/home/yugabyte/encryption-key-dir/";
+        if (taskParams().isKubernetesUniverse) {
+          nodeFilePath = "/mnt/disk0/";
+        }
+        client.enableEncryptionAtRest(nodeFilePath + tempKeyFile.getName());
       } catch (Exception e) {
         LOG.error("{} hit error : {}", getName(), e.getMessage());
         throw new RuntimeException(e);

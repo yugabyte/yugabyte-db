@@ -137,6 +137,8 @@ public class UserTaskDetails {
 
     // Run the initdb script in a tserver pod. (Deprecated)
     KubernetesInitYSQL,
+
+    CopyEncryptionKeyFile,
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -294,6 +296,10 @@ public class UserTaskDetails {
       case KubernetesInitYSQL:
         title = "Initialize YSQL in Kubernetes Universe";
         description = "Initialize YSQL in Kubernetes Universe";
+        break;
+      case CopyEncryptionKeyFile:
+        title = "Copying encryption file to Kubernetes Universe pods";
+        description = "Copying encryption file to Kubernetes Universe pods";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

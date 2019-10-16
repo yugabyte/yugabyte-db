@@ -511,12 +511,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * Runs task for enabling encryption-at-rest key file on master
    */
   public SubTaskGroup createEnableEncryptionAtRestTask(String file) {
+    return createEnableEncryptionAtRestTask(file, false);
+  }
+
+  /**
+   * Runs task for enabling encryption-at-rest key file on master
+   */
+  public SubTaskGroup createEnableEncryptionAtRestTask(String file, boolean isKubernetesUniverse) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("EnableEncryptionAtRest", executor);
     EnableEncryptionAtRest task = new EnableEncryptionAtRest();
     EnableEncryptionAtRest.Params params = new EnableEncryptionAtRest.Params();
     params.universeUUID = taskParams().universeUUID;
     // Add encryption file path
     params.encryptionKeyFilePath = file;
+    params.isKubernetesUniverse = isKubernetesUniverse;
     task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
