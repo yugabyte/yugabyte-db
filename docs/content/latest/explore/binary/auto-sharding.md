@@ -81,7 +81,7 @@ $ ./bin/yb-ctl status
 
 ## 2. Create a table
 
-Create a YCQL table. Since we will be using the sample application to write data into this table, the keyspace and table name below must created exactly as shown.
+Create a YCQL table. Since we will be using a workload application in the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) to write data into this table, the keyspace and table name below must created exactly as shown.
 
 ```sh
 $ ./bin/cqlsh
@@ -148,13 +148,13 @@ Let us insert a key-value entry, with the value size around 2MB. Since the memst
 - `--value_size 10000000`  - Generate the value being written as a random byte string of around 10MB size.
 - `--nouuid` - Do not prefix a UUID to the key. A UUID allows multiple instances of the load tester to run without interfering with each other.
 
-Download the sample app JAR file.
+Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`) by running the following command.
 
 ```sh
 $ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
-Run the workload.
+Run the `CasandraKeyValue` workload application.
 
 ```sh
 $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
