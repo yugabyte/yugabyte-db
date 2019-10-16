@@ -1201,7 +1201,7 @@ install_linuxbrew() {
   local linuxbrew_dir=$YB_LINUXBREW_LOCAL_ROOT/$linuxbrew_dirname
   local linuxbrew_archive="${linuxbrew_dir}.tar.gz"
   local linuxbrew_archive_checksum="${linuxbrew_archive}.sha256"
-  local url="https://github.com/YugaByte/linuxbrew-build/releases/download/v$version/\
+  local url="https://github.com/YugaByte/brew-build/releases/download/$version/\
 linuxbrew-$version.tar.gz"
   mkdir -p "$YB_LINUXBREW_LOCAL_ROOT"
   if [[ ! -f $linuxbrew_archive ]]; then
