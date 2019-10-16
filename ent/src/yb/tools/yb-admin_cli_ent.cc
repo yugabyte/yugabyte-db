@@ -112,7 +112,9 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         tables.reserve(num_tables);
 
         for (int i = 0; i < num_tables; ++i) {
-          tables.push_back(VERIFY_RESULT(ResolveTableName(client, args[3 + i*2], args[4 + i*2])));
+          tables.push_back(YBTableName(
+              VERIFY_RESULT(ParseNamespaceName(args[3 + i*2])).name,
+              args[4 + i*2]));
         }
 
         string msg = num_tables > 0 ?
