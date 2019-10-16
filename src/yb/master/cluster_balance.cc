@@ -226,7 +226,7 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
     TabletServerId out_to_ts;
 
     // Handle adding and moving replicas.
-    for (int i = 0; i < remaining_adds; ++i) {
+    for ( ; remaining_adds > 0; --remaining_adds) {
       auto handle_add = HandleAddReplicas(&out_tablet_id, &out_from_ts, &out_to_ts);
       if (!handle_add.ok()) {
         LOG(WARNING) << "Skipping add replicas for " << table.first << ": "
@@ -237,7 +237,6 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
       if (!*handle_add) {
         break;
       }
-      --remaining_adds;
     }
     if (PREDICT_FALSE(FLAGS_load_balancer_handle_under_replicated_tablets_only)) {
       LOG(INFO) << "Skipping remove replicas and leader moves for " << table.first;
@@ -245,7 +244,7 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
     }
 
     // Handle cleanup after over-replication.
-    for (int i = 0; i < remaining_removals; ++i) {
+    for ( ; remaining_removals > 0; --remaining_removals) {
       auto handle_remove = HandleRemoveReplicas(&out_tablet_id, &out_from_ts);
       if (!handle_remove.ok()) {
         LOG(WARNING) << "Skipping remove replicas for " << table.first << ": "
@@ -256,11 +255,10 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
       if (!*handle_remove) {
         break;
       }
-      --remaining_removals;
     }
 
     // Handle tablet servers with too many leaders.
-    for (int i = 0; i < remaining_leader_moves; ++i) {
+    for ( ; remaining_leader_moves > 0; --remaining_leader_moves) {
       auto handle_leader = HandleLeaderMoves(&out_tablet_id, &out_from_ts, &out_to_ts);
       if (!handle_leader.ok()) {
         LOG(WARNING) << "Skipping leader moves for " << table.first << ": "
@@ -271,7 +269,6 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
       if (!*handle_leader) {
         break;
       }
-      --remaining_leader_moves;
     }
 
     if (remaining_adds == 0 && remaining_removals == 0 && remaining_leader_moves == 0) {
