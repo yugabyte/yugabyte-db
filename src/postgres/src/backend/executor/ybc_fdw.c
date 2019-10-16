@@ -270,6 +270,15 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybc_state->handle);
 	ybc_state->stmt_owner = CurrentResourceOwner;
 	ybc_state->exec_params = &estate->yb_exec_params;
+
+	ybc_state->exec_params->rowmark = -1;
+	ListCell   *l;
+	foreach(l, estate->es_rowMarks) {
+		ExecRowMark *erm = (ExecRowMark *) lfirst(l);
+		ybc_state->exec_params->rowmark = erm->markType;
+		break;
+	}
+
 	ybc_state->is_exec_done = false;
 
 	/* Set the current syscatalog version (will check that we are up to date) */

@@ -589,7 +589,10 @@ index_getnext_tid(IndexScanDesc scan, ScanDirection direction)
 	 * scan->xs_recheck and possibly scan->xs_itup/scan->xs_hitup, though we
 	 * pay no attention to those fields here.
 	 */
-	found = scan->indexRelation->rd_amroutine->amgettuple(scan, direction);
+	if (IsYBBackedRelation(scan->indexRelation))
+		found = ybcingettuple(scan, direction);
+	else
+		found = scan->indexRelation->rd_amroutine->amgettuple(scan, direction);
 
 	/* Reset kill flag immediately for safety */
 	scan->kill_prior_tuple = false;
