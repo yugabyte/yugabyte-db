@@ -483,7 +483,9 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 Result<YBTableName> ResolveTableName(ClusterAdminClientClass* client,
                                      const string& full_namespace_name,
                                      const string& table_name) {
-  const auto& namespace_info = VERIFY_RESULT_REF(client->GetNamespaceInfo(full_namespace_name));
+  const auto typed_name = VERIFY_RESULT(ParseNamespaceName(full_namespace_name));
+  const auto& namespace_info = VERIFY_RESULT_REF(client->GetNamespaceInfo(typed_name.db_type,
+                                                                          typed_name.name));
   return YBTableName(namespace_info.id(), namespace_info.name(), table_name);
 }
 

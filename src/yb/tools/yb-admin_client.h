@@ -156,8 +156,8 @@ class ClusterAdminClient {
   CHECKED_STATUS ChangeBlacklist(const std::vector<HostPort>& servers, bool add,
       bool blacklist_leader);
 
-  Result<const master::NamespaceIdentifierPB&> GetNamespaceInfo(
-      const std::string& full_namespace_name);
+  Result<const master::NamespaceIdentifierPB&> GetNamespaceInfo(YQLDatabase db_type,
+                                                                const std::string& namespace_name);
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
@@ -241,6 +241,13 @@ class ClusterAdminClient {
 static constexpr const char* kColumnSep = " \t";
 
 std::string RightPadToUuidWidth(const std::string &s);
+
+struct TypedNamespaceName {
+  YQLDatabase db_type;
+  std::string name;
+};
+
+Result<TypedNamespaceName> ParseNamespaceName(const std::string& full_namespace_name);
 
 }  // namespace tools
 }  // namespace yb

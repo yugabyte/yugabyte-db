@@ -1179,33 +1179,9 @@ Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers,
 }
 
 Result<const master::NamespaceIdentifierPB&> ClusterAdminClient::GetNamespaceInfo(
-    const std::string& full_namespace_name) {
-  YQLDatabase db_type = YQL_DATABASE_UNKNOWN;
-  const size_t dot_pos = full_namespace_name.find('.');
-  if (dot_pos != string::npos) {
-    static const std::array<pair<const char*, YQLDatabase>, 3> type_prefixes{
-      make_pair(kDBTypePrefixCql, YQL_DATABASE_CQL),
-      make_pair(kDBTypePrefixYsql, YQL_DATABASE_PGSQL),
-      make_pair(kDBTypePrefixRedis, YQL_DATABASE_REDIS)};
-    const Slice namespace_type(full_namespace_name.data(), dot_pos);
-    for (const auto& prefix : type_prefixes) {
-      if (namespace_type == prefix.first) {
-        db_type = prefix.second;
-        break;
-      }
-    }
-    if (db_type == YQL_DATABASE_UNKNOWN) {
-      return STATUS(InvalidArgument, Format("Invalid db type name '$0'", namespace_type));
-    }
-  } else {
-    db_type = (full_namespace_name == common::kRedisKeyspaceName ? YQL_DATABASE_REDIS
-                                                                 : YQL_DATABASE_CQL);
-  }
-  const size_t name_start = (dot_pos == string::npos ? 0 : (dot_pos + 1));
-  const Slice namespace_name(full_namespace_name.data() + name_start,
-      full_namespace_name.length() - name_start);
+    YQLDatabase db_type, const std::string& namespace_name) {
   LOG(INFO) << Format("Resolving namespace id for '$0' of type '$1'",
-      namespace_name, DatabasePrefix(db_type));
+                      namespace_name, DatabasePrefix(db_type));
   for (const auto& item : VERIFY_RESULT_REF(GetNamespaceMap())) {
     const auto& namespace_info = item.second;
     if (namespace_info.database_type() == db_type && namespace_name == namespace_info.name()) {
@@ -1213,9 +1189,9 @@ Result<const master::NamespaceIdentifierPB&> ClusterAdminClient::GetNamespaceInf
     }
   }
   return STATUS(NotFound,
-      Format("Namespace '$0' of type '$1' not found", namespace_name, DatabasePrefix(db_type)));
+                Format("Namespace '$0' of type '$1' not found",
+                       namespace_name, DatabasePrefix(db_type)));
 }
-
 
 Result<master::GetMasterClusterConfigResponsePB> ClusterAdminClient::GetMasterClusterConfig() {
   return InvokeRpc(&MasterServiceProxy::GetMasterClusterConfig, master_proxy_.get(),
@@ -1258,6 +1234,36 @@ Result<const ClusterAdminClient::NamespaceMap&> ClusterAdminClient::GetNamespace
 
 string RightPadToUuidWidth(const string &s) {
   return RightPadToWidth(s, kNumCharactersInUuid);
+}
+
+Result<TypedNamespaceName> ParseNamespaceName(const std::string& full_namespace_name) {
+  YQLDatabase db_type = YQL_DATABASE_UNKNOWN;
+  const size_t dot_pos = full_namespace_name.find('.');
+  if (dot_pos != string::npos) {
+    static const std::array<pair<const char*, YQLDatabase>, 3> type_prefixes{
+        make_pair(kDBTypePrefixCql, YQL_DATABASE_CQL),
+        make_pair(kDBTypePrefixYsql, YQL_DATABASE_PGSQL),
+        make_pair(kDBTypePrefixRedis, YQL_DATABASE_REDIS)};
+    const Slice namespace_type(full_namespace_name.data(), dot_pos);
+    for (const auto& prefix : type_prefixes) {
+      if (namespace_type == prefix.first) {
+        db_type = prefix.second;
+        break;
+      }
+    }
+    if (db_type == YQL_DATABASE_UNKNOWN) {
+      return STATUS(InvalidArgument, Format("Invalid db type name '$0'", namespace_type));
+    }
+  } else {
+    db_type = (full_namespace_name == common::kRedisKeyspaceName ? YQL_DATABASE_REDIS
+        : YQL_DATABASE_CQL);
+  }
+
+  const size_t name_start = (dot_pos == string::npos ? 0 : (dot_pos + 1));
+  return TypedNamespaceName{
+      db_type,
+      std::string(full_namespace_name.data() + name_start,
+                  full_namespace_name.length() - name_start)};
 }
 
 }  // namespace tools
