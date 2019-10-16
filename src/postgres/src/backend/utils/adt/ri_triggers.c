@@ -244,25 +244,6 @@ static void ri_ReportViolation(const RI_ConstraintInfo *riinfo,
 				   int queryno) pg_attribute_noreturn();
 
 
-/*
- * In YB mode we currently only support foreign key DMLs
- * in serializable mode (for YB tables).
- * TODO To be removed when we support all cases.
- */
-static bool IsYBForeignKeyConstraint(Relation pk_relation)
-{
-	if (IsYBRelation(pk_relation))
-	{
-		if (!IsolationIsSerializable())
-		{
-			YBRaiseNotSupported("Operation only supported in SERIALIZABLE "
-								"isolation level", 1199);
-		}
-		return true;
-	}
-	return false;
-}
-
 /* ----------
  * RI_FKey_check -
  *
@@ -451,14 +432,7 @@ RI_FKey_check(TriggerData *trigdata)
 			queryoids[i] = fk_type;
 		}
 
-		/*
-		 * TODO In YB mode we currently only allow foreign key DMLs
-		 * in YB serializable mode -- so no need for key share here
-		 */
-		if (!IsYBForeignKeyConstraint(pk_rel))
-		{
-			appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
-		}
+		appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
 
 		/* Prepare and save the plan */
 		qplan = ri_PlanCheck(querybuf.data, riinfo->nkeys, queryoids,
@@ -594,15 +568,8 @@ ri_Check_Pk_Match(Relation pk_rel, Relation fk_rel,
 			queryoids[i] = pk_type;
 		}
 
-		/*
-		 * TODO In YB mode we currently only allow foreign key DMLs
-		 * in YB serializable mode -- so no need for key share here
-		 */
-		if (!IsYBForeignKeyConstraint(pk_rel))
-		{
-			appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
-		}
-		
+		appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
+
 		/* Prepare and save the plan */
 		qplan = ri_PlanCheck(querybuf.data, riinfo->nkeys, queryoids,
 							 &qkey, fk_rel, pk_rel, true);
@@ -867,10 +834,7 @@ ri_restrict(TriggerData *trigdata, bool is_no_action)
 				* TODO In YB mode we currently only allow foreign key DMLs
 				* in YB serializable mode -- so no need for key share here
 				*/
-				if (!IsYBForeignKeyConstraint(pk_rel))
-				{
-					appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
-				}
+				appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
 
 				/* Prepare and save the plan */
 				qplan = ri_PlanCheck(querybuf.data, riinfo->nkeys, queryoids,

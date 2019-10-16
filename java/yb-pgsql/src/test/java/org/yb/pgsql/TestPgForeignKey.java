@@ -61,14 +61,23 @@ public class TestPgForeignKey extends BasePgSQLTest {
   }
 
   @Test
-  public void testForeignKeyConflicts() throws Exception {
+  public void testForeignKeyConflictsWithSerializableIsolation() throws Exception {
+    testForeignKeyConflicts(Connection.TRANSACTION_SERIALIZABLE);
+  }
+
+  @Test
+  public void testForeignKeyConflictsWithSnapshotIsolation() throws Exception {
+    testForeignKeyConflicts(Connection.TRANSACTION_REPEATABLE_READ);
+  }
+
+  private void testForeignKeyConflicts(int pgIsolationLevel) throws Exception {
 
     Set<Row> expectedPkRows = new HashSet<>();
     Set<Row> expectedFkRows = new HashSet<>();
 
     // Set up the tables.
     try (Statement statement = connection.createStatement()) {
-      connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
+      connection.setTransactionIsolation(pgIsolationLevel);
 
       // Setup pk table.
       statement.execute("create table pk(id int primary key)");
@@ -86,8 +95,19 @@ public class TestPgForeignKey extends BasePgSQLTest {
       }
       checkRows(statement, "fk", expectedFkRows);
 
-      try (Connection connection1 = createConnectionSerializableNoAutoCommit();
-           Connection connection2 = createConnectionSerializableNoAutoCommit()) {
+      IsolationLevel isolationLevel = IsolationLevel.REPEATABLE_READ;
+      if (pgIsolationLevel == Connection.TRANSACTION_SERIALIZABLE) {
+        isolationLevel = IsolationLevel.SERIALIZABLE;
+      }
+
+      try (Connection connection1 = newConnectionBuilder()
+              .setIsolationLevel(isolationLevel)
+              .setAutoCommit(AutoCommit.DISABLED)
+              .connect();
+           Connection connection2 = newConnectionBuilder()
+                   .setIsolationLevel(isolationLevel)
+                   .setAutoCommit(AutoCommit.DISABLED)
+                   .connect()) {
 
         // Test update/delete conflicts.
         for (int id = 1; id < 20; id += 2) {

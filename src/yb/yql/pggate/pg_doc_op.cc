@@ -218,10 +218,24 @@ void PgDocReadOp::SetRequestPrefetchLimit() {
   req->set_limit(limit_count);
 }
 
+void PgDocReadOp::SetRowMarks() {
+  if (exec_params_.rowmark < 0) {
+    return;
+  }
+  PgsqlReadRequestPB *req = read_op_->mutable_request();
+
+  // We only support one type of row lock at a time.
+  if (req->row_mark_type_size() > 0) {
+    return;
+  }
+  req->add_row_mark_type(static_cast<yb::RowMarkType>(exec_params_.rowmark));
+}
+
 Status PgDocReadOp::SendRequestUnlocked() {
   CHECK(!waiting_for_response_);
 
   SetRequestPrefetchLimit();
+  SetRowMarks();
   SCHECK_EQ(VERIFY_RESULT(pg_session_->PgApplyAsync(read_op_, &read_time_)), OpBuffered::kFalse,
             IllegalState, "YSQL read operation should not be buffered");
 

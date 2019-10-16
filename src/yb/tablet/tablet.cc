@@ -819,6 +819,14 @@ Status Tablet::PrepareTransactionWriteBatch(
   }
 
   auto isolation_level = metadata_with_write_id->first.isolation;
+  if (put_batch.row_mark_type_size() > 0) {
+    // We used this as a shorthand to acquire the right locks for this operation. This doesn't
+    // change the isolation level of the current transaction.
+    // TODO https://github.com/yugabyte/yugabyte-db/issues/2496:
+    // Use a new method to acquire the right locks. This would avoid any confusion.
+    isolation_level = IsolationLevel::SERIALIZABLE_ISOLATION;
+  }
+
   auto write_id = metadata_with_write_id->second;
   yb::docdb::PrepareTransactionWriteBatch(
       put_batch, hybrid_time, rocksdb_write_batch, transaction_id, isolation_level,

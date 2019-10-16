@@ -157,7 +157,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   //------------------------------------------------------------------------------------------------
   // Access functions.
   // TODO(neil) Need to double check these code later.
-  // - This code in CQL processor has a lock. CQL comment: It can be accessed by mutiple calls in
+  // - This code in CQL processor has a lock. CQL comment: It can be accessed by multiple calls in
   //   parallel so they need to be thread-safe for shared reads / exclusive writes.
   //
   // - Currently, for each session, server executes the client requests sequentially, so the
@@ -253,6 +253,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   bool has_txn_ops_ = false;
   bool has_non_txn_ops_ = false;
+
+  // True if the read request has a FOR SHARE or FOR KEY SHARE lock.
+  bool has_for_share_lock_ = false;
 
   // Local tablet-server shared memory segment handle. This has a value of nullptr
   // if the shared memory has not been initialized (e.g. during initdb).

@@ -143,7 +143,13 @@ preprocess_targetlist(PlannerInfo *root)
 
 		if (rc->allMarkTypes & ~(1 << ROW_MARK_COPY))
 		{
-			if (target_relation && IsYBBackedRelation(target_relation)) 
+			bool is_yb_relation = false;
+			if (!target_relation)
+				is_yb_relation = IsYBRelationById(getrelid(rc->rti, range_table));
+			else
+				is_yb_relation = IsYBBackedRelation(target_relation);
+
+			if (is_yb_relation)
 			{
 				/* Need to fetch YB TID */
 				var = makeVar(rc->rti,
@@ -153,8 +159,8 @@ preprocess_targetlist(PlannerInfo *root)
 								InvalidOid,
 								0);
 				snprintf(resname, sizeof(resname), "ybctid%u", rc->rowmarkId);
-			} 
-			else 
+			}
+			else
 			{
 				/* Need to fetch TID */
 				var = makeVar(rc->rti,

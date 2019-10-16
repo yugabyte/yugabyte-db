@@ -78,6 +78,7 @@ message MaintenanceManagerStatusPB {
   // List of all the operations.
   repeated MaintenanceOpPB registered_operations = 2;
 
-  // This list isn't in order of anything. Can contain the same operation mutiple times.
+  // This list is not guaranteed to be in any particular order. Can contain the same operation
+  // multiple times.
   repeated CompletedOpPB completed_operations = 3;
 }

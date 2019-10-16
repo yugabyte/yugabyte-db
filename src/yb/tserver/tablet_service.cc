@@ -1148,6 +1148,33 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
 #endif
   }
 
+  bool has_row_lock = false;
+  // For postgres requests check that the syscatalog version matches.
+  if (!req->pgsql_batch().empty()) {
+    for (const auto& pg_req : req->pgsql_batch()) {
+      if (pg_req.has_ysql_catalog_version() &&
+          pg_req.ysql_catalog_version() < server_->ysql_catalog_version()) {
+        SetupErrorAndRespond(resp->mutable_error(),
+            STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while processing "
+                                       "this query. Try Again."),
+            TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
+        return;
+      }
+      if (pg_req.row_mark_type_size() > 0 &&
+          (pg_req.row_mark_type(0) == RowMarkType::ROW_MARK_SHARE ||
+           pg_req.row_mark_type(0) == RowMarkType::ROW_MARK_KEYSHARE)) {
+        if (!req->has_transaction()) {
+          SetupErrorAndRespond(resp->mutable_error(),
+              STATUS(NotSupported,
+                     "Read request with row mark types must be part of a transaction"),
+              TabletServerErrorPB::OPERATION_NOT_SUPPORTED, &context);
+        }
+        serializable_isolation = true;
+        has_row_lock = true;
+      }
+    }
+  }
+
   LeaderTabletPeer leader_peer;
   ReadContext read_context = {req, resp, &context};
 
@@ -1185,7 +1212,9 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   // safe_ht_to_read is used only for read restart, so if read_time is valid, then we would respond
   // with "restart required".
   ReadHybridTime& read_time = read_context.read_time;
-  read_time = ReadHybridTime::FromReadTimePB(*req);
+  if (!has_row_lock) {
+    read_time = ReadHybridTime::FromReadTimePB(*req);
+  }
   read_context.allow_retry = !read_time;
   read_context.require_lease = tablet::RequireLease(
       req->consistency_level() == YBConsistencyLevel::STRONG);
@@ -1201,20 +1230,6 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
       SetupErrorAndRespond(
           resp->mutable_error(), status, TabletServerErrorPB::UNKNOWN_ERROR, &context);
       return;
-    }
-  }
-
-  // For postgres requests check that the syscatalog version matches.
-  if (!req->pgsql_batch().empty()) {
-    for (const auto& pg_req : req->pgsql_batch()) {
-      if (pg_req.has_ysql_catalog_version() &&
-          pg_req.ysql_catalog_version() < server_->ysql_catalog_version()) {
-        SetupErrorAndRespond(resp->mutable_error(),
-            STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while processing "
-                                       "this query. Try Again."),
-            TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
-        return;
-      }
     }
   }
 
@@ -1235,6 +1250,12 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   if (serializable_isolation) {
     WriteRequestPB write_req;
     *write_req.mutable_write_batch()->mutable_transaction() = req->transaction();
+    if (has_row_lock) {
+      // This will have to be modified once we support more row locks.
+      // See https://github.com/yugabyte/yugabyte-db/issues/1199 and
+      // https://github.com/yugabyte/yugabyte-db/issues/2496.
+      write_req.mutable_write_batch()->add_row_mark_type(RowMarkType::ROW_MARK_SHARE);
+    }
     write_req.set_tablet_id(req->tablet_id());
     write_req.mutable_write_batch()->set_deprecated_may_have_metadata(true);
     // TODO(dtxn) write request id
