@@ -366,6 +366,28 @@ enum IsolationLevel {
   SERIALIZABLE_ISOLATION = 2;
 }
 
+// This enum matches enum RowMarkType defined in src/include/nodes/plannodes.h.
+enum RowMarkType
+{
+  // Obtain exclusive tuple lock. Not supported yet.
+  ROW_MARK_EXCLUSIVE = 0;
+
+  // Obtain no-key exclusive tuple lock. Not supported yet.
+  ROW_MARK_NOKEYEXCLUSIVE = 1;
+
+  // Obtain shared tuple lock.
+  ROW_MARK_SHARE = 2;
+
+  // Obtain keyshare tuple lock.
+  ROW_MARK_KEYSHARE = 3;
+
+  // Not supported. Used for postgres compatibility.
+  ROW_MARK_REFERENCE = 4;
+
+  // Not supported. Used for postgres compatibility.
+  ROW_MARK_COPY = 5;
+}
+
 enum TransactionStatus {
   CREATED = 1;
   PENDING = 2;

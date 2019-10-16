@@ -524,6 +524,21 @@ Status PgSession::FlushBufferedWriteOperations() {
 
 Result<OpBuffered> PgSession::PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op,
                                            uint64_t* read_time) {
+
+  if (op->type() == YBOperation::Type::PGSQL_READ) {
+    const PgsqlReadRequestPB& read_req = down_cast<client::YBPgsqlReadOp*>(op.get())->request();
+    if (read_req.row_mark_type_size() > 0) {
+      if (read_req.row_mark_type(0) == RowMarkType::ROW_MARK_SHARE ||
+          read_req.row_mark_type(0) == RowMarkType::ROW_MARK_KEYSHARE) {
+        has_for_share_lock_ = true;
+      } else {
+        // We shouldn't get here because other row lock types are disabled at the postgres level.
+        LOG(WARNING) << "Unsupported row lock of type "
+            << RowMarkType_Name(read_req.row_mark_type(0));
+      }
+    }
+  }
+
   // If the operation is a write op and we are in buffered write mode, save the op and return false
   // to indicate the op should not be flushed except in bulk by FlushBufferedWriteOperations().
   //
@@ -568,6 +583,8 @@ Status PgSession::PgFlushAsync(StatusFunctor callback) {
           << ": has_txn_ops_=" << has_txn_ops_ << ", has_non_txn_ops_=" << has_non_txn_ops_;
   has_txn_ops_ = false;
   has_non_txn_ops_ = false;
+  has_for_share_lock_ = false;
+
   // We specify read_only_op true here because we never start a new write transaction at this point.
   client::YBSessionPtr session =
       VERIFY_RESULT(GetSession(transactional, /* read_only_op */ true))->shared_from_this();
@@ -583,7 +600,7 @@ Status PgSession::RestartTransaction() {
 
 Result<client::YBSession*> PgSession::GetSessionForOp(
     const std::shared_ptr<client::YBPgsqlOp>& op) {
-  return GetSession(op->IsTransactional(), op->read_only());
+  return GetSession(op->IsTransactional(), op->read_only() && !has_for_share_lock_);
 }
 
 namespace {

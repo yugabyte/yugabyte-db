@@ -43,7 +43,7 @@ class QLSession {
 
   virtual ~QLSession() { }
 
-  // Access functions for current keyspace. It can be accessed by mutiple calls in parallel so
+  // Access functions for current keyspace. It can be accessed by multiple calls in parallel so
   // they need to be thread-safe for shared reads / exclusive writes.
   std::string current_keyspace() const {
     boost::shared_lock<boost::shared_mutex> l(current_keyspace_mutex_);
@@ -54,7 +54,7 @@ class QLSession {
     current_keyspace_ = keyspace;
   }
 
-  // Access functions for current role_name. It can be accessed by mutiple calls in parallel so
+  // Access functions for current role_name. It can be accessed by multiple calls in parallel so
   // they need to be thread-safe for shared reads / exclusive writes.
   std::string current_role_name() const {
     boost::shared_lock<boost::shared_mutex> l(current_role_name_mutex_);
