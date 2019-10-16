@@ -6,7 +6,7 @@ If you have a previously running local universe, destroy it using the following.
 $ ./yb-docker-ctl destroy
 ```
 
-Start a new local universe with replication factor 5.
+Start a new local universe with replication factor of 5.
 
 ```sh
 $ ./yb-docker-ctl create --rf 5 

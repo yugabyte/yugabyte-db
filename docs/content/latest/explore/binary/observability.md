@@ -13,21 +13,21 @@ If you have a previously running local universe, destroy it using the following.
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local cluster - by default, this will create a 3-node universe with a replication factor of 3. 
+Start a new local YugabyteDB cluster - by default, this will create a 3-node universe with a replication factor of 3. 
 
 ```sh
 $ ./bin/yb-ctl create
 ```
 
-## 2. Run sample key-value app
+## 2. Run the YugabyteDB workload generator
 
-Download the sample app jar.
+Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) JAR file (`yb-sample-apps.jar`) by running the following command.
 
 ```sh
 $ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
 ```
 
-Run a simple key-value workload in a separate shell.
+Run the `CassandraKeyValue` workload in a separate shell.
 
 ```sh
 $ java -jar ./yb-sample-apps.jar \
@@ -37,7 +37,7 @@ $ java -jar ./yb-sample-apps.jar \
     --num_threads_write 1
 ```
 
-## 3. Prepare Prometheus config file
+## 3. Prepare Prometheus configuration file
 
 Copy the following into a file called `yugabytedb.yml`.
 
