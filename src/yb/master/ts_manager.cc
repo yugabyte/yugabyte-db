@@ -188,7 +188,7 @@ void TSManager::GetAllReportedDescriptors(TSDescriptorVector* descs) const {
 }
 
 bool TSManager::IsTsInCluster(const TSDescriptorPtr& ts, string cluster_uuid) {
-    return cluster_uuid.empty() || ts->placement_uuid() == cluster_uuid;
+  return ts->placement_uuid() == cluster_uuid;
 }
 
 bool TSManager::IsTsBlacklisted(const TSDescriptorPtr& ts,
@@ -208,14 +208,19 @@ bool TSManager::IsTsBlacklisted(const TSDescriptorPtr& ts,
 
 void TSManager::GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs,
     string placement_uuid,
-    const BlacklistSet blacklist) const {
+    const BlacklistSet blacklist,
+    bool primary_cluster) const {
   descs->clear();
   SharedLock<decltype(lock_)> l(lock_);
 
   descs->reserve(servers_by_id_.size());
   for (const TSDescriptorMap::value_type& entry : servers_by_id_) {
     const TSDescriptorPtr& ts = entry.second;
-    if (IsTSLive(ts) && IsTsInCluster(ts, placement_uuid) && !IsTsBlacklisted(ts, blacklist)) {
+    // ts_in_cluster true if there's a matching config and tserver placement uuid or
+    // if we're getting primary nodes and the tserver placement uuid is empty.
+    bool ts_in_cluster = (IsTsInCluster(ts, placement_uuid) ||
+                         (primary_cluster && ts->placement_uuid().empty()));
+    if (IsTSLive(ts) && !IsTsBlacklisted(ts, blacklist) && ts_in_cluster) {
       descs->push_back(ts);
     }
   }

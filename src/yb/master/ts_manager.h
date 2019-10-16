@@ -111,7 +111,8 @@ class TSManager {
   // recently and are in the same 'cluster' with given placement uuid.
   // Optionally pass in blacklist as a set of HostPorts to return all live non-blacklisted servers.
   void GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs, string placement_uuid,
-                                      const BlacklistSet blacklist = BlacklistSet()) const;
+                                      const BlacklistSet blacklist = BlacklistSet(),
+                                      bool primary_cluster = true) const;
 
   // Return all of the currently registered TS descriptors that have sent a
   // heartbeat, indicating that they're alive and well, recently and have given
