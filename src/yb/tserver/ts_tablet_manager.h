@@ -62,6 +62,7 @@
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
 #include "yb/tablet/tablet_options.h"
+#include "yb/util/shared_lock.h"
 
 namespace yb {
 
@@ -391,7 +392,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   std::shared_ptr<tablet::TabletPeer> TabletToFlush();
 
   TSTabletManagerStatePB state() const {
-    boost::shared_lock<RWMutex> lock(lock_);
+    SharedLock<RWMutex> lock(lock_);
     return state_;
   }
 

@@ -182,9 +182,17 @@
 // expressions except in certain cases, such as LOCK_RETURNED.
 #define TS_CLANG_ONLY(CLANG_EXPR, GCC_EXPR) GCC_EXPR
 
+// Some thread safety annotations that are defined for clang in the section below might need to
+// be added to this section from time to time as we start using them, so that compilation under
+// GCC succeeds.
+#define REQUIRES_SHARED(...)
+#define ACQUIRE_SHARED(...)
+#define RELEASE(...)
+#define EXCLUDES(...)
+
 // Clang Attributes
 // The names of attributes in the clang analysis are slightly different
-#else
+#else  // #if defined(__GNUC__) && !defined(__clang__)
 
 #define CAPABILITY(x) \
   THREAD_ANNOTATION_ATTRIBUTE__(capability(x))
@@ -314,6 +322,6 @@
 
 #define TS_CLANG_ONLY(CLANG_EXPR, GCC_EXPR) CLANG_EXPR
 
-#endif  // defined(__clang__)
+#endif  // !defined(__GNUC__) || defined(__clang__)
 
 #endif  // YB_GUTIL_THREAD_ANNOTATIONS_H

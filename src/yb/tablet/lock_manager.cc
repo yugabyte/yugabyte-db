@@ -45,6 +45,7 @@
 #include "yb/gutil/hash/city.h"
 #include "yb/util/locks.h"
 #include "yb/util/semaphore.h"
+#include "yb/util/shared_lock.h"
 
 using std::atomic;
 
@@ -185,7 +186,7 @@ LockEntry *LockTable::GetLockEntry(const Slice& key) {
   LockEntry *old_entry;
 
   {
-    boost::shared_lock<rw_spinlock> table_rdlock(lock_.get_lock());
+    SharedLock<rw_spinlock> table_rdlock(lock_.get_lock());
     Bucket *bucket = FindBucket(new_entry->key_hash_);
     {
       std::lock_guard<simple_spinlock> bucket_lock(bucket->lock);

@@ -21,6 +21,7 @@
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/catalog_manager-internal.h"
+#include "yb/util/shared_lock.h"
 
 using std::shared_ptr;
 
@@ -947,7 +948,7 @@ Status PermissionsManager::GrantRevokePermission(
 
 void PermissionsManager::GetAllRoles(std::vector<scoped_refptr<RoleInfo>>* roles) {
   roles->clear();
-  boost::shared_lock<decltype(catalog_manager_->lock_)> l(catalog_manager_->lock_);
+  SharedLock<decltype(catalog_manager_->lock_)> l(catalog_manager_->lock_);
   for (const RoleInfoMap::value_type& e : roles_map_) {
     roles->push_back(e.second);
   }

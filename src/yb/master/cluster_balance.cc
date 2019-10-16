@@ -24,6 +24,7 @@
 #include "yb/util/random_util.h"
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/util/shared_lock.h"
 
 DEFINE_bool(enable_load_balancing,
             true,
@@ -170,7 +171,7 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
   }
 
   // Lock the CatalogManager maps for the duration of the load balancer run.
-  boost::shared_lock<CatalogManager::LockType> l(catalog_manager_->lock_);
+  SharedLock<CatalogManager::LockType> l(catalog_manager_->lock_);
 
   int remaining_adds = options->kMaxConcurrentAdds;
   int remaining_removals = options->kMaxConcurrentRemovals;

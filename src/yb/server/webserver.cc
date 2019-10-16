@@ -73,6 +73,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
+#include "yb/util/shared_lock.h"
 
 #if defined(__APPLE__)
 typedef sig_t sighandler_t;
@@ -291,7 +292,7 @@ int Webserver::BeginRequestCallback(struct sq_connection* connection,
                                     struct sq_request_info* request_info) {
   PathHandler* handler;
   {
-    boost::shared_lock<boost::shared_mutex> lock(lock_);
+    SharedLock<boost::shared_mutex> lock(lock_);
     PathHandlerMap::const_iterator it = path_handlers_.find(request_info->uri);
     if (it == path_handlers_.end()) {
       // Let Mongoose deal with this request; returning NULL will fall through
@@ -463,7 +464,7 @@ void Webserver::set_footer_html(const std::string& html) {
 }
 
 void Webserver::BootstrapPageFooter(stringstream* output) {
-  boost::shared_lock<boost::shared_mutex> l(lock_);
+  SharedLock<boost::shared_mutex> l(lock_);
   *output << "<div class='yb-bottom-spacer'></div></div>\n"; // end bootstrap 'container' div
   if (!footer_html_.empty()) {
     *output << "<footer class='footer'><div class='yb-footer container text-muted'>";

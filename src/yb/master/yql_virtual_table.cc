@@ -15,6 +15,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_vtable_iterator.h"
+#include "yb/util/shared_lock.h"
 
 namespace yb {
 namespace master {
