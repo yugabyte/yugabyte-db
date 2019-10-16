@@ -1859,7 +1859,6 @@ CheckPointStmt:
 DiscardStmt:
 			DISCARD ALL
 				{
-					parser_ybc_not_support(@1, "DISCARD");
 					DiscardStmt *n = makeNode(DiscardStmt);
 					n->target = DISCARD_ALL;
 					$$ = (Node *) n;
@@ -1872,21 +1871,18 @@ DiscardStmt:
 				}
 			| DISCARD TEMPORARY
 				{
-					parser_ybc_not_support(@1, "DISCARD TEMPORARY");
 					DiscardStmt *n = makeNode(DiscardStmt);
 					n->target = DISCARD_TEMP;
 					$$ = (Node *) n;
 				}
 			| DISCARD PLANS
 				{
-					parser_ybc_not_support(@1, "DISCARD PLANS");
 					DiscardStmt *n = makeNode(DiscardStmt);
 					n->target = DISCARD_PLANS;
 					$$ = (Node *) n;
 				}
 			| DISCARD SEQUENCES
 				{
-					parser_ybc_not_support(@1, "DISCARD SEQUENCES");
 					DiscardStmt *n = makeNode(DiscardStmt);
 					n->target = DISCARD_SEQUENCES;
 					$$ = (Node *) n;
