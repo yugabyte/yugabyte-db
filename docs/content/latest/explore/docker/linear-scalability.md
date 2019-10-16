@@ -6,13 +6,13 @@ If you have a previously running local universe, destroy it using the following.
 $ ./yb-docker-ctl destroy
 ```
 
-Start a new local cluster with 3-nodes with replication factor 3. We configure the number of [shards](../../architecture/concepts/docdb/sharding/) (aka tablets) per table per tserver to 4 so that we can better observe the load balancing during scale-up and scale-down. Each table will now have 4 tablet-leaders in each tserver and with replication factor 3, there will be 2 tablet-followers for each tablet-leader distributed in the 2 other tservers. So each tserver will have 12 tablets (i.e. sum of 4 tablet-leaders and 8 tablet-followers) per table.
+Start a new 3-node local cluster with replication factor of 3. Configure the number of [shards](../../architecture/concepts/docdb/sharding/) (aka tablets) per table per YB-TServer to 4 so that you can better observe the load balancing during scale-up and scale-down. Each table will now have 4 tablet-leaders in each tserver and with replication factor 3, there will be 2 tablet-followers for each tablet-leader distributed in the 2 other YB-TServers. So each tserver will have 12 tablets (that is, the sum of 4 tablet-leaders and 8 tablet-followers) per table.
 
 ```sh
 $ ./yb-docker-ctl create --rf 3 --num_shards_per_tserver 4
 ```
 
-## 2. Run sample SQL app
+## 2. Run YugabyteDB workload generator
 
 Pull the [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps) docker container. This container has built-in Java client programs for various workloads including SQL inserts and updates.
 
@@ -27,7 +27,7 @@ $ docker run --name yb-sample-apps --hostname yb-sample-apps --net yb-net yugaby
 	--num_threads_read 4
 ```
 
-The sample application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](../../quick-start/run-sample-apps/).
+The `SqlInserts` workload application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](../../quick-start/run-sample-apps/).
 
 ```
 2017-11-20 14:02:48,114 [INFO|...] Read: 9893.73 ops/sec (0.40 ms/op), 233458 total ops  |
@@ -43,7 +43,7 @@ You can check a lot of the per-node stats by browsing to the <a href='http://loc
 
 ![Read and write IOPS with 3 nodes](/images/ce/linear-scalability-3-nodes-docker.png)
 
-## 4. Add node and observe linear scale out
+## 4. Add node and observe linear scale-out
 
 Add a node to the universe.
 
@@ -57,7 +57,7 @@ Now we should have 4 nodes. Refresh the <a href='http://localhost:7000/tablet-se
 
 ![Read and write IOPS with 4 nodes - Balanced](/images/ce/linear-scalability-4-nodes-balanced-docker.png)
 
-## 5. Remove node and observe linear scale in
+## 5. Remove node and observe linear scale-in
 
 Remove the recently added node from the universe.
 
@@ -69,8 +69,7 @@ $ ./yb-docker-ctl remove_node 4
 
 ![Read and write IOPS with 4th node dead](/images/ce/linear-scalability-4-nodes-dead-docker.png)
 
-- After 300s (i.e. 5 minutes), YugabyteDB's remaining nodes will re-spawn new tablets that were lost with the loss of node 4. Each remaining node's tablet count will increase from 18 to 24.
-
+- After 300s (5 minutes), YugabyteDB's remaining nodes will re-spawn new tablets that were lost with the loss of node 4. Each remaining node's tablet count will increase from 18 to 24.
 
 ## 6. Clean up (optional)
 

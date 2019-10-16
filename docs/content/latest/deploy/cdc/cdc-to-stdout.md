@@ -30,7 +30,7 @@ A JRE (or JDK), for Java 8 or later, is installed. JDK and JRE installers for Li
 Start your local YugabyteDB cluster and add a table, named `users`, to the default `yugabyte` database.
 
 ```postgresql
-
+CREATE TABLE users (name text, pass text, id int, PRIMARY KEY (id));
 ```
 
 ## Step 2 — Download the Yugabyte CDC connector

@@ -20,7 +20,7 @@ Pull the [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps) docker con
 $ docker pull yugabytedb/yb-sample-apps
 ```
 
-Run a simple key-value workload in a separate shell.
+Run the simple `CassandraKeyValue` workload application in a separate shell.
 
 ```sh
 $ docker run --name yb-sample-apps --hostname yb-sample-apps --net yb-net yugabytedb/yb-sample-apps --workload CassandraKeyValue \
@@ -28,7 +28,6 @@ $ docker run --name yb-sample-apps --hostname yb-sample-apps --net yb-net yugaby
   --num_threads_write 1 \
   --num_threads_read 4
 ```
-
 
 ## 3. Prepare Prometheus config file
 
@@ -87,11 +86,9 @@ Open the Prometheus UI at http://localhost:9090 and then navigate to the Targets
 
 On the Prometheus Graph UI, you can now plot the read/write throughput and latency for the `CassandraKeyValue` sample app. As we can see from the [source code](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraKeyValue.java) of the app, it uses only SELECT statements for reads and INSERT statements for writes (aside from the initial CREATE TABLE). This means we can measure throughput and latency by simply using the metrics corresponding to the SELECT and INSERT statements.
 
-
 Paste the following expressions into the Expression box and click Execute followed by Add Graph.
 
 ### Throughput
-
 
 > Read IOPS
 
@@ -109,14 +106,12 @@ sum(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_count[1m]))
 
 ### Latency
 
-
->  Read Latency (in microseconds)
+> Read Latency (in microseconds)
 
 ```sh
 avg(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_sum[1m])) / avg(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_count[1m]))
 ```
 ![Prometheus Read IOPS](/images/ce/prom-read-latency.png)
-
 
 > Write Latency (in microseconds)
 
