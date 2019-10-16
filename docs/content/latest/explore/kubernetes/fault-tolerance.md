@@ -6,13 +6,13 @@ If you have a previously running local universe, destroy it using the following.
 $ kubectl delete -f yugabyte-statefulset.yaml
 ```
 
-Start a new local cluster - by default, this will create a 3 node universe with a replication factor of 3.
+Start a new local cluster - by default, this will create a 3-node universe with a replication factor of 3.
 
 ```sh
 $ kubectl apply -f yugabyte-statefulset.yaml
 ```
 
-Check the Kubernetes dashboard to see the 3 yb-tserver and 3 yb-master pods representing the 3 nodes of the cluster.
+Check the Kubernetes dashboard to see the 3 YB-Master and 3 YB-TServer pods representing the 3 nodes of the cluster.
 
 ```sh
 $ minikube dashboard
@@ -20,7 +20,7 @@ $ minikube dashboard
 
 ![Kubernetes Dashboard](/images/ce/kubernetes-dashboard.png)
 
-Connect to cqlsh on node 1.
+Connect to `cqlsh` on node 1.
 
 ```sh
 $ kubectl exec -it yb-tserver-0 /home/yugabyte/bin/cqlsh
@@ -79,7 +79,6 @@ cqlsh> SELECT email, profile FROM users.profile;
 
 (2 rows)
 ```
-
 
 ## 3. Read data through another node
 
@@ -159,7 +158,6 @@ cqlsh> SELECT email, profile FROM users.profile;
 (3 rows)
 ```
 
-
 ## 5. Verify that Kubernetes brought back the failed node
 
 We can now check the cluster status to verify that Kubernetes has indeed brought back the `yb-tserver-2` node that had failed before. This is because the replica count currently effective in Kubernetes for the `yb-tserver` StatefulSet is 3 and there were only 2 nodes remaining after 1 node failure. 
@@ -178,7 +176,7 @@ yb-tserver-1   1/1       Running   1          34m
 yb-tserver-2   1/1       Running   0          7s
 ```
 
-YugabyteDB's fault tolerance when combined with Kubernetes's automated operations ensures that planet-scale applications can be run with ease while ensuring extreme data resilience.
+YugabyteDB's fault tolerance when combined with Kubernetes' automated operations ensures that planet-scale applications can be run with ease while ensuring extreme data resilience.
 
 ## 6. Clean up (optional)
 

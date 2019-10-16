@@ -6,7 +6,7 @@ If you have a previously running local universe, destroy it using the following.
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local cluster - a 3-node universe with a replication factor of 3. 
+Start a new local 3-node cluster with a replication factor of 3.
 
 ```sh
 $ ./bin/yb-ctl --rf 3 create
@@ -14,13 +14,13 @@ $ ./bin/yb-ctl --rf 3 create
 
 ## 2. Run the sample key-value app
 
-Download the sample app JAR file.
+Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`).
 
 ```sh
 $ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
 ```
 
-Run the `SqlInserts` sample key-value app against the local universe by typing the following command.
+Run the `SqlInserts` workload against the local universe by running the following command.
 
 ```sh
 $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
@@ -29,7 +29,7 @@ $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
                                     --num_threads_read 4
 ```
 
-The sample application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](https://github.com/yugabyte/yb-sample-apps).
+The SQLInserts workload prints some stats while running, which is also shown below. You can read more details about the output of the workload applications at the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps).
 
 ```
 2018-05-10 09:10:19,538 [INFO|...] Read: 8988.22 ops/sec (0.44 ms/op), 818159 total ops  |  Write: 1095.77 ops/sec (0.91 ms/op), 97120 total ops  | ... 

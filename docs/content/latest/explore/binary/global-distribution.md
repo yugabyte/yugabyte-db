@@ -22,13 +22,13 @@ You can view the tablet servers on the [tablet servers page](http://localhost:70
 
 ## 2. Start a workload
 
-Download the sample app jar.
+Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) JAR file (`yb-sample-apps.jar`) by running the following command.
 
 ```sh
-$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
+$ wget https://github.com/yugabyte/yb-/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
 ```
 
-Run a simple key-value workload in a separate shell.
+Run a `SqlInserts` workload in a separate shell.
 
 ```sh
 $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
