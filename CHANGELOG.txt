@@ -1,3 +1,6 @@
+4.2.2
+-- Fix bug in template table index inheritance that prevented any additional indexes from being copied after finding an index definition that exists on both the template and parent tables. Github Pull Request #278.
+
 4.2.1
 -- Fix bug in partition_data_time causing never-ending loop while calculating partition range for natively partitioned tables. Github issue #273
 

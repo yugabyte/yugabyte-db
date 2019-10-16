@@ -1,4 +1,4 @@
-CREATE FUNCTION @extschema@.inherit_template_properties (p_parent_table text, p_child_schema text, p_child_tablename text) RETURNS boolean
+CREATE OR REPLACE FUNCTION @extschema@.inherit_template_properties (p_parent_table text, p_child_schema text, p_child_tablename text) RETURNS boolean
     LANGUAGE plpgsql 
     AS $$
 DECLARE

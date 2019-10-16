@@ -9,7 +9,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(115);
+SELECT plan(120);
 CREATE SCHEMA partman_test;
 CREATE SCHEMA partman_retention_test;
 CREATE ROLE partman_basic;
@@ -29,8 +29,6 @@ GRANT SELECT,INSERT,UPDATE ON partman_test.id_taptest_table TO partman_basic, PU
 GRANT ALL ON partman_test.id_taptest_table TO partman_revoke;
 -- Template table
 CREATE UNLOGGED TABLE partman_test.template_id_taptest_table (LIKE partman_test.id_taptest_table);
--- Regular unique indexes do not work on native in PG11 if the partition key isn't included
-CREATE UNIQUE INDEX ON partman_test.template_id_taptest_table (col4);
 
 DO $pg11_objects_check$
 BEGIN
@@ -43,9 +41,14 @@ ELSE
     -- Create on template table
     ALTER TABLE partman_test.template_id_taptest_table ADD PRIMARY KEY (col1);
     ALTER TABLE partman_test.template_id_taptest_table ADD FOREIGN KEY (col2) REFERENCES partman_test.fk_test_reference(col2);
-    CREATE INDEX ON partman_test.template_id_taptest_table (col3);
 END IF;
 END $pg11_objects_check$;
+
+-- Always create the index on teh template also so that we can test excluding duplicates.
+CREATE INDEX ON partman_test.template_id_taptest_table (col3);
+
+-- Regular unique indexes do not work on native in PG11 if the partition key isn't included
+CREATE UNIQUE INDEX ON partman_test.template_id_taptest_table (col4);
 
 SELECT create_parent('partman_test.id_taptest_table', 'col1', 'native', '10', p_jobmon := false, p_start_partition := '3000000000', p_template_table := 'partman_test.template_id_taptest_table');
 UPDATE part_config SET inherit_privileges = TRUE;
@@ -69,6 +72,11 @@ SELECT col_is_fk('partman_test', 'id_taptest_table_p3000000010', 'col2', 'Check 
 SELECT col_is_fk('partman_test', 'id_taptest_table_p3000000020', 'col2', 'Check that foreign key was inherited to id_taptest_table_p3000000020');
 SELECT col_is_fk('partman_test', 'id_taptest_table_p3000000030', 'col2', 'Check that foreign key was inherited to id_taptest_table_p3000000030');
 SELECT col_is_fk('partman_test', 'id_taptest_table_p3000000040', 'col2', 'Check that foreign key was inherited to id_taptest_table_p3000000040');
+SELECT is_indexed('partman_test', 'id_taptest_table_p3000000000', 'col4', 'Check that unique index was inherited to id_taptest_table_p3000000000');
+SELECT is_indexed('partman_test', 'id_taptest_table_p3000000010', 'col4', 'Check that unique index was inherited to id_taptest_table_p3000000010');
+SELECT is_indexed('partman_test', 'id_taptest_table_p3000000020', 'col4', 'Check that unique index was inherited to id_taptest_table_p3000000020');
+SELECT is_indexed('partman_test', 'id_taptest_table_p3000000030', 'col4', 'Check that unique index was inherited to id_taptest_table_p3000000030');
+SELECT is_indexed('partman_test', 'id_taptest_table_p3000000040', 'col4', 'Check that unique index was inherited to id_taptest_table_p3000000040');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000000', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_taptest_table_p3000000000');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000010', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_taptest_table_p3000000010');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000020', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_taptest_table_p3000000020');
