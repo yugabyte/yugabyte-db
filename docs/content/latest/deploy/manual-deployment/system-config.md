@@ -117,9 +117,9 @@ After changing a `ulimit` setting in `/etc/security/limits.conf`, you will need 
 
 {{< note title="Note" >}}
 If you're using a desktop-distribution, such as ubuntu-desktop, the settings above may not suffice.
-The os needs additional steps to change `ulimit` for gui login. In the case of ubuntu-desktop:
+The OS needs additional steps to change `ulimit` for gui login. In the case of ubuntu-desktop:
 
-In `/etc/systemd/user.conf` and `/etc/systemd/system.conf`, add at the end of file `DefaultLimitNOFILE=65535`.
+In `/etc/systemd/user.conf` and `/etc/systemd/system.conf`, add at the end of file `DefaultLimitNOFILE=64000`.
 
 Something similar may be needed for other distributions.
 {{< /note >}}
