@@ -25,6 +25,7 @@
 
 #include "yb/tserver/tserver_admin.proxy.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -159,11 +160,12 @@ Status RetryingTSRpcTask::Run() {
       return STATUS_FORMAT(IllegalState, "Task in invalid state $0", state());
     }
   }
-  if (PREDICT_FALSE(FLAGS_slowdown_master_async_rpc_tasks_by_ms > 0)) {
+  auto slowdown_flag_val = GetAtomicFlag(&FLAGS_slowdown_master_async_rpc_tasks_by_ms);
+  if (PREDICT_FALSE(slowdown_flag_val> 0)) {
     VLOG(1) << "Slowing down " << this->description() << " by "
-            << FLAGS_slowdown_master_async_rpc_tasks_by_ms << " ms.";
+            << slowdown_flag_val << " ms.";
     bool old_thread_restriction = ThreadRestrictions::SetWaitAllowed(true);
-    SleepFor(MonoDelta::FromMilliseconds(FLAGS_slowdown_master_async_rpc_tasks_by_ms));
+    SleepFor(MonoDelta::FromMilliseconds(slowdown_flag_val));
     ThreadRestrictions::SetWaitAllowed(old_thread_restriction);
     VLOG(2) << "Slowing down " << this->description() << " done. Resuming.";
   }
