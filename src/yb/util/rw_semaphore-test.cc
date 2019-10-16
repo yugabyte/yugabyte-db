@@ -39,6 +39,7 @@
 
 #include "yb/util/monotime.h"
 #include "yb/util/rw_semaphore.h"
+#include "yb/util/shared_lock.h"
 
 using std::vector;
 
@@ -67,7 +68,7 @@ void Writer(SharedState* state) {
 void Reader(SharedState* state) {
   int prev_val = 0;
   while (true) {
-    boost::shared_lock<rw_semaphore> l(state->sem);
+    SharedLock<rw_semaphore> l(state->sem);
     // The int var should only be seen to increase.
     CHECK_GE(state->int_var, prev_val);
     prev_val = state->int_var;

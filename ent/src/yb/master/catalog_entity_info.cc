@@ -44,7 +44,7 @@ Result<std::shared_ptr<CDCRpcTasks>> UniverseReplicationInfo::GetOrCreateCDCRpcT
   HostPortsFromPBs(producer_masters, &hp);
   std::string master_addrs = HostPort::ToCommaSeparatedString(hp);
 
-  std::lock_guard<rw_spinlock> l(lock_);
+  std::lock_guard<decltype(lock_)> l(lock_);
   if (cdc_rpc_tasks_ != nullptr) {
     return cdc_rpc_tasks_;
   }

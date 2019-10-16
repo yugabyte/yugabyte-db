@@ -265,6 +265,7 @@
 #include "yb/util/status.h"
 #include "yb/util/striped64.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/shared_lock.h"
 
 // Define a new entity type.
 //
@@ -785,7 +786,7 @@ class MetricRegistry {
   }
 
   bool tablets_shutdown_find(std::string id) const {
-    boost::shared_lock<boost::shared_mutex> l(tablets_shutdown_lock_);
+    SharedLock<boost::shared_mutex> l(tablets_shutdown_lock_);
     return tablets_shutdown_.find(id) != tablets_shutdown_.end();
   }
 

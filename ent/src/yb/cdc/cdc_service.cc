@@ -247,7 +247,7 @@ Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> CDCService
 Result<std::shared_ptr<std::unordered_set<std::string>>> CDCServiceImpl::GetTabletIdsForStream(
     const CDCStreamId& stream_id) {
   {
-    std::shared_lock<rw_spinlock> l(lock_);
+    std::shared_lock<decltype(lock_)> l(lock_);
     auto it = stream_tablets_.find(stream_id);
     if (it != stream_tablets_.end()) {
       return it->second;
@@ -264,7 +264,7 @@ Result<std::shared_ptr<std::unordered_set<std::string>>> CDCServiceImpl::GetTabl
 
   auto tablets_ptr = std::make_shared<std::unordered_set<std::string>>(std::move(tablets));
   {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     stream_tablets_.emplace(stream_id, tablets_ptr);
   }
   return tablets_ptr;
@@ -372,7 +372,7 @@ std::shared_ptr<CDCServiceProxy> CDCServiceImpl::GetCDCServiceProxy(RemoteTablet
   DCHECK(!hostport.host().empty());
 
   {
-    std::shared_lock<rw_spinlock> l(lock_);
+    std::shared_lock<decltype(lock_)> l(lock_);
     auto it = cdc_service_map_.find(hostport);
     if (it != cdc_service_map_.end()) {
       return it->second;
@@ -382,7 +382,7 @@ std::shared_ptr<CDCServiceProxy> CDCServiceImpl::GetCDCServiceProxy(RemoteTablet
   auto cdc_service = std::make_shared<CDCServiceProxy>(&async_client_init_->client()->proxy_cache(),
                                                        hostport);
   {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     cdc_service_map_.emplace(hostport, cdc_service);
   }
   return cdc_service;
@@ -499,7 +499,7 @@ Result<OpIdPB> CDCServiceImpl::GetLastCheckpoint(
     const std::string& tablet_id,
     const std::shared_ptr<client::YBSession>& session) {
   {
-    std::shared_lock<rw_spinlock> l(lock_);
+    std::shared_lock<decltype(lock_)> l(lock_);
     auto it = tablet_checkpoints_.find({stream_id, tablet_id});
     if (it != tablet_checkpoints_.end()) {
       return it->second.op_id;
@@ -545,7 +545,7 @@ Status CDCServiceImpl::UpdateCheckpoint(const std::string& stream_id,
   CDCTabletCheckpoint checkpoint({op_id, MonoTime::Now()});
 
   {
-    std::shared_lock<rw_spinlock> l(lock_);
+    std::shared_lock<decltype(lock_)> l(lock_);
     auto it = tablet_checkpoints_.find({stream_id, tablet_id});
     if (it != tablet_checkpoints_.end()) {
       // Check if we need to update cdc_state table.
@@ -570,7 +570,7 @@ Status CDCServiceImpl::UpdateCheckpoint(const std::string& stream_id,
   }
 
   {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     tablet_checkpoints_[ProducerTabletInfo({stream_id, tablet_id})] = checkpoint;
   }
   return Status::OK();
@@ -607,13 +607,13 @@ Result<std::shared_ptr<StreamMetadata>> CDCServiceImpl::GetStream(const std::str
 
 void CDCServiceImpl::AddStreamMetadataToCache(const std::string& stream_id,
                                               const std::shared_ptr<StreamMetadata>& metadata) {
-  std::lock_guard<rw_spinlock> l(lock_);
+  std::lock_guard<decltype(lock_)> l(lock_);
   stream_metadata_.emplace(stream_id, metadata);
 }
 
 std::shared_ptr<StreamMetadata> CDCServiceImpl::GetStreamMetadataFromCache(
     const std::string& stream_id) {
-  std::shared_lock<rw_spinlock> l(lock_);
+  std::shared_lock<decltype(lock_)> l(lock_);
   auto it = stream_metadata_.find(stream_id);
   if (it != stream_metadata_.end()) {
     return it->second;

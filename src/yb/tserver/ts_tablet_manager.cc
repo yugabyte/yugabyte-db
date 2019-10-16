@@ -96,6 +96,7 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/gutil/sysinfo.h"
+#include "yb/util/shared_lock.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -312,7 +313,7 @@ void TSTabletManager::MaybeFlushTablet() {
 // Return the tablet with the oldest write in memstore, or nullptr if all tablet memstores are
 // empty or about to flush.
 TabletPeerPtr TSTabletManager::TabletToFlush() {
-  boost::shared_lock<RWMutex> lock(lock_); // For using the tablet map
+  SharedLock<RWMutex> lock(lock_); // For using the tablet map
   HybridTime oldest_write_in_memstores = HybridTime::kMax;
   TabletPeerPtr tablet_to_flush;
   for (const TabletMap::value_type& entry : tablet_map_) {
@@ -615,7 +616,7 @@ Status TSTabletManager::WaitForAllBootstrapsToFinish() {
 
   Status s = Status::OK();
 
-  boost::shared_lock<RWMutex> shared_lock(lock_);
+  SharedLock<RWMutex> shared_lock(lock_);
   for (const TabletMap::value_type& entry : tablet_map_) {
     if (entry.second->state() == tablet::FAILED) {
       if (s.ok()) {
@@ -1271,7 +1272,7 @@ Status TSTabletManager::RegisterTablet(const std::string& tablet_id,
 
 bool TSTabletManager::LookupTablet(const string& tablet_id,
                                    TabletPeerPtr* tablet_peer) const {
-  boost::shared_lock<RWMutex> shared_lock(lock_);
+  SharedLock<RWMutex> shared_lock(lock_);
   return LookupTabletUnlocked(tablet_id, tablet_peer);
 }
 
@@ -1308,7 +1309,7 @@ Status TSTabletManager::GetRegistration(ServerRegistrationPB* reg) const {
 }
 
 void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers) const {
-  boost::shared_lock<RWMutex> shared_lock(lock_);
+  SharedLock<RWMutex> shared_lock(lock_);
   GetTabletPeersUnlocked(tablet_peers);
 }
 
@@ -1317,7 +1318,7 @@ void TSTabletManager::GetTabletPeersUnlocked(TabletPeers* tablet_peers) const {
 }
 
 void TSTabletManager::PreserveLocalLeadersOnly(std::vector<const std::string*>* tablet_ids) const {
-  boost::shared_lock<RWMutex> shared_lock(lock_);
+  SharedLock<RWMutex> shared_lock(lock_);
   auto filter = [this](const std::string* id) {
     auto it = tablet_map_.find(*id);
     if (it == tablet_map_.end()) {
@@ -1377,7 +1378,7 @@ void TSTabletManager::UnmarkTabletBeingRemoteBootstrapped(const std::string& tab
 }
 
 int TSTabletManager::GetNumDirtyTabletsForTests() const {
-  boost::shared_lock<RWMutex> lock(lock_);
+  SharedLock<RWMutex> lock(lock_);
   return dirty_tablets_.size();
 }
 
@@ -1389,7 +1390,7 @@ Status TSTabletManager::GetNumTabletsPendingBootstrap(
     return Status::OK();
   }
 
-  boost::shared_lock<RWMutex> shared_lock(lock_);
+  SharedLock<RWMutex> shared_lock(lock_);
   int num_pending = 0;
   int total_tablets = 0;
   for (const auto& entry : tablet_map_) {
@@ -1417,7 +1418,7 @@ Status TSTabletManager::GetNumTabletsPendingBootstrap(
 
 int TSTabletManager::GetNumLiveTablets() const {
   int count = 0;
-  boost::shared_lock<RWMutex> lock(lock_);
+  SharedLock<RWMutex> lock(lock_);
   for (const auto& entry : tablet_map_) {
     RaftGroupStatePB state = entry.second->state();
     if (state == BOOTSTRAPPING ||
@@ -1430,7 +1431,7 @@ int TSTabletManager::GetNumLiveTablets() const {
 
 int TSTabletManager::GetLeaderCount() const {
   int count = 0;
-  boost::shared_lock<RWMutex> lock(lock_);
+  SharedLock<RWMutex> lock(lock_);
   for (const auto& entry : tablet_map_) {
     consensus::LeaderStatus leader_status = entry.second->LeaderStatus();
     if (leader_status != consensus::LeaderStatus::NOT_LEADER) {
@@ -1496,7 +1497,7 @@ void TSTabletManager::GenerateIncrementalTabletReport(TabletReportPB* report) {
   vector<std::shared_ptr<TabletPeer>> to_report;
   vector<std::string> tablet_ids;
   {
-    boost::shared_lock<RWMutex> shared_lock(lock_);
+    SharedLock<RWMutex> shared_lock(lock_);
     tablet_ids.reserve(dirty_tablets_.size() + tablets_being_remote_bootstrapped_.size());
     to_report.reserve(dirty_tablets_.size() + tablets_being_remote_bootstrapped_.size());
     report->set_sequence_number(next_report_seq_++);
@@ -1534,7 +1535,7 @@ void TSTabletManager::GenerateFullTabletReport(TabletReportPB* report) {
   // a local copy of the set of replicas.
   vector<std::shared_ptr<TabletPeer>> to_report;
   {
-    boost::shared_lock<RWMutex> shared_lock(lock_);
+    SharedLock<RWMutex> shared_lock(lock_);
     report->set_sequence_number(next_report_seq_++);
     GetTabletPeersUnlocked(&to_report);
   }
@@ -1791,7 +1792,7 @@ void TSTabletManager::LogCacheGC(MemTracker* log_cache_mem_tracker, size_t bytes
 
   std::vector<TabletPeerPtr> peers;
   {
-    boost::shared_lock<RWMutex> shared_lock(lock_);
+    SharedLock<RWMutex> shared_lock(lock_);
     peers.reserve(tablet_map_.size());
     for (const auto& pair : tablet_map_) {
       if (GetLogCacheSize(pair.second.get()) > 0) {

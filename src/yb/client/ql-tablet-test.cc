@@ -46,6 +46,7 @@
 #include "yb/util/size_literals.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/util/shared_lock.h"
 
 using namespace std::literals; // NOLINT
 
@@ -286,14 +287,14 @@ class QLTabletTest : public QLDmlTestBase {
       std::string start1, end1, start2, end2;
       {
         auto& metadata = source_infos[i]->metadata();
-        std::shared_lock<std::remove_reference<decltype(metadata)>::type> lock(metadata);
+        SharedLock<std::remove_reference<decltype(metadata)>::type> lock(metadata);
         const auto& partition = metadata.state().pb.partition();
         start1 = partition.partition_key_start();
         end1 = partition.partition_key_end();
       }
       {
         auto& metadata = dest_infos[i]->metadata();
-        std::shared_lock<std::remove_reference<decltype(metadata)>::type> lock(metadata);
+        SharedLock<std::remove_reference<decltype(metadata)>::type> lock(metadata);
         const auto& partition = metadata.state().pb.partition();
         start2 = partition.partition_key_start();
         end2 = partition.partition_key_end();
