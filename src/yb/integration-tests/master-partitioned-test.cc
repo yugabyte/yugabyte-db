@@ -32,6 +32,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/util/atomic.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 #include "yb/util/shared_lock.h"
@@ -132,7 +133,7 @@ class MasterPartitionedTest : public YBMiniClusterTestBase<MiniCluster> {
 
   void DoTearDown() override {
     client_.reset();
-    FLAGS_slowdown_master_async_rpc_tasks_by_ms = 0;
+    SetAtomicFlag(0, &FLAGS_slowdown_master_async_rpc_tasks_by_ms);
     SleepFor(MonoDelta::FromMilliseconds(1000));
     cluster_->Shutdown();
   }
