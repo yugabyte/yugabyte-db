@@ -49,6 +49,7 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc.h"
@@ -294,14 +295,14 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   MonoTime refresh_time() { return refresh_time_.load(std::memory_order_acquire); }
 
  private:
-  // Same as ReplicasAsString(), except that the caller must hold lock_.
+  // Same as ReplicasAsString(), except that the caller must hold mutex_.
   std::string ReplicasAsStringUnlocked() const;
 
   const std::string tablet_id_;
   const std::string log_prefix_;
   const Partition partition_;
 
-  // All non-const members are protected by 'lock_'.
+  // All non-const members are protected by 'mutex_'.
   mutable rw_spinlock mutex_;
   bool stale_;
   std::vector<RemoteReplica> replicas_;
@@ -390,8 +391,9 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   // Lookup the given tablet by key, only consulting local information.
   // Returns true and sets *remote_tablet if successful.
-  RemoteTabletPtr LookupTabletByKeyFastPathUnlocked(const YBTable* table,
-                                                    const std::string& partition_key);
+  RemoteTabletPtr LookupTabletByKeyFastPathUnlocked(
+      const YBTable* table,
+      const std::string& partition_key) REQUIRES_SHARED(mutex_);
 
   RemoteTabletPtr LookupTabletByIdFastPath(const TabletId& tablet_id);
 
@@ -399,9 +401,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   //
   // This is called when we get some response from the master which contains
   // the latest host/port info for a server.
-  //
-  // NOTE: Must be called with lock_ held.
-  void UpdateTabletServerUnlocked(const master::TSInfoPB& pb);
+  void UpdateTabletServerUnlocked(const master::TSInfoPB& pb) REQUIRES(mutex_);
 
   // Notify appropriate callbacks that lookup of specified partition group of specified table
   // was failed because of specified status.
@@ -413,7 +413,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
       const YBTable* table,
       const std::string& partition_start,
       const LookupTabletCallback& callback,
-      Lock* lock);
+      Lock* lock) REQUIRES_SHARED(mutex_);
 
   YBClient* const client_;
 
@@ -425,7 +425,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // evict entries from this map until the MetaCache is destructed. So, no need to use
   // shared_ptr, etc.
   //
-  // Protected by lock_.
+  // Protected by mutex_.
   TabletServerMap ts_cache_;
 
   // Local tablet server.
@@ -452,12 +452,10 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
     std::unordered_map<PartitionGroupKey, PartitionToLookupData> tablet_lookups_by_group;
   };
 
-  std::unordered_map<TableId, TableData> tables_;
+  std::unordered_map<TableId, TableData> tables_ GUARDED_BY(mutex_);
 
   // Cache of tablets, keyed by tablet ID.
-  //
-  // Protected by lock_
-  std::unordered_map<std::string, RemoteTabletPtr> tablets_by_id_;
+  std::unordered_map<std::string, RemoteTabletPtr> tablets_by_id_ GUARDED_BY(mutex_);
 
   // Prevents master lookup "storms" by delaying master lookups when all
   // permits have been acquired.

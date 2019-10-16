@@ -1,3 +1,4 @@
+//
 // Copyright (c) YugaByte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -9,25 +10,27 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
-//
 
-#ifndef YB_DOCDB_SHARED_LOCK_MANAGER_FWD_H
-#define YB_DOCDB_SHARED_LOCK_MANAGER_FWD_H
+#ifndef YB_UTIL_SHARED_LOCK_H
+#define YB_UTIL_SHARED_LOCK_H
 
-#include <bitset>
+#include <shared_mutex>
 
-#include "yb/docdb/value_type.h"
-#include "yb/util/shared_lock.h"
+#include "yb/gutil/thread_annotations.h"
 
 namespace yb {
-namespace docdb {
 
-class LockBatch;
-typedef uint64_t LockState;
+// A wrapper around Boost shared lock that supports thread annotations.
+template<typename Mutex>
+class SCOPED_LOCKABLE SharedLock {
+ public:
+  explicit SharedLock(Mutex &mutex) ACQUIRE_SHARED(mutex) : m_lock(mutex) {}
+  ~SharedLock() RELEASE() = default;
 
-class SharedLockManager;
+ private:
+  std::shared_lock<Mutex> m_lock;
+};
 
-}  // namespace docdb
-}  // namespace yb
+} // namespace yb
 
-#endif  // YB_DOCDB_SHARED_LOCK_MANAGER_FWD_H
+#endif  // YB_UTIL_SHARED_LOCK_H

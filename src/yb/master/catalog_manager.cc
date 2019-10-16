@@ -154,6 +154,7 @@
 
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/util/shared_lock.h"
 
 using namespace std::literals;
 
@@ -1631,7 +1632,7 @@ Status CatalogManager::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
   // Lookup namespace
   scoped_refptr<NamespaceInfo> ns;
   {
-    boost::shared_lock<LockType> l(lock_);
+    SharedLock<LockType> l(lock_);
     ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id());
   }
   if (!ns) {
@@ -1785,7 +1786,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // checking that referenced user-defined types (if any) exist.
   {
-    boost::shared_lock<LockType> l(lock_);
+    SharedLock<LockType> l(lock_);
     for (int i = 0; i < client_schema.num_columns(); i++) {
       for (const auto &udt_id : client_schema.column(i).type()->GetUserDefinedTypeIds()) {
         if (FindPtrOrNull(udtype_ids_map_, udt_id) == nullptr) {
@@ -2452,7 +2453,7 @@ TabletInfo* CatalogManager::CreateTabletInfo(TableInfo* table,
 
 Status CatalogManager::FindTable(const TableIdentifierPB& table_identifier,
                                  scoped_refptr<TableInfo> *table_info) {
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
 
   if (table_identifier.has_table_id()) {
     *table_info = FindPtrOrNull(table_ids_map_, table_identifier.table_id());
@@ -2510,7 +2511,7 @@ Status CatalogManager::FindNamespaceUnlocked(const NamespaceIdentifierPB& ns_ide
 
 Status CatalogManager::FindNamespace(const NamespaceIdentifierPB& ns_identifier,
                                      scoped_refptr<NamespaceInfo>* ns_info) const {
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   return FindNamespaceUnlocked(ns_identifier, ns_info);
 }
 
@@ -2540,7 +2541,7 @@ Result<TabletInfos> CatalogManager::GetTabletsOrSetupError(
 
   if (ns) {
     TRACE("Looking up namespace");
-    boost::shared_lock<LockType> l(lock_);
+    SharedLock<LockType> l(lock_);
 
     *ns = FindPtrOrNull(namespace_ids_map_, table_obj->namespace_id());
     if (*ns == nullptr) {
@@ -3282,7 +3283,7 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
   }
 
   // Get namespace name by id.
-  boost::shared_lock<LockType> l_map(lock_);
+  SharedLock<LockType> l_map(lock_);
   TRACE("Looking up namespace");
   const scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, table->namespace_id());
 
@@ -3329,7 +3330,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     }
   }
 
-  std::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   RelationType relation_type;
 
   for (const auto& entry : table_ids_map_) {
@@ -3394,14 +3395,14 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
 }
 
 scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const TableId& table_id) {
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   return FindPtrOrNull(table_ids_map_, table_id);
 }
 
 scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableName(
     const NamespaceName& namespace_name, const TableName& table_name) {
 
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   const scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_names_map_, namespace_name);
   if (ns == nullptr) {
     return nullptr;
@@ -3416,7 +3417,7 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& tab
 void CatalogManager::GetAllTables(std::vector<scoped_refptr<TableInfo>> *tables,
                                   bool includeOnlyRunningTables) {
   tables->clear();
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   for (const TableInfoMap::value_type& e : table_ids_map_) {
     if (includeOnlyRunningTables && !e.second->is_running()) {
       continue;
@@ -3427,7 +3428,7 @@ void CatalogManager::GetAllTables(std::vector<scoped_refptr<TableInfo>> *tables,
 
 void CatalogManager::GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo>>* namespaces) {
   namespaces->clear();
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   for (const NamespaceInfoMap::value_type& e : namespace_ids_map_) {
     namespaces->push_back(e.second);
   }
@@ -3435,7 +3436,7 @@ void CatalogManager::GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo>>*
 
 void CatalogManager::GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo>>* types) {
   types->clear();
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   for (const UDTypeInfoMap::value_type& e : udtype_ids_map_) {
     types->push_back(e.second);
   }
@@ -3452,7 +3453,7 @@ NamespaceName CatalogManager::GetNamespaceNameUnlocked(const NamespaceId& id) co
 
 NamespaceName CatalogManager::GetNamespaceName(const NamespaceId& id) const {
   TRACE("Acquired catalog manager lock");
-  std::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   return GetNamespaceNameUnlocked(id);
 }
 
@@ -3479,7 +3480,7 @@ bool CatalogManager::IsSystemTableUnlocked(const TableInfo& table) const {
 // True if table is created by user.
 // Table can be regular table or index in this case.
 bool CatalogManager::IsUserCreatedTable(const TableInfo& table) const {
-  std::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   return IsUserCreatedTableUnlocked(table);
 }
 
@@ -3494,7 +3495,7 @@ bool CatalogManager::IsUserCreatedTableUnlocked(const TableInfo& table) const {
 }
 
 bool CatalogManager::IsUserTable(const TableInfo& table) const {
-  std::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   return IsUserTableUnlocked(table);
 }
 
@@ -3503,7 +3504,7 @@ bool CatalogManager::IsUserTableUnlocked(const TableInfo& table) const {
 }
 
 bool CatalogManager::IsUserIndex(const TableInfo& table) const {
-  std::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   return IsUserIndexUnlocked(table);
 }
 
@@ -3627,7 +3628,7 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
                "tablet_id", report.tablet_id());
   scoped_refptr<TabletInfo> tablet;
   {
-    boost::shared_lock<LockType> l(lock_);
+    SharedLock<LockType> l(lock_);
     tablet = FindPtrOrNull(tablet_map_, report.tablet_id());
   }
   RETURN_NOT_OK_PREPEND(CheckIsLeaderAndReady(),
@@ -4022,7 +4023,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   // Only empty namespace can be deleted.
   TRACE("Looking for tables in the namespace");
   {
-    boost::shared_lock<LockType> catalog_lock(lock_);
+    SharedLock<LockType> catalog_lock(lock_);
 
     for (const TableInfoMap::value_type& entry : table_ids_map_) {
       auto ltm = entry.second->LockForRead();
@@ -4040,7 +4041,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   // Only empty namespace can be deleted.
   TRACE("Looking for types in the namespace");
   {
-    boost::shared_lock<LockType> catalog_lock(lock_);
+    SharedLock<LockType> catalog_lock(lock_);
 
     for (const UDTypeInfoMap::value_type& entry : udtype_ids_map_) {
       auto ltm = entry.second->LockForRead();
@@ -4155,7 +4156,7 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
   vector<scoped_refptr<TableInfo>> sys_tables;
   {
     // Lock the catalog to iterate over table_ids_map_.
-    boost::shared_lock<LockType> catalog_lock(lock_);
+    SharedLock<LockType> catalog_lock(lock_);
 
     // Delete tablets for each of user tables.
     for (const TableInfoMap::value_type& entry : table_ids_map_) {
@@ -4234,7 +4235,7 @@ Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
 
   RETURN_NOT_OK(CheckOnline());
 
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
 
   for (const auto& entry : namespace_ids_map_) {
     const auto& namespace_info = *entry.second;
@@ -4523,7 +4524,7 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
     RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
   }
 
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
 
   for (const UDTypeInfoByNameMap::value_type& entry : udtype_names_map_) {
     auto ltm = entry.second->LockForRead();
@@ -5055,7 +5056,7 @@ void CatalogManager::GetPendingServerTasksUnlocked(const TableId &table_uuid,
 void CatalogManager::ExtractTabletsToProcess(
     TabletInfos *tablets_to_delete,
     TabletInfos *tablets_to_process) {
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
 
   // TODO: At the moment we loop through all the tablets
   //       we can keep a set of tablets waiting for "assignment"
@@ -5721,7 +5722,7 @@ Status CatalogManager::GetTabletLocations(const TabletId& tablet_id, TabletLocat
   locs_pb->mutable_replicas()->Clear();
   scoped_refptr<TabletInfo> tablet_info;
   {
-    boost::shared_lock<LockType> l(lock_);
+    SharedLock<LockType> l(lock_);
     if (!FindCopy(tablet_map_, tablet_id, &tablet_info)) {
       return STATUS_SUBSTITUTE(NotFound, "Unknown tablet $0", tablet_id);
     }
@@ -5806,7 +5807,7 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   // Copy the internal state so that, if the output stream blocks,
   // we don't end up holding the lock for a long time.
   {
-    boost::shared_lock<LockType> l(lock_);
+    SharedLock<LockType> l(lock_);
     namespace_ids_copy = namespace_ids_map_;
     ids_copy = table_ids_map_;
     names_copy = table_names_map_;

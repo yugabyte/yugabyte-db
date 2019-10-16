@@ -110,7 +110,7 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
 
   // Init class variables that threads will use.
   {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     DCHECK(consensus::OpIdEquals(op_id_, consensus::MinimumOpId()));
     op_id_ = resp->checkpoint().op_id();
     error_status_ = Status::OK();
@@ -182,7 +182,7 @@ void TwoDCOutputClient::TabletLookupCallback(
   }
 
   {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     records_.emplace(record_idx, tablet->get());
   }
 
@@ -194,7 +194,7 @@ void TwoDCOutputClient::TabletLookupCallback(
     // But first, check if there were any errors during tablet lookup for any record.
     bool has_error = false;
     {
-      std::shared_lock<rw_spinlock> l(lock_);
+      std::shared_lock<decltype(lock_)> l(lock_);
       if (!error_status_.ok()) {
         has_error = true;
       }
@@ -213,7 +213,7 @@ void TwoDCOutputClient::TabletLookupCallback(
 void TwoDCOutputClient::SendCDCWriteToTablet(const size_t record_idx) {
   client::internal::RemoteTablet* tablet;
   {
-    std::shared_lock<rw_spinlock> l(lock_);
+    std::shared_lock<decltype(lock_)> l(lock_);
     tablet = records_[record_idx];
   }
 
@@ -267,7 +267,7 @@ void TwoDCOutputClient::HandleError(const Status& s, const cdc::CDCRecordPB& bad
   LOG(ERROR) << "Error while applying replicated record for " << bad_record.DebugString()
              << ": " << s.ToString();
   {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     error_status_ = s;
   }
   HandleResponse();
@@ -278,7 +278,7 @@ void TwoDCOutputClient::HandleResponse() {
       record_count_.load(std::memory_order_acquire)) {
     cdc::OutputClientResponse response;
     {
-      std::lock_guard<rw_spinlock> l(lock_);
+      std::lock_guard<decltype(lock_)> l(lock_);
       response.status = error_status_;
       if (response.status.ok()) {
         response.last_applied_op_id = op_id_;

@@ -16,6 +16,7 @@
 #include "yb/util/trace.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/tostring.h"
+#include "yb/util/shared_lock.h"
 
 namespace yb {
 namespace docdb {

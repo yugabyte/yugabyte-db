@@ -50,6 +50,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/shared_ptr_tuple.h"
+#include "yb/util/shared_lock.h"
 
 namespace yb {
 
@@ -151,89 +152,89 @@ class TSDescriptor {
   // Set the number of live replicas (i.e. running or bootstrapping).
   void set_num_live_replicas(int num_live_replicas) {
     DCHECK_GE(num_live_replicas, 0);
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     num_live_replicas_ = num_live_replicas;
   }
 
   // Return the number of live replicas (i.e running or bootstrapping).
   int num_live_replicas() const {
-    std::shared_lock<rw_spinlock> l(lock_);
+    SharedLock<decltype(lock_)> l(lock_);
     return num_live_replicas_;
   }
 
   void set_leader_count(int leader_count) {
     DCHECK_GE(leader_count, 0);
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     leader_count_ = leader_count;
   }
 
   int leader_count() const {
-    std::shared_lock<rw_spinlock> l(lock_);
+    SharedLock<decltype(lock_)> l(lock_);
     return leader_count_;
   }
 
   void set_total_memory_usage(uint64_t total_memory_usage) {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     ts_metrics_.total_memory_usage = total_memory_usage;
   }
 
   uint64_t total_memory_usage() {
-    std::shared_lock<rw_spinlock> l(lock_);
+    SharedLock<decltype(lock_)> l(lock_);
     return ts_metrics_.total_memory_usage;
   }
 
   void set_total_sst_file_size (uint64_t total_sst_file_size) {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     ts_metrics_.total_sst_file_size = total_sst_file_size;
   }
 
   void set_uncompressed_sst_file_size (uint64_t uncompressed_sst_file_size) {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     ts_metrics_.uncompressed_sst_file_size = uncompressed_sst_file_size;
   }
 
   void set_num_sst_files (uint64_t num_sst_files) {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     ts_metrics_.num_sst_files = num_sst_files;
   }
 
   uint64_t total_sst_file_size() {
-    std::shared_lock<rw_spinlock> l(lock_);
+    SharedLock<decltype(lock_)> l(lock_);
     return ts_metrics_.total_sst_file_size;
   }
 
   uint64_t uncompressed_sst_file_size() {
-    std::shared_lock<rw_spinlock> l(lock_);
+    SharedLock<decltype(lock_)> l(lock_);
     return ts_metrics_.uncompressed_sst_file_size;
   }
 
   uint64_t num_sst_files() {
-    std::shared_lock<rw_spinlock> l(lock_);
+    SharedLock<decltype(lock_)> l(lock_);
     return ts_metrics_.num_sst_files;
   }
 
   void set_read_ops_per_sec(double read_ops_per_sec) {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     ts_metrics_.read_ops_per_sec = read_ops_per_sec;
   }
 
   double read_ops_per_sec() {
-    std::shared_lock<rw_spinlock> l(lock_);
+    SharedLock<decltype(lock_)> l(lock_);
     return ts_metrics_.read_ops_per_sec;
   }
 
   void set_write_ops_per_sec(double write_ops_per_sec) {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     ts_metrics_.write_ops_per_sec = write_ops_per_sec;
   }
 
   double write_ops_per_sec() {
-    std::shared_lock<rw_spinlock> l(lock_);
+    SharedLock<decltype(lock_)> l(lock_);
     return ts_metrics_.write_ops_per_sec;
   }
 
   uint64_t uptime_seconds() {
-    std::shared_lock<rw_spinlock> l(lock_);
+    SharedLock<decltype(lock_)> l(lock_);
     return ts_metrics_.uptime_seconds;
   }
 
@@ -364,7 +365,7 @@ template <class TProxy>
 Status TSDescriptor::GetOrCreateProxy(std::shared_ptr<TProxy>* result,
                                       std::shared_ptr<TProxy>* result_cache) {
   {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     if (*result_cache) {
       *result = *result_cache;
       return Status::OK();
