@@ -153,3 +153,11 @@ void out_cypher_bool_const(StringInfo str, const ExtensibleNode *node)
     write_bool_field(boolean);
     write_location_field(location);
 }
+
+void out_cypher_list(StringInfo str, const ExtensibleNode *node)
+{
+    DEFINE_AG_NODE(cypher_list);
+
+    write_node_field(elems);
+    write_location_field(location);
+}

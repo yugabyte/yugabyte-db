@@ -8,6 +8,7 @@
 
 #include "access/htup_details.h"
 #include "catalog/pg_type.h"
+#include "funcapi.h"
 #include "miscadmin.h"
 #include "parser/parse_coerce.h"
 #include "utils/builtins.h"
@@ -34,6 +35,7 @@ typedef enum /* type categories for datum_to_agtype */
     AGT_TYPE_DATE, /* we use special formatting for datetimes */
     AGT_TYPE_TIMESTAMP, /* we use special formatting for timestamp */
     AGT_TYPE_TIMESTAMPTZ, /* ... and timestamptz */
+    AGT_TYPE_AGTYPE, /*AGTYPE */
     AGT_TYPE_JSON, /* JSON */
     AGT_TYPE_JSONB, /* JSONB */
     AGT_TYPE_ARRAY, /* array */
@@ -66,6 +68,8 @@ static void array_to_agtype_internal(Datum array, agtype_in_state *result);
 static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
                             agt_type_category tcategory, Oid outfuncoid,
                             bool key_scalar);
+static void add_agtype(Datum val, bool is_null, agtype_in_state *result,
+                       Oid val_type, bool key_scalar);
 static char *agtype_to_cstring_worker(StringInfo out, agtype_container *in,
                                       int estimated_len, bool indent);
 static void add_indent(StringInfo out, bool indent, int level);
@@ -613,8 +617,12 @@ static void agtype_categorize_type(Oid typoid, agt_type_category *tcategory,
 
     default:
         /* Check for arrays and composites */
-        if (OidIsValid(get_element_type(typoid)) || typoid == ANYARRAYOID ||
-            typoid == RECORDARRAYOID)
+        if (typoid == AGTYPEOID)
+        {
+            *tcategory = AGT_TYPE_AGTYPE;
+        }
+        else if (OidIsValid(get_element_type(typoid)) ||
+                 typoid == ANYARRAYOID || typoid == RECORDARRAYOID)
         {
             *tcategory = AGT_TYPE_ARRAY;
         }
@@ -840,6 +848,7 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
             parse_agtype(lex, &sem);
         }
         break;
+        case AGT_TYPE_AGTYPE:
         case AGT_TYPE_JSONB:
         {
             agtype *jsonb = DATUM_GET_AGTYPE_P(val);
@@ -891,7 +900,7 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
     }
 
     /* Now insert agtv into result, unless we did it recursively */
-    if (!is_null && !scalar_agtype && tcategory >= AGT_TYPE_JSON &&
+    if (!is_null && !scalar_agtype && tcategory >= AGT_TYPE_AGTYPE &&
         tcategory <= AGT_TYPE_JSONCAST)
     {
         /* work has been done recursively */
@@ -1085,4 +1094,86 @@ static void composite_to_agtype(Datum composite, agtype_in_state *result)
     result->res = push_agtype_value(&result->parse_state, WAGT_END_OBJECT,
                                     NULL);
     ReleaseTupleDesc(tupdesc);
+}
+
+/*
+ * Append agtype text for "val" to "result".
+ *
+ * This is just a thin wrapper around datum_to_agtype.  If the same type
+ * will be printed many times, avoid using this; better to do the
+ * agtype_categorize_type lookups only once.
+ */
+static void add_agtype(Datum val, bool is_null, agtype_in_state *result,
+                       Oid val_type, bool key_scalar)
+{
+    agt_type_category tcategory;
+    Oid outfuncoid;
+
+    if (val_type == InvalidOid)
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("could not determine input data type")));
+    }
+
+    if (is_null)
+    {
+        tcategory = AGT_TYPE_NULL;
+        outfuncoid = InvalidOid;
+    }
+    else
+    {
+        agtype_categorize_type(val_type, &tcategory, &outfuncoid);
+    }
+
+    datum_to_agtype(val, is_null, result, tcategory, outfuncoid, key_scalar);
+}
+
+PG_FUNCTION_INFO_V1(agtype_build_list);
+
+/*
+ * SQL function agtype_build_list(variadic "any")
+ */
+Datum agtype_build_list(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    int i;
+    agtype_in_state result;
+    Datum *args;
+    bool *nulls;
+    Oid *types;
+
+    /*build argument values to build the array*/
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    if (nargs < 0)
+        PG_RETURN_NULL();
+
+    memset(&result, 0, sizeof(agtype_in_state));
+
+    result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_ARRAY,
+                                   NULL);
+
+    for (i = 0; i < nargs; i++)
+        add_agtype(args[i], nulls[i], &result, types[i], false);
+
+    result.res = push_agtype_value(&result.parse_state, WAGT_END_ARRAY, NULL);
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
+}
+
+PG_FUNCTION_INFO_V1(agtype_build_list_noargs);
+
+/*
+ * degenerate case of agtype_build_list where it gets 0 arguments.
+ */
+Datum agtype_build_list_noargs(PG_FUNCTION_ARGS)
+{
+    agtype_in_state result;
+
+    memset(&result, 0, sizeof(agtype_in_state));
+
+    push_agtype_value(&result.parse_state, WAGT_BEGIN_ARRAY, NULL);
+    result.res = push_agtype_value(&result.parse_state, WAGT_END_ARRAY, NULL);
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
 }

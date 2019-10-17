@@ -1,5 +1,6 @@
 #include "postgres.h"
 
+#include "catalog/pg_type.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -11,6 +12,7 @@
 #include "utils/builtins.h"
 #include "utils/int8.h"
 #include "utils/lsyscache.h"
+#include "utils/syscache.h"
 
 #include "agtype.h"
 #include "cypher_expr.h"
@@ -24,6 +26,8 @@ static Datum string_to_agtype(ParseState *pstate, char *s, int location);
 static Node *transform_cypher_bool_const(ParseState *pstate,
                                          cypher_bool_const *bc);
 static Node *transform_AEXPR_OP(ParseState *pstate, A_Expr *a);
+static Node *transform_cypher_list(ParseState *pstate, cypher_list *cl);
+static Node *make_array_expr(Oid typarray, Oid typoid, List *elems);
 
 Node *transform_cypher_expr(ParseState *pstate, Node *expr,
                             ParseExprKind expr_kind)
@@ -72,6 +76,10 @@ static Node *transform_cypher_expr_recurse(ParseState *pstate, Node *expr)
         {
             return transform_cypher_bool_const(pstate,
                                                (cypher_bool_const *)expr);
+        }
+        else if (is_ag_node(expr, cypher_list))
+        {
+            return transform_cypher_list(pstate, (cypher_list *)expr);
         }
         else
         {
@@ -251,4 +259,64 @@ static Node *transform_AEXPR_OP(ParseState *pstate, A_Expr *a)
     ereport(ERROR, (errmsg("invalid list length: %d", list_length(a->name))));
 
     return NULL;
+}
+
+static Node *transform_cypher_list(ParseState *pstate, cypher_list *cl)
+{
+    List *newelems = NIL;
+    ListCell *le;
+    FuncExpr *fexpr;
+    Oid func_oid;
+    Oid agg_arg_types[1];
+    oidvector *parameter_types;
+
+    foreach (le, cl->elems)
+    {
+        Node *newv;
+
+        newv = transform_cypher_expr_recurse(pstate, lfirst(le));
+
+        newelems = lappend(newelems, newv);
+    }
+
+    if (list_length(newelems) == 0)
+    {
+        agg_arg_types[0] = InvalidOid;
+        parameter_types = buildoidvector(agg_arg_types, 0);
+    }
+    else
+    {
+        agg_arg_types[0] = ANYOID;
+        parameter_types = buildoidvector(agg_arg_types, 1);
+    }
+
+    func_oid = GetSysCacheOid3(PROCNAMEARGSNSP,
+                               PointerGetDatum("agtype_build_list"),
+                               PointerGetDatum(parameter_types),
+                               ObjectIdGetDatum(ag_catalog_namespace_id()));
+
+    fexpr = makeFuncExpr(
+        func_oid, AGTYPEOID,
+        list_make1(make_array_expr(
+            GetSysCacheOid2(TYPENAMENSP, PointerGetDatum("_agtype"),
+                            ObjectIdGetDatum(ag_catalog_namespace_id())),
+            AGTYPEOID, newelems)),
+        InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+    fexpr->funcvariadic = true;
+    fexpr->location = cl->location;
+
+    return (Node *)fexpr;
+}
+
+static Node *make_array_expr(Oid typarray, Oid typoid, List *elems)
+{
+    ArrayExpr *arr = makeNode(ArrayExpr);
+
+    arr->array_typeid = typarray;
+    arr->element_typeid = typoid;
+    arr->elements = elems;
+    arr->multidims = false;
+    arr->location = -1;
+
+    return (Node *)arr;
 }

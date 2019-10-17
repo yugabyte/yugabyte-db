@@ -280,3 +280,23 @@ CREATE OPERATOR >= (
     RIGHTARG = agtype,
     FUNCTION = agtype_ge
 );
+
+--
+-- agtype list literal functions
+--
+
+CREATE FUNCTION agtype_build_list(VARIADIC "any")
+RETURNS agtype
+LANGUAGE C
+STABLE
+CALLED ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION agtype_build_list()
+RETURNS agtype
+LANGUAGE C
+STABLE
+CALLED ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME', 'agtype_build_list_noargs';

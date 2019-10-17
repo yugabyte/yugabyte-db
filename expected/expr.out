@@ -22,16 +22,25 @@ DETAIL:  ("s" {A_CONST :val "s" :location 12} "i" {A_CONST :val 1 :location 20} 
 --
 -- empty list
 SELECT * FROM cypher($$RETURN []$$) AS r(c agtype);
-ERROR:  list literal parsed
-LINE 1: SELECT * FROM cypher($$RETURN []$$) AS r(c agtype);
-                                      ^
-DETAIL:  <>
+ c  
+----
+ []
+(1 row)
+
 -- list of scalar values
 SELECT * FROM cypher($$RETURN ['str', 1, 1.0, true, null]$$) AS r(c agtype);
-ERROR:  list literal parsed
-LINE 1: SELECT * FROM cypher($$RETURN ['str', 1, 1.0, true, null]$$)...
-                                      ^
-DETAIL:  ({A_CONST :val "str" :location 8} {A_CONST :val 1 :location 15} {A_CONST :val 1.0 :location 18} {EXTENSIBLENODE :extnodename cypher_bool_const :boolean true :location 23} {A_CONST :val NULL :location 29})
+              c              
+-----------------------------
+ ["str", 1, 1.0, true, null]
+(1 row)
+
+-- nested lists
+SELECT * FROM cypher($$RETURN [['str'], [1, [1.0], [[true]]], null]$$) AS r(c agtype);
+                   c                   
+---------------------------------------
+ [["str"], [1, [1.0], [[true]]], null]
+(1 row)
+
 --
 -- Test transform logic for operators
 --

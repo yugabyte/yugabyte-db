@@ -996,11 +996,12 @@ map_keyval_list:
 list:
     '[' expr_list_opt ']'
         {
-            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                            errmsg("list literal parsed"),
-                            errdetail("%s", nodeToString($2)),
-                            ag_scanner_errposition(@1, scanner)));
-            $$ = NULL;
+            cypher_list *n;
+
+            n = make_ag_node(cypher_list);
+            n->elems = $2;
+            
+            $$ = (Node *)n;
         }
     ;
 
