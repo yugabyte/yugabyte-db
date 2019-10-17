@@ -13,10 +13,8 @@ showAsideToc: true
 
 ## Introduction
 
-[Cassandra Workbench](https://marketplace.visualstudio.com/items?itemName=kdcro101.vscode-cassandra#quick-start)
-Design and query Apache Cassandra database and Yugabyte YCQL with help of generated templates, autocomplete and inline code decorations. 
 
-In this tutorial, we will show how to install the Apache Cassandra Workbench extension in Visual Studio Code and configure a connection using authentication or not.
+In this tutorial, we will show how to install the [Apache Cassandra Workbench](https://marketplace.visualstudio.com/items?itemName=kdcro101.vscode-cassandra#quick-start) extension in Visual Studio Code and configure a connection
 
 ## Install extension
 
@@ -72,7 +70,7 @@ Open and configure adding cluster as you need with connections informations: Yug
 
 ## Enjoy
 
-Now you have connected your YugabyteDB YCQL and can start exploring them by simply double-clicking on the connection name.
+Now you are ready to explore YCQL schema and data by simply double-clicking on the connection name.
 
 ![EDITOR UI](/images/develop/tools/vscodeworkbench/editor-ui.png)
 
