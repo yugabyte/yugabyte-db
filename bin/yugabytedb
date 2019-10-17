@@ -6,6 +6,7 @@ import json
 import logging
 import multiprocessing
 import os
+import Queue
 import re
 import resource
 import shutil
@@ -47,18 +48,23 @@ yugabyte
 |   |   +-- master & tserver logfiles, unify these if possible
 +-- yugabyte-data
 """
-
-# Yugabyte DB configs.
+# Script constants.
+SCRIPT_NAME = os.path.basename(__file__)
 YUGABYTE_DIR = os.path.dirname(os.path.realpath(__file__))
 DEFAULT_CONF_DIR = os.path.join(YUGABYTE_DIR, "conf")
 BIN_DIR = os.path.join(YUGABYTE_DIR, "bin")
 DEFAULT_DATA_DIR = os.path.join(YUGABYTE_DIR, "yugabyte-data")
 DEFAULT_LOG_DIR = os.path.join(YUGABYTE_DIR, "yugabyte-logs")
-DEFAULT_CONF = os.path.join(DEFAULT_CONF_DIR, "yugabyte-db.conf")
-DEFAULT_MASTER_PORT = 7100
-DEFAULT_TSERVER_PORT = 9100
+DEFAULT_CONF = os.path.join(DEFAULT_CONF_DIR, "{}.conf".format(SCRIPT_NAME))
+
+# Yugabyte DB configs.
+DEFAULT_MASTER_RPC_PORT = 7100
+DEFAULT_TSERVER_RPC_PORT = 9100
+DEFAULT_MASTER_WEBSERVER_PORT = 7000
+DEFAULT_TSERVER_WEBSERVER_PORT = 9000
 DEFAULT_YSQL_PORT = 5433
 DEFAULT_YCQL_PORT = 9042
+DEFAULT_WEBSERVER_IP = "0.0.0.0"
 DEFAULT_WEBSERVER_PORT = 7200
 VERSION_METADATA_PATH = os.path.join(YUGABYTE_DIR, "version_metadata.json")
 YUGABYTE_API_CLIENT_PROGRAMS = {
@@ -183,13 +189,14 @@ class YugabyteProcessManager(object):
                 "################################\n"
                 "# NEXT STEP: RUN THE DEMO\n"
                 "################################\n"
-                "$ yugabyte-db demo run {}\n\n".format(
-                    demo_db.upper(), Configs.get_demo_info()[demo_db]["output"], demo_db)
+                "$ {} demo run {}\n\n".format(
+                    SCRIPT_NAME, demo_db.upper(), Configs.get_demo_info()[demo_db]["output"],
+                    demo_db)
             )
         else:
             Output.log_error_and_exit(
                 "{0} sample database has already been created. "
-                "Use `yugabyte-db demo run {0}` to interact with it.".format(demo_db))
+                "Use `{} demo run {0}` to interact with it.".format(SCRIPT_NAME, demo_db))
 
     # Run YSQL shell in target demo database.
     def run_demo(self):
@@ -210,7 +217,7 @@ class YugabyteProcessManager(object):
         else:
             Output.log_error_and_exit(
                 "{0} demo has not been created."
-                "Run `yugabyte-db demo create {0}`.".format(demo_db))
+                "Run `{} demo create {0}`.".format(SCRIPT_NAME, demo_db))
 
     # Destroy target demo database if it exists.
     def destroy_demo(self):
@@ -271,17 +278,22 @@ class YugabyteProcessManager(object):
     # Starts yb-master, yb-tserver, and yugaware processes.
     # After initializing, creates a callhome thread.
     def start_processes(self):
+        if self.configs.temp_data.get("is_daemon"):
+            daemon_success = multiprocessing.Queue()
+            self.daemonize(daemon_success)
+
         common_gflags = [
             "--stop_on_parent_termination",
             "--undefok=stop_on_parent_termination",
             "--fs_data_dirs={}".format(self.configs.saved_data.get("data_dir")),
+            "--webserver_interface={}".format(self.configs.saved_data.get("webserver_ip")),
             "--metrics_snapshotter_tserver_metrics_whitelist={}".format(
                 ",".join(METRICS_SNAPSHOT_LIST)),
             "--yb_num_shards_per_tserver={}".format(YB_NUM_SHARDS_PER_TSERVER),
             "--ysql_num_shards_per_tserver={}".format(YSQL_NUM_SHARDS_PER_TSERVER)
         ]
-        master_address = "127.0.0.1:{}".format(self.configs.saved_data.get("master_port"))
-        tserver_address = "127.0.0.1:{}".format(self.configs.saved_data.get("tserver_port"))
+        master_address = "127.0.0.1:{}".format(self.configs.saved_data.get("master_rpc_port"))
+        tserver_address = "127.0.0.1:{}".format(self.configs.saved_data.get("tserver_rpc_port"))
         yb_master_cmd = [os.path.join(BIN_DIR, "yb-master")] + common_gflags + \
             [
                 "--master_addresses={}".format(master_address),
@@ -290,7 +302,8 @@ class YugabyteProcessManager(object):
                 "--use_initial_sys_catalog_snapshot",
                 "--server_dump_info_path={}".format(
                     os.path.join(self.configs.saved_data.get("data_dir"), "master-info")),
-                "--master_enable_metrics_snapshotter=true"
+                "--master_enable_metrics_snapshotter=true",
+                "--webserver_port={}".format(self.configs.saved_data.get("master_webserver_port"))
             ]
         if self.configs.saved_data.get("master_flags"):
             yb_master_cmd.extend(
@@ -308,7 +321,8 @@ class YugabyteProcessManager(object):
                 "--start_pgsql_proxy", "--pgsql_proxy_bind_address={}".format(
                     "127.0.0.1:{}".format(self.configs.saved_data.get("ysql_port"))),
                 "--tserver_enable_metrics_snapshotter=true",
-                "--metrics_snapshotter_interval_ms=11000"
+                "--metrics_snapshotter_interval_ms=11000",
+                "--webserver_port={}".format(self.configs.saved_data.get("tserver_webserver_port"))
             ]
 
         if self.configs.saved_data.get("tserver_flags"):
@@ -320,6 +334,7 @@ class YugabyteProcessManager(object):
             os.path.join(YUGAWARE_BIN_DIR, "yugaware"), "-Dconfig.file={}".format(YUGAWARE_CONF),
             "-Dplay.evolutions.db.default.autoApply=true",
             "-Dhttp.port={}".format(self.configs.saved_data.get("webserver_port")),
+            "-Dhttp.address={}".format(self.configs.saved_data.get("webserver_ip"))
         ]
 
         self.processes = {
@@ -345,6 +360,7 @@ class YugabyteProcessManager(object):
                 return
 
         is_first_run = True
+        yw_first_run  = True
         callhome_thread = None
         self.stop_callhome = False
         while True:
@@ -371,17 +387,52 @@ class YugabyteProcessManager(object):
                     process.start()
                     if not is_first_run:
                         Output.print_and_log(
-                            "{} died unexpectedly. Restarting...".format(p.name), logging.ERROR)
+                            "{} died unexpectedly. Restarting...".format(process.name),
+                            logging.ERROR)
                     should_callhome = True
+
+            # Print startup information and start callhome thread on first successful startup.
+            # Preemptively assume YW will successfully start up.
+            if is_first_run and self.wait_yb_master():
+                first_run_success = True
+                for name in ("master", "tserver"):
+                    process = self.processes.get(name)
+                    if not process.is_running():
+                        first_run_success = False
+                        break
+                if first_run_success and self.is_yb_initialized():
+                    status = self.get_status_string() + \
+                        Output.make_green("Yugabyte DB started successfully!\n") + \
+                        Output.make_magenta(
+                                "Join us on Slack at {}".format(
+                                    Output.make_underline("https://www.yugabyte.com/slack\n")))
+                    Output.print_out(status)
+                    if self.configs.temp_data.get("is_daemon"):
+                        # Let original process know daemon was successful so it can exit.
+                        # This is to display the initial status message.
+                        daemon_success.put(1)
+                        # Ignore any console output as important information will be logged.
+                        with open('/dev/null', 'r') as dev_null:
+                            sys.stderr.flush()
+                            sys.stdout.flush()
+                            os.dup2(dev_null.fileno(), sys.stdin.fileno())
+                            os.dup2(dev_null.fileno(), sys.stderr.fileno())
+                            os.dup2(dev_null.fileno(), sys.stdout.fileno())
+
+                    callhome_thread = Thread(target=self.callhome_loop)
+                    callhome_thread.daemon = True
+                    callhome_thread.start()
+                    is_first_run = False
 
             yw_logged_in = False
             if self.wait_yb_master():
-                # Start or iniitialize yugaware after setting YSQL default isolation level.
+                # Start or initialize yugaware after setting YSQL default isolation level.
                 # This if required to start YW because of
                 # https://github.com/Yugabyte/yugabyte-db/issues/1199.
                 if self.configs.saved_data.get("webserver_enabled"):
                     yw_process = self.processes.get("yugaware")
-                    yw_proxy = YugaWareProxy(self.configs.saved_data.get("webserver_port"))
+                    yw_proxy = YugaWareProxy(self.configs.saved_data.get("webserver_ip"),
+                        self.configs.saved_data.get("webserver_port"))
                     if not self.is_yw_initialized() and self.set_isolation_level():
                         Output.log("Initiating webserver...")
                         if not self.init_yw():
@@ -396,49 +447,28 @@ class YugabyteProcessManager(object):
                         yw_proxy.insecure_login()
 
                         err = yw_proxy.import_universe(
-                            self.configs.saved_data.get("master_port"), self.get_universe_uuid())
+                            self.configs.saved_data.get("master_rpc_port"),
+                            self.get_universe_uuid())
                         if err:
                             Output.log_error_and_exit(err)
 
-
-                        # Should yugabyte-db exit if features aren't disabled properly? Retry?
                         err = yw_proxy.update_features()
                         should_callhome = True
                     else:
                         if not yw_process.is_running():
-                            yw_process.start()
-                            yw_logged_in = not self.wait_yw_login(yw_proxy, insecure=True)
-                            if not is_first_run:
+                            if not yw_first_run:
                                 Output.print_and_log(
                                     "Webserver died unexpectedly. Restarting...", logging.ERROR)
+                            yw_process.start()
+                            yw_first_run = True
+                            # TODO: If insecure login fails here, we should assume importing
+                            # universe and setting security level failed and retry initializing YW.
+                            yw_logged_in = not self.wait_yw_login(yw_proxy, insecure=True)
                             should_callhome = True
                         else:
                             yw_logged_in = False
                     if self.alerts and yw_process.is_running() and yw_logged_in:
                         yw_proxy.send_alerts(self.alerts)
-
-                # Print startup information and start callhome thread on first successful startup.
-                if is_first_run and (
-                        not self.configs.saved_data.get("webserver_enabled") or yw_logged_in):
-                    first_run_success = True
-                    for p in self.processes.values():
-                        if not p.is_running():
-                            first_run_success = False
-                            break
-                    if first_run_success and self.is_yb_initialized() and (
-                            not self.configs.saved_data.get("webserver_enabled")
-                            or self.is_yw_initialized()):
-                        status = self.get_status_string() + \
-                            Output.make_green("Yugabyte DB started successfully!\n") + \
-                            Output.make_magenta(
-                                    "Join us on Slack at {}".format(
-                                        Output.make_underline("https://www.yugabyte.com/slack\n")))
-                        Output.print_out(status)
-
-                        callhome_thread = Thread(target=self.callhome_loop)
-                        callhome_thread.daemon = True
-                        callhome_thread.start()
-                        is_first_run = False
 
             if should_callhome:
                 self.callhome()
@@ -448,6 +478,29 @@ class YugabyteProcessManager(object):
         # Stop callhome. Useful in future if we do anything after quitting.
         self.stop_callhome = True
         callhome_thread.join()
+
+    # Pushes yugabytedb script to background as a daemon. The process is not tied to a shell, but
+    # it will not survive between machine restarts.
+    def daemonize(self, queue):
+        if os.fork():
+            # Delete any custom exit handlers so daemon has full control.
+            handlers = [e for e in atexit._exithandlers if e[0] == self.kill_yugabyte]
+            for e in handlers:
+                atexit._exithandlers.remove(e)
+            # Keep the parent process alive until the daemon confirms yugabytedb started properly.
+            try:
+                queue.get(timeout=60)
+            except Queue.empty as e:
+                Output.log_error_and_exit("Timed out trying to start {} daemon.", SCRIPT_NAME)
+            sys.exit()
+        os.chdir(YUGABYTE_DIR)
+        os.setsid()
+        os.umask(0)
+        if os.fork():
+            handlers = [e for e in atexit._exithandlers if e[0] == self.kill_yugabyte]
+            for e in handlers:
+                atexit._exithandlers.remove(e)
+            sys.exit()
 
     # Sets env variables needed for yugabyte-db start.
     def set_env_vars(self):
@@ -552,7 +605,7 @@ class YugabyteProcessManager(object):
             return False
 
         num_tservers = 1
-        master_addr = "127.0.0.1:{}".format(self.configs.saved_data.get("master_port"))
+        master_addr = "127.0.0.1:{}".format(self.configs.saved_data.get("master_rpc_port"))
 
         start_time = time.time()
         while time.time() - start_time < timeout:
@@ -580,7 +633,8 @@ class YugabyteProcessManager(object):
     # Returns pretty output table.
     def get_status_string(self):
         if self.configs.saved_data.get("webserver_enabled"):
-            yw_status = "http://localhost:{}".format(self.configs.saved_data.get("webserver_port"))
+            yw_status = "http://{}:{}".format(self.configs.saved_data.get("webserver_ip"),
+                self.configs.saved_data.get("webserver_port"))
         else:
             yw_status = "Disabled"
 
@@ -595,7 +649,7 @@ class YugabyteProcessManager(object):
         ycql_port = self.configs.saved_data.get("ycql_port")
         status_info = [
             (Output.make_yellow("Webserver UI"), yw_status),
-            (Output.make_yellow("JDBC"), "jdbc:postgresql://127.0.0.1:{}/postgres".format(
+            (Output.make_yellow("JDBC"), "jdbc:postgresql://127.0.0.1:{}/yugabyte".format(
                 ysql_port)),
             (Output.make_yellow("YSQL"), "bin/ysqlsh -p {}".format(ysql_port)),
             (Output.make_yellow("YCQL"), "bin/cqlsh 127.0.0.1 {}".format(ycql_port)),
@@ -643,14 +697,15 @@ class YugabyteProcessManager(object):
         for sig in (SIGABRT, SIGINT, SIGTERM):
             signal(sig, func)
 
-    # Returns true if Java 1.8 or higher is installed locally.
+    # Returns true if Java is installed. While Java 8+ is necessary for YW, we don't explicitly
+    # check for it so that future version format changes (e.g. Java 1.4 to Java 5) won't give
+    # wrong error messages.
     def java_installed(self):
         try:
-            cmd = ["java", "-version"]
-            version = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-            pattern = '\"(\d+\.\d+).*\"'
-            return float(re.search(pattern, version.decode('utf-8')).groups()[0]) >= 1.8
-        except (OSError, AttributeError, IndexError) as e:
+            cmd = ["which", "java"]
+            java_info = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+            return java_info is not None
+        except (OSError) as e:
             return False
 
     # Checks resource settings for current shell. Prints warning if requirements aren't met.
@@ -738,6 +793,7 @@ class YugabyteProcessManager(object):
                         "   - Install Java 1.8 or higher (recommended)"
                         "   - Continue without the UI by passing the --disable_ui flag.")
                     has_errors = True
+            self.configs.temp_data["is_daemon"] = args.is_daemon
         elif args.parser == "demo":
             self.configs.temp_data["demo_db"] = args.demo_db
 
@@ -760,12 +816,13 @@ class YugabyteProcessManager(object):
         common_parser = argparse.ArgumentParser(add_help=False)
         common_parser.add_argument(
             "--config", default=DEFAULT_CONF, help="Yugabyte DB configuration file")
-        # TODO: Refactor data_dir to be a list for multi-node.
+        # TODO: Refactor data_dir to be a list for multi-node. How should the config file and
+        # data dir be set for local mulit-node setups? Note: daemon mode may be affected.
         common_parser.add_argument(
             "--data_dir", help="Directory where Yugabyte DB will store data.")
 
         start_msg = "To start Yugabyte DB, run '{}'.\n\n".format(
-            Output.make_green("yugabyte-db start"))
+            Output.make_green("{} start".format(SCRIPT_NAME)))
         parser = PrettyArgParser(description=start_msg)
         all_parsers = {"default": parser}
         subparsers = parser.add_subparsers(dest="parser")
@@ -829,16 +886,29 @@ class YugabyteProcessManager(object):
             cur_parser.add_argument(
                 "--ysql_port", help="Port on which YSQL will run.")
             cur_parser.add_argument(
-                "--master_port", help="Port on which yb-master will run.")
+                "--master_rpc_port", help="Port on which yb-master will listen for RPCs.")
             cur_parser.add_argument(
-                "--tserver_port", help="Port on which yb-tserver will run.")
+                "--tserver_rpc_port", help="Port on which yb-tserver will listen for RPCs.")
             cur_parser.add_argument(
-                "--webserver_port", help="Port on which webserver will run.")
+                "--master_webserver_port", help="Port on which yb-master webserver will run.")
+            cur_parser.add_argument(
+                "--tserver_webserver_port", help="Port on which yb-tserver webserver will run.")
+            cur_parser.add_argument(
+                "--webserver_port", help="Port on which main webserver will run.")
+            cur_parser.add_argument(
+                "--webserver_ip", help="IP address on which all webservers will be available.")
+            # TODO: After --listen_addr is implemented, yugabytedb must have a way to stop itself
+            # in daemon mode. (e.g. yugabytedb stop --listen_addr 127.0.0.1:7500)
+            cur_parser.add_argument(
+                "--is_daemon", action="store_true",
+                help="Runs {} in the background as a daemon. Does not persist on restart.".format(
+                    SCRIPT_NAME)
+            )
 
-            group = cur_parser.add_mutually_exclusive_group()
-            group.add_argument(
+            ui_group = cur_parser.add_mutually_exclusive_group()
+            ui_group.add_argument(
                 "--enable_ui", help="Enable webserver UI.", action="store_true", default=None)
-            group.add_argument(
+            ui_group.add_argument(
                 "--disable_ui", help="Disable webserver UI.", action="store_false", default=None)
             # Hidden commands for development/advanced users
             cur_parser.add_argument(
@@ -861,7 +931,8 @@ class YugabyteProcessManager(object):
 
         Output.log_dir = log_dir
         logging.basicConfig(
-            level=logging.DEBUG, filename=os.path.join(log_dir, "yugabyte-db.log"), filemode="a",
+            level=logging.DEBUG, filemode="a",
+            filename=os.path.join(log_dir, "{}.log".format(SCRIPT_NAME)),
             format="[%(filename)s:%(lineno)d] %(asctime)s %(levelname)s: %(message)s")
         args.func()
 
@@ -871,10 +942,13 @@ class Configs(object):
         self.saved_data = {
             "data_dir": DEFAULT_DATA_DIR,
             "log_dir": DEFAULT_LOG_DIR,
-            "master_port": DEFAULT_MASTER_PORT,
-            "tserver_port": DEFAULT_TSERVER_PORT,
+            "master_rpc_port": DEFAULT_MASTER_RPC_PORT,
+            "tserver_rpc_port": DEFAULT_TSERVER_RPC_PORT,
+            "master_webserver_port": DEFAULT_MASTER_WEBSERVER_PORT,
+            "tserver_webserver_port": DEFAULT_TSERVER_WEBSERVER_PORT,
             "ysql_port": DEFAULT_YSQL_PORT,
             "ycql_port": DEFAULT_YCQL_PORT,
+            "webserver_ip": DEFAULT_WEBSERVER_IP,
             "webserver_port": DEFAULT_WEBSERVER_PORT,
             "universe_uuid": "",
             "polling_interval": "5",
@@ -885,6 +959,7 @@ class Configs(object):
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
             "demo_db": "retail",
+            "is_daemon": False
         }
         self.config_file = config_file
 
@@ -1114,13 +1189,13 @@ class Diagnostics(object):
             if p.start_time:
                 payload["{}_start_time".format(p.name)] = p.start_time
 
-        master_addrs = "127.0.0.1:{}".format(self.configs.saved_data.get("master_port"))
+        master_addrs = "127.0.0.1:{}".format(self.configs.saved_data.get("master_rpc_port"))
         # TODO: This is going to change for multi-node.
         cur_master_addr = master_addrs
         data = {
             "cluster_uuid": YBAdminProxy.get_cluster_uuid(master_addrs),
             "node_uuid": YBAdminProxy.get_node_uuid(master_addrs, cur_master_addr),
-            "server_type": "yugabyte-db",
+            "server_type": SCRIPT_NAME,
             "timestamp": int(time.time()),
             "payload": payload
         }
@@ -1252,11 +1327,11 @@ class LogAnalyzer(object):
 
 # Manages API calls to YW.
 class YugaWareProxy(object):
-    def __init__(self, webserver_port, univ_name="local-universe"):
+    def __init__(self, webserver_ip, webserver_port, univ_name="local-universe"):
         self.univ_name = univ_name
         self.api_token = ""
         self.cust_uuid = ""
-        self.url = "http://localhost:{}/api/v1".format(webserver_port)
+        self.url = "http://{}:{}/api/v1".format(webserver_ip, webserver_port)
 
     # Retrieves permanent api_token. Returns error, if any.
     def login(self):
@@ -1299,7 +1374,7 @@ class YugaWareProxy(object):
             return "Failed to log into webserver. {}".format(e)
 
     # Import local universe into YW. Returns error, if any.
-    def import_universe(self, master_port, universeUUID):
+    def import_universe(self, master_rpc_port, universeUUID):
         target = "{}/customers/{}/universes/import".format(self.url, self.cust_uuid)
         headers = {
             "X-AUTH-YW-API-TOKEN": self.api_token,
@@ -1308,7 +1383,7 @@ class YugaWareProxy(object):
         data = {
             "cloudProviderType": "other",
             "currentState": "BEGIN",
-            "masterAddresses": "127.0.0.1:{}".format(master_port),
+            "masterAddresses": "127.0.0.1:{}".format(master_rpc_port),
             "universeName": self.univ_name,
             "universeUUID": universeUUID,
         }
@@ -1553,7 +1628,7 @@ class Output(object):
 
 # Class to customize argparse output.
 class PrettyArgParser(argparse.ArgumentParser):
-    epilog = "Run 'yugabyte-db [command] -h' for help with specific commands."
+    epilog = "Run '{} [command] -h' for help with specific commands.".format(SCRIPT_NAME)
     def __init__(self, **kwargs):
         kwargs["formatter_class"] = PrettyHelpFormatter
         kwargs["epilog"] = self.epilog
