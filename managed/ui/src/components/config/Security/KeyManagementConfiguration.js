@@ -3,7 +3,7 @@
 import React, { Component, Fragment } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Field, Formik } from 'formik';
-import { YBFormInput, YBButton, YBFormSelect } from '../../common/forms/fields';
+import { YBFormInput, YBButton, YBFormSelect, YBCheckBox } from '../../common/forms/fields';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { getPromiseState } from 'utils/PromiseUtils';
 import ListKeyManagementConfigurations from './ListKeyManagementConfigurations';
@@ -23,37 +23,10 @@ const awsRegionList = regionsData.map((region, index) => {
   };
 });
 
-const validationSchema = Yup.object().shape({
-  apiUrl: Yup.string(),
-
-  apiKey: Yup.mixed()
-    .when('kmsProvider', {
-      is: provider => provider.value === 'SMARTKEY',
-      then: Yup.mixed().required('API key is Required')
-    }),
-
-  accessKeyId: Yup.string()
-    .when('kmsProvider', {
-      is: provider => provider.value === 'AWS',
-      then: Yup.string().required('Access Key ID is Required')
-    }),
-
-  secretKeyId: Yup.string()
-    .when('kmsProvider', {
-      is: provider => provider.value === 'AWS',
-      then: Yup.string().required('Secret Key ID is Required')
-    }),
-  region: Yup.mixed()
-    .when('kmsProvider', {
-      is: provider => provider.value === 'AWS',
-      then: Yup.mixed().required('AWS Region is Required')
-    }),
-});
-
-
 class KeyManagementConfiguration extends Component {
   state = {
     listView: false,
+    enabledIAMProfile: false,
   }
 
   componentDidMount() {
@@ -69,11 +42,14 @@ class KeyManagementConfiguration extends Component {
     const { fetchKMSConfigList, setKMSConfig } = this.props;
     const { kmsProvider } = values;
     if (kmsProvider && kmsProvider.value === 'AWS') {
-      const data = {
-        'AWS_ACCESS_KEY_ID': values.accessKeyId,
-        'AWS_SECRET_ACCESS_KEY': values.secretKeyId,
+      let data = {
         'AWS_REGION': values.region.value,
       };
+      if (!this.state.enabledIAMProfile) {
+        data['AWS_ACCESS_KEY_ID'] = values.accessKeyId;
+        data['AWS_SECRET_ACCESS_KEY'] = values.secretKeyId;
+      }
+
       setKMSConfig(kmsProvider.value, data)
         .then(() => {
           fetchKMSConfigList();
@@ -123,6 +99,19 @@ class KeyManagementConfiguration extends Component {
   getAWSForm = () => {
     return (
       <Fragment>
+        <Row className="config-provider-row" key={'iam-enable-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">Use IAM Profile</div>
+          </Col>
+          <Col lg={7}>
+            <Field name={"enableIAMProfile"}
+                component={YBCheckBox}
+                input={{
+                  onChange: () => this.setState({enabledIAMProfile: !this.state.enabledIAMProfile})
+                }}
+                className={"kube-provider-input-field"}/>
+          </Col>
+        </Row>
         <Row className="config-provider-row" key={'access-key-field'}>
           <Col lg={3}>
             <div className="form-item-custom-label">Access Key Id</div>
@@ -130,6 +119,7 @@ class KeyManagementConfiguration extends Component {
           <Col lg={7}>
             <Field name={"accessKeyId"}
                 component={YBFormInput}
+                disabled={this.state.enabledIAMProfile}
                 className={"kube-provider-input-field"}/>
           </Col>
         </Row>
@@ -138,7 +128,9 @@ class KeyManagementConfiguration extends Component {
             <div className="form-item-custom-label">Secret Key Id</div>
           </Col>
           <Col lg={7}>
-            <Field name="secretKeyId" component={YBFormInput}
+            <Field name="secretKeyId"
+                component={YBFormInput}
+                disabled={this.state.enabledIAMProfile}
                 className={"kube-provider-input-field"}/>
           </Col>
         </Row>
@@ -186,7 +178,7 @@ class KeyManagementConfiguration extends Component {
 
   render() {
     const { configList } = this.props;
-    const { listView } = this.state;
+    const { listView, enabledIAMProfile } = this.state;
     if (getPromiseState(configList).isInit() || getPromiseState(configList).isLoading()) {
       return <YBLoadingCircleIcon />;
     }
@@ -199,6 +191,34 @@ class KeyManagementConfiguration extends Component {
         />
       );
     }
+
+
+    const validationSchema = Yup.object().shape({
+      apiUrl: Yup.string(),
+
+      apiKey: Yup.mixed()
+        .when('kmsProvider', {
+          is: provider => provider.value === 'SMARTKEY',
+          then: Yup.mixed().required('API key is Required')
+        }),
+
+      accessKeyId: Yup.string()
+        .when('kmsProvider', {
+          is: provider => provider.value === 'AWS' && !enabledIAMProfile,
+          then: Yup.string().required('Access Key ID is Required')
+        }),
+
+      secretKeyId: Yup.string()
+        .when('kmsProvider', {
+          is: provider => provider.value === 'AWS' && !enabledIAMProfile,
+          then: Yup.string().required('Secret Key ID is Required')
+        }),
+      region: Yup.mixed()
+        .when('kmsProvider', {
+          is: provider => provider.value === 'AWS',
+          then: Yup.mixed().required('AWS Region is Required')
+        }),
+    });
 
     return (
       <div className="provider-config-container">
