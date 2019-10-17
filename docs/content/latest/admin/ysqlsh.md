@@ -30,7 +30,7 @@ $ ./bin/ysqlsh
 ```
 
 ```
-ysqlsh (11.2)
+ysqlsh (11.2-YB-2.0.0.0-b0)
 Type "help" for help.
 
 yugabyte=#
@@ -46,8 +46,9 @@ When you open `ysqlsh`, the following flags are set so that the user does not ha
 
 {{< note title="Note" >}}
 
-Starting with YugabyteDB 2.0.1, the default password for the default user (`yugabyte`) is `yugabyte`. If YSQL authentication is enabled, then the `yugabyte` user will be prompted for this password.
+Starting with v2.0.1, the default password for the default user `yugabyte` is `yugabyte`. If YSQL authentication is enabled, then the `yugabyte` user will be prompted for this password.
 
-For YugabyteDB 2.0 users: The default user `yugabyte` has no password. Before enabling YSQL authentication, you must set a password for the `yugabyte` user or you will not be able to authenticate.
+For  v2.0.0 users, the default user `yugabyte` has no password. If you do not want any password to be prompted, then you should not enable YSQL authentication. If you want to enable YSQL authentication, then you must first set a password for the `yugabyte`  user (in a cluster with YSQL authentication turned off). 
 
 {{< /note >}}
+
