@@ -1,12 +1,12 @@
 ---
-title: Cassandra Workbench for Visual Studio Code
-linkTitle: Cassandra Workbench for Visual Studio Code
-description: Extension to connect to YCQL, explore and query using Visual Studio Code 
+title: Visual Studio Code
+linkTitle: Visual Studio Code
+description: Visual Studio Code 
 menu:
-  v1.3:
-    identifier: cassandraWorkbench
+  latest:
+    identifier: visualstudioworkbench
     parent: tools
-    weight: 2810
+    weight: 2811
 isTocNested: true
 showAsideToc: true
 ---
