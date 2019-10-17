@@ -119,8 +119,8 @@ instructions just as a reference for YCQL._
    ```
 
    _Note: Alternatively, you can manually build the jar file as described in the [build
-   section](https://github.com/yugabyte/RRDiagram/README.md#build) of the `RRDiagram` repo (and
-   move/rename the resulting jar from the target folder)._
+   section](https://github.com/yugabyte/RRDiagram#build) of the `RRDiagram` repo (and move/rename
+   the resulting jar from the target folder)._
 
 1. Run the diagram generator using the following command:
 
