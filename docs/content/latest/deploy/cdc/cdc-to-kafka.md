@@ -19,7 +19,7 @@ Follow the steps below to connect a local YugabyteDB cluster to use the Change D
 
 ### YugabyteDB
 
-A 1-node YugabyteDB cluster with RF of 1 is up and running locally (the `yb-ctl create` command create this by default). If you are new to YugabyteDB, you can create a local YugaByte cluster in under five minutes by following the steps in the [Quick start](/quick-start/install/).
+A 1-node YugabyteDB cluster with RF of 1 is up and running locally (the `yb-ctl create` command create this by default). If you are new to YugabyteDB, you can create a local YugabyteDB cluster in under five minutes by following the steps in the [Quick start](/quick-start/install/).
 
 ### Java
 
