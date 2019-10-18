@@ -130,6 +130,9 @@ class QLWriteOperation :
       const DocOperationApplyData& data, yb::docdb::Direction direction);
   Result<bool> DuplicateUniqueIndexValue(
       const DocOperationApplyData& data, ReadHybridTime read_time);
+  Result<HybridTime> FindOldestOverwrittenTimestamp(
+      IntentAwareIterator* iter, const SubDocKey& sub_doc_key,
+      HybridTime min_hybrid_time);
 
   CHECKED_STATUS DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
                            const ReadHybridTime& read_ht, CoarseTimePoint deadline);

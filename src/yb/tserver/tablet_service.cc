@@ -170,6 +170,17 @@ DEFINE_uint64(index_backfill_upperbound_for_user_enforced_txn_duration_ms, 65000
 TAG_FLAG(index_backfill_upperbound_for_user_enforced_txn_duration_ms, evolving);
 TAG_FLAG(index_backfill_upperbound_for_user_enforced_txn_duration_ms, runtime);
 
+DEFINE_int32(index_backfill_additional_delay_before_backfilling_ms, 2 * 500,
+             "Operations that are received by the tserver, and have decided how "
+             "the indexes need to be updated (based on the IndexPermission), will "
+             "not be added to the list of current transactions until they are "
+             "replicated/applied. This delay allows for the GetSafeTime method "
+             "to wait for such operations to be replicated/applied. Ideally, this "
+             "value should be set to be something larger than the raft-heartbeat-interval "
+             "but can be as high as the client_rpc_timeout if we want to be more conservative.");
+TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, evolving);
+TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, runtime);
+
 DEFINE_test_flag(int32, TEST_write_rejection_percentage, 0,
                  "Reject specified percentage of writes.");
 
@@ -540,6 +551,10 @@ void TabletServiceAdminImpl::GetSafeTime(
               << tablet.peer->tablet_id() << " will wait until "
               << min_hybrid_time << " is safe.";
     } else {
+      // Add some extra delay to wait for operations being replicated to be
+      // applied.
+      min_hybrid_time = min_hybrid_time.AddMilliseconds(
+          FLAGS_index_backfill_additional_delay_before_backfilling_ms);
       auto txn_particpant = tablet.peer->tablet()->transaction_participant();
       HybridTime min_running_ht;
       while ((min_running_ht = txn_particpant->MinRunningHybridTime()) <

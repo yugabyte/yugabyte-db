@@ -111,6 +111,7 @@ class MasterFailoverTest : public YBTest {
       cluster_->Shutdown();
       cluster_.reset();
     }
+    opts_.timeout = MonoDelta::FromSeconds(NonTsanVsTsan(20, 60));
     cluster_.reset(new ExternalMiniCluster(opts_));
     ASSERT_OK(cluster_->Start());
     client_ = ASSERT_RESULT(cluster_->CreateClient());

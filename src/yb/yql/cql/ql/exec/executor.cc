@@ -2076,6 +2076,7 @@ Status Executor::AddIndexWriteOps(const PTDmlStmt *tnode,
         VERIFY_RESULT(tnode->table()->index_map().FindIndex(index_table->id()));
     const bool index_ready_to_accept = (is_upsert ? index->AllowWrites() : index->AllowDelete());
     if (!index_ready_to_accept) {
+      VLOG(2) << "Index not ready to apply operaton " << index->ToString();
       // We are in the process of backfilling the index. It should not be updated with a
       // write/delete yet. The backfill stage will update the index for such entries.
       continue;
