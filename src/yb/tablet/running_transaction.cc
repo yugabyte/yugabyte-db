@@ -70,7 +70,7 @@ void RunningTransaction::Aborted() {
 
 void RunningTransaction::RequestStatusAt(const StatusRequest& request,
                                          std::unique_lock<std::mutex>* lock) {
-  DCHECK_LT(request.global_limit_ht, HybridTime::kMax);
+  DCHECK_LE(request.global_limit_ht, HybridTime::kMax);
   DCHECK_LE(request.read_ht, request.global_limit_ht);
 
   if (last_known_status_hybrid_time_ > HybridTime::kMin) {

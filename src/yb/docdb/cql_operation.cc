@@ -236,8 +236,12 @@ Status QLWriteOperation::Init(QLWriteRequestPB* request, QLResponsePB* response)
   // Determine if static / non-static columns are being written.
   bool write_static_columns = false;
   bool write_non_static_columns = false;
+  // TODO(Amit): Remove the DVLOGS after backfill features stabilize.
+  DVLOG(4) << "Processing request " << yb::ToString(*request);
   for (const auto& column : request_.column_values()) {
+    DVLOG(4) << "Looking at column : " << yb::ToString(column);
     auto schema_column = schema_.column_by_id(ColumnId(column.column_id()));
+    DVLOG(4) << "schema column : " << yb::ToString(schema_column);
     RETURN_NOT_OK(schema_column);
     if (schema_column->is_static()) {
       write_static_columns = true;
@@ -472,21 +476,44 @@ Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(const DocOperationApply
   VLOG(3) << "Looking for collisions in \n"
           << docdb::DocDBDebugDumpToStr(data.doc_write_batch->doc_db());
   // We only need to check backwards for backfilled entries.
-  return VERIFY_RESULT(DuplicateUniqueIndexValue(data, Direction::kForward)) ||
-         (request_.is_backfilling() &&
-          VERIFY_RESULT(DuplicateUniqueIndexValue(data, Direction::kBackward)));
+  bool ret =
+      VERIFY_RESULT(DuplicateUniqueIndexValue(data, Direction::kForward)) ||
+      (request_.is_backfilling() &&
+       VERIFY_RESULT(DuplicateUniqueIndexValue(data, Direction::kBackward)));
+  if (!ret) {
+    VLOG(3) << "No collisions found";
+  }
+  return ret;
 }
 
 Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(
     const DocOperationApplyData& data, Direction direction) {
-  VLOG(2) << "Looking for collision while going " << yb::ToString(direction);
+  VLOG(2) << "Looking for collision while going " << yb::ToString(direction)
+          << ". Trying to insert " << *pk_doc_key_;
   auto requested_read_time = data.read_time;
   if (direction == Direction::kForward) {
     return DuplicateUniqueIndexValue(data, requested_read_time);
   }
 
-  // TODO: Handle Unique Index conflicts during backfill.
-  return false;
+  auto iter = CreateIntentAwareIterator(
+      data.doc_write_batch->doc_db(), BloomFilterMode::USE_BLOOM_FILTER,
+      pk_doc_key_->Encode().AsSlice(), request_.query_id(), txn_op_context_,
+      data.deadline, ReadHybridTime::Max());
+
+  HybridTime oldest_past_min_ht = VERIFY_RESULT(FindOldestOverwrittenTimestamp(
+      iter.get(), SubDocKey(*pk_doc_key_), requested_read_time.read));
+  const HybridTime oldest_past_min_ht_liveness =
+      VERIFY_RESULT(FindOldestOverwrittenTimestamp(
+          iter.get(),
+          SubDocKey(*pk_doc_key_, PrimitiveValue::SystemColumnId(
+                                      SystemColumnIds::kLivenessColumn)),
+          requested_read_time.read));
+  oldest_past_min_ht.MakeAtMost(oldest_past_min_ht_liveness);
+  if (!oldest_past_min_ht.is_valid()) {
+    return false;
+  }
+  return DuplicateUniqueIndexValue(
+      data, ReadHybridTime::SingleTime(oldest_past_min_ht));
 }
 
 Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(
@@ -516,8 +543,9 @@ Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(
         VLOG(2) << "Found collision while checking at " << yb::ToString(read_time)
                 << " Existing :" << yb::ToString(*value)
                 << " vs New :" << yb::ToString(column_value.expr().value()) << " used read time as "
-                << yb::ToString(data.read_time) << " data is now :\n"
-                << docdb::DocDBDebugDumpToStr(data.doc_write_batch->doc_db());
+                << yb::ToString(data.read_time);
+        DVLOG(3) << "DocDB is now :\n"
+                 << docdb::DocDBDebugDumpToStr(data.doc_write_batch->doc_db());
         return true;
       }
     }
@@ -525,6 +553,25 @@ Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(
 
   VLOG(2) << "No collision while checking at " << yb::ToString(read_time);
   return false;
+}
+
+Result<HybridTime> QLWriteOperation::FindOldestOverwrittenTimestamp(IntentAwareIterator* iter,
+                                                  const SubDocKey& sub_doc_key,
+                                                  HybridTime min_read_time) {
+  HybridTime result;
+  VLOG(3) << "Doing iter->Seek " << *pk_doc_key_ << ".";
+  iter->Seek(*pk_doc_key_);
+  if (iter->valid()) {
+    const KeyBytes bytes = sub_doc_key.EncodeWithoutHt();
+    const Slice& sub_key_slice = bytes.AsSlice();
+    result = VERIFY_RESULT(
+        iter->FindOldestRecord(sub_key_slice, min_read_time));
+    VLOG(2) << "iter->FindOldestRecord returned " << result << " for "
+            << SubDocKey::DebugSliceToString(sub_key_slice);
+  } else {
+    VLOG(3) << "iter->Seek " << *pk_doc_key_ << " turned out to be invalid";
+  }
+  return result;
 }
 
 Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_value,
@@ -753,6 +800,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
     }
   }
 
+  VLOG(3) << "insert_into_unique_index_ is " << insert_into_unique_index_;
   if (insert_into_unique_index_ && VERIFY_RESULT(DuplicateUniqueIndexValue(data))) {
     VLOG(3) << "set_applied is set to " << false << " for over " << yb::ToString(existing_row);
     response_->set_applied(false);
@@ -1032,6 +1080,7 @@ QLWriteRequestPB* QLWriteOperation::NewIndexRequest(const IndexInfo* index,
 Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLTableRow& new_row) {
   // Prepare the write requests to update the indexes. There should be at most 2 requests for each
   // index (one insert and one delete).
+  VLOG(2) << "Updating indexes";
   const auto& index_ids = request_.update_index_ids();
   index_requests_.reserve(index_ids.size() * 2);
   for (const TableId& index_id : index_ids) {
