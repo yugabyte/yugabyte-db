@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: ycql-authentication
     parent: authentication
-    weight: 10
+    weight: 30
 isTocNested: true
 showAsideToc: true
 ---
