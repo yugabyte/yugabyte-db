@@ -83,7 +83,7 @@ DEFINE_int32(consensus_max_batch_size_bytes, 32_MB,
 TAG_FLAG(consensus_max_batch_size_bytes, advanced);
 TAG_FLAG(consensus_max_batch_size_bytes, runtime);
 
-DEFINE_int32(follower_unavailable_considered_failed_sec, 300,
+DEFINE_int32(follower_unavailable_considered_failed_sec, 900,
              "Seconds that a leader is unable to successfully heartbeat to a "
              "follower after which the follower is considered to be failed and "
              "evicted from the config.");

@@ -75,7 +75,7 @@ DEFINE_bool(force_recover_flushed_frontier, false,
 TAG_FLAG(force_recover_flushed_frontier, hidden);
 TAG_FLAG(force_recover_flushed_frontier, advanced);
 
-DEFINE_bool(skip_flushed_entries, false,
+DEFINE_bool(skip_flushed_entries, true,
             "Only replay WAL entries that are not flushed to RocksDB or within the retryable "
             "request timeout.");
 
