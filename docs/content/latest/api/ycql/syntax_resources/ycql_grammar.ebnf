@@ -2,19 +2,21 @@ alter_table ::= 'ALTER' 'TABLE' table_name ('ADD' ( column_name column_type ) { 
 
 column_type ::= '<type>';
 
-create_index ::= 'CREATE' 'INDEX' [ 'IF' 'NOT' 'EXISTS' ] index_name 'ON' table_name
-                     '(' index_columns ')' \
+create_index ::= 'CREATE' 'INDEX' [ 'IF' 'NOT' 'EXISTS' ] index_name 'ON' \
+                     table_name '(' partition_key_columns [ clustering_key_columns ] ')' \
                      [ clustering_key_column_ordering ] [ covering_columns ];
 
-index_columns = partition_key_columns [ clustering_key_columns ];
+partition_key_columns = ( index_column | '(' index_column { ',' index_column } ')' );
 
-partition_key_columns = ( column_name | '(' column_name { ',' column_name } ')' );
+clustering_key_columns = index_column { ',' index_column };
 
-clustering_key_columns = column_name { ',' column_name };
+clustering_key_column_ordering = 'WITH' 'CLUSTERING' 'ORDER' 'BY' '(' ( index_column [ ( 'ASC' | 'DESC' ) ] ) {',' ( index_column [ ( 'ASC' | 'DESC' ) ] ) } ')';
 
-clustering_key_column_ordering = 'WITH' 'CLUSTERING' 'ORDER' 'BY' '(' ( column_name [ ( 'ASC' | 'DESC' ) ] ) {',' ( column_name [ ( 'ASC' | 'DESC' ) ] ) } ')';
+index_column = column_name | jsonb_attribute;
 
-covering_columns = 'COVERING' '(' column_name { ',' column_name } ')';
+jsonb_attribute = column_name {'->' "'attribute_name'" } '->>' "'attribute_name'";
+
+covering_columns = ( 'COVERING' | 'INCLUDE' ) '(' column_name { ',' column_name } ')';
 
 create_keyspace ::= 'CREATE' ( 'KEYSPACE' | 'SCHEMA' ) [ 'IF' 'NOT' 'EXISTS' ] keyspace_name keyspace_properties ;
 
@@ -61,12 +63,11 @@ ttl_or_timestamp_expression ::= ( 'TTL' ttl_expression | 'TIMESTAMP' timestamp_e
 
 expression ::= '<expression>' ;
 
-select ::= 'SELECT' [ 'DISTINCT' ] ( '*' | column_name { ',' column_name } )
-               'FROM' table_name \
-               [ 'WHERE' where_expression ]
-               [ 'ORDER BY' order_expression ]
-               [ 'LIMIT' limit_expression ]
-               [ 'OFFSET' offset_expression ] ;
+select ::= 'SELECT' [ 'DISTINCT' ] ( '*' | column_name { ',' column_name } ) 'FROM' table_name \
+               [ 'WHERE' where_expression [ 'ALLOW FILTERING' ] ] \
+               [ 'IF' if_expression ] \
+               [ 'ORDER BY' order_expression ] \
+               [ 'LIMIT' limit_expression ] [ 'OFFSET' offset_expression ] ;
 
 order_expression ::= '(' ( column_name [ 'ASC' | 'DESC' ] ) { ',' ( column_name [ 'ASC' | 'DESC' ] ) } ')';
 
