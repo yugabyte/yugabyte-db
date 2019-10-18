@@ -54,7 +54,7 @@ There are 2 types of primary key columns:
 
 - `Hash primary key columns`: The first column in Primary Key will default to HASH and is used to hash partition a table.
 For example if primary key is `(a, b, c)`, column `a` will be HASH ordered.
-This is the recommended option to better scale read/write operations to the table.
+This is the recommended option to better scale read and write operations to the table.
 
 - `Range primary key columns`: This will range partition the table and is useful for applications that require the primary key to be ordered.
 Range primary key columns can be ASC or DESC ordered. Second and subsequent primary key columns default to ASC.
