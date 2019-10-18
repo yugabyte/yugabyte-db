@@ -30,9 +30,9 @@ Let us assume the following.
 
 This section covers deployment for a single region/zone (or a single data center/rack). Execute the following steps on each of the instances.
 
-## Run yb-tserver with command line parameters
+## Run YB-TServer with command line parameters
 
-- Run `yb-tserver` as below. Note that all the master addresses have to be provided as a flag. For each yb-tserver, replace the rpc bind address flags with the private IP of the host running the yb-tserver.
+- Run the YB-TServer service (`yb-tserver`) as shown here. Note that all of the master addresses have to be provided using the `--tserver_master_addrs` parameter. For each YB-TServer, replace the RPC bind address flags with the private IP of the host running the YB-TServer.
 
 For the full list of flags, see the [yb-tserver Reference](../../../admin/yb-tserver/).
 
@@ -51,13 +51,13 @@ Add `--redis_proxy_bind_address=172.151.17.130:6379` to the above list if you ne
 
 {{< note title="Note" >}}
 
-The number of comma-separated values in `tserver_master_addrs` parameter should match the total number of masters (aka replication factor).
+The number of comma-separated values in `--tserver_master_addrs` parameter should match the total number of masters (aka replication factor).
 
 {{< /note >}}
 
-## Run yb-tserver with configuration file
+## Run YB-TServer with configuration file
 
-- Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the `--flagfile` option as shown below. For each yb-tserver, replace the rpc bind address flags with the private IP of the host running the yb-tserver.
+- Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the `--flagfile` option as shown here. For each YB-TServer node, replace the RPC bind address flags with the private IP address of the host running the YB-TServer service.
 
 ```sh
 --tserver_master_addrs=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
@@ -74,17 +74,9 @@ Add `--redis_proxy_bind_address=172.22.25.108:6379` to the above list if you nee
 $ ./bin/yb-tserver --flagfile tserver.conf >& /home/centos/disk1/yb-tserver.out &
 ```
 
-## Initialize YSQL
-
-On any yb-tserver or yb-master, run the following command.
-
-```sh
-YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 /home/yugabyte/postgres/bin/initdb -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres
-```
-
 ## Verify health
 
-- Make sure all the 4 yb-tservers are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
+Make sure all the 4 YB-TServer nodes are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
 
 You can do this as shown below.
 
@@ -92,7 +84,7 @@ You can do this as shown below.
 $ cat /home/centos/disk1/yb-data/tserver/logs/yb-tserver.INFO
 ```
 
-In all the 4 yb-tserver logs, you should see log messages similar to the following.
+In each of the 4 YB-TServer logs, you should see log messages similar to the following.
 
 ```
 I0912 16:27:18.296516  8168 heartbeater.cc:305] Connected to a leader master server at 172.151.17.140:7100
@@ -107,7 +99,7 @@ I0912 16:27:18.311748  8142 rpc_server.cc:158] RPC server started. Bound to: 0.0
 I0912 16:27:18.311828  8142 tablet_server_main.cc:128] CQL server successfully started
 ```
 
-In the current yb-master leader log, you should see log messages similar to the following.
+In the current YB-Master leader log, you should see log messages similar to the following.
 
 ```
 I0912 22:26:32.832296  3162 ts_manager.cc:97] Registered new tablet server { permanent_uuid: "766ec935738f4ae89e5ff3ae26c66651" instance_seqno: 1505255192814357 } with Master
@@ -117,6 +109,6 @@ I0912 22:26:41.055996  3162 ts_manager.cc:97] Registered new tablet server { per
 
 {{< tip title="Tip" >}}
 
-Remember to add the command with which you launched `yb-tserver` to a cron to restart it if it goes down.
+Remember to add the command you used to start the YB-TServer to a `cron` job to restart it if it goes down.
 
 {{< /tip >}}
