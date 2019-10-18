@@ -284,6 +284,13 @@ class ExternalMiniCluster : public MiniClusterBase {
     return masters_[idx].get();
   }
 
+  // Return a reference to the master at index idx
+  // This allows the caller to share ownership of the master with the cluster
+  scoped_refptr<ExternalMaster> getMasterRef(int idx) {
+    CHECK_LT(idx, masters_.size());
+    return masters_[idx];
+  }
+
   ExternalTabletServer* tablet_server(int idx) const {
     CHECK_LT(idx, tablet_servers_.size());
     return tablet_servers_[idx].get();

@@ -429,6 +429,7 @@ Status RaftGroupMetadata::DeleteSuperBlock() {
   string path = fs_manager_->GetRaftGroupMetadataPath(raft_group_id_);
   RETURN_NOT_OK_PREPEND(fs_manager_->env()->DeleteFile(path),
                         "Unable to delete superblock for Raft group " + raft_group_id_);
+  LOG(INFO) << "Deleted super block, path=[ " << path << " ]";
   return Status::OK();
 }
 
