@@ -966,11 +966,12 @@ literal:
 map:
     '{' map_keyval_list_opt '}'
         {
-            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                            errmsg("map literal parsed"),
-                            errdetail("%s", nodeToString($2)),
-                            ag_scanner_errposition(@1, scanner)));
-            $$ = NULL;
+            cypher_map *n;
+
+            n = make_ag_node(cypher_map);
+            n->keyvals = $2;
+
+            $$ = (Node *)n;
         }
     ;
 

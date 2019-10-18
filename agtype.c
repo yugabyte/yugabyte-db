@@ -1128,6 +1128,79 @@ static void add_agtype(Datum val, bool is_null, agtype_in_state *result,
     datum_to_agtype(val, is_null, result, tcategory, outfuncoid, key_scalar);
 }
 
+PG_FUNCTION_INFO_V1(agtype_build_map);
+
+/*
+ * SQL function jsonb_build_map(variadic "any")
+ */
+Datum agtype_build_map(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    int i;
+    agtype_in_state result;
+    Datum *args;
+    bool *nulls;
+    Oid *types;
+
+    /* build argument values to build the object */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    if (nargs < 0)
+        PG_RETURN_NULL();
+
+    if (nargs % 2 != 0)
+    {
+        ereport(
+            ERROR,
+            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+             errmsg("argument list must have been even number of elements"),
+             errhint(
+                 "The arguments of agtype_build_map() must consist of alternating keys and values.")));
+    }
+
+    memset(&result, 0, sizeof(agtype_in_state));
+
+    result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_OBJECT,
+                                   NULL);
+
+    for (i = 0; i < nargs; i += 2)
+    {
+        /* process key */
+        if (nulls[i])
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("argument %d: key must not be null", i + 1)));
+        }
+
+        add_agtype(args[i], false, &result, types[i], true);
+
+        /* process value */
+        add_agtype(args[i + 1], nulls[i + 1], &result, types[i + 1], false);
+    }
+
+    result.res = push_agtype_value(&result.parse_state, WAGT_END_OBJECT, NULL);
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
+}
+
+PG_FUNCTION_INFO_V1(agtype_build_map_noargs);
+
+/*
+ * degenerate case of jsonb_build_map where it gets 0 arguments.
+ */
+Datum agtype_build_map_noargs(PG_FUNCTION_ARGS)
+{
+    agtype_in_state result;
+
+    memset(&result, 0, sizeof(agtype_in_state));
+
+    push_agtype_value(&result.parse_state, WAGT_BEGIN_OBJECT, NULL);
+    result.res = push_agtype_value(&result.parse_state, WAGT_END_OBJECT, NULL);
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
+}
+
 PG_FUNCTION_INFO_V1(agtype_build_list);
 
 /*
@@ -1142,7 +1215,7 @@ Datum agtype_build_list(PG_FUNCTION_ARGS)
     bool *nulls;
     Oid *types;
 
-    /*build argument values to build the array*/
+    /*build argument values to build the array */
     nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
 
     if (nargs < 0)

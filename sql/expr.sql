@@ -13,6 +13,11 @@ SELECT * FROM cypher($$
 RETURN {s: 's', i: 1, f: 1.0, b: true, z: null}
 $$) AS r(c agtype);
 
+-- nested maps
+SELECT * FROM cypher($$
+RETURN {s: {s: 's'}, t: {i: 1, e: {f: 1.0}, s: {a: {b: true}}}, z: null}
+$$) AS r(c agtype);
+
 --
 -- list literal
 --

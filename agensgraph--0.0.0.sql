@@ -282,6 +282,26 @@ CREATE OPERATOR >= (
 );
 
 --
+-- agtype map literal functions
+--
+
+CREATE FUNCTION agtype_build_map(VARIADIC "any")
+RETURNS agtype
+LANGUAGE C
+STABLE
+CALLED ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION agtype_build_map()
+RETURNS agtype
+LANGUAGE C
+STABLE
+CALLED ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME', 'agtype_build_map_noargs';
+
+--
 -- agtype list literal functions
 --
 

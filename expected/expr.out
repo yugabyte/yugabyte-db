@@ -5,18 +5,29 @@ SET search_path TO ag_catalog;
 --
 -- empty map
 SELECT * FROM cypher($$RETURN {}$$) AS r(c agtype);
-ERROR:  map literal parsed
-LINE 1: SELECT * FROM cypher($$RETURN {}$$) AS r(c agtype);
-                                      ^
-DETAIL:  <>
+ c  
+----
+ {}
+(1 row)
+
 -- map of scalar values
 SELECT * FROM cypher($$
 RETURN {s: 's', i: 1, f: 1.0, b: true, z: null}
 $$) AS r(c agtype);
-ERROR:  map literal parsed
-LINE 2: RETURN {s: 's', i: 1, f: 1.0, b: true, z: null}
-               ^
-DETAIL:  ("s" {A_CONST :val "s" :location 12} "i" {A_CONST :val 1 :location 20} "f" {A_CONST :val 1.0 :location 26} "b" {EXTENSIBLENODE :extnodename cypher_bool_const :boolean true :location 34} "z" {A_CONST :val NULL :location 43})
+                         c                          
+----------------------------------------------------
+ {"b": true, "f": 1.0, "i": 1, "s": "s", "z": null}
+(1 row)
+
+-- nested maps
+SELECT * FROM cypher($$
+RETURN {s: {s: 's'}, t: {i: 1, e: {f: 1.0}, s: {a: {b: true}}}, z: null}
+$$) AS r(c agtype);
+                                           c                                           
+---------------------------------------------------------------------------------------
+ {"s": {"s": "s"}, "t": {"e": {"f": 1.0}, "i": 1, "s": {"a": {"b": true}}}, "z": null}
+(1 row)
+
 --
 -- list literal
 --

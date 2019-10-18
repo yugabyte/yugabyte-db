@@ -26,8 +26,8 @@ static Datum string_to_agtype(ParseState *pstate, char *s, int location);
 static Node *transform_cypher_bool_const(ParseState *pstate,
                                          cypher_bool_const *bc);
 static Node *transform_AEXPR_OP(ParseState *pstate, A_Expr *a);
+static Node *transform_cypher_map(ParseState *pstate, cypher_map *cm);
 static Node *transform_cypher_list(ParseState *pstate, cypher_list *cl);
-static Node *make_array_expr(Oid typarray, Oid typoid, List *elems);
 
 Node *transform_cypher_expr(ParseState *pstate, Node *expr,
                             ParseExprKind expr_kind)
@@ -76,6 +76,10 @@ static Node *transform_cypher_expr_recurse(ParseState *pstate, Node *expr)
         {
             return transform_cypher_bool_const(pstate,
                                                (cypher_bool_const *)expr);
+        }
+        else if (is_ag_node(expr, cypher_map))
+        {
+            return transform_cypher_map(pstate, (cypher_map *)expr);
         }
         else if (is_ag_node(expr, cypher_list))
         {
@@ -236,6 +240,64 @@ static Node *transform_AEXPR_OP(ParseState *pstate, A_Expr *a)
                                    a->location);
 }
 
+static Node *transform_cypher_map(ParseState *pstate, cypher_map *cm)
+{
+    List *newkeyvals = NIL;
+    ListCell *le;
+    FuncExpr *fexpr;
+    Oid func_oid;
+    Oid agg_arg_types[1];
+    oidvector *parameter_types;
+
+    Assert(list_length(cm->keyvals) % 2 == 0);
+
+    le = list_head(cm->keyvals);
+    while (le != NULL)
+    {
+        Node *key;
+        Node *val;
+        Node *newval;
+        Const *newkey;
+
+        key = lfirst(le);
+        le = lnext(le);
+        val = lfirst(le);
+        le = lnext(le);
+
+        newval = transform_cypher_expr_recurse(pstate, val);
+
+        // typtypmod, typcollation, typlen, and typbyval of agtype are
+        // hard-coded.
+        newkey = makeConst(AGTYPEOID, -1, InvalidOid, -1,
+                           string_to_agtype(pstate, strVal(key), cm->location),
+                           false, false);
+
+        newkeyvals = lappend(lappend(newkeyvals, newkey), newval);
+    }
+
+    if (list_length(newkeyvals) == 0)
+    {
+        agg_arg_types[0] = InvalidOid;
+        parameter_types = buildoidvector(agg_arg_types, 0);
+    }
+    else
+    {
+        agg_arg_types[0] = ANYOID;
+        parameter_types = buildoidvector(agg_arg_types, 1);
+    }
+
+    func_oid = GetSysCacheOid3(PROCNAMEARGSNSP,
+                               PointerGetDatum("agtype_build_map"),
+                               PointerGetDatum(parameter_types),
+                               ObjectIdGetDatum(ag_catalog_namespace_id()));
+
+    fexpr = makeFuncExpr(func_oid, AGTYPEOID, newkeyvals, InvalidOid,
+                         InvalidOid, COERCE_EXPLICIT_CALL);
+    fexpr->location = cm->location;
+
+    return (Node *)fexpr;
+}
+
 static Node *transform_cypher_list(ParseState *pstate, cypher_list *cl)
 {
     List *newelems = NIL;
@@ -270,28 +332,9 @@ static Node *transform_cypher_list(ParseState *pstate, cypher_list *cl)
                                PointerGetDatum(parameter_types),
                                ObjectIdGetDatum(ag_catalog_namespace_id()));
 
-    fexpr = makeFuncExpr(
-        func_oid, AGTYPEOID,
-        list_make1(make_array_expr(
-            GetSysCacheOid2(TYPENAMENSP, PointerGetDatum("_agtype"),
-                            ObjectIdGetDatum(ag_catalog_namespace_id())),
-            AGTYPEOID, newelems)),
-        InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
-    fexpr->funcvariadic = true;
+    fexpr = makeFuncExpr(func_oid, AGTYPEOID, newelems, InvalidOid,
+                         InvalidOid, COERCE_EXPLICIT_CALL);
     fexpr->location = cl->location;
 
     return (Node *)fexpr;
-}
-
-static Node *make_array_expr(Oid typarray, Oid typoid, List *elems)
-{
-    ArrayExpr *arr = makeNode(ArrayExpr);
-
-    arr->array_typeid = typarray;
-    arr->element_typeid = typoid;
-    arr->elements = elems;
-    arr->multidims = false;
-    arr->location = -1;
-
-    return (Node *)arr;
 }
