@@ -4,8 +4,6 @@ linkTitle: YCQL authentication
 description: YCQL authentication
 headcontent: Identify that your YCQL users are who they say they are
 image: /images/section_icons/secure/authentication.png
-aliases:
-  - /secure/authentication/ycql
 menu:
   latest:
     identifier: ycql-authentication
@@ -17,43 +15,11 @@ showAsideToc: true
 
 ## Overview
 
-YCQL authentication, identifying that a user is who they say they are, is based on roles. Roles can be created with superuser, non-superuser and login privileges. Administrators can create new roles and alter, or drop, existing ones using YCQL commands (`CREATE USER`,`CREATE ROLE`,`ALTER ROLE`,`GRANT`,and `REVOKE`).
+YCQL authentication is based on roles. Roles can be created with superuser, non-superuser and login privileges. New roles can be created, and existing ones altered or dropped by administrators using CQL commands.
 
 ## 1. Enable YCQL authentication
 
-### yb-ctl
-
-To enable YSQL authentication in your local YugabyteDB clusters, you can  use the `--tserver_flags` option with the `yb-ctl create` and yb-ctl start` commands.
-
-When you create a local cluster, you can run a command like this to enable YSQL authentication in the newly-created cluster.
-
-```bash
-./bin/yb-ctl create --tserver_flags ysql_enable-auth=true
-```
-
-After your local cluster has been created, you can enable YSQL authentication with a command like this:
-
-```bash
-./bin/yb-ctl start --tserver_flags ysql_enable-auth=true
-```
-
-### yb-tserver
-
-When managing YugabyteDB database clusters by starting and stopping YB-Master and YB-TServer services, you enable YSQL authentication in the cluster by configuring the YB-TServer services, which manage all user queries, to start with YSQL authentication enabled.
-
-To enable YSQL authentication, start your `yb-tserver` services with the `--ysql_enable_auth=true` flag. Your command should look similar to that shown below:
-
-```
-./bin/yb-tserver \
-  --tserver_master_addrs <master addresses> \
-  --fs_data_dirs <data directories> \
-  --ysql_enable_auth=true \
-  >& /home/centos/disk1/yb-tserver.out &
-```
-
-You can read more about bringing up YB-TServer services for deployments in the section on [manual deployment of a YugabyteDB cluster](../../deploy/manual-deployment/start-tservers/).
-
-Your command should look similar to that shown below:
+You can enable access control by starting the `yb-tserver` processes with the `--use_cassandra_authentication=true` flag. Your command should look similar to that shown below:
 
 ```
 ./bin/yb-tserver \
@@ -84,7 +50,7 @@ cassandra@cqlsh>
 
 ## 3. Create a new user
 
-Use the [CREATE ROLE statement](../../api/ycql/ddl_create_role/) to create a new role. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all YCQL commands on any of the database resources.
+Use the [CREATE ROLE statement](../../api/ycql/ddl_create_role/) to create a new role. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all the CQL commands on any of the database resources.
 
 **NOTE** By default, creating a role does not grant the `LOGIN` or the `SUPERUSER` privileges, these need to be explicitly granted.
 
@@ -99,7 +65,7 @@ cassandra@cqlsh> CREATE ROLE IF NOT EXISTS john WITH PASSWORD = 'PasswdForJohn' 
 If the role `john` already existed, the above statement will not error out since we have added the `IF NOT EXISTS` clause. To verify the user account just created, run the following query:
 
 ```sql
-yugabyte@ysqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
+cassandra@cqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
 
 You should see the following output.

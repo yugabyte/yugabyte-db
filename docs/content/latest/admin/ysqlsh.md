@@ -48,7 +48,6 @@ When you open `ysqlsh`, the following flags are set so that the user does not ha
 
 Starting with v2.0.1, the default password for the default user `yugabyte` is `yugabyte`. If YSQL authentication is enabled, then the `yugabyte` user will be prompted for this password.
 
-For  v2.0.0 users, the default user `yugabyte` has no password. If you do not want any password to be prompted, then you should not enable YSQL authentication. If you want to enable YSQL authentication, then you must first set a password for the `yugabyte`  user (in a cluster with YSQL authentication turned off). 
+For v2.0.0 users, the default user `yugabyte` has no password. If you do not want any password to be prompted, then you should not enable YSQL authentication. If you want to enable YSQL authentication, then you must first set a password for the `yugabyte`  user (in a cluster with YSQL authentication turned off).
 
 {{< /note >}}
-
