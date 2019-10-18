@@ -30,9 +30,7 @@ import Releases from './pages/Releases';
 import { isDefinedNotNull } from './utils/ObjectUtils';
 
 const clearCredentials = () => {
-  // Don't clear all of localStorage so we can keep the introduction item
-  localStorage.removeItem('apiToken');
-  localStorage.removeItem('authToken');
+  localStorage.clear()
   Cookies.remove('apiToken');
   Cookies.remove('authToken');
   Cookies.remove('customerId');
@@ -52,6 +50,11 @@ function validateSession(store, replacePath, callback) {
         store.dispatch(insecureLoginResponse(response));
         localStorage.setItem('apiToken', response.payload.data.apiToken);
         localStorage.setItem('customerId', response.payload.data.customerUUID);
+
+        // Show the intro modal if OSS version
+        if (localStorage.getItem('__yb_new_user__') == null) {
+          localStorage.setItem('__yb_new_user__', true);
+        }
         browserHistory.push('/');
       }
     });
