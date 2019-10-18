@@ -23,7 +23,7 @@
 namespace yb {
 
 void PutVarint32(faststring* dst, uint32_t v) {
-  uint8_t buf[5];
+  uint8_t buf[16];
   uint8_t* ptr = InlineEncodeVarint32(buf, v);
   dst->append(buf, ptr - buf);
 }
@@ -47,7 +47,7 @@ void PutFixed64(faststring *dst, uint64_t value) {
 }
 
 void PutVarint64(faststring *dst, uint64_t v) {
-  uint8_t buf[10];
+  uint8_t buf[16];
   uint8_t* ptr = EncodeVarint64(buf, v);
   dst->append(buf, ptr - buf);
 }

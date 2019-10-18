@@ -516,7 +516,7 @@ struct DataTypeTraits<TIMESTAMP> : public DerivedTypeTraits<INT64>{
     gmtime_r(&secs_since_epoch, &tm_info);
     char time_up_to_secs[24];
     strftime(time_up_to_secs, sizeof(time_up_to_secs), kDateFormat, &tm_info);
-    char time[34];
+    char time[40];
     snprintf(time, sizeof(time), kDateMicrosAndTzFormat, time_up_to_secs, remaining_micros);
     str->append(time);
   }

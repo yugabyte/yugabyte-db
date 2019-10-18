@@ -267,6 +267,9 @@ class Builder:
 
         return os.path.join(gcc_bin_dir, c_compiler), os.path.join(gcc_bin_dir, cxx_compiler)
 
+    def find_gcc8(self):
+        return which('gcc-8'), which('g++-8')
+
     def find_clang(self):
         clang_dir = None
         if 'YB_CLANG_PREFIX' is os.environ:

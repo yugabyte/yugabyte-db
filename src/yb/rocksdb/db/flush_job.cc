@@ -349,7 +349,7 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
       meta->fd.GetTotalFileSize());
   RecordTick(stats_, COMPACT_WRITE_BYTES, meta->fd.GetTotalFileSize());
   if (s.ok()) {
-    return std::move(file_number_holder);
+    return file_number_holder;
   } else {
     return s;
   }

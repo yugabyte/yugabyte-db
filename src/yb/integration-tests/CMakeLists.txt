@@ -126,6 +126,11 @@ ADD_YB_TEST(cassandra_cpp_driver-test)
 target_include_directories(cassandra_cpp_driver-test PUBLIC
   ${CASS_DRIVER_INTERNAL_INCLUDE}
   "${CASS_DRIVER_INTERNAL_INCLUDE}/third_party/sparsehash/src")
+
+if("${COMPILER_FAMILY}" STREQUAL "gcc8")
+  target_compile_options(cassandra_cpp_driver-test PUBLIC "-Wno-class-memaccess")
+endif()
+
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS_SAVED})
 
 # Additional tests

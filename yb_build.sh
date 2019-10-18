@@ -647,6 +647,9 @@ while [[ $# -gt 0 ]]; do
     --clang)
       YB_COMPILER_TYPE="clang"
     ;;
+    --gcc8)
+      YB_COMPILER_TYPE="gcc8"
+    ;;
     --zapcc)
       YB_COMPILER_TYPE="zapcc"
     ;;
