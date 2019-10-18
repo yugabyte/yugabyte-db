@@ -73,14 +73,6 @@ struct FileDescriptor {
         total_file_size(_total_file_size),
         base_file_size(_base_file_size) {}
 
-  FileDescriptor& operator=(const FileDescriptor& fd) {
-    table_reader = fd.table_reader;
-    packed_number_and_path_id = fd.packed_number_and_path_id;
-    total_file_size = fd.total_file_size;
-    base_file_size = fd.base_file_size;
-    return *this;
-  }
-
   uint64_t GetNumber() const {
     return packed_number_and_path_id & kFileNumberMask;
   }

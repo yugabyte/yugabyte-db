@@ -564,7 +564,7 @@ struct SingleWriterInlineSkipListNode {
   char key[0];
 
   explicit SingleWriterInlineSkipListNode(int height) {
-    memcpy(&next_[0], &height, sizeof(int));
+    memcpy(static_cast<void*>(&next_[0]), &height, sizeof(int));
   }
 
   // Accessors/mutators for links.  Wrapped in methods so we can add

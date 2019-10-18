@@ -152,21 +152,6 @@ class InternalStats {
           num_dropped_records(0),
           count(_count) {}
 
-    explicit CompactionStats(const CompactionStats& c)
-        : micros(c.micros),
-          bytes_read_non_output_levels(c.bytes_read_non_output_levels),
-          bytes_read_output_level(c.bytes_read_output_level),
-          bytes_written(c.bytes_written),
-          bytes_moved(c.bytes_moved),
-          num_input_files_in_non_output_levels(
-              c.num_input_files_in_non_output_levels),
-          num_input_files_in_output_level(
-              c.num_input_files_in_output_level),
-          num_output_files(c.num_output_files),
-          num_input_records(c.num_input_records),
-          num_dropped_records(c.num_dropped_records),
-          count(c.count) {}
-
     void Add(const CompactionStats& c) {
       this->micros += c.micros;
       this->bytes_read_non_output_levels += c.bytes_read_non_output_levels;

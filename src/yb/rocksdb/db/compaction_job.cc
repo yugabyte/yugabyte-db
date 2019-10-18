@@ -546,7 +546,7 @@ Result<FileNumbersHolder> CompactionJob::Run() {
   TEST_SYNC_POINT("CompactionJob::Run():End");
 
   compact_->status = status;
-  return std::move(file_numbers_holder);
+  return file_numbers_holder;
 }
 
 Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {

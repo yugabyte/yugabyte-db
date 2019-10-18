@@ -60,6 +60,8 @@ std::string RandomHumanReadableString(int len, Random* rnd);
 
 class RandomDeviceSequence {
  public:
+  typedef std::random_device::result_type result_type;
+
   template<class It>
   void generate(It begin, const It& end) {
     std::generate(begin, end, [this] { return device_(); });
