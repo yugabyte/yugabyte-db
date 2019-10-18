@@ -52,7 +52,7 @@ Create a table with *table_name*. An error is raised if `qualified_name` already
 Primary key can be defined in either `column_constraint` or `table_constraint`, but not in both.
 There are 2 types of primary key columns:
 
-- `Hash primary key columns`: The first column in Primary Key will default to HASH and is used to hash-partition a table.
+- `Hash primary key columns`: The first column in Primary Key will default to HASH and is used to hash partition a table.
 For example if primary key is `(a, b, c)`, column `a` will be HASH ordered.
 This is the recommended option to better scale read/write operations to the table.
 
