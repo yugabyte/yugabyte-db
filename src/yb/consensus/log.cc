@@ -84,7 +84,7 @@ DEFINE_int32(log_min_segments_to_retain, 2,
 TAG_FLAG(log_min_segments_to_retain, runtime);
 TAG_FLAG(log_min_segments_to_retain, advanced);
 
-DEFINE_int32(log_min_seconds_to_retain, 300,
+DEFINE_int32(log_min_seconds_to_retain, 900,
              "The minimum number of seconds for which to keep log segments to keep at all times, "
              "regardless of what is required for durability. Logs may be still retained for "
              "a longer amount of time if they are necessary for correct restart. This should be "
