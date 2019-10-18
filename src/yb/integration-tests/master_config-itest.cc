@@ -257,6 +257,73 @@ TEST_F(MasterChangeConfigTest, TestRemoveMaster) {
   VerifyNonLeaderMastersPeerCount();
 }
 
+TEST_F(MasterChangeConfigTest, TestRemoveAndAddMaster) {
+  int non_leader_index = -1;
+  ASSERT_OK_PREPEND(cluster_->GetFirstNonLeaderMasterIndex(&non_leader_index),
+                      "Non-leader master lookup returned error");
+  if (non_leader_index == -1) {
+    FAIL() << "Failed to get a non-leader master index.";
+  }
+  scoped_refptr<ExternalMaster> remove_master = cluster_->getMasterRef(non_leader_index);
+  std::string removed_master_uuid = remove_master->uuid();
+
+  LOG(INFO) << "Going to remove master at port " << remove_master->bound_rpc_hostport().ToString()
+            << ", instance id=" << remove_master->instance_id().permanent_uuid();
+
+  SetCurLogIndex();
+
+  // Remove the master. We make sure this master process will not be killed
+  // because we are still holding a shared ref to it
+  ASSERT_OK_PREPEND(cluster_->ChangeConfig(remove_master.get(), consensus::REMOVE_SERVER),
+                    "Change Config returned error");
+
+  // REMOVE_SERVER causes the op index to increase by one.
+  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(++cur_log_index_));
+
+  --num_masters_;
+
+  VerifyLeaderMasterPeerCount();
+  VerifyNonLeaderMastersPeerCount();
+
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  // Now add back the same master and transfer ownership to the cluster
+  ASSERT_OK_PREPEND(cluster_->ChangeConfig(remove_master.get(), consensus::ADD_SERVER),
+                    "Change Config returned error : ");
+  ignore_result(remove_master.detach());
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  // Adding a server will generate two ChangeConfig calls. One to add a server as a learner, and one
+  // to promote this server to a voter once bootstrapping is finished.
+  cur_log_index_ += 2;
+  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(cur_log_index_));
+  ++num_masters_;
+
+  VerifyLeaderMasterPeerCount();
+  VerifyNonLeaderMastersPeerCount();
+
+  // Make sure other nodes do not start leader election
+  ExternalMaster* removed_master_ptr = nullptr;
+  for (int i = 0; i < cluster_->num_masters(); ++i) {
+    ExternalMaster* master = cluster_->master(i);
+    if (master->uuid() != removed_master_uuid) {
+      ASSERT_OK(cluster_->SetFlag(master, "do_not_start_election_test_only", "true"));
+    } else {
+      removed_master_ptr = master;
+    }
+  }
+  ASSERT_TRUE(removed_master_ptr != nullptr);
+
+  TabletServerErrorPB::Code dummy_err = TabletServerErrorPB::UNKNOWN_ERROR;
+  ASSERT_OK_PREPEND(cluster_->StepDownMasterLeader(&dummy_err),
+                    "Leader step down failed.");
+
+  // wait for leader election to complete
+  ASSERT_OK_PREPEND(WaitForMasterLeaderToBeReady(removed_master_ptr, 8 /* timeout secs*/),
+                        "Expected master did not become leader");
+
+}
+
 TEST_F(MasterChangeConfigTest, TestRemoveDeadMaster) {
   int non_leader_index = -1;
   Status s = cluster_->GetFirstNonLeaderMasterIndex(&non_leader_index);
@@ -391,6 +458,7 @@ TEST_F(MasterChangeConfigTest, TestChangeAllMasters) {
     ASSERT_OK_PREPEND(cluster_->ChangeConfig(new_masters[idx], consensus::ADD_SERVER),
                       "Add Change Config returned error");
     ++num_masters_;
+
     remove_master = cluster_->master(0);
     LOG(INFO) << "REMOVE " << remove_master->bound_rpc_hostport().ToString();
     ASSERT_OK_PREPEND(cluster_->ChangeConfig(remove_master, consensus::REMOVE_SERVER),

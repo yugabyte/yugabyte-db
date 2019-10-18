@@ -141,6 +141,7 @@ void SysCatalogTable::Shutdown() {
   inform_removed_master_pool_->Shutdown();
   raft_pool_->Shutdown();
   tablet_prepare_pool_->Shutdown();
+  append_pool_->Shutdown();
 }
 
 Status SysCatalogTable::ConvertConfigToMasterAddresses(
@@ -443,12 +444,20 @@ Status SysCatalogTable::GoIntoShellMode() {
                                           master_->fs_manager()->uuid(),
                                           yb::OpId()));
   RETURN_NOT_OK(tablet_peer()->tablet_metadata()->DeleteSuperBlock());
-  RETURN_NOT_OK(master_->fs_manager()->DeleteFileSystemLayout());
+  RETURN_NOT_OK(master_->fs_manager()->DeleteFileSystemLayout(true /*shell mode*/));
   std::shared_ptr<tablet::TabletPeer> null_tablet_peer(nullptr);
   std::atomic_store(&tablet_peer_, null_tablet_peer);
+
+  // Recreate the thread pools.
   inform_removed_master_pool_.reset();
   raft_pool_.reset();
   tablet_prepare_pool_.reset();
+  append_pool_.reset();
+
+  CHECK_OK(ThreadPoolBuilder("inform_removed_master").Build(&inform_removed_master_pool_));
+  CHECK_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
+  CHECK_OK(ThreadPoolBuilder("prepare").set_min_threads(1).Build(&tablet_prepare_pool_));
+  CHECK_OK(ThreadPoolBuilder("append").set_min_threads(1).Build(&append_pool_));
 
   return Status::OK();
 }

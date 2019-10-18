@@ -36,6 +36,7 @@
 
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/util.h"
+#include "yb/util/env.h"
 #include "yb/util/metrics.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -46,6 +47,18 @@ DECLARE_string(fs_data_dirs);
 DECLARE_string(fs_wal_dirs);
 
 namespace yb {
+
+  void EnsureDirExists(Env* env, const std::string& d) {
+    bool is_dir = false;
+    ASSERT_OK(env->IsDirectory(d, &is_dir));
+    ASSERT_TRUE(is_dir) << " dir should exist: " << d;
+  }
+
+  void EnsureDirDoesNotExist(Env* env, const std::string& d) {
+    bool is_dir = true;
+    ASSERT_NOK(env->IsDirectory(d, &is_dir)) << " dir should not exist: "
+                                             << d;
+  }
 
 class FsManagerTestBase : public YBTest {
  public:
@@ -112,26 +125,28 @@ class FsManagerTestBase : public YBTest {
     *out_opts = opts;
   }
 
-  void SetupForDelete(bool delete_logs_dir = false) {
-    string path = GetTestPath("new_fs_root");
-    ASSERT_OK(env_->CreateDir(path));
+  void SetupForDelete(bool shell_mode) {
+    string root_path = GetTestPath("new_fs_root");
+    ASSERT_OK(env_->CreateDir(root_path));
 
-    ReinitFsManager(vector <string> (), {path});
+    ReinitFsManager(vector <string> (), {root_path});
     ASSERT_OK(fs_manager()->CreateInitialFileSystemLayout());
-    ValidateRootDataPaths(path, "");
+    ValidateRootDataPaths(root_path, "");
 
-    log_dir_ = path + "/yb-data/logs";
+    string path = fs_manager()->GetDataRootDirs()[0];
+    std::unique_ptr<WritableFile> writer;
+    ASSERT_OK(env_->NewWritableFile(
+      JoinPathSegments(path, FsManager::kRocksDBDirName, kTestFileName), &writer));
+    // todo: also create wal, tablet-meta dir files
+    log_dir_ = root_path + "/yb-data/logs";
     ASSERT_OK(env_->CreateDir(log_dir_));
-    ASSERT_OK(fs_manager()->DeleteFileSystemLayout(delete_logs_dir));
+    ASSERT_OK(fs_manager()->DeleteFileSystemLayout(shell_mode));
   }
 
   void EnsureDataDirNotPresent() {
     std::vector <std::string> data_dirs = fs_manager()->GetDataRootDirs();
-    for (auto data_dir : data_dirs) {
-      bool is_dir = false;
-      ASSERT_NOK(env_->IsDirectory(data_dir, &is_dir));
-      ASSERT_FALSE(is_dir);
-    }
+    std::for_each(data_dirs.begin(), data_dirs.end(),
+                  [this](const string& d) { EnsureDirDoesNotExist(env_.get(), d); });
   }
 
   FsManager *fs_manager() const { return fs_manager_.get(); }
@@ -139,6 +154,7 @@ class FsManagerTestBase : public YBTest {
   string log_dir() const { return log_dir_; }
 
   const char* kServerType = "tserver_test";
+  const std::string kTestFileName = "a_new_tablet";
 
  private:
   std::unique_ptr<FsManager> fs_manager_;
@@ -267,23 +283,31 @@ TEST_F(FsManagerTestBase, TestPathsFromFlags) {
 }
 
 TEST_F(FsManagerTestBase, TestDataDirDeletedAndNotLogDir) {
-  SetupForDelete();
+  std::string path = GetTestPath("new_fs_root");
+  SetupForDelete(false /*shell mode*/);
 
   EnsureDataDirNotPresent();
-
-  bool is_dir = false;
-  ASSERT_OK(env_->IsDirectory(log_dir(), &is_dir));
-  ASSERT_TRUE(is_dir);
+  EnsureDirExists(env_.get(), log_dir());
 }
 
-TEST_F(FsManagerTestBase, TestLogDirAlsoDeleted) {
-  SetupForDelete(true);
 
-  EnsureDataDirNotPresent();
+TEST_F(FsManagerTestBase, TestDirDeletedShellMode) {
+  std::string path = GetTestPath("new_fs_root");
+  SetupForDelete(true /*shell mode*/);
 
-  bool is_dir = false;
-  ASSERT_NOK(env_->IsDirectory(log_dir(), &is_dir));
-  ASSERT_FALSE(is_dir);
+  EnsureDirExists(env_.get(), log_dir());
+
+  // make sure per tablet data is empty but root dir is present
+  ValidateRootDataPaths(FLAGS_fs_data_dirs, FLAGS_fs_wal_dirs);
+
+  string instance_file_path = fs_manager()->GetInstanceMetadataPath(path);
+  ASSERT_TRUE(env_->FileExists(instance_file_path));
+
+  string data_dir_path = fs_manager()->GetDataRootDirs()[0];
+  // ensure rocksdb dir exists but underlying tablet data does not exist
+  auto rocksdb_dir = JoinPathSegments(data_dir_path, FsManager::kRocksDBDirName);
+  EnsureDirExists(env_.get(), rocksdb_dir);
+  EnsureDirDoesNotExist(env_.get(), JoinPathSegments(rocksdb_dir, kTestFileName));
 }
 
 } // namespace yb
