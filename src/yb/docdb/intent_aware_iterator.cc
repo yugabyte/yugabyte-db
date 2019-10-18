@@ -827,6 +827,7 @@ Result<HybridTime> IntentAwareIterator::FindOldestRecord(
 
   RETURN_NOT_OK(status_);
   if (!valid()) {
+    VLOG(4) << "Returning kInvalid";
     return HybridTime::kInvalid;
   }
 
@@ -862,11 +863,15 @@ Result<HybridTime> IntentAwareIterator::FindOldestRecord(
   if (iter_valid_) {
     DocHybridTime regular_dht =
         VERIFY_RESULT(GetMatchingRegularRecordDocHybridTime(key_without_ht));
+    VLOG(4) << "Looking for Matching Regular Record found   =  " << regular_dht;
     if (regular_dht != DocHybridTime::kInvalid &&
         regular_dht.hybrid_time() > min_hybrid_time) {
       result.MakeAtMost(regular_dht.hybrid_time());
     }
+  } else {
+    VLOG(4) << "iter_valid_ is false";
   }
+  VLOG(4) << "Returning " << result;
   return result;
 }
 
