@@ -62,7 +62,7 @@ static std::string PrintContents(WriteBatch* b) {
   ScopedArenaIterator iter(mem->NewIterator(ReadOptions(), &arena));
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     ParsedInternalKey ikey;
-    memset(&ikey, 0, sizeof(ikey));
+    memset(static_cast<void*>(&ikey), 0, sizeof(ikey));
     EXPECT_TRUE(ParseInternalKey(iter->key(), &ikey));
     switch (ikey.type) {
       case kTypeValue:

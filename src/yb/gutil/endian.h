@@ -56,7 +56,7 @@ inline uint64 gbswap_64(uint64 host_int) {
   if (__builtin_constant_p(host_int)) {
     return __bswap_constant_64(host_int);
   } else {
-    register uint64 result;
+    uint64 result;
     __asm__("bswap %0" : "=r" (result) : "0" (host_int));
     return result;
   }
@@ -179,7 +179,7 @@ class LittleEndian {
   // The caller needs to guarantee that 1 <= len <= 8.
   static uint64 Load64VariableLength(const void * const p, int len) {
     assert(len >= 1 && len <= 8);
-    const char * const buf = static_cast<const char * const>(p);
+    const char * const buf = static_cast<const char *>(p);
     uint64 val = 0;
     --len;
     do {

@@ -191,7 +191,7 @@ class NODISCARD_CLASS Result {
     CHECK(success_checked_);
 #endif
     CHECK(!success_);
-    return status_;
+    return std::move(status_);
   }
 
   auto& get() const { return *get_ptr(); }
