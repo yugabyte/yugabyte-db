@@ -515,6 +515,16 @@ check_transaction_read_only(bool *newval, void **extra, GucSource source)
 	return true;
 }
 
+void
+assign_transaction_read_only(bool newval, void *extra)
+{
+	XactReadOnly = newval;
+	if (YBTransactionsEnabled())
+	{
+		YBCPgTxnManager_SetReadOnly(YBCGetPgTxnManager(), XactReadOnly);
+	}
+}
+
 /*
  * SET TRANSACTION ISOLATION LEVEL
  *
@@ -634,6 +644,16 @@ check_transaction_deferrable(bool *newval, void **extra, GucSource source)
 	}
 
 	return true;
+}
+
+void
+assign_transaction_deferrable(bool newval, void *extra)
+{
+  XactDeferrable = newval;
+	if (YBTransactionsEnabled())
+	{
+		YBCPgTxnManager_SetDeferrable(YBCGetPgTxnManager(), XactDeferrable);
+	}
 }
 
 /*

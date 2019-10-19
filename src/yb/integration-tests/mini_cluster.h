@@ -40,6 +40,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/integration-tests/mini_cluster_base.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/server/skewed_clock.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/util/env.h"

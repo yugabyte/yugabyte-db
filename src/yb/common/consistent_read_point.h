@@ -54,6 +54,9 @@ class ConsistentReadPoint {
   // Restart read.
   void Restart();
 
+  // Defer read hybrid time to global limit.
+  void Defer();
+
   // Update the clock used by this consistent read point with the propagated time.
   void UpdateClock(HybridTime propagated_hybrid_time);
 
