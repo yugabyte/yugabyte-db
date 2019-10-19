@@ -60,6 +60,10 @@ elseif("${COMPILER_VERSION_FULL}" MATCHES ".*[(]clang-[0-9.]+[)].*")
     COMPILER_VERSION "${COMPILER_VERSION_FULL}")
 
 # gcc
+elseif("${COMPILER_VERSION_FULL}" MATCHES ".*gcc version 8.*")
+  set(COMPILER_FAMILY "gcc8")
+  string(REGEX REPLACE ".*gcc version ([0-9\\.]+).*" "\\1"
+    COMPILER_VERSION "${COMPILER_VERSION_FULL}")
 elseif("${COMPILER_VERSION_FULL}" MATCHES ".*gcc version.*")
   set(COMPILER_FAMILY "gcc")
   string(REGEX REPLACE ".*gcc version ([0-9\\.]+).*" "\\1"
