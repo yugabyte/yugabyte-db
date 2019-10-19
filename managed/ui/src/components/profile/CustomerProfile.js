@@ -68,9 +68,13 @@ export default class CustomerProfile extends Component {
       name: Yup.string()
         .required('Enter name'),
     
+      // Regex below matches either the default value 'admin' or a generic email address
       email: Yup.string()
-        .required('Enter email')
-        .email('This is not a valid email'),  
+        .matches(
+          /(^admin$)|(^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$)/i,
+          'This is not a valid email or value'
+        )
+        .required('Enter email'),
 
       code: Yup.string()
         .required('Enter Environment name')
