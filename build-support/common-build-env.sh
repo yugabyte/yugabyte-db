@@ -268,7 +268,7 @@ readonly VALID_CMAKE_BUILD_TYPES=(
   release
 )
 
-readonly VALID_COMPILER_TYPES=( gcc clang zapcc )
+readonly VALID_COMPILER_TYPES=( gcc clang zapcc gcc8 )
 
 readonly VALID_LINKING_TYPES=( static dynamic )
 
@@ -1087,6 +1087,18 @@ find_compiler_by_type() {
       else
         cc_executable=gcc
         cxx_executable=g++
+      fi
+    ;;
+    gcc8)
+      if [[ -n ${YB_GCC8_PREFIX:-} ]]; then
+        if [[ ! -d $YB_GCC8_PREFIX/bin ]]; then
+          fatal "Directory YB_GCC_PREFIX/bin ($YB_GCC_PREFIX/bin) does not exist"
+        fi
+        cc_executable=$YB_GCC8_PREFIX/bin/gcc-8
+        cxx_executable=$YB_GCC8_PREFIX/bin/g++-8
+      else
+        cc_executable=$(which gcc-8)
+        cxx_executable=$(which g++-8)
       fi
     ;;
     clang)
