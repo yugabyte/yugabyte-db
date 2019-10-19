@@ -4,7 +4,7 @@ linkTitle: yb-admin
 description: yb-admin
 menu:
   latest:
-    identifier: yb-ctl
+    identifier: yb-admin
     parent: admin
     weight: 2410
 isTocNested: false
@@ -32,6 +32,46 @@ $ ./bin/yb-admin --help
 - certs_dir_name: The directory with certificates to use for secure server connections. Default value is `""`.
 
 ## Commands
+
+Available `yb-admin` commands:
+
+- [change_config](#change-config)
+- [list_tables](#list-tables)
+- [list_table_with_db_types](#list-table-with-db-types)
+- [list_tablets](#list-tablets)
+- [modify_placement_info](#modify-placement-info)
+- [add_read_replica_placement_info](#add-read-replica-placement-info)
+- [modify_read_replica_placement_info](#modify-read-replica-placement-info)
+- [delete_read_replica_placement_info](#delete-read-replica-placement-info)
+- [list_all_tablet_servers](#list_all_tablet_servers)
+- [list_all_masters](#list_all_masters)
+- [change_master_config](#change_master_config)
+- [dump_masters_state](#dump-masters-state)
+- [list_tablet_server_log_locations](#list-tablet-server-log-locations)
+- [list_tablets_for_tablet_server](#list-tablets-for-tablet-server)
+- [set_load_balancer_enabled](#set-load-balancer-enabled)
+- [get_load_move_completion](#get-load-move-completion)
+- [get_leader_blacklist_completion](#get-leader-blacklist-completion)
+- [get_is_load_balancer_idle](#get-is-load-balancer-idle)
+- [list_leader_counts](#list-leader-counts)
+- [get_universe_config](#get-universe-config)
+- [change_blacklist](#change-blacklist)
+- [change_leader_blacklist](#change-leader-blacklist)
+- [list_snapshots](#list-snapshots)
+- [create_snapshot](#create-snapshot)
+- [restore_snapshot](#restore-snapshot)
+- [export_snapshot](#export-snapshot)
+- [import_snapshot](#import-snapshot)
+- [delete_snapshot](#delete-snapshot)
+- [list_replica_type_counts ](#list-replica-type-counts )
+- [set_preferred_zones](#set-preferred-zones)
+- [rotate_universe_key](#rotate_universe-key)
+- [disable_encryption](#disable-encryption)
+- [is_encryption_enabled](#is-encryption-enabled)
+- [create_cdc_stream](#create-cdc-stream)
+- [setup_universe_replication](#setup-universe-replication)
+- [delete_universe_replication](#delete-universe-replication)
+- [set_universe_replication_enabled](#set-universe-replication-enabled)
 
 ### change_config
 
@@ -219,12 +259,6 @@ Add a read replica cluster to the master configuration.
 - *placement_info*: A comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
 - *replication_factor*: The number of replicas.
 
-#### Example
-
-```sh
-$ ./bin/yb-admin 
-```
-
 ### modify_read_replica_placement_info
 
 #### Syntax
@@ -254,69 +288,6 @@ Delete the read replica.
 ```
 
 - *placement_uuid*: The UUID of the read replica cluster.
-
-#### Example
-
-```sh
-./bin/yb-admin 
-```
-
-### delete_table
-
-Delete the specified table.
-
-#### Syntax
-
-```sh
-./bin/yb-admin delete_table <keyspace> <table_name>
-```
-
-- *keyspace*
-- *table_name*
-
-#### Example
-
-```sh
-./bin/yb-admin delete_table
-```
-
-### flush_table
-
-Flushes the specified table.
-
-#### Syntax
-
-```sh
-./bin/yb-admin flush_table <keyspace> <table_name> [timeout_in_seconds]
-```
-
-- *keyspace*
-- *table_name*
-- *timeout_in_seconds*: Timeout, in seconds, when the table is flushed. Default is `20`.
-
-#### Example
-
-```sh
-./bin/yb-admin flush_table
-```
-
-### compact_table
-
-#### Syntax
-
-```sh
-./bin/yb-admin compact_table <keyspace> <table_name> [timeout_in_seconds] (default 20)
-```
-
-- *keyspace*
-- *table_name*
-- *timeout_in_seconds*: 
-
-#### Example
-
-```sh
-./bin/yb-admin compact_table <keyspace> <table_name> [timeout_in_seconds] (default 20)
-```
 
 ### list_all_tablet_servers
 
