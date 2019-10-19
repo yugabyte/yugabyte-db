@@ -75,6 +75,10 @@ void ConsistentReadPoint::Restart() {
   read_time_.read = restart_read_ht_;
 }
 
+void ConsistentReadPoint::Defer() {
+  read_time_.read = read_time_.global_limit;
+}
+
 void ConsistentReadPoint::UpdateClock(HybridTime propagated_hybrid_time) {
   clock_->Update(propagated_hybrid_time);
 }

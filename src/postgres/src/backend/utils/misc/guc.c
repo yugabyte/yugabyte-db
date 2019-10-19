@@ -1449,7 +1449,7 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&XactReadOnly,
 		false,
-		check_transaction_read_only, NULL, NULL
+		check_transaction_read_only, assign_transaction_read_only, NULL
 	},
 	{
 		{"default_transaction_deferrable", PGC_USERSET, CLIENT_CONN_STATEMENT,
@@ -1468,7 +1468,7 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&XactDeferrable,
 		false,
-		check_transaction_deferrable, NULL, NULL
+		check_transaction_deferrable, assign_transaction_deferrable, NULL
 	},
 	{
 		{"row_security", PGC_USERSET, CLIENT_CONN_STATEMENT,

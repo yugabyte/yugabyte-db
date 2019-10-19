@@ -305,7 +305,6 @@ HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
     if (queue_.empty()) {
       result = clock_->Now();
       source = SafeTimeSource::kNow;
-      CHECK_GE(result, min_allowed) << LogPrefix();
       VLOG_WITH_PREFIX(2) << "DoGetSafeTime, Now: " << result;
     } else {
       result = queue_.front().Decremented();

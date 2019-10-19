@@ -50,7 +50,6 @@
 
 #include "yb/rpc/messenger.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/skewed_clock.h"
 
 #include "yb/tablet/tablet_peer.h"
 
