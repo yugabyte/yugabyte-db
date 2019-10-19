@@ -24,12 +24,13 @@ $ ./bin/yb-admin --help
 ## Syntax
 
 ```sh
-./bin/yb-admin [ -master_addresses server1:port,server2:port,server3:port,... ]  [ -timeout_ms <millisec> ] [ -certs_dir_name <dir_name> ]
+./bin/yb-admin [ -master_addresses server1:port,server2:port,server3:port,... ]  [ -timeout_ms <millisec> ] [ -certs_dir_name <dir_name> ] <command>
 ```
 
 - *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - timeout_ms: The RPC timeout, in milliseconds. Default value is `60000`. A value of `0` means don't wait; `-1` means wait indefinitely.
 - certs_dir_name: The directory with certificates to use for secure server connections. Default value is `""`.
+- command: The operation to be performed. See command for syntax details and examples.
 
 ## Commands
 
