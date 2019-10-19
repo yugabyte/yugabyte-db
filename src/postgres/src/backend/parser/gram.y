@@ -10663,13 +10663,11 @@ transaction_mode_item:
 									   makeIntConst(false, @1), @1); }
 			| DEFERRABLE
 				{
-					parser_ybc_signal_unsupported(@1, "TRANSACTION DEFERRABLE mode", 1125);
 					$$ = makeDefElem("transaction_deferrable",
 									 makeIntConst(true, @1), @1);
 				}
 			| NOT DEFERRABLE
 				{
-					parser_ybc_signal_unsupported(@1, "TRANSACTION NOT DEFERRABLE mode", 1125);
 					$$ = makeDefElem("transaction_deferrable",
 									 makeIntConst(false, @1), @1);
 				}
