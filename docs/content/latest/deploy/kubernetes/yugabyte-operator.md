@@ -1,7 +1,7 @@
 ---
-title: Yugabyte DB operator
-linkTitle: Yugabyte DB operator
-description: Yugabyte DB operator
+title: YugabyteDB operator
+linkTitle: YugabyteDB operator
+description: YugabyteDB operator
 menu:
   latest:
     identifier: yugabyte-operator
@@ -10,15 +10,15 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-Create and manage a Yugabyte DB cluster with a kubernetes native custom resource `ybcluster.yugabyte.com`. The custom resource definition & other necessary specs can be found in [Yugabyte k8s operator repository](https://github.com/yugaByte/yugabyte-k8s-operator/). This operator currently provides more configuration options as compared to the Rook operator. The Rook operator, in near future, will get these options too. See full list of configuration options [here](#Configuration-options).
+Create and manage a YugabyteDB cluster with a kubernetes native custom resource `ybcluster.yugabyte.com`. The custom resource definition & other necessary specs can be found in [Yugabyte k8s operator repository](https://github.com/yugaByte/yugabyte-k8s-operator/). This operator currently provides more configuration options as compared to the Rook operator. The Rook operator, in near future, will get these options too. See full list of configuration options [here](#Configuration-options).
 
 ## Pre-requisites
 
 Clone [yugabyte-k8s-operator](https://github.com/yugaByte/yugabyte-k8s-operator/) repository on your local computer. Change into the cloned directory & follow instructions as below.
 
-## Deploy a Yugabyte DB cluster with this operator
+## Deploy a YugabyteDB cluster with this operator
 
-To create a Yugabyte DB cluster, first we need to setup RBAC for operator & create the operator itself. Run the following command, from root of the repository, to do the same.
+To create a YugabyteDB cluster, first we need to setup RBAC for operator & create the operator itself. Run the following command, from root of the repository, to do the same.
 ```sh
 kubectl create -f deploy/operator.yaml
 ```
@@ -28,12 +28,12 @@ After a few seconds the operator should be up & running. Verify the operator sta
 kubectl -n yb-operator get po,deployment
 ```
 
-Register the custom resource that would represent Yugabyte DB cluster, i.e. `ybclusters.yugabyte.com`.
+Register the custom resource that would represent YugabyteDB cluster, i.e. `ybclusters.yugabyte.com`.
 ```sh
 kubectl create -f deploy/crds/yugabyte_v1alpha1_ybcluster_crd.yaml
 ```
 
-Finally create an instance of the custom resource with which the operator would create a Yugabyte DB cluster.
+Finally create an instance of the custom resource with which the operator would create a YugabyteDB cluster.
 ```sh
 kubectl create -f deploy/crds/yugabyte_v1alpha1_ybcluster_cr.yaml
 ```
