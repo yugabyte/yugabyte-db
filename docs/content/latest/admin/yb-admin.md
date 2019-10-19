@@ -24,8 +24,12 @@ $ ./bin/yb-admin --help
 ## Syntax
 
 ```sh
-./bin/yb-admin [-master_addresses server1:port,server2:port,server3:port,...]  [-timeout_ms <millisec>] [-certs_dir_name <dir_name>]
+./bin/yb-admin [ -master_addresses server1:port,server2:port,server3:port,... ]  [ -timeout_ms <millisec> ] [ -certs_dir_name <dir_name> ]
 ```
+
+- *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- timeout_ms: The RPC timeout, in milliseconds. Default value is `60000`. A value of `0` means don't wait; `-1` means wait indefinitely.
+- certs_dir_name: The directory with certificates to use for secure server connections. Default value is `""`.
 
 ## Commands
 
@@ -36,15 +40,16 @@ Changes the configuration of a tablet.
 #### Syntax
 
 ```
-./bin/yb-admin change_config <tablet_id> <ADD_SERVER|REMOVE_SERVER> <peer_uuid> [PRE_VOTER|PRE_OBSERVER]
+./bin/yb-admin change_config <tablet_id> <ADD_SERVER|REMOVE_SERVER> <peer_uuid> [ PRE_VOTER |PRE_OBSERVER ]
 ```
 
 - *tablet_id*: The identifier (ID) of the tablet.
 - ADD SERVER | REMOVE SERVER: Subcommand to add or remove the server.
 - *peer_uuid*: The UUID of the peer.
-- PRE_VOTER | PRE_OBSERVER: 
+- PRE_VOTER | PRE_OBSERVER: Role of the new peer joining the quorum.
 
 #### Example
+
 
 ### list_tablet_servers
 
@@ -64,35 +69,93 @@ Changes the configuration of a tablet.
 
 ### list_tables
 
+Prints a list of all tables.
+
 #### Syntax
 
 ```sh
 ./bin/yb-admin list_tables
 ```
 
+Returns tables in the following format:
+
+```
+<namespace>.<table_name>
+```
+
+- *namespace*: Name of the database or keyspace.
+- *table_name*: Name of the table.
+
 #### Example
 
 ```sh
-./bin/yb-admin list_tables
+$ ./bin/yb-admin list_tables
+```
+```
+...
+yugabyte.pg_range
+template1.pg_attrdef
+template0.pg_attrdef_adrelid_adnum_index
+template1.pg_conversion
+system_platform.pg_opfamily
+postgres.pg_opfamily_am_name_nsp_index
+system_schema.functions
+template0.pg_statistic
+system.local
+template1.pg_inherits_parent_index
+template1.pg_amproc
+system_platform.pg_rewrite
+yugabyte.pg_ts_config_cfgname_index
+template1.pg_trigger_tgconstraint_index
+template1.pg_class
+template1.pg_largeobject
+system_platform.sql_parts
+template1.pg_inherits
+...
 ```
 
 ### list_tables_with_db_types
 
+Prints a list of all tables, prefixed by the database type (`ysql`, `ycql`, or `yedis`)
+
 #### Syntax
 
 ```sh
 ./bin/yb-admin list_tables_with_db_types
 ```
 
+Returns tables in the following format:
+
+```
+<db_type>.<namespace>.<table_name>
+```
+
 #### Example
 
 ```sh
-./bin/yb-admin list_tables_with_db_types
+$ ./bin/yb-admin list_tables_with_db_types
+```
+
+```
+ycql.system_schema.indexes
+ycql.system_schema.keyspaces
+ycql.system_schema.sys.catalog
+ycql.system_schema.tables
+ycql.system_schema.triggers
+ycql.system_schema.types
+ycql.system_schema.views
+ysql.postgres.sql_features
+ysql.postgres.sql_implementation_info
+ysql.postgres.sql_languages
+ysql.postgres.sql_packages
+...
 ```
 
 ### list_tablets
 
-Lists the tablets.
+Lists all tablets and their replica locations for a particular table. 
+
+Useful to find out who the LEADER of a tablet is.
 
 #### Syntax
 
@@ -100,7 +163,7 @@ Lists the tablets.
 ./bin/yb-admin list_tablets <keyspace> <table_name> [max_tablets]
 ```
 
-- *keyspace*: The database or keyspace.
+- *keyspace*: The namespace, or name of the database or keyspace.
 - *table_name*: The name of the table.
 - *max_tablets*: The maximum number of tables to be returned. Default is `10`. Set to `0` to return all tablets.
 
@@ -111,9 +174,9 @@ $ ./bin/yb-admin list_tablets ydb test_tb 0
 ```
 
 ```
-Tablet UUID                      	Range                                                    	Leader
-cea3aaac2f10460a880b0b4a2a4b652a 	partition_key_start: "" partition_key_end: "\177\377"    	127.0.0.1:9100
-e509cf8eedba410ba3b60c7e9138d479 	partition_key_start: "\177\377" partition_key_end: ""    
+Tablet UUID                       Range                                                     Leader
+cea3aaac2f10460a880b0b4a2a4b652a  partition_key_start: "" partition_key_end: "\177\377"     127.0.0.1:9100
+e509cf8eedba410ba3b60c7e9138d479  partition_key_start: "\177\377" partition_key_end: ""
 ```
 
 ### modify_placement_info
@@ -126,13 +189,13 @@ Modifies the placement information (cloud, region, and zone) for a deployment.
 ./bin/yb-admin modify_placement_info <placement_info> <replication_factor>
 ```
 
-- *placement_info*: A comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
+- *placement_info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
 - *replication_factor*: The number of replicas for each tablet.
 
 #### Example
 
 ```sh
-./bin/yb-admin yb-admin --master_addresses $MASTER_RPC_ADDRS \
+$ ./bin/yb-admin yb-admin --master_addresses $MASTER_RPC_ADDRS \
     modify_placement_info  \
     aws.us-west.us-west-2a,aws.us-west.us-west-2b,aws.us-west.us-west-2c 3
 ```
@@ -153,13 +216,13 @@ Add a read replica cluster to the master configuration.
 ./bin/yb-admin add_read_replica_placement_info <placement_info> <replication_factor>
 ```
 
-- *placement_info*:
+- *placement_info*: A comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
 - *replication_factor*: The number of replicas.
 
 #### Example
 
 ```sh
-./bin/yb-admin 
+$ ./bin/yb-admin 
 ```
 
 ### modify_read_replica_placement_info
@@ -167,12 +230,12 @@ Add a read replica cluster to the master configuration.
 #### Syntax
 
 ```sh
-./bin/yb-admin modify_read_replica_placement_info <placement_info> <replication_factor> [placement_uuid]
+./bin/yb-admin modify_read_replica_placement_info <placement_info> <replication_factor> [ <placement_uuid> ]
 ```
 
-- *placement_info*:
+- *placement_info*: A comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
 - *replication_factor*: The number of replicas.
-- *placement_uuid*: 
+- *placement_uuid*: The UUID of the read replica cluster.
 
 #### Example
 
@@ -190,7 +253,7 @@ Delete the read replica.
 ./bin/yb-admin delete_read_replica_placement_info <placement_uuid> 
 ```
 
-- *placement_uuid*: The UUID of the read replica placement.
+- *placement_uuid*: The UUID of the read replica cluster.
 
 #### Example
 
@@ -307,6 +370,7 @@ Master UUID         RPC Host/Port          State      Role
 - ADD_SERVER | REMOVE_SERVER: Adds or removes the server node.
 - *ip_addr*: The IP address of the server node. 
 - *port*: The port of the server node.
+- `0` | `1`: Disabled (`0`) or enabled (`0`). Default is `1`.
 
 #### Example
 
@@ -428,34 +492,6 @@ Master UUID         RPC Host/Port          State      Role
 ./bin/yb-admin list_leader_counts <keyspace> <table_name>
 ```
 
-### setup_redis_table
-
-#### Syntax
-
-```sh
-./bin/yb-admin setup_redis_table
-```
-
-#### Example
-
-```sh
-./bin/yb-admin setup_redis_table
-```
-
-### drop_redis_table
-
-#### Syntax
-
-```sh
-./bin/yb-admin drop_redis_table
-```
-
-#### Example
-
-```sh
-./bin/yb-admin drop_redis_table
-```
-
 ### get_universe_config
 
 Gets the configuration for the universe.
@@ -544,8 +580,6 @@ Creates a snapshot.
 - *table_name*: Specifies the table name.
 - *flush_timeout_in_seconds*: Specifies duration, in seconds, before flushing snapshot. Default value is `60`. Set to `0` to skip flushing.
 
-####
-
 #### Example
 
 ```
@@ -564,6 +598,8 @@ To see if the snapshot creation has finished, run the [`yb-admin list_snapshots`
 
 ### restore_snapshot
 
+Restores the specified snapshot.
+
 #### Syntax
 
 ```sh
@@ -578,7 +614,7 @@ To see if the snapshot creation has finished, run the [`yb-admin list_snapshots`
 
 ### export_snapshot
 
-Exports a metadata for a snapshot to a file.
+Generates a metadata file for the given snapshot, listing all the relevant internal UUIDs for various objects (table, tablet, etc.).
 
 #### Syntax
 
@@ -586,7 +622,7 @@ Exports a metadata for a snapshot to a file.
 ./bin/yb-admin export_snapshot <snapshot_id> <file_name>
 ```
 
-- *snapshot_id*: Identifier (ID) for the snapshot
+- *snapshot_id*: Identifier (ID) for the snapshot.
 - *file_name*: Name of the the file to contain the metadata. Recommended file extension is `.snapshot`.
 
 #### Example
@@ -602,7 +638,7 @@ Snapshot meta data was saved into file: test_tb.snapshot
 
 ### import_snapshot
 
-Imports a snapshot.
+Imports the specified snapshot metadata file.
 
 #### Syntax
 
@@ -642,6 +678,8 @@ Snapshot         	4963ed18fc1e4f1ba38c8fcf4058b295 	4963ed18fc1e4f1ba38c8fcf4058
 
 ### delete_snapshot
 
+Deletes the snapshot information, usually cleaned up at the end, since this is supposed to be a transient state.
+
 #### Syntax
 
 ```sh
@@ -662,21 +700,12 @@ Snapshot         	4963ed18fc1e4f1ba38c8fcf4058b295 	4963ed18fc1e4f1ba38c8fcf4058
 ./bin/yb-admin list_replica_type_counts <keyspace> <table_name>
 ```
 
-#### Example
-
-```sh
-./bin/yb-admin list_replica_type_counts <keyspace> <table_name>
-```
+- *keyspace*: The name of the database or keyspace.
+- *table_name*: The name of the table.
 
 ### set_preferred_zones
 
 #### Syntax
-
-```sh
-./bin/yb-admin set_preferred_zones <cloud.region.zone> [<cloud.region.zone>]...
-```
-
-#### Example
 
 ```sh
 ./bin/yb-admin set_preferred_zones <cloud.region.zone> [<cloud.region.zone>]...
@@ -689,7 +718,7 @@ Rotates the universe key.
 #### Syntax
 
 ```sh
-./bin/yb-admin rotate_universe_key key_path
+./bin/yb-admin rotate_universe_key <key_path>
 ```
 
 - *key_path*: The path of the universe key.
@@ -820,7 +849,7 @@ Sets
 ```
 
 - *producer_universe_uuid*: The UUID of the producer universe.
-- `0` | `1`:
+- `0` | `1`: Disabled (`0`) or enabled (`0`). Default is `1`.
 
 #### Example
 
