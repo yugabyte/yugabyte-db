@@ -21,12 +21,12 @@ from build_definitions import *
 
 
 PROJECT_CONFIG = """
-libraries = {4} ;
+libraries = {5} ;
 
-using {0} : :
-    {1} :
-    {2}
-    {3} ;
+using {0} : {1} :
+    {2} :
+    {3}
+    {4} ;
 """
 
 
@@ -59,8 +59,14 @@ class BoostDependency(Dependency):
             cxx_flags = builder.compiler_flags + builder.cxx_flags
             if '-nostdinc++' in cxx_flags:
                 cxx_flags.remove('-nostdinc++')
+            compiler_type = builder.compiler_type
+            compiler_version = ''
+            if compiler_type == 'gcc8':
+                compiler_type = 'gcc'
+                compiler_version = '8'
             out.write(PROJECT_CONFIG.format(
-                    builder.compiler_type,
+                    compiler_type,
+                    compiler_version,
                     builder.cxx_wrapper,
                     ' '.join(['<compileflags>' + flag for flag in cxx_flags]),
                     ' '.join(['<linkflags>' + flag for flag in cxx_flags + builder.ld_flags]),
