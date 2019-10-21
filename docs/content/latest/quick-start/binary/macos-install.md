@@ -1,16 +1,17 @@
 ## Prerequisites
 
-1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 (Sierra) or later.
+1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
 
 2. Verify that you have Python 2 installed. Support for Python 3 is in the works.
 
     ```sh
     $ python --version
     ```
-    
+
     ```
     Python 2.7.10
     ```
+
 3. `wget` or `curl` is available.
 
     The instructions use the `wget` command to download files. If you prefer to use `curl` (included in macOS), you can replace `wget` with `curl -O`.

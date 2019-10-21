@@ -1,17 +1,40 @@
 ---
 title: YSQL authentication
 linkTitle: YSQL authentication
-description: YSQL authentication
+description: Authentication
 headcontent: Identify that your YSQL users are who they say they are
 image: /images/section_icons/secure/authentication.png
 menu:
   latest:
+    name: Authentication
     identifier: ysql-authentication
     parent: authentication
-    weight: 10
+    weight: 721
+type: page
 isTocNested: true
 showAsideToc: true
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/secure/authentication/ysql-authentication" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+  <li >
+    <a href="/latest/secure/authentication/ycql-authentication" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+  <li>
+    <a href="/latest/secure/authentication/yedis-authentication" class="nav-link">
+      <i class="icon-redis" aria-hidden="true"></i>
+      YEDIS
+    </a>
+  </li>
+</ul>
 
 ## Overview
 
@@ -23,7 +46,7 @@ Users and roles can be created with superuser, non-superuser, and login privileg
 
 YSQL authorization is the process of access control created by granting or revoking privileges to YSQL users and roles, see [Authorization](../authorization). Privileges are managed using [`GRANT`](../../../api/ysql/commands/dcl_grant/), [`REVOKE`](../../../api/ysql/commands/dcl_revoke/), [`CREATE ROLE`](../../../api/ysql/commands/dcl_create_role/), [`ALTER ROLE`](../../../api/ysql/commands/dcl_alter_role/), and [`DROP ROLE`](../../../api/ysql/commands/dcl_drop_role/).
 
-## Specify a password for the default user
+## Specify default user password
 
 When you start a YugabyteDB cluster, the YB-Master and YB-TServer services are launched using the default user, named `yugabyte`, and then this user is connected to the default database, also named `yugabyte`. When YSQL authentication is enabled, all users (including `yugabyte`) require a password to log into a YugabyteDB database. Before you start YugabyteDB with YSQL authentication enabled, you need to make sure that the `yugabyte` user has a password. 
 
@@ -42,7 +65,7 @@ Assuming that you've successfully added a password for the `yugabyte` user, you 
 
 ## Enable YSQL authentication
 
-### Start local clusters with YSQL authentication enabled
+### Start local clusters
 
 To enable YSQL authentication in your local YugabyteDB clusters, you can use the [`--tserver_flags` option](../../../admin/yb-ctl#--tserver-flags) with the `yb-ctl create`, `yb-ctl start`, and `yb-ctl restart` commands to add the [`--ysql_auth_enabled` option](../../../admin/yb-tserver#ysql-auth-enabled).
 
@@ -64,7 +87,7 @@ To restart your cluster, you can run the `yb-ctl restart` command with  the `--t
 ./bin/yb-ctl restart --tserver_flags "ysql_enable_auth=true"
 ```
 
-### Start YB-TServer services with YSQL authentication enabled
+### Start YB-TServer services
 
 To enable YSQL authentication in deployable YugabyteDB clusters, you need to start your `yb-tserver` services using the [`--ysql_enable_auth` option](../../admin/yb-tserver#ysql-enable-auth). Your command should look similar to this command:
 
@@ -80,7 +103,7 @@ http://localhost:1313/latest/admin/yb-tserver/#ysql-enable-auth
 
 You can also enable YSQL authentication by adding the `--ysql_enable_auth=true` to the YB-TServer configuration file (`tserver.conf`). For more information, see [Start YB-TServers](../../deploy/manual-deployment/start-tservers/).
 
-## Open the YSQL shell (ysqlsh) using the default admin credentials
+## Open the YSQL shell (ysqlsh)
 
 A YugabyteDB cluster with authentication enabled starts with the default admin user of `yugabyte` and the default database of `yugabyte`. You can connect to the cluster and use the YSQL shell by running the following `ysqlsh` command from the YugabyteDB home directory:
 

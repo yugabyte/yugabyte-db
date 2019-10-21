@@ -9,6 +9,7 @@ aliases:
 menu:
   latest:
     identifier: tls-encryption
+    parent: secure
     weight: 720
 ---
 

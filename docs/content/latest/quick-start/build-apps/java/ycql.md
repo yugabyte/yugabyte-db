@@ -1,7 +1,7 @@
 ---
-title: Build a Java App
-linkTitle: Build a Java App
-description: Build a Java App
+title: Build a Java app
+linkTitle: Build a Java app
+description: Build a Java application
 menu:
   latest:
     parent: build-apps
@@ -34,8 +34,6 @@ showAsideToc: true
   </li>
 </ul>
 
-
-
 ## Maven
 
 To build your Java application using the YugabyteDB Cassandra driver, add the following Maven dependency to your application:
@@ -48,7 +46,6 @@ To build your Java application using the YugabyteDB Cassandra driver, add the fo
 </dependency>
 ```
 
-
 ## Working Example
 
 ### Prerequisites
@@ -58,8 +55,7 @@ This tutorial assumes that you have:
 - installed YugabyteDB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../../quick-start/test-cassandra/).
 - installed JDK version 1.8+ and maven 3.3+
 
-
-### Creating the maven build file
+### Create the Maven build file
 
 Create a maven build file `pom.xml` and add the following content into it.
 
@@ -178,8 +174,7 @@ public class YBCqlHelloWorld {
 }
 ```
 
-
-### Building and running the app
+### Build and run the application
 
 To build the application, just run the following command.
 
@@ -187,7 +182,7 @@ To build the application, just run the following command.
 $ mvn package
 ```
 
-To run the program, do the following.
+To run the program, run the following command.
 
 ```sh
 $ java -cp "target/hello-world-1.0.jar:target/lib/*" com.yugabyte.sample.apps.YBCqlHelloWorld
