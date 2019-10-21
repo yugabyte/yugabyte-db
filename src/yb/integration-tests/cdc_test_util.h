@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_UTIL_CDC_TEST_UTIL_H
-#define ENT_SRC_YB_UTIL_CDC_TEST_UTIL_H
+#ifndef YB_INTEGRATION_TESTS_CDC_TEST_UTIL_H
+#define YB_INTEGRATION_TESTS_CDC_TEST_UTIL_H
 
 #include "yb/common/wire_protocol.h"
 #include "yb/cdc/cdc_service.pb.h"
@@ -41,4 +41,4 @@ void VerifyWalRetentionTime(yb::MiniCluster* cluster,
 } // namespace cdc
 } // namespace yb
 
-#endif // ENT_SRC_YB_UTIL_CDC_TEST_UTIL_H
+#endif // YB_INTEGRATION_TESTS_CDC_TEST_UTIL_H

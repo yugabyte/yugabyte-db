@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_UTIL_UNIVERSE_KEY_MANAGER_H
-#define ENT_SRC_YB_UTIL_UNIVERSE_KEY_MANAGER_H
+#ifndef YB_UTIL_UNIVERSE_KEY_MANAGER_H
+#define YB_UTIL_UNIVERSE_KEY_MANAGER_H
 
 #include "yb/util/encryption.pb.h"
 #include "yb/util/encryption_util.h"
@@ -51,4 +51,4 @@ class UniverseKeyManager {
 } // namespace enterprise
 } // namespace yb
 
-#endif // ENT_SRC_YB_UTIL_UNIVERSE_KEY_MANAGER_H
+#endif // YB_UTIL_UNIVERSE_KEY_MANAGER_H

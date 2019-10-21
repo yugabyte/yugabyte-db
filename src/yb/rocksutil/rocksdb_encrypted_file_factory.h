@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_ROCKSUTIL_ROCKSDB_ENCRYPTED_FILE_FACTORY_H
-#define ENT_SRC_YB_ROCKSUTIL_ROCKSDB_ENCRYPTED_FILE_FACTORY_H
+#ifndef YB_ROCKSUTIL_ROCKSDB_ENCRYPTED_FILE_FACTORY_H
+#define YB_ROCKSUTIL_ROCKSDB_ENCRYPTED_FILE_FACTORY_H
 
 #include "yb/rocksdb/env.h"
 
@@ -27,4 +27,4 @@ std::unique_ptr<rocksdb::Env> NewRocksDBEncryptedEnv(std::unique_ptr<HeaderManag
 } // namespace yb
 
 
-#endif // ENT_SRC_YB_ROCKSUTIL_ROCKSDB_ENCRYPTED_FILE_FACTORY_H
+#endif // YB_ROCKSUTIL_ROCKSDB_ENCRYPTED_FILE_FACTORY_H

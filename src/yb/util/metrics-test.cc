@@ -311,8 +311,7 @@ TEST_F(MetricsTest, TestDumpJsonPrototypes) {
   int num_entities = d["entities"].Size();
   LOG(INFO) << "Parsed " << num_metrics << " metrics and " << num_entities << " entities";
   ASSERT_GT(num_metrics, 5);
-  // Expected entities: server, tablet, test_entity.
-  ASSERT_EQ(num_entities, 3);
+  ASSERT_EQ(num_entities, 2);
 
   // Spot-check that some metrics were properly registered and that the JSON was properly
   // formed.

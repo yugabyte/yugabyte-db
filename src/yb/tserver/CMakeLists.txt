@@ -214,6 +214,7 @@ target_link_libraries(tserver_test_util tablet_test_util tserver yb_test_util)
 #########################################
 
 set(YB_TEST_LINK_LIBS
+  rpc_test_util
   tserver
   tserver_test_util
   yb_client # yb::client::YBTableName

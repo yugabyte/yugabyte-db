@@ -17,12 +17,16 @@
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
 #include "yb/client/txn-test-base.h"
+
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
+
+#include "yb/integration-tests/cdc_test_util.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tserver/mini_tablet_server.h"
-#include "yb/util/cdc_test_util.h"
+
 #include "yb/util/slice.h"
 
 namespace yb {

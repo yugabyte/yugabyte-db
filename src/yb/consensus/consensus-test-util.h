@@ -54,6 +54,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_test_util.h"
 #include "yb/server/clock.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
@@ -614,7 +615,7 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
   explicit LocalTestPeerProxyFactory(TestPeerMapManager* peers)
     : peers_(peers) {
     CHECK_OK(ThreadPoolBuilder("test-peer-pool").set_max_threads(3).Build(&pool_));
-    messenger_ = CreateAutoShutdownMessengerHolder(
+    messenger_ = rpc::CreateAutoShutdownMessengerHolder(
         CHECK_RESULT(rpc::MessengerBuilder("test").Build()));
   }
 
@@ -635,7 +636,7 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
 
  private:
   gscoped_ptr<ThreadPool> pool_;
-  AutoShutdownMessengerHolder messenger_;
+  rpc::AutoShutdownMessengerHolder messenger_;
   TestPeerMapManager* const peers_;
     // NOTE: There is no need to delete this on the dctor because proxies are externally managed
   vector<LocalTestPeerProxy*> proxies_;

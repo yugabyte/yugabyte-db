@@ -71,6 +71,7 @@
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_test_util.h"
 #include "yb/server/metadata.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -1547,7 +1548,7 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
 
   // Since we waited before, hopefully all replicas will be up to date
   // and we can just promote another replica.
-  auto client_messenger = CreateAutoShutdownMessengerHolder(
+  auto client_messenger = rpc::CreateAutoShutdownMessengerHolder(
       ASSERT_RESULT(CreateMessenger("client")));
   int new_leader_idx = -1;
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {

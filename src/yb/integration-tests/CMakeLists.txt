@@ -66,9 +66,12 @@ add_dependencies(integration-tests
   yb-tserver
   yb-master)
 
+add_library(cdc_test_util cdc_test_util.cc)
+target_link_libraries(cdc_test_util yb_test_util cdc_service_proto tserver)
+
 # Tests
 set(YB_TEST_LINK_LIBS
-    integration-tests yb_client yb_tools_util ql-dml-test-base ${YB_MIN_TEST_LIBS})
+    integration-tests yb_client yb_tools_util ql-dml-test-base rpc_test_util ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(alter_table-test)
 ADD_YB_TEST(alter_table-randomized-test)
