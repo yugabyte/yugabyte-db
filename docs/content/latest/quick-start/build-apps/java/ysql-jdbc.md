@@ -1,6 +1,6 @@
 ---
-title: Build a Java application
-linkTitle: Build a Java application
+title: Build a Java app
+linkTitle: Build a Java app
 description: Build a Java application
 aliases:
   - /develop/client-drivers/java/
@@ -41,7 +41,7 @@ showAsideToc: true
 
 ## Maven
 
-To build your Java application using the PostgreSQL JDBC driver, add the following Maven dependency to your application:
+To build your Java application using the [PostgreSQL JDBC driver](https://jdbc.postgresql.org/), add the following Maven dependency to your application:
 
 ```mvn
 <dependency>
@@ -57,8 +57,9 @@ To build your Java application using the PostgreSQL JDBC driver, add the followi
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
-- installed JDK version 1.8+ and maven 3.3+
+- YugabyteDB up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in the [Quick Start guide](../../../../quick-start/).
+- Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
+- [Apache Maven](https://maven.apache.org/index.html) 3.3, or later, is installed.
 
 ### Create the Maven build file
 
@@ -123,7 +124,7 @@ Create a maven build file `pom.xml` and add the following content into it.
 
 ### Write an application
 
-Create the appropriate directory structure as expected by maven.
+Create the appropriate directory structure as expected by Maven.
 
 ```sh
 $ mkdir -p src/main/java/com/yugabyte/sample/apps
@@ -185,13 +186,13 @@ public class YBSqlHelloWorld {
 
 ### Build and run the application
 
-To build the application, just run the following command.
+To build the application, run the following command.
 
 ```sh
 $ mvn package
 ```
 
-To run the program, do the following.
+To run the program, run the following command.
 
 ```sh
 $ java -cp "target/hello-world-1.0.jar:target/lib/*" com.yugabyte.sample.apps.YBSqlHelloWorld

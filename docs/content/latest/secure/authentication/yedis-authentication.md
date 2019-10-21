@@ -1,19 +1,40 @@
 ---
 title: YEDIS authentication
 linkTitle: YEDIS authentication
-description: YEDIS authentication
-headcontent: Identify that your YEDIS users are who they say they are
+description: Authentication
+headcontent: Identify that your YSQL users are who they say they are
 image: /images/section_icons/secure/authentication.png
-aliases:
-  - /secure/authentication/yedis
 menu:
   latest:
+    name: Authentication
     identifier: yedis-authentication
     parent: authentication
-    weight: 40
+    weight: 721
+type: page
 isTocNested: true
 showAsideToc: true
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/secure/authentication/ysql-authentication" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+  <li >
+    <a href="/latest/secure/authentication/ycql-authentication" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+  <li>
+    <a href="/latest/secure/authentication/yedis-authentication" class="nav-link active">
+      <i class="icon-redis" aria-hidden="true"></i>
+      YEDIS
+    </a>
+  </li>
+</ul>
 
 ## Overview
 

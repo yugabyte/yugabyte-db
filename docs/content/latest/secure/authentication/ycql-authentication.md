@@ -1,17 +1,40 @@
 ---
 title: YCQL authentication
 linkTitle: YCQL authentication
-description: YCQL authentication
+description: Authentication
 headcontent: Identify that your YCQL users are who they say they are
 image: /images/section_icons/secure/authentication.png
 menu:
   latest:
+    name: Authentication
     identifier: ycql-authentication
     parent: authentication
-    weight: 30
+    weight: 721
+type: page
 isTocNested: true
 showAsideToc: true
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/secure/authentication/ysql-authentication" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+  <li >
+    <a href="/latest/secure/authentication/ycql-authentication" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+  <li>
+    <a href="/latest/secure/authentication/yedis-authentication" class="nav-link">
+      <i class="icon-redis" aria-hidden="true"></i>
+      YEDIS
+    </a>
+  </li>
+</ul>
 
 ## Overview
 

@@ -9,6 +9,7 @@ aliases:
 menu:
   latest:
     identifier: authorization
+    parent: secure
     weight: 715
 ---
 
