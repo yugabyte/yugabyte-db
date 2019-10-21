@@ -1,7 +1,7 @@
 ---
-title: Encryption at Rest
-linkTitle: Encryption at Rest
-description: Encryption at Rest
+title: Encryption at rest
+linkTitle: Encryption at rest
+description: Encryption at rest
 headcontent: Enable encryption at rest with a user generated key
 image: /images/section_icons/secure/prepare-nodes.png
 aliases:

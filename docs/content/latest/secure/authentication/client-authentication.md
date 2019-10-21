@@ -1,14 +1,14 @@
 ---
-title: YSQL client connections
-linkTitle: YSQL client connections
-description: YSQL client connections
+title: Client authentication
+linkTitle: Client authentication
+description: Client authentication
 headcontent: Configure fine-grained access control for YSQL clients
 image: /images/section_icons/secure/authentication.png
 menu:
   latest:
-    identifier: ysql-client-authentication
+    identifier: client-authentication
     parent: authentication
-    weight: 20
+    weight: 730
 isTocNested: true
 showAsideToc: true
 ---
