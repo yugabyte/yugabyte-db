@@ -94,7 +94,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       if (taskParams().encryptionKeyFilePath != null) {
-        createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.COPY_KEY_FILE);
+        createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.COPY_KEY_FILE, pi);
 
         // Enable encryption-at-rest if key file is passed in
         createEnableEncryptionAtRestTask(taskParams().encryptionKeyFilePath, true)
