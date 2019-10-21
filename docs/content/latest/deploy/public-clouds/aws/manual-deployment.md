@@ -331,6 +331,7 @@ This step prepares the config files for the 3 masters. The config files need to,
     echo --placement_cloud=$CLOUD               >> $CONFIG_FILE
     echo --placement_region=$REGION             >> $CONFIG_FILE
     echo --placement_zone=$AZ                   >> $CONFIG_FILE
+    echo --enable_ysql                          >> $CONFIG_FILE
 "
 )
 ```
@@ -347,6 +348,7 @@ This step prepares the config files for the 3 masters. The config files need to,
     echo --placement_cloud=$CLOUD               >> $CONFIG_FILE
     echo --placement_region=$REGION             >> $CONFIG_FILE
     echo --placement_zone=$AZ                   >> $CONFIG_FILE
+    echo --enable_ysql                          >> $CONFIG_FILE
 "
 )
 ```
@@ -363,6 +365,7 @@ This step prepares the config files for the 3 masters. The config files need to,
     echo --placement_cloud=$CLOUD               >> $CONFIG_FILE
     echo --placement_region=$REGION             >> $CONFIG_FILE
     echo --placement_zone=$AZ                   >> $CONFIG_FILE
+    echo --enable_ysql                          >> $CONFIG_FILE
 "
 )
 ```
@@ -396,6 +399,8 @@ done
       echo --placement_cloud=$CLOUD                           >> $CONFIG_FILE
       echo --placement_region=$REGION                         >> $CONFIG_FILE
       echo --placement_zone=$AZ                               >> $CONFIG_FILE
+      echo --enable_ysql                                      >> $CONFIG_FILE
+      echo --pgsql_proxy_bind_address=$ip:5433                >> $CONFIG_FILE
     "
  done
 )
@@ -417,6 +422,8 @@ done
       echo --placement_cloud=$CLOUD                           >> $CONFIG_FILE
       echo --placement_region=$REGION                         >> $CONFIG_FILE
       echo --placement_zone=$AZ                               >> $CONFIG_FILE
+      echo --enable_ysql                                      >> $CONFIG_FILE
+      echo --pgsql_proxy_bind_address=$ip:5433                >> $CONFIG_FILE
     "
  done
 )
@@ -438,6 +445,8 @@ done
       echo --placement_cloud=$CLOUD                           >> $CONFIG_FILE
       echo --placement_region=$REGION                         >> $CONFIG_FILE
       echo --placement_zone=$AZ                               >> $CONFIG_FILE
+      echo --enable_ysql                                      >> $CONFIG_FILE
+      echo --pgsql_proxy_bind_address=$ip:5433                >> $CONFIG_FILE
     "
  done
 )
@@ -568,8 +577,45 @@ replication_info {
   }
 }
 ```
+## 8. Test Postgresql Compatible YSQL API
 
-## 8. Test Cassandra Compatible YCQL API
+Connect to the cluster using the `ysqlsh` utility that comes pre-bundled in the `bin` directory. 
+If you need to try `ysqlsh` from a different node, you can download `ysqlsh` using instructions documented [here](../../../develop/tools/ysqlsh/).
+
+From any node, execute the following command.
+
+```sh
+$ cd ~/tserver
+$ ./bin/ysqlsh <any-node-ip>
+```
+
+```sql
+CREATE DATABASE yb_test;
+
+\connect yb_test;
+
+CREATE TABLE yb_table(id bigserial PRIMARY KEY);
+
+INSERT INTO yb_table(id) VALUES (1);
+INSERT INTO yb_table(id) VALUES (2);
+INSERT INTO yb_table(id) VALUES (3);
+
+SELECT * FROM yb_table;
+```
+
+Output should be the following:
+
+```sql
+ id 
+----
+  3
+  2
+  1
+(3 rows)
+```
+
+
+## 9. Test Cassandra Compatible YCQL API
 
 ### Using cqlsh
 
@@ -657,7 +703,7 @@ When workload is running, verify active YCQL or YEDIS RPCs from this links on th
 http://<any-tserver-ip>:9000/utilz
 ```
 
-## 9. Test Redis-compatible YEDIS API
+## 10. Test Redis-compatible YEDIS API
 
 ### Prerequisite
 
@@ -692,7 +738,7 @@ $ ./bin/redis-cli -h <any-node-ip>
 > GET key1
 ```
 
-## 10. Stop cluster and delete data
+## 11. Stop cluster and delete data
 
 Following commands can be used to stop the cluster as well as delete the data directories.
 
