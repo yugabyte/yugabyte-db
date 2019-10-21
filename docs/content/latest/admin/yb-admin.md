@@ -11,7 +11,9 @@ isTocNested: false
 showAsideToc: true
 ---
 
-The `yb-admin` utility, located in the bin directory of YugabyteDB home, provides a command line interface for administering local clusters. It invokes the [`yb-master`](../admin/yb-master/) and [`yb-tserver`](../admin/yb-tserver/) binaries to perform the necessary administration.
+The `yb-admin` utility, located in the `bin` directory of YugabyteDB home, provides a command line interface for administering clusters.
+
+It invokes the [`yb-master`](../admin/yb-master/) and [`yb-tserver`](../admin/yb-tserver/) binaries to perform the necessary administration.
 
 ## Online help
 
@@ -24,13 +26,14 @@ $ ./bin/yb-admin --help
 ## Syntax
 
 ```sh
-./bin/yb-admin [ -master_addresses server1:port,server2:port,server3:port,... ]  [ -timeout_ms <millisec> ] [ -certs_dir_name <dir_name> ] <command>
+./bin/yb-admin [ -master_addresses server1:port,server2:port,server3:port,... ]  [ -timeout_ms <millisec> ] [ -certs_dir_name <dir_name> ] <command> [ command_options ]
 ```
 
 - *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - timeout_ms: The RPC timeout, in milliseconds. Default value is `60000`. A value of `0` means don't wait; `-1` means wait indefinitely.
 - certs_dir_name: The directory with certificates to use for secure server connections. Default value is `""`.
-- command: The operation to be performed. See command for syntax details and examples.
+- *command*: The operation to be performed. See command for syntax details and examples.
+- *command_options*: Configuration options, or flags, that can be applied to the command. 
 
 ## Commands
 
@@ -54,7 +57,6 @@ Available `yb-admin` commands:
 - [get_load_move_completion](#get-load-move-completion)
 - [get_leader_blacklist_completion](#get-leader-blacklist-completion)
 - [get_is_load_balancer_idle](#get-is-load-balancer-idle)
-- [list_leader_counts](#list-leader-counts)
 - [get_universe_config](#get-universe-config)
 - [change_blacklist](#change-blacklist)
 - [change_leader_blacklist](#change-leader-blacklist)
@@ -194,7 +196,7 @@ ysql.postgres.sql_packages
 
 ### list_tablets
 
-Lists all tablets and their replica locations for a particular table. 
+Lists all tablets and their replica locations for a particular table.
 
 Useful to find out who the LEADER of a tablet is.
 
@@ -297,13 +299,7 @@ Lists all tablet servers.
 #### Syntax
 
 ```sh
-./bin/yb-admin
-```
-
-#### Example
-
-```sh
-./bin/yb-admin
+./bin/yb-admin list_all_tablet_servers
 ```
 
 ### list_all_masters
@@ -333,34 +329,25 @@ Master UUID         RPC Host/Port          State      Role
 
 ### change_master_config
 
+Changes the master configuration.
+
 #### Syntax
 
 ```sh
 ./bin/yb-admin change_master_config <ADD_SERVER|REMOVE_SERVER> <ip_addr> <port> <0|1>
 ```
 
-- ADD_SERVER | REMOVE_SERVER: Adds or removes the server node.
-- *ip_addr*: The IP address of the server node. 
+- ADD_SERVER | REMOVE_SERVER: Adds or removes a new YB-Master node.
+  - After adding or removing a node, verify the status of the YB-Master on the YB-Master UI page (http://node-ip:7000) or run the [`yb-admin dump_masters_state` command](#dump-masters-state).
+- *ip_addr*: The IP address of the server node.
 - *port*: The port of the server node.
 - `0` | `1`: Disabled (`0`) or enabled (`0`). Default is `1`.
 
-#### Example
-
-```sh
-./bin/yb-admin change_master_config
-```
-
 ### dump_masters_state
 
-
+Prints the status of the YB-Master nodes.
 
 #### Syntax
-
-```sh
-./bin/yb-admin dump_masters_state
-```
-
-#### Example
 
 ```sh
 ./bin/yb-admin dump_masters_state
@@ -368,13 +355,9 @@ Master UUID         RPC Host/Port          State      Role
 
 ### list_tablet_server_log_locations
 
+List the locations of the tablet server logs.
+
 #### Syntax
-
-```sh
-./bin/yb-admin list_tablet_server_log_locations
-```
-
-#### Example
 
 ```sh
 ./bin/yb-admin list_tablet_server_log_locations
@@ -388,19 +371,25 @@ Master UUID         RPC Host/Port          State      Role
 ./bin/yb-admin list_tablets_for_tablet_server <ts_uuid>
 ```
 
+- *ts_uuid*: The UUID of the tablet server.
+
 #### Example
 
 ```sh
 ./bin/yb-admin list_tablets_for_tablet_server <ts_uuid>
 ```
 
-### set_load_balancer_enabled <0|1>
+### set_load_balancer_enabled
+
+Eables or disables the load balancer.
 
 #### Syntax
 
 ```sh
 ./bin/yb-admin set_load_balancer_enabled <0|1>
 ```
+
+- `0` | `1`: Enabled (`1`) is the default. To disable load balancing, set to `0`.
 
 #### Example
 
@@ -410,27 +399,44 @@ Master UUID         RPC Host/Port          State      Role
 
 ### get_load_move_completion
 
+Checks the percentage completion of the data move.
+
+You can rerun this command periodically until the value reaches `100.0`, indicating that the data move has completed.
+
 #### Syntax
 
 ```sh
 ./bin/yb-admin get_load_move_completion
 ```
 
+{{< note title="Note" >}}
+
+The time needed to complete a data move depends on the following:
+
+- number of tablets/tables
+- size of each of those tablets
+- SSD transfer speeds
+- network bandwidth between new nodes and existing ones
+
+{{< /note >}}
+
+For an example of performing a data move and the use of this command, see [Change cluster configuration](../manage/change-cluster-config),
+
 #### Example
 
+In the following example, the data move is `66.6` percent done.
+
 ```sh
-./bin/yb-admin get_load_move_completion
+java -jar ~/master/java/yb-cli-0.8.0-SNAPSHOT.jar
+$ ./bin/yb-admin get_load_move_completion
+66.6
 ```
 
 ### get_leader_blacklist_completion
 
+Gets the tablet load move completion percentage for blacklisted nodes.
+
 #### Syntax
-
-```sh
-./bin/yb-admin get_leader_blacklist_completion
-```
-
-#### Example
 
 ```sh
 ./bin/yb-admin get_leader_blacklist_completion
@@ -438,30 +444,12 @@ Master UUID         RPC Host/Port          State      Role
 
 ### get_is_load_balancer_idle
 
-#### Syntax
-
-```sh
-./bin/yb-admin get_is_load_balancer_idle
-```
-
-#### Example
-
-```sh
-./bin/yb-admin get_is_load_balancer_idle
-```
-
-### list_leader_counts
+Finds out if the load balancer is idle.
 
 #### Syntax
 
 ```sh
-./bin/yb-admin list_leader_counts <keyspace> <table_name>
-```
-
-#### Example
-
-```sh
-./bin/yb-admin list_leader_counts <keyspace> <table_name>
+./bin/yb-admin get_is_load_balancer_idle
 ```
 
 ### get_universe_config
@@ -472,12 +460,6 @@ Gets the configuration for the universe.
 
 ```sh
 ./bin/yb-admin -master_addresses get_universe_config
-```
-
-#### Example
-
-```sh
-./bin/yb-admin get_universe_config
 ```
 
 ### change_blacklist
@@ -768,12 +750,6 @@ Creates a change data capture (CDC) stream for the specified table.
 
 - *table_id*: The identifier (ID) of the table.
 
-#### Example
-
-```sh
-./bin/yb-admin create_cdc_stream <table_id>
-```
-
 ### setup_universe_replication
 
 #### Syntax
@@ -785,12 +761,6 @@ Creates a change data capture (CDC) stream for the specified table.
 - *producer_universe_uuid*: The UUID of the producer universe.
 - *producer_master_addresses*: Comma-separated list of master producer addresses.
 - *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (IDs).
-
-#### Example
-
-```sh
-./bin/yb-admin setup_universe_replication <producer_universe_uuid> <producer_master_addresses> <comma_separated_list_of_table_ids>
-```
 
 ### delete_universe_replication <producer_universe_uuid>
 
@@ -804,15 +774,9 @@ Deletes universe replication for the specified producer universe.
 
 - *producer_universe_uuid*: The UUID of the producer universe.
 
-#### Example
-
-```sh
-./bin/yb-admin delete_universe_replication <producer_universe_uuid>
-```
-
 ### set_universe_replication_enabled
 
-Sets 
+Sets the universe replication to be enabled or disabled.
 
 #### Syntax
 
@@ -823,8 +787,3 @@ Sets
 - *producer_universe_uuid*: The UUID of the producer universe.
 - `0` | `1`: Disabled (`0`) or enabled (`0`). Default is `1`.
 
-#### Example
-
-```sh
-./bin/yb-admin set_universe_replication_enabled 
-```
