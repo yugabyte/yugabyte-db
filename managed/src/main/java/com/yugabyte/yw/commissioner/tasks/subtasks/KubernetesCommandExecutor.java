@@ -214,15 +214,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
         processNodeInfo();
         break;
       case COPY_KEY_FILE:
-        ShellProcessHandler.ShellResponse podResponse = kubernetesManager.getPodInfos(config, taskParams().nodePrefix);
-        JsonNode podInfos = parseShellResponseAsJson(podResponse);
-        // Copy encryption key file to each master node
-        for (JsonNode podInfo : podInfos.path("items")) {
-          String podName = podInfo.path("metadata").path("name").asText();
-          if (podName.contains("yb-master")) {
-            kubernetesManager.copyEncryptionKeyFile(config, taskParams().encryptionKeyFilePath, taskParams().nodePrefix, podName);
-          }
-        }
+        copyKeyFile();
         break;
     }
     if (response != null) {
@@ -268,6 +260,31 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       response.message = "Pods are ready. Services still not running";
     }
     return response;
+  }
+
+  private void copyKeyFile() {
+    Map<UUID, Map<String, String>> azToConfig =
+        PlacementInfoUtil.getConfigPerAZ(taskParams().placementInfo);
+    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(Provider.get(taskParams().providerUUID));
+
+    for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
+      UUID azUUID = entry.getKey();
+      String azName = AvailabilityZone.get(azUUID).code;
+      Map<String, String> config = entry.getValue();
+      String namespace = isMultiAz ?
+          String.format("%s-%s", taskParams().nodePrefix, azName) : taskParams().nodePrefix;
+      ShellProcessHandler.ShellResponse podResponse =
+          kubernetesManager.getPodInfos(config,namespace);
+      JsonNode podInfos = parseShellResponseAsJson(podResponse);
+      // Copy encryption key file to each master node
+      for (JsonNode podInfo : podInfos.path("items")) {
+        String podName = podInfo.path("metadata").path("name").asText();
+        if (podName.contains("yb-master")) {
+          kubernetesManager.copyEncryptionKeyFile(config, taskParams().encryptionKeyFilePath,
+                                                  namespace, podName);
+        }
+      }
+    }
   }
 
   private void processNodeInfo() {
