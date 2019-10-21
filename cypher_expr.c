@@ -232,33 +232,8 @@ static Node *transform_AEXPR_OP(ParseState *pstate, A_Expr *a)
     Node *lexpr = transform_cypher_expr_recurse(pstate, a->lexpr);
     Node *rexpr = transform_cypher_expr_recurse(pstate, a->rexpr);
 
-    if (list_length(a->name) == 1)
-    {
-        const char *opname = strVal(linitial(a->name));
-
-        if (strcmp(opname, "+") == 0 || strcmp(opname, "-") == 0 ||
-            strcmp(opname, "*") == 0 || strcmp(opname, "/") == 0 ||
-            strcmp(opname, "%") == 0 || strcmp(opname, "^") == 0)
-        {
-            return (Node *)make_op(pstate, a->name, lexpr, rexpr, last_srf,
+    return (Node *)make_op(pstate, a->name, lexpr, rexpr, last_srf,
                                    a->location);
-        }
-        else if (strcmp(opname, "=") == 0 || strcmp(opname, "<>") == 0 ||
-                 strcmp(opname, "<") == 0 || strcmp(opname, ">") == 0 ||
-                 strcmp(opname, "<=") == 0 || strcmp(opname, ">=") == 0)
-        {
-            return (Node *)make_op(pstate, a->name, lexpr, rexpr, last_srf,
-                                   a->location);
-        }
-        else
-            ereport(ERROR, (errmsg("unknown operator: %s", opname)));
-
-        return NULL;
-    }
-
-    ereport(ERROR, (errmsg("invalid list length: %d", list_length(a->name))));
-
-    return NULL;
 }
 
 static Node *transform_cypher_list(ParseState *pstate, cypher_list *cl)
