@@ -11,13 +11,14 @@
 // under the License.
 //
 
+#include "yb/integration-tests/cdc_test_util.h"
+
 #include <gtest/gtest.h>
 
 #include "yb/consensus/log.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-#include "yb/util/cdc_test_util.h"
 #include "yb/util/test_macros.h"
 
 namespace yb {

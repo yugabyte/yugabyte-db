@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_UTIL_NTP_CLOCK_H
-#define ENT_SRC_YB_UTIL_NTP_CLOCK_H
+#ifndef YB_UTIL_NTP_CLOCK_H
+#define YB_UTIL_NTP_CLOCK_H
 
 #include "../../../../src/yb/util/physical_time.h"
 
@@ -46,4 +46,4 @@ class NtpClock : public PhysicalClock {
 
 } // namespace yb
 
-#endif // ENT_SRC_YB_UTIL_NTP_CLOCK_H
+#endif // YB_UTIL_NTP_CLOCK_H

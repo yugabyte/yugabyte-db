@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_UTIL_HEADER_MANAGER_H
-#define ENT_SRC_YB_UTIL_HEADER_MANAGER_H
+#ifndef YB_UTIL_HEADER_MANAGER_H
+#define YB_UTIL_HEADER_MANAGER_H
 
 #include "yb/util/status.h"
 #include "yb/util/result.h"
@@ -50,4 +50,4 @@ class HeaderManager {
 } // namespace enterprise
 } // namespace yb
 
-#endif // ENT_SRC_YB_UTIL_HEADER_MANAGER_H
+#endif // YB_UTIL_HEADER_MANAGER_H

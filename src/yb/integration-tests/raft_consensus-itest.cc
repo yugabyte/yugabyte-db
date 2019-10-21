@@ -62,6 +62,7 @@
 #include "yb/integration-tests/ts_itest-base.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_test_util.h"
 
 #include "yb/server/server_base.pb.h"
 #include "yb/server/hybrid_clock.h"
@@ -479,7 +480,7 @@ TEST_F(RaftConsensusITest, TestGetPermanentUuid) {
 
   rpc::MessengerBuilder builder("test builder");
   builder.set_num_reactors(1);
-  auto messenger = CreateAutoShutdownMessengerHolder(ASSERT_RESULT(builder.Build()));
+  auto messenger = rpc::CreateAutoShutdownMessengerHolder(ASSERT_RESULT(builder.Build()));
   rpc::ProxyCache proxy_cache(messenger.get());
 
   // Set a decent timeout for allowing the masters to find eachother.
