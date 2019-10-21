@@ -578,6 +578,58 @@ replication_info {
 }
 ```
 
+By default, all nodes are eligible to have tablet leaders.
+However, for the current deployment, we want to explicitly prioritise and AZ to be the region where leaders reside.
+When the "preferred" AZ/region(s)" nodes are alive/healthy - the leaders of tablets are placed on nodes in those zones/regions. 
+
+The following command sets the preferred zone to `aws.us-west.us-west-2c`:
+
+```sh
+ssh -i $PEM $ADMIN_USER@$MASTER1 \
+   ~/master/bin/yb-admin --master_addresses $MASTER_RPC_ADDRS \
+    set_preferred_zones  \
+    aws.us-west.us-west-2c
+```
+
+Looking again at the cluster config you should see `affinitized_leaders` added:
+
+```
+replication_info {
+  live_replicas {
+    num_replicas: 3
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "aws"
+        placement_region: "us-west"
+        placement_zone: "us-west-2a"
+      }
+      min_num_replicas: 1
+    }
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "aws"
+        placement_region: "us-west"
+        placement_zone: "us-west-2b"
+      }
+      min_num_replicas: 1
+    }
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "aws"
+        placement_region: "us-west"
+        placement_zone: "us-west-2c"
+      }
+      min_num_replicas: 1
+    }
+  }
+  affinitized_leaders {
+    placement_cloud: "aws"
+    placement_region: "us-west"
+    placement_zone: "us-west-2c"
+  }
+}
+```
+
 ## 8. Test PostgreSQL-compatible YSQL API
 
 Connect to the cluster using the `ysqlsh` utility that comes pre-bundled in the `bin` directory. 
