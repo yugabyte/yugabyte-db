@@ -446,7 +446,7 @@ using namespace yb::ql;
                           AlterOwnerStmt AlterSeqStmt AlterSystemStmt InactiveAlterTableStmt
                           AlterTblSpcStmt AlterExtensionStmt AlterExtensionContentsStmt
                           AlterForeignTableStmt AlterCompositeTypeStmt AlterUserStmt
-                          AlterUserMappingStmt AlterUserSetStmt
+                          AlterUserSetStmt
                           AlterPolicyStmt AlterDefaultPrivilegesStmt
                           DefACLAction AnalyzeStmt ClosePortalStmt ClusterStmt CommentStmt
                           ConstraintsSetStmt CopyStmt CreateAsStmt CreateCastStmt
@@ -455,13 +455,13 @@ using namespace yb::ql;
                           CreateSeqStmt CreateTableSpaceStmt
                           CreateFdwStmt CreateForeignServerStmt CreateForeignTableStmt
                           CreateAssertStmt CreateTransformStmt CreateTrigStmt CreateEventTrigStmt
-                          CreateUserStmt CreateUserMappingStmt CreatePolicyStmt
+                          CreateUserStmt CreatePolicyStmt
                           CreatedbStmt DeclareCursorStmt DefineStmt DiscardStmt DoStmt
                           DropOpClassStmt DropOpFamilyStmt DropPLangStmt
                           DropAssertStmt DropTrigStmt DropRuleStmt DropCastStmt
                           DropPolicyStmt DropUserStmt DropdbStmt DropTableSpaceStmt DropFdwStmt
                           DropTransformStmt
-                          DropForeignServerStmt DropUserMappingStmt FetchStmt
+                          DropForeignServerStmt FetchStmt
                           ImportForeignSchemaStmt
                           ListenStmt LoadStmt LockStmt NotifyStmt PreparableStmt
                           CreateFunctionStmt AlterFunctionStmt ReindexStmt RemoveAggrStmt
@@ -514,7 +514,6 @@ using namespace yb::ql;
                           def_arg
                           func_table
                           ExclusionWhereClause
-                          case_expr case_arg when_clause case_default
                           NumericOnly
                           index_elem
                           joined_table
@@ -524,7 +523,7 @@ using namespace yb::ql;
                           copy_generic_opt_arg copy_generic_opt_arg_list_item
                           copy_generic_opt_elem
                           var_value zone_value
-                          auth_ident RoleSpec opt_granted_by
+                          RoleSpec opt_granted_by
                           TableLikeClause
                           OptTableSpaceOwner
                           xml_attribute_el
@@ -568,7 +567,7 @@ using namespace yb::ql;
                           trim_list opt_interval interval_second OptSeqOptList SeqOptList
                           rowsfrom_item rowsfrom_list opt_col_def_list ExclusionConstraintList
                           ExclusionConstraintElem row explicit_row implicit_row
-                          type_list when_clause_list NumericOnly_list
+                          type_list NumericOnly_list
                           func_alias_clause generic_option_list alter_generic_option_list
                           copy_generic_opt_list copy_generic_opt_arg_list
                           copy_options constraints_set_list xml_attribute_list
@@ -3508,8 +3507,6 @@ c_expr:
 inactive_c_expr:
   PARAM opt_indirection {
   }
-  | case_expr {
-  }
   | select_with_parens      %prec UMINUS {
   }
   | select_with_parens indirection {
@@ -3642,8 +3639,6 @@ func_expr_common_subexpr:
   | CURRENT_USER {
   }
   | SESSION_USER {
-  }
-  | USER {
   }
   | CURRENT_CATALOG {
   }
@@ -4122,39 +4117,6 @@ trim_list:
   }
   | expr_list {
   }
-;
-
-// Define SQL-style CASE clause.
-// - Full specification
-//  CASE WHEN a = b THEN c ... ELSE d END
-// - Implicit argument
-//  CASE a WHEN b THEN c ... ELSE d END
-case_expr:
-   CASE case_arg when_clause_list case_default END_P {
-   }
-;
-
-when_clause_list:
-  // There must be at least one.
-  when_clause {
-  }
-  | when_clause_list when_clause {
-  }
-;
-
-when_clause:
-  WHEN a_expr THEN a_expr {
-  }
-;
-
-case_default:
-  ELSE a_expr                   { $$ = nullptr; }
-  | /*EMPTY*/                   { $$ = nullptr; }
-;
-
-case_arg:
-  a_expr                        { $$ = nullptr; }
-  | /*EMPTY*/                   { $$ = nullptr; }
 ;
 
 bindvar:
@@ -5234,6 +5196,7 @@ unreserved_keyword:
   | UNSET { $$ = $1; }
   | UNTIL { $$ = $1; }
   | UPDATE { $$ = $1; }
+  | USER { $$ = $1; }
   | VACUUM { $$ = $1; }
   | VALID { $$ = $1; }
   | VALIDATE { $$ = $1; }
@@ -5244,6 +5207,7 @@ unreserved_keyword:
   | VIEW { $$ = $1; }
   | VIEWS { $$ = $1; }
   | VOLATILE { $$ = $1; }
+  | WHEN { $$ = $1; }
   | WHITESPACE_P { $$ = $1; }
   | WITHIN { $$ = $1; }
   | WITHOUT { $$ = $1; }
@@ -5455,10 +5419,8 @@ reserved_keyword:
   | UNION { $$ = $1; }
   | UNIQUE { $$ = $1; }
   | USE { $$ = $1; }
-  | USER { $$ = $1; }
   | USING { $$ = $1; }
   | VARIADIC { $$ = $1; }
-  | WHEN { $$ = $1; }
   | WHERE { $$ = $1; }
   | WINDOW { $$ = $1; }
   | WITH { $$ = $1; }
@@ -5492,7 +5454,6 @@ inactive_stmt:
   | AlterCompositeTypeStmt
   | AlterTSConfigurationStmt
   | AlterTSDictionaryStmt
-  | AlterUserMappingStmt
   | AlterUserSetStmt
   | AlterUserStmt
   | AnalyzeStmt
@@ -5524,7 +5485,6 @@ inactive_stmt:
   | CreateTrigStmt
   | CreateEventTrigStmt
   | CreateUserStmt
-  | CreateUserMappingStmt
   | CreatedbStmt
   | DeallocateStmt
   | DeclareCursorStmt
@@ -5545,7 +5505,6 @@ inactive_stmt:
   | DropTransformStmt
   | DropTrigStmt
   | DropUserStmt
-  | DropUserMappingStmt
   | DropdbStmt
   | ExecuteStmt
   | FetchStmt
@@ -6126,17 +6085,11 @@ alter_table_cmd:
   /* ALTER TABLE <name> ENABLE TRIGGER ALL */
   | ENABLE_P TRIGGER ALL {
   }
-  /* ALTER TABLE <name> ENABLE TRIGGER USER */
-  | ENABLE_P TRIGGER USER {
-  }
   /* ALTER TABLE <name> DISABLE TRIGGER <trig> */
   | DISABLE_P TRIGGER name {
   }
   /* ALTER TABLE <name> DISABLE TRIGGER ALL */
   | DISABLE_P TRIGGER ALL {
-  }
-  /* ALTER TABLE <name> DISABLE TRIGGER USER */
-  | DISABLE_P TRIGGER USER {
   }
   /* ALTER TABLE <name> ENABLE RULE <rule> */
   | ENABLE_P RULE name {
@@ -7006,54 +6959,6 @@ import_qualification:
   import_qualification_type '(' relation_expr_list ')' {
   }
   | /*EMPTY*/ {
-  }
-;
-
-/*****************************************************************************
- *
- *    QUERY:
- *             CREATE USER MAPPING FOR auth_ident SERVER name [OPTIONS]
- *
- *****************************************************************************/
-
-CreateUserMappingStmt:
-  CREATE USER MAPPING FOR auth_ident SERVER name create_generic_options {
-  }
-;
-
-/* User mapping authorization identifier */
-auth_ident:
-  RoleSpec {
-    // $$ = $1;
-  }
-  | USER {
-    // $$ = makeRoleSpec(ROLESPEC_CURRENT_USER, @1);
-  }
-;
-
-/*****************************************************************************
- *
- *    QUERY :
- *        DROP USER MAPPING FOR auth_ident SERVER name
- *
- ****************************************************************************/
-
-DropUserMappingStmt:
-  DROP USER MAPPING FOR auth_ident SERVER name {
-  }
-  |  DROP USER MAPPING IF_P EXISTS FOR auth_ident SERVER name {
-  }
-;
-
-/*****************************************************************************
- *
- *    QUERY :
- *        ALTER USER MAPPING FOR auth_ident SERVER name OPTIONS
- *
- ****************************************************************************/
-
-AlterUserMappingStmt:
-  ALTER USER MAPPING FOR auth_ident SERVER name alter_generic_options {
   }
 ;
 
