@@ -37,6 +37,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/mini_master.h"
@@ -54,7 +55,6 @@
 
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/util/atomic.h"
-#include "yb/util/cdc_test_util.h"
 #include "yb/util/faststring.h"
 #include "yb/util/random.h"
 #include "yb/util/stopwatch.h"

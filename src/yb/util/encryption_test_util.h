@@ -11,16 +11,12 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_UTIL_ENCRYPTION_TEST_UTIL_H
-#define ENT_SRC_YB_UTIL_ENCRYPTION_TEST_UTIL_H
+#ifndef YB_UTIL_ENCRYPTION_TEST_UTIL_H
+#define YB_UTIL_ENCRYPTION_TEST_UTIL_H
 
-#include "yb/util/slice.h"
-
-#include "yb/util/env.h"
-#include "yb/rocksdb/env.h"
-
-#include "yb/util/test_util.h"
 #include "yb/util/encryption_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/test_util.h"
 
 namespace yb {
 namespace enterprise {
@@ -59,4 +55,4 @@ void TestSequentialReads(Readable* file, const Slice& data) {
 } // namespace enterprise
 } // namespace yb
 
-#endif // ENT_SRC_YB_UTIL_ENCRYPTION_TEST_UTIL_H
+#endif // YB_UTIL_ENCRYPTION_TEST_UTIL_H

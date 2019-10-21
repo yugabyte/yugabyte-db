@@ -324,15 +324,6 @@ class TestThreadHolder {
   std::vector<std::thread> threads_;
 };
 
-struct MessengerShutdownDeleter {
-  void operator()(rpc::Messenger* messenger) const;
-};
-
-using AutoShutdownMessengerHolder = std::unique_ptr<rpc::Messenger, MessengerShutdownDeleter>;
-
-AutoShutdownMessengerHolder CreateAutoShutdownMessengerHolder(
-    std::unique_ptr<rpc::Messenger>&& messenger);
-
 } // namespace yb
 
 // Gives ability to define custom parent class for test fixture.

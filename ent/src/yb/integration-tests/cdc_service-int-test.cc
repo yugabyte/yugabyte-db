@@ -12,8 +12,11 @@
 #include "yb/client/client-test-util.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
+
+#include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
 #include "yb/master/master_defaults.h"
 #include "yb/rpc/messenger.h"
 #include "yb/tablet/tablet.h"
@@ -22,7 +25,6 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
-#include "yb/util/cdc_test_util.h"
 #include "yb/util/slice.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"

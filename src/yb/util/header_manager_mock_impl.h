@@ -10,8 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ENT_SRC_YB_UTIL_HEADER_MANAGER_MOCK_IMPL_H
-#define ENT_SRC_YB_UTIL_HEADER_MANAGER_MOCK_IMPL_H
+#ifndef YB_UTIL_HEADER_MANAGER_MOCK_IMPL_H
+#define YB_UTIL_HEADER_MANAGER_MOCK_IMPL_H
 
 #include <memory>
 
@@ -46,4 +46,4 @@ std::unique_ptr<HeaderManager> GetMockHeaderManager();
 } // namespace yb
 
 
-#endif // ENT_SRC_YB_UTIL_HEADER_MANAGER_MOCK_IMPL_H
+#endif // YB_UTIL_HEADER_MANAGER_MOCK_IMPL_H

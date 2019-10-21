@@ -43,6 +43,7 @@
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/rpc_context.h"
+#include "yb/rpc/rpc_test_util.h"
 #include "yb/rpc/rtest.pb.h"
 #include "yb/rpc/rtest.proxy.h"
 #include "yb/rpc/rtest.service.h"

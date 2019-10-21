@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_UTIL_CIPHER_STREAM_H
-#define ENT_SRC_YB_UTIL_CIPHER_STREAM_H
+#ifndef YB_UTIL_CIPHER_STREAM_H
+#define YB_UTIL_CIPHER_STREAM_H
 
 #include <openssl/ossl_typ.h>
 
@@ -57,4 +57,4 @@ class BlockAccessCipherStream {
 } // namespace enterprise
 } // namespace yb
 
-#endif // ENT_SRC_YB_UTIL_CIPHER_STREAM_H
+#endif // YB_UTIL_CIPHER_STREAM_H

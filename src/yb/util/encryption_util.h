@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_UTIL_ENCRYPTION_UTIL_H
-#define ENT_SRC_YB_UTIL_ENCRYPTION_UTIL_H
+#ifndef YB_UTIL_ENCRYPTION_UTIL_H
+#define YB_UTIL_ENCRYPTION_UTIL_H
 
 #include "yb/util/status.h"
 #include "yb/util/result.h"
@@ -180,4 +180,4 @@ Result<uint32_t> GetHeaderSize(SequentialFile* file, HeaderManager* header_manag
 } // namespace enterprise
 } // namespace yb
 
-#endif // ENT_SRC_YB_UTIL_ENCRYPTION_UTIL_H
+#endif // YB_UTIL_ENCRYPTION_UTIL_H

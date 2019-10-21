@@ -107,7 +107,7 @@ target_link_libraries(ql-dml-test-base integration-tests)
 
 # Tests
 
-set(YB_TEST_LINK_LIBS yb_client ql_util integration-tests ql-dml-test-base ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS integration-tests rpc_test_util ql-dml-test-base ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(client-test)
 ADD_YB_TEST(client-unittest)
 ADD_YB_TEST(ql-dml-test)

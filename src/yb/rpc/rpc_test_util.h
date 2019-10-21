@@ -11,22 +11,24 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_UTIL_ENCRYPTED_FILE_FACTORY_H
-#define ENT_SRC_YB_UTIL_ENCRYPTED_FILE_FACTORY_H
+#ifndef YB_RPC_RPC_TEST_UTIL_H
+#define YB_RPC_RPC_TEST_UTIL_H
 
-#include <memory>
+#include "yb/rpc/rpc_fwd.h"
 
 namespace yb {
+namespace rpc {
 
-class Env;
+struct MessengerShutdownDeleter {
+  void operator()(Messenger* messenger) const;
+};
 
-namespace enterprise {
+using AutoShutdownMessengerHolder = std::unique_ptr<Messenger, MessengerShutdownDeleter>;
 
-class HeaderManager;
+AutoShutdownMessengerHolder CreateAutoShutdownMessengerHolder(
+    std::unique_ptr<Messenger>&& messenger);
 
-std::unique_ptr<yb::Env> NewEncryptedEnv(std::unique_ptr<HeaderManager> header_manager);
-
-}
+} // namespace rpc
 } // namespace yb
 
-#endif // ENT_SRC_YB_UTIL_ENCRYPTED_FILE_FACTORY_H
+#endif // YB_RPC_RPC_TEST_UTIL_H

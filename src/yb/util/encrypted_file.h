@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_UTIL_ENCRYPTED_FILE_H
-#define ENT_SRC_YB_UTIL_ENCRYPTED_FILE_H
+#ifndef YB_UTIL_ENCRYPTED_FILE_H
+#define YB_UTIL_ENCRYPTED_FILE_H
 
 #include <memory>
 
@@ -62,4 +62,4 @@ class EncryptedRandomAccessFile : public RandomAccessFileWrapper {
 } // namespace enterprise
 } // namespace yb
 
-#endif // ENT_SRC_YB_UTIL_ENCRYPTED_FILE_H
+#endif // YB_UTIL_ENCRYPTED_FILE_H
