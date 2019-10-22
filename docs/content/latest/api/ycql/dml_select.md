@@ -32,14 +32,14 @@ The `SELECT` statement retrieves (part of) rows of specified columns that meet a
 ### Grammar
 
 ```
-select ::= SELECT [ DISTINCT ] { '*' | column_name [ ',' column_name ... ] } 
+select ::= SELECT [ DISTINCT ] { * | column_name [ , column_name ... ] } 
                FROM table_name
                [ WHERE where_expression ]
                [ IF where_expression ]
                [ ORDER BY order_expression ]
                [ LIMIT limit_expression ] [ OFFSET offset_expression ]
 
-order_expression ::= '(' { column_name [ ASC | DESC ] } [ ',' ... ] ')'
+order_expression ::= ( { column_name [ ASC | DESC ] } [ , ... ] )
 ```
 
 Where
@@ -207,7 +207,7 @@ cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id <
 ### Select with condition on a regular column, using WHERE clause.
 
 ```sql
-cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_name = 'John' allow filtering;
+cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_name = 'John' ALLOW FILTERING;
 ```
 
 ```
