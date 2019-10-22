@@ -81,7 +81,6 @@ class ColumnFamilyMemTablesDefault : public ColumnFamilyMemTables {
 YB_DEFINE_ENUM(InsertFlag,
                (kFilterDeletes)            // ignore deletes of non-existing keys
                (kConcurrentMemtableWrites) // allow concurrent writes
-               (kInMemoryErase)            // perform in memory erase
                );
 typedef yb::EnumBitSet<InsertFlag> InsertFlags;
 

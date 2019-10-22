@@ -4329,9 +4329,6 @@ Status DBImpl::CreateColumnFamily(const ColumnFamilyOptions& cf_options,
   if (s.ok() && db_options_.allow_concurrent_memtable_write) {
     s = CheckConcurrentWritesSupported(cf_options);
   }
-  if (s.ok() && db_options_.in_memory_erase) {
-    s = CheckInMemoryEraseSupported(cf_options);
-  }
   if (!s.ok()) {
     return s;
   }
@@ -4803,9 +4800,6 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
           versions_->GetColumnFamilySet());
       WriteBatchInternal::SetSequence(w.batch, w.sequence);
       InsertFlags insert_flags{InsertFlag::kConcurrentMemtableWrites};
-      if (db_options_.in_memory_erase) {
-        insert_flags.Set(InsertFlag::kInMemoryErase);
-      }
       w.status = WriteBatchInternal::InsertInto(
           w.batch, &column_family_memtables, &flush_scheduler_,
           write_options.ignore_missing_column_families, 0 /*log_number*/, this, insert_flags);
@@ -5106,9 +5100,6 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
 
       if (!parallel) {
         InsertFlags insert_flags{InsertFlag::kFilterDeletes};
-        if (db_options_.in_memory_erase) {
-          insert_flags.Set(InsertFlag::kInMemoryErase);
-        }
         status = WriteBatchInternal::InsertInto(
             write_group, current_sequence, column_family_memtables_.get(),
             &flush_scheduler_, write_options.ignore_missing_column_families,
@@ -5137,9 +5128,6 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
           assert(w.sequence == current_sequence);
           WriteBatchInternal::SetSequence(w.batch, w.sequence);
           InsertFlags insert_flags{InsertFlag::kConcurrentMemtableWrites};
-          if (db_options_.in_memory_erase) {
-            insert_flags.Set(InsertFlag::kInMemoryErase);
-          }
           w.status = WriteBatchInternal::InsertInto(
               w.batch, &column_family_memtables, &flush_scheduler_,
               write_options.ignore_missing_column_families, 0 /*log_number*/,
@@ -6078,9 +6066,6 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     s = CheckCompressionSupported(cfd.options);
     if (s.ok() && db_options.allow_concurrent_memtable_write) {
       s = CheckConcurrentWritesSupported(cfd.options);
-    }
-    if (s.ok() && db_options.in_memory_erase) {
-      s = CheckInMemoryEraseSupported(cfd.options);
     }
     if (!s.ok()) {
       return s;
