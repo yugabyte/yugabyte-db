@@ -9,7 +9,7 @@ menu:
     weight: 2440
 aliases:
   - admin/yb-master
-isTocNested: false
+isTocNested: true
 showAsideToc: true
 ---
 
