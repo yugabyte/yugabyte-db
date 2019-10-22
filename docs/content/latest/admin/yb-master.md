@@ -129,7 +129,7 @@ Default: `50000` (50,000 µs = 50ms)
 
 #### --replication_factor
 
-Number of replicas to store for each tablet in the universe.
+The number of replicas, or copies of data, to store for each tablet in the universe.
 
 Default: `3`
 
