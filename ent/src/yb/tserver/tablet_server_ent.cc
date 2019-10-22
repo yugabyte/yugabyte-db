@@ -17,6 +17,7 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/secure.h"
 
+#include "yb/rpc/rpc.h"
 #include "yb/tserver/backup_service.h"
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/header_manager_impl.h"

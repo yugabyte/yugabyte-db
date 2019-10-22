@@ -14,6 +14,7 @@
 #include <shared_mutex>
 #include <chrono>
 
+#include "yb/rpc/rpc.h"
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/twodc_output_client.h"
 #include "yb/tserver/tablet_server.h"
