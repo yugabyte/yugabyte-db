@@ -1131,7 +1131,7 @@ static void add_agtype(Datum val, bool is_null, agtype_in_state *result,
 PG_FUNCTION_INFO_V1(agtype_build_map);
 
 /*
- * SQL function jsonb_build_map(variadic "any")
+ * SQL function agtype_build_map(variadic "any")
  */
 Datum agtype_build_map(PG_FUNCTION_ARGS)
 {
@@ -1187,7 +1187,7 @@ Datum agtype_build_map(PG_FUNCTION_ARGS)
 PG_FUNCTION_INFO_V1(agtype_build_map_noargs);
 
 /*
- * degenerate case of jsonb_build_map where it gets 0 arguments.
+ * degenerate case of agtype_build_map where it gets 0 arguments.
  */
 Datum agtype_build_map_noargs(PG_FUNCTION_ARGS)
 {
