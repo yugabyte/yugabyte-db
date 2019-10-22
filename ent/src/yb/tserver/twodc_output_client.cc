@@ -20,6 +20,7 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/cdc_rpc.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/flag_tags.h"
@@ -40,53 +41,50 @@ using rpc::Rpc;
 class TwoDCOutputClient : public cdc::CDCOutputClient {
  public:
   TwoDCOutputClient(
+      CDCConsumer* cdc_consumer,
       const cdc::ConsumerTabletInfo& consumer_tablet_info,
       const std::shared_ptr<client::YBClient>& client,
       std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk) :
+      cdc_consumer_(cdc_consumer),
       consumer_tablet_info_(consumer_tablet_info),
       client_(client),
       apply_changes_clbk_(std::move(apply_changes_clbk)) {}
 
-  ~TwoDCOutputClient() {
-    Shutdown();
-  }
-
-  void Shutdown() override {
-    rpcs_.Shutdown();
-  }
+  ~TwoDCOutputClient() = default;
 
   CHECKED_STATUS ApplyChanges(const cdc::GetChangesResponsePB* resp) override;
 
-  rpc::Rpcs::Handle RegisterRpc(rpc::RpcCommandPtr call);
-  rpc::RpcCommandPtr UnregisterRpc(rpc::Rpcs::Handle* handle);
-
   void WriteCDCRecordDone(
-      const Status& status, const WriteResponsePB& response, const size_t record_idx);
+      const Status& status, const WriteResponsePB& response, const size_t record_idx,
+      rpc::Rpcs::Handle handle);
 
  private:
   void TabletLookupCallback(
       const size_t record_idx, const Result<client::internal::RemoteTabletPtr>& tablet);
   void SendCDCWriteToTablet(const size_t record_idx);
 
-  void IncProcessedRecordCount();
+  // Increment processed record count.
+  // Returns true if all records are processed, false if there are still some pending records.
+  bool IncProcessedRecordCount();
 
   void HandleResponse();
-  void HandleError(const Status& s, const cdc::CDCRecordPB& bad_record);
+  void HandleError(const Status& s, const cdc::CDCRecordPB& bad_record, bool done);
 
+  CDCConsumer* cdc_consumer_;
   cdc::ConsumerTabletInfo consumer_tablet_info_;
   std::shared_ptr<client::YBClient> client_;
   std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk_;
 
-  rpc::Rpcs rpcs_;
   std::shared_ptr<client::YBTable> table_;
 
-  // Used to protect error_status_ and op_id_.
+  // Used to protect error_status_, op_id_, done_processing_ and record counts.
   mutable rw_spinlock lock_;
-  Status error_status_;
-  OpIdPB op_id_ = consensus::MinimumOpId();
+  Status error_status_ GUARDED_BY(lock_);
+  OpIdPB op_id_ GUARDED_BY(lock_) = consensus::MinimumOpId();
+  bool done_processing_ GUARDED_BY(lock_) = false;
 
-  std::atomic<uint32_t> processed_record_count_{0};
-  std::atomic<uint32_t> record_count_{0};
+  uint32_t processed_record_count_ GUARDED_BY(lock_) = 0;
+  uint32_t record_count_ GUARDED_BY(lock_) = 0;
 
   // Map of CDCRecord index -> RemoteTablet.
   std::unordered_map<size_t, client::internal::RemoteTablet*> records_;
@@ -103,8 +101,6 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
   // Once all changes have been applied (successfully or not), we invoke the callback which will
   // then either poll for next set of changes (in case of successful application) or will try to
   // re-apply.
-  processed_record_count_.store(0, std::memory_order_release);
-  record_count_.store(resp->records_size(), std::memory_order_release);
   DCHECK(resp->has_checkpoint());
   resp_.Clear();
 
@@ -115,10 +111,13 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
     op_id_ = resp->checkpoint().op_id();
     error_status_ = Status::OK();
     records_.clear();
+    done_processing_ = false;
+    processed_record_count_ = 0;
+    record_count_ = resp->records_size();
   }
 
   // Ensure we have records.
-  if (record_count_.load(std::memory_order_acquire) == 0) {
+  if (resp->records_size() == 0) {
     HandleResponse();
     return Status::OK();
   }
@@ -164,20 +163,12 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
   return Status::OK();
 }
 
-rpc::Rpcs::Handle TwoDCOutputClient::RegisterRpc(rpc::RpcCommandPtr call) {
-  return rpcs_.Register(call);
-}
-
-rpc::RpcCommandPtr TwoDCOutputClient::UnregisterRpc(rpc::Rpcs::Handle* handle) {
-  return rpcs_.Unregister(handle);
-}
-
 void TwoDCOutputClient::TabletLookupCallback(
     const size_t record_idx,
     const Result<client::internal::RemoteTabletPtr>& tablet) {
   if (!tablet.ok()) {
-    IncProcessedRecordCount();
-    HandleError(tablet.status(), resp_.records(record_idx));
+    bool done = IncProcessedRecordCount();
+    HandleError(tablet.status(), resp_.records(record_idx), done);
     return;
   }
 
@@ -186,15 +177,14 @@ void TwoDCOutputClient::TabletLookupCallback(
     records_.emplace(record_idx, tablet->get());
   }
 
-  IncProcessedRecordCount();
-  if (processed_record_count_.load(std::memory_order_acquire) ==
-      record_count_.load(std::memory_order_acquire)) {
+  bool done = IncProcessedRecordCount();
+  if (done) {
 
     // Found tablets for all records, now we should write the records.
     // But first, check if there were any errors during tablet lookup for any record.
     bool has_error = false;
     {
-      std::shared_lock<decltype(lock_)> l(lock_);
+      std::lock_guard<decltype(lock_)> l(lock_);
       if (!error_status_.ok()) {
         has_error = true;
       }
@@ -233,25 +223,31 @@ void TwoDCOutputClient::SendCDCWriteToTablet(const size_t record_idx) {
   }
 
   auto deadline = CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_rpc_timeout_ms);
-  auto write_rpc = WriteCDCRecord(
-      deadline,
-      tablet,
-      client_.get(),
-      std::bind(&TwoDCOutputClient::RegisterRpc, this, std::placeholders::_1),
-      std::bind(&TwoDCOutputClient::UnregisterRpc, this, std::placeholders::_1),
-      &req,
-      std::bind(&TwoDCOutputClient::WriteCDCRecordDone, this,
-                std::placeholders::_1, std::placeholders::_2, record_idx));
+  auto write_rpc_handle = cdc_consumer_->rpcs()->Prepare();
+  if (write_rpc_handle != cdc_consumer_->rpcs()->InvalidHandle()) {
+    *write_rpc_handle = WriteCDCRecord(
+        deadline,
+        tablet,
+        client_.get(),
+        &req,
+        std::bind(&TwoDCOutputClient::WriteCDCRecordDone, this,
+                  std::placeholders::_1, std::placeholders::_2, record_idx, write_rpc_handle));
+  } else {
+    LOG(WARNING) << "Invalid handle for CDC write: " << resp_.records(record_idx).DebugString();
+  }
 }
 
 void TwoDCOutputClient::WriteCDCRecordDone(
-    const Status& status, const WriteResponsePB& response, size_t record_idx) {
+    const Status& status, const WriteResponsePB& response, size_t record_idx,
+    rpc::Rpcs::Handle handle) {
   VLOG(1) << "Wrote CDC record: " << status << ": " << response.DebugString();
+  auto retained = cdc_consumer_->rpcs()->Unregister(handle);
   if (!status.ok()) {
-    HandleError(status, resp_.records(record_idx));
+    HandleError(status, resp_.records(record_idx), true /* done */);
     return;
   } else if (response.has_error()) {
-    HandleError(StatusFromPB(response.error().status()), resp_.records(record_idx));
+    HandleError(StatusFromPB(response.error().status()), resp_.records(record_idx),
+                true /* done */);
     return;
   }
 
@@ -263,42 +259,48 @@ void TwoDCOutputClient::WriteCDCRecordDone(
   }
 }
 
-void TwoDCOutputClient::HandleError(const Status& s, const cdc::CDCRecordPB& bad_record) {
+void TwoDCOutputClient::HandleError(const Status& s, const cdc::CDCRecordPB& bad_record,
+                                    bool done) {
   LOG(ERROR) << "Error while applying replicated record for " << bad_record.DebugString()
              << ": " << s.ToString();
   {
     std::lock_guard<decltype(lock_)> l(lock_);
     error_status_ = s;
   }
-  HandleResponse();
-}
-
-void TwoDCOutputClient::HandleResponse() {
-  if (processed_record_count_.load(std::memory_order_acquire) ==
-      record_count_.load(std::memory_order_acquire)) {
-    cdc::OutputClientResponse response;
-    {
-      std::lock_guard<decltype(lock_)> l(lock_);
-      response.status = error_status_;
-      if (response.status.ok()) {
-        response.last_applied_op_id = op_id_;
-      }
-      op_id_ = consensus::MinimumOpId();
-    }
-    apply_changes_clbk_(response);
+  if (done) {
+    HandleResponse();
   }
 }
 
-void TwoDCOutputClient::IncProcessedRecordCount() {
-  processed_record_count_.fetch_add(1, std::memory_order_acq_rel);
+void TwoDCOutputClient::HandleResponse() {
+  cdc::OutputClientResponse response;
+  {
+    std::lock_guard<decltype(lock_)> l(lock_);
+    response.status = error_status_;
+    if (response.status.ok()) {
+      response.last_applied_op_id = op_id_;
+    }
+    op_id_ = consensus::MinimumOpId();
+  }
+  apply_changes_clbk_(response);
+}
+
+bool TwoDCOutputClient::IncProcessedRecordCount() {
+  std::lock_guard<rw_spinlock> l(lock_);
+  processed_record_count_++;
+  if (processed_record_count_ == record_count_) {
+    done_processing_ = true;
+  }
+  return done_processing_;
 }
 
 std::unique_ptr<cdc::CDCOutputClient> CreateTwoDCOutputClient(
+    CDCConsumer* cdc_consumer,
     const cdc::ConsumerTabletInfo& consumer_tablet_info,
     const std::shared_ptr<client::YBClient>& client,
     std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk) {
   return std::make_unique<TwoDCOutputClient>(
-      consumer_tablet_info, client, std::move(apply_changes_clbk));
+      cdc_consumer, consumer_tablet_info, client, std::move(apply_changes_clbk));
 }
 
 } // namespace enterprise

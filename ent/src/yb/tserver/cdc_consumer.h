@@ -27,6 +27,7 @@ class ThreadPool;
 namespace rpc {
 
 class ProxyCache;
+class Rpcs;
 
 } // namespace rpc
 
@@ -76,6 +77,10 @@ class CDCConsumer {
   // we don't need to hold the mutex.
   int32_t cluster_config_version() const NO_THREAD_SAFETY_ANALYSIS;
 
+  std::shared_ptr<rpc::Rpcs> rpcs() {
+    return rpcs_;
+  }
+
  private:
   // Runs a thread that periodically polls for any new threads.
   void RunThread();
@@ -122,6 +127,8 @@ class CDCConsumer {
   bool should_run_ = true;
 
   std::atomic<int32_t> cluster_config_version_ GUARDED_BY(master_data_mutex_) = {-1};
+
+  std::shared_ptr<rpc::Rpcs> rpcs_ = std::make_shared<rpc::Rpcs>();
 };
 
 } // namespace enterprise
