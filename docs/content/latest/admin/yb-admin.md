@@ -412,7 +412,7 @@ The time needed to complete a data move depends on the following:
 
 {{< /note >}}
 
-For an example of performing a data move and the use of this command, see [Change cluster configuration](../manage/change-cluster-config),
+For an example of performing a data move and the use of this command, see [Change cluster configuration](../manage/change-cluster-config).
 
 #### Example
 
