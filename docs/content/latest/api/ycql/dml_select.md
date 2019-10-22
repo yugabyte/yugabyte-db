@@ -21,19 +21,25 @@ The `SELECT` statement retrieves (part of) rows of specified columns that meet a
 
 ### Diagram
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="997" height="145" viewbox="0 0 997 145"><path class="connector" d="M0 22h5m66 0h30m78 0h20m-113 0q5 0 5 5v8q0 5 5 5h88q5 0 5-5v-8q0-5 5-5m5 0h30m28 0h138m-181 0q5 0 5 5v50q0 5 5 5h25m-5 0q-5 0-5-5v-20q0-5 5-5h46m24 0h46q5 0 5 5v20q0 5-5 5m-5 0h25q5 0 5-5v-50q0-5 5-5m5 0h10m54 0h10m91 0h5m-565 95h25m65 0h10m128 0h20m-238 0q5 0 5 5v8q0 5 5 5h213q5 0 5-5v-8q0-5 5-5m5 0h30m81 0h10m122 0h20m-248 0q5 0 5 5v8q0 5 5 5h223q5 0 5-5v-8q0-5 5-5m5 0h30m54 0h10m117 0h20m-216 0q5 0 5 5v8q0 5 5 5h191q5 0 5-5v-8q0-5 5-5m5 0h30m66 0h10m124 0h20m-235 0q5 0 5 5v8q0 5 5 5h210q5 0 5-5v-8q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="66" height="25" rx="7"/><text class="text" x="15" y="22">SELECT</text><rect class="literal" x="101" y="5" width="78" height="25" rx="7"/><text class="text" x="111" y="22">DISTINCT</text><rect class="literal" x="229" y="5" width="28" height="25" rx="7"/><text class="text" x="239" y="22">*</text><rect class="literal" x="290" y="35" width="24" height="25" rx="7"/><text class="text" x="300" y="52">,</text><a xlink:href="../grammar_diagrams#column-name"><rect class="rule" x="249" y="65" width="106" height="25"/><text class="text" x="259" y="82">column_name</text></a><rect class="literal" x="405" y="5" width="54" height="25" rx="7"/><text class="text" x="415" y="22">FROM</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="469" y="5" width="91" height="25"/><text class="text" x="479" y="22">table_name</text></a><rect class="literal" x="25" y="100" width="65" height="25" rx="7"/><text class="text" x="35" y="117">WHERE</text><a xlink:href="../grammar_diagrams#where-expression"><rect class="rule" x="100" y="100" width="128" height="25"/><text class="text" x="110" y="117">where_expression</text></a><rect class="literal" x="278" y="100" width="81" height="25" rx="7"/><text class="text" x="288" y="117">ORDER BY</text><a xlink:href="../grammar_diagrams#order-expression"><rect class="rule" x="369" y="100" width="122" height="25"/><text class="text" x="379" y="117">order_expression</text></a><rect class="literal" x="541" y="100" width="54" height="25" rx="7"/><text class="text" x="551" y="117">LIMIT</text><a xlink:href="../grammar_diagrams#limit-expression"><rect class="rule" x="605" y="100" width="117" height="25"/><text class="text" x="615" y="117">limit_expression</text></a><rect class="literal" x="772" y="100" width="66" height="25" rx="7"/><text class="text" x="782" y="117">OFFSET</text><a xlink:href="../grammar_diagrams#offset-expression"><rect class="rule" x="848" y="100" width="124" height="25"/><text class="text" x="858" y="117">offset_expression</text></a></svg>
+#### select
+
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="593" height="310" viewbox="0 0 593 310"><path class="connector" d="M0 22h15m67 0h30m79 0h20m-114 0q5 0 5 5v8q0 5 5 5h89q5 0 5-5v-8q0-5 5-5m5 0h30m28 0h139m-182 0q5 0 5 5v50q0 5 5 5h25m-5 0q-5 0-5-5v-20q0-5 5-5h46m24 0h47q5 0 5 5v20q0 5-5 5m-5 0h25q5 0 5-5v-50q0-5 5-5m5 0h10m55 0h10m95 0h7m2 0h2m2 0h2m-593 95h2m2 0h2m2 0h27m66 0h10m137 0h30m134 0h20m-169 0q5 0 5 5v8q0 5 5 5h144q5 0 5-5v-8q0-5 5-5m5 0h20m-432 0q5 0 5 5v23q0 5 5 5h407q5 0 5-5v-23q0-5 5-5m5 0h7m2 0h2m2 0h2m-467 65h2m2 0h2m2 0h27m32 0h10m104 0h20m-181 0q5 0 5 5v8q0 5 5 5h156q5 0 5-5v-8q0-5 5-5m5 0h7m2 0h2m2 0h2m-216 50h2m2 0h2m2 0h27m82 0h10m131 0h20m-258 0q5 0 5 5v8q0 5 5 5h233q5 0 5-5v-8q0-5 5-5m5 0h7m2 0h2m2 0h2m-293 50h2m2 0h2m2 0h27m54 0h10m122 0h20m-221 0q5 0 5 5v8q0 5 5 5h196q5 0 5-5v-8q0-5 5-5m5 0h30m67 0h10m133 0h20m-245 0q5 0 5 5v8q0 5 5 5h220q5 0 5-5v-8q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="67" height="25" rx="7"/><text class="text" x="25" y="22">SELECT</text><rect class="literal" x="112" y="5" width="79" height="25" rx="7"/><text class="text" x="122" y="22">DISTINCT</text><rect class="literal" x="241" y="5" width="28" height="25" rx="7"/><text class="text" x="251" y="22">*</text><rect class="literal" x="302" y="35" width="24" height="25" rx="7"/><text class="text" x="312" y="52">,</text><a xlink:href="../grammar_diagrams#column-name"><rect class="rule" x="261" y="65" width="107" height="25"/><text class="text" x="271" y="82">column_name</text></a><rect class="literal" x="418" y="5" width="55" height="25" rx="7"/><text class="text" x="428" y="22">FROM</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="483" y="5" width="95" height="25"/><text class="text" x="493" y="22">table_name</text></a><rect class="literal" x="35" y="100" width="66" height="25" rx="7"/><text class="text" x="45" y="117">WHERE</text><a xlink:href="../grammar_diagrams#where-expression"><rect class="rule" x="111" y="100" width="137" height="25"/><text class="text" x="121" y="117">where_expression</text></a><rect class="literal" x="278" y="100" width="134" height="25" rx="7"/><text class="text" x="288" y="117">ALLOW FILTERING</text><rect class="literal" x="35" y="165" width="32" height="25" rx="7"/><text class="text" x="45" y="182">IF</text><a xlink:href="../grammar_diagrams#if-expression"><rect class="rule" x="77" y="165" width="104" height="25"/><text class="text" x="87" y="182">if_expression</text></a><rect class="literal" x="35" y="215" width="82" height="25" rx="7"/><text class="text" x="45" y="232">ORDER BY</text><a xlink:href="../grammar_diagrams#order-expression"><rect class="rule" x="127" y="215" width="131" height="25"/><text class="text" x="137" y="232">order_expression</text></a><rect class="literal" x="35" y="265" width="54" height="25" rx="7"/><text class="text" x="45" y="282">LIMIT</text><a xlink:href="../grammar_diagrams#limit-expression"><rect class="rule" x="99" y="265" width="122" height="25"/><text class="text" x="109" y="282">limit_expression</text></a><rect class="literal" x="271" y="265" width="67" height="25" rx="7"/><text class="text" x="281" y="282">OFFSET</text><a xlink:href="../grammar_diagrams#offset-expression"><rect class="rule" x="348" y="265" width="133" height="25"/><text class="text" x="358" y="282">offset_expression</text></a><polygon points="512,289 516,289 516,275 512,275" style="fill:black;stroke-width:0"/></svg>
+
+#### order_expression
+
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="351" height="100" viewbox="0 0 351 100"><path class="connector" d="M0 52h15m25 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h98m24 0h99q5 0 5 5v20q0 5-5 5m-109 0h30m45 0h29m-84 25q0 5 5 5h5m54 0h5q5 0 5-5m-79-25q5 0 5 5v33q0 5 5 5h64q5 0 5-5v-33q0-5 5-5m5 0h30m25 0h15"/><polygon points="0,59 5,52 0,45" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="35" width="25" height="25" rx="7"/><text class="text" x="25" y="52">(</text><rect class="literal" x="163" y="5" width="24" height="25" rx="7"/><text class="text" x="173" y="22">,</text><a xlink:href="../grammar_diagrams#column-name"><rect class="rule" x="70" y="35" width="107" height="25"/><text class="text" x="80" y="52">column_name</text></a><rect class="literal" x="207" y="35" width="45" height="25" rx="7"/><text class="text" x="217" y="52">ASC</text><rect class="literal" x="207" y="65" width="54" height="25" rx="7"/><text class="text" x="217" y="82">DESC</text><rect class="literal" x="311" y="35" width="25" height="25" rx="7"/><text class="text" x="321" y="52">)</text><polygon points="347,59 351,59 351,45 347,45" style="fill:black;stroke-width:0"/></svg>
 
 ### Grammar
 
 ```
-select ::= SELECT [ DISTINCT ] { '*' | column_name [ ',' column_name ... ] } 
+select ::= SELECT [ DISTINCT ] { * | column_name [ , column_name ... ] } 
                FROM table_name
                [ WHERE where_expression ]
+               [ IF where_expression ]
                [ ORDER BY order_expression ]
-               [ LIMIT limit_expression ]
-               [ OFFSET offset_expression ]
+               [ LIMIT limit_expression ] [ OFFSET offset_expression ]
 
-order_expression ::= '(' ( column_name [ ASC | DESC ] ) [ ',' ( column_name [ ASC | DESC ] )  ... ] ')'
+order_expression ::= ( { column_name [ ASC | DESC ] } [ , ... ] )
 ```
 
 Where
@@ -60,12 +66,24 @@ Where
 
 ### `WHERE` clause
 
-- The `where_expression` and `if_expression` must evaluate to boolean values.
-- The `where_expression` can only use `AND` and comparison operators. Other operators are not yet supported.
-- The `where_expression` can specify conditions any column. 
+- The `where_expression` must evaluate to boolean values.
+- The `where_expression` can specify conditions on any columns including partition, clustering, and regular columns.
+- The `where_expression` has a restricted list of operators.
+
   - Only `=`, `IN` and `NOT IN` operators can be used for conditions on partition columns. 
-  - Only operators `=`, `<`, `<=`, `>`, `>=`, `IN` and `NOT IN` can be used for conditions on clustering columns.
-  - All logical and boolean operators can be used for conditions on regular columns.
+  - Only operators `=`, `<`, `<=`, `>`, `>=`, `IN` and `NOT IN` can be used for conditions on clustering and regular columns.
+
+### `IF` clause
+
+- The `if_expression` must evaluate to boolean values.
+- The `if_expression` supports any combinations of all available boolean and logical operators.
+- The `if_expression` can only specify conditions for non-primary-key columns although it can used on a key column of a secondary index.
+- While WHERE condition is used to generate efficient query plan, the IF condition is not. ALL rows that satisfy WHERE condition will be read from the database before the IF condition is used to filter unwanted data. In the following example, although the two queries yield the same result set, SELECT with WHERE clause will use INDEX-SCAN while SELECT with IF clause will use FULL-SCAN.
+
+```
+SELECT * FROM a_table WHERE key = 'my_key';
+SELECT * FROM a_table IF key = 'my_key';
+```
 
 {{< note title="Note" >}}
 While the where clause allows a wide range of operators, the exact conditions used in the where clause have significant performance considerations (especially for large datasets).
@@ -186,10 +204,10 @@ cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id <
              1 |           2 | Accounting |          Jane
 ```
 
-### Select with condition on a regular column
+### Select with condition on a regular column, using WHERE clause.
 
 ```sql
-cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_name = 'John';
+cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_name = 'John' ALLOW FILTERING;
 ```
 
 ```
@@ -197,6 +215,18 @@ cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_name
 ---------------+-------------+------------+---------------
              1 |           1 | Accounting |          John
              1 |           3 | Accounting |          John
+```
+
+### Select with condition on a regular column, using IF clause.
+
+```sql
+cqlsh:example> SELECT * FROM employees WHERE department_id = 1 IF employee_name != 'John';
+```
+
+```
+ department_id | employee_id | dept_name  | employee_name
+---------------+-------------+------------+---------------
+             1 |           2 | Accounting |          Jane
 ```
 
 ### Select with `ORDER BY` clause
