@@ -249,7 +249,6 @@ export default class OnPremConfiguration extends Component {
 
   submitWizardJson = payloadData => {
     this.setState({configJsonVal: payloadData});
-    console.log(payloadData);
     this.props.createOnPremProvider(PROVIDER_TYPE, payloadData);
   };
 

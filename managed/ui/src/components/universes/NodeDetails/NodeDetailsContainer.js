@@ -38,7 +38,6 @@ const mapDispatchToProps = (dispatch) => {
 
     getUniversePerNodeMetrics: (uuid) => {
       dispatch(getUniversePerNodeMetrics(uuid)).then((perNodeResponse) => {
-        console.log(perNodeResponse);
         dispatch(getUniversePerNodeMetricsResponse(perNodeResponse.payload));
       });
     },
