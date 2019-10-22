@@ -583,7 +583,6 @@ Status Tablet::OpenKeyValueTablet() {
       Format("$0-$1", kIntentsDB, tablet_id()), block_based_table_mem_tracker_);
 
     rocksdb::DB* intents_db = nullptr;
-    rocksdb_options.in_memory_erase = true;
     RETURN_NOT_OK(rocksdb::DB::Open(rocksdb_options, db_dir + kIntentsDBSuffix, &intents_db));
     intents_db_.reset(intents_db);
   }

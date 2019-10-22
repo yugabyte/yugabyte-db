@@ -1512,12 +1512,12 @@ Status PrepareApplyIntentsBatch(
       }
 
       if (intents_batch) {
-        intents_batch->Delete(reverse_index_iter.value());
+        intents_batch->SingleDelete(reverse_index_iter.value());
       }
     }
 
     if (intents_batch) {
-      intents_batch->Delete(reverse_index_iter.key());
+      intents_batch->SingleDelete(reverse_index_iter.key());
     }
 
     reverse_index_iter.Next();

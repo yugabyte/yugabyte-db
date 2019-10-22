@@ -159,14 +159,6 @@ Status CheckConcurrentWritesSupported(const ColumnFamilyOptions& cf_options) {
   return Status::OK();
 }
 
-Status CheckInMemoryEraseSupported(const ColumnFamilyOptions& cf_options) {
-  if (!cf_options.memtable_factory->IsInMemoryEraseSupported()) {
-    return STATUS(InvalidArgument,
-        "Memtable doesn't support in memory erase (in_memory_erase)");
-  }
-  return Status::OK();
-}
-
 ColumnFamilyOptions SanitizeOptions(const DBOptions& db_options,
                                     const InternalKeyComparator* icmp,
                                     const ColumnFamilyOptions& src) {

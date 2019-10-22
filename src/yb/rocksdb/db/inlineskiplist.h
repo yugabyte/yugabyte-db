@@ -101,7 +101,6 @@ class InlineSkipList {
   void InsertConcurrently(const char* key);
 
   bool Erase(const char* key, Comparator cmp) {
-    LOG(FATAL) << "Erase not supported";
     return false;
   }
 

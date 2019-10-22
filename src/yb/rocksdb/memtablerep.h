@@ -113,7 +113,6 @@ class MemTableRep {
   }
 
   virtual bool Erase(KeyHandle handle, const KeyComparator& comparator) {
-    LOG(FATAL) << "Erase not supported";
     return false;
   }
 
