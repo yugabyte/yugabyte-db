@@ -53,6 +53,44 @@ SELECT * FROM cypher($$RETURN [['str'], [1, [1.0], [[true]]], null]$$) AS r(c ag
 (1 row)
 
 --
+-- String operators
+--
+-- String LHS + String RHS
+SELECT * FROM cypher($$RETURN 'str' + 'str'$$) AS r(c agtype);
+    c     
+----------
+ "strstr"
+(1 row)
+
+-- String LHS + Integer RHS
+SELECT * FROM cypher($$RETURN 'str' + 1$$) AS r(c agtype);
+   c    
+--------
+ "str1"
+(1 row)
+
+-- String LHS + Float RHS
+SELECT * FROM cypher($$RETURN 'str' + 1.0$$) AS r(c agtype);
+   c    
+--------
+ "str1"
+(1 row)
+
+-- Integer LHS + String LHS
+SELECT * FROM cypher($$RETURN 1 + 'str'$$) AS r(c agtype);
+   c    
+--------
+ "1str"
+(1 row)
+
+-- Float LHS + String RHS
+SELECT * FROM cypher($$RETURN 1.0 + 'str'$$) AS r(c agtype);
+   c    
+--------
+ "1str"
+(1 row)
+
+--
 -- Test transform logic for operators
 --
 SELECT * FROM cypher(

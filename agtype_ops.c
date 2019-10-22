@@ -6,6 +6,7 @@
 
 #include <math.h>
 
+#include "utils/builtins.h"
 #include "utils/numeric.h"
 
 #include "agtype.h"
@@ -22,6 +23,11 @@ Datum agtype_add(PG_FUNCTION_ARGS)
     agtype_value *agtv_lhs;
     agtype_value *agtv_rhs;
     agtype_value agtv_result;
+    Size len;
+    char *buffer;
+    Datum n;
+    char *nstr;
+    Size nlen;
 
     if (!(AGT_ROOT_IS_SCALAR(lhs)) || !(AGT_ROOT_IS_SCALAR(rhs)))
     {
@@ -33,6 +39,84 @@ Datum agtype_add(PG_FUNCTION_ARGS)
 
     agtv_lhs = get_ith_agtype_value_from_container(&lhs->root, 0);
     agtv_rhs = get_ith_agtype_value_from_container(&rhs->root, 0);
+
+    if (agtv_lhs->type == AGTV_STRING && agtv_rhs->type == AGTV_STRING)
+    {
+        len = agtv_lhs->val.string.len + agtv_rhs->val.string.len;
+        buffer = palloc(len);
+
+        strncpy(buffer, agtv_lhs->val.string.val, agtv_lhs->val.string.len);
+        strncpy(buffer + agtv_lhs->val.string.len, agtv_rhs->val.string.val,
+                agtv_rhs->val.string.len);
+
+        agtv_result.type = AGTV_STRING;
+        agtv_result.val.string.len = len;
+        agtv_result.val.string.val = buffer;
+
+        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
+    }
+    if (agtv_lhs->type == AGTV_STRING)
+    {
+        if (agtv_rhs->type == AGTV_INTEGER || agtv_rhs->type == AGTV_FLOAT)
+        {
+            if (agtv_rhs->type == AGTV_INTEGER)
+            {
+                n = DirectFunctionCall1(int8out,
+                                        Int8GetDatum(agtv_rhs->val.int_value));
+            }
+            else
+            {
+                n = DirectFunctionCall1(
+                    float8out, Float8GetDatum(agtv_rhs->val.float_value));
+            }
+            nstr = DatumGetCString(n);
+            nlen = strlen(nstr);
+
+            len = agtv_lhs->val.string.len + nlen;
+            buffer = palloc(len);
+
+            strncpy(buffer, agtv_lhs->val.string.val,
+                    agtv_lhs->val.string.len);
+            strncpy(buffer + agtv_lhs->val.string.len, nstr, nlen);
+
+            agtv_result.type = AGTV_STRING;
+            agtv_result.val.string.len = len;
+            agtv_result.val.string.val = buffer;
+
+            AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
+        }
+    }
+    if (agtv_rhs->type == AGTV_STRING)
+    {
+        if (agtv_lhs->type == AGTV_INTEGER || agtv_lhs->type == AGTV_FLOAT)
+        {
+            if (agtv_lhs->type == AGTV_INTEGER)
+            {
+                n = DirectFunctionCall1(int8out,
+                                        Int8GetDatum(agtv_lhs->val.int_value));
+            }
+            else
+            {
+                n = DirectFunctionCall1(
+                    float8out, Float8GetDatum(agtv_lhs->val.float_value));
+            }
+            nstr = DatumGetCString(n);
+            nlen = strlen(nstr);
+
+            len = agtv_rhs->val.string.len + nlen;
+            buffer = palloc(len);
+
+            strncpy(buffer, nstr, nlen);
+            strncpy(buffer + nlen, agtv_rhs->val.string.val,
+                    agtv_rhs->val.string.len);
+
+            agtv_result.type = AGTV_STRING;
+            agtv_result.val.string.len = len;
+            agtv_result.val.string.val = buffer;
+
+            AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
+        }
+    }
     if (agtv_lhs->type == AGTV_INTEGER && agtv_rhs->type == AGTV_INTEGER)
     {
         agtv_result.type = AGTV_INTEGER;
