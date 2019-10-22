@@ -2567,4 +2567,25 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     // Test prepared statements with used keyspace permissions.
     internalTestPreparedCreateDropType(KEYSPACE, anotherKeyspace);
   }
+
+  @Test
+  public void testExplain() throws Exception {
+    LOG.info("Begin test");
+
+    s.execute(String.format("CREATE TABLE %s.%s (auth_id text, PRIMARY KEY(auth_id))",
+                            keyspace, table));
+    String explainStmt = String.format("EXPLAIN SELECT * FROM %s.%s WHERE auth_id=''",
+                                       keyspace, table);
+    try {
+      s2.execute(explainStmt);
+      fail("EXPLAIN SELECT works without permissions");
+    } catch (com.datastax.driver.core.exceptions.UnauthorizedException e) {
+      LOG.info("Expected exception:", e);
+    }
+
+    grantPermission(SELECT, TABLE, keyspace + '.' + table, username);
+    s2.execute(explainStmt);
+
+    LOG.info("End test");
+  }
 }
