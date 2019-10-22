@@ -1256,8 +1256,6 @@ struct DBOptions {
   // Default: false
   bool allow_concurrent_memtable_write;
 
-  bool in_memory_erase = false;
-
   // If true, threads synchronizing with the write batch group leader will
   // wait for up to write_thread_max_yield_usec before blocking on a mutex.
   // This can substantially improve throughput for concurrent workloads,

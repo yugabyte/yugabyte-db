@@ -1689,7 +1689,6 @@ Status GetFromString(DBOptions* source, DBOptions* destination) {
       "advise_random_on_open=true;"
       "fail_if_options_file_error=true;"
       "allow_concurrent_memtable_write=true;"
-      "in_memory_erase=true;"
       "wal_recovery_mode=kPointInTimeRecovery;"
       "enable_write_thread_adaptive_yield=true;"
       "write_thread_slow_yield_usec=5;"

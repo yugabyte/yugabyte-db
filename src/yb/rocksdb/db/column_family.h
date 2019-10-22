@@ -153,8 +153,6 @@ extern Status CheckCompressionSupported(const ColumnFamilyOptions& cf_options);
 extern Status CheckConcurrentWritesSupported(
     const ColumnFamilyOptions& cf_options);
 
-CHECKED_STATUS CheckInMemoryEraseSupported(const ColumnFamilyOptions& cf_options);
-
 extern ColumnFamilyOptions SanitizeOptions(const DBOptions& db_options,
                                            const InternalKeyComparator* icmp,
                                            const ColumnFamilyOptions& src);
