@@ -36,6 +36,11 @@ PTExplainStmt::~PTExplainStmt() {
 }
 
 CHECKED_STATUS PTExplainStmt::Analyze(SemContext *sem_context) {
+  if (!stmt_->IsDml()) {
+    return sem_context->Error(this, "Only DML statements can be explained",
+                              ErrorCode::CQL_STATEMENT_INVALID);
+  }
+
   // Analyze explainable sub statement.
   return stmt_->Analyze(sem_context);
 }
