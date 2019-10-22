@@ -57,6 +57,7 @@ Available `yb-admin` commands:
 - [get_load_move_completion](#get-load-move-completion)
 - [get_leader_blacklist_completion](#get-leader-blacklist-completion)
 - [get_is_load_balancer_idle](#get-is-load-balancer-idle)
+- [list_leader_counts](#list-leader-counts)
 - [get_universe_config](#get-universe-config)
 - [change_blacklist](#change-blacklist)
 - [change_leader_blacklist](#change-leader-blacklist)
@@ -82,7 +83,7 @@ Changes the configuration of a tablet.
 
 #### Syntax
 
-```
+```sh
 ./bin/yb-admin change_config <tablet_id> <ADD_SERVER|REMOVE_SERVER> <peer_uuid> [ PRE_VOTER |PRE_OBSERVER ]
 ```
 
@@ -90,9 +91,6 @@ Changes the configuration of a tablet.
 - ADD SERVER | REMOVE SERVER: Subcommand to add or remove the server.
 - *peer_uuid*: The UUID of the peer.
 - PRE_VOTER | PRE_OBSERVER: Role of the new peer joining the quorum.
-
-#### Example
-
 
 ### list_tablet_servers
 
@@ -103,12 +101,6 @@ Changes the configuration of a tablet.
 ```
 
 - *tablet_id*: The identifier (ID) of the tablet.
-
-#### Example
-
-```sh
-./bin/yb-admin list_tablet_servers <tablet_id>
-```
 
 ### list_tables
 
