@@ -127,7 +127,7 @@ The expected maximum clock skew, in microseconds (µs), between any two nodes in
 
 Default: `50000` (50,000 µs = 50ms)
 
-##### --replication_factor
+#### --replication_factor
 
 Number of replicas to store for each tablet in the universe.
 
