@@ -470,7 +470,7 @@ $ ./bin/yb-admin list_snapshots
 ```
 Snapshot UUID                    	State
 4963ed18fc1e4f1ba38c8fcf4058b295 	COMPLETE
-``
+```
 
 ### create_snapshot
 
