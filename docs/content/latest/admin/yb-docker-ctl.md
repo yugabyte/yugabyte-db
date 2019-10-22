@@ -9,7 +9,7 @@ menu:
     weight: 2420
 aliases:
   - admin/yb-docker-ctl
-isTocNested: false
+isTocNested: true
 showAsideToc: true
 
 ---
