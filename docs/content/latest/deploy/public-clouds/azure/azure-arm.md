@@ -8,7 +8,7 @@
 - Change current directory to cloned git repo directory
 - Use Azure CLI command to create deployments <br/> 
     ```
-    $ az group deployment create --resource-group <Your-Azure-Resource-Group> --template-file ResourceGroup.json --parameters ClusterName='<Your-Cluster-Name>' SSH_USER='<Your-SSH-USER>' YB-Version='1.3.0.0' SSH_keypair='<Your-SSH-USER-PublicKey>'
+    $ az group deployment create --resource-group <Your-Azure-Resource-Group> --template-file yugabyte_deployment.json --parameters ClusterName='<Your-Cluster-Name>' SshUser='<Your-SSH-USER>' YBVersion='1.3.0.0' SshKeypair='<Your-SSH-USER-PublicKey-File-Contents>'
     ```
 - Once the deployment creation is complete, you can describe it as shown below.
     ```
