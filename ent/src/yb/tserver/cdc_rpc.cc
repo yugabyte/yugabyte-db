@@ -35,8 +35,6 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
   CDCWriteRpc(CoarseTimePoint deadline,
               client::internal::RemoteTablet *tablet,
               client::YBClient *client,
-              std::function<rpc::Rpcs::Handle(rpc::RpcCommandPtr)> register_rpc,
-              std::function<rpc::RpcCommandPtr(rpc::Rpcs::Handle *)> unregister_rpc,
               WriteRequestPB *req,
               WriteCDCRecordCallback callback)
       : rpc::Rpc(deadline, client->messenger(), &client->proxy_cache()),
@@ -49,8 +47,6 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
                  tablet,
                  mutable_retrier(),
                  trace_.get()),
-        register_rpc_(std::move(register_rpc)),
-        unregister_rpc_(std::move(unregister_rpc)),
         callback_(std::move(callback)) {
     req_.Swap(req);
   }
@@ -58,14 +54,12 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
   ~CDCWriteRpc() = default;
 
   void SendRpc() override {
-    retained_self_ = register_rpc_(shared_from_this());
     invoker_.Execute(tablet_id());
   }
 
   void Finished(const Status &status) override {
     Status new_status = status;
     if (invoker_.Done(&new_status)) {
-      auto retained_self = unregister_rpc_(&retained_self_);
       InvokeCallback(new_status);
     }
   }
@@ -107,9 +101,6 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
 
   TracePtr trace_;
   client::internal::TabletInvoker invoker_;
-  std::function<rpc::Rpcs::Handle(rpc::RpcCommandPtr)> register_rpc_;
-  std::function<rpc::RpcCommandPtr(rpc::Rpcs::Handle *)> unregister_rpc_;
-  rpc::Rpcs::Handle retained_self_;
   WriteRequestPB req_;
   WriteResponsePB resp_;
   WriteCDCRecordCallback callback_;
@@ -119,12 +110,10 @@ rpc::RpcCommandPtr WriteCDCRecord(
     CoarseTimePoint deadline,
     client::internal::RemoteTablet* tablet,
     client::YBClient* client,
-    std::function<rpc::Rpcs::Handle(rpc::RpcCommandPtr)> register_rpc,
-    std::function<rpc::RpcCommandPtr(rpc::Rpcs::Handle*)> unregister_rpc,
     WriteRequestPB* req,
     WriteCDCRecordCallback callback) {
   return rpc::StartRpc<CDCWriteRpc>(
-      deadline, tablet, client, register_rpc, unregister_rpc, req, std::move(callback));
+      deadline, tablet, client, req, std::move(callback));
 }
 
 } // namespace enterprise

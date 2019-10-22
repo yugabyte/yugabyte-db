@@ -51,15 +51,12 @@ CDCPoller::CDCPoller(const cdc::ProducerTabletInfo& producer_tablet_info,
     resp_(std::make_unique<cdc::GetChangesResponsePB>()),
     rpc_(std::make_unique<rpc::RpcController>()),
     output_client_(CreateTwoDCOutputClient(
+        cdc_consumer,
         consumer_tablet_info,
         client,
         std::bind(&CDCPoller::HandleApplyChanges, this, std::placeholders::_1))),
     thread_pool_(thread_pool),
     cdc_consumer_(cdc_consumer) {}
-
-CDCPoller::~CDCPoller() {
-  output_client_->Shutdown();
-}
 
 std::string CDCPoller::ToString() const {
   std::ostringstream os;

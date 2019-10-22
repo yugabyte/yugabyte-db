@@ -49,8 +49,6 @@ MUST_USE_RESULT rpc::RpcCommandPtr WriteCDCRecord(
     CoarseTimePoint deadline,
     client::internal::RemoteTablet* tablet,
     client::YBClient* client,
-    std::function<rpc::Rpcs::Handle(rpc::RpcCommandPtr)> register_rpc,
-    std::function<rpc::RpcCommandPtr(rpc::Rpcs::Handle*)> unregister_rpc,
     WriteRequestPB* req,
     WriteCDCRecordCallback callback);
 
