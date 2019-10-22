@@ -9,7 +9,7 @@ menu:
     weight: 2410
 aliases:
   - admin/yb-ctl
-isTocNested: false
+isTocNested: true
 showAsideToc: true
 
 ---
@@ -105,6 +105,8 @@ Enables YugabyteDB support for the Redis-compatible YEDIS API.
 For details and examples, see [Initialize the YEDIS API](#initialize-the-yedis-api).
 
 ## Optional arguments
+
+
 
 ### --help | -h
 
