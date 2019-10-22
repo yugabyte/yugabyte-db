@@ -195,7 +195,7 @@ public class PlacementInfoUtil {
       LOG.info("Comparing task '{}' and existing '{}' intents.", newIntent, existingIntent);
       UserIntent tempIntent = newIntent.clone();
       tempIntent.numNodes = existingIntent.numNodes;
-      if (!tempIntent.equals(existingIntent) || newIntent.numNodes == existingIntent.numNodes) {
+      if (!tempIntent.equals(existingIntent)) {
         return ConfigureNodesMode.NEW_CONFIG;
       }
     }

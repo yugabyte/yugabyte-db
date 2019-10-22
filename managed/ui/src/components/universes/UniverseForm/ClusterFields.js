@@ -315,7 +315,17 @@ export default class ClusterFields extends Component {
   }
 
   componentDidUpdate(prevProps, prevState) {
-    const { universe: { currentUniverse, universeConfigTemplate }, formValues, clusterType, type } = this.props;
+    const {
+      universe: {
+        currentUniverse,
+        universeConfigTemplate
+      },
+      formValues,
+      clusterType,
+      setPlacementStatus,
+      toggleDisableSubmit,
+      type
+    } = this.props;
     let currentProviderUUID = this.state.providerSelected;
     const self = this;
 
@@ -348,24 +358,38 @@ export default class ClusterFields extends Component {
               maxNumNodes: this.state.maxNumNodes
             }
           };
-          this.props.setPlacementStatus(placementStatusObject);
+          setPlacementStatus(placementStatusObject);
           this.configureUniverseNodeList();
         }
       } else {
         this.configureUniverseNodeList();
       }
-    } else if (isNonEmptyArray(this.state.regionList) && currentProvider &&
-      currentProvider.code === "onprem" && this.state.instanceTypeSelected &&
-      this.state.numNodes > this.state.maxNumNodes) {
-
-      const placementStatusObject = {
-        error: {
-          type: "notEnoughNodesConfigured",
-          numNodes: this.state.numNodes,
-          maxNumNodes: this.state.maxNumNodes
+    } else if (currentProvider && currentProvider.code === 'onprem') {
+      if (isNonEmptyArray(this.state.regionList) && currentProvider &&
+          this.state.instanceTypeSelected && this.state.numNodes > this.state.maxNumNodes) {
+        const placementStatusObject = {
+          error: {
+            type: 'notEnoughNodesConfigured',
+            numNodes: this.state.numNodes,
+            maxNumNodes: this.state.maxNumNodes
+          }
+        };
+        setPlacementStatus(placementStatusObject);
+        toggleDisableSubmit(true);
+      } else {
+        const primaryCluster = this.props.universe.currentUniverse.data.universeDetails.clusters.find(x => x.clusterType === 'PRIMARY');
+        const provider = primaryCluster.placementInfo.cloudList.find(c => c.uuid === currentProvider.uuid);
+        const replication = primaryCluster.userIntent.replicationFactor;
+        if (provider) {
+          const numAzs = provider.regionList.reduce((acc, current) => acc + current.azList.length, 0);
+          setPlacementStatus({
+            replicationFactor: replication,
+            numUniqueAzs: numAzs,
+            numUniqueRegions: provider.regionList.length
+          });
+          toggleDisableSubmit(false);
         }
-      };
-      this.props.setPlacementStatus(placementStatusObject);
+      }
     }
     //hook from parent universeForm to check if any fields was changed
     const nodeDetailsSet = getPromiseState(currentUniverse).isSuccess() && getPromiseState(universeConfigTemplate).isSuccess() ? universeConfigTemplate.data.nodeDetailsSet : [];
@@ -421,7 +445,9 @@ export default class ClusterFields extends Component {
         universeName: primaryCluster.userIntent.universeName,
         numNodes: formValues[clusterType].numNodes,
         provider: formValues[clusterType].provider,
-        providerType: this.getCurrentProvider(formValues[clusterType].provider).code,
+        providerType: this.getCurrentProvider(formValues[clusterType].provider) ?
+          this.getCurrentProvider(formValues[clusterType].provider).code :
+          null,
         regionList: formValues[clusterType].regionList.map((a)=>(a.value)),
         instanceType: formValues[clusterType].instanceType,
         ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,

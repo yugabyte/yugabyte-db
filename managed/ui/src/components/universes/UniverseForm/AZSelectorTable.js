@@ -299,7 +299,9 @@ export default class AZSelectorTable extends Component {
 
   componentWillMount() {
     const {universe: {currentUniverse, universeConfigTemplate}, type, clusterType} = this.props;
-    const currentCluster = getClusterByType(universeConfigTemplate.data.clusters, clusterType);
+    const currentCluster = getPromiseState(universeConfigTemplate).isSuccess() ?
+      getClusterByType(universeConfigTemplate.data.clusters, clusterType) :
+      {};
     // Set AZ Groups when switching back to a cluster tab
     if (isNonEmptyObject(currentCluster)) {
       const azGroups = this.getGroupWithCounts(universeConfigTemplate.data).groups;

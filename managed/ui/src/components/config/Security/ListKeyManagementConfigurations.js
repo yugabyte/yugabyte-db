@@ -22,7 +22,6 @@ class ListKeyManagementConfiguration extends Component {
           title={"Delete provider"}
           bsClass="btn btn-default btn-config pull-right"
           onClick={() => {
-            console.log(kmsProvider);
             if (kmsProvider === 'AWS') {
               this.setState({ visibleModal: 'confirmDeleteKMSConfig' });
             } else {
