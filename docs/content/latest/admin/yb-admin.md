@@ -7,7 +7,7 @@ menu:
     identifier: yb-admin
     parent: admin
     weight: 2410
-isTocNested: false
+isTocNested: true
 showAsideToc: true
 ---
 
@@ -36,46 +36,6 @@ $ ./bin/yb-admin --help
 - *command_options*: Configuration options, or flags, that can be applied to the command. 
 
 ## Commands
-
-Available `yb-admin` commands:
-
-- [change_config](#change-config)
-- [list_tables](#list-tables)
-- [list_table_with_db_types](#list-table-with-db-types)
-- [list_tablets](#list-tablets)
-- [modify_placement_info](#modify-placement-info)
-- [add_read_replica_placement_info](#add-read-replica-placement-info)
-- [modify_read_replica_placement_info](#modify-read-replica-placement-info)
-- [delete_read_replica_placement_info](#delete-read-replica-placement-info)
-- [list_all_tablet_servers](#list_all_tablet_servers)
-- [list_all_masters](#list_all_masters)
-- [change_master_config](#change_master_config)
-- [dump_masters_state](#dump-masters-state)
-- [list_tablet_server_log_locations](#list-tablet-server-log-locations)
-- [list_tablets_for_tablet_server](#list-tablets-for-tablet-server)
-- [set_load_balancer_enabled](#set-load-balancer-enabled)
-- [get_load_move_completion](#get-load-move-completion)
-- [get_leader_blacklist_completion](#get-leader-blacklist-completion)
-- [get_is_load_balancer_idle](#get-is-load-balancer-idle)
-- [list_leader_counts](#list-leader-counts)
-- [get_universe_config](#get-universe-config)
-- [change_blacklist](#change-blacklist)
-- [change_leader_blacklist](#change-leader-blacklist)
-- [list_snapshots](#list-snapshots)
-- [create_snapshot](#create-snapshot)
-- [restore_snapshot](#restore-snapshot)
-- [export_snapshot](#export-snapshot)
-- [import_snapshot](#import-snapshot)
-- [delete_snapshot](#delete-snapshot)
-- [list_replica_type_counts ](#list-replica-type-counts )
-- [set_preferred_zones](#set-preferred-zones)
-- [rotate_universe_key](#rotate_universe-key)
-- [disable_encryption](#disable-encryption)
-- [is_encryption_enabled](#is-encryption-enabled)
-- [create_cdc_stream](#create-cdc-stream)
-- [setup_universe_replication](#setup-universe-replication)
-- [delete_universe_replication](#delete-universe-replication)
-- [set_universe_replication_enabled](#set-universe-replication-enabled)
 
 ### change_config
 
@@ -412,7 +372,7 @@ The time needed to complete a data move depends on the following:
 
 {{< /note >}}
 
-For an example of performing a data move and the use of this command, see [Change cluster configuration](../manage/change-cluster-config),
+For an example of performing a data move and the use of this command, see [Change cluster configuration](../manage/change-cluster-config).
 
 #### Example
 

@@ -9,7 +9,7 @@ menu:
     weight: 2440
 aliases:
   - admin/yb-master
-isTocNested: false
+isTocNested: true
 showAsideToc: true
 ---
 
@@ -127,9 +127,9 @@ The expected maximum clock skew, in microseconds (µs), between any two nodes in
 
 Default: `50000` (50,000 µs = 50ms)
 
-##### --replication_factor
+#### --replication_factor
 
-Number of replicas to store for each tablet in the universe.
+The number of replicas, or copies of data, to store for each tablet in the universe.
 
 Default: `3`
 
