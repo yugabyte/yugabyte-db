@@ -1,7 +1,7 @@
 ---
-title: Change cluster config
-linkTitle: Change cluster config
-description: Change cluster config
+title: Change cluster configuration
+linkTitle: Change cluster configuration
+description: Change cluster configuration
 aliases:
   - manage/change-cluster-config
 menu:
