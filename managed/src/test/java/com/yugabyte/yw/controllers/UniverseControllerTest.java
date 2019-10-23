@@ -1804,12 +1804,12 @@ public class UniverseControllerTest extends WithApplication {
             .put("key_size", "256")
             .put("force_new_instance", "true")
     );
-    String url = "/api/customers/" + customer.uuid + "/universes/" + testUniUUID + "/rotate_key";
+    String url = "/api/customers/" + customer.uuid + "/universes/" + testUniUUID + "/set_key";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertOk(result);
     ArgumentCaptor<UniverseTaskParams> argCaptor = ArgumentCaptor
             .forClass(UniverseTaskParams.class);
-    verify(mockCommissioner).submit(eq(TaskType.RotateUniverseKey), argCaptor.capture());
+    verify(mockCommissioner).submit(eq(TaskType.SetUniverseKey), argCaptor.capture());
     verify(mockEARManager, times(1)).getServiceInstance("SMARTKEY");
     verify(mockEARManager, times(1)).maskConfigData(
             eq(customer.uuid),

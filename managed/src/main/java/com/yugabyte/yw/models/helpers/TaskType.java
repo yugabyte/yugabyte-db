@@ -55,9 +55,9 @@ public enum TaskType {
 
   ReleaseInstanceFromUniverse("ReleaseInstanceFromUniverse"),
 
-  RotateUniverseKey("RotateUniverseKey"),
+  SetUniverseKey("SetUniverseKey"),
 
-  RotateKubernetesUniverseKey("RotateKubernetesUniverseKey"),
+  SetKubernetesUniverseKey("SetKubernetesUniverseKey"),
 
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
@@ -142,7 +142,9 @@ public enum TaskType {
 
   KubernetesCommandExecutor("subtasks.KubernetesCommandExecutor"),
 
-  KubernetesWaitForPod("subtasks.KubernetesWaitForPod");
+  KubernetesWaitForPod("subtasks.KubernetesWaitForPod"),
+
+  CopyEncryptionKeyFile("subtasks.CopyEncryptionKeyFile");
 
   private String relativeClassPath;
 
