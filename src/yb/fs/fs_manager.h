@@ -133,8 +133,10 @@ class FsManager {
   // Returns an error if the file system is already initialized.
   CHECKED_STATUS CreateInitialFileSystemLayout(bool delete_fs_if_lock_found = false);
 
-  // Does various tricky things depending on its mode, see the code and comments in implementation
-  CHECKED_STATUS DeleteFileSystemLayout(bool shell_mode);
+  // Deletes the yb-data directory contents for data/wal. "logs" subdirectory deletion is skipped
+  // when 'delete_logs_also' is set to false.
+  // Needed for a master shell process to be stoppable and restartable correctly in shell mode.
+  CHECKED_STATUS DeleteFileSystemLayout(bool delete_logs_also = false);
 
   // Check if a lock file is present.
   bool HasAnyLockFiles();
