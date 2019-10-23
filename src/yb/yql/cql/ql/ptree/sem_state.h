@@ -146,6 +146,8 @@ class SemState {
   }
   void add_index_column_ref(int32_t col_id);
 
+  bool is_uncovered_index_select() const;
+
  private:
   // Context that owns this SemState.
   SemContext *sem_context_;

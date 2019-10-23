@@ -927,6 +927,82 @@ public class TestIndex extends BaseCQLTest {
     // Test select with aggregate functions.
     assertQuery("select sum(r), min(v2), max(v2), sum(v2) from test_misc where v1 = 2 and v2 > 30;",
                 new HashSet<String>(Arrays.asList("Row[6, 33, 333, 588]")));
+
+    // Create test table for LIST and index and populate with rows.
+    session.execute("create table test_list (h int, r int, v int, l list<int>, " +
+            "PRIMARY KEY (h, r)) with transactions = { 'enabled' : true };");
+    session.execute("create index on test_list (v);");
+
+    session.execute("insert into test_list (h, r, v, l) values (1, 1, 1, [1, 2]);");
+    session.execute("insert into test_list (h, r, v, l) values (2, 2, 2, [3, 4]);");
+
+    assertQuery("select * from test_list;",
+                new HashSet<String>(Arrays.asList("Row[1, 1, 1, [1, 2]]",
+                                                  "Row[2, 2, 2, [3, 4]]")));
+
+    assertQuery("select * from test_list where v = 1 and l[0] = 1;",
+                new HashSet<String>(Arrays.asList("Row[1, 1, 1, [1, 2]]")));
+
+    // Create test table for MAP and index and populate with rows.
+    session.execute("create table test_map (h int, r int, v int, m map<int, int>, " +
+            "PRIMARY KEY (h, r)) with transactions = { 'enabled' : true };");
+    session.execute("create index on test_map (v);");
+
+    session.execute("insert into test_map (h, r, v, m) values (1, 1, 1, {1:2});");
+    session.execute("insert into test_map (h, r, v, m) values (2, 2, 2, {3:4});");
+
+    assertQuery("select * from test_map;",
+            new HashSet<String>(Arrays.asList("Row[1, 1, 1, {1=2}]",
+                                              "Row[2, 2, 2, {3=4}]")));
+
+    assertQuery("select * from test_map where v = 1 and m[1] = 2;",
+                new HashSet<String>(Arrays.asList("Row[1, 1, 1, {1=2}]")));
+
+    // Create test table for SET and index and populate with rows.
+    session.execute("create table test_set (h int, r int, v int, s set<int>, " +
+            "PRIMARY KEY (h, r)) with transactions = { 'enabled' : true };");
+    session.execute("create index on test_set (v);");
+
+    session.execute("insert into test_set (h, r, v, s) values (1, 1, 1, {});");
+    session.execute("insert into test_set (h, r, v, s) values (2, 2, 2, {3,4});");
+
+    assertQuery("select * from test_set;",
+            new HashSet<String>(Arrays.asList("Row[1, 1, 1, NULL]",
+                                              "Row[2, 2, 2, [3, 4]]")));
+
+    assertQuery("select * from test_set where v = 1 and s = NULL;",
+            new HashSet<String>(Arrays.asList("Row[1, 1, 1, NULL]")));
+
+    // Create test table for JSONB and index and populate with rows.
+    session.execute("create table test_json (h int, r int, v int, j jsonb, " +
+            "PRIMARY KEY (h, r)) with transactions = { 'enabled' : true };");
+    session.execute("create index on test_json (v);");
+
+    session.execute("insert into test_json (h, r, v, j) values (1, 1, 1, '{\"a\":1}');");
+    session.execute("insert into test_json (h, r, v, j) values (2, 2, 2, '{\"a\":2}');");
+
+    assertQuery("select * from test_json;",
+            new HashSet<String>(Arrays.asList("Row[1, 1, 1, {\"a\":1}]",
+                                              "Row[2, 2, 2, {\"a\":2}]")));
+
+    assertQuery("select * from test_json where v = 1 and j->>'a' = '1';",
+            new HashSet<String>(Arrays.asList("Row[1, 1, 1, {\"a\":1}]")));
+
+    // Create test table for UDT and index and populate with rows.
+    session.execute("create type udt(v1 int, v2 int);");
+    session.execute("create table test_udt (h int, r int, v int, u udt, " +
+            "PRIMARY KEY (h, r)) with transactions = { 'enabled' : true };");
+    session.execute("create index on test_udt (v);");
+
+    session.execute("insert into test_udt (h, r, v, u) values (1, 1, 1, NULL);");
+    session.execute("insert into test_udt (h, r, v, u) values (2, 2, 2, {v1:2,v2:2});");
+
+    assertQuery("select * from test_udt;",
+            new HashSet<String>(Arrays.asList("Row[1, 1, 1, NULL]",
+                                              "Row[2, 2, 2, {v1:2,v2:2}]")));
+
+    assertQuery("select * from test_udt where v = 1 and u = NULL;",
+            new HashSet<String>(Arrays.asList("Row[1, 1, 1, NULL]")));
   }
 
   @Test
