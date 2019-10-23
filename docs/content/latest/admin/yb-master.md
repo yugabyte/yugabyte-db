@@ -41,11 +41,22 @@ yb-master [ option  ] | [ option ]
 
 ## Configuration options
 
+- [General](#general-options)
+- [Logging](#logging-options)
+- [Cluster](#cluster-options)
+- [Placement](#placement-options)
+
+---
+
 ### General options
 
 #### --version
 
 Shows version and build information, then exits.
+
+#### --flagfile
+
+Specifies the configuration file to load flags from.
 
 #### --master_addresses
 
@@ -73,10 +84,6 @@ Mandatory.
 
 Default: `0.0.0.0:7100`
 
-#### --flagfile
-
-Specifies the configuration file to load flags from.
-
 #### --server_broadcast_addresses
 
 Specifies the public IP or DNS hostname of the server (along with an optional port).
@@ -101,6 +108,8 @@ Monitoring web server home.
 
 Default: The `www` directory in the YugabyteDB home directory.
 
+---
+
 ### Logging options
 
 #### --log_dir
@@ -112,6 +121,8 @@ Default: Same value as `--fs_data_dirs`
 #### --logtostderr
 
 Switches to log to standard error (`stderr`).
+
+---
 
 ### Cluster options
 
@@ -132,6 +143,8 @@ Default: `50000` (50,000 µs = 50ms)
 The number of replicas, or copies of data, to store for each tablet in the universe.
 
 Default: `3`
+
+---
 
 ### Placement options
 
@@ -187,7 +200,7 @@ List of all utilities available to debug the performance of the cluster.
 
 ![master-debug](/images/admin/master-debug.png)
 
-## Default ports reference
+## Default ports
 
 The various default ports are listed below.
 

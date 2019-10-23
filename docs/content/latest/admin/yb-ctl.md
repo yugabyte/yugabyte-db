@@ -11,7 +11,6 @@ aliases:
   - admin/yb-ctl
 isTocNested: true
 showAsideToc: true
-
 ---
 
 The `yb-ctl` utility, located in the bin directory of YugabyteDB home, provides a simple command line interface for administering local clusters used for development and learning. It invokes the [`yb-master`](../admin/yb-master/) and [`yb-tserver`](../admin/yb-tserver/) binaries to perform the necessary administration.
