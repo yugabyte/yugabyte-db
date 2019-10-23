@@ -71,14 +71,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // The UUID of the rootCA to be used to generate client certificates and facilitate TLS communication.
   public UUID rootCA = null;
 
-  // Flag for creating encryption-at-rest key file
-  public String encryptionKeyFilePath;
-
   // Flag for if it is a kubernetes provided universe
   public boolean isKubernetesUniverse = false;
-
-  // Store encryption key provider specific configuration/authorization values
-  public Map<String, String> encryptionAtRestConfig;
 
   // This flag represents whether user has chosen to provide placement info
   // In Edit Universe if this flag is set we go through the NEW_CONFIG_FROM_PLACEMENT_INFO path
@@ -86,10 +80,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // Set to true if resetting Universe form (in EDIT mode), false otherwise.
   public boolean resetAZConfig = false;
-
-  // The set of nodes that are part of this universe. Should contain nodes in both primary and
-  // readOnly clusters.
-  public Set<NodeDetails> nodeDetailsSet = null;
 
   // TODO: Add a version number to prevent stale updates.
   // Set to true when an create/edit/destroy intent on the universe is started.
@@ -297,7 +287,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
              providerType + ", RF=" + replicationFactor + ", regions=" + regionList + ", pref=" +
              preferredRegion + ", ybVersion=" + ybSoftwareVersion + ", accessKey=" + accessKeyCode +
              ", deviceInfo='" + deviceInfo + "', timeSync=" + useTimeSync + ", publicIP=" +
-             assignPublicIP + " tags=" + instanceTags;
+             assignPublicIP + ", tags=" + instanceTags + ", enableEncryptionAtRest= " +
+             enableEncryptionAtRest;
     }
 
     public UserIntent clone() {
@@ -320,6 +311,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.enableYSQL = enableYSQL;
       newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
+      newUserIntent.enableEncryptionAtRest = enableEncryptionAtRest;
       newUserIntent.instanceTags = new HashMap<>(instanceTags);
       return newUserIntent;
     }
@@ -337,7 +329,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           ybSoftwareVersion.equals(other.ybSoftwareVersion) &&
           (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode)) &&
           assignPublicIP == other.assignPublicIP &&
-          useTimeSync == other.useTimeSync) {
+          useTimeSync == other.useTimeSync &&
+          enableEncryptionAtRest == other.enableEncryptionAtRest) {
         return true;
       }
       return false;

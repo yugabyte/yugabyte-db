@@ -81,8 +81,8 @@ public class CustomerTask extends Model {
     @EnumValue("Restore")
     Restore,
 
-    @EnumValue("RotateEncryptionKey")
-    RotateEncryptionKey;
+    @EnumValue("SetEncryptionKey")
+    SetEncryptionKey;
 
     public String toString(boolean completed) {
       switch(this) {
@@ -102,8 +102,8 @@ public class CustomerTask extends Model {
           return completed ? "Restored " : "Restoring ";
         case Backup:
           return completed ? "Backed up" : "Backing up";
-        case RotateEncryptionKey:
-          return completed ? "Rotating encryption key" : "Rotated encryption key";
+        case SetEncryptionKey:
+          return completed ? "Setting encryption key" : "Set encryption key";
         default:
           return null;
       }

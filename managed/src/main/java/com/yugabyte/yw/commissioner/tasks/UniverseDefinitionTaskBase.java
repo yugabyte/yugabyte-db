@@ -41,6 +41,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CopyEncryptionKeyFile;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
@@ -337,8 +338,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
     List<Cluster> onPremClusters = universeDetails.clusters.stream()
-        .filter(c -> c.userIntent.providerType.equals(CloudType.onprem))
-        .collect(Collectors.toList());
+            .filter(c -> c.userIntent.providerType.equals(CloudType.onprem))
+            .collect(Collectors.toList());
     for (Cluster onPremCluster : onPremClusters) {
       Map<UUID, List<String>> onpremAzToNodes = new HashMap<UUID, List<String>>();
       for (NodeDetails node : universeDetails.getNodesInCluster(onPremCluster.uuid)) {
@@ -508,30 +509,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Runs task for enabling encryption-at-rest key file on master
-   */
-  public SubTaskGroup createEnableEncryptionAtRestTask(String file) {
-    return createEnableEncryptionAtRestTask(file, false);
-  }
-
-  /**
-   * Runs task for enabling encryption-at-rest key file on master
-   */
-  public SubTaskGroup createEnableEncryptionAtRestTask(String file, boolean isKubernetesUniverse) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("EnableEncryptionAtRest", executor);
-    EnableEncryptionAtRest task = new EnableEncryptionAtRest();
-    EnableEncryptionAtRest.Params params = new EnableEncryptionAtRest.Params();
-    params.universeUUID = taskParams().universeUUID;
-    // Add encryption file path
-    params.encryptionKeyFilePath = file;
-    params.isKubernetesUniverse = isKubernetesUniverse;
-    task.initialize(params);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  /**
    * Creates a task list to wait for a minimum number of tservers to heartbeat
    * to the master leader.
    */
@@ -681,7 +658,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
   }
-
 
   /**
    * Verify that the task params are valid.

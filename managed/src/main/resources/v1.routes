@@ -107,7 +107,7 @@ GET     /customers/:cUUID/universes/:uniUUID/health_check   com.yugabyte.yw.cont
 GET     /customers/:cUUID/universes/find/:universeName  com.yugabyte.yw.controllers.UniverseController.findByName(cUUID: java.util.UUID, universeName: String)
 GET     /customers/:cUUID/cost                        com.yugabyte.yw.controllers.UniverseController.universeListCost(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/universes/:uniUUID/update_backup_state  com.yugabyte.yw.controllers.UniverseController.setBackupFlag(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-POST    /customers/:cUUID/universes/:uniUUID/rotate_key com.yugabyte.yw.controllers.UniverseController.rotateUniverseKey(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/set_key    com.yugabyte.yw.controllers.UniverseController.setUniverseKey(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Cluster under universe
 POST    /customers/:cUUID/universes/:uniUUID/cluster              com.yugabyte.yw.controllers.UniverseController.clusterCreate(cUUID: java.util.UUID, uniUUID: java.util.UUID)
