@@ -101,5 +101,9 @@ void SemState::add_index_column_ref(int32_t col_id) {
   }
 }
 
+bool SemState::is_uncovered_index_select() const {
+  return DCHECK_NOTNULL(sem_context_)->IsUncoveredIndexSelect();
+}
+
 }  // namespace ql}  // namespace ql
 }  // namespace yb
