@@ -742,6 +742,13 @@ SELECT bool_to_agtype(true) <> bool_to_agtype(false);
  t
 (1 row)
 
+--
+-- Map Literal
+--
+--Invalid Map Key (should fail)
+SELECT agtype_build_map('[0]'::agtype, null);
+ERROR:  key value must be scalar, not array, composite, or json
+--
 -- Cleanup
 --
 DROP TABLE agtype_table;

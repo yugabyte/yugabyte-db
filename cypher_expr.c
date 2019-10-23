@@ -249,8 +249,8 @@ static Node *transform_cypher_map(ParseState *pstate, cypher_map *cm)
         setup_parser_errposition_callback(&pcbstate, pstate, cm->location);
         // typtypmod, typcollation, typlen, and typbyval of agtype are
         // hard-coded.
-        newkey = makeConst(AGTYPEOID, -1, InvalidOid, -1,
-                           string_to_agtype(strVal(key)), false, false);
+        newkey = makeConst(TEXTOID, -1, InvalidOid, -1,
+                           CStringGetTextDatum(strVal(key)), false, false);
         cancel_parser_errposition_callback(&pcbstate);
 
         newkeyvals = lappend(lappend(newkeyvals, newkey), newval);

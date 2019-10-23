@@ -225,6 +225,14 @@ SELECT bool_to_agtype(null);
 SELECT bool_to_agtype(true) = bool_to_agtype(true);
 SELECT bool_to_agtype(true) <> bool_to_agtype(false);
 
+--
+-- Map Literal
+--
+
+--Invalid Map Key (should fail)
+SELECT agtype_build_map('[0]'::agtype, null);
+
+--
 -- Cleanup
 --
 DROP TABLE agtype_table;

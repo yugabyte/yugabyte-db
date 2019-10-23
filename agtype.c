@@ -752,7 +752,7 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
     else if (key_scalar &&
              (tcategory == AGT_TYPE_ARRAY || tcategory == AGT_TYPE_COMPOSITE ||
               tcategory == AGT_TYPE_JSON || tcategory == AGT_TYPE_JSONB ||
-              tcategory == AGT_TYPE_JSONCAST))
+              tcategory == AGT_TYPE_AGTYPE || tcategory == AGT_TYPE_JSONCAST))
     {
         ereport(
             ERROR,
