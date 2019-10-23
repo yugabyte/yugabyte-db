@@ -81,8 +81,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Update the DNS entry for this universe, based in primary provider info.
       UserIntent primaryIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
       createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, primaryIntent.providerType,
-                                primaryIntent.provider, primaryIntent.universeName)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+              primaryIntent.provider, primaryIntent.universeName)
+              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
@@ -251,6 +251,12 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Wait for a master leader to be elected.
       createWaitForMasterLeaderTask()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Enable encryption-at-rest if key file is passed in
+      createEnableEncryptionAtRestTask(taskParams().encryptionKeyFilePath)
+              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      if (taskParams().encryptionKeyFilePath != null) writeEncryptionEnabledToUniverse();
 
       // Update these older ones to be not masters anymore so tserver info can be updated with the
       // final master list and other future cluster client operations.

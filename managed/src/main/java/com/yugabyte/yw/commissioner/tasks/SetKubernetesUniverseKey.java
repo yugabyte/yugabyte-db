@@ -18,8 +18,8 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 
-public class RotateKubernetesUniverseKey extends KubernetesTaskBase {
-    public static final Logger LOG = LoggerFactory.getLogger(RotateKubernetesUniverseKey.class);
+public class SetKubernetesUniverseKey extends KubernetesTaskBase {
+    public static final Logger LOG = LoggerFactory.getLogger(SetKubernetesUniverseKey.class);
 
     @Override
     public void run() {
@@ -43,6 +43,13 @@ public class RotateKubernetesUniverseKey extends KubernetesTaskBase {
 
             // Enable encryption-at-rest with new key file contents
             createEnableEncryptionAtRestTask(encryptionKeyFilePath, true)
+                    .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+            // Update the universe model to reflect encryption is now enabled
+            writeEncryptionEnabledToUniverse();
+
+            // Marks the update of this universe as a success only if all the tasks before it succeeded.
+            createMarkUniverseUpdateSuccessTasks()
                     .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
             // Run all the tasks.

@@ -16,8 +16,8 @@ import org.slf4j.LoggerFactory;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 
-public class RotateUniverseKey extends UniverseDefinitionTaskBase {
-    public static final Logger LOG = LoggerFactory.getLogger(RotateUniverseKey.class);
+public class SetUniverseKey extends UniverseTaskBase {
+    public static final Logger LOG = LoggerFactory.getLogger(SetUniverseKey.class);
 
     @Override
     public void run() {
@@ -36,11 +36,18 @@ public class RotateUniverseKey extends UniverseDefinitionTaskBase {
             // 'updateInProgress' flag to prevent other updates from happening.
             lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
-            // TODO: (Daniel) - Actually copy the file over to nodes on VM provider
-            //  before setting encryptionEnabled=true
+            // Copy the key file over to master nodes
+            createCopyEncryptionKeyFileTask();
 
-            // Enable encryption-at-rest with new key file contents
-            createEnableEncryptionAtRestTask(encryptionKeyFilePath)
+            // Enable encryption-at-rest if key file is passed in
+            createEnableEncryptionAtRestTask(taskParams().encryptionKeyFilePath)
+                    .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+            // Update the universe model to reflect encryption is now enabled
+            writeEncryptionEnabledToUniverse();
+
+            // Marks the update of this universe as a success only if all the tasks before it succeeded.
+            createMarkUniverseUpdateSuccessTasks()
                     .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
             // Run all the tasks.
