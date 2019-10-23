@@ -22,14 +22,14 @@ menu:
 | Service    | Port  | Configuration setting (default)                             |
 | ---------- | ----- | ------------------------------------------------------------ |
 | yb-master  | 7000  | yb-master: [`--webserver_interface=0.0.0.0`](../../admin/yb-master/#webserver-interface)<br >yb-master: [`--webserver_port 7000`](../../admin/yb-master/#webserver-port) |
-| yb-tserver | 9000  | yb-master: [`--webserver_interface=0.0.0.0`](../../admin/yb-master/#webserver-interface)<br >yb-master: [`--webserver_port 9000`](../../admin/yb-master/#webserver-port) |
+| yb-tserver | 9000  | yb-tserver: [`--webserver_interface=0.0.0.0`](../../admin/yb-master/#webserver-interface)<br >yb-tserver: [`--webserver_port 9000`](../../admin/yb-master/#webserver-port) |
 | ysql       | 13000 | yb-tserver: [`--pgsql_proxy_webserver_port 13000`](../../admin/yb-tserver/#pgsql-proxy-webserver-port)                         |
 | ycql       | 12000 | yb-tserver: [`--cql_proxy_webserver_port 12000`](../../admin/yb-tserver/#cql-proxy-webserver-port)                           |
 | yedis      | 11000 | yb-tserver: [`--redis_proxy_webserver_port 11000`](../../admin/yb-tserver/#redis-proxy-webserver-port)                         |
 
 ## API interfaces
 
-| Service | Port  | Configuration setting (default)           |
+| API     | Port  | Configuration setting (default)           |
 | ------- | ----- | ----------------------------------------- |
 | ysql    | 5433  | yb-tserver: `--pgsql_proxy_bind_address 0.0.0.0:5433` |
 | ycql    | 9042  | yb-tserver: `--cql_proxy_bind_address 0.0.0.0:9042`   |
