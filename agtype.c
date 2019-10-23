@@ -547,6 +547,59 @@ static void add_indent(StringInfo out, bool indent, int level)
     }
 }
 
+Datum integer_to_agtype(int64 i)
+{
+    agtype_value agtv;
+    agtype *agt;
+
+    agtv.type = AGTV_INTEGER;
+    agtv.val.int_value = i;
+    agt = agtype_value_to_agtype(&agtv);
+
+    return AGTYPE_P_GET_DATUM(agt);
+}
+
+Datum float_to_agtype(float8 f)
+{
+    agtype_value agtv;
+    agtype *agt;
+
+    agtv.type = AGTV_FLOAT;
+    agtv.val.float_value = f;
+    agt = agtype_value_to_agtype(&agtv);
+
+    return AGTYPE_P_GET_DATUM(agt);
+}
+
+/*
+ * s must be a UTF-8 encoded, unescaped, and null-terminated string which is
+ * a valid string for internal storage of agtype.
+ */
+Datum string_to_agtype(char *s)
+{
+    agtype_value agtv;
+    agtype *agt;
+
+    agtv.type = AGTV_STRING;
+    agtv.val.string.len = check_string_length(strlen(s));
+    agtv.val.string.val = s;
+    agt = agtype_value_to_agtype(&agtv);
+
+    return AGTYPE_P_GET_DATUM(agt);
+}
+
+Datum boolean_to_agtype(bool b)
+{
+    agtype_value agtv;
+    agtype *agt;
+
+    agtv.type = AGTV_BOOL;
+    agtv.val.boolean = b;
+    agt = agtype_value_to_agtype(&agtv);
+
+    return AGTYPE_P_GET_DATUM(agt);
+}
+
 /*
  * Determine how we want to render values of a given type in datum_to_agtype.
  *
@@ -863,9 +916,9 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
 
             if (AGT_ROOT_IS_SCALAR(jsonb))
             {
-                (void)agtype_iterator_next(&it, &agtv, true);
+                agtype_iterator_next(&it, &agtv, true);
                 Assert(agtv.type == AGTV_ARRAY);
-                (void)agtype_iterator_next(&it, &agtv, true);
+                agtype_iterator_next(&it, &agtv, true);
                 scalar_agtype = true;
             }
             else

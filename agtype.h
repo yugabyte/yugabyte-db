@@ -402,6 +402,10 @@ char *agtype_to_cstring(StringInfo out, agtype_container *in,
                         int estimated_len);
 char *agtype_to_cstring_indent(StringInfo out, agtype_container *in,
                                int estimated_len);
+Datum integer_to_agtype(int64 i);
+Datum float_to_agtype(float8 f);
+Datum string_to_agtype(char *s);
+Datum boolean_to_agtype(bool b);
 
 // Oid of agtype
 #define AGTYPEOID \
