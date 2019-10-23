@@ -6,7 +6,7 @@ menu:
   latest:
     identifier: yb-admin
     parent: admin
-    weight: 2410
+    weight: 2465
 isTocNested: true
 showAsideToc: true
 ---
@@ -81,6 +81,23 @@ yb-admin change_config <tablet_id> [ ADD_SERVER | REMOVE_SERVER ] <peer_uuid> [ 
 - *peer_uuid*: The UUID of the peer.
 - PRE_VOTER | PRE_OBSERVER: Role of the new peer joining the quorum. Required when using the `ADD_SERVER` subcommand.
 
+#### change_master_config
+
+Changes the master configuration.
+
+##### Syntax
+
+```
+yb-admin change_master_config <ADD_SERVER|REMOVE_SERVER> <ip_addr> <port> <0|1>
+```
+
+- ADD_SERVER | REMOVE_SERVER: Adds or removes a new YB-Master node.
+  - After adding or removing a node, verify the status of the YB-Master on the YB-Master UI page (http://node-ip:7000) or run the [`yb-admin dump_masters_state` command](#dump-masters-state).
+- *ip_addr*: The IP address of the server node.
+- *port*: The port of the server node.
+- `0` | `1`: Disabled (`0`) or enabled (`0`). Default is `1`.
+
+
 #### list_tablet_servers
 
 ##### Syntax
@@ -154,21 +171,18 @@ Master UUID         RPC Host/Port          State      Role
 ...                   node7:7100           ALIVE     LEADER
 ```
 
-#### change_master_config
+#### list_replica_type_counts
 
-Changes the master configuration.
+Prints a list of replica types and counts for the specified table.
 
 ##### Syntax
 
 ```
-yb-admin change_master_config <ADD_SERVER|REMOVE_SERVER> <ip_addr> <port> <0|1>
+yb-admin list_replica_type_counts <keyspace> <table_name>
 ```
 
-- ADD_SERVER | REMOVE_SERVER: Adds or removes a new YB-Master node.
-  - After adding or removing a node, verify the status of the YB-Master on the YB-Master UI page (http://node-ip:7000) or run the [`yb-admin dump_masters_state` command](#dump-masters-state).
-- *ip_addr*: The IP address of the server node.
-- *port*: The port of the server node.
-- `0` | `1`: Disabled (`0`) or enabled (`0`). Default is `1`.
+- *keyspace*: The name of the database or keyspace.
+- *table_name*: The name of the table.
 
 #### dump_masters_state
 
@@ -466,7 +480,13 @@ $ curl -s http://<any-master-ip>:7000/cluster-config
 
 ##### set_preferred_zones
 
-Sets the preferred zones.
+Sets the preferred availability zones (AZs) and regions.
+
+{{< note title="Note" >}}
+
+When nodes in the the "preferred" availability zones and regions are alive and healthy, the tablet leaders are placed on nodes in those zones and regions. By default, all nodes are eligible to have tablet leaders.
+
+{{< /note >}}
 
 ###### Syntax
 
@@ -474,18 +494,7 @@ Sets the preferred zones.
 yb-admin set_preferred_zones <cloud.region.zone> [<cloud.region.zone>]...
 ```
 
-### list_replica_type_counts
-
-Prints a list of replica types and counts for the specified table.
-
-#### Syntax
-
-```
-yb-admin list_replica_type_counts <keyspace> <table_name>
-```
-
-- *keyspace*: The name of the database or keyspace.
-- *table_name*: The name of the table.
+- *cloud.region.zone*: Specifies the cloud, region, and zone. Default value is `cloud1.datacenter1.rack1`.
 
 #### Master-slave
 
