@@ -25,8 +25,10 @@ $ ./bin/yb-admin --help
 
 ## Syntax
 
+To use the `yb-admin` utility from the YugabyteDB home directory, run `./bin/yb-admin` using the following syntax.
+
 ```sh
-./bin/yb-admin [ -master_addresses server1:port,server2:port,server3:port,... ]  [ -timeout_ms <millisec> ] [ -certs_dir_name <dir_name> ] <command> [ command_options ]
+yb-admin [ -master_addresses server1:port,server2:port,server3:port,... ]  [ -timeout_ms <millisec> ] [ -certs_dir_name <dir_name> ] <command> [ command_options ]
 ```
 
 - *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
@@ -60,8 +62,8 @@ Gets the configuration for the universe.
 
 ##### Syntax
 
-```sh
-./bin/yb-admin -master_addresses get_universe_config
+```
+yb-admin -master_addresses get_universe_config
 ```
 
 #### change_config
@@ -70,21 +72,21 @@ Changes the configuration of a tablet.
 
 ##### Syntax
 
-```sh
-./bin/yb-admin change_config <tablet_id> <ADD_SERVER|REMOVE_SERVER> <peer_uuid> [ PRE_VOTER |PRE_OBSERVER ]
+```
+yb-admin change_config <tablet_id> [ ADD_SERVER | REMOVE_SERVER ] <peer_uuid> [ PRE_VOTER | PRE_OBSERVER ]
 ```
 
 - *tablet_id*: The identifier (ID) of the tablet.
 - ADD SERVER | REMOVE SERVER: Subcommand to add or remove the server.
 - *peer_uuid*: The UUID of the peer.
-- PRE_VOTER | PRE_OBSERVER: Role of the new peer joining the quorum.
+- PRE_VOTER | PRE_OBSERVER: Role of the new peer joining the quorum. Required when using the `ADD_SERVER` subcommand.
 
 #### list_tablet_servers
 
 ##### Syntax
 
-```sh
-./bin/yb-admin list_tablet_servers <tablet_id>
+```
+yb-admin list_tablet_servers <tablet_id>
 ```
 
 - *tablet_id*: The identifier (ID) of the tablet.
@@ -98,7 +100,7 @@ Useful to find out who the LEADER of a tablet is.
 ##### Syntax
 
 ```sh
-./bin/yb-admin list_tablets <keyspace> <table_name> [max_tablets]
+yb-admin list_tablets <keyspace> <table_name> [max_tablets]
 ```
 
 - *keyspace*: The namespace, or name of the database or keyspace.
@@ -123,8 +125,8 @@ Lists all tablet servers.
 
 ##### Syntax
 
-```sh
-./bin/yb-admin list_all_tablet_servers
+```
+yb-admin list_all_tablet_servers
 ```
 
 #### list_all_masters
@@ -133,8 +135,8 @@ Displays a list of all YB-Master nodes in a table listing the master UUID, RPC h
 
 ##### Syntax
 
-```sh
-./bin/yb-admin -master_addresses list_all_masters
+```
+yb-admin -master_addresses list_all_masters
 ```
 
 - *master_addresses*: List of the YB-Master nodes. Default value is `localhost:7100`.
@@ -158,8 +160,8 @@ Changes the master configuration.
 
 ##### Syntax
 
-```sh
-./bin/yb-admin change_master_config <ADD_SERVER|REMOVE_SERVER> <ip_addr> <port> <0|1>
+```
+yb-admin change_master_config <ADD_SERVER|REMOVE_SERVER> <ip_addr> <port> <0|1>
 ```
 
 - ADD_SERVER | REMOVE_SERVER: Adds or removes a new YB-Master node.
@@ -175,7 +177,7 @@ Prints the status of the YB-Master nodes.
 ##### Syntax
 
 ```sh
-./bin/yb-admin dump_masters_state
+yb-admin dump_masters_state
 ```
 
 #### list_tablet_server_log_locations
@@ -185,7 +187,7 @@ List the locations of the tablet server logs.
 ##### Syntax
 
 ```sh
-./bin/yb-admin list_tablet_server_log_locations
+yb-admin list_tablet_server_log_locations
 ```
 
 #### list_tablets_for_tablet_server
@@ -194,17 +196,11 @@ Lists all tablets for the specified tablet server.
 
 ##### Syntax
 
-```sh
-./bin/yb-admin list_tablets_for_tablet_server <ts_uuid>
+```
+yb-admin list_tablets_for_tablet_server <ts_uuid>
 ```
 
 - *ts_uuid*: The UUID of the tablet server.
-
-##### Example
-
-```sh
-./bin/yb-admin list_tablets_for_tablet_server <ts_uuid>
-```
 
 ---
 
@@ -216,8 +212,8 @@ Prints a list of all tables.
 
 ##### Syntax
 
-```sh
-./bin/yb-admin list_tables
+```
+yb-admin list_tables
 ```
 
 Returns tables in the following format:
@@ -263,8 +259,8 @@ Prints a list of all tables, prefixed by the database type (`ysql`, `ycql`, or `
 
 ##### Syntax
 
-```sh
-./bin/yb-admin list_tables_with_db_types
+```
+yb-admin list_tables_with_db_types
 ```
 
 Returns tables in the following format:
@@ -306,8 +302,8 @@ You can use this command to see when snapshot creation is finished.
 
 #### Syntax
 
-```sh
-./bin/yb-admin list_snapshots
+```
+yb-admin list_snapshots
 ```
 
 #### Example
@@ -328,7 +324,7 @@ Creates a snapshot.
 #### Syntax
 
 ```
-./bin/yb-admin create_snapshot <keyspace> <table_name> [<keyspace> <table_name>]... [flush_timeout_in_seconds] (default 60, set 0 to skip flushing)
+yb-admin create_snapshot <keyspace> <table_name> [<keyspace> <table_name>]... [flush_timeout_in_seconds]
 ```
 
 - *keyspace*: Specifies the database or keyspace.
@@ -357,14 +353,8 @@ Restores the specified snapshot.
 
 #### Syntax
 
-```sh
-./bin/yb-admin restore_snapshot <snapshot_id>
 ```
-
-#### Example
-
-```sh
-./bin/yb-admin restore_snapshot <snapshot_id>
+yb-admin restore_snapshot <snapshot_id>
 ```
 
 ### export_snapshot
@@ -374,7 +364,7 @@ Generates a metadata file for the given snapshot, listing all the relevant inter
 #### Syntax
 
 ```sh
-./bin/yb-admin export_snapshot <snapshot_id> <file_name>
+yb-admin export_snapshot <snapshot_id> <file_name>
 ```
 
 - *snapshot_id*: Identifier (ID) for the snapshot.
@@ -398,7 +388,7 @@ Imports the specified snapshot metadata file.
 #### Syntax
 
 ```sh
-./bin/yb-admin import_snapshot <file_name> [<keyspace> <table_name> [<keyspace> <table_name>]...]
+yb-admin import_snapshot <file_name> [<keyspace> <table_name> [<keyspace> <table_name>]...]
 ```
 
 - *file_name*: The name of the snapshot file to import
@@ -437,14 +427,8 @@ Deletes the snapshot information, usually cleaned up at the end, since this is s
 
 #### Syntax
 
-```sh
-./bin/yb-admin delete_snapshot <snapshot_id>
 ```
-
-#### Example
-
-```sh
-./bin/yb-admin delete_snapshot <snapshot_id>
+yb-admin delete_snapshot <snapshot_id>
 ```
 
 ---
@@ -460,7 +444,7 @@ Modifies the placement information (cloud, region, and zone) for a deployment.
 ###### Syntax
 
 ```sh
-./bin/yb-admin modify_placement_info <placement_info> <replication_factor>
+yb-admin modify_placement_info <placement_info> <replication_factor>
 ```
 
 - *placement_info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
@@ -486,8 +470,8 @@ Sets the preferred zones.
 
 ###### Syntax
 
-```sh
-./bin/yb-admin set_preferred_zones <cloud.region.zone> [<cloud.region.zone>]...
+```
+yb-admin set_preferred_zones <cloud.region.zone> [<cloud.region.zone>]...
 ```
 
 ### list_replica_type_counts
@@ -496,13 +480,12 @@ Prints a list of replica types and counts for the specified table.
 
 #### Syntax
 
-```sh
-./bin/yb-admin list_replica_type_counts <keyspace> <table_name>
+```
+yb-admin list_replica_type_counts <keyspace> <table_name>
 ```
 
 - *keyspace*: The name of the database or keyspace.
 - *table_name*: The name of the table.
-
 
 #### Master-slave
 
@@ -510,8 +493,8 @@ Prints a list of replica types and counts for the specified table.
 
 ###### Syntax
 
-```sh
-./bin/yb-admin setup_universe_replication <producer_universe_uuid> <producer_master_addresses> <comma_separated_list_of_table_ids>
+```
+yb-admin setup_universe_replication <producer_universe_uuid> <producer_master_addresses> <comma_separated_list_of_table_ids>
 ```
 
 - *producer_universe_uuid*: The UUID of the producer universe.
@@ -524,8 +507,8 @@ Deletes universe replication for the specified producer universe.
 
 ###### Syntax
 
-```sh
-./bin/yb-admin delete_universe_replication <producer_universe_uuid>
+```
+yb-admin delete_universe_replication <producer_universe_uuid>
 ```
 
 - *producer_universe_uuid*: The UUID of the producer universe.
@@ -536,8 +519,8 @@ Sets the universe replication to be enabled or disabled.
 
 ###### Syntax
 
-```sh
-./bin/yb-admin set_universe_replication_enabled <producer_universe_uuid>
+```
+yb-admin set_universe_replication_enabled <producer_universe_uuid>
 ```
 
 - *producer_universe_uuid*: The UUID of the producer universe.
@@ -551,8 +534,8 @@ Add a read replica cluster to the master configuration.
 
 ###### Syntax
 
-```sh
-./bin/yb-admin add_read_replica_placement_info <placement_info> <replication_factor>
+```
+yb-admin add_read_replica_placement_info <placement_info> <replication_factor>
 ```
 
 - *placement_info*: A comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
@@ -562,8 +545,8 @@ Add a read replica cluster to the master configuration.
 
 ###### Syntax
 
-```sh
-./bin/yb-admin modify_read_replica_placement_info <placement_info> <replication_factor> [ <placement_uuid> ]
+```
+yb-admin modify_read_replica_placement_info <placement_info> <replication_factor> [ <placement_uuid> ]
 ```
 
 - *placement_info*: A comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
@@ -576,8 +559,8 @@ Delete the read replica.
 
 ###### Syntax
 
-```sh
-./bin/yb-admin delete_read_replica_placement_info <placement_uuid>
+```
+yb-admin delete_read_replica_placement_info <placement_uuid>
 ```
 
 - *placement_uuid*: The UUID of the read replica cluster.
@@ -588,16 +571,14 @@ Delete the read replica.
 
 #### Encryption at rest
 
-
-
 ##### rotate_universe_key
 
 Rotates the universe key.
 
 ###### Syntax
 
-```sh
-./bin/yb-admin rotate_universe_key <key_path>
+```
+yb-admin rotate_universe_key <key_path>
 ```
 
 - *key_path*: The path of the universe key.
@@ -605,7 +586,7 @@ Rotates the universe key.
 ###### Example
 
 ```sh
-./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 rotate_universe_key
+$ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 rotate_universe_key
 /mnt/d0/yb-data/master/universe_key_2
 ```
 
@@ -615,8 +596,8 @@ Disables cluster-wide encryption.
 
 ###### Syntax
 
-```sh
-./bin/yb-admin disable_encryption
+```
+yb-admin disable_encryption
 ```
 
 Returns the message:
@@ -641,8 +622,8 @@ Checks if cluster-wide encryption is enabled.
 
 ###### Syntax
 
-```sh
-./bin/yb-admin is_encryption_enabled
+```
+yb-admin is_encryption_enabled
 ```
 
 Returns message:
@@ -671,8 +652,8 @@ Creates a change data capture (CDC) stream for the specified table.
 
 ##### Syntax
 
-```sh
-./bin/yb-admin create_cdc_stream <table_id>
+```
+yb-admin create_cdc_stream <table_id>
 ```
 
 - *table_id*: The identifier (ID) of the table.
@@ -687,8 +668,14 @@ Gets the tablet load move completion percentage for blacklisted nodes.
 
 #### Syntax
 
+```
+yb-admin get_leader_blacklist_completion
+```
+
+#### Example
+
 ```sh
-./bin/yb-admin get_leader_blacklist_completion
+$ ./bin/yb-admin get_leader_blacklist_completion
 ```
 
 ### change_blacklist
@@ -699,8 +686,8 @@ After old YB-TServer nodes are terminated, you can use this command to clean up 
 
 #### Syntax
 
-```sh
-./bin/yb-admin change_blacklist <ADD|REMOVE> <ip_addr>:<port> [<ip_addr>:<port>]...
+```
+yb-admin change_blacklist <ADD|REMOVE> <ip_addr>:<port> [<ip_addr>:<port>]...
 ```
 
 - ADD | REMOVE: Adds or removes the specified YB-TServers.
@@ -716,15 +703,13 @@ $ ./bin/yb-admin -master_addresses $MASTERS change_blacklist ADD node1:9100 node
 
 #### Syntax
 
-```sh
-./bin/yb-admin change_leader_blacklist <ADD|REMOVE> <ip_addr>:<port> [<ip_addr>:<port>]...
+```
+yb-admin change_leader_blacklist <ADD | REMOVE> <ip_addr>:<port> [<ip_addr>:<port>]...
 ```
 
-#### Example
-
-```sh
-./bin/yb-admin 
-```
+- ADD | REMOVE: Adds or removes nodes from blacklist.
+- *ip_addr*: The IP address of the node.
+- *port*: The port of the node.
 
 ---
 
@@ -732,20 +717,20 @@ $ ./bin/yb-admin -master_addresses $MASTERS change_blacklist ADD node1:9100 node
 
 #### set_load_balancer_enabled
 
-Eables or disables the load balancer.
+Enables or disables the load balancer.
 
 ##### Syntax
 
-```sh
-./bin/yb-admin set_load_balancer_enabled <0|1>
+```
+yb-admin set_load_balancer_enabled 0 | 1
 ```
 
-- `0` | `1`: Enabled (`1`) is the default. To disable load balancing, set to `0`.
+- `0` | `1`: Enabled (`1`) is the default. To disable, set to `0`.
 
 ##### Example
 
 ```sh
-./bin/yb-admin set_load_balancer_enabled <0|1>
+./bin/yb-admin set_load_balancer_enabled 0
 ```
 
 #### get_load_move_completion
@@ -756,15 +741,15 @@ You can rerun this command periodically until the value reaches `100.0`, indicat
 
 ##### Syntax
 
-```sh
-./bin/yb-admin get_load_move_completion
+```
+yb-admin get_load_move_completion
 ```
 
 {{< note title="Note" >}}
 
 The time needed to complete a data move depends on the following:
 
-- number of tablets/tables
+- number of tablets and tables
 - size of each of those tablets
 - SSD transfer speeds
 - network bandwidth between new nodes and existing ones
@@ -778,8 +763,12 @@ For an example of performing a data move and the use of this command, see [Chang
 In the following example, the data move is `66.6` percent done.
 
 ```sh
-java -jar ~/master/java/yb-cli-0.8.0-SNAPSHOT.jar
 $ ./bin/yb-admin get_load_move_completion
+```
+
+Returns the following percentage:
+
+```
 66.6
 ```
 
@@ -788,6 +777,12 @@ $ ./bin/yb-admin get_load_move_completion
 Finds out if the load balancer is idle.
 
 ##### Syntax
+
+```
+yb-admin get_is_load_balancer_idle
+```
+
+##### Example
 
 ```sh
 ./bin/yb-admin get_is_load_balancer_idle
