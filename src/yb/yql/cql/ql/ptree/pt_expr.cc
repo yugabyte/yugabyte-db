@@ -617,16 +617,24 @@ CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
 
         case ExprOperator::kSubColRef: {
           const PTSubscriptedColumn *ref = static_cast<const PTSubscriptedColumn *>(operand1.get());
-          DCHECK_NOTNULL(ref->desc());
-          sem_state->set_bindvar_name(PTBindVar::coll_bindvar_name(ref->desc()->name()));
+          if (ref->desc()) {
+            sem_state->set_bindvar_name(PTBindVar::coll_bindvar_name(ref->desc()->name()));
+          } else if (!sem_state->is_uncovered_index_select()) {
+            return STATUS(
+                QLError, "Column doesn't exist", Slice(), QLError(ErrorCode::UNDEFINED_COLUMN));
+          } // else - this column is uncovered by the Index, skip checks and return OK.
           break;
         }
 
         case ExprOperator::kJsonOperatorRef: {
           const PTJsonColumnWithOperators *ref =
               static_cast<const PTJsonColumnWithOperators*>(operand1.get());
-          DCHECK_NOTNULL(ref->desc());
-          sem_state->set_bindvar_name(PTBindVar::json_bindvar_name(ref->desc()->name()));
+          if (ref->desc()) {
+            sem_state->set_bindvar_name(PTBindVar::json_bindvar_name(ref->desc()->name()));
+          } else if (!sem_state->is_uncovered_index_select()) {
+            return STATUS(
+                QLError, "Column doesn't exist", Slice(), QLError(ErrorCode::UNDEFINED_COLUMN));
+          } // else - this column is uncovered by the Index, skip checks and return OK.
           break;
         }
 

@@ -268,9 +268,6 @@ public class TestSelectIf extends BaseCQLTest {
     assertEquals(expected_result, result);
   }
 
-  /*
-  // TODO(Oleg) Turn on this test once bug is fixed.
-  // The following test is crashing server at the moment, so I comment it out.
   @Test
   public void testIfClauseForJsonType() throws Exception {
     String expected_result = "";
@@ -344,8 +341,8 @@ public class TestSelectIf extends BaseCQLTest {
     expected_result = runValidSelect("SELECT r FROM tab WHERE l = 1 AND m = 11 ALLOW FILTERING;");
     LOG.info("Suite 2 - Expected Result = " + expected_result);
 
-    expected_result = runValidSelect("SELECT r FROM tab WHERE l = 1 AND j->>'m' = '11'" +
-                                     " ALLOW FILTERING;");
+    result = runValidSelect("SELECT r FROM tab WHERE l = 1 AND j->>'m' = '11'" +
+                            " ALLOW FILTERING;");
     assertEquals(expected_result, result);
 
     result = runValidSelect("SELECT r FROM tab WHERE l = 1 IF j->>'m' = '11';");
@@ -441,5 +438,4 @@ public class TestSelectIf extends BaseCQLTest {
                             "  IF j->>'n' != '113' OR j->>'m' != '13';");
     assertEquals(expected_result, result);
   }
-  */
 }
