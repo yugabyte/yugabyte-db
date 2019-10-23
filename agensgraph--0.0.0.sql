@@ -320,3 +320,34 @@ STABLE
 CALLED ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME', 'agtype_build_list_noargs';
+
+--
+-- agtype (boolean) <-to-> boolean functions and casts
+--
+
+CREATE FUNCTION agtype_to_bool(agtype)
+RETURNS boolean
+LANGUAGE C
+STABLE
+STRICT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE CAST (agtype AS boolean)
+WITH FUNCTION agtype_to_bool(agtype)
+AS IMPLICIT;
+
+CREATE FUNCTION bool_to_agtype(boolean)
+RETURNS agtype
+LANGUAGE C
+STABLE
+STRICT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE CAST (boolean AS agtype)
+WITH FUNCTION bool_to_agtype(boolean);
+
+--
+-- End of agensgraph--0.0.0.sql
+--

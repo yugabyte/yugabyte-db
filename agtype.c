@@ -73,6 +73,9 @@ static void add_agtype(Datum val, bool is_null, agtype_in_state *result,
 static char *agtype_to_cstring_worker(StringInfo out, agtype_container *in,
                                       int estimated_len, bool indent);
 static void add_indent(StringInfo out, bool indent, int level);
+static void cannot_cast_agtype_value(enum agtype_value_type type,
+                                     const char *sqltype);
+static bool agtype_extract_scalar(agtype_container *agtc, agtype_value *res);
 
 PG_FUNCTION_INFO_V1(agtype_in);
 
@@ -862,13 +865,13 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
         case AGT_TYPE_TIMESTAMP:
             agtv.type = AGTV_STRING;
             agtv.val.string.val = agtype_encode_date_time(NULL, val,
-                                                         TIMESTAMPOID);
+                                                          TIMESTAMPOID);
             agtv.val.string.len = strlen(agtv.val.string.val);
             break;
         case AGT_TYPE_TIMESTAMPTZ:
             agtv.type = AGTV_STRING;
             agtv.val.string.val = agtype_encode_date_time(NULL, val,
-                                                         TIMESTAMPTZOID);
+                                                          TIMESTAMPTZOID);
             agtv.val.string.len = strlen(agtv.val.string.val);
             break;
         case AGT_TYPE_JSONCAST:
@@ -970,7 +973,8 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
 
         result->res = push_agtype_value(&result->parse_state, WAGT_BEGIN_ARRAY,
                                         &va);
-        result->res = push_agtype_value(&result->parse_state, WAGT_ELEM, &agtv);
+        result->res = push_agtype_value(&result->parse_state, WAGT_ELEM,
+                                        &agtv);
         result->res = push_agtype_value(&result->parse_state, WAGT_END_ARRAY,
                                         NULL);
     }
@@ -1302,4 +1306,119 @@ Datum agtype_build_list_noargs(PG_FUNCTION_ARGS)
     result.res = push_agtype_value(&result.parse_state, WAGT_END_ARRAY, NULL);
 
     PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
+}
+
+/*
+ * Extract scalar value from raw-scalar pseudo-array agtype.
+ */
+static bool agtype_extract_scalar(agtype_container *agtc, agtype_value *res)
+{
+    agtype_iterator *it;
+    agtype_iterator_token tok PG_USED_FOR_ASSERTS_ONLY;
+    agtype_value tmp;
+
+    if (!AGTYPE_CONTAINER_IS_ARRAY(agtc) || !AGTYPE_CONTAINER_IS_SCALAR(agtc))
+    {
+        /* inform caller about actual type of container */
+        res->type = (AGTYPE_CONTAINER_IS_ARRAY(agtc)) ? AGTV_ARRAY :
+                                                        AGTV_OBJECT;
+        return false;
+    }
+
+    /*
+     * A root scalar is stored as an array of one element, so we get the array
+     * and then its first (and only) member.
+     */
+    it = agtype_iterator_init(agtc);
+
+    tok = agtype_iterator_next(&it, &tmp, true);
+    Assert(tok == WAGT_BEGIN_ARRAY);
+    Assert(tmp.val.array.num_elems == 1 && tmp.val.array.raw_scalar);
+
+    tok = agtype_iterator_next(&it, res, true);
+    Assert(tok == WAGT_ELEM);
+    Assert(IS_A_AGTYPE_SCALAR(res));
+
+    tok = agtype_iterator_next(&it, &tmp, true);
+    Assert(tok == WAGT_END_ARRAY);
+
+    tok = agtype_iterator_next(&it, &tmp, true);
+    Assert(tok == WAGT_DONE);
+
+    return true;
+}
+
+/*
+ * Emit correct, translatable cast error message
+ */
+static void cannot_cast_agtype_value(enum agtype_value_type type,
+                                     const char *sqltype)
+{
+    static const struct
+    {
+        enum agtype_value_type type;
+        const char *msg;
+    }
+
+    messages[] = {
+        {AGTV_NULL, gettext_noop("cannot cast agtype null to type %s")},
+        {AGTV_STRING, gettext_noop("cannot cast agtype string to type %s")},
+        {AGTV_NUMERIC, gettext_noop("cannot cast agtype numeric to type %s")},
+        {AGTV_INTEGER, gettext_noop("cannot cast agtype integer to type %s")},
+        {AGTV_FLOAT, gettext_noop("cannot cast agtype float to type %s")},
+        {AGTV_BOOL, gettext_noop("cannot cast agtype boolean to type %s")},
+        {AGTV_ARRAY, gettext_noop("cannot cast agtype array to type %s")},
+        {AGTV_OBJECT, gettext_noop("cannot cast agtype object to type %s")},
+        {AGTV_BINARY,
+         gettext_noop("cannot cast agtype array or object to type %s")}};
+
+    int i;
+    for (i = 0; i < lengthof(messages); i++)
+    {
+        if (messages[i].type == type)
+        {
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg(messages[i].msg, sqltype)));
+        }
+    }
+
+    /* should be unreachable */
+    elog(ERROR, "unknown agtype type: %d", (int)type);
+}
+
+PG_FUNCTION_INFO_V1(agtype_to_bool);
+
+/*
+ * Cast agtype to boolean. From jsonb_bool
+ */
+Datum agtype_to_bool(PG_FUNCTION_ARGS)
+{
+    agtype *agtype_in = AG_GET_ARG_AGTYPE_P(0);
+    agtype_value agtv;
+
+    if (!agtype_extract_scalar(&agtype_in->root, &agtv) ||
+        agtv.type != AGTV_BOOL)
+        cannot_cast_agtype_value(agtv.type, "boolean");
+
+    PG_FREE_IF_COPY(agtype_in, 0);
+
+    PG_RETURN_BOOL(agtv.val.boolean);
+}
+
+PG_FUNCTION_INFO_V1(bool_to_agtype);
+
+/*
+ * Cast boolean to agtype.
+ */
+Datum bool_to_agtype(PG_FUNCTION_ARGS)
+{
+    bool in = PG_GETARG_BOOL(0);
+    agtype_value agtv;
+
+    memset(&agtv, 0, sizeof(agtv));
+
+    agtv.type = AGTV_BOOL;
+    agtv.val.boolean = in;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv));
 }

@@ -188,5 +188,107 @@ AS r(result boolean);
 (1 row)
 
 --
+-- Test transform logic for AND, OR, and NOT
+--
+SELECT * FROM cypher(
+$$ RETURN NOT false $$
+)
+AS r(result boolean);
+ result 
+--------
+ t
+(1 row)
+
+SELECT * FROM cypher(
+$$ RETURN NOT true $$
+)
+AS r(result boolean);
+ result 
+--------
+ f
+(1 row)
+
+SELECT * FROM cypher(
+$$ RETURN true AND true $$
+)
+AS r(result boolean);
+ result 
+--------
+ t
+(1 row)
+
+SELECT * FROM cypher(
+$$ RETURN true AND false $$
+)
+AS r(result boolean);
+ result 
+--------
+ f
+(1 row)
+
+SELECT * FROM cypher(
+$$ RETURN false AND true $$
+)
+AS r(result boolean);
+ result 
+--------
+ f
+(1 row)
+
+SELECT * FROM cypher(
+$$ RETURN false AND false $$
+)
+AS r(result boolean);
+ result 
+--------
+ f
+(1 row)
+
+SELECT * FROM cypher(
+$$ RETURN true OR true $$
+)
+AS r(result boolean);
+ result 
+--------
+ t
+(1 row)
+
+SELECT * FROM cypher(
+$$ RETURN true OR false $$
+)
+AS r(result boolean);
+ result 
+--------
+ t
+(1 row)
+
+SELECT * FROM cypher(
+$$ RETURN false OR true $$
+)
+AS r(result boolean);
+ result 
+--------
+ t
+(1 row)
+
+SELECT * FROM cypher(
+$$ RETURN false OR false $$
+)
+AS r(result boolean);
+ result 
+--------
+ f
+(1 row)
+
+SELECT * FROM cypher(
+$$ RETURN NOT ((true OR false) AND (false OR true)) $$
+)
+AS r(result boolean);
+ result 
+--------
+ f
+(1 row)
+
+--
 -- End of tests
 --

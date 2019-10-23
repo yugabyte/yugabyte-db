@@ -111,5 +111,63 @@ $$ RETURN null IS NOT NULL $$
 AS r(result boolean);
 
 --
+-- Test transform logic for AND, OR, and NOT
+--
+SELECT * FROM cypher(
+$$ RETURN NOT false $$
+)
+AS r(result boolean);
+
+SELECT * FROM cypher(
+$$ RETURN NOT true $$
+)
+AS r(result boolean);
+
+SELECT * FROM cypher(
+$$ RETURN true AND true $$
+)
+AS r(result boolean);
+
+SELECT * FROM cypher(
+$$ RETURN true AND false $$
+)
+AS r(result boolean);
+
+SELECT * FROM cypher(
+$$ RETURN false AND true $$
+)
+AS r(result boolean);
+
+SELECT * FROM cypher(
+$$ RETURN false AND false $$
+)
+AS r(result boolean);
+
+SELECT * FROM cypher(
+$$ RETURN true OR true $$
+)
+AS r(result boolean);
+
+SELECT * FROM cypher(
+$$ RETURN true OR false $$
+)
+AS r(result boolean);
+
+SELECT * FROM cypher(
+$$ RETURN false OR true $$
+)
+AS r(result boolean);
+
+SELECT * FROM cypher(
+$$ RETURN false OR false $$
+)
+AS r(result boolean);
+
+SELECT * FROM cypher(
+$$ RETURN NOT ((true OR false) AND (false OR true)) $$
+)
+AS r(result boolean);
+
+--
 -- End of tests
 --

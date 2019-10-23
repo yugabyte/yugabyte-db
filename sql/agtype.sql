@@ -204,6 +204,27 @@ SELECT agtype_in('[1, "string"]') < agtype_in('[1, 1]');
 SELECT agtype_in('{"bool":true, "integer":1}') < agtype_in('{"bool":true, "integer":null}');
 
 --
+-- Test agtype to boolean cast
+--
+SELECT agtype_to_bool(agtype_in('true'));
+SELECT agtype_to_bool(agtype_in('false'));
+-- These should all fail
+SELECT agtype_to_bool(agtype_in('null'));
+SELECT agtype_to_bool(agtype_in('1'));
+SELECT agtype_to_bool(agtype_in('1.0'));
+SELECT agtype_to_bool(agtype_in('"string"'));
+SELECT agtype_to_bool(agtype_in('[1,2,3]'));
+SELECT agtype_to_bool(agtype_in('{"bool":true}'));
+
+--
+-- Test boolean to agtype cast
+--
+SELECT bool_to_agtype(true);
+SELECT bool_to_agtype(false);
+SELECT bool_to_agtype(null);
+SELECT bool_to_agtype(true) = bool_to_agtype(true);
+SELECT bool_to_agtype(true) <> bool_to_agtype(false);
+
 -- Cleanup
 --
 DROP TABLE agtype_table;

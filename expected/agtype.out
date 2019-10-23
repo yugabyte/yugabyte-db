@@ -682,6 +682,66 @@ SELECT agtype_in('{"bool":true, "integer":1}') < agtype_in('{"bool":true, "integ
 (1 row)
 
 --
+-- Test agtype to boolean cast
+--
+SELECT agtype_to_bool(agtype_in('true'));
+ agtype_to_bool 
+----------------
+ t
+(1 row)
+
+SELECT agtype_to_bool(agtype_in('false'));
+ agtype_to_bool 
+----------------
+ f
+(1 row)
+
+-- These should all fail
+SELECT agtype_to_bool(agtype_in('null'));
+ERROR:  cannot cast agtype null to type boolean
+SELECT agtype_to_bool(agtype_in('1'));
+ERROR:  cannot cast agtype integer to type boolean
+SELECT agtype_to_bool(agtype_in('1.0'));
+ERROR:  cannot cast agtype float to type boolean
+SELECT agtype_to_bool(agtype_in('"string"'));
+ERROR:  cannot cast agtype string to type boolean
+SELECT agtype_to_bool(agtype_in('[1,2,3]'));
+ERROR:  cannot cast agtype array to type boolean
+SELECT agtype_to_bool(agtype_in('{"bool":true}'));
+ERROR:  cannot cast agtype object to type boolean
+--
+-- Test boolean to agtype cast
+--
+SELECT bool_to_agtype(true);
+ bool_to_agtype 
+----------------
+ true
+(1 row)
+
+SELECT bool_to_agtype(false);
+ bool_to_agtype 
+----------------
+ false
+(1 row)
+
+SELECT bool_to_agtype(null);
+ bool_to_agtype 
+----------------
+ 
+(1 row)
+
+SELECT bool_to_agtype(true) = bool_to_agtype(true);
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT bool_to_agtype(true) <> bool_to_agtype(false);
+ ?column? 
+----------
+ t
+(1 row)
+
 -- Cleanup
 --
 DROP TABLE agtype_table;

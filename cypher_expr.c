@@ -7,6 +7,7 @@
 #include "nodes/nodes.h"
 #include "nodes/parsenodes.h"
 #include "nodes/value.h"
+#include "parser/parse_coerce.h"
 #include "parser/parse_node.h"
 #include "parser/parse_oper.h"
 #include "utils/builtins.h"
@@ -25,6 +26,7 @@ static Node *transform_cypher_bool_const(ParseState *pstate,
                                          cypher_bool_const *bc);
 static Node *transform_cypher_map(ParseState *pstate, cypher_map *cm);
 static Node *transform_cypher_list(ParseState *pstate, cypher_list *cl);
+static Node *transform_boolean_expr(ParseState *pstate, BoolExpr *expr);
 
 Node *transform_cypher_expr(ParseState *pstate, Node *expr,
                             ParseExprKind expr_kind)
@@ -97,7 +99,8 @@ static Node *transform_cypher_expr_recurse(ParseState *pstate, Node *expr)
 
         return expr;
     }
-
+    case T_BoolExpr:
+        return transform_boolean_expr(pstate, (BoolExpr *)expr);
     default:
         ereport(ERROR, (errmsg("unrecognized node type: %d", nodeTag(expr))));
     }
@@ -241,6 +244,41 @@ static Node *transform_cypher_map(ParseState *pstate, cypher_map *cm)
     return (Node *)fexpr;
 }
 
+static Node *transform_boolean_expr(ParseState *pstate, BoolExpr *expr)
+{
+    List *args = NIL;
+    const char *opname;
+    ListCell *la;
+
+    switch (expr->boolop)
+    {
+    case AND_EXPR:
+        opname = "AND";
+        break;
+    case OR_EXPR:
+        opname = "OR";
+        break;
+    case NOT_EXPR:
+        opname = "NOT";
+        break;
+    default:
+        ereport(ERROR, (errmsg("unrecognized boolop: %d", (int)expr->boolop)));
+        return NULL;
+    }
+
+    foreach (la, expr->args)
+    {
+        Node *arg = lfirst(la);
+
+        arg = transform_cypher_expr_recurse(pstate, arg);
+        arg = coerce_to_boolean(pstate, arg, opname);
+
+        args = lappend(args, arg);
+    }
+
+    return (Node *)makeBoolExpr(expr->boolop, args, expr->location);
+}
+
 static Node *transform_cypher_list(ParseState *pstate, cypher_list *cl)
 {
     List *newelems = NIL;
@@ -275,8 +313,8 @@ static Node *transform_cypher_list(ParseState *pstate, cypher_list *cl)
                                PointerGetDatum(parameter_types),
                                ObjectIdGetDatum(ag_catalog_namespace_id()));
 
-    fexpr = makeFuncExpr(func_oid, AGTYPEOID, newelems, InvalidOid,
-                         InvalidOid, COERCE_EXPLICIT_CALL);
+    fexpr = makeFuncExpr(func_oid, AGTYPEOID, newelems, InvalidOid, InvalidOid,
+                         COERCE_EXPLICIT_CALL);
     fexpr->location = cl->location;
 
     return (Node *)fexpr;
