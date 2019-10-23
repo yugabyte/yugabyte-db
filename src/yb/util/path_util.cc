@@ -105,15 +105,12 @@ std::string GetServerTypeDataPath(
 Status SetupRootDir(
     Env* env, const std::string& root, const std::string& server_type, std::string* out_dir,
     bool* created) {
-  LOG(INFO) << "create root dir at [" << root << "]";
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(env, root, created),
                         "Unable to create FS path component " + root);
   *out_dir = GetYbDataPath(root);
-  LOG(INFO) << "create data dir at [" << *out_dir << "]";
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(env, *out_dir, created),
                         "Unable to create FS path component " + *out_dir);
   *out_dir = GetServerTypeDataPath(root, server_type);
-  LOG(INFO) << "create server type data dir at [" << *out_dir << "]";
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(env, *out_dir, created),
                         "Unable to create FS path component " + *out_dir);
   return Status::OK();

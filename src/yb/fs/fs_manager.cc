@@ -273,56 +273,27 @@ Status FsManager::DeleteLockFiles() {
   }
 
   for (const string& target : removal_list) {
-    LOG(INFO) << "deleting lock file at [ " << target << " ]";
     RETURN_NOT_OK_PREPEND(env_->DeleteFile(target), "Lock file delete failed");
   }
 
   return Status::OK();
 }
 
-// DeleteFileSystemLayout
-// In shell_mode=false, it deletes all underlying data, wal and other dirs completely
-// In shell mode=true, it deletes all the files inside the data, wal and other dirs
-// but retains the top-level directories
-// In both modes, the google log directories are retained
-Status FsManager::DeleteFileSystemLayout(bool shell_mode) {
+Status FsManager::DeleteFileSystemLayout(bool delete_logs_also) {
   CHECK(!read_only_);
   set<string> removal_set;
-  auto removal_list = GetWalRootDirs();
-  removal_list.push_back(GetRaftGroupMetadataDir());
-  removal_list.push_back(GetConsensusMetadataDir());
-  if (!shell_mode) {
+  if (delete_logs_also) {
+    removal_set = canonicalized_all_fs_roots_;
+  } else {
+    auto removal_list = GetWalRootDirs();
+    removal_list.push_back(GetRaftGroupMetadataDir());
+    removal_list.push_back(GetConsensusMetadataDir());
     for (const string& root : canonicalized_all_fs_roots_) {
       removal_list.push_back(GetInstanceMetadataPath(root));
     }
-  }
-
-  std::vector<std::string> data_dirs;
-  if (shell_mode) {
-    for (const auto& data_dir_root : GetDataRootDirs()) {
-      data_dirs.push_back(JoinPathSegments(data_dir_root, kRocksDBDirName));
-    }
-  } else {
-    data_dirs = GetDataRootDirs();
-  }
-  removal_list.insert(removal_list.begin(), data_dirs.begin(), data_dirs.end());
-
-  removal_set.insert(removal_list.begin(), removal_list.end());
-
-  if (shell_mode) {
-    // In shell mode, we want to keep the high level dirs and only delete
-    // the lower level per-tablet data. This allows us to start bootstrap
-    // and download data/wals into these high level dirs when we need to.
-    std::set<std::string> new_removal_set;
-    for (const auto& to_remove : removal_set) {
-      std::vector<std::string> to_remove_children;
-      RETURN_NOT_OK_PREPEND(env_->GetChildren(to_remove, ExcludeDots::kTrue, &to_remove_children),
-                            "unable to get entries in directory");
-      for (const auto& to_remove_child : to_remove_children) {
-        new_removal_set.insert(JoinPathSegments(to_remove, to_remove_child));
-      }
-    }
-    removal_set.swap(new_removal_set);
+    auto data_dirs = GetDataRootDirs();
+    removal_list.insert(removal_list.begin(), data_dirs.begin(), data_dirs.end());
+    removal_set.insert(removal_list.begin(), removal_list.end());
   }
 
   for (const string& target : removal_set) {
@@ -335,10 +306,8 @@ Status FsManager::DeleteFileSystemLayout(bool shell_mode) {
     }
     if (is_dir) {
       RETURN_NOT_OK(env_->DeleteRecursively(target));
-      LOG(INFO) << "deleting directory: [ " << target << " ]";
     } else {
       RETURN_NOT_OK(env_->DeleteFile(target));
-      LOG(INFO) << "deleting file: [ " << target << " ]";
     }
   }
 
@@ -356,8 +325,7 @@ Status FsManager::CreateInitialFileSystemLayout(bool delete_fs_if_lock_found) {
 
   // If lock file is present, delete existing filesystem layout before continuing.
   if (delete_fs_if_lock_found && HasAnyLockFiles()) {
-    LOG(INFO) << "Lock file present, deleting entire file system";
-    RETURN_NOT_OK(DeleteFileSystemLayout(false /*shell mode*/));
+    RETURN_NOT_OK(DeleteFileSystemLayout());
     fs_cleaned = true;
   }
 
@@ -392,7 +360,6 @@ Status FsManager::CreateInitialFileSystemLayout(bool delete_fs_if_lock_found) {
     }
     const string lock_file_path = GetFsLockFilePath(root);
     if (fs_cleaned || !Exists(lock_file_path)) {
-      LOG(INFO) << "creating lock file at path: [" << lock_file_path << "]";
       std::unique_ptr<WritableFile> file;
       RETURN_NOT_OK_PREPEND(env_->NewWritableFile(lock_file_path, &file),
                             "Unable to create lock file.");
@@ -404,7 +371,6 @@ Status FsManager::CreateInitialFileSystemLayout(bool delete_fs_if_lock_found) {
   CreateInstanceMetadata(&metadata);
   for (const string& root : canonicalized_all_fs_roots_) {
     const string instance_metadata_path = GetInstanceMetadataPath(root);
-    LOG(INFO) << "writing instance metadata to path: [" << instance_metadata_path << "]";
     RETURN_NOT_OK_PREPEND(WriteInstanceMetadata(metadata, instance_metadata_path),
                           "Unable to write instance metadata");
     delete_on_failure.emplace_front(new ScopedFileDeleter(env_, instance_metadata_path));
@@ -417,7 +383,6 @@ Status FsManager::CreateInitialFileSystemLayout(bool delete_fs_if_lock_found) {
 
   for (const string& dir : ancillary_dirs) {
     bool created;
-    LOG(INFO) << "creating ancillary dir: [" << dir << "]";
     RETURN_NOT_OK_PREPEND(CreateDirIfMissing(dir, &created),
                           Substitute("Unable to create directory $0", dir));
     if (created) {
@@ -437,7 +402,6 @@ Status FsManager::CreateInitialFileSystemLayout(bool delete_fs_if_lock_found) {
   // Create the RocksDB directory under each data directory.
   for (const string& data_root : GetDataRootDirs()) {
     bool created = false;
-    LOG(INFO) << "creating data root dir at [" << data_root << "]";
     RETURN_NOT_OK_PREPEND(CreateDirIfMissing(data_root, &created),
                           Substitute("Unable to create directory $0", data_root));
     if (created) {
@@ -446,7 +410,6 @@ Status FsManager::CreateInitialFileSystemLayout(bool delete_fs_if_lock_found) {
     }
 
     const string dir = JoinPathSegments(data_root, kRocksDBDirName);
-    LOG(INFO) << "creating rocksdb dir at [" << dir << "]";
     created = false;
     RETURN_NOT_OK_PREPEND(CreateDirIfMissing(dir, &created),
                           Substitute("Unable to create directory $0", dir));
@@ -538,7 +501,7 @@ vector<string> FsManager::GetDataRootDirs() const {
   vector<string> data_paths;
   for (const string& data_fs_root : canonicalized_data_fs_roots_) {
     data_paths.push_back(
-      JoinPathSegments(GetServerTypeDataPath(data_fs_root, server_type_), kDataDirName));
+        JoinPathSegments(GetServerTypeDataPath(data_fs_root, server_type_), kDataDirName));
   }
   return data_paths;
 }
