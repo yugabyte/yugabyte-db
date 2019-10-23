@@ -40,7 +40,7 @@ $ ./bin/yb-admin --help
 - [Universe and cluster](#universe-and-cluster)
 - [Table](#table)
 - [Backup and snapshot](#backup-and-snapshot)
-- [Deployment topology](#deployment-topology)
+- [Deployment strategy](#deployment-strategy)
   - [Multi-zone and multi-region](#multi-zone-and-multi-region)
   - [Master-slave](#master-slave)
   - [Read replica](#read-replica)
