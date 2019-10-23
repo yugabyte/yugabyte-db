@@ -1320,8 +1320,7 @@ static bool agtype_extract_scalar(agtype_container *agtc, agtype_value *res)
     if (!AGTYPE_CONTAINER_IS_ARRAY(agtc) || !AGTYPE_CONTAINER_IS_SCALAR(agtc))
     {
         /* inform caller about actual type of container */
-        res->type = (AGTYPE_CONTAINER_IS_ARRAY(agtc)) ? AGTV_ARRAY :
-                                                        AGTV_OBJECT;
+        res->type = AGTYPE_CONTAINER_IS_ARRAY(agtc) ? AGTV_ARRAY : AGTV_OBJECT;
         return false;
     }
 
@@ -1358,9 +1357,7 @@ static void cannot_cast_agtype_value(enum agtype_value_type type,
     {
         enum agtype_value_type type;
         const char *msg;
-    }
-
-    messages[] = {
+    } messages[] = {
         {AGTV_NULL, gettext_noop("cannot cast agtype null to type %s")},
         {AGTV_STRING, gettext_noop("cannot cast agtype string to type %s")},
         {AGTV_NUMERIC, gettext_noop("cannot cast agtype numeric to type %s")},
@@ -1371,8 +1368,8 @@ static void cannot_cast_agtype_value(enum agtype_value_type type,
         {AGTV_OBJECT, gettext_noop("cannot cast agtype object to type %s")},
         {AGTV_BINARY,
          gettext_noop("cannot cast agtype array or object to type %s")}};
-
     int i;
+
     for (i = 0; i < lengthof(messages); i++)
     {
         if (messages[i].type == type)
@@ -1389,7 +1386,7 @@ static void cannot_cast_agtype_value(enum agtype_value_type type,
 PG_FUNCTION_INFO_V1(agtype_to_bool);
 
 /*
- * Cast agtype to boolean. From jsonb_bool
+ * Cast agtype to boolean. From jsonb_bool().
  */
 Datum agtype_to_bool(PG_FUNCTION_ARGS)
 {
@@ -1412,13 +1409,5 @@ PG_FUNCTION_INFO_V1(bool_to_agtype);
  */
 Datum bool_to_agtype(PG_FUNCTION_ARGS)
 {
-    bool in = PG_GETARG_BOOL(0);
-    agtype_value agtv;
-
-    memset(&agtv, 0, sizeof(agtv));
-
-    agtv.type = AGTV_BOOL;
-    agtv.val.boolean = in;
-
-    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv));
+    return boolean_to_agtype(PG_GETARG_BOOL(0));
 }

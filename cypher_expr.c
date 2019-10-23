@@ -22,11 +22,11 @@
 static Node *transform_cypher_expr_recurse(ParseState *pstate, Node *expr);
 static Node *transform_A_Const(ParseState *pstate, A_Const *ac);
 static Node *transform_AEXPR_OP(ParseState *pstate, A_Expr *a);
+static Node *transform_BoolExpr(ParseState *pstate, BoolExpr *expr);
 static Node *transform_cypher_bool_const(ParseState *pstate,
                                          cypher_bool_const *bc);
 static Node *transform_cypher_map(ParseState *pstate, cypher_map *cm);
 static Node *transform_cypher_list(ParseState *pstate, cypher_list *cl);
-static Node *transform_boolean_expr(ParseState *pstate, BoolExpr *expr);
 
 Node *transform_cypher_expr(ParseState *pstate, Node *expr,
                             ParseExprKind expr_kind)
@@ -70,6 +70,17 @@ static Node *transform_cypher_expr_recurse(ParseState *pstate, Node *expr)
             ereport(ERROR, (errmsg("unrecognized A_Expr kind: %d", a->kind)));
         }
     }
+    case T_BoolExpr:
+        return transform_BoolExpr(pstate, (BoolExpr *)expr);
+    case T_NullTest:
+    {
+        NullTest *n = (NullTest *)expr;
+
+        n->arg = (Expr *)transform_cypher_expr_recurse(pstate, (Node *)n->arg);
+        n->argisrow = type_is_rowtype(exprType((Node *)n->arg));
+
+        return expr;
+    }
     case T_ExtensibleNode:
         if (is_ag_node(expr, cypher_bool_const))
         {
@@ -90,17 +101,6 @@ static Node *transform_cypher_expr_recurse(ParseState *pstate, Node *expr)
                                    ((ExtensibleNode *)expr)->extnodename)));
             return NULL;
         }
-    case T_NullTest:
-    {
-        NullTest *n = (NullTest *)expr;
-
-        n->arg = (Expr *)transform_cypher_expr_recurse(pstate, (Node *)n->arg);
-        n->argisrow = type_is_rowtype(exprType((Node *)n->arg));
-
-        return expr;
-    }
-    case T_BoolExpr:
-        return transform_boolean_expr(pstate, (BoolExpr *)expr);
     default:
         ereport(ERROR, (errmsg("unrecognized node type: %d", nodeTag(expr))));
     }
@@ -164,6 +164,41 @@ static Node *transform_AEXPR_OP(ParseState *pstate, A_Expr *a)
 
     return (Node *)make_op(pstate, a->name, lexpr, rexpr, last_srf,
                            a->location);
+}
+
+static Node *transform_BoolExpr(ParseState *pstate, BoolExpr *expr)
+{
+    List *args = NIL;
+    const char *opname;
+    ListCell *la;
+
+    switch (expr->boolop)
+    {
+    case AND_EXPR:
+        opname = "AND";
+        break;
+    case OR_EXPR:
+        opname = "OR";
+        break;
+    case NOT_EXPR:
+        opname = "NOT";
+        break;
+    default:
+        ereport(ERROR, (errmsg("unrecognized boolop: %d", (int)expr->boolop)));
+        return NULL;
+    }
+
+    foreach (la, expr->args)
+    {
+        Node *arg = lfirst(la);
+
+        arg = transform_cypher_expr_recurse(pstate, arg);
+        arg = coerce_to_boolean(pstate, arg, opname);
+
+        args = lappend(args, arg);
+    }
+
+    return (Node *)makeBoolExpr(expr->boolop, args, expr->location);
 }
 
 static Node *transform_cypher_bool_const(ParseState *pstate,
@@ -242,41 +277,6 @@ static Node *transform_cypher_map(ParseState *pstate, cypher_map *cm)
     fexpr->location = cm->location;
 
     return (Node *)fexpr;
-}
-
-static Node *transform_boolean_expr(ParseState *pstate, BoolExpr *expr)
-{
-    List *args = NIL;
-    const char *opname;
-    ListCell *la;
-
-    switch (expr->boolop)
-    {
-    case AND_EXPR:
-        opname = "AND";
-        break;
-    case OR_EXPR:
-        opname = "OR";
-        break;
-    case NOT_EXPR:
-        opname = "NOT";
-        break;
-    default:
-        ereport(ERROR, (errmsg("unrecognized boolop: %d", (int)expr->boolop)));
-        return NULL;
-    }
-
-    foreach (la, expr->args)
-    {
-        Node *arg = lfirst(la);
-
-        arg = transform_cypher_expr_recurse(pstate, arg);
-        arg = coerce_to_boolean(pstate, arg, opname);
-
-        args = lappend(args, arg);
-    }
-
-    return (Node *)makeBoolExpr(expr->boolop, args, expr->location);
 }
 
 static Node *transform_cypher_list(ParseState *pstate, cypher_list *cl)
