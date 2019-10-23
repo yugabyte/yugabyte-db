@@ -41,7 +41,19 @@ yb-tserver [ options ]
 
 ## Configuration options
 
-### General options
+- [Help](#help-options)
+- [General](#general-options)
+- [Logging](#logging-options)
+- [Cluster](#cluster-options)
+- [YSQL](#ysql-options)
+- [YCQL](#ycql-options)
+- [YEDIS](#yedis-options)
+- [Performance](#performance-options)
+- [Write Ahead Log (WAL)](#write-ahead-log-wal-options)
+
+---
+
+### Help options
 
 #### --help
 
@@ -50,6 +62,10 @@ Displays help on all options.
 #### --helpon
 
 Displays help on modules named by the specified option (or flag) value.
+
+---
+
+### General options
 
 #### --flagfile
 
@@ -66,12 +82,6 @@ Comma-separated list of all the `yb-master` RPC addresses. Mandatory.
 #### --fs_data_dirs
 
 Comma-separated list of directories where the `yb-tserver` will place it's `yb-data/tserver` data directory. Mandatory.
-
-#### --fs_wal_dirs
-
-The directory where the `yb-tserver` will place its write-ahead logs. May be the same as one of the directories listed in `--fs_data_dirs`, but not a sub-directory of a data directory.
-
-Default: Same as `--fs_data_dirs`
 
 #### --max_clock_skew_usec
 
@@ -115,6 +125,8 @@ Monitoring web server home.
 
 Default: The `www` directory in the YugabyteDB home directory.
 
+---
+
 ### Logging options
 
 #### --logtostderr
@@ -126,6 +138,8 @@ Flag to log to standard error (`stderr`).
 Specifies the directory to store `yb-tserver` log files.
 
 Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
+
+---
 
 ### Placement options
 
@@ -146,6 +160,8 @@ Default: `datacenter1`
 Specifies the name of the cloud where this instance is deployed.
 
 Default: `cloud1`
+
+---
 
 ### YSQL options
 
@@ -243,6 +259,8 @@ Specifies the types of YSQL statements that should be logged.
 
 Specifies the lowest YSQL message level to log.
 
+---
+
 ### YCQL options
 
 The following options, or flags, support the use of the [YCQL API](../../api/ycql/).
@@ -265,6 +283,8 @@ Specifies the port for monitoring YCQL metrics.
 
 Default: `12000`
 
+---
+
 ### YEDIS options
 
 The following options, or flags, support the use of the YEDIS API.
@@ -280,6 +300,8 @@ Default: `0.0.0.0:6379`
 Specifies the port for monitoring YEDIS metrics.
 
 Default: `11000`
+
+---
 
 ### Performance options
 
@@ -301,7 +323,15 @@ The number of shards per YB-TServer per table when a user table is created.
 
 Default: Server automatically picks a valid default internally, typically 8.
 
+---
+
 ### Write Ahead Log (WAL) options
+
+#### --fs_wal_dirs
+
+The directory where the `yb-tserver` will place its write-ahead logs. May be the same as one of the directories listed in `--fs_data_dirs`, but not a sub-directory of a data directory.
+
+Default: Same as `--fs_data_dirs`
 
 #### --durable_wal_write
 
@@ -347,7 +377,7 @@ List of all utilities available to debug the performance of this specific instan
 
 ![tserver-debug](/images/admin/tserver-debug.png)
 
-## Default ports reference
+## Default ports
 
 The various default ports are listed below.
 
