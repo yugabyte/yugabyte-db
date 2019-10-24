@@ -26,3 +26,5 @@ export { default as UniverseOverview } from './UniverseOverview/UniverseOverview
 export { default as UniverseOverviewNew } from './UniverseOverview/UniverseOverviewNew';
 export { default as UniverseOverviewContainerNew } from './UniverseOverview/UniverseOverviewContainerNew';
 export { default as UniverseOverviewContainer } from './UniverseOverview/UniverseOverviewContainer';
+export { default as EncryptionKeyModal } from './SecurityModal/EncryptionKeyModal';
+export { default as EncryptionKeyModalContainer } from './SecurityModal/EncryptionKeyModalContainer';
