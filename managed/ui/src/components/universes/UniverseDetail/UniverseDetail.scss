@@ -418,6 +418,14 @@ h2 {
       }
     }
   }
+
+  .alert {
+    position: absolute;
+    top: 10px;
+    z-index: 4000;
+    left: 40%;
+    min-width: 300px;
+  }
 }
 
 .universe-details-new {
