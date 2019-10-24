@@ -697,6 +697,13 @@ public class AsyncYBClient implements AutoCloseable {
     return sendRpcToTablet(rpc);
   }
 
+  public Deferred<ChangeEncryptionInfoResponse> disableEncryptionAtRest() {
+    checkIsClosed();
+    ChangeEncryptionInfoRequest rpc = new ChangeEncryptionInfoRequest(this.masterTable, "", false);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
   /**
    * Change Master Configuration request handler.
    *
