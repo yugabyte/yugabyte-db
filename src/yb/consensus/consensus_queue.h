@@ -316,6 +316,11 @@ class PeerMessageQueue {
   CHECKED_STATUS ReadReplicatedMessagesForCDC(const OpId& last_op_id, ReplicateMsgs *msgs,
                                               bool* have_more_messages);
 
+  void UpdateCDCConsumerOpId(const OpId& op_id);
+
+  // Get the maximum op ID that can be evicted for CDC consumer from log cache.
+  OpId GetCDCConsumerOpIdToEvict();
+
   size_t LogCacheSize();
   size_t EvictLogCache(size_t bytes_to_evict);
 
@@ -485,6 +490,11 @@ class PeerMessageQueue {
   server::ClockPtr clock_;
 
   std::function<HybridTime()> propagated_safe_time_provider_;
+
+  // Used to protect cdc_consumer_op_id_ and cdc_consumer_op_id_last_updated_.
+  mutable rw_spinlock cdc_consumer_lock_;
+  OpId cdc_consumer_op_id_ = MaximumOpId();
+  CoarseTimePoint cdc_consumer_op_id_last_updated_ = ToCoarse(MonoTime::kMin);
 };
 
 inline std::ostream& operator <<(std::ostream& out, PeerMessageQueue::Mode mode) {
