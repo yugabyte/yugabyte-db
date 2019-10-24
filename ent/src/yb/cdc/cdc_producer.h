@@ -102,6 +102,13 @@ class CDCProducer {
       const TxnStatusMap& txn_map,
       OpIdPB* checkpoint);
 
+  // Set committed record information including commit time for record.
+  // This will look at transaction status to determine commit time to be used for CDC record.
+  // Returns true if we need to stop processing WAL records beyond this, false otherwise.
+  static Result<bool> SetCommittedRecordIndexForReplicateMsg(
+      const consensus::ReplicateMsgPtr& msg, size_t index, const TxnStatusMap& txn_map,
+      std::vector<RecordTimeIndex>* records);
+
   // Build transaction status as of hybrid_time.
   static Result<TxnStatusMap> BuildTxnStatusMap(const consensus::ReplicateMsgs& messages,
                                                 bool more_replicate_msgs,

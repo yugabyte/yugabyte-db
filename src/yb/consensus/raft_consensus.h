@@ -254,6 +254,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   CHECKED_STATUS ReadReplicatedMessagesForCDC(const OpId& from, ReplicateMsgs* msgs,
                                               bool* have_more_messages) override;
 
+  void UpdateCDCConsumerOpId(const OpIdPB& op_id) override;
+
   // Start memory tracking of following operation in case it is still present in our caches.
   void TrackOperationMemory(const yb::OpId& op_id);
 

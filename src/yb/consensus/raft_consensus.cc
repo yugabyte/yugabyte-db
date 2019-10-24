@@ -2930,6 +2930,10 @@ Status RaftConsensus::ReadReplicatedMessagesForCDC(const OpId& from, ReplicateMs
   return queue_->ReadReplicatedMessagesForCDC(from, msgs, have_more_messages);
 }
 
+void RaftConsensus::UpdateCDCConsumerOpId(const OpIdPB& op_id) {
+  return queue_->UpdateCDCConsumerOpId(op_id);
+}
+
 void RaftConsensus::RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg,
                                             bool should_exists) {
   std::unique_ptr<OpId> op_id(replicate_msg->release_id());
