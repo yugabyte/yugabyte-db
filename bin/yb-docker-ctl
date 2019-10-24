@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import time
+import posixpath
 
 YB_NETWORK_NAME = "yb-net"
 YB_DOCKER_IMAGE = "yugabytedb/yugabyte"
@@ -275,7 +276,7 @@ class YBDockerControl():
     def start_cluster(self, server_type, node_id, placement):
         base_cmd = ['--net', YB_NETWORK_NAME, '--detach']
         server_cmds = [self.docker_image_tag()]
-        server_cmds.append(os.path.join(self.working_dir, 'bin', server_type))
+        server_cmds.append(posixpath.join(self.working_dir, 'bin', server_type))
 
         exposed_ports = []
         if server_type == 'yb-master':
