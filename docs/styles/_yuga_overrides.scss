@@ -43,10 +43,11 @@ a {
     position: relative;
   }
   h1 {
+    z-index: 1006;
     padding-top: 0 !important;
     margin: 26px 0 0;
-    font-size: 46px;
-    font-weight: 400;
+    font-size: 40px;
+    font-weight: 600;
     letter-spacing: -.02em;
     margin-bottom: 20px;
     @media only screen and (max-width: 767px) {
@@ -54,10 +55,11 @@ a {
     }
   }
   h2 {
+    z-index: 1005;
     margin-top: 48px;
     padding-top: 0;
-    font-size: 36px;
-    font-weight: 400;
+    font-size: 28px;
+    font-weight: 600;
     letter-spacing: -.02em;
     margin-top: -52px;
     padding-top: 100px !important;
@@ -67,9 +69,10 @@ a {
     }
   }
   h3 {
+    z-index: 1004;
     margin-top: 36px;
     padding-top: 0;
-    font-size: 28px;
+    font-size: 22px;
     font-weight: 600;
     margin-top: -52px;
     padding-top: 100px !important;
@@ -78,10 +81,11 @@ a {
     }
   }
   h4 {
+    z-index: 1003;
     margin-top: 24px;
-    font-size: 22px;
-    font-weight: 600;
-    font-style: normal;
+    font-size: 18px;
+    font-weight: 700;
+    font-style: italic;
     margin-top: -52px;
     padding-top: 100px !important;
     @media only screen and (max-width: 767px) {
@@ -89,24 +93,28 @@ a {
     }
   }
   h5 {
+    z-index: 1002;
     margin-top: 24px;
-    font-size: 18px;
+    font-size: 16px;
+    line-height: 20px;
     font-weight: 600;
     font-style: normal;
-    margin-top: -52px;
-    padding-top: 100px !important;
+    margin-top: -32px;
+    padding-top: 60px !important;
 
     @media only screen and (max-width: 767px) {
       font-size: 18px;
     }
   }
   h6 {
+    z-index: 1001;
     margin-top: 24px;
     font-size: 14px;
-    font-weight: 500;
+    line-height: 20px;
+    font-weight: 600;
     font-style: normal;
-    margin-top: -52px;
-    padding-top: 100px !important;
+    margin-top: -32px;
+    padding-top: 60px !important;
 
     @media only screen and (max-width: 767px) {
       font-size: 14px;
@@ -232,7 +240,7 @@ a {
       width: 24px; 
       height: 24px;
       text-align: center;
-      line-height: 24px;
+      line-height: 20px;
     }
   }
 
