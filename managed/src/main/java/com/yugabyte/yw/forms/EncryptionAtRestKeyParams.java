@@ -21,11 +21,14 @@ public class EncryptionAtRestKeyParams extends UniverseTaskParams {
 
     public static EncryptionAtRestKeyParams bindFromFormData(ObjectNode formData) {
         EncryptionAtRestKeyParams params = new EncryptionAtRestKeyParams();
+        String cmkPolicy = "";
+        if (formData.get("cmk_policy") != null) cmkPolicy = formData.get("cmk_policy").asText();
         params.universeUUID = UUID.fromString(formData.get("universeUUID").asText());
         params.encryptionAtRestConfig = ImmutableMap.of(
                 "kms_provider", formData.get("kms_provider").asText(),
                 "algorithm", formData.get("algorithm").asText(),
-                "key_size", formData.get("key_size").asText()
+                "key_size", formData.get("key_size").asText(),
+                "cmk_policy", cmkPolicy
         );
         return params;
     }
