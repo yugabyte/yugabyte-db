@@ -46,7 +46,7 @@ public class SetKubernetesUniverseKey extends KubernetesTaskBase {
                     .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
             // Update the universe model to reflect encryption is now enabled
-            writeEncryptionEnabledToUniverse();
+            writeEncryptionIntentToUniverse(true);
 
             // Marks the update of this universe as a success only if all the tasks before it succeeded.
             createMarkUniverseUpdateSuccessTasks()

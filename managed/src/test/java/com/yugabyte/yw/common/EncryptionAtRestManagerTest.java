@@ -1,0 +1,150 @@
+package com.yugabyte.yw.common;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
+import java.util.Map;
+import java.util.UUID;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertNotNull;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.InjectMocks;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.when;
+import org.mockito.runners.MockitoJUnitRunner;
+import play.libs.Json;
+
+@RunWith(MockitoJUnitRunner.class)
+public class EncryptionAtRestManagerTest extends FakeDBApplication {
+    @InjectMocks
+    EncryptionAtRestManager testManager;
+
+    Customer testCustomer;
+    Universe testUniverse;
+    String keyProvider = "SMARTKEY";
+    Map<String, String> keyConfig;
+
+    @Before
+    public void setUp() {
+        testManager.apiHelper = mockApiHelper;
+        testCustomer = ModelFactory.testCustomer();
+        testUniverse = ModelFactory.createUniverse();
+        EncryptionAtRestService keyService = testManager.getServiceInstance(keyProvider);
+        keyService.createAuthConfig(testCustomer.uuid, Json.newObject()
+                .put("api_key", "some_api_key")
+                .put("base_url", "some_base_url")
+        );
+        keyConfig = ImmutableMap.of(
+                "kms_provider", keyProvider,
+                "algorithm", "AES",
+                "key_size", "256"
+        );
+
+        when(mockApiHelper.postRequest(
+                eq("https://some_base_url/sys/v1/session/auth"),
+                eq(null),
+                any(Map.class)
+        )).thenReturn(Json.newObject().put("access_token", "some_access_token"));
+        when(mockApiHelper.postRequest(
+                eq("https://some_base_url/crypto/v1/keys"),
+                any(JsonNode.class),
+                any(Map.class)
+        )).thenReturn(Json.newObject().put("kid", "some_key_id"));
+        when(mockApiHelper.getRequest(
+                eq("https://some_base_url/crypto/v1/keys/some_key_id/export"),
+                any(Map.class)
+        )).thenReturn(Json.newObject().put(
+                "value", "RjZiNzVGekljNFh5Zmh0NC9FQ1dpM0FaZTlMVGFTbW1Wa1dnaHRzdDhRVT0="
+        ));
+    }
+
+    @Test
+    public void testGenerateSalt() {
+        String salt = testManager
+                .generateSalt(testCustomer.uuid, EncryptionAtRestManager.KeyProvider.SMARTKEY);
+        assertNotNull(salt);
+    }
+
+    @Test
+    public void testMaskAndUnmaskConfigData() {
+        JsonNode originalObj = Json.newObject().put("test_key", "test_val");
+        ObjectNode encryptedObj = testManager.maskConfigData(
+                testCustomer.uuid,
+                originalObj,
+                EncryptionAtRestManager.KeyProvider.SMARTKEY
+        );
+        JsonNode unencryptedObj = testManager.unmaskConfigData(
+                testCustomer.uuid,
+                encryptedObj,
+                EncryptionAtRestManager.KeyProvider.SMARTKEY
+        );
+        assertEquals(originalObj.get("test_key").asText(), unencryptedObj.get("test_key").asText());
+    }
+
+    @Test
+    public void testGetServiceInstanceKeyProviderDoesNotExist() {
+        EncryptionAtRestService keyService = testManager.getServiceInstance("NONSENSE");
+        assertNull(keyService);
+    }
+
+    @Test
+    public void testGetServiceInstance() {
+        EncryptionAtRestService keyService = testManager.getServiceInstance("AWS");
+        assertNotNull(keyService);
+    }
+
+    @Test
+    public void testGenerateUniverseKey() {
+
+        byte[] universeKeyData = testManager.generateUniverseKey(
+                testCustomer.uuid,
+                testUniverse.universeUUID,
+                keyConfig
+        );
+        assertNotNull(universeKeyData);
+    }
+
+    @Test
+    public void testGetNumKeyRotationsNoHistory() {
+        int numRotations = testManager
+                .getNumKeyRotations(testCustomer.uuid, testUniverse.universeUUID, keyConfig);
+        assertEquals(numRotations, 0);
+    }
+
+    @Test
+    public void testGetNumKeyRotations() {
+        EncryptionAtRestService keyService = testManager.getServiceInstance(keyProvider);
+        keyService.addKeyRef(
+                testCustomer.uuid,
+                testUniverse.universeUUID,
+                new String("some_key_ref").getBytes()
+        );
+        int numRotations = testManager
+                .getNumKeyRotations(testCustomer.uuid, testUniverse.universeUUID, keyConfig);
+        assertEquals(numRotations, 1);
+    }
+
+    @Test
+    public void testClearUniverseKeyHistory() {
+        EncryptionAtRestService keyService = testManager.getServiceInstance(keyProvider);
+        keyService.addKeyRef(
+                testCustomer.uuid,
+                testUniverse.universeUUID,
+                new String("some_key_ref").getBytes()
+        );
+        int numRotations = testManager
+                .getNumKeyRotations(testCustomer.uuid, testUniverse.universeUUID, keyConfig);
+        assertEquals(numRotations, 1);
+        testManager
+                .clearUniverseKeyHistory(testCustomer.uuid, testUniverse.universeUUID, keyConfig);
+        numRotations = testManager
+                .getNumKeyRotations(testCustomer.uuid, testUniverse.universeUUID, keyConfig);
+        assertEquals(numRotations, 0);
+    }
+}
