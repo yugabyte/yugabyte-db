@@ -16,8 +16,6 @@ if (APPLE)
   set(CMAKE_PREFIX_PATH "${HOMEBREW_OPT_DIR}/bison" ${CMAKE_PREFIX_PATH})
   set(BISON_EXECUTABLE "${HOMEBREW_OPT_DIR}/bison/bin/bison")
   set(FLEX_EXECUTABLE "${HOMEBREW_OPT_DIR}/flex/bin/flex")
-else()
-  set(FLEX_EXECUTABLE "${LINUXBREW_DIR}/bin/flex")
 endif()
 
 find_package(BISON)
