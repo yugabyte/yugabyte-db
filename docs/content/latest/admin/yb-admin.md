@@ -7,7 +7,7 @@ menu:
     identifier: yb-admin
     parent: admin
     weight: 2465
-isTocNested: true
+isTocNested: 4
 showAsideToc: true
 ---
 
@@ -308,19 +308,19 @@ ysql.postgres.sql_packages
 
 ### Backup and snapshot 
 
-### list_snapshots
+#### list_snapshots
 
 Lists the snapshots and current status.
 
 You can use this command to see when snapshot creation is finished.
 
-#### Syntax
+##### Syntax
 
 ```
 yb-admin list_snapshots
 ```
 
-#### Example
+##### Example
 
 ```sh
 $ ./bin/yb-admin list_snapshots
@@ -331,11 +331,11 @@ Snapshot UUID                    	State
 4963ed18fc1e4f1ba38c8fcf4058b295 	COMPLETE
 ```
 
-### create_snapshot
+#### create_snapshot
 
 Creates a snapshot.
 
-#### Syntax
+##### Syntax
 
 ```
 yb-admin create_snapshot <keyspace> <table_name> [<keyspace> <table_name>]... [flush_timeout_in_seconds]
@@ -345,7 +345,7 @@ yb-admin create_snapshot <keyspace> <table_name> [<keyspace> <table_name>]... [f
 - *table_name*: Specifies the table name.
 - *flush_timeout_in_seconds*: Specifies duration, in seconds, before flushing snapshot. Default value is `60`. Set to `0` to skip flushing.
 
-#### Example
+##### Example
 
 ```
 $ ./bin/yb-admin create_snapshot ydb test_tb
@@ -361,21 +361,21 @@ Started snapshot creation: 4963ed18fc1e4f1ba38c8fcf4058b295
 
 To see if the snapshot creation has finished, run the [`yb-admin list_snapshots`](#list_snapshots) command.
 
-### restore_snapshot
+#### restore_snapshot
 
 Restores the specified snapshot.
 
-#### Syntax
+##### Syntax
 
 ```
 yb-admin restore_snapshot <snapshot_id>
 ```
 
-### export_snapshot
+#### export_snapshot
 
 Generates a metadata file for the given snapshot, listing all the relevant internal UUIDs for various objects (table, tablet, etc.).
 
-#### Syntax
+##### Syntax
 
 ```sh
 yb-admin export_snapshot <snapshot_id> <file_name>
@@ -384,7 +384,7 @@ yb-admin export_snapshot <snapshot_id> <file_name>
 - *snapshot_id*: Identifier (ID) for the snapshot.
 - *file_name*: Name of the the file to contain the metadata. Recommended file extension is `.snapshot`.
 
-#### Example
+##### Example
 
 ```sh
 $ ./bin/yb-admin export_snapshot 4963ed18fc1e4f1ba38c8fcf4058b295 test_tb.snapshot
@@ -395,11 +395,11 @@ Exporting snapshot 4963ed18fc1e4f1ba38c8fcf4058b295 (COMPLETE) to file test_tb.s
 Snapshot meta data was saved into file: test_tb.snapshot
 ```
 
-### import_snapshot
+#### import_snapshot
 
 Imports the specified snapshot metadata file.
 
-#### Syntax
+##### Syntax
 
 ```sh
 yb-admin import_snapshot <file_name> [<keyspace> <table_name> [<keyspace> <table_name>]...]
@@ -415,7 +415,7 @@ The *keyspace* and the *table* can be different from the exported one.
 
 {{< /note >}}
 
-#### Example
+##### Example
 
 ```sh
 $ ./bin/yb-admin import_snapshot test_tb.snapshot ydb test_tb
@@ -435,11 +435,11 @@ Tablet 1         	e509cf8eedba410ba3b60c7e9138d479 	e509cf8eedba410ba3b60c7e9138
 Snapshot         	4963ed18fc1e4f1ba38c8fcf4058b295 	4963ed18fc1e4f1ba38c8fcf4058b295
 ```
 
-### delete_snapshot
+#### delete_snapshot
 
 Deletes the snapshot information, usually cleaned up at the end, since this is supposed to be a transient state.
 
-#### Syntax
+##### Syntax
 
 ```
 yb-admin delete_snapshot <snapshot_id>
@@ -681,29 +681,29 @@ yb-admin create_cdc_stream <table_id>
 
 ### Decommissioning
 
-### get_leader_blacklist_completion
+#### get_leader_blacklist_completion
 
 Gets the tablet load move completion percentage for blacklisted nodes.
 
-#### Syntax
+##### Syntax
 
 ```
 yb-admin get_leader_blacklist_completion
 ```
 
-#### Example
+##### Example
 
 ```sh
 $ ./bin/yb-admin get_leader_blacklist_completion
 ```
 
-### change_blacklist
+#### change_blacklist
 
 Changes the blacklist for YB-TServers.
 
 After old YB-TServer nodes are terminated, you can use this command to clean up the blacklist.
 
-#### Syntax
+##### Syntax
 
 ```
 yb-admin change_blacklist <ADD|REMOVE> <ip_addr>:<port> [<ip_addr>:<port>]...
@@ -712,15 +712,15 @@ yb-admin change_blacklist <ADD|REMOVE> <ip_addr>:<port> [<ip_addr>:<port>]...
 - ADD | REMOVE: Adds or removes the specified YB-TServers.
 - *ip_addr:port*: The IP address and port of the YB-TServer.
 
-#### Example
+##### Example
 
 ```sh
 $ ./bin/yb-admin -master_addresses $MASTERS change_blacklist ADD node1:9100 node2:9100 node3:9100 node4:9100 node5:9100 node6:9100
 ```
 
-### change_leader_blacklist
+#### change_leader_blacklist
 
-#### Syntax
+##### Syntax
 
 ```
 yb-admin change_leader_blacklist <ADD | REMOVE> <ip_addr>:<port> [<ip_addr>:<port>]...
