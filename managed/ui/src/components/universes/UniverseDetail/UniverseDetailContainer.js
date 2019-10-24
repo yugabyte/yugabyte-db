@@ -3,8 +3,7 @@
 import { connect } from 'react-redux';
 import { UniverseDetail } from '../../universes';
 import { fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo, closeUniverseDialog, getHealthCheck,
-  getHealthCheckResponse
-} from '../../../actions/universe';
+  getHealthCheckResponse } from '../../../actions/universe';
 
 import { getAlerts, getAlertsSuccess, getAlertsFailure } from '../../../actions/customers';
 
@@ -46,6 +45,9 @@ const mapDispatchToProps = (dispatch) => {
     },
     showGFlagsModal: () => {
       dispatch(openDialog("gFlagsModal"));
+    },
+    showManageKeyModal: () => {
+      dispatch(openDialog("manageKeyModal"));
     },
     showDeleteUniverseModal: () => {
       dispatch(openDialog("deleteUniverseModal"));
