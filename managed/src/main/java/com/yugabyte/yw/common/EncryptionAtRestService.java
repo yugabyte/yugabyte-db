@@ -320,6 +320,22 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
         );
     }
 
+    public void removeKeyRef(UUID customerUUID, UUID universeUUID) {
+        KmsConfig config;
+        try {
+            config = getKMSConfig(customerUUID);
+            KmsHistory currentRef = KmsHistory.getCurrentKeyRef(
+                    config.configUUID,
+                    universeUUID,
+                    KmsHistoryId.TargetType.UNIVERSE_KEY
+            );
+            if (currentRef != null) KmsHistory.deleteKeyRef(currentRef);
+        } catch (Exception e) {
+            String errMsg = "";
+            LOG.error(errMsg);
+        }
+    }
+
     /**
      * This method is used to retrieve historically-rotated universe key data
      *

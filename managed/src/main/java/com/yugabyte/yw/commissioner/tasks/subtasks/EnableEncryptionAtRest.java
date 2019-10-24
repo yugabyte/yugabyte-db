@@ -31,8 +31,7 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
   // Timeout for failing to respond to pings.
   private static final long TIMEOUT_SERVER_WAIT_MS = 120000;
 
-  public static class Params extends UniverseDefinitionTaskParams {
-  }
+  public static class Params extends UniverseDefinitionTaskParams {}
 
   @Override
   protected Params taskParams() {

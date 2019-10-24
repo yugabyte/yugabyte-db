@@ -704,4 +704,20 @@ public class Universe extends Model {
     if (masterLeader == null) return "";
     return masterLeader.getHostText();
   }
+
+    /**
+     * Checks whether the universe is encryptedAtRest
+     *
+     * @return true if the universe is encrypted at rest, false otherwise
+     */
+  public boolean isEncryptedAtRest() {
+    boolean result = false;
+    Cluster cluster = getUniverseDetails().getPrimaryCluster();
+    if (cluster != null) result = cluster.userIntent.enableEncryptionAtRest;
+    return result;
+  }
+
+  public Map<String, String> getEncryptionAtRestConfig() {
+    return getUniverseDetails().encryptionAtRestConfig;
+  }
 }

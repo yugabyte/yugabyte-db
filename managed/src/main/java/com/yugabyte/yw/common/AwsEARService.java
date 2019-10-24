@@ -246,9 +246,10 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
             UUID customerUUID,
             Map<String, String> config
     ) {
-        final CreateKeyRequest req = new CreateKeyRequest()
-                .withDescription("Yugaware KMS Integration")
-                .withPolicy(config.get("cmk_policy"));
+        final String customPolicy = config.get("cmk_policy");
+        CreateKeyRequest req = new CreateKeyRequest()
+                .withDescription("Yugabyte Universe Key");
+        if (customPolicy != null && customPolicy.length() > 0) req = req.withPolicy(customPolicy);
         final CreateKeyResult result = getClient(customerUUID).createKey(req);
         final String kId = result.getKeyMetadata().getKeyId();
         if (getAlias(customerUUID, universeUUID.toString()) == null) {

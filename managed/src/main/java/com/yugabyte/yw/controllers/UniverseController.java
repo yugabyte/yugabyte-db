@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
+import com.yugabyte.yw.forms.EncryptionAtRestKeyParams.OpType.*;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -249,36 +250,34 @@ public class UniverseController extends AuthenticatedController {
           taskParams.allowInsecure = false;
         }
 
+        // Setup encryption at rest
         if (primaryCluster.userIntent.enableEncryptionAtRest) {
           // Generate encryption master key
-          byte[] data = null;
-          if (taskParams.encryptionAtRestConfig != null) {
-            boolean forceNewInstance = Boolean.parseBoolean(
-                    taskParams.encryptionAtRestConfig.get("force_new_instance")
-            );
-            String kmsProvider = taskParams.encryptionAtRestConfig.get("kms_provider");
-            EncryptionAtRestService keyService = keyManager
-                    .getServiceInstance(kmsProvider, forceNewInstance);
-            if (keyService != null) {
-              data = keyService.createKey(
-                      universe.universeUUID,
-                      customerUUID,
-                      taskParams.encryptionAtRestConfig
-              );
-            }
-          }
-          // Default to Yugaware-generated encryption key if KMS not chosen/failed
+          byte[] data = keyManager.generateUniverseKey(
+                  customerUUID,
+                  universe.universeUUID,
+                  taskParams.encryptionAtRestConfig,
+                  true
+          );
           if (data == null || data.length == 0) {
-            LOG.warn(
-                    "Was not able to retrieve a universe key from KMS provider." +
-                            "Defaulting to self-generated key."
+            String errMsg = "Was not able to retrieve a universe key from desired KMS provider. " +
+                    "Reverting to unencrypted universe";
+            LOG.warn(errMsg);
+            primaryCluster.userIntent.enableEncryptionAtRest = false;
+          } else {
+            int numRotations = keyManager.getNumKeyRotations(
+                    customerUUID,
+                    universe.universeUUID,
+                    taskParams.encryptionAtRestConfig
             );
-            Random rd = new Random();
-            data = new byte[32];
-            rd.nextBytes(data);
+            taskParams.encryptionKeyFilePath = CertificateHelper.createEncryptionKeyFile(
+                    customerUUID,
+                    universe.universeUUID,
+                    data,
+                    appConfig.getString("yb.storage.path"),
+                    numRotations
+            );
           }
-          taskParams.encryptionKeyFilePath = CertificateHelper.createEncryptionKeyFile(customerUUID, universe.universeUUID,
-                  data, appConfig.getString("yb.storage.path"));
         }
       }
 
@@ -330,53 +329,40 @@ public class UniverseController extends AuthenticatedController {
     }
 
     try {
-      // Generate encryption master key
-      byte[] data = null;
-      if (taskParams.encryptionAtRestConfig != null) {
-        String kmsProvider = taskParams.encryptionAtRestConfig.get("kms_provider");
-        EncryptionAtRestService keyService = keyManager.getServiceInstance(kmsProvider);
-        if (keyService != null) {
-          if (universe
-                  .getUniverseDetails()
-                  .getPrimaryCluster()
-                  .userIntent
-                  .enableEncryptionAtRest == true) {
-            LOG.info("Rotating key for universe {}", universeUUID.toString());
-            data = keyService.rotateKey(
-                    customerUUID,
-                    universe.universeUUID,
-                    taskParams.encryptionAtRestConfig
-            );
-          } else {
-            LOG.info("Creating key for universe {}", universeUUID.toString());
-            data = keyService.createKey(
-                    universe.universeUUID,
-                    customerUUID,
-                    taskParams.encryptionAtRestConfig
-            );
-          }
-        }
-      }
-      // Default to Yugaware-generated encryption key if KMS not chosen/failed
-      if (data == null || data.length == 0) {
-        LOG.warn(
-                "Was not able to retrieve a universe key from KMS provider." +
-                "Defaulting to self-generated key."
-        );
-        Random rd = new Random();
-        data = new byte[32];
-        rd.nextBytes(data);
-      }
-      // TODO: (Daniel) - Change createEncryptionKeyFile to accept an int as keyRotationNumPrefix
-      taskParams.encryptionKeyFilePath = CertificateHelper.createEncryptionKeyFile(
-              customerUUID,
-              universe.universeUUID,
-              data,
-              appConfig.getString("yb.storage.path")
-      );
-
       TaskType taskType = TaskType.SetUniverseKey;
-      taskParams.expectedUniverseVersion = universe.version;
+      switch (taskParams.op) {
+        case ENABLE:
+          // Generate encryption master key
+          byte[] data = keyManager.generateUniverseKey(
+                  customerUUID,
+                  universeUUID,
+                  taskParams.encryptionAtRestConfig
+          );
+          if (data == null || data.length == 0) {
+            String errMsg = "Was not able to retrieve a universe key from desired KMS provider";
+            throw new RuntimeException(errMsg);
+          }
+          int numRotations = keyManager.getNumKeyRotations(
+                  customerUUID,
+                  universeUUID,
+                  taskParams.encryptionAtRestConfig
+          );
+          taskParams.encryptionKeyFilePath = CertificateHelper.createEncryptionKeyFile(
+                  customerUUID,
+                  universe.universeUUID,
+                  data,
+                  appConfig.getString("yb.storage.path"),
+                  numRotations
+          );
+          break;
+        case DISABLE:
+          break;
+        default:
+          throw new IllegalArgumentException(
+                  String.format("Unsupported key operation: %s", taskParams.op.name())
+          );
+      }
+
       Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
       if (primaryCluster != null) {
         if (primaryCluster.userIntent.providerType.equals(CloudType.kubernetes)) {
@@ -384,9 +370,9 @@ public class UniverseController extends AuthenticatedController {
           taskType = TaskType.SetKubernetesUniverseKey;
         }
       }
-
+      taskParams.expectedUniverseVersion = universe.version;
       UUID taskUUID = commissioner.submit(taskType, taskParams);
-      LOG.info("Submitted rotate universe key for {}:{}, task uuid = {}.",
+      LOG.info("Submitted set universe key for {}:{}, task uuid = {}.",
               universe.universeUUID, universe.name, taskUUID);
 
       // Add this task uuid to the user universe.
@@ -403,7 +389,7 @@ public class UniverseController extends AuthenticatedController {
       resultNode.put("taskUUID", taskUUID.toString());
       return Results.status(OK, resultNode);
     } catch (Exception e) {
-      String errMsg = "Error occurred attempting to rotate the universe encryption key";
+      String errMsg = "Error occurred attempting to set the universe encryption key";
       LOG.error(errMsg, e);
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
@@ -480,11 +466,18 @@ public class UniverseController extends AuthenticatedController {
           taskType = TaskType.EditKubernetesUniverse;
           taskParams.isKubernetesUniverse = true;
         }
-        if (primaryCluster.userIntent.enableEncryptionAtRest) {
+        Map<String, String> encryptionAtRestConfig = universe.getEncryptionAtRestConfig();
+        int numRotations = keyManager.getNumKeyRotations(
+                customerUUID,
+                universeUUID,
+                encryptionAtRestConfig
+        );
+        if (universe.isEncryptedAtRest()) {
           taskParams.encryptionKeyFilePath = CertificateHelper.getEncryptionFile(
                   customerUUID,
                   universe.universeUUID,
-                  appConfig.getString("yb.storage.path")
+                  appConfig.getString("yb.storage.path"),
+                  numRotations
           );
         }
       }
@@ -645,12 +638,11 @@ public class UniverseController extends AuthenticatedController {
     // If the universe was created with universe encryption at rest key created through an
     // integration, then we should remove the key history from local storage to enable safe
     // deletion of the KMS configuration only when all associated universes have been deleted
-    String keyProvider = null;
-    Map<String, String> encryptionAtRestConfig = universeDetails.encryptionAtRestConfig;
-    if (encryptionAtRestConfig != null)  keyProvider = encryptionAtRestConfig.get("kms_provider");
-    if (keyProvider != null) {
-      EncryptionAtRestService keyService = keyManager.getServiceInstance(keyProvider);
-      if (keyService != null) keyService.removeKeyRotationHistory(customerUUID, universeUUID);
+    if (universe.isEncryptedAtRest() || keyManager.getNumKeyRotations(
+            customerUUID,
+            universeUUID,
+            universe.getEncryptionAtRestConfig()) > 0) {
+      keyManager.clearUniverseKeyHistory(customerUUID, universeUUID);
     }
 
     LOG.info("Destroyed universe " + universeUUID + " for customer [" + customer.name + "]");
