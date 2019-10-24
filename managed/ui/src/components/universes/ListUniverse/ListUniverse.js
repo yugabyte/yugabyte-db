@@ -6,7 +6,7 @@ import { Link } from 'react-router';
 import { YBButton } from 'components/common/forms/fields';
 import { UniverseTableContainer } from 'components/universes';
 import { HighlightedStatsPanelContainer } from '../../panels';
-import { isNotHidden, isDisabled, isAvailable } from 'utils/LayoutUtils';
+import { isNotHidden, isDisabled, isAvailable, showOrRedirect } from 'utils/LayoutUtils';
 
 import './ListUniverse.scss';
 
@@ -17,6 +17,8 @@ export default class ListUniverse extends Component {
 
   render() {
     const { customer: { currentCustomer } } = this.props;
+    showOrRedirect(currentCustomer.data.features, "main.universe_list");
+
     return (
       <div id="page-wrapper">
         <Row className="header-row">

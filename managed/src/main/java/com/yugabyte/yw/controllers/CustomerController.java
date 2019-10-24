@@ -6,7 +6,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
@@ -16,8 +18,9 @@ import com.yugabyte.yw.common.CallHomeManager;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
-import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.forms.FeatureUpdateFormData;
 import com.yugabyte.yw.forms.MetricQueryParams;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 
@@ -144,6 +147,25 @@ public class CustomerController extends AuthenticatedController {
     } else {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete Customer UUID: " + customerUUID);
     }
+  }
+
+  public Result upsertFeatures(UUID customerUUID) {
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID:" + customerUUID);
+    }
+
+    JsonNode requestBody = request().body().asJson();
+    ObjectMapper mapper = new ObjectMapper();
+    FeatureUpdateFormData formData;
+    try {
+      formData = mapper.treeToValue(requestBody, FeatureUpdateFormData.class);
+    } catch (RuntimeException | JsonProcessingException e) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid JSON");
+    }
+
+    customer.upsertFeatures(formData.features);
+    return ok(customer.getFeatures());
   }
 
   public Result metrics(UUID customerUUID) {

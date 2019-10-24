@@ -64,6 +64,9 @@ PUT     /customers/:cUUID                         com.yugabyte.yw.controllers.Cu
 DELETE  /customers/:cUUID                         com.yugabyte.yw.controllers.CustomerController.delete(cUUID: java.util.UUID)
 POST    /customers/:cUUID/metrics                 com.yugabyte.yw.controllers.CustomerController.metrics(cUUID: java.util.UUID)
 
+# Customer features API
+PUT     /customers/:cUUID/features                com.yugabyte.yw.controllers.CustomerController.upsertFeatures(cUUID: java.util.UUID)
+
 # Release management API
 GET     /customers/:cUUID/releases                com.yugabyte.yw.controllers.ReleaseController.list(cUUID: java.util.UUID, includeMetadata: java.lang.Boolean ?= false)
 PUT     /customers/:cUUID/releases                com.yugabyte.yw.controllers.ReleaseController.refresh(cUUID: java.util.UUID)
