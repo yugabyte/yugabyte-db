@@ -32,6 +32,7 @@
 
 #include "yb/consensus/consensus_queue.h"
 
+#include <shared_mutex>
 #include <algorithm>
 #include <iostream>
 #include <mutex>
@@ -97,6 +98,12 @@ TAG_FLAG(consensus_inject_latency_ms_in_notifications, unsafe);
 
 DEFINE_bool(propagate_safe_time, true, "Propagate safe time to read from leader to followers");
 
+DEFINE_int32(cdc_checkpoint_opid_interval_ms, 60 * 1000,
+             "Interval up to which CDC consumer's checkpoint is considered for retaining log cache."
+             "If we haven't received an updated checkpoint from CDC consumer within the interval "
+             "specified by cdc_checkpoint_opid_interval, then log cache does not consider that "
+             "consumer while determining which op IDs to evict.");
+
 namespace yb {
 namespace consensus {
 
@@ -114,6 +121,8 @@ METRIC_DEFINE_gauge_int64(tablet, in_progress_ops, "Leader Operations in Progres
                           MetricUnit::kOperations,
                           "Number of operations in the leader queue ack'd by a minority of "
                           "peers.");
+
+const auto kCDCConsumerCheckpointInterval = FLAGS_cdc_checkpoint_opid_interval_ms * 1ms;
 
 std::string PeerMessageQueue::TrackedPeer::ToString() const {
   return Substitute("Peer: $0, Is new: $1, Last received: $2, Next index: $3, "
@@ -593,6 +602,23 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
   return Status::OK();
 }
 
+void PeerMessageQueue::UpdateCDCConsumerOpId(const OpIdPB& op_id) {
+  std::lock_guard<rw_spinlock> l(cdc_consumer_lock_);
+  cdc_consumer_op_id_ = op_id;
+  cdc_consumer_op_id_last_updated_ = CoarseMonoClock::Now();
+}
+
+OpId PeerMessageQueue::GetCDCConsumerOpIdToEvict() {
+  std::shared_lock<rw_spinlock> l(cdc_consumer_lock_);
+  // For log cache eviction, we only want to include CDC consumers that are actively polling.
+  // If CDC consumer checkpoint has not been updated recently, we exclude it.
+  if (CoarseMonoClock::Now() - cdc_consumer_op_id_last_updated_ <= kCDCConsumerCheckpointInterval) {
+    return cdc_consumer_op_id_;
+  } else {
+    return MaximumOpId();
+  }
+}
+
 void PeerMessageQueue::UpdateAllReplicatedOpId(OpId* result) {
   OpId new_op_id = MaximumOpId();
 
@@ -978,7 +1004,9 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
 
     UpdateAllReplicatedOpId(&queue_state_.all_replicated_opid);
 
-    log_cache_.EvictThroughOp(queue_state_.all_replicated_opid.index());
+    auto evict_op = std::min(
+        queue_state_.all_replicated_opid.index(), GetCDCConsumerOpIdToEvict().index());
+    log_cache_.EvictThroughOp(evict_op);
 
     UpdateMetrics();
   }

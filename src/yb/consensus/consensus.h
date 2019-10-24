@@ -348,6 +348,8 @@ class Consensus {
   virtual CHECKED_STATUS ReadReplicatedMessagesForCDC(const OpId& from, ReplicateMsgs* msgs,
                                                       bool* have_more_messages) = 0;
 
+  virtual void UpdateCDCConsumerOpId(const OpIdPB& op_id) = 0;
+
  protected:
   friend class RefCountedThreadSafe<Consensus>;
   friend class tablet::TabletPeer;
