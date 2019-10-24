@@ -137,7 +137,7 @@ public class SessionController extends Controller {
         ObjectMapper mapper = new ObjectMapper();
         JsonNode features = mapper.readTree(featureStream);
         Customer.get(customerUUID).upsertFeatures(features);
-      } catch(IOException e) {
+      } catch (IOException e) {
         LOG.error("Failed to parse sample feature config file for OSS mode.");
       }
     }

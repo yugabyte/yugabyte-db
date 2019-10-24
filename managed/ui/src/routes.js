@@ -94,8 +94,10 @@ function validateSession(store, replacePath, callback) {
           localStorage.setItem("customerId", response.payload.data["uuid"]);
         }
       });
-
   }
+  // TODO: Customer configs are sometimes not updated because callback does not wait for tokens
+  // to be validated. However, having callback wait for the response will cause an infinite loop
+  // when redirecting (e.g. showOrRedirect).
   callback();
 }
 

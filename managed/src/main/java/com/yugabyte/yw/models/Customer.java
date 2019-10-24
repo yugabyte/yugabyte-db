@@ -29,6 +29,7 @@ import com.avaje.ebean.Model;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Joiner;
 
 import play.data.validation.Constraints;
@@ -297,10 +298,15 @@ public class Customer extends Model {
   }
 
   /**
-   * Updates features for the customer.
+   * Upserts features for this customer. If updating a feature, only specified features will
+   * be updated.
    */
   public void upsertFeatures(JsonNode input) {
-    features = input;
+    if (features == null) {
+      features = input;
+    } else {
+      ((ObjectNode) features).setAll((ObjectNode) input);
+    }
     save();
   }
 }
