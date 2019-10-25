@@ -66,7 +66,6 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tablet/abstract_tablet.h"
-#include "yb/tablet/lock_manager.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/tablet_metadata.h"
