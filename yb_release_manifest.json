@@ -5,6 +5,7 @@
   "www": ["www/*"],
   "bin": ["bin/bulk_load_cleanup.sh",
           "bin/bulk_load_helper.sh",
+          "bin/log_cleanup.sh",
           "bin/configure",
           "submodules/yugabyte-installation/bin/yb-ctl",
           "bin/yb-prof.py",
