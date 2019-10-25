@@ -45,7 +45,7 @@ typedef enum /* type categories for datum_to_agtype */
 } agt_type_category;
 
 static inline Datum agtype_from_cstring(char *str, int len);
-static size_t check_string_length(size_t len);
+size_t check_string_length(size_t len);
 static void agtype_in_object_start(void *pstate);
 static void agtype_in_object_end(void *pstate);
 static void agtype_in_array_start(void *pstate);
@@ -54,7 +54,7 @@ static void agtype_in_object_field_start(void *pstate, char *fname,
                                          bool isnull);
 static void agtype_put_escaped_value(StringInfo out, agtype_value *scalar_val);
 static void escape_agtype(StringInfo buf, const char *str);
-static bool is_decimal_needed(char *numstr);
+bool is_decimal_needed(char *numstr);
 static void agtype_in_scalar(void *pstate, char *token,
                              agtype_token_type tokentype);
 static void agtype_categorize_type(Oid typoid, agt_type_category *tcategory,
@@ -136,7 +136,7 @@ static inline Datum agtype_from_cstring(char *str, int len)
     PG_RETURN_POINTER(agtype_value_to_agtype(state.res));
 }
 
-static size_t check_string_length(size_t len)
+size_t check_string_length(size_t len)
 {
     if (len > AGTENTRY_OFFLENMASK)
     {
@@ -284,7 +284,7 @@ static void escape_agtype(StringInfo buf, const char *str)
     appendStringInfoCharMacro(buf, '"');
 }
 
-static bool is_decimal_needed(char *numstr)
+bool is_decimal_needed(char *numstr)
 {
     int i;
 

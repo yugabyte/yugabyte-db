@@ -23,11 +23,13 @@ Datum agtype_add(PG_FUNCTION_ARGS)
     agtype_value *agtv_lhs;
     agtype_value *agtv_rhs;
     agtype_value agtv_result;
-    Size len;
+    size_t len;
     char *buffer;
     Datum n;
     char *nstr;
-    Size nlen;
+    char *fstr;
+    size_t nlen;
+    size_t flen;
 
     if (!(AGT_ROOT_IS_SCALAR(lhs)) || !(AGT_ROOT_IS_SCALAR(rhs)))
     {
@@ -43,6 +45,7 @@ Datum agtype_add(PG_FUNCTION_ARGS)
     if (agtv_lhs->type == AGTV_STRING && agtv_rhs->type == AGTV_STRING)
     {
         len = agtv_lhs->val.string.len + agtv_rhs->val.string.len;
+        check_string_length(len);
         buffer = palloc(len);
 
         strncpy(buffer, agtv_lhs->val.string.val, agtv_lhs->val.string.len);
@@ -63,16 +66,32 @@ Datum agtype_add(PG_FUNCTION_ARGS)
             {
                 n = DirectFunctionCall1(int8out,
                                         Int8GetDatum(agtv_rhs->val.int_value));
+                nstr = DatumGetCString(n);
+                nlen = strlen(nstr);
             }
             else
             {
                 n = DirectFunctionCall1(
                     float8out, Float8GetDatum(agtv_rhs->val.float_value));
+                fstr = DatumGetCString(n);
+
+                if(is_decimal_needed(fstr))
+                {
+                    flen = strlen(fstr);
+                    nlen = flen + strlen(".0");
+                    nstr = palloc(nlen);
+                    strncpy(nstr, fstr, strlen(fstr));
+                    strncpy(nstr + flen, ".0", strlen(".0"));
+                }
+                else
+                {
+                    nstr = DatumGetCString(n);
+                    nlen = strlen(nstr);
+                }
             }
-            nstr = DatumGetCString(n);
-            nlen = strlen(nstr);
 
             len = agtv_lhs->val.string.len + nlen;
+            check_string_length(len);
             buffer = palloc(len);
 
             strncpy(buffer, agtv_lhs->val.string.val,
@@ -94,16 +113,32 @@ Datum agtype_add(PG_FUNCTION_ARGS)
             {
                 n = DirectFunctionCall1(int8out,
                                         Int8GetDatum(agtv_lhs->val.int_value));
+                nstr = DatumGetCString(n);
+                nlen = strlen(nstr);
             }
             else
             {
                 n = DirectFunctionCall1(
                     float8out, Float8GetDatum(agtv_lhs->val.float_value));
+                fstr = DatumGetCString(n);
+
+                if(is_decimal_needed(fstr))
+                {
+                    flen = strlen(fstr);
+                    nlen = flen + strlen(".0");
+                    nstr = palloc(nlen);
+                    strncpy(nstr, fstr, strlen(fstr));
+                    strncpy(nstr + flen, ".0", strlen(".0"));
+                }
+                else
+                {
+                    nstr = DatumGetCString(n);
+                    nlen = strlen(nstr);
+                }
             }
-            nstr = DatumGetCString(n);
-            nlen = strlen(nstr);
 
             len = agtv_rhs->val.string.len + nlen;
+            check_string_length(len);
             buffer = palloc(len);
 
             strncpy(buffer, nstr, nlen);

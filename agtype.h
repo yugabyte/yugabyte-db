@@ -402,10 +402,12 @@ char *agtype_to_cstring(StringInfo out, agtype_container *in,
                         int estimated_len);
 char *agtype_to_cstring_indent(StringInfo out, agtype_container *in,
                                int estimated_len);
+size_t check_string_length(size_t len);
 Datum integer_to_agtype(int64 i);
 Datum float_to_agtype(float8 f);
 Datum string_to_agtype(char *s);
 Datum boolean_to_agtype(bool b);
+bool is_decimal_needed(char *numstr);
 
 // Oid of agtype
 #define AGTYPEOID \
