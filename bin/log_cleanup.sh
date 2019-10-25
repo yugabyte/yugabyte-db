@@ -1,13 +1,17 @@
-#!/usr/bin/env bash
-#
-# Copyright 2019 YugaByte, Inc. and Contributors
-#
-# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
-# may not use this file except in compliance with the License. You
-# may obtain a copy of the License at
-#
-# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+#!/bin/sh
 
+# Copyright (c) YugaByte, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.  You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License
+# is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied.  See the License for the specific language governing permissions and limitations
+# under the License.
+#
 set -euo pipefail
 
 print_help() {
@@ -24,8 +28,8 @@ EOT
 }
 
 gzip_only=false
-YB_HOME_DIR=({{ yb_home_dir }}/)
-MAX_LOG_SIZE_FLAG=max_log_size
+YB_HOME_DIR=/home/yugabyte/
+MAX_LOG_SIZE=256
 logs_disk_percent_max=10
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -63,9 +67,11 @@ logs_disk_percent_max=$(($logs_disk_percent_max / 2))
 
 compute_num_log_files() {
   local log_dir=$1
-  local conf_file=$2
-  local logdirsize_kb=$(df --output=size $log_dir | tail -n1)
-  local per_log_size_mb=$(grep $MAX_LOG_SIZE_FLAG $conf_file | cut -d'=' -f2)
+  local daemon_type=$2
+  # df --output=size isn't supported on all UNIX systems.
+  # output in the format: [size]    [file]
+  local logdirsize_kb=$(du -k $YB_HOME_DIR/$daemon_type/logs/ | awk '{print $1}')
+  local per_log_size_mb=$MAX_LOG_SIZE
   if [[ $per_log_size_mb -le 0 ]]; then
     echo "--$MAX_LOG_SIZE_FLAG needs to be greater than 0, found $per_log_size_mb" >&2
     exit 1
@@ -82,14 +88,22 @@ compute_num_log_files() {
 }
 
 log_levels="INFO ERROR WARNING FATAL"
-daemon_types="tserver master"
+daemon_types=""
+if [[ -d "$YB_HOME_DIR/master/" ]]; then
+  daemon_types="${daemon_types} master"
+fi
+if [[ -d "$YB_HOME_DIR/tserver/" ]]; then
+  daemon_types="${daemon_types} tserver"
+fi
 for daemon_type in $daemon_types; do
   YB_LOG_DIR="$YB_HOME_DIR/$daemon_type/logs/"
-  num_logs_to_keep=$(compute_num_log_files $YB_LOG_DIR $YB_HOME_DIR/$daemon_type/conf/server.conf)
+  num_logs_to_keep=$(compute_num_log_files $YB_LOG_DIR $daemon_type)
   echo "Num logs to keep for $daemon_type: $num_logs_to_keep"
   for log_level in $log_levels; do
+    # Using print0 since printf is not supported on all UNIX systems.
+    # xargs -0 -r stat -c '%Y %n' outputs: [unix time in millisecs] [name of file]
     find_non_gz_files="find $YB_LOG_DIR -type f -name
-    'yb-$daemon_type*log.$log_level*' ! -name '*.gz' -printf '%T+\t%p\n' | sort | awk '{print \$2}'"
+    'yb-$daemon_type*log.$log_level*' ! -name '*.gz' -print0 | xargs -0 -r stat -c '%Y %n' | sort | awk '{print \$2}'"
     non_gz_file_count=$(eval $find_non_gz_files | wc -l)
 
     # gzip all files but the current one.
@@ -103,10 +117,11 @@ for daemon_type in $daemon_types; do
 
     if [ "$gzip_only" == false ]; then
       # now delete old gz files.
+      # Using print0 since printf is not supported on all UNIX systems.
+      # xargs -0 -r stat -c '%Y %n' outputs: [unix time in millisecs] [name of file]
       find_gz_files="find $YB_LOG_DIR -type f -name
-      'yb-$daemon_type*log.$log_level*gz' -printf '%T+\t%p\n' | sort | awk '{print \$2}'"
+      'yb-$daemon_type*log.$log_level*gz' -print0 | xargs -0 -r stat -c '%Y %n' | sort | awk '{print \$2}'"
       gz_file_count=$(eval $find_gz_files | wc -l)
-
       if [ $gz_file_count -gt $num_logs_to_keep ]; then
         files_to_delete=$(eval $find_gz_files | head -n$(($gz_file_count - $num_logs_to_keep)))
         for file in $files_to_delete; do
