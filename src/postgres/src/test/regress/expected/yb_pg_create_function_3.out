@@ -59,12 +59,12 @@ ALTER FUNCTION functest_B_2(int) VOLATILE;
 ERROR:  ALTER FUNCTION not supported yet
 LINE 1: ALTER FUNCTION functest_B_2(int) VOLATILE;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1155. Click '+' on the description to raise its priority
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
 ALTER FUNCTION functest_B_3(int) COST 100;	-- unrelated change, no effect
 ERROR:  ALTER FUNCTION not supported yet
 LINE 1: ALTER FUNCTION functest_B_3(int) COST 100;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1155. Click '+' on the description to raise its priority
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
 SELECT proname, provolatile FROM pg_proc
        WHERE oid in ('functest_B_1'::regproc,
                      'functest_B_2'::regproc,
@@ -102,17 +102,17 @@ ALTER FUNCTION functest_C_1(int) IMMUTABLE;	-- unrelated change, no effect
 ERROR:  ALTER FUNCTION not supported yet
 LINE 1: ALTER FUNCTION functest_C_1(int) IMMUTABLE;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1155. Click '+' on the description to raise its priority
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
 ALTER FUNCTION functest_C_2(int) SECURITY INVOKER;
 ERROR:  ALTER FUNCTION not supported yet
 LINE 1: ALTER FUNCTION functest_C_2(int) SECURITY INVOKER;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1155. Click '+' on the description to raise its priority
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
 ALTER FUNCTION functest_C_3(int) SECURITY DEFINER;
 ERROR:  ALTER FUNCTION not supported yet
 LINE 1: ALTER FUNCTION functest_C_3(int) SECURITY DEFINER;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1155. Click '+' on the description to raise its priority
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
 SELECT proname, prosecdef FROM pg_proc
        WHERE oid in ('functest_C_1'::regproc,
                      'functest_C_2'::regproc,
@@ -144,12 +144,12 @@ ALTER FUNCTION functest_E_1(int) LEAKPROOF;
 ERROR:  ALTER FUNCTION not supported yet
 LINE 1: ALTER FUNCTION functest_E_1(int) LEAKPROOF;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1155. Click '+' on the description to raise its priority
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
 ALTER FUNCTION functest_E_2(int) STABLE;	-- unrelated change, no effect
 ERROR:  ALTER FUNCTION not supported yet
 LINE 1: ALTER FUNCTION functest_E_2(int) STABLE;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1155. Click '+' on the description to raise its priority
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
 SELECT proname, proleakproof FROM pg_proc
        WHERE oid in ('functest_E_1'::regproc,
                      'functest_E_2'::regproc) ORDER BY proname;
@@ -163,7 +163,7 @@ ALTER FUNCTION functest_E_2(int) NOT LEAKPROOF;	-- remove leakproof attribute
 ERROR:  ALTER FUNCTION not supported yet
 LINE 1: ALTER FUNCTION functest_E_2(int) NOT LEAKPROOF;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1155. Click '+' on the description to raise its priority
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
 SELECT proname, proleakproof FROM pg_proc
        WHERE oid in ('functest_E_1'::regproc,
                      'functest_E_2'::regproc) ORDER BY proname;
@@ -213,17 +213,17 @@ ALTER FUNCTION functest_F_1(int) IMMUTABLE;	-- unrelated change, no effect
 ERROR:  ALTER FUNCTION not supported yet
 LINE 1: ALTER FUNCTION functest_F_1(int) IMMUTABLE;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1155. Click '+' on the description to raise its priority
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
 ALTER FUNCTION functest_F_2(int) STRICT;
 ERROR:  ALTER FUNCTION not supported yet
 LINE 1: ALTER FUNCTION functest_F_2(int) STRICT;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1155. Click '+' on the description to raise its priority
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
 ALTER FUNCTION functest_F_3(int) CALLED ON NULL INPUT;
 ERROR:  ALTER FUNCTION not supported yet
 LINE 1: ALTER FUNCTION functest_F_3(int) CALLED ON NULL INPUT;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1155. Click '+' on the description to raise its priority
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
 SELECT proname, proisstrict FROM pg_proc
        WHERE oid in ('functest_F_1'::regproc,
                      'functest_F_2'::regproc,
