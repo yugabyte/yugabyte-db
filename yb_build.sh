@@ -806,7 +806,7 @@ while [[ $# -gt 0 ]]; do
       make_targets+=( "postgres ")
     ;;
     daemons|yb-daemons)
-      make_targets+=( "yb-master" "yb-tserver" "postgres" )
+      make_targets+=( "yb-master" "yb-tserver" "postgres" "yb-admin" )
     ;;
     packaged|packaged-targets)
       for packaged_target in $( "$YB_SRC_ROOT"/build-support/list_packaged_targets.py ); do

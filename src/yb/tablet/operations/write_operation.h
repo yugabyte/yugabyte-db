@@ -49,7 +49,6 @@
 
 #include "yb/gutil/macros.h"
 
-#include "yb/tablet/lock_manager.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/operations/operation.h"
 

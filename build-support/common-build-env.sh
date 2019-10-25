@@ -418,7 +418,8 @@ set_build_root() {
     readonly BUILD_ROOT
   fi
 
-  if [[ -n ${predefined_build_root:-} && $predefined_build_root != $BUILD_ROOT ]]; then
+  if [[ -n ${predefined_build_root:-} && $predefined_build_root != $BUILD_ROOT ]] &&
+     ! "$YB_BUILD_SUPPORT_DIR/is_same_path.py" "$predefined_build_root" "$BUILD_ROOT"; then
     fatal "An inconsistency between predefined BUILD_ROOT ('$predefined_build_root') and" \
           "computed BUILD_ROOT ('$BUILD_ROOT')."
   fi
