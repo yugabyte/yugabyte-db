@@ -52,13 +52,20 @@ Create a table with *table_name*. An error is raised if `qualified_name` already
 Primary key can be defined in either `column_constraint` or `table_constraint`, but not in both.
 There are 2 types of primary key columns:
 
-- `Hash primary key columns`: The first column in Primary Key will default to HASH and is used to hash partition a table.
-For example if primary key is `(a, b, c)`, column `a` will be HASH ordered.
-This is the recommended option to better scale read and write operations to the table.
+- `Hash primary key columns`: The primary key may have zero or more leading hash-partitioned columns.
+By default, only the first column is treated as the hash-partition column. But this behavior can be modified by explicit use of the HASH annotation.
 
-- `Range primary key columns`: This will range partition the table and is useful for applications that require the primary key to be ordered.
-Range primary key columns can be ASC or DESC ordered. Second and subsequent primary key columns default to ASC.
-For example, if primary key is `(a, b, c)`, columns `b` and `c` will be ASC ordered.
+- `Range primary key columns`: A table can have zero or more range primary key columns and 
+it controls the top-level ordering of rows within a table (if there are no hash partition columns) or 
+the ordering of rows among rows that share a common set of hash partitioned column values.
+By default, the range primary key columns are stored in ascending order. But this behavior can be controlled by explicit use of the ASC/DESC annotation.
+
+For example, if the primary key specification is `PRIMARY KEY ((a, b) HASH, c DESC)` then columns `a` & `b` are used together to hash partition the table,
+and rows that share the same values for `a` and `b` are stored in descending order of their value for `c`.
+
+If the primary key specification is `PRIMARY KEY(a, b)`, then column `a` is used to hash partition
+the table and rows that share the same value for `a` are stored in ascending order of their value
+for `b`.
 
 ### Foreign Key
 
