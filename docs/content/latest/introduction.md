@@ -51,7 +51,7 @@ YugabyteDB feature highlights are listed below.
 
 ### 3. Global data consistency
 
-- [Global data distribution](../explore/global-distribution/) that brings consistent data close to users through multi-region and multi-cloud deployments. Optional two-region multi-master and master-slave configurations powered by CDC-driven asynchronous replication.
+- [Global data distribution](../explore/global-distribution/) that brings consistent data close to users through multi-region and multi-cloud deployments. Optional two-region multi-master and master-follower configurations powered by CDC-driven asynchronous replication.
 
 - [Auto-sharding & auto-rebalancing](../explore/auto-sharding/) to ensure uniform load across all nodes even for very large clusters.
 

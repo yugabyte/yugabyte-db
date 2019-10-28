@@ -41,11 +41,11 @@ Two data center (2DC) deployments with YugabyteDB include support for the follow
 
 ## Supported replication scenarios
 
-YugabyteDB supports asynchronous data replication between two data centers using either unidirectional (master-slave) or bidirectional (master-master or active-active) replication.
+YugabyteDB supports asynchronous data replication between two data centers using either unidirectional (master-follower) or bidirectional (master-master or active-active) replication.
 
-### Unidirectional: master-slave replication with asynchronous replication
+### Unidirectional: master-follower replication with asynchronous replication
 
-Unidirectional replication is performed from a **source cluster** (aka the *master* cluster) to one or more **sink clusters** (aka *slave* clusters). The sink clusters, typically located in data centers or regions that are different from the source cluster, are *passive* because they do not accept writes from higher layer services. These deployments are typically used to serve low latency reads from the slave clusters and for disaster recovery.
+Unidirectional replication is performed from a **source cluster** (aka the *master* cluster) to one or more **sink clusters** (aka *follower* clusters). The sink clusters, typically located in data centers or regions that are different from the source cluster, are *passive* because they do not accept writes from higher layer services. These deployments are typically used to serve low latency reads from the follower clusters and for disaster recovery.
 
 The source-sink deployment architecture is shown here:
 
@@ -57,7 +57,7 @@ Data can be replicated bidirectionally between two clusters. In this scenario, b
 
 {{< note title="Note" >}}
 
-The multi-master deployment is built internally using two master-slave unidirectional replication streams as building blocks. Special care is taken to ensure that the timestamps are assigned to ensure last-writer-wins semantics and that data arriving from the replication stream is not re-replicated. Because master-slave is the core building block, the rest of the discussion on this page focuses on that.
+The multi-master deployment is built internally using two master-follower unidirectional replication streams as building blocks. Special care is taken to ensure that the timestamps are assigned to ensure last-writer-wins semantics and that data arriving from the replication stream is not re-replicated. Because master-follower is the core building block, the rest of the discussion on this page focuses on that.
 
 {{< /note >}}
 
