@@ -2875,9 +2875,9 @@ void CatalogManager::CleanUpDeletedTables() {
         // For normal runtime operations, this should only contain tables in DELETING state.
         // However, for master failover, the catalog loaders currently have to bring in tables in
         // memory even in DELETED state, for safely loading the respective tablets for them
-        // For these DELETED tables, we'll still want to remove them from memory in this function.
-        if (l->data().started_deleting()) {
-          LOG(INFO) << "Removing from by-ids map table " << table->ToString();
+        //
+        // Eventually, for these DELETED tables, we'll want to also remove them from memory.
+        if (l->data().started_deleting() && !l->data().is_deleted()) {
           tables_to_delete.push_back(table);
           // TODO(bogdan): uncomment this once we also untangle catalog loader logic.
           // Since we have lock_, this table cannot be in the map AND be DELETED.
@@ -2894,9 +2894,14 @@ void CatalogManager::CleanUpDeletedTables() {
     // DELETED tables as well.
     if (table->metadata().state().pb.state() == SysTablesEntryPB::DELETING) {
       // Update the metadata for the on-disk state.
+      LOG(INFO) << "Marking table as DELETED: " << table->ToString();
       table->mutable_metadata()->mutable_dirty()->set_state(SysTablesEntryPB::DELETED,
           Substitute("Deleted with tablets at $0", LocalTimeAsString()));
       tables_to_update_on_disk.push_back(table.get());
+    } else {
+      // TODO(bogdan): We need to abort here, until we remove it from the map, otherwise we'd leave
+      // this lock locked...
+      table->mutable_metadata()->AbortMutation();
     }
   }
   if (tables_to_update_on_disk.size() > 0) {
@@ -2914,7 +2919,8 @@ void CatalogManager::CleanUpDeletedTables() {
   {
     std::lock_guard<LockType> l_map(lock_);
     for (auto table : tables_to_delete) {
-      table_ids_map_.erase(table->id());
+      // TODO(bogdan): Come back to this once we figure out all concurrency issues.
+      // table_ids_map_.erase(table->id());
     }
   }
   // Update the table in-memory info as DELETED after we've removed them from the maps.
