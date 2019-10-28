@@ -44,7 +44,7 @@ yb-admin [ -master_addresses server1:port,server2:port,server3:port,... ]  [ -ti
 - [Backup and snapshot](#backup-and-snapshot)
 - [Deployment topology](#deployment-topology)
   - [Multi-zone and multi-region](#multi-zone-and-multi-region)
-  - [Master-slave](#master-slave)
+  - [Master-follower](#master-follower)
   - [Read replica](#read-replica)
 - [Change data capture (CDC)](#change-data-capture-cdc)
 - [Decommissioning](#decommissioning)
@@ -496,7 +496,7 @@ yb-admin set_preferred_zones <cloud.region.zone> [<cloud.region.zone>]...
 
 - *cloud.region.zone*: Specifies the cloud, region, and zone. Default value is `cloud1.datacenter1.rack1`.
 
-#### Master-slave
+#### Master-follower
 
 ##### setup_universe_replication
 
