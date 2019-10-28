@@ -44,7 +44,7 @@ menu:
         <div class="title">Authorization</div>
       </div>
       <div class="body">
-          Implementing authorization using role-based access control in YugabyteDB.
+          Granting privileges and permissions using role-based access control in YugabyteDB.
       </div>
     </a>
   </div>

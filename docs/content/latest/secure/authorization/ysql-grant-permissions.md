@@ -117,13 +117,13 @@ All members of engineering should be able to read data from any database and tab
 yugabyte=# GRANT SELECT ON ALL DATABASES TO engineering;
 ```
 
-We can now verify that the `engineering` role has `SELECT` permission as follows:
+We can now verify that the `engineering` role has `SELECT` privilege as follows:
 
 ```postgresql
 yugabyte=# SELECT * FROM system_auth.role_privileges;
 ```
 
-The output should look similar to below, where we see that the `engineering` role has `SELECT` permission on the `data` resource.
+The output should look similar to below, where we see that the `engineering` role has `SELECT` privilege on the `data` resource.
 
 ```
  role        | resource          | privileges
@@ -138,7 +138,7 @@ The resource `data` represents *all DATABASES and tables*.
 
 {{< /note >}}
 
-Granting the role `engineering` to any other role will cause all those roles to inherit the `SELECT` privileges. Thus, `developer`, `qa` and `db_admin` will all inherit the `SELECT` permission.
+Granting the role `engineering` to any other role will cause all those roles to inherit the `SELECT` privileges. Thus, `developer`, `qa` and `db_admin` will all inherit the `SELECT` privilege.
 
 ### Grant data modify access
 
@@ -149,7 +149,7 @@ yugabyte=# GRANT MODIFY ON database dev_database TO developer;
                  GRANT MODIFY ON database dev_database TO qa;
 ```
 
-We can now verify that the `developer` and `qa` roles have the appropriate `MODIFY` permission by running the following command.
+We can now verify that the `developer` and `qa` roles have the appropriate `MODIFY` privilege by running the following command.
 
 ```postgresql
 yugabyte=# \l
@@ -184,7 +184,7 @@ Once again, run the following command to verify the privileges.
 yugabyte=# SELECT * FROM system_auth.role_privileges;
 ```
 
-We should see a new row added, which grants the `ALTER` permission on the resource `data/dev_database/integration_tests` to the role `qa`.
+We should see a new row added, which grants the `ALTER` privilege on the resource `data/dev_database/integration_tests` to the role `qa`.
 
 ```
  role        | resource                            | privileges
@@ -236,7 +236,7 @@ We should see the following, which grants the all privileges on the resource `da
 
 ## 4. Revoke privileges from roles
 
-Let us say we want to revoke the `AUTHORIZE` permission from the DB admins so that they can no longer change privileges for other roles. This can be done as follows.
+Let us say we want to revoke the `AUTHORIZE` privilege from the DB admins so that they can no longer change privileges for other roles. This can be done as follows.
 
 ```postgresql
 yugabyte=# REVOKE AUTHORIZE ON ALL DATABASES FROM db_admin;
@@ -261,4 +261,4 @@ We should see the following output.
     ...
 ```
 
-The `AUTHORIZE` permission is no longer granted to the `db_admin` role.
+The `AUTHORIZE` privilege is no longer granted to the `db_admin` role.

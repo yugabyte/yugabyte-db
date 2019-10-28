@@ -9,7 +9,7 @@ As an example, let us create a role `engineering` for an engineering team in an 
 cassandra@cqlsh> CREATE ROLE IF NOT EXISTS engineering;
 ```
 
-Roles that have `LOGIN` privileges are users. As an example, you can create a user `john` as follows:
+Roles that have `LOGIN` permissions are users. As an example, you can create a user `john` as follows:
 
 ```sql
 cassandra@cqlsh> CREATE ROLE IF NOT EXISTS john WITH PASSWORD = 'PasswdForJohn' AND LOGIN = true;

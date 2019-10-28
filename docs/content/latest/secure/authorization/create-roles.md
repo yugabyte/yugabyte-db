@@ -1,7 +1,7 @@
 ---
-title: 2. Create roles
-linkTitle: 2. Create roles
-description: 2. Create roles
+title: Create roles
+linkTitle: Create roles
+description: Create roles
 headcontent: Creating roles
 image: /images/section_icons/secure/create-roles.png
 menu:
