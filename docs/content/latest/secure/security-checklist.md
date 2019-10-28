@@ -62,5 +62,5 @@ Read more about enabling [TLS/SSL encryption](../tls-encryption) in YugabyteDB.
 ## Enable encryption at rest
 
 [Encryption at rest](https://en.wikipedia.org/wiki/Data_at_rest#Encryption) ensures that data
-stored on disk is protected. You can configure YugabyteDB with a user generated symmetric key to
-perform cluster-wide encryption.
+stored on disk is protected. You can configure YugabyteDB with a user-generated symmetric key to
+perform cluster-wide encryption. For more information, see [Encryption at rest](../encryption-at-rest).
