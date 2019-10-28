@@ -580,7 +580,7 @@ yb-admin delete_read_replica_placement_info <placement_uuid>
 
 #### Encryption at rest
 
-For details on enabling encryption at rest, see [Encryption at rest](../secure/encryption-at-rest).
+For details on enabling encryption at rest, see [Encryption at rest](../../secure/encryption-at-rest).
 
 ##### rotate_universe_key
 
@@ -588,8 +588,7 @@ Rotates the universe key.
 
 {{< note title="Note" >}}
 
-Because data is encrypted in the background as part of flushes to disk and compactions, only new
-data will be encrypted. Therefore, the call should return quickly.
+Only new data is encrypted because data is encrypted in the background as part of flushes to disk and compactions.
 
 {{< /note >}}
 
