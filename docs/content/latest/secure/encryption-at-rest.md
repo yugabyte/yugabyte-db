@@ -18,6 +18,12 @@ showAsideToc: true
 This page describes how to enable and disable encryption at rest in a YugabyteDB cluster with a
 user generated key.
 
+{{< note title="Note" >}}
+
+Encryption at rest is currently not supported with YSQL.
+
+{{< /note >}}
+
 ## Enabling encryption
 
 ### Step 1. Create encryption key
@@ -48,10 +54,9 @@ The key can live in any subdir of the master dir, as long as it lives in the sam
 node. In addition, the data dir may vary depending on how the cluster is created.
 {{< /note >}}
 
-
 ### Step 3. Enable cluster-wide encryption
 
-Use yb-admin to tell the cluster about the new universe key.
+Use `yb-admin rotate_universe_key` to tell the cluster about the new universe key.
 
 ```sh
 $ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 rotate_universe_key
@@ -59,8 +64,10 @@ $ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 rotate_universe_key
 ```
 
 {{< note title="Note" >}}
+
 Because data is encrypted in the background as part of flushes to disk and compactions, only new
 data will be encrypted. Therefore, the call should return quickly.
+
 {{< /note >}}
 
 ### Step 4. Verify encryption enabled

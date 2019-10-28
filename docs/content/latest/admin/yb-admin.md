@@ -580,9 +580,18 @@ yb-admin delete_read_replica_placement_info <placement_uuid>
 
 #### Encryption at rest
 
+For details on enabling encryption at rest, see [Encryption at rest](../secure/encryption-at-rest).
+
 ##### rotate_universe_key
 
 Rotates the universe key.
+
+{{< note title="Note" >}}
+
+Because data is encrypted in the background as part of flushes to disk and compactions, only new
+data will be encrypted. Therefore, the call should return quickly.
+
+{{< /note >}}
 
 ###### Syntax
 
@@ -598,6 +607,8 @@ yb-admin rotate_universe_key <key_path>
 $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 rotate_universe_key
 /mnt/d0/yb-data/master/universe_key_2
 ```
+
+To verify that encryption is enabled, you can run the [`is_encryption_enabled`](#is-encryption-enabled) command.
 
 ##### disable_encryption
 
