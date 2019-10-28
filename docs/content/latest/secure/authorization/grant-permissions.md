@@ -1,8 +1,8 @@
 ---
-title: 3. Grant permissions
-linkTitle: 3. Grant permissions
-description: 3. Grant permissions
-headcontent: Grant permissions
+title: Grant privileges
+linkTitle: Grant privileges
+description: Grant privileges
+headcontent: Grant privileges
 image: /images/section_icons/secure/grant-permissions.png
 menu:
   latest:

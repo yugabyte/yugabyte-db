@@ -1,7 +1,7 @@
 ---
-title: 1. RBAC model
-linkTitle: 1. RBAC model
-description: 1. RBAC model
+title: RBAC model
+linkTitle: RBAC model
+description: RBAC model
 headcontent: How role-based access control works
 image: /images/section_icons/secure/rbac-model.png
 menu:
