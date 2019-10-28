@@ -1,7 +1,7 @@
 ---
-title: Replicate between 2 data centers
-linkTitle: Replicate between 2 data centers
-description: Replicate between two data centers
+title: Two data center (2DC)
+linkTitle: Two data center (2DC)
+description: Two data center (2DC) deployment
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
@@ -15,9 +15,9 @@ showAsideToc: true
 
 Follow the steps below to set up a two data center (2DC) deployment using either unidirectional (one-way) or bidirectional (two-way) replication between the data centers.
 
-For more information on the two data center (2DC) deployment architecture and supported replication scenarios, see [Two data center (2DC) deployments](../../architecture/2dc-deployments).
+For more information on the two data center (2DC) deployment architecture and supported replication scenarios, see [Two data center (2DC) deployments](../architecture/2dc-deployments/).
 
-## Set up a two data center replication
+## Set up a two data center (2DC) deployment
 
 ### Set up Universe 1 (producer universe)
 

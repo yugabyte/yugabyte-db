@@ -47,6 +47,34 @@ java -jar yb_cdc_connector.jar
 --log_only
 ```
 
+## Parameters
+
+### Required parameters 
+
+#### `--table_name`
+
+Specify the namespace and table, where namespace is the database (YSQL) or keyspace (YCQL).
+
+#### `--master_addrs`
+
+Specify the IP addresses for all of the YB-Master services that are producing or consuming. Default value is `127.0.0.1:7100`.
+
+If you are using a 3-node local cluster, then you need to specify a comma-delimited list of the addresses for all of your YB-Master services.
+
+#### `--log_only`
+
+Flag to restrict logging only to the console (`stdout`).
+
+### Optional parameters
+
+#### `--stream_id`
+
+Specify the existing stream ID. If you do not specify the stream ID, on restart the log output stream starts from the first available record.
+
+If specified (recommended), on restart, the log output stream resumes after the last output logged.
+
+To get the stream ID, run the YugabyteDB CDC connector and the first time you can get the stream ID from the console output.
+
 For details on the available options, see [Using the Yugabyte CDC connector](./use-cdc).
 
 ## Step 4 — Write values and observe

@@ -1,7 +1,7 @@
 ---
-title: Checklist
-linkTitle: Checklist
-description: Checklist
+title: Deploy checklist
+linkTitle: Deployment checklist
+description: Deployment checklist
 aliases:
   - /deploy/checklist/
 menu:
