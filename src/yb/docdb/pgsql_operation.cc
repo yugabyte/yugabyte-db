@@ -17,6 +17,7 @@
 
 #include "yb/common/partition.h"
 #include "yb/common/ql_storage_interface.h"
+#include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"

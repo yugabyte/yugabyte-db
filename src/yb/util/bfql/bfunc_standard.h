@@ -30,8 +30,8 @@
 #include <iostream>
 #include <string>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/ql_protocol.pb.h"
-#include "yb/common/ql_value.h"
 #include "yb/common/jsonb.h"
 
 #include "yb/util/status.h"
@@ -42,6 +42,9 @@
 #include "yb/util/string_util.h"
 
 namespace yb {
+
+bool operator ==(const QLValuePB& lhs, const QLValuePB& rhs);
+
 namespace bfql {
 
 //--------------------------------------------------------------------------------------------------
@@ -108,7 +111,7 @@ CHECKED_STATUS ToJson(PTypePtr col, RTypePtr result) {
   if (!s.ok()) {
     return s.CloneAndPrepend(strings::Substitute(
         "Cannot convert $0 value $1 to $2",
-        QLType::ToCQLString(QLValue::FromInternalDataType(col->type())),
+        QLType::ToCQLString(InternalToDataType(col->type())),
         col->ToString(),
         QLType::ToCQLString(DataType::JSONB)));
   }

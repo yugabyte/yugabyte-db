@@ -16,6 +16,8 @@
 #include "yb/client/transaction_pool.h"
 #include "yb/client/txn-test-base.h"
 
+#include "yb/common/ql_value.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
@@ -660,7 +662,7 @@ TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
       auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
       ASSERT_EQ(rowblock->row_count(), 1);
       const auto& first_column = rowblock->row(0).column(0);
-      ASSERT_EQ(QLValue::InternalType::kInt32Value, first_column.type());
+      ASSERT_EQ(InternalType::kInt32Value, first_column.type());
       ASSERT_EQ(first_column.int32_value(), kNumWritesPerKey);
     }
   });

@@ -13,6 +13,8 @@
 
 #include "yb/common/ql_resultset.h"
 
+#include "yb/common/ql_value.h"
+
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/pgsql_operation.h"
 

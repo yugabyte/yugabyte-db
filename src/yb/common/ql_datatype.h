@@ -11,33 +11,19 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_COMMON_FWD_H
-#define YB_COMMON_COMMON_FWD_H
+#ifndef YB_COMMON_QL_DATATYPE_H
+#define YB_COMMON_QL_DATATYPE_H
+
+#include "yb/common/common.pb.h"
 
 namespace yb {
 
-class ClockBase;
-class HybridTime;
-class IndexInfo;
-class IndexMap;
-class PartitionSchema;
+// The value type.
+typedef QLValuePB::ValueCase InternalType;
 
-class PgsqlBCallPB;
-class PgsqlConditionPB;
-class PgsqlExpressionPB;
-class PgsqlRSRowDescPB;
-class PgsqlWriteRequestPB;
-
-class QLJsonColumnOperationsPB;
-class QLJsonOperationPB;
-class QLRSColDescPB;
-class QLRSRowDescPB;
-class QLType;
-class QLValue;
-class QLValuePB;
-
-class TableProperties;
+DataType InternalToDataType(InternalType internal_type);
+std::string InternalTypeToCQLString(InternalType internal_type);
 
 } // namespace yb
 
-#endif // YB_COMMON_COMMON_FWD_H
+#endif // YB_COMMON_QL_DATATYPE_H

@@ -3,6 +3,9 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/common/pgsql_resultset.h"
+
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
 
 namespace yb {
@@ -43,6 +46,18 @@ PgsqlResultSet::~PgsqlResultSet() {
 PgsqlRSRow *PgsqlResultSet::AllocateRSRow(int32_t rscol_count) {
   rsrows_.emplace_back(rscol_count);
   return &rsrows_.back();
+}
+
+size_t PgsqlRSRow::rscol_count() const {
+  return rscols_.size();
+}
+
+const QLValue& PgsqlRSRow::rscol_value(int32_t index) const {
+  return rscols_[index];
+}
+
+QLValue* PgsqlRSRow::rscol(int32_t index) {
+  return &rscols_[index];
 }
 
 } // namespace yb

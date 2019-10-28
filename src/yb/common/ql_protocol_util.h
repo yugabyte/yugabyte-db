@@ -19,7 +19,8 @@
 
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/jsonb.h"
-#include "yb/common/ql_value.h"
+
+#include "yb/util/yb_partition.h"
 
 namespace yb {
 

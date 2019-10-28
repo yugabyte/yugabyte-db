@@ -19,6 +19,8 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/tools/yb-generate_partitions.h"
 #include "yb/util/date_time.h"
 #include "yb/util/enums.h"

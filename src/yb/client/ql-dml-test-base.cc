@@ -20,6 +20,8 @@
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 
+#include "yb/common/ql_value.h"
+
 #include "yb/util/bfql/gen_opcodes.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"

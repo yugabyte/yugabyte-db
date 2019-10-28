@@ -52,14 +52,13 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/value.h"
 #include "yb/common/schema.h"
-#include "yb/common/ql_value.h"
 
 #include "yb/util/status.h"
 
 namespace yb {
 
 // the types used internally and sent over the wire to the tserver
-typedef QLValue::InternalType InternalType;
+typedef QLValuePB::ValueCase InternalType;
 
 class ColumnSchema;
 class YBPartialRow;

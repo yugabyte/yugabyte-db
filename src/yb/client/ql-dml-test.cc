@@ -18,6 +18,8 @@
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_handle.h"
 
+#include "yb/common/ql_value.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 

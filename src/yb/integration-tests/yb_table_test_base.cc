@@ -18,6 +18,8 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/ql_value.h"
+
 #include "yb/yql/redis/redisserver/redis_parser.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/util/curl_util.h"

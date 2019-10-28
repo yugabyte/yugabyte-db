@@ -43,6 +43,7 @@
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
+#include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_key.h"
 

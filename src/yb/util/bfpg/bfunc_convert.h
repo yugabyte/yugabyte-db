@@ -33,8 +33,6 @@
 #include <iostream>
 #include <string>
 
-#include "yb/common/ql_value.h"
-
 #include "yb/util/date_time.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/inetaddress.h"

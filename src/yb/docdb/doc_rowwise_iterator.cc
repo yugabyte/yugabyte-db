@@ -16,6 +16,8 @@
 #include "yb/common/partition.h"
 #include "yb/common/transaction.h"
 #include "yb/common/ql_scanspec.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_ttl_util.h"

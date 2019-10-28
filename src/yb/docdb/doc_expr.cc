@@ -5,6 +5,7 @@
 #include "yb/docdb/doc_expr.h"
 
 #include "yb/common/jsonb.h"
+#include "yb/common/ql_value.h"
 
 #include "yb/client/schema.h"
 
@@ -19,6 +20,10 @@ namespace docdb {
 using yb::util::Decimal;
 
 //--------------------------------------------------------------------------------------------------
+
+DocExprExecutor::DocExprExecutor() {}
+
+DocExprExecutor::~DocExprExecutor() {}
 
 CHECKED_STATUS DocExprExecutor::EvalColumnRef(ColumnIdRep col_id,
                                               const QLTableRow::SharedPtrConst& table_row,

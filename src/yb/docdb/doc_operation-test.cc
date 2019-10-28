@@ -19,6 +19,7 @@
 
 #include "yb/common/partial_row.h"
 #include "yb/common/ql_resultset.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/transaction-test-util.h"
 
 #include "yb/docdb/cql_operation.h"

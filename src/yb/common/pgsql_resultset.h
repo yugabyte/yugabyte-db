@@ -18,7 +18,8 @@
 #ifndef YB_COMMON_PGSQL_RESULTSET_H_
 #define YB_COMMON_PGSQL_RESULTSET_H_
 
-#include "yb/common/ql_value.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/ql_type.h"
 
 namespace yb {
 
@@ -30,10 +31,10 @@ class PgsqlRSRowDesc {
    public:
     RSColDesc() {
     }
-    RSColDesc(const string& name, const QLType::SharedPtr& ql_type)
+    RSColDesc(const std::string& name, const QLType::SharedPtr& ql_type)
         : name_(name), ql_type_(ql_type) {
     }
-    const string& name() const {
+    const std::string& name() const {
       return name_;
     }
     const QLType::SharedPtr& ql_type() const {
@@ -73,15 +74,11 @@ class PgsqlRSRow {
     return rscols_;
   }
 
-  size_t rscol_count() const { return rscols_.size(); }
+  size_t rscol_count() const;
 
-  const QLValue& rscol_value(int32_t index) const {
-    return rscols_[index];
-  }
+  const QLValue& rscol_value(int32_t index) const;
 
-  QLValue *rscol(int32_t index) {
-    return &rscols_[index];
-  }
+  QLValue* rscol(int32_t index);
 
  private:
   std::vector<QLValue> rscols_;

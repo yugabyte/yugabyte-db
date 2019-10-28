@@ -27,7 +27,9 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/rpc/thread_pool.h"
 #include "yb/util/decimal.h"
 #include "yb/util/logging.h"

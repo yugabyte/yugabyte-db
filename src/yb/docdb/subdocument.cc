@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "yb/common/ql_bfunc.h"
+#include "yb/common/ql_value.h"
 
 using std::endl;
 using std::make_pair;

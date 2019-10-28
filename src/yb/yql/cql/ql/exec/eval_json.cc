@@ -23,6 +23,8 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/common/ql_value.h"
+
 #include "yb/util/string_util.h"
 
 namespace yb {

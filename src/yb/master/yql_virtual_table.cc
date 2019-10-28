@@ -12,6 +12,9 @@
 //
 
 #include "yb/master/yql_virtual_table.h"
+
+#include "yb/common/ql_value.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_vtable_iterator.h"
