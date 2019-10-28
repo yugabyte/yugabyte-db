@@ -13,17 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-`yb-master`, located in the `bin` directory of YugabyteDB home, is the [YB-Master](../../architecture/concepts/universe/#yb-master-process) binary.
-
-## Example
-
-```sh
-$ ./bin/yb-master \
---master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
---rpc_bind_addresses 172.151.17.130 \
---fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
---replication_factor=3 &
-```
+Use the `yb-master` options to configure and customize your YB-Master services. The [YB-Master](../../architecture/concepts/universe/#yb-master-process) binary (`yb-master`) is located in the `bin` directory of YugabyteDB home.
 
 ## Online help
 
@@ -39,9 +29,21 @@ $ ./bin/yb-master --help
 yb-master [ option  ] | [ option ]
 ```
 
+### Example
+
+```sh
+$ ./bin/yb-master \
+--master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
+--rpc_bind_addresses 172.151.17.130 \
+--fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
+--replication_factor=3 &
+--enable_ysql=true
+```
+
 ## Configuration options
 
 - [General](#general-options)
+- [YSQL](#ysql-options)
 - [Logging](#logging-options)
 - [Cluster](#cluster-options)
 - [Placement](#placement-options)
@@ -107,6 +109,22 @@ Default: `7000`
 Monitoring web server home.
 
 Default: The `www` directory in the YugabyteDB home directory.
+
+---
+
+### YSQL options
+
+#### --enable_ysql
+
+Enables the YSQL API when value is `true`. Replaces the deprecated `--start_pgsql_proxy` option.
+
+Default: `false`
+
+{{< note title="Note" >}}
+
+To enable YSQL, you must set `--enable_ysql=true` on all YB-Master and YB-TServer nodes.
+
+{{< /note >}}
 
 ---
 
