@@ -35,7 +35,12 @@ CREATE TABLE users (name text, pass text, id int, PRIMARY KEY (id));
 
 ## Step 2 — Download the Kafka Connect YugabyteDB Source Connector
 
-Download the [Kafka Connect YugabyteDB Source Connector (JAR file)](https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar).
+Download the Kafka Connect YugabyteDB Source Connector JAR file (`yb-cdc-connector.jar`).
+
+```sh
+$ wget https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar
+
+```
 
 {{< note title="Note" >}}
 

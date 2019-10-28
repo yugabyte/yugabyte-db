@@ -80,7 +80,7 @@ menu:
     <a class="section-link icon-offset" href="replicate-2dc/">
       <div class="head">
         <img class="icon" src="/images/deploy/cdc/deploy.png" aria-hidden="true" />
-        <div class="title">Two data centers (2DC) replication</div>
+        <div class="title">Two data center (2DC) replication</div>
       </div>
       <div class="body">
           Replicate asynchronously between two data centers for high availability, geo-redundancy, disaster recovery, and more.
