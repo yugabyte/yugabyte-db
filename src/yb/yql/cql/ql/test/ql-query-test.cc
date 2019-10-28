@@ -18,6 +18,7 @@
 
 #include "yb/client/table.h"
 #include "yb/common/jsonb.h"
+#include "yb/common/ql_value.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_manager.h"
@@ -1416,7 +1417,7 @@ TEST_F(TestQLQuery, TestCollectionTypes) {
   EXPECT_EQ(3, map_row.column(1).int32_value());
   EXPECT_EQ("x", map_row.column(3).string_value());
   // check map
-  EXPECT_EQ(QLValue::InternalType::kMapValue, map_row.column(2).type());
+  EXPECT_EQ(InternalType::kMapValue, map_row.column(2).type());
   QLMapValuePB map_value = map_row.column(2).map_value();
   // check keys
   EXPECT_EQ(3, map_value.keys_size());
@@ -1458,7 +1459,7 @@ TEST_F(TestQLQuery, TestCollectionTypes) {
   EXPECT_EQ(3, set_row.column(1).int32_value());
   EXPECT_EQ("x", set_row.column(3).string_value());
   // check set
-  EXPECT_EQ(QLValue::InternalType::kSetValue, set_row.column(2).type());
+  EXPECT_EQ(InternalType::kSetValue, set_row.column(2).type());
   QLSeqValuePB set_value = set_row.column(2).set_value();
   // check elems
   // returned set should have no duplicates
@@ -1498,7 +1499,7 @@ TEST_F(TestQLQuery, TestCollectionTypes) {
   EXPECT_EQ(3, list_row.column(1).int32_value());
   EXPECT_EQ("x", list_row.column(3).string_value());
   // check set
-  EXPECT_EQ(QLValue::InternalType::kListValue, list_row.column(2).type());
+  EXPECT_EQ(InternalType::kListValue, list_row.column(2).type());
   QLSeqValuePB list_value = list_row.column(2).list_value();
   // check elems
   // lists should preserve input length (keep duplicates if any)

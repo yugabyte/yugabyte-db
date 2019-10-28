@@ -20,6 +20,8 @@
 
 #include "yb/client/permissions.h"
 
+#include "yb/common/ql_value.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
@@ -240,7 +242,7 @@ class TestQLPermission : public QLTestAuthentication {
     EXPECT_EQ(role_name, row.column(0).string_value());
     EXPECT_EQ(canonical_resource, row.column(1).string_value());
 
-    EXPECT_EQ(QLValue::InternalType::kListValue, row.column(2).type());
+    EXPECT_EQ(InternalType::kListValue, row.column(2).type());
     QLSeqValuePB list_value = row.column(2).list_value();
     EXPECT_EQ(permissions.size(), list_value.elems_size());
     // Create a set of the values:
@@ -675,7 +677,7 @@ class TestQLRole : public QLTestAuthentication {
 
     QLRow &row = row_block->row(0);
 
-    EXPECT_EQ(QLValue::InternalType::kListValue, row.column(3).type());
+    EXPECT_EQ(InternalType::kListValue, row.column(3).type());
     QLSeqValuePB list_value = row.column(3).list_value();
     EXPECT_EQ(roles.size(), list_value.elems_size());
     for (int i = 0; i < list_value.elems_size(); i++) {

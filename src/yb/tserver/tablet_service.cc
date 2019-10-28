@@ -38,6 +38,7 @@
 #include <vector>
 
 #include "yb/common/schema.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/leader_lease.h"

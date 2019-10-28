@@ -16,6 +16,8 @@
 
 #include "yb/common/json_util.h"
 #include "yb/common/jsonb.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/util/bfql/bfunc_convert.h"
 #include "yb/util/string_case.h"
 

@@ -13,6 +13,8 @@
 #include <glog/logging.h>
 
 #include "yb/common/ql_bfunc.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/util/bfql/bfql.h"
 #include "yb/util/bfpg/bfpg.h"
 

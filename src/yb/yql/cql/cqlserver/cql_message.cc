@@ -17,7 +17,10 @@
 #include <regex>
 
 #include "yb/client/client.h"
+
 #include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/yql/cql/cqlserver/cql_message.h"
 #include "yb/yql/cql/cqlserver/cql_processor.h"
 

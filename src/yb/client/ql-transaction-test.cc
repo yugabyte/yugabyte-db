@@ -20,6 +20,8 @@
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_rpc.h"
 
+#include "yb/common/ql_value.h"
+
 #include "yb/consensus/consensus.h"
 
 #include "yb/rpc/rpc.h"

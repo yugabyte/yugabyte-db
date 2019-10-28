@@ -15,6 +15,8 @@
 
 #include "yb/yql/cql/cqlserver/cql_processor.h"
 
+#include "yb/common/ql_value.h"
+
 #include "yb/gutil/strings/escaping.h"
 
 #include "yb/rpc/connection.h"

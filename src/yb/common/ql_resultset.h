@@ -19,7 +19,8 @@
 #ifndef YB_COMMON_QL_RESULTSET_H_
 #define YB_COMMON_QL_RESULTSET_H_
 
-#include "yb/common/ql_value.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/ql_type.h"
 
 namespace yb {
 
@@ -29,9 +30,8 @@ class QLRSRowDesc {
  public:
   class RSColDesc {
    public:
-    explicit RSColDesc(const QLRSColDescPB& desc_pb)
-        : name_(desc_pb.name()), ql_type_(QLType::FromQLTypePB(desc_pb.ql_type())) {
-    }
+    explicit RSColDesc(const QLRSColDescPB& desc_pb);
+
     const std::string& name() const {
       return name_;
     }

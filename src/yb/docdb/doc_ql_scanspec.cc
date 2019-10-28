@@ -11,8 +11,11 @@
 // under the License.
 //
 
-#include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_ql_scanspec.h"
+
+#include "yb/common/ql_value.h"
+
+#include "yb/docdb/doc_expr.h"
 #include "yb/rocksdb/db/compaction.h"
 
 using std::vector;

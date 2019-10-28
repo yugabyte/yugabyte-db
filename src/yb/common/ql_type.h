@@ -20,6 +20,7 @@
 
 #include <glog/logging.h>
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/key_encoder.h"
 #include "yb/common/common.pb.h"
 #include "yb/util/result.h"

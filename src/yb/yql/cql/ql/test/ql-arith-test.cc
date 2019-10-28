@@ -16,6 +16,8 @@
 #include <thread>
 #include <cmath>
 
+#include "yb/common/ql_value.h"
+
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 #include "yb/gutil/strings/substitute.h"
 

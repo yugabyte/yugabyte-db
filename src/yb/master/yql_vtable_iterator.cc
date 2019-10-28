@@ -13,6 +13,8 @@
 
 #include "yb/master/yql_vtable_iterator.h"
 
+#include "yb/common/ql_value.h"
+
 namespace yb {
 namespace master {
 

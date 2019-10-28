@@ -18,6 +18,8 @@
 #include <functional>
 #include <unordered_map>
 
+#include "yb/common/ql_type.h"
+
 #include "yb/util/bfpg/directory.h"
 
 using std::function;

@@ -13,6 +13,7 @@
 
 #include <iostream>
 
+#include "yb/common/ql_value.h"
 #include "yb/docdb/primitive_value_util.h"
 
 using std::vector;

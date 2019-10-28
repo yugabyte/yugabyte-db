@@ -57,6 +57,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/partial_row.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.proxy.h"
