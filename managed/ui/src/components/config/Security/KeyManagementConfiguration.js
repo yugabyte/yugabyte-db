@@ -42,7 +42,7 @@ class KeyManagementConfiguration extends Component {
     const { fetchKMSConfigList, setKMSConfig } = this.props;
     const { kmsProvider } = values;
     if (kmsProvider && kmsProvider.value === 'AWS') {
-      let data = {
+      const data = {
         'AWS_REGION': values.region.value,
       };
       if (!this.state.enabledIAMProfile) {
