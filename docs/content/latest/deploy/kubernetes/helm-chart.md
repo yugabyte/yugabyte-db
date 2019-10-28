@@ -109,7 +109,7 @@ $ helm install yugabytedb/yugabyte --set resource.master.requests.cpu=0.1,resour
 
 ### Installing YugabyteDB with YSQL
 
-If you wish to enable YSQL support, install YugabyteDB with additional parameter as shown below.
+To enable YSQL, install YugabyteDB with additional parameter as shown below.
 
 ```sh
 $ helm install yugabytedb/yugabyte --wait --namespace yb-demo --name yb-demo --set "disableYsql=false"
