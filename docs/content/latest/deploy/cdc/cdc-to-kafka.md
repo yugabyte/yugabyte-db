@@ -37,7 +37,7 @@ A local install of the Confluent Platform should be up and running. The [Conflue
 
 To get a local Confluent Platform (with Apache Kafka) up and running quickly, follow the steps in the [Confluent Platform Quick Start (Local)](https://docs.confluent.io/current/quickstart/ce-quickstart.html#ce-quickstart).
 
-## Step 1 — Add the `users` table
+## Step 1 — Add the "users" table
 
 With your local YugabyteDB cluster running, create a table, called `users`, in the default database (`yugabyte`).
 
@@ -97,7 +97,12 @@ You can use the following two Avro schema examples that will work with the `user
 
 ## Step 4 — Download the Kafka Connect YugabyteDB Source Connector
 
-Download the [Kafka Connect YugabyteDB Source Connector (JAR file)](https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar).
+Download the Kafka Connect YugabyteDB Source Connector JAR file (`yb-cdc-connector.jar`).
+
+```sh
+$ wget https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar
+
+```
 
 ## Step 5 — Log to Kafka
 
