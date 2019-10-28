@@ -62,7 +62,7 @@ Gets the configuration for the universe.
 
 **Syntax**
 
-```
+```sh
 yb-admin -master_addresses get_universe_config
 ```
 
@@ -72,7 +72,7 @@ Changes the configuration of a tablet.
 
 **Syntax**
 
-```
+```sh
 yb-admin change_config <tablet_id> [ ADD_SERVER | REMOVE_SERVER ] <peer_uuid> [ PRE_VOTER | PRE_OBSERVER ]
 ```
 
@@ -87,7 +87,7 @@ Changes the master configuration.
 
 **Syntax**
 
-```
+```sh
 yb-admin change_master_config [ ADD_SERVER|REMOVE_SERVER ] <ip_addr> <port> <0|1>
 ```
 
@@ -101,7 +101,7 @@ yb-admin change_master_config [ ADD_SERVER|REMOVE_SERVER ] <ip_addr> <port> <0|1
 
 **Syntax**
 
-```
+```sh
 yb-admin list_tablet_servers <tablet_id>
 ```
 
@@ -151,7 +151,7 @@ Displays a list of all YB-Master nodes in a table listing the master UUID, RPC h
 
 **Syntax**
 
-```
+```sh
 yb-admin -master_addresses list_all_masters
 ```
 
@@ -225,7 +225,7 @@ Prints a list of all tables.
 
 **Syntax**
 
-```
+```sh
 yb-admin list_tables
 ```
 
@@ -272,7 +272,7 @@ Prints a list of all tables, prefixed by the database type (`ysql`, `ycql`, or `
 
 **Syntax**
 
-```
+```sh
 yb-admin list_tables_with_db_types
 ```
 
@@ -315,7 +315,7 @@ You can use this command to see when snapshot creation is finished.
 
 **Syntax**
 
-```
+```sh
 yb-admin list_snapshots
 ```
 
@@ -336,7 +336,7 @@ Creates a snapshot.
 
 **Syntax**
 
-```
+```sh
 yb-admin create_snapshot <keyspace> <table_name> [<keyspace> <table_name>]... [flush_timeout_in_seconds]
 ```
 
@@ -346,7 +346,7 @@ yb-admin create_snapshot <keyspace> <table_name> [<keyspace> <table_name>]... [f
 
 **Example**
 
-```
+```sh
 $ ./bin/yb-admin create_snapshot ydb test_tb
 ```
 
@@ -366,7 +366,7 @@ Restores the specified snapshot.
 
 **Syntax**
 
-```
+```sh
 yb-admin restore_snapshot <snapshot_id>
 ```
 
@@ -380,8 +380,8 @@ Generates a metadata file for the given snapshot, listing all the relevant inter
 yb-admin export_snapshot <snapshot_id> <file_name>
 ```
 
-- *snapshot_id*: Identifier (ID) for the snapshot.
-- *file_name*: Name of the the file to contain the metadata. Recommended file extension is `.snapshot`.
+- *snapshot_id*: The identifier (ID) for the snapshot.
+- *file_name*: The name of the the file to contain the metadata. Recommended file extension is `.snapshot`.
 
 **Example**
 
@@ -440,9 +440,11 @@ Deletes the snapshot information, usually cleaned up at the end, since this is s
 
 **Syntax**
 
-```
+```sh
 yb-admin delete_snapshot <snapshot_id>
 ```
+
+- *snapshot_id*: The identifier (ID) of the snapshot.
 
 ---
 
@@ -489,7 +491,7 @@ When nodes in the the "preferred" availability zones and regions are alive and h
 
 **Syntax**
 
-```
+```sh
 yb-admin set_preferred_zones <cloud.region.zone> [<cloud.region.zone>]...
 ```
 
@@ -501,7 +503,7 @@ yb-admin set_preferred_zones <cloud.region.zone> [<cloud.region.zone>]...
 
 **Syntax**
 
-```
+```sh
 yb-admin setup_universe_replication <producer_universe_uuid> <producer_master_addresses> <comma_separated_list_of_table_ids>
 ```
 
@@ -509,13 +511,19 @@ yb-admin setup_universe_replication <producer_universe_uuid> <producer_master_ad
 - *producer_master_addresses*: Comma-separated list of master producer addresses.
 - *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (IDs).
 
+**Example**
+
+```sh
+./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
+```
+
 ##### delete_universe_replication <producer_universe_uuid>
 
 Deletes universe replication for the specified producer universe.
 
 **Syntax**
 
-```
+```sh
 yb-admin delete_universe_replication <producer_universe_uuid>
 ```
 
@@ -527,7 +535,7 @@ Sets the universe replication to be enabled or disabled.
 
 **Syntax**
 
-```
+```sh
 yb-admin set_universe_replication_enabled <producer_universe_uuid>
 ```
 
@@ -542,7 +550,7 @@ Add a read replica cluster to the master configuration.
 
 **Syntax**
 
-```
+```sh
 yb-admin add_read_replica_placement_info <placement_info> <replication_factor>
 ```
 
@@ -553,7 +561,7 @@ yb-admin add_read_replica_placement_info <placement_info> <replication_factor>
 
 **Syntax**
 
-```
+```sh
 yb-admin modify_read_replica_placement_info <placement_info> <replication_factor> [ <placement_uuid> ]
 ```
 
@@ -567,7 +575,7 @@ Delete the read replica.
 
 **Syntax**
 
-```
+```sh
 yb-admin delete_read_replica_placement_info <placement_uuid>
 ```
 
@@ -593,7 +601,7 @@ Only new data is encrypted because data is encrypted in the background as part o
 
 **Syntax**
 
-```
+```sh
 yb-admin rotate_universe_key <key_path>
 ```
 
@@ -614,7 +622,7 @@ Disables cluster-wide encryption.
 
 **Syntax**
 
-```
+```sh
 yb-admin disable_encryption
 ```
 
@@ -640,7 +648,7 @@ Checks if cluster-wide encryption is enabled.
 
 **Syntax**
 
-```
+```sh
 yb-admin is_encryption_enabled
 ```
 
@@ -670,7 +678,7 @@ Creates a change data capture (CDC) stream for the specified table.
 
 **Syntax**
 
-```
+```sh
 yb-admin create_cdc_stream <table_id>
 ```
 
@@ -686,7 +694,7 @@ Gets the tablet load move completion percentage for blacklisted nodes.
 
 **Syntax**
 
-```
+```sh
 yb-admin get_leader_blacklist_completion
 ```
 
@@ -704,7 +712,7 @@ After old YB-TServer nodes are terminated, you can use this command to clean up 
 
 **Syntax**
 
-```
+```sh
 yb-admin change_blacklist <ADD|REMOVE> <ip_addr>:<port> [<ip_addr>:<port>]...
 ```
 
@@ -721,7 +729,7 @@ $ ./bin/yb-admin -master_addresses $MASTERS change_blacklist ADD node1:9100 node
 
 **Syntax**
 
-```
+```sh
 yb-admin change_leader_blacklist <ADD | REMOVE> <ip_addr>:<port> [<ip_addr>:<port>]...
 ```
 
@@ -739,7 +747,7 @@ Enables or disables the load balancer.
 
 **Syntax**
 
-```
+```sh
 yb-admin set_load_balancer_enabled 0 | 1
 ```
 
@@ -759,7 +767,7 @@ You can rerun this command periodically until the value reaches `100.0`, indicat
 
 **Syntax**
 
-```
+```sh
 yb-admin get_load_move_completion
 ```
 
@@ -796,7 +804,7 @@ Finds out if the load balancer is idle.
 
 **Syntax**
 
-```
+```sh
 yb-admin get_is_load_balancer_idle
 ```
 

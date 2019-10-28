@@ -18,7 +18,7 @@ Read about [how to create users in YugabyteDB](../../ysql-authentication/) in th
 
 ## 2. Grant roles
 
-You can grant a role to another role (which can be a user), or revoke a role that has already been granted. Executing the `GRANT` and the `REVOKE` operations requires the `AUTHORIZE` permission on the role being granted or revoked.
+You can grant a role to another role (which can be a user), or revoke a role that has already been granted. Executing the `GRANT` and the `REVOKE` operations requires the `AUTHORIZE` privilege on the role being granted or revoked.
 
 As an example, you can grant the `engineering` role we created above to the user `john` as follows:
 
@@ -30,9 +30,9 @@ Read more about [granting roles](../../api/YSQL/dcl_grant/).
 
 ## 3. Create a hierarchy of roles, if needed
 
-In YSQL, you can create a hierarchy of roles. The permissions of any role in the hierarchy flows downward.
+In YSQL, you can create a hierarchy of roles. The privileges of any role in the hierarchy flows downward.
 
-As an example, let us say that in the above example, we want to create a `developer` role that inherits all the permissions from the `engineering` role. You can achieve this as follows.
+As an example, let us say that in the above example, we want to create a `developer` role that inherits all the privileges from the `engineering` role. You can achieve this as follows.
 
 First, create the `developer` role.
 

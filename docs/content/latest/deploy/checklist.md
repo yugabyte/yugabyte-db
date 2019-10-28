@@ -97,7 +97,9 @@ Service | Type | Port
 `ssh` | SSH access | 22
 
 {{< note title="Note" >}}
+
 In our Enterprise installs, we change the SSH port for added security.
+
 {{< /note >}}
 
 ## Clock synchronization

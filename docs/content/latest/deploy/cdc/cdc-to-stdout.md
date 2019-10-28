@@ -33,13 +33,19 @@ Start your local YugabyteDB cluster and add a table, named `users`, to the defau
 CREATE TABLE users (name text, pass text, id int, PRIMARY KEY (id));
 ```
 
-## Step 2 — Download the Yugabyte CDC connector
+## Step 2 — Download the Kafka Connect YugabyteDB Source Connector
 
-Download the [Yugabyte CDC connector (JAR file)](https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar).
+Download the [Kafka Connect YugabyteDB Source Connector (JAR file)](https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar).
+
+{{< note title="Note" >}}
+
+The Kafka Connect YugabyteDB Source Connector also supports change data capture (CDC) to `stdout`.
+
+{{< /note >}}
 
 ## Step 3 — Stream the log output stream to "stdout"
 
-Run the command below to to start the YugabyteDB CDC connector and stream the output from the `cdc` table to `stdout`.
+Run the command below to to start logging an output stream of data changes from the YugabyteDB `cdc` table to `stdout`.
 
 ```sh
 java -jar yb_cdc_connector.jar
@@ -47,35 +53,11 @@ java -jar yb_cdc_connector.jar
 --log_only
 ```
 
-## Parameters
+The example above uses the following parameters:
 
-### Required parameters 
-
-#### `--table_name`
-
-Specify the namespace and table, where namespace is the database (YSQL) or keyspace (YCQL).
-
-#### `--master_addrs`
-
-Specify the IP addresses for all of the YB-Master services that are producing or consuming. Default value is `127.0.0.1:7100`.
-
-If you are using a 3-node local cluster, then you need to specify a comma-delimited list of the addresses for all of your YB-Master services.
-
-#### `--log_only`
-
-Flag to restrict logging only to the console (`stdout`).
-
-### Optional parameters
-
-#### `--stream_id`
-
-Specify the existing stream ID. If you do not specify the stream ID, on restart the log output stream starts from the first available record.
-
-If specified (recommended), on restart, the log output stream resumes after the last output logged.
-
-To get the stream ID, run the YugabyteDB CDC connector and the first time you can get the stream ID from the console output.
-
-For details on the available options, see [Using the Yugabyte CDC connector](./use-cdc).
+- `--table_name` — Specifies the namespace and table, where namespace is the database (YSQL) or keyspace (YCQL).
+- `--master_addrs` — Specifies the IP addresses for all of the YB-Master services that are producing or consuming. Default value is `127.0.0.1:7100`. If you are using a 3-node local cluster, then you need to specify a comma-delimited list of the addresses for all of your YB-Master services.
+- `--log_only`: Flag to restrict logging only to the console (`stdout`).
 
 ## Step 4 — Write values and observe
 

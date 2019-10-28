@@ -47,7 +47,7 @@ CREATE TABLE users (name text, pass text, id int, primary key (id));
 
 ## Step 2 — Create Avro schemas
 
-The Yugabyte CDC connector supports the use of [Apache Avro schemas](http://avro.apache.org/docs/current/#schemas) to serialize and deserialize tables. You can use the [Schema Registry](https://docs.confluent.io/current/schema-registry/index.html) in the Confluent Platform to create and manage Avro schema files. For a step-by-step tutorial, see [Schema Registry Tutorial](https://docs.confluent.io/current/schema-registry/schema_registry_tutorial.html).
+The Kafka Connect YugabyteDB Source Connector supports the use of [Apache Avro schemas](http://avro.apache.org/docs/current/#schemas) to serialize and deserialize tables. You can use the [Schema Registry](https://docs.confluent.io/current/schema-registry/index.html) in the Confluent Platform to create and manage Avro schema files. For a step-by-step tutorial, see [Schema Registry Tutorial](https://docs.confluent.io/current/schema-registry/schema_registry_tutorial.html).
 
 Create two Avro schemas, one for the `users` table and one for the primary key of the table. After this step, you should have two files: `table_schema_path.avsc` and `primary_key_schema_path.avsc`.
 
@@ -95,13 +95,13 @@ You can use the following two Avro schema examples that will work with the `user
     bin/kafka-avro-console-consumer --bootstrap-server localhost:9092 --topic users_topic --key-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer     --value-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer
     ```
 
-## Step 4 — Download the Yugabyte CDC connector
+## Step 4 — Download the Kafka Connect YugabyteDB Source Connector
 
-Download the [Yugabyte CDC connector (JAR file)](https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar).
+Download the [Kafka Connect YugabyteDB Source Connector (JAR file)](https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar).
 
 ## Step 5 — Log to Kafka
 
-Run the following command to start logging an output stream of data changes from YugabyteDB to Apache Kafka.
+Run the following command to start logging an output stream of data changes from the YugabyteDB `cdc` table to Apache Kafka.
 
 ```sh
 java -jar target/yb_cdc_connector.jar
@@ -111,44 +111,13 @@ java -jar target/yb_cdc_connector.jar
 --primary_key_schema_path primary_key_schema_path.avsc
 ```
 
-## Parameters
+The example above uses the following parameters:
 
-### Required parameters 
-
-#### `--table_name`
-
-Specify the namespace and table, where namespace is the database (YSQL) or keyspace (YCQL).
-
-#### `--master_addrs`
-
-Specify the IP addresses for all of the YB-Master services that are producing or consuming. Default value is `127.0.0.1:7100`.
-
-If you are using a 3-node local cluster, then you need to specify a comma-delimited list of the addresses for all of your YB-Master services.
-
-#### `topic_name` (Apache Kafka only)
-
-Specify the Apache Kafka topic name.
-
-#### `schema_registry_addrs` (Apache Kafka only)
-
-### `table_schema_path` (Apache Kafka only)
-
-Specify the location of the Avro file (`.avsc`) for the table schema.
-
-#### `primary_key_schema_path` (Apache Kafka only)
-
-Specify the location of the Avro file (`.avsc`) for the primary key schema.
-
-### Optional parameters
-
-#### `--stream_id`
-
-Specify the existing stream ID. If you do not specify the stream ID, on restart the log output stream starts from the first available record.
-
-If specified (recommended), on restart, the log output stream resumes after the last output logged.
-
-To get the stream ID, run the YugabyteDB CDC connector and the first time you can get the stream ID from the console output.
-For details on the available options, see [Using the Yugabyte CDC connector](./use-cdc).
+- `--table_name` — Specifies the namespace and table, where namespace is the database (YSQL) or keyspace (YCQL).
+- `--master_addrs` — Specifies the IP addresses for all of the YB-Master services that are producing or consuming. Default value is `127.0.0.1:7100`. If you are using a 3-node local cluster, then you need to specify a comma-delimited list of the addresses for all of your YB-Master services.
+- `topic_name` — Specifies the Apache Kafka topic name.
+- `table_schema_path` — Specifies the location of the Avro file (`.avsc`) for the table schema.
+- `primary_key_schema_path` — Specifies the location of the Avro file (`.avsc`) for the primary key schema.
 
 ## Step 6 — Write values and observe
 
