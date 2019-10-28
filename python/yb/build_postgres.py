@@ -167,6 +167,8 @@ class PostgresBuilder:
         parser.add_argument('--ldflags', help='Linker flags for all binaries')
         parser.add_argument('--ldflags_ex', help='Linker flags for executables')
         parser.add_argument('--compiler_type', help='Compiler type, e.g. gcc or clang')
+        parser.add_argument('--openssl_include_dir', help='OpenSSL include dir')
+        parser.add_argument('--openssl_lib_dir', help='OpenSSL lib dir')
 
         self.args = parser.parse_args()
         if not self.args.build_root:
@@ -183,6 +185,9 @@ class PostgresBuilder:
         self.build_type = get_build_type_from_build_root(self.build_root)
         self.postgres_src_dir = os.path.join(YB_SRC_ROOT, 'src', 'postgres')
         self.compiler_type = self.args.compiler_type or os.getenv('YB_COMPILER_TYPE')
+        self.openssl_include_dir = self.args.openssl_include_dir
+        self.openssl_lib_dir = self.args.openssl_lib_dir
+
         if not self.compiler_type:
             raise RuntimeError(
                 "Compiler type not specified using either --compiler_type or YB_COMPILER_TYPE")
@@ -383,6 +388,9 @@ class PostgresBuilder:
                 '--prefix', self.pg_prefix,
                 '--with-extra-version=-YB-' + self.get_yb_version(),
                 '--enable-depend',
+                '--with-openssl',
+                '--with-includes=' + self.openssl_include_dir,
+                '--with-libraries=' + self.openssl_lib_dir,
                 # We're enabling debug symbols for all types of builds.
                 '--enable-debug']
         if not get_bool_env_var('YB_NO_PG_CONFIG_CACHE'):
