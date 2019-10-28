@@ -301,7 +301,7 @@ We can verify that the order got inserted by running the following:
 yb_demo=# select * from orders where id = (select max(id) from orders);
 ```
 
-```postgresql
+```
 select * from orders where id = (select max(id) from orders);
   id   |        created_at         | user_id | product_id | discount | quantity |     subtotal     | tax |      total
 -------+---------------------------+---------+------------+----------+----------+------------------+-----+------------------
@@ -315,7 +315,7 @@ We can also verify that total quantity of product id `2` in the inventory is `49
 yb_demo=# SELECT id, category, price, quantity FROM products WHERE id=2;
 ```
 
-```postgresql
+```
 SELECT id, category, price, quantity FROM products WHERE id=2;
  id | category  |      price       | quantity
 ----+-----------+------------------+----------
