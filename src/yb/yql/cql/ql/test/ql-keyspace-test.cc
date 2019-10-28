@@ -15,6 +15,8 @@
 
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
+#include "yb/common/ql_value.h"
+
 namespace yb {
 namespace ql {
 

@@ -18,6 +18,8 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/transaction.h"
 
+#include "yb/common/ql_value.h"
+
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replica_state.h"

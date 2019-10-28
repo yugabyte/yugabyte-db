@@ -16,6 +16,7 @@
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
 #include "yb/common/jsonb.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/table_properties_constants.h"
 
 namespace yb {

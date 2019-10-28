@@ -15,6 +15,7 @@
 #include "yb/tablet/tablet.h"
 
 #include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_value.h"
 
 namespace yb {
 namespace tablet {

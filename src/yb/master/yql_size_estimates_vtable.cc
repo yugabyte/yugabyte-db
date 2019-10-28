@@ -14,6 +14,8 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/yql_size_estimates_vtable.h"
 
+#include "yb/util/yb_partition.h"
+
 namespace yb {
 namespace master {
 

@@ -19,6 +19,7 @@
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_resultset.h"
 #include "yb/common/ql_storage_interface.h"
+#include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/docdb_util.h"

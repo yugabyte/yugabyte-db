@@ -15,6 +15,8 @@
 
 #include <string>
 
+#include "yb/common/ql_value.h"
+
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/util/logging.h"
 #include "yb/client/callbacks.h"

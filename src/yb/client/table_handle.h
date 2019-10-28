@@ -29,11 +29,6 @@
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
-
-class QLType;
-class QLRow;
-class QLRowBlock;
-
 namespace client {
 
 class YBTableName;

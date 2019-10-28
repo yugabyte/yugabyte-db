@@ -23,6 +23,8 @@
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 
+#include "yb/common/ql_value.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 

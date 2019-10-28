@@ -14,6 +14,7 @@
 #include <memory>
 #include <string>
 
+#include "yb/common/ql_value.h"
 #include "yb/common/transaction-test-util.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"

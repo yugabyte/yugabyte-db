@@ -32,6 +32,8 @@
 
 #include "yb/consensus/log-test-base.h"
 
+#include "yb/common/ql_value.h"
+
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/substitute.h"
 
