@@ -15,8 +15,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This page describes how to enable and disable encryption at rest in a YugabyteDB cluster with a
-user generated key.
+Encryption at rest ensures that data stored on disk is protected. You can configure your YugabyteDB cluster with a user-generated symmetric key to perform cluster-wide encryption. Follow the steps below to enable or disable encryption at rest in a YugabyteDB cluster.
+
+{{< note title="Note" >}}
+
+Encryption at rest is currently not supported with YSQL.
+
+{{< /note >}}
 
 ## Enabling encryption
 
@@ -44,14 +49,13 @@ $ for ip in ip1 ip2 ip3
 ```
 
 {{< note title="Note" >}}
-The key can live in any subdir of the master dir, as long as it lives in the same place on each
-node. In addition, the data dir may vary depending on how the cluster is created.
+The key can be added to any subdirectory of the master directory, as long as it lives in the same place on each
+node. In addition, the location of the data directory may vary depending on how the cluster is created.
 {{< /note >}}
-
 
 ### Step 3. Enable cluster-wide encryption
 
-Use yb-admin to tell the cluster about the new universe key.
+Use `yb-admin` command [`rotate_universe_key`](../../admin/yb-admin/#rotate-universe-key) to tell the cluster about the new universe key.
 
 ```sh
 $ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 rotate_universe_key
@@ -59,13 +63,14 @@ $ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 rotate_universe_key
 ```
 
 {{< note title="Note" >}}
-Because data is encrypted in the background as part of flushes to disk and compactions, only new
-data will be encrypted. Therefore, the call should return quickly.
+
+Only new data is encrypted because encryption occurs in the background as part of flushes to disk and compactions. Therefore, the call should return quickly.
+
 {{< /note >}}
 
 ### Step 4. Verify encryption enabled
 
-To check the encryption status of the cluster, run the following yb-admin command.
+To check the encryption status of the cluster, run the `yb-admin` [`is_encryption_enabled`](../../admin/yb-admin/#is-encryption-enabled) command.
 
 ```sh
 $ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 is_encryption_enabled
@@ -87,7 +92,9 @@ $ openssl rand -out universe_key_2 [ 32 | 40 | 48 ]
 ```
 
 {{< note title="Note" >}}
+
 The new key name must be distinct from the previous key name.
+
 {{< /note >}}
 
 ### Step 2. Copy new key to master nodes
@@ -104,7 +111,7 @@ $ for ip in ip1 ip2 ip3
 
 ### Step 3. Rotate key
 
-Use yb-admin to tell the cluster about the new universe key.
+To tell the cluster about the new universe key, run the `yb-admin` [`rotate_universe_key`](../../admin/yb-admin/#rotate-universe-key) command.
 
 ```sh
 $ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 rotate_universe_key
@@ -113,7 +120,7 @@ $ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 rotate_universe_key
 
 ### Step 4. Verify new key
 
-Check that the new key is encrypting the cluster.
+Check that the new key is encrypting the cluster by running the `yb-admin` [`is_encryption_enabled`](../../admin/yb-admin/#is-encryption-enabled) command.
 
 ```sh
 $ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 is_encryption_enabled
@@ -137,7 +144,7 @@ $ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 disable_encryption
 
 ### Step 2. Verify encryption disabled
 
-Check that encryption is disabled.
+Verify that encryption is disabled by running the `yb-admin` [`is_encryption_enabled`](../../admin/yb-admin/#is-encryption-enabled) command.
 
 ```sh
 $ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 is_encryption_enabled
