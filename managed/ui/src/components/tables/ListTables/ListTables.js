@@ -122,9 +122,7 @@ class ListTableGrid extends Component {
       if (row.tableType !== "REDIS_TABLE_TYPE") {
         actions.push([
           <TableAction key={`${row.tableName}-import-btn`} currentRow={row} actionType="import"
-                      disabled={actions_disabled} />,
-          <TableAction key={`${row.tableName}-drop-btn`} currentRow={row}
-                      actionType="drop" disabled={actions_disabled} />
+                      disabled={actions_disabled} />
         ]);
       }
       return (
