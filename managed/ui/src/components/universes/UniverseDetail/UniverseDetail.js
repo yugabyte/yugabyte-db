@@ -125,7 +125,7 @@ class UniverseDetail extends Component {
           showAlert: true,
           alertType: 'danger',
           alertMessage: res.payload.message
-        })
+        });
       } else {
         this.setState({
           showAlert: true,
@@ -212,8 +212,6 @@ class UniverseDetail extends Component {
     const isItKubernetesUniverse = isKubernetesUniverse(currentUniverse.data);
 
     const defaultTab = isNotHidden(currentCustomer.data.features, "universes.details.overview") ? "overview" : "overview";
-    const primaryCluster = currentUniverse.data.universeDetails.clusters.find(x => x.clusterType === 'PRIMARY');
-    const encryptionAtRestEnabled = primaryCluster && primaryCluster.userIntent.enableEncryptionAtRest;
     const activeTab = tab || defaultTab;
     const tabElements = [
       //common tabs for every universe

@@ -15,7 +15,7 @@ const mapDispatchToProps = (dispatch) => {
     setEncryptionKey: (universeUUID, data) => {
       return dispatch(setEncryptionKey(universeUUID, data)).then((response) => {
         return dispatch(setEncryptionKeyResponse(response.payload));
-      })
+      });
     }
   };
 };

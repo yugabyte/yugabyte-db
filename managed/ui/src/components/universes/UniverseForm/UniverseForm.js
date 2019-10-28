@@ -440,12 +440,12 @@ class UniverseForm extends Component {
     const submitControl = (existingPrimaryNodes.length && existingPrimaryNodes.filter(node => node.state !== "ToBeRemoved").length) || type === "Create"
       ?
         // not a full move
-        <YBButton
+        (<YBButton
           btnClass="btn btn-orange universe-form-submit-btn"
           btnText={submitTextLabel}
           btnType={"submit"}
           disabled={formChangedOrInvalid}
-        />
+        />)
       :
         // full move
         (<Fragment>

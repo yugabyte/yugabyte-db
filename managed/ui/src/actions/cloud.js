@@ -317,7 +317,7 @@ export function createAccessKeyFailure(error) {
   return {
     type: CREATE_ACCESS_KEY_FAILURE,
     payload: error
-  }
+  };
 }
 
 export function fetchAuthConfigList() {
