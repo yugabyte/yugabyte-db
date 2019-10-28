@@ -31,9 +31,9 @@ Let us assume the following.
 
 This section covers deployment for a single region or zone (or a single data center or rack). Execute the following steps on each of the instances.
 
-## Run yb-master with command line parameters
+## Run YB-Master services with command line parameters
 
-- Run `yb-master` binary on each of the nodes as shown below. Note how multiple directories can be provided to the `--fs_data_dirs` flag. For each YB-Master, replace the rpc bind address flag with the private IP of the host running the YB-Master.
+- Run `yb-master` binary on each of the nodes as shown below. Note how multiple directories can be provided to the `--fs_data_dirs` flag. For each YB-Master, replace the RPC bind address flag with the private IP of the host running the YB-Master.
 
 For the full list of flags, see the [yb-master Reference](../../../admin/yb-master/).
 
@@ -41,18 +41,19 @@ For the full list of flags, see the [yb-master Reference](../../../admin/yb-mast
 $ ./bin/yb-master \
   --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
   --rpc_bind_addresses 172.151.17.130 \
-  --enable_ysql=true
+  --enable_ysql=true \
   --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
   >& /home/centos/disk1/yb-master.out &
 ```
 
-## Run YB-Master with configuration file
+## Run YB-Master services with configuration file
 
-- Alternatively, you can also create a `master.conf` file with the following flags and then run the `yb-master` with the `--flagfile` option as shown below. For each yb-master, replace the RPC bind address flag with the private IP of the host running the yb-master.
+- Alternatively, you can also create a `master.conf` file with the following flags and then run `yb-master` with the `--flagfile` option as shown below. For each YB-Master node, replace the RPC bind address flag with the private IP of the host running the YB-Master node.
 
 ```sh
 --master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
 --rpc_bind_addresses=172.151.17.130
+--enable_ysql=true
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2
 ```
 
@@ -60,7 +61,7 @@ $ ./bin/yb-master \
 $ ./bin/yb-master --flagfile master.conf >& /home/centos/disk1/yb-master.out &
 ```
 
-## Verify Health
+## Verify health
 
 - Make sure all the 3 yb-masters are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
 
