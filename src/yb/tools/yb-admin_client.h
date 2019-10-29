@@ -140,16 +140,19 @@ class ClusterAdminClient {
                             int timeout_secs,
                             bool is_compaction);
 
-  CHECKED_STATUS ModifyPlacementInfo(std::string placement_infos, int replication_factor);
+  CHECKED_STATUS ModifyPlacementInfo(std::string placement_infos,
+                                     int replication_factor,
+                                     const std::string& optional_uuid);
 
   CHECKED_STATUS AddReadReplicaPlacementInfo(const std::string& placement_info,
-                                             int replication_factor);
+                                             int replication_factor,
+                                             const std::string& optional_uuid);
 
   CHECKED_STATUS ModifyReadReplicaPlacementInfo(const std::string& placement_uuid,
                                                 const std::string& placement_info,
                                                 int replication_factor);
 
-  CHECKED_STATUS DeleteReadReplicaPlacementInfo(const std::string& placement_uuid);
+  CHECKED_STATUS DeleteReadReplicaPlacementInfo();
 
   CHECKED_STATUS GetUniverseConfig();
 
