@@ -221,6 +221,7 @@ a {
   a {
     border-bottom: 1px dashed;
     color: $YB_ORANGE;
+
     &:hover {
       color: $YB_ORANGE;
       border-bottom-style: solid;
@@ -281,7 +282,7 @@ a {
 
   p, pre, ul, li, a {
     position: relative;
-    z-index: 2;
+    z-index: 1020;
   }
 
   i {
