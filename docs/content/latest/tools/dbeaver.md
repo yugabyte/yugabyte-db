@@ -23,38 +23,36 @@ The [DBeaver Community Edition](https://dbeaver.io/) includes these features:
 
 The [DBeaver Enterprise Edition](https://dbeaver.com/) adds support for non-JDBC data sources, including MongoDB, Cassandra, and Redis.
 
-## Install DBeaver
-
-Follow the steps here to download, install, and configure DBeaver to work with YugabyteDB.
-
-### Before you begin
+## Before you begin
 
 To use DBeaver with YugabyteDB, you need to meet the following prerequisites.
 
-#### YugabyteDB
+### YugabyteDB
 
 Your YugabyteDB cluster should be up and running. If you're new to YugabyteDB, create a local cluster in less than five minutes following the steps in [Quick Start](../../../quick-start/install).
 
-#### Java Runtime Environment (JRE)
+### Java Runtime Environment (JRE)
 
 DBeaver requires a Java runtime (or JDK) for Java 8 or later. Some of the installers include a JRE, accessible only to DBeaver.
 
 JDK and JRE installers for Linux, macOS, and Windows can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 
-#### PostgreSQL JDBC driver
+### PostgreSQL JDBC driver
 
 The PostgreSQL JDBC driver can be used with DBeaver to work with YugabyteDB databases. 
 
 To connect DBeaver to a YugabyteDB cluster, you need the PostgreSQL JDBC driver installed. To download the current version that supports Java 8 or later, go to the [PostgreSQL JDBC Driver download](https://jdbc.postgresql.org/download.html) page.
 
-### To install DBeaver
+## Install DBeaver
+
+Follow the steps here to download, install, and configure DBeaver to work with YugabyteDB.
 
 1. Download the distribution package for the operating system on your client computer from the [DBeaver downloads page](https://dbeaver.io/download/).
 2. Install DBeaver following the steps on the [DBeaver Installation page](https://github.com/dbeaver/dbeaver/wiki/Installation).
 
 ## Configure DBeaver for YugabyteDB
 
-#### Configure the PostgreSQL driver to use with YugabyteDB
+### Configure the PostgreSQL driver to use with YugabyteDB
 
 1. Start the DBeaver application. The DBeaver application window appears.
 2. On the menu, select **Database > Driver Manager**. The **Driver Manager** window appears.
@@ -84,7 +82,7 @@ To connect DBeaver to a YugabyteDB cluster, you need the PostgreSQL JDBC driver 
 4. Click **OK**. The **Edit Driver** window closes.
 5. In the **Driver Manager** window, click **Close**.
 
-### Connect to a database
+## Connect to a database
 
 1. In the 
 

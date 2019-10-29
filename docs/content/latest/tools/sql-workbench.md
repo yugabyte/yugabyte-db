@@ -22,29 +22,26 @@ SQL Workbench/J has the following main focus:
 
 In this section, you'll learn how to connect SQL Workbench/J with all of the YugabyteDB APIs on a local cluster. SQL Workbench/J works without any issues with YugabyteDB because the YugabyteDB APIs are compatible at the wire protocol level with databases already supported by SQL Workbench/J.
 
-## Install SQL Workbench/J
 
-TablePlus is available on both macOS and Windows. Follow the links below to download.
-
-### Before you begin
+## Before you begin
 
 To use SQL Workbench/J with YugabyteDB, you need to have YugabyteDB up and running, the required Java Runtime Environment (JRE), and the required PostgreSQL JDBC driver.
 
-#### YugabyteDB
+### YugabyteDB
 
 Your YugabyteDB cluster should be up and running. If you are new to YugabyteDB, you can quickly create a local cluster by following the steps in [Quick start](../../../quick-start/install).
 
-#### Java runtime environment (JRE)
+### Java runtime environment (JRE)
 
 SQL Workbench/J requires a Java runtime (or JDK) for Java 8 or later. JRE and JDK installers for Linux, macOS, and Windows can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 
 For details on the JRE requirements, see the prerequisites section in the SQL Workbench/J [Getting started](http://www.sql-workbench.eu/getting-started.html) page.
 
-#### PostgreSQL JDBC driver
+### PostgreSQL JDBC driver
 
 To connect SQL Workbench/J to a YugabyteDB cluster, you need the PostgreSQL JDBC driver installed. To download the current version that supports Java 8 or later, go to the [PostgreSQL JDBC Driver download](https://jdbc.postgresql.org/download.html) page.
 
-### To install SQL Workbench/J
+## Install SQL Workbench/J
 
 1. Go to the [SQL Workbench/J](http://www.sql-workbench.net/) website and download the distribution package for the operating system on your client computer.
 2. Extract the archive into a directory of your choice.
