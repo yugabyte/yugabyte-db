@@ -148,7 +148,7 @@ PID        Type       Node                 URL                       Status     
 11133      master     yb-master-n1         http://172.19.0.2:9000    Running         2017-11-28T23:32:57.905097927Z
 ```
 
-#### Create a 5-node local cluster with replication factor of 5
+### Create a 5-node local cluster with replication factor of 5
 
 ```sh
 $ ./yb-docker-ctl create --rf 5
