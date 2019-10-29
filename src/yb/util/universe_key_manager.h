@@ -27,7 +27,7 @@ class UniverseKeyManager {
  public:
   void SetUniverseKeyRegistry(const yb::UniverseKeyRegistryPB& universe_key_registry);
   // From an existing version id, generate encryption params. Used when creating readable files.
-  Result <EncryptionParamsPtr>GetUniverseParamsWithVersion(
+  Result<EncryptionParamsPtr> GetUniverseParamsWithVersion(
       const UniverseKeyId& version_id);
   // Get the latest universe key in the registry. Used when creating writable files.
   Result<UniverseKeyParams> GetLatestUniverseParams();

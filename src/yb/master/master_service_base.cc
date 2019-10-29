@@ -32,5 +32,9 @@ PermissionsManager* MasterServiceBase::handler(PermissionsManager*) {
   return server_->catalog_manager()->permissions_manager();
 }
 
+EncryptionManager* MasterServiceBase::handler(EncryptionManager*) {
+  return &server_->catalog_manager()->encryption_manager();
+}
+
 } // namespace master
 } // namespace yb

@@ -118,6 +118,7 @@
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/initial_sys_catalog_snapshot.h"
 #include "yb/master/tasks_tracker.h"
+#include "yb/master/encryption_manager.h"
 
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/rpc/messenger.h"
@@ -452,7 +453,8 @@ CatalogManager::CatalogManager(Master* master)
       leader_lock_(RWMutex::Priority::PREFER_WRITING),
       load_balance_policy_(new enterprise::ClusterLoadBalancer(this)),
       permissions_manager_(std::make_unique<PermissionsManager>(this)),
-      tasks_tracker_(new TasksTracker()) {
+      tasks_tracker_(new TasksTracker()),
+      encryption_manager_(new EncryptionManager()) {
   yb::InitCommonFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
@@ -499,6 +501,17 @@ Status CatalogManager::Init(bool is_first_run) {
   if (!master_->opts().IsShellMode()) {
     RETURN_NOT_OK_PREPEND(sys_catalog_->WaitUntilRunning(),
                           "Failed waiting for the catalog tablet to run");
+    std::vector<consensus::RaftPeerPB> masters_raft;
+    RETURN_NOT_OK(master_->ListRaftConfigMasters(&masters_raft));
+    HostPortSet hps;
+    for (const auto& peer : masters_raft) {
+      if (master_->instance_pb().permanent_uuid() == peer.permanent_uuid()) {
+        continue;
+      }
+      HostPort hp = HostPortFromPB(DesiredHostPort(peer, master_->MakeCloudInfoPB()));
+      hps.insert(hp);
+    }
+    RETURN_NOT_OK(encryption_manager_->AddPeersToGetUniverseKeyFrom(hps));
     RETURN_NOT_OK(EnableBgTasks());
   }
 

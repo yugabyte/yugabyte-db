@@ -25,6 +25,20 @@ typedef std::shared_ptr<TSDescriptor> TSDescriptorPtr;
 typedef std::vector<TSDescriptorPtr> TSDescriptorVector;
 
 class TSRegistrationPB;
+class EncryptionManager;
+
+class AddUniverseKeysRequestPB;
+class AddUniverseKeysResponsePB;
+class GetUniverseKeyRegistryRequestPB;
+class GetUniverseKeyRegistryResponsePB;
+class HasUniverseKeyInMemoryRequestPB;
+class HasUniverseKeyInMemoryResponsePB;
+class EncryptionInfoPB;
+class ChangeEncryptionInfoRequestPB;
+class ChangeEncryptionInfoResponsePB;
+class IsEncryptionEnabledRequestPB;
+class IsEncryptionEnabledResponsePB;
+class TSHeartbeatResponsePB;
 
 } // namespace master
 } // namespace yb
