@@ -971,6 +971,7 @@ END;
 $$ VOLATILE LANGUAGE plpgsql;
 vacuum analyze t1;
 SET pg_hint_plan.enable_hint = false;
+SELECT pg_sleep(1);
 SELECT reset_stats_and_wait();
 SELECT dynsql1(9000);
 SELECT pg_sleep(1);

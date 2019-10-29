@@ -5388,7 +5388,7 @@ ERROR:  1.23457e+63 is outside the valid range for parameter "cursor_tuple_fract
 /*+ Set(enable_seqscan 100)Set(seq_page_cost on)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 INFO:  parameter "enable_seqscan" requires a Boolean value
-INFO:  parameter "seq_page_cost" requires a numeric value
+INFO:  invalid value for parameter "seq_page_cost": "on"
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -8181,6 +8181,12 @@ END;
 $$ VOLATILE LANGUAGE plpgsql;
 vacuum analyze t1;
 SET pg_hint_plan.enable_hint = false;
+SELECT pg_sleep(1);
+ pg_sleep 
+----------
+ 
+(1 row)
+
 SELECT reset_stats_and_wait();
  reset_stats_and_wait 
 ----------------------

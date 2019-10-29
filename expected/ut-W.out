@@ -1216,6 +1216,7 @@ Parallel()
 -- Hints on unhintable relations are just ignored
 /*+Parallel(p1 5 hard) Parallel(s1 3 hard) IndexScan(ft1) SeqScan(cte1)
   TidScan(fs1) IndexScan(t) IndexScan(*VALUES*) */
+\o results/ut-W.tmpout
 EXPLAIN (COSTS false) SELECT id FROM p1_c1_c1 as s1 TABLESAMPLE SYSTEM(10)
  UNION ALL
 SELECT id FROM ft1
@@ -1238,15 +1239,17 @@ Parallel(s1 3 hard)
 duplication hint:
 error hint:
 
-                                          QUERY PLAN                                           
------------------------------------------------------------------------------------------------
+\o
+\! sql/maskout2.sh results/ut-W.tmpout
+                                            QUERY PLAN                                             
+--(snip..)
  Append
    ->  Result
          ->  Append
                ->  Sample Scan on p1_c1_c1 s1
                      Sampling: system ('10'::real)
                ->  Foreign Scan on ft1
-                     Foreign File: /home/horiguti/work/pg_hint_plan/pg_hint_plan/data/data.csv
+                     Foreign File:  (snip..)
                ->  Gather
                      Workers Planned: 5
                      ->  Parallel Append

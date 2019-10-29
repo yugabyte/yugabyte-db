@@ -205,6 +205,7 @@ EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 -- Hints on unhintable relations are just ignored
 /*+Parallel(p1 5 hard) Parallel(s1 3 hard) IndexScan(ft1) SeqScan(cte1)
   TidScan(fs1) IndexScan(t) IndexScan(*VALUES*) */
+\o results/ut-W.tmpout
 EXPLAIN (COSTS false) SELECT id FROM p1_c1_c1 as s1 TABLESAMPLE SYSTEM(10)
  UNION ALL
 SELECT id FROM ft1
@@ -214,7 +215,8 @@ SELECT id FROM ft1
 SELECT userid FROM pg_stat_statements fs1
  UNION ALL
 SELECT x FROM (VALUES (1), (2), (3)) t(x);
-
+\o
+\! sql/maskout2.sh results/ut-W.tmpout
 
 ALTER SYSTEM SET session_preload_libraries TO DEFAULT;
 SELECT pg_reload_conf();

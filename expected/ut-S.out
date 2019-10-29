@@ -5085,6 +5085,8 @@ error hint:
 EXPLAIN (COSTS false) UPDATE s1.p1 SET c4 = c4 WHERE c1 = 1;
 LOG:  available indexes for IndexScan(p1): p1_pkey
 LOG:  available indexes for IndexScan(p1c1): p1c1_pkey
+LOG:  available indexes for IndexScan(p1): p1_pkey
+LOG:  available indexes for IndexScan(p1c1): p1c1_pkey
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(p1 p1_pkey)
