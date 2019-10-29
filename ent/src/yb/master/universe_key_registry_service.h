@@ -17,33 +17,21 @@
 #include "yb/util/result.h"
 
 namespace yb {
-
-class UniverseKeyRegistryPB;
-class UniverseKeyEntryPB;
-
-namespace enterprise {
-
-struct EncryptionParams;
-
-}
-
 namespace master {
 
-class ChangeEncryptionInfoRequestPB;
-class ChangeEncryptionInfoResponsePB;
 class EncryptionInfoPB;
 
 namespace enterprise {
 
-// Rotate a new universe key into the sys catalog. Triggered by the user (yb-admin).
-CHECKED_STATUS RotateUniverseKey(const ChangeEncryptionInfoRequestPB* req,
-    EncryptionInfoPB* encryption_info, ChangeEncryptionInfoResponsePB* resp);
+// Decrypt the universe key registry s, with universe key universe_key.
+Result<std::string> DecryptUniverseKeyRegistry(const Slice& s, const Slice& universe_key);
 
-// Encrypt/Decrypt the registry represented by a slice, using key path, a path to the latest
-// universe key.
-Result<std::string> DecryptUniverseKeyRegistry(const Slice& s, const std::string& key_path);
-Result<std::string> EncryptUniverseKeyRegistry(const Slice& s, const std::string& key_path);
-
+// Rotate a new universe key into the sys catalog. Triggered by the user (yb-admin or YW).
+CHECKED_STATUS RotateUniverseKey(const Slice& old_universe_key,
+                                 const Slice& new_universe_key,
+                                 const std::string& new_key_version_id,
+                                 bool enable,
+                                 EncryptionInfoPB* encryption_info);
 } // namespace enterprise
 } // namespace master
 } // namespace yb

@@ -30,6 +30,7 @@ class Master;
 class CatalogManager;
 class FlushManager;
 class PermissionsManager;
+class EncryptionManager;
 
 // Tells HandleIn/HandleOnLeader to either acquire the lock briefly to check leadership (kFalse)
 // or to hold it throughout the handler invocation (kTrue).
@@ -52,6 +53,10 @@ class MasterServiceBase {
                       HoldCatalogLock hold_catalog_lock = HoldCatalogLock::kTrue);
 
   template <class HandlerType, class ReqType, class RespType>
+  void HandleOnAllMasters(const ReqType* req, RespType* resp, rpc::RpcContext* rpc,
+                          Status (HandlerType::*f)(const ReqType* req, RespType*));
+
+  template <class HandlerType, class ReqType, class RespType>
   void HandleIn(const ReqType* req, RespType* resp, rpc::RpcContext* rpc,
       Status (HandlerType::*f)(RespType*),
       HoldCatalogLock hold_catalog_lock = HoldCatalogLock::kTrue);
@@ -69,6 +74,7 @@ class MasterServiceBase {
   enterprise::CatalogManager* handler(CatalogManager*);
   FlushManager* handler(FlushManager*);
   PermissionsManager* handler(PermissionsManager*);
+  EncryptionManager* handler(EncryptionManager*);
 
   Master* server_;
 

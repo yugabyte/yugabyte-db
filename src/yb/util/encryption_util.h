@@ -55,7 +55,7 @@ struct EncryptionParams {
       const EncryptionParamsPB& encryption_header);
 
   // Given a slice, convert contents to encryption params. Used to read latest universe key.
-  static Result<std::unique_ptr<EncryptionParams>> FromKeyFile(const Slice& s);
+  static Result<std::unique_ptr<EncryptionParams>> FromSlice(const Slice& s);
 
   static std::unique_ptr<EncryptionParams> NewEncryptionParams();
 
@@ -66,10 +66,12 @@ struct EncryptionParams {
 
 typedef std::unique_ptr<EncryptionParams> EncryptionParamsPtr;
 
-YB_STRONGLY_TYPED_UUID(UniverseKeyId);
+// Since this will typically be passed in by an external user (YW or yb-admin), UniverseKeyId
+// will be a generic string for ease of use.
+using UniverseKeyId = std::string;
 
 struct UniverseKeyParams {
-  UniverseKeyId version_id = UniverseKeyId::Nil();
+  UniverseKeyId version_id;
   EncryptionParamsPtr params;
 };
 

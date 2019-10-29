@@ -29,12 +29,13 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog-internal.h"
 #include "yb/master/async_snapshot_tasks.h"
-#include "yb/master/universe_key_registry_service.h"
+#include "yb/master/encryption_manager.h"
 #include "yb/tserver/backup.proxy.h"
 #include "yb/util/cast.h"
 #include "yb/util/service_util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/string_util.h"
+#include "yb/util/random_util.h"
 #include "yb/cdc/cdc_consumer.pb.h"
 
 using std::string;
@@ -667,13 +668,10 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
 
 Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                             ChangeEncryptionInfoResponsePB* resp) {
-
-  LOG(INFO) << "CatalogManager: ChangeEncryptionInfo: req=[" << req->DebugString() << "]";
-
   auto l = cluster_config_->LockForWrite();
   auto encryption_info = l->mutable_data()->pb.mutable_encryption_info();
 
-  RETURN_NOT_OK(RotateUniverseKey(req, encryption_info, resp));
+  RETURN_NOT_OK(encryption_manager_->ChangeEncryptionInfo(req, encryption_info));
 
   l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
   RETURN_NOT_OK(sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_));
@@ -683,6 +681,7 @@ Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB*
   for (auto& entry : should_send_universe_key_registry_) {
     entry.second = true;
   }
+
   return Status::OK();
 }
 
@@ -690,20 +689,7 @@ Status CatalogManager::IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* r
                                            IsEncryptionEnabledResponsePB* resp) {
   auto l = cluster_config_->LockForRead();
   const auto& encryption_info = l->data().pb.encryption_info();
-  resp->set_encryption_enabled(encryption_info.encryption_enabled());
-  if (!encryption_info.encryption_enabled()) {
-    return Status::OK();
-  }
-
-  // Decrypt the universe key registry to get the latest version id.
-  auto decrypted_registry =
-      VERIFY_RESULT(DecryptUniverseKeyRegistry(
-          encryption_info.universe_key_registry_encoded(), encryption_info.key_path()));
-  auto universe_key_registry =
-      VERIFY_RESULT(pb_util::ParseFromSlice<UniverseKeyRegistryPB>(decrypted_registry));
-
-  resp->set_key_id(universe_key_registry.latest_version_id());
-  return Status::OK();
+  return encryption_manager_->IsEncryptionEnabled(encryption_info, resp);
 }
 
 Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
@@ -1260,16 +1246,7 @@ Status CatalogManager::FillHeartbeatResponseEncryption(
   }
 
   const auto& encryption_info = cluster_config.encryption_info();
-  Slice decrypted_registry(encryption_info.universe_key_registry_encoded());
-  std::string decrypted;
-  if (encryption_info.encryption_enabled()) {
-    decrypted = VERIFY_RESULT(
-        DecryptUniverseKeyRegistry(decrypted_registry, encryption_info.key_path()));
-    decrypted_registry = Slice(decrypted);
-  }
-
-  auto registry = VERIFY_RESULT(pb_util::ParseFromSlice<UniverseKeyRegistryPB>(decrypted_registry));
-  resp->mutable_universe_key_registry()->CopyFrom(registry);
+  RETURN_NOT_OK(encryption_manager_->FillHeartbeatResponseEncryption(encryption_info, resp));
 
   return Status::OK();
 }

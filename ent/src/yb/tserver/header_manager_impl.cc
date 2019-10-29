@@ -51,7 +51,7 @@ class HeaderManagerImpl : public yb::enterprise::HeaderManager {
     RETURN_NOT_OK(stream->Encrypt(0, encryption_params_pb_str, encrypted_data_key));
 
     // 3. Serialize the universe key id.
-    auto universe_key_id_str = universe_params.version_id.ToString();
+    auto universe_key_id_str = universe_params.version_id;
     char universe_key_size[sizeof(uint32_t)];
     BigEndian::Store32(universe_key_size, universe_key_id_str.size());
 
@@ -81,8 +81,7 @@ class HeaderManagerImpl : public yb::enterprise::HeaderManager {
 
     // 2. Get the universe key id.
     RETURN_NOT_OK(CheckSliceCanBeDecoded(s_mutable, universe_key_size, "universe key id"));
-    auto universe_key_id = VERIFY_RESULT(yb::enterprise::UniverseKeyId::FromString(
-        string(s_mutable.cdata(), universe_key_size)));
+    std::string universe_key_id(s_mutable.cdata(), universe_key_size);
     s_mutable.remove_prefix(universe_key_size);
 
     // 3. Create an encryption stream from the universe key.

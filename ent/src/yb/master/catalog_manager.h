@@ -19,9 +19,11 @@
 #include "yb/master/cdc_consumer_registry_service.h"
 
 namespace yb {
+
+class UniverseKeyRegistryPB;
+
 namespace master {
 namespace enterprise {
-
 
 class CatalogManager : public yb::master::CatalogManager {
   typedef yb::master::CatalogManager super;

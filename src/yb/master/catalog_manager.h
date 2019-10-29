@@ -593,6 +593,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     return tablet_locations_version_.load(std::memory_order_acquire);
   }
 
+  EncryptionManager& encryption_manager() {
+    return *encryption_manager_;
+  }
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -1113,6 +1117,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Tracks most recent async tasks.
   scoped_refptr<TasksTracker> tasks_tracker_;
+
+  std::unique_ptr<EncryptionManager> encryption_manager_;
 
  private:
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id);

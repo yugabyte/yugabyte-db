@@ -244,6 +244,18 @@ class MasterServiceImpl : public MasterServiceIf,
                            IsEncryptionEnabledResponsePB* resp,
                            rpc::RpcContext rpc) override;
 
+  void GetUniverseKeyRegistry(const GetUniverseKeyRegistryRequestPB* req,
+                              GetUniverseKeyRegistryResponsePB* resp,
+                              rpc::RpcContext rpc) override;
+
+  void AddUniverseKeys(const AddUniverseKeysRequestPB* req,
+                       AddUniverseKeysResponsePB* resp,
+                       rpc::RpcContext rpc) override;
+
+  void HasUniverseKeyInMemory(const HasUniverseKeyInMemoryRequestPB* req,
+                              HasUniverseKeyInMemoryResponsePB* resp,
+                              rpc::RpcContext rpc) override;
+
   void SetupUniverseReplication(const SetupUniverseReplicationRequestPB* req,
                                 SetupUniverseReplicationResponsePB* resp,
                                 rpc::RpcContext rpc) override;
