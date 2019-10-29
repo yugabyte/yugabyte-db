@@ -578,9 +578,11 @@ replication_info {
 }
 ```
 
-By default, all nodes are eligible to have tablet leaders.
-However, for the current deployment, we want to explicitly prioritise and AZ to be the region where leaders reside.
-When the "preferred" AZ/region(s)" nodes are alive/healthy - the leaders of tablets are placed on nodes in those zones/regions. 
+By default, all nodes are eligible to have tablet leaders. 
+To get better transactional performance and lower latency, it's better that all tablet-leaders reside in the same region if possible.
+This will reduce the number of cross-region hops when writing transactions.
+For the current deployment, we want to explicitly prioritise the region/zone where leaders reside.
+When the "preferred zone" nodes are alive/healthy - the leaders of tablets are placed on nodes in those regions. 
 
 The following command sets the preferred zone to `aws.us-west.us-west-2c`:
 
