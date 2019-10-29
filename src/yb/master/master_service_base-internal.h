@@ -53,6 +53,15 @@ void MasterServiceBase::HandleOnLeader(const ReqType* req,
 }
 
 template <class HandlerType, class ReqType, class RespType>
+void MasterServiceBase::HandleOnAllMasters(
+    const ReqType* req, RespType* resp, rpc::RpcContext* rpc,
+    Status (HandlerType::*f)(const ReqType* req, RespType*)) {
+  Status s = (handler(static_cast<HandlerType*>(nullptr))->*f)(req, resp);
+  CheckRespErrorOrSetUnknown(s, resp);
+  rpc->RespondSuccess();
+}
+
+template <class HandlerType, class ReqType, class RespType>
 void MasterServiceBase::HandleIn(const ReqType* req,
                                  RespType* resp,
                                  rpc::RpcContext* rpc,

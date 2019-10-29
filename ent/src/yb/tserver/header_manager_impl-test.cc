@@ -41,7 +41,7 @@ std::unique_ptr<yb::enterprise::UniverseKeyManager> GenerateUniverseKeyManager()
   auto encryption_params = yb::enterprise::EncryptionParams::NewEncryptionParams();
   EncryptionParamsPB params_pb;
   encryption_params->ToEncryptionParamsPB(&params_pb);
-  auto version_id = yb::enterprise::UniverseKeyId::GenerateRandom().ToString();
+  auto version_id = RandomHumanReadableString(16);
   (*registry.mutable_universe_keys())[version_id] = params_pb;
   registry.set_encryption_enabled(true);
   registry.set_latest_version_id(version_id);
