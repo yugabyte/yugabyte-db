@@ -79,7 +79,7 @@ DECLARE_int32(rpc_max_message_size);
 
 // We expect that consensus_max_batch_size_bytes + 1_KB would be less than rpc_max_message_size.
 // Otherwise such batch would be rejected by RPC layer.
-DEFINE_int32(consensus_max_batch_size_bytes, 32_MB,
+DEFINE_int32(consensus_max_batch_size_bytes, 4_MB,
              "The maximum per-tablet RPC batch size when updating peers.");
 TAG_FLAG(consensus_max_batch_size_bytes, advanced);
 TAG_FLAG(consensus_max_batch_size_bytes, runtime);
