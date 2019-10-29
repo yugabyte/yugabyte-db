@@ -676,6 +676,9 @@ Deletes the snapshot information, usually cleaned up at the end, since this is s
 - *table_name*: The name of the table.
 
 ### set_preferred_zones
+When deploying YugabyteDB in multiregion scenarios, having all tablet leaders reside in 1 region will 
+reduce the number of network hops that the db must do to write transactions and thus increase performance and lowering latency.
+That can be done using the `set_preferred_zones` command.
 
 #### Syntax
 
