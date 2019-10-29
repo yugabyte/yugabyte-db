@@ -3732,32 +3732,50 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 		return 0;
 	}
 
-	/* Forget about the parent of another subquery */
-	if (root != current_hint_state->current_root)
-		current_hint_state->parent_relid = 0;
-
-	/* Find the parent for this relation other than the registered parent */
-	foreach (l, root->append_rel_list)
+	/*
+	 * Forget about the parent of another subquery, but don't forget if the
+	 * inhTargetkind of the root is not INHKIND_NONE, which signals the root
+	 * contains only appendrel members. See inheritance_planner for details.
+	 *
+	 * (PG12.0) 428b260f87 added one more planning cycle for updates on
+	 * partitioned tables and hints set up in the cycle are overriden by the
+	 * second cycle. Since I didn't find no apparent distinction between the
+	 * PlannerRoot of the cycle and that of ordinary CMD_SELECT, pg_hint_plan
+	 * accepts both cycles and the later one wins. In the second cycle root
+	 * doesn't have inheritance information at all so use the parent_relid set
+	 * in the first cycle.
+	 */
+	if (root->inhTargetKind == INHKIND_NONE)
 	{
-		AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(l);
+		if (root != current_hint_state->current_root)
+			current_hint_state->parent_relid = 0;
 
-		if (appinfo->child_relid == rel->relid)
+		/* Find the parent for this relation other than the registered parent */
+		foreach (l, root->append_rel_list)
 		{
-			if (current_hint_state->parent_relid != appinfo->parent_relid)
-			{
-				new_parent_relid = appinfo->parent_relid;
-				current_hint_state->current_root = root;
-			}
-			break;
-		}
-	}
+			AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(l);
 
-	if (!l)
-	{
-		/* This relation doesn't have a parent. Cancel current_hint_state. */
-		current_hint_state->parent_relid = 0;
-		current_hint_state->parent_scan_hint = NULL;
-		current_hint_state->parent_parallel_hint = NULL;
+			if (appinfo->child_relid == rel->relid)
+			{
+				if (current_hint_state->parent_relid != appinfo->parent_relid)
+				{
+					new_parent_relid = appinfo->parent_relid;
+					current_hint_state->current_root = root;
+				}
+				break;
+			}
+		}
+
+		if (!l)
+		{
+			/*
+			 * This relation doesn't have a parent. Cancel
+			 * current_hint_state.
+			 */
+			current_hint_state->parent_relid = 0;
+			current_hint_state->parent_scan_hint = NULL;
+			current_hint_state->parent_parallel_hint = NULL;
+		}
 	}
 
 	if (new_parent_relid > 0)
