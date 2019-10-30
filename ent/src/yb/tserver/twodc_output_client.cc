@@ -30,24 +30,25 @@
 DEFINE_test_flag(bool, twodc_write_hybrid_time_override, false,
   "Override external_hybrid_time with initialHybridTimeValue for testing.");
 
-DECLARE_int32(cdc_rpc_timeout_ms);
+DECLARE_int32(cdc_write_rpc_timeout_ms);
 
 namespace yb {
 namespace tserver {
 namespace enterprise {
 
 using rpc::Rpc;
+using yb::cdc::WriteCDCRecord;
 
 class TwoDCOutputClient : public cdc::CDCOutputClient {
  public:
   TwoDCOutputClient(
       CDCConsumer* cdc_consumer,
       const cdc::ConsumerTabletInfo& consumer_tablet_info,
-      const std::shared_ptr<client::YBClient>& client,
+      const std::shared_ptr<client::YBClient>& local_client,
       std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk) :
       cdc_consumer_(cdc_consumer),
       consumer_tablet_info_(consumer_tablet_info),
-      client_(client),
+      local_client_(local_client),
       apply_changes_clbk_(std::move(apply_changes_clbk)) {}
 
   ~TwoDCOutputClient() = default;
@@ -72,7 +73,7 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
 
   CDCConsumer* cdc_consumer_;
   cdc::ConsumerTabletInfo consumer_tablet_info_;
-  std::shared_ptr<client::YBClient> client_;
+  std::shared_ptr<client::YBClient> local_client_;
   std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk_;
 
   std::shared_ptr<client::YBTable> table_;
@@ -124,7 +125,7 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
 
   // Ensure we have a connection to the consumer table cached.
   if (!table_) {
-    Status s = client_->OpenTable(consumer_tablet_info_.table_id, &table_);
+    Status s = local_client_->OpenTable(consumer_tablet_info_.table_id, &table_);
     if (!s.ok()) {
       cdc::OutputClientResponse response;
       response.status = s;
@@ -148,11 +149,11 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
   for (int i = 0; i < resp_.records_size(); i++) {
     // All KV-pairs within a single CDC record will be for the same row.
     // key(0).key() will contain the hash code for that row. We use this to lookup the tablet.
-    client_->LookupTabletByKey(
+    local_client_->LookupTabletByKey(
         table_.get(),
         PartitionSchema::EncodeMultiColumnHashValue(
             boost::lexical_cast<uint16_t>(resp_.records(i).key(0).key())),
-        CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_cdc_rpc_timeout_ms),
+        CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms),
         std::bind(&TwoDCOutputClient::TabletLookupCallback, this, i, std::placeholders::_1));
   }
 
@@ -222,16 +223,18 @@ void TwoDCOutputClient::SendCDCWriteToTablet(const size_t record_idx) {
     write_pair->set_value(kv_pair.value().binary_value());
   }
 
-  auto deadline = CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_rpc_timeout_ms);
+  auto deadline = CoarseMonoClock::Now() +
+                  MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms);
   auto write_rpc_handle = cdc_consumer_->rpcs()->Prepare();
   if (write_rpc_handle != cdc_consumer_->rpcs()->InvalidHandle()) {
     *write_rpc_handle = WriteCDCRecord(
         deadline,
         tablet,
-        client_.get(),
+        local_client_.get(),
         &req,
         std::bind(&TwoDCOutputClient::WriteCDCRecordDone, this,
                   std::placeholders::_1, std::placeholders::_2, record_idx, write_rpc_handle));
+    (**write_rpc_handle).SendRpc();
   } else {
     LOG(WARNING) << "Invalid handle for CDC write: " << resp_.records(record_idx).DebugString();
   }
@@ -297,10 +300,10 @@ bool TwoDCOutputClient::IncProcessedRecordCount() {
 std::unique_ptr<cdc::CDCOutputClient> CreateTwoDCOutputClient(
     CDCConsumer* cdc_consumer,
     const cdc::ConsumerTabletInfo& consumer_tablet_info,
-    const std::shared_ptr<client::YBClient>& client,
+    const std::shared_ptr<client::YBClient>& local_client,
     std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk) {
   return std::make_unique<TwoDCOutputClient>(
-      cdc_consumer, consumer_tablet_info, client, std::move(apply_changes_clbk));
+      cdc_consumer, consumer_tablet_info, local_client, std::move(apply_changes_clbk));
 }
 
 } // namespace enterprise

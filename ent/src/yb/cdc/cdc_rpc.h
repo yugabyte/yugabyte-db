@@ -53,7 +53,7 @@ MUST_USE_RESULT rpc::RpcCommandPtr WriteCDCRecord(
     WriteCDCRecordCallback callback);
 
 
-typedef std::function<void(const Status&, const GetChangesResponsePB&)> GetChangesCDCRpcCallback;
+typedef std::function<void(Status, GetChangesResponsePB&&)> GetChangesCDCRpcCallback;
 
 MUST_USE_RESULT rpc::RpcCommandPtr GetChangesCDCRpc(
     CoarseTimePoint deadline,

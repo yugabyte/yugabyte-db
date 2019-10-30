@@ -27,17 +27,20 @@ struct ConsumerTabletInfo {
 };
 
 struct ProducerTabletInfo {
-  // TODO(Rahul): Add universe_uuid when we support 3DC.
+  std::string universe_uuid;
   std::string stream_id;
   std::string tablet_id;
 
   bool operator==(const ProducerTabletInfo& other) const {
-    return stream_id == other.stream_id && tablet_id == other.tablet_id;
+    return universe_uuid == other.universe_uuid &&
+           stream_id == other.stream_id &&
+           tablet_id == other.tablet_id;
   }
 
   struct Hash {
     std::size_t operator()(const ProducerTabletInfo& p) const noexcept {
       std::size_t hash = 0;
+      boost::hash_combine(hash, p.universe_uuid);
       boost::hash_combine(hash, p.stream_id);
       boost::hash_combine(hash, p.tablet_id);
 

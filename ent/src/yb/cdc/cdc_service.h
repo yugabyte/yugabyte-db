@@ -115,13 +115,9 @@ class CDCServiceImpl : public CDCServiceIf {
 
   void TabletLeaderGetChanges(const GetChangesRequestPB* req,
                               GetChangesResponsePB* resp,
-                              const std::shared_ptr<rpc::RpcContext>& context,
-                              const std::shared_ptr<tablet::TabletPeer>& peer);
-  void TabletLeaderGetChangesFinished(const Status& new_status,
-                              const cdc::GetChangesResponsePB& new_resp,
-                              GetChangesResponsePB* orig_resp,
-                              std::shared_ptr<rpc::RpcContext> orig_context,
-                              rpc::Rpcs::Handle handle);
+                              std::shared_ptr<rpc::RpcContext> context,
+                              std::shared_ptr<tablet::TabletPeer> peer);
+
   void TabletLeaderGetCheckpoint(const GetCheckpointRequestPB* req,
                                  GetCheckpointResponsePB* resp,
                                  rpc::RpcContext* context,

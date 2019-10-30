@@ -33,7 +33,6 @@ class Rpcs;
 
 namespace cdc {
 
-class CDCConsumerProxyManager;
 class ConsumerRegistryPB;
 
 } // namespace cdc
@@ -60,7 +59,7 @@ class CDCConsumer {
   CDCConsumer(std::function<bool(const std::string&)> is_leader_for_tablet,
       rpc::ProxyCache* proxy_cache,
       const std::string& ts_uuid,
-      std::unique_ptr<client::YBClient> client);
+      std::unique_ptr<client::YBClient> local_client);
 
   ~CDCConsumer();
   void Shutdown();
@@ -94,22 +93,21 @@ class CDCConsumer {
   // polled for.
   void TriggerPollForNewTablets();
 
-  bool ShouldContinuePolling(const cdc::ProducerTabletInfo& producer_tablet_info);
+  bool ShouldContinuePolling(const cdc::ProducerTabletInfo producer_tablet_info);
 
-  void RemoveFromPollersMap(const cdc::ProducerTabletInfo& producer_tablet_info);
-
-  // Mutex for producer_consumer_tablet_map_from_master_.
-  rw_spinlock master_data_mutex_;
-
-  // Mutex for producer_pollers_map_.
-  rw_spinlock producer_pollers_map_mutex_;
+  void RemoveFromPollersMap(const cdc::ProducerTabletInfo producer_tablet_info);
 
   // Mutex and cond for should_run_ state.
   std::mutex should_run_mutex_;
   std::condition_variable cond_;
 
+  // Mutex for producer_consumer_tablet_map_from_master_.
+  rw_spinlock master_data_mutex_ ACQUIRED_AFTER(should_run_mutex_);
+
+  // Mutex for producer_pollers_map_.
+  rw_spinlock producer_pollers_map_mutex_ ACQUIRED_AFTER(should_run_mutex_, master_data_mutex_);
+
   std::function<bool(const std::string&)> is_leader_for_tablet_;
-  std::unique_ptr<cdc::CDCConsumerProxyManager> proxy_manager_;
 
   std::unordered_map<cdc::ProducerTabletInfo, cdc::ConsumerTabletInfo,
                      cdc::ProducerTabletInfo::Hash> producer_consumer_tablet_map_from_master_;
@@ -122,7 +120,13 @@ class CDCConsumer {
   std::unique_ptr<ThreadPool> thread_pool_;
 
   std::string log_prefix_;
-  std::shared_ptr<client::YBClient> client_;
+  std::shared_ptr<client::YBClient> local_client_;
+
+  // map: {universe_uuid : ...}.
+  std::unordered_map<std::string, std::shared_ptr<client::YBClient>> remote_clients_
+    GUARDED_BY(producer_pollers_map_mutex_);
+  std::unordered_map<std::string, std::string> uuid_master_addrs_
+    GUARDED_BY(master_data_mutex_);
 
   bool should_run_ = true;
 

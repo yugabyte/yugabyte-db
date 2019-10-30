@@ -1514,7 +1514,7 @@ Status YBClient::Data::ReinitializeMasterAddresses() {
     master_server_addrs_.push_back(master_addrs);
     LOG(INFO) << "Got master addresses = " << master_addrs
               << " from REST endpoint: " << master_server_endpoint_;
-  } else if (!FLAGS_flagfile.empty()) {
+  } else if (!FLAGS_flagfile.empty() && !skip_master_flagfile_) {
     LOG(INFO) << "Reinitialize master addresses from file: " << FLAGS_flagfile;
     string master_addrs = VERIFY_RESULT(ReadMasterAddressesFromFlagFile(FLAGS_flagfile));
 

@@ -41,7 +41,7 @@ struct CDCConsumerStreamInfo {
   std::string producer_table_id;
 };
 
-Status RegisterTableSubscriber(
+Status CreateTabletMapping(
     const std::string& producer_table_id,
     const std::string& consumer_table_id,
     const std::string& producer_master_addrs,

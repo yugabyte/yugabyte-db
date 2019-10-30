@@ -1973,7 +1973,7 @@ Status CatalogManager::InitCDCConsumer(
     RETURN_NOT_OK(GetTableLocations(&consumer_table_req, &consumer_table_resp));
     cdc::StreamEntryPB stream_entry;
     // Get producer tablets and map them to the consumer tablets
-    RETURN_NOT_OK(RegisterTableSubscriber(
+    RETURN_NOT_OK(CreateTabletMapping(
         stream_info.producer_table_id, stream_info.consumer_table_id, master_addrs,
         consumer_table_resp, &tserver_addrs, &stream_entry));
     (*producer_entry.mutable_stream_map())[stream_info.stream_id] = std::move(stream_entry);
