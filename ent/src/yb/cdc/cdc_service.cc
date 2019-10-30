@@ -42,9 +42,13 @@
 #include "yb/util/flag_tags.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
-DEFINE_int32(cdc_rpc_timeout_ms, 30 * 1000,
-             "Timeout used for CDC->{master,tserver} async rpc calls.");
-TAG_FLAG(cdc_rpc_timeout_ms, advanced);
+DEFINE_int32(cdc_read_rpc_timeout_ms, 30 * 1000,
+             "Timeout used for CDC read rpc calls.  Reads normally occur cross-cluster.");
+TAG_FLAG(cdc_read_rpc_timeout_ms, advanced);
+
+DEFINE_int32(cdc_write_rpc_timeout_ms, 30 * 1000,
+             "Timeout used for CDC write rpc calls.  Writes normally occur intra-cluster.");
+TAG_FLAG(cdc_write_rpc_timeout_ms, advanced);
 
 DEFINE_int32(cdc_ybclient_reactor_threads, 50,
              "The number of reactor threads to be used for processing ybclient "
@@ -78,7 +82,7 @@ CDCServiceImpl::CDCServiceImpl(TSTabletManager* tablet_manager,
       tablet_manager_(tablet_manager) {
   const auto server = tablet_manager->server();
   async_client_init_.emplace(
-      "cdc_client", FLAGS_cdc_ybclient_reactor_threads, FLAGS_cdc_rpc_timeout_ms / 1000,
+      "cdc_client", FLAGS_cdc_ybclient_reactor_threads, FLAGS_cdc_read_rpc_timeout_ms / 1000,
       server->permanent_uuid(), &server->options(), server->metric_entity(), server->mem_tracker(),
       server->messenger());
   async_client_init_->Start();
@@ -275,14 +279,29 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
   s = tablet_manager_->GetTabletPeer(req->tablet_id(), &tablet_peer);
 
-  if (s.IsNotFound() || !IsTabletPeerLeader(tablet_peer)) {
-    // Forward GetChanges() to tablet leader. This happens often in Kubernetes setups.
-    auto context_ptr = std::make_shared<RpcContext>(std::move(context));
-    TabletLeaderGetChanges(req, resp, context_ptr, tablet_peer);
+  // If we we can't serve this tablet...
+  if (s.IsNotFound() || tablet_peer->LeaderStatus() != consensus::LeaderStatus::LEADER_AND_READY) {
+    if (req->serve_as_proxy()) {
+      // Forward GetChanges() to tablet leader. This commonly happens in Kubernetes setups.
+      auto context_ptr = std::make_shared<RpcContext>(std::move(context));
+      TabletLeaderGetChanges(req, resp, context_ptr, tablet_peer);
+    // Otherwise, figure out the proper return code.
+    } else if (s.IsNotFound()) {
+      SetupErrorAndRespond(resp->mutable_error(), s, CDCErrorPB::TABLET_NOT_FOUND, &context);
+    } else if (tablet_peer->LeaderStatus() == consensus::LeaderStatus::NOT_LEADER) {
+      // TODO: we may be able to get some changes, even if we're not the leader.
+      SetupErrorAndRespond(resp->mutable_error(),
+          STATUS(NotFound, Format("Not leader for $0", req->tablet_id())),
+          CDCErrorPB::TABLET_NOT_FOUND, &context);
+    } else {
+      SetupErrorAndRespond(resp->mutable_error(),
+          STATUS(LeaderNotReadyToServe, "Not ready to serve"),
+          CDCErrorPB::LEADER_NOT_READY, &context);
+    }
     return;
   }
 
-  ProducerTabletInfo producer_tablet = {req->stream_id(), req->tablet_id()};
+  ProducerTabletInfo producer_tablet = {"" /* UUID */, req->stream_id(), req->tablet_id()};
   auto session = async_client_init_->client()->NewSession();
   OpIdPB op_id;
 
@@ -330,7 +349,7 @@ Result<RemoteTabletServer *> CDCServiceImpl::GetLeaderTServer(const TabletId& ta
   auto start = CoarseMonoClock::Now();
   async_client_init_->client()->LookupTabletById(
       tablet_id,
-      CoarseMonoClock::Now() + FLAGS_cdc_rpc_timeout_ms * 1ms,
+      CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
       callback, client::UseCache::kTrue);
   future.wait();
 
@@ -373,46 +392,36 @@ std::shared_ptr<CDCServiceProxy> CDCServiceImpl::GetCDCServiceProxy(RemoteTablet
 
 void CDCServiceImpl::TabletLeaderGetChanges(const GetChangesRequestPB* req,
                                             GetChangesResponsePB* resp,
-                                            const std::shared_ptr<RpcContext>& context,
-                                            const std::shared_ptr<tablet::TabletPeer>& peer) {
-  auto result = GetLeaderTServer(req->tablet_id());
-  RPC_CHECK_AND_RETURN_ERROR(result.ok(), result.status(), resp->mutable_error(),
-                             CDCErrorPB::TABLET_NOT_FOUND, *context.get());
-
-  auto ts_leader = *result;
-  // Check that tablet leader identified by master is not current tablet peer.
-  // This can happen during tablet rebalance if master and tserver have different views of
-  // leader. We need to avoid self-looping in this case.
-  if (peer) {
-    RPC_CHECK_NE_AND_RETURN_ERROR(ts_leader->permanent_uuid(), peer->permanent_uuid(),
-                                  STATUS(IllegalState,
-                                         Format("Tablet leader changed: leader=$0, peer=$1",
-                                                ts_leader->permanent_uuid(),
-                                                peer->permanent_uuid())),
-                                  resp->mutable_error(), CDCErrorPB::NOT_LEADER, *context.get());
-  }
-
+                                            std::shared_ptr<RpcContext> context,
+                                            std::shared_ptr<tablet::TabletPeer> peer) {
   auto rpc_handle = rpcs_.Prepare();
   RPC_CHECK_AND_RETURN_ERROR(rpc_handle != rpcs_.InvalidHandle(),
-      STATUS(Busy,
-          Format("Could not create valid handle for GetChangesCDCRpc: leader=$0, peer=$1",
-                 ts_leader->permanent_uuid(),
+      STATUS(Aborted,
+          Format("Could not create valid handle for GetChangesCDCRpc: tablet=$0, peer=$1",
+                 req->tablet_id(),
                  peer->permanent_uuid())),
       resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, *context.get());
+
   GetChangesRequestPB new_req;
   new_req.CopyFrom(*req);
+  new_req.set_serve_as_proxy(false);
+  CoarseTimePoint deadline = context->GetClientDeadline();
+  if (deadline == CoarseTimePoint::max()) { // Not specified by user.
+    deadline = CoarseMonoClock::now() + async_client_init_->client()->default_rpc_timeout();
+  }
   *rpc_handle = GetChangesCDCRpc(
       context->GetClientDeadline(),
       nullptr, /* RemoteTablet: will get this from 'new_req' */
       async_client_init_->client(),
       &new_req,
-      [=] (const Status& status, const GetChangesResponsePB& new_resp) {
+      [=] (Status status, GetChangesResponsePB&& new_resp) {
         auto retained = rpcs_.Unregister(rpc_handle);
-        resp->CopyFrom(new_resp);
-        RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
+        *resp = std::move(new_resp);
+        RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), resp->error().code(),
                                 *context.get());
         context->RespondSuccess();
       });
+  (**rpc_handle).SendRpc();
 }
 
 void CDCServiceImpl::TabletLeaderGetCheckpoint(const GetCheckpointRequestPB* req,
@@ -438,7 +447,7 @@ void CDCServiceImpl::TabletLeaderGetCheckpoint(const GetCheckpointRequestPB* req
 
   auto cdc_proxy = GetCDCServiceProxy(ts_leader);
   rpc::RpcController rpc;
-  rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_rpc_timeout_ms));
+  rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms));
   // TODO(NIC): Change to GetCheckpointAsync like CDCPoller::DoPoll.
   cdc_proxy->GetCheckpoint(*req, resp, &rpc);
   RPC_STATUS_RETURN_ERROR(rpc.status(), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
@@ -478,7 +487,7 @@ void CDCServiceImpl::GetCheckpoint(const GetCheckpointRequestPB* req,
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
   auto session = async_client_init_->client()->NewSession();
-  ProducerTabletInfo producer_tablet = {req->stream_id(), req->tablet_id()};
+  ProducerTabletInfo producer_tablet = {"" /* UUID */, req->stream_id(), req->tablet_id()};
 
   auto result = GetLastCheckpoint(producer_tablet, session);
   RPC_CHECK_AND_RETURN_ERROR(result.ok(), result.status(), resp->mutable_error(),
@@ -509,6 +518,7 @@ Result<OpIdPB> CDCServiceImpl::GetLastCheckpoint(
 
   const auto op = table.NewReadOp();
   auto* const req = op->mutable_request();
+  DCHECK(!producer_tablet.stream_id.empty() && !producer_tablet.tablet_id.empty());
   QLAddStringHashValue(req, producer_tablet.stream_id);
   QLAddStringHashValue(req, producer_tablet.tablet_id);
   table.AddColumns({master::kCdcCheckpoint}, req);
@@ -570,6 +580,7 @@ Status CDCServiceImpl::UpdateCheckpoint(const ProducerTabletInfo& producer_table
     RETURN_NOT_OK(table.Open(kCdcStateTableName, async_client_init_->client()));
     const auto op = table.NewUpdateOp();
     auto* const req = op->mutable_request();
+    DCHECK(!producer_tablet.stream_id.empty() && !producer_tablet.tablet_id.empty());
     QLAddStringHashValue(req, producer_tablet.stream_id);
     QLAddStringHashValue(req, producer_tablet.tablet_id);
     table.AddStringColumnValue(req, master::kCdcCheckpoint,
@@ -592,7 +603,8 @@ OpIdPB CDCServiceImpl::GetMinSentCheckpointForTablet(const std::string& tablet_i
   }
 
   for (StreamTabletBiMap::right_const_iterator right = it.first; right != it.second; ++right) {
-    auto checkpoint = tablet_checkpoints_.find({right->second, tablet_id});
+    ProducerTabletInfo producer_tablet{"" /*UUID*/, right->second, tablet_id};
+    auto checkpoint = tablet_checkpoints_.find(producer_tablet);
     if (checkpoint == tablet_checkpoints_.end()) {
       LOG(WARNING) << "Sent Checkpoint not found for tablet_id " << tablet_id
                    << ", stream id " << right->second;

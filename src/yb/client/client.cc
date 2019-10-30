@@ -270,6 +270,11 @@ YBClientBuilder& YBClientBuilder::add_master_server_endpoint(const string& endpo
   return *this;
 }
 
+YBClientBuilder& YBClientBuilder::skip_master_flagfile(bool should_skip) {
+  data_->skip_master_flagfile_ = should_skip;
+  return *this;
+}
+
 YBClientBuilder& YBClientBuilder::default_admin_operation_timeout(const MonoDelta& timeout) {
   data_->default_admin_operation_timeout_ = timeout;
   return *this;
@@ -342,6 +347,7 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
 
   c->data_->master_server_endpoint_ = data_->master_server_endpoint_;
   c->data_->master_server_addrs_ = data_->master_server_addrs_;
+  c->data_->skip_master_flagfile_ = data_->skip_master_flagfile_;
   c->data_->default_admin_operation_timeout_ = data_->default_admin_operation_timeout_;
   c->data_->default_rpc_timeout_ = data_->default_rpc_timeout_;
 
