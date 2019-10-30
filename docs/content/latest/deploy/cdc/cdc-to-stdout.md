@@ -38,7 +38,7 @@ CREATE TABLE users (name text, pass text, id int, PRIMARY KEY (id));
 Download the Kafka Connect YugabyteDB Source Connector JAR file (`yb-cdc-connector.jar`).
 
 ```sh
-$ wget https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar
+$ wget -O yb-cdc-connector.jar https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar?raw=true
 
 ```
 
@@ -53,7 +53,7 @@ The Kafka Connect YugabyteDB Source Connector also supports change data capture 
 Run the command below to to start logging an output stream of data changes from the YugabyteDB `cdc` table to `stdout`.
 
 ```sh
-java -jar yb_cdc_connector.jar
+java -jar yb-cdc-connector.jar
 --table_name yugabyte.users
 --log_only
 ```
