@@ -1357,6 +1357,8 @@ void DBTestUniversalCompaction::GenerateFilesAndCheckCompactionResult(
     int num_output_files) {
   DestroyAndReopen(options);
 
+  ASSERT_OK(dbfull()->SetOptions({{"disable_auto_compactions", "true"}}));
+
   LOG(INFO) << "Generating files with keys counts: " << yb::ToString(keys_per_file);
 
   Random rnd(301);
@@ -1371,6 +1373,8 @@ void DBTestUniversalCompaction::GenerateFilesAndCheckCompactionResult(
     dbfull()->TEST_WaitForFlushMemTable();
     ASSERT_EQ(NumSortedRuns(0), num + 1);
   }
+
+  ASSERT_OK(dbfull()->EnableAutoCompaction({dbfull()->DefaultColumnFamily()}));
 
   dbfull()->TEST_WaitForCompact();
 
@@ -1462,6 +1466,12 @@ TEST_F(DBTestUniversalCompaction, IncludeFilesSmallerThanThreshold) {
   // Should be compacted into 2 files since {80, 40} matches matches size_ratio and {25, 10} are
   // smaller than threshold while 200 > 1.2*(10+25+40+80)=186 and shouldn't be compacted.
   GenerateFilesAndCheckCompactionResult(options, {200, 80, 40, 25, 10}, value_size, 2);
+
+  // Should be compacted into 1 file since all files are smaller than threshold.
+  const std::vector<size_t> file_sizes = {350, 150, 60, 25, 10, 4, 2, 1};
+  options.compaction_options_universal.always_include_size_threshold =
+      *std::max_element(file_sizes.begin(), file_sizes.end()) * value_size * 1.2;
+  GenerateFilesAndCheckCompactionResult(options, file_sizes, value_size, 1);
 }
 
 }  // namespace rocksdb
