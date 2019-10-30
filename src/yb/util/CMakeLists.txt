@@ -30,8 +30,6 @@
 # under the License.
 #
 
-YB_INCLUDE_EXTENSIONS()
-
 #######################################
 # protoc-gen-insertions
 #######################################
@@ -147,6 +145,7 @@ set(UTIL_SRCS
   bytes_formatter.cc
   cache_metrics.cc
   capabilities.cc
+  ctr_cipher_stream.cc
   coding.cc
   concurrent_value.cc
   condition_variable.cc
@@ -162,6 +161,9 @@ set(UTIL_SRCS
   debug/trace_event_impl_constants.cc
   debug/trace_event_synthetic_delay.cc
   decimal.cc
+  encrypted_file.cc
+  encrypted_file_factory.cc
+  encryption_util.cc
   env.cc env_posix.cc env_util.cc
   errno.cc
   ev_util.cc
@@ -201,6 +203,7 @@ set(UTIL_SRCS
   net/rate_limiter.cc
   net/socket.cc
   net/tunnel.cc
+  ntp_clock.cc
   oid_generator.cc
   once.cc
   opid.cc
@@ -242,6 +245,7 @@ set(UTIL_SRCS
   timestamp.cc
   trace.cc
   trilean.cc
+  universe_key_manager.cc
   url-coding.cc
   user.cc
   uuid.cc
@@ -293,6 +297,7 @@ list(APPEND UTIL_LIBS curl dl)
 ADD_YB_LIBRARY(yb_util
   SRCS ${UTIL_SRCS}
   DEPS ${UTIL_LIBS})
+
 cotire(yb_util)
 
 add_dependencies(yb_util gen_version_info)
@@ -308,6 +313,9 @@ target_link_libraries(yb_test_util
   glog
   gmock
   yb_util)
+
+add_library(encryption_test_util encryption_test_util.cc header_manager_mock_impl.cc)
+target_link_libraries(encryption_test_util yb_test_util)
 
 #######################################
 # yb_test_main
@@ -331,7 +339,7 @@ endif()
 # Unit tests
 #######################################
 
-set(YB_TEST_LINK_LIBS yb_test_util gutil gmock ${YB_TEST_LINK_LIBS_EXTENSIONS}  ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_test_util gutil gmock ${YB_TEST_LINK_LIBS_EXTENSIONS} ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(atomic-test)
 ADD_YB_TEST(bit-util-test)
 ADD_YB_TEST(bitmap-test)
@@ -473,10 +481,5 @@ if(NOT "${NO_TESTS}")
     proto_container_test_proto)
 endif()
 
-#######################################
-# enterprise tests
-#######################################
-
-foreach(test ${UTIL_TESTS_EXTENSIONS})
-  ADD_YB_TEST(${test})
-endforeach()
+ADD_YB_TEST(encrypted_env-test)
+target_link_libraries(encrypted_env-test encryption_test_util)

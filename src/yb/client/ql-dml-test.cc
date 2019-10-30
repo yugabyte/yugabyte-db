@@ -18,11 +18,14 @@
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_handle.h"
 
+#include "yb/common/ql_value.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"

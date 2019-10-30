@@ -11,7 +11,7 @@ menu:
 
 ## Overview
 
-This is an end-to-end functional application. It is a blueprint for an IoT application built on top of Yugabyte DB (Cassandra API) as the database, Kafka as the message broker, Spark for realtime analytics and Spring Boot as the application framework. The stack used for this application is very similar to the SMACK stack (Spark, Mesos, Akka, Yugabyte Cassandra, Kafka), which is a popular stack for developing IoT applications.
+This is an end-to-end functional application. It is a blueprint for an IoT application built on top of YugabyteDB (Cassandra API) as the database, Kafka as the message broker, Spark for realtime analytics and Spring Boot as the application framework. The stack used for this application is very similar to the SMACK stack (Spark, Mesos, Akka, Yugabyte Cassandra, Kafka), which is a popular stack for developing IoT applications.
 
 
 ## Scenario
@@ -41,7 +41,7 @@ We will look at each of these components in detail. Below is an architecture dia
 
 
 ## Data Store
-Stores all the user-facing data. Yugabyte DB is used here, with CQL as the programming language.
+Stores all the user-facing data. YugabyteDB is used here, with CQL as the programming language.
 
 All the data is stored in the keyspace `TrafficKeySpace`:
 ```
@@ -98,9 +98,9 @@ A single data point is a JSON payload and looks as follows:
 
 ## Data Processor
 
-This is a Spark streaming application that consumes the data stream from the Kafka topic, converts them into meaningful insights and writes the resultant data back to Yugabyte DB.
+This is a Spark streaming application that consumes the data stream from the Kafka topic, converts them into meaningful insights and writes the resultant data back to YugabyteDB.
 
-Spark communicates with Yugabyte DB using the Cassandra connector. This is done as follows:
+Spark communicates with YugabyteDB using the Cassandra connector. This is done as follows:
 ```
 SparkConf conf =
   new SparkConf().setAppName(prop.getProperty("com.iot.app.spark.app.name"))

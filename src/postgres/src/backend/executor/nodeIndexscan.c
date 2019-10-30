@@ -133,6 +133,14 @@ IndexNext(IndexScanState *node)
 	 */
 	if (IsYugaByteEnabled()) {
 		scandesc->yb_exec_params = &estate->yb_exec_params;
+		// Add row marks.
+		scandesc->yb_exec_params->rowmark = -1;
+		ListCell   *l;
+		foreach(l, estate->es_rowMarks) {
+			ExecRowMark *erm = (ExecRowMark *) lfirst(l);
+			scandesc->yb_exec_params->rowmark = erm->markType;
+			break;
+		}
 	}
 
 	/*

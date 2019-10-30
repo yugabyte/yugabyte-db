@@ -40,12 +40,18 @@ class UniverseForm extends Component {
     this.editReadReplica = this.editReadReplica.bind(this);
     this.addReadReplica = this.addReadReplica.bind(this);
     this.updateFormField = this.updateFormField.bind(this);
+    this.toggleDisableSubmit = this.toggleDisableSubmit.bind(this);
     this.getCurrentProvider = this.getCurrentProvider.bind(this);
     this.state = {
       ...initialState,
       hasFieldChanged: true,
+      disableSubmit: false,
       currentView: props.type === "Async" ? 'Async' : 'Primary'
     };
+  }
+
+  toggleDisableSubmit = (value) => {
+    this.setState({ disableSubmit: value });
   }
 
   handleHasFieldChanged = (hasFieldChanged) => {
@@ -69,7 +75,7 @@ class UniverseForm extends Component {
   }
 
   transitionToDefaultRoute = () => {
-    const {universe: {currentUniverse: {data: {universeUUID}}}} = this.props;
+    const { universe: { currentUniverse: { data: { universeUUID }}}} = this.props;
     if (this.props.type === "Create") {
       if (this.context.prevPath) {
         browserHistory.push(this.context.prevPath);
@@ -95,7 +101,7 @@ class UniverseForm extends Component {
       this.createUniverse();
       this.transitionToDefaultRoute();
     } else if (type === "Async") {
-      const {universe: {currentUniverse: {data: {universeDetails}}}} = this.props;
+      const { universe: { currentUniverse: { data: { universeDetails }}}} = this.props;
       const readOnlyCluster = universeDetails && getReadOnlyCluster(universeDetails.clusters);
       if (isNonEmptyObject(readOnlyCluster)) {
         this.editReadReplica();
@@ -142,13 +148,13 @@ class UniverseForm extends Component {
   // For Async clusters, we need to fetch the universe name from the
   // primary cluster metadata
   getUniverseName = () => {
-    const {formValues, universe} = this.props;
+    const { formValues, universe } = this.props;
 
     if (isNonEmptyObject(formValues['primary'])) {
       return formValues['primary'].universeName;
     }
 
-    const {currentUniverse: {data: {universeDetails}}} = universe;
+    const { currentUniverse: { data: { universeDetails }}} = universe;
     if (isNonEmptyObject(universeDetails)) {
       const primaryCluster = getPrimaryCluster(universeDetails.clusters);
       return primaryCluster.userIntent.universeName;
@@ -158,13 +164,13 @@ class UniverseForm extends Component {
   }
 
   getYSQLstate = () => {
-    const {formValues, universe} = this.props;
+    const { formValues, universe } = this.props;
 
     if (isNonEmptyObject(formValues['primary'])) {
       return formValues['primary'].enableYSQL;
     }
 
-    const {currentUniverse: {data: {universeDetails}}} = universe;
+    const { currentUniverse: { data: { universeDetails }}} = universe;
     if (isNonEmptyObject(universeDetails)) {
       const primaryCluster = getPrimaryCluster(universeDetails.clusters);
       return primaryCluster.userIntent.enableYSQL;
@@ -285,6 +291,13 @@ class UniverseForm extends Component {
         }
       ];
     }
+
+    submitPayload.encryptionAtRestConfig = {
+      "kms_provider": formValues['primary'].selectEncryptionAtRestConfig,
+      "algorithm": "AES",
+      "key_size": "256",
+      "cmk_policy": formValues['primary'].cmkPolicyContent
+    };
     submitPayload.clusters = submitPayload.clusters.filter((c)=>(c.userIntent !== null));
     // filter clusters array if configuring(adding only) Read Replica due to server side validation
     if (type === "Async") {
@@ -317,6 +330,7 @@ class UniverseForm extends Component {
       showFullMoveModal,
       modal: { showModal, visibleModal }
     } = this.props;
+    const { disableSubmit, hasFieldChanged } = this.state;
     const createUniverseTitle =
       (<h2 className="content-title">
         <FlexContainer>
@@ -403,8 +417,10 @@ class UniverseForm extends Component {
       fetchUniverseResources,
       accessKeys: this.props.accessKeys, updateFormField: this.updateFormField,
       setPlacementStatus: this.props.setPlacementStatus,
+      getKMSConfigs: this.props.getKMSConfigs,
       fetchUniverseTasks: this.props.fetchUniverseTasks,
       handleHasFieldChanged: this.handleHasFieldChanged,
+      toggleDisableSubmit: this.toggleDisableSubmit,
       reset: this.props.reset, fetchUniverseMetadata: this.props.fetchUniverseMetadata,
       fetchCustomerTasks: this.props.fetchCustomerTasks,
       getExistingUniverseConfiguration: this.props.getExistingUniverseConfiguration,
@@ -420,15 +436,25 @@ class UniverseForm extends Component {
 
     // check nodes if all live nodes is going to be removed (full move)
     const existingPrimaryNodes = getPromiseState(universeConfigTemplate).isSuccess() ? universeConfigTemplate.data.nodeDetailsSet.filter(node => node.nodeName && (type === "Async" ? node.nodeName.includes("readonly") : !node.nodeName.includes("readonly"))) : [];
+    const formChangedOrInvalid = hasFieldChanged || disableSubmit;
     const submitControl = (existingPrimaryNodes.length && existingPrimaryNodes.filter(node => node.state !== "ToBeRemoved").length) || type === "Create"
       ?
         // not a full move
-        <YBButton btnClass="btn btn-orange universe-form-submit-btn" btnText={submitTextLabel} btnType={"submit"} disabled={this.state.hasFieldChanged} />
+        (<YBButton
+          btnClass="btn btn-orange universe-form-submit-btn"
+          btnText={submitTextLabel}
+          btnType={"submit"}
+          disabled={formChangedOrInvalid}
+        />)
       :
         // full move
         (<Fragment>
-          <YBButton onClick={showFullMoveModal} btnClass="btn btn-orange universe-form-submit-btn" btnText={submitTextLabel} disabled={this.state.hasFieldChanged} />
-          
+          <YBButton
+            onClick={showFullMoveModal}
+            btnClass="btn btn-orange universe-form-submit-btn"
+            btnText={submitTextLabel}
+            disabled={formChangedOrInvalid}
+          />
           <YBModal visible={showModal && visibleModal === "fullMoveModal"}
                 onHide={ closeModal } submitLabel={'Proceed'} cancelLabel={'Cancel'} showCancelButton={true} title={ "Confirm Full Move Update" } onFormSubmit={ handleSubmit(this.handleSubmitButtonClick) } >
             This operation will migrate this universe and all it's data to a completely new set of nodes. Would like to proceed?
@@ -453,7 +479,7 @@ class UniverseForm extends Component {
               <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText="Cancel" onClick={this.handleCancelButtonClick}/>
               {primaryReplicaBtn}
               {asyncReplicaBtn}
-              <YBButton btnClass="btn btn-orange universe-form-submit-btn" btnText={submitTextLabel} btnType={"submit"} />
+              <YBButton btnClass="btn btn-orange universe-form-submit-btn" disabled={disableSubmit} btnText={submitTextLabel} btnType={"submit"} />
             </div>
           </div>
         </form>
@@ -469,11 +495,17 @@ UniverseForm.contextTypes = {
 class PrimaryClusterFields extends Component {
   render() {
     return (
-      <Fields names={['primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList', 'primary.replicationFactor',
-        'primary.numNodes', 'primary.instanceType', 'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.ybSoftwareVersion',
-        'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.storageType',
-        'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL', 'primary.enableNodeToNodeEncrypt',
-        'primary.enableClientToNodeEncrypt', 'primary.enableEncryptionAtRest']} component={ClusterFields} {...this.props} clusterType={"primary"} />
+      <Fields names={['primary.universeName', 'primary.provider', 'primary.providerType',
+        'primary.regionList', 'primary.replicationFactor', 'primary.numNodes',
+        'primary.instanceType', 'primary.masterGFlags', 'primary.tserverGFlags',
+        'primary.instanceTags', 'primary.ybSoftwareVersion', 'primary.diskIops',
+        'primary.numVolumes', 'primary.volumeSize', 'primary.storageType',
+        'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL',
+        'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt',
+        'primary.enableEncryptionAtRest', 'primary.selectEncryptionAtRestConfig',
+        'primary.useCmkPolicy'
+      ]}
+        component={ClusterFields} {...this.props} clusterType={"primary"} />
     );
   }
 }

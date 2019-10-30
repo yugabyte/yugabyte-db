@@ -7,7 +7,6 @@
 #ifndef YB_DOCDB_DOC_EXPR_H_
 #define YB_DOCDB_DOC_EXPR_H_
 
-#include "yb/common/ql_value.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/schema.h"
 #include "yb/docdb/key_bytes.h"
@@ -23,8 +22,8 @@ class DocExprExecutor : public QLExprExecutor {
 
   // Constructor.
   // TODO(neil) Investigate to see if constructor should take 'table_row' and bind_map.
-  DocExprExecutor() { }
-  virtual ~DocExprExecutor() { }
+  DocExprExecutor();
+  virtual ~DocExprExecutor();
 
   // Evaluate column reference.
   virtual CHECKED_STATUS EvalColumnRef(ColumnIdRep col_id,

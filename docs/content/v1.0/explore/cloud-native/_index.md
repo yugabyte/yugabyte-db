@@ -19,7 +19,7 @@ These techniques enable loosely coupled systems that are **resilient**, **manage
 > Provided By the [Cloud Native Computing Foundation](https://www.cncf.io/about/charter/)
 {{< /tip >}}
 
-Yugabyte DB was architected ground-up with **cloud native** as one of its core design principles. This section explores some of the highlighted terms in the above formal definition. 
+YugabyteDB was architected ground-up with **cloud native** as one of its core design principles. This section explores some of the highlighted terms in the above formal definition. 
 
 <br>
 

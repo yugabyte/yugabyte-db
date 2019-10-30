@@ -12,6 +12,9 @@
 //
 
 #include "yb/docdb/ql_rocksdb_storage.h"
+
+#include "yb/common/pgsql_protocol.pb.h"
+
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/doc_ql_scanspec.h"
@@ -89,6 +92,7 @@ Status QLRocksDBStorage::BuildYQLScanSpec(const QLReadRequestPB& request,
   // Construct the scan spec basing on the WHERE condition.
   spec->reset(new DocQLScanSpec(schema, hash_code, max_hash_code, hashed_components,
       request.has_where_expr() ? &request.where_expr().condition() : nullptr,
+      request.has_if_expr() ? &request.if_expr().condition() : nullptr,
       request.query_id(), request.is_forward_scan(),
       request.is_forward_scan() && include_static_columns, start_sub_doc_key.doc_key()));
   return Status::OK();

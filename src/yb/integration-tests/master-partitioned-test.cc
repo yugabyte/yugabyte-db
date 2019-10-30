@@ -34,6 +34,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
+#include "yb/util/shared_lock.h"
 
 using yb::client::YBClient;
 using yb::client::YBClientBuilder;

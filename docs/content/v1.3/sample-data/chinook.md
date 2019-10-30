@@ -11,7 +11,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The Chinook sample database for a digital media store can be used to explore and learn Yugabyte DB.
+The Chinook sample database for a digital media store can be used to explore and learn YugabyteDB.
 
 ## About the Chinook database
 
@@ -37,11 +37,11 @@ Follow the steps here to download and install the Chinook sample database.
 
 ### Before you begin
 
-To install and use the Chinook sample database, you need to have installed and configured Yugabyte DB. To get up and running quickly, see [Quick Start](/latest/quick-start/).
+To install and use the Chinook sample database, you need to have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/latest/quick-start/).
 
 ### 1. Download the SQL scripts
 
-You can download the Chinook database that is compatible with Yugabyte DB from the [`sample` directory of the Yugabyte DB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). Download the following three files.
+You can download the Chinook database that is compatible with YugabyteDB from the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). Download the following three files.
 
 - [`chinook_ddl.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/42799a519726c75f502f463795ac6cd3ebda40c2/sample/chinook_ddl.sql) — Creates the tables and constraints
 - [`chinook_genres_artists_albums.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/42799a519726c75f502f463795ac6cd3ebda40c2/sample/chinook_genres_artists_albums.sql) — Loads artist and album information
@@ -133,4 +133,4 @@ chinook=# SELECT "Name", "Composer" FROM "Track" LIMIT 10;
 
 ## Explore the Chinook sample database
 
-That’s it! Using the command line or your favorite PostgreSQL development or administration tool, you are now ready to start exploring the chinook database and Yugabyte DB features.
+That’s it! Using the command line or your favorite PostgreSQL development or administration tool, you are now ready to start exploring the chinook database and YugabyteDB features.

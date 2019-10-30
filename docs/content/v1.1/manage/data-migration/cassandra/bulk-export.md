@@ -1,10 +1,10 @@
-This page documents bulk export for Yugabyte DB’s [Cassandra compatible YCQL API](../../../api/ycql). To export data from a Yugabyte DB (or even an Apache Cassandra) table, you can use the [`cassandra-unloader`](https://github.com/yugabyte/cassandra-loader#cassandra-unloader) tool.
+This page documents bulk export for YugabyteDB’s [Cassandra compatible YCQL API](../../../api/ycql). To export data from a YugabyteDB (or even an Apache Cassandra) table, you can use the [`cassandra-unloader`](https://github.com/yugabyte/cassandra-loader#cassandra-unloader) tool.
 
-We will first create a source Yugabyte DB table and populate it with data. Then we will export the data out using the cassandra-unloader tool. We will use a generic gaming user profile use case as a running example to illustrate the export process.
+We will first create a source YugabyteDB table and populate it with data. Then we will export the data out using the cassandra-unloader tool. We will use a generic gaming user profile use case as a running example to illustrate the export process.
 
 ## Create Source Table
 
-Following is the schema of the destination Yugabyte DB table.
+Following is the schema of the destination YugabyteDB table.
 
 ```sql
 CREATE KEYSPACE load;
@@ -71,7 +71,7 @@ python ./gen_csv.py file04.csv 5120 &
 
 ## Load Sample Data
 
-[`cassandra-loader`](https://github.com/brianmhess/cassandra-loader) is a general purpose bulk loader for CQL that supports various types of delimited files (particularly csv files). For more details, review the README of the [Yugabyte DB cassandra-loader fork](https://github.com/yugabyte/cassandra-loader/). Note that cassandra-loader requires quotes for collection types (e.g. “[1,2,3]” rather than [1,2,3] for lists).
+[`cassandra-loader`](https://github.com/brianmhess/cassandra-loader) is a general purpose bulk loader for CQL that supports various types of delimited files (particularly csv files). For more details, review the README of the [YugabyteDB cassandra-loader fork](https://github.com/yugabyte/cassandra-loader/). Note that cassandra-loader requires quotes for collection types (e.g. “[1,2,3]” rather than [1,2,3] for lists).
 
 ### Install cassandra-loader
 

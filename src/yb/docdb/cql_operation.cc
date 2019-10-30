@@ -19,6 +19,7 @@
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_resultset.h"
 #include "yb/common/ql_storage_interface.h"
+#include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/docdb_util.h"
@@ -852,6 +853,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
                            hash_code, // max hash code.
                            hashed_components,
                            request_.has_where_expr() ? &request_.where_expr().condition() : nullptr,
+                           nullptr,
                            request_.query_id());
 
         // Create iterator.
@@ -1033,9 +1035,6 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
             key_column->mutable_value()->CopyFrom(*result);
           }
         } else {
-          // TODO(Oleg) INDEX SUPPORT - Remove the error STATUS and update the code accordingly.
-          return STATUS(NotSupported, "Indexing by expression is not yet supported");
-
           QLValue result;
           if (existing_row.IsEmpty()) {
             RETURN_NOT_OK(EvalExpr(index_column.colexpr, new_row, &result));
@@ -1083,14 +1082,11 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
 
         // For old message expr_case() == NOT SET.
         // For new message expr_case == kColumnId when indexing expression is a column-ref.
-        if (index_column.colexpr.expr_case() != QLExpressionPB::ExprCase::kColumnId) {
-          // TODO(Oleg) INDEX SUPPORT - Remove the error STATUS and update the code accordingly.
-          return STATUS(NotSupported, "Indexing expression is not yet supported");
-
+        if (index_column.colexpr.expr_case() != QLExpressionPB::ExprCase::EXPR_NOT_SET &&
+            index_column.colexpr.expr_case() != QLExpressionPB::ExprCase::kColumnId) {
           QLValue result;
           RETURN_NOT_OK(EvalExpr(index_column.colexpr, existing_row, &result));
           key_column->mutable_value()->CopyFrom(result.value());
-
         } else {
           auto result = existing_row.GetValue(index_column.indexed_column_id);
           if (result) {

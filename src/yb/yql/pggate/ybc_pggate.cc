@@ -438,13 +438,9 @@ YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_coun
   return ToYBCStatus(pgapi->DmlExecWriteOp(handle, rows_affected_count));
 }
 
-YBCStatus YBCPgDmlAddYBTupleIdColumn(YBCPgStatement handle, int attr_num, uint64_t datum,
-                                     bool is_null, const YBCPgTypeEntity *type_entity) {
-  return ToYBCStatus(pgapi->DmlAddYBTupleIdColumn(handle, attr_num, datum, is_null, type_entity));
-}
-
-YBCStatus YBCPgDmlGetYBTupleId(YBCPgStatement handle, uint64_t *ybctid) {
-  return ToYBCStatus(pgapi->DmlGetYBTupleId(handle, ybctid));
+YBCStatus YBCPgDmlBuildYBTupleId(YBCPgStatement handle, const YBCPgAttrValueDescriptor *attrs,
+                                 int32_t nattrs, uint64_t *ybctid) {
+  return ToYBCStatus(pgapi->DmlBuildYBTupleId(handle, attrs, nattrs, ybctid));
 }
 
 // INSERT Operations -------------------------------------------------------------------------------

@@ -3,8 +3,9 @@
 import { connect } from 'react-redux';
 import { UniverseDetail } from '../../universes';
 import { fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo, closeUniverseDialog, getHealthCheck,
-  getHealthCheckResponse
-} from '../../../actions/universe';
+  getHealthCheckResponse } from '../../../actions/universe';
+
+import { getAlerts, getAlertsSuccess, getAlertsFailure } from '../../../actions/customers';
 
 import { openDialog, closeDialog } from '../../../actions/modal';
 
@@ -45,6 +46,9 @@ const mapDispatchToProps = (dispatch) => {
     showGFlagsModal: () => {
       dispatch(openDialog("gFlagsModal"));
     },
+    showManageKeyModal: () => {
+      dispatch(openDialog("manageKeyModal"));
+    },
     showDeleteUniverseModal: () => {
       dispatch(openDialog("deleteUniverseModal"));
     },
@@ -62,6 +66,15 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(getHealthCheck(uuid))
       .then((response) => {
         dispatch(getHealthCheckResponse(response.payload));
+      });
+    },
+    getAlertsList: () => {
+      dispatch(getAlerts()).then((response) => {
+        if (response.payload.status === 200) {
+          dispatch(getAlertsSuccess(response.payload));
+        } else {
+          dispatch(getAlertsFailure(response.payload));
+        }
       });
     }
   };

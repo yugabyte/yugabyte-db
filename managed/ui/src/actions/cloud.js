@@ -43,6 +43,7 @@ export const CREATE_NODE_INSTANCES_RESPONSE = 'CREATE_NODE_INSTANCE_RESPONSES';
 
 export const CREATE_ACCESS_KEY = 'CREATE_ACCESS_KEY';
 export const CREATE_ACCESS_KEY_RESPONSE = 'CREATE_ACCESS_KEY_RESPONSE';
+export const CREATE_ACCESS_KEY_FAILURE = 'CREATE_ACCESS_KEY_FAILURE';
 
 export const INITIALIZE_PROVIDER = 'INITIALIZE_PROVIDER';
 export const INITIALIZE_PROVIDER_SUCCESS = 'INITIALIZE_PROVIDER_SUCCESS';
@@ -84,6 +85,15 @@ export const DELETE_INSTANCE_RESPONSE = 'DELETE_INSTANCE_RESPONSE';
 
 export const EDIT_PROVIDER = 'EDIT_PROVIDER';
 export const EDIT_PROVIDER_RESPONSE = 'EDIT_PROVIDER_RESPONSE';
+
+export const FETCH_AUTH_CONFIG = 'FETCH_AUTH_CONFIG';
+export const FETCH_AUTH_CONFIG_RESPONSE = 'FETCH_AUTH_CONFIG_RESPONSE';
+
+export const CREATE_KMS_CONFIGURATION = 'CREATE_KMS_CONFIGURATION';
+export const CREATE_KMS_CONFIGURATION_RESPONSE = 'CREATE_KMS_CONFIGURATION_RESPONSE';
+
+export const DELETE_KMS_CONFIGURATION = 'DELETE_KMS_CONFIGURATION';
+export const DELETE_KMS_CONFIGURATION_RESPONSE = 'DELETE_KMS_CONFIGURATION_RESPONSE';
 
 export function getProviderList() {
   const cUUID = localStorage.getItem("customerId");
@@ -300,6 +310,61 @@ export function createAccessKeyResponse(result) {
   return {
     type: CREATE_ACCESS_KEY_RESPONSE,
     payload: result
+  };
+}
+
+export function createAccessKeyFailure(error) {
+  return {
+    type: CREATE_ACCESS_KEY_FAILURE,
+    payload: error
+  };
+}
+
+export function fetchAuthConfigList() {
+  const endpoint = getCustomerEndpoint() + '/kms_configs';
+  const request = axios.get(endpoint);
+  return {
+    type: FETCH_AUTH_CONFIG,
+    payload: request
+  };
+}
+
+export function fetchAuthConfigListResponse(result) {
+  return {
+    type: FETCH_AUTH_CONFIG_RESPONSE,
+    payload: result
+  };
+}
+
+export function createKMSProviderConfig(provider, body) {
+  const endpoint = getCustomerEndpoint() + `/kms_configs/${provider}`;
+  const request = axios.post(endpoint, body);
+  return {
+    type: CREATE_KMS_CONFIGURATION,
+    payload: request
+  };
+}
+
+export function createKMSProviderConfigResponse(result) {
+  return {
+    type: CREATE_KMS_CONFIGURATION_RESPONSE,
+    payload: result
+  };
+}
+
+export function deleteKMSProviderConfig(provider) {
+  const endpoint = getCustomerEndpoint() + `/kms_configs/${provider}`;
+  const request = axios.delete(endpoint);
+  return {
+    type: DELETE_KMS_CONFIGURATION,
+    payload: request
+  };
+}
+
+export function deleteKMSProviderConfigResponse(provider) {
+  return {
+    type: DELETE_KMS_CONFIGURATION_RESPONSE,
+    payload: provider,
   };
 }
 

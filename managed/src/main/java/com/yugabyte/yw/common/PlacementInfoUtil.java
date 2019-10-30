@@ -195,7 +195,7 @@ public class PlacementInfoUtil {
       LOG.info("Comparing task '{}' and existing '{}' intents.", newIntent, existingIntent);
       UserIntent tempIntent = newIntent.clone();
       tempIntent.numNodes = existingIntent.numNodes;
-      if (!tempIntent.equals(existingIntent) || newIntent.numNodes == existingIntent.numNodes) {
+      if (!tempIntent.equals(existingIntent)) {
         return ConfigureNodesMode.NEW_CONFIG;
       }
     }
@@ -1450,6 +1450,8 @@ public class PlacementInfoUtil {
   private static void selectMasters(Map<String, NodeDetails> nodesMap, int numMasters) {
     // Group the cluster nodes by subnets.
     Map<String, TreeSet<String>> subnetsToNodenameMap = new HashMap<String, TreeSet<String>>();
+    // Tally up the number of entries in the map
+    int numCandidates = 0;
     for (Entry<String, NodeDetails> entry : nodesMap.entrySet()) {
       NodeDetails node = entry.getValue();
       // TODO: Live is checked as some tests use it as the starting state. Should be made ToBeAdded.
@@ -1463,48 +1465,35 @@ public class PlacementInfoUtil {
       TreeSet<String> nodeSet = subnetsToNodenameMap.get(subnet);
       // Add the node name into the node set.
       nodeSet.add(entry.getKey());
+      numCandidates++;
+    }
+
+    // Make sure there are enough nodes in the available subnets to pick masters from
+    if (numCandidates < numMasters) {
+      throw new IllegalStateException("Could not pick " + numMasters + " masters, only " +
+              numCandidates + " nodes available. Nodes info. " + nodesMap);
     }
     LOG.info("Subnet map has {}, nodesMap has {}, need {} masters.",
             subnetsToNodenameMap.size(), nodesMap.size(), numMasters);
+
     // Choose the masters such that we have one master per subnet if there are enough subnets.
     int numMastersChosen = 0;
-    if (subnetsToNodenameMap.size() >= maxMasterSubnets) {
-      while (numMastersChosen < numMasters) {
-        // Get one node from each subnet and removes it so that a different node is picked in next.
-        for (Entry<String, TreeSet<String>> entry : subnetsToNodenameMap.entrySet()) {
-          TreeSet<String> value = entry.getValue();
-          if (value.isEmpty()) {
-            continue;
-          }
-          String nodeName = value.first();
-          value.remove(nodeName);
-          subnetsToNodenameMap.put(entry.getKey(), value);
-          NodeDetails node = nodesMap.get(nodeName);
-          node.isMaster = true;
-          LOG.info("Chose node '{}' as a master from subnet {}.", nodeName, entry.getKey());
-          numMastersChosen++;
-          if (numMastersChosen == numMasters) {
-            break;
-          }
-        }
-      }
-    } else {
-      // We do not have enough subnets. Simply pick enough masters.
-      for (NodeDetails node : nodesMap.values()) {
-        if (node.isMaster) {
+    while (numMastersChosen < numMasters) {
+      for (Entry<String, TreeSet<String>> entry : subnetsToNodenameMap.entrySet()) {
+        TreeSet<String> value = entry.getValue();
+        if (value.isEmpty()) {
           continue;
         }
+        String nodeName = value.first();
+        value.remove(nodeName);
+        subnetsToNodenameMap.put(entry.getKey(), value);
+        NodeDetails node = nodesMap.get(nodeName);
         node.isMaster = true;
-        LOG.info("Chose node {} as a master from subnet {}.",
-                node.nodeName, node.cloudInfo.subnet_id);
+        LOG.info("Chose node '{}' as a master from subnet {}.", nodeName, entry.getKey());
         numMastersChosen++;
         if (numMastersChosen == numMasters) {
           break;
         }
-      }
-      if (numMastersChosen < numMasters) {
-        throw new IllegalStateException("Could not pick " + numMasters + " masters, got only " +
-                numMastersChosen + ". Nodes info. " + nodesMap);
       }
     }
   }

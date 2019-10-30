@@ -73,8 +73,8 @@ Specify the name of a column of the table.
 
 Specify one or more columns of the table and must be surrounded by parentheses.
 
-- `HASH` - Use hash of the column. This is the default option and is used to hash partition the index table.
-- `ASC` — Sort in ascending order.
+- `HASH` - Use hash of the column. This is the default option for the first column and is used to hash partition the index table.
+- `ASC` — Sort in ascending order. This is the default option for second and subsequent columns of the index.
 - `DESC` — Sort in descending order.
 - `NULLS FIRST` - Specifies that nulls sort before non-nulls. This is the default when DESC is specified.
 - `NULLS LAST` - Specifies that nulls sort after non-nulls. This is the default when DESC is not specified.
@@ -85,7 +85,7 @@ Specify one or more columns of the table and must be surrounded by parentheses.
 
 Create a unique index with hash ordered columns.
 
-```sql
+```postgresql
 yugabyte=# CREATE TABLE products(id int PRIMARY KEY,
                                  name text,
                                  code text);
@@ -106,7 +106,7 @@ Indexes:
 
 Create an index with ascending ordered key.
 
-```sql
+```postgresql
 yugabyte=# CREATE INDEX products_name ON products(name ASC);
 yugabyte=# \d products_name
    Index "public.products_name"
@@ -120,7 +120,7 @@ lsm, for table "public.products
 
 Create an index with ascending ordered key and include other columns as non-key columns
 
-```sql
+```postgresql
 yugabyte=# CREATE INDEX products_name_code ON products(name) INCLUDE (code);
 yugabyte=# \d products_name_code;
  Index "public.products_name_code"

@@ -224,9 +224,7 @@ log "Finished running a light-weight lint script on the Java code"
 YB_BUILD_JAVA=${YB_BUILD_JAVA:-1}
 YB_BUILD_CPP=${YB_BUILD_CPP:-1}
 
-# Temporarily disable running affected tests only on macOS because of
-# https://github.com/YugaByte/yugabyte-db/issues/1096
-if [[ -z ${YB_RUN_AFFECTED_TESTS_ONLY:-} ]] && is_jenkins_phabricator_build && ! is_mac; then
+if [[ -z ${YB_RUN_AFFECTED_TESTS_ONLY:-} ]] && is_jenkins_phabricator_build; then
   log "YB_RUN_AFFECTED_TESTS_ONLY is not set, and this is a Jenkins Phabricator test." \
       "Setting YB_RUN_AFFECTED_TESTS_ONLY=1 automatically."
   export YB_RUN_AFFECTED_TESTS_ONLY=1

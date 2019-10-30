@@ -30,12 +30,14 @@
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/mini_master.h"
@@ -59,8 +61,11 @@
 #include "yb/util/test_util.h"
 
 DECLARE_int32(replication_factor);
-DECLARE_bool(mock_get_changes_response_for_consumer_testing);
+DECLARE_int32(cdc_rpc_timeout_ms);
 DECLARE_bool(twodc_write_hybrid_time_override);
+DECLARE_int32(cdc_wal_retention_time_secs);
+DECLARE_bool(TEST_check_broadcast_address);
+DECLARE_int32(replication_failure_delay_exponent);
 
 namespace yb {
 
@@ -82,7 +87,7 @@ using tserver::enterprise::CDCConsumer;
 
 namespace enterprise {
 
-constexpr int kRpcTimeout = 30;
+constexpr int kRpcTimeout = NonTsanVsTsan(30, 60);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 
@@ -92,6 +97,11 @@ class TwoDCTest : public YBTest {
       SetUpWithParams(std::vector<uint32_t> num_consumer_tablets,
                       std::vector<uint32_t> num_producer_tablets,
                       uint32_t replication_factor) {
+    // Allow for one-off network instability by ensuring a single CDC RPC timeout << test timeout.
+    FLAGS_cdc_rpc_timeout_ms = (kRpcTimeout / 6) * 1000;
+    // Not a useful test for us. It's testing Public+Private IP NW errors and we're only public
+    FLAGS_TEST_check_broadcast_address = false;
+
     YBTest::SetUp();
     MiniClusterOptions opts;
     opts.num_tablet_servers = replication_factor;
@@ -109,8 +119,17 @@ class TwoDCTest : public YBTest {
     producer_client_ = VERIFY_RESULT(producer_cluster_->CreateClient());
     consumer_client_ = VERIFY_RESULT(consumer_cluster_->CreateClient());
 
+    RETURN_NOT_OK(clock_->Init());
+    producer_txn_mgr_.emplace(producer_client_.get(), clock_, client::LocalTabletFilter());
+    consumer_txn_mgr_.emplace(consumer_client_.get(), clock_, client::LocalTabletFilter());
+
     YBSchemaBuilder b;
     b.AddColumn("c0")->Type(INT32)->NotNull()->HashPrimaryKey();
+
+    // Create transactional table.
+    TableProperties table_properties;
+    table_properties.SetTransactional(true);
+    b.SetTableProperties(table_properties);
     CHECK_OK(b.Build(&schema_));
 
     if (num_consumer_tablets.size() != num_producer_tablets.size()) {
@@ -189,7 +208,7 @@ class TwoDCTest : public YBTest {
   }
 
   Status VerifyUniverseReplication(
-      MiniCluster *consumer_cluster, YBClient* consumer_client,
+      MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, master::GetUniverseReplicationResponsePB* resp) {
     return LoggedWaitFor([=]() -> Result<bool> {
       master::GetUniverseReplicationRequestPB req;
@@ -203,8 +222,49 @@ class TwoDCTest : public YBTest {
       rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
       Status s = master_proxy->GetUniverseReplication(req, resp, &rpc);
-      return s.ok() && !resp->has_error();
+      return s.ok() && !resp->has_error() &&
+             resp->entry().state() == master::SysUniverseReplicationEntryPB::ACTIVE;
     }, MonoDelta::FromSeconds(kRpcTimeout), "Verify universe replication");
+  }
+
+  Status ToggleUniverseReplication(
+      MiniCluster* consumer_cluster, YBClient* consumer_client,
+      const std::string& universe_id, bool is_enabled) {
+    master::SetUniverseReplicationEnabledRequestPB req;
+    master::SetUniverseReplicationEnabledResponsePB resp;
+
+    req.set_producer_id(universe_id);
+    req.set_is_enabled(is_enabled);
+
+    auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+        &consumer_client->proxy_cache(),
+        consumer_cluster->leader_mini_master()->bound_rpc_addr());
+
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    RETURN_NOT_OK(master_proxy->SetUniverseReplicationEnabled(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return Status::OK();
+  }
+
+  Status VerifyUniverseReplicationDeleted(MiniCluster* consumer_cluster, YBClient* consumer_client,
+      const std::string& universe_id, int timeout) {
+    return LoggedWaitFor([=]() -> Result<bool> {
+      master::GetUniverseReplicationRequestPB req;
+      master::GetUniverseReplicationResponsePB resp;
+      req.set_producer_id(universe_id);
+
+      auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+          &consumer_client->proxy_cache(),
+          consumer_cluster->leader_mini_master()->bound_rpc_addr());
+      rpc::RpcController rpc;
+      rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+      Status s = master_proxy->GetUniverseReplication(req, &resp, &rpc);
+      return resp.has_error() && resp.error().code() == master::MasterErrorPB::OBJECT_NOT_FOUND;
+    }, MonoDelta::FromMilliseconds(timeout), "Verify universe replication deleted");
   }
 
   Status GetCDCStreamForTable(
@@ -221,6 +281,7 @@ class TwoDCTest : public YBTest {
   }
 
   void Destroy() {
+    LOG(INFO) << "Destroying CDC Clusters";
     if (consumer_cluster_) {
       consumer_cluster_->Shutdown();
       consumer_cluster_.reset();
@@ -232,7 +293,6 @@ class TwoDCTest : public YBTest {
     }
 
     producer_client_.reset();
-
     consumer_client_.reset();
   }
 
@@ -243,6 +303,7 @@ class TwoDCTest : public YBTest {
     ASSERT_OK(table_handle.Open(table, client));
     std::vector<std::shared_ptr<client::YBqlOp>> ops;
 
+    LOG(INFO) << "Writing " << end-start << (delete_op ? " deletes" : " inserts");
     for (uint32_t i = start; i < end; i++) {
       auto op = delete_op ? table_handle.NewDeleteOp() : table_handle.NewInsertOp();
       int32_t key = i;
@@ -250,6 +311,28 @@ class TwoDCTest : public YBTest {
       QLAddInt32HashValue(req, key);
       ASSERT_OK(session->ApplyAndFlush(op));
     }
+  }
+
+  void WriteTransactionalWorkload(uint32_t start, uint32_t end, YBClient* client,
+                                  client::TransactionManager* txn_mgr, const YBTableName& table) {
+    auto session = client->NewSession();
+    auto transaction = std::make_shared<client::YBTransaction>(txn_mgr);
+    ReadHybridTime read_time;
+    ASSERT_OK(transaction->Init(IsolationLevel::SNAPSHOT_ISOLATION, read_time));
+    session->SetTransaction(transaction);
+
+    client::TableHandle table_handle;
+    ASSERT_OK(table_handle.Open(table, client));
+    std::vector<std::shared_ptr<client::YBqlOp>> ops;
+
+    for (uint32_t i = start; i < end; i++) {
+      auto op = table_handle.NewDeleteOp();
+      int32_t key = i;
+      auto req = op->mutable_request();
+      QLAddInt32HashValue(req, key);
+      ASSERT_OK(session->ApplyAndFlush(op));
+    }
+    transaction->CommitFuture().get();
   }
 
   void DeleteWorkload(uint32_t start, uint32_t end, YBClient* client, const YBTableName& table) {
@@ -281,21 +364,21 @@ class TwoDCTest : public YBTest {
     }, MonoDelta::FromSeconds(kRpcTimeout), "Verify number of records");
   }
 
-  Status InitCDCConsumer() {
-    master::ListTablesRequestPB tables_req;
-    master::ListTablesResponsePB tables_resp;
-    tables_req.set_exclude_system_tables(true);
+  Status DeleteUniverseReplication(const std::string& universe_id) {
+    master::DeleteUniverseReplicationRequestPB req;
+    master::DeleteUniverseReplicationResponsePB resp;
 
-    RETURN_NOT_OK(consumer_cluster_->leader_mini_master()->master()->catalog_manager()->
-                  ListTables(&tables_req, &tables_resp));
+    req.set_producer_id(universe_id);
 
-    auto master_addrs = producer_cluster_->GetMasterAddresses();
-    auto consumer_info = VERIFY_RESULT(
-        master::enterprise::TEST_GetConsumerProducerTableMap(master_addrs, tables_resp));
-    auto universe_uuid = "universe_uuid";
+    auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+        &consumer_client_->proxy_cache(),
+        consumer_cluster_->leader_mini_master()->bound_rpc_addr());
 
-    return consumer_cluster_->leader_mini_master()->master()->catalog_manager()->InitCDCConsumer(
-        consumer_info, master_addrs, universe_uuid);
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    RETURN_NOT_OK(master_proxy->DeleteUniverseReplication(req, &resp, &rpc));
+    LOG(INFO) << "Delete universe succeeded";
+    return Status::OK();
   }
 
   YBClient* producer_client() {
@@ -312,6 +395,14 @@ class TwoDCTest : public YBTest {
 
   MiniCluster* consumer_cluster() {
     return consumer_cluster_.get();
+  }
+
+  client::TransactionManager* producer_txn_mgr() {
+    return producer_txn_mgr_.get_ptr();
+  }
+
+  client::TransactionManager* consumer_txn_mgr() {
+    return consumer_txn_mgr_.get_ptr();
   }
 
   uint32_t NumProducerTabletsPolled(MiniCluster* cluster) {
@@ -354,11 +445,15 @@ class TwoDCTest : public YBTest {
   std::unique_ptr<YBClient> producer_client_;
   std::unique_ptr<YBClient> consumer_client_;
 
+  boost::optional<client::TransactionManager> producer_txn_mgr_;
+  boost::optional<client::TransactionManager> consumer_txn_mgr_;
+  server::ClockPtr clock_{new server::HybridClock()};
+
   YBSchema schema_;
 };
 
 TEST_F(TwoDCTest, SetupUniverseReplication) {
-  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4, 4, 12}, {8, 4, 12, 8}, 3));
+  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3));
 
   std::vector<std::shared_ptr<client::YBTable>> producer_tables;
   // tables contains both producer and consumer universe tables (alternately).
@@ -373,10 +468,10 @@ TEST_F(TwoDCTest, SetupUniverseReplication) {
   // Verify that universe was setup on consumer.
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
-  ASSERT_EQ(resp.producer_id(), kUniverseId);
-  ASSERT_EQ(resp.producer_tables_size(), producer_tables.size());
+  ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+  ASSERT_EQ(resp.entry().tables_size(), producer_tables.size());
   for (int i = 0; i < producer_tables.size(); i++) {
-    ASSERT_EQ(resp.producer_tables(i).table_id(), producer_tables[i]->id());
+    ASSERT_EQ(resp.entry().tables(i), producer_tables[i]->id());
   }
 
   // Verify that CDC streams were created on producer for all tables.
@@ -387,6 +482,7 @@ TEST_F(TwoDCTest, SetupUniverseReplication) {
     ASSERT_EQ(stream_resp.streams(0).table_id(), producer_tables[i]->id());
   }
 
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
   Destroy();
 }
 
@@ -417,74 +513,114 @@ TEST_F(TwoDCTest, SetupUniverseReplicationMultipleTables) {
   // Verify that universe was setup on consumer.
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
-  ASSERT_EQ(resp.producer_id(), kUniverseId);
-  ASSERT_EQ(resp.producer_tables_size(), producer_tables.size());
+  ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+  ASSERT_EQ(resp.entry().tables_size(), producer_tables.size());
   for (int i = 0; i < producer_tables.size(); i++) {
-    ASSERT_EQ(resp.producer_tables(i).table_id(), producer_tables[i]->id());
+    ASSERT_EQ(resp.entry().tables(i), producer_tables[i]->id());
   }
 
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
   Destroy();
 }
 
 TEST_F(TwoDCTest, PollWithConsumerRestart) {
+  // Avoid long delays with node failures so we can run with more aggressive test timing
+  FLAGS_replication_failure_delay_exponent = 7; // 2^7 == 128ms
+
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
-  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4, 4, 12}, {8, 4, 12, 8}, replication_factor));
+  auto tables = ASSERT_RESULT(SetUpWithParams({4}, {4}, replication_factor));
 
-  FLAGS_mock_get_changes_response_for_consumer_testing = true;
-  ASSERT_OK(InitCDCConsumer());
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId,
+      {tables[0]} /* all producer tables */));
 
-  // After creating the cluster, make sure all 32 tablets being polled for.
-  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 32));
+  // After creating the cluster, make sure all tablets being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
 
   consumer_cluster_->mini_tablet_server(0)->Shutdown();
 
-  // After shutting down a consumer node.
+  // After shutting down a single consumer node, the other consumers should pick up the slack.
   if (replication_factor > 1) {
-    ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 32));
+    ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
   }
 
   ASSERT_OK(consumer_cluster_->mini_tablet_server(0)->Start());
 
   // After restarting the node.
-  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 32));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
 
   ASSERT_OK(consumer_cluster_->RestartSync());
 
   // After consumer cluster restart.
-  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 32));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
 
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
   Destroy();
 }
 
 TEST_F(TwoDCTest, PollWithProducerRestart) {
+  // Avoid long delays with node failures so we can run with more aggressive test timing
+  FLAGS_replication_failure_delay_exponent = 7; // 2^7 == 128ms
+
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
-  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4, 4, 12}, {8, 4, 12, 8}, replication_factor));
+  auto tables = ASSERT_RESULT(SetUpWithParams({4}, {4}, replication_factor));
 
-  FLAGS_mock_get_changes_response_for_consumer_testing = true;
-  ASSERT_OK(InitCDCConsumer());
+  ASSERT_OK(SetupUniverseReplication(
+    producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId,
+    {tables[0]} /* all producer tables */));
 
-  // After creating the cluster, make sure all 32 tablets being polled for.
-  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 32));
+  // After creating the cluster, make sure all tablets being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
 
   producer_cluster_->mini_tablet_server(0)->Shutdown();
-
-  // After stopping a producer node.
-  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 32));
-
+  // Tablet Server Stop/Start Test needs replication for other polling sources
+  if (replication_factor > 1) {
+    // Verify that the cluster has rebalanced all the CDC Pollers
+    ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
+  }
   ASSERT_OK(producer_cluster_->mini_tablet_server(0)->Start());
 
   // After starting the node.
-  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 32));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
 
   ASSERT_OK(producer_cluster_->RestartSync());
 
   // After producer cluster restart.
-  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 32));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
 
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
   Destroy();
 }
 
 TEST_F(TwoDCTest, ApplyOperations) {
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  // Use just one tablet here to more easily catch lower-level write issues with this test.
+  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer table from the list.
+  producer_tables.reserve(1);
+  producer_tables.push_back(tables[0]);
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+  // After creating the cluster, make sure all producer tablets are being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 1));
+
+  WriteWorkload(0, 5, producer_client(), tables[0]->name());
+
+  // Check that all tablets continue to be polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 1));
+
+  // Verify that both clusters have the same records.
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+  Destroy();
+}
+
+TEST_F(TwoDCTest, ApplyOperationsWithTransactions) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, replication_factor));
 
@@ -499,7 +635,11 @@ TEST_F(TwoDCTest, ApplyOperations) {
   // After creating the cluster, make sure all producer tablets are being polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
 
-  WriteWorkload(0, 5, producer_client(), tables[0]->name());
+  // Write some transactional rows.
+  WriteTransactionalWorkload(0, 5, producer_client(), producer_txn_mgr(), tables[0]->name());
+
+  // Write some non-transactional rows.
+  WriteWorkload(6, 10, producer_client(), tables[0]->name());
 
   // Check that all tablets continue to be polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
@@ -507,6 +647,7 @@ TEST_F(TwoDCTest, ApplyOperations) {
   // Verify that both clusters have the same records.
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
   Destroy();
 }
 
@@ -542,6 +683,7 @@ TEST_F(TwoDCTest, TestExternalWriteHybridTime) {
   ASSERT_OK(VerifyNumRecords(tables[0]->name(), producer_client(), 0));
   ASSERT_OK(VerifyNumRecords(tables[1]->name(), consumer_client(), 1));
 
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
   Destroy();
 }
 
@@ -590,6 +732,126 @@ TEST_F(TwoDCTest, BiDirectionalWrites) {
 
   // Ensure that same records exist on both universes.
   VerifyWrittenRecords(tables[0]->name(), tables[1]->name());
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+  Destroy();
+}
+
+TEST_F(TwoDCTest, ToggleReplicationEnabled) {
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, replication_factor));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer table from the list.
+  producer_tables.reserve(1);
+  producer_tables.push_back(tables[0]);
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+  // Verify that universe is now ACTIVE
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+
+  // After we know the universe is ACTIVE, make sure all tablets are getting polled.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
+
+  // Disable the replication and ensure no tablets are being polled
+  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, false));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 0));
+
+  // Enable replication and ensure that all the tablets start being polled again
+  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
+
+  Destroy();
+}
+
+TEST_F(TwoDCTest, TestDeleteUniverse) {
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+
+  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, replication_factor));
+
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+      kUniverseId, {tables[0], tables[2]} /* all producer tables */));
+
+  // Verify that universe was setup on consumer.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+
+  // After creating the cluster, make sure all tablets being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 12));
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+
+  ASSERT_OK(VerifyUniverseReplicationDeleted(consumer_cluster(), consumer_client(), kUniverseId,
+      FLAGS_cdc_rpc_timeout_ms * 2));
+
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 0));
+
+  Destroy();
+}
+
+TEST_F(TwoDCTest, TestWalRetentionSet) {
+  FLAGS_cdc_wal_retention_time_secs = 8 * 3600;
+
+  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4, 4, 12}, {8, 4, 12, 8}, 3));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer tables from the list.
+  producer_tables.reserve(tables.size() / 2);
+  for (int i = 0; i < tables.size(); i += 2) {
+    producer_tables.push_back(tables[i]);
+  }
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+  // Verify that universe was setup on consumer.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+
+  // After creating the cluster, make sure all 32 tablets being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 32));
+
+  cdc::VerifyWalRetentionTime(producer_cluster(), "test_table_", FLAGS_cdc_wal_retention_time_secs);
+
+  Destroy();
+}
+
+TEST_F(TwoDCTest, TestProducerUniverseExpansion) {
+  // Test that after new node(s) are added to producer universe, we are able to get replicated data
+  // from the new node(s).
+  auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, 1));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer table from the list.
+  producer_tables.reserve(1);
+  producer_tables.push_back(tables[0]);
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+  // After creating the cluster, make sure all producer tablets are being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
+
+  WriteWorkload(0, 5, producer_client(), tables[0]->name());
+
+  // Add new node and wait for tablets to be rebalanced.
+  // After rebalancing, each node will be leader for 1 tablet.
+  ASSERT_OK(producer_cluster_->AddTabletServer());
+  ASSERT_OK(producer_cluster_->WaitForTabletServerCount(2));
+  ASSERT_OK(WaitFor([&] () { return producer_client()->IsLoadBalanced(2); },
+                    MonoDelta::FromSeconds(kRpcTimeout), "IsLoadBalanced"));
+
+  // Check that all tablets continue to be polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
+
+  // Write some more rows. Note that some of these rows will have the new node as the tablet leader.
+  WriteWorkload(6, 10, producer_client(), tables[0]->name());
+
+  // Verify that both clusters have the same records.
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 
   Destroy();
 }

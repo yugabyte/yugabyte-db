@@ -33,7 +33,7 @@ menu:
         <div class="title">Authentication</div>
       </div>
       <div class="body">
-          Verify the identity of the client connecting to the database by enabling authentication.
+          Verify the identity of users and clients connecting to YugabyteDB databases.
       </div>
     </a>
   </div>
@@ -44,7 +44,7 @@ menu:
         <div class="title">Authorization</div>
       </div>
       <div class="body">
-          Implementing authorization using role-based access control in YugabyteDB.
+          Granting privileges and permissions using role-based access control in YugabyteDB.
       </div>
     </a>
   </div>

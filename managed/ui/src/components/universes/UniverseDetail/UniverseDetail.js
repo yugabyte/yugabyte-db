@@ -2,13 +2,14 @@
 
 import React, { Component } from 'react';
 import { Link, withRouter, browserHistory} from 'react-router';
-import { Grid, DropdownButton, MenuItem, Tab } from 'react-bootstrap';
+import { Grid, DropdownButton, MenuItem, Tab, Alert } from 'react-bootstrap';
 import Measure from 'react-measure';
 import { CustomerMetricsPanel } from '../../metrics';
 import { TaskProgressContainer, TaskListTable } from '../../tasks';
 import { RollingUpgradeFormContainer } from 'components/common/forms';
 import { UniverseFormContainer, UniverseStatusContainer, NodeDetailsContainer,
-         DeleteUniverseContainer, UniverseAppsModal, UniverseConnectModal, UniverseOverviewContainerNew } from '../../universes';
+         DeleteUniverseContainer, UniverseAppsModal, UniverseConnectModal,
+         UniverseOverviewContainerNew, EncryptionKeyModalContainer } from '../../universes';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsWithLinksPanel } from '../../panels';
 import { ListTablesContainer, ListBackupsContainer } from '../../tables';
@@ -33,6 +34,7 @@ class UniverseDetail extends Component {
     this.onEditUniverseButtonClick = this.onEditUniverseButtonClick.bind(this);
     this.state = {
       dimensions: {},
+      showAlert: false
     };
   }
 
@@ -46,7 +48,7 @@ class UniverseDetail extends Component {
     this.props.resetTablesList();
   }
 
-  componentWillMount() {
+  componentDidMount() {
     const { customer : { currentCustomer }} = this.props;
     if (isNonAvailable(currentCustomer.data.features, "universes.details")) {
       if (isNonAvailable(currentCustomer.data.features, "universes")) {
@@ -64,7 +66,13 @@ class UniverseDetail extends Component {
         uuid = this.props.universeUUID;
       }
       this.props.getUniverseInfo(uuid);
-      this.props.getHealthCheck(uuid);
+
+      if (isDisabled(currentCustomer.data.features, "universes.details.health")) {
+        // Get alerts instead of Health
+        this.props.getAlertsList();
+      } else {
+        this.props.getHealthCheck(uuid);
+      }
     }
   }
 
@@ -110,6 +118,31 @@ class UniverseDetail extends Component {
     this.props.router.push(currentLocation);
   }
 
+  handleSubmitManageKey = (response) => {
+    response.then(res => {
+      if (res.payload.isAxiosError) {
+        this.setState({
+          showAlert: true,
+          alertType: 'danger',
+          alertMessage: res.payload.message
+        });
+      } else {
+        this.setState({
+          showAlert: true,
+          alertType: 'success',
+          alertMessage: 'Encryption key has been set!'
+        });
+      }
+      setTimeout(() => this.setState({showAlert: false}), 3000);
+    });
+
+    this.props.closeModal();
+  }
+
+  closeAlert = () => {
+    this.setState({showAlert: false});
+  }
+
   render() {
     const {
       uuid,
@@ -123,12 +156,14 @@ class UniverseDetail extends Component {
       showSoftwareUpgradesModal,
       showRunSampleAppsModal,
       showGFlagsModal,
+      showManageKeyModal,
       showDeleteUniverseModal,
       closeModal,
       customer,
       customer: { currentCustomer },
       params: { tab },
     } = this.props;
+    const { showAlert, alertType, alertMessage } = this.state;
 
     const isReadOnlyUniverse = getPromiseState(currentUniverse).isSuccess() && currentUniverse.data.universeDetails.capability === "READ_ONLY";
 
@@ -269,7 +304,7 @@ class UniverseDetail extends Component {
         isNotHidden(currentCustomer.data.features, "universes.details.health") &&
           <Tab.Pane
             eventKey={"health"}
-            title="Health"x
+            title="Health"
             key="health-tab"
             mountOnEnter={true}
             unmountOnExit={true}
@@ -294,6 +329,14 @@ class UniverseDetail extends Component {
     );
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
+        {showAlert &&
+          <Alert bsStyle={alertType} onDismiss={this.closeAlert}>
+            <h4>{alertType === 'success' ? 'Success' : 'Error'}</h4>
+            <p>
+              {alertMessage}
+            </p>
+          </Alert>
+        }
         {/* UNIVERSE NAME */}
         {currentBreadCrumb}
         <div className="universe-detail-status-container">
@@ -326,6 +369,11 @@ class UniverseDetail extends Component {
               <YBMenuItem eventKey="4" onClick={showGFlagsModal} availability={getFeatureState(currentCustomer.data.features, "universes.details.overview.editGFlags")}>
                 <YBLabelWithIcon icon="fa fa-flag fa-fw">
                   Edit GFlags
+                </YBLabelWithIcon>
+              </YBMenuItem>
+              <YBMenuItem eventKey="4" onClick={showManageKeyModal}>
+                <YBLabelWithIcon icon="fa fa-key fa-fw">
+                  Manage Encryption Keys
                 </YBLabelWithIcon>
               </YBMenuItem>
               {!isReadOnlyUniverse &&
@@ -363,6 +411,11 @@ class UniverseDetail extends Component {
           type="primary"
         />
 
+        <EncryptionKeyModalContainer modalVisible={showModal && visibleModal === 'manageKeyModal'} onHide={closeModal}
+          handleSubmitKey={this.handleSubmitManageKey}
+          currentUniverse={currentUniverse}
+          name={currentUniverse.data.name} uuid={currentUniverse.data.universeUUID}
+        />
         <Measure onMeasure={this.onResize.bind(this)}>
           <YBTabsWithLinksPanel defaultTab={defaultTab} activeTab={activeTab} routePrefix={`/universes/${currentUniverse.data.universeUUID}/`} id={"universe-tab-panel"} className="universe-detail">
             { tabElements }

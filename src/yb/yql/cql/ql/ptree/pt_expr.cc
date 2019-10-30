@@ -33,6 +33,30 @@ using std::shared_ptr;
 
 //--------------------------------------------------------------------------------------------------
 
+bool PTExpr::CheckIndexColumn(SemContext *sem_context) {
+  if (!sem_context->selecting_from_index()) {
+    return false;
+  }
+
+  // Currently, only PTJsonColumnWithOperators node is allowed to be an IndexColumn. However, define
+  // this analysis in PTExpr class so that it's easier to extend the support INDEX by expression.
+  if (op_ != ExprOperator::kJsonOperatorRef) {
+    return false;
+  }
+
+  // Check if this expression is used for indexing.
+  index_desc_ = GetColumnDesc(sem_context);
+  if (index_desc_ != nullptr) {
+    // Type resolution: This expr should have the same datatype as the column.
+    index_name_->assign(QLName().c_str());
+    internal_type_ = index_desc_->internal_type();
+    ql_type_ = index_desc_->ql_type();
+    return true;
+  }
+
+  return false;
+}
+
 CHECKED_STATUS PTExpr::CheckOperator(SemContext *sem_context) {
   // Where clause only allow AND, EQ, LT, LE, GT, and GE operators.
   if (sem_context->where_state() != nullptr) {
@@ -334,6 +358,11 @@ CHECKED_STATUS PTCollectionExpr::InitializeUDTValues(const QLType::SharedPtr& ex
 }
 
 CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
+  // Before traversing the expression, check if this whole expression is actually a column.
+  if (CheckIndexColumn(sem_context)) {
+    return Status::OK();
+  }
+
   RETURN_NOT_OK(CheckOperator(sem_context));
   const shared_ptr<QLType>& expected_type = sem_context->expr_expected_ql_type();
 
@@ -451,6 +480,9 @@ CHECKED_STATUS PTLogicExpr::SetupSemStateForOp1(SemState *sem_state) {
   // Expect "bool" datatype for logic expression.
   sem_state->SetExprState(QLType::Create(BOOL), InternalType::kBoolValue);
 
+  // Pass down the state variables for IF clause "if_state".
+  sem_state->CopyPreviousIfState();
+
   // If this is OP_AND, we need to pass down the state variables for where clause "where_state".
   if (ql_op_ == QL_OP_AND) {
     sem_state->CopyPreviousWhereState();
@@ -461,6 +493,9 @@ CHECKED_STATUS PTLogicExpr::SetupSemStateForOp1(SemState *sem_state) {
 CHECKED_STATUS PTLogicExpr::SetupSemStateForOp2(SemState *sem_state) {
   // Expect "bool" datatype for logic expression.
   sem_state->SetExprState(QLType::Create(BOOL), InternalType::kBoolValue);
+
+  // Pass down the state variables for IF clause "if_state".
+  sem_state->CopyPreviousIfState();
 
   // If this is OP_AND, we need to pass down the state variables for where clause "where_state".
   if (ql_op_ == QL_OP_AND) {
@@ -514,6 +549,9 @@ CHECKED_STATUS PTLogicExpr::AnalyzeOperator(SemContext *sem_context,
 // Relations expressions: ==, !=, >, >=, between, ...
 
 CHECKED_STATUS PTRelationExpr::SetupSemStateForOp1(SemState *sem_state) {
+  // Pass down the state variables for IF clause "if_state".
+  sem_state->CopyPreviousIfState();
+
   // passing down where state
   sem_state->CopyPreviousWhereState();
   sem_state->set_allowing_column_refs(true);
@@ -538,16 +576,32 @@ CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
     case QL_OP_NOT_EXISTS: FALLTHROUGH_INTENDED;
     case QL_OP_BETWEEN: FALLTHROUGH_INTENDED;
     case QL_OP_NOT_BETWEEN: {
+      // TODO(neil) Indexing processing should be redesigned such that when processing a statement
+      // against an INDEX table, most of these semantic processing shouldn't be done again as they
+      // were already done once again the actual table.
+
+      // Setup for expression column.
+      if (operand1->index_desc() != nullptr) {
+        // Operand1 is a index column.
+        sem_state->SetExprState(operand1->ql_type(),
+                                operand1->internal_type(),
+                                operand1->index_name(),
+                                operand1->index_desc());
+        break;
+      }
+
+      // Setup for table column.
       if (operand1->expr_op() == ExprOperator::kRef) {
         const PTRef *ref = static_cast<const PTRef *>(operand1.get());
         sem_state->SetExprState(ref->ql_type(),
                                 ref->internal_type(),
                                 ref->bindvar_name(),
                                 ref->desc());
-      } else {
-        sem_state->SetExprState(operand1->ql_type(), operand1->internal_type());
+        break;
       }
 
+      // Setup for other expression.
+      sem_state->SetExprState(operand1->ql_type(), operand1->internal_type());
       switch (operand1->expr_op()) {
         case ExprOperator::kBcall: {
           PTBcall *bcall = static_cast<PTBcall *>(operand1.get());
@@ -563,16 +617,24 @@ CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
 
         case ExprOperator::kSubColRef: {
           const PTSubscriptedColumn *ref = static_cast<const PTSubscriptedColumn *>(operand1.get());
-          DCHECK_NOTNULL(ref->desc());
-          sem_state->set_bindvar_name(PTBindVar::coll_bindvar_name(ref->desc()->name()));
+          if (ref->desc()) {
+            sem_state->set_bindvar_name(PTBindVar::coll_bindvar_name(ref->desc()->name()));
+          } else if (!sem_state->is_uncovered_index_select()) {
+            return STATUS(
+                QLError, "Column doesn't exist", Slice(), QLError(ErrorCode::UNDEFINED_COLUMN));
+          } // else - this column is uncovered by the Index, skip checks and return OK.
           break;
         }
 
         case ExprOperator::kJsonOperatorRef: {
           const PTJsonColumnWithOperators *ref =
               static_cast<const PTJsonColumnWithOperators*>(operand1.get());
-          DCHECK_NOTNULL(ref->desc());
-          sem_state->set_bindvar_name(PTBindVar::json_bindvar_name(ref->desc()->name()));
+          if (ref->desc()) {
+            sem_state->set_bindvar_name(PTBindVar::json_bindvar_name(ref->desc()->name()));
+          } else if (!sem_state->is_uncovered_index_select()) {
+            return STATUS(
+                QLError, "Column doesn't exist", Slice(), QLError(ErrorCode::UNDEFINED_COLUMN));
+          } // else - this column is uncovered by the Index, skip checks and return OK.
           break;
         }
 
@@ -586,7 +648,13 @@ CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
     case QL_OP_NOT_IN: {
       auto ql_type = QLType::CreateTypeList(operand1->ql_type());
 
-      if (operand1->expr_op() == ExprOperator::kRef) {
+      if (operand1->index_desc() != nullptr) {
+        // Operand1 is a index column.
+        sem_state->SetExprState(operand1->ql_type(),
+                                operand1->internal_type(),
+                                operand1->index_name(),
+                                operand1->index_desc());
+      } else if (operand1->expr_op() == ExprOperator::kRef) {
         const PTRef *ref = static_cast<const PTRef *>(operand1.get());
         sem_state->SetExprState(ql_type,
                                 ref->internal_type(),
@@ -673,14 +741,31 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
                                 ErrorCode::CQL_STATEMENT_INVALID);
   }
 
+  // Add filtering expressions in IF clause for indexing operations.
+  IfExprState *if_state = sem_context->if_state();
+  if (if_state != nullptr) {
+    if (op1->index_desc()) {
+      if_state->AddFilteringExpr(sem_context, this);
+    } else if (op1->expr_op() == ExprOperator::kRef) {
+      if_state->AddFilteringExpr(sem_context, this);
+    } else if (op1->expr_op() == ExprOperator::kSubColRef) {
+      if_state->AddFilteringExpr(sem_context, this);
+    } else if (op1->expr_op() == ExprOperator::kJsonOperatorRef) {
+      if_state->AddFilteringExpr(sem_context, this);
+    }
+  }
+
   WhereExprState *where_state = sem_context->where_state();
   if (where_state != nullptr) {
     // CheckLhsExpr already checks that this is either kRef or kBcall
-    DCHECK(op1->expr_op() == ExprOperator::kRef ||
+    DCHECK(op1->index_desc() != nullptr ||
+           op1->expr_op() == ExprOperator::kRef ||
            op1->expr_op() == ExprOperator::kSubColRef ||
            op1->expr_op() == ExprOperator::kJsonOperatorRef ||
            op1->expr_op() == ExprOperator::kBcall);
-    if (op1->expr_op() == ExprOperator::kRef) {
+    if (op1->index_desc()) {
+      return where_state->AnalyzeColumnOp(sem_context, this, op1->index_desc(), op2);
+    } else if (op1->expr_op() == ExprOperator::kRef) {
       const PTRef *ref = static_cast<const PTRef *>(op1.get());
       return where_state->AnalyzeColumnOp(sem_context, this, ref->desc(), op2);
     } else if (op1->expr_op() == ExprOperator::kSubColRef) {
@@ -714,6 +799,7 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
       }
     }
   }
+
   return Status::OK();
 }
 
@@ -740,61 +826,66 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
   return Status::OK();
 }
 
-string PTRelationExpr::QLName() const {
+string PTRelationExpr::QLName(QLNameOption option) const {
   switch (ql_op_) {
     case QL_OP_NOOP:
       return "NO OP";
 
     // Logic operators that take one operand.
     case QL_OP_NOT:
-      return string("NOT ") + op1()->QLName();
+      return string("NOT ") + op1()->QLName(option);
     case QL_OP_IS_TRUE:
-      return op1()->QLName() + "IS TRUE";
+      return op1()->QLName(option) + "IS TRUE";
     case QL_OP_IS_FALSE:
-      return op1()->QLName() + "IS FALSE";
+      return op1()->QLName(option) + "IS FALSE";
 
       // Logic operators that take two or more operands.
     case QL_OP_AND:
-      return op1()->QLName() + " AND " + op2()->QLName();
+      return op1()->QLName(option) + " AND " + op2()->QLName(option);
     case QL_OP_OR:
-      return op1()->QLName() + " OR " + op2()->QLName();
+      return op1()->QLName(option) + " OR " + op2()->QLName(option);
 
       // Relation operators that take one operand.
     case QL_OP_IS_NULL:
-      return op1()->QLName() + " IS NULL";
+      return op1()->QLName(option) + " IS NULL";
     case QL_OP_IS_NOT_NULL:
-      return op1()->QLName() + " IS NOT NULL";
+      return op1()->QLName(option) + " IS NOT NULL";
 
       // Relation operators that take two operands.
     case QL_OP_EQUAL:
-      return op1()->QLName() + " == " + op2()->QLName();
+      return op1()->QLName(option) + " == " + op2()->QLName(option);
     case QL_OP_LESS_THAN:
-      return op1()->QLName() + " < " + op2()->QLName();
+      return op1()->QLName(option) + " < " + op2()->QLName(option);
     case QL_OP_LESS_THAN_EQUAL:
-      return op1()->QLName() + " <= " + op2()->QLName();
+      return op1()->QLName(option) + " <= " + op2()->QLName(option);
     case QL_OP_GREATER_THAN:
-      return op1()->QLName() + " > " + op2()->QLName();
+      return op1()->QLName(option) + " > " + op2()->QLName(option);
     case QL_OP_GREATER_THAN_EQUAL:
-      return op1()->QLName() + " >= " + op2()->QLName();
+      return op1()->QLName(option) + " >= " + op2()->QLName(option);
     case QL_OP_NOT_EQUAL:
-      return op1()->QLName() + " != " + op2()->QLName();
+      return op1()->QLName(option) + " != " + op2()->QLName(option);
 
     case QL_OP_LIKE:
-      return op1()->QLName() + " LIKE " + op2()->QLName();
+      return op1()->QLName(option) + " LIKE " + op2()->QLName(option);
     case QL_OP_NOT_LIKE:
-      return op1()->QLName() + " NOT LIKE " + op2()->QLName();
+      return op1()->QLName(option) + " NOT LIKE " +
+          op2()->QLName(option);
     case QL_OP_IN:
-      return op1()->QLName() + " IN " + op2()->QLName();
+      return op1()->QLName(option) + " IN " + op2()->QLName(option);
     case QL_OP_NOT_IN:
-      return op1()->QLName() + " NOT IN " + op2()->QLName();
+      return op1()->QLName(option) + " NOT IN " + op2()->QLName(option);
 
-      // Relation operators that take three operands.
+    // Relation operators that take three operands.
     case QL_OP_BETWEEN:
-      return op1()->QLName() + " BETWEEN " + op2()->QLName() + " AND " + op3()->QLName();
+      return op1()->QLName(option) + " BETWEEN " +
+          op2()->QLName(option) + " AND " +
+          op3()->QLName(option);
     case QL_OP_NOT_BETWEEN:
-      return op1()->QLName() + " NOT BETWEEN " + op2()->QLName() + " AND " + op3()->QLName();
+      return op1()->QLName(option) + " NOT BETWEEN " +
+          op2()->QLName(option) + " AND " +
+          op3()->QLName(option);
 
-      // Operators that take no operand. For use in "if" clause only currently.
+    // Operators that take no operand. For use in "if" clause only currently.
     case QL_OP_EXISTS:
       return "EXISTS";
     case QL_OP_NOT_EXISTS:
@@ -802,6 +893,34 @@ string PTRelationExpr::QLName() const {
   }
 
   return "expr";
+}
+
+const ColumnDesc *PTExpr::GetColumnDesc(const SemContext *sem_context) {
+  MCString expr_name(MangledName().c_str(), sem_context->PTempMem());
+  return GetColumnDesc(sem_context, expr_name, sem_context->current_dml_stmt());
+}
+
+const ColumnDesc *PTExpr::GetColumnDesc(const SemContext *sem_context,
+                                        const MCString& col_name) const {
+  if (sem_context->selecting_from_index()) {
+    // Mangle column name when selecting from IndexTable.
+    MCString mangled_name(YcqlName::MangleColumnName(col_name.c_str()).c_str(),
+                          sem_context->PTempMem());
+    return GetColumnDesc(sem_context, mangled_name, sem_context->current_dml_stmt());
+  }
+
+  return GetColumnDesc(sem_context, col_name, sem_context->current_dml_stmt());
+}
+
+const ColumnDesc *PTExpr::GetColumnDesc(const SemContext *sem_context,
+                                        const MCString& desc_name,
+                                        PTDmlStmt *stmt) const {
+  if (stmt) {
+    // Get column from DML statement when compiling a DML statement.
+    return stmt->GetColumnDesc(sem_context, desc_name);
+  }
+  // Get column from symbol table in context.
+  return sem_context->GetColumnDesc(desc_name);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -847,16 +966,6 @@ CHECKED_STATUS PTOperatorExpr::AnalyzeOperator(SemContext *sem_context,
   return Status::OK();
 }
 
-const ColumnDesc *PTOperatorExpr::GetColumnDesc(const SemContext *sem_context,
-                                                const MCString& col_name) const {
-  // Get column from DML statement if it's DML.
-  if (sem_context->current_dml_stmt()) {
-    return sem_context->current_dml_stmt()->GetColumnDesc(sem_context, col_name);
-  } else { // Else get column from symbol table in context.
-    return sem_context->GetColumnDesc(col_name);
-  }
-}
-
 //--------------------------------------------------------------------------------------------------
 
 PTRef::PTRef(MemoryContext *memctx,
@@ -882,6 +991,7 @@ CHECKED_STATUS PTRef::AnalyzeOperator(SemContext *sem_context) {
   desc_ = GetColumnDesc(sem_context, name_->last_name());
   if (desc_ == nullptr) {
     // If this is a nested select from an uncovered index, ignore column that is uncovered.
+    LOG(INFO) << "Column " << name_->last_name() << " not found";
     return sem_context->IsUncoveredIndexSelect()
         ? Status::OK()
         : sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
@@ -895,8 +1005,9 @@ CHECKED_STATUS PTRef::AnalyzeOperator(SemContext *sem_context) {
 
 CHECKED_STATUS PTRef::CheckLhsExpr(SemContext *sem_context) {
   // When CQL IF clause is being processed. In that case, disallow reference to primary key columns
-  // and counters.
-  if (sem_context->processing_if_clause()) {
+  // and counters. No error checking is needed when processing SELECT against INDEX table because
+  // we already check it against the UserTable.
+  if (sem_context->processing_if_clause() && !sem_context->selecting_from_index()) {
     if (desc_->is_primary()) {
       return sem_context->Error(this, "Primary key column reference is not allowed in if clause",
                                 ErrorCode::CQL_STATEMENT_INVALID);
@@ -1180,6 +1291,11 @@ PTBindVar::~PTBindVar() {
 }
 
 CHECKED_STATUS PTBindVar::Analyze(SemContext *sem_context) {
+  // Before traversing the expression, check if this whole expression is actually a column.
+  if (CheckIndexColumn(sem_context)) {
+    return Status::OK();
+  }
+
   RETURN_NOT_OK(CheckOperator(sem_context));
 
   if (name_ == nullptr) {

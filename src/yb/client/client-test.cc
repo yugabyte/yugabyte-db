@@ -57,6 +57,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/partial_row.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.proxy.h"
@@ -71,6 +72,7 @@
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_test_util.h"
 #include "yb/server/metadata.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -1547,8 +1549,8 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
 
   // Since we waited before, hopefully all replicas will be up to date
   // and we can just promote another replica.
-  auto client_messenger = ASSERT_RESULT(CreateMessenger("client"));
-
+  auto client_messenger = rpc::CreateAutoShutdownMessengerHolder(
+      ASSERT_RESULT(CreateMessenger("client")));
   int new_leader_idx = -1;
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
     MiniTabletServer* ts = cluster_->mini_tablet_server(i);
@@ -1988,7 +1990,8 @@ TEST_F(ClientTest, TestReadFromFollower) {
   }
   ASSERT_EQ(cluster_->num_tablet_servers() - 1, followers.size());
 
-  auto client_messenger = ASSERT_RESULT(CreateMessenger("client"));
+  auto client_messenger =
+      CreateAutoShutdownMessengerHolder(ASSERT_RESULT(CreateMessenger("client")));
   rpc::ProxyCache proxy_cache(client_messenger.get());
   for (const master::TSInfoPB& ts_info : followers) {
     // Try to read from followers.

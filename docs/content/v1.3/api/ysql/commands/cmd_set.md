@@ -43,7 +43,7 @@ Use the `SET` statement to update a run-time control parameter.
 
 ## Semantics
 
-Although the values of a parameter can be set, displayed, and reset, the effect of these parameters are not yet supported in Yugabyte DB. The default settings and behaviors will be used for the moment.
+Although the values of a parameter can be set, displayed, and reset, the effect of these parameters are not yet supported in YugabyteDB. The default settings and behaviors will be used for the moment.
 
 ### SESSION
 

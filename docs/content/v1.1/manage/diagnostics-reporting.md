@@ -11,7 +11,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-[yb-master](../../admin/yb-master/) and [yb-tserver](../../admin/yb-tserver/) binaries report cluster diagnostics to Yugabyte's diagnostics service every time a new cluster gets created and every hour thereafter. User data stored in Yugabyte DB as well as any personally identifiable information regarding the user is never collected or reported.
+[yb-master](../../admin/yb-master/) and [yb-tserver](../../admin/yb-tserver/) binaries report cluster diagnostics to Yugabyte's diagnostics service every time a new cluster gets created and every hour thereafter. User data stored in YugabyteDB as well as any personally identifiable information regarding the user is never collected or reported.
 
 ## Data collected
 
@@ -105,7 +105,7 @@ Same as `medium` level. In other words, no extra information is collected for th
 
 ## Configuration flags
 
-You can add the following flags while starting the [yb-master](../../admin/yb-master/) and [yb-tserver](../../admin/yb-tserver/) binaries to configure the diagnostics reporting behavior of Yugabyte DB.
+You can add the following flags while starting the [yb-master](../../admin/yb-master/) and [yb-tserver](../../admin/yb-tserver/) binaries to configure the diagnostics reporting behavior of YugabyteDB.
 
 Flag | Default | Description
 ----------------------|---------|------------------------

@@ -154,6 +154,7 @@
 
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/util/shared_lock.h"
 
 using namespace std::literals;
 
@@ -1631,7 +1632,7 @@ Status CatalogManager::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
   // Lookup namespace
   scoped_refptr<NamespaceInfo> ns;
   {
-    boost::shared_lock<LockType> l(lock_);
+    SharedLock<LockType> l(lock_);
     ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id());
   }
   if (!ns) {
@@ -1785,7 +1786,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // checking that referenced user-defined types (if any) exist.
   {
-    boost::shared_lock<LockType> l(lock_);
+    SharedLock<LockType> l(lock_);
     for (int i = 0; i < client_schema.num_columns(); i++) {
       for (const auto &udt_id : client_schema.column(i).type()->GetUserDefinedTypeIds()) {
         if (FindPtrOrNull(udtype_ids_map_, udt_id) == nullptr) {
@@ -2452,7 +2453,7 @@ TabletInfo* CatalogManager::CreateTabletInfo(TableInfo* table,
 
 Status CatalogManager::FindTable(const TableIdentifierPB& table_identifier,
                                  scoped_refptr<TableInfo> *table_info) {
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
 
   if (table_identifier.has_table_id()) {
     *table_info = FindPtrOrNull(table_ids_map_, table_identifier.table_id());
@@ -2510,7 +2511,7 @@ Status CatalogManager::FindNamespaceUnlocked(const NamespaceIdentifierPB& ns_ide
 
 Status CatalogManager::FindNamespace(const NamespaceIdentifierPB& ns_identifier,
                                      scoped_refptr<NamespaceInfo>* ns_info) const {
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   return FindNamespaceUnlocked(ns_identifier, ns_info);
 }
 
@@ -2540,7 +2541,7 @@ Result<TabletInfos> CatalogManager::GetTabletsOrSetupError(
 
   if (ns) {
     TRACE("Looking up namespace");
-    boost::shared_lock<LockType> l(lock_);
+    SharedLock<LockType> l(lock_);
 
     *ns = FindPtrOrNull(namespace_ids_map_, table_obj->namespace_id());
     if (*ns == nullptr) {
@@ -2874,9 +2875,9 @@ void CatalogManager::CleanUpDeletedTables() {
         // For normal runtime operations, this should only contain tables in DELETING state.
         // However, for master failover, the catalog loaders currently have to bring in tables in
         // memory even in DELETED state, for safely loading the respective tablets for them
-        // For these DELETED tables, we'll still want to remove them from memory in this function.
-        if (l->data().started_deleting()) {
-          LOG(INFO) << "Removing from by-ids map table " << table->ToString();
+        //
+        // Eventually, for these DELETED tables, we'll want to also remove them from memory.
+        if (l->data().started_deleting() && !l->data().is_deleted()) {
           tables_to_delete.push_back(table);
           // TODO(bogdan): uncomment this once we also untangle catalog loader logic.
           // Since we have lock_, this table cannot be in the map AND be DELETED.
@@ -2893,9 +2894,14 @@ void CatalogManager::CleanUpDeletedTables() {
     // DELETED tables as well.
     if (table->metadata().state().pb.state() == SysTablesEntryPB::DELETING) {
       // Update the metadata for the on-disk state.
+      LOG(INFO) << "Marking table as DELETED: " << table->ToString();
       table->mutable_metadata()->mutable_dirty()->set_state(SysTablesEntryPB::DELETED,
           Substitute("Deleted with tablets at $0", LocalTimeAsString()));
       tables_to_update_on_disk.push_back(table.get());
+    } else {
+      // TODO(bogdan): We need to abort here, until we remove it from the map, otherwise we'd leave
+      // this lock locked...
+      table->mutable_metadata()->AbortMutation();
     }
   }
   if (tables_to_update_on_disk.size() > 0) {
@@ -2913,7 +2919,8 @@ void CatalogManager::CleanUpDeletedTables() {
   {
     std::lock_guard<LockType> l_map(lock_);
     for (auto table : tables_to_delete) {
-      table_ids_map_.erase(table->id());
+      // TODO(bogdan): Come back to this once we figure out all concurrency issues.
+      // table_ids_map_.erase(table->id());
     }
   }
   // Update the table in-memory info as DELETED after we've removed them from the maps.
@@ -3282,7 +3289,7 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
   }
 
   // Get namespace name by id.
-  boost::shared_lock<LockType> l_map(lock_);
+  SharedLock<LockType> l_map(lock_);
   TRACE("Looking up namespace");
   const scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, table->namespace_id());
 
@@ -3329,7 +3336,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     }
   }
 
-  std::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   RelationType relation_type;
 
   for (const auto& entry : table_ids_map_) {
@@ -3394,14 +3401,14 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
 }
 
 scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const TableId& table_id) {
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   return FindPtrOrNull(table_ids_map_, table_id);
 }
 
 scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableName(
     const NamespaceName& namespace_name, const TableName& table_name) {
 
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   const scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_names_map_, namespace_name);
   if (ns == nullptr) {
     return nullptr;
@@ -3416,7 +3423,7 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& tab
 void CatalogManager::GetAllTables(std::vector<scoped_refptr<TableInfo>> *tables,
                                   bool includeOnlyRunningTables) {
   tables->clear();
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   for (const TableInfoMap::value_type& e : table_ids_map_) {
     if (includeOnlyRunningTables && !e.second->is_running()) {
       continue;
@@ -3427,7 +3434,7 @@ void CatalogManager::GetAllTables(std::vector<scoped_refptr<TableInfo>> *tables,
 
 void CatalogManager::GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo>>* namespaces) {
   namespaces->clear();
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   for (const NamespaceInfoMap::value_type& e : namespace_ids_map_) {
     namespaces->push_back(e.second);
   }
@@ -3435,7 +3442,7 @@ void CatalogManager::GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo>>*
 
 void CatalogManager::GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo>>* types) {
   types->clear();
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   for (const UDTypeInfoMap::value_type& e : udtype_ids_map_) {
     types->push_back(e.second);
   }
@@ -3452,7 +3459,7 @@ NamespaceName CatalogManager::GetNamespaceNameUnlocked(const NamespaceId& id) co
 
 NamespaceName CatalogManager::GetNamespaceName(const NamespaceId& id) const {
   TRACE("Acquired catalog manager lock");
-  std::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   return GetNamespaceNameUnlocked(id);
 }
 
@@ -3479,7 +3486,7 @@ bool CatalogManager::IsSystemTableUnlocked(const TableInfo& table) const {
 // True if table is created by user.
 // Table can be regular table or index in this case.
 bool CatalogManager::IsUserCreatedTable(const TableInfo& table) const {
-  std::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   return IsUserCreatedTableUnlocked(table);
 }
 
@@ -3494,7 +3501,7 @@ bool CatalogManager::IsUserCreatedTableUnlocked(const TableInfo& table) const {
 }
 
 bool CatalogManager::IsUserTable(const TableInfo& table) const {
-  std::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   return IsUserTableUnlocked(table);
 }
 
@@ -3503,7 +3510,7 @@ bool CatalogManager::IsUserTableUnlocked(const TableInfo& table) const {
 }
 
 bool CatalogManager::IsUserIndex(const TableInfo& table) const {
-  std::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
   return IsUserIndexUnlocked(table);
 }
 
@@ -3627,7 +3634,7 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
                "tablet_id", report.tablet_id());
   scoped_refptr<TabletInfo> tablet;
   {
-    boost::shared_lock<LockType> l(lock_);
+    SharedLock<LockType> l(lock_);
     tablet = FindPtrOrNull(tablet_map_, report.tablet_id());
   }
   RETURN_NOT_OK_PREPEND(CheckIsLeaderAndReady(),
@@ -3815,8 +3822,8 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
               << " with leader state from term "
               << final_report->committed_consensus_state().current_term();
 
-      RETURN_NOT_OK(ResetTabletReplicasFromReportedConfig(*final_report, tablet,
-                                                          tablet_lock.get(), table_lock.get()));
+      RETURN_NOT_OK(ResetTabletReplicasFromReportedConfig(
+          *final_report, tablet, ts_desc->permanent_uuid(), tablet_lock.get(), table_lock.get()));
 
       // Sanity check replicas for this tablet.
       TabletInfo::ReplicaMap replica_map;
@@ -3829,8 +3836,13 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
       // Report opid_index is equal to the previous opid_index. If some
       // replica is reporting the same consensus configuration we already know about and hasn't
       // been added as replica, add it.
-      LOG(INFO) << "Peer " << ts_desc->permanent_uuid() << " sent full tablet report for "
-                << tablet->tablet_id() << ". Consensus state: " << cstate.ShortDebugString();
+      LOG(INFO) << "Peer " << ts_desc->permanent_uuid() << " sent "
+                << (is_incremental ? "incremental" : "full tablet")
+                << " report for " << tablet->tablet_id()
+                << ", prev state op id: " << prev_cstate.config().opid_index()
+                << ", prev state term: " << prev_cstate.current_term()
+                << ", prev state has_leader_uuid: " << prev_cstate.has_leader_uuid()
+                << ". Consensus state: " << cstate.ShortDebugString();
       UpdateTabletReplica(ts_desc, report, tablet);
     }
   } else if (is_incremental &&
@@ -4017,7 +4029,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   // Only empty namespace can be deleted.
   TRACE("Looking for tables in the namespace");
   {
-    boost::shared_lock<LockType> catalog_lock(lock_);
+    SharedLock<LockType> catalog_lock(lock_);
 
     for (const TableInfoMap::value_type& entry : table_ids_map_) {
       auto ltm = entry.second->LockForRead();
@@ -4035,7 +4047,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   // Only empty namespace can be deleted.
   TRACE("Looking for types in the namespace");
   {
-    boost::shared_lock<LockType> catalog_lock(lock_);
+    SharedLock<LockType> catalog_lock(lock_);
 
     for (const UDTypeInfoMap::value_type& entry : udtype_ids_map_) {
       auto ltm = entry.second->LockForRead();
@@ -4150,7 +4162,7 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
   vector<scoped_refptr<TableInfo>> sys_tables;
   {
     // Lock the catalog to iterate over table_ids_map_.
-    boost::shared_lock<LockType> catalog_lock(lock_);
+    SharedLock<LockType> catalog_lock(lock_);
 
     // Delete tablets for each of user tables.
     for (const TableInfoMap::value_type& entry : table_ids_map_) {
@@ -4229,7 +4241,7 @@ Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
 
   RETURN_NOT_OK(CheckOnline());
 
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
 
   for (const auto& entry : namespace_ids_map_) {
     const auto& namespace_info = *entry.second;
@@ -4518,7 +4530,7 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
     RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
   }
 
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
 
   for (const UDTypeInfoByNameMap::value_type& entry : udtype_names_map_) {
     auto ltm = entry.second->LockForRead();
@@ -4619,6 +4631,7 @@ uint64_t CatalogManager::GetYsqlCatalogVersion() {
 Status CatalogManager::ResetTabletReplicasFromReportedConfig(
     const ReportedTabletPB& report,
     const scoped_refptr<TabletInfo>& tablet,
+    const std::string& sender_uuid,
     TabletInfo::lock_type* tablet_lock,
     TableInfo::lock_type* table_lock) {
 
@@ -4646,7 +4659,7 @@ Status CatalogManager::ResetTabletReplicasFromReportedConfig(
     // Do not replace replicas in the NOT_STARTED or BOOTSTRAPPING state unless they are stale.
     bool create_new_replica = true;
     TabletReplica* existing_replica;
-    auto it = rl.find(ts_desc->permanent_uuid());
+    auto it = peer.permanent_uuid() != sender_uuid ? rl.find(ts_desc->permanent_uuid()) : rl.end();
     if (it != rl.end()) {
       existing_replica = &it->second;
       // IsStarting returns true if state == NOT_STARTED or state == BOOTSTRAPPING.
@@ -4699,7 +4712,6 @@ void CatalogManager::UpdateTabletReplica(TSDescriptor* ts_desc,
 void CatalogManager::NewReplica(TSDescriptor* ts_desc,
                                 const ReportedTabletPB& report,
                                 TabletReplica* replica) {
-
   // Tablets in state NOT_STARTED or BOOTSTRAPPING don't have a consensus.
   if (report.state() == tablet::NOT_STARTED || report.state() == tablet::BOOTSTRAPPING) {
     replica->role = RaftPeerPB::NON_PARTICIPANT;
@@ -4878,12 +4890,9 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
                    nullptr);
 
   // Synchronous tablet open for "local bootstrap".
-  SHUTDOWN_AND_TOMBSTONE_TABLET_PEER_NOT_OK(sys_catalog_->OpenTablet(meta),
-                                            sys_catalog_->tablet_peer(),
-                                            meta,
-                                            master_->fs_manager()->uuid(),
-                                            "Remote bootstrap: Failed opening sys catalog",
-                                            nullptr);
+  RETURN_NOT_OK(tserver::ShutdownAndTombstoneTabletPeerNotOk(
+      sys_catalog_->OpenTablet(meta), sys_catalog_->tablet_peer(), meta,
+      master_->fs_manager()->uuid(), "Remote bootstrap: Failed opening sys catalog"));
 
   // Set up the in-memory master list and also flush the cmeta.
   RETURN_NOT_OK(UpdateMastersListInMemoryAndDisk());
@@ -5053,7 +5062,7 @@ void CatalogManager::GetPendingServerTasksUnlocked(const TableId &table_uuid,
 void CatalogManager::ExtractTabletsToProcess(
     TabletInfos *tablets_to_delete,
     TabletInfos *tablets_to_process) {
-  boost::shared_lock<LockType> l(lock_);
+  SharedLock<LockType> l(lock_);
 
   // TODO: At the moment we loop through all the tablets
   //       we can keep a set of tablets waiting for "assignment"
@@ -5719,7 +5728,7 @@ Status CatalogManager::GetTabletLocations(const TabletId& tablet_id, TabletLocat
   locs_pb->mutable_replicas()->Clear();
   scoped_refptr<TabletInfo> tablet_info;
   {
-    boost::shared_lock<LockType> l(lock_);
+    SharedLock<LockType> l(lock_);
     if (!FindCopy(tablet_map_, tablet_id, &tablet_info)) {
       return STATUS_SUBSTITUTE(NotFound, "Unknown tablet $0", tablet_id);
     }
@@ -5804,7 +5813,7 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   // Copy the internal state so that, if the output stream blocks,
   // we don't end up holding the lock for a long time.
   {
-    boost::shared_lock<LockType> l(lock_);
+    SharedLock<LockType> l(lock_);
     namespace_ids_copy = namespace_ids_map_;
     ids_copy = table_ids_map_;
     names_copy = table_names_map_;
@@ -6250,6 +6259,16 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
     bool blacklist_leader) {
   BlacklistState& state = (blacklist_leader) ? leaderBlacklistState : blacklistState;
   int64_t blacklist_replicas = GetNumRelevantReplicas(state, blacklist_leader);
+
+  // On change of master leader, initial_load_ information may be lost temporarily. Reset to
+  // current value to avoid reporting progress percent as 100. Note that doing so will report
+  // progress percent as 0 instead.
+  if (state.initial_load_ < blacklist_replicas) {
+    LOG(INFO) << "Reset blacklist initial load from " << state.initial_load_
+      <<  " to " << blacklist_replicas;
+    state.initial_load_ = blacklist_replicas;
+  }
+
   LOG(INFO) << "Blacklisted count " << blacklist_replicas << " in " << tablet_map_.size()
             << " tablets, across " << state.tservers_.size()
             << " servers, with initial load " << state.initial_load_;
@@ -6262,6 +6281,8 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
 
   resp->set_percent(
       100 - (static_cast<double>(blacklist_replicas) * 100 / state.initial_load_));
+  resp->set_remaining(blacklist_replicas);
+  resp->set_total(state.initial_load_);
 
   return Status::OK();
 }

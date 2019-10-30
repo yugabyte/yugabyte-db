@@ -50,7 +50,7 @@ showAsideToc: true
 
 - Reassign all objects owned by john to yugabyte.
 
-```sql
+```postgresql
 yugabyte=# reassign owned by john to yugabyte;
 ```
 

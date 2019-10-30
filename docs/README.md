@@ -1,13 +1,13 @@
-# Yugabyte DB Docs
+# YugabyteDB Docs
 
-This repository contains the documentation for Yugabyte DB available at https://docs.yugabyte.com/
+This repository contains the documentation for YugabyteDB available at https://docs.yugabyte.com/
 
 Please [open an issue](https://github.com/yugabyte/docs/issues) to suggest enhancements.
 
 
-# Contributing to Yugabyte DB Docs
+# Contributing to YugabyteDB Docs
 
-Yugabyte DB docs are based on the Hugo framework and use the Material Docs theme.
+YugabyteDB docs are based on the Hugo framework and use the Material Docs theme.
 
 * Hugo framework: http://gohugo.io/overview/introduction/
 * Material Docs theme: http://themes.gohugo.io/material-docs/
@@ -118,9 +118,8 @@ instructions just as a reference for YCQL._
           | grep browser_download_url | cut -d \" -f 4)
    ```
 
-   _Note: Alternatively, you can manually build the jar file as described in the [build
-   section](https://github.com/yugabyte/RRDiagram/README.md#build) of the `RRDiagram` repo (and
-   move/rename the resulting jar from the target folder)._
+   _Note: Alternatively, you can manually build the JAR file as described in the [build
+   section](https://github.com/yugabyte/RRDiagram#build) of the `RRDiagram` repository._
 
 1. Run the diagram generator using the following command:
 

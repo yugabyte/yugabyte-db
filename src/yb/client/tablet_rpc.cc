@@ -56,6 +56,8 @@ TabletInvoker::TabletInvoker(const bool local_tserver_only,
 TabletInvoker::~TabletInvoker() {}
 
 void TabletInvoker::SelectTabletServerWithConsistentPrefix() {
+  TRACE_TO(trace_, "SelectTabletServerWithConsistentPrefix()");
+
   std::vector<RemoteTabletServer*> candidates;
   current_ts_ = client_->data_->SelectTServer(tablet_.get(),
                                               YBClient::ReplicaSelection::CLOSEST_REPLICA, {},
@@ -64,11 +66,15 @@ void TabletInvoker::SelectTabletServerWithConsistentPrefix() {
 }
 
 void TabletInvoker::SelectLocalTabletServer() {
+  TRACE_TO(trace_, "SelectLocalTabletServer()");
+
   current_ts_ = client_->data_->meta_cache_->local_tserver();
   VLOG(1) << "Using local tserver: " << current_ts_->ToString();
 }
 
 void TabletInvoker::SelectTabletServer()  {
+  TRACE_TO(trace_, "SelectTabletServer()");
+
   // Choose a destination TS according to the following algorithm:
   // 1. Select the leader, provided:
   //    a. One exists, and
@@ -99,7 +105,7 @@ void TabletInvoker::SelectTabletServer()  {
     // "fast path" mode and not actually performing a metadata refresh from the
     // Master when it needs to.
     tablet_->MarkTServerAsFollower(current_ts_);
-    current_ts_ = NULL;
+    current_ts_ = nullptr;
   }
   if (!current_ts_) {
     // Try to "guess" the next leader.
@@ -125,6 +131,8 @@ void TabletInvoker::SelectTabletServer()  {
       }
       break;
     }
+  } else {
+    VLOG(4) << "Selected TServer " << current_ts_->ToString() << " as leader for " << tablet_id_;
   }
 }
 
@@ -207,16 +215,20 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
 
 Status TabletInvoker::FailToNewReplica(const Status& reason,
                                        const tserver::TabletServerErrorPB* error_code) {
-  VLOG(1) << "Failing " << command_->ToString() << " to a new replica: " << reason.ToString();
+  if (ErrorCode(error_code) == tserver::TabletServerErrorPB::STALE_FOLLOWER) {
+    VLOG(1) << "Stale follower for " << command_->ToString() << " just retry";
+  } else {
+    VLOG(1) << "Failing " << command_->ToString() << " to a new replica: " << reason
+            << ", old replica: " << yb::ToString(current_ts_);
 
-  bool found = ErrorCode(error_code) != tserver::TabletServerErrorPB::STALE_FOLLOWER &&
-               (!tablet_ || tablet_->MarkReplicaFailed(current_ts_, reason));
-  if (!found) {
-    // Its possible that current_ts_ is not part of replicas if RemoteTablet.Refresh() is invoked
-    // which updates the set of replicas.
-    LOG(WARNING) << "Tablet " << tablet_id_ << ": Unable to mark replica "
-                 << current_ts_->ToString()
-                 << " as failed. Replicas: " << tablet_->ReplicasAsString();
+    bool found = !tablet_ || tablet_->MarkReplicaFailed(current_ts_, reason);
+    if (!found) {
+      // Its possible that current_ts_ is not part of replicas if RemoteTablet.Refresh() is invoked
+      // which updates the set of replicas.
+      LOG(WARNING) << "Tablet " << tablet_id_ << ": Unable to mark replica "
+                   << current_ts_->ToString()
+                   << " as failed. Replicas: " << tablet_->ReplicasAsString();
+    }
   }
 
   auto status = retrier_->DelayedRetry(command_, reason);
@@ -304,7 +316,8 @@ bool TabletInvoker::Done(Status* status) {
 
   if (!status->ok()) {
     if (status->IsTimedOut()) {
-      VLOG(1) << "Call timed out. Marking replica as failed.";
+      VLOG(1) << "Call to " << yb::ToString(tablet_) << " timed out. Marking replica "
+              << yb::ToString(current_ts_) << " as failed.";
       if (tablet_ != nullptr && current_ts_ != nullptr) {
         tablet_->MarkReplicaFailed(current_ts_, *status);
       }
@@ -351,11 +364,19 @@ std::shared_ptr<tserver::TabletServerServiceProxy> TabletInvoker::proxy() const 
   return current_ts_->proxy();
 }
 
+::yb::HostPort TabletInvoker::ProxyEndpoint() const {
+  return current_ts_->ProxyEndpoint();
+}
+
 void TabletInvoker::LookupTabletCb(const Result<RemoteTabletPtr>& result) {
-  VLOG(1) << "LookupTabletCb(" << result << ")";
+  VLOG(1) << "LookupTabletCb(" << yb::ToString(result) << ")";
 
   if (result.ok()) {
+#ifndef DEBUG
+    TRACE_TO(trace_, Format("LookupTabletCb($0)", *result));
+#else
     TRACE_TO(trace_, "LookupTabletCb(OK)");
+#endif
   } else {
     TRACE_TO(trace_, "LookupTabletCb($0)", result.status().ToString(false));
   }

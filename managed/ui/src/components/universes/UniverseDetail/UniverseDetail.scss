@@ -256,6 +256,10 @@
   @media (max-width: 991px) {
     left: 115px;
   }
+
+  .request-status {
+    margin-left: 15px;
+  }
 }
 
 h2 {
@@ -413,6 +417,14 @@ h2 {
         padding: 0 12px;
       }
     }
+  }
+
+  .alert {
+    position: absolute;
+    top: 10px;
+    z-index: 4000;
+    left: 40%;
+    min-width: 300px;
   }
 }
 

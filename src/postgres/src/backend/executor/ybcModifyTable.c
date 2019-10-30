@@ -218,33 +218,34 @@ Datum YBCGetYBTupleIdFromTuple(YBCPgStatement pg_stmt,
 							   TupleDesc tupleDesc) {
 	Bitmapset *pkey = GetFullYBTablePrimaryKey(rel);
 	AttrNumber minattr = YBSystemFirstLowInvalidAttributeNumber + 1;
-
+	const int nattrs = bms_num_members(pkey);
+	YBCPgAttrValueDescriptor *attrs =
+			(YBCPgAttrValueDescriptor*)palloc(nattrs * sizeof(YBCPgAttrValueDescriptor));
+	uint64_t tuple_id = 0;
+	YBCPgAttrValueDescriptor *next_attr = attrs;
 	int col = -1;
 	while ((col = bms_next_member(pkey, col)) >= 0) {
 		AttrNumber attnum = col + minattr;
-
-		uint64_t datum = 0;
-		bool is_null = false;
-		const YBCPgTypeEntity *type_entity = NULL;
-
+		next_attr->attr_num = attnum;
 		/*
 		 * Don't need to fill in for the DocDB RowId column, however we still
 		 * need to add the column to the statement to construct the ybctid.
 		 */
 		if (attnum != YBRowIdAttributeNumber) {
 			Oid	type_id = (attnum > 0) ?
-				TupleDescAttr(tupleDesc, attnum - 1)->atttypid : InvalidOid;
+					TupleDescAttr(tupleDesc, attnum - 1)->atttypid : InvalidOid;
 
-			type_entity = YBCDataTypeFromOidMod(attnum, type_id);
-			datum = heap_getattr(tuple, attnum, tupleDesc, &is_null);
+			next_attr->type_entity = YBCDataTypeFromOidMod(attnum, type_id);
+			next_attr->datum = heap_getattr(tuple, attnum, tupleDesc, &next_attr->is_null);
+		} else {
+			next_attr->datum = 0;
+			next_attr->is_null = false;
+			next_attr->type_entity = NULL;
 		}
-
-		HandleYBStmtStatus(YBCPgDmlAddYBTupleIdColumn(pg_stmt, attnum, datum, is_null, type_entity),
-						   pg_stmt);
+		++next_attr;
 	}
-
-	uint64_t tuple_id = 0;
-	HandleYBStmtStatus(YBCPgDmlGetYBTupleId(pg_stmt, &tuple_id), pg_stmt);
+	HandleYBStmtStatus(YBCPgDmlBuildYBTupleId(pg_stmt, attrs, nattrs, &tuple_id), pg_stmt);
+	pfree(attrs);
 	return (Datum)tuple_id;
 }
 

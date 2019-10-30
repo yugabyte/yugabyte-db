@@ -87,7 +87,7 @@ class PrimitiveValue {
       type_ = other.type_;
       frozen_val_ = new FrozenContainer(*(other.frozen_val_));
     } else {
-      memmove(this, &other, sizeof(PrimitiveValue));
+      memmove(static_cast<void*>(this), &other, sizeof(PrimitiveValue));
     }
     ttl_seconds_ = other.ttl_seconds_;
     write_time_ = other.write_time_;
@@ -499,12 +499,12 @@ class PrimitiveValue {
     } else {
       // Non-string primitive values only have plain old data. We are assuming there is no overlap
       // between the two objects, so we're using memcpy instead of memmove.
-      memcpy(this, other, sizeof(PrimitiveValue));
+      memcpy(static_cast<void*>(this), other, sizeof(PrimitiveValue));
 #ifndef NDEBUG
       // We could just leave the old object as is for it to be in a "valid but unspecified" state.
       // However, in debug mode we clear the old object's state to make sure we don't attempt to use
       // it.
-      memset(other, 0xab, sizeof(PrimitiveValue));
+      memset(static_cast<void*>(other), 0xab, sizeof(PrimitiveValue));
       // Restore the type. There should be no deallocation for non-string types anyway.
       other->type_ = ValueType::kNullLow;
 #endif

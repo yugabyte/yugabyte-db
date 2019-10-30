@@ -19,7 +19,7 @@ showAsideToc: true
 
 ### YugabyteDB
 
-A 1-node YugabyteDB cluster with an RF of 1 is up and running locally (the `yb-ctl create` command create this by default). If you are new to YugabyteDB, you can create a local YugaByte cluster in under five minutes by following the steps in the [Quick start](/quick-start/install/).
+A 1-node YugabyteDB cluster with an RF of 1 is up and running locally (the `yb-ctl create` command create this by default). If you are new to YugabyteDB, you can create a local YugabyteDB cluster in under five minutes by following the steps in the [Quick start](/quick-start/install/).
 
 ### Java
 
@@ -29,25 +29,40 @@ A JRE (or JDK), for Java 8 or later, is installed. JDK and JRE installers for Li
 
 Start your local YugabyteDB cluster and add a table, named `users`, to the default `yugabyte` database.
 
-```sql
+```postgresql
+CREATE TABLE users (name text, pass text, id int, PRIMARY KEY (id));
+```
+
+## Step 2 — Download the Kafka Connect YugabyteDB Source Connector
+
+Download the Kafka Connect YugabyteDB Source Connector JAR file (`yb-cdc-connector.jar`).
+
+```sh
+$ wget https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar
 
 ```
 
-## Step 2 — Download the Yugabyte CDC connector
+{{< note title="Note" >}}
 
-Download the [Yugabyte CDC connector (JAR file)](https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar).
+The Kafka Connect YugabyteDB Source Connector also supports change data capture (CDC) to `stdout`.
+
+{{< /note >}}
 
 ## Step 3 — Stream the log output stream to "stdout"
 
-Run the command below to to start the YugabyteDB CDC connector and stream the output from the `cdc` table to `stdout`.
+Run the command below to to start logging an output stream of data changes from the YugabyteDB `cdc` table to `stdout`.
 
-```bash
+```sh
 java -jar yb_cdc_connector.jar
 --table_name yugabyte.users
 --log_only
 ```
 
-For details on the available options, see [Using the Yugabyte CDC connector](./use-cdc).
+The example above uses the following parameters:
+
+- `--table_name` — Specifies the namespace and table, where namespace is the database (YSQL) or keyspace (YCQL).
+- `--master_addrs` — Specifies the IP addresses for all of the YB-Master services that are producing or consuming. Default value is `127.0.0.1:7100`. If you are using a 3-node local cluster, then you need to specify a comma-delimited list of the addresses for all of your YB-Master services.
+- `--log_only`: Flag to restrict logging only to the console (`stdout`).
 
 ## Step 4 — Write values and observe
 

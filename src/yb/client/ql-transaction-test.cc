@@ -20,6 +20,8 @@
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_rpc.h"
 
+#include "yb/common/ql_value.h"
+
 #include "yb/consensus/consensus.h"
 
 #include "yb/rpc/rpc.h"
@@ -1390,6 +1392,7 @@ class RemoteBootstrapTest : public QLTransactionTest {
  protected:
   void SetUp() override {
     FLAGS_remote_bootstrap_max_chunk_size = 1_KB;
+    FLAGS_log_min_seconds_to_retain = 1;
     QLTransactionTest::SetUp();
   }
 };
@@ -1410,7 +1413,6 @@ TEST_F_EX(QLTransactionTest, RemoteBootstrap, RemoteBootstrapTest) {
 
   DisableTransactionTimeout();
   DisableApplyingIntents();
-  FLAGS_log_min_seconds_to_retain = 1;
 
   cluster_->mini_tablet_server(0)->Shutdown();
 

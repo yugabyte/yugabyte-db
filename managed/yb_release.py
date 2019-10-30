@@ -34,13 +34,13 @@ try:
     init_env(logging.INFO)
     script_dir = os.path.dirname(os.path.realpath(__file__))
 
-    _, err = Popen(["sbt", "clean"], stderr=PIPE)
+    _, err = Popen(["sbt", "clean", "-batch"], stderr=PIPE).communicate()
     if err:
         raise RuntimeError(err)
     log_message(logging.INFO, "Kick off SBT universal packaging")
-    _, err = Popen(["sbt", "universal:packageZipTarball"], stderr=PIPE)
-    if err:
-        raise RuntimeError(err)
+    # Ignore any error output from packaging as npm is expected to have some warnings.
+    os.system("df -h; sbt universal:packageZipTarball -batch")
+    log_message(logging.INFO, "Finished running SBT universal packaging.")
 
     packaged_files = glob.glob(os.path.join(script_dir, "target", "universal", "yugaware*.tgz"))
     if args.unarchived:
@@ -58,6 +58,9 @@ try:
             if not os.path.exists(args.destination):
                 raise YBOpsRuntimeError("Destination {} not a directory.".format(args.destination))
             shutil.copy(release_file, args.destination)
-except (CalledProcessError, OSError, RuntimeError, TypeError, NameError) as e:
+except CalledProcessError as e:
+    log_message(logging.error, e)
+    log_message(logging.error, e.output)
+except (OSError, RuntimeError, TypeError, NameError) as e:
     log_message(logging.ERROR, e)
     raise e

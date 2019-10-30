@@ -8,14 +8,14 @@ menu:
     weight: 824
 ---
 
-## 1. Are Yugabyte DB processes running?
+## 1. Are YugabyteDB processes running?
 
-First, ensure that the expected Yugabyte DB processes on the current node.
+First, ensure that the expected YugabyteDB processes on the current node.
 At a minimum, the tserver process needs to be running to be able to connect to this node with a Redis client or application.
 Additionally, depending on the setup, you might expect a master process to also be running on this node.
 Follow the instructions on the [Check Processes](../../nodes/check-processes/) page.
 
-## 2. Is Yugabyte DB's Redis-compatible YEDIS service running?
+## 2. Is YugabyteDB's Redis-compatible YEDIS service running?
 
 If the tserver process is running, make sure the the YEDIS service is enabled and listening on the Redis port (default `6379`).
 
@@ -55,5 +55,5 @@ $ ./redis-cli -h <yb-local-address>
 ```
 where `<yb-local-address>` is the address where the YEDIS service is listening (e.g. as returned by `lsof`). For instance, in the example above, it is `localhost` (or, additionally, `127.0.0.2` and `127.0.0.3` for the `yb-ctl` case).
 
-If `redis-cli` can connect, the issue is likely a network issue with the original client not being able to access this node where Yugabyte DB is running. See also [Cannot access Master or TServer Endpoints](#cannot-access-master-or-tserver-endpoints) below.
+If `redis-cli` can connect, the issue is likely a network issue with the original client not being able to access this node where YugabyteDB is running. See also [Cannot access Master or TServer Endpoints](#cannot-access-master-or-tserver-endpoints) below.
 Otherwise, you might need to run `./yb-admin --master_addresses <master-ip-addresses> setup_redis_table"`. You can find the `yb-admin` tool in the Yugabyte `bin` directory.

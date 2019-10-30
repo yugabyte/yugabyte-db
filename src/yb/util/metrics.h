@@ -240,6 +240,7 @@
 
 #include <algorithm>
 #include <mutex>
+#include <set>
 #include <string>
 #include <sstream>
 #include <unordered_map>
@@ -248,6 +249,7 @@
 #include <gtest/gtest_prod.h>
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
+#include <boost/thread/shared_mutex.hpp>
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/callback.h"
@@ -263,6 +265,7 @@
 #include "yb/util/status.h"
 #include "yb/util/striped64.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/shared_lock.h"
 
 // Define a new entity type.
 //
@@ -772,9 +775,32 @@ class MetricRegistry {
     return entities_.size();
   }
 
+  void tablets_shutdown_insert(std::string id) {
+    std::lock_guard<boost::shared_mutex> l(tablets_shutdown_lock_);
+    tablets_shutdown_.insert(id);
+  }
+
+  void tablets_shutdown_erase(std::string id) {
+    std::lock_guard<boost::shared_mutex> l(tablets_shutdown_lock_);
+    (void)tablets_shutdown_.erase(id);
+  }
+
+  bool tablets_shutdown_find(std::string id) const {
+    SharedLock<boost::shared_mutex> l(tablets_shutdown_lock_);
+    return tablets_shutdown_.find(id) != tablets_shutdown_.end();
+  }
+
  private:
   typedef std::unordered_map<std::string, scoped_refptr<MetricEntity> > EntityMap;
   EntityMap entities_;
+
+  mutable boost::shared_mutex tablets_shutdown_lock_;
+
+  // Set of tablets that have been shutdown. Protected by tablets_shutdown_lock_.
+  std::set<std::string> tablets_shutdown_;
+
+  // Returns whether a tablet has been shutdown.
+  bool TabletHasBeenShutdown(const scoped_refptr<MetricEntity> entity) const;
 
   mutable simple_spinlock lock_;
   DISALLOW_COPY_AND_ASSIGN(MetricRegistry);

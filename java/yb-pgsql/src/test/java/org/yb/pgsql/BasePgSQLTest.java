@@ -75,6 +75,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   // Postgres settings.
   protected static final String DEFAULT_PG_DATABASE = "yugabyte";
   protected static final String DEFAULT_PG_USER = "yugabyte";
+  protected static final String DEFAULT_PG_PASS = "yugabyte";
   public static final String TEST_PG_USER = "yugabyte_test";
 
   // Postgres flags.
@@ -165,7 +166,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  private Map<String, String> getMasterAndTServerFlags() {
+  protected Map<String, String> getMasterAndTServerFlags() {
     Map<String, String> flagMap = new TreeMap<>();
     flagMap.put(
         "retryable_rpc_single_call_timeout_ms",
@@ -204,7 +205,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     Map<String, String> flagMap = new TreeMap<>();
     flagMap.put("client_read_write_timeout_ms", "120000");
     flagMap.put("memory_limit_hard_bytes", String.valueOf(2L * 1024 * 1024 * 1024));
-    flagMap.put("enable_ysql", "true");
     return flagMap;
   }
 

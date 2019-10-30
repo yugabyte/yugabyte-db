@@ -13,12 +13,14 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <boost/algorithm/string.hpp>
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_defaults.h"
 #include "yb/yql/cql/ql/test/ql-test-base.h"
-#include <boost/algorithm/string.hpp>
 
+#include "yb/common/ql_value.h"
 
 DECLARE_int32(simulate_slow_table_create_secs);
 DECLARE_bool(master_enable_metrics_snapshotter);

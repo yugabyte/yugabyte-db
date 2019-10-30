@@ -93,11 +93,6 @@ message CreateCDCStreamRequestPB {
   optional string table_id = 1;
   optional CDCRecordType record_type = 2 [default = CHANGE];
   optional CDCRecordFormat record_format = 3 [default = JSON];
-
-  // Time period for which CDC changes will be retained on producer.
-  // Calling GetChanges() with a checkpoint older than "retention" will result in
-  // CHECKPOINT_TOO_OLD error.
-  optional uint32 retention_sec = 4;
 }
 
 message CreateCDCStreamResponsePB {
@@ -106,7 +101,7 @@ message CreateCDCStreamResponsePB {
 }
 
 message DeleteCDCStreamRequestPB {
-  optional bytes stream_id = 1;
+  repeated bytes stream_id = 1;
 }
 
 message DeleteCDCStreamResponsePB {
@@ -128,7 +123,7 @@ message ListTabletsResponsePB {
 message CDCTabletPB {
   message ReplicaPB {
     repeated HostPortPB broadcast_addresses = 1;
-    repeated HostPortPB private_rpc_addresses = 2;
+    // Don't use private_rpc_addresses since we're cross-universe
   }
   optional bytes tablet_id = 1;
   // Tservers holding data for the tablet.

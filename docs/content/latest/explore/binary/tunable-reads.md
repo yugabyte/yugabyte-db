@@ -20,15 +20,15 @@ $ ./bin/yb-ctl add_node
 
 ## 2. Write some data
 
-Download the sample app jar.
+Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) JAR file (`yb-sample-apps.jar`) by running the following command.
 
 ```sh
 $ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
 ```
 
-By default, the key-value sample application runs with strong read consistency where all data is read from the tablet leader. We are going to populate exactly one key with a 10KB value into the system. Since the replication factor is 3, this key will get replicated to only 3 of the 4 nodes in the universe.
+By default, the YugabyteDB workload generator runs with strong read consistency, where all data is read from the tablet leader. We are going to populate exactly one key with a 10KB value into the system. Since the replication factor is 3, this key will get replicated to only 3 of the 4 nodes in the universe.
 
-Let us run the sample key-value app to constantly update this key-value, as well as perform reads with strong consistency against the local universe.
+Run the `CassandraKeyValue` workload application to constantly update this key-value, as well as perform reads with strong consistency against the local universe.
 
 ```sh
 $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
@@ -73,10 +73,9 @@ When performing strongly consistent reads as a part of the above command, all re
 
 ![Reads from the tablet leader](/images/ce/tunable-reads-leader.png)
 
-
 ## 4. Timeline consistent reads from tablet replicas
 
-Let us stop the above sample app, and run the following variant of the sample app. This command will do updates to the same key `key:0` which will go through the tablet leader, but it will reads from the replicas.
+Stop the workload application above, and then run the following variant of that workload application. This command will do updates to the same key `key:0` which will go through the tablet leader, but it will reads from the replicas.
 
 ```sh
 $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
@@ -89,10 +88,9 @@ $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                     --local_reads
 ```
 
-This can be easily seen by refreshing the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page, where we will see that the writes are served by a single TServer that is the leader of the tablet for the key `key:0` while multiple TServers which are replicas serve the reads.
+This can be easily seen by refreshing the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page, where we will see that the writes are served by a single YB-TServer that is the leader of the tablet for the key `key:0` while multiple YB-TServers which are replicas serve the reads.
 
 ![Reads from the tablet follower](/images/ce/tunable-reads-followers.png)
-
 
 ## 5. Clean up (optional)
 

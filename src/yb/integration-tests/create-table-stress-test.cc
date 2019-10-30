@@ -53,6 +53,7 @@
 #include "yb/master/mini_master.h"
 #include "yb/master/master-test-util.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_test_util.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/hdr_histogram.h"
@@ -195,14 +196,15 @@ TEST_F(CreateTableStressTest, GetTableLocationsBenchmark) {
   // would be used for the connection to the master, so this benchmark would
   // probably be testing the serialization and network code rather than the
   // master GTL code.
-  vector<unique_ptr<Messenger>> messengers;
+  vector<rpc::AutoShutdownMessengerHolder> messengers;
   vector<unique_ptr<MasterServiceProxy>> proxies;
   vector<unique_ptr<rpc::ProxyCache>> caches;
   messengers.reserve(kNumThreads);
   proxies.reserve(kNumThreads);
   caches.reserve(kNumThreads);
   for (int i = 0; i < kNumThreads; i++) {
-    messengers.push_back(ASSERT_RESULT(MessengerBuilder("Client").set_num_reactors(1).Build()));
+    messengers.emplace_back(
+        ASSERT_RESULT(MessengerBuilder("Client").set_num_reactors(1).Build()).release());
     caches.emplace_back(new rpc::ProxyCache(messengers.back().get()));
     proxies.emplace_back(new MasterServiceProxy(
           caches.back().get(), cluster_->mini_master()->bound_rpc_addr()));

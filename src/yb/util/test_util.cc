@@ -317,7 +317,7 @@ Status LoggedWaitFor(
     MonoDelta initial_delay,
     double delay_multiplier,
     MonoDelta max_delay) {
-  LOG(INFO) << description;
+  LOG(INFO) << description << " - started";
   auto status = WaitFor(condition, timeout, description, initial_delay);
   LOG(INFO) << description << " - completed: " << yb::ToString(status);
   return status;

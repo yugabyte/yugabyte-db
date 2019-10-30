@@ -365,6 +365,14 @@ Status TabletServer::GetTabletStatus(const GetTabletStatusRequestPB* req,
   return Status::OK();
 }
 
+bool TabletServer::LeaderAndReady(const TabletId& tablet_id) const {
+  tablet::TabletPeerPtr peer;
+  if (!tablet_manager_->LookupTablet(tablet_id, &peer)) {
+    return false;
+  }
+  return peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
+}
+
 Status TabletServer::SetUniverseKeyRegistry(
     const yb::UniverseKeyRegistryPB& universe_key_registry) {
   return Status::OK();
@@ -434,6 +442,10 @@ void TabletServer::SetYSQLCatalogVersion(uint64_t new_version) {
     LOG(DFATAL) << "Ignoring ysql catalog version update: new version too old. "
                  << "New: " << new_version << ", Old: " << ysql_catalog_version_;
   }
+}
+
+TabletPeerLookupIf* TabletServer::tablet_peer_lookup() {
+  return tablet_manager_.get();
 }
 
 }  // namespace tserver

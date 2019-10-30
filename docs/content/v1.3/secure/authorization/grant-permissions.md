@@ -24,7 +24,7 @@ Here is what we want to achieve from a role-based access control (RBAC) perspect
 
 ## 1. Create role hierarchy
 
-Connect to the cluster using a superuser role. Read more about [enabling authentication and connecting using a superuser role](../../authentication/#ycql) in Yugabyte DB clusters for YCQL. For this article, we are using the default `cassandra` user and connect to the cluster using `cqlsh` as follows:
+Connect to the cluster using a superuser role. Read more about [enabling authentication and connecting using a superuser role](../../authentication/#ycql) in YugabyteDB clusters for YCQL. For this article, we are using the default `cassandra` user and connect to the cluster using `cqlsh` as follows:
 
 ```sh
 $ cqlsh -u cassandra -p cassandra

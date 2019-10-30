@@ -59,6 +59,10 @@ bool YBSession::IsRestartRequired() {
   return rp && rp->IsRestartRequired();
 }
 
+void YBSession::DeferReadPoint() {
+  read_point_->Defer();
+}
+
 void YBSession::SetTransaction(YBTransactionPtr transaction) {
   transaction_ = std::move(transaction);
   internal::BatcherPtr old_batcher;

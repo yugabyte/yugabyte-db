@@ -143,16 +143,19 @@ TabletPeer::TabletPeer(
     const consensus::RaftPeerPB& local_peer_pb,
     const scoped_refptr<server::Clock> &clock,
     const std::string& permanent_uuid,
-    Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk)
+    Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
+    MetricRegistry* metric_registry)
   : meta_(meta),
     tablet_id_(meta->raft_group_id()),
     local_peer_pb_(local_peer_pb),
     state_(RaftGroupStatePB::NOT_STARTED),
+    operation_tracker_(Format("T $0 P $1: ", tablet_id_, permanent_uuid)),
     status_listener_(new TabletStatusListener(meta)),
     clock_(clock),
     log_anchor_registry_(new LogAnchorRegistry()),
     mark_dirty_clbk_(std::move(mark_dirty_clbk)),
-    permanent_uuid_(permanent_uuid) {}
+    permanent_uuid_(permanent_uuid),
+    metric_registry_(metric_registry) {}
 
 TabletPeer::~TabletPeer() {
   std::lock_guard<simple_spinlock> lock(lock_);
@@ -263,6 +266,8 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
       return HybridTime(lease_micros, /* logical */ 0);
     };
     tablet_->SetHybridTimeLeaseProvider(ht_lease_provider);
+    operation_tracker_.SetPostTracker(
+        std::bind(&RaftConsensus::TrackOperationMemory, consensus_.get(), _1));
 
     auto* mvcc_manager = tablet_->mvcc_manager();
     consensus_->SetPropagatedSafeTimeProvider([mvcc_manager, ht_lease_provider] {
@@ -282,6 +287,13 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
         mvcc_manager->UpdatePropagatedSafeTimeOnLeader(ht_lease);
       }
     });
+
+    auto mvcc_leader_only_mode_updater = [this](const RaftConfigPB& config) {
+      tablet_->mvcc_manager()->SetLeaderOnlyMode(config.peers_size() == 1);
+    };
+
+    mvcc_leader_only_mode_updater(RaftConfig()); // Set initial flag value.
+    consensus_->SetChangeConfigReplicatedListener(mvcc_leader_only_mode_updater);
   }
 
   RETURN_NOT_OK(prepare_thread_->Start());
@@ -310,6 +322,12 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
     VLOG_WITH_PREFIX(2) << "Peer starting";
 
     VLOG(2) << "RaftConfig before starting: " << consensus_->CommittedConfig().DebugString();
+
+    // If tablet was previously considered shutdown w.r.t. metrics,
+    // fix that for a tablet now being reinstated.
+    DVLOG_WITH_PREFIX(3)
+      << "Remove from set of tablets that have been shutdown so as to allow reporting metrics";
+    metric_registry_->tablets_shutdown_erase(tablet_id());
 
     RETURN_NOT_OK(consensus_->Start(bootstrap_info));
     RETURN_NOT_OK(UpdateState(RaftGroupStatePB::BOOTSTRAPPING, RaftGroupStatePB::RUNNING,
@@ -411,12 +429,40 @@ void TabletPeer::CompleteShutdown() {
     LOG_IF_WITH_PREFIX(DFATAL, state != RaftGroupStatePB::QUIESCING) <<
         "Bad state when completing shutdown: " << RaftGroupStatePB_Name(state);
     state_.store(RaftGroupStatePB::SHUTDOWN, std::memory_order_release);
+
+    if (metric_registry_) {
+      DVLOG_WITH_PREFIX(3)
+        << "Add to set of tablets that have been shutdown so as to avoid reporting metrics";
+      metric_registry_->tablets_shutdown_insert(tablet_id());
+    }
   }
 }
 
 void TabletPeer::WaitUntilShutdown() {
+  const MonoDelta kSingleWait = 10ms;
+  const MonoDelta kReportInterval = 5s;
+  const MonoDelta kMaxWait = 30s;
+
+  MonoDelta waited = MonoDelta::kZero;
+  MonoDelta last_reported = MonoDelta::kZero;
   while (state_.load(std::memory_order_acquire) != RaftGroupStatePB::SHUTDOWN) {
-    SleepFor(MonoDelta::FromMilliseconds(10));
+    if (waited >= last_reported + kReportInterval) {
+      if (waited >= kMaxWait) {
+        LOG_WITH_PREFIX(DFATAL)
+            << "Wait for shutdown " << waited << " exceeded kMaxWait " << kMaxWait;
+      } else {
+        LOG_WITH_PREFIX(WARNING) << "Long wait for shutdown: " << waited;
+      }
+      last_reported = waited;
+    }
+    SleepFor(kSingleWait);
+    waited += kSingleWait;
+  }
+
+  if (metric_registry_) {
+    DVLOG_WITH_PREFIX(3)
+      << "Add to set of tablets that have been shutdown so as to avoid reporting metrics";
+    metric_registry_->tablets_shutdown_insert(tablet_id());
   }
 }
 
@@ -638,7 +684,7 @@ void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
     }
 
     consensus::OperationStatusPB status_pb;
-    status_pb.mutable_op_id()->CopyFrom(driver->GetOpId());
+    driver->GetOpId().ToPB(status_pb.mutable_op_id());
     status_pb.set_operation_type(MapOperationTypeToPB(op_type));
     status_pb.set_description(driver->ToString());
     int64_t running_for_micros =
@@ -677,11 +723,11 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex() const {
 
   // Next, interrogate the OperationTracker.
   for (const auto& driver : operation_tracker_.GetPendingOperations()) {
-    OpId tx_op_id = driver->GetOpId();
+    auto tx_op_id = driver->GetOpId();
     // A operation which doesn't have an opid hasn't been submitted for replication yet and
     // thus has no need to anchor the log.
-    if (tx_op_id.IsInitialized()) {
-      min_index = std::min(min_index, tx_op_id.index());
+    if (tx_op_id != yb::OpId::Invalid()) {
+      min_index = std::min(min_index, tx_op_id.index);
     }
   }
 
@@ -824,7 +870,7 @@ Status TabletPeer::StartReplicaOperation(
 
   // Unretained is required to avoid a refcount cycle.
   state->consensus_round()->SetConsensusReplicatedCallback(
-      std::bind(&OperationDriver::ReplicationFinished, driver.get(), _1, _2));
+      std::bind(&OperationDriver::ReplicationFinished, driver.get(), _1, _2, _3));
 
   if (propagated_safe_time) {
     driver->SetPropagatedSafeTime(propagated_safe_time, tablet_->mvcc_manager());
@@ -921,6 +967,10 @@ uint64_t TabletPeer::OnDiskSize() const {
   return ret;
 }
 
+int TabletPeer::GetNumLogSegments() const {
+  return (log_) ? log_->num_segments() : 0;
+}
+
 std::string TabletPeer::LogPrefix() const {
   return Substitute("T $0 P $1 [state=$2]: ",
       tablet_id_, permanent_uuid_, RaftGroupStatePB_Name(state()));
@@ -961,7 +1011,7 @@ HybridTime TabletPeer::HtLeaseExpiration() const {
 
 TableType TabletPeer::table_type() {
   // TODO: what if tablet is not set?
-  return tablet()->table_type();
+  return DCHECK_NOTNULL(tablet())->table_type();
 }
 
 void TabletPeer::SetFailed(const Status& error) {

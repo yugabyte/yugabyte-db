@@ -112,7 +112,9 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         tables.reserve(num_tables);
 
         for (int i = 0; i < num_tables; ++i) {
-          tables.push_back(VERIFY_RESULT(ResolveTableName(client, args[3 + i*2], args[4 + i*2])));
+          tables.push_back(YBTableName(
+              VERIFY_RESULT(ParseNamespaceName(args[3 + i*2])).name,
+              args[4 + i*2]));
         }
 
         string msg = num_tables > 0 ?
@@ -230,6 +232,21 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         RETURN_NOT_OK_PREPEND(client->DeleteUniverseReplication(producer_id),
                               Substitute("Unable to delete replication for universe $0",
                               producer_id));
+        return Status::OK();
+      });
+
+  Register(
+      "set_universe_replication_enabled", " <producer_universe_uuid> <0|1>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 4) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        const string producer_id = args[2];
+        const bool is_enabled = atoi(args[3].c_str()) != 0;
+        RETURN_NOT_OK_PREPEND(client->SetUniverseReplicationEnabled(producer_id, is_enabled),
+            Substitute("Unable to $0 replication for universe $1",
+                is_enabled ? "enable" : "disable",
+                producer_id));
         return Status::OK();
       });
 }

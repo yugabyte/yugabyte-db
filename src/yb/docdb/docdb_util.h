@@ -17,7 +17,6 @@
 #define YB_DOCDB_DOCDB_UTIL_H
 
 #include "yb/common/schema.h"
-#include "yb/common/ql_value.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_compaction_filter.h"

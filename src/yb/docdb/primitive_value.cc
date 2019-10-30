@@ -18,6 +18,8 @@
 #include <glog/logging.h>
 
 #include "yb/common/jsonb.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/intent.h"

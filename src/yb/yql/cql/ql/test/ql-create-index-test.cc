@@ -177,5 +177,49 @@ TEST_F(TestQLCreateIndex, TestQLSpecialSymbolsInIndexDefaultName) {
   EXEC_VALID_STMT("DROP TABLE human_resource;");
 }
 
+TEST_F(TestQLCreateIndex, TestQLCreateIndexExpr) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get an available processor.
+  TestQLProcessor *processor = GetQLProcessor();
+
+  // Create the table.
+  const string table = "tabj(\"j->'a'->>'b'\" int, \"j->'a'->>'c'\" int, j jsonb,"
+                       "     primary key (\"j->'a'->>'b'\"))"
+                       "  with transactions = {'enabled':true};";
+  EXEC_VALID_STMT(CreateTableStmt(table));
+
+  // Create valid indexes - no name conflict because no column has the same name as jsonb index.
+  EXEC_VALID_STMT(CreateIndexStmt("jdx1 ON tabj(j->'a'->>'d');"));
+  EXEC_VALID_STMT(CreateIndexStmt("ON tabj(j->'a'->>'d');"));
+
+  EXEC_VALID_STMT(CreateIndexStmt("jdx2 ON tabj(j->'a'->>'d', \"j->'a'->>'c'\");"));
+  EXEC_VALID_STMT(CreateIndexStmt("ON tabj(j->'a'->>'d', \"j->'a'->>'c'\");"));
+
+  // Create valid indexes - no name conflict because "j->'a'->>'c'" is not included.
+  EXEC_VALID_STMT(CreateIndexStmt("jdx3 ON tabj(j->'a'->>'c');"));
+  EXEC_VALID_STMT(CreateIndexStmt("ON tabj(j->'a'->>'c');"));
+
+  // Create invalid index due to duplicate column name "j->'a'->>'b'".
+  EXEC_INVALID_STMT(CreateIndexStmt("jdx4 ON tabj(j->'a'->>'b');"));
+  EXEC_INVALID_STMT(CreateIndexStmt("ON tabj(j->'a'->>'b');"));
+
+  // Create invalid index due to duplicate column name "j->'a'->>'c'".
+  EXEC_INVALID_STMT(CreateIndexStmt("jdx5 ON tabj(j->'a'->>'c') include(\"j->'a'->>'c'\");"));
+  EXEC_INVALID_STMT(CreateIndexStmt("ON tabj(j->'a'->>'c') include(\"j->'a'->>'c'\");"));
+
+  EXEC_INVALID_STMT(CreateIndexStmt("jdx6 ON tabj(j->'a'->>'c', \"j->'a'->>'c'\");"));
+  EXEC_INVALID_STMT(CreateIndexStmt("jdx7 ON tabj(\"j->'a'->>'c'\", j->'a'->>'c');"));
+
+  // Testing name escaping.
+  EXEC_VALID_STMT(CreateTableStmt("tab_escape"
+                                  "  (\"C$_col_C$_\" INT PRIMARY KEY,"
+                                  "   \"C$_col->>'$J_attr'\" JSONB)"
+                                  "  with transactions = {'enabled':true};"));
+  EXEC_VALID_STMT(CreateIndexStmt("jdx8 ON tab_escape"
+                                  "  (\"C$_col->>'$J_attr'\"->>'\"J$_attr->>C$_col\"');"));
+}
+
 } // namespace ql
 } // namespace yb

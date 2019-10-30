@@ -123,6 +123,11 @@ class CatalogManager : public yb::master::CatalogManager {
                                            DeleteUniverseReplicationResponsePB* resp,
                                            rpc::RpcContext* rpc);
 
+  // Enable/Disable an Existing Universe Replication.
+  CHECKED_STATUS SetUniverseReplicationEnabled(const SetUniverseReplicationEnabledRequestPB* req,
+                                               SetUniverseReplicationEnabledResponsePB* resp,
+                                               rpc::RpcContext* rpc);
+
   // Get Universe Replication.
   CHECKED_STATUS GetUniverseReplication(const GetUniverseReplicationRequestPB* req,
                                         GetUniverseReplicationResponsePB* resp,
@@ -222,8 +227,6 @@ class CatalogManager : public yb::master::CatalogManager {
       const Status& s);
   void CreateCDCStreamCallback(const std::string& universe_id, const TableId& table,
                                const Result<CDCStreamId>& stream_id);
-  void DeleteCDCStreamCallback(const std::string& universe_id, const TableId& table,
-                               const Status& s);
 
   void DeleteUniverseReplicationUnlocked(scoped_refptr<UniverseReplicationInfo> info);
   void MarkUniverseReplicationFailed(scoped_refptr<UniverseReplicationInfo> universe);

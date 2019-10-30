@@ -3,7 +3,7 @@ title: Bulk export
 linkTitle: Bulk export
 description: Bulk export
 image: /images/section_icons/manage/enterprise.png
-headcontent: Bulk export data from Yugabyte DB.
+headcontent: Bulk export data from YugabyteDB.
 menu:
   v1.3:
     identifier: manage-bulk-export
@@ -11,7 +11,7 @@ menu:
     weight: 705
 ---
 
-This page documents the options for export data out of Yugabyte DB.
+This page documents the options for export data out of YugabyteDB.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>

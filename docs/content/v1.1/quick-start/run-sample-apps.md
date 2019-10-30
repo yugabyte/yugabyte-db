@@ -8,9 +8,9 @@ menu:
     weight: 150
 ---
 
-After [creating a local cluster](../create-local-cluster/), follow the instructions below to run [Yugastore](https://github.com/yugabyte/yugastore), one of simplest sample apps we have created for Yugabyte DB. Yugastore is a fully open source, online bookstore app built using React, Express, NodeJS and is powered by the YCQL and YEDIS APIs of Yugabyte DB. Enhancements to add YSQL API access from Yugastore is currently in the works. You can review Yugastore's architecture and data model [here](../../develop/realworld-apps/ecommerce-app/).
+After [creating a local cluster](../create-local-cluster/), follow the instructions below to run [Yugastore](https://github.com/yugabyte/yugastore), one of simplest sample apps we have created for YugabyteDB. Yugastore is a fully open source, online bookstore app built using React, Express, NodeJS and is powered by the YCQL and YEDIS APIs of YugabyteDB. Enhancements to add YSQL API access from Yugastore is currently in the works. You can review Yugastore's architecture and data model [here](../../develop/realworld-apps/ecommerce-app/).
 
-After running Yugastore, we recommend running the [IoT Fleet Management](../../develop/realworld-apps/iot-spark-kafka-ksql/) app. This app is built on top of Yugabyte DB as the database (using the YCQL API), Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.
+After running Yugastore, we recommend running the [IoT Fleet Management](../../develop/realworld-apps/iot-spark-kafka-ksql/) app. This app is built on top of YugabyteDB as the database (using the YCQL API), Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

@@ -66,29 +66,6 @@ using std::string;
 using strings::Substitute;
 using strings::SubstituteAndAppend;
 
-namespace {
-
-const int kBitsPerPackedRole = 3;
-static_assert(0 <= RaftPeerPB_Role_Role_MIN, "RaftPeerPB_Role_Role_MIN must be non-negative.");
-static_assert(RaftPeerPB_Role_Role_MAX < (1 << kBitsPerPackedRole),
-              "RaftPeerPB_Role_Role_MAX must fit in kBitsPerPackedRole bits.");
-
-ReplicaState::PackedRoleAndTerm PackRoleAndTerm(RaftPeerPB::Role role, int64_t term) {
-  // Ensure we've had no more than 2305843009213693952 terms in this tablet.
-  CHECK_LT(term, 1ull << (8 * sizeof(ReplicaState::PackedRoleAndTerm) - kBitsPerPackedRole));
-  return to_underlying(role) | (term << kBitsPerPackedRole);
-}
-
-int64_t UnpackTerm(ReplicaState::PackedRoleAndTerm role_and_term) {
-  return role_and_term >> kBitsPerPackedRole;
-}
-
-RaftPeerPB::Role UnpackRole(ReplicaState::PackedRoleAndTerm role_and_term) {
-  return static_cast<RaftPeerPB::Role>(role_and_term & ((1 << kBitsPerPackedRole) - 1));
-}
-
-} // anonymous namespace
-
 //////////////////////////////////////////////////
 // ReplicaState
 //////////////////////////////////////////////////
@@ -97,20 +74,20 @@ ReplicaState::ReplicaState(ConsensusOptions options, string peer_uuid,
                            std::unique_ptr<ConsensusMetadata> cmeta,
                            ReplicaOperationFactory* operation_factory,
                            SafeOpIdWaiter* safe_op_id_waiter,
-                           RetryableRequests* retryable_requests)
+                           RetryableRequests* retryable_requests,
+                           std::function<void(const OpIds&)> applied_ops_tracker)
     : options_(std::move(options)),
       peer_uuid_(std::move(peer_uuid)),
       cmeta_(std::move(cmeta)),
       operation_factory_(operation_factory),
-      safe_op_id_waiter_(safe_op_id_waiter) {
+      safe_op_id_waiter_(safe_op_id_waiter),
+      applied_ops_tracker_(std::move(applied_ops_tracker)) {
   CHECK(cmeta_) << "ConsensusMeta passed as NULL";
   if (retryable_requests) {
     retryable_requests_ = std::move(*retryable_requests);
   }
 
   CHECK(leader_state_cache_.is_lock_free());
-
-  StoreRoleAndTerm(cmeta_->active_role(), cmeta_->current_term());
 
   // Actually we don't need this lock, but GetActiveRoleUnlocked checks that we are holding the
   // lock.
@@ -464,7 +441,6 @@ Status ReplicaState::SetCurrentTermUnlocked(int64_t new_term) {
   // ConsensusMetadataPB.
   CHECK_OK(cmeta_->Flush());
   ClearLeaderUnlocked();
-  // No need to call StoreRoleAndTerm here, because ClearLeaderUnlocked already calls it.
   last_received_op_id_current_leader_ = yb::OpId();
   return Status::OK();
 }
@@ -477,7 +453,6 @@ const int64_t ReplicaState::GetCurrentTermUnlocked() const {
 void ReplicaState::SetLeaderUuidUnlocked(const std::string& uuid) {
   DCHECK(IsLocked());
   cmeta_->set_leader_uuid(uuid);
-  StoreRoleAndTerm(cmeta_->active_role(), cmeta_->current_term());
   CoarseTimePoint now;
   RefreshLeaderStateCacheUnlocked(&now);
 }
@@ -548,7 +523,8 @@ Status ReplicaState::CancelPendingOperations() {
         LOG_WITH_PREFIX(INFO) << "Aborting operation because of shutdown: "
                               << round->replicate_msg()->ShortDebugString();
       }
-      NotifyReplicationFinishedUnlocked(round, abort_status, yb::OpId::kUnknownTerm);
+      NotifyReplicationFinishedUnlocked(round, abort_status, yb::OpId::kUnknownTerm,
+                                        nullptr /* applied_op_ids */);
     }
   }
   return Status::OK();
@@ -617,7 +593,8 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
     const scoped_refptr<ConsensusRound>& round = *it;
     LOG_WITH_PREFIX(INFO) << "Aborting uncommitted operation due to leader change: "
                           << round->replicate_msg()->id();
-    NotifyReplicationFinishedUnlocked(round, abort_status, yb::OpId::kUnknownTerm);
+    NotifyReplicationFinishedUnlocked(round, abort_status, yb::OpId::kUnknownTerm,
+                                      nullptr /* applied_op_ids */);
   }
   // Clear entries from pending operations.
   pending_operations_.erase(preceding_op_iter, pending_operations_.end());
@@ -766,10 +743,6 @@ void ReplicaState::SetLastCommittedIndexUnlocked(const yb::OpId& committed_op_id
   last_committed_op_id_ = committed_op_id;
 }
 
-void ReplicaState::StoreRoleAndTerm(RaftPeerPB::Role role, int64_t term) {
-  role_and_term_.store(PackRoleAndTerm(role, term), std::memory_order_release);
-}
-
 Status ReplicaState::InitCommittedOpIdUnlocked(const yb::OpId& committed_op_id) {
   if (last_committed_op_id_) {
     return STATUS_FORMAT(
@@ -842,6 +815,9 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(
   }
   auto leader_term = GetLeaderStateUnlocked().term;
 
+  OpIds applied_op_ids;
+  applied_op_ids.reserve(committed_op_id.index - prev_id.index);
+
   while (!pending_operations_.empty()) {
     auto round = pending_operations_.front();
     auto current_id = yb::OpId::FromPB(round->id());
@@ -878,10 +854,12 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(
     }
 
     prev_id = current_id;
-    NotifyReplicationFinishedUnlocked(round, Status::OK(), leader_term);
+    NotifyReplicationFinishedUnlocked(round, Status::OK(), leader_term, &applied_op_ids);
   }
 
   SetLastCommittedIndexUnlocked(prev_id);
+
+  applied_ops_tracker_(applied_op_ids);
 
   return Status::OK();
 }
@@ -1012,7 +990,7 @@ void ReplicaState::CancelPendingOperation(const OpId& id, bool should_exist) {
 }
 
 string ReplicaState::LogPrefix() const {
-  auto role_and_term = GetRoleAndTerm();
+  auto role_and_term = cmeta_->GetRoleAndTerm();
   return Substitute("T $0 P $1 [term $2 $3]: ",
                     options_.tablet_id,
                     peer_uuid_,
@@ -1023,11 +1001,6 @@ string ReplicaState::LogPrefix() const {
 ReplicaState::State ReplicaState::state() const {
   DCHECK(IsLocked());
   return state_;
-}
-
-std::pair<RaftPeerPB::Role, int64_t> ReplicaState::GetRoleAndTerm() const {
-  const auto packed_role_and_term = role_and_term_.load(std::memory_order_acquire);
-  return std::make_pair(UnpackRole(packed_role_and_term), UnpackTerm(packed_role_and_term));
 }
 
 string ReplicaState::ToString() const {
@@ -1264,8 +1237,9 @@ yb::OpId ReplicaState::MinRetryableRequestOpId() {
 }
 
 void ReplicaState::NotifyReplicationFinishedUnlocked(
-    const ConsensusRoundPtr& round, const Status& status, int64_t leader_term) {
-  round->NotifyReplicationFinished(status, leader_term);
+    const ConsensusRoundPtr& round, const Status& status, int64_t leader_term,
+    OpIds* applied_op_ids) {
+  round->NotifyReplicationFinished(status, leader_term, applied_op_ids);
 
   retryable_requests_.ReplicationFinished(*round->replicate_msg(), status, leader_term);
 }

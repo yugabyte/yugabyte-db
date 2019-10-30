@@ -1,10 +1,8 @@
 --
 -- FOREIGN KEY
 --
-
--- TODO - YB only supports foreign keys in serializable isolation currently.
-SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-
+-- TODO: Run this test with REPEATABLE READ isolation level:                                                                                                                                                            --       https://github.com/yugabyte/yugabyte-db/issues/2604
+--
 -- MATCH FULL
 --
 -- First test, check and cascade
@@ -547,8 +545,8 @@ ptest3) REFERENCES pktable);
 DROP TABLE PKTABLE;
 
 -- TODO: YugaByte does not yet support table inheritance.
--- Leaving the first failing statement uncommented so that this test 
--- will fail when the feature is implemented (the full test should 
+-- Leaving the first failing statement uncommented so that this test
+-- will fail when the feature is implemented (the full test should
 -- be uncommented then).
 
 --
@@ -657,8 +655,8 @@ drop table pktable_base;
 --
 
 -- TODO YB does not yet support deferrable foreign key constraints.
--- Leaving the first failing statement uncommented so that this test 
--- will fail when the feature is implemented (the full test should 
+-- Leaving the first failing statement uncommented so that this test
+-- will fail when the feature is implemented (the full test should
 -- be uncommented then).
 
 -- deferrable, explicitly deferred
@@ -855,8 +853,8 @@ DROP TABLE pktable, fktable;
 -- cause the on-INSERT RI trigger not to be fired.
 
 -- TODO YugaByte does not support deferrable constraints yet.
--- Leaving the first failing statement uncommented so that this test 
--- will fail when the feature is implemented (the full test should 
+-- Leaving the first failing statement uncommented so that this test
+-- will fail when the feature is implemented (the full test should
 -- be uncommented then).
 
 CREATE TEMP TABLE pktable (
@@ -1128,8 +1126,8 @@ drop table pktable2, fktable2;
 --
 
 -- TODO YugaByte does not support partitioned tables yet.
--- Leaving the first failing statement uncommented so that this test 
--- will fail when the feature is implemented (the full test should 
+-- Leaving the first failing statement uncommented so that this test
+-- will fail when the feature is implemented (the full test should
 -- be uncommented then).
 
 -- partitioned table in the referenced side are not allowed

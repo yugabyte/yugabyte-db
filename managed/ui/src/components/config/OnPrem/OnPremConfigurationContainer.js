@@ -5,9 +5,10 @@ import { isObject } from 'lodash';
 import { OnPremConfiguration } from '../../config';
 import { createInstanceType, createInstanceTypeResponse,
   createRegion, createRegionResponse, createZones, createZonesResponse, createNodeInstances,
-  createNodeInstancesResponse, createAccessKey, createAccessKeyResponse, resetProviderBootstrap,
-  fetchCloudMetadata, getProviderList, getProviderListResponse, resetOnPremConfigData,
-  setOnPremConfigData, createOnPremProvider, createOnPremProviderResponse } from '../../../actions/cloud';
+  createNodeInstancesResponse, createAccessKey, createAccessKeyResponse, createAccessKeyFailure,
+  resetProviderBootstrap, fetchCloudMetadata, getProviderList, getProviderListResponse,
+  resetOnPremConfigData, setOnPremConfigData, createOnPremProvider,
+  createOnPremProviderResponse } from '../../../actions/cloud';
 import { isNonEmptyArray } from 'utils/ObjectUtils';
 import {destroy} from 'redux-form';
 
@@ -32,7 +33,11 @@ const mapDispatchToProps = (dispatch) => {
     createOnPremAccessKeys: (providerUUID, regionsMap, config) => {
       if (isObject(config) && isNonEmptyArray(config.regions) && isObject(config.key)) {
         dispatch(createAccessKey(providerUUID, regionsMap[config.regions[0].code], config.key)).then((response) => {
-          dispatch(createAccessKeyResponse(response.payload));
+          if (response.error) {
+            dispatch(createAccessKeyFailure(response.payload));
+          } else {
+            dispatch(createAccessKeyResponse(response.payload));
+          }
         });
       }
     },

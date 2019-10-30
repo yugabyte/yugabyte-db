@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: manage-bulk-export
     parent: manage-bulk-import-export
-    weight: 705
+    weight: 707
 ---
 
 This page documents the options for exporting data out of YugabyteDB.

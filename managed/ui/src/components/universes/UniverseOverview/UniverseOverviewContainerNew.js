@@ -21,6 +21,7 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state) {
   return {
     currentCustomer: state.customer.currentCustomer,
+    alerts: state.customer.alerts,
     layout: state.customer.layout,
     tasks: state.tasks,
     modal: state.modal,

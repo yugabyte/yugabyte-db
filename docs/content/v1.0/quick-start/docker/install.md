@@ -1,5 +1,5 @@
 **NOTE:**
-The Docker option to run local clusters is recommended only for advanced Docker users. This is because running stateful apps like Yugabyte DB in Docker is more complex and error-prone than the more common stateless app use cases.
+The Docker option to run local clusters is recommended only for advanced Docker users. This is because running stateful apps like YugabyteDB in Docker is more complex and error-prone than the more common stateless app use cases.
 
 ## Prerequisites
 
@@ -34,7 +34,7 @@ $ mkdir ~/yugabyte && cd ~/yugabyte
 ```
 
 ```sh
-$ wget https://downloads.yugabyte.com/yb-docker-ctl && chmod +x yb-docker-ctl
+$ wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/bin/yb-docker-ctl && chmod +x yb-docker-ctl
 ```
 
 ## Install
@@ -49,7 +49,7 @@ $ docker ps
 $ python --version
 ```
 
-Pull the Yugabyte DB container.
+Pull the YugabyteDB container.
 
 ```sh
 $ docker pull yugabytedb/yugabyte:1.0.7.0-b13

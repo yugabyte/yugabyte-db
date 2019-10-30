@@ -61,6 +61,8 @@ import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -69,6 +71,14 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
+
+import com.yugabyte.yw.commissioner.tasks.subtasks.CopyEncryptionKeyFile;
+import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
+
+import java.util.stream.Collectors;
+import java.util.HashMap;
+import java.util.ArrayList;
+import com.yugabyte.yw.models.NodeInstance;
 
 import play.api.Play;
 import play.libs.Json;
@@ -138,6 +148,86 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       expectedUniverseVersion);
     // Return the universe object that we have already updated.
     return universe;
+  }
+
+  public Universe writeEncryptionEnabledToUniverse() {
+    UniverseUpdater updater = new UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        LOG.info("Writing encryption at rest enabled to universe...");
+        // Persist the updated information about the universe.
+        // It should have been marked as being edited in lockUniverseForUpdate().
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        if (!universeDetails.updateInProgress) {
+          String msg = "Universe " + taskParams().universeUUID +
+                  " has not been marked as being updated.";
+          LOG.error(msg);
+          throw new RuntimeException(msg);
+        }
+        universeDetails.encryptionAtRestConfig = taskParams().encryptionAtRestConfig;
+        Cluster cluster = universeDetails.getPrimaryCluster();
+        if (cluster != null) {
+          cluster.userIntent.enableEncryptionAtRest = true;
+          universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
+        }
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+    // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
+    // catch as we want to fail.
+    Universe universe = Universe.saveDetails(taskParams().universeUUID, updater);
+    LOG.debug("Wrote user intent for universe {}.", taskParams().universeUUID);
+
+    // Return the universe object that we have already updated.
+    return universe;
+  }
+
+  /**
+   * Runs task for enabling encryption-at-rest key file on master
+   */
+  public SubTaskGroup createEnableEncryptionAtRestTask(String file) {
+    return createEnableEncryptionAtRestTask(file, false);
+  }
+
+  /**
+   * Runs task for enabling encryption-at-rest key file on master
+   */
+  public SubTaskGroup createEnableEncryptionAtRestTask(String file, boolean isKubernetesUniverse) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("EnableEncryptionAtRest", executor);
+    EnableEncryptionAtRest task = new EnableEncryptionAtRest();
+    EnableEncryptionAtRest.Params params = new EnableEncryptionAtRest.Params();
+    params.universeUUID = taskParams().universeUUID;
+    // Add encryption file path
+    params.encryptionKeyFilePath = file;
+    params.isKubernetesUniverse = isKubernetesUniverse;
+    task.initialize(params);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createCopyEncryptionKeyFileTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("CopyEncryptionKeyFile", executor);
+    // Find universeNodes through universeUUID;
+    Universe universe = Universe.get(taskParams().universeUUID);
+    UUID primaryClusterUUID = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    Set<NodeDetails> nodes = universe.getUniverseDetails().getNodesInCluster(primaryClusterUUID);
+    for (NodeDetails node : nodes) {
+      CopyEncryptionKeyFile.Params params = new CopyEncryptionKeyFile.Params();
+      // Add the node name.
+      params.nodeName = node.nodeName;
+      // Add the universe uuid.
+      params.universeUUID = taskParams().universeUUID;
+      params.encryptionKeyFilePath = taskParams().encryptionKeyFilePath;
+      // Add the az uuid.
+      params.azUuid = node.azUuid;
+      params.placementUuid = node.placementUuid;
+      CopyEncryptionKeyFile task = new CopyEncryptionKeyFile();
+      task.initialize(params);
+      subTaskGroup.addTask(task);
+    }
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   @Override
@@ -734,9 +824,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  public SubTaskGroup createTableBackupTask(BackupTableParams taskParams) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("BackupTable", executor);
-    BackupTable task = new BackupTable();
+  public SubTaskGroup createTableBackupTask(BackupTableParams taskParams, Backup backup) {
+    SubTaskGroup subTaskGroup = null;
+    if (backup == null) {
+      subTaskGroup = new SubTaskGroup("BackupTable", executor);
+    } else {
+      subTaskGroup = new SubTaskGroup("BackupTable", executor, true);
+    }
+    BackupTable task = new BackupTable(backup);
     task.initialize(taskParams);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addTask(task);
@@ -970,5 +1065,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
+  }
+
+  public void updateBackupState(boolean state) {
+    UniverseUpdater updater = new UniverseUpdater() {
+        @Override
+        public void run(Universe universe) {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          universeDetails.backupInProgress = state;
+          universe.setUniverseDetails(universeDetails);
+        }
+      };
+      Universe.saveDetails(taskParams().universeUUID, updater);
   }
 }

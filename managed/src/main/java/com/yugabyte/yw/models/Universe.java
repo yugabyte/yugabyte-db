@@ -11,7 +11,9 @@ import java.util.Comparator;
 import java.util.ConcurrentModificationException;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -33,7 +35,9 @@ import org.slf4j.LoggerFactory;
 import com.avaje.ebean.Ebean;
 import com.avaje.ebean.Model;
 import com.avaje.ebean.SqlUpdate;
+import com.avaje.ebean.annotation.DbJson;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
@@ -78,6 +82,28 @@ public class Universe extends Model {
   // The customer id, needed only to enforce unique universe names for a customer.
   @Constraints.Required
   public Long customerId;
+
+  @DbJson
+  @Column(columnDefinition = "TEXT")
+  public JsonNode config;
+
+  public void setConfig(Map<String, String> configMap) {
+    Map<String, String> currConfig = this.getConfig();
+    for (String key : configMap.keySet()) {
+      currConfig.put(key, configMap.get(key));
+    }
+    this.config = Json.toJson(currConfig);
+    this.save();
+  }
+
+  @JsonIgnore
+  public Map<String, String> getConfig() {
+    if (this.config == null) {
+      return new HashMap();
+    } else {
+      return Json.fromJson(this.config, Map.class);
+    }
+  }
 
   // The Json serialized version of universeDetails. This is used only in read from and writing to
   // the DB.

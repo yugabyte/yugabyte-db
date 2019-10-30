@@ -13,6 +13,8 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/common/ql_value.h"
+
 #include "yb/yql/cql/ql/exec/executor.h"
 
 namespace yb {

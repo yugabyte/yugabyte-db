@@ -27,7 +27,7 @@ export default function(state = INITIAL_STATE, action) {
     case FETCH_TABLES_LIST_SUCCESS:
       return { ...state, universeTablesList: action.payload.data, error: null, loading: false};
     case FETCH_TABLES_LIST_FAILURE:
-      error = action.payload.data || {message: action.payload.error};
+      error = action.payload.data || {message: action.payload.response.data.error};
       return { ...state, universeTablesList: [], error: error, loading: false};
     case RESET_TABLES_LIST:
       return { ...state, universeTablesList: [], error: null, loading: false};
@@ -36,7 +36,7 @@ export default function(state = INITIAL_STATE, action) {
     case FETCH_TABLE_DETAIL_SUCCESS:
       return { ...state, currentTableDetail: action.payload.data, loading: false, error: null};
     case FETCH_TABLE_DETAIL_FAILURE:
-      return {...state, currentTableDetail: {}, loading: false, error: action.payload.data.error};
+      return {...state, currentTableDetail: {}, loading: false, error: action.payload.response.data.error};
     case RESET_TABLE_DETAIL:
       return {...state, currentTableDetail: {}};
     case FETCH_COLUMN_TYPES:

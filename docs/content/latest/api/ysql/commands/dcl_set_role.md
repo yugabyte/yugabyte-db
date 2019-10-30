@@ -53,7 +53,7 @@ To reset the role back to current user, `RESET ROLE` or `SET ROLE NONE` can be u
 
 - Change to new role John.
 
-```sql
+```postgresql
 yugabyte=# select session_user, current_user;
  session_user | current_user
 --------------+--------------
@@ -70,7 +70,7 @@ yugabyte=# select session_user, current_user;
 
 - Changing to new role assumes the privileges available to that role.
 
-```sql
+```postgresql
 yugabyte=# select session_user, current_user;
  session_user | current_user
 --------------+--------------

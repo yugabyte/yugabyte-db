@@ -28,6 +28,8 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/partial_row.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"

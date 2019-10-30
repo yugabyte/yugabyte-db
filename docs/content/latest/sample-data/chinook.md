@@ -59,7 +59,7 @@ yugabyte=#
 
 To create the `chinook` database, run the following command.
 
-```sql
+```postgresql
 CREATE DATABASE chinook;
 ```
 
@@ -109,7 +109,7 @@ chinook=# \i /Users/yugabyte/yugabytedb/share/chinook_songs.sql
 
 Now verify that you have data by running a simple `SELECT` statement to pull some data from the `Track` table.
 
-```sql
+```postgresql
 chinook=# SELECT "Name", "Composer" FROM "Track" LIMIT 10;
 ```
 

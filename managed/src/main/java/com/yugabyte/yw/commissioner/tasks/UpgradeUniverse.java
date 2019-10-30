@@ -60,21 +60,6 @@ public class UpgradeUniverse extends UniverseTaskBase {
     return (RollingRestartParams)taskParams;
   }
 
-  private static <T> Collector<T, ?, T> toSingleNodeDetail(UUID uniUUID) {
-      return Collectors.collectingAndThen(
-              Collectors.toList(),
-              leaderMasterNodeList -> {
-                if (leaderMasterNodeList.size() != 1) {
-                  String errMsg = "Could not find a master matching the master leader address " +
-                          "retrieved in universe " + uniUUID;
-                  LOG.error(errMsg);
-                  throw new RuntimeException(errMsg);
-                }
-                return leaderMasterNodeList.get(0);
-              }
-      );
-  }
-
   @Override
   public void run() {
     try {
@@ -105,6 +90,9 @@ public class UpgradeUniverse extends UniverseTaskBase {
       // we don't update the nodes properly but we do wipe the data from the backend (postgres).
       // JIRA ENG-2519 would track this.
       boolean didUpgradeUniverse = false;
+      // Retrieve master leader address of given universe
+      final String leaderMasterAddress = universe.getMasterLeaderHostText();
+      NodeDetails masterLeaderNode = null;
       switch (taskParams().taskType) {
         case Software:
           LOG.info("Upgrading software version to {} in universe {}",
@@ -117,31 +105,23 @@ public class UpgradeUniverse extends UniverseTaskBase {
             createLoadBalancerStateChangeTask(false /*enable*/)
                 .setSubTaskGroupType(getTaskSubGroupType());
 
-            // Retrieve master leader address of given universe
-            final String leaderMasterAddress = universe.getMasterLeaderHostText();
-            if (leaderMasterAddress.isEmpty()) {
-              final String errMsg = "Could not find the master leader address in universe "
-                      + universe.universeUUID;
-              LOG.error(errMsg);
-              throw new RuntimeException(errMsg);
+            if (!leaderMasterAddress.isEmpty()) {
+              // Attempt to isolate the master leader node from the other masters to ensure
+              // that it is upgraded last amongst master nodes
+              masterLeaderNode = masterNodes
+                      .stream()
+                      .filter(node -> node.cloudInfo.private_ip.equals(leaderMasterAddress))
+                      .findFirst()
+                      .orElse(null);
+              if (masterLeaderNode != null) {
+                masterNodes.removeIf(node -> node.cloudInfo.private_ip.equals(leaderMasterAddress));
+              }
             }
-
-            // Separate master leader from follower masters
-            NodeDetails masterLeaderNode = masterNodes
-                    .stream()
-                    .filter(node -> node.cloudInfo.private_ip.equals(leaderMasterAddress))
-                    .collect(toSingleNodeDetail(universe.universeUUID));
-            masterNodes.removeIf(node -> node.cloudInfo.private_ip.equals(leaderMasterAddress));
-
-
-            // Order of rolling upgrades should be:
-            // 1) Non-leader masters
-            // 2) Leader master
-            // 3) Tservers
             createAllUpgradeTasks(masterNodes, ServerType.MASTER);
-            createSingleNodeUpgradeTasks(masterLeaderNode, ServerType.MASTER);
+            if (masterLeaderNode != null) {
+              createSingleNodeUpgradeTasks(masterLeaderNode, ServerType.MASTER);
+            }
             createAllUpgradeTasks(tServerNodes, ServerType.TSERVER);
-
             // Enable the load balancer for rolling upgrade only.
             createLoadBalancerStateChangeTask(true /*enable*/)
                     .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -159,8 +139,22 @@ public class UpgradeUniverse extends UniverseTaskBase {
                 taskParams().masterGFlags, masterNodes.size(), universe.name);
             if (!taskParams().rollingUpgrade) {
               createServerConfFileUpdateTasks(masterNodes, ServerType.MASTER);
+            } else if (!leaderMasterAddress.isEmpty()) {
+              // Attempt to isolate the master leader node from the other masters to ensure
+              // that it is upgraded last amongst master nodes
+              masterLeaderNode = masterNodes
+                      .stream()
+                      .filter(node -> node.cloudInfo.private_ip.equals(leaderMasterAddress))
+                      .findFirst()
+                      .orElse(null);
+              if (masterLeaderNode != null) {
+                masterNodes.removeIf(node -> node.cloudInfo.private_ip.equals(leaderMasterAddress));
+              }
             }
             createAllUpgradeTasks(masterNodes, ServerType.MASTER);
+            if (masterLeaderNode != null) {
+              createSingleNodeUpgradeTasks(masterLeaderNode, ServerType.MASTER);
+            }
             didUpgradeUniverse = true;
           }
           if (!taskParams().tserverGFlags.isEmpty() &&

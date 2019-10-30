@@ -83,7 +83,7 @@ public class HealthManager extends DevopsBase {
     }
 
     LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
-    return shellProcessHandler.run(commandArgs, extraEnvVars);
+    return shellProcessHandler.run(commandArgs, extraEnvVars, false /*logCmdOutput*/);
   }
 
   @Override

@@ -1,4 +1,12 @@
-// Copyright (c) YugaByte, Inc.
+/*
+ * Copyright 2019 YugaByte, Inc. and Contributors
+ *
+ * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+ * may not use this file except in compliance with the License. You
+ * may obtain a copy of the License at
+ *
+ *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ */
 
 package com.yugabyte.yw.common;
 
@@ -7,12 +15,12 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.common.EncryptionAtRestManager.KeyProvider;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.StreamSupport;
 import play.libs.Json;
 
 /**
@@ -44,8 +52,12 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
      * @param apiHelper is a library to make requests against a third party encryption key provider
      * @param keyProvider is a String representation of "SMARTKEY" (if it is valid in this context)
      */
-    public SmartKeyEARService(ApiHelper apiHelper, String keyProvider) {
-        super(apiHelper, keyProvider);
+    public SmartKeyEARService(
+            ApiHelper apiHelper,
+            KeyProvider keyProvider,
+            EncryptionAtRestManager util
+    ) {
+        super(apiHelper, keyProvider, util);
     }
 
     /**
@@ -76,12 +88,13 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
     protected SmartKeyAlgorithm[] getSupportedAlgorithms() { return SmartKeyAlgorithm.values(); }
 
     @Override
-    protected String createEncryptionKeyWithService(
+    protected byte[] createKeyWithService(
             UUID universeUUID,
             UUID customerUUID,
-            String algorithm,
-            int keySize
+            Map<String, String> config
     ) {
+        final String algorithm = config.get("algorithm");
+        final int keySize = Integer.parseInt(config.get("key_size"));
         final String endpoint = "/crypto/v1/keys";
         // TODO: Remove EXPORT option once master keys are in encrypted format in Yugabyte
         final ArrayNode keyOps = Json.newArray()
@@ -103,46 +116,73 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
         final JsonNode response = this.apiHelper.postRequest(url, payload, headers);
         final JsonNode errors = response.get("error");
         if (errors != null) throw new RuntimeException(errors.toString());
-        return response.get("kid").asText();
+        final String kId = response.get("kid").asText();
+        return kId.getBytes();
     }
 
     @Override
-    protected String getEncryptionKeyWithService(String kId, UUID customerUUID) {
-        final String endpoint = String.format("/crypto/v1/keys/%s/export", kId);
+    protected byte[] rotateKeyWithService(
+            UUID customerUUID,
+            UUID universeUUID,
+            Map<String, String> config
+    ) {
+        final byte[] currentKey = retrieveKey(customerUUID, universeUUID);
+        if (currentKey == null || currentKey.length == 0) {
+            final String errMsg = String.format(
+                    "Universe encryption key for customer %s in universe %s does not exist",
+                    customerUUID.toString(),
+                    universeUUID.toString()
+            );
+            LOG.error(errMsg);
+            throw new IllegalArgumentException(errMsg);
+        }
+        final String algorithm = config.get("algorithm");
+        final int keySize = Integer.parseInt(config.get("key_size"));
+        final String endpoint = "/crypto/v1/keys/rekey";
+        final ArrayNode keyOps = Json.newArray()
+                .add("EXPORT")
+                .add("APPMANAGEABLE");
+        ObjectNode payload = Json.newObject()
+                .put("name", universeUUID.toString())
+                .put("obj_type", algorithm)
+                .put("key_size", keySize);
+        payload.set("key_ops", keyOps);
         final ObjectNode authConfig = getAuthConfig(customerUUID);
         final String sessionToken = retrieveSessionAuthorization(authConfig);
         final Map<String, String> headers = ImmutableMap.of(
-                "Authorization", sessionToken
+                "Authorization", sessionToken,
+                "Content-Type", "application/json"
         );
         final String baseUrl = authConfig.get("base_url").asText();
         final String url = Util.buildURL(baseUrl, endpoint);
-        final JsonNode response = this.apiHelper.getRequest(url, headers);
+        final JsonNode response = this.apiHelper.postRequest(url, payload, headers);
         final JsonNode errors = response.get("error");
         if (errors != null) throw new RuntimeException(errors.toString());
-        return response.get("value").asText();
+        final String kId = response.get("kid").asText();
+        return kId.getBytes();
     }
 
     @Override
-    public String recoverEncryptionKeyWithService(UUID customerUUID, UUID universeUUID) {
-        final String endpoint = "/crypto/v1/keys";
-        final Map<String, String> queryParams = ImmutableMap.of(
-                "name", universeUUID.toString(),
-                "limit", "1"
-        );
+    public byte[] retrieveKey(UUID customerUUID, UUID universeUUID) {
+        byte[] key = null;
         final ObjectNode authConfig = getAuthConfig(customerUUID);
-        final String sessionToken = retrieveSessionAuthorization(authConfig);
-        final Map<String, String> headers = ImmutableMap.of(
-                "Authorization", sessionToken
-        );
-        final String baseUrl = authConfig.get("base_url").asText();
-        final String url = Util.buildURL(baseUrl, endpoint);
-        final JsonNode response = this.apiHelper.getRequest(url, headers, queryParams);
-        final JsonNode errors = response.get("error");
-        if (errors != null) throw new RuntimeException(errors.toString());
-        return StreamSupport.stream(response.spliterator(), false)
-                .map(securityObj -> getEncryptionKeyWithService(
-                        securityObj.get("kid").asText(),
-                        customerUUID
-                )).findFirst().orElse(null);
+        final byte[] keyRef = getKeyRef(customerUUID, universeUUID);
+        if (keyRef == null || keyRef.length == 0) {
+            final String errMsg = "Could not retrieve key ref";
+            LOG.warn(errMsg);
+        } else {
+            final String endpoint = String.format("/crypto/v1/keys/%s/export", new String(keyRef));
+            final String sessionToken = retrieveSessionAuthorization(authConfig);
+            final Map<String, String> headers = ImmutableMap.of(
+                    "Authorization", sessionToken
+            );
+            final String baseUrl = authConfig.get("base_url").asText();
+            final String url = Util.buildURL(baseUrl, endpoint);
+            final JsonNode response = this.apiHelper.getRequest(url, headers);
+            final JsonNode errors = response.get("error");
+            if (errors != null) throw new RuntimeException(errors.toString());
+            key = Base64.getDecoder().decode(response.get("value").asText());
+        }
+        return key;
     }
 }

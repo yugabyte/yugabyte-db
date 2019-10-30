@@ -3,7 +3,9 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/common/ql_expr.h"
+
 #include "yb/common/ql_bfunc.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/jsonb.h"
 
 namespace yb {
@@ -208,7 +210,7 @@ CHECKED_STATUS QLExprExecutor::EvalCondition(const QLConditionPB& condition,
     case QL_OP_IS_TRUE:
       CHECK_EQ(operands.size(), 1);
       RETURN_NOT_OK(EvalExpr(operands.Get(0), table_row, &temp));
-      if (temp.type() != QLValue::InternalType::kBoolValue)
+      if (temp.type() != InternalType::kBoolValue)
         return STATUS(RuntimeError, "not a bool value");
       result->set_bool_value(!temp.IsNull() && temp.bool_value());
       return Status::OK();
@@ -216,7 +218,7 @@ CHECKED_STATUS QLExprExecutor::EvalCondition(const QLConditionPB& condition,
     case QL_OP_IS_FALSE: {
       CHECK_EQ(operands.size(), 1);
       RETURN_NOT_OK(EvalExpr(operands.Get(0), table_row, &temp));
-      if (temp.type() != QLValue::InternalType::kBoolValue)
+      if (temp.type() != InternalType::kBoolValue)
         return STATUS(RuntimeError, "not a bool value");
       result->set_bool_value(!temp.IsNull() && !temp.bool_value());
       return Status::OK();
@@ -503,7 +505,7 @@ CHECKED_STATUS QLExprExecutor::EvalCondition(const PgsqlConditionPB& condition,
     case QL_OP_IS_TRUE:
       CHECK_EQ(operands.size(), 1);
       RETURN_NOT_OK(EvalExpr(operands.Get(0), table_row, &temp));
-      if (temp.type() != QLValue::InternalType::kBoolValue)
+      if (temp.type() != InternalType::kBoolValue)
         return STATUS(RuntimeError, "not a bool value");
       result->set_bool_value(!temp.IsNull() && temp.bool_value());
       return Status::OK();
@@ -511,7 +513,7 @@ CHECKED_STATUS QLExprExecutor::EvalCondition(const PgsqlConditionPB& condition,
     case QL_OP_IS_FALSE: {
       CHECK_EQ(operands.size(), 1);
       RETURN_NOT_OK(EvalExpr(operands.Get(0), table_row, &temp));
-      if (temp.type() != QLValue::InternalType::kBoolValue)
+      if (temp.type() != InternalType::kBoolValue)
         return STATUS(RuntimeError, "not a bool value");
       result->set_bool_value(!temp.IsNull() && !temp.bool_value());
       return Status::OK();

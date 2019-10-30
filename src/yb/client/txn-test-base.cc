@@ -18,10 +18,12 @@
 #include "yb/client/session.h"
 #include "yb/client/transaction.h"
 
+#include "yb/common/ql_value.h"
 #include "yb/consensus/consensus.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -204,7 +206,7 @@ void TransactionTestBase::VerifyRows(
     auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
     ASSERT_EQ(rowblock->row_count(), 1);
     const auto& first_column = rowblock->row(0).column(0);
-    ASSERT_EQ(QLValue::InternalType::kInt32Value, first_column.type());
+    ASSERT_EQ(InternalType::kInt32Value, first_column.type());
     ASSERT_EQ(first_column.int32_value(), ValueForTransactionAndIndex(transaction, r, op_type));
   }
 }

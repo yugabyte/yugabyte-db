@@ -314,12 +314,14 @@ RaftConsensus::RaftConsensus(
         MonoDelta::FromSeconds(FLAGS_follower_reject_update_consensus_requests_seconds);
   }
 
-  state_.reset(new ReplicaState(options,
-                                peer_uuid,
-                                std::move(cmeta),
-                                DCHECK_NOTNULL(operation_factory),
-                                this,
-                                retryable_requests));
+  state_ = std::make_unique<ReplicaState>(
+      options,
+      peer_uuid,
+      std::move(cmeta),
+      DCHECK_NOTNULL(operation_factory),
+      this,
+      retryable_requests,
+      std::bind(&PeerMessageQueue::TrackOperationsMemory, queue_.get(), _1));
 
   peer_manager_->SetConsensus(this);
 }
@@ -2826,6 +2828,9 @@ void RaftConsensus::NonTxRoundReplicationFinished(ConsensusRound* round,
         LOG(WARNING) << "Could not clear pending state : " << s.ToString();
       }
     }
+  } else if (IsChangeConfigOperation(op_type) && change_config_replicated_listener_) {
+    // Notify the TabletPeer owner object.
+    change_config_replicated_listener_(state_->GetCommittedConfigUnlocked());
   }
 
   client_cb(status);
@@ -2920,8 +2925,13 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
   return Status::OK();
 }
 
-Status RaftConsensus::ReadReplicatedMessagesForCDC(const OpId& from, ReplicateMsgs* msgs) {
-  return queue_->ReadReplicatedMessagesForCDC(from, msgs);
+Status RaftConsensus::ReadReplicatedMessagesForCDC(const OpId& from, ReplicateMsgs* msgs,
+                                                   bool* have_more_messages) {
+  return queue_->ReadReplicatedMessagesForCDC(from, msgs, have_more_messages);
+}
+
+void RaftConsensus::UpdateCDCConsumerOpId(const OpIdPB& op_id) {
+  return queue_->UpdateCDCConsumerOpId(op_id);
 }
 
 void RaftConsensus::RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg,
@@ -2946,6 +2956,11 @@ void RaftConsensus::SetMajorityReplicatedListener(std::function<void()> updater)
   majority_replicated_listener_ = std::move(updater);
 }
 
+void RaftConsensus::SetChangeConfigReplicatedListener(
+    std::function<void(const RaftConfigPB&)> listener) {
+  change_config_replicated_listener_ = std::move(listener);
+}
+
 yb::OpId RaftConsensus::MinRetryableRequestOpId() {
   return state_->MinRetryableRequestOpId();
 }
@@ -2960,6 +2975,10 @@ size_t RaftConsensus::EvictLogCache(size_t bytes_to_evict) {
 
 RetryableRequestsCounts RaftConsensus::TEST_CountRetryableRequests() {
   return state_->TEST_CountRetryableRequests();
+}
+
+void RaftConsensus::TrackOperationMemory(const yb::OpId& op_id) {
+  queue_->TrackOperationsMemory({op_id});
 }
 
 }  // namespace consensus

@@ -17,6 +17,8 @@
 
 #include "yb/client/client.h"
 
+#include "yb/common/ql_value.h"
+
 #include "yb/util/decimal.h"
 
 namespace yb {

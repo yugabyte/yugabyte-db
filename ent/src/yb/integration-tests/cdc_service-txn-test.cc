@@ -13,15 +13,20 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/cdc/cdc_service.proxy.h"
+#include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
 #include "yb/client/txn-test-base.h"
+
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
+
+#include "yb/integration-tests/cdc_test_util.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tserver/mini_tablet_server.h"
-#include "yb/util/cdc_test_util.h"
+
 #include "yb/util/slice.h"
 
 namespace yb {
@@ -99,8 +104,7 @@ TEST_F(CDCServiceTxnTest, TestGetChanges) {
 
   // Create CDC stream on table.
   CDCStreamId stream_id;
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), boost::none /* wal retention time */,
-      &stream_id);
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
 
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
@@ -134,6 +138,84 @@ TEST_F(CDCServiceTxnTest, TestGetChanges) {
         // Check the key.
         ASSERT_NO_FATALS(AssertIntKey(change_resp.records(i).key(), expected_order[i]));
       }
+    }
+  }
+}
+
+TEST_F(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
+  // If GetChanges is called in the middle of a transaction, ensure that transaction is not
+  // incorrectly considered as aborted if we can't find the transaction commit record.
+  // A subsequent call to GetChanges after the transaction is committed should get the
+  // rows committed by transaction.
+
+  // Get tablet ID.
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client_->GetTablets(table_->name(), 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+
+  // Create CDC stream on table.
+  CDCStreamId stream_id;
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+
+  auto txn = CreateTransaction();
+  auto session = CreateSession(txn);
+  ASSERT_RESULT(WriteRow(session, 10001 /* key */, 10001 /* value */, WriteOpType::INSERT,
+                         Flush::kTrue));
+  ASSERT_RESULT(WriteRow(session, 10002 /* key */, 10002 /* value */, WriteOpType::INSERT,
+                         Flush::kTrue));
+  ASSERT_RESULT(WriteRow(session, 10003 /* key */, 10003 /* value */, WriteOpType::INSERT,
+                         Flush::kTrue));
+
+  GetChangesRequestPB change_req;
+  GetChangesResponsePB change_resp;
+
+  change_req.set_stream_id(stream_id);
+  change_req.set_tablet_id(tablets.Get(0).tablet_id());
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
+
+  // Get CDC changes.
+  {
+    RpcController rpc;
+    SCOPED_TRACE(change_req.DebugString());
+    ASSERT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
+    SCOPED_TRACE(change_resp.DebugString());
+    ASSERT_FALSE(change_resp.has_error());
+
+    // Expect 0 records because transaction is not yet committed.
+    ASSERT_EQ(change_resp.records_size(), 0);
+  }
+
+  // Commit transaction.
+  ASSERT_OK(txn->CommitFuture().get());
+  ASSERT_OK(session->Flush());
+
+  // Get CDC changes.
+  {
+    RpcController rpc;
+    SCOPED_TRACE(change_req.DebugString());
+    ASSERT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
+    SCOPED_TRACE(change_resp.DebugString());
+    ASSERT_FALSE(change_resp.has_error());
+
+    // Expect at least 3 records because transaction is now committed.
+    // Transaction applying record may or may not be retrieved by GetChanges depending on timing
+    // but the 3 write records should definitely be retrieved.
+    ASSERT_GE(change_resp.records_size(), 3);
+    ASSERT_LE(change_resp.records_size(), 4);
+
+    int32_t expected_order[3] = {10001, 10002, 10003};
+
+    for (int i = 0; i < 3; i++) {
+      ASSERT_EQ(change_resp.records(i).changes_size(), 1);
+      // Check the key.
+      ASSERT_NO_FATALS(AssertIntKey(change_resp.records(i).key(), expected_order[i]));
+    }
+
+    if (change_resp.records_size() == 4) {
+      // Check the APPLYING transaction record.
+      ASSERT_EQ(change_resp.records(3).changes_size(), 0);
+      ASSERT_TRUE(change_resp.records(3).has_transaction_state());
     }
   }
 }

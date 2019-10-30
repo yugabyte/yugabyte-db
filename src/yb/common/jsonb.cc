@@ -15,6 +15,8 @@
 
 #include "yb/common/jsonb.h"
 #include "yb/common/json_util.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/util/kv_util.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/varint.h"

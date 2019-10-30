@@ -19,7 +19,7 @@ Follow the steps below to connect a local YugabyteDB cluster to use the Change D
 
 ### YugabyteDB
 
-A 1-node YugabyteDB cluster with RF of 1 is up and running locally (the `yb-ctl create` command create this by default). If you are new to YugabyteDB, you can create a local YugaByte cluster in under five minutes by following the steps in the [Quick start](/quick-start/install/).
+A 1-node YugabyteDB cluster with RF of 1 is up and running locally (the `yb-ctl create` command create this by default). If you are new to YugabyteDB, you can create a local YugabyteDB cluster in under five minutes by following the steps in the [Quick start](/quick-start/install/).
 
 ### Java
 
@@ -37,17 +37,17 @@ A local install of the Confluent Platform should be up and running. The [Conflue
 
 To get a local Confluent Platform (with Apache Kafka) up and running quickly, follow the steps in the [Confluent Platform Quick Start (Local)](https://docs.confluent.io/current/quickstart/ce-quickstart.html#ce-quickstart).
 
-## Step 1 — Add the `users` table
+## Step 1 — Add the "users" table
 
 With your local YugabyteDB cluster running, create a table, called `users`, in the default database (`yugabyte`).
 
-```sql
+```postgresql
 CREATE TABLE users (name text, pass text, id int, primary key (id));
 ```
 
 ## Step 2 — Create Avro schemas
 
-The Yugabyte CDC connector supports the use of [Apache Avro schemas](http://avro.apache.org/docs/current/#schemas) to serialize and deserialize tables. You can use the [Schema Registry](https://docs.confluent.io/current/schema-registry/index.html) in the Confluent Platform to create and manage Avro schema files. For a step-by-step tutorial, see [Schema Registry Tutorial](https://docs.confluent.io/current/schema-registry/schema_registry_tutorial.html).
+The Kafka Connect YugabyteDB Source Connector supports the use of [Apache Avro schemas](http://avro.apache.org/docs/current/#schemas) to serialize and deserialize tables. You can use the [Schema Registry](https://docs.confluent.io/current/schema-registry/index.html) in the Confluent Platform to create and manage Avro schema files. For a step-by-step tutorial, see [Schema Registry Tutorial](https://docs.confluent.io/current/schema-registry/schema_registry_tutorial.html).
 
 Create two Avro schemas, one for the `users` table and one for the primary key of the table. After this step, you should have two files: `table_schema_path.avsc` and `primary_key_schema_path.avsc`.
 
@@ -85,25 +85,30 @@ You can use the following two Avro schema examples that will work with the `user
 
 1. Create a Kafka topic.
 
-    ```bash
+    ```sh
     ./bin/kafka-topics --create --partitions 1 --topic users_topic --bootstrap-server localhost:9092 --replication-factor 1
     ```
 
 2. Start the Kafka consumer service.
 
-    ```bash
+    ```sh
     bin/kafka-avro-console-consumer --bootstrap-server localhost:9092 --topic users_topic --key-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer     --value-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer
     ```
 
-## Step 4 — Download the Yugabyte CDC connector
+## Step 4 — Download the Kafka Connect YugabyteDB Source Connector
 
-Download the [Yugabyte CDC connector (JAR file)](https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar).
+Download the Kafka Connect YugabyteDB Source Connector JAR file (`yb-cdc-connector.jar`).
+
+```sh
+$ wget https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar
+
+```
 
 ## Step 5 — Log to Kafka
 
-Run the following command to start logging an output stream of data changes from YugabyteDB to Apache Kafka.
+Run the following command to start logging an output stream of data changes from the YugabyteDB `cdc` table to Apache Kafka.
 
-```bash
+```sh
 java -jar target/yb_cdc_connector.jar
 --table_name yugabyte.cdc
 --topic_name cdc-test
@@ -111,7 +116,13 @@ java -jar target/yb_cdc_connector.jar
 --primary_key_schema_path primary_key_schema_path.avsc
 ```
 
-For details on the available options, see [Using the Yugabyte CDC connector](./use-cdc).
+The example above uses the following parameters:
+
+- `--table_name` — Specifies the namespace and table, where namespace is the database (YSQL) or keyspace (YCQL).
+- `--master_addrs` — Specifies the IP addresses for all of the YB-Master services that are producing or consuming. Default value is `127.0.0.1:7100`. If you are using a 3-node local cluster, then you need to specify a comma-delimited list of the addresses for all of your YB-Master services.
+- `topic_name` — Specifies the Apache Kafka topic name.
+- `table_schema_path` — Specifies the location of the Avro file (`.avsc`) for the table schema.
+- `primary_key_schema_path` — Specifies the location of the Avro file (`.avsc`) for the primary key schema.
 
 ## Step 6 — Write values and observe
 

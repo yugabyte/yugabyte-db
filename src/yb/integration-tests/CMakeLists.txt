@@ -66,9 +66,12 @@ add_dependencies(integration-tests
   yb-tserver
   yb-master)
 
+add_library(cdc_test_util cdc_test_util.cc)
+target_link_libraries(cdc_test_util yb_test_util cdc_service_proto tserver)
+
 # Tests
 set(YB_TEST_LINK_LIBS
-    integration-tests yb_client yb_tools_util ql-dml-test-base ${YB_MIN_TEST_LIBS})
+    integration-tests yb_client yb_tools_util ql-dml-test-base rpc_test_util ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(alter_table-test)
 ADD_YB_TEST(alter_table-randomized-test)
@@ -77,6 +80,7 @@ ADD_YB_TEST(clock_synchronization-itest)
 ADD_YB_TEST(client_failover-itest)
 ADD_YB_TEST(client-stress-test)
 ADD_YB_TEST(cluster_trace-test)
+ADD_YB_TEST(tablet_server-itest)
 # Tests which fail on purpose for checking Jenkins test failures reporting, disabled
 # (commented out) by default:
 # ADD_YB_TEST(test_failures-test)
@@ -122,6 +126,11 @@ ADD_YB_TEST(cassandra_cpp_driver-test)
 target_include_directories(cassandra_cpp_driver-test PUBLIC
   ${CASS_DRIVER_INTERNAL_INCLUDE}
   "${CASS_DRIVER_INTERNAL_INCLUDE}/third_party/sparsehash/src")
+
+if("${COMPILER_FAMILY}" STREQUAL "gcc8")
+  target_compile_options(cassandra_cpp_driver-test PUBLIC "-Wno-class-memaccess")
+endif()
+
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS_SAVED})
 
 # Additional tests

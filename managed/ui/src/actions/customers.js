@@ -20,6 +20,10 @@ export const INSECURE_LOGIN_RESPONSE = 'INSECURE_LOGIN_RESPONSE';
 
 export const RESET_CUSTOMER = 'RESET_CUSTOMER';
 
+export const API_TOKEN_LOADING = 'API_TOKEN_LOADING';
+export const API_TOKEN = 'API_TOKEN';
+export const API_TOKEN_RESPONSE = 'API_TOKEN_RESPONSE';
+
 // log out Customer
 export const LOGOUT = 'LOGOUT';
 export const LOGOUT_SUCCESS = 'LOGOUT_SUCCESS';
@@ -173,6 +177,28 @@ export function logoutFailure(error) {
   return {
     type: LOGOUT_FAILURE,
     payload: error
+  };
+}
+
+export function getApiTokenLoading() {
+  return {
+    type: API_TOKEN_LOADING
+  };
+}
+
+export function getApiToken(authToken) {
+  const cUUID = localStorage.getItem("customerId");
+  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/api_token`, {}, authToken);
+  return {
+    type: API_TOKEN,
+    payload: request
+  };
+}
+
+export function getApiTokenResponse(response) {
+  return {
+    type: API_TOKEN_RESPONSE,
+    payload: response
   };
 }
 

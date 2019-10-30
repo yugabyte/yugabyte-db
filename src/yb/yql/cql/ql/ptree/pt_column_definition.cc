@@ -34,7 +34,8 @@ PTColumnDefinition::PTColumnDefinition(MemoryContext *memctx,
       is_hash_key_(false),
       is_static_(false),
       order_(-1),
-      sorting_type_(ColumnSchema::SortingType::kNotSpecified) {
+      sorting_type_(ColumnSchema::SortingType::kNotSpecified),
+      coldef_name_(*name) {
 }
 
 PTColumnDefinition::~PTColumnDefinition() {
@@ -82,6 +83,8 @@ PTIndexColumn::PTIndexColumn(MemoryContext *memctx,
                              const MCSharedPtr<MCString>& name,
                              const PTExpr::SharedPtr& colexpr)
   : PTColumnDefinition(memctx, loc, name, nullptr, nullptr), colexpr_(colexpr) {
+  const string colname = colexpr->MangledName();
+  coldef_name_ = colname.c_str();
 }
 
 PTIndexColumn::~PTIndexColumn() {
@@ -166,7 +169,7 @@ CHECKED_STATUS PTIndexColumn::SetupHashKey(SemContext *sem_context) {
 
 CHECKED_STATUS PTIndexColumn::SetupCoveringIndexColumn(SemContext *sem_context) {
   coldef_ = sem_context->GetColumnDefinition(*name_);
-  if (coldef_) {
+  if (coldef_ && coldef_->colexpr()->opcode() == TreeNodeOpcode::kPTRef) {
     // Ignore as column is already defined as a part of INDEX.
     return Status::OK();
   }
@@ -186,7 +189,6 @@ CHECKED_STATUS PTIndexColumn::SetupCoveringIndexColumn(SemContext *sem_context) 
                               ErrorCode::SQL_STATEMENT_INVALID);
   }
 
-  // TODO(Oleg) Maybe the following requirement shouldn't be needed.
   if (!QLType::IsValidPrimaryType(ql_type()->main()) || ql_type()->main() == DataType::FROZEN) {
     return sem_context->Error(coldef_, "Unsupported index datatype",
                               ErrorCode::SQL_STATEMENT_INVALID);

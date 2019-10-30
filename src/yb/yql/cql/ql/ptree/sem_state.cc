@@ -36,6 +36,7 @@ SemState::SemState(SemContext *sem_context,
       lhs_col_(lhs_col) {
   // Passing down state variables that stay the same until they are set or reset.
   if (sem_context->sem_state() != nullptr) {
+    selecting_from_index_ = sem_context_->selecting_from_index();
     processing_if_clause_ = sem_context_->processing_if_clause();
     processing_set_clause_ = sem_context_->processing_set_clause();
     processing_assignee_ = sem_context_->processing_assignee();
@@ -84,6 +85,12 @@ void SemState::CopyPreviousWhereState() {
   }
 }
 
+void SemState::CopyPreviousIfState() {
+  if (previous_state_ != nullptr) {
+    if_state_ = previous_state_->if_state_;
+  }
+}
+
 void SemState::set_bindvar_name(string name) {
   bindvar_name_ = MCMakeShared<MCString>(sem_context_->PSemMem(), name.data(), name.size());
 }
@@ -92,6 +99,10 @@ void SemState::add_index_column_ref(int32_t col_id) {
   if (index_column_) {
     index_column_->AddIndexedRef(col_id);
   }
+}
+
+bool SemState::is_uncovered_index_select() const {
+  return DCHECK_NOTNULL(sem_context_)->IsUncoveredIndexSelect();
 }
 
 }  // namespace ql}  // namespace ql

@@ -35,12 +35,12 @@
 #include <mutex>
 #include <vector>
 
-#include <boost/thread/shared_mutex.hpp>
 #include "yb/gutil/map-util.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/util/flag_tags.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/util/shared_lock.h"
 
 DEFINE_int32(tserver_unresponsive_timeout_ms, 60 * 1000,
              "The period of time that a Master can go without receiving a heartbeat from a "
@@ -63,7 +63,8 @@ TSManager::~TSManager() {
 
 Status TSManager::LookupTS(const NodeInstancePB& instance,
                            TSDescriptorPtr* ts_desc) {
-  boost::shared_lock<rw_spinlock> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
+
   const TSDescriptorPtr* found_ptr =
     FindOrNull(servers_by_id_, instance.permanent_uuid());
   if (!found_ptr || (*found_ptr)->IsRemoved()) {
@@ -81,7 +82,7 @@ Status TSManager::LookupTS(const NodeInstancePB& instance,
 
 bool TSManager::LookupTSByUUID(const string& uuid,
                                TSDescriptorPtr* ts_desc) {
-  boost::shared_lock<rw_spinlock> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   const TSDescriptorPtr* found_ptr = FindOrNull(servers_by_id_, uuid);
   if (!found_ptr || (*found_ptr)->IsRemoved()) {
     return false;
@@ -106,7 +107,7 @@ Status TSManager::RegisterTS(const NodeInstancePB& instance,
                              const TSRegistrationPB& registration,
                              CloudInfoPB local_cloud_info,
                              rpc::ProxyCache* proxy_cache) {
-  std::lock_guard<rw_spinlock> l(lock_);
+  std::lock_guard<decltype(lock_)> l(lock_);
   const string& uuid = instance.permanent_uuid();
 
   auto it = servers_by_id_.find(uuid);
@@ -141,6 +142,7 @@ Status TSManager::RegisterTS(const NodeInstancePB& instance,
     InsertOrDie(&servers_by_id_, uuid, std::move(new_desc));
     LOG(INFO) << "Registered new tablet server { " << instance.ShortDebugString()
               << " } with Master, full list: " << yb::ToString(servers_by_id_);
+
   } else {
     RETURN_NOT_OK(it->second->Register(
         instance, registration, std::move(local_cloud_info), proxy_cache));
@@ -154,7 +156,8 @@ Status TSManager::RegisterTS(const NodeInstancePB& instance,
 void TSManager::GetDescriptors(std::function<bool(const TSDescriptorPtr&)> condition,
                                TSDescriptorVector* descs) const {
   descs->clear();
-  boost::shared_lock<rw_spinlock> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
+
   descs->reserve(servers_by_id_.size());
   for (const TSDescriptorMap::value_type& entry : servers_by_id_) {
     const TSDescriptorPtr& ts = entry.second;
@@ -185,7 +188,7 @@ void TSManager::GetAllReportedDescriptors(TSDescriptorVector* descs) const {
 }
 
 bool TSManager::IsTsInCluster(const TSDescriptorPtr& ts, string cluster_uuid) {
-    return cluster_uuid.empty() || ts->placement_uuid() == cluster_uuid;
+  return ts->placement_uuid() == cluster_uuid;
 }
 
 bool TSManager::IsTsBlacklisted(const TSDescriptorPtr& ts,
@@ -205,20 +208,27 @@ bool TSManager::IsTsBlacklisted(const TSDescriptorPtr& ts,
 
 void TSManager::GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs,
     string placement_uuid,
-    const BlacklistSet blacklist) const {
+    const BlacklistSet blacklist,
+    bool primary_cluster) const {
   descs->clear();
-  boost::shared_lock<rw_spinlock> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
+
   descs->reserve(servers_by_id_.size());
   for (const TSDescriptorMap::value_type& entry : servers_by_id_) {
     const TSDescriptorPtr& ts = entry.second;
-    if (IsTSLive(ts) && IsTsInCluster(ts, placement_uuid) && !IsTsBlacklisted(ts, blacklist)) {
+    // ts_in_cluster true if there's a matching config and tserver placement uuid or
+    // if we're getting primary nodes and the tserver placement uuid is empty.
+    bool ts_in_cluster = (IsTsInCluster(ts, placement_uuid) ||
+                         (primary_cluster && ts->placement_uuid().empty()));
+    if (IsTSLive(ts) && !IsTsBlacklisted(ts, blacklist) && ts_in_cluster) {
       descs->push_back(ts);
     }
   }
 }
 
 const TSDescriptorPtr TSManager::GetTSDescriptor(const HostPortPB& host_port) const {
-  boost::shared_lock<rw_spinlock> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
+
   for (const TSDescriptorMap::value_type& entry : servers_by_id_) {
     const TSDescriptorPtr& ts = entry.second;
     if (IsTSLive(ts) && ts->IsRunningOn(host_port)) {
@@ -230,7 +240,12 @@ const TSDescriptorPtr TSManager::GetTSDescriptor(const HostPortPB& host_port) co
 }
 
 int TSManager::GetCount() const {
-  boost::shared_lock<rw_spinlock> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
+
+  return GetCountUnlocked();
+}
+
+int TSManager::GetCountUnlocked() const {
   size_t count = 0;
   for (const auto& map_entry : servers_by_id_) {
     if (!map_entry.second->IsRemoved()) {
@@ -242,4 +257,3 @@ int TSManager::GetCount() const {
 
 } // namespace master
 } // namespace yb
-

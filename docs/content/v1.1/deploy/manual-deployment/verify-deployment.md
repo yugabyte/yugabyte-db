@@ -39,19 +39,19 @@ You should now be able to view the master dashboard on the ip address of any mas
 
 ## Connect clients
 
-- Clients can connect to Yugabyte DB's YCQL API at
+- Clients can connect to YugabyteDB's YCQL API at
 
 ```sh
 172.151.17.130:9042,172.151.17.220:9042,172.151.17.140:9042,172.151.17.150:9042
 ```
 
-- Clients can connect to Yugabyte DB's YEDIS API at
+- Clients can connect to YugabyteDB's YEDIS API at
 
 ```sh
 172.151.17.130:6379,172.151.17.220:6379,172.151.17.140:6379,172.151.17.150:6379
 ```
 
-- Clients can connect to Yugabyte DB's YSQL (Beta) API at
+- Clients can connect to YugabyteDB's YSQL (Beta) API at
 
 ```sh
 172.151.17.130:5433,172.151.17.220:5433,172.151.17.140:5433,172.151.17.150:5433

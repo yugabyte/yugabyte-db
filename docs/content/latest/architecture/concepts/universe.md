@@ -58,13 +58,13 @@ These serve different purposes as described below.
 
 The **YB-TServer** (aka the *YugabyteDB Tablet Server*) processes are responsible for hosting/serving user data (for example, tables). They deal with all the user queries.
 
-You can read more [about YB-TServers](../yb-tserver).
+For details, see [YB-TServer](../yb-tserver).
 
 ### YB-Master process
 
 The **YB-Master** (aka the *YugabyteDB Master Server*) processes are responsible for keeping system metadata, coordinating system-wide operations, such as create/alter/drop tables, and initiating maintenance operations such as load balancing.
 
-You can read more [about YB-TServers](../yb-tserver).
+For details, see [YB-TServer](../yb-tserver).
 
 Below is an illustration of a simple 4-node YugabyteDB universe:
 
@@ -72,16 +72,16 @@ Below is an illustration of a simple 4-node YugabyteDB universe:
 
 ## Universe vs cluster
 
-A YugabyteDB universe can comprise of one or more clusters. Each cluster is a logical group of nodes running YB-TServers that are either performing one of the following replication modes:
+A YugabyteDB universe can comprise of one or more clusters. Each cluster is a logical group of nodes running YB-TServer services that are performing one of the following replication modes:
 
 - Synchronous replication
 - Asynchronous replication
 
-The set of nodes that are performing strong replication are referred to as the **Primary cluster** and other groups are called **Read Replica clusters**.
+The set of nodes that are performing strong replication are referred to as the **primary cluster** and other groups are called **read replica clusters**.
 
 Note that:
 
-- There is always one primary cluster in a universe
+- There is always one primary cluster in a universe.
 - There can be zero or more read replica clusters in that universe.
 
-You can find more information about read replicas [here](../replication/#read-only-replicas).
+For more information about read replica clusters, see [Read-only replicas](../../docdb/replication/#read-only-replicas).

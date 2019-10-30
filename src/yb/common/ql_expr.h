@@ -7,7 +7,7 @@
 #ifndef YB_COMMON_QL_EXPR_H_
 #define YB_COMMON_QL_EXPR_H_
 
-#include "yb/common/ql_value.h"
+#include "yb/common/common_fwd.h"
 #include "yb/common/schema.h"
 #include "yb/util/bfql/tserver_opcodes.h"
 #include "yb/util/bfpg/tserver_opcodes.h"

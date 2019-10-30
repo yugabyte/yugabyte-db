@@ -88,7 +88,9 @@ class ReplicaOperationFactory;
 
 typedef int64_t ConsensusTerm;
 
-typedef std::function<void(const Status& status, int64_t leader_term)> ConsensusReplicatedCallback;
+typedef std::function<void(
+    const Status& status, int64_t leader_term, OpIds* applied_op_ids)>
+        ConsensusReplicatedCallback;
 
 // After completing bootstrap, some of the results need to be plumbed through
 // into the consensus implementation.
@@ -343,7 +345,10 @@ class Consensus {
   virtual MonoTime TimeSinceLastMessageFromLeader() = 0;
 
   // Read majority replicated messages for CDC producer.
-  virtual CHECKED_STATUS ReadReplicatedMessagesForCDC(const OpId& from, ReplicateMsgs* msgs) = 0;
+  virtual CHECKED_STATUS ReadReplicatedMessagesForCDC(const OpId& from, ReplicateMsgs* msgs,
+                                                      bool* have_more_messages) = 0;
+
+  virtual void UpdateCDCConsumerOpId(const OpIdPB& op_id) = 0;
 
  protected:
   friend class RefCountedThreadSafe<Consensus>;
@@ -519,7 +524,8 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
   }
 
   // If a continuation was set, notifies it that the round has been replicated.
-  void NotifyReplicationFinished(const Status& status, int64_t leader_term);
+  void NotifyReplicationFinished(
+      const Status& status, int64_t leader_term, OpIds* applied_op_ids);
 
   // Binds this round such that it may not be eventually executed in any term
   // other than 'term'.

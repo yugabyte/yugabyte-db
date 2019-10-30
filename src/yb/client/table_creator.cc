@@ -140,6 +140,11 @@ YBTableCreator& YBTableCreator::is_unique_index(bool is_unique_index) {
   return *this;
 }
 
+YBTableCreator& YBTableCreator::use_mangled_column_name(bool value) {
+  index_info_.set_use_mangled_column_name(value);
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::timeout(const MonoDelta& timeout) {
   timeout_ = timeout;
   return *this;

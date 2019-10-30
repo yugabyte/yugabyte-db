@@ -11,8 +11,11 @@
 // under the License.
 //
 
-#include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_ql_scanspec.h"
+
+#include "yb/common/ql_value.h"
+
+#include "yb/docdb/doc_expr.h"
 #include "yb/rocksdb/db/compaction.h"
 
 using std::vector;
@@ -24,7 +27,7 @@ DocQLScanSpec::DocQLScanSpec(const Schema& schema,
                              const DocKey& doc_key,
                              const rocksdb::QueryId query_id,
                              const bool is_forward_scan)
-    : QLScanSpec(nullptr, is_forward_scan, std::make_shared<DocExprExecutor>()),
+    : QLScanSpec(nullptr, nullptr, is_forward_scan, std::make_shared<DocExprExecutor>()),
       range_bounds_(nullptr),
       schema_(schema),
       hashed_components_(nullptr),
@@ -38,11 +41,12 @@ DocQLScanSpec::DocQLScanSpec(const Schema& schema,
                              const boost::optional<int32_t> max_hash_code,
                              const std::vector<PrimitiveValue>& hashed_components,
                              const QLConditionPB* condition,
+                             const QLConditionPB* if_condition,
                              const rocksdb::QueryId query_id,
                              const bool is_forward_scan,
                              const bool include_static_columns,
                              const DocKey& start_doc_key)
-    : QLScanSpec(condition, is_forward_scan, std::make_shared<DocExprExecutor>()),
+    : QLScanSpec(condition, if_condition, is_forward_scan, std::make_shared<DocExprExecutor>()),
       range_bounds_(condition ? new common::QLScanRange(schema, *condition) : nullptr),
       schema_(schema),
       hash_code_(hash_code),

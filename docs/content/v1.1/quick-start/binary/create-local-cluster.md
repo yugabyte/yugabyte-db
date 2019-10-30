@@ -1,13 +1,13 @@
 ## 1. Create a 3 node cluster with replication factor 3 
 
-We will use the [`yb-ctl`](../../admin/yb-ctl/) utility located in the `bin` directory of the Yugabyte DB package to create and administer a local cluster. The default data directory used is `/tmp/yugabyte-local-cluster`. You can change this directory with the `--data_dir` option. Detailed output for the *create* command is available in [yb-ctl Reference](../../admin/yb-ctl/#create-cluster).
+We will use the [`yb-ctl`](../../admin/yb-ctl/) utility located in the `bin` directory of the YugabyteDB package to create and administer a local cluster. The default data directory used is `/tmp/yugabyte-local-cluster`. You can change this directory with the `--data_dir` option. Detailed output for the *create* command is available in [yb-ctl Reference](../../admin/yb-ctl/#create-cluster).
 
 ```sh
 $ ./bin/yb-ctl --rf 3 create
 ```
 
 
-You can now check `/tmp/yugabyte-local-cluster` to see `node-i` directories created where `i` represents the `node_id` of the node. Inside each such directory, there will be 2 disks `disk1` and `disk2` to highlight the fact that Yugabyte DB can work with multiple disks at the same time. Note that the IP address of `node-i` is by default set to `127.0.0.i`.
+You can now check `/tmp/yugabyte-local-cluster` to see `node-i` directories created where `i` represents the `node_id` of the node. Inside each such directory, there will be 2 disks `disk1` and `disk2` to highlight the fact that YugabyteDB can work with multiple disks at the same time. Note that the IP address of `node-i` is by default set to `127.0.0.i`.
 
 ## 2. Check cluster status with yb-ctl
 
@@ -32,7 +32,7 @@ Node 1's [master Admin UI](../../admin/yb-master/#admin-ui) is available at http
 
 ### 3.1 Overview and Master status
 
-Node 1's master Admin UI home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 3 and `Num Nodes (TServers)` as 3. The `Num User Tables` is 0 since there are no user tables created yet. Yugabyte DB version number is also shown for your reference. 
+Node 1's master Admin UI home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 3 and `Num Nodes (TServers)` as 3. The `Num User Tables` is 0 since there are no user tables created yet. YugabyteDB version number is also shown for your reference. 
 
 ![master-home](/images/admin/master-home-binary.png)
 

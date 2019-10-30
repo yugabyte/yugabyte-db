@@ -214,18 +214,18 @@ void ThreadPoolToken::Wait() {
 }
 
 bool ThreadPoolToken::WaitUntil(const MonoTime& until) {
-  return WaitFor(until - MonoTime::Now());
-}
-
-bool ThreadPoolToken::WaitFor(const MonoDelta& delta) {
   MutexLock unique_lock(pool_->lock_);
   pool_->CheckNotPoolThreadUnlocked();
   while (IsActive()) {
-    if (!not_running_cond_.TimedWait(delta)) {
+    if (!not_running_cond_.WaitUntil(until)) {
       return false;
     }
   }
   return true;
+}
+
+bool ThreadPoolToken::WaitFor(const MonoDelta& delta) {
+  return WaitUntil(MonoTime::Now() + delta);
 }
 
 void ThreadPoolToken::Transition(ThreadPoolTokenState new_state) {
@@ -530,18 +530,17 @@ void ThreadPool::Wait() {
 }
 
 bool ThreadPool::WaitUntil(const MonoTime& until) {
-  MonoDelta relative = until.GetDeltaSince(MonoTime::Now());
-  return WaitFor(relative);
-}
-
-bool ThreadPool::WaitFor(const MonoDelta& delta) {
   MutexLock unique_lock(lock_);
   while ((!queue_.empty()) || (active_threads_ > 0)) {
-    if (!idle_cond_.TimedWait(delta)) {
+    if (!idle_cond_.WaitUntil(until)) {
       return false;
     }
   }
   return true;
+}
+
+bool ThreadPool::WaitFor(const MonoDelta& delta) {
+  return WaitUntil(MonoTime::Now() + delta);
 }
 
 void ThreadPool::DispatchThread(bool permanent) {

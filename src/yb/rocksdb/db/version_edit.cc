@@ -151,7 +151,7 @@ Status DecodeBoundaryValues(BoundaryValuesExtractor* extractor,
                             FileBoundaryValues<InternalKey>* out) {
   out->key = InternalKey::DecodeFrom(values.key());
   out->seqno = values.seqno();
-  if (values.has_user_frontier()) {
+  if (values.has_user_frontier() && extractor) {
     out->user_frontier = extractor->CreateFrontier();
     out->user_frontier->FromPB(values.user_frontier());
   }
@@ -272,13 +272,16 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
   if (pb.has_last_sequence()) {
     last_sequence_ = pb.last_sequence();
   }
-  if (pb.has_obsolete_last_op_id()) {
-    flushed_frontier_ = extractor->CreateFrontier();
-    flushed_frontier_->FromOpIdPBDeprecated(pb.obsolete_last_op_id());
-  }
-  if (pb.has_flushed_frontier()) {
-    flushed_frontier_ = extractor->CreateFrontier();
-    flushed_frontier_->FromPB(pb.flushed_frontier());
+  if (extractor) {
+    // BoundaryValuesExtractor could be not set when running from internal RocksDB tools.
+    if (pb.has_obsolete_last_op_id()) {
+      flushed_frontier_ = extractor->CreateFrontier();
+      flushed_frontier_->FromOpIdPBDeprecated(pb.obsolete_last_op_id());
+    }
+    if (pb.has_flushed_frontier()) {
+      flushed_frontier_ = extractor->CreateFrontier();
+      flushed_frontier_->FromPB(pb.flushed_frontier());
+    }
   }
   if (pb.has_max_column_family()) {
     max_column_family_ = pb.max_column_family();
@@ -300,7 +303,7 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
                              source.path_id(),
                              source.total_file_size(),
                              source.base_file_size());
-    if (source.has_obsolete_last_op_id()) {
+    if (source.has_obsolete_last_op_id() && extractor) {
       meta.largest.user_frontier = extractor->CreateFrontier();
       meta.largest.user_frontier->FromOpIdPBDeprecated(source.obsolete_last_op_id());
     }

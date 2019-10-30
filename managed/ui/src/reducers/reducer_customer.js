@@ -13,7 +13,8 @@ import { VALIDATE_FROM_TOKEN, VALIDATE_FROM_TOKEN_RESPONSE,
          DELETE_CUSTOMER_CONFIG, DELETE_CUSTOMER_CONFIG_RESPONSE, GET_LOGS, GET_LOGS_SUCCESS,
          GET_LOGS_FAILURE, GET_RELEASES, GET_RELEASES_RESPONSE, REFRESH_RELEASES,
          REFRESH_RELEASES_RESPONSE, IMPORT_RELEASE, IMPORT_RELEASE_RESPONSE, UPDATE_RELEASE,
-         UPDATE_RELEASE_RESPONSE, GET_ALERTS, GET_ALERTS_SUCCESS, GET_ALERTS_FAILURE
+         UPDATE_RELEASE_RESPONSE, GET_ALERTS, GET_ALERTS_SUCCESS, GET_ALERTS_FAILURE,
+         API_TOKEN_LOADING, API_TOKEN, API_TOKEN_RESPONSE
        } from '../actions/customers';
 
 import { sortVersionStrings, isDefinedNotNull } from '../utils/ObjectUtils';
@@ -22,12 +23,16 @@ import { getInitialState, setLoadingState, setSuccessState, setFailureState, set
 const INITIAL_STATE = {
   currentCustomer: getInitialState({}),
   authToken: getInitialState({}),
+  apiToken: getInitialState(null),
   tasks: [],
   status: null,
   error: null,
   loading: false,
   softwareVersions: [],
-  alertsList: [],
+  alerts: {
+    alertsList: [],
+    updated: null
+  },
   hostInfo: null,
   customerCount: {},
   yugawareVersion: getInitialState({}),
@@ -58,6 +63,13 @@ export default function(state = INITIAL_STATE, action) {
       return setLoadingState(state, "authToken", {});
     case LOGIN_RESPONSE:
       return setPromiseResponse(state, "authToken", action);
+
+    case API_TOKEN_LOADING:
+      return setLoadingState(state, "apiToken", null);
+    case API_TOKEN:
+      return setLoadingState(state, "apiToken", null);
+    case API_TOKEN_RESPONSE:
+      return setPromiseResponse(state, "apiToken", action);
 
     case INSECURE_LOGIN:
       return {
@@ -96,7 +108,7 @@ export default function(state = INITIAL_STATE, action) {
     case ADD_TLS_CERT_RESPONSE:
       if (action.payload.status !== 200) {
         if (isDefinedNotNull(action.payload.data)) {
-          return setFailureState(state, "addCertificate", action.payload.data.error);
+          return setFailureState(state, "addCertificate", action.payload.response.data.error);
         } else {
           return state;
         }
@@ -116,15 +128,33 @@ export default function(state = INITIAL_STATE, action) {
     case UPDATE_PROFILE_SUCCESS:
       return setSuccessState(state, "profile", "updated-success");
     case UPDATE_PROFILE_FAILURE:
-      return setFailureState(state, "profile", action.payload.data.error);
+      return setFailureState(state, "profile", action.payload.response.data.error);
     case FETCH_CUSTOMER_COUNT:
       return setLoadingState(state, "customerCount");
     case GET_ALERTS:
-      return {...state, alertsList: []};
+      return {
+        ...state,
+        alerts: {
+          alertsList: [],
+          updated: null,
+        }
+      };
     case GET_ALERTS_SUCCESS:
-      return {...state, alertsList: action.payload.data};
+      return {
+        ...state,
+        alerts: {
+          alertsList: action.payload.data,
+          updated: Date.now()
+        }
+      };
     case GET_ALERTS_FAILURE:
-      return {...state, alertsList: []};
+      return {
+        ...state,
+        alerts: {
+          alertsList: [],
+          updated: Date.now()
+        }
+      };
     case FETCH_YUGAWARE_VERSION:
       return setLoadingState(state, "yugawareVersion", {});
     case FETCH_YUGAWARE_VERSION_RESPONSE:

@@ -346,8 +346,7 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
 
     for (int i = 1; i <= opts_.num_tablet_servers; i++) {
       RETURN_NOT_OK_PREPEND(
-          AddTabletServer(ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-                          opts_.start_pgsql_proxy),
+          AddTabletServer(ExternalMiniClusterOptions::kDefaultStartCqlProxy),
           Substitute("Failed starting tablet server $0", i));
     }
     RETURN_NOT_OK(WaitForTabletServerCount(
@@ -458,7 +457,7 @@ Result<ExternalMaster *> ExternalMiniCluster::StartMasterWithPeers(const string&
   string exe = GetBinaryPath(kMasterBinaryName);
 
   ExternalMaster* master =
-      new ExternalMaster(add_new_master_at_, messenger_, exe,
+      new ExternalMaster(add_new_master_at_, messenger_, proxy_cache_.get(), exe,
                          GetDataPath(Substitute("master-$0", add_new_master_at_)),
                          opts_.extra_master_flags, addr, http_port, peer_addrs);
 
@@ -485,6 +484,7 @@ void ExternalMiniCluster::StartShellMaster(ExternalMaster** new_master) {
   ExternalMaster* master = new ExternalMaster(
       add_new_master_at_,
       messenger_,
+      proxy_cache_.get(),
       exe,
       GetDataPath(Substitute("master-$0", add_new_master_at_)),
       opts_.extra_master_flags,
@@ -961,8 +961,11 @@ Status ExternalMiniCluster::StartMasters() {
   string peer_addrs_str = JoinStrings(peer_addrs, ",");
   vector<string> flags = opts_.extra_master_flags;
   flags.push_back("--enable_leader_failure_detection=true");
-  if (opts_.start_pgsql_proxy) {
+  if (opts_.enable_ysql) {
+    flags.push_back("--enable_ysql=true");
     flags.push_back("--master_auto_run_initdb");
+  } else {
+    flags.push_back("--enable_ysql=false");
   }
   string exe = GetBinaryPath(kMasterBinaryName);
 
@@ -973,6 +976,7 @@ Status ExternalMiniCluster::StartMasters() {
       new ExternalMaster(
         i,
         messenger_,
+        proxy_cache_.get(),
         exe,
         GetDataPath(Substitute("master-$0", i)),
         SubstituteInFlags(flags, i),
@@ -984,7 +988,7 @@ Status ExternalMiniCluster::StartMasters() {
     masters_.push_back(peer);
   }
 
-  if (opts_.start_pgsql_proxy) {
+  if (opts_.enable_ysql) {
     RETURN_NOT_OK(WaitForInitDb());
   }
   return Status::OK();
@@ -1043,7 +1047,7 @@ string ExternalMiniCluster::GetBindIpForTabletServer(int index) const {
   }
 }
 
-Status ExternalMiniCluster::AddTabletServer(bool start_cql_proxy, bool start_pgsql_proxy) {
+Status ExternalMiniCluster::AddTabletServer(bool start_cql_proxy) {
   CHECK(GetLeaderMaster() != nullptr)
       << "Must have started at least 1 master before adding tablet servers";
 
@@ -1085,13 +1089,21 @@ Status ExternalMiniCluster::AddTabletServer(bool start_cql_proxy, bool start_pgs
     pgsql_http_port = AllocateFreePort();
   }
 
+  vector<string> flags = opts_.extra_tserver_flags;
+  if (opts_.enable_ysql) {
+    flags.push_back("--enable_ysql=true");
+  } else {
+    flags.push_back("--enable_ysql=false");
+  }
+
   scoped_refptr<ExternalTabletServer> ts = new ExternalTabletServer(
-      idx, messenger_, exe, GetDataPath(Substitute("ts-$0", idx)), GetBindIpForTabletServer(idx),
+      idx, messenger_, proxy_cache_.get(),
+      exe, GetDataPath(Substitute("ts-$0", idx)), GetBindIpForTabletServer(idx),
       ts_rpc_port, ts_http_port, redis_rpc_port, redis_http_port,
       cql_rpc_port, cql_http_port,
       pgsql_rpc_port, pgsql_http_port,
-      master_hostports, SubstituteInFlags(opts_.extra_tserver_flags, idx));
-  RETURN_NOT_OK(ts->Start(start_cql_proxy, start_pgsql_proxy));
+      master_hostports, SubstituteInFlags(flags, idx));
+  RETURN_NOT_OK(ts->Start(start_cql_proxy));
   tablet_servers_.push_back(ts);
   return Status::OK();
 }
@@ -1604,12 +1616,14 @@ class ExternalDaemon::LogTailerThread {
 ExternalDaemon::ExternalDaemon(
     std::string daemon_id,
     rpc::Messenger* messenger,
+    rpc::ProxyCache* proxy_cache,
     string exe,
     string data_dir,
     string server_type,
     vector<string> extra_flags)
   : daemon_id_(daemon_id),
-    messenger_(std::move(messenger)),
+    messenger_(messenger),
+    proxy_cache_(proxy_cache),
     exe_(std::move(exe)),
     data_dir_(std::move(data_dir)),
     full_data_dir_(GetServerTypeDataPath(data_dir_, std::move(server_type))),
@@ -1996,6 +2010,21 @@ void ExternalDaemon::RemoveLogListener(StringListener* listener) {
   stderr_tailer_thread_->RemoveListener(listener);
 }
 
+Result<string> ExternalDaemon::GetFlag(const std::string& flag) {
+  server::GenericServiceProxy proxy(proxy_cache_, bound_rpc_addr());
+
+  rpc::RpcController controller;
+  controller.set_timeout(MonoDelta::FromSeconds(30));
+  server::GetFlagRequestPB req;
+  server::GetFlagResponsePB resp;
+  req.set_flag(flag);
+  RETURN_NOT_OK(proxy.GetFlag(req, &resp, &controller));
+  if (!resp.valid()) {
+    return STATUS_FORMAT(RemoteError, "Failed to get gflag $0 value.", flag);
+  }
+  return resp.value();
+}
+
 LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait) :
     daemon_(daemon), string_to_wait_(string_to_wait) {
   daemon_->SetLogListener(this);
@@ -2037,6 +2066,7 @@ ScopedResumeExternalDaemon::~ScopedResumeExternalDaemon() {
 ExternalMaster::ExternalMaster(
     int master_index,
     rpc::Messenger* messenger,
+    rpc::ProxyCache* proxy_cache,
     const string& exe,
     const string& data_dir,
     const std::vector<string>& extra_flags,
@@ -2044,27 +2074,51 @@ ExternalMaster::ExternalMaster(
     uint16_t http_port,
     const string& master_addrs)
     : ExternalDaemon(
-          Substitute("m-$0", master_index + 1), messenger, exe, data_dir, "master", extra_flags),
-      rpc_bind_address_(std::move(rpc_bind_address)),
-      master_addrs_(std::move(master_addrs)),
+          Substitute("m-$0", master_index + 1), messenger, proxy_cache, exe, data_dir, "master",
+          extra_flags),
+      rpc_bind_address_(rpc_bind_address),
+      master_addrs_(master_addrs),
       http_port_(http_port) {
 }
 
 ExternalMaster::~ExternalMaster() {
 }
 
+namespace {
+
+class Flags {
+ public:
+  template <class Value>
+  void Add(const std::string& name, const Value& value) {
+    value_.push_back(Format("--$0=$1", name, value));
+  }
+
+  void AddHostPort(const std::string& name, const std::string& host, uint16_t port) {
+    Add(name, HostPort(host, port));
+  }
+
+  const std::vector<std::string>& value() const {
+    return value_;
+  }
+
+ private:
+  std::vector<std::string> value_;
+};
+
+} // namespace
+
 Status ExternalMaster::Start(bool shell_mode) {
-  vector<string> flags;
-  flags.push_back("--fs_data_dirs=" + data_dir_);
-  flags.push_back("--rpc_bind_addresses=" + rpc_bind_address_);
-  flags.push_back("--webserver_interface=localhost");
-  flags.push_back(Substitute("--webserver_port=$0", http_port_));
+  Flags flags;
+  flags.Add("fs_data_dirs", data_dir_);
+  flags.Add("rpc_bind_addresses", rpc_bind_address_);
+  flags.Add("webserver_interface", "localhost");
+  flags.Add("webserver_port", http_port_);
   // On first start, we need to tell the masters their list of expected peers.
   // For 'shell' master, there is no master addresses.
   if (!shell_mode) {
-    flags.push_back("--master_addresses=" + master_addrs_);
+    flags.Add("master_addresses", master_addrs_);
   }
-  RETURN_NOT_OK(StartProcess(flags));
+  RETURN_NOT_OK(StartProcess(flags.value()));
   return Status::OK();
 }
 
@@ -2086,15 +2140,15 @@ Status ExternalMaster::Restart() {
 //------------------------------------------------------------
 
 ExternalTabletServer::ExternalTabletServer(
-    int tablet_server_index, rpc::Messenger* messenger,
+    int tablet_server_index, rpc::Messenger* messenger, rpc::ProxyCache* proxy_cache,
     const std::string& exe, const std::string& data_dir, std::string bind_host, uint16_t rpc_port,
     uint16_t http_port, uint16_t redis_rpc_port, uint16_t redis_http_port,
     uint16_t cql_rpc_port, uint16_t cql_http_port,
     uint16_t pgsql_rpc_port, uint16_t pgsql_http_port,
     const std::vector<HostPort>& master_addrs, const std::vector<std::string>& extra_flags)
     : ExternalDaemon(
-          Substitute("ts-$0", tablet_server_index + 1), messenger, exe, data_dir, "tserver",
-          extra_flags),
+          Substitute("ts-$0", tablet_server_index + 1), messenger, proxy_cache, exe, data_dir,
+          "tserver", extra_flags),
       master_addrs_(HostPort::ToCommaSeparatedString(master_addrs)),
       bind_host_(std::move(bind_host)),
       rpc_port_(rpc_port),
@@ -2109,33 +2163,32 @@ ExternalTabletServer::ExternalTabletServer(
 ExternalTabletServer::~ExternalTabletServer() {
 }
 
-Status ExternalTabletServer::Start(bool start_cql_proxy, bool start_pgsql_proxy) {
-  vector<string> flags;
+Status ExternalTabletServer::Start(bool start_cql_proxy, bool set_proxy_addrs) {
   start_cql_proxy_ = start_cql_proxy;
-  enable_ysql_ = start_pgsql_proxy;
-  flags.push_back("--fs_data_dirs=" + data_dir_);
-  flags.push_back(Substitute("--rpc_bind_addresses=$0:$1",
-                             bind_host_, rpc_port_));
-  flags.push_back(Substitute("--webserver_interface=$0",
-                             bind_host_));
-  flags.push_back(Substitute("--webserver_port=$0", http_port_));
-  flags.push_back(Substitute("--redis_proxy_bind_address=$0:$1", bind_host_, redis_rpc_port_));
-  flags.push_back(Substitute("--redis_proxy_webserver_port=$0", redis_http_port_));
-  flags.push_back(Substitute("--pgsql_proxy_bind_address=$0:$1", bind_host_, pgsql_rpc_port_));
-  flags.push_back(Substitute("--pgsql_proxy_webserver_port=$0", pgsql_http_port_));
-  flags.push_back(Substitute("--cql_proxy_bind_address=$0:$1", bind_host_, cql_rpc_port_));
-  flags.push_back(Substitute("--cql_proxy_webserver_port=$0", cql_http_port_));
-  flags.push_back(Substitute("--start_cql_proxy=$0", start_cql_proxy_));
-  flags.push_back(Substitute("--start_pgsql_proxy=$0", enable_ysql_));
-  flags.push_back(Substitute("--enable_ysql=$0", enable_ysql_));
-  flags.push_back("--tserver_master_addrs=" + master_addrs_);
+  Flags flags;
+  flags.Add("fs_data_dirs", data_dir_);
+  flags.AddHostPort("rpc_bind_addresses", bind_host_, rpc_port_);
+  flags.Add("webserver_interface", bind_host_);
+  flags.Add("webserver_port", http_port_);
+  flags.Add("redis_proxy_webserver_port", redis_http_port_);
+  flags.Add("pgsql_proxy_webserver_port", pgsql_http_port_);
+  flags.Add("cql_proxy_webserver_port", cql_http_port_);
+
+  if (set_proxy_addrs) {
+    flags.AddHostPort("redis_proxy_bind_address", bind_host_, redis_rpc_port_);
+    flags.AddHostPort("pgsql_proxy_bind_address", bind_host_, pgsql_rpc_port_);
+    flags.AddHostPort("cql_proxy_bind_address", bind_host_, cql_rpc_port_);
+  }
+
+  flags.Add("start_cql_proxy", start_cql_proxy_);
+  flags.Add("tserver_master_addrs", master_addrs_);
 
   // Use conservative number of threads for the mini cluster for unit test env
   // where several unit tests tend to run in parallel.
-  flags.push_back("--tablet_server_svc_num_threads=64");
-  flags.push_back("--ts_consensus_svc_num_threads=20");
+  flags.Add("tablet_server_svc_num_threads", "64");
+  flags.Add("ts_consensus_svc_num_threads", "20");
 
-  RETURN_NOT_OK(StartProcess(flags));
+  RETURN_NOT_OK(StartProcess(flags.value()));
 
   return Status::OK();
 }
@@ -2170,7 +2223,7 @@ Status ExternalTabletServer::DeleteServerInfoPaths() {
   return Status::OK();
 }
 
-Status ExternalTabletServer::Restart(bool start_cql_proxy, bool start_pgsql_proxy) {
+Status ExternalTabletServer::Restart(bool start_cql_proxy) {
   LOG_WITH_PREFIX(INFO) << "Restart: start_cql_proxy=" << start_cql_proxy;
   if (!IsProcessAlive()) {
     // Make sure this function could be safely called if the process has already crashed.
@@ -2180,7 +2233,7 @@ Status ExternalTabletServer::Restart(bool start_cql_proxy, bool start_pgsql_prox
   if (bound_rpc_.port() == 0) {
     return STATUS(IllegalState, "Tablet server cannot be restarted. Must call Shutdown() first.");
   }
-  return Start(start_cql_proxy, start_pgsql_proxy);
+  return Start(start_cql_proxy);
 }
 
 }  // namespace yb

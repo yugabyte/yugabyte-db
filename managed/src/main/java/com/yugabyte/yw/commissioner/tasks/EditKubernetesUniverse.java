@@ -97,14 +97,14 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       currPlacement = new KubernetesPlacement(currPI);
 
       Set<NodeDetails> mastersToAdd = getPodsToAdd(newPlacement.masters, currPlacement.masters,
-                                                   ServerType.MASTER, isMultiAz);
+              ServerType.MASTER, isMultiAz);
       Set<NodeDetails> mastersToRemove = getPodsToRemove(newPlacement.masters, currPlacement.masters,
-                                                         ServerType.MASTER, universe, isMultiAz);
+              ServerType.MASTER, universe, isMultiAz);
 
       Set<NodeDetails> tserversToAdd = getPodsToAdd(newPlacement.tservers, currPlacement.tservers,
-                                                    ServerType.TSERVER, isMultiAz);
+              ServerType.TSERVER, isMultiAz);
       Set<NodeDetails> tserversToRemove = getPodsToRemove(newPlacement.tservers, currPlacement.tservers,
-                                          ServerType.TSERVER, universe, isMultiAz);
+              ServerType.TSERVER, universe, isMultiAz);
 
       for (UUID currAZs : currPlacement.configs.keySet()) {
         PlacementInfoUtil.addPlacementZoneHelper(currAZs, activeZones);
@@ -123,7 +123,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // Check if the instance type has changed. In that case, we still
       // need to perform rolling upgrades.
       if (!currIntent.instanceType.equals(userIntent.instanceType)) {
-          userIntentChange = true;
+        userIntentChange = true;
       }
 
       // Update the user intent.
@@ -133,8 +133,20 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       if (!mastersToAdd.isEmpty()) {
         startNewPods(mastersToAdd, ServerType.MASTER, newPI, provider);
 
-        // Update master addresses to the latest required ones. 
+        // Update master addresses to the latest required ones.
         createMoveMasterTasks(new ArrayList(mastersToAdd), new ArrayList(mastersToRemove));
+
+        // Add encryption key file to the new master nodes
+        if (taskParams().encryptionKeyFilePath != null) {
+          createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.COPY_KEY_FILE);
+
+          // Enable encryption-at-rest if key file is passed in
+          createEnableEncryptionAtRestTask(taskParams().encryptionKeyFilePath, true)
+                  .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+          // Update the universe model to reflect encryption is now enabled
+          writeEncryptionEnabledToUniverse();
+        }
       }
 
       // Bring up new tservers.
@@ -144,17 +156,17 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
       // Update the blacklist servers on master leader.
       createPlacementInfoTask(tserversToRemove)
-          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+              .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
       // If the tservers have been removed, move the data.
       if (!tserversToRemove.isEmpty()) {
         createWaitForDataMoveTask()
-            .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+                .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
       }
       // If tservers have been added, we wait for the load to balance.
       if (!tserversToAdd.isEmpty()){
         createWaitForLoadBalanceTask()
-            .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+                .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
       }
 
       // Now roll all the old pods that haven't been removed and aren't newly added.
@@ -169,20 +181,19 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       if (!tserversToRemove.isEmpty()) {
         removeDeployments(newPI, provider, userIntentChange);
         createModifyBlackListTask(new ArrayList(tserversToRemove), false /* isAdd */)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
       // Update the universe to the new state.
       createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO,
-                                         newPI);
+              newPI);
 
       // Update the swamper target file.
       createSwamperTargetUpdateTask(false /* removeFile */);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {

@@ -35,6 +35,7 @@ CDCConsumerProxyManager::CDCConsumerProxyManager(rpc::ProxyCache* proxy_cache) :
 cdc::CDCServiceProxy* CDCConsumerProxyManager::GetProxy(
     const cdc::ProducerTabletInfo& producer_tablet_info) {
   std::shared_lock<rw_spinlock> l(proxies_mutex_);
+  DCHECK(!proxies_.empty());
   // TODO(Rahul): Change this into a meta cache implementation.
   return RandomElement(proxies_).get();
 }

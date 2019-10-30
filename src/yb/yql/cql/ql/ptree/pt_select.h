@@ -44,7 +44,7 @@ class PTOrderBy : public TreeNode {
   // Constructor and destructor.
   PTOrderBy(MemoryContext *memctx,
             YBLocation::SharedPtr loc,
-            const PTExpr::SharedPtr& name,
+            const PTExpr::SharedPtr& order_expr,
             const Direction direction,
             const NullPlacement null_placement);
   virtual ~PTOrderBy();
@@ -69,12 +69,12 @@ class PTOrderBy : public TreeNode {
     return null_placement_;
   }
 
-  PTExpr::SharedPtr name() const {
-    return name_;
+  PTExpr::SharedPtr order_expr() const {
+    return order_expr_;
   }
 
  private:
-  PTExpr::SharedPtr name_;
+  PTExpr::SharedPtr order_expr_;
   Direction direction_;
   NullPlacement null_placement_;
 };
@@ -138,6 +138,7 @@ class PTSelectStmt : public PTDmlStmt {
                PTExprListNode::SharedPtr selected_exprs,
                PTTableRefListNode::SharedPtr from_clause,
                PTExpr::SharedPtr where_clause,
+               PTExpr::SharedPtr if_clause,
                PTListNode::SharedPtr group_by_clause,
                PTListNode::SharedPtr having_clause,
                PTOrderByListNode::SharedPtr order_by_clause,

@@ -1,8 +1,8 @@
 ---
 title: Develop
 linkTitle: Develop
-description: Develop Apps on Yugabyte DB
-headcontent: This section will help you get started with building apps on top of Yugabyte DB.
+description: Develop Apps on YugabyteDB
+headcontent: This section will help you get started with building apps on top of YugabyteDB.
 image: /images/section_icons/index/develop.png
 section: USER GUIDES
 menu:
@@ -21,7 +21,7 @@ menu:
         <div class="title">Learn App Development</div>
       </div>
       <div class="body">
-        Learn how to build cloud services and applications on Yugabyte DB.
+        Learn how to build cloud services and applications on YugabyteDB.
       </div>
     </a>
   </div>
@@ -45,7 +45,7 @@ menu:
         <div class="title">Real World Examples</div>
       </div>
       <div class="body">
-        A walk-through of real world, end-to-end applications build on top of Yugabyte DB.
+        A walk-through of real world, end-to-end applications build on top of YugabyteDB.
       </div>
     </a>
   </div>

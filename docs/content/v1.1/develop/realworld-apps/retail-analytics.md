@@ -13,7 +13,7 @@ showAsideToc: true
 
 ## 1. Start Local Cluster with YSQL API Enabled
 
-Follow [Quick Start](../../../quick-start/) instructions to run a local Yugabyte DB cluster. Test Yugabyte DB's PostgreSQL compatible YSQL API as [documented](../../../quick-start/test-postgresql/) so that you can confirm that you have the YSQL service running on `localhost:5433`. 
+Follow [Quick Start](../../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's PostgreSQL compatible YSQL API as [documented](../../../quick-start/test-postgresql/) so that you can confirm that you have the YSQL service running on `localhost:5433`. 
 
 ## 2. Load Data
 
@@ -41,7 +41,7 @@ $ ls data/
 orders.sql  products.sql  reviews.sql users.sql
 ```
 
-### Connect to Yugabyte DB using psql
+### Connect to YugabyteDB using psql
 
 ```sh
 $ ./bin/psql -h 127.0.0.1 -p 5433 -U postgres

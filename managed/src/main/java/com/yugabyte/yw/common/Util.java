@@ -139,7 +139,7 @@ public class Util {
     }
     return toBeAddedAzUUIDToNumNodes;
   }
-  
+
   /**
    * Create a custom node prefix name from the given parameters.
    * @param  custId customer id owing the universe.
@@ -192,8 +192,8 @@ public class Util {
   }
 
   /**
-   * API detects if addition of a master to the same AZ of current node makes master quorum get closer to 
-   * satisfying the replication factor requirements.
+   * API detects if addition of a master to the same AZ of current node makes master quorum get
+   * closer to satisfying the replication factor requirements.
    * @param currentNode the node whose AZ is checked.
    * @param nodeDetailsSet collection of nodes in a universe.
    * @param numMastersToBeAdded number of masters to be added.
@@ -289,16 +289,6 @@ public class Util {
     } catch (IOException e) {
       throw new RuntimeException("Shell Response message is not a valid Json.");
     }
-  }
-
-  public static String generateSalt(UUID customerUUID, String keyProvider) {
-    final String saltBase = "%s%s";
-    final String salt = String.format(
-            saltBase,
-            customerUUID.toString().replace("-", ""),
-            keyProvider.hashCode()
-    );
-    return salt.length() % 2 == 0 ? salt : salt + "0";
   }
 
   public static String buildURL(String host, String endpoint) {

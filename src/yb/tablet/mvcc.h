@@ -69,6 +69,10 @@ class MvccManager {
   // `prefix` is used for logging.
   explicit MvccManager(std::string prefix, server::ClockPtr clock);
 
+  // Set special RF==1 mode flag to handle safe time requests correctly in case
+  // there are no heartbeats to update internal propagated_safe_time_ correctly.
+  void SetLeaderOnlyMode(bool leader_only);
+
   // Sets time of last replicated operation, used after bootstrap.
   void SetLastReplicated(HybridTime ht);
 
@@ -153,6 +157,8 @@ class MvccManager {
   // leader, this is a safe time that gets updated every time the majority-replicated watermarks
   // change.
   HybridTime propagated_safe_time_ = HybridTime::kMin;
+  // Special flag for RF==1 mode when propagated_safe_time_ can be not up-to-date.
+  bool leader_only_mode_ = false;
 
   // Because different calls that have current hybrid time leader lease as an argument can come to
   // us out of order, we might see an older value of hybrid time leader lease expiration after a

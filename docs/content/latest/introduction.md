@@ -51,7 +51,7 @@ YugabyteDB feature highlights are listed below.
 
 ### 3. Global data consistency
 
-- [Global data distribution](../explore/global-distribution/) that brings consistent data close to users through multi-region and multi-cloud deployments. Optional two-region multi-master and master-slave configurations powered by CDC-driven asynchronous replication.
+- [Global data distribution](../explore/global-distribution/) that brings consistent data close to users through multi-region and multi-cloud deployments. Optional two-region multi-master and master-follower configurations powered by CDC-driven asynchronous replication.
 
 - [Auto-sharding & auto-rebalancing](../explore/auto-sharding/) to ensure uniform load across all nodes even for very large clusters.
 
@@ -67,7 +67,7 @@ YugabyteDB feature highlights are listed below.
 
 ### 6. Built-in enterprise features
 
-- Starting [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), Yugabyte DB is the only open-source distributed SQL database to have built-in enterprise features such as Distributed Backups, Data Encryption, and Read Replicas. Upcoming features such as [Change Data Capture](../deploy/cdc/cdc-architecture/) and [2 Data Center Deployments](../deploy/cdc/two-data-centers/) are also included in open source.
+- Starting [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is the only open-source distributed SQL database to have built-in enterprise features such as Distributed Backups, Data Encryption, and Read Replicas. Upcoming features such as [Change Data Capture](../architecture/cdc-architecture/) and [2 Data Center Deployments](../architecture/2dc-deployments/) are also included in open source.
 
 ## What client APIs are supported by YugabyteDB?
 

@@ -80,22 +80,10 @@ menu:
     <a class="section-link icon-offset" href="replicate-2dc/">
       <div class="head">
         <img class="icon" src="/images/deploy/cdc/deploy.png" aria-hidden="true" />
-        <div class="title">Replicate between two data centers</div>
+        <div class="title">Two data center (2DC) replication</div>
       </div>
       <div class="body">
           Replicate asynchronously between two data centers for high availability, geo-redundancy, disaster recovery, and more.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="pivotal-cloud-foundry/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/pivotal-cloud-foundry.png" aria-hidden="true" />
-        <div class="title">Pivotal Cloud Foundry</div>
-      </div>
-      <div class="body">
-        Deploy and manage YugabyteDB using Pivotal Cloud Foundry (PCF) and Pivotal Container Service (PKS).
       </div>
     </a>
   </div>
@@ -109,6 +97,18 @@ menu:
       </div>
       <div class="body">
         Automated and manual deployments of YugabyteDB on various public clouds.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="pivotal-cloud-foundry/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/deploy/pivotal-cloud-foundry.png" aria-hidden="true" />
+        <div class="title">Pivotal Cloud Foundry</div>
+      </div>
+      <div class="body">
+        Deploy and manage YugabyteDB using Pivotal Cloud Foundry (PCF) and Pivotal Container Service (PKS).
       </div>
     </a>
   </div>

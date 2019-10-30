@@ -38,7 +38,7 @@ Run the following command to check the ulimit settings.
 $ ulimit -a
 ```
 
-The following settings are recommended when running Yugabyte DB.
+The following settings are recommended when running YugabyteDB.
 
 ```
 core file size          (blocks, -c) unlimited

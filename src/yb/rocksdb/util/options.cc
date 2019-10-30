@@ -400,8 +400,6 @@ void DBOptions::Dump(Logger* log) const {
       enable_thread_tracking);
   RHEADER(log, "         Options.allow_concurrent_memtable_write: %d",
       allow_concurrent_memtable_write);
-  RHEADER(log, "         Options.in_memory_erase: %d",
-      in_memory_erase);
   RHEADER(log, "      Options.enable_write_thread_adaptive_yield: %d",
       enable_write_thread_adaptive_yield);
   RHEADER(log, "             Options.write_thread_max_yield_usec: %" PRIu64,

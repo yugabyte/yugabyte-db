@@ -51,6 +51,7 @@ public class Module extends AbstractModule {
       bind(CallHome.class).asEagerSingleton();
       bind(Scheduler.class).asEagerSingleton();
       bind(HealthChecker.class).asEagerSingleton();
+      bind(EncryptionAtRestManager.class).asEagerSingleton();
     }
   }
 }

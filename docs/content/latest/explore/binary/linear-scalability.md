@@ -6,21 +6,23 @@ If you have a previously running local universe, destroy it using the following.
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new 3-node RF3 cluster. We configure the number of [shards](../../architecture/concepts/docdb/sharding/) (aka tablets) per table per tserver to 4 so that we can better observe the load balancing during scale-up and scale-down. Each table will now have 4 tablet-leaders in each tserver and with replication factor 3, there will be 2 tablet-followers for each tablet-leader distributed in the 2 other tservers. So each tserver will have 12 tablets (i.e. sum of 4 tablet-leaders and 8 tablet-followers) per table.
+Start a new 3-node cluster with a replication factor of 3 and set the number of [shards](../../architecture/concepts/docdb/sharding/) (aka tablets) per table per YB-TServer to 4 so that you can better observe the load balancing during scale-up and scale-down.
 
 ```sh
-$ ./bin/yb-ctl --rf 3 --num_shards_per_tserver 4 create
+$ ./bin/yb-ctl create --rf 3 --num_shards_per_tserver 4
 ```
 
-## 2. Run sample key-value app
+Each table now has 4 tablet-leaders in each YB-TServer and with a replication factor of 3, there are 2 tablet-followers for each tablet-leader distributed in the 2 other YB-TServers. So each YB-TServer has 12 tablets (that is, the sum of 4 tablet-leaders plus 8 tablet-followers) per table.
 
-Download the sample app jar.
+## 2. Run the YugabyteDB workload generator
+
+Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`).
 
 ```sh
 $ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
-Run the `SqlInserts` sample key-value app against the local universe by typing the following command.
+Run the `SqlInserts` workload app against the local universe by running the following command.
 
 ```sh
 $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
@@ -29,7 +31,7 @@ $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
                                     --num_threads_read 4
 ```
 
-The sample application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](https://github.com/yugabyte/yb-sample-apps).
+The workload application prints some stats while running, an example is shown here. You can read more details about the output of the sample applications [here](https://github.com/yugabyte/yb-sample-apps).
 
 ```
 2018-05-10 09:10:19,538 [INFO|...] Read: 8988.22 ops/sec (0.44 ms/op), 818159 total ops  |  Write: 1095.77 ops/sec (0.91 ms/op), 97120 total ops  | ... 
@@ -50,9 +52,9 @@ Add a node to the universe.
 $ ./bin/yb-ctl --num_shards_per_tserver 4 add_node
 ```
 
-Now we should have 4 nodes. Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the stats update. In a short time, you should see the new node performing a comparable number of reads and writes as the other nodes. The 36 tablets will now get distributed evenly across all the 4 nodes, leading to each node having 9 tablets.
+Now you should have 4 nodes. Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the statistics update. Shortly, you should see the new node performing a comparable number of reads and writes as the other nodes. The 36 tablets will now get distributed evenly across all the 4 nodes, leading to each node having 9 tablets.
 
-The YugabyteDB universe automatically let the client know to use the newly added node for serving queries. This scaling out of client queries is completely transparent to the application logic, allowing the application to scale linearly for both reads and writes. 
+The YugabyteDB universe automatically lets the client know to use the newly added node for serving queries. This scaling out of client queries is completely transparent to the application logic, allowing the application to scale linearly for both reads and writes.
 
 ![Read and write IOPS with 4 nodes - Rebalancing in progress](/images/ce/linear-scalability-4-nodes.png)
 
@@ -66,7 +68,7 @@ Remove the recently added node from the universe.
 $ ./bin/yb-ctl remove_node 4
 ```
 
-- Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the stats update. The `Time since heartbeat` value for that node will keep increasing. Once that number reaches 60s (i.e. 1 minute), YugabyteDB will change the status of that node from ALIVE to DEAD. Note that at this time the universe is running in an under-replicated state for some subset of tablets.
+Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the stats update. The `Time since heartbeat` value for that node will keep increasing. Once that number reaches 60s (i.e. 1 minute), YugabyteDB will change the status of that node from ALIVE to DEAD. Note that at this time the universe is running in an under-replicated state for some subset of tablets.
 
 ![Read and write IOPS with 4th node dead](/images/ce/linear-scalability-4-nodes-dead.png)
 

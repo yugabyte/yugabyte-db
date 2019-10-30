@@ -268,7 +268,7 @@ readonly VALID_CMAKE_BUILD_TYPES=(
   release
 )
 
-readonly VALID_COMPILER_TYPES=( gcc clang zapcc )
+readonly VALID_COMPILER_TYPES=( gcc clang zapcc gcc8 )
 
 readonly VALID_LINKING_TYPES=( static dynamic )
 
@@ -418,7 +418,8 @@ set_build_root() {
     readonly BUILD_ROOT
   fi
 
-  if [[ -n ${predefined_build_root:-} && $predefined_build_root != $BUILD_ROOT ]]; then
+  if [[ -n ${predefined_build_root:-} && $predefined_build_root != $BUILD_ROOT ]] &&
+     ! "$YB_BUILD_SUPPORT_DIR/is_same_path.py" "$predefined_build_root" "$BUILD_ROOT"; then
     fatal "An inconsistency between predefined BUILD_ROOT ('$predefined_build_root') and" \
           "computed BUILD_ROOT ('$BUILD_ROOT')."
   fi
@@ -1089,10 +1090,22 @@ find_compiler_by_type() {
         cxx_executable=g++
       fi
     ;;
+    gcc8)
+      if [[ -n ${YB_GCC8_PREFIX:-} ]]; then
+        if [[ ! -d $YB_GCC8_PREFIX/bin ]]; then
+          fatal "Directory YB_GCC_PREFIX/bin ($YB_GCC_PREFIX/bin) does not exist"
+        fi
+        cc_executable=$YB_GCC8_PREFIX/bin/gcc-8
+        cxx_executable=$YB_GCC8_PREFIX/bin/g++-8
+      else
+        cc_executable=$(which gcc-8)
+        cxx_executable=$(which g++-8)
+      fi
+    ;;
     clang)
       if [[ -n ${YB_CLANG_PREFIX:-} ]]; then
         if [[ ! -d $YB_CLANG_PREFIX/bin ]]; then
-          fatal "Directory YB_CLANG_PREFIX/bin ($YB_CLANG_PREFIX/bin) does not exist"
+          fatal "Directory \$YB_CLANG_PREFIX/bin ($YB_CLANG_PREFIX/bin) does not exist"
         fi
         cc_executable=$YB_CLANG_PREFIX/bin/clang
       elif [[ $OSTYPE =~ ^darwin ]]; then
@@ -1134,6 +1147,11 @@ find_compiler_by_type() {
     *)
       fatal "Unknown compiler type '$compiler_type'"
   esac
+
+  # -----------------------------------------------------------------------------------------------
+  # Validate existence of compiler executables.
+  # -----------------------------------------------------------------------------------------------
+
   local compiler_var_name
   for compiler_var_name in cc_executable cxx_executable; do
     if [[ -n ${!compiler_var_name:-} ]]; then
@@ -1196,7 +1214,7 @@ install_linuxbrew() {
   local linuxbrew_dir=$YB_LINUXBREW_LOCAL_ROOT/$linuxbrew_dirname
   local linuxbrew_archive="${linuxbrew_dir}.tar.gz"
   local linuxbrew_archive_checksum="${linuxbrew_archive}.sha256"
-  local url="https://github.com/YugaByte/linuxbrew-build/releases/download/v$version/\
+  local url="https://github.com/YugaByte/brew-build/releases/download/$version/\
 linuxbrew-$version.tar.gz"
   mkdir -p "$YB_LINUXBREW_LOCAL_ROOT"
   if [[ ! -f $linuxbrew_archive ]]; then
@@ -1769,6 +1787,10 @@ handle_predefined_build_root() {
     return
   fi
 
+  if [[ -L $predefined_build_root ]]; then
+    predefined_build_root=$( readlink "$predefined_build_root" )
+  fi
+
   if [[ -d $predefined_build_root ]]; then
     predefined_build_root=$( cd "$predefined_build_root" && pwd )
   fi
@@ -1795,10 +1817,10 @@ handle_predefined_build_root() {
   fi
 
   if [[ -z ${build_type:-} ]]; then
+    build_type=$_build_type
     if ! "$handle_predefined_build_root_quietly"; then
       log "Setting build type to '$build_type' based on predefined build root ('$basename')"
     fi
-    build_type=$_build_type
     validate_build_type "$build_type"
   elif [[ $build_type != $_build_type ]]; then
     fatal "Build type from the build root ('$_build_type' from '$predefined_build_root') does " \

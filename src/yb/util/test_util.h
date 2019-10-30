@@ -55,6 +55,11 @@
 } while (0)
 
 namespace yb {
+namespace rpc {
+
+class Messenger;
+
+} // namespace rpc
 
 // Our test string literals contain "\x00" that is treated as a C-string null-terminator.
 // So we need to call the std::string constructor that takes the length argument.

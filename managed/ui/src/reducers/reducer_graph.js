@@ -30,7 +30,7 @@ export default function(state = INITIAL_STATE, action) {
     case QUERY_METRICS_FAILURE:
       metricData = state.metrics;
       metricData[action.panelType] = {};
-      return { ...state, metrics: metricData, error: action.payload,
+      return { ...state, metrics: metricData, error: action.payload.response,
         loading: false};
     case RESET_METRICS:
       return { ...state, metrics: {}, loading: false, panelType: null};

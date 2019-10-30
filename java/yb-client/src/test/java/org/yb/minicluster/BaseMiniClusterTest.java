@@ -173,7 +173,8 @@ public class BaseMiniClusterTest extends BaseYBTest {
                       .perTServerArgs(tserverArgs)
                       .numShardsPerTServer(overridableNumShardsPerTServer())
                       .useIpWithCertificate(useIpWithCertificate)
-                      .replicationFactor(getReplicationFactor());
+                      .replicationFactor(getReplicationFactor())
+                      .sslCertFile(certFile);
 
     if (tserverEnvVars != null) {
       clusterBuilder.addEnvironmentVariables(tserverEnvVars);

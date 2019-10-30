@@ -28,7 +28,7 @@ Specify the name of the sequence.
 
 ### Create a sequence
 
-```sql
+```postgresql
 yugabyte=# CREATE SEQUENCE s;
 ```
 
@@ -38,7 +38,7 @@ CREATE SEQUENCE
 
 Call `nextval()`.
 
-```sql
+```postgresql
 yugabyte=# SELECT nextval('s');
 ```
 
@@ -49,7 +49,7 @@ yugabyte=# SELECT nextval('s');
 (1 row)
 ```
 
-```sql
+```postgresql
 yugabyte=# SELECT currval('s');
 ```
 
@@ -62,7 +62,7 @@ yugabyte=# SELECT currval('s');
 
 Call `currval()` before `nextval()` is called.
 
-```sql
+```postgresql
 yugabyte=# CREATE SEQUENCE s2;
 ```
 
@@ -70,7 +70,7 @@ yugabyte=# CREATE SEQUENCE s2;
 CREATE SEQUENCE
 ```
 
-```sql
+```postgresql
 SELECT currval('s2');
 ```
 

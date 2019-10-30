@@ -8,7 +8,7 @@ aliases:
   - /secure/authorization/
 menu:
   latest:
-    identifier: secure-authorization
+    identifier: authorization
     parent: secure
     weight: 715
 ---
@@ -18,7 +18,7 @@ menu:
     <a class="section-link icon-offset" href="rbac-model/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/rbac-model.png" aria-hidden="true" />
-        <div class="title">1. RBAC model</div>
+        <div class="title">RBAC model</div>
       </div>
       <div class="body">
           Understanding role-based access control (RBAC).
@@ -29,7 +29,7 @@ menu:
     <a class="section-link icon-offset" href="create-roles/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/create-roles.png" aria-hidden="true" />
-        <div class="title">2. Create roles</div>
+        <div class="title">Create roles</div>
       </div>
       <div class="body">
           Create one or more roles.
@@ -40,10 +40,10 @@ menu:
     <a class="section-link icon-offset" href="grant-permissions/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/grant-permissions.png" aria-hidden="true" />
-        <div class="title">3. Grant permissions</div>
+        <div class="title">Grant privileges</div>
       </div>
       <div class="body">
-          Grant permissions to users and roles.
+          Grant privileges to users and roles.
       </div>
     </a>
   </div>

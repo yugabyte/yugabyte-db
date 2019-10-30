@@ -72,11 +72,17 @@ Status CDCProducer::GetChanges(const std::string& stream_id,
   }
 
   ReplicateMsgs messages;
-  RETURN_NOT_OK(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(from_op_id, &messages));
+  bool have_more_messages;
+  RETURN_NOT_OK(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(from_op_id, &messages,
+                                                                       &have_more_messages));
 
   TxnStatusMap txn_map = VERIFY_RESULT(BuildTxnStatusMap(
-      messages, tablet_peer->Now(), txn_participant));
-  auto ordered_msgs = VERIFY_RESULT(SortWrites(messages, txn_map));
+      messages, have_more_messages, tablet_peer->Now(), txn_participant));
+
+  OpIdPB checkpoint;
+  checkpoint.set_term(0);
+  checkpoint.set_index(0);
+  auto ordered_msgs = VERIFY_RESULT(SortWrites(messages, txn_map, &checkpoint));
 
   for (const auto& msg : ordered_msgs) {
     switch (msg->op_type()) {
@@ -96,14 +102,16 @@ Status CDCProducer::GetChanges(const std::string& stream_id,
   }
 
   resp->mutable_checkpoint()->mutable_op_id()->CopyFrom(
-      ordered_msgs.empty() ? from_op_id : ordered_msgs.back()->id());
+      checkpoint.index() > 0 ? checkpoint : from_op_id);
   return Status::OK();
 }
 
 Result<ReplicateMsgs> CDCProducer::SortWrites(const ReplicateMsgs& msgs,
-                                              const TxnStatusMap& txn_map) {
+                                              const TxnStatusMap& txn_map,
+                                              OpIdPB* checkpoint) {
 
-  std::vector<RecordTimeIndex> records = VERIFY_RESULT(GetCommittedRecordIndexes(msgs, txn_map));
+  std::vector<RecordTimeIndex> records = VERIFY_RESULT(GetCommittedRecordIndexes(
+      msgs, txn_map, checkpoint));
   std::sort(records.begin(), records.end());
 
   ReplicateMsgs ordered_msgs;
@@ -114,63 +122,90 @@ Result<ReplicateMsgs> CDCProducer::SortWrites(const ReplicateMsgs& msgs,
   return ordered_msgs;
 }
 
+Result<bool> CDCProducer::SetCommittedRecordIndexForReplicateMsg(
+    const ReplicateMsgPtr& msg, size_t index, const TxnStatusMap& txn_map,
+    std::vector<RecordTimeIndex>* records) {
+
+  switch (msg->op_type()) {
+    case consensus::OperationType::UPDATE_TRANSACTION_OP: {
+      if (msg->transaction_state().status() == TransactionStatus::APPLYING) {
+        records->emplace_back(msg->transaction_state().commit_hybrid_time(), index);
+      }
+      // Ignore other transaction statuses since we only care about APPLYING
+      // while sending CDC records.
+      return false;
+    }
+
+    case consensus::OperationType::WRITE_OP: {
+      if (msg->write_request().write_batch().has_transaction()) {
+        auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
+            msg->write_request().write_batch().transaction().transaction_id()));
+        const auto txn_status = txn_map.find(txn_id);
+        if (txn_status == txn_map.end()) {
+          return STATUS(IllegalState, "Unexpected transaction ID",
+                        boost::uuids::to_string(txn_id));
+        }
+
+        if (txn_status->second.status == PENDING || txn_status->second.status == CREATED) {
+          // Ignore all records beyond this because we don't know whether those records
+          // were committed before or after this record without the transaction commit time.
+          return true;
+        } else if (txn_status->second.status == COMMITTED) {
+          // Add record to txn_msgs because there may be records appearing after this in WAL
+          // but committed before this one. Example:
+          // T0: WRITE K1 [TXN1]
+          // T1: WRITE K2
+          // T2: APPLYING TXN1
+          // Here, WRITE K2 appears after WRITE K1 but is committed before K1.
+          records->emplace_back(txn_status->second.status_time.ToUint64(), index);
+        }
+      } else {
+        // Msg is not part of transaction. Use write hybrid time from msg itself.
+        records->emplace_back(msg->hybrid_time(), index);
+      }
+      return false;
+    }
+
+    case consensus::OperationType::UNKNOWN_OP:
+      FALLTHROUGH_INTENDED;
+    case consensus::OperationType::NO_OP:
+      FALLTHROUGH_INTENDED;
+    case consensus::OperationType::CHANGE_METADATA_OP:
+      FALLTHROUGH_INTENDED;
+    case consensus::OperationType::CHANGE_CONFIG_OP:
+      FALLTHROUGH_INTENDED;
+    case consensus::OperationType::SNAPSHOT_OP:
+      FALLTHROUGH_INTENDED;
+    case consensus::OperationType::TRUNCATE_OP:
+      return false;
+  }
+  FATAL_INVALID_ENUM_VALUE(consensus::OperationType, msg->op_type());
+}
+
 Result<std::vector<RecordTimeIndex>> CDCProducer::GetCommittedRecordIndexes(
-    const ReplicateMsgs& msgs,
-    const TxnStatusMap& txn_map) {
+    const ReplicateMsgs& msgs, const TxnStatusMap& txn_map, OpIdPB* checkpoint) {
   size_t index = 0;
   std::vector<RecordTimeIndex> records;
 
   // Order ReplicateMsgs based on commit time.
   for (const auto &msg : msgs) {
-    if (msg->write_request().has_external_hybrid_time()) {
+    if (!msg->write_request().has_external_hybrid_time()) {
       // If the message came from an external source, ignore it when producing change list.
-      index++;
-      continue;
-    }
-    switch (msg->op_type()) {
-      case consensus::OperationType::UPDATE_TRANSACTION_OP:
-        if (msg->transaction_state().status() == TransactionStatus::APPLYING) {
-          records.emplace_back(msg->transaction_state().commit_hybrid_time(), index);
-        }
-        break;
-
-      case consensus::OperationType::WRITE_OP: {
-        if (msg->write_request().write_batch().has_transaction()) {
-          auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
-              msg->write_request().write_batch().transaction().transaction_id()));
-          const auto txn_status = txn_map.find(txn_id);
-          if (txn_status == txn_map.end()) {
-            return STATUS(IllegalState, "Unexpected transaction ID",
-                          boost::uuids::to_string(txn_id));
-          }
-          if (txn_status->second.status == PENDING || txn_status->second.status == CREATED) {
-            // Ignore all records beyond this because we don't know whether those records
-            // were committed before or after this record without the transaction commit time.
-            return records;
-          } else if (txn_status->second.status == COMMITTED) {
-            // Add record to txn_msgs because there may be records appearing after this in WAL
-            // but committed before this one. Example:
-            // T0: WRITE K1 [TXN1]
-            // T1: WRITE K2
-            // T2: APPLYING TXN1
-            // Here, WRITE K2 appears after WRITE K1 but is committed before K1.
-            records.emplace_back(txn_status->second.status_time.ToUint64(), index);
-          }
-        } else {
-          records.emplace_back(msg->hybrid_time(), index);
-        }
-        break;
+      // Note that checkpoint, however, will be updated and will account for external message too.
+      bool stop = VERIFY_RESULT(SetCommittedRecordIndexForReplicateMsg(msg, index, txn_map,
+                                                                       &records));
+      if (stop) {
+        return records;
       }
-
-      default:
-        break;
     }
+    *checkpoint = msg->id();
     index++;
   }
   return records;
 }
 
 Result<TxnStatusMap> CDCProducer::BuildTxnStatusMap(const ReplicateMsgs& messages,
+                                                    bool more_replicate_msgs,
                                                     const HybridTime& hybrid_time,
                                                     TransactionParticipant* txn_participant) {
   TxnStatusMap txn_map;
@@ -194,16 +229,29 @@ Result<TxnStatusMap> CDCProducer::BuildTxnStatusMap(const ReplicateMsgs& message
         && msg->write_request().write_batch().has_transaction()) {
       auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
           msg->write_request().write_batch().transaction().transaction_id()));
+
       if (!txn_map.count(txn_id)) {
+        TransactionStatusResult txn_status(TransactionStatus::PENDING, HybridTime::kMin);
+
         auto result = GetTransactionStatus(txn_id, hybrid_time, txn_participant);
         if (!result.ok()) {
           if (result.status().IsNotFound()) {
-            LOG(INFO) << "Transaction not found, considering it aborted: " << txn_id;
+            // Consider the transaction as aborted only if more_replicate_msgs is false.
+            // If more_replicate_messages is true, then it's possible that transaction is committed
+            // but we haven't read the commit message yet.
+            // Such a transaction will be considered as pending and will not be returned by CDC
+            // producer until the transaction is committed.
+            // TODO (#2405) : Handle long running or very large transactions correctly.
+            if (!more_replicate_msgs) {
+              LOG(INFO) << "Transaction not found, considering it aborted: " << txn_id;
+              txn_status = TransactionStatusResult::Aborted();
+            }
           } else {
             return result.status();
           }
+        } else {
+          txn_status = *result;
         }
-        auto txn_status = result.ok() ? *result : TransactionStatusResult::Aborted();
         txn_map.emplace(txn_id, txn_status);
       }
     }

@@ -16,7 +16,12 @@ get_property(yb_cmake_include_dirs DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         PROPERTY INCLUDE_DIRECTORIES)
 foreach(include_dir ${yb_cmake_include_dirs})
   set(POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS} -I${include_dir}")
+  if("${COMPILER_FAMILY}" STREQUAL "gcc8")
+    set(POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS} -Wno-format-truncation -Wno-maybe-uninitialized -Wno-stringop-truncation")
+  endif()
 endforeach(include_dir)
+
+get_filename_component(OPENSSL_LIB_DIR "${OPENSSL_CRYPTO_LIBRARY}" DIRECTORY)
 
 # Invoke our PostgreSQL build script.
 #
@@ -25,12 +30,14 @@ endforeach(include_dir)
 add_custom_target(
         postgres
         COMMAND "${BUILD_SUPPORT_DIR}/build_postgres"
-        --build_root "${YB_BUILD_ROOT}"
-        --cflags     " ${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}"
-        --cxxflags   " ${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_CXX_FLAGS}"
-        --ldflags    " ${CMAKE_SHARED_LINKER_FLAGS}"
-        --ldflags_ex " ${CMAKE_EXE_LINKER_FLAGS}"
-        --compiler_type "$ENV{YB_COMPILER_TYPE}")
+        --build_root          "${YB_BUILD_ROOT}"
+        --cflags              " ${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}"
+        --cxxflags            " ${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_CXX_FLAGS}"
+        --ldflags             " ${CMAKE_SHARED_LINKER_FLAGS}"
+        --ldflags_ex          " ${CMAKE_EXE_LINKER_FLAGS}"
+        --openssl_include_dir " ${OPENSSL_INCLUDE_DIR}"
+        --openssl_lib_dir     " ${OPENSSL_LIB_DIR}"
+        --compiler_type       "$ENV{YB_COMPILER_TYPE}")
 
 # Make sure we rebuild postgres before the master/tserver libraries.
 add_dependencies(master postgres)

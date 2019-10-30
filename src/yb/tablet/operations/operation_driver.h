@@ -35,11 +35,14 @@
 
 #include <string>
 
+#include <boost/atomic.hpp>
+
 #include "yb/consensus/consensus_types.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/walltime.h"
 #include "yb/tablet/operations/operation.h"
 #include "yb/util/lockfree.h"
+#include "yb/util/opid.h"
 #include "yb/util/status.h"
 #include "yb/util/trace.h"
 
@@ -126,7 +129,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // Returns the OpId of the operation being executed or an uninitialized
   // OpId if none has been assigned. Returns a copy and thus should not
   // be used in tight loops.
-  consensus::OpId GetOpId();
+  yb::OpId GetOpId();
 
   // Submits the operation for execution.
   // The returned status acknowledges any error on the submission process.
@@ -145,7 +148,8 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // If status is anything different from OK() we don't proceed with the apply.
   //
   // see comment in the interface for an important TODO.
-  void ReplicationFinished(const Status& status, int64_t leader_term);
+  void ReplicationFinished(
+      const Status& status, int64_t leader_term, OpIds* applied_op_ids);
 
   std::string ToString() const;
 
@@ -201,9 +205,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
     mvcc_ = mvcc;
   }
 
-  int64_t SpaceUsed() {
-    return operation_ ? state()->request()->SpaceUsed() : 0;
-  }
+  int64_t SpaceUsed();
 
  private:
   friend class RefCountedThreadSafe<OperationDriver>;
@@ -235,11 +237,11 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   bool StartOperation();
 
   // Performs status checks and calls ApplyTask.
-  CHECKED_STATUS ApplyOperation(int64_t leader_term);
+  CHECKED_STATUS ApplyOperation(int64_t leader_term, OpIds* applied_op_ids);
 
   // Calls Operation::Apply() followed by Consensus::Commit() with the
   // results from the Apply().
-  void ApplyTask(int64_t leader_term);
+  void ApplyTask(int64_t leader_term, OpIds* applied_op_ids);
 
   // Returns the mutable state of the operation being executed by
   // this driver.
@@ -265,13 +267,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // receives one from Consensus and uninitialized until then.
   // TODO(todd): we have three separate copies of this now -- in OperationState,
   // CommitMsg, and here... we should be able to consolidate!
-  consensus::OpId op_id_copy_;
-
-  // Lock that protects access to the driver's copy of the op_id, specifically.
-  // GetOpId() is the only method expected to be called by threads outside
-  // of the control of the driver, so we use a special lock to control access
-  // otherwise callers would block for a long time for long running operations.
-  mutable simple_spinlock opid_lock_;
+  boost::atomic<yb::OpId> op_id_copy_{yb::OpId::Invalid()};
 
   // The operation to be executed by this driver.
   std::unique_ptr<Operation> operation_;

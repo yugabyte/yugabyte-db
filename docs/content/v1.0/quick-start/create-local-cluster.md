@@ -9,7 +9,7 @@ menu:
 type: page
 ---
 
-After [installing Yugabyte DB](../install/), follow the instructions below to create a local cluster.
+After [installing YugabyteDB](../install/), follow the instructions below to create a local cluster.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

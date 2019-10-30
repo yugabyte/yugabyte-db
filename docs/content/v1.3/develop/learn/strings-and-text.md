@@ -21,7 +21,7 @@ Strings, character data types, or text. What you want to call it is up to you. M
 
 For character data types, see [Data types](/latest/api/ysql/datatypes/). Note that Yugabyte implements the data type aliases and that is what is used here.
 
-With PostgreSQL, the use of different character data types has a historical aspect. Yugabyte DB — being a more recent implementation — has no such history. Consider keeping your use of character data types simple, ideally just 'text', or 'varchar(n)' if you require a restricted length. Although it's your choice, using text and then verifying the length of a character string will allow you to develop your own approach to managing this scenario, rather than encountering errors by exceeding some arbitrary length.
+With PostgreSQL, the use of different character data types has a historical aspect. YugabyteDB — being a more recent implementation — has no such history. Consider keeping your use of character data types simple, ideally just 'text', or 'varchar(n)' if you require a restricted length. Although it's your choice, using text and then verifying the length of a character string will allow you to develop your own approach to managing this scenario, rather than encountering errors by exceeding some arbitrary length.
 
 {{< note title="Note" >}}
 If you use char(n), character(n), or varchar(n), then the limitation will be the number you assign, which cannot exceed 10,485,760. For unlimited length, use a character data type without a length description, such as 'text'. However, if you have specific requirements to ignore trailing spaces, then you may wish to consider using char(n).
@@ -276,7 +276,7 @@ Yugabyte also has `DECODE` and `ENCODE` for decoding and encoding from, or to, b
 
 #### Joining strings
 
-You can concatenate strings of text in several different ways. For robustness, you should ensure that everything being passed is interpreted as text (by casting) so that unexpected results do not appear in edge cases. Here are some examples that show that Yugabyte DB is leniant in passing in variables, but you should implement more robust casting for proper treatment of strings.
+You can concatenate strings of text in several different ways. For robustness, you should ensure that everything being passed is interpreted as text (by casting) so that unexpected results do not appear in edge cases. Here are some examples that show that YugabyteDB is leniant in passing in variables, but you should implement more robust casting for proper treatment of strings.
 
 ```sh
 yb_demo=# select 'one' || '-' || 2 || '-one' AS "121";
@@ -685,4 +685,4 @@ postgres=# select string_agg(case
 
 ## Conclusion
 
-Text or strings are part of every conceivable system. Yugabyte DB provides you with comprehensive capabilities to manage and manipulate all your text within the database.
+Text or strings are part of every conceivable system. YugabyteDB provides you with comprehensive capabilities to manage and manipulate all your text within the database.

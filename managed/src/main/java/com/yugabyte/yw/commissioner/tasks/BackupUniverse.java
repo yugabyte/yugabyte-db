@@ -13,6 +13,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,6 +32,11 @@ public class BackupUniverse extends UniverseTaskBase {
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
+      Universe universe = Universe.get(taskParams().universeUUID);
+      if (universe.getUniverseDetails().backupInProgress) {
+        throw new RuntimeException("A backup for this universe is already in progress.");
+      }
+
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       lockUniverse(-1 /* expectedUniverseVersion */);
@@ -38,26 +44,37 @@ public class BackupUniverse extends UniverseTaskBase {
       UserTaskDetails.SubTaskGroupType groupType;
       if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {
         groupType = UserTaskDetails.SubTaskGroupType.CreatingTableBackup;
+        updateBackupState(true);
+        unlockUniverseForUpdate();
       } else if (taskParams().actionType == BackupTableParams.ActionType.RESTORE) {
         groupType = UserTaskDetails.SubTaskGroupType.RestoringTableBackup;
       } else {
         throw new RuntimeException("Invalid backup action type: " + taskParams().actionType);
       }
-      createTableBackupTask(taskParams()).setSubTaskGroupType(groupType);
+      createTableBackupTask(taskParams(), null).setSubTaskGroupType(groupType);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
-      // Run all the tasks.
-      subTaskGroupQueue.run();
+      if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {
+        // Run all the tasks.
+        subTaskGroupQueue.run();
+      } else {
+        // Run all the tasks.
+        subTaskGroupQueue.run();
+        unlockUniverseForUpdate();
+      }
     } catch (Throwable t) {
       LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      // Run an unlock in case the task failed before getting to the unlock. It is okay if it
+      // errors out.
+      unlockUniverseForUpdate();
       throw t;
     } finally {
-      // Mark the update of the universe as done and successful. This will allow future edits and
-      // updates to the universe to happen.
-      unlockUniverseForUpdate();
+      if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {
+        updateBackupState(false);
+      }
     }
     LOG.info("Finished {} task.", getName());
   }

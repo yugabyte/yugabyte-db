@@ -187,6 +187,23 @@ class WhereExprState {
   MCVector<const PTExpr*> *filtering_exprs_;
 };
 
+// State variables for if clause.
+class IfExprState {
+ public:
+  explicit IfExprState(MCVector<const PTExpr*> *filtering_exprs)
+      : filtering_exprs_(filtering_exprs) {
+  }
+
+  void AddFilteringExpr(SemContext *sem_context, const PTRelationExpr *expr) {
+    // Collecting all filtering expressions to help choosing INDEX when processing a DML.
+    filtering_exprs_->push_back(expr);
+  }
+
+ private:
+  // Collecting all expressions that a chosen index must cover to process the statement.
+  MCVector<const PTExpr*> *filtering_exprs_;
+};
+
 //--------------------------------------------------------------------------------------------------
 // This class represents the data of collection type. PostgreQL syntax rules dictate how we form
 // the hierarchy of our C++ classes, so classes for VALUES and SELECT clause must share the same
@@ -235,7 +252,7 @@ class PTDmlStmt : public PTCollection {
             PTDmlUsingClause::SharedPtr using_clause = nullptr,
             bool returns_status = false);
   // Clone a DML tnode for re-analysis.
-  PTDmlStmt(MemoryContext *memctx, const PTDmlStmt& other);
+  PTDmlStmt(MemoryContext *memctx, const PTDmlStmt& other, bool copy_if_clause);
   virtual ~PTDmlStmt();
 
   template<typename... TypeArgs>
@@ -488,7 +505,8 @@ class PTDmlStmt : public PTCollection {
   // Load table schema into symbol table.
   static void LoadSchema(SemContext *sem_context,
                          const client::YBTablePtr& table,
-                         MCColumnMap* column_map);
+                         MCColumnMap* column_map,
+                         bool is_index);
 
   // Semantic-analyzing the where clause.
   CHECKED_STATUS AnalyzeWhereClause(SemContext *sem_context);

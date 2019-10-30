@@ -79,6 +79,9 @@ class TestTaskStream : public ::testing::Test {
   TestTaskStream() {
     FLAGS_enable_tracing = true;
   }
+ protected:
+  const int32_t kTaskstreamQueueMaxSize = 100000;
+  const MonoDelta kTaskstreamQueueMaxWait = MonoDelta::FromMilliseconds(1000);
 };
 
 static void SimpleTaskStreamMethod(int* value, std::atomic<int32_t>* counter) {
@@ -99,7 +102,8 @@ TEST_F(TestTaskStream, TestSimpleTaskStream) {
   std::atomic<int32_t> counter(0);
   std::function<void (int*)> f1 = std::bind(&SimpleTaskStreamMethod, _1, &counter);
 
-  TaskStream<int> taskStream(f1, thread_pool.get());
+  TaskStream<int> taskStream(f1, thread_pool.get(), kTaskstreamQueueMaxSize,
+                             kTaskstreamQueueMaxWait);
   ASSERT_OK(taskStream.Start());
   int a[4] = {10, 9, 8, 7};
   for (int i = 0; i < 4; i++) {
@@ -121,8 +125,10 @@ TEST_F(TestTaskStream, TestTwoTaskStreams) {
   std::function<void (int*)> f0 = std::bind(&SimpleTaskStreamMethod, _1, &counter0);
   std::function<void (int*)> f1 = std::bind(&SimpleTaskStreamMethod, _1, &counter1);
 
-  TaskStream<int> taskStream0(f0, thread_pool.get());
-  TaskStream<int> taskStream1(f1, thread_pool.get());
+  TaskStream<int> taskStream0(f0, thread_pool.get(), kTaskstreamQueueMaxSize,
+                              kTaskstreamQueueMaxWait);
+  TaskStream<int> taskStream1(f1, thread_pool.get(), kTaskstreamQueueMaxSize,
+                              kTaskstreamQueueMaxWait);
   ASSERT_OK(taskStream0.Start());
   ASSERT_OK(taskStream1.Start());
   int a[4] = {10, 9, 8, 7};

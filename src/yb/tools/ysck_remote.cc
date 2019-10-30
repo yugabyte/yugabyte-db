@@ -332,5 +332,9 @@ RemoteYsckMaster::RemoteYsckMaster(
       generic_proxy_(new server::GenericServiceProxy(proxy_cache_.get(), address)),
       proxy_(new master::MasterServiceProxy(proxy_cache_.get(), address)) {}
 
+RemoteYsckMaster::~RemoteYsckMaster() {
+  messenger_->Shutdown();
+}
+
 } // namespace tools
 } // namespace yb

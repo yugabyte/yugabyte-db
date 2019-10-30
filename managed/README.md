@@ -9,8 +9,7 @@
 #### General Pre-requisites
 
 * Install Python requirements:
-$ (cd ~/code/devops; git pull --rebase original master)
-$ ~/code/devops/bin/install_python_requirements.sh
+$ ~/code/yugabyte/managed/devops/bin/install_python_requirements.sh
 
 And check Java build JAR file:
 ~/code/yugabyte/java/yb-loadtester/target/yb-sample-apps.jar
@@ -40,7 +39,8 @@ And check Java build JAR file:
 
 * Install third-parties
 ```
-yb_devops_home=~/code/devops/ ~/code/devops/bin/py_wrapper ansible-playbook ~/code/devops/docker/images/thirdparty-deps/dependencies.yml
+
+yb_devops_home=~/code/devops/ ~/code/yugabyte/managed/devops/bin/py_wrapper ansible-playbook ~/code/devops/docker/images/thirdparty-deps/dependencies.yml
 ```
 
 #### On a mac, run the following:
@@ -119,12 +119,12 @@ yugaware=> \q
 OR (better!)
   $ export DEVOPS_HOME=<path to your devops repo>
   # Better to add this to your ~/.bashrc or any other profile (like ~/.yb_build_env_bashrc)
-  $ export DEVOPS_HOME=~/code/devops
+  $ export DEVOPS_HOME=~/code/yugabyte/managed/devops
   # Set the terminal to prenet error on the SBT start: [ERROR] Failed to construct terminal
   $ export TERM=xterm-color
   $ sbt run
 
-  # Test that everything is running by going to http://localhost:9000 in a browser (or curl). This page will show 
+  # Test that everything is running by going to http://localhost:9000 in a browser (or curl). This page will show
   expected error 'Action not found' and list of possible API routes.
       For request 'GET /'
       These routes have been tried, in this order:
@@ -240,9 +240,9 @@ git clone git://github.com/mapbox/mbutil.git
 sudo python setup.py install
 Upload to S3 bucket, make sure permissions are open, set content/type to "image/png"
 
-#### Troubleshooting 
+#### Troubleshooting
 ##### PSQL FATAL: Ident authentication failed for user "root"
- To fix this issue, login to local postgres 
+ To fix this issue, login to local postgres
  ```
   On Centos/Ubuntu connect to postgres
   sudo -u root psql -d yugaware

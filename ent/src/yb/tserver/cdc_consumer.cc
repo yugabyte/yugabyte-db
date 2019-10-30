@@ -14,6 +14,7 @@
 #include <shared_mutex>
 #include <chrono>
 
+#include "yb/rpc/rpc.h"
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/twodc_output_client.h"
 #include "yb/tserver/tablet_server.h"
@@ -21,6 +22,8 @@
 
 #include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/cdc/cdc_consumer_proxy_manager.h"
+
+#include "yb/client/client.h"
 
 #include "yb/util/string_util.h"
 #include "yb/util/thread.h"
@@ -38,7 +41,7 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
     std::function<bool(const std::string&)> is_leader_for_tablet,
     rpc::ProxyCache* proxy_cache,
     TabletServer* tserver) {
-
+  LOG(INFO) << "Creating CDC Consumer";
   auto master_addrs = tserver->options().GetMasterAddresses();
   std::vector<std::string> hostport_strs;
   hostport_strs.reserve(master_addrs->size());
@@ -48,6 +51,7 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
 
   auto client = VERIFY_RESULT(client::YBClientBuilder()
       .master_server_addrs(hostport_strs)
+      .set_client_name("CDCConsumer")
       .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_rpc_timeout_ms))
       .Build());
 
@@ -67,7 +71,7 @@ CDCConsumer::CDCConsumer(std::function<bool(const std::string&)> is_leader_for_t
                          std::unique_ptr<client::YBClient> client) :
   is_leader_for_tablet_(std::move(is_leader_for_tablet)),
   proxy_manager_(std::make_unique<cdc::CDCConsumerProxyManager>(proxy_cache)),
-  log_prefix_(Format("[TS $0]:", ts_uuid)),
+  log_prefix_(Format("[TS $0]: ", ts_uuid)),
   client_(std::move(client)) {}
 
 CDCConsumer::~CDCConsumer() {
@@ -75,20 +79,21 @@ CDCConsumer::~CDCConsumer() {
 }
 
 void CDCConsumer::Shutdown() {
-  LOG(INFO) << "Shutting down CDC Consumer";
+  LOG_WITH_PREFIX(INFO) << "Shutting down CDC Consumer";
   {
-    std::unique_lock<std::mutex> l(should_run_mutex_);
+    std::lock_guard<std::mutex> l(should_run_mutex_);
     should_run_ = false;
-    cond_.notify_all();
   }
-
-  if (run_trigger_poll_thread_) {
-    WARN_NOT_OK(ThreadJoiner(run_trigger_poll_thread_.get()).Join(), "Could not join thread");
-  }
+  cond_.notify_all();
 
   {
     std::unique_lock<rw_spinlock> lock(master_data_mutex_);
     producer_consumer_tablet_map_from_master_.clear();
+    client_->Shutdown();
+  }
+
+  if (run_trigger_poll_thread_) {
+    WARN_NOT_OK(ThreadJoiner(run_trigger_poll_thread_.get()).Join(), "Could not join thread");
   }
 
   if (thread_pool_) {
@@ -99,6 +104,9 @@ void CDCConsumer::Shutdown() {
 void CDCConsumer::RunThread() {
   while (true) {
     std::unique_lock<std::mutex> l(should_run_mutex_);
+    if (!should_run_) {
+      return;
+    }
     cond_.wait_for(l, 1000ms);
     if (!should_run_) {
       return;
@@ -107,9 +115,9 @@ void CDCConsumer::RunThread() {
   }
 }
 
-void CDCConsumer::RefreshWithNewRegistryFromMaster(
-    const cdc::ConsumerRegistryPB& consumer_registry) {
-  UpdateInMemoryState(consumer_registry);
+void CDCConsumer::RefreshWithNewRegistryFromMaster(const cdc::ConsumerRegistryPB* consumer_registry,
+                                                   int32_t cluster_config_version) {
+  UpdateInMemoryState(consumer_registry, cluster_config_version);
   cond_.notify_all();
 }
 
@@ -123,14 +131,32 @@ std::vector<std::string> CDCConsumer::TEST_producer_tablets_running() {
   return tablets;
 }
 
-void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB& consumer_registry) {
-  LOG(INFO) << "Updating CDC consumer registry: " << consumer_registry.DebugString();
-  std::unique_lock<rw_spinlock> lock(master_data_mutex_);
+void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_registry,
+    int32_t cluster_config_version) {
+  std::lock_guard<rw_spinlock> lock(master_data_mutex_);
 
+  // Only update it if the version is newer.
+  if (cluster_config_version <= cluster_config_version_.load(std::memory_order_acquire)) {
+    return;
+  }
+
+  cluster_config_version_.store(cluster_config_version, std::memory_order_release);
   producer_consumer_tablet_map_from_master_.clear();
-  for (const auto& producer_map : consumer_registry.producer_map()) {
+
+  if (!consumer_registry) {
+    LOG_WITH_PREFIX(INFO) << "Given empty CDC consumer registry: removing Pollers";
+    cond_.notify_all();
+    return;
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Updating CDC consumer registry: " << consumer_registry->DebugString();
+
+  for (const auto& producer_map : DCHECK_NOTNULL(consumer_registry)->producer_map()) {
     const auto& producer_entry_pb = producer_map.second;
     proxy_manager_->UpdateProxies(producer_entry_pb);
+    if (producer_entry_pb.disable_stream()) {
+      continue;
+    }
     for (const auto& stream_entry : producer_entry_pb.stream_map()) {
       const auto& stream_entry_pb = stream_entry.second;
       for (const auto& tablet_entry : stream_entry_pb.consumer_producer_tablet_map()) {
@@ -144,6 +170,7 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB& consumer_re
       }
     }
   }
+  cond_.notify_all();
 }
 
 void CDCConsumer::TriggerPollForNewTablets() {
@@ -158,7 +185,7 @@ void CDCConsumer::TriggerPollForNewTablets() {
     }
     if (start_polling) {
       // This is a new tablet, trigger a poll.
-      std::unique_lock<rw_spinlock> pollers_lock(producer_pollers_map_mutex_);
+      std::lock_guard<rw_spinlock> pollers_lock(producer_pollers_map_mutex_);
       auto cdc_poller = std::make_shared<CDCPoller>(
           entry.first, entry.second,
           std::bind(&CDCConsumer::ShouldContinuePolling, this, entry.first),
@@ -176,11 +203,15 @@ void CDCConsumer::TriggerPollForNewTablets() {
 void CDCConsumer::RemoveFromPollersMap(const cdc::ProducerTabletInfo& producer_tablet_info) {
   LOG_WITH_PREFIX(INFO) << Format("Stop polling for producer tablet $0",
                                   producer_tablet_info.tablet_id);
-  std::unique_lock<rw_spinlock> pollers_lock(producer_pollers_map_mutex_);
+  std::lock_guard<rw_spinlock> pollers_lock(producer_pollers_map_mutex_);
   producer_pollers_map_.erase(producer_tablet_info);
 }
 
 bool CDCConsumer::ShouldContinuePolling(const cdc::ProducerTabletInfo& producer_tablet_info) {
+  std::lock_guard<std::mutex> l(should_run_mutex_);
+  if (!should_run_) {
+    return false;
+  }
   std::shared_lock<rw_spinlock> master_lock(master_data_mutex_);
 
   const auto& it = producer_consumer_tablet_map_from_master_.find(producer_tablet_info);
@@ -193,6 +224,10 @@ bool CDCConsumer::ShouldContinuePolling(const cdc::ProducerTabletInfo& producer_
 
 std::string CDCConsumer::LogPrefix() {
   return log_prefix_;
+}
+
+int32_t CDCConsumer::cluster_config_version() const {
+  return cluster_config_version_.load(std::memory_order_acquire);
 }
 
 } // namespace enterprise

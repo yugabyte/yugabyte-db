@@ -51,7 +51,6 @@ set(TABLET_SRCS
   operations/update_txn_operation.cc
   operations/write_operation.cc
   operations/snapshot_operation.cc
-  lock_manager.cc
   maintenance_manager.cc
   mvcc.cc
   tablet_metadata.cc
@@ -108,7 +107,6 @@ ADD_YB_TEST(tablet-schema-test)
 ADD_YB_TEST(tablet_bootstrap-test)
 ADD_YB_TEST(maintenance_manager-test)
 ADD_YB_TEST(mvcc-test)
-ADD_YB_TEST(lock_manager-test)
 ADD_YB_TEST(composite-pushdown-test)
 ADD_YB_TEST(tablet_peer-test)
 ADD_YB_TEST(tablet_random_access-test)

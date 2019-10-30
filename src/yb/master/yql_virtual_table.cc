@@ -12,9 +12,13 @@
 //
 
 #include "yb/master/yql_virtual_table.h"
+
+#include "yb/common/ql_value.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_vtable_iterator.h"
+#include "yb/util/shared_lock.h"
 
 namespace yb {
 namespace master {
@@ -81,6 +85,7 @@ CHECKED_STATUS YQLVirtualTable::BuildYQLScanSpec(
   }
   spec->reset(new common::QLScanSpec(
       request.has_where_expr() ? &request.where_expr().condition() : nullptr,
+      request.has_if_expr() ? &request.if_expr().condition() : nullptr,
       request.is_forward_scan()));
   return Status::OK();
 }

@@ -18,9 +18,11 @@
 
 #include <stdint.h>
 
-#include "yb/common/ql_protocol.pb.h"
 #include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/ql_datatype.h"
+#include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_type.h"
+
 #include "yb/util/decimal.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/timestamp.h"
@@ -41,21 +43,15 @@ class QLValue {
   // Shared_ptr.
   typedef std::shared_ptr<QLValue> SharedPtr;
 
-  // The value type.
-  typedef QLValuePB::ValueCase InternalType;
-
   // Constructors & destructors.
   QLValue() { }
   explicit QLValue(const QLValuePB& pb) : pb_(pb) { }
   explicit QLValue(QLValuePB&& pb) : pb_(std::move(pb)) { }
   virtual ~QLValue();
 
-  static DataType FromInternalDataType(const InternalType& internal_type);
-  static const string ToCQLString(const InternalType& internal_type);
-
   //-----------------------------------------------------------------------------------------
   // Access functions to value and type.
-  virtual InternalType type() const { return pb_.value_case(); }
+  InternalType type() const { return pb_.value_case(); }
   const QLValuePB& value() const { return pb_; }
   QLValuePB* mutable_value() { return &pb_; }
 
@@ -471,7 +467,7 @@ bool operator >=(const QLValuePB& lhs, const QLValue& rhs);
 bool operator ==(const QLValuePB& lhs, const QLValue& rhs);
 bool operator !=(const QLValuePB& lhs, const QLValue& rhs);
 
-QLValue::InternalType type(const QLValuePB& v);
+InternalType type(const QLValuePB& v);
 bool IsNull(const QLValuePB& v);
 void SetNull(QLValuePB* v);
 bool EitherIsNull(const QLValuePB& lhs, const QLValuePB& rhs);

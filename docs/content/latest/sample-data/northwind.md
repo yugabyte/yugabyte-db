@@ -59,7 +59,7 @@ yugabyte=#
 
 To create the Northwind database, run the following `CREATE DATABASE` statement.
 
-```sql
+```postgresql
 CREATE DATABASE northwind;
 ```
 

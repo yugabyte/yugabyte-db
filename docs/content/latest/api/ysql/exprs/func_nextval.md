@@ -28,7 +28,7 @@ Specify the name of the sequence.
 
 ### Create a simple sequence that increments by 1 every time nextval() is called
 
-```sql
+```postgresql
 yugabyte=# CREATE SEQUENCE s;
 ```
 
@@ -38,7 +38,7 @@ CREATE SEQUENCE
 
 Call nextval() a couple of times.
 
-```sql
+```postgresql
 yugabyte=# SELECT nextval('s');
 ```
 
@@ -49,7 +49,7 @@ yugabyte=# SELECT nextval('s');
 (1 row)
 ```
 
-```sql
+```postgresql
 yugabyte=# SELECT nextval('s');
 ```
 
@@ -62,7 +62,7 @@ yugabyte=# SELECT nextval('s');
 
 ### Create a sequence with a cache of 3 values
 
-```sql
+```postgresql
 yugabyte=# CREATE SEQUENCE s2 CACHE 3;
 ```
 
@@ -72,7 +72,7 @@ CREATE SEQUENCE
 
 In the same session, call `nextval()`. The first time it's called, the session's cache will allocate numbers 1, 2, and 3. This means that the data for this sequence will have its `last_val` set to 3. This modification requires two RPC requests.
 
-```sql
+```postgresql
 SELECT nextval('s2');
 ```
 
@@ -85,7 +85,7 @@ SELECT nextval('s2');
 
 The next call of `nextval()` in the same session will not generate new numbers for the sequence, so it is much faster than the first `nextval()` call because it will just use the next value available from the cache.
 
-```sql
+```postgresql
 SELECT nextval('s2');
 ```
 

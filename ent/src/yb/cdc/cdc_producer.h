@@ -92,15 +92,26 @@ class CDCProducer {
   // T5: APPLYING TXN1
   // T6: WRITE K4
   // The order in which keys are written to DB in this example is K0, K3, K2, K1, K4.
+  // This method will also set checkpoint to the op id of last processed record.
   static Result<consensus::ReplicateMsgs> SortWrites(const consensus::ReplicateMsgs& msgs,
-                                                     const TxnStatusMap& txn_map);
+                                                     const TxnStatusMap& txn_map,
+                                                     OpIdPB* checkpoint);
 
   static Result<std::vector<RecordTimeIndex>> GetCommittedRecordIndexes(
       const consensus::ReplicateMsgs& msgs,
-      const TxnStatusMap& txn_map);
+      const TxnStatusMap& txn_map,
+      OpIdPB* checkpoint);
+
+  // Set committed record information including commit time for record.
+  // This will look at transaction status to determine commit time to be used for CDC record.
+  // Returns true if we need to stop processing WAL records beyond this, false otherwise.
+  static Result<bool> SetCommittedRecordIndexForReplicateMsg(
+      const consensus::ReplicateMsgPtr& msg, size_t index, const TxnStatusMap& txn_map,
+      std::vector<RecordTimeIndex>* records);
 
   // Build transaction status as of hybrid_time.
   static Result<TxnStatusMap> BuildTxnStatusMap(const consensus::ReplicateMsgs& messages,
+                                                bool more_replicate_msgs,
                                                 const HybridTime& hybrid_time,
                                                 tablet::TransactionParticipant* txn_participant);
 

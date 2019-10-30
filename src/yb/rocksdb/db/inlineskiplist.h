@@ -101,7 +101,6 @@ class InlineSkipList {
   void InsertConcurrently(const char* key);
 
   bool Erase(const char* key, Comparator cmp) {
-    LOG(FATAL) << "Erase not supported";
     return false;
   }
 
@@ -236,8 +235,8 @@ struct InlineSkipList<Comparator>::Node {
   // Stores the height of the node in the memory location normally used for
   // next_[0].  This is used for passing data from AllocateKey to Insert.
   void StashHeight(const int height) {
-    assert(sizeof(int) <= sizeof(next_[0]));
-    memcpy(&next_[0], &height, sizeof(int));
+    static_assert(sizeof(int) <= sizeof(next_[0]), "Too small height holder");
+    memcpy(static_cast<void*>(&next_[0]), &height, sizeof(int));
   }
 
   // Retrieves the value passed to StashHeight.  Undefined after a call

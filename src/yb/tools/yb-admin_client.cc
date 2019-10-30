@@ -154,6 +154,12 @@ ClusterAdminClient::ClusterAdminClient(string addrs,
       client_init_(certs_dir.empty()),
       initted_(false) {}
 
+ClusterAdminClient::~ClusterAdminClient() {
+  if (messenger_) {
+    messenger_->Shutdown();
+  }
+}
+
 Status ClusterAdminClient::Init() {
   CHECK(!initted_);
 
@@ -339,7 +345,8 @@ Status ClusterAdminClient::GetLoadMoveCompletion() {
   const auto resp = VERIFY_RESULT(InvokeRpc(
       &MasterServiceProxy::GetLoadMoveCompletion, master_proxy_.get(),
       master::GetLoadMovePercentRequestPB()));
-  cout << "Percent complete = " << resp.percent() << endl;
+  cout << "Percent complete = " << resp.percent() << " : "
+    << resp.remaining() << " remaining out of " << resp.total() << endl;
   return Status::OK();
 }
 
@@ -348,7 +355,8 @@ Status ClusterAdminClient::GetLeaderBlacklistCompletion() {
   const auto resp = VERIFY_RESULT(InvokeRpc(
       &MasterServiceProxy::GetLeaderBlacklistCompletion, master_proxy_.get(),
       master::GetLeaderBlacklistPercentRequestPB()));
-  cout << "Percent complete = " << resp.percent() << endl;
+  cout << "Percent complete = " << resp.percent() << " : "
+    << resp.remaining() << " remaining out of " << resp.total() << endl;
   return Status::OK();
 }
 
@@ -830,12 +838,16 @@ Status ClusterAdminClient::ListTabletsForTabletServer(const PeerId& ts_uuid) {
   cout << RightPadToWidth("Table name", kTableNameColWidth) << kColumnSep
        << RightPadToUuidWidth("Tablet ID") << kColumnSep
        << "Is Leader" << kColumnSep
-       << "State" << endl;
+       << "State" << kColumnSep
+       << "Num SST Files" << kColumnSep
+       << "Num Log Segments" << endl;
   for (const auto& entry : resp.entries()) {
     cout << RightPadToWidth(entry.table_name(), kTableNameColWidth) << kColumnSep
          << RightPadToUuidWidth(entry.tablet_id()) << kColumnSep
          << entry.is_leader() << kColumnSep
-         << PBEnumToString(entry.state()) << endl;
+         << PBEnumToString(entry.state()) << kColumnSep
+         << entry.num_sst_files() << kColumnSep
+         << entry.num_log_segments() << endl;
   }
   return Status::OK();
 }
@@ -936,6 +948,7 @@ Status ClusterAdminClient::AddReadReplicaPlacementInfo(
   auto* cluster_config = resp_cluster_config.mutable_cluster_config();
   auto* read_replica_config = cluster_config->mutable_replication_info()->add_read_replicas();
   string uuid_str = boost::uuids::to_string(Uuid::Generate());
+  read_replica_config->set_num_replicas(replication_factor);
   read_replica_config->set_placement_uuid(uuid_str);
 
   // Fill in the placement info with new stuff.
@@ -1112,10 +1125,7 @@ Status ClusterAdminClient::ModifyPlacementInfo(
     pb->mutable_cloud_info()->set_placement_zone(block[2]);
     pb->set_min_num_replicas(1);
   }
-  master::ReplicationInfoPB* replication_info_pb = new master::ReplicationInfoPB;
-  replication_info_pb->set_allocated_live_replicas(live_replicas);
-  sys_cluster_config_entry->clear_replication_info();
-  sys_cluster_config_entry->set_allocated_replication_info(replication_info_pb);
+  sys_cluster_config_entry->mutable_replication_info()->set_allocated_live_replicas(live_replicas);
   req_new_cluster_config.mutable_cluster_config()->CopyFrom(*sys_cluster_config_entry);
 
   RETURN_NOT_OK(InvokeRpc(&MasterServiceProxy::ChangeMasterClusterConfig,
@@ -1128,7 +1138,7 @@ Status ClusterAdminClient::ModifyPlacementInfo(
 
 Status ClusterAdminClient::GetUniverseConfig() {
   const auto cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
-  cout << "Config: "  << endl << cluster_config.cluster_config().DebugString();
+  cout << "Config: \r\n"  << cluster_config.cluster_config().DebugString() << endl;
   return Status::OK();
 }
 
@@ -1166,33 +1176,9 @@ Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers,
 }
 
 Result<const master::NamespaceIdentifierPB&> ClusterAdminClient::GetNamespaceInfo(
-    const std::string& full_namespace_name) {
-  YQLDatabase db_type = YQL_DATABASE_UNKNOWN;
-  const size_t dot_pos = full_namespace_name.find('.');
-  if (dot_pos != string::npos) {
-    static const std::array<pair<const char*, YQLDatabase>, 3> type_prefixes{
-      make_pair(kDBTypePrefixCql, YQL_DATABASE_CQL),
-      make_pair(kDBTypePrefixYsql, YQL_DATABASE_PGSQL),
-      make_pair(kDBTypePrefixRedis, YQL_DATABASE_REDIS)};
-    const Slice namespace_type(full_namespace_name.data(), dot_pos);
-    for (const auto& prefix : type_prefixes) {
-      if (namespace_type == prefix.first) {
-        db_type = prefix.second;
-        break;
-      }
-    }
-    if (db_type == YQL_DATABASE_UNKNOWN) {
-      return STATUS(InvalidArgument, Format("Invalid db type name '$0'", namespace_type));
-    }
-  } else {
-    db_type = (full_namespace_name == common::kRedisKeyspaceName ? YQL_DATABASE_REDIS
-                                                                 : YQL_DATABASE_CQL);
-  }
-  const size_t name_start = (dot_pos == string::npos ? 0 : (dot_pos + 1));
-  const Slice namespace_name(full_namespace_name.data() + name_start,
-      full_namespace_name.length() - name_start);
+    YQLDatabase db_type, const std::string& namespace_name) {
   LOG(INFO) << Format("Resolving namespace id for '$0' of type '$1'",
-      namespace_name, DatabasePrefix(db_type));
+                      namespace_name, DatabasePrefix(db_type));
   for (const auto& item : VERIFY_RESULT_REF(GetNamespaceMap())) {
     const auto& namespace_info = item.second;
     if (namespace_info.database_type() == db_type && namespace_name == namespace_info.name()) {
@@ -1200,9 +1186,9 @@ Result<const master::NamespaceIdentifierPB&> ClusterAdminClient::GetNamespaceInf
     }
   }
   return STATUS(NotFound,
-      Format("Namespace '$0' of type '$1' not found", namespace_name, DatabasePrefix(db_type)));
+                Format("Namespace '$0' of type '$1' not found",
+                       namespace_name, DatabasePrefix(db_type)));
 }
-
 
 Result<master::GetMasterClusterConfigResponsePB> ClusterAdminClient::GetMasterClusterConfig() {
   return InvokeRpc(&MasterServiceProxy::GetMasterClusterConfig, master_proxy_.get(),
@@ -1245,6 +1231,36 @@ Result<const ClusterAdminClient::NamespaceMap&> ClusterAdminClient::GetNamespace
 
 string RightPadToUuidWidth(const string &s) {
   return RightPadToWidth(s, kNumCharactersInUuid);
+}
+
+Result<TypedNamespaceName> ParseNamespaceName(const std::string& full_namespace_name) {
+  YQLDatabase db_type = YQL_DATABASE_UNKNOWN;
+  const size_t dot_pos = full_namespace_name.find('.');
+  if (dot_pos != string::npos) {
+    static const std::array<pair<const char*, YQLDatabase>, 3> type_prefixes{
+        make_pair(kDBTypePrefixCql, YQL_DATABASE_CQL),
+        make_pair(kDBTypePrefixYsql, YQL_DATABASE_PGSQL),
+        make_pair(kDBTypePrefixRedis, YQL_DATABASE_REDIS)};
+    const Slice namespace_type(full_namespace_name.data(), dot_pos);
+    for (const auto& prefix : type_prefixes) {
+      if (namespace_type == prefix.first) {
+        db_type = prefix.second;
+        break;
+      }
+    }
+    if (db_type == YQL_DATABASE_UNKNOWN) {
+      return STATUS(InvalidArgument, Format("Invalid db type name '$0'", namespace_type));
+    }
+  } else {
+    db_type = (full_namespace_name == common::kRedisKeyspaceName ? YQL_DATABASE_REDIS
+        : YQL_DATABASE_CQL);
+  }
+
+  const size_t name_start = (dot_pos == string::npos ? 0 : (dot_pos + 1));
+  return TypedNamespaceName{
+      db_type,
+      std::string(full_namespace_name.data() + name_start,
+                  full_namespace_name.length() - name_start)};
 }
 
 }  // namespace tools

@@ -41,9 +41,6 @@ public class CustomerConfig extends Model {
     @EnumValue("CALLHOME")
     CALLHOME,
 
-    @EnumValue("KMS")
-    KMS,
-
     // TODO: move metric and other configs to this table as well.
     @EnumValue("OTHER")
     OTHER;
@@ -174,40 +171,5 @@ public class CustomerConfig extends Model {
       callhomeConfig.update();
     }
     return callhomeConfig;
-  }
-
-  public static CustomerConfig createKMSConfig(
-          UUID customerUUID,
-          String keyProvider,
-          ObjectNode data
-  ) {
-    CustomerConfig customerConfig = new CustomerConfig();
-    customerConfig.type = ConfigType.KMS;
-    customerConfig.name = keyProvider;
-    customerConfig.customerUUID = customerUUID;
-    customerConfig.data = data;
-    customerConfig.save();
-    return customerConfig;
-  }
-
-  public static CustomerConfig getKMSConfig(UUID customerUUID, String keyProvider) {
-    return CustomerConfig.find.where()
-            .eq("customer_uuid", customerUUID)
-            .eq("type", ConfigType.KMS)
-            .eq("name", keyProvider)
-            .findUnique();
-  }
-
-  public static ObjectNode getKMSAuthObj(UUID customerUUID, String keyProvider) {
-    CustomerConfig config = getKMSConfig(customerUUID, keyProvider);
-    if (config == null) return null;
-    return config.getData().deepCopy();
-  }
-
-  public static List<CustomerConfig> listKMSConfigs(UUID customerUUID) {
-    return CustomerConfig.find.where()
-            .eq("customer_uuid", customerUUID)
-            .eq("type", ConfigType.KMS)
-            .findList();
   }
 }

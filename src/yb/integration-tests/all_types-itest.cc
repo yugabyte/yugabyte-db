@@ -37,6 +37,7 @@
 #include "yb/client/session.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/ts_itest-base.h"

@@ -69,94 +69,6 @@ QLValue::~QLValue() {}
 
 //------------------------- instance methods for abstract QLValue class -----------------------
 
-DataType QLValue::FromInternalDataType(const InternalType& internal_type) {
-  switch (internal_type) {
-    case QLValue::InternalType::kInt8Value:
-      return DataType::INT8;
-    case QLValue::InternalType::kInt16Value:
-      return DataType::INT16;
-    case QLValue::InternalType::kInt32Value:
-      return DataType::INT32;
-    case QLValue::InternalType::kInt64Value:
-      return DataType::INT64;
-    case QLValue::InternalType::kUint32Value:
-      return DataType::UINT32;
-    case QLValue::InternalType::kUint64Value:
-      return DataType::UINT64;
-    case QLValue::InternalType::kFloatValue:
-      return DataType::FLOAT;
-    case QLValue::InternalType::kDoubleValue:
-      return DataType::DOUBLE;
-    case QLValue::InternalType::kDecimalValue:
-      return DataType::DECIMAL;
-    case QLValue::InternalType::kStringValue:
-      return DataType::STRING;
-    case QLValue::InternalType::kTimestampValue:
-      return DataType::TIMESTAMP;
-    case QLValue::InternalType::kDateValue:
-      return DataType::DATE;
-    case QLValue::InternalType::kTimeValue:
-      return DataType::TIME;
-    case QLValue::InternalType::kInetaddressValue:
-      return DataType::INET;
-    case QLValue::InternalType::kJsonbValue:
-      return DataType::JSONB;
-    case QLValue::InternalType::kUuidValue:
-      return DataType::UUID;
-    case QLValue::InternalType::kTimeuuidValue:
-      return DataType::TIMEUUID;
-    case QLValue::InternalType::kBoolValue:
-      return DataType::BOOL;
-    case QLValue::InternalType::kBinaryValue:
-      return DataType::BINARY;
-    case QLValue::InternalType::kMapValue:
-      return DataType::MAP;
-    case QLValue::InternalType::kSetValue:
-      return DataType::SET;
-    case QLValue::InternalType::kListValue:
-      return DataType::LIST;
-    case QLValue::InternalType::kVarintValue:
-      return DataType::VARINT;
-    case QLValue::InternalType::kFrozenValue:
-      return DataType::FROZEN;
-    default:
-      LOG(FATAL) << "Internal error: unsupported type " << internal_type;
-  }
-  return DataType::NULL_VALUE_TYPE;
-}
-
-const string QLValue::ToCQLString(const InternalType& internal_type) {
-  switch (internal_type) {
-    case InternalType::VALUE_NOT_SET: return "unknown";
-    case InternalType::kInt8Value: return "tinyint";
-    case InternalType::kInt16Value: return "smallint";
-    case InternalType::kInt32Value: return "int";
-    case InternalType::kInt64Value: return "bigint";
-    case InternalType::kUint32Value: return "unknown"; // No such type in YCQL.
-    case InternalType::kUint64Value: return "unknown"; // No such type in YCQL.
-    case InternalType::kStringValue: return "text";
-    case InternalType::kBoolValue: return "boolean";
-    case InternalType::kFloatValue: return "float";
-    case InternalType::kDoubleValue: return "double";
-    case InternalType::kBinaryValue: return "blob";
-    case InternalType::kTimestampValue: return "timestamp";
-    case InternalType::kDecimalValue: return "decimal";
-    case InternalType::kVarintValue: return "varint";
-    case InternalType::kInetaddressValue: return "inet";
-    case InternalType::kJsonbValue: return "jsonb";
-    case InternalType::kListValue: return "list";
-    case InternalType::kMapValue: return "map";
-    case InternalType::kSetValue: return "set";
-    case InternalType::kUuidValue: return "uuid";
-    case InternalType::kTimeuuidValue: return "timeuuid";
-    case InternalType::kDateValue: return "date";
-    case InternalType::kTimeValue: return "time";
-    case InternalType::kFrozenValue: return "frozen";
-  }
-  LOG (FATAL) << "Invalid datatype: " << internal_type;
-  return "Undefined Type";
-}
-
 int QLValue::CompareTo(const QLValue& other) const {
   CHECK_EQ(type(), other.type());
   CHECK(!IsNull());
@@ -227,103 +139,103 @@ int QLValue::CompareTo(const QLValue& other) const {
 // The internal methods such as AppendIntToKey should be renamed accordingly.
 void AppendToKey(const QLValuePB &value_pb, string *bytes) {
   switch (value_pb.value_case()) {
-    case QLValue::InternalType::kBoolValue: {
+    case InternalType::kBoolValue: {
       YBPartition::AppendIntToKey<bool, uint8>(value_pb.bool_value() ? 1 : 0, bytes);
       break;
     }
-    case QLValue::InternalType::kInt8Value: {
+    case InternalType::kInt8Value: {
       YBPartition::AppendIntToKey<int8, uint8>(value_pb.int8_value(), bytes);
       break;
     }
-    case QLValue::InternalType::kInt16Value: {
+    case InternalType::kInt16Value: {
       YBPartition::AppendIntToKey<int16, uint16>(value_pb.int16_value(), bytes);
       break;
     }
-    case QLValue::InternalType::kInt32Value: {
+    case InternalType::kInt32Value: {
       YBPartition::AppendIntToKey<int32, uint32>(value_pb.int32_value(), bytes);
       break;
     }
-    case QLValue::InternalType::kInt64Value: {
+    case InternalType::kInt64Value: {
       YBPartition::AppendIntToKey<int64, uint64>(value_pb.int64_value(), bytes);
       break;
     }
-    case QLValue::InternalType::kUint32Value: {
+    case InternalType::kUint32Value: {
       YBPartition::AppendIntToKey<uint32, uint32>(value_pb.uint32_value(), bytes);
       break;
     }
-    case QLValue::InternalType::kUint64Value: {
+    case InternalType::kUint64Value: {
       YBPartition::AppendIntToKey<uint64, uint64>(value_pb.uint64_value(), bytes);
       break;
     }
-    case QLValue::InternalType::kTimestampValue: {
+    case InternalType::kTimestampValue: {
       YBPartition::AppendIntToKey<int64, uint64>(value_pb.timestamp_value(), bytes);
       break;
     }
-    case QLValue::InternalType::kDateValue: {
+    case InternalType::kDateValue: {
       YBPartition::AppendIntToKey<uint32, uint32>(value_pb.date_value(), bytes);
       break;
     }
-    case QLValue::InternalType::kTimeValue: {
+    case InternalType::kTimeValue: {
       YBPartition::AppendIntToKey<int64, uint64>(value_pb.time_value(), bytes);
       break;
     }
-    case QLValue::InternalType::kStringValue: {
+    case InternalType::kStringValue: {
       const string& str = value_pb.string_value();
       YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
       break;
     }
-    case QLValue::InternalType::kUuidValue: {
+    case InternalType::kUuidValue: {
       const string& str = value_pb.uuid_value();
       YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
       break;
     }
-    case QLValue::InternalType::kTimeuuidValue: {
+    case InternalType::kTimeuuidValue: {
       const string& str = value_pb.timeuuid_value();
       YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
       break;
     }
-    case QLValue::InternalType::kInetaddressValue: {
+    case InternalType::kInetaddressValue: {
       const string& str = value_pb.inetaddress_value();
       YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
       break;
     }
-    case QLValue::InternalType::kDecimalValue: {
+    case InternalType::kDecimalValue: {
       const string& str = value_pb.decimal_value();
       YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
       break;
     }
-    case QLValue::InternalType::kVarintValue: {
+    case InternalType::kVarintValue: {
       const string& str = value_pb.varint_value();
       YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
       break;
     }
-    case QLValue::InternalType::kBinaryValue: {
+    case InternalType::kBinaryValue: {
       const string& str = value_pb.binary_value();
       YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
       break;
     }
-    case QLValue::InternalType::kFloatValue: {
+    case InternalType::kFloatValue: {
       YBPartition::AppendIntToKey<float, uint32>(util::CanonicalizeFloat(value_pb.float_value()),
                                                  bytes);
       break;
     }
-    case QLValue::InternalType::kDoubleValue: {
+    case InternalType::kDoubleValue: {
       YBPartition::AppendIntToKey<double, uint64>(util::CanonicalizeDouble(value_pb.double_value()),
                                                   bytes);
       break;
     }
-    case QLValue::InternalType::kFrozenValue: {
+    case InternalType::kFrozenValue: {
       for (const auto& elem_pb : value_pb.frozen_value().elems()) {
         AppendToKey(elem_pb, bytes);
       }
       break;
     }
-    case QLValue::InternalType::VALUE_NOT_SET:
+    case InternalType::VALUE_NOT_SET:
       break;
-    case QLValue::InternalType::kMapValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kSetValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kListValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kJsonbValue:
+    case InternalType::kMapValue: FALLTHROUGH_INTENDED;
+    case InternalType::kSetValue: FALLTHROUGH_INTENDED;
+    case InternalType::kListValue: FALLTHROUGH_INTENDED;
+    case InternalType::kJsonbValue:
       LOG(FATAL) << "Runtime error: This datatype("
                  << int(value_pb.value_case())
                  << ") is not supported in hash key";
@@ -548,7 +460,9 @@ Status QLValue::Deserialize(
     return Status::OK();
   }
   if (len > FLAGS_yql_max_value_size) {
-    return STATUS(InvalidArgument, "YQL value too long");
+    return STATUS_SUBSTITUTE(NotSupported,
+        "Value size ($0) is longer than max value size supported ($1)",
+        len, FLAGS_yql_max_value_size);
   }
 
   switch (ql_type->main()) {
@@ -880,7 +794,7 @@ string QLValue::ToString() const {
 
 //----------------------------------- QLValuePB operators --------------------------------
 
-QLValue::InternalType type(const QLValuePB& v) {
+InternalType type(const QLValuePB& v) {
   return v.value_case();
 }
 bool IsNull(const QLValuePB& v) {

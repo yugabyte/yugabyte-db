@@ -31,7 +31,7 @@ kern.maxfilesperproc=1048576
 
 - If your macOS version does not have the `/etc/sysctl.conf` file, then ensure that the file `/Library/LaunchDaemons/limit.maxfiles.plist` has the following content.
 
-```sh
+```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
   <plist version="1.0">
@@ -64,7 +64,7 @@ You might have to `unload` the service before loading it.
 
 ## Download
 
-Download the Yugabyte DB tar.gz as shown below.
+Download the YugabyteDB tar.gz as shown below.
 
 ```sh
 $ wget https://downloads.yugabyte.com/yugabyte-1.3.2.1-darwin.tar.gz

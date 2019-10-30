@@ -17,7 +17,6 @@
 #include <limits>
 #include <string>
 
-#include "yb/util/bytes_formatter.h"
 #include "yb/util/slice.h"
 
 namespace yb {

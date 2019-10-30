@@ -12,11 +12,12 @@
 #    - List the pods     : kubectl get pods
 #    - Run cqlsh         : kubectl exec -it yb-tserver-0 /home/yugabyte/bin/cqlsh
 #    - Run Redis cli     : kubectl exec -it yb-tserver-0 /home/yugabyte/bin/redis-cli
-#    - Run psql          : kubectl exec -it yb-tserver-0 /home/yugabyte/postgres/bin/psql --
+#    - Run psql          : kubectl exec -it yb-tserver-0 /home/yugabyte/bin/ysqlsh --
 #                             -U postgres -d postgres -h yb-tserver-0 -p 5433
 #    - Connect to the ui : kubectl port-forward yb-master-0 7000
 #                          You can now view the UI at http://localhost:7000
 #    - Destroy cluster   : kubectl delete -f yugabyte-statefulset.yaml
+#    - Delete PVCs       : kubectl delete pvc -l app=yb-tserver && kubectl delete pvc -l app=yb-master
 
 apiVersion: v1
 kind: Service
@@ -53,7 +54,7 @@ spec:
     app: yb-master
   type: LoadBalancer
 ---
-apiVersion: apps/v1beta1
+apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: yb-master
@@ -99,18 +100,22 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         command:
           - "/home/yugabyte/bin/yb-master"
           - "--fs_data_dirs=/mnt/data0"
-          - "--rpc_bind_addresses=$(POD_IP):7100"
-          - "--server_broadcast_addresses=$(POD_NAME).yb-masters:7100"
+          - "--rpc_bind_addresses=$(POD_NAME).yb-masters.$(NAMESPACE).svc.cluster.local:7100"
+          - "--server_broadcast_addresses=$(POD_NAME).yb-masters.$(NAMESPACE).svc.cluster.local:7100"
           - "--use_private_ip=never"
-          - "--master_addresses=yb-masters.default.svc.cluster.local:7100"
-          # To disable YugaByte SQL API functionality, comment the
-          # "use_initial_sys_catalog_snapshot" flag below.
-          # Flag support added after version 1.3.
-          - "--use_initial_sys_catalog_snapshot=true"
-          - "--master_replication_factor=3"
+          # FQDNs of each master. Update this in case your desired RF != 3.
+          - "--master_addresses=yb-master-0.yb-masters.$(NAMESPACE).svc.cluster.local:7100,yb-master-1.yb-masters.$(NAMESPACE).svc.cluster.local:7100,yb-master-2.yb-masters.$(NAMESPACE).svc.cluster.local:7100"
+          # To disable YugaByte SQL API functionality, set the
+          # "enable_ysql" flag to false. Flag supported after 2.0
+          - "--enable_ysql=true"
+          - "--replication_factor=3"
           - "--logtostderr"
         ports:
         - containerPort: 7000
@@ -174,7 +179,7 @@ spec:
   selector:
     app: yb-tserver
 ---
-apiVersion: apps/v1beta1
+apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: yb-tserver
@@ -220,17 +225,22 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: metadata.name
+          - name: NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
         command:
           - "/home/yugabyte/bin/yb-tserver"
           - "--fs_data_dirs=/mnt/data0"
-          - "--rpc_bind_addresses=$(POD_IP):9100"
-          - "--server_broadcast_addresses=$(POD_NAME).yb-tservers:9100"
-          # To disable YugaByte SQL API functionality, comment the below two pgsql_xx flags.
-          - "--start_pgsql_proxy"
+          - "--rpc_bind_addresses=$(POD_NAME).yb-tservers.$(NAMESPACE).svc.cluster.local:9100"
+          - "--server_broadcast_addresses=$(POD_NAME).yb-tservers.$(NAMESPACE).svc.cluster.local:9100"
+          # To disable YugaByte SQL API functionality, set the enable_ysql flag to false
+          # and comment out the pgsql_proxy_bind_address flag
+          - "--enable_ysql=true"
           - "--pgsql_proxy_bind_address=$(POD_IP):5433"
           - "--use_private_ip=never"
-          - "--tserver_master_addrs=yb-masters.default.svc.cluster.local:7100"
-          - "--tserver_master_replication_factor=3"
+          # FQDNs of each master. Update this in case your desired RF != 3.
+          - "--tserver_master_addrs=yb-master-0.yb-masters.$(NAMESPACE).svc.cluster.local:7100,yb-master-1.yb-masters.$(NAMESPACE).svc.cluster.local:7100,yb-master-2.yb-masters.$(NAMESPACE).svc.cluster.local:7100"
           - "--logtostderr"
         ports:
         - containerPort: 9000

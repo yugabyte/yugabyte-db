@@ -209,6 +209,16 @@ message TablePropertiesPB {
   optional bytes copartition_table_id = 4;
   // For index table only: consistency with respect to the indexed table.
   optional YBConsistencyLevel consistency_level = 5 [ default = STRONG ];
+  // For CREATE INDEX, we use mangled name for its column, but it hasn't been that way.
+  // Due to coding history for INDEX support, we'll have the following scenarios.
+  // - UserTable: User-defined names are used for its columns.
+  // - IndexTable: Mangled names are used. We treat all INDEX column definition as expression of
+  //   column. For example INDEX on TAB(a) would be defined as IndexTable( ref_of(a) ).
+  // - Older IndexTable: User-defined name is used, and their definition in existing database
+  //   remains the same during upgrade.
+  //
+  // The field "use_mangled_column_name" helps indicating whether a table is using mangled_name.
+  optional bool use_mangled_column_name =  6 [ default = false ];
 }
 
 message SchemaPB {
@@ -216,8 +226,16 @@ message SchemaPB {
   optional TablePropertiesPB table_properties = 2;
 }
 
-// This message contains the metadata of a secondary index of a table. It maps the indexed table
-// columns to the index table columns.
+// This message contains the metadata of a secondary index of a table.
+// It maps the index::columns to the expressions of table::columns.
+//
+// Notes on where to find metadata of an INDEX.
+// - Each INDEX is represented by IndexInfo and IndexTable.
+//     IndexInfoPB contains the definitions of the INDEX.
+//     IndexTable contains duplicate user-data for quick access.
+// - The IndexInfoPB is stored in the Catalog::Table being indexed.
+// - The TablePropertiesPB is kept in Catalog::IndexTable.
+//   Internally, Catalog::IndexTable is just the same as any Catalog::Table.
 message IndexInfoPB {
   optional bytes table_id = 1; // Index table id.
   optional bytes indexed_table_id = 8; // Indexed table id.
@@ -247,12 +265,16 @@ message IndexInfoPB {
     optional uint32 indexed_column_id = 2; // Corresponding column id in indexed table.
     optional QLExpressionPB colexpr = 4;   // Column value in INDEX.
   }
-  repeated IndexColumnPB columns = 4;  // Indexed and covering columns.
+  repeated IndexColumnPB columns = 4;      // Indexed and covering columns.
   optional uint32 hash_column_count = 5;   // Number of hash columns in the index.
   optional uint32 range_column_count = 6;  // Number of range columns in the index.
 
   repeated uint32 indexed_hash_column_ids = 9;   // Hash column ids in the indexed table.
   repeated uint32 indexed_range_column_ids = 10; // Range column ids in the indexed table.
+
+  // The mangled-name flag is kept on both IndexInfo and IndexTable as the same mangled-name is
+  // used in both IndexInfo and IndexTable columns.
+  optional bool use_mangled_column_name = 11 [ default = false ];  // Newer index has mangled name.
 }
 
 message HostPortPB {
@@ -342,6 +364,28 @@ enum IsolationLevel {
   NON_TRANSACTIONAL = 0;
   SNAPSHOT_ISOLATION = 1;
   SERIALIZABLE_ISOLATION = 2;
+}
+
+// This enum matches enum RowMarkType defined in src/include/nodes/plannodes.h.
+enum RowMarkType
+{
+  // Obtain exclusive tuple lock. Not supported yet.
+  ROW_MARK_EXCLUSIVE = 0;
+
+  // Obtain no-key exclusive tuple lock. Not supported yet.
+  ROW_MARK_NOKEYEXCLUSIVE = 1;
+
+  // Obtain shared tuple lock.
+  ROW_MARK_SHARE = 2;
+
+  // Obtain keyshare tuple lock.
+  ROW_MARK_KEYSHARE = 3;
+
+  // Not supported. Used for postgres compatibility.
+  ROW_MARK_REFERENCE = 4;
+
+  // Not supported. Used for postgres compatibility.
+  ROW_MARK_COPY = 5;
 }
 
 enum TransactionStatus {

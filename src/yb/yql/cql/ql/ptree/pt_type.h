@@ -21,7 +21,6 @@
 #include "yb/client/schema.h"
 
 #include "yb/common/types.h"
-#include "yb/common/ql_value.h"
 
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"

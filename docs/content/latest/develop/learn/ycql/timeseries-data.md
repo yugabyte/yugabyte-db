@@ -51,5 +51,4 @@ You can find a working example of using transactions with YugabyteDB in our [sam
       [ --table_ttl_seconds 86400 ]
 ```
 
-
-Browse the [Java source code for the batch application](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraTimeseries.java) to see how everything fits together.
+Browse the [Java source code for the batch application](https://github.com/yugabyte/yb-sample-apps/blob/master/src/main/java/com/yugabyte/sample/apps/CassandraTimeseries.java) to see how everything fits together.

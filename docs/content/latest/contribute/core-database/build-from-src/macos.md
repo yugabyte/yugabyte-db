@@ -1,7 +1,7 @@
 
 ## Install necessary packages
 
-First install [Homebrew](https://brew`bash/) in case you do not already have it. We will use this to install the other required packages.
+First install [Homebrew](https://brew.sh/) in case you do not already have it. We will use this to install the other required packages.
 
 ```sh
 /usr/bin/ruby -e "$(

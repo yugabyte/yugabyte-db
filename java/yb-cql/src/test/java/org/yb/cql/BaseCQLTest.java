@@ -41,6 +41,7 @@ import org.yb.client.YBClient;
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.IOMetrics;
 import org.yb.minicluster.Metrics;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
 import org.yb.util.ServerInfo;
@@ -77,6 +78,10 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   protected static final String TSERVER_FLUSHES_METRIC =
       "handler_latency_yb_cqlserver_SQLProcessor_NumFlushesToExecute";
 
+  // CQL and Redis settings.
+  protected static boolean startCqlProxy = true;
+  protected static boolean startRedisProxy = false;
+
   protected Cluster cluster;
   protected Session session;
 
@@ -111,14 +116,28 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     return Double.longBitsToDouble((sign << 63) | (exp << 52) | fraction);
   }
 
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = new TreeMap<>();
+
+    flagMap.put("start_cql_proxy", Boolean.toString(startCqlProxy));
+    flagMap.put("start_redis_proxy", Boolean.toString(startRedisProxy));
+
+    return flagMap;
+  }
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    for (Map.Entry<String, String> entry : getTServerFlags().entrySet()) {
+      builder.addCommonTServerArgs("--" + entry.getKey() + "=" + entry.getValue());
+    }
+    builder.enablePostgres(false);
+  }
+
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
     LOG.info("BaseCQLTest.setUpBeforeClass is running");
     BaseMiniClusterTest.tserverArgs.add("--client_read_write_timeout_ms=180000");
-    BaseMiniClusterTest.tserverArgs.add("--start_redis_proxy=false");
-    BaseMiniClusterTest.tserverArgs.add("--start_pgsql_proxy=false");
-    BaseMiniClusterTest.tserverArgs.add("--enable_ysql=false");
-
     // Disable extended peer check, to ensure "SELECT * FROM system.peers" works without
     // all columns.
     System.setProperty("com.datastax.driver.EXTENDED_PEER_CHECK", "false");
@@ -463,6 +482,15 @@ public class BaseCQLTest extends BaseMiniClusterTest {
       LOG.info("Expected exception", qv);
       return qv.getCause().getMessage();
     }
+  }
+
+  protected String runValidSelect(String stmt) {
+    ResultSet rs = session.execute(stmt);
+    String result = "";
+    for (Row row : rs) {
+      result += row.toString();
+    }
+    return result;
   }
 
   protected String runInvalidStmt(Statement stmt) {

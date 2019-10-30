@@ -43,13 +43,13 @@ Ensure that YugabyteDB runs in a trusted network environment.  Here are some ste
 
 ### RPC bind interfaces
 
-Limit the interfaces on which YugabyteDB instances listen for incoming connections. Specify just the required interfaces when starting `yb-master` and `yb-tserver` by using the following `--rpc_bind_addresses` flag. Do not bind to the loopback address. Read more in the [Admin Reference](../../admin/yb-tserver/) section on how to use these flags when starting the yb-master and yb-tserver processes.
+Limit the interfaces on which YugabyteDB instances listen for incoming connections. Specify just the required interfaces when starting `yb-master` and `yb-tserver` by using the `--rpc_bind_addresses` flag. Do not bind to the loopback address. Read more in the [Admin reference](../../admin/yb-tserver/) section on how to use these flags when starting the YB-Master and YB-TServer services.
 
 ### Tips for public clouds
 
 * Do not assign a public IP address to the nodes running YugabyteDB if possible. The applications can connect to YugabyteDB over private IP addresses.
 
-* In AWS, run the YugabyteDB cluster in a separate VPC ([Amazon Virtual Private Network](https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html)) and peer this only with VPC(s) from which database access is required, for example from those VPCs where the application will run.
+* In AWS, run the YugabyteDB cluster in a separate VPC ([Amazon Virtual Private Network](https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html)) and peer this only with VPCs from which database access is required, for example from those VPCs where the application will run.
 
 * Make the security groups assigned to the database servers very restrictive. Ensure that they can communicate with each other on the necessary ports, and expose only the client accessible ports to just the required set of servers. See the [list of YugabyteDB ports](../../deploy/checklist/#default-ports-reference).
 
@@ -57,10 +57,10 @@ Limit the interfaces on which YugabyteDB instances listen for incoming connectio
 
 [TLS/SSL encryption](https://en.wikipedia.org/wiki/Transport_Layer_Security) ensures that network communication between servers is secure. You can configure YugabyteDB to use TLS to encrypt intra-cluster and client to cluster network communication. It is recommended to enable TLS encryption over the wire in YugabyteDB clusters and clients to ensure privacy and integrity of data transferred over the network.
 
-Read more about enabling [TLS/SSL encryption](../tls-encryption) in YugabyteDB.
+Read more about enabling [TLS encryption](../tls-encryption) in YugabyteDB clusters.
 
 ## Enable encryption at rest
 
 [Encryption at rest](https://en.wikipedia.org/wiki/Data_at_rest#Encryption) ensures that data
-stored on disk is protected. You can configure YugabyteDB with a user generated symmetric key to
-perform cluster-wide encryption.
+stored on disk is protected. You can configure YugabyteDB with a user-generated symmetric key to
+perform cluster-wide encryption. For more information, see [Encryption at rest](../encryption-at-rest).

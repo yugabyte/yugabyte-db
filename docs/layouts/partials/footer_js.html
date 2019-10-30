@@ -20,22 +20,33 @@
 
         $(document).ready(function() {
           $.fn.toc = function(options, callback) {
-            let defaults = {
+            const defaults = {
               headers: "h1, h2, h3, h4",
             },
             settings = $.extend(defaults, options);
-            settings.headers = settings.isTocNested ? "h2:visible,h3:visible" : "h2:visible";
+            let queryHeaders = '';
+            if (typeof settings.isTocNested == 'number') {
+              for (let i = 2; i < settings.isTocNested+1; i++) {
+                queryHeaders += "h"+i+":visible,";
+              }
+              queryHeaders = queryHeaders.slice(0, -1);
+            } else {
+              queryHeaders = "h2:visible,h3:visible";
+            }
+            settings.headers = settings.isTocNested ? queryHeaders : "h2:visible";
             let headers = $(settings.headers);
             headers.on("click", function() {
               window.location.hash = this.id
             }).addClass("clickable-header");
-            
-            // double unwrap .TableOfContents because of ul>li qrapper for h1 headers
+            // double unwrap .TableOfContents because of ul>li wrapper for h1 headers
             $(this).find('nav > ul > li > ul').eq(0).unwrap().unwrap();
             // remove submenus if TOC is not nested
             if (!settings.isTocNested) {
               $(this).find('nav > ul > li > ul').remove();
               $('#toc-static nav > ul > li > ul > li > ul').remove();
+            } else if (typeof settings.isTocNested == 'number') {
+              let query = 'nav > ul ' + (' > li > ul').repeat([settings.isTocNested-1]);
+              $(this).find(query).remove();
             }
             callback();
             $(this).addClass("ready");
@@ -79,8 +90,18 @@
         });
 
         const initAnchorsAndFeedback = () => {
+          let queryHeaders = '';
+            if (typeof pageConfig.isTocNested == 'number') {
+              for (let i = 2; i < pageConfig.isTocNested+1; i++) {
+                queryHeaders += "h"+i+",";
+              }
+              queryHeaders = queryHeaders.slice(0, -1);
+            } else {
+              queryHeaders = "h2,h3";
+            }
+
           {{ "/* Add permanent link next to the headers */" | safeJS }}
-          const $headers = $('.article:not(#feedback) h1,h2,h3,h4,h5,h6').filter(function () {
+          const $headers = $('.article:not(#feedback) ' + queryHeaders).filter(function () {
             return $(this).closest('ul.nav-tabs + .tab-content').length === 0;
           });
 
@@ -294,8 +315,5 @@
       });
     </script>
     {{ end }}
-
-    <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.8.0/highlight.min.js"></script>
-    <script>hljs.initHighlightingOnLoad();</script>
   </body>
 </html>

@@ -138,8 +138,8 @@ public class ImportController extends Controller {
 
   // Helper function to convert comma seperated list of host:port into a list of host ips.
   // Returns null if there are parsing or invalid port errors.
-  private List<String> getMastersList(String masterAddresses) {
-    List<String> userMasterIps = new ArrayList<String>();
+  private Map<String, Integer> getMastersList(String masterAddresses) {
+    Map<String, Integer> userMasterIpPorts = new HashMap<>();
     String nodesList[] = masterAddresses.split(",");
     for (String hostPort : nodesList) {
       String parts[] = hostPort.split(":");
@@ -147,7 +147,6 @@ public class ImportController extends Controller {
         LOG.error("Incorrect host:port format: " + hostPort);
         return null;
       }
-      userMasterIps.add(parts[0]);
 
       int portInt = 0;
       try {
@@ -157,13 +156,9 @@ public class ImportController extends Controller {
         return null;
       }
 
-      if (portInt != MetaMasterController.MASTER_RPC_PORT) {
-        LOG.error("Incorrect master rpc port : " + parts[1] + " expected " +
-                  MetaMasterController.MASTER_RPC_PORT);
-        return null;
-      }
+      userMasterIpPorts.put(parts[0], portInt);
     }
-    return userMasterIps;
+    return userMasterIpPorts;
   }
 
   // Helper function to verify masters are up and running on the saved set of nodes.
@@ -252,8 +247,8 @@ public class ImportController extends Controller {
     //---------------------------------------------------------------------------------------------
     // Get the user specified master node ips.
     //---------------------------------------------------------------------------------------------
-    List<String> userMasterIps = getMastersList(masterAddresses);
-    if (userMasterIps == null) {
+    Map<String, Integer> userMasterIpPorts = getMastersList(masterAddresses);
+    if (userMasterIpPorts == null) {
       return ApiResponse.error(BAD_REQUEST, "Could not parse host:port from masterAddresseses: " +
                                masterAddresses);
     }
@@ -266,7 +261,7 @@ public class ImportController extends Controller {
       universe = createNewUniverseForImport(customer, importForm,
                                             Util.getNodePrefix(customer.getCustomerId(),
                                                                universeName),
-                                            universeName, userMasterIps);
+                                            universeName, userMasterIpPorts);
       results.with("checks").put("create_db_entry", "OK");
       results.put("universeUUID", universe.universeUUID.toString());
     } catch (Exception e) {
@@ -350,7 +345,7 @@ public class ImportController extends Controller {
     //---------------------------------------------------------------------------------------------
     // Verify tservers count and list.
     //---------------------------------------------------------------------------------------------
-    List<String> tservers_list = getTServers(masterAddresses, results);
+    Map<String, Integer> tservers_list = getTServers(masterAddresses, results);
     if (tservers_list.isEmpty()) {
       results.put("error", "No tservers known to the master leader in " + masterAddresses);
       ApiResponse.error(INTERNAL_SERVER_ERROR, results);
@@ -359,7 +354,7 @@ public class ImportController extends Controller {
     // Record the count of the tservers.
     results.put("tservers_count", tservers_list.size());
     ArrayNode arrayNode = results.putArray("tservers_list");
-    for (String tserver : tservers_list) {
+    for (String tserver : tservers_list.keySet()) {
       arrayNode.add(tserver);
     }
 
@@ -559,7 +554,7 @@ public class ImportController extends Controller {
    * Helper function to add a list of tservers into an existing universe. It sets the tserver flag
    * if the node already exists, and creates a new node entry if the node does not exist.
    */
-  private Universe addTServersToUniverse(List<String> tserverList,
+  private Universe addTServersToUniverse(Map<String, Integer> tserverList,
                                          UniverseDefinitionTaskParams taskParams,
                                          Provider provider, Region region, AvailabilityZone zone) {
     // Update the node details and persist into the DB.
@@ -571,9 +566,9 @@ public class ImportController extends Controller {
         Cluster cluster = universeDetails.getPrimaryCluster();
         int index = cluster.index;
 
-        for (String nodeIP : tserverList) {
+        for (Map.Entry<String, Integer> entry : tserverList.entrySet()) {
           // Check if this node is already present.
-          NodeDetails node = universe.getNodeByPrivateIP(nodeIP);
+          NodeDetails node = universe.getNodeByPrivateIP(entry.getKey());
           // If the node is already present, set the tserver flag.
           if (node != null) {
             node.isTserver = true;
@@ -581,11 +576,12 @@ public class ImportController extends Controller {
           }
 
           // If the node is not present, create the node details and add it.
-          NodeDetails newNode = createAndAddNode(universeDetails, nodeIP, provider, region, zone, index,
-                                                 cluster.userIntent.instanceType);
+          NodeDetails newNode = createAndAddNode(universeDetails, entry.getKey(), provider, region,
+                                                 zone, index, cluster.userIntent.instanceType);
           // This node is only a tserver and not a master.
           newNode.isMaster = false;
           newNode.isTserver = true;
+          newNode.tserverRpcPort = entry.getValue();
           index++;
         }
 
@@ -607,8 +603,8 @@ public class ImportController extends Controller {
    * TODO: We need to get the number of nodes information also from the end user and check that
    *       count matches what master leader provides, to ensure no unreachable/failed tservers.
    */
-  private List<String> getTServers(String masterAddresses, ObjectNode results) {
-    List<String> tservers_list = new ArrayList<String>();
+  private Map<String, Integer> getTServers(String masterAddresses, ObjectNode results) {
+    Map<String, Integer> tservers_list = new HashMap<>();
     YBClient client = null;
     try {
       // Get the client to the YB master service.
@@ -618,7 +614,7 @@ public class ImportController extends Controller {
       ListTabletServersResponse listTServerResp = client.listTabletServers();
 
       for (ServerInfo tserver : listTServerResp.getTabletServersList()) {
-        tservers_list.add(tserver.getHost());
+        tservers_list.put(tserver.getHost(), tserver.getPort());
       }
       results.with("checks").put("find_tservers_list", "OK");
     } catch (Exception e) {
@@ -663,7 +659,7 @@ public class ImportController extends Controller {
    */
   private Universe createNewUniverseForImport(Customer customer, ImportUniverseFormData importForm,
                                               String nodePrefix, String universeName,
-                                              List<String> userMasterIps) {
+                                              Map<String, Integer> userMasterIpPorts) {
     // Find the provider by the code given, or create a new provider if one does not exist.
     Provider provider = Provider.get(customer.uuid, importForm.providerType);
     if (provider == null) {
@@ -745,13 +741,14 @@ public class ImportController extends Controller {
     // Create the node details set. This is a partial set that contains only the master nodes.
     taskParams.nodeDetailsSet = new HashSet<>();
     int index = 1;
-    for (String nodeIP : userMasterIps) {
-      NodeDetails nodeDetails = createAndAddNode(taskParams, nodeIP, provider, region, zone, index,
-                                                 userIntent.instanceType);
+    for (Map.Entry<String, Integer> entry : userMasterIpPorts.entrySet()) {
+      NodeDetails nodeDetails = createAndAddNode(taskParams, entry.getKey(), provider, region,
+                                                 zone, index, userIntent.instanceType);
 
       // At this point, we know only that this node is a master. We do not know if it is a tserver.
       nodeDetails.isMaster = true;
       nodeDetails.isTserver = false;
+      nodeDetails.masterRpcPort = entry.getValue();
       index++;
     }
     cluster.index = index;

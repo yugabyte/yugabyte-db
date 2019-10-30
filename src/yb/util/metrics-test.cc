@@ -30,12 +30,13 @@
 // under the License.
 //
 
-#include <boost/assign/list_of.hpp>
-#include <gtest/gtest.h>
-#include <rapidjson/document.h>
 #include <string>
 #include <unordered_set>
 #include <vector>
+
+#include <boost/assign/list_of.hpp>
+#include <gtest/gtest.h>
+#include <rapidjson/document.h>
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"

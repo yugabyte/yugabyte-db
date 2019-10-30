@@ -191,7 +191,7 @@ class NODISCARD_CLASS Result {
     CHECK(success_checked_);
 #endif
     CHECK(!success_);
-    return status_;
+    return std::move(status_);
   }
 
   auto& get() const { return *get_ptr(); }
@@ -231,6 +231,10 @@ class NODISCARD_CLASS Result {
     }
     *value = std::move(**this);
     return Status::OK();
+  }
+
+  std::string ToString() const {
+    return ok() ? AsString(**this) : status().ToString();
   }
 
   ~Result() {

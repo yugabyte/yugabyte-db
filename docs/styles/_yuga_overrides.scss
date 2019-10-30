@@ -43,6 +43,7 @@ a {
     position: relative;
   }
   h1 {
+    z-index: 1006;
     padding-top: 0 !important;
     margin: 26px 0 0;
     font-size: 40px;
@@ -54,6 +55,7 @@ a {
     }
   }
   h2 {
+    z-index: 1005;
     margin-top: 48px;
     padding-top: 0;
     font-size: 28px;
@@ -67,25 +69,55 @@ a {
     }
   }
   h3 {
+    z-index: 1004;
     margin-top: 36px;
     padding-top: 0;
-    font-size: 20px;
+    font-size: 22px;
     font-weight: 600;
     margin-top: -52px;
     padding-top: 100px !important;
     @media only screen and (max-width: 767px) {
-      font-size: 17px;
+      font-size: 28px;
     }
   }
   h4 {
+    z-index: 1003;
     margin-top: 24px;
-    font-size: 17px;
-    font-weight: 600;
-    font-style: normal;
+    font-size: 18px;
+    font-weight: 700;
+    font-style: italic;
     margin-top: -52px;
     padding-top: 100px !important;
     @media only screen and (max-width: 767px) {
-      font-size: 16px;
+      font-size: 22px;
+    }
+  }
+  h5 {
+    z-index: 1002;
+    margin-top: 24px;
+    font-size: 16px;
+    line-height: 20px;
+    font-weight: 600;
+    font-style: normal;
+    margin-top: -32px;
+    padding-top: 60px !important;
+
+    @media only screen and (max-width: 767px) {
+      font-size: 18px;
+    }
+  }
+  h6 {
+    z-index: 1001;
+    margin-top: 24px;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+    font-style: normal;
+    margin-top: -32px;
+    padding-top: 60px !important;
+
+    @media only screen and (max-width: 767px) {
+      font-size: 14px;
     }
   }
 
@@ -189,6 +221,7 @@ a {
   a {
     border-bottom: 1px dashed;
     color: $YB_ORANGE;
+
     &:hover {
       color: $YB_ORANGE;
       border-bottom-style: solid;
@@ -208,7 +241,7 @@ a {
       width: 24px; 
       height: 24px;
       text-align: center;
-      line-height: 24px;
+      line-height: 20px;
     }
   }
 
@@ -249,7 +282,7 @@ a {
 
   p, pre, ul, li, a {
     position: relative;
-    z-index: 2;
+    z-index: 1020;
   }
 
   i {
@@ -1144,11 +1177,11 @@ h1, h2, h3, h4, h5, h6 {
 
 .breadcrumbs {
   position: relative;
-  font-weight: 300;
+  font-weight: 500;
 
   a {
     border-bottom: none !important;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   i {

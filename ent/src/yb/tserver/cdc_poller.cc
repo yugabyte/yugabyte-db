@@ -51,15 +51,12 @@ CDCPoller::CDCPoller(const cdc::ProducerTabletInfo& producer_tablet_info,
     resp_(std::make_unique<cdc::GetChangesResponsePB>()),
     rpc_(std::make_unique<rpc::RpcController>()),
     output_client_(CreateTwoDCOutputClient(
+        cdc_consumer,
         consumer_tablet_info,
         client,
         std::bind(&CDCPoller::HandleApplyChanges, this, std::placeholders::_1))),
     thread_pool_(thread_pool),
     cdc_consumer_(cdc_consumer) {}
-
-CDCPoller::~CDCPoller() {
-  output_client_->Shutdown();
-}
 
 std::string CDCPoller::ToString() const {
   std::ostringstream os;
@@ -100,7 +97,14 @@ void CDCPoller::DoPoll() {
 
   cdc::CDCCheckpointPB checkpoint;
   *checkpoint.mutable_op_id() = op_id_;
-  *req.mutable_from_checkpoint() = checkpoint;
+  if (checkpoint.op_id().index() > 0 || checkpoint.op_id().term() > 0) {
+    // Only send non-zero checkpoints in request.
+    // If we don't know the latest checkpoint, then CDC producer can use the checkpoint from
+    // cdc_state table.
+    // This is useful in scenarios where a new tablet peer becomes replication leader for a
+    // producer tablet and is not aware of the last checkpoint.
+    *req.mutable_from_checkpoint() = checkpoint;
+  }
 
   auto* proxy = get_proxy_();
   resp_ = std::make_unique<cdc::GetChangesResponsePB>();
@@ -117,6 +121,7 @@ void CDCPoller::HandlePoll() {
 }
 
 void CDCPoller::DoHandlePoll() {
+
   RETURN_WHEN_OFFLINE();
 
   if (!should_continue_polling_()) {

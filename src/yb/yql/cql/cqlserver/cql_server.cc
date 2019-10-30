@@ -137,10 +137,15 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &e) {
           continue;
         }
 
+        // We need the CQL port not the tserver port so use the rpc port from the local CQL server.
+        // Note: this relies on the fact that all tservers must use the same CQL port which is not
+        // currently enforced on YB side, but is practically required by the drivers.
+        const auto cql_port = first_rpc_address().port();
+
         // Queue event for all clients to add a node.
         cqlserver_event_list->AddEvent(
             BuildTopologyChangeEvent(TopologyChangeEventResponse::kNewNode,
-                                     Endpoint(addr.address(), hostport_pb.port())));
+                                     Endpoint(addr.address(), cql_port)));
       }
     }
 

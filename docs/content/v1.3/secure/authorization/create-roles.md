@@ -2,7 +2,7 @@
 title: 2. Create Roles
 linkTitle: 2. Create Roles
 description: 2. Create Roles
-headcontent: Creating roles in YCQL
+headcontent: Creating roles
 image: /images/section_icons/secure/create-roles.png
 menu:
   v1.3:
@@ -30,7 +30,7 @@ Roles that have `LOGIN` privileges are users. As an example, you can create a us
 cassandra@cqlsh> CREATE ROLE IF NOT EXISTS john WITH PASSWORD = 'PasswdForJohn' AND LOGIN = true;
 ```
 
-Read about [how to create users in Yugabyte DB](../../authentication/) in the authentication section.
+Read about [how to create users in YugabyteDB](../../authentication/) in the authentication section.
 
 
 ## 2. Grant roles

@@ -59,7 +59,7 @@ class MultiThreadedRpcTest : public RpcTestBase {
   void SingleCall(const HostPort& server_addr, const RemoteMethod* method,
                   Status* result, CountDownLatch* latch) {
     LOG(INFO) << "Connecting to " << server_addr;
-    std::unique_ptr<Messenger> client_messenger(CreateMessenger("ClientSC"));
+    auto client_messenger = CreateAutoShutdownMessengerHolder("ClientSC");
     Proxy p(client_messenger.get(), server_addr);
     *result = DoTestSyncCall(&p, method);
     latch->CountDown();
@@ -67,7 +67,7 @@ class MultiThreadedRpcTest : public RpcTestBase {
 
   // Make RPC calls until we see a failure.
   void HammerServer(const HostPort& server_addr, const RemoteMethod* method, Status* last_result) {
-    std::unique_ptr<Messenger> client_messenger(CreateMessenger("ClientHS"));
+    auto client_messenger = CreateAutoShutdownMessengerHolder("ClientHS");
     HammerServerWithMessenger(server_addr, method, last_result, client_messenger.get());
   }
 
@@ -299,8 +299,8 @@ TEST_F(MultiThreadedRpcTest, MemoryLimit) {
   MessengerOptions options = kDefaultClientMessengerOptions;
   options.n_reactors = 1;
   options.num_connections_to_server = 1;
-  std::unique_ptr<Messenger> messenger_for_big = CreateMessenger("Client for big", options);
-  std::unique_ptr<Messenger> messenger_for_small = CreateMessenger("Client for small", options);
+  auto messenger_for_big = CreateAutoShutdownMessengerHolder("Client for big", options);
+  auto messenger_for_small = CreateAutoShutdownMessengerHolder("Client for small", options);
   Proxy proxy_for_big(messenger_for_big.get(), server_addr);
   Proxy proxy_for_small(messenger_for_small.get(), server_addr);
 

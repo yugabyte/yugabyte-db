@@ -44,7 +44,7 @@ Flag | Mandatory | Default | Description
 `--use_private_ip` | N |`never` | Determines when to use private IP addresses. Possible values are `never`,`zone`,`cloud` and `region`. Based on the values of the `placement_*` config flags listed in this table.
 `--webserver_interface` | N |`0.0.0.0` | Address to bind for server UI access.
 `--webserver_port` | N | `7000` | Monitoring web server port.
-`--webserver_doc_root` | N | The `www` directory in the Yugabyte DB home directory | Monitoring web server home.
+`--webserver_doc_root` | N | The `www` directory in the YugabyteDB home directory | Monitoring web server home.
 `--cql_proxy_bind_address` | N | `0.0.0.0:9042` | YCQL API bind address.
 `--cql_proxy_webserver_port` | N | 12000 | YCQL metrics monitoring port
 `--redis_proxy_bind_address` | N | `0.0.0.0:6379` | YEDIS API bind address.

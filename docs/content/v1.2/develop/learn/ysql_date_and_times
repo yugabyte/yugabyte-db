@@ -1,10 +1,10 @@
 ## Introduction
-Yugabyte DB has extensive date and time capability that may be daunting for the new user. Once understood, the rich functionality will allow you to perform very sophisticated calculations and granular time capture.
+YugabyteDB has extensive date and time capability that may be daunting for the new user. Once understood, the rich functionality will allow you to perform very sophisticated calculations and granular time capture.
 
 Refer to the data types on https://docs.yugabyte.com/latest/api/ysql/datatypes/ for date and time types.
 
 ## Special Values
-There are special values that you can reference - Yugabyte DB only caters for some, other special values from postgresql are not implemented in Yugabyte, but some can be recreated if you require them. Below is YSQL to select special date and time values. First start ysql from your command line.
+There are special values that you can reference - YugabyteDB only caters for some, other special values from postgresql are not implemented in Yugabyte, but some can be recreated if you require them. Below is YSQL to select special date and time values. First start ysql from your command line.
 
 ```sh
 ./bin/ysqlsh

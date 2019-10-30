@@ -17,6 +17,8 @@
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 
+#include "yb/common/ql_value.h"
+
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 #include "yb/util/random_util.h"

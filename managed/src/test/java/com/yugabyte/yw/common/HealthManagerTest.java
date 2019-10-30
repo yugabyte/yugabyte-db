@@ -107,7 +107,7 @@ public class HealthManagerTest extends FakeDBApplication {
               extraEnvVars.put("YB_ALERTS_PASSWORD", envVal);
               extraEnvVars.put("YB_ALERTS_EMAIL", envVal);
             }
-            verify(shellProcessHandler, times(1)).run(expectedCommand, extraEnvVars);
+            verify(shellProcessHandler, times(1)).run(expectedCommand, extraEnvVars, false);
           }
         }
       }

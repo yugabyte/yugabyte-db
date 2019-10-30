@@ -11,11 +11,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-In this tutorial, we are going to use the [Kafka Connect-based Sink Connector for Yugabyte DB](https://github.com/yugabyte/yb-kafka-connector) to store events from Apache Kafka into Yugabyte DB using Yugabyte DB's Cassandra-compatible [YCQL](../../../api/ycql) API.
+In this tutorial, we are going to use the [Kafka Connect-based Sink Connector for YugabyteDB](https://github.com/yugabyte/yb-kafka-connector) to store events from Apache Kafka into YugabyteDB using YugabyteDB's Cassandra-compatible [YCQL](../../../api/ycql) API.
 
 ## 1. Start Local Cluster
 
-Start a Yugabyte DB cluster on your [local machine](../../../quick-start/install/). Check that you are able to connect to Yugabyte DB using `cqlsh` by doing the following.
+Start a YugabyteDB cluster on your [local machine](../../../quick-start/install/). Check that you are able to connect to YugabyteDB using `cqlsh` by doing the following.
 
 ```sh
 $ ./bin/cqlsh localhost
@@ -45,7 +45,7 @@ $ wget http://apache.cs.utah.edu/kafka/2.0.0/kafka_2.11-2.0.0.tgz
 $ tar xvfz kafka_2.11-2.0.0.tgz && cd kafka_2.11-2.0.0
 ```
 
-## 3. Install the Kafka Sink Connector for Yugabyte DB
+## 3. Install the Kafka Sink Connector for YugabyteDB
 
 Clone the git `yb-kafka-connector` git repo.
 
@@ -92,7 +92,7 @@ $ ./bin/zookeeper-server-start.sh config/zookeeper.properties &
 $ ./bin/kafka-server-start.sh config/server.properties &
 ```
 
-Now create the Kafka topic that will be used to persist messages in the Yugabyte DB table we created earlier.
+Now create the Kafka topic that will be used to persist messages in the YugabyteDB table we created earlier.
 
 ```sh
 $ ./bin/kafka-topics.sh --create \
@@ -102,9 +102,9 @@ $ ./bin/kafka-topics.sh --create \
 	--topic test
 ```
 
-## 5. Start Kafka Sink Connector for Yugabyte DB
+## 5. Start Kafka Sink Connector for YugabyteDB
 
-At this point, we have Yugabyte DB's YCQL APU running at 9042 port with the `test_table` table created in the `demo` keyspace. We also have Kafka running at the 9092 port with the `test_topic` topic created. We are ready to start the connector.
+At this point, we have YugabyteDB's YCQL APU running at 9042 port with the `test_table` table created in the `demo` keyspace. We also have Kafka running at the 9092 port with the `test_topic` topic created. We are ready to start the connector.
 
 ```sh
 $ ./bin/connect-standalone.sh \
@@ -112,7 +112,7 @@ $ ./bin/connect-standalone.sh \
 	~/yb-kafka/yb-kafka-connector/resources/examples/yugabyte.sink.properties 
 ```
 
-The `yugabyte.sink.properties` file used above (and shown below) has the configuration necessary for this sink to work correctly. You will have to change this file to the Kafka topic and Yugabyte DB table necessary for your application.
+The `yugabyte.sink.properties` file used above (and shown below) has the configuration necessary for this sink to work correctly. You will have to change this file to the Kafka topic and YugabyteDB table necessary for your application.
 
 ```
 # Sample yugabyte sink properties.
@@ -144,9 +144,9 @@ Enter the following.
 {"key" : "C", "value" : 3, "ts" : 1541559413000}
 ```
 
-## 7. Verify Events in Yugabyte DB
+## 7. Verify Events in YugabyteDB
 
-The events above should now show up as rows in the Yugabyte DB table.
+The events above should now show up as rows in the YugabyteDB table.
 
 ```sql
 cqlsh> SELECT * FROM demo.test_table;

@@ -48,6 +48,7 @@
 #include "yb/server/webserver.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
+#include "yb/util/shared_lock.h"
 
 DEFINE_int32(master_inject_latency_on_tablet_lookups_ms, 0,
              "Number of milliseconds that the master will sleep before responding to "
@@ -716,6 +717,13 @@ void MasterServiceImpl::DeleteUniverseReplication(const DeleteUniverseReplicatio
                                                   DeleteUniverseReplicationResponsePB* resp,
                                                   rpc::RpcContext rpc) {
   HandleIn(req, resp, &rpc, &enterprise::CatalogManager::DeleteUniverseReplication);
+}
+
+void MasterServiceImpl::SetUniverseReplicationEnabled(
+                          const SetUniverseReplicationEnabledRequestPB* req,
+                          SetUniverseReplicationEnabledResponsePB* resp,
+                          rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::SetUniverseReplicationEnabled);
 }
 
 void MasterServiceImpl::GetUniverseReplication(const GetUniverseReplicationRequestPB* req,

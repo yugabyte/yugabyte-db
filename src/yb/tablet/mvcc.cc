@@ -248,9 +248,21 @@ void MvccManager::UpdatePropagatedSafeTimeOnLeader(HybridTime ht_lease) {
   cond_.notify_all();
 }
 
+void MvccManager::SetLeaderOnlyMode(bool leader_only) {
+  std::unique_lock<std::mutex> lock(mutex_);
+  leader_only_mode_ = leader_only;
+}
+
 HybridTime MvccManager::SafeTimeForFollower(
     HybridTime min_allowed, CoarseTimePoint deadline) const {
   std::unique_lock<std::mutex> lock(mutex_);
+
+  if (leader_only_mode_) {
+    // If there are no followers (RF == 1), use SafeTime()
+    // because propagated_safe_time_ can be not updated.
+    return DoGetSafeTime(min_allowed, deadline, HybridTime::kMax, &lock);
+  }
+
   SafeTimeWithSource result;
   auto predicate = [this, &result, min_allowed] {
     // last_replicated_ is updated earlier than propagated_safe_time_, so because of concurrency it
@@ -305,7 +317,6 @@ HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
     if (queue_.empty()) {
       result = clock_->Now();
       source = SafeTimeSource::kNow;
-      CHECK_GE(result, min_allowed) << LogPrefix();
       VLOG_WITH_PREFIX(2) << "DoGetSafeTime, Now: " << result;
     } else {
       result = queue_.front().Decremented();

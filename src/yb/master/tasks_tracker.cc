@@ -30,17 +30,17 @@ using strings::Substitute;
 TasksTracker::TasksTracker() : tasks_(FLAGS_tasks_tracker_num_tasks) {}
 
 void TasksTracker::Reset() {
-  std::lock_guard<rw_spinlock> l(lock_);
+  std::lock_guard<decltype(lock_)> l(lock_);
   tasks_.clear();
 }
 
 void TasksTracker::AddTask(std::shared_ptr<MonitoredTask> task) {
-  std::lock_guard<rw_spinlock> l(lock_);
+  std::lock_guard<decltype(lock_)> l(lock_);
   tasks_.push_back(task);
 }
 
 std::vector<std::shared_ptr<MonitoredTask>> TasksTracker::GetTasks() {
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   std::vector<std::shared_ptr<MonitoredTask>> tasks;
   for (const auto& task : tasks_) {
     tasks.push_back(task);
@@ -49,7 +49,7 @@ std::vector<std::shared_ptr<MonitoredTask>> TasksTracker::GetTasks() {
 }
 
 void TasksTracker::CleanupOldTasks() {
-  std::lock_guard<rw_spinlock> l(lock_);
+  std::lock_guard<decltype(lock_)> l(lock_);
   for (boost::circular_buffer<std::shared_ptr<MonitoredTask>>::iterator iter = tasks_.begin();
        iter != tasks_.end(); ) {
     if (MonoTime::Now().GetDeltaSince((*iter)->start_timestamp()).ToMilliseconds() >
@@ -65,7 +65,7 @@ void TasksTracker::CleanupOldTasks() {
 }
 
 std::string TasksTracker::ToString() {
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   return Substitute("TasksTracker has $0 tasks in buffer.",
                     tasks_.size());
 }

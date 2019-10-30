@@ -50,6 +50,7 @@
 #include "yb/util/jsonwriter.h"
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
+#include "yb/util/logging.h"
 
 DEFINE_int32(metrics_retirement_age_ms, 120 * 1000,
              "The minimum number of milliseconds a metric will be kept for after it is "
@@ -410,6 +411,15 @@ MetricRegistry::MetricRegistry() {
 MetricRegistry::~MetricRegistry() {
 }
 
+bool MetricRegistry::TabletHasBeenShutdown(const scoped_refptr<MetricEntity> entity) const {
+    if (strcmp(entity->prototype_->name(), "tablet") == 0 && tablets_shutdown_find(entity->id())) {
+      DVLOG(5) << "Do not report metrics for shutdown tablet " << entity->id();
+      return true;
+    }
+
+    return false;
+}
+
 Status MetricRegistry::WriteAsJson(JsonWriter* writer,
                                    const vector<string>& requested_metrics,
                                    const MetricJsonOptions& opts) const {
@@ -421,6 +431,10 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
 
   writer->StartArray();
   for (const EntityMap::value_type e : entities) {
+    if (TabletHasBeenShutdown(e.second)) {
+      continue;
+    }
+
     WARN_NOT_OK(e.second->WriteAsJson(writer, requested_metrics, opts),
                 Substitute("Failed to write entity $0 as JSON", e.second->id()));
   }
@@ -444,6 +458,10 @@ CHECKED_STATUS MetricRegistry::WriteForPrometheus(PrometheusWriter* writer) cons
   }
 
   for (const EntityMap::value_type e : entities) {
+    if (TabletHasBeenShutdown(e.second)) {
+      continue;
+    }
+
     WARN_NOT_OK(e.second->WriteForPrometheus(writer),
                 Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
   }
@@ -469,6 +487,15 @@ void MetricRegistry::RetireOldMetrics() {
       // Unlike retiring the metrics themselves, we don't wait for any timeout
       // to retire them -- we assume that that timed retention has been satisfied
       // by holding onto the metrics inside the entity.
+
+      // For a tablet that has been shutdown, metrics are being deleted. So do not track
+      // the tablet anymore.
+      if (strcmp(it->second->prototype_->name(), "tablet") == 0) {
+        DVLOG(3) << "T " << it->first << ": "
+          << "Remove from set of tablets that have been shutdown so as to be freed";
+        tablets_shutdown_erase(it->first);
+      }
+
       entities_.erase(it++);
     } else {
       ++it;

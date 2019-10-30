@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "yb/common/ql_bfunc.h"
+#include "yb/common/ql_value.h"
 
 using std::endl;
 using std::make_pair;
@@ -149,7 +150,7 @@ void SubDocument::MoveFrom(SubDocument* other) {
     // The internal state of the other subdocument is now owned by this one.
 #ifndef NDEBUG
     // Another layer of protection against trying to use the old state in debug mode.
-    memset(other, 0xab, sizeof(SubDocument));  // Fill with a random value.
+    memset(static_cast<void*>(other), 0xab, sizeof(SubDocument));  // Fill with a random value.
 #endif
     other->type_ = ValueType::kNullLow;  // To avoid deallocation of the old object's memory.
   }

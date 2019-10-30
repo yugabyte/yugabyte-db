@@ -34,9 +34,8 @@ class CassandraCppDriverDependency(Dependency):
         cxx_flags = []
         if not is_mac():
             cxx_flags = builder.compiler_flags + builder.cxx_flags + builder.ld_flags
-            implicit_fallthrough_flag = '-Wno-error=implicit-fallthrough'
-            if builder.check_cxx_compiler_flag(implicit_fallthrough_flag):
-                cxx_flags.append(implicit_fallthrough_flag)
+            builder.add_checked_flag(cxx_flags, '-Wno-error=implicit-fallthrough')
+            builder.add_checked_flag(cxx_flags, '-Wno-error=class-memaccess')
 
         builder.build_with_cmake(
                 self,

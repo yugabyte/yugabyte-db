@@ -11,16 +11,16 @@ isTocNested: false
 showAsideToc: true
 ---
 
-Distributed ACID transactions are transactions modifying multiple rows in more than one shard. Yugabyte DB supports distributed transactions, enabling features such as strongly consistent secondary indexes and multi-table/row ACID operations in both the YCQL context as well as in the YSQL context (currently in Beta). This section provides some common concepts and notions used in Yugabyte's approach to implementing distributed transactions.  Once you are familiar with these concepts, please see the [Core Functions / IO Path with Distributed Transactions](../transactional-io-path/) section for a walk-through of a distributed transaction lifecycle.
+Distributed ACID transactions are transactions modifying multiple rows in more than one shard. YugabyteDB supports distributed transactions, enabling features such as strongly consistent secondary indexes and multi-table/row ACID operations in both the YCQL context as well as in the YSQL context (currently in Beta). This section provides some common concepts and notions used in Yugabyte's approach to implementing distributed transactions.  Once you are familiar with these concepts, please see the [Core Functions / IO Path with Distributed Transactions](../transactional-io-path/) section for a walk-through of a distributed transaction lifecycle.
 
 ## Provisional records
 
-Just as Yugabyte DB stores values written by single-shard ACID transactions into
+Just as YugabyteDB stores values written by single-shard ACID transactions into
 [DocDB](../../concepts/docdb/persistence/), it needs to store uncommitted values written by
 distributed transactions in a similar persistent data structure. However, we cannot just write them
 to DocDB as regular values, because they would then become visible at different times to clients
 reading through different tablet servers, allowing a client to see a partially applied transaction
-and thus breaking atomicity.  Yugabyte DB therefore writes *provisional records* to all tablets
+and thus breaking atomicity.  YugabyteDB therefore writes *provisional records* to all tablets
 responsible for the keys the transaction is trying to modify. We call them "provisional" as opposed
 to "regular" ("permanent") records, because they are invisible to readers until the transaction
 commits.
@@ -114,7 +114,7 @@ TxnId, HybridTime -> primary provisional record key
 ## Transaction status tracking
 
 Atomicity (the "A" in "ACID") means that either all values written by a transaction are visible, or
-none are visible at all. Yugabyte DB already provides atomicity of single-shard updates by
+none are visible at all. YugabyteDB already provides atomicity of single-shard updates by
 replicating them via Raft and applying them as one write batch to the underlying RocksDB / DocDB
 storage engine. The same approach could be reused to make *transaction status* changes atomic.  The status of transactions is tracked in a "transaction status" table. This table, under the covers, is just another elastic/sharded table in the system. The transaction id (a globally unique id) serves as the key in the table, and updates to a transaction's status are simple single-shard ACID operations. This allows us to atomically make all values written as part of that transaction visible by setting the status to "committed" in that transaction's status record in the table.
 
@@ -142,5 +142,5 @@ After a transaction is committed, two more fields are set:
 
 ## See also
 
-To continue exploring the architecture of Yugabyte DB's distributed transaction implementation,
+To continue exploring the architecture of YugabyteDB's distributed transaction implementation,
 please take a look at the [Core Functions / IO Path with Distributed Transactions](../transactional-io-path/) section next.

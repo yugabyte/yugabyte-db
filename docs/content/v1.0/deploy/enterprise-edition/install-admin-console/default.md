@@ -1,6 +1,6 @@
 
 
-Yugabyte DB clusters are created and managed from YugaWare. The default option to install YugaWare on a host machine that is connected to the Internet. 
+YugabyteDB clusters are created and managed from YugaWare. The default option to install YugaWare on a host machine that is connected to the Internet. 
 
 
 ## Step 1. Install Replicated
@@ -68,7 +68,7 @@ If you are asked to choose an installation type, choose `Online`.
 
 ### Secure Replicated
 
-The next step is to add a password to protect the Replicated Admin Console (note that this Admin Console is for Replicated and is different from YugaWare, the Admin Console for Yugabyte DB).
+The next step is to add a password to protect the Replicated Admin Console (note that this Admin Console is for Replicated and is different from YugaWare, the Admin Console for YugabyteDB).
 
 ![Replicated Password](/images/replicated/replicated-password.png)
 

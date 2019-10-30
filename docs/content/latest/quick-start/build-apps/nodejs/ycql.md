@@ -36,10 +36,10 @@ showAsideToc: true
 
 ## Installation
 
-Install the nodejs driver using the following command. You can find the source for the driver [here](https://github.com/datastax/nodejs-driver).
+Install the Yugabyte Cassandra NodeJS driver using the following command. You can find the source for the driver [here](https://github.com/YugaByte/cassandra-nodejs-driver).
 
 ```sh
-$ npm install cassandra-driver
+$ npm install yb-ycql-driver
 ```
 
 ## Working example
@@ -48,7 +48,7 @@ $ npm install cassandra-driver
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-cassandra/).
+- installed YugabyteDB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../../quick-start/test-cassandra/).
 - installed a recent version of `node`. If not, you can find install instructions [here](https://nodejs.org/en/download/).
 
 We will be using the [async](https://github.com/caolan/async) JS utility to work with asynchronous Javascript. Install this by running the following command:
@@ -62,15 +62,15 @@ $ npm install --save async
 Create a file `yb-cql-helloworld.js` and add the following content to it.
 
 ```js
-const cassandra = require('cassandra-driver');
+const ycql = require('yb-ycql-driver');
 const async = require('async');
 const assert = require('assert');
 
 // Create a YB CQL client.
 // DataStax Nodejs 4.0 loadbalancing default is TokenAwarePolicy with child DCAwareRoundRobinPolicy
 // Need to provide localDataCenter option below or switch to RoundRobinPolicy
-const loadBalancingPolicy = new cassandra.policies.loadBalancing.RoundRobinPolicy ();
-const client = new cassandra.Client({ contactPoints: ['127.0.0.1'], policies : { loadBalancing : loadBalancingPolicy }});
+const loadBalancingPolicy = new ycql.policies.loadBalancing.RoundRobinPolicy ();
+const client = new ycql.Client({ contactPoints: ['127.0.0.1'], policies : { loadBalancing : loadBalancingPolicy }});
 
 async.series([
   function connect(next) {
@@ -85,7 +85,8 @@ async.series([
     const create_table = 'CREATE TABLE IF NOT EXISTS ybdemo.employee (id int PRIMARY KEY, ' +
                                                                      'name varchar, ' +
                                                                      'age int, ' +
-                                                                     'language varchar);';
+                                                                     'language varchar, ' +
+                                                                     'location jsonb);';
     // Create the table.
     console.log('Creating table employee');
     client.execute(create_table, next);
@@ -93,7 +94,7 @@ async.series([
   function insert(next) {
     // Create a variable with the insert statement.
     const insert = "INSERT INTO ybdemo.employee (id, name, age, language) " +
-                                        "VALUES (1, 'John', 35, 'NodeJS');";
+                                        "VALUES (1, 'John', 35, 'NodeJS', '{ \"city\": \"San Francisco\", \"state\": \"California\", \"lat\": 37.77, \"long\": 122.42 }');";
     // Insert a row with the employee data.
     console.log('Inserting row with: %s', insert)
     client.execute(insert, next);
@@ -101,12 +102,13 @@ async.series([
   function select(next) {
 
     // Query the row for employee id 1 and print the results to the console.
-    const select = 'SELECT name, age, language FROM ybdemo.employee WHERE id = 1;';
+    const select = 'SELECT name, age, language, location FROM ybdemo.employee WHERE id = 1;';
     client.execute(select, function (err, result) {
       if (err) return next(err);
       var row = result.first();
-      console.log('Query for id=1 returned: name=%s, age=%d, language=%s',
-                                            row.name, row.age, row.language);
+      const city = JSON.parse(row.location).city;
+      console.log('Query for id=1 returned: name=%s, age=%d, language=%s, city=%s',
+                                            row.name, row.age, row.language, city);
       next();
     });
   }

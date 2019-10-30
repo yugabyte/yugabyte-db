@@ -35,6 +35,8 @@
 # Require cmake that includes FindICU module (https://cmake.org/cmake/help/v3.7/release/3.7.html)
 cmake_minimum_required(VERSION 3.7.0)
 
+project(YugabyteDB)
+
 # =================================================================================================
 # Functions
 # =================================================================================================
@@ -115,7 +117,7 @@ function(DETECT_BREW)
       message("Custom Homebrew installation found at ${CUSTOM_HOMEBREW_DIR}")
       set(USING_CUSTOM_HOMEBREW TRUE)
     else()
-      message("Not using custom Homebrew: no valid Homebewr installation found at "
+      message("Not using custom Homebrew: no valid Homebrew installation found at "
               "${CUSTOM_HOMEBREW_DIR}")
     endif()
   else()
@@ -209,6 +211,7 @@ function(VALIDATE_COMPILER_TYPE)
   endif()
 
   if (NOT "${COMPILER_FAMILY}" STREQUAL "gcc" AND
+      NOT "${COMPILER_FAMILY}" STREQUAL "gcc8" AND
       NOT "${COMPILER_FAMILY}" STREQUAL "clang")
     message(FATAL_ERROR "Unknown compiler family: ${COMPILER_FAMILY} (expected 'gcc' or 'clang').")
   endif()
@@ -219,7 +222,7 @@ function(VALIDATE_COMPILER_TYPE)
   endif()
 
   set(IS_GCC FALSE PARENT_SCOPE)
-  if ("${COMPILER_FAMILY}" STREQUAL "gcc")
+  if ("${COMPILER_FAMILY}" STREQUAL "gcc" OR "${COMPILER_FAMILY}" STREQUAL "gcc8")
     set(IS_GCC TRUE PARENT_SCOPE)
   endif()
 endfunction()
@@ -265,6 +268,8 @@ function(ADD_CXX_FLAGS FLAGS)
   message("Adding C++ flags: ${FLAGS}")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS}" PARENT_SCOPE)
 endfunction()
+
+DETECT_BREW()
 
 ADD_CXX_FLAGS("-Werror")
 ADD_CXX_FLAGS("-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated")
@@ -535,8 +540,13 @@ elseif (YB_USE_ASAN)
   set(THIRDPARTY_INSTRUMENTATION_TYPE "asan")
 elseif ("$ENV{YB_COMPILER_TYPE}" STREQUAL "clang") # Cannot use IS_CLANG before building 3rd party
   set(THIRDPARTY_INSTRUMENTATION_TYPE "clang_uninstrumented")
-else()
+elseif ("$ENV{YB_COMPILER_TYPE}" STREQUAL "gcc8")
+  set(THIRDPARTY_INSTRUMENTATION_TYPE "gcc8_uninstrumented")
+  ADD_LINKER_FLAGS("-L${LINUXBREW_LIB_DIR}/gcc/8")
+elseif ("$ENV{YB_COMPILER_TYPE}" STREQUAL "gcc")
   set(THIRDPARTY_INSTRUMENTATION_TYPE "uninstrumented")
+else()
+  message(FATAL_ERROR "Not handled compiler family: ${COMPILER_FAMILY}.")
 endif()
 
 # Make sure thirdparty stuff is up-to-date.
@@ -665,7 +675,6 @@ if(IS_CLANG)
   # The actual static analysis is turned on using the --analyze flag.
 endif()
 
-DETECT_BREW()
 if(USING_LINUXBREW AND IS_CLANG)
   # We only need these when building using clang. If we use Linuxbrew's gcc, it should set the
   # equivalent of these options automatically.
@@ -819,7 +828,7 @@ if (IS_CLANG)
   else()
     message("Running without a controlling terminal or in a dumb terminal")
   endif()
-elseif("${COMPILER_FAMILY}" STREQUAL "gcc")
+elseif("${COMPILER_FAMILY}" STREQUAL "gcc" OR "${COMPILER_FAMILY}" STREQUAL "gcc8")
   # Blacklist gcc versions known to generate broken optimized code.
   #
   # See KUDU-1030 for more details.
@@ -1726,11 +1735,21 @@ if ("${COMPILER_FAMILY}" STREQUAL "gcc" AND
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -faligned-new")
 endif()
 
+string (REPLACE "-Werror=non-virtual-dtor" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
+string (REPLACE "-Werror=reorder" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 string (REPLACE "-Wnon-virtual-dtor" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 string (REPLACE "-Woverloaded-virtual" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 
-# TODO: switch to C++17.
+
+message("CMAKE_C_FLAGS ${CMAKE_C_FLAGS}")
+
 set(CMAKE_CXX_STANDARD 14)
+
+if ("${COMPILER_FAMILY}" STREQUAL "gcc8")
+  # Remove after switching to C++17
+  ADD_CXX_FLAGS("-Wno-aligned-new")
+endif()
+
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if (USING_LINUXBREW)

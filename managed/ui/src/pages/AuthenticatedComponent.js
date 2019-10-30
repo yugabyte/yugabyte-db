@@ -26,8 +26,8 @@ class AuthenticatedComponent extends Component {
   }
 
   componentDidMount() {
-    if (!localStorage.getItem('__yb-visited__') || localStorage.getItem('__yb-visited__') === 'false') {
-      localStorage.setItem('__yb-visited__', 'true');
+    if (localStorage.getItem('__yb_new_user__') === 'true') {
+      localStorage.setItem('__yb_new_user__', false);
       this.setState({ showIntroModal: true });
     }
   }

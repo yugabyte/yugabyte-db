@@ -21,6 +21,8 @@
 
 #include "yb/server/secure.h"
 
+#include "yb/tserver/ts_tablet_manager.h"
+
 namespace yb {
 
 namespace cqlserver {

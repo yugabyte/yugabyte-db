@@ -32,23 +32,26 @@
 #ifndef YB_MASTER_TS_MANAGER_H
 #define YB_MASTER_TS_MANAGER_H
 
+#include <limits>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "yb/common/common.pb.h"
+#include "yb/gutil/thread_annotations.h"
 #include "yb/gutil/macros.h"
-
-#include "yb/master/master_fwd.h"
-
-#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/capabilities.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
+
+#include "yb/common/common.pb.h"
+
+#include "yb/rpc/rpc_fwd.h"
+
+#include "yb/master/master_fwd.h"
 
 namespace yb {
 
@@ -108,7 +111,8 @@ class TSManager {
   // recently and are in the same 'cluster' with given placement uuid.
   // Optionally pass in blacklist as a set of HostPorts to return all live non-blacklisted servers.
   void GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs, string placement_uuid,
-                                      const BlacklistSet blacklist = BlacklistSet()) const;
+                                      const BlacklistSet blacklist = BlacklistSet(),
+                                      bool primary_cluster = true) const;
 
   // Return all of the currently registered TS descriptors that have sent a
   // heartbeat, indicating that they're alive and well, recently and have given
@@ -134,10 +138,12 @@ class TSManager {
   void GetDescriptors(std::function<bool(const TSDescriptorPtr&)> condition,
                       TSDescriptorVector* descs) const;
 
+  int GetCountUnlocked() const REQUIRES_SHARED(lock_);
+
   mutable rw_spinlock lock_;
 
   typedef std::unordered_map<std::string, TSDescriptorPtr> TSDescriptorMap;
-  TSDescriptorMap servers_by_id_;
+  TSDescriptorMap servers_by_id_ GUARDED_BY(lock_);
 
   DISALLOW_COPY_AND_ASSIGN(TSManager);
 };

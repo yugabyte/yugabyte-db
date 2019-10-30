@@ -12,7 +12,7 @@ import { YBLoading } from '../../common/indicators';
 
 const PROVIDER_TYPE = "onprem";
 const initialState = {
-  isEditProvider: false,
+  isEditingProvider: false,
   isJsonEntry: false,
   isAdditionalHostOptionsOpen: false,
   configJsonVal: JSON.stringify(JSON.parse(JSON.stringify(emptyDataCenterConfig)), null, 2),
@@ -64,7 +64,7 @@ export default class OnPremConfiguration extends Component {
   };
 
   showEditProviderForm = () => {
-    this.setState({isEditProvider: true});
+    this.setState({isEditingProvider: true});
   };
 
   componentWillReceiveProps(nextProps) {
@@ -91,10 +91,9 @@ export default class OnPremConfiguration extends Component {
       this.setState({bootstrapSteps: bootstrapSteps});
     }
     if (isValidObject(response)) {
-
+      const { isEditingProvider, numRegions } = this.state;
       const payloadString = _.clone(this.state.configJsonVal);
       const config = this.serializeStringToJson(payloadString);
-      const isEdit = this.state.isEditProvider;
       const numZones = config.regions.reduce((total, region) => {
         return total + region.zones.length;
       }, 0);
@@ -111,7 +110,7 @@ export default class OnPremConfiguration extends Component {
             numInstanceTypesConfigured: 0
           });
           bootstrapSteps[currentStepIndex + 1].status = "Running";
-          this.props.createOnPremInstanceTypes(PROVIDER_TYPE, response.uuid, config, isEdit);
+          this.props.createOnPremInstanceTypes(PROVIDER_TYPE, response.uuid, config, isEditingProvider);
           break;
         case "instanceType":
           // Launch configuration of regions
@@ -120,10 +119,10 @@ export default class OnPremConfiguration extends Component {
           this.setState({numInstanceTypesConfigured: numInstanceTypesConfigured});
           if (numInstanceTypesConfigured === this.state.numInstanceTypes) {
             bootstrapSteps[currentStepIndex + 1].status = "Running";
-            if (this.state.isEditProvider && this.state.numRegions === 0) {
+            if (isEditingProvider && numRegions === 0) {
               this.resetEdit();
             } else {
-              this.props.createOnPremRegions(this.state.providerUUID, config, isEdit);
+              this.props.createOnPremRegions(this.state.providerUUID, config, isEditingProvider);
             }
           }
           break;
@@ -135,7 +134,7 @@ export default class OnPremConfiguration extends Component {
           // Launch configuration of zones once all regions are bootstrapped
           if (Object.keys(regionsMap).length === this.state.numRegions) {
             bootstrapSteps[currentStepIndex + 1].status = "Running";
-            this.props.createOnPremZones(this.state.providerUUID, regionsMap, config, isEdit);
+            this.props.createOnPremZones(this.state.providerUUID, regionsMap, config, isEditingProvider);
           }
           break;
         case "zones":
@@ -144,12 +143,16 @@ export default class OnPremConfiguration extends Component {
           Object.keys(response).forEach(zoneCode => zonesMap[zoneCode] = response[zoneCode].uuid);
           bootstrapSteps[currentStepIndex + 1].status = "Running";
           // If Edit Case, then jump to success
-          if (this.state.isEditProvider) {
+          if (isEditingProvider) {
             this.resetEdit();
           } else if (isNonEmptyArray(config.nodes)) {
             this.props.createOnPremNodes(zonesMap, config);
           } else {
-            this.props.createOnPremAccessKeys(this.state.providerUUID, this.state.regionsMap, config);
+            this.props.createOnPremAccessKeys(
+              this.state.providerUUID,
+              this.state.regionsMap,
+              config
+            );
           }
           break;
         case "node":
@@ -159,8 +162,13 @@ export default class OnPremConfiguration extends Component {
           // Launch configuration of access keys once all node instances are bootstrapped
           if (numNodesConfigured === config.nodes.length) {
             bootstrapSteps[currentStepIndex + 1].status = "Running";
-            if (config.key && _.isString(config.key.privateKeyContent) && isEmptyObject(onPremAccessKey)) {
-              this.props.createOnPremAccessKeys(this.state.providerUUID, this.state.regionsMap, config);
+            if (config.key && _.isString(config.key.privateKeyContent)
+                && isEmptyObject(onPremAccessKey) && this.state.providerUUID) {
+              this.props.createOnPremAccessKeys(
+                this.state.providerUUID,
+                this.state.regionsMap,
+                config
+              );
             }
           }
           break;
@@ -199,7 +207,7 @@ export default class OnPremConfiguration extends Component {
   };
 
   cancelEdit = () => {
-    this.setState({isEditProvider: false});
+    this.setState({isEditingProvider: false});
   };
 
   submitEditProvider = payloadData => {
@@ -221,7 +229,7 @@ export default class OnPremConfiguration extends Component {
       }
     });
     if (totalNumInstances === 0 && totalNumRegions === 0) {
-      this.setState({configJsonVal: payloadData, isEditProvider: false});
+      this.setState({configJsonVal: payloadData, isEditingProvider: false});
     } else {
       this.setState({numRegions: totalNumRegions,
         numZones: totalNumZones,
@@ -246,6 +254,7 @@ export default class OnPremConfiguration extends Component {
 
   render() {
     const { configuredProviders, params } = this.props;
+    const { configJsonVal, isEditingProvider } = this.state;
     if (getPromiseState(configuredProviders).isInit() || getPromiseState(configuredProviders).isError()) {
       return <span/>;
     }
@@ -254,8 +263,8 @@ export default class OnPremConfiguration extends Component {
     } else if (getPromiseState(configuredProviders).isSuccess()) {
       const providerFound = configuredProviders.data.find(provider => provider.code === 'onprem');
       if (isDefinedNotNull(providerFound)) {
-        if (this.state.isEditProvider) {
-          return <OnPremConfigWizardContainer submitWizardJson={this.submitWizardJson} isEditProvider={this.state.isEditProvider} submitEditProvider={this.submitEditProvider} cancelEdit={this.cancelEdit}/>;
+        if (this.state.isEditingProvider) {
+          return <OnPremConfigWizardContainer submitWizardJson={this.submitWizardJson} isEditProvider={isEditingProvider} submitEditProvider={this.submitEditProvider} cancelEdit={this.cancelEdit}/>;
         }
         return <OnPremSuccessContainer showEditProviderForm={this.showEditProviderForm} params={params} />;
       }
@@ -266,7 +275,7 @@ export default class OnPremConfiguration extends Component {
     if (this.state.isJsonEntry) {
       ConfigurationDataForm = (
         <OnPremConfigJSONContainer updateConfigJsonVal={this.updateConfigJsonVal}
-                                   configJsonVal={_.isString(this.state.configJsonVal) ? this.state.configJsonVal : JSON.stringify(JSON.parse(JSON.stringify(this.state.configJsonVal)), null, 2)}
+                                   configJsonVal={_.isString(configJsonVal) ? configJsonVal : JSON.stringify(JSON.parse(JSON.stringify(configJsonVal)), null, 2)}
                                    switchToWizardEntry={switchToWizardEntry} submitJson={this.submitJson}/>
       );
     }

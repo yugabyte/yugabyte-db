@@ -1898,6 +1898,11 @@ Status RedisReadOperation::ExecuteKeys() {
       return STATUS(Expired, "Deadline for query passed.");
     }
     auto key = VERIFY_RESULT(iterator_->FetchKey()).key;
+
+    // Key could be invalidated because we could move iterator, so back it up.
+    KeyBytes key_copy(key);
+    key = key_copy.AsSlice();
+
     DocKey doc_key;
     RETURN_NOT_OK(doc_key.FullyDecodeFrom(key));
     const PrimitiveValue& key_primitive = doc_key.hashed_group().front();

@@ -1,7 +1,7 @@
 ---
 title: Troubleshoot
 linkTitle: Troubleshoot
-description: Troubleshoot Yugabyte DB
+description: Troubleshoot YugabyteDB
 image: /images/section_icons/index/troubleshoot.png
 headcontent:
 section: USER GUIDES
@@ -18,7 +18,7 @@ menu:
         <div class="title">Overview</div>
       </div>
       <div class="body">
-        Starting point for troubleshooting Yugabyte DB issues.
+        Starting point for troubleshooting YugabyteDB issues.
       </div>
     </a>
   </div>
@@ -31,7 +31,7 @@ menu:
         <div class="title">Cluster Level Issues</div>
       </div>
       <div class="body">
-        Diagnostics and solutions for typical Yugabyte DB cluster issues.
+        Diagnostics and solutions for typical YugabyteDB cluster issues.
       </div>
     </a>
   </div>
@@ -44,7 +44,7 @@ menu:
         <div class="title">Node Level Issues</div>
       </div>
       <div class="body">
-        Diagnose and solve issues on an individual Yugabyte DB node.
+        Diagnose and solve issues on an individual YugabyteDB node.
       </div>
     </a>
   </div>

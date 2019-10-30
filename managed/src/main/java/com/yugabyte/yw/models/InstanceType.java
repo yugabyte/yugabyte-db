@@ -41,7 +41,7 @@ public class InstanceType extends Model {
     @EnumValue("HDD")
     HDD,
 
-    @EnumValue("HDD")
+    @EnumValue("NVME")
     NVME
   }
 

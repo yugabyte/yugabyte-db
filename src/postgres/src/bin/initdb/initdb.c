@@ -2198,7 +2198,7 @@ make_yugabyte(FILE *cmdfd)
 {
 	const char *const *line;
 	static const char *const yugabyte_setup[] = {
-		"CREATE USER yugabyte SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS;\n\n"
+		"CREATE USER yugabyte SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD 'yugabyte';\n\n"
 		"CREATE DATABASE yugabyte;\n\n",
 		"COMMENT ON DATABASE yugabyte IS 'default administrative connection database';\n\n",
 		NULL

@@ -24,8 +24,12 @@
 #include "yb/yql/pggate/pg_select.h"
 #include "yb/util/flag_tags.h"
 #include "yb/client/client_fwd.h"
+#include "yb/client/client_utils.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/secure_stream.h"
 #include "yb/yql/pggate/pggate_flags.h"
+
+DECLARE_string(rpc_bind_addresses);
 
 namespace yb {
 namespace pggate {
@@ -48,6 +52,17 @@ CHECKED_STATUS AddColumn(PgCreateTable* pg_stmt, const char *attr_name, int attr
   return pg_stmt->AddColumn(attr_name, attr_num, attr_type, is_hash, is_range, sorting_type);
 }
 
+Result<PgApiImpl::MessengerHolder> BuildMessenger(
+    const string& client_name,
+    int32_t num_reactors,
+    const scoped_refptr<MetricEntity>& metric_entity,
+    const std::shared_ptr<MemTracker>& parent_mem_tracker) {
+  std::unique_ptr<rpc::SecureContext> security_context;
+  auto messenger = VERIFY_RESULT(client::CreateClientMessenger(
+      client_name, num_reactors, metric_entity, parent_mem_tracker, &security_context));
+  return PgApiImpl::MessengerHolder{std::move(security_context), std::move(messenger)};
+}
+
 } // namespace
 
 using std::make_shared;
@@ -61,8 +76,11 @@ PggateOptions::PggateOptions() {
   rpc_opts.connection_keepalive_time_ms = FLAGS_pgsql_rpc_keepalive_time_ms;
 
   if (FLAGS_pggate_proxy_bind_address.empty()) {
-    FLAGS_pggate_proxy_bind_address = strings::Substitute("0.0.0.0:$0",
-                                                          PggateOptions::kDefaultPort);
+    HostPort host_port;
+    CHECK_OK(host_port.ParseString(FLAGS_rpc_bind_addresses, 0));
+    host_port.set_port(PggateOptions::kDefaultPort);
+    FLAGS_pggate_proxy_bind_address = host_port.ToString();
+    LOG(INFO) << "Reset YSQL bind address to " << FLAGS_pggate_proxy_bind_address;
   }
   rpc_opts.rpc_bind_addresses = FLAGS_pggate_proxy_bind_address;
   master_addresses_flag = FLAGS_pggate_master_addresses;
@@ -83,13 +101,18 @@ PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count)
       metric_registry_(new MetricRegistry()),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(), "yb.pggate")),
       mem_tracker_(MemTracker::CreateTracker("PostgreSQL")),
-      async_client_init_("pggate_ybclient",
+      messenger_holder_(CHECK_RESULT(BuildMessenger("pggate_ybclient",
+                                                    FLAGS_pggate_ybclient_reactor_threads,
+                                                    metric_entity_,
+                                                    mem_tracker_))),
+      async_client_init_(messenger_holder_.messenger.get()->name(),
                          FLAGS_pggate_ybclient_reactor_threads,
                          FLAGS_pggate_rpc_timeout_secs,
                          "" /* tserver_uuid */,
                          &pggate_options_,
                          metric_entity_,
-                         mem_tracker_),
+                         mem_tracker_,
+                         messenger_holder_.messenger.get()),
       clock_(new server::HybridClock()),
       pg_txn_manager_(new PgTxnManager(&async_client_init_, clock_)) {
   CHECK_OK(clock_->Init());
@@ -104,7 +127,7 @@ PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count)
 }
 
 PgApiImpl::~PgApiImpl() {
-  client()->messenger()->Shutdown();
+  messenger_holder_.messenger->Shutdown();
 }
 
 const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
@@ -600,13 +623,9 @@ Status PgApiImpl::DmlFetch(PgStatement *handle, int32_t natts, uint64_t *values,
   return down_cast<PgDml*>(handle)->Fetch(natts, values, isnulls, syscols, has_data);
 }
 
-Status PgApiImpl::DmlAddYBTupleIdColumn(PgStatement *handle, int attr_num, uint64_t datum,
-                                        bool is_null, const YBCPgTypeEntity *type_entity) {
-  return down_cast<PgDml*>(handle)->AddYBTupleIdColumn(attr_num, datum, is_null, type_entity);
-}
-
-Status PgApiImpl::DmlGetYBTupleId(PgStatement *handle, uint64_t *ybctid) {
-  string id = VERIFY_RESULT(down_cast<PgDml*>(handle)->GetYBTupleId());
+Status PgApiImpl::DmlBuildYBTupleId(PgStatement *handle, const PgAttrValueDescriptor *attrs,
+                                    int32_t nattrs, uint64_t *ybctid) {
+  const string id = VERIFY_RESULT(down_cast<PgDml*>(handle)->BuildYBTupleId(attrs, nattrs));
   const YBCPgTypeEntity *type_entity = FindTypeEntity(kPgByteArrayOid);
   *ybctid = type_entity->yb_to_datum(id.data(), id.size(), nullptr /* type_attrs */);
   return Status::OK();

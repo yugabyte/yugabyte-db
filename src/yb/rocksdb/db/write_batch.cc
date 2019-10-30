@@ -704,7 +704,9 @@ class MemTableInserter : public WriteBatch::Handler {
       return seek_status;
     }
     MemTable* mem = cf_mems_->GetMemTable();
-    if (insert_flags_.Test(InsertFlag::kInMemoryErase) && mem->Erase(key)) {
+    if ((delete_type == ValueType::kTypeSingleDeletion ||
+         delete_type == ValueType::kTypeColumnFamilySingleDeletion) &&
+        mem->Erase(key)) {
       return Status::OK();
     }
     auto* moptions = mem->GetMemTableOptions();

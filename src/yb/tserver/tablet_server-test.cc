@@ -32,12 +32,15 @@
 
 #include "yb/consensus/log-test-base.h"
 
+#include "yb/common/ql_value.h"
+
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master.pb.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_test_util.h"
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/server/hybrid_clock.h"
@@ -48,6 +51,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server-test-base.h"
 #include "yb/tserver/tablet_server_test_util.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 
 #include "yb/util/crc.h"
@@ -727,7 +731,7 @@ TEST_F(TabletServerTest, TestRpcServerCreateDestroy) {
   }
   {
     MessengerBuilder mb("foo");
-    auto messenger = ASSERT_RESULT(mb.Build());
+    auto messenger = rpc::CreateAutoShutdownMessengerHolder(ASSERT_RESULT(mb.Build()));
     {
       server::RpcServer server2(
           "server2", opts, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());
@@ -743,7 +747,7 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   ServerRegistrationPB reg;
   auto tbo = ASSERT_RESULT(TabletServerOptions::CreateTabletServerOptions());
   MessengerBuilder mb("foo");
-  auto messenger = ASSERT_RESULT(mb.Build());
+  auto messenger = CreateAutoShutdownMessengerHolder(ASSERT_RESULT(mb.Build()));
 
   server::RpcServer server1(
       "server1", opts, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());

@@ -10,6 +10,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/decimal.h"
 #include "yb/common/jsonb.h"
+#include "yb/common/ql_value.h"
 
 DECLARE_bool(test_tserver_timeout);
 

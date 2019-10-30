@@ -85,6 +85,25 @@ bool TabletReplica::IsStarting() const {
 // TabletInfo
 // ================================================================================================
 
+class TabletInfo::LeaderChangeReporter {
+ public:
+  explicit LeaderChangeReporter(TabletInfo* info)
+      : info_(info), old_leader_(info->GetLeaderUnlocked()) {
+  }
+
+  ~LeaderChangeReporter() {
+    auto new_leader = info_->GetLeaderUnlocked();
+    if (old_leader_ != new_leader) {
+      LOG(INFO) << "T " << info_->tablet_id() << ": Leader changed from "
+                << yb::ToString(old_leader_) << " to " << yb::ToString(new_leader);
+    }
+  }
+ private:
+  TabletInfo* info_;
+  TSDescriptor* old_leader_;
+};
+
+
 TabletInfo::TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id)
     : tablet_id_(std::move(tablet_id)),
       table_(table),
@@ -96,8 +115,31 @@ TabletInfo::~TabletInfo() {
 
 void TabletInfo::SetReplicaLocations(ReplicaMap replica_locations) {
   std::lock_guard<simple_spinlock> l(lock_);
+  LeaderChangeReporter leader_change_reporter(this);
   last_update_time_ = MonoTime::Now();
   replica_locations_ = std::move(replica_locations);
+}
+
+Result<TSDescriptor*> TabletInfo::GetLeader() const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  auto result = GetLeaderUnlocked();
+  if (result) {
+    return result;
+  }
+
+  return STATUS_FORMAT(
+      NotFound,
+      "No leader found for tablet $0 with $1 replicas: $2.",
+      ToString(), replica_locations_.size(), replica_locations_);
+}
+
+TSDescriptor* TabletInfo::GetLeaderUnlocked() const {
+  for (const auto& pair : replica_locations_) {
+    if (pair.second.role == consensus::RaftPeerPB::LEADER) {
+      return pair.second.ts_desc;
+    }
+  }
+  return nullptr;
 }
 
 void TabletInfo::GetReplicaLocations(ReplicaMap* replica_locations) const {
@@ -107,6 +149,7 @@ void TabletInfo::GetReplicaLocations(ReplicaMap* replica_locations) const {
 
 void TabletInfo::UpdateReplicaLocations(const TabletReplica& replica) {
   std::lock_guard<simple_spinlock> l(lock_);
+  LeaderChangeReporter leader_change_reporter(this);
   auto it = replica_locations_.find(replica.ts_desc->permanent_uuid());
   if (it == replica_locations_.end()) {
     replica_locations_.emplace(replica.ts_desc->permanent_uuid(), replica);
@@ -231,17 +274,17 @@ TableType TableInfo::GetTableType() const {
 }
 
 bool TableInfo::RemoveTablet(const std::string& partition_key_start) {
-  std::lock_guard<rw_spinlock> l(lock_);
+  std::lock_guard<decltype(lock_)> l(lock_);
   return EraseKeyReturnValuePtr(&tablet_map_, partition_key_start) != NULL;
 }
 
 void TableInfo::AddTablet(TabletInfo *tablet) {
-  std::lock_guard<rw_spinlock> l(lock_);
+  std::lock_guard<decltype(lock_)> l(lock_);
   AddTabletUnlocked(tablet);
 }
 
 void TableInfo::AddTablets(const vector<TabletInfo*>& tablets) {
-  std::lock_guard<rw_spinlock> l(lock_);
+  std::lock_guard<decltype(lock_)> l(lock_);
   for (TabletInfo *tablet : tablets) {
     AddTabletUnlocked(tablet);
   }
@@ -260,7 +303,7 @@ void TableInfo::AddTabletUnlocked(TabletInfo* tablet) {
 }
 
 void TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos* ret) const {
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   int32_t max_returned_locations = req->max_returned_locations();
 
   TableInfo::TabletInfoMap::const_iterator it, it_end;
@@ -286,7 +329,7 @@ void TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletI
 }
 
 bool TableInfo::IsAlterInProgress(uint32_t version) const {
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
     if (e.second->reported_schema_version() < version) {
       VLOG(3) << "Table " << table_id_ << " ALTER in progress due to tablet "
@@ -299,7 +342,7 @@ bool TableInfo::IsAlterInProgress(uint32_t version) const {
 }
 
 bool TableInfo::IsCreateInProgress() const {
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
     auto tablet_lock = e.second->LockForRead();
     if (!tablet_lock->data().is_running()) {
@@ -310,27 +353,27 @@ bool TableInfo::IsCreateInProgress() const {
 }
 
 void TableInfo::SetCreateTableErrorStatus(const Status& status) {
-  std::lock_guard<rw_spinlock> l(lock_);
+  std::lock_guard<decltype(lock_)> l(lock_);
   create_table_error_ = status;
 }
 
 Status TableInfo::GetCreateTableErrorStatus() const {
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   return create_table_error_;
 }
 
 std::size_t TableInfo::NumTasks() const {
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   return pending_tasks_.size();
 }
 
 bool TableInfo::HasTasks() const {
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   return !pending_tasks_.empty();
 }
 
 bool TableInfo::HasTasks(MonitoredTask::Type type) const {
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   for (auto task : pending_tasks_) {
     if (task->type() == type) {
       return true;
@@ -342,7 +385,7 @@ bool TableInfo::HasTasks(MonitoredTask::Type type) const {
 void TableInfo::AddTask(std::shared_ptr<MonitoredTask> task) {
   bool abort_task = false;
   {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     if (!closing_) {
       pending_tasks_.insert(task);
       if (tasks_tracker_) {
@@ -361,7 +404,7 @@ void TableInfo::AddTask(std::shared_ptr<MonitoredTask> task) {
 
 void TableInfo::RemoveTask(const std::shared_ptr<MonitoredTask>& task) {
   {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     pending_tasks_.erase(task);
   }
   VLOG(1) << __func__ << " Removed task " << task.get() << " " << task->description();
@@ -380,7 +423,7 @@ void TableInfo::AbortTasksAndClose() {
 void TableInfo::AbortTasksAndCloseIfRequested(bool close) {
   std::vector<std::shared_ptr<MonitoredTask>> abort_tasks;
   {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     if (close) {
       closing_ = true;
     }
@@ -400,7 +443,7 @@ void TableInfo::WaitTasksCompletion() {
   while (1) {
     std::vector<std::shared_ptr<MonitoredTask>> waiting_on_for_debug;
     {
-      shared_lock<rw_spinlock> l(lock_);
+      shared_lock<decltype(lock_)> l(lock_);
       if (pending_tasks_.empty()) {
         break;
       } else if (VLOG_IS_ON(1)) {
@@ -417,13 +460,13 @@ void TableInfo::WaitTasksCompletion() {
 }
 
 std::unordered_set<std::shared_ptr<MonitoredTask>> TableInfo::GetTasks() {
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   return pending_tasks_;
 }
 
 void TableInfo::GetAllTablets(vector<scoped_refptr<TabletInfo>> *ret) const {
   ret->clear();
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
     ret->push_back(make_scoped_refptr(e.second));
   }

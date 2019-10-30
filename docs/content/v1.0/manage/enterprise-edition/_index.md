@@ -3,7 +3,7 @@ title: Enterprise Edition
 linkTitle: Enterprise Edition
 description: Enterprise Edition
 image: /images/section_icons/manage/enterprise.png
-headcontent: Manage Yugabyte DB without any downtime using Yugabyte EE's built-in orchestration and monitoring.
+headcontent: Manage YugabyteDB without any downtime using Yugabyte EE's built-in orchestration and monitoring.
 menu:
   v1.0:
     identifier: manage-enterprise-edition
@@ -11,7 +11,7 @@ menu:
     weight: 710
 ---
 
-Universe is a set of Yugabyte DB nodes grouped together to form one logical distributed database. These nodes contain Yugabyte software installed on the underlying IaaS instances.
+Universe is a set of YugabyteDB nodes grouped together to form one logical distributed database. These nodes contain Yugabyte software installed on the underlying IaaS instances.
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -21,7 +21,7 @@ Universe is a set of Yugabyte DB nodes grouped together to form one logical dist
         <div class="title">Create Universe - Multi-Zone</div>
       </div>
       <div class="body">
-        Create Yugabyte DB universes in one region across multiple zones using Yugabyte Admin Console's intent-driven orchestration.
+        Create YugabyteDB universes in one region across multiple zones using Yugabyte Admin Console's intent-driven orchestration.
       </div>
     </a>
   </div>
@@ -33,7 +33,7 @@ Universe is a set of Yugabyte DB nodes grouped together to form one logical dist
         <div class="title">Create Universe - Multi-Region</div>
       </div>
       <div class="body">
-        Create Yugabyte DB universes in multiple regions using Yugabyte Admin Console's intent-driven orchestration.
+        Create YugabyteDB universes in multiple regions using Yugabyte Admin Console's intent-driven orchestration.
       </div>
     </a>
   </div>

@@ -8,7 +8,7 @@ menu:
     weight: 1130
 ---
 
-Following are the key areas of differences between Yugabyte DB and [Apache HBase](http://hbase.apache.org/).
+Following are the key areas of differences between YugabyteDB and [Apache HBase](http://hbase.apache.org/).
 
 ## 1. Simpler Software Stack
 

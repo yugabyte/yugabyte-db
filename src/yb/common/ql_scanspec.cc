@@ -15,6 +15,9 @@
 
 #include "yb/common/ql_scanspec.h"
 
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/ql_value.h"
+
 namespace yb {
 namespace common {
 
@@ -472,14 +475,16 @@ vector<QLValuePB> QLScanRange::range_values(const bool lower_bound) const {
 //-------------------------------------- QL scan spec ---------------------------------------
 
 QLScanSpec::QLScanSpec(QLExprExecutor::SharedPtr executor)
-    : QLScanSpec(nullptr, true, executor) {
+    : QLScanSpec(nullptr, nullptr, true, executor) {
 }
 
 QLScanSpec::QLScanSpec(const QLConditionPB* condition,
+                       const QLConditionPB* if_condition,
                        const bool is_forward_scan,
                        QLExprExecutor::SharedPtr executor)
     : YQLScanSpec(YQL_CLIENT_CQL),
       condition_(condition),
+      if_condition_(if_condition),
       is_forward_scan_(is_forward_scan),
       executor_(executor) {
   if (executor_ == nullptr) {
@@ -489,10 +494,15 @@ QLScanSpec::QLScanSpec(const QLConditionPB* condition,
 
 // Evaluate the WHERE condition for the given row.
 CHECKED_STATUS QLScanSpec::Match(const QLTableRow& table_row, bool* match) const {
+  bool cond = true;
+  bool if_cond = true;
   if (condition_ != nullptr) {
-    return executor_->EvalCondition(*condition_, table_row, match);
+    RETURN_NOT_OK(executor_->EvalCondition(*condition_, table_row, &cond));
   }
-  *match = true;
+  if (if_condition_ != nullptr) {
+    RETURN_NOT_OK(executor_->EvalCondition(*if_condition_, table_row, &if_cond));
+  }
+  *match = cond && if_cond;
   return Status::OK();
 }
 

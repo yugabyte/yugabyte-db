@@ -21,7 +21,7 @@ $ mkdir ~/yugabyte && cd ~/yugabyte
 ```
 
 ```sh
-$ wget https://downloads.yugabyte.com/yb-docker-ctl && chmod +x yb-docker-ctl
+$ wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/bin/yb-docker-ctl && chmod +x yb-docker-ctl
 ```
 
 ## Help command
@@ -64,7 +64,7 @@ The number of nodes created when you use the `yb-dockter-ctl create` command is 
 
 ### Create a 1-node local cluster with RF of 1
 
-To create a 1-node local cluster for development and learning Yugabyte DB, run the default `yb-docker-ctl` command. By default, this creates a 1-node cluster with a replication factor (RF) of 1. Note that the `yb-docker-ctl create` command pulls the latest `yugabytedb/yugabyte` image at the outset, in case the image has not yet downloaded or is not the latest version.
+To create a 1-node local cluster for development and learning YugabyteDB, run the default `yb-docker-ctl` command. By default, this creates a 1-node cluster with a replication factor (RF) of 1. Note that the `yb-docker-ctl create` command pulls the latest `yugabytedb/yugabyte` image at the outset, in case the image has not yet downloaded or is not the latest version.
 
 ```sh
 $ ./yb-docker-ctl create
@@ -180,7 +180,7 @@ $ ./yb-docker-ctl destroy
 
 ## Upgrade container image
 
-The following `docker pull` command below upgrades the Docker image of Yugabyte DB to the latest version.
+The following `docker pull` command below upgrades the Docker image of YugabyteDB to the latest version.
 
 ```sh
 $ docker pull yugabytedb/yugabyte

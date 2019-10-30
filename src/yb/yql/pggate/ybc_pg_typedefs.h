@@ -184,7 +184,20 @@ typedef struct PgExecParameters {
   uint64_t limit_count;
   uint64_t limit_offset;
   bool limit_use_default;
+  // For now we only support one rowmark.
+#ifdef __cplusplus
+  int rowmark = -1;
+#else
+  int rowmark;
+#endif
 } YBCPgExecParameters;
+
+typedef struct PgAttrValueDescriptor {
+  int attr_num;
+  uint64_t datum;
+  bool is_null;
+  const YBCPgTypeEntity *type_entity;
+} YBCPgAttrValueDescriptor;
 
 #ifdef __cplusplus
 }  // extern "C"

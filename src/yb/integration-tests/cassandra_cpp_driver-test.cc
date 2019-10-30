@@ -326,6 +326,7 @@ class CppCassandraDriver {
     cass_cluster_ = CHECK_NOTNULL(cass_cluster_new());
     CHECK_EQ(CASS_OK, cass_cluster_set_contact_points(cass_cluster_, hosts.c_str()));
     CHECK_EQ(CASS_OK, cass_cluster_set_port(cass_cluster_, port));
+    cass_cluster_set_request_timeout(cass_cluster_, RegularBuildVsSanitizers(12000, 60000));
 
     // Setup cluster configuration: partitions metadata refresh timer = 3 seconds.
     cass_cluster_set_partition_aware_routing(
@@ -498,7 +499,7 @@ class TestTable {
   typedef tuple<ColumnsTypes...> ColumnsTuple;
 
   void CreateTable(CassandraSession* session, const string& table, const StringVec& columns,
-                   const StringVec& keys) {
+                   const StringVec& keys, bool transactional = false) {
     table_name_ = table;
     column_names_ = columns;
     key_names_ = keys;
@@ -507,7 +508,7 @@ class TestTable {
       TrimString(&k, "()"); // Cut parentheses if available.
     }
 
-    const string query = create_table_str(table, columns, keys);
+    const string query = create_table_str(table, columns, keys, transactional);
     ASSERT_OK(session->ExecuteQuery(query));
   }
 
@@ -676,7 +677,7 @@ class TestTable {
   // Strings for CQL requests.
 
   static string create_table_str(
-      const string& table, const StringVec& columns, const StringVec& keys) {
+      const string& table, const StringVec& columns, const StringVec& keys, bool transactional) {
     CHECK_GT(columns.size(), 0);
     CHECK_GT(keys.size(), 0);
     CHECK_GE(columns.size(), keys.size());
@@ -689,8 +690,10 @@ class TestTable {
       types[i] = columns[i] + ' ' + types[i];
     }
 
-    return "CREATE TABLE IF NOT EXISTS " + table + " (" +
-        JoinStrings(types, ", ") + ", PRIMARY KEY (" + JoinStrings(keys, ", ") + "));";
+
+    return Format("CREATE TABLE IF NOT EXISTS $0 ($1, PRIMARY KEY ($2))$3;",
+                  table, JoinStrings(types, ", "), JoinStrings(keys, ", "),
+                  transactional ? " WITH transactions = { 'enabled' : true }" : "");
   }
 
   static string insert_with_bindings_str(const string& table, const StringVec& columns) {
@@ -1281,6 +1284,43 @@ TEST_F_EX(CppCassandraDriverTest, LocalCallBackpressure, CppCassandraDriverBackp
 
   for (auto& future : futures) {
     WARN_NOT_OK(future.Wait(), "Write failed");
+  }
+}
+
+class CppCassandraDriverTransactionalWriteTest : public CppCassandraDriverTest {
+ public:
+  std::vector<std::string> ExtraTServerFlags() override {
+    return {"--TEST_transaction_inject_flushed_delay_ms=10"s};
+  }
+
+  bool UsePartitionAwareRouting() override {
+    // Disable partition aware routing in this test because of TSAN issue (#1837).
+    // Should be reenabled when issue is fixed.
+    return false;
+  }
+};
+
+TEST_F_EX(CppCassandraDriverTest, TransactionalWrite, CppCassandraDriverTransactionalWriteTest) {
+  const std::string kTableName = "test.key_value";
+  typedef TestTable<int32_t, int32_t> MyTable;
+  MyTable table;
+  table.CreateTable(&session_, kTableName, {"key", "value"}, {"(key)"}, true /* transactional */);
+
+  TestThreadHolder thread_holder;
+
+  constexpr int kIterations = 20;
+  auto prepared = ASSERT_RESULT(session_.Prepare(Format(
+      "BEGIN TRANSACTION"
+      "  INSERT INTO $0 (key, value) VALUES (?, ?);"
+      "  INSERT INTO $0 (key, value) VALUES (?, ?);"
+      "END TRANSACTION;", kTableName)));
+  for (int i = 1; i <= kIterations; ++i) {
+    auto statement = prepared.Bind();
+    statement.Bind(0, i);
+    statement.Bind(1, i * 3);
+    statement.Bind(2, -i);
+    statement.Bind(3, i * -4);
+    ASSERT_OK(session_.Execute(statement));
   }
 }
 

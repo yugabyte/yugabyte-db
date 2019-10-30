@@ -8,9 +8,9 @@ aliases:
   - /secure/tls-encryption/server-to-server
 menu:
   latest:
-    identifier: secure-tls-encryption-server-to-server
-    parent: secure-tls-encryption
-    weight: 722
+    identifier: server-to-server
+    parent: tls-encryption
+    weight: 20
 isTocNested: true
 showAsideToc: true
 ---

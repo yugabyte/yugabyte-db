@@ -20,7 +20,7 @@ $ mkdir ~/yugabyte && cd ~/yugabyte
 ```
 
 ```sh
-$ wget https://downloads.yugabyte.com/yb-docker-ctl && chmod +x yb-docker-ctl
+$ wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/bin/yb-docker-ctl && chmod +x yb-docker-ctl
 ```
 
 ## Help command
@@ -174,7 +174,7 @@ $ ./yb-docker-ctl destroy
 
 ## Upgrade container image
 
-The command below upgrades the Yugabyte DB image to the latest version.
+The command below upgrades the YugabyteDB image to the latest version.
 
 ```sh
 $ docker pull yugabytedb/yugabyte

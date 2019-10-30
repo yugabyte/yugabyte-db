@@ -54,10 +54,12 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_test_util.h"
 #include "yb/server/clock.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
 
 using namespace std::literals;
@@ -613,7 +615,8 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
   explicit LocalTestPeerProxyFactory(TestPeerMapManager* peers)
     : peers_(peers) {
     CHECK_OK(ThreadPoolBuilder("test-peer-pool").set_max_threads(3).Build(&pool_));
-    messenger_ = CHECK_RESULT(rpc::MessengerBuilder("test").Build());
+    messenger_ = rpc::CreateAutoShutdownMessengerHolder(
+        CHECK_RESULT(rpc::MessengerBuilder("test").Build()));
   }
 
   PeerProxyPtr NewProxy(const consensus::RaftPeerPB& peer_pb) override {
@@ -633,7 +636,7 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
 
  private:
   gscoped_ptr<ThreadPool> pool_;
-  std::unique_ptr<rpc::Messenger> messenger_;
+  rpc::AutoShutdownMessengerHolder messenger_;
   TestPeerMapManager* const peers_;
     // NOTE: There is no need to delete this on the dctor because proxies are externally managed
   vector<LocalTestPeerProxy*> proxies_;

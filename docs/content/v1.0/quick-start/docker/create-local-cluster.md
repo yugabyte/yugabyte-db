@@ -6,7 +6,7 @@ We will use the [`yb-docker-ctl`](../../admin/yb-docker-ctl/) utility downloaded
 $ ./yb-docker-ctl create
 ```
 
-Clients can now connect to Yugabyte DB's Cassandra-compatible YCQL API at `localhost:9042` and to the Redis-compatible YEDIS API at  `localhost:6379`.
+Clients can now connect to YugabyteDB's Cassandra-compatible YCQL API at `localhost:9042` and to the Redis-compatible YEDIS API at  `localhost:6379`.
 
 ## 2. Check cluster status with yb-docker-ctl
 
@@ -34,7 +34,7 @@ The [yb-master-n1 Admin UI](../../admin/yb-master/#admin-ui) is available at htt
 
 ### 3.1 Overview and Master status
 
-The yb-master-n1 home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 3 and `Num Nodes (TServers)` as 3. The `Num User Tables` is 0 since there are no user tables created yet. Yugabyte DB version number is also shown for your reference. 
+The yb-master-n1 home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 3 and `Num Nodes (TServers)` as 3. The `Num User Tables` is 0 since there are no user tables created yet. YugabyteDB version number is also shown for your reference. 
 
 ![master-home](/images/admin/master-home-docker.png)
 

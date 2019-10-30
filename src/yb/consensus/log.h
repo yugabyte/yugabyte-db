@@ -56,6 +56,7 @@
 #include "yb/util/promise.h"
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/shared_lock.h"
 
 namespace yb {
 
@@ -146,7 +147,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Kick off an asynchronous task that pre-allocates a new log-segment, setting
   // 'allocation_status_'. To wait for the result of the task, use allocation_status_.Get().
-  CHECKED_STATUS AsyncAllocateSegment();
+  CHECKED_STATUS AsyncAllocateSegment() EXCLUDES(allocation_mutex_);
 
   // The closure submitted to allocation_pool_ to allocate a new segment.
   void SegmentAllocationTask();
@@ -259,6 +260,9 @@ class Log : public RefCountedThreadSafe<Log> {
 
   CHECKED_STATUS TEST_SubmitFuncToAppendToken(const std::function<void()>& func);
 
+  // Returns the number of segments.
+  const int num_segments() const;
+
   const std::string& LogPrefix() const {
     return log_prefix_;
   }
@@ -313,7 +317,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Creates a new WAL segment on disk, writes the next_segment_header_ to disk as the header, and
   // sets active_segment_ to point to this new segment.
-  CHECKED_STATUS SwitchToAllocatedSegment();
+  CHECKED_STATUS SwitchToAllocatedSegment() EXCLUDES(allocation_mutex_);
 
   // Preallocates the space for a new segment.
   CHECKED_STATUS PreAllocateNewSegment();
@@ -347,8 +351,8 @@ class Log : public RefCountedThreadSafe<Log> {
   // Helper method to get the segment sequence to GC based on the provided min_op_idx.
   CHECKED_STATUS GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segments_to_gc) const;
 
-  const SegmentAllocationState allocation_state() {
-    boost::shared_lock<boost::shared_mutex> shared_lock(allocation_lock_);
+  const SegmentAllocationState allocation_state() EXCLUDES(allocation_mutex_) {
+    SharedLock<decltype(allocation_mutex_)> shared_lock(allocation_mutex_);
     return allocation_state_;
   }
 
@@ -452,8 +456,8 @@ class Log : public RefCountedThreadSafe<Log> {
   Promise<Status> allocation_status_;
 
   // Read-write lock to protect 'allocation_state_'.
-  mutable boost::shared_mutex allocation_lock_;
-  SegmentAllocationState allocation_state_;
+  mutable boost::shared_mutex allocation_mutex_;
+  SegmentAllocationState allocation_state_ GUARDED_BY(allocation_mutex_);
 
   scoped_refptr<MetricEntity> metric_entity_;
   gscoped_ptr<LogMetrics> metrics_;

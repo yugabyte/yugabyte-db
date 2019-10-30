@@ -100,7 +100,7 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   std::string ToString() const override;
 
   TSTabletManager* tablet_manager() override { return tablet_manager_.get(); }
-  TabletPeerLookupIf* tablet_peer_lookup() override { return tablet_manager_.get(); }
+  TabletPeerLookupIf* tablet_peer_lookup() override;
 
   Heartbeater* heartbeater() { return heartbeater_.get(); }
 
@@ -145,6 +145,8 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   CHECKED_STATUS GetTabletStatus(const GetTabletStatusRequestPB* req,
                                  GetTabletStatusResponsePB* resp) const override;
 
+  bool LeaderAndReady(const TabletId& tablet_id) const override;
+
   const std::string& permanent_uuid() const { return fs_manager_->uuid(); }
 
   // Returns the proxy to call this tablet server locally.
@@ -184,6 +186,11 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   // Returns the file descriptor of this tablet server's shared memory segment.
   int GetSharedMemoryFd();
+
+  // Currently only used by cdc.
+  virtual int32_t cluster_config_version() const {
+    return std::numeric_limits<int32_t>::max();
+  }
 
  protected:
   virtual CHECKED_STATUS RegisterServices();

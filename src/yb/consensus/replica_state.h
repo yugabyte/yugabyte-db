@@ -113,14 +113,12 @@ class ReplicaState {
 
   typedef std::unique_lock<std::mutex> UniqueLock;
 
-  // Used internally for storing the role + term combination atomically.
-  using PackedRoleAndTerm = uint64;
-
   ReplicaState(ConsensusOptions options, std::string peer_uuid,
                std::unique_ptr<ConsensusMetadata> cmeta,
                ReplicaOperationFactory* operation_factory,
                SafeOpIdWaiter* safe_op_id_waiter,
-               RetryableRequests* retryable_requests);
+               RetryableRequests* retryable_requests,
+               std::function<void(const OpIds&)> applied_ops_tracker);
 
   ~ReplicaState();
 
@@ -386,9 +384,6 @@ class ReplicaState {
     return old_leader_lease_;
   }
 
-  // A lock-free way to read role and term atomically.
-  std::pair<RaftPeerPB::Role, int64_t> GetRoleAndTerm() const;
-
   bool MajorityReplicatedLeaderLeaseExpired(CoarseTimePoint* now = nullptr) const;
 
   bool MajorityReplicatedHybridTimeLeaseExpiredAt(MicrosTime hybrid_time) const;
@@ -426,15 +421,12 @@ class ReplicaState {
 
   void SetLastCommittedIndexUnlocked(const yb::OpId& committed_op_id);
 
-  // Store role and term in a lock-free way. This is normally only called when the lock is being
-  // held anyway, but read without the lock.
-  void StoreRoleAndTerm(RaftPeerPB::Role role, int64_t term);
-
   // Applies committed config change.
   void ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round);
 
   void NotifyReplicationFinishedUnlocked(
-      const ConsensusRoundPtr& round, const Status& status, int64_t leader_term);
+      const ConsensusRoundPtr& round, const Status& status, int64_t leader_term,
+      OpIds* applied_op_ids);
 
   consensus::LeaderState RefreshLeaderStateCacheUnlocked(
       CoarseTimePoint* now) const ATTRIBUTE_NONNULL(2);
@@ -451,10 +443,6 @@ class ReplicaState {
 
   // Consensus metadata persistence object.
   std::unique_ptr<ConsensusMetadata> cmeta_;
-
-  // Active role and term. Stored as a separate atomic field for fast read-only access. This is
-  // still only modified under the lock.
-  std::atomic<PackedRoleAndTerm> role_and_term_;
 
   // Used by the LEADER. This is the index of the next operation generated
   // by this LEADER.
@@ -523,6 +511,8 @@ class ReplicaState {
   // This leader is ready to serve only if NoOp was successfully committed
   // after the new leader successful election.
   bool leader_no_op_committed_ = false;
+
+  std::function<void(const OpIds&)> applied_ops_tracker_;
 
   struct LeaderStateCache {
     static constexpr size_t kStatusBits = 3;

@@ -144,10 +144,10 @@ struct ExternalMiniClusterOptions {
   // Default : 10sec
   MonoDelta timeout = MonoDelta::FromSeconds(10);
 
-  static constexpr bool kDefaultStartPgsqlProxy = false;
+  static constexpr bool kDefaultEnableYsql = false;
   static constexpr bool kDefaultStartCqlProxy = true;
 
-  bool start_pgsql_proxy = kDefaultStartPgsqlProxy;
+  bool enable_ysql = kDefaultEnableYsql;
 
   // If true logs will be writen in both stderr and file
   bool log_to_file = false;
@@ -198,8 +198,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Add a new TS to the cluster. The new TS is started.  Requires that the master is already
   // running.
   CHECKED_STATUS AddTabletServer(
-      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-      bool start_pgsql_proxy = ExternalMiniClusterOptions::kDefaultStartPgsqlProxy);
+      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy);
 
   // Shuts down the whole cluster or part of it, depending on the selected 'mode'.  Currently, this
   // uses SIGKILL on each daemon for a non-graceful shutdown.
@@ -479,6 +478,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   ExternalDaemon(
       std::string daemon_id,
       rpc::Messenger* messenger,
+      rpc::ProxyCache* proxy_cache,
       std::string exe,
       std::string data_dir,
       std::string server_type,
@@ -549,6 +549,9 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
                                                const char* value_field,
                                                int64_t* value);
 
+  // Get the current value of the flag for the given daemon.
+  Result<std::string> GetFlag(const std::string& flag);
+
  protected:
   friend class RefCountedThreadSafe<ExternalDaemon>;
   virtual ~ExternalDaemon();
@@ -574,7 +577,8 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   std::string ProcessNameAndPidStr();
 
   const std::string daemon_id_;
-  rpc::Messenger* messenger_ = nullptr;
+  rpc::Messenger* messenger_;
+  rpc::ProxyCache* proxy_cache_;
   const std::string exe_;
   const std::string data_dir_;
   const std::string full_data_dir_;
@@ -638,6 +642,7 @@ class ExternalMaster : public ExternalDaemon {
   ExternalMaster(
     int master_index,
     rpc::Messenger* messenger,
+    rpc::ProxyCache* proxy_cache,
     const std::string& exe,
     const std::string& data_dir,
     const std::vector<std::string>& extra_flags,
@@ -663,7 +668,7 @@ class ExternalMaster : public ExternalDaemon {
 class ExternalTabletServer : public ExternalDaemon {
  public:
   ExternalTabletServer(
-      int tablet_server_index, rpc::Messenger* messenger,
+      int tablet_server_index, rpc::Messenger* messenger, rpc::ProxyCache* proxy_cache,
       const std::string& exe, const std::string& data_dir, std::string bind_host, uint16_t rpc_port,
       uint16_t http_port, uint16_t redis_rpc_port, uint16_t redis_http_port,
       uint16_t cql_rpc_port, uint16_t cql_http_port,
@@ -673,12 +678,11 @@ class ExternalTabletServer : public ExternalDaemon {
 
   CHECKED_STATUS Start(
       bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-      bool start_pgsql_proxy = ExternalMiniClusterOptions::kDefaultStartPgsqlProxy);
+      bool set_proxy_addrs = true);
 
   // Restarts the daemon. Requires that it has previously been shutdown.
   CHECKED_STATUS Restart(
-      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-      bool start_pgsql_proxy = ExternalMiniClusterOptions::kDefaultStartPgsqlProxy);
+      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy);
 
   // IP addresses to bind to.
   const std::string& bind_host() const {
@@ -744,7 +748,6 @@ class ExternalTabletServer : public ExternalDaemon {
   const uint16_t cql_rpc_port_;
   const uint16_t cql_http_port_;
   bool start_cql_proxy_ = true;
-  bool enable_ysql_ = false;
   std::unique_ptr<server::ServerStatusPB> cqlserver_status_;
 
   friend class RefCountedThreadSafe<ExternalTabletServer>;

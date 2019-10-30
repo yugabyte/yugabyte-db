@@ -9,11 +9,11 @@ menu:
     weight: 235
 ---
 
-The JSON document data type makes it very easy to model use-cases which require a flexible schema. Yugabyte DB supports a `JSONB` data type that parse, store and query JSON documents natively.
+The JSON document data type makes it very easy to model use-cases which require a flexible schema. YugabyteDB supports a `JSONB` data type that parse, store and query JSON documents natively.
 
 In this tutorial, we are going to look the example of an online bookstore. The bookstore has a number of books, each of these books has a number of attributes describing it like the name, the author, and so on. We are going to model these book details as a JSON object using the JSONB datatype.
 
-If you haven't installed Yugabyte DB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
+If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

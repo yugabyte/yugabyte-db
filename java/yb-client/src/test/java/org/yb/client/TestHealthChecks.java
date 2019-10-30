@@ -45,12 +45,12 @@ import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.util.ServerInfo;
 
+import static org.yb.AssertionWrappers.*;
+
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Map;
 import java.util.Scanner;
-
-import static junit.framework.TestCase.*;
 
 @RunWith(value= YBTestRunner.class)
 public class TestHealthChecks extends BaseYBClientTest {
@@ -121,7 +121,7 @@ public class TestHealthChecks extends BaseYBClientTest {
 
     // verify all servers have stayed up for at least one heartbeat
     Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_TIMEOUT_MS + 1000);
-    assertTrue (getHealthValue("most_recent_uptime").getAsInt() >= HEARTBEAT_SEC);
+    assertGreaterThanOrEqualTo(getHealthValue("most_recent_uptime").getAsInt(), HEARTBEAT_SEC);
 
     // kill (don't stop) a TServer.
     JsonArray deadNodes = getHealthValue("dead_nodes").getAsJsonArray();
@@ -138,10 +138,13 @@ public class TestHealthChecks extends BaseYBClientTest {
     LOG.info("Dead Nodes: " + deadNodes.get(0) + " && " + tServer.getUuid());
     // BUG: 'dead_nodes' lists WebPort, we're using RpcPort
     assertEquals(deadNodes.get(0).getAsString(), tServer.getUuid());
-    assertTrue (getHealthValue("most_recent_uptime").getAsInt() >= 3 * HEARTBEAT_SEC );
+    assertGreaterThanOrEqualTo(
+        getHealthValue("most_recent_uptime").getAsInt(), 3 * HEARTBEAT_SEC);
 
     // start a new TServer, ensure that the most_recent_uptime just decreased.
     addNewTServers(1);
-    assertTrue (getHealthValue("most_recent_uptime").getAsInt() <= HEARTBEAT_SEC);
+    TestUtils.waitFor(() -> {
+      return getHealthValue("most_recent_uptime").getAsInt() < 3 * HEARTBEAT_SEC;
+    }, HEARTBEAT_SEC * 3);
   }
 }

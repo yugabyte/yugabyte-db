@@ -89,10 +89,6 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
  public:
   TabletServerIntegrationTestBase() : random_(SeedRandom()) {}
 
-  void SetUp() override {
-    TabletServerTestBase::SetUp();
-  }
-
   void AddExtraFlags(const std::string& flags_str, std::vector<std::string>* flags) {
     if (flags_str.empty()) {
       return;
@@ -104,8 +100,8 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   }
 
   void CreateCluster(const std::string& data_root_path,
-                     const std::vector<std::string>& non_default_ts_flags,
-                     const std::vector<std::string>& non_default_master_flags) {
+                     const std::vector<std::string>& non_default_ts_flags = {},
+                     const std::vector<std::string>& non_default_master_flags = {}) {
 
     LOG(INFO) << "Starting cluster with:";
     LOG(INFO) << "--------------";
@@ -423,6 +419,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
       cluster_->Shutdown();
     }
     tablet_servers_.clear();
+    TabletServerTestBase::TearDown();
   }
 
   Result<std::unique_ptr<client::YBClient>> CreateClient() {

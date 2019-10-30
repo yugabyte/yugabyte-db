@@ -270,6 +270,15 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybc_state->handle);
 	ybc_state->stmt_owner = CurrentResourceOwner;
 	ybc_state->exec_params = &estate->yb_exec_params;
+
+	ybc_state->exec_params->rowmark = -1;
+	ListCell   *l;
+	foreach(l, estate->es_rowMarks) {
+		ExecRowMark *erm = (ExecRowMark *) lfirst(l);
+		ybc_state->exec_params->rowmark = erm->markType;
+		break;
+	}
+
 	ybc_state->is_exec_done = false;
 
 	/* Set the current syscatalog version (will check that we are up to date) */
@@ -294,6 +303,9 @@ ybcSetupScanTargets(ForeignScanState *node)
 
 	/* Planning function above should ensure target list is set */
 	List *target_attrs = foreignScan->fdw_private;
+
+	MemoryContext oldcontext =
+		MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_query_memory);
 
 	/* Set scan targets. */
 	if (node->yb_fdw_aggs == NIL)
@@ -429,13 +441,11 @@ ybcSetupScanTargets(ForeignScanState *node)
 		 * tupledesc that only includes the number of attributes. Switch to per-query memory from
 		 * per-tuple memory so the slot persists across iterations.
 		 */
-		MemoryContext oldcontext =
-			MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_query_memory);
 		TupleDesc target_tupdesc = CreateTemplateTupleDesc(list_length(node->yb_fdw_aggs),
 														   false /* hasoid */);
 		ExecInitScanTupleSlot(estate, &node->ss, target_tupdesc);
-		MemoryContextSwitchTo(oldcontext);
 	}
+	MemoryContextSwitchTo(oldcontext);
 }
 
 /*

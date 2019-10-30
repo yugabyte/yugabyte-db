@@ -62,10 +62,10 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
 // Clone a DML tnode for re-analysis. Only the syntactic information populated by the parser should
 // be cloned here. Semantic information should be left in the initial state to be populated when
 // this tnode is analyzed.
-PTDmlStmt::PTDmlStmt(MemoryContext *memctx, const PTDmlStmt& other)
+PTDmlStmt::PTDmlStmt(MemoryContext *memctx, const PTDmlStmt& other, bool copy_if_clause)
     : PTCollection(memctx, other.loc_ptr()),
       where_clause_(other.where_clause_),
-      if_clause_(other.if_clause_),
+      if_clause_(copy_if_clause ? other.if_clause_ : nullptr),
       else_error_(other.else_error_),
       using_clause_(other.using_clause_),
       returns_status_(other.returns_status_),
@@ -146,18 +146,24 @@ Status PTDmlStmt::LookupTable(SemContext *sem_context) {
       (table_->table_type() != client::YBTableType::YQL_TABLE_TYPE)) {
     return sem_context->Error(table_loc(), ErrorCode::OBJECT_NOT_FOUND);
   }
-  LoadSchema(sem_context, table_, &column_map_);
+  LoadSchema(sem_context, table_, &column_map_, false /* is_index */);
   return Status::OK();
 }
 
 void PTDmlStmt::LoadSchema(SemContext *sem_context,
                            const client::YBTablePtr& table,
-                           MCColumnMap* column_map) {
+                           MCColumnMap* column_map,
+                           bool is_index) {
   column_map->clear();
   const client::YBSchema& schema = table->schema();
   for (size_t idx = 0; idx < schema.num_columns(); idx++) {
     const client::YBColumnSchema col = schema.Column(idx);
-    column_map->emplace(MCString(col.name().c_str(), sem_context->PSemMem()),
+    string colname = col.name();
+    if (is_index && !schema.table_properties().use_mangled_column_name()) {
+      // This is an OLD INDEX. We need to mangled its column name to work with new implementation.
+      colname = YcqlName::MangleColumnName(colname);
+    }
+    column_map->emplace(MCString(colname.c_str(), sem_context->PSemMem()),
                         ColumnDesc(idx,
                                    schema.ColumnId(idx),
                                    col.name(),
@@ -166,7 +172,8 @@ void PTDmlStmt::LoadSchema(SemContext *sem_context,
                                    col.is_static(),
                                    col.is_counter(),
                                    col.type(),
-                                   client::YBColumnSchema::ToInternalDataType(col.type())));
+                                   client::YBColumnSchema::ToInternalDataType(col.type()),
+                                   is_index));
   }
 }
 
@@ -338,8 +345,10 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
 
 Status PTDmlStmt::AnalyzeIfClause(SemContext *sem_context) {
   if (if_clause_) {
+    IfExprState if_state(&filtering_exprs_);
     SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
     sem_state.set_processing_if_clause(true);
+    sem_state.SetIfState(&if_state);
     return if_clause_->Analyze(sem_context);
   }
   return Status::OK();

@@ -24,6 +24,7 @@
 #include "yb/util/status.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/scope_exit.h"
 #include "yb/gutil/stringprintf.h"
 
 using std::string;
@@ -32,7 +33,28 @@ namespace yb {
 
 namespace {
 
+void ChangeWorkingDir(const char* dir) {
+  int chdir_result = chdir(dir);
+  if (chdir_result != 0) {
+    LOG(WARNING) << "Failed to change working directory to " << dir << ", error was "
+                 << errno << " " << std::strerror(errno) << "!";
+  }
+}
+
 Status InitInternal(const char* argv0) {
+  // Change current working directory from postgres data dir (as set by postmaster)
+  // to the one from yb-tserver so that relative paths in gflags would be resolved in the same way.
+  char pg_working_dir[PATH_MAX];
+  CHECK(getcwd(pg_working_dir, sizeof(pg_working_dir)) != nullptr);
+  const char* yb_working_dir = getenv("YB_WORKING_DIR");
+  if (yb_working_dir) {
+    ChangeWorkingDir(yb_working_dir);
+  }
+  auto se = ScopeExit([&pg_working_dir] {
+    // Restore PG data dir as current directory.
+    ChangeWorkingDir(pg_working_dir);
+  });
+
   // Allow putting gflags into a file and specifying that file's path as an env variable.
   const char* pg_flagfile_path = getenv("YB_PG_FLAGFILE");
   if (pg_flagfile_path) {

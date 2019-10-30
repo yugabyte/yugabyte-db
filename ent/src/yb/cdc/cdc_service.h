@@ -15,18 +15,31 @@
 
 #include "yb/cdc/cdc_service.service.h"
 
+#include <boost/bimap.hpp>
+#include <boost/bimap/multiset_of.hpp>
+
 #include "yb/cdc/cdc_producer.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_util.h"
-#include "yb/client/table_handle.h"
+
+#include "yb/client/async_initializer.h"
+
+#include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_context.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/service_util.h"
 
 namespace yb {
+
+namespace tserver {
+
+class TSTabletManager;
+
+}
+
 namespace cdc {
 
 typedef std::unordered_map<HostPort, std::shared_ptr<CDCServiceProxy>, HostPortHash>
@@ -36,9 +49,18 @@ static const char* const kRecordType = "record_type";
 static const char* const kRecordFormat = "record_format";
 static const char* const kRetentionSec = "retention_sec";
 
-struct CDCTabletCheckpoint {
+struct TabletCheckpoint {
   OpIdPB op_id;
-  MonoTime last_cdc_state_update_time;
+  // Timestamp at which the op ID was last updated.
+  CoarseTimePoint last_update_time;
+};
+
+struct CDCTabletCheckpoints {
+  // Checkpoint stored in cdc_state table. This is the checkpoint that CDC consumer sends to CDC
+  // producer as the last checkpoint that it has successfully applied.
+  TabletCheckpoint cdc_state_checkpoint;
+  // Last checkpoint sent to CDC consumer. This will always be more than cdc_state_checkpoint.
+  TabletCheckpoint sent_checkpoint;
 };
 
 class CDCServiceImpl : public CDCServiceIf {
@@ -71,23 +93,15 @@ class CDCServiceImpl : public CDCServiceIf {
   template <class ReqType, class RespType>
   bool CheckOnline(const ReqType* req, RespType* resp, rpc::RpcContext* rpc);
 
-  template <class RespType>
-  Result<std::shared_ptr<tablet::TabletPeer>> GetTabletPeer(
-      const std::string& tablet_id, RespType* resp, rpc::RpcContext* rpc);
-
-  Result<OpIdPB> GetLastCheckpoint(const std::string& stream_id,
-                                   const std::string& tablet_id,
+  Result<OpIdPB> GetLastCheckpoint(const ProducerTabletInfo& producer_tablet,
                                    const std::shared_ptr<client::YBSession>& session);
 
-  CHECKED_STATUS UpdateCheckpoint(const std::string& stream_id,
-                                  const std::string& tablet_id,
-                                  const OpIdPB& op_id,
+  CHECKED_STATUS UpdateCheckpoint(const ProducerTabletInfo& producer_tablet,
+                                  const OpIdPB& sent_op_id,
+                                  const OpIdPB& commit_op_id,
                                   const std::shared_ptr<client::YBSession>& session);
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> GetTablets(
-      const CDCStreamId& stream_id);
-
-  std::shared_ptr<std::unordered_set<std::string>> GetTabletIdsForStream(
       const CDCStreamId& stream_id);
 
   Result<std::shared_ptr<StreamMetadata>> GetStream(const std::string& stream_id);
@@ -101,8 +115,13 @@ class CDCServiceImpl : public CDCServiceIf {
 
   void TabletLeaderGetChanges(const GetChangesRequestPB* req,
                               GetChangesResponsePB* resp,
-                              rpc::RpcContext* context,
+                              const std::shared_ptr<rpc::RpcContext>& context,
                               const std::shared_ptr<tablet::TabletPeer>& peer);
+  void TabletLeaderGetChangesFinished(const Status& new_status,
+                              const cdc::GetChangesResponsePB& new_resp,
+                              GetChangesResponsePB* orig_resp,
+                              std::shared_ptr<rpc::RpcContext> orig_context,
+                              rpc::Rpcs::Handle handle);
   void TabletLeaderGetCheckpoint(const GetCheckpointRequestPB* req,
                                  GetCheckpointResponsePB* resp,
                                  rpc::RpcContext* context,
@@ -110,6 +129,10 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Result<client::internal::RemoteTabletServer *> GetLeaderTServer(const TabletId& tablet_id);
   std::shared_ptr<CDCServiceProxy> GetCDCServiceProxy(client::internal::RemoteTabletServer* ts);
+
+  OpIdPB GetMinSentCheckpointForTablet(const std::string& tablet_id);
+
+  yb::rpc::Rpcs rpcs_;
 
   tserver::TSTabletManager* tablet_manager_;
 
@@ -119,13 +142,20 @@ class CDCServiceImpl : public CDCServiceIf {
   mutable rw_spinlock lock_;
 
   // These are guarded by lock_.
-  std::unordered_map<ProducerTabletInfo, CDCTabletCheckpoint, ProducerTabletInfo::Hash>
+  // Map of checkpoints that have been sent to CDC consumer and stored in cdc_state.
+  std::unordered_map<ProducerTabletInfo, CDCTabletCheckpoints, ProducerTabletInfo::Hash>
       tablet_checkpoints_;
+
   std::unordered_map<std::string, std::shared_ptr<StreamMetadata>> stream_metadata_;
 
   // TODO: Add cache invalidation after tablet splitting is implemented (#1004).
-  // Map of stream ID -> [tablet IDs].
-  std::unordered_map<std::string, std::shared_ptr<std::unordered_set<std::string>>> stream_tablets_;
+  // Map of stream IDs <-> tablet IDs.
+  typedef boost::bimap<
+      boost::bimaps::multiset_of<std::string>, boost::bimaps::multiset_of<std::string>>
+      StreamTabletBiMap;
+  typedef StreamTabletBiMap::value_type stream_tablet_value;
+
+  StreamTabletBiMap stream_tablets_;
 
   // Map of HostPort -> CDCServiceProxy. This is used to redirect requests to tablet leader's
   // CDC service proxy.

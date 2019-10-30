@@ -71,7 +71,7 @@ Status MasterTestEnt::GetCDCStream(const CDCStreamId& stream_id, GetCDCStreamRes
 Status MasterTestEnt::DeleteCDCStream(const CDCStreamId& stream_id) {
   DeleteCDCStreamRequestPB req;
   DeleteCDCStreamResponsePB resp;
-  req.set_stream_id(stream_id);
+  req.add_stream_id(stream_id);
 
   RETURN_NOT_OK(proxy_->DeleteCDCStream(req, &resp, ResetAndGetController()));
   if (resp.has_error()) {
@@ -229,16 +229,16 @@ TEST_F(MasterTestEnt, TestSetupUniverseReplication) {
 
   GetUniverseReplicationResponsePB resp;
   ASSERT_NO_FATALS(GetUniverseReplication(producer_id, &resp));
-  ASSERT_EQ(resp.producer_id(), producer_id);
+  ASSERT_EQ(resp.entry().producer_id(), producer_id);
 
-  ASSERT_EQ(resp.producer_master_addresses_size(), 1);
+  ASSERT_EQ(resp.entry().producer_master_addresses_size(), 1);
   std::string addr;
-  const auto& hp = resp.producer_master_addresses(0);
+  const auto& hp = resp.entry().producer_master_addresses(0);
   addr = hp.host() + ":" + std::to_string(hp.port());
   ASSERT_EQ(addr, "127.0.0.1:7100");
 
-  ASSERT_EQ(resp.producer_tables_size(), 1);
-  ASSERT_EQ(resp.producer_tables(0).table_id(), "some_table_id");
+  ASSERT_EQ(resp.entry().tables_size(), 1);
+  ASSERT_EQ(resp.entry().tables(0), "some_table_id");
 }
 
 TEST_F(MasterTestEnt, TestDeleteUniverseReplication) {
@@ -250,7 +250,7 @@ TEST_F(MasterTestEnt, TestDeleteUniverseReplication) {
   // Verify that universe was created.
   GetUniverseReplicationResponsePB resp;
   ASSERT_NO_FATALS(GetUniverseReplication(producer_id, &resp));
-  ASSERT_EQ(resp.producer_id(), producer_id);
+  ASSERT_EQ(resp.entry().producer_id(), producer_id);
 
   ASSERT_NO_FATALS(DeleteUniverseReplication(producer_id));
 

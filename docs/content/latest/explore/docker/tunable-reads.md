@@ -30,9 +30,9 @@ Pull the [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps) docker con
 $ docker pull yugabytedb/yb-sample-apps
 ```
 
-By default, the key-value sample application runs with strong read consistency where all data is read from the tablet leader. We are going to populate exactly one key with a 10KB value into the system. Since the replication factor is 5, this key will get replicated to 5 of the 7 nodes in the universe.
+By default, the key-value workload application runs with strong read consistency where all data is read from the tablet leader. We are going to populate exactly one key with a 10KB value into the system. Since the replication factor is 5, this key will get replicated to 5 of the 7 nodes in the universe.
 
-Let us run the CQL sample key-value app to constantly update this key-value, as well as perform reads with strong consistency against the local universe.
+Run the `CassandraKeyValue` workload application to constantly update this key-value, as well as perform reads with strong consistency against the local universe.
 
 ```sh
 $ docker run --name yb-sample-apps --hostname yb-sample-apps --net yb-net yugabytedb/yb-sample-apps --workload CassandraKeyValue \
@@ -43,7 +43,6 @@ $ docker run --name yb-sample-apps --hostname yb-sample-apps --net yb-net yugaby
   --num_threads_read 1 \
   --value_size 10240
 ```
-
 
 In the above command, we have set the value of `num_unique_keys` to 1, which means we are overwriting a single key `key:0`. We can verify this using cqlsh:
 

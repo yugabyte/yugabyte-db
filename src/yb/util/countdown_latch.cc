@@ -55,12 +55,11 @@ void CountDownLatch::Wait() const {
   }
 }
 
-bool CountDownLatch::WaitFor(const MonoDelta& delta) const {
+bool CountDownLatch::WaitUntil(MonoTime deadline) const {
   if (count_.load(std::memory_order_acquire) == 0) {
     return true;
   }
   ThreadRestrictions::AssertWaitAllowed();
-  auto deadline = MonoTime::Now() + delta;
   MutexLock lock(lock_);
   while (count_.load(std::memory_order_relaxed) > 0) {
     if (!cond_.WaitUntil(deadline)) {
@@ -68,6 +67,10 @@ bool CountDownLatch::WaitFor(const MonoDelta& delta) const {
     }
   }
   return true;
+}
+
+bool CountDownLatch::WaitFor(MonoDelta delta) const {
+  return WaitUntil(MonoTime::Now() + delta);
 }
 
 void CountDownLatch::Reset(uint64_t count) {

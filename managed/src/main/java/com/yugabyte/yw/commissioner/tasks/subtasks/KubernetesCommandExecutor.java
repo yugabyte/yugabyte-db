@@ -66,6 +66,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     VOLUME_DELETE,
     NAMESPACE_DELETE,
     POD_INFO,
+    COPY_KEY_FILE,
     // The following flag is deprecated.
     INIT_YSQL;
 
@@ -93,6 +94,8 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
           return UserTaskDetails.SubTaskGroupType.KubernetesPodInfo.name();
         case INIT_YSQL:
           return UserTaskDetails.SubTaskGroupType.KubernetesInitYSQL.name();
+        case COPY_KEY_FILE:
+          return UserTaskDetails.SubTaskGroupType.CopyEncryptionKeyFile.name();
       }
       return null;
     }
@@ -133,6 +136,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     // so we would need that for any sort helm operations.
     public String nodePrefix;
     public String ybSoftwareVersion = null;
+    public String encryptionKeyFilePath = null;
     public boolean enableNodeToNodeEncrypt = false;
     public boolean enableClientToNodeEncrypt = false;
     public UUID rootCA = null;
@@ -209,6 +213,9 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       case POD_INFO:
         processNodeInfo();
         break;
+      case COPY_KEY_FILE:
+        copyKeyFile();
+        break;
     }
     if (response != null) {
       if (response.code != 0 && flag) {
@@ -253,6 +260,31 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       response.message = "Pods are ready. Services still not running";
     }
     return response;
+  }
+
+  private void copyKeyFile() {
+    Map<UUID, Map<String, String>> azToConfig =
+        PlacementInfoUtil.getConfigPerAZ(taskParams().placementInfo);
+    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(Provider.get(taskParams().providerUUID));
+
+    for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
+      UUID azUUID = entry.getKey();
+      String azName = AvailabilityZone.get(azUUID).code;
+      Map<String, String> config = entry.getValue();
+      String namespace = isMultiAz ?
+          String.format("%s-%s", taskParams().nodePrefix, azName) : taskParams().nodePrefix;
+      ShellProcessHandler.ShellResponse podResponse =
+          kubernetesManager.getPodInfos(config,namespace);
+      JsonNode podInfos = parseShellResponseAsJson(podResponse);
+      // Copy encryption key file to each master node
+      for (JsonNode podInfo : podInfos.path("items")) {
+        String podName = podInfo.path("metadata").path("name").asText();
+        if (podName.contains("yb-master")) {
+          kubernetesManager.copyEncryptionKeyFile(config, taskParams().encryptionKeyFilePath,
+                                                  namespace, podName);
+        }
+      }
+    }
   }
 
   private void processNodeInfo() {

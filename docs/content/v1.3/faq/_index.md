@@ -19,7 +19,7 @@ menu:
         <div class="title">Introduction</div>
       </div>
       <div class="body">
-        Learn Yugabyte DB's unique value proposition.
+        Learn YugabyteDB's unique value proposition.
       </div>
     </a>
   </div>
@@ -67,7 +67,7 @@ menu:
         <div class="title">Yugabyte Platform</div>
       </div>
       <div class="body">
-        Running Yugabyte DB using the Yugabyte Platform.
+        Running YugabyteDB using the Yugabyte Platform.
       </div>
     </a>
   </div>

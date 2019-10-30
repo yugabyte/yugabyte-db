@@ -45,7 +45,7 @@ Flag | Mandatory | Default | Description
 `--use_private_ip`| N |`never` | Determines when to use private IP addresses. Possible values are `never`,`zone`,`cloud` and `region`. Based on the values of the `placement_*` config flags listed in this table.
 `--webserver_interface`| N |`0.0.0.0` | Address to bind for server UI access.
 `--webserver_port`| N | `7000` | Monitoring web server port.
-`--webserver_doc_root`| N | The `www` directory in the Yugabyte DB home directory | Monitoring web server home.
+`--webserver_doc_root`| N | The `www` directory in the YugabyteDB home directory | Monitoring web server home.
 `--replication_factor`| N |`3`  | Number of replicas to store for each tablet in the universe.
 `--placement_zone`| N |`rack1`  | Name of the availability zone or rack where this instance is deployed.
 `--placement_region`| N |`datacenter1`  | Name of the region or datacenter where this instance is deployed.
