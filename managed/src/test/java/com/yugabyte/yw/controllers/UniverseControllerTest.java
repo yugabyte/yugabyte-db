@@ -192,16 +192,8 @@ public class UniverseControllerTest extends WithApplication {
   public void setUp() {
     customer = ModelFactory.testCustomer();
     authToken = customer.createAuthToken();
-    when(mockEARManager.getServiceInstance("SMARTKEY")).thenReturn(new SmartKeyEARService(
-            mockApiHelper,
-            EncryptionAtRestManager.KeyProvider.SMARTKEY,
-            mockEARManager
-    ));
-    when(mockEARManager.getServiceInstance("AWS")).thenReturn(new AwsEARService(
-            mockApiHelper,
-            EncryptionAtRestManager.KeyProvider.AWS,
-            mockEARManager
-    ));
+    when(mockEARManager.getServiceInstance("SMARTKEY")).thenReturn(new SmartKeyEARService());
+    when(mockEARManager.getServiceInstance("AWS")).thenReturn(new AwsEARService());
   }
 
   @After
