@@ -4318,6 +4318,12 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
     }
   }
 
+  // Get all the referenced types (if any).
+  std::vector<std::string> referenced_udts;
+  for (const QLTypePB& field_type : req->field_types()) {
+    QLType::GetUserDefinedTypeIds(field_type, /* transitive = */ true, &referenced_udts);
+  }
+
   {
     TRACE("Acquired catalog manager lock");
     std::lock_guard<LockType> l(lock_);
@@ -4329,6 +4335,17 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
       s = STATUS_SUBSTITUTE(AlreadyPresent,
           "Type '$0.$1' already exists", ns->name(), req->name());
       return SetupError(resp->mutable_error(), MasterErrorPB::TYPE_ALREADY_PRESENT, s);
+    }
+
+    // Verify that all referenced types actually exist.
+    for (const auto& udt_id : referenced_udts) {
+      if (FindPtrOrNull(udtype_ids_map_, udt_id) == nullptr) {
+          // This may be caused by a stale cache (e.g. referenced type name resolves to an old,
+          // deleted type). Return InvalidArgument so query layer will clear cache and retry.
+          s = STATUS_SUBSTITUTE(InvalidArgument,
+          "Type id '$0' referenced by type '$1' does not exist", udt_id, req->name());
+        return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+      }
     }
 
     // Construct the new type (generate fresh name and set fields).
@@ -4414,11 +4431,33 @@ Status CatalogManager::DeleteUDType(const DeleteUDTypeRequestPB* req,
         for (const auto &col : ltm->data().schema().columns()) {
           if (col.type().main() == DataType::USER_DEFINED_TYPE &&
               col.type().udtype_info().id() == tp->id()) {
-            Status s = STATUS(InvalidArgument,
-                Substitute("Cannot delete type '$0'. It is used in column $1 of table $2.$3",
-                    tp->name(), col.name(), ns->name(), ltm->data().name()), req->DebugString());
-            return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_IS_NOT_EMPTY, s);
+            Status s = STATUS(QLError,
+                Substitute("Cannot delete type '$0.$1'. It is used in column $2 of table $3",
+                    ns->name(), tp->name(), col.name(), ltm->data().name()));
+            return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
           }
+        }
+      }
+    }
+
+    // Checking if any other type uses this type (i.e. in the case of nested types).
+    // TODO: this could be more efficient.
+    for (const UDTypeInfoMap::value_type& entry : udtype_ids_map_) {
+      auto ltm = entry.second->LockForRead();
+
+      for (int i = 0; i < ltm->data().field_types_size(); i++) {
+        std::vector<std::string> referenced_udts;
+        // Only need to check direct (non-transitive) type dependencies here.
+        // This also means we report more precise errors for in-use types.
+        QLType::GetUserDefinedTypeIds(ltm->data().field_types(i),
+                                      false /* transitive */,
+                                      &referenced_udts);
+        auto it = std::find(referenced_udts.begin(), referenced_udts.end(), tp->id());
+        if (it != referenced_udts.end()) {
+          Status s = STATUS(QLError,
+              Substitute("Cannot delete type '$0.$1'. It is used in field $2 of type '$3'",
+                  ns->name(), tp->name(), ltm->data().field_names(i), ltm->data().name()));
+          return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
         }
       }
     }

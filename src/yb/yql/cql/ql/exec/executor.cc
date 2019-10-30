@@ -396,6 +396,8 @@ Status Executor::ExecPTNode(const PTCreateType *tnode) {
       error_code = ErrorCode::DUPLICATE_TYPE;
     } else if (s.IsNotFound()) {
       error_code = ErrorCode::KEYSPACE_NOT_FOUND;
+    } else if (s.IsInvalidArgument()) {
+      error_code = ErrorCode::INVALID_TYPE_DEFINITION;
     }
 
     if (tnode->create_if_not_exists() && error_code == ErrorCode::DUPLICATE_TYPE) {
@@ -684,6 +686,8 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       error_code = error_not_found;
     } else if (s.IsNotAuthorized()) {
       error_code = ErrorCode::UNAUTHORIZED;
+    } else if(s.IsQLError()) {
+      error_code = ErrorCode::INVALID_REQUEST;
     }
 
     return exec_context_->Error(tnode->name(), s, error_code);
@@ -2132,6 +2136,7 @@ Status Executor::ProcessStatementStatus(const ParseTree& parse_tree, const Statu
     if (errcode == ErrorCode::TABLET_NOT_FOUND         ||
         errcode == ErrorCode::WRONG_METADATA_VERSION   ||
         errcode == ErrorCode::INVALID_TABLE_DEFINITION ||
+        errcode == ErrorCode::INVALID_TYPE_DEFINITION  ||
         errcode == ErrorCode::INVALID_ARGUMENTS        ||
         errcode == ErrorCode::OBJECT_NOT_FOUND         ||
         errcode == ErrorCode::TYPE_NOT_FOUND) {
