@@ -289,6 +289,8 @@ class YBClient::Data {
   std::vector<std::string> master_server_addrs_;
   mutable simple_spinlock master_server_addrs_lock_;
 
+  bool skip_master_flagfile_ = false;
+
   MonoDelta default_admin_operation_timeout_;
   MonoDelta default_rpc_timeout_;
 

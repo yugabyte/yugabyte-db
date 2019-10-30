@@ -61,7 +61,8 @@
 #include "yb/util/test_util.h"
 
 DECLARE_int32(replication_factor);
-DECLARE_int32(cdc_rpc_timeout_ms);
+DECLARE_int32(cdc_read_rpc_timeout_ms);
+DECLARE_int32(cdc_write_rpc_timeout_ms);
 DECLARE_bool(twodc_write_hybrid_time_override);
 DECLARE_int32(cdc_wal_retention_time_secs);
 DECLARE_bool(TEST_check_broadcast_address);
@@ -98,7 +99,8 @@ class TwoDCTest : public YBTest {
                       std::vector<uint32_t> num_producer_tablets,
                       uint32_t replication_factor) {
     // Allow for one-off network instability by ensuring a single CDC RPC timeout << test timeout.
-    FLAGS_cdc_rpc_timeout_ms = (kRpcTimeout / 6) * 1000;
+    FLAGS_cdc_read_rpc_timeout_ms = (kRpcTimeout / 6) * 1000;
+    FLAGS_cdc_write_rpc_timeout_ms = (kRpcTimeout / 6) * 1000;
     // Not a useful test for us. It's testing Public+Private IP NW errors and we're only public
     FLAGS_TEST_check_broadcast_address = false;
 
@@ -785,7 +787,7 @@ TEST_F(TwoDCTest, TestDeleteUniverse) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 
   ASSERT_OK(VerifyUniverseReplicationDeleted(consumer_cluster(), consumer_client(), kUniverseId,
-      FLAGS_cdc_rpc_timeout_ms * 2));
+      FLAGS_cdc_read_rpc_timeout_ms * 2));
 
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 0));
 

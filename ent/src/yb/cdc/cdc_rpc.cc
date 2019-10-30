@@ -87,7 +87,7 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
  private:
   void SendRpcToTserver() override {
     InvokeAsync(invoker_.proxy().get(),
-                PrepareController(),
+                PrepareController(invoker_.client().default_rpc_timeout()),
                 std::bind(&CDCWriteRpc::Finished, this, Status::OK()));
   }
 
@@ -122,7 +122,7 @@ rpc::RpcCommandPtr WriteCDCRecord(
     client::YBClient* client,
     WriteRequestPB* req,
     WriteCDCRecordCallback callback) {
-  return rpc::StartRpc<CDCWriteRpc>(
+  return std::make_shared<CDCWriteRpc>(
       deadline, tablet, client, req, std::move(callback));
 }
 
@@ -151,16 +151,22 @@ class CDCReadRpc : public rpc::Rpc, public client::internal::TabletRpc {
     req_.Swap(req);
   }
 
-  ~CDCReadRpc() = default;
+  virtual ~CDCReadRpc() {
+    CHECK(called_);
+  }
 
   void SendRpc() override {
     invoker_.Execute(tablet_id());
   }
 
   void Finished(const Status &status) override {
+    auto retained = shared_from_this(); // Ensure we don't destruct until after the callback.
     Status new_status = status;
     if (invoker_.Done(&new_status)) {
       InvokeCallback(new_status);
+    } else if(!called_) {
+      // Clear any response errors that were set.
+      resp_.Clear();
     }
   }
 
@@ -171,21 +177,30 @@ class CDCReadRpc : public rpc::Rpc, public client::internal::TabletRpc {
   }
 
   const tserver::TabletServerErrorPB *response_error() const override {
+    // Clear the contents of last_error_, since this function is invoked again on retry.
+    last_error_.Clear();
+
     if (resp_.has_error()) {
       if (resp_.error().has_code()) {
         // Map CDC Errors to TabletServer Errors.
         switch (resp_.error().code()) {
           case CDCErrorPB::TABLET_NOT_FOUND:
             last_error_.set_code(tserver::TabletServerErrorPB::TABLET_NOT_FOUND);
+            if (resp_.error().has_status()) {
+              last_error_.mutable_status()->CopyFrom(resp_.error().status());
+            }
+            return &last_error_;
+          case CDCErrorPB::LEADER_NOT_READY:
+            last_error_.set_code(tserver::TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE);
+            if (resp_.error().has_status()) {
+              last_error_.mutable_status()->CopyFrom(resp_.error().status());
+            }
             return &last_error_;
           // TS.STALE_FOLLOWER => pattern not used.
-          // TS.LEADER_NOT_READY => we do redirection on CDCService right now.
           default:
             break;
         }
       }
-      last_error_.set_code(tserver::TabletServerErrorPB::UNKNOWN_ERROR);
-      return &last_error_;
     }
     return nullptr;
   }
@@ -197,7 +212,7 @@ class CDCReadRpc : public rpc::Rpc, public client::internal::TabletRpc {
        &invoker_.client().proxy_cache(), invoker_.ProxyEndpoint());
 
     InvokeAsync(cdc_proxy_.get(),
-        PrepareController(),
+        PrepareController(invoker_.client().default_rpc_timeout()),
         std::bind(&CDCReadRpc::Finished, this, Status::OK()));
   }
 
@@ -210,7 +225,13 @@ class CDCReadRpc : public rpc::Rpc, public client::internal::TabletRpc {
   }
 
   void InvokeCallback(const Status &status) {
-    callback_(status, resp_);
+    if (!called_) {
+      called_ = true;
+      callback_(status, std::move(resp_));
+    } else {
+      LOG(WARNING) << "Multiple invocation of CDCReadRpc: "
+                   << status.ToString() << " : " << resp_.DebugString();
+    }
   }
 
   void InvokeAsync(CDCServiceProxy *cdc_proxy,
@@ -228,6 +249,7 @@ class CDCReadRpc : public rpc::Rpc, public client::internal::TabletRpc {
 
   std::shared_ptr<CDCServiceProxy> cdc_proxy_;
   mutable tserver::TabletServerErrorPB last_error_;
+  bool called_ = false;
 };
 
 MUST_USE_RESULT rpc::RpcCommandPtr GetChangesCDCRpc(
@@ -236,8 +258,8 @@ MUST_USE_RESULT rpc::RpcCommandPtr GetChangesCDCRpc(
     client::YBClient* client,
     GetChangesRequestPB* req,
     GetChangesCDCRpcCallback callback) {
-  return rpc::StartRpc<CDCReadRpc>(
-    deadline, tablet, client, req, std::move(callback));
+  return std::make_shared<CDCReadRpc>(
+      deadline, tablet, client, req, std::move(callback));
 }
 
 

@@ -165,6 +165,9 @@ class YBClientBuilder {
   // Add an RPC address of a master. At least one master is required.
   YBClientBuilder& add_master_server_addr(const std::string& addr);
 
+  // Don't override master addresses with external information from FLAGS_flagfile.
+  YBClientBuilder& skip_master_flagfile(bool should_skip = true);
+
   // The default timeout used for administrative operations (e.g. CreateTable,
   // AlterTable, ...). Optional.
   //

@@ -25,7 +25,7 @@ namespace yb {
 namespace master {
 namespace enterprise {
 
-Status RegisterTableSubscriber(
+Status CreateTabletMapping(
     const std::string& producer_table_id,
     const std::string& consumer_table_id,
     const std::string& producer_master_addrs,
@@ -53,13 +53,15 @@ Status RegisterTableSubscriber(
     }
     *producer_tablets.add_tablets() = producer;
     (*mutable_map)[consumer] = producer_tablets;
+
+    // For external CDC Consumers, populate the list of TServers they can connect to as proxies.
     for (const auto& replica : producer_table_locations.Get(i).replicas()) {
       // Use the public IP addresses since we're cross-universe
       for (const auto& addr : replica.ts_info().broadcast_addresses()) {
         tserver_addrs->insert(HostPortFromPB(addr));
       }
       // Rarely a viable setup for production replication, but used in testing...
-      if (tserver_addrs->empty()) {
+      if (replica.ts_info().broadcast_addresses_size() == 0) {
         LOG(WARNING) << "No public broadcast addresses found for "
                      << replica.ts_info().permanent_uuid()
                      << ".  Using private addresses instead.";
