@@ -52,12 +52,8 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
      * @param apiHelper is a library to make requests against a third party encryption key provider
      * @param keyProvider is a String representation of "SMARTKEY" (if it is valid in this context)
      */
-    public SmartKeyEARService(
-            ApiHelper apiHelper,
-            KeyProvider keyProvider,
-            EncryptionAtRestManager util
-    ) {
-        super(apiHelper, keyProvider, util);
+    public SmartKeyEARService() {
+        super(KeyProvider.SMARTKEY);
     }
 
     /**
@@ -163,26 +159,20 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
     }
 
     @Override
-    public byte[] retrieveKey(UUID customerUUID, UUID universeUUID) {
+    public byte[] retrieveKeyWithService(UUID customerUUID, byte[] keyRef) {
         byte[] key = null;
         final ObjectNode authConfig = getAuthConfig(customerUUID);
-        final byte[] keyRef = getKeyRef(customerUUID, universeUUID);
-        if (keyRef == null || keyRef.length == 0) {
-            final String errMsg = "Could not retrieve key ref";
-            LOG.warn(errMsg);
-        } else {
-            final String endpoint = String.format("/crypto/v1/keys/%s/export", new String(keyRef));
-            final String sessionToken = retrieveSessionAuthorization(authConfig);
-            final Map<String, String> headers = ImmutableMap.of(
-                    "Authorization", sessionToken
-            );
-            final String baseUrl = authConfig.get("base_url").asText();
-            final String url = Util.buildURL(baseUrl, endpoint);
-            final JsonNode response = this.apiHelper.getRequest(url, headers);
-            final JsonNode errors = response.get("error");
-            if (errors != null) throw new RuntimeException(errors.toString());
-            key = Base64.getDecoder().decode(response.get("value").asText());
-        }
+        final String endpoint = String.format("/crypto/v1/keys/%s/export", new String(keyRef));
+        final String sessionToken = retrieveSessionAuthorization(authConfig);
+        final Map<String, String> headers = ImmutableMap.of(
+                "Authorization", sessionToken
+        );
+        final String baseUrl = authConfig.get("base_url").asText();
+        final String url = Util.buildURL(baseUrl, endpoint);
+        final JsonNode response = this.apiHelper.getRequest(url, headers);
+        final JsonNode errors = response.get("error");
+        if (errors != null) throw new RuntimeException(errors.toString());
+        key = Base64.getDecoder().decode(response.get("value").asText());
         return key;
     }
 }

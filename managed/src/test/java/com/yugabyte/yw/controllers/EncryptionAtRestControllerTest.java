@@ -120,16 +120,8 @@ public class EncryptionAtRestControllerTest extends WithApplication {
         );
         when(mockApiHelper.getRequest(any(String.class), any(Map.class), any(Map.class)))
                 .thenReturn(Json.newArray());
-        when(mockUtil.getServiceInstance(eq("SMARTKEY"))).thenReturn(new SmartKeyEARService(
-                mockApiHelper,
-                EncryptionAtRestManager.KeyProvider.SMARTKEY,
-                mockUtil
-        ));
-        when(mockUtil.getServiceInstance(eq("AWS"))).thenReturn(new AwsEARService(
-                mockApiHelper,
-                EncryptionAtRestManager.KeyProvider.AWS,
-                mockUtil)
-        );
+        when(mockUtil.getServiceInstance(eq("SMARTKEY"))).thenReturn(new SmartKeyEARService());
+        when(mockUtil.getServiceInstance(eq("AWS"))).thenReturn(new AwsEARService());
     }
 
     @Test

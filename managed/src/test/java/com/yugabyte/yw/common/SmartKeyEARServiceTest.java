@@ -17,6 +17,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.SmartKeyEARService;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import org.junit.Before;
 import org.junit.Test;
@@ -33,8 +34,7 @@ import java.util.UUID;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
-public class SmartKeyEARServiceTest {
-    ApiHelper mockApiHelper;
+public class SmartKeyEARServiceTest extends FakeDBApplication {
     TestEncryptionAtRestService encryptionService;
     EncryptionAtRestManager mockUtil;
 
@@ -156,7 +156,7 @@ public class SmartKeyEARServiceTest {
     private class TestEncryptionAtRestService extends SmartKeyEARService {
         boolean createRequest;
         TestEncryptionAtRestService(boolean createRequest) {
-            super(mockApiHelper, testKeyProvider, mockUtil);
+            super();
             this.createRequest = createRequest;
         }
         TestEncryptionAtRestService() {
@@ -168,15 +168,6 @@ public class SmartKeyEARServiceTest {
                     .put("api_key", "test key value")
                     .put("base_url", "api.amer.smartkey.io");
         }
-
-        @Override
-        public void addKeyRef(UUID customerUUID, UUID universeUUID, byte[] ref) {}
-
-        @Override
-        public byte[] getKeyRef(UUID customerUUID, UUID universeUUID) {
-            this.createRequest = !this.createRequest;
-            return this.createRequest ? null : mockKid;
-        }
     }
 
     @Before
@@ -185,13 +176,8 @@ public class SmartKeyEARServiceTest {
         payload.put("obj_type", testAlgorithm);
         payload.put("key_size", testKeySize);
         payload.set("key_ops", keyOps);
-        mockApiHelper = mock(ApiHelper.class);
-        when(mockApiHelper.getRequest(
-                eq(String.format(
-                        "https://api.amer.smartkey.io/crypto/v1/keys/%s/export",
-                        new String(mockKid)
-                )), anyMap()
-        )).thenReturn(Json.parse(getKeyMockResponse));
+        when(mockApiHelper.getRequest(any(String.class), anyMap()))
+                .thenReturn(Json.parse(getKeyMockResponse));
         when(mockApiHelper.getRequest(
                 eq("https://api.amer.smartkey.io/crypto/v1/keys"),
                 anyMap(), anyMap())).thenReturn(Json.parse(getKeyListMockResponse));
@@ -229,7 +215,17 @@ public class SmartKeyEARServiceTest {
 
     @Test
     public void testCreateAndRetrieveEncryptionKeySuccess() {
+        when(mockApiHelper.postRequest(
+                eq("https://api.amer.smartkey.io/sys/v1/session/auth"),
+                eq(null),
+                any(Map.class)
+        )).thenReturn(Json.newObject().put("access_token", "some_access_token"));
+        encryptionService.createAuthConfig(
+                testCustomerUUID,
+                Json.newObject().put("some_key", "some_val")
+        );
         byte[] encryptionKey = encryptionService.createKey(testUniUUID, testCustomerUUID, config);
+        assertNotNull(encryptionKey);
         assertEquals(new String(encryptionKey), new String(mockEncryptionKey));
     }
 

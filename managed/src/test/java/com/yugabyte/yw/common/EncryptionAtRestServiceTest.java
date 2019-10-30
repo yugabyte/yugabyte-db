@@ -29,6 +29,7 @@ import static org.mockito.Mockito.when;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.Application;
 import play.api.Play;
+import play.libs.Json;
 import static play.inject.Bindings.bind;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.test.WithApplication;
@@ -54,7 +55,7 @@ class TestEncryptionAtRestService extends EncryptionAtRestService<TestAlgorithm>
             EncryptionAtRestManager util,
             boolean createRequest
     ) {
-        super(apiHelper, keyProvider, util);
+        super(keyProvider);
         this.createRequest = createRequest;
     }
 
@@ -90,26 +91,15 @@ class TestEncryptionAtRestService extends EncryptionAtRestService<TestAlgorithm>
     }
 
     @Override
-    public byte[] retrieveKey(UUID customerUUID, UUID universeUUID) {
+    public byte[] retrieveKeyWithService(UUID customerUUID, byte[] keyRef) {
         this.createRequest = !this.createRequest;
         return this.createRequest ? null : "some_key_value".getBytes();
     }
-
-    @Override
-    public void addKeyRef(UUID customerUUID, UUID universeUUID, byte[] ref) {}
 }
 
 @RunWith(MockitoJUnitRunner.class)
 public class EncryptionAtRestServiceTest extends WithApplication {
     EncryptionAtRestManager mockUtil;
-
-    @Override
-    protected Application provideApplication() {
-        mockUtil = mock(EncryptionAtRestManager.class);
-        return new GuiceApplicationBuilder()
-                .overrides(bind(EncryptionAtRestManager.class).toInstance(mockUtil))
-                .build();
-    }
 
     @Before
     public void setUp() {}
@@ -132,21 +122,6 @@ public class EncryptionAtRestServiceTest extends WithApplication {
                 EncryptionAtRestManager.KeyProvider.SMARTKEY.getServiceInstance().hashCode(),
                 newService.hashCode()
         );
-    }
-
-    @Test
-    public void testCreateAndRetrieveEncryptionKeySuccess() {
-        EncryptionAtRestService service = new TestEncryptionAtRestService(
-                null, EncryptionAtRestManager.KeyProvider.AWS, mockUtil
-        );
-        assertEquals(new String(service.createKey(
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                ImmutableMap.of(
-                        "algorithm", "TEST_ALGORITHM",
-                        "key_size", "1"
-                )
-        )), "some_key_value");
     }
 
     @Test
@@ -198,21 +173,22 @@ public class EncryptionAtRestServiceTest extends WithApplication {
     }
 
     @Test
-    public void testRotateKey() {
+    public void testCreateKey() {
         EncryptionAtRestService service = new TestEncryptionAtRestService(
                 null,
                 EncryptionAtRestManager.KeyProvider.AWS,
                 mockUtil,
                 true
         );
-        byte[] key = service.rotateKey(
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                ImmutableMap.of(
-                        "algorithm", "TEST_ALGORITHM",
-                        "key_size", "1"
-                )
+        UUID customerUUID = UUID.randomUUID();
+        UUID universeUUID = UUID.randomUUID();
+        service.createAuthConfig(customerUUID, Json.newObject().put("some_key", "some_value"));
+        Map<String, String> config = ImmutableMap.of(
+                "algorithm", "TEST_ALGORITHM",
+                "key_size", "1"
         );
-        assertEquals(new String(key), "some_key_value");
+        byte[] key = service.createKey(universeUUID, customerUUID, config);
+        assertNotNull(key);
+        assertEquals("some_key_value", new String(key));
     }
 }

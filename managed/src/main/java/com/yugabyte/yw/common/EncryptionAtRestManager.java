@@ -13,14 +13,13 @@ package com.yugabyte.yw.common;
 import com.avaje.ebean.annotation.EnumValue;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.Universe;
 import java.lang.reflect.Constructor;
+import java.util.Base64;
 import java.util.UUID;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
@@ -29,9 +28,8 @@ import org.springframework.security.crypto.encrypt.Encryptors;
 import org.springframework.security.crypto.encrypt.TextEncryptor;
 import play.api.Play;
 import play.libs.Json;
-import java.time.Clock;
-import java.time.format.DateTimeFormatter;
-import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -39,9 +37,6 @@ import java.util.Map;
 @Singleton
 public class EncryptionAtRestManager {
     public static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestManager.class);
-
-    @Inject
-    ApiHelper apiHelper;
 
     /**
      * A list of third party encryption key providers that YB currently supports and the
@@ -139,12 +134,7 @@ public class EncryptionAtRestManager {
         Class[] parameterTypes;
         for (Constructor constructor : serviceClass.getConstructors()) {
             parameterTypes = constructor.getParameterTypes();
-            if (
-                    constructor.getParameterCount() == 3 &&
-                            ApiHelper.class.isAssignableFrom(parameterTypes[0]) &&
-                            KeyProvider.class.isAssignableFrom(parameterTypes[1]) &&
-                            EncryptionAtRestManager.class.isAssignableFrom(parameterTypes[2])
-            ) {
+            if (constructor.getParameterCount() == 0) {
                 serviceConstructor = constructor;
                 break;
             }
@@ -197,11 +187,7 @@ public class EncryptionAtRestManager {
                     LOG.error(errMsg);
                     throw new InstantiationException(errMsg);
                 }
-                serviceInstance = (EncryptionAtRestService) serviceConstructor.newInstance(
-                        this.apiHelper,
-                        serviceProvider,
-                        Play.current().injector().instanceOf(EncryptionAtRestManager.class)
-                );
+                serviceInstance = (EncryptionAtRestService) serviceConstructor.newInstance();
                 if (serviceInstance != null) serviceProvider.setServiceInstance(serviceInstance);
             }
         } catch (Exception e) {
@@ -365,5 +351,85 @@ public class EncryptionAtRestManager {
             LOG.error(errMsg, e);
             throw e;
         }
+    }
+
+    public byte[] getUniverseKeyCacheEntry(UUID universeUUID, byte[] keyRef) {
+        LOG.info(String.format(
+                "Retrieving universe key cache entry for universe %s and keyRef %s",
+                universeUUID.toString(),
+                Base64.getEncoder().encodeToString(keyRef)
+        ));
+        return EncryptionAtRestUniverseKeyCache.getCacheEntry(universeUUID, keyRef);
+    }
+
+    public void setUniverseKeyCacheEntry(UUID universeUUID, byte[] keyRef, byte[] keyVal) {
+        LOG.info(String.format(
+                "Setting universe key cache entry for universe %s and keyRef %s",
+                universeUUID.toString(),
+                Base64.getEncoder().encodeToString(keyRef)
+        ));
+        EncryptionAtRestUniverseKeyCache.setCacheEntry(universeUUID, keyRef, keyVal);
+    }
+
+    public void removeUniverseKeyCacheEntry(UUID universeUUID) {
+        LOG.info(String.format(
+                "Removing universe key cache entry for universe %s",
+                universeUUID.toString()
+        ));
+        EncryptionAtRestUniverseKeyCache.removeCacheEntry(universeUUID);
+    }
+
+    static class EncryptionAtRestUniverseKeyCache {
+        static class EncryptionAtRestUniverseKeyCacheEntry {
+            private String keyRef;
+            private String keyVal;
+
+            public EncryptionAtRestUniverseKeyCacheEntry(byte[] keyRef, byte[] keyVal) {
+                this.keyRef = Base64.getEncoder().encodeToString(keyRef);
+                this.keyVal = Base64.getEncoder().encodeToString(keyVal);
+            }
+
+            public byte[] getKeyRef() { return Base64.getDecoder().decode(this.keyRef); }
+
+            public byte[] getKeyVal() { return Base64.getDecoder().decode(this.keyVal); }
+
+            public void updateEntry(byte[] keyRef, byte[] keyVal) {
+                this.keyRef = Base64.getEncoder().encodeToString(keyRef);
+                this.keyVal = Base64.getEncoder().encodeToString(keyVal);
+            }
+        }
+
+        private static Map<UUID, EncryptionAtRestUniverseKeyCacheEntry> cache =
+                new HashMap<UUID, EncryptionAtRestUniverseKeyCacheEntry>();
+
+        public static void setCacheEntry(UUID universeUUID, byte[] keyRef, byte[] keyVal) {
+            EncryptionAtRestUniverseKeyCacheEntry cacheEntry = EncryptionAtRestUniverseKeyCache
+                    .cache
+                    .get(universeUUID);
+            if (cacheEntry != null) cacheEntry.updateEntry(keyRef, keyVal);
+            else cacheEntry = new EncryptionAtRestUniverseKeyCacheEntry(keyRef, keyVal);
+            EncryptionAtRestUniverseKeyCache.cache.put(universeUUID, cacheEntry);
+        }
+
+        public static byte[] getCacheEntry(UUID universeUUID, byte[] keyRef) {
+            EncryptionAtRestUniverseKeyCacheEntry cacheEntry = EncryptionAtRestUniverseKeyCache
+                    .cache
+                    .get(universeUUID);
+            if (cacheEntry == null || !Arrays.equals(cacheEntry.getKeyRef(), keyRef)) {
+                String errMsg = String.format(
+                        "Could not retrieve cached universe encryption key for universe %s",
+                        universeUUID.toString()
+                );
+                System.out.println(errMsg);
+                return null;
+            }
+            return cacheEntry.getKeyVal();
+        }
+
+        public static void removeCacheEntry(UUID universeUUID) {
+            EncryptionAtRestUniverseKeyCache.cache.remove(universeUUID);
+        }
+
+        public static void clearCache() { EncryptionAtRestUniverseKeyCache.cache.clear(); }
     }
 }

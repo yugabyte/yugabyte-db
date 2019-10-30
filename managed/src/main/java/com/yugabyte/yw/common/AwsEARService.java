@@ -52,12 +52,8 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
      * @param apiHelper is a library to make requests against a third party encryption key provider
      * @param keyProvider is a String representation of "SMARTKEY" (if it is valid in this context)
      */
-    public AwsEARService(
-            ApiHelper apiHelper,
-            KeyProvider keyProvider,
-            EncryptionAtRestManager util
-    ) {
-        super(apiHelper, keyProvider, util);
+    public AwsEARService() {
+        super(KeyProvider.AWS);
     }
 
     /**
@@ -168,30 +164,6 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
     }
 
     /**
-     * A method to attempt to retrieve a ciphertext blob of the universe master key
-     *
-     * @param customerUUID is the customer the universe belongs to
-     * @param universeUUID is the universe that the master key is associated with
-     * @return a byte array containing the ciphertext blob of the universe master key
-     * @throws Exception if the binaryValue of the JsonNode could not be extracted
-     */
-    private byte[] retrieveEncryptedUniverseKeyLocal(
-            UUID customerUUID,
-            UUID universeUUID
-    ) throws Exception {
-        final byte[] serializedKeyBytes = getKeyRef(customerUUID, universeUUID);
-        if (serializedKeyBytes == null || serializedKeyBytes.length == 0) {
-            final String errMsg = String.format(
-                    "No universe master key exists locally for customer %s and universe %s",
-                    customerUUID.toString(),
-                    universeUUID.toString()
-            );
-            LOG.warn(errMsg);
-        }
-        return serializedKeyBytes;
-    }
-
-    /**
      * Decrypts the universe master key ciphertext blob into plaintext using the universe CMK
      *
      * @param customerUUID is the customer the universe belongs to
@@ -276,21 +248,11 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
     }
 
     @Override
-    public byte[] retrieveKey(UUID customerUUID, UUID universeUUID) {
+    public byte[] retrieveKeyWithService(UUID customerUUID, byte[] keyRef) {
         byte[] result = null;
         try {
-            result = decryptUniverseKey(
-                    customerUUID,
-                    retrieveEncryptedUniverseKeyLocal(customerUUID, universeUUID)
-            );
-            if (result == null) {
-                final String errMsg = String.format(
-                        "No key exists with customer %s for universe %s",
-                        customerUUID.toString(),
-                        universeUUID.toString()
-                );
-                LOG.warn(errMsg);
-            }
+            result = decryptUniverseKey(customerUUID, keyRef);
+            if (result == null) LOG.warn("Could not retrieve key from key ref");
         } catch (Exception e) {
             final String errMsg = "Error occurred retrieving encryption key";
             LOG.error(errMsg, e);
