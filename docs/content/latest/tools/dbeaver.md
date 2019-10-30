@@ -23,9 +23,11 @@ The [DBeaver Community Edition](https://dbeaver.io/) includes these features:
 
 The [DBeaver Enterprise Edition](https://dbeaver.com/) adds support for non-JDBC data sources, including MongoDB, Cassandra, and Redis.
 
+![DBeaver application](/images/develop/tools/dbeaver/dbeaver-screenshot.png)
+
 ## Before you begin
 
-To use DBeaver with YugabyteDB, you need to meet the following prerequisites.
+Before getting started with DBeaver, make sure you meet the following prerequisites.
 
 ### YugabyteDB
 
@@ -39,33 +41,41 @@ JDK and JRE installers for Linux, macOS, and Windows can be downloaded from [Ope
 
 ### PostgreSQL JDBC driver
 
-The PostgreSQL JDBC driver can be used with DBeaver to work with YugabyteDB databases. 
+The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) can be used with DBeaver to work with YugabyteDB databases. 
 
 To connect DBeaver to a YugabyteDB cluster, you need the PostgreSQL JDBC driver installed. To download the current version that supports Java 8 or later, go to the [PostgreSQL JDBC Driver download](https://jdbc.postgresql.org/download.html) page.
 
 ## Install DBeaver
 
-Follow the steps here to download, install, and configure DBeaver to work with YugabyteDB.
-
 1. Download the distribution package for the operating system on your client computer from the [DBeaver downloads page](https://dbeaver.io/download/).
 2. Install DBeaver following the steps on the [DBeaver Installation page](https://github.com/dbeaver/dbeaver/wiki/Installation).
 
-## Configure DBeaver for YugabyteDB
+## Configure DBeaver
 
-### Configure the PostgreSQL driver to use with YugabyteDB
+### Configure the JDBC driver
 
 1. Start the DBeaver application. The DBeaver application window appears.
 2. On the menu, select **Database > Driver Manager**. The **Driver Manager** window appears.
-3. Select **PostgreSQL** and then click **Copy**. The **Create new driver** window appears with a copy of the PostgreSQL driver settings.
-4. Make the following changes in the Settings:
 
-    - **DriverName**: `YugabyteDB`
+![Driver Manager](/images/develop/tools/dbeaver/dbeaver-driver-manager.png)
+
+3. Select **PostgreSQL** and then click **Copy**. The **Create new driver** window appears with a copy of the default PostgreSQL driver settings.
+
+![Create new driver](/images/develop/tools/dbeaver/dbeaver-create-new-driver.png)
+
+4. Make the following changes in the **Settings**:
+
+    - **DriverName**: `YugabyteDB` — Default name is "PostgreSQL", but using "YugabyteDB" might help you not confuse this driver's settings with PostgreSQL connections using the PostgreSQL port of `5432`.
     - **Driver Type**: `PostgreSQL` (selected)
     - **Class Name**: `org.postgresql.Driver`
     - **URL Template**: `jdbc.postgresql://{host}[:{port}/[{database}]` (read-only)
-    - **Default Port**: `5433`
+    - **Default Port**: `5433` (Default is `5432`)
 
-5. Click the **Libraries** tab.
+5. In the **Libraries** tab, select the PostgreSQL JDBC driver JAR file to be used.
+
+
+
+
 
 ### Create a YugabyteDB connection profile
 

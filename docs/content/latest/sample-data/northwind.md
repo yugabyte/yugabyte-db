@@ -57,7 +57,7 @@ yugabyte=#
 
 ### 3. Create the Northwind database
 
-To create the Northwind database, run the following CREATE DATABASE command.
+To create the Northwind database, run the following `CREATE DATABASE` statement.
 
 ```sql
 CREATE DATABASE northwind;
@@ -84,7 +84,7 @@ northwind=#
 To build the tables and database objects, execute the `northwind_ddl.sql` SQL script.
 
 ```
-northwind=# \i /Users/yugabyte/northwind_ddl.sql
+northwind=# \i /Users/yugabyte/yugabytedb/share/northwind_ddl.sql
 ```
 
 You can verify that all 14 tables have been created by running the `\d` command.
@@ -100,7 +100,7 @@ northwind=# \d
 To load the `northwind` database with sample data, run the `\i` command to execute commands in the `northwind_data.sql` file.
 
 ```
-northwind=# \i /Users/yugabyte/northwind_data.sql
+northwind=# \i /Users/yugabyte/yugabytedb/share/northwind_data.sql
 ```
 
 To verify that you have some data to work with, you can run a simple SELECT statement to pull data from the `customers` table.

@@ -80,7 +80,7 @@ exercises=#
 To build the tables and database objects, run the `\i` command.
 
 ```
-exercises=# \i /Users/yugabyte/clubdata_ddl.sql
+exercises=# \i /Users/yugabyte/yugabytedb/share/clubdata_ddl.sql
 ```
 
 You can verify that all three tables have been created by running the `\d` command.
@@ -94,7 +94,7 @@ exercises=# \d
 To load the `exercises` database with sample data, run the following command to execute commands in the file.
 
 ```
-exercises=# \i /Users/yugabyte/clubdata_data.sql
+exercises=# \i /Users/yugabyte/yugabytedb/share/clubdata_data.sql
 ```
 
 You can verify that you have data to work with by running the following `SELECT` statement to pull data from the `bookings` table.
