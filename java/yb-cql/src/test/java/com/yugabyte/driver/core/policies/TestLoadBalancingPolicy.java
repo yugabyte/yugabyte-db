@@ -218,25 +218,34 @@ public class TestLoadBalancingPolicy extends BaseCQLTest {
           "v int, primary key ((h1, h2, h3, h4)));");
 
       Map<Integer, String> map = new HashMap<>();
+      // TODO @Oleg uncomment the code below when #2860 is fixed.
+      /*
       int map_size = rand.nextInt(10);
       for (int i = 0; i < map_size; i++) {
         map.put(rand.nextInt(), RandomStringUtils.random(rand.nextInt(64)));
       }
+      */
 
       Set<Double> set = new HashSet<>();
+      // TODO @Oleg uncomment the code below when #2860 is fixed.
+      /*
       int set_size = rand.nextInt(10);
       for (int i = 0; i < set_size; i++) {
         set.add(rand.nextDouble());
       }
+      */
 
       List<Set<String>> list = new LinkedList<>();
       int list_size = rand.nextInt(5);
       for (int i = 0; i < list_size; i++) {
         Set<String> list_set = new HashSet<>();
+        // TODO @Oleg uncomment the code below when #2860 is fixed.
+        /*
         int list_set_size = rand.nextInt(5);
         for (int j = 0; j < list_set_size; j++) {
           list_set.add(RandomStringUtils.random(rand.nextInt(32)));
         }
+         */
 
         list.add(list_set);
       }
