@@ -444,12 +444,19 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
     }
 
     case FROZEN: {
-      SemState sem_state(sem_context);
-      sem_state.SetExprState(expected_type->param_type(0),
-                             YBColumnSchema::ToInternalDataType(expected_type->param_type(0)),
-                             bindvar_name);
-      RETURN_NOT_OK(Analyze(sem_context));
-      sem_state.ResetContextState();
+      if (ql_type_->main() == FROZEN) {
+        // Already analyzed (e.g. for indexes), just check if type matches.
+        if (*ql_type_ != *expected_type) {
+          return sem_context->Error(this, ErrorCode::DATATYPE_MISMATCH);
+        }
+      } else {
+        SemState sem_state(sem_context);
+        sem_state.SetExprState(expected_type->param_type(0),
+                              YBColumnSchema::ToInternalDataType(expected_type->param_type(0)),
+                              bindvar_name);
+        RETURN_NOT_OK(Analyze(sem_context));
+        sem_state.ResetContextState();
+      }
       break;
     }
 

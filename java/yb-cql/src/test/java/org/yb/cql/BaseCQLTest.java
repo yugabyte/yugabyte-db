@@ -505,6 +505,12 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     return runInvalidStmt(stmt, session);
   }
 
+  protected void runInvalidStmt(String stmt, String errorSubstring) {
+    String errorMsg = runInvalidStmt(stmt);
+    assertTrue("Error message '" + errorMsg + "' should contain '" + errorSubstring + "'",
+               errorMsg.contains(errorSubstring));
+  }
+
   protected void assertNoRow(String select_stmt) {
     ResultSet rs = session.execute(select_stmt);
     Iterator<Row> iter = rs.iterator();

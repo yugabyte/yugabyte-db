@@ -635,6 +635,7 @@ Status QLValue::Deserialize(
       const auto& type = ql_type->param_type(0);
       switch (type->main()) {
         case MAP: {
+          std::map<QLValue, QLValue> map_values;
           const shared_ptr<QLType> &keys_type = type->param_type(0);
           const shared_ptr<QLType> &values_type = type->param_type(1);
           int32_t nr_elems = 0;
@@ -642,21 +643,31 @@ Status QLValue::Deserialize(
           for (int i = 0; i < nr_elems; i++) {
             QLValue key;
             RETURN_NOT_OK(key.Deserialize(keys_type, client, data));
-            *add_frozen_elem() = std::move(*key.mutable_value());
             QLValue value;
             RETURN_NOT_OK(value.Deserialize(values_type, client, data));
-            *add_frozen_elem() = std::move(*value.mutable_value());
+            map_values[key] = value;
           }
+
+          for (auto &pair : map_values) {
+            *add_frozen_elem() = std::move(pair.first.value());
+            *add_frozen_elem() = std::move(pair.second.value());
+          }
+
           return Status::OK();
         }
         case SET: {
           const shared_ptr<QLType> &elems_type = type->param_type(0);
           int32_t nr_elems = 0;
+
+          std::set<QLValue> set_values;
           RETURN_NOT_OK(CQLDecodeNum(sizeof(nr_elems), NetworkByteOrder::Load32, data, &nr_elems));
           for (int i = 0; i < nr_elems; i++) {
             QLValue elem;
             RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
-            *add_frozen_elem() = std::move(*elem.mutable_value());
+            set_values.insert(std::move(elem));
+          }
+          for (auto &elem : set_values) {
+            *add_frozen_elem() = std::move(elem.value());
           }
           return Status::OK();
         }
