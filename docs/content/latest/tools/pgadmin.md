@@ -17,8 +17,48 @@ PgAdmin is a commonly used database management tool in the PostgresDB community.
 
 ## Before you begin
 
+To use SQL Workbench/J with YugabyteDB, you need to have YugabyteDB up and running, the required Java Runtime Environment and the required PostgreSQL JDBC driver.
+
+### YugabyteDB
+
+Your YugabyteDB cluster should be up and running. If you are new to YugabyteDB, you can quickly create a local cluster by following the steps in [Quick start](../../../quick-start/install).
+
+### PostgreSQL JDBC driver
+
+To connect pgAdmin to a YugabyteDB cluster, you need the PostgreSQL JDBC driver installed. To download the current version that supports Java 8 or later, go to the [PostgreSQL JDBC Driver download](https://jdbc.postgresql.org/download.html) page.
+
 ## Install pgAdmin
 
-## Configure
+To install pgAdmin, go to the [Download page](https://www.pgadmin.org/download/) and select the version of pgAdmin 4 for your operating system.
+
+## Configure pgAdmin
+
+1. Launch the pgAdmin 4 application, which opens in your default web browser. You will be prompted to save a master password for the application.
+
+![pgAdmin application](/images/develop/tools/pgadmin/pgadmin-new-window.png)
+
+2. Click **Add New Server**. The **Create - Server** window appears.
+
+3. In the **General** tab, enter a name for your server. In this example, `YugabyteDB` is entered.
+
+![Create server](/images/develop/tools/pgadmin/pgadmin-create-server.png)
+
+4. Click the **Connection** tab and fill in the following settings:
+
+- **Host name/address**: `localhost`
+- **Port**: `5433` (Default is `5432`)
+- **Maintenance database**: `yugabyte` (This is the default YugabyteDB database)
+- **Username**: `yugabyte` (This is the default YugabyteDB user)
+- **Password**: `yugabyte` (Leave blank if YSQL authentication is not enabled)
+
+5. Click **Save**. The new connection appears in the application. Expand **Databases** to see a list of all available databases.
+
+![Available databases](/images/develop/tools/pgadmin/pgadmin-list-of-available-databases.png)
+
+You have now created a database connection in pgAdmin and can begin exploring YugabyteDB databases.
 
 ## What's next
+
+Now that you know how to configure pgAdmin to work with your YugabyteDB databases, you can start exploring the features. For details on using pgAdmin, click **Help** in the pgAdmin menu.
+
+If you're looking for sample databases to explore YugabyteDB using SQL Workbench/J, see [Sample data](../../sample-data/).
