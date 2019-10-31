@@ -134,6 +134,10 @@ int ClusterLoadBalancer::get_total_starting_tablets() const { return state_->tot
 
 int ClusterLoadBalancer::get_total_running_tablets() const { return state_->total_running_; }
 
+bool ClusterLoadBalancer::IsLoadBalancerEnabled() const {
+  return FLAGS_enable_load_balancing && is_enabled_;
+}
+
 // Load balancer class.
 ClusterLoadBalancer::ClusterLoadBalancer(CatalogManager* cm)
     : random_(GetRandomSeed32()),
@@ -160,7 +164,7 @@ ClusterLoadBalancer::~ClusterLoadBalancer() = default;
 void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
   uint32_t master_errors = 0;
 
-  if (!is_enabled_) {
+  if (!IsLoadBalancerEnabled()) {
     LOG(INFO) << "Load balancing is not enabled.";
     return;
   }
@@ -318,7 +322,7 @@ void ClusterLoadBalancer::RecordActivity(uint32_t master_errors) {
 }
 
 Status ClusterLoadBalancer::IsIdle() const {
-  return (is_enabled_ && !is_idle_.load(std::memory_order_acquire)) ?
+  return (IsLoadBalancerEnabled() && !is_idle_.load(std::memory_order_acquire)) ?
     STATUS(IllegalState, "Task or error encountered recently.") : Status::OK();
 }
 
