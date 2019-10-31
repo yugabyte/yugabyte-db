@@ -45,7 +45,8 @@ CDCPoller::CDCPoller(const cdc::ProducerTabletInfo& producer_tablet_info,
                      ThreadPool* thread_pool,
                      const std::shared_ptr<client::YBClient>& local_client,
                      const std::shared_ptr<client::YBClient>& producer_client,
-                     CDCConsumer* cdc_consumer) :
+                     CDCConsumer* cdc_consumer,
+                     bool use_local_tserver) :
     producer_tablet_info_(producer_tablet_info),
     consumer_tablet_info_(consumer_tablet_info),
     should_continue_polling_(std::move(should_continue_polling)),
@@ -56,7 +57,8 @@ CDCPoller::CDCPoller(const cdc::ProducerTabletInfo& producer_tablet_info,
         cdc_consumer,
         consumer_tablet_info,
         local_client,
-        std::bind(&CDCPoller::HandleApplyChanges, this, std::placeholders::_1))),
+        std::bind(&CDCPoller::HandleApplyChanges, this, std::placeholders::_1),
+        use_local_tserver)),
     producer_client_(producer_client),
     thread_pool_(thread_pool),
     cdc_consumer_(cdc_consumer) {}
@@ -113,7 +115,7 @@ void CDCPoller::DoPoll() {
   auto rpcs = cdc_consumer_->rpcs();
   auto read_rpc_handle = rpcs->Prepare();
   if (read_rpc_handle != rpcs->InvalidHandle()) {
-    *read_rpc_handle = GetChangesCDCRpc(
+    *read_rpc_handle = CreateGetChangesCDCRpc(
         CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
         nullptr, /* RemoteTablet: will get this from 'req' */
         producer_client_.get(),

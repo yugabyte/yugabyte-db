@@ -1943,6 +1943,7 @@ Status CatalogManager::InitCDCConsumer(
   cdc::ProducerEntryPB producer_entry;
   for (const auto& stream_info : consumer_info) {
     GetTableLocationsRequestPB consumer_table_req;
+    consumer_table_req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
     GetTableLocationsResponsePB consumer_table_resp;
     TableIdentifierPB table_identifer;
     table_identifer.set_table_id(stream_info.consumer_table_id);
