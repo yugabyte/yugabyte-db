@@ -15,6 +15,7 @@
 #define ENT_SRC_YB_TSERVER_CDC_CONSUMER_H
 
 #include <unordered_map>
+#include <unordered_set>
 
 #include "yb/cdc/cdc_util.h"
 #include "yb/util/locks.h"
@@ -111,6 +112,8 @@ class CDCConsumer {
 
   std::unordered_map<cdc::ProducerTabletInfo, cdc::ConsumerTabletInfo,
                      cdc::ProducerTabletInfo::Hash> producer_consumer_tablet_map_from_master_;
+
+  std::unordered_set<std::string> streams_with_same_num_producer_consumer_tablets_;
 
   scoped_refptr<Thread> run_trigger_poll_thread_;
 

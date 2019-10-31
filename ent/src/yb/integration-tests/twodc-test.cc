@@ -67,6 +67,7 @@ DECLARE_bool(twodc_write_hybrid_time_override);
 DECLARE_int32(cdc_wal_retention_time_secs);
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_int32(replication_failure_delay_exponent);
+DECLARE_double(respond_write_failed_probability);
 
 namespace yb {
 
@@ -367,14 +368,19 @@ class TwoDCTest : public YBTest {
   }
 
   Status DeleteUniverseReplication(const std::string& universe_id) {
+    return DeleteUniverseReplication(universe_id, consumer_client(), consumer_cluster());
+  }
+
+  Status DeleteUniverseReplication(
+      const std::string& universe_id, YBClient* client, MiniCluster* cluster) {
     master::DeleteUniverseReplicationRequestPB req;
     master::DeleteUniverseReplicationResponsePB resp;
 
     req.set_producer_id(universe_id);
 
     auto master_proxy = std::make_shared<master::MasterServiceProxy>(
-        &consumer_client_->proxy_cache(),
-        consumer_cluster_->leader_mini_master()->bound_rpc_addr());
+        &client->proxy_cache(),
+        cluster->leader_mini_master()->bound_rpc_addr());
 
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
@@ -855,6 +861,49 @@ TEST_F(TwoDCTest, TestProducerUniverseExpansion) {
   // Verify that both clusters have the same records.
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 
+  Destroy();
+}
+
+TEST_F(TwoDCTest, ApplyOperationsRandomFailures) {
+  SetAtomicFlag(0.25, &FLAGS_respond_write_failed_probability);
+
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer table from the list.
+  producer_tables.reserve(1);
+  producer_tables.push_back(tables[0]);
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+  // Set up bi-directional replication.
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  consumer_tables.reserve(1);
+  consumer_tables.push_back(tables[1]);
+  ASSERT_OK(SetupUniverseReplication(
+      consumer_cluster(), producer_cluster(), producer_client(), kUniverseId, consumer_tables));
+
+  // After creating the cluster, make sure all producer tablets are being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 1));
+  ASSERT_OK(CorrectlyPollingAllTablets(producer_cluster(), 1));
+
+  // Write 1000 entries to each cluster.
+  std::thread t1([&]() { WriteWorkload(0, 1000, producer_client(), tables[0]->name()); });
+  std::thread t2([&]() { WriteWorkload(1000, 2000, consumer_client(), tables[1]->name()); });
+
+  t1.join();
+  t2.join();
+
+  // Verify that both clusters have the same records.
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+
+  // Stop replication on consumer.
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+
+  // Stop replication on producer
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId, producer_client(), producer_cluster()));
   Destroy();
 }
 

@@ -25,6 +25,15 @@ namespace yb {
 namespace master {
 namespace enterprise {
 
+std::map<std::string, std::string> GetPartitionStartKeyConsumerTabletMapping(
+    const GetTableLocationsResponsePB& consumer_tablets_resp) {
+  std::map<std::string, std::string> partitions_map;
+  for (const auto& tablet_location : consumer_tablets_resp.tablet_locations()) {
+    partitions_map[tablet_location.partition().partition_key_start()] = tablet_location.tablet_id();
+  }
+  return partitions_map;
+}
+
 Status CreateTabletMapping(
     const std::string& producer_table_id,
     const std::string& consumer_table_id,
@@ -36,16 +45,35 @@ Status CreateTabletMapping(
   auto cdc_rpc_tasks = VERIFY_RESULT(CDCRpcTasks::CreateWithMasterAddrs(producer_master_addrs));
   auto producer_table_locations =
       VERIFY_RESULT(cdc_rpc_tasks->GetTableLocations(producer_table_id));
-  auto consumer_tablets_size = consumer_tablets_resp.tablet_locations_size();
 
+  auto consumer_tablets_size = consumer_tablets_resp.tablet_locations_size();
+  auto partitions_map = GetPartitionStartKeyConsumerTabletMapping(consumer_tablets_resp);
   stream_entry->set_consumer_table_id(consumer_table_id);
   stream_entry->set_producer_table_id(producer_table_id);
   auto* mutable_map = stream_entry->mutable_consumer_producer_tablet_map();
+  bool same_tablet_count = consumer_tablets_size == producer_table_locations.size();
+  LOG(INFO) << Format("For producer table id $0 and consumer table id $1, same num tablets: $2",
+                      producer_table_id, consumer_table_id, same_tablet_count);
+  stream_entry->set_same_num_producer_consumer_tablets(same_tablet_count);
   // Create the mapping between consumer and producer tablets.
   for (uint32_t i = 0; i < producer_table_locations.size(); i++) {
     const auto& producer = producer_table_locations.Get(i).tablet_id();
-    const auto& consumer =
-        consumer_tablets_resp.tablet_locations(i % consumer_tablets_size).tablet_id();
+    std::string consumer;
+    if (same_tablet_count) {
+      // We can optimize if we have the same tablet count in the producer and consumer table by
+      // mapping key ranges to each other.
+      const auto& it =
+          partitions_map.find(producer_table_locations.Get(i).partition().partition_key_start());
+      if (it == partitions_map.end()) {
+        return STATUS_SUBSTITUTE(
+            IllegalState, "When producer and consumer tablet counts are the same, could not find "
+                          "matching keyrange for tablet $0", producer);
+      }
+      consumer = it->second;
+    } else {
+      consumer = consumer_tablets_resp.tablet_locations(i % consumer_tablets_size).tablet_id();
+    }
+
     cdc::ProducerTabletListPB producer_tablets;
     auto it = mutable_map->find(consumer);
     if (it != mutable_map->end()) {
