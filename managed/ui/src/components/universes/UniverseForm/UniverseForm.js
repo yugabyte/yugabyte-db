@@ -234,7 +234,7 @@ class UniverseForm extends Component {
           clusterIntent.instanceTags = formValues.primary.instanceTags.filter((userTag) => {
             return isNonEmptyString(userTag.name) && isNonEmptyString(userTag.value);
           }).map((userTag) => {
-            return {name: userTag.name, value: userTag.value};
+            return {name: userTag.name, value: userTag.value.trim()};
           });
         }
       } else {
@@ -242,7 +242,7 @@ class UniverseForm extends Component {
           clusterIntent.tserverGFlags = formValues.primary.tserverGFlags.filter((tserverFlag) => {
             return isNonEmptyString(tserverFlag.name) && isNonEmptyString(tserverFlag.value);
           }).map((tserverFlag) => {
-            return {name: tserverFlag.name, value: tserverFlag.value};
+            return {name: tserverFlag.name, value: tserverFlag.value.trim()};
           });
         } else {
           const existingTserverGFlags = getPrimaryCluster(universeDetails.clusters).userIntent.tserverGFlags;
