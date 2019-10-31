@@ -22,7 +22,6 @@ SQL Workbench/J has the following main focus:
 
 In this section, you'll learn how to connect SQL Workbench/J with all of the YugabyteDB APIs on a local cluster. SQL Workbench/J works without any issues with YugabyteDB because the YugabyteDB APIs are compatible at the wire protocol level with databases already supported by SQL Workbench/J.
 
-
 ## Before you begin
 
 To use SQL Workbench/J with YugabyteDB, you need to have YugabyteDB up and running, the required Java Runtime Environment (JRE), and the required PostgreSQL JDBC driver.
@@ -64,7 +63,7 @@ YugabyteDB is PostgreSQL-compatible, so when working with SQL Workbench/J, use t
 
 3. In the list of drivers, select `PostgreSQL` and then edit the fields for the driver:
 
-    - **Name**:`PostgreSQL`
+    - **Name**:`PostgreSQL (for YugabyteDB)` (change to `PostgreSQL`)
     - **Library**: Displays the location of the PostgreSQL JDBC driver's JAR file. [For a new configuration, browse to the location of the file and click **Choose**.] When installed, the default location of the JRE or JDK is:
 
       ```
@@ -80,7 +79,7 @@ YugabyteDB is PostgreSQL-compatible, so when working with SQL Workbench/J, use t
 
 4. Click **OK**. The **Manage drivers** window closes and returns you to the **Select Connection Profile" window.
 
-You have now configured the PostgreSQL JDBC driver to work with YugabyteDB and can now create a connection profiles.
+You have now configured the PostgreSQL JDBC driver to work with YugabyteDB and can now create a connection profile.
 
 For more information, see:
 
@@ -93,12 +92,18 @@ You need to create a connection profile for each database you use and you can al
 
 1. In the **Select Connection Profile** window, click **Create a new connection profile**. A new profile is created.
 2. Replace `New profile` with a meaningful name for the connection profile. Because you need a separate profile for each database connection, include the database name in your profile name.
-3. For **Driver**, select `PostgreSQL (org.postgresql.Driver)`.
+3. For **Driver**, select `PostgreSQL (for YugabyteDB) (org.postgresql.Driver)`.
 4. For **URL**, replace `name_of_database` with the name of the database you want to connect to.
 5. For **Username**, enter `yugabyte`, or the user name you will be using.
-6. For **Password**, leave the field empty unless you require a specific password.
-7. Select **Autocommit**. In PostgreSQL and YugabyteDB, AUTOCOMMIT is on by default.
+6. For **Password**, leave the field empty unless YSQL authentication is enabled.
+7. Select **Autocommit**. In PostgreSQL and YugabyteDB, `AUTOCOMMIT` is on by default.
 8. Click **Test** to verify that the connection works successfully.
 9. Click **OK**.  The SQL Workbench/J default window appears. Your connection is now ready to be used.
 
 That's all of the settings you need to start using the connection. For details on configuration profiles, see [Connecting to the database](http://www.sql-workbench.eu/manual/profiles.html) in the SQL Workbench/J user manual.
+
+## What's next
+
+Now that you know how to configure SQL Workbench/J to work with your YugabyteDB databases, you can start exploring the features of SQL Workbench/J. For details on using SQL Workbench/J, see [SQL Workbench/J User's Manual](https://www.sql-workbench.eu/manual/workbench-manual.html).
+
+If you're looking for sample databases to explore YugabyteDB using SQL Workbench/J, see [Sample data](../../sample-data/).
