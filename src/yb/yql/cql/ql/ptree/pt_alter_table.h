@@ -149,6 +149,10 @@ class PTAlterTable : public TreeNode {
     return mod_props_;
   }
 
+  const std::shared_ptr<client::YBTable>& table() const {
+    return table_;
+  }
+
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
 

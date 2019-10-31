@@ -425,17 +425,31 @@ public class TestBindVariable extends BaseCQLTest {
     setupTable("test_bind", 0 /* num_rows */);
 
     {
-      // insert data into the test table. Bind by position.
+      // Insert data into the test table. Bind by position.
       String insertStmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
-                           "VALUES (?, ?, ?, ?, ?, ?);";
+                          "VALUES (?, ?, ?, ?, ?, ?);";
       PreparedStatement stmt = session.prepare(insertStmt);
       session.execute(stmt.bind(new Integer(1), "h2", new Integer(1), "r1", new Integer(1), "v1"));
+
+      try {
+        session.execute(stmt.bind(null, "h2", new Integer(1), "r1", new Integer(1), "v1"));
+        fail("Statement \"" + insertStmt + "\" did not fail with Null hash PK");
+      } catch (java.lang.NullPointerException e) {
+        LOG.info("Expected exception", e);
+      }
+
+      try {
+        session.execute(stmt.bind(new Integer(1), "h2", null, "r1", new Integer(1), "v1"));
+        fail("Statement \"" + insertStmt + "\" did not fail with Null range PK");
+      } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+        LOG.info("Expected exception", e);
+      }
     }
 
     {
-      // insert data into the test table. Bind by name.
+      // Insert data into the test table. Bind by name.
       String insertStmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
-                           "VALUES (?, ?, ?, ?, ?, ?);";
+                          "VALUES (?, ?, ?, ?, ?, ?);";
       PreparedStatement stmt = session.prepare(insertStmt);
       session.execute(stmt
                       .bind()
@@ -445,12 +459,40 @@ public class TestBindVariable extends BaseCQLTest {
                       .setString("r2", "r2")
                       .setInt("v1", 2)
                       .setString("v2", "v2"));
+
+      try {
+        session.execute(stmt
+                .bind()
+                .setToNull("h1")  // NULL hash key
+                .setString("h2", "h2")
+                .setInt("r1", 2)
+                .setString("r2", "r2")
+                .setInt("v1", 2)
+                .setString("v2", "v2"));
+        fail("Statement \"" + insertStmt + "\" did not fail with Null hash PK");
+      } catch (java.lang.NullPointerException e) {
+        LOG.info("Expected exception", e);
+      }
+
+      try {
+        session.execute(stmt
+                .bind()
+                .setInt("h1", 1)
+                .setString("h2", "h2")
+                .setToNull("r1") // NULL range key
+                .setString("r2", "r2")
+                .setInt("v1", 2)
+                .setString("v2", "v2"));
+        fail("Statement \"" + insertStmt + "\" did not fail with Null range PK");
+      } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+        LOG.info("Expected exception", e);
+      }
     }
 
     {
-      // insert data into the test table. Bind by name with named markers.
+      // Insert data into the test table. Bind by name with named markers.
       String insertStmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
-                           "VALUES (:b1, :b2, :b3, :b4, :b5, :b6);";
+                          "VALUES (:b1, :b2, :b3, :b4, :b5, :b6);";
       PreparedStatement stmt = session.prepare(insertStmt);
       session.execute(stmt
                       .bind()
@@ -460,15 +502,86 @@ public class TestBindVariable extends BaseCQLTest {
                       .setString("b4", "r3")
                       .setInt("b5", 3)
                       .setString("b6", "v3"));
+
+      try {
+        session.execute(stmt
+                .bind()
+                .setToNull("b1") // NULL hash key
+                .setString("b2", "h2")
+                .setInt("b3", 3)
+                .setString("b4", "r3")
+                .setInt("b5", 3)
+                .setString("b6", "v3"));
+        fail("Statement \"" + insertStmt + "\" did not fail with Null hash PK");
+      } catch (java.lang.NullPointerException e) {
+        LOG.info("Expected exception", e);
+      }
+
+      try {
+        session.execute(stmt
+                .bind()
+                .setInt("b1", 1)
+                .setString("b2", "h2")
+                .setToNull("b3") // NULL range key
+                .setString("b4", "r3")
+                .setInt("b5", 3)
+                .setString("b6", "v3"));
+        fail("Statement \"" + insertStmt + "\" did not fail with Null range PK");
+      } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+        LOG.info("Expected exception", e);
+      }
+    }
+
+    {
+      // Insert data into the test table. Bind by column index.
+      String insertStmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+                          "VALUES (?, ?, ?, ?, ?, ?);";
+      PreparedStatement stmt = session.prepare(insertStmt);
+      session.execute(stmt
+              .bind()
+              .setInt(0, 1)
+              .setString(1, "h2")
+              .setInt(2, 4)
+              .setString(3, "r4")
+              .setInt(4, 4)
+              .setString(5, "v4"));
+
+      try {
+        session.execute(stmt
+                .bind()
+                .setToNull(0) // NULL hash key
+                .setString(1, "h2")
+                .setInt(2, 4)
+                .setString(3, "r4")
+                .setInt(4, 4)
+                .setString(5, "v4"));
+        fail("Statement \"" + insertStmt + "\" did not fail with Null hash PK");
+      } catch (java.lang.NullPointerException e) {
+        LOG.info("Expected exception", e);
+      }
+
+      try {
+        session.execute(stmt
+                .bind()
+                .setInt(0, 1)
+                .setString(1, "h2")
+                .setToNull(2) // NULL range key
+                .setString(3, "r4")
+                .setInt(4, 4)
+                .setString(5, "v4"));
+        fail("Statement \"" + insertStmt + "\" did not fail with Null range PK");
+      } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+        LOG.info("Expected exception", e);
+      }
     }
 
     {
       // Select data from the test table.
-      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
-                           " WHERE h1 = 1 AND h2 = 'h2';";
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind " +
+                          "WHERE h1 = 1 AND h2 = 'h2';";
       ResultSet rs = session.execute(selectStmt);
 
-      for (int i = 1; i <= 3; i++) {
+      for (int i = 1; i <= 4; i++) {
         Row row = rs.one();
         // Assert exactly 1 row is returned each time with expected column values.
         assertNotNull(row);
