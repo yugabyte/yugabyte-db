@@ -82,6 +82,8 @@ class MasterPathHandlers {
     kNumTypes
   };
 
+  const string kSystemPlatformNamespace = "system_platform";
+
   struct TabletCounts {
     uint32_t user_tablet_leaders = 0;
     uint32_t user_tablet_followers = 0;
