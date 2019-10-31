@@ -46,10 +46,11 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
               client::internal::RemoteTablet *tablet,
               client::YBClient *client,
               WriteRequestPB *req,
-              WriteCDCRecordCallback callback)
+              WriteCDCRecordCallback callback,
+              bool use_local_tserver)
       : rpc::Rpc(deadline, client->messenger(), &client->proxy_cache()),
         trace_(new Trace),
-        invoker_(false /* local_tserver_only */,
+        invoker_(use_local_tserver /* local_tserver_only */,
                  false /* consistent_prefix */,
                  client,
                  this,
@@ -116,14 +117,15 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
   WriteCDCRecordCallback callback_;
 };
 
-rpc::RpcCommandPtr WriteCDCRecord(
+rpc::RpcCommandPtr CreateCDCWriteRpc(
     CoarseTimePoint deadline,
     client::internal::RemoteTablet* tablet,
     client::YBClient* client,
     WriteRequestPB* req,
-    WriteCDCRecordCallback callback) {
+    WriteCDCRecordCallback callback,
+    bool use_local_tserver) {
   return std::make_shared<CDCWriteRpc>(
-      deadline, tablet, client, req, std::move(callback));
+      deadline, tablet, client, req, std::move(callback), use_local_tserver);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -252,7 +254,7 @@ class CDCReadRpc : public rpc::Rpc, public client::internal::TabletRpc {
   bool called_ = false;
 };
 
-MUST_USE_RESULT rpc::RpcCommandPtr GetChangesCDCRpc(
+MUST_USE_RESULT rpc::RpcCommandPtr CreateGetChangesCDCRpc(
     CoarseTimePoint deadline,
     client::internal::RemoteTablet* tablet,
     client::YBClient* client,

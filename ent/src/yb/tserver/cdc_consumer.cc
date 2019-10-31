@@ -57,7 +57,8 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
       .default_rpc_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms))
       .Build());
 
-  auto cdc_consumer = std::make_unique<CDCConsumer>( std::move(is_leader_for_tablet), proxy_cache,
+  local_client->SetLocalTabletServer(tserver->permanent_uuid(), tserver->proxy(), tserver);
+  auto cdc_consumer = std::make_unique<CDCConsumer>(std::move(is_leader_for_tablet), proxy_cache,
       tserver->permanent_uuid(), std::move(local_client));
 
   // TODO(NIC): Unify cdc_consumer thread_pool & remote_client_ threadpools
@@ -176,6 +177,11 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
     // recreate the set of CDCPollers
     for (const auto& stream_entry : producer_entry_pb.stream_map()) {
       const auto& stream_entry_pb = stream_entry.second;
+      if (stream_entry_pb.same_num_producer_consumer_tablets()) {
+        LOG_WITH_PREFIX(INFO) << Format("Stream $0 will use local tserver optimization",
+                                        stream_entry.first);
+        streams_with_same_num_producer_consumer_tablets_.insert(stream_entry.first);
+      }
       for (const auto& tablet_entry : stream_entry_pb.consumer_producer_tablet_map()) {
         const auto& consumer_tablet_id = tablet_entry.first;
         for (const auto& producer_tablet_id : tablet_entry.second.tablets()) {
@@ -229,6 +235,9 @@ void CDCConsumer::TriggerPollForNewTablets() {
         }
 
         // now create the poller
+        bool use_local_tserver =
+            streams_with_same_num_producer_consumer_tablets_.find(entry.first.stream_id) !=
+            streams_with_same_num_producer_consumer_tablets_.end();
         auto cdc_poller = std::make_shared<CDCPoller>(
             entry.first, entry.second,
             std::bind(&CDCConsumer::ShouldContinuePolling, this, entry.first),
@@ -236,7 +245,8 @@ void CDCConsumer::TriggerPollForNewTablets() {
             thread_pool_.get(),
             local_client_,
             remote_clients_[uuid],
-            this);
+            this,
+            use_local_tserver);
         LOG_WITH_PREFIX(INFO) << Format("Start polling for producer tablet $0",
             entry.first.tablet_id);
         producer_pollers_map_[entry.first] = cdc_poller;

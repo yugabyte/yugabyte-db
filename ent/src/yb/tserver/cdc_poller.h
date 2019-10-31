@@ -60,7 +60,8 @@ class CDCPoller {
             ThreadPool* thread_pool,
             const std::shared_ptr<client::YBClient>& local_client,
             const std::shared_ptr<client::YBClient>& producer_client,
-            CDCConsumer* cdc_consumer);
+            CDCConsumer* cdc_consumer,
+            bool use_local_tserver);
   ~CDCPoller() = default;
 
   // Begins poll process for a producer tablet.
