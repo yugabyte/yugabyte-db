@@ -72,6 +72,10 @@ class PTTruncateStmt : public TreeNode {
     return names_->element(0)->ToTableName();
   }
 
+  const std::shared_ptr<client::YBTable>& table() const {
+    return table_;
+  }
+
  private:
   PTQualifiedNameListNode::SharedPtr names_;
 
