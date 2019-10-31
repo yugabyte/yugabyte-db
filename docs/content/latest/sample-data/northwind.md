@@ -47,9 +47,13 @@ You can download the Northwind database files, which are compatible with Yugabyt
 
 ### 2. Open the YSQL shell
 
-To open the YSQL shell, run the `ysqlsh` command.
+To open the YSQL shell, run the `ysqlsh` command from the YugabyteDB root directory.
 
-```sh
+``sh
+$ ./bin/ysqlsh
+```
+
+```
 ysqlsh (11.2)
 Type "help" for help.
 yugabyte=#
@@ -84,7 +88,7 @@ northwind=#
 To build the tables and database objects, execute the `northwind_ddl.sql` SQL script.
 
 ```
-northwind=# \i /Users/yugabyte/yugabytedb/share/northwind_ddl.sql
+northwind=# \i share/northwind_ddl.sql
 ```
 
 You can verify that all 14 tables have been created by running the `\d` command.
@@ -100,7 +104,7 @@ northwind=# \d
 To load the `northwind` database with sample data, run the `\i` command to execute commands in the `northwind_data.sql` file.
 
 ```
-northwind=# \i /Users/yugabyte/yugabytedb/share/northwind_data.sql
+northwind=# \i share/northwind_data.sql
 ```
 
 To verify that you have some data to work with, you can run a simple SELECT statement to pull data from the `customers` table.

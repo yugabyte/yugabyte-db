@@ -73,29 +73,35 @@ To connect DBeaver to a YugabyteDB cluster, you need the PostgreSQL JDBC driver 
 
 5. In the **Libraries** tab, select the PostgreSQL JDBC driver JAR file to be used.
 
+6. Click **OK**. The **Create new driver** window closes. 
 
+7. Verify that the new "YugabyteDB" driver appears in the **Driver Manager** listing and then click **Close**.
 
+## Create a database connection
 
+1. On the DBeaver menu, select **Database > New Connection**. The **Connect to database** window appears.
 
-### Create a YugabyteDB connection profile
+2. In the **Select your database** listing, select **YugabyteDB** and then click **Next**.
 
-1. For each of the files listed, click **Delete** and clear the listing.
-2. Click **Add File** and browse to the location of your JDK or JRE.
+3. In the **Connection Settings**, add the following settings:
 
-    - For example, the default location for Java extensions in macOS is here:
+    - **Host**: `localhost`
+    - **Port**: `5433`
+    - **Database**: Clear the default value (`postgres`)
+    - **User**: `yugabyte` (default is `postgres`)
+    - **Password**: Leave blank if YSQL authentication is not enabled. If enabled, add the password for `yugabyte` (default is `yugabyte`).
+    - **Show all databases**: Select this option.
 
-        ```
-        /Library/Java/Extensions/
-        ```
+4. Click **Test Connection**. If successful, you should see a window like the following:
 
-3. Select the PostgreSQL JAR file (for example, `postgresql-42.2.6.jar`) and then click **Open**. The file path and JAR file appear in the Libraries list.
-4. Click **OK**. The **Edit Driver** window closes.
-5. In the **Driver Manager** window, click **Close**.
+![Test successful](/images/develop/tools/dbeaver-)
 
-## Connect to a database
+5. Click **Finish**.
 
-1. In the 
+6. In the DBeaver application, you should now see "Yugabyte - localhost" in the **Database Navigator** panel.
+
+You can now expand the listing and see a listin gof all databases available to the `yugabyte` user.
 
 ## What's next
 
-You can now use DBeaver to explore 
+DBeaver has lots of features for developers and administrators to explore. For help using DBeaver, see the [DBeaver.io](https://dbeaver.io/) website and the [DBeaver documentation](https://github.com/dbeaver/dbeaver/wiki).
