@@ -619,11 +619,7 @@ void MasterServiceImpl::RemovedMasterUpdate(const RemovedMasterUpdateRequestPB* 
 void MasterServiceImpl::ChangeLoadBalancerState(
     const ChangeLoadBalancerStateRequestPB* req, ChangeLoadBalancerStateResponsePB* resp,
     RpcContext rpc) {
-  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
-    return;
-  }
-
+  // This should work on both followers and leaders, in order to cover leader failover!
   if (req->has_is_enabled()) {
     LOG(INFO) << "Changing balancer state to " << req->is_enabled();
     server_->catalog_manager()->SetLoadBalancerEnabled(req->is_enabled());

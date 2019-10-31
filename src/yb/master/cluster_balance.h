@@ -84,6 +84,8 @@ class ClusterLoadBalancer {
   // Sets whether to enable or disable the load balancer, on demand.
   void SetLoadBalancerEnabled(bool is_enabled) { is_enabled_ = is_enabled; }
 
+  bool IsLoadBalancerEnabled() const;
+
   CHECKED_STATUS IsIdle() const;
 
   //
