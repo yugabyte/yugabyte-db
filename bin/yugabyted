@@ -29,13 +29,13 @@ else:
     from urllib.parse import urlencode
 
 """
-Run `yugabyte-db` to start a single-node Yugabyte DB process. If no options are specified,
-`yugabyte-db` will assume the following default directory tree:
+Run `yugabyted` to start a single-node Yugabyte DB process. If no options are specified,
+`yugabyted` will assume the following default directory tree:
 
 yugabyte
-+-- yugabyte-db
++-- yugabyted
 +-- conf
-|   |   +-- yugabyte-db.conf
+|   |   +-- yugabyted.conf
 |   |   +-- yb-master.conf
 |   |   +-- yb-tserver.conf
 +-- bin
@@ -479,7 +479,7 @@ class YugabyteProcessManager(object):
         self.stop_callhome = True
         callhome_thread.join()
 
-    # Pushes yugabytedb script to background as a daemon. The process is not tied to a shell, but
+    # Pushes yugabyted script to background as a daemon. The process is not tied to a shell, but
     # it will not survive between machine restarts.
     def daemonize(self, queue):
         if os.fork():
@@ -487,7 +487,7 @@ class YugabyteProcessManager(object):
             handlers = [e for e in atexit._exithandlers if e[0] == self.kill_yugabyte]
             for e in handlers:
                 atexit._exithandlers.remove(e)
-            # Keep the parent process alive until the daemon confirms yugabytedb started properly.
+            # Keep the parent process alive until the daemon confirms yugabyted started properly.
             try:
                 queue.get(timeout=60)
             except Queue.empty as e:
@@ -502,7 +502,7 @@ class YugabyteProcessManager(object):
                 atexit._exithandlers.remove(e)
             sys.exit()
 
-    # Sets env variables needed for yugabyte-db start.
+    # Sets env variables needed for yugabyted start.
     def set_env_vars(self):
         # Sets YW metrics to use local database.
         os.environ["USE_NATIVE_METRICS"] = "true"
@@ -897,8 +897,8 @@ class YugabyteProcessManager(object):
                 "--webserver_port", help="Port on which main webserver will run.")
             cur_parser.add_argument(
                 "--webserver_ip", help="IP address on which all webservers will be available.")
-            # TODO: After --listen_addr is implemented, yugabytedb must have a way to stop itself
-            # in daemon mode. (e.g. yugabytedb stop --listen_addr 127.0.0.1:7500)
+            # TODO: After --listen_addr is implemented, yugabyted must have a way to stop itself
+            # in daemon mode. (e.g. yugabyted stop --listen_addr 127.0.0.1:7500)
             cur_parser.add_argument(
                 "--is_daemon", action="store_true",
                 help="Runs {} in the background as a daemon. Does not persist on restart.".format(
