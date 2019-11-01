@@ -243,7 +243,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   ConsistentReadPoint* read_point();
 
-  void SetMemoryLimitScore(double score);
+  void SetRejectionScore(double score);
 
  private:
   friend class YBClient;
@@ -283,7 +283,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   internal::AsyncRpcMetricsPtr async_rpc_metrics_;
 
-  double memory_limit_score_ = 0.0;
+  double rejection_score_ = 0.0;
 
   DISALLOW_COPY_AND_ASSIGN(YBSession);
 };

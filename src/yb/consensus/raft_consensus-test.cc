@@ -85,6 +85,7 @@ class MockQueue : public PeerMessageQueue {
                      std::unique_ptr<ThreadPoolToken> raft_pool_observers_token)
       : PeerMessageQueue(metric_entity, log, nullptr /* server_tracker */,
                          FakeRaftPeerPB(kLocalPeerUuid), kTestTablet, clock,
+                         nullptr /* consensus_queue */,
                          std::move(raft_pool_observers_token)) {}
 
   MOCK_METHOD1(Init, void(const OpId& locally_replicated_index));
@@ -135,7 +136,7 @@ class RaftConsensusSpy : public RaftConsensus {
                    const scoped_refptr<MetricEntity>& metric_entity,
                    const std::string& peer_uuid,
                    const scoped_refptr<server::Clock>& clock,
-                   ReplicaOperationFactory* operation_factory,
+                   ConsensusContext* consensus_context,
                    const scoped_refptr<log::Log>& log,
                    const shared_ptr<MemTracker>& parent_mem_tracker,
                    const Callback<void(std::shared_ptr<consensus::StateChangeContext> context)>&
@@ -149,7 +150,7 @@ class RaftConsensusSpy : public RaftConsensus {
                     metric_entity,
                     peer_uuid,
                     clock,
-                    operation_factory,
+                    consensus_context,
                     log,
                     parent_mem_tracker,
                     mark_dirty_clbk,

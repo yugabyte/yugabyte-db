@@ -164,6 +164,7 @@ class RaftConsensusQuorumTest : public YBTest {
                                local_peer_pb,
                                kTestTablet,
                                clock_,
+                               nullptr /* consensus_context */,
                                raft_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL)));
 
       unique_ptr<ThreadPoolToken> pool_token(

@@ -233,6 +233,8 @@ class VersionStorageInfo {
     return static_cast<int>(files_[level].size());
   }
 
+  uint64_t NumFiles() const;
+
   // Return the combined file size of all files at the specified level.
   uint64_t NumLevelBytes(int level) const;
 

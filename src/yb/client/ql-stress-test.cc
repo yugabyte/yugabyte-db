@@ -63,10 +63,14 @@ DECLARE_int32(rocksdb_max_background_compactions);
 DECLARE_int32(rocksdb_universal_compaction_min_merge_width);
 DECLARE_int32(rocksdb_universal_compaction_size_ratio);
 DECLARE_uint64(log_segment_size_bytes);
+DECLARE_uint64(sst_files_soft_limit);
+DECLARE_uint64(sst_files_hard_limit);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_int32(log_cache_size_limit_mb);
+
+METRIC_DECLARE_counter(majority_sst_files_rejections);
 
 using namespace std::literals;
 
@@ -188,7 +192,8 @@ class QLStressTest : public QLDmlTestBase {
 
   void AddWriter(
       std::string value_prefix, std::atomic<int>* key, TestThreadHolder* thread_holder,
-      const std::chrono::nanoseconds& sleep_duration = std::chrono::nanoseconds());
+      const std::chrono::nanoseconds& sleep_duration = std::chrono::nanoseconds(),
+      bool allow_failures = false);
 
   TableHandle table_;
 
@@ -710,26 +715,41 @@ TEST_F_EX(QLStressTest, SlowUpdateConsensus, QLStressTestSingleTablet) {
 }
 
 class QLStressTestDelayWrite : public QLStressTestSingleTablet {
- private:
+ public:
   void SetUp() override {
     FLAGS_db_write_buffer_size = 1_KB;
-    FLAGS_rocksdb_level0_slowdown_writes_trigger = 4;
-    FLAGS_rocksdb_level0_file_num_compaction_trigger = 2;
+    FLAGS_sst_files_soft_limit = 4;
+    FLAGS_sst_files_hard_limit = 10;
+    FLAGS_rocksdb_level0_file_num_compaction_trigger = 6;
     FLAGS_rocksdb_universal_compaction_min_merge_width = 2;
     FLAGS_rocksdb_universal_compaction_size_ratio = 1000;
     QLStressTestSingleTablet::SetUp();
+  }
+
+  client::YBSessionPtr NewSession() override {
+    auto result = QLStressTestSingleTablet::NewSession();
+    result->SetTimeout(5s);
+    return result;
   }
 };
 
 void QLStressTest::AddWriter(
     std::string value_prefix, std::atomic<int>* key, TestThreadHolder* thread_holder,
-    const std::chrono::nanoseconds& sleep_duration) {
+    const std::chrono::nanoseconds& sleep_duration,
+    bool allow_failures) {
   thread_holder->AddThreadFunctor([this, &stop = thread_holder->stop_flag(), key, sleep_duration,
-                                   value_prefix = std::move(value_prefix)] {
+                                   value_prefix = std::move(value_prefix), allow_failures] {
     auto session = NewSession();
     while (!stop.load(std::memory_order_acquire)) {
       auto new_key = *key + 1;
-      ASSERT_OK(WriteRow(session, new_key, value_prefix + std::to_string(new_key)));
+      session->SetRejectionScore(RandomUniformReal<double>(0.01, 1));
+      auto write_status = WriteRow(session, new_key, value_prefix + std::to_string(new_key));
+      if (!allow_failures) {
+        ASSERT_OK(write_status);
+      } else if (!write_status.ok()) {
+        LOG(WARNING) << "Write failed: " << write_status;
+        continue;
+      }
       if (sleep_duration.count() > 0) {
         std::this_thread::sleep_for(sleep_duration);
       }
@@ -739,18 +759,25 @@ void QLStressTest::AddWriter(
 }
 
 TEST_F_EX(QLStressTest, DelayWrite, QLStressTestDelayWrite) {
-  std::atomic<int> key(0);
+  constexpr int kWriters = 10;
+  constexpr int kKeyBase = 10000;
+
+  std::array<std::atomic<int>, kWriters> keys;
 
   const std::string value_prefix = std::string(1_KB, 'X');
 
   TestThreadHolder thread_holder;
-  AddWriter(value_prefix, &key, &thread_holder);
+  for (int i = 0; i != kWriters; ++i) {
+    keys[i] = i * kKeyBase;
+    AddWriter(value_prefix, &keys[i], &thread_holder, 0s, true /* allow_failures */);
+  }
 
-  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &key, &value_prefix] {
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &keys, &value_prefix] {
     auto session = NewSession();
     while (!stop.load(std::memory_order_acquire)) {
-      auto had_key = key.load(std::memory_order_acquire);
-      if (had_key == 0) {
+      int idx = RandomUniformInt(0, kWriters - 1);
+      auto had_key = keys[idx].load(std::memory_order_acquire);
+      if (had_key == kKeyBase * idx) {
         std::this_thread::sleep_for(50ms);
         continue;
       }
@@ -759,11 +786,37 @@ TEST_F_EX(QLStressTest, DelayWrite, QLStressTestDelayWrite) {
     }
   });
 
-  thread_holder.AddThread(RestartsThread(cluster_.get(), 5s, &thread_holder.stop_flag()));
-  thread_holder.WaitAndStop(60s);
+  for (;;) {
+    std::this_thread::sleep_for(1s);
+    int keys_written = 0;
+    for (int i = 0; i != kWriters; ++i) {
+      keys_written += keys[i].load() - kKeyBase * i;
+    }
+    LOG(INFO) << "Total keys written: " << keys_written;
+    if (keys_written < RegularBuildVsSanitizers(1000, 100)) {
+      continue;
+    }
 
-  LOG(INFO) << "Total keys written: " << key.load(std::memory_order_acquire);
-  ASSERT_GT(key.load(std::memory_order_acquire), RegularBuildVsSanitizers(2000, 100));
+    uint64_t total_rejections = 0;
+    for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      int64_t rejections = 0;
+      auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
+      for (const auto& peer : peers) {
+        auto counter = METRIC_majority_sst_files_rejections.Instantiate(
+            peer->tablet()->GetMetricEntity());
+        rejections += counter->value();
+      }
+      total_rejections += rejections;
+
+      LOG(INFO) << "Rejections: " << rejections;
+    }
+
+    if (!IsSanitizer() && total_rejections < 10) {
+      continue;
+    }
+
+    break;
+  }
 
   ASSERT_OK(WaitFor([cluster = cluster_.get()] {
     auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);

@@ -62,6 +62,7 @@ struct TabletMetrics {
 
   scoped_refptr<Counter> not_leader_rejections;
   scoped_refptr<Counter> leader_memory_pressure_rejections;
+  scoped_refptr<Counter> majority_sst_files_rejections;
   scoped_refptr<Counter> transaction_conflicts;
   scoped_refptr<Counter> expired_transactions;
   scoped_refptr<Counter> restart_read_requests;
