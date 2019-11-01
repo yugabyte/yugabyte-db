@@ -9,7 +9,7 @@ menu:
     weight: 2440
 aliases:
   - admin/yb-master
-isTocNested: true
+isTocNested: 3
 showAsideToc: true
 ---
 
@@ -47,6 +47,8 @@ $ ./bin/yb-master \
 - [Logging](#logging-options)
 - [Cluster](#cluster-options)
 - [Placement](#placement-options)
+- [Security](#security-options)
+- [Change data capture (CDC)](#change-data-capture-cdc-options)
 
 ---
 
@@ -130,15 +132,87 @@ To enable YSQL, you must set `--enable_ysql=true` on all YB-Master and YB-TServe
 
 ### Logging options
 
-#### --log_dir
+#### --alsologtoemail
 
-The directory to store `yb-master` log files.
+Sends log messages to these email addresses in addition to logfiles.
 
-Default: Same value as `--fs_data_dirs`
+Default: `""`
+
+#### --colorlogtostderr
+
+Color messages logged to `stderr` (if supported by terminal).
+
+Default: `false`
+
+#### --logbuflevel
+
+Buffer log messages logged at this level (or lower).
+
+Valid values: `-1` (don't buffer); `0` (INFO); `1` (WARN); `2` (ERROR); `3` (FATAL)
+
+Default: `0`
+
+#### --logbufsecs
+
+Buffer log messages for at most this many seconds.
+
+Default: `30`
+
+#### --logemaillevel
+
+Email log messages logged at this level, or higher. 
+
+Values: `0` (all); `1` (WARN), `2` (ERROR), `3` (FATAL), `999` (none)
+
+Default: `999`
+
+#### --logmailer
+
+The mailer used to send logging email messages.
+
+Default: `"/bin/mail"
 
 #### --logtostderr
 
-Switches to log to standard error (`stderr`).
+Write log messages to `stderr` instead of `logfiles`.
+
+Default: `false`
+
+#### --log_dir
+
+The directory to write `yb-master` log files.
+
+Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
+
+#### --log_link
+
+Put additional links to the log files in this directory.
+
+Default: `""`
+
+#### --log_prefix
+
+Prepend the log prefix to each log line.
+
+Default:  `true`
+
+#### --max_log_size
+
+The maximum log size, in megabytes (MB). A value of `0` will be silently overridden to `1`.
+
+Default: `1800` (1.8 GB)
+
+#### --minloglevel
+
+The minimum level to log messages. Values are: `0` (INFO), `1` (WARN), `2` (ERROR), `3` (FATAL).
+
+Default: `0` (INFO)
+
+#### --stderrthreshold
+
+Log messages at, or above, this level are copied to `stderr` in addition to log files.
+
+Default: `2`
 
 ---
 
@@ -189,6 +263,50 @@ Default: `cloud1`
 Determines when to use private IP addresses. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the `placement_*` configuration options.
 
 Default: `never`
+
+---
+
+### Security options
+
+For details on enabling server-server encryption, see [Server-server encryption](../../secure/tls-encryption/server-to-server).
+
+#### --certs_dir
+
+Directory that contains certificate authority, private key, and certificates for this server.
+
+Default: `""` (Uses `<data drive>/yb-data/master/data/certs`.)
+
+#### --allow_insecure_connections
+
+Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this option requires the [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled.
+
+Default: `true`
+
+#### --dump_certificate_entries
+
+Dump certificate entries.
+
+Default: `false`
+
+#### --use_node_to_node_encryption
+
+Enable server-server, or node-to-node, encryption between YugabyteDB YB-Master and YB-TServer nodes in a cluster or universe. To work properly, all YB-Master nodes must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) setting enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) must be disabled.
+
+Default: `false`
+
+---
+
+### Change data capture (CDC) options
+
+To learn about CDD, see [Change data capture (CDC)](../../architecture/#cdc-architecture).
+
+For other CDC configuration options, see [YB-TServer's CDC options](../yb-tserver/#change-data-capture-cdc-options).
+
+#### --cdc_state_table_num_tablets
+
+The number of tablets to use when creating the CDC state table.
+
+Default: `0` (Use the same default number of tablets as for regular tables.)
 
 ## Admin UI
 
