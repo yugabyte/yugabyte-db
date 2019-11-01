@@ -9,7 +9,7 @@ menu:
     weight: 2450
 aliases:
   - admin/yb-tserver
-isTocNested: true
+isTocNested: 3
 showAsideToc: true
 ---
 
@@ -50,6 +50,8 @@ yb-tserver [ options ]
 - [YEDIS](#yedis-options)
 - [Performance](#performance-options)
 - [Write Ahead Log (WAL)](#write-ahead-log-wal-options)
+- [Security](#security-options)
+- [Change data capture (CDC)](#change-data-capture-cdc-options)
 
 ---
 
@@ -129,15 +131,53 @@ Default: The `www` directory in the YugabyteDB home directory.
 
 ### Logging options
 
-#### --logtostderr
-
-Flag to log to standard error (`stderr`).
-
 #### --log_dir
 
-Specifies the directory to store `yb-tserver` log files.
+The directory to write `yb-tserver` log files.
 
 Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
+
+#### --logemaillevel
+
+Email log messages logged at this level, or higher. Values: `0` (all), 1, 2, `3` (FATAL), `999` (none)
+
+Default: `999`
+
+#### --logmailer
+
+The mailer used to send logging email messages.
+
+Default: `"/bin/mail"
+
+#### --logtostderr
+
+Write log messages to `stderr` instead of `logfiles`.
+
+Default: `false`
+
+#### --max_log_size
+
+The maximum log size, in megabytes (MB). A value of `0` will be silently overridden to `1`.
+
+Default: `1800` (1.8 GB)
+
+#### --minloglevel
+
+The minimum level to log messages. Values are: `0` (INFO), `1`, `2`, `3` (FATAL).
+
+Default: `0` (INFO)
+
+#### --stderrthreshold
+
+Log messages at, or above, this level are copied to `stderr` in addition to log files.
+
+Default: `2`
+
+#### --stop_logging_if_full_disk
+
+Stop attempting to log to disk if the disk is full.
+
+Default: `false`
 
 ---
 
@@ -145,7 +185,7 @@ Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
 
 #### --placement_zone
 
-Specifies the name of the availability zone, or rack, where this instance is deployed.
+The name of the availability zone, or rack, where this instance is deployed.
 
 Default: `rack1`
 
@@ -327,7 +367,7 @@ Default: `256MB`
 
 The number of shards per YB-TServer per table when a user table is created.
 
-Default: Server automatically picks a valid default internally, typically 8.
+Default: Server automatically picks a valid default internally, typically `8`.
 
 ---
 
@@ -349,11 +389,91 @@ Default: `false`
 
 When [`--durable_wal_write`](#durable-wal-write) is false, writes to the Raft log are synced to disk every `--interval_durable_wal_write_ms` or [`--bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb), whichever comes first.
 
+Default: `1000`
+
 #### --bytes_durable_wal_write_mb
 
 When `--durable_wal_write` is `false`, writes to the Raft log are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
 
-Default: `1000ms` or `1MB`
+Default: `1`
+
+---
+
+### Security options
+
+For details on enabling client-server encryption, see [Client-server encryption](../../secure/tls-encryption/client-to-server).
+
+#### --certs_dir
+
+Directory that contains certificate authority, private key, and certificates for this server.
+
+Default: `""` (Uses `<data drive>/yb-data/tserver/data/certs`.)
+
+#### --allow_insecure_connections
+
+Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this option requires the [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled and [`use_client_to_server_encryption`](#use-client-to-server-encryption) to be enabled.
+
+Default: `true`
+
+#### --certs_for_client_dir
+
+The directory that contains certificate authority, private key, and certificates for this server that should be used for client-to-server communications.
+
+Default: `""` (Use the same directory as for server-to-server communications.)
+
+#### --dump_certificate_entries
+
+Dump certificate entries.
+
+Default: `false`
+
+#### --use_client_to_server_encryption
+
+Use client-to-server, or client-server, encryption with YCQL. 
+
+Default: `false`
+
+#### --use_node_to_node_encryption
+
+Enable server-server, or node-to-node, encryption between YugabyteDB YB-Master and YB-TServer nodes in a cluster or universe. To work properly, all YB-Master nodes must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) setting enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) must be disabled.
+
+Default: `false`
+
+---
+
+### Change data capture (CDC) options
+
+To learn about CDC, see [Change data capture (CDC)](../../architecture/#cdc-architecture).
+
+#### --cdc_rpc_timeout_ms
+
+Timeout used for CDC->`yb-tserver` asynchronous RPC calls.
+
+Default: `30000`
+
+#### --cdc_state_checkpoint_update_interval_ms
+
+RAte at which CDC state's checkpoint is updated.
+
+Default: `15000`
+
+#### --cdc_ybclient_reactor_threads
+
+The number of reactor threads to be used for processing `ybclient` requests for CDC.
+
+Default: `50`
+
+#### --cdc_state_table_num_tablets
+
+The number of tablets to use when creating the CDC state table.
+
+Default: `0` (Use the same default number of tablets as for regular tables.)
+
+#### --cdc_wal_retention_time_secs
+
+WAL retention time, in seconds, to be used for tables for which a CDC stream was created.
+
+Default: `14400` (4 hours)
 
 ## Admin UI
 
