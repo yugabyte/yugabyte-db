@@ -73,7 +73,10 @@ TEST_F(DebugUtilTest, TestStackTrace) {
   StackTrace t;
   t.Collect(1);
   string trace = t.Symbolize();
+  LOG(INFO) << "Trace:\n" << trace;
   ASSERT_STR_CONTAINS(trace, "yb::DebugUtilTest_TestStackTrace_Test::TestBody");
+  ASSERT_STR_CONTAINS(trace, "testing::internal::UnitTestImpl::RunAllTests()");
+  ASSERT_STR_CONTAINS(trace, "main");
 }
 
 TEST_F(DebugUtilTest, TestGetStackTrace) {
