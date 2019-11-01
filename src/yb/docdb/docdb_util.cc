@@ -30,7 +30,7 @@ using std::string;
 using std::make_shared;
 using std::endl;
 using strings::Substitute;
-using yb::util::FormatBytesAsStr;
+using yb::FormatBytesAsStr;
 using yb::util::ApplyEagerLineContinuation;
 using std::vector;
 

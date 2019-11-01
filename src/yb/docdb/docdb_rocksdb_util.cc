@@ -320,10 +320,10 @@ void PerformRocksDBSeek(
       "    Seek() calls:     $8\n",
       file_name, line,
       BestEffortDocDBKeyToStr(seek_key),
-      FormatRocksDBSliceAsStr(seek_key),
+      FormatSliceAsStr(seek_key),
       iter->Valid() ? BestEffortDocDBKeyToStr(KeyBytes(iter->key())) : "N/A",
-      iter->Valid() ? FormatRocksDBSliceAsStr(iter->key()) : "N/A",
-      iter->Valid() ? FormatRocksDBSliceAsStr(iter->value()) : "N/A",
+      iter->Valid() ? FormatSliceAsStr(iter->key()) : "N/A",
+      iter->Valid() ? FormatSliceAsStr(iter->value()) : "N/A",
       next_count,
       seek_count);
 }

@@ -22,6 +22,7 @@
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/conflict_resolution.h"
+#include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/intent.h"
@@ -29,6 +30,7 @@
 
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/bytes_formatter.h"
 
 using namespace std::literals;
 
@@ -242,7 +244,8 @@ IntentAwareIterator::IntentAwareIterator(
       transaction_status_cache_(
           txn_op_context ? &txn_op_context->txn_status_manager : nullptr, read_time, deadline) {
   VLOG(4) << "IntentAwareIterator, read_time: " << read_time
-          << ", txp_op_context: " << txn_op_context_;
+          << ", txn_op_context: " << txn_op_context_;
+
   if (txn_op_context.is_initialized()) {
     intent_iter_ = docdb::CreateRocksDBIterator(doc_db.intents,
                                                 doc_db.key_bounds,
@@ -612,7 +615,7 @@ Result<FetchKeyResult> IntentAwareIterator::FetchKey() {
 Slice IntentAwareIterator::value() {
   if (IsEntryRegular()) {
     VLOG(4) << "IntentAwareIterator::value() returning iter_.value(): "
-            << iter_.value().ToDebugHexString();
+            << iter_.value().ToDebugHexString() << " or " << FormatSliceAsStr(iter_.value());
     return iter_.value();
   } else {
     DCHECK_EQ(ResolvedIntentState::kValid, resolved_intent_state_);

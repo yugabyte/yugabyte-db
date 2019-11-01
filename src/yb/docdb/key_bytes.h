@@ -60,7 +60,7 @@ class KeyBytes {
   }
 
   std::string ToString() const {
-    return yb::util::FormatBytesAsStr(data_);
+    return yb::FormatBytesAsStr(data_);
   }
 
   bool empty() const {
