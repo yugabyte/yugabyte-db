@@ -11,30 +11,30 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_CONSENSUS_TYPES_H
-#define YB_CONSENSUS_CONSENSUS_TYPES_H
+#ifndef YB_CONSENSUS_TEST_CONSENSUS_CONTEXT_H
+#define YB_CONSENSUS_TEST_CONSENSUS_CONTEXT_H
 
-#include "yb/common/hybrid_time.h"
-
-#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_context.h"
 
 namespace yb {
 namespace consensus {
 
-// Used for a callback that sets a transaction's timestamp and starts the MVCC transaction for
-// YB tables. In YB tables, we assign timestamp at the time of appending an entry to the Raft
-// log, so that timestamps always keep increasing in the log, unless entries are being overwritten.
-class ConsensusAppendCallback {
+class TestConsensusContext : public ConsensusContext {
  public:
-  virtual void HandleConsensusAppend() = 0;
-  virtual ~ConsensusAppendCallback() {}
-};
+  void SetPropagatedSafeTime(HybridTime ht) override {}
 
-struct ConsensusOptions {
-  std::string tablet_id;
+  bool ShouldApplyWrite() override { return true; }
+
+  HybridTime PropagatedSafeTime() override { return HybridTime(); }
+
+  void MajorityReplicated() override {}
+
+  void ChangeConfigReplicated(const RaftConfigPB&) override {}
+
+  uint64_t NumSSTFiles() override { return 0; }
 };
 
 } // namespace consensus
 } // namespace yb
 
-#endif // YB_CONSENSUS_CONSENSUS_TYPES_H
+#endif // YB_CONSENSUS_TEST_CONSENSUS_CONTEXT_H

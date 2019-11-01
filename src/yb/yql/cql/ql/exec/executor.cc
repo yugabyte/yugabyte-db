@@ -1487,11 +1487,11 @@ void Executor::FlushAsync() {
   }
   // Use the same score on each tablet. So probability of rejecting write should be related
   // to used capacity.
-  auto memory_limit_score = RandomUniformReal<double>(0.01, 1);
+  auto rejection_score = RandomUniformReal<double>(0.01, 1);
   for (const auto& pair : flush_sessions) {
     auto session = pair.first;
     auto exec_context = pair.second;
-    session->SetMemoryLimitScore(memory_limit_score);
+    session->SetRejectionScore(rejection_score);
     TRACE("Flush Async");
     session->FlushAsync([this, exec_context](const Status& s) {
         FlushAsyncDone(s, exec_context);

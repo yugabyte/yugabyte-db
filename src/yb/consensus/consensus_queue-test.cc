@@ -104,13 +104,15 @@ class ConsensusQueueTest : public YBTest {
   void CloseAndReopenQueue() {
     // Blow away the memtrackers before creating the new queue.
     queue_.reset();
+    auto token = raft_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
     queue_.reset(new PeerMessageQueue(metric_entity_,
                                       log_.get(),
                                       nullptr /* server_tracker */,
                                       FakeRaftPeerPB(kLeaderUuid),
                                       kTestTablet,
                                       clock_,
-    raft_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL)));
+                                      nullptr /* consensus_context */,
+                                      std::move(token)));
   }
 
   void TearDown() override {

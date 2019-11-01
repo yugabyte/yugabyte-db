@@ -21,9 +21,10 @@ namespace yb {
 namespace consensus {
 
 class Consensus;
+class ConsensusContext;
 class PeerProxyFactory;
 class PeerMessageQueue;
-class ReplicaOperationFactory;
+class RaftConfigPB;
 class ReplicateMsg;
 class ReplicateMsgsHolder;
 class RetryableRequests;

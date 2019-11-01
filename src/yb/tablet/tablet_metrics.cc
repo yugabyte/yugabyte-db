@@ -114,6 +114,11 @@ METRIC_DEFINE_counter(tablet, leader_memory_pressure_rejections,
   yb::MetricUnit::kRequests,
   "Number of RPC requests rejected due to memory pressure while LEADER.");
 
+METRIC_DEFINE_counter(tablet, majority_sst_files_rejections,
+  "Majority SST files number Rejections",
+  yb::MetricUnit::kRequests,
+  "Number of RPC requests rejected due to number of majority SST files.");
+
 METRIC_DEFINE_counter(tablet, transaction_conflicts,
   "Distributed Transaction Conflicts",
   yb::MetricUnit::kRequests,
@@ -143,6 +148,7 @@ TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& entity)
     MINIT(write_op_duration_client_propagated_consistency),
     MINIT(not_leader_rejections),
     MINIT(leader_memory_pressure_rejections),
+    MINIT(majority_sst_files_rejections),
     MINIT(transaction_conflicts),
     MINIT(expired_transactions),
     MINIT(restart_read_requests),

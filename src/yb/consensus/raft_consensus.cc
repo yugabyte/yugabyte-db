@@ -42,6 +42,7 @@
 
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_context.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/leader_election.h"
 #include "yb/consensus/log.h"
@@ -215,7 +216,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     const RaftPeerPB& local_peer_pb,
     const scoped_refptr<MetricEntity>& metric_entity,
     const scoped_refptr<server::Clock>& clock,
-    ReplicaOperationFactory* operation_factory,
+    ConsensusContext* consensus_context,
     rpc::Messenger* messenger,
     rpc::ProxyCache* proxy_cache,
     const scoped_refptr<log::Log>& log,
@@ -237,6 +238,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
                            local_peer_pb,
                            options.tablet_id,
                            clock,
+                           consensus_context,
                            raft_pool->NewToken(ThreadPool::ExecutionMode::SERIAL)));
 
   DCHECK(local_peer_pb.has_permanent_uuid());
@@ -269,7 +271,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       metric_entity,
       peer_uuid,
       clock,
-      operation_factory,
+      consensus_context,
       log,
       parent_mem_tracker,
       mark_dirty_clbk,
@@ -284,7 +286,7 @@ RaftConsensus::RaftConsensus(
     unique_ptr<ThreadPoolToken> raft_pool_token,
     const scoped_refptr<MetricEntity>& metric_entity,
     const std::string& peer_uuid, const scoped_refptr<server::Clock>& clock,
-    ReplicaOperationFactory* operation_factory, const scoped_refptr<log::Log>& log,
+    ConsensusContext* consensus_context, const scoped_refptr<log::Log>& log,
     shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
@@ -318,7 +320,7 @@ RaftConsensus::RaftConsensus(
       options,
       peer_uuid,
       std::move(cmeta),
-      DCHECK_NOTNULL(operation_factory),
+      DCHECK_NOTNULL(consensus_context),
       this,
       retryable_requests,
       std::bind(&PeerMessageQueue::TrackOperationsMemory, queue_.get(), _1));
@@ -1042,8 +1044,8 @@ void RaftConsensus::UpdateMajorityReplicated(
   bool committed_index_changed = false;
   s = state_->UpdateMajorityReplicatedUnlocked(
       majority_replicated_data.op_id, committed_op_id, &committed_index_changed);
-  if (majority_replicated_listener_ && state_->GetLeaderStateUnlocked().ok()) {
-    majority_replicated_listener_();
+  if (state_->GetLeaderStateUnlocked().ok()) {
+    state_->context()->MajorityReplicated();
   }
   if (PREDICT_FALSE(!s.ok())) {
     string msg = Substitute("Unable to mark committed up to $0: $1",
@@ -1053,6 +1055,8 @@ void RaftConsensus::UpdateMajorityReplicated(
     LOG_WITH_PREFIX(WARNING) << msg;
     return;
   }
+
+  majority_num_sst_files_.store(majority_replicated_data.num_sst_files, std::memory_order_release);
 
   if (committed_index_changed &&
       state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
@@ -1249,8 +1253,7 @@ Status RaftConsensus::StartReplicaOperationUnlocked(
   VLOG_WITH_PREFIX(1) << "Starting operation: " << msg->id().ShortDebugString();
   scoped_refptr<ConsensusRound> round(new ConsensusRound(this, msg));
   ConsensusRound* round_ptr = round.get();
-  RETURN_NOT_OK(
-      state_->replica_operation_factory()->StartReplicaOperation(round, propagated_safe_time));
+  RETURN_NOT_OK(state_->context()->StartReplicaOperation(round, propagated_safe_time));
   return state_->AddPendingOperation(round_ptr);
 }
 
@@ -1698,7 +1701,7 @@ Result<bool> RaftConsensus::EnqueuePreparesUnlocked(const ConsensusRequestPB& re
   if (request.has_propagated_safe_time()) {
     propagated_safe_time = HybridTime(request.propagated_safe_time());
     if (deduped_req.messages.empty()) {
-      state_->replica_operation_factory()->SetPropagatedSafeTime(propagated_safe_time);
+      state_->context()->SetPropagatedSafeTime(propagated_safe_time);
     }
   }
 
@@ -2828,9 +2831,9 @@ void RaftConsensus::NonTxRoundReplicationFinished(ConsensusRound* round,
         LOG(WARNING) << "Could not clear pending state : " << s.ToString();
       }
     }
-  } else if (IsChangeConfigOperation(op_type) && change_config_replicated_listener_) {
+  } else if (IsChangeConfigOperation(op_type)) {
     // Notify the TabletPeer owner object.
-    change_config_replicated_listener_(state_->GetCommittedConfigUnlocked());
+    state_->context()->ChangeConfigReplicated(state_->GetCommittedConfigUnlocked());
   }
 
   client_cb(status);
@@ -2946,19 +2949,6 @@ uint64_t RaftConsensus::OnDiskSize() const {
 
 yb::OpId RaftConsensus::WaitForSafeOpIdToApply(const yb::OpId& op_id) {
   return log_->WaitForSafeOpIdToApply(op_id);
-}
-
-void RaftConsensus::SetPropagatedSafeTimeProvider(std::function<HybridTime()> provider) {
-  queue_->SetPropagatedSafeTimeProvider(std::move(provider));
-}
-
-void RaftConsensus::SetMajorityReplicatedListener(std::function<void()> updater) {
-  majority_replicated_listener_ = std::move(updater);
-}
-
-void RaftConsensus::SetChangeConfigReplicatedListener(
-    std::function<void(const RaftConfigPB&)> listener) {
-  change_config_replicated_listener_ = std::move(listener);
 }
 
 yb::OpId RaftConsensus::MinRetryableRequestOpId() {

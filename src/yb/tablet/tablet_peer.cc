@@ -253,47 +253,14 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
         raft_pool,
         retryable_requests);
     has_consensus_.store(true, std::memory_order_release);
-    auto ht_lease_provider = [this](MicrosTime min_allowed, CoarseTimePoint deadline) {
-      MicrosTime lease_micros {
-          consensus_->MajorityReplicatedHtLeaseExpiration(min_allowed, deadline) };
-      if (!lease_micros) {
-        return HybridTime::kInvalid;
-      }
-      if (lease_micros >= kMaxHybridTimePhysicalMicros) {
-        // This could happen when leader leases are disabled.
-        return HybridTime::kMax;
-      }
-      return HybridTime(lease_micros, /* logical */ 0);
-    };
-    tablet_->SetHybridTimeLeaseProvider(ht_lease_provider);
+
+    tablet_->SetHybridTimeLeaseProvider(std::bind(&TabletPeer::HybridTimeLease, this, _1, _2));
     operation_tracker_.SetPostTracker(
         std::bind(&RaftConsensus::TrackOperationMemory, consensus_.get(), _1));
 
-    auto* mvcc_manager = tablet_->mvcc_manager();
-    consensus_->SetPropagatedSafeTimeProvider([mvcc_manager, ht_lease_provider] {
-      // Get the current majority-replicated HT leader lease without any waiting.
-      auto ht_lease = ht_lease_provider(/* min_allowed */ 0, /* deadline */ CoarseTimePoint::max());
-      if (!ht_lease) {
-        return HybridTime::kInvalid;
-      }
-      return mvcc_manager->SafeTime(ht_lease);
-    });
-
     prepare_thread_ = std::make_unique<Preparer>(consensus_.get(), tablet_prepare_pool);
 
-    consensus_->SetMajorityReplicatedListener([mvcc_manager, ht_lease_provider] {
-      auto ht_lease = ht_lease_provider(/* min_allowed */ 0, /* deadline */ CoarseTimePoint::max());
-      if (ht_lease) {
-        mvcc_manager->UpdatePropagatedSafeTimeOnLeader(ht_lease);
-      }
-    });
-
-    auto mvcc_leader_only_mode_updater = [this](const RaftConfigPB& config) {
-      tablet_->mvcc_manager()->SetLeaderOnlyMode(config.peers_size() == 1);
-    };
-
-    mvcc_leader_only_mode_updater(RaftConfig()); // Set initial flag value.
-    consensus_->SetChangeConfigReplicatedListener(mvcc_leader_only_mode_updater);
+    ChangeConfigReplicated(RaftConfig()); // Set initial flag value.
   }
 
   RETURN_NOT_OK(prepare_thread_->Start());
@@ -312,6 +279,43 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
   VLOG_WITH_PREFIX(2) << "Peer Initted";
 
   return Status::OK();
+}
+
+HybridTime TabletPeer::HybridTimeLease(MicrosTime min_allowed, CoarseTimePoint deadline) {
+  MicrosTime lease_micros {
+      consensus_->MajorityReplicatedHtLeaseExpiration(min_allowed, deadline) };
+  if (!lease_micros) {
+    return HybridTime::kInvalid;
+  }
+  if (lease_micros >= kMaxHybridTimePhysicalMicros) {
+    // This could happen when leader leases are disabled.
+    return HybridTime::kMax;
+  }
+  return HybridTime(lease_micros, /* logical */ 0);
+}
+
+HybridTime TabletPeer::PropagatedSafeTime() {
+  // Get the current majority-replicated HT leader lease without any waiting.
+  auto ht_lease = HybridTimeLease(/* min_allowed */ 0, /* deadline */ CoarseTimePoint::max());
+  if (!ht_lease) {
+    return HybridTime::kInvalid;
+  }
+  return tablet_->mvcc_manager()->SafeTime(ht_lease);
+}
+
+void TabletPeer::MajorityReplicated() {
+  auto ht_lease = HybridTimeLease(/* min_allowed */ 0, /* deadline */ CoarseTimePoint::max());
+  if (ht_lease) {
+    tablet_->mvcc_manager()->UpdatePropagatedSafeTimeOnLeader(ht_lease);
+  }
+}
+
+void TabletPeer::ChangeConfigReplicated(const RaftConfigPB& config) {
+  tablet_->mvcc_manager()->SetLeaderOnlyMode(config.peers_size() == 1);
+}
+
+uint64_t TabletPeer::NumSSTFiles() {
+  return tablet_->GetCurrentVersionNumSSTFiles();
 }
 
 Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
@@ -894,6 +898,10 @@ bool TabletPeer::ShouldApplyWrite() {
 }
 
 consensus::Consensus* TabletPeer::consensus() const {
+  return raft_consensus();
+}
+
+consensus::RaftConsensus* TabletPeer::raft_consensus() const {
   std::lock_guard<simple_spinlock> lock(lock_);
   return consensus_.get();
 }

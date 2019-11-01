@@ -70,6 +70,8 @@ DECLARE_bool(TEST_allow_stop_writes);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int32(tablet_inject_latency_on_apply_write_txn_ms);
 DECLARE_bool(TEST_log_cache_skip_eviction);
+DECLARE_uint64(sst_files_hard_limit);
+DECLARE_uint64(sst_files_soft_limit);
 
 namespace yb {
 namespace client {
@@ -882,6 +884,8 @@ TEST_F(QLTabletTest, ManySstFilesBootstrap) {
     google::FlagSaver flag_saver;
 
     auto original_rocksdb_level0_stop_writes_trigger = FLAGS_rocksdb_level0_stop_writes_trigger;
+    FLAGS_sst_files_hard_limit = std::numeric_limits<uint64_t>::max();
+    FLAGS_sst_files_soft_limit = FLAGS_sst_files_hard_limit;
     FLAGS_rocksdb_level0_stop_writes_trigger = 10000;
     FLAGS_rocksdb_level0_slowdown_writes_trigger = 10000;
     FLAGS_rocksdb_disable_compactions = true;

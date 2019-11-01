@@ -110,6 +110,7 @@ class ConsensusPeersTest : public YBTest {
         FakeRaftPeerPB(kLeaderUuid),
         kTabletId,
         clock_,
+        nullptr /* consensus_context */,
         raft_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL)));
     message_queue_->RegisterObserver(consensus_.get());
 
