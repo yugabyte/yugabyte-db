@@ -131,6 +131,7 @@
     <module>yb-loadtester</module>
     <module>yb-jedis-tests</module>
     <module>yb-cdc</module>
+    <module>yb-multiapi</module>
   </modules>
 
   <build>
@@ -354,6 +355,11 @@
         <version>${project.version}</version>
       </dependency>
       <dependency>
+        <groupId>org.yb</groupId>
+        <artifactId>yb-pgsql</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
         <groupId>log4j</groupId>
         <artifactId>log4j</artifactId>
         <version>${log4j.version}</version>
@@ -489,6 +495,12 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-cql</artifactId>
+        <version>${project.version}</version>
+        <type>test-jar</type>
+      </dependency>
+      <dependency>
+        <groupId>org.yb</groupId>
+        <artifactId>yb-pgsql</artifactId>
         <version>${project.version}</version>
         <type>test-jar</type>
       </dependency>
