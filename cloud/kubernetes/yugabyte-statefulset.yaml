@@ -1,4 +1,4 @@
-# 
+#
 # Overall Design:
 #   There are two Kubernetes StatefulSets in this yaml file - yb-master and yb-tserver. Each of
 #   these has the following:
@@ -46,7 +46,6 @@ metadata:
   labels:
     app: yb-master
 spec:
-  clusterIP:
   ports:
   - name: ui
     port: 7000
@@ -178,6 +177,26 @@ spec:
     port: 5433
   selector:
     app: yb-tserver
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: yb-db-service
+  labels:
+    app: yb-tserver
+spec:
+  ports:
+  - name: ui
+    port: 9000
+  - name: cassandra
+    port: 9042
+  - name: redis
+    port: 6379
+  - name: postgres
+    port: 5433
+  selector:
+    app: yb-tserver
+  type: LoadBalancer
 ---
 apiVersion: apps/v1
 kind: StatefulSet
