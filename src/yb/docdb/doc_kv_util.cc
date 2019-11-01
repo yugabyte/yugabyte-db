@@ -18,12 +18,13 @@
 #include "yb/docdb/value.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/util/bytes_formatter.h"
 
 using std::string;
 
 using strings::Substitute;
 using yb::HybridTime;
-using yb::util::FormatBytesAsStr;
+using yb::FormatBytesAsStr;
 
 namespace yb {
 namespace docdb {
@@ -186,7 +187,7 @@ string DecodeZeroEncodedStr(string encoded_str) {
 }
 
 std::string ToShortDebugStr(rocksdb::Slice slice) {
-  return yb::FormatRocksDBSliceAsStr(slice, kShortDebugStringLength);
+  return FormatSliceAsStr(slice, QuotesType::kDoubleQuotes, kShortDebugStringLength);
 }
 
 }  // namespace docdb

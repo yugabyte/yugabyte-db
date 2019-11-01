@@ -701,12 +701,20 @@ Status SubDocKey::DecodeDocKeyAndSubKeyEnds(
 }
 
 std::string SubDocKey::DebugSliceToString(Slice slice) {
+  auto r = DebugSliceToStringAsResult(slice);
+  if (r.ok()) {
+    return r.get();
+  }
+  return r.status().ToString();
+}
+
+Result<std::string> SubDocKey::DebugSliceToStringAsResult(Slice slice) {
   SubDocKey key;
   auto status = key.FullyDecodeFrom(slice, HybridTimeRequired::kFalse);
-  if (!status.ok()) {
-    return status.ToString();
+  if (status.ok()) {
+    return key.ToString();
   }
-  return key.ToString();
+  return status;
 }
 
 string SubDocKey::ToString() const {
@@ -825,7 +833,7 @@ string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes) {
       ss << subdoc_key.ToString();
     }
     if (mutable_slice.size() > 0) {
-      ss << " followed by raw bytes " << FormatRocksDBSliceAsStr(mutable_slice);
+      ss << " followed by raw bytes " << FormatSliceAsStr(mutable_slice);
       // Can append the above status of why we could not decode a SubDocKey, if needed.
     }
     return ss.str();

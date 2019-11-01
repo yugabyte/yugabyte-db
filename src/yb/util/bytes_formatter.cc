@@ -16,12 +16,12 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/cast.h"
+#include "yb/util/enums.h"
 
 using std::string;
 using strings::Substitute;
 
 namespace yb {
-namespace util {
 
 string FormatBytesAsStr(const char* data,
                         const size_t n,
@@ -73,8 +73,25 @@ string FormatBytesAsStr(const string& s, QuotesType quotes_type, size_t max_leng
 }
 
 string FormatSliceAsStr(const Slice& s, QuotesType quotes_type, size_t max_length) {
-  return FormatBytesAsStr(to_char_ptr(s.data()), s.size(), quotes_type, max_length);
+  return FormatBytesAsStr(util::to_char_ptr(s.data()), s.size(), quotes_type, max_length);
 }
 
-}  // namespace util
+std::string FormatSliceAsStr(
+    const yb::Slice& slice,
+    BinaryOutputFormat output_format,
+    QuotesType quote_type,
+    size_t max_length) {
+  switch (output_format) {
+    case BinaryOutputFormat::kEscaped:
+      return FormatSliceAsStr(slice, quote_type, max_length);
+    case BinaryOutputFormat::kHex:
+      return slice.ToDebugHexString();
+    case BinaryOutputFormat::kEscapedAndHex:
+      return Format(
+          "$0 ($1)",
+          FormatSliceAsStr(slice, quote_type, max_length), slice.ToDebugHexString());
+  }
+  FATAL_INVALID_ENUM_VALUE(BinaryOutputFormat, output_format);
+}
+
 }  // namespace yb

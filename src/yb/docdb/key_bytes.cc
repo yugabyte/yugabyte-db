@@ -37,7 +37,7 @@ Status KeyBytes::ReplaceLastHybridTimeForSeek(HybridTime hybrid_time) {
 Status KeyBytes::OnlyLacksHybridTimeFrom(const rocksdb::Slice& other_slice, bool* result) const {
   *result = false;
 
-  DOCDB_DEBUG_LOG("other_slice=$0", FormatRocksDBSliceAsStr(other_slice));
+  DOCDB_DEBUG_LOG("other_slice=$0", FormatSliceAsStr(other_slice));
 
   if (other_slice.empty()) {
     return STATUS(Corruption, "Empty key not expected");

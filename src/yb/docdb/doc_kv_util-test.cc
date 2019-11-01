@@ -25,7 +25,7 @@
 #include "yb/rocksdb/util/random.h"
 
 using std::string;
-using yb::util::FormatBytesAsStr;
+using yb::FormatBytesAsStr;
 
 namespace yb {
 namespace docdb {
