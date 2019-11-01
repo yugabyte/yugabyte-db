@@ -31,7 +31,7 @@ To enable access control, follow these steps, start the `yb-tserver` processes w
 --use_client_to_server_encryption=true`
 ```
 
-This setting allows both encrypted clients and unencrytped clients to connect to the cluster.
+This setting allows both encrypted and unencrytped clients to connect to the cluster.
 
 To prevent clients without the appropriate encryption from connecting, you must add the following flag:
 

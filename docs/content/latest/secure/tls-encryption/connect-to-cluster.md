@@ -15,7 +15,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-You would need to generate client config files to enable the client to connect to YugabyteDB. The steps are identical to [preparing the per-node configuration](../prepare-nodes/#generate-per-node-config) shown in a previous section.
+You would need to generate client configuration files to enable the client to connect to YugabyteDB. The steps are identical to [preparing the per-node configuration](../prepare-nodes/#generate-per-node-config) shown in a previous section.
 
 You would need the following files on the client node:
 
@@ -25,7 +25,7 @@ You would need the following files on the client node:
 
 ## cqlsh
 
-To enable cqlsh to connect, set the following environment variables:
+To enable `cqlsh` to connect, set the following environment variables:
 
 Variable       | Description                  |
 ---------------|------------------------------|
@@ -48,7 +48,8 @@ $ ./bin/cqlsh --ssl
 ```
 
 You should see the following output:
-```sql
+
+```
 Connected to local cluster at X.X.X.X:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
@@ -59,9 +60,9 @@ system_schema  system_auth  system
 
 ## yb-admin
 
-To enable `yb-admin` to connect with a cluster having TLS enabled, one can pass in the extra argument of `certs_dir_name` with the directory location where the root certificate is present. The `yb-admin` tool is present on the cluster node in the `~/master/bin/` directory. The `~/yugabyte-tls-config` directory on the cluster node contains all the certificates.
+To enable `yb-admin` to connect with a cluster with TLS enabled, you can pass in the extra argument of `certs_dir_name` with the directory location where the root certificate is present. The `yb-admin` tool is present on the cluster node in the `~/master/bin/` directory. The `~/yugabyte-tls-config` directory on the cluster node contains all the certificates.
 
-For example, the command below will list the master information for the TLS enabled cluster:
+For example, the command below will list the master information for the TLS-enabled cluster:
 
 ```sh
 export MASTERS=node1:7100,node2:7100,node3:7100
@@ -70,9 +71,11 @@ export MASTERS=node1:7100,node2:7100,node3:7100
 
 You should see the following output format:
 
-```sh
+```
 Master UUID	RPC Host/Port	State	Role
 UUID_1 		node1:7100  	ALIVE 	FOLLOWER
 UUID_2		node2:7100     	ALIVE 	LEADER
 UUID_3 		node3:7100     	ALIVE 	FOLLOWER
 ```
+
+For details on the `yb-admin` utility, see [yb-admin](../../admin/yb-admin).

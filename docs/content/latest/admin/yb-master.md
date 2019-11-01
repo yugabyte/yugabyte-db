@@ -268,15 +268,18 @@ Default: `never`
 
 ### Security options
 
+To enable server-server encryption, see [Server-server encryption](../../secure/tls-encryption/server-to-server).
+To enable client-server encryption, see [Client-server encryption](../../secure/tls-encryption/client-to-server).
+
 #### --certs_dir
 
 Directory that contains certificate authority, private key, and certificates for this server.
 
-Default: `""`
+Default: `""` (Uses `<data drive>/yb-data/master/data/certs`.)
 
 #### --allow_insecure_connections
 
-Allow insecure connections.
+Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this option requires the [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled.
 
 Default: `true`
 
@@ -300,7 +303,7 @@ Default: `false`
 
 #### --use_node_to_node_encryption
 
-Use node-to-node, or server-server, encryption.
+Use node-to-node, or server-server, encryption. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) must be disabled.
 
 Default: `false`
 

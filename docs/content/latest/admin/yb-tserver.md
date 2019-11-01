@@ -405,7 +405,7 @@ Default: `1`
 
 Directory that contains certificate authority, private key, and certificates for this server.
 
-Default: `""`
+Default: `""` (Uses `<data drive>/yb-data/tserver/data/certs`.)
 
 #### --allow_insecure_connections
 
