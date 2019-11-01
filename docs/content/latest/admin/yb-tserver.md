@@ -131,13 +131,33 @@ Default: The `www` directory in the YugabyteDB home directory.
 
 #### --logtostderr
 
-Flag to log to standard error (`stderr`).
+Enable log messages to go to standard error (`stderr`) instead of log files.
+
+Default: `false`
 
 #### --log_dir
 
-Specifies the directory to store `yb-tserver` log files.
+The directory to store `yb-tserver` log files.
 
 Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
+
+#### --max_log_size
+
+The maximum log size, in megabytes (MB). A value of `0` will be silently overridden to `1`.
+
+Default: `1800` (1.8 GB)
+
+#### --min_log_level
+
+The minimum level to log messages. Values are: `0` (ALL), `1`, `2`, `3` (FATAL).
+
+Default: `0` (ALL)
+
+#### --stderrthreshold
+
+Log messages at, or above, this level are copied to `stderr` in addition to log files.
+
+Default: `2`
 
 ---
 
@@ -145,7 +165,7 @@ Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
 
 #### --placement_zone
 
-Specifies the name of the availability zone, or rack, where this instance is deployed.
+The name of the availability zone, or rack, where this instance is deployed.
 
 Default: `rack1`
 
@@ -327,7 +347,7 @@ Default: `256MB`
 
 The number of shards per YB-TServer per table when a user table is created.
 
-Default: Server automatically picks a valid default internally, typically 8.
+Default: Server automatically picks a valid default internally, typically `8`.
 
 ---
 
@@ -349,11 +369,13 @@ Default: `false`
 
 When [`--durable_wal_write`](#durable-wal-write) is false, writes to the Raft log are synced to disk every `--interval_durable_wal_write_ms` or [`--bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb), whichever comes first.
 
+Default: `1000`
+
 #### --bytes_durable_wal_write_mb
 
 When `--durable_wal_write` is `false`, writes to the Raft log are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
 
-Default: `1000ms` or `1MB`
+Default: `1`
 
 ## Admin UI
 

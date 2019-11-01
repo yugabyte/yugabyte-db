@@ -136,9 +136,23 @@ The directory to store `yb-master` log files.
 
 Default: Same value as `--fs_data_dirs`
 
-#### --logtostderr
+#### --max_log_size
 
-Switches to log to standard error (`stderr`).
+The maximum log size, in megabytes (MB). A value of `0` will be silently overridden to `1`.
+
+Default: `1800` (1.8 GB)
+
+#### --min_log_level
+
+The minimum level to log messages. Values are: `0` (ALL), `1`, `2`, `3` (FATAL).
+
+Default: `0` (ALL)
+
+#### --stderrthreshold
+
+Log messages at, or above, this level are copied to `stderr` in addition to log files.
+
+Default: `2`
 
 ---
 
