@@ -41,9 +41,12 @@ The SQL scripts that you need to create the SportsDB sample database (YugabyteDB
 
 ### 2. Open the YSQL shell
 
-To open the Yugabyte SQL (YSQL) shell, run the `ysqlsh` command.
+To open the Yugabyte SQL (YSQL) shell, run the `ysqlsh` command from the YugabyteDB root directory.
 
 ```sh
+$ ./bin/ysqlsh
+
+```
 ysqlsh (11.2)
 Type "help" for help.
 yugabyte=#
@@ -69,7 +72,7 @@ Connect to the `sportsdb` database.
 
 ```
 yugabyte=# \c sportsdb
-You are now connected to database "sportsdb" as user "postgres".
+You are now connected to database "sportsdb" as user "yugabyte".
 sportsdb=#
 ```
 
@@ -78,7 +81,7 @@ sportsdb=#
 To build the tables and database objects, run the following command.
 
 ```
-sportsdb=# \i /Users/yugabyte/sportsdb_tables.sql
+sportsdb=# \i share/sportsdb_tables.sql
 ```
 
 You can verify that all 203 tables and sequences have been created by running the `\d` command.
@@ -92,7 +95,7 @@ sportsdb=# \d
 To load the `sportsdb` database with sample data (~80k rows), run the following command to execute commands in the file.
 
 ```
-sportsdb=# \i /Users/yugabyte/sportsdb_data.sql
+sportsdb=# \i share/sportsdb_inserts.sql
 ```
 
 To verify that you have some data to work with, you can run the following simple SELECT statement to pull data from the  basketball_defensive_stats` table.
@@ -106,13 +109,13 @@ sportsdb=# SELECT * FROM basketball_defensive_stats WHERE steals_total = '5';
 To create the unique constraints and foreign keys, run the following commands.
 
 ```
-sportsdb=# \i /Users/yugabyte/sportsdb_constraints.sql
+sportsdb=# \i share/sportsdb_constraints.sql
 ```
 
 and
 
 ```
-sportsdb=# \i /Users/yugabyte/sportsdb_fks.sql
+sportsdb=# \i share/sportsdb_fks.sql
 ```
 
 ### 7. Create the indexes
@@ -120,7 +123,7 @@ sportsdb=# \i /Users/yugabyte/sportsdb_fks.sql
 To create the indexes, run the following command.
 
 ```
-sportsdb=# \i /Users/yugabyte/sportsdb_indexes.sql
+sportsdb=# \i share/sportsdb_indexes.sql
 ```
 
 ## Explore the SportsDB database

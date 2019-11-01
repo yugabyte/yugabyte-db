@@ -463,15 +463,9 @@ The number of reactor threads to be used for processing `ybclient` requests for 
 
 Default: `50`
 
-#### --cdc_state_table_num_tablets
-
-The number of tablets to use when creating the CDC state table.
-
-Default: `0` (Use the same default number of tablets as for regular tables.)
-
 #### --cdc_wal_retention_time_secs
 
-WAL retention time, in seconds, to be used for tables for which a CDC stream was created.
+WAL retention time, in seconds, to be used for tables for which a CDC stream was created. If you change the value, make sure that [`yb-master --cdc_wal_retention_time_secs`](../yb-master/#cdc-wal-retention-time-secs) is also updated with the same value.
 
 Default: `14400` (4 hours)
 
