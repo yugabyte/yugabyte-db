@@ -124,8 +124,6 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
     public byte[] createKey(UUID universeUUID, UUID customerUUID, Map<String, String> config) {
         byte[] key = null;
         try {
-            final String algorithm = config.get("algorithm");
-            final int keySize = Integer.parseInt(config.get("key_size"));
             final byte[] existingEncryptionKey = retrieveKey(customerUUID, universeUUID);
             if (existingEncryptionKey != null && existingEncryptionKey.length > 0) {
                 final String errMsg = String.format(
@@ -138,25 +136,13 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
                 LOG.error(errMsg);
                 throw new IllegalArgumentException(errMsg);
             }
-            final ObjectNode validateResult = validateEncryptionKeyParams(algorithm, keySize);
-            if (!validateResult.get("result").asBoolean()) {
-                final String errMsg = String.format(
-                        "Invalid encryption key parameters detected for create operation in " +
-                                "universe %s: %s",
-                        universeUUID,
-                        validateResult.get("errors").asText()
-                );
-                LOG.error(errMsg);
-                throw new IllegalArgumentException(errMsg);
-            }
             final byte[] ref = createKeyWithService(universeUUID, customerUUID, config);
             if (ref == null || ref.length == 0) {
                 final String errMsg = "createKeyWithService returned empty key ref";
                 LOG.error(errMsg);
                 throw new RuntimeException(errMsg);
             }
-            addKeyRef(customerUUID, universeUUID, ref);
-            key = retrieveKey(customerUUID, universeUUID);
+            key = retrieveKey(customerUUID, universeUUID, ref, config);
         } catch (Exception e) {
             LOG.error("Error occured attempting to create encryption key", e);
         }
@@ -220,7 +206,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      * @param keySize is the size of the encryption key (in bits)
      * @return true if the parameters are valid, false otherwise and errors
      */
-    private ObjectNode validateEncryptionKeyParams(String algorithm, int keySize) {
+    protected ObjectNode validateEncryptionKeyParams(String algorithm, int keySize) {
         final T encryptionAlgorithm = validateEncryptionAlgorithm(algorithm);
         ObjectNode result = Json.newObject().put("result", false);
         if (encryptionAlgorithm == null) {
@@ -331,7 +317,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
             );
             if (currentRef != null) KmsHistory.deleteKeyRef(currentRef);
         } catch (Exception e) {
-            String errMsg = "";
+            String errMsg = "Could not remove key ref";
             LOG.error(errMsg);
         }
     }
@@ -347,12 +333,14 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
         byte[] keyRef = null;
         try {
             KmsConfig config = getKMSConfig(customerUUID);
-            KmsHistory currentRef = KmsHistory.getCurrentKeyRef(
-                    config.configUUID,
-                    universeUUID,
-                    KmsHistoryId.TargetType.UNIVERSE_KEY
-            );
-            if (currentRef != null) keyRef = Base64.getDecoder().decode(currentRef.keyRef);
+            if (config != null) {
+                KmsHistory currentRef = KmsHistory.getCurrentKeyRef(
+                        config.configUUID,
+                        universeUUID,
+                        KmsHistoryId.TargetType.UNIVERSE_KEY
+                );
+                if (currentRef != null) keyRef = Base64.getDecoder().decode(currentRef.keyRef);
+            }
         } catch (Exception e) {
             final String errMsg = "Could not get key ref";
             LOG.error(errMsg, e);
@@ -415,8 +403,12 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      *                     key for
      * @return the value of the encryption key if a matching key is found
      */
-    public byte[] retrieveKey(UUID customerUUID, UUID universeUUID) {
-        byte[] keyRef = getKeyRef(customerUUID, universeUUID);
+    public byte[] retrieveKey(
+            UUID customerUUID,
+            UUID universeUUID,
+            byte[] keyRef,
+            Map<String, String> config
+    ) {
         byte[] keyVal = null;
         if (keyRef == null) {
             String errMsg = String.format(
@@ -431,14 +423,27 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
         // Retrieve through KMS provider if no cache entry exists
         if (keyVal == null) {
             LOG.info("Universe key cache entry empty. Retrieving key from service");
-            keyVal = retrieveKeyWithService(customerUUID, keyRef);
-            // Update cache entry
-            if (keyVal != null) this.util.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
+            keyVal = retrieveKeyWithService(customerUUID, universeUUID, keyRef, config);
         }
         return keyVal;
     }
 
-    protected abstract byte[] retrieveKeyWithService(UUID customerUUID, byte[] keyRef);
+    public byte[] retrieveKey(UUID customerUUID, UUID universeUUID, Map<String, String> config) {
+        byte[] keyRef = getKeyRef(customerUUID, universeUUID);
+        return retrieveKey(customerUUID, universeUUID, keyRef, config);
+
+    }
+
+    public byte[] retrieveKey(UUID customerUUID, UUID universeUUID) {
+        return retrieveKey(customerUUID, universeUUID, null);
+    }
+
+    protected abstract byte[] retrieveKeyWithService(
+            UUID customerUUID,
+            UUID universeUUID,
+            byte[] keyRef,
+            Map<String, String> config
+    );
 
     /**
      * This method checks whether any key ref rotation history entries exist for any universe

@@ -23,6 +23,8 @@ public class UniverseTaskParams extends AbstractTaskParams {
   // Flag for creating encryption-at-rest key file
   public String encryptionKeyFilePath;
 
+  public String cmkArn;
+
   // Store encryption key provider specific configuration/authorization values
   public Map<String, String> encryptionAtRestConfig;
 
