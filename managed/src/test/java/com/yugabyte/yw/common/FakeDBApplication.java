@@ -21,9 +21,11 @@ public class FakeDBApplication extends WithApplication {
   protected CallHome mockCallHome;
   public ApiHelper mockApiHelper;
   HealthChecker mockHealthChecker;
+  protected EncryptionAtRestManager mockEARManager;
 
   @Override
   protected Application provideApplication() {
+    mockEARManager = mock(EncryptionAtRestManager.class);
     mockApiHelper = mock(ApiHelper.class);
     mockCommissioner = mock(Commissioner.class);
     mockCallHome = mock(CallHome.class);
@@ -35,6 +37,7 @@ public class FakeDBApplication extends WithApplication {
         .overrides(bind(CallHome.class).toInstance(mockCallHome))
         .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
         .overrides(bind(Executors.class).toInstance(mockExecutors))
+        .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
       .build();
   }
 }

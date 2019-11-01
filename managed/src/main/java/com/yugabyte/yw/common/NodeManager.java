@@ -378,6 +378,10 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--instance_tags");
             commandArgs.add(Json.stringify(Json.toJson(useTags)));
           }
+          if (taskParam.cmkArn != null) {
+            commandArgs.add("--cmk_res_name");
+            commandArgs.add(taskParam.cmkArn);
+          }
         }
         commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
         if (nodeTaskParam.deviceInfo != null) {

@@ -91,7 +91,12 @@ class TestEncryptionAtRestService extends EncryptionAtRestService<TestAlgorithm>
     }
 
     @Override
-    public byte[] retrieveKeyWithService(UUID customerUUID, byte[] keyRef) {
+    public byte[] retrieveKeyWithService(
+            UUID customerUUID,
+            UUID universeUUID,
+            byte[] keyRef,
+            Map<String, String> config
+    ) {
         this.createRequest = !this.createRequest;
         return this.createRequest ? null : "some_key_value".getBytes();
     }
@@ -158,9 +163,9 @@ public class EncryptionAtRestServiceTest extends WithApplication {
     public void testCreateAndRetrieveEncryptionKeyDuplicate() {
         EncryptionAtRestService service = new TestEncryptionAtRestService(
                 null,
-                EncryptionAtRestManager.KeyProvider.AWS,
+                EncryptionAtRestManager.KeyProvider.SMARTKEY,
                 mockUtil,
-                true
+                false
         );
         assertNull(service.createKey(
                 UUID.randomUUID(),

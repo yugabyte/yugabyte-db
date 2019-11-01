@@ -15,6 +15,7 @@ import java.util.Random;
 
 import java.nio.charset.Charset;
 
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -250,7 +251,7 @@ public class UniverseController extends AuthenticatedController {
           taskParams.allowInsecure = false;
         }
 
-        // Setup encryption at rest
+        // Setup encryption for the universe
         if (primaryCluster.userIntent.enableEncryptionAtRest) {
           // Generate encryption master key
           byte[] data = keyManager.generateUniverseKey(
@@ -277,6 +278,21 @@ public class UniverseController extends AuthenticatedController {
                     appConfig.getString("yb.storage.path"),
                     numRotations
             );
+          }
+        } else if (
+                primaryCluster.userIntent.enableVolumeEncryption
+                        && primaryCluster.userIntent.providerType.equals(CloudType.aws)
+        ) {
+          byte[] cmkArnBytes = keyManager.generateUniverseKey(
+                  customerUUID,
+                  universe.universeUUID,
+                  taskParams.encryptionAtRestConfig,
+                  true
+          );
+          if (cmkArnBytes.length == 0) {
+            primaryCluster.userIntent.enableVolumeEncryption = false;
+          } else {
+            taskParams.cmkArn = new String(cmkArnBytes);
           }
         }
       }

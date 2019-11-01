@@ -47,6 +47,7 @@ class AwsCreateInstancesMethod(CreateInstancesMethod):
                                  help="Volume type for volumes on EBS-backed instances.")
         self.parser.add_argument("--spot_price", default=None,
                                  help="Spot price for each instance (if desired)")
+        self.parser.add_argument("--cmk_res_name", help="CMK arn to enable encrypted EBS volumes.")
 
     def preprocess_args(self, args):
         if args.region is None:
@@ -108,6 +109,7 @@ class AwsProvisionInstancesMethod(ProvisionInstancesMethod):
         self.extra_vars["use_chrony"] = args.use_chrony
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.extra_vars["mount_points"] = self.cloud.get_mount_points_csv(args)
+        self.extra_vars["cmk_res_name"] = args.cmk_res_name
 
 
 class AwsDestroyInstancesMethod(DestroyInstancesMethod):

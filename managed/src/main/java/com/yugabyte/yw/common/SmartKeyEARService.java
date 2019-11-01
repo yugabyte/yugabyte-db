@@ -91,8 +91,18 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
     ) {
         final String algorithm = config.get("algorithm");
         final int keySize = Integer.parseInt(config.get("key_size"));
+        final ObjectNode validateResult = validateEncryptionKeyParams(algorithm, keySize);
+        if (!validateResult.get("result").asBoolean()) {
+            final String errMsg = String.format(
+                    "Invalid encryption key parameters detected for create operation in " +
+                            "universe %s: %s",
+                    universeUUID,
+                    validateResult.get("errors").asText()
+            );
+            LOG.error(errMsg);
+            throw new IllegalArgumentException(errMsg);
+        }
         final String endpoint = "/crypto/v1/keys";
-        // TODO: Remove EXPORT option once master keys are in encrypted format in Yugabyte
         final ArrayNode keyOps = Json.newArray()
                 .add("EXPORT")
                 .add("APPMANAGEABLE");
@@ -113,7 +123,9 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
         final JsonNode errors = response.get("error");
         if (errors != null) throw new RuntimeException(errors.toString());
         final String kId = response.get("kid").asText();
-        return kId.getBytes();
+        byte[] ref = kId.getBytes();
+        if (ref != null && ref.length > 0) addKeyRef(customerUUID, universeUUID, ref);
+        return ref;
     }
 
     @Override
@@ -159,8 +171,13 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
     }
 
     @Override
-    public byte[] retrieveKeyWithService(UUID customerUUID, byte[] keyRef) {
-        byte[] key = null;
+    public byte[] retrieveKeyWithService(
+            UUID customerUUID,
+            UUID universeUUID,
+            byte[] keyRef,
+            Map<String, String> config
+    ) {
+        byte[] keyVal = null;
         final ObjectNode authConfig = getAuthConfig(customerUUID);
         final String endpoint = String.format("/crypto/v1/keys/%s/export", new String(keyRef));
         final String sessionToken = retrieveSessionAuthorization(authConfig);
@@ -172,7 +189,9 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
         final JsonNode response = this.apiHelper.getRequest(url, headers);
         final JsonNode errors = response.get("error");
         if (errors != null) throw new RuntimeException(errors.toString());
-        key = Base64.getDecoder().decode(response.get("value").asText());
-        return key;
+        keyVal = Base64.getDecoder().decode(response.get("value").asText());
+        // Update cache entry
+        if (keyVal != null) this.util.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
+        return keyVal;
     }
 }
