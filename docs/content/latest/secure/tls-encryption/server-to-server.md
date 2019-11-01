@@ -15,7 +15,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-To enable server to server encryption, start the YB-Master and YB-TServer nodes using the appropriate configuration options described here.
+To enable server-server encryption, start the YB-Master and YB-TServer nodes using the appropriate configuration options described here.
 
 Configuration option           | Service                  | Description                  |
 -------------------------------|--------------------------|------------------------------|

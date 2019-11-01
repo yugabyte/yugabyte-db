@@ -9,7 +9,7 @@ menu:
     weight: 2440
 aliases:
   - admin/yb-master
-isTocNested: true
+isTocNested: 3
 showAsideToc: true
 ---
 
@@ -268,8 +268,7 @@ Default: `never`
 
 ### Security options
 
-To enable server-server encryption, see [Server-server encryption](../../secure/tls-encryption/server-to-server).
-To enable client-server encryption, see [Client-server encryption](../../secure/tls-encryption/client-to-server).
+For details on enabling server-server encryption, see [Server-server encryption](../../secure/tls-encryption/server-to-server).
 
 #### --certs_dir
 
@@ -283,27 +282,15 @@ Allow insecure connections. Set to `false` to prevent any process with unencrypt
 
 Default: `true`
 
-#### --certs_for_client_dir
-
-The directory that contains certificate authority, private key, and certificates for this server that should be used for client-to-server communications.
-
-Default: `""` (Use the same directory as for server-to-server communications.)
-
 #### --dump_certificate_entries
 
 Dump certificate entries.
 
 Default: `false`
 
-#### --use_client_to_server_encryption
-
-Use client-to-server, or client-server, encryption.
-
-Default: `false`
-
 #### --use_node_to_node_encryption
 
-Use node-to-node, or server-server, encryption. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) must be disabled.
+Enable server-server, or node-to-node, encryption between YugabyteDB YB-Master and YB-TServer nodes in a cluster or universe. To work properly, all YB-Master nodes must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) setting enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) must be disabled.
 
 Default: `false`
 
@@ -311,35 +298,15 @@ Default: `false`
 
 ### Change data capture (CDC) options
 
-#### --cdc_rpc_timeout_ms
+To learn about CDD, see [Change data capture (CDC)](../../architecture/#cdc-architecture).
 
-Timeout used for CDC->`yb-master` asynchronous RPC calls.
-
-Default: `30000`
-
-#### --cdc_state_checkpoint_update_interval_ms
-
-RAte at which CDC state's checkpoint is updated.
-
-Default: `15000`
-
-#### --cdc_ybclient_reactor_threads
-
-The number of reactor threads to be used for processing `ybclient` requests for CDC.
-
-Default: `50`
+For other CDC configuration options, see [YB-TServer's CDC options](../yb-tserver/#change-data-capture-cdc-options).
 
 #### --cdc_state_table_num_tablets
 
 The number of tablets to use when creating the CDC state table.
 
 Default: `0` (Use the same default number of tablets as for regular tables.)
-
-#### --cdc_wal_retention_time_secs
-
-WAL retention time, in seconds, to be used for tables for which a CDC stream was created.
-
-Default: `14400`
 
 ## Admin UI
 

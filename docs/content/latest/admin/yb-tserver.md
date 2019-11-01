@@ -9,7 +9,7 @@ menu:
     weight: 2450
 aliases:
   - admin/yb-tserver
-isTocNested: true
+isTocNested: 3
 showAsideToc: true
 ---
 
@@ -401,6 +401,8 @@ Default: `1`
 
 ### Security options
 
+For details on enabling client-server encryption, see [Client-server encryption](../../secure/tls-encryption/client-to-server).
+
 #### --certs_dir
 
 Directory that contains certificate authority, private key, and certificates for this server.
@@ -409,7 +411,7 @@ Default: `""` (Uses `<data drive>/yb-data/tserver/data/certs`.)
 
 #### --allow_insecure_connections
 
-Allow insecure connections.
+Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this option requires the [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled and [`use_client_to_server_encryption`](#use-client-to-server-encryption) to be enabled.
 
 Default: `true`
 
@@ -427,19 +429,21 @@ Default: `false`
 
 #### --use_client_to_server_encryption
 
-Use client-to-server, or client-server, encryption.
+Use client-to-server, or client-server, encryption with YCQL. 
 
 Default: `false`
 
 #### --use_node_to_node_encryption
 
-Use node-to-node, or server-server, encryption.
+Enable server-server, or node-to-node, encryption between YugabyteDB YB-Master and YB-TServer nodes in a cluster or universe. To work properly, all YB-Master nodes must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) setting enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) must be disabled.
 
 Default: `false`
 
 ---
 
 ### Change data capture (CDC) options
+
+To learn about CDC, see [Change data capture (CDC)](../../architecture/#cdc-architecture).
 
 #### --cdc_rpc_timeout_ms
 
@@ -469,7 +473,7 @@ Default: `0` (Use the same default number of tablets as for regular tables.)
 
 WAL retention time, in seconds, to be used for tables for which a CDC stream was created.
 
-Default: `14400`
+Default: `14400` (4 hours)
 
 ## Admin UI
 

@@ -2,7 +2,7 @@
 title: 4. Connect to cluster
 linkTitle: 4. Connect to cluster
 description: 4. Connect to cluster
-headcontent: Connect to YugabyteDB cluster using cqlsh.
+headcontent: Connect to YugabyteDB cluster using cqlsh and yb-admin.
 image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
 aliases:
   - /secure/tls-encryption/connect-to-cluster
@@ -78,4 +78,4 @@ UUID_2		node2:7100     	ALIVE 	LEADER
 UUID_3 		node3:7100     	ALIVE 	FOLLOWER
 ```
 
-For details on the `yb-admin` utility, see [yb-admin](../../admin/yb-admin).
+For details on the `yb-admin` utility, see [yb-admin](../../../admin/yb-admin).
