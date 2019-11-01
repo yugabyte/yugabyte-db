@@ -43,17 +43,20 @@ $ cd <yugabyte-data-directory>/disk1/yb-data/tserver/logs/
 
 Logs are organized by error severity: `FATAL`, `ERROR`, `WARNING`, `INFO`. In case of issues, the `FATAL` and `ERROR` logs are most likely to be relevant.
 
-
 ## Logs management
 
 There are 3 types of logs:
 
-For yb-tserver/yb-master the log rotation size is controlled by the --max_log_size gflag.
+- [YB-Master logs](#yb-master-logs)
+- [YB-TServer logs](#yb-tserver-logs)
+- postgres*log
 
-`--max_log_size=256` will limit each file to 256MB.
-The default size is 1.8GB if someone is not passing this argument.
+For YB-TServer and YB-Master nodes, the log rotation size is controlled by the `--max_log_size` configuration option.
 
-For YSQL, we also have the additional postgres*log . 
-These logs have daily and size based log rotation - i.e. a new log file will be created each day or a log reaches 10MB size.
+`--max_log_size=256` will limit each log file to 256 MB. The default size is `1800` (1.8 GB).
 
-Automatic purging of older log files is currently only available in Yugabyte Platform.
+For YSQL, we also have the additional `postgres*log`. These logs have daily- and size-based log rotation, that is, a new log file will be created each day or when a log reaches 10 MB size.
+
+Automatic purging of older log files is currently only available in the Yugabyte Platform.
+
+For available configuration options, see [YB-Master logging options](../../../admin/yb-master/#logging-options) and [YB-TServer logging options](../../../admin/yb-tserver/#logging-options)
