@@ -411,6 +411,9 @@ message ConsensusResponsePB {
   // A generic error message (such as tablet not found), per operation
   // error messages are sent along with the consensus status.
   optional tserver.TabletServerErrorPB error = 999;
+
+  // Number of SST files in this follower regular db.
+  optional int64 num_sst_files = 5;
 }
 
 // A message reflecting the status of an in-flight transaction.

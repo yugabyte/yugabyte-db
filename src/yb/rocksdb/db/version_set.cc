@@ -336,6 +336,14 @@ SstFileMetaData::BoundaryValues ConvertBoundaryValues(const FileMetaData::Bounda
 
 VersionStorageInfo::~VersionStorageInfo() { delete[] files_; }
 
+uint64_t VersionStorageInfo::NumFiles() const {
+  uint64_t result = 0;
+  for (int level = num_non_empty_levels_; level-- > 0;) {
+    result += files_[level].size();
+  }
+  return result;
+}
+
 Version::~Version() {
   assert(refs_ == 0);
 

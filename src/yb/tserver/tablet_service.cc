@@ -40,8 +40,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/consensus.h"
 #include "yb/consensus/leader_lease.h"
+#include "yb/consensus/raft_consensus.h"
 
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -132,6 +132,17 @@ DEFINE_int32(max_stale_read_bound_time_ms, 0, "If we are allowed to read from fo
              "when was the last time it received a message from the leader.");
 TAG_FLAG(max_stale_read_bound_time_ms, evolving);
 TAG_FLAG(max_stale_read_bound_time_ms, runtime);
+
+DEFINE_uint64(sst_files_soft_limit, 16,
+              "When majority SST files number is greater that this limit, we will start rejecting "
+              "part of write requests. The higher number we higher, the higher probability of "
+              "reject.");
+TAG_FLAG(sst_files_soft_limit, runtime);
+
+DEFINE_uint64(sst_files_hard_limit, 48,
+              "When majority SST files number is greater that this limit, we will reject all write "
+              "requests.");
+TAG_FLAG(sst_files_hard_limit, runtime);
 
 DEFINE_test_flag(bool, assert_reads_from_follower_rejected_because_of_staleness, false,
                  "If set, we verify that the consistency level is CONSISTENT_PREFIX, and that "
@@ -225,10 +236,11 @@ Status GetTabletRef(const TabletPeerPtr& tablet_peer,
 } // namespace
 
 template<class Resp>
-bool TabletServiceImpl::CheckMemoryPressureOrRespond(
-    double score, tablet::Tablet* tablet, Resp* resp, rpc::RpcContext* context) {
+bool TabletServiceImpl::CheckWriteThrottlingOrRespond(
+    double score, tablet::TabletPeer* tablet_peer, Resp* resp, rpc::RpcContext* context) {
   // Check for memory pressure; don't bother doing any additional work if we've
   // exceeded the limit.
+  auto tablet = tablet_peer->tablet();
   auto soft_limit_exceeded_result = tablet->mem_tracker()->AnySoftLimitExceeded(score);
   if (soft_limit_exceeded_result.exceeded) {
     tablet->metrics()->leader_memory_pressure_rejections->Increment();
@@ -245,6 +257,24 @@ bool TabletServiceImpl::CheckMemoryPressureOrRespond(
                          TabletServerErrorPB::UNKNOWN_ERROR,
                          context);
     return false;
+  }
+
+  uint64_t num_sst_files = tablet_peer->raft_consensus()->MajorityNumSSTFiles();
+  auto sst_files_soft_limit = FLAGS_sst_files_soft_limit;
+  if (num_sst_files > sst_files_soft_limit) {
+    auto sst_files_hard_limit = FLAGS_sst_files_hard_limit;
+    if ((num_sst_files + score * (sst_files_hard_limit - sst_files_soft_limit) >=
+         sst_files_hard_limit)) {
+      tablet->metrics()->majority_sst_files_rejections->Increment();
+      auto status = STATUS_FORMAT(
+          ServiceUnavailable, "SST files limit exceeded $0 against ($1, $2), score: $3",
+          num_sst_files, sst_files_soft_limit, sst_files_hard_limit, score);
+      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Rejecting Write request, " << status << THROTTLE_MSG;
+      SetupErrorAndRespond(resp->mutable_error(), status,
+                           TabletServerErrorPB::UNKNOWN_ERROR,
+                           context);
+      return false;
+    }
   }
 
   return true;
@@ -769,8 +799,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   auto tablet = LookupLeaderTabletOrRespond(
       server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
   if (!tablet ||
-      !CheckMemoryPressureOrRespond(
-          req->memory_limit_score(), tablet.peer->tablet(), resp, &context)) {
+      !CheckWriteThrottlingOrRespond(
+          req->rejection_score(), tablet.peer.get(), resp, &context)) {
     return;
   }
 
@@ -1187,8 +1217,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     // Serializable read adds intents, i.e. writes data.
     // We should check for memory pressure in this case.
     if (!leader_peer ||
-        !CheckMemoryPressureOrRespond(
-            req->memory_limit_score(), leader_peer.peer->tablet(), resp, &context)) {
+        !CheckWriteThrottlingOrRespond(
+            req->rejection_score(), leader_peer.peer.get(), resp, &context)) {
       return;
     }
     read_context.tablet = leader_peer.peer->shared_tablet();
@@ -1536,6 +1566,11 @@ void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
                          TabletServerErrorPB::UNKNOWN_ERROR,
                          &context);
     return;
+  }
+
+  auto tablet = tablet_peer->shared_tablet();
+  if (tablet) {
+    resp->set_num_sst_files(tablet->GetCurrentVersionNumSSTFiles());
   }
   context.RespondSuccess();
 }

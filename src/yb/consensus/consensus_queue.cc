@@ -44,6 +44,7 @@
 #include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus_context.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
@@ -155,6 +156,7 @@ PeerMessageQueue::PeerMessageQueue(const scoped_refptr<MetricEntity>& metric_ent
                                    const RaftPeerPB& local_peer_pb,
                                    const string& tablet_id,
                                    const server::ClockPtr& clock,
+                                   ConsensusContext* context,
                                    unique_ptr<ThreadPoolToken> raft_pool_token)
     : raft_pool_observers_token_(std::move(raft_pool_token)),
       local_peer_pb_(local_peer_pb),
@@ -163,7 +165,8 @@ PeerMessageQueue::PeerMessageQueue(const scoped_refptr<MetricEntity>& metric_ent
       tablet_id_(tablet_id),
       log_cache_(metric_entity, log, server_tracker, local_peer_pb.permanent_uuid(), tablet_id),
       metrics_(metric_entity),
-      clock_(clock) {
+      clock_(clock),
+      context_(context) {
   DCHECK(local_peer_pb_.has_permanent_uuid());
   DCHECK(!local_peer_pb_.last_known_private_addr().empty());
 }
@@ -277,6 +280,9 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
   fake_response.set_responder_uuid(local_peer_uuid_);
   *fake_response.mutable_status()->mutable_last_received() = id;
   *fake_response.mutable_status()->mutable_last_received_current_leader() = id;
+  if (context_) {
+    fake_response.set_num_sst_files(context_->NumSSTFiles());
+  }
   {
     LockGuard lock(queue_lock_);
 
@@ -362,8 +368,8 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     is_new = peer->is_new;
     if (!is_new) {
       // Should be before now_ht, i.e. not greater than propagated_hybrid_time.
-      if (propagated_safe_time_provider_ && FLAGS_propagate_safe_time) {
-        propagated_safe_time = propagated_safe_time_provider_();
+      if (context_ && FLAGS_propagate_safe_time) {
+        propagated_safe_time = context_->PropagatedSafeTime();
       }
 
       now_ht = clock_->Now();
@@ -641,24 +647,14 @@ typename Policy::result_type PeerMessageQueue::GetWatermark() {
   const int num_peers_required = queue_state_.majority_size_;
   if (num_peers_required == kUninitializedMajoritySize) {
     // We don't even know the quorum majority size yet.
-    return Policy::Min();
+    return Policy::NotEnoughPeersValue();
   }
   CHECK_GE(num_peers_required, 0);
 
   const size_t num_peers = peers_map_.size();
   if (num_peers < num_peers_required) {
-    return Policy::Min();
+    return Policy::NotEnoughPeersValue();
   }
-
-  if (num_peers_required == 1) {
-    // We give "infinite lease" to ourselves.
-    return Policy::Max();
-  }
-
-  constexpr size_t kMaxPracticalReplicationFactor = 5;
-  boost::container::small_vector<
-      typename Policy::result_type, kMaxPracticalReplicationFactor> watermarks;
-  watermarks.reserve(num_peers - 1);
 
   // This flag indicates whether to implicitly assume that the local peer has an "infinite"
   // replicated value of the dimension that we are computing a watermark for. There is a difference
@@ -667,9 +663,19 @@ typename Policy::result_type PeerMessageQueue::GetWatermark() {
   // - For leader leases, we always assume that we've replicated an "infinite" lease to ourselves.
   const bool local_peer_infinite_watermark = Policy::LocalPeerHasInfiniteWatermark();
 
+  if (num_peers_required == 1 && local_peer_infinite_watermark) {
+    // We give "infinite lease" to ourselves.
+    return Policy::SingleNodeValue();
+  }
+
+  constexpr size_t kMaxPracticalReplicationFactor = 5;
+  boost::container::small_vector<
+      typename Policy::result_type, kMaxPracticalReplicationFactor> watermarks;
+  watermarks.reserve(num_peers - 1 + !local_peer_infinite_watermark);
+
   for (const PeersMap::value_type &peer_map_entry : peers_map_) {
     const TrackedPeer &peer = *peer_map_entry.second;
-    if (peer.uuid == local_peer_uuid_ && local_peer_infinite_watermark) {
+    if (local_peer_infinite_watermark && peer.uuid == local_peer_uuid_) {
       // Don't even include the local peer in the watermarks array. Assume it has an "infinite"
       // value of the watermark.
       continue;
@@ -693,7 +699,7 @@ typename Policy::result_type PeerMessageQueue::GetWatermark() {
         << ", num_responsive_peers=" << num_responsive_peers
         << ", not enough responsive peers";
     // There are not enough peers with which the last message exchange was successful.
-    return Policy::Min();
+    return Policy::NotEnoughPeersValue();
   }
 
   // If there are 5 peers (and num_peers_required is 3), and we have successfully replicated
@@ -728,11 +734,11 @@ CoarseTimePoint PeerMessageQueue::LeaderLeaseExpirationWatermark() {
     // Workaround for a gcc bug. That does not understand that Comparator is actually being used.
     __attribute__((unused)) typedef std::less<result_type> Comparator;
 
-    static result_type Min() {
+    static result_type NotEnoughPeersValue() {
       return result_type::min();
     }
 
-    static result_type Max() {
+    static result_type SingleNodeValue() {
       return result_type::max();
     }
 
@@ -759,11 +765,11 @@ MicrosTime PeerMessageQueue::HybridTimeLeaseExpirationWatermark() {
     // Workaround for a gcc bug. That does not understand that Comparator is actually being used.
     __attribute__((unused)) typedef std::less<result_type> Comparator;
 
-    static result_type Min() {
+    static result_type NotEnoughPeersValue() {
       return HybridTime::kMin.GetPhysicalValueMicros();
     }
 
-    static result_type Max() {
+    static result_type SingleNodeValue() {
       return HybridTime::kMax.GetPhysicalValueMicros();
     }
 
@@ -783,15 +789,46 @@ MicrosTime PeerMessageQueue::HybridTimeLeaseExpirationWatermark() {
   return GetWatermark<Policy>();
 }
 
+uint64_t PeerMessageQueue::NumSSTFilesWatermark() {
+  struct Policy {
+    typedef uint64_t result_type;
+    // Workaround for a gcc bug. That does not understand that Comparator is actually being used.
+    __attribute__((unused)) typedef std::greater<result_type> Comparator;
+
+    static result_type NotEnoughPeersValue() {
+      return 0;
+    }
+
+    static result_type SingleNodeValue() {
+      return std::numeric_limits<result_type>::max();
+    }
+
+    static result_type ExtractValue(const TrackedPeer& peer) {
+      return peer.num_sst_files;
+    }
+
+    static const char* Name() {
+      return "Num SST files";
+    }
+
+    static bool LocalPeerHasInfiniteWatermark() {
+      return false;
+    }
+  };
+
+  auto watermark = GetWatermark<Policy>();
+  return std::max(watermark, local_peer_->num_sst_files);
+}
+
 OpId PeerMessageQueue::OpIdWatermark() {
   struct Policy {
     typedef OpId result_type;
 
-    static result_type Min() {
+    static result_type NotEnoughPeersValue() {
       return MinimumOpId();
     }
 
-    static result_type Max() {
+    static result_type SingleNodeValue() {
       return MaximumOpId();
     }
 
@@ -958,6 +995,7 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
     }
 
     peer->is_last_exchange_successful = true;
+    peer->num_sst_files = response.num_sst_files();
 
     if (response.has_responder_term()) {
       // The peer must have responded with a term that is greater than or equal to the last known
@@ -1000,6 +1038,8 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
       majority_replicated.leader_lease_expiration = LeaderLeaseExpirationWatermark();
 
       majority_replicated.ht_lease_expiration = HybridTimeLeaseExpirationWatermark();
+
+      majority_replicated.num_sst_files = NumSSTFilesWatermark();
     }
 
     UpdateAllReplicatedOpId(&queue_state_.all_replicated_opid);

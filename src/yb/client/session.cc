@@ -73,10 +73,10 @@ void YBSession::SetTransaction(YBTransactionPtr transaction) {
   }
 }
 
-void YBSession::SetMemoryLimitScore(double score) {
-  memory_limit_score_ = score;
+void YBSession::SetRejectionScore(double score) {
+  rejection_score_ = score;
   if (batcher_) {
-    batcher_->SetMemoryLimitScore(score);
+    batcher_->SetRejectionScore(score);
   }
 }
 
@@ -190,7 +190,7 @@ internal::Batcher& YBSession::Batcher() {
     if (timeout_.Initialized()) {
       batcher_->SetTimeout(timeout_);
     }
-    batcher_->SetMemoryLimitScore(memory_limit_score_);
+    batcher_->SetRejectionScore(rejection_score_);
   }
   return *batcher_;
 }

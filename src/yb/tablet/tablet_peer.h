@@ -42,8 +42,8 @@
 #include <vector>
 
 #include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_context.h"
 #include "yb/consensus/consensus_meta.h"
-#include "yb/consensus/consensus_types.h"
 #include "yb/consensus/log.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
@@ -92,7 +92,7 @@ class Operation;
 // state machine through a consensus algorithm, which makes sure that other
 // peers see the same updates in the same order. In addition to this, this
 // class also splits the work and coordinates multi-threaded execution.
-class TabletPeer : public consensus::ReplicaOperationFactory,
+class TabletPeer : public consensus::ConsensusContext,
                    public TransactionParticipantContext,
                    public TransactionCoordinatorContext,
                    public WriteOperationContext {
@@ -175,7 +175,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
       const scoped_refptr<consensus::ConsensusRound>& round,
       HybridTime propagated_safe_time) override;
 
-  // This is an override of a ReplicaOperationFactory method. This is called from
+  // This is an override of a ConsensusContext method. This is called from
   // UpdateReplica -> EnqueuePreparesUnlocked on Raft heartbeats.
   void SetPropagatedSafeTime(HybridTime ht) override;
 
@@ -183,6 +183,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   bool ShouldApplyWrite() override;
 
   consensus::Consensus* consensus() const;
+  consensus::RaftConsensus* raft_consensus() const;
 
   std::shared_ptr<consensus::Consensus> shared_consensus() const;
 
@@ -424,6 +425,12 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
 
  private:
   HybridTime ReportReadRestart() override;
+
+  HybridTime HybridTimeLease(MicrosTime min_allowed, CoarseTimePoint deadline);
+  HybridTime PropagatedSafeTime() override;
+  void MajorityReplicated() override;
+  void ChangeConfigReplicated(const consensus::RaftConfigPB& config) override;
+  uint64_t NumSSTFiles() override;
 
   MetricRegistry* metric_registry_;
 

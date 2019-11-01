@@ -34,6 +34,7 @@
 #include <gflags/gflags.h>
 
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_context.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/replica_state.h"
@@ -72,14 +73,14 @@ using strings::SubstituteAndAppend;
 
 ReplicaState::ReplicaState(ConsensusOptions options, string peer_uuid,
                            std::unique_ptr<ConsensusMetadata> cmeta,
-                           ReplicaOperationFactory* operation_factory,
+                           ConsensusContext* consensus_context,
                            SafeOpIdWaiter* safe_op_id_waiter,
                            RetryableRequests* retryable_requests,
                            std::function<void(const OpIds&)> applied_ops_tracker)
     : options_(std::move(options)),
       peer_uuid_(std::move(peer_uuid)),
       cmeta_(std::move(cmeta)),
-      operation_factory_(operation_factory),
+      context_(consensus_context),
       safe_op_id_waiter_(safe_op_id_waiter),
       applied_ops_tracker_(std::move(applied_ops_tracker)) {
   CHECK(cmeta_) << "ConsensusMeta passed as NULL";
@@ -834,7 +835,7 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(
     // For write operations we block rocksdb flush, until appropriate records are written to the
     // log file. So we could apply them before adding to log.
     if (type == OperationType::WRITE_OP) {
-      if (could_stop && !operation_factory_->ShouldApplyWrite()) {
+      if (could_stop && !context_->ShouldApplyWrite()) {
         YB_LOG_EVERY_N_SECS(WARNING, 5) << LogPrefix()
             << "Stop apply pending operations, because of write delay required, last applied: "
             << prev_id << " of " << committed_op_id;
