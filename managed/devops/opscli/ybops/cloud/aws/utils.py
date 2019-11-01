@@ -876,15 +876,22 @@ def create_instance(args):
     }]
     # Volume setup.
     volumes = []
+    ebs = {
+        "DeleteOnTermination": True,
+        # TODO: constant
+        "VolumeSize": 40,
+        "VolumeType": "gp2"
+    }
+
+    if args.cmk_res_name is not None:
+        ebs["Encrypted"] = True
+        ebs["KmsKeyId"] = args.cmk_res_name
+
     volumes.append({
         "DeviceName": "/dev/sda1",
-        "Ebs": {
-            "DeleteOnTermination": True,
-            # TODO: constant
-            "VolumeSize": 40,
-            "VolumeType": "gp2"
-        }
+        "Ebs": ebs
     })
+
     device_names = get_device_names(args.instance_type, args.num_volumes)
     # TODO: Clean up semantics on nvme vs "next-gen" vs ephemerals, as this is currently whack...
     for i, device_name in enumerate(device_names):
@@ -901,6 +908,9 @@ def create_instance(args):
                 # TODO: make this int.
                 "VolumeSize": args.volume_size
             }
+            if args.cmk_res_name is not None:
+                ebs["Encrypted"] = True
+                ebs["KmsKeyId"] = args.cmk_res_name
             if args.volume_type == "io1":
                 # TODO: make this int.
                 ebs["Iops"] = args.disk_iops

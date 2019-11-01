@@ -145,7 +145,9 @@ public class AwsEARServiceTest extends FakeDBApplication {
         Map<String, String> testConfig = new HashMap<>(config);
         testConfig.replace("algorithm", "nonsense");
         assertNull(encryptionService.createKey(testUniUUID, testCustomerUUID, testConfig));
-        verify(mockClient, times(0)).createKey(any(CreateKeyRequest.class));
+        verify(mockClient, times(0)).generateDataKeyWithoutPlaintext(
+                any(GenerateDataKeyWithoutPlaintextRequest.class)
+        );
     }
 
     @Test
@@ -153,7 +155,9 @@ public class AwsEARServiceTest extends FakeDBApplication {
         Map<String, String> testConfig = new HashMap<>(config);
         testConfig.replace("key_size", "257");
         assertNull(encryptionService.createKey(testUniUUID, testCustomerUUID, testConfig));
-        verify(mockClient, times(0)).createKey(any(CreateKeyRequest.class));
+        verify(mockClient, times(0)).generateDataKeyWithoutPlaintext(
+                any(GenerateDataKeyWithoutPlaintextRequest.class)
+        );
     }
 
     @Test

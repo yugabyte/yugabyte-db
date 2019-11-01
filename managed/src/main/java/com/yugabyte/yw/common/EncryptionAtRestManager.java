@@ -235,12 +235,8 @@ public class EncryptionAtRestManager {
             kmsProvider = config.get("kms_provider");
             keyService = getServiceInstance(kmsProvider);
             universe = Universe.get(universeUUID);
-            boolean universeHasKeyRotationHistory = getNumKeyRotations(
-                    customerUUID,
-                    universeUUID,
-                    config
-            ) > 0;
-            if (forceCreate || (!universe.isEncryptedAtRest() && !universeHasKeyRotationHistory)) {
+            if (forceCreate || (!universe.isEncryptedAtRest() &&
+                    !(getNumKeyRotations(customerUUID, universeUUID, config) > 0))) {
                 LOG.info(String.format(
                         "Creating universe key for universe %s",
                         universeUUID.toString()

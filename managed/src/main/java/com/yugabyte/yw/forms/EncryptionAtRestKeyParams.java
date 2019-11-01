@@ -32,13 +32,20 @@ public class EncryptionAtRestKeyParams extends UniverseTaskParams {
     public static EncryptionAtRestKeyParams bindFromFormData(ObjectNode formData) {
         EncryptionAtRestKeyParams params = new EncryptionAtRestKeyParams();
         String cmkPolicy = "";
+        String keyType = "";
+        String algorithm = "";
+        String keySize = "";
         if (formData.get("cmk_policy") != null) cmkPolicy = formData.get("cmk_policy").asText();
+        if (formData.get("key_type") != null) keyType = formData.get("key_type").asText();
+        if (formData.get("algorithm") != null) algorithm = formData.get("algorithm").asText();
+        if (formData.get("key_size") != null) keySize = formData.get("key_size").asText();
         params.universeUUID = UUID.fromString(formData.get("universeUUID").asText());
         params.encryptionAtRestConfig = ImmutableMap.of(
                 "kms_provider", formData.get("kms_provider").asText(),
-                "algorithm", formData.get("algorithm").asText(),
-                "key_size", formData.get("key_size").asText(),
-                "cmk_policy", cmkPolicy
+                "algorithm", algorithm,
+                "key_size", keySize,
+                "cmk_policy", cmkPolicy,
+                "key_type", keyType
         );
         String keyOpString = null;
         if (formData.get("key_op") != null) keyOpString = formData.get("key_op").asText();

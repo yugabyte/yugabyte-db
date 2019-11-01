@@ -197,6 +197,11 @@ public class SmartKeyEARServiceTest extends FakeDBApplication {
                 "algorithm", testAlgorithm,
                 "key_size", Integer.toString(testKeySize)
         );
+        when(this.mockEARManager.maskConfigData(
+                any(UUID.class),
+                any(ObjectNode.class),
+                any(EncryptionAtRestManager.KeyProvider.class)
+        )).thenReturn(Json.newObject().put("encrypted", "abc"));
     }
 
     @Test

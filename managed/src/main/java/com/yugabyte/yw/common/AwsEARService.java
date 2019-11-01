@@ -18,12 +18,18 @@ import com.amazonaws.services.kms.model.CreateKeyRequest;
 import com.amazonaws.services.kms.model.CreateKeyResult;
 import com.amazonaws.services.kms.model.DecryptRequest;
 import com.amazonaws.services.kms.model.GenerateDataKeyWithoutPlaintextRequest;
+import com.amazonaws.services.kms.model.KeyListEntry;
 import com.amazonaws.services.kms.model.ListAliasesRequest;
 import com.amazonaws.services.kms.model.ListAliasesResult;
-import com.amazonaws.services.kms.model.UpdateAliasRequest;
+import com.amazonaws.services.kms.model.ListKeysRequest;
+import com.amazonaws.services.kms.model.ListKeysResult;
+import com.avaje.ebean.annotation.EnumValue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.EncryptionAtRestManager.KeyProvider;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
@@ -56,6 +62,13 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
         super(KeyProvider.AWS);
     }
 
+    enum KeyType {
+        @EnumValue("CMK")
+        CMK,
+        @EnumValue("DATA_KEY")
+        DATA_KEY;
+    }
+
     /**
      * Tries to set AWS credential system properties if any exist in authConfig
      * for the specified customer
@@ -63,20 +76,40 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
      * @param customerUUID the customer the authConfig should be retrieved for
      */
     private void setUserCredentials(UUID customerUUID) {
-        ObjectNode authConfig = getAuthConfig(customerUUID);
-        if (authConfig == null) return;
-        JsonNode accessKeyId = authConfig.get("AWS_ACCESS_KEY_ID");
-        JsonNode secretAccessKey = authConfig.get("AWS_SECRET_ACCESS_KEY");
-        JsonNode region = authConfig.get("AWS_REGION");
         Properties p = new Properties(System.getProperties());
-        if (accessKeyId != null && secretAccessKey != null && region != null) {
-            p.setProperty("aws.accessKeyId", accessKeyId.asText());
-            p.setProperty("aws.secretKey", secretAccessKey.asText());
-            p.setProperty("aws.region", region.asText());
-            System.setProperties(p);
+        ObjectNode authConfig = getAuthConfig(customerUUID);
+        if (authConfig != null) {
+            LOG.info("Setting credentials from AWS KMS configuration for AWS client");
+            // Try using a kms_config if one exists
+            JsonNode accessKeyId = authConfig.get("AWS_ACCESS_KEY_ID");
+            JsonNode secretAccessKey = authConfig.get("AWS_SECRET_ACCESS_KEY");
+            JsonNode region = authConfig.get("AWS_REGION");
+            if (accessKeyId != null && secretAccessKey != null && region != null) {
+                p.setProperty("aws.accessKeyId", accessKeyId.asText());
+                p.setProperty("aws.secretKey", secretAccessKey.asText());
+                p.setProperty("aws.region", region.asText());
+            } else {
+                LOG.info(
+                        "Defaulting to attempt to use instance profile credentials for AWS client"
+                );
+            }
         } else {
-            LOG.info("Defaulting to attempt to use instance profile credentials for AWS client");
+            LOG.info("Setting credentials from AWS cloud provider for AWS client");
+            // Otherwise, try using cloud provider credentials
+            Provider provider = Provider.get(customerUUID, CloudType.aws);
+            if (provider != null) {
+                Map<String, String> config = provider.getConfig();
+                String accessKeyId = config.get("AWS_ACCESS_KEY_ID");
+                String secretAccessKey = config.get("AWS_SECRET_ACCESS_KEY");
+                String region = ((Region) provider.regions.toArray()[0]).code;
+                if (accessKeyId != null && secretAccessKey != null && region != null) {
+                    p.setProperty("aws.accessKeyId", accessKeyId);
+                    p.setProperty("aws.secretKey", secretAccessKey);
+                    p.setProperty("aws.region", region);
+                }
+            }
         }
+        System.setProperties(p);
     }
 
     /**
@@ -113,10 +146,10 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
      * @param customerUUID is the customer the alias is being created for
      * @param kId is the CMK that the alias should target
      */
-    private void createAlias(UUID universeUUID, UUID customerUUID, String kId) {
+    private void createAlias(UUID customerUUID, String kId, String aliasName) {
         final String aliasNameBase = "alias/%s";
         final CreateAliasRequest req = new CreateAliasRequest()
-                .withAliasName(generateAliasName(universeUUID.toString()))
+                .withAliasName(aliasName)
                 .withTargetKeyId(kId);
         getClient(customerUUID).createAlias(req);
     }
@@ -132,35 +165,38 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
         ListAliasesRequest req = new ListAliasesRequest().withLimit(100);
         AliasListEntry uniAlias = null;
         boolean done = false;
+        AWSKMS client = getClient(customerUUID);
         while (!done) {
-            ListAliasesResult result = getClient(customerUUID).listAliases(req);
+            ListAliasesResult result = client.listAliases(req);
             for (AliasListEntry alias : result.getAliases()) {
-                if (alias.getAliasName().equals(generateAliasName(aliasName))) {
+                if (alias.getAliasName().equals(aliasName)) {
                     uniAlias = alias;
                     break;
                 }
             }
             req.setMarker(result.getNextMarker());
-            if (!result.getTruncated()) {
-                done = true;
-            }
+            if (!result.getTruncated()) done = true;
         }
-
         return uniAlias;
     }
 
-    /**
-     * Updates the CMK that an alias targets
-     *
-     * @param customerUUID the customer the CMK and alias belong to
-     * @param universeUUID the name of the alias
-     * @param newTargetKeyId the new CMK that the alias should target
-     */
-    private void updateAliasTarget(UUID customerUUID, UUID universeUUID, String newTargetKeyId) {
-        UpdateAliasRequest req = new UpdateAliasRequest()
-                .withAliasName(generateAliasName(universeUUID.toString()))
-                .withTargetKeyId(newTargetKeyId);
-        getClient(customerUUID).updateAlias(req);
+    private String getCMKArn(UUID customerUUID, String cmkId) {
+        String cmkArn = null;
+        ListKeysRequest req = new ListKeysRequest().withLimit(1000);
+        boolean done = false;
+        AWSKMS client = getClient(customerUUID);
+        while (!done) {
+            ListKeysResult result = client.listKeys(req);
+            for (KeyListEntry key : result.getKeys()) {
+                if (key.getKeyId().equals(cmkId)) {
+                    cmkArn = key.getKeyArn();
+                    break;
+                }
+            }
+            req.setMarker(result.getNextMarker());
+            if (!result.getTruncated()) done = true;
+        }
+        return cmkArn;
     }
 
     /**
@@ -191,7 +227,12 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
      * @param keySize is the desired universe master key size
      * @return a ciphertext blob of the universe master key
      */
-    private byte[] generateDataKey(UUID customerUUID, String cmkId, String algorithm, int keySize) {
+    private byte[] generateDataKey(
+            UUID customerUUID,
+            String cmkId,
+            String algorithm,
+            int keySize
+    ) {
         final String keySpecBase = "%s_%s";
         final GenerateDataKeyWithoutPlaintextRequest dataKeyRequest =
                 new GenerateDataKeyWithoutPlaintextRequest()
@@ -212,26 +253,85 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
     @Override
     protected AwsAlgorithm[] getSupportedAlgorithms() { return AwsAlgorithm.values(); }
 
+    private String createOrRetrieveCMKWithAlias(
+            UUID customerUUID,
+            String policy,
+            String description,
+            String aliasBaseName
+    ) {
+        String result = null;
+        final String aliasName = generateAliasName(aliasBaseName);
+        AliasListEntry existingAlias = getAlias(customerUUID, aliasName);
+        if (existingAlias == null) {
+            // Create the CMK
+            CreateKeyRequest req = new CreateKeyRequest();
+            if (description != null) req = req.withDescription(description);
+            if (policy != null && policy.length() > 0) req = req.withPolicy(policy);
+            CreateKeyResult createResult = getClient(customerUUID).createKey(req);
+            final String kId = createResult.getKeyMetadata().getKeyId();
+            // Point it to an alias
+            createAlias(customerUUID, kId, aliasName);
+            result = kId;
+        } else {
+            result = existingAlias.getTargetKeyId();
+        }
+        return result;
+    }
+
+    private String createOrRetrieveCMK(
+            UUID customerUUID,
+            UUID universeUUID,
+            String policy
+    ) {
+        return createOrRetrieveCMKWithAlias(
+                customerUUID,
+                policy,
+                "Yugabyte Universe Key",
+                universeUUID.toString()
+        );
+    }
+
     @Override
     protected byte[] createKeyWithService(
             UUID universeUUID,
             UUID customerUUID,
             Map<String, String> config
     ) {
-        final String customPolicy = config.get("cmk_policy");
-        CreateKeyRequest req = new CreateKeyRequest()
-                .withDescription("Yugabyte Universe Key");
-        if (customPolicy != null && customPolicy.length() > 0) req = req.withPolicy(customPolicy);
-        final CreateKeyResult result = getClient(customerUUID).createKey(req);
-        final String kId = result.getKeyMetadata().getKeyId();
-        if (getAlias(customerUUID, universeUUID.toString()) == null) {
-            createAlias(universeUUID, customerUUID, kId);
-        } else {
-            updateAliasTarget(customerUUID, universeUUID, kId);
+        byte[] result = null;
+        String typeString = config.get("key_type");
+        KeyType type = typeString == null || typeString.length() == 0 ?
+                KeyType.DATA_KEY : KeyType.valueOf(typeString);
+        String cmkId = createOrRetrieveCMK(
+                customerUUID,
+                universeUUID,
+                config.get("cmk_policy")
+        );
+        switch (type) {
+            case CMK:
+                result = getCMKArn(customerUUID, cmkId).getBytes();
+                break;
+            default:
+            case DATA_KEY:
+                final String algorithm = config.get("algorithm");
+                final int keySize = Integer.parseInt(config.get("key_size"));
+                final ObjectNode validateResult = validateEncryptionKeyParams(algorithm, keySize);
+                if (!validateResult.get("result").asBoolean()) {
+                    final String errMsg = String.format(
+                            "Invalid encryption key parameters detected for create operation in " +
+                                    "universe %s: %s",
+                            universeUUID,
+                            validateResult.get("errors").asText()
+                    );
+                    LOG.error(errMsg);
+                    throw new IllegalArgumentException(errMsg);
+                }
+                result = generateDataKey(customerUUID, cmkId, algorithm, keySize);
+                if (result != null && result.length > 0) {
+                    addKeyRef(customerUUID, universeUUID, result);
+                }
+                break;
         }
-        final String algorithm = config.get("algorithm");
-        final int keySize = Integer.parseInt(config.get("key_size"));
-        return generateDataKey(customerUUID, kId, algorithm, keySize);
+        return result;
     }
 
     @Override
@@ -240,24 +340,41 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
             UUID universeUUID,
             Map<String, String> config
     ) {
-        final AliasListEntry alias = getAlias(customerUUID, universeUUID.toString());
+        final String aliasName = generateAliasName(universeUUID.toString());
+        final AliasListEntry alias = getAlias(customerUUID, aliasName);
         final String cmkId = alias.getTargetKeyId();
         final String algorithm = config.get("algorithm");
         final int keySize = Integer.parseInt(config.get("key_size"));
         return generateDataKey(customerUUID, cmkId, algorithm, keySize);
     }
 
-    @Override
-    public byte[] retrieveKeyWithService(UUID customerUUID, byte[] keyRef) {
-        byte[] result = null;
+    public byte[] retrieveKeyWithService(
+            UUID customerUUID,
+            UUID universeUUID,
+            byte[] keyRef,
+            Map<String, String> config
+    ) {
+        byte[] keyVal = null;
         try {
-            result = decryptUniverseKey(customerUUID, keyRef);
-            if (result == null) LOG.warn("Could not retrieve key from key ref");
+            String typeString = config.get("key_type");
+            KeyType type = typeString == null || typeString.length() == 0 ?
+                    KeyType.DATA_KEY : KeyType.valueOf(typeString);
+            switch (type) {
+                case CMK:
+                    keyVal = keyRef;
+                    break;
+                default:
+                case DATA_KEY:
+                    keyVal = decryptUniverseKey(customerUUID, keyRef);
+                    if (keyVal == null) LOG.warn("Could not retrieve key from key ref");
+                    else this.util.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
+                    break;
+            }
         } catch (Exception e) {
             final String errMsg = "Error occurred retrieving encryption key";
             LOG.error(errMsg, e);
             throw new RuntimeException(errMsg, e);
         }
-        return result;
+        return keyVal;
     }
 }
