@@ -19,11 +19,12 @@ import static play.inject.Bindings.bind;
 public class FakeDBApplication extends WithApplication {
   public Commissioner mockCommissioner;
   protected CallHome mockCallHome;
+  public ApiHelper mockApiHelper;
   HealthChecker mockHealthChecker;
 
   @Override
   protected Application provideApplication() {
-    ApiHelper mockApiHelper = mock(ApiHelper.class);
+    mockApiHelper = mock(ApiHelper.class);
     mockCommissioner = mock(Commissioner.class);
     mockCallHome = mock(CallHome.class);
     Executors mockExecutors = mock(Executors.class);

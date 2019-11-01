@@ -140,6 +140,8 @@ public enum TaskType {
 
   EnableEncryptionAtRest("subtasks.EnableEncryptionAtRest"),
 
+  DisableEncryptionAtRest("subtasks.DisableEncryptionAtRest"),
+
   KubernetesCommandExecutor("subtasks.KubernetesCommandExecutor"),
 
   KubernetesWaitForPod("subtasks.KubernetesWaitForPod"),

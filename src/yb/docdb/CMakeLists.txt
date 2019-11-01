@@ -74,6 +74,7 @@ set(DOCDB_SRCS
         shared_lock_manager.cc
         subdocument.cc
         value.cc
+        kv_debug.cc
         )
 
 set(DOCDB_DEPS

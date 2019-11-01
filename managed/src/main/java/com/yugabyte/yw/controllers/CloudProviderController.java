@@ -194,7 +194,7 @@ public class CloudProviderController extends AuthenticatedController {
   }
 
   // For creating the a multi-cluster kubernetes provider.
-  public Result createKubernetes(UUID customerUUID) throws IOException{
+  public Result createKubernetes(UUID customerUUID) throws IOException {
     JsonNode requestBody = request().body().asJson();
     ObjectMapper mapper = new ObjectMapper();
     KubernetesProviderFormData formData;
@@ -235,11 +235,11 @@ public class CloudProviderController extends AuthenticatedController {
           } else if (!hasConfig) {
             return ApiResponse.error(BAD_REQUEST, "No Kubeconfig found for zone(s)");
           }
-        } 
+        }
       }
       hasConfig = formData.config.containsKey("KUBECONFIG_NAME");
     }
-   
+
     Provider provider = null;
     try {
       Map<String, String> config = formData.config;
@@ -286,7 +286,7 @@ public class CloudProviderController extends AuthenticatedController {
   private boolean updateKubeConfig(Provider provider, Map<String, String> config, boolean edit) {
     return updateKubeConfig(provider, null, config, edit);
   }
-  
+
   private boolean updateKubeConfig(Provider provider, Region region, Map<String, String> config, boolean edit) {
     return updateKubeConfig(provider, region, null, config, edit);
   }
@@ -320,7 +320,7 @@ public class CloudProviderController extends AuthenticatedController {
         if (kubeConfigFile != null) {
           config.put("KUBECONFIG", kubeConfigFile);
         }
-        
+
       } catch (IOException e) {
         LOG.error(e.getMessage());
         throw new RuntimeException("Unable to create Kube Config file.");

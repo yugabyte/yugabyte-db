@@ -100,7 +100,7 @@ You can use the following two Avro schema examples that will work with the `user
 Download the Kafka Connect YugabyteDB Source Connector JAR file (`yb-cdc-connector.jar`).
 
 ```sh
-$ wget https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar
+$ wget -O yb-cdc-connector.jar https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar?raw=true
 
 ```
 
@@ -109,7 +109,7 @@ $ wget https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-
 Run the following command to start logging an output stream of data changes from the YugabyteDB `cdc` table to Apache Kafka.
 
 ```sh
-java -jar target/yb_cdc_connector.jar
+java -jar yb-cdc-connector.jar
 --table_name yugabyte.cdc
 --topic_name cdc-test
 --table_schema_path table_schema_path.avsc

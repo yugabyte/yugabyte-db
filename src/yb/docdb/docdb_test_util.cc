@@ -53,7 +53,7 @@ using std::stringstream;
 using strings::Substitute;
 
 using yb::util::ApplyEagerLineContinuation;
-using yb::util::FormatBytesAsStr;
+using yb::FormatBytesAsStr;
 using yb::util::TrimStr;
 using yb::util::LeftShiftTextBlock;
 using yb::util::TrimCppComments;

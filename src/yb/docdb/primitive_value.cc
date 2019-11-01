@@ -38,7 +38,7 @@ using yb::QLValuePB;
 using yb::common::Jsonb;
 using yb::util::Decimal;
 using yb::util::VarInt;
-using yb::util::FormatBytesAsStr;
+using yb::FormatBytesAsStr;
 using yb::util::CompareUsingLessThan;
 using yb::util::FastAppendSignedVarIntToStr;
 using yb::util::FastDecodeSignedVarInt;
