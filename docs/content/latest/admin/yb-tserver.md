@@ -443,7 +443,7 @@ Default: `false`
 
 ### Change data capture (CDC) options
 
-To learn about CDC, see [Change data capture (CDC)](../../architecture/#cdc-architecture).
+To learn about CDC, see [Change data capture (CDC)](../../architecture/cdc-architecture).
 
 #### --cdc_rpc_timeout_ms
 
