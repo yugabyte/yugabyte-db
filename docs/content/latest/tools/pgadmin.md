@@ -1,7 +1,7 @@
 ---
 title: pgAdmin
 linkTitle: pgAdmin
-description: Use pgAdmin with YugabyteDB
+description: pgAdmin
 menu:
   latest:
     identifier: pgadmin
