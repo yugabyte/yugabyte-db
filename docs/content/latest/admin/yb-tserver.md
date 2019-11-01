@@ -50,6 +50,8 @@ yb-tserver [ options ]
 - [YEDIS](#yedis-options)
 - [Performance](#performance-options)
 - [Write Ahead Log (WAL)](#write-ahead-log-wal-options)
+- [Security](#security-options)
+- [Change data capture (CDC)](#change-data-capture-cdc-options)
 
 ---
 
@@ -129,17 +131,29 @@ Default: The `www` directory in the YugabyteDB home directory.
 
 ### Logging options
 
-#### --logtostderr
-
-Enable log messages to go to standard error (`stderr`) instead of log files.
-
-Default: `false`
-
 #### --log_dir
 
-The directory to store `yb-tserver` log files.
+The directory to write `yb-tserver` log files.
 
 Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
+
+#### --logemaillevel
+
+Email log messages logged at this level, or higher. Values: `0` (all), 1, 2, `3` (FATAL), `999` (none)
+
+Default: `999`
+
+#### --logmailer
+
+The mailer used to send logging email messages.
+
+Default: `"/bin/mail"
+
+#### --logtostderr
+
+Write log messages to `stderr` instead of `logfiles`.
+
+Default: `false`
 
 #### --max_log_size
 
@@ -147,17 +161,23 @@ The maximum log size, in megabytes (MB). A value of `0` will be silently overrid
 
 Default: `1800` (1.8 GB)
 
-#### --min_log_level
+#### --minloglevel
 
-The minimum level to log messages. Values are: `0` (ALL), `1`, `2`, `3` (FATAL).
+The minimum level to log messages. Values are: `0` (INFO), `1`, `2`, `3` (FATAL).
 
-Default: `0` (ALL)
+Default: `0` (INFO)
 
 #### --stderrthreshold
 
 Log messages at, or above, this level are copied to `stderr` in addition to log files.
 
 Default: `2`
+
+#### --stop_logging_if_full_disk
+
+Stop attempting to log to disk if the disk is full.
+
+Default: `false`
 
 ---
 
@@ -376,6 +396,80 @@ Default: `1000`
 When `--durable_wal_write` is `false`, writes to the Raft log are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
 
 Default: `1`
+
+---
+
+### Security options
+
+#### --certs_dir
+
+Directory that contains certificate authority, private key, and certificates for this server.
+
+Default: `""`
+
+#### --allow_insecure_connections
+
+Allow insecure connections.
+
+Default: `true`
+
+#### --certs_for_client_dir
+
+The directory that contains certificate authority, private key, and certificates for this server that should be used for client-to-server communications.
+
+Default: `""` (Use the same directory as for server-to-server communications.)
+
+#### --dump_certificate_entries
+
+Dump certificate entries.
+
+Default: `false`
+
+#### --use_client_to_server_encryption
+
+Use client-to-server, or client-server, encryption.
+
+Default: `false`
+
+#### --use_node_to_node_encryption
+
+Use node-to-node, or server-server, encryption.
+
+Default: `false`
+
+---
+
+### Change data capture (CDC) options
+
+#### --cdc_rpc_timeout_ms
+
+Timeout used for CDC->`yb-tserver` asynchronous RPC calls.
+
+Default: `30000`
+
+#### --cdc_state_checkpoint_update_interval_ms
+
+RAte at which CDC state's checkpoint is updated.
+
+Default: `15000`
+
+#### --cdc_ybclient_reactor_threads
+
+The number of reactor threads to be used for processing `ybclient` requests for CDC.
+
+Default: `50`
+
+#### --cdc_state_table_num_tablets
+
+The number of tablets to use when creating the CDC state table.
+
+Default: `0` (Use the same default number of tablets as for regular tables.)
+
+#### --cdc_wal_retention_time_secs
+
+WAL retention time, in seconds, to be used for tables for which a CDC stream was created.
+
+Default: `14400`
 
 ## Admin UI
 
