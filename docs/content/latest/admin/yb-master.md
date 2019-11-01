@@ -308,6 +308,12 @@ The number of tablets to use when creating the CDC state table.
 
 Default: `0` (Use the same default number of tablets as for regular tables.)
 
+#### --cdc_wal_retention_time_secs
+
+WAL retention time, in seconds, to be used for tables for which a CDC stream was created. If you change the value, make sure that [`yb-tserver --cdc_wal_retention_time_secs`](../yb-tserver/#cdc-wal-retention-time-secs) is also updated with the same value.
+
+Default: `14400` (4 hours)
+
 ## Admin UI
 
 The Admin UI for yb-master is available at http://localhost:7000.
