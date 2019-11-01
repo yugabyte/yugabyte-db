@@ -23,13 +23,12 @@ from build_definitions import *
 class GLogDependency(Dependency):
     def __init__(self):
         super(GLogDependency, self).__init__(
-                'glog', '0.3.4', 'https://github.com/google/glog/archive/v{0}.tar.gz',
+                'glog', '0.4.0', 'https://github.com/google/glog/archive/v{0}.tar.gz',
                 BUILD_GROUP_INSTRUMENTED)
         self.copy_sources = True
-        self.patch_version = 2
+        self.patch_version = 1
         self.patch_strip = 0
-        self.patches = ['glog-issue-198-fix-unused-warnings.patch',
-                        'glog-tsan-annotations.patch',
+        self.patches = ['glog-tsan-annotations.patch',
                         'glog-application-fingerprint.patch']
         self.post_patch = ['autoreconf', '-fvi']
 

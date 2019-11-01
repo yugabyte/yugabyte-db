@@ -30,10 +30,11 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
 #include <mutex>
 #include <thread>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "yb/gutil/integral_types.h"
 #include "yb/util/atomic.h"
@@ -129,40 +130,40 @@ TEST_P(RWMutexTest, TestLockChecking) {
     lock_.ReadLock();
   }, "already holding lock for reading");
 
-  EXPECT_DEATH({
+  EXPECT_DEATH(({
     CHECK(lock_.TryReadLock());
     CHECK(lock_.TryReadLock());
-  }, "already holding lock for reading");
+  }), "already holding lock for reading");
 
   EXPECT_DEATH({
     lock_.ReadLock();
     lock_.WriteLock();
   }, "already holding lock for reading");
 
-  EXPECT_DEATH({
+  EXPECT_DEATH(({
     CHECK(lock_.TryReadLock());
     CHECK(lock_.TryWriteLock());
-  }, "already holding lock for reading");
+  }), "already holding lock for reading");
 
   EXPECT_DEATH({
     lock_.WriteLock();
     lock_.ReadLock();
   }, "already holding lock for writing");
 
-  EXPECT_DEATH({
+  EXPECT_DEATH(({
     CHECK(lock_.TryWriteLock());
     CHECK(lock_.TryReadLock());
-  }, "already holding lock for writing");
+  }), "already holding lock for writing");
 
-  EXPECT_DEATH({
+  EXPECT_DEATH(({
     lock_.WriteLock();
     lock_.WriteLock();
-  }, "already holding lock for writing");
+  }), "already holding lock for writing");
 
-  EXPECT_DEATH({
+  EXPECT_DEATH(({
     CHECK(lock_.TryWriteLock());
     CHECK(lock_.TryWriteLock());
-  }, "already holding lock for writing");
+  }), "already holding lock for writing");
 
   EXPECT_DEATH({
     lock_.ReadUnlock();
@@ -177,20 +178,20 @@ TEST_P(RWMutexTest, TestLockChecking) {
     lock_.WriteUnlock();
   }, "already holding lock for reading");
 
-  EXPECT_DEATH({
+  EXPECT_DEATH(({
     CHECK(lock_.TryReadLock());
     lock_.WriteUnlock();
-  }, "already holding lock for reading");
+  }), "already holding lock for reading");
 
   EXPECT_DEATH({
     lock_.WriteLock();
     lock_.ReadUnlock();
   }, "already holding lock for writing");
 
-  EXPECT_DEATH({
+  EXPECT_DEATH(({
     CHECK(lock_.TryWriteLock());
     lock_.ReadUnlock();
-  }, "already holding lock for writing");
+  }), "already holding lock for writing");
 }
 #endif
 
