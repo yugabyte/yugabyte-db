@@ -13,13 +13,23 @@
 
 #include "yb/docdb/doc_write_batch.h"
 
+#include "yb/docdb/doc_key.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/rocksutil/write_batch_formatter.h"
+
+#include "yb/server/hybrid_clock.h"
+
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/value_type.h"
-#include "yb/rocksdb/db.h"
-#include "yb/server/hybrid_clock.h"
+#include "yb/docdb/kv_debug.h"
+#include "yb/util/bytes_formatter.h"
+#include "yb/util/enums.h"
+
+using yb::BinaryOutputFormat;
 
 using yb::server::HybridClock;
 
@@ -598,6 +608,43 @@ void DocWriteBatch::TEST_CopyToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) const {
     kv_pair->mutable_key()->assign(entry.first);
     kv_pair->mutable_value()->assign(entry.second);
   }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Converting a RocksDB write batch to a string.
+// ------------------------------------------------------------------------------------------------
+
+class DocWriteBatchFormatter : public WriteBatchFormatter {
+ public:
+  DocWriteBatchFormatter(
+      StorageDbType storage_db_type,
+      BinaryOutputFormat binary_output_format)
+      : WriteBatchFormatter(binary_output_format),
+        storage_db_type_(storage_db_type) {}
+ protected:
+  std::string FormatKey(const Slice& key) override {
+    KeyType key_type;
+    auto key_result = DocDBKeyToDebugStr(key, storage_db_type_, &key_type);
+    if (key_result.ok()) {
+      return *key_result;
+    }
+    return Format(
+        "$0 (error: $1)",
+        WriteBatchFormatter::FormatKey(key),
+        key_result.status());
+  }
+
+ private:
+  StorageDbType storage_db_type_;
+};
+
+Result<std::string> WriteBatchToString(
+    const rocksdb::WriteBatch& write_batch,
+    StorageDbType storage_db_type,
+    BinaryOutputFormat binary_output_format) {
+  DocWriteBatchFormatter formatter(storage_db_type, binary_output_format);
+  RETURN_NOT_OK(write_batch.Iterate(&formatter));
+  return formatter.str();
 }
 
 }  // namespace docdb

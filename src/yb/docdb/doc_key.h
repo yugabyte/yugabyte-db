@@ -587,6 +587,7 @@ class SubDocKey {
 
   std::string ToString() const;
   static std::string DebugSliceToString(Slice slice);
+  static Result<std::string> DebugSliceToStringAsResult(Slice slice);
 
   const DocKey& doc_key() const {
     return doc_key_;
@@ -801,6 +802,7 @@ struct KeyBounds {
 };
 
 // Combined DB to store regular records and intents.
+// TODO: move this to a more appropriate header file.
 struct DocDB {
   rocksdb::DB* regular;
   rocksdb::DB* intents;

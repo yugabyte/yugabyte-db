@@ -55,7 +55,6 @@ using std::string;
 using std::shared_ptr;
 using std::to_string;
 using util::Decimal;
-using util::FormatBytesAsStr;
 using common::Jsonb;
 
 template<typename T>

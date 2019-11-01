@@ -28,8 +28,8 @@
 using std::unique_ptr;
 using strings::Substitute;
 using yb::util::ApplyEagerLineContinuation;
-using yb::util::FormatBytesAsStr;
-using yb::util::FormatSliceAsStr;
+using yb::FormatBytesAsStr;
+using yb::FormatSliceAsStr;
 using rocksdb::FilterBitsBuilder;
 using rocksdb::FilterBitsReader;
 
@@ -108,7 +108,7 @@ class DocKeyTest : public YBTest {
     return yb::Format(
         kFormatStr,
         sub_doc_key,
-        util::FormatSliceAsStr(encoded_key.AsSlice()),
+        FormatSliceAsStr(encoded_key.AsSlice()),
         encoded_key.AsSlice().ToDebugHexString(),
         encoded_key.size()
     );
@@ -623,7 +623,7 @@ TEST_F(DocKeyTest, TestEnumerateIntents) {
         SubDocKey decoded_intent_key;
         const auto& intent = collected_intents[i];
         SCOPED_TRACE(Format("i=$0: generated intent bytes, partially human-readable: $1",
-                            i, util::FormatSliceAsStr(intent.intent_key.AsSlice())));
+                            i, FormatSliceAsStr(intent.intent_key.AsSlice())));
         Slice intent_key_slice = intent.intent_key.AsSlice();
         ASSERT_OK(decoded_intent_key.DecodeFrom(&intent_key_slice, HybridTimeRequired::kFalse));
         ASSERT_EQ(0, intent_key_slice.size());

@@ -29,7 +29,7 @@ using std::cout;
 using std::endl;
 
 using yb::server::HybridClock;
-using yb::util::FormatBytesAsStr;
+using yb::FormatBytesAsStr;
 using yb::util::sgn;
 using strings::Substitute;
 
