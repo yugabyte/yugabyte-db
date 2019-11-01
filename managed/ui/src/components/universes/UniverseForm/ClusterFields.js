@@ -361,6 +361,7 @@ export default class ClusterFields extends Component {
       }
       this.configureUniverseNodeList();
     } else if (currentProvider && currentProvider.code === 'onprem') {
+      toggleDisableSubmit(false);
       if (isNonEmptyArray(this.state.regionList) && currentProvider &&
           this.state.instanceTypeSelected && this.state.numNodes > this.state.maxNumNodes) {
         const placementStatusObject = {
@@ -373,7 +374,8 @@ export default class ClusterFields extends Component {
         setPlacementStatus(placementStatusObject);
         toggleDisableSubmit(true);
       } else if (isNonEmptyObject(currentUniverse.data)) {
-        const primaryCluster = this.props.universe.currentUniverse.data.universeDetails.clusters.find(x => x.clusterType === 'PRIMARY');
+        const primaryCluster =
+            currentUniverse.data.universeDetails.clusters.find(x => x.clusterType === 'PRIMARY');
         const provider = primaryCluster.placementInfo.cloudList.find(c => c.uuid === currentProvider.uuid);
         const replication = primaryCluster.userIntent.replicationFactor;
         if (provider) {
@@ -383,7 +385,6 @@ export default class ClusterFields extends Component {
             numUniqueAzs: numAzs,
             numUniqueRegions: provider.regionList.length
           });
-          toggleDisableSubmit(false);
         }
       }
     }
