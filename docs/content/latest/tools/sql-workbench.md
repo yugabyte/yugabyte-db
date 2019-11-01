@@ -55,7 +55,7 @@ YugabyteDB is PostgreSQL-compatible, so when working with SQL Workbench/J, use t
 
 1. Launch the SQL Workbench/J application. The **Select Connection Profile** pop-up window appears.
 
-![Select connection profile](/images/develop/tools/sql-workbench/sql-wb-connection-profile.png)
+![Select connection profile](/images/develop/tools/sql-workbench/sql-wb_connection-profile.png)
 
 2. Click **Manage Drivers** (in the lower left of the window) to open the **Manage Drivers** window.
 
@@ -63,7 +63,7 @@ YugabyteDB is PostgreSQL-compatible, so when working with SQL Workbench/J, use t
 
 3. In the list of drivers, select `PostgreSQL` and then edit the fields for the driver:
 
-    - **Name**:`PostgreSQL (for YugabyteDB)` (change to `PostgreSQL`)
+    - **Name**:`PostgreSQL (for YugabyteDB)`
     - **Library**: Displays the location of the PostgreSQL JDBC driver's JAR file. [For a new configuration, browse to the location of the file and click **Choose**.] When installed, the default location of the JRE or JDK is:
 
       ```
@@ -77,7 +77,7 @@ YugabyteDB is PostgreSQL-compatible, so when working with SQL Workbench/J, use t
        jdbc:postgresql://host:port/name_of_database
         ```
 
-4. Click **OK**. The **Manage drivers** window closes and returns you to the **Select Connection Profile" window.
+4. Click **OK**. The **Manage drivers** window closes and returns you to the **Select Connection Profile** window.
 
 You have now configured the PostgreSQL JDBC driver to work with YugabyteDB and can now create a connection profile.
 

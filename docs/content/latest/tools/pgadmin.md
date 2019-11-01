@@ -53,7 +53,7 @@ To install pgAdmin, go to the [Download page](https://www.pgadmin.org/download/)
 
 5. Click **Save**. The new connection appears in the application. Expand **Databases** to see a list of all available databases.
 
-![Available databases](/images/develop/tools/pgadmin/pgadmin-list-of-available-databases.png)
+![Available databases](/images/develop/tools/pgadmin/pgadmin-list-of-databases.png)
 
 You have now created a database connection in pgAdmin and can begin exploring YugabyteDB databases.
 
@@ -61,4 +61,4 @@ You have now created a database connection in pgAdmin and can begin exploring Yu
 
 Now that you know how to configure pgAdmin to work with your YugabyteDB databases, you can start exploring the features. For details on using pgAdmin, click **Help** in the pgAdmin menu.
 
-If you're looking for sample databases to explore YugabyteDB using SQL Workbench/J, see [Sample data](../../sample-data/).
+If you're looking for sample databases to explore YugabyteDB using pgAdmin, see [Sample data](../../sample-data/).

@@ -92,16 +92,18 @@ To connect DBeaver to a YugabyteDB cluster, you need the PostgreSQL JDBC driver 
     - **Password**: Leave blank if YSQL authentication is not enabled. If enabled, add the password for `yugabyte` (default is `yugabyte`).
     - **Show all databases**: Select this option.
 
-4. Click **Test Connection**. If successful, you should see a window like the following:
-
-![Test successful](/images/develop/tools/dbeaver-)
+4. Click **Test Connection** to verify that the connection is successful.
 
 5. Click **Finish**.
 
 6. In the DBeaver application, you should now see "Yugabyte - localhost" in the **Database Navigator** panel.
 
-You can now expand the listing and see a listin gof all databases available to the `yugabyte` user.
+You can now expand the listing and see a listing of all databases available to the `yugabyte` user.
+
+ ![Listing of databases](/images/develop/tools/dbeaver/dbeaver-list-of-databases.png)
 
 ## What's next
 
 DBeaver has lots of features for developers and administrators to explore. For help using DBeaver, see the [DBeaver.io](https://dbeaver.io/) website and the [DBeaver documentation](https://github.com/dbeaver/dbeaver/wiki).
+
+If you're looking for sample databases to explore YugabyteDB using DBeaver, see [Sample data](../../sample-data/).
