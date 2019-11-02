@@ -442,6 +442,7 @@ class YugabyteProcessManager(object):
 
                 is_first_run = False
 
+
             yw_logged_in = False
             if self.wait_yb_master():
                 # Start or initialize yugaware after setting YSQL default isolation level.
@@ -559,6 +560,7 @@ class YugabyteProcessManager(object):
         ]
         Output.log("Initializing play tables...")
         run_process(create_play_table)
+        Output.log("Done initializing play tables.")
         return True
 
     # Returns if yb-master and yb-tserver were properly initialized before.
@@ -623,20 +625,26 @@ class YugabyteProcessManager(object):
                 or not self.processes.get("tserver").is_running()):
             return False
 
+        Output.log("Waiting for yb master via ybadmin...")
         num_tservers = 1
         master_addr = "{}:{}".format(
             self.configs.saved_data.get("bind_ip"), self.configs.saved_data.get("master_rpc_port"))
 
         start_time = time.time()
+        cur_num_tservers = None
         while time.time() - start_time < timeout:
             cur_num_tservers = YBAdminProxy.get_num_tservers(master_addr)
             if cur_num_tservers is not None and cur_num_tservers == num_tservers:
                 time.sleep(2)
+                Output.log("Completed waiting for yb master, num tservers={}.".format(num_tservers))
                 return True
             time.sleep(2)
+
+        Output.log("Failed waiting for yb master, current num tservers={}, expected {}.".format(
+                   cur_num_tservers, num_tservers))
         return False
 
-    def wait_yw_login(self, yw_proxy, timeout=30, insecure=False):
+    def wait_yw_login(self, yw_proxy, timeout=180, insecure=False):
         Output.log("Attempting to log in...")
         start_time = time.time()
         # Only the last error message is recorded if timed out.
@@ -647,7 +655,7 @@ class YugabyteProcessManager(object):
                 Output.log("Login succeeded.")
                 return ""
             time.sleep(.5)
-        Output.log("Failed to login.")
+        Output.log("Failed to login: {}".format(err))
         return "Timeout: " + err
 
     # Returns pretty output table.
@@ -728,7 +736,7 @@ class YugabyteProcessManager(object):
     # wrong error messages.
     def java_installed(self):
         try:
-            cmd = ["which", "java"]
+            cmd = ["java", "-version"]
             java_info = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
             return java_info is not None
         except (OSError) as e:
@@ -974,7 +982,6 @@ class YugabyteProcessManager(object):
             Output.log(traceback.format_exc(), logging.ERROR)
             sys.exit(1)
 
-
 class Configs(object):
     def __init__(self, config_file):
         self.saved_data = {
@@ -1068,6 +1075,7 @@ class ProcessManager(object):
 
     # Start process. Creates pidfile and corresponding output logs.
     def start(self):
+        Output.log("About to start {} with cmd {}".format(self.name, " ".join(self.cmd)))
         out_log = os.path.join(self.log_dir, "{}.out".format(self.name))
         err_log = os.path.join(self.log_dir, "{}.err".format(self.name))
         with open(out_log, "a") as out_log, open(err_log, "a") as err_log:
@@ -1076,7 +1084,7 @@ class ProcessManager(object):
         # TODO: Redirect YW logs to yugabyte-logs
         with open(self.pidfile, "w+") as pid_file:
             pid_file.write(str(self.process.pid))
-            Output.log("{} running with PID {}.".format(self.name, self.process.pid), logging.DEBUG)
+            Output.log("{} started running with PID {}.".format(self.name, self.process.pid))
 
     # Returns pid of this process if it's running.
     def get_pid(self):
@@ -1567,14 +1575,8 @@ class Output(object):
     BLUE = u"\u001b[34m"
     MAGENTA = u"\u001b[35m"
     CYAN = u"\u001b[36m"
-    map_level_to_output = {
-        logging.DEBUG: logging.debug,
-        logging.INFO: logging.info,
-        logging.WARNING: logging.warning,
-        logging.ERROR: logging.error,
-        logging.CRITICAL: logging.critical
-    }
     log_dir = None
+    start_time_sec = time.time()
 
     @staticmethod
     def print_out(msg):
@@ -1582,7 +1584,12 @@ class Output(object):
 
     @staticmethod
     def log(msg, level=logging.INFO):
-        Output.map_level_to_output[level](msg)
+        full_msg = msg
+        time_since_sec = time.time() - Output.start_time_sec
+        if time_since_sec < 1000:
+            # add time since start to make it easier to debug startup perf
+            full_msg = " | {:.1f}s | {}".format(time_since_sec, msg)
+        logging.log(level, full_msg)
 
     @staticmethod
     def print_and_log(msg, level=logging.INFO):
