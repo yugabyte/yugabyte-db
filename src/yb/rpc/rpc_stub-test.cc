@@ -549,7 +549,7 @@ TEST_F(RpcStubTest, TestDumpCallsInFlight) {
   ASSERT_EQ(1, dump_resp.outbound_connections(0).calls_in_flight_size());
   ASSERT_EQ("Sleep", dump_resp.outbound_connections(0).calls_in_flight(0).
                         header().remote_method().method_name());
-  ASSERT_GT(dump_resp.outbound_connections(0).calls_in_flight(0).micros_elapsed(), 0);
+  ASSERT_GT(dump_resp.outbound_connections(0).calls_in_flight(0).elapsed_millis(), 0);
 
   // And the server messenger.
   // We have to loop this until we find a result since the actual call is sent
@@ -569,7 +569,7 @@ TEST_F(RpcStubTest, TestDumpCallsInFlight) {
   ASSERT_EQ(1, dump_resp.inbound_connections(0).calls_in_flight_size());
   ASSERT_EQ("Sleep", dump_resp.inbound_connections(0).calls_in_flight(0).
                         header().remote_method().method_name());
-  ASSERT_GT(dump_resp.inbound_connections(0).calls_in_flight(0).micros_elapsed(), 0);
+  ASSERT_GT(dump_resp.inbound_connections(0).calls_in_flight(0).elapsed_millis(), 0);
   ASSERT_STR_CONTAINS(dump_resp.inbound_connections(0).calls_in_flight(0).trace_buffer(),
                       "Inserting onto call queue");
   latch.Wait();

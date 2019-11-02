@@ -69,7 +69,7 @@ enum RpcCallState {
 message RpcCallInProgressPB {
   required RequestHeader header = 1;
   optional string trace_buffer = 2;
-  optional uint64 micros_elapsed = 3;
+  optional uint64 elapsed_millis = 3;
   optional uint64 sending_bytes = 6;
   optional RpcCallState state = 7;
   oneof call_details {
