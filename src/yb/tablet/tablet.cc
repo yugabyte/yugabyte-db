@@ -619,9 +619,9 @@ Status Tablet::EnableCompactions() {
   Status regular_db_status;
   std::unordered_map<std::string, std::string> new_options = {
       { "level0_slowdown_writes_trigger"s,
-        std::to_string(FLAGS_rocksdb_level0_slowdown_writes_trigger)},
+        std::to_string(max_if_negative(FLAGS_rocksdb_level0_slowdown_writes_trigger))},
       { "level0_stop_writes_trigger"s,
-        std::to_string(FLAGS_rocksdb_level0_stop_writes_trigger)},
+        std::to_string(max_if_negative(FLAGS_rocksdb_level0_stop_writes_trigger))},
   };
   if (regular_db_) {
     WARN_WITH_PREFIX_NOT_OK(
