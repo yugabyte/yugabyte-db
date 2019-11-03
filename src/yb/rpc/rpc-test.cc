@@ -44,8 +44,12 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
+
+#include "yb/rpc/secure_stream.h"
 #include "yb/rpc/serialization.h"
+#include "yb/rpc/tcp_stream.h"
 #include "yb/rpc/yb_rpc.h"
+
 #include "yb/util/countdown_latch.h"
 #include "yb/util/env.h"
 #include "yb/util/test_util.h"
@@ -807,6 +811,55 @@ TEST_F(TestRpc, DumpTimedOutCall) {
 
   stop.store(true, std::memory_order_release);
   thread.join();
+}
+
+class TestRpcSecure : public RpcTestBase {
+ public:
+  void SetUp() override {
+    RpcTestBase::SetUp();
+    secure_context_ = std::make_unique<SecureContext>();
+    EXPECT_OK(secure_context_->TEST_GenerateKeys(512, "127.0.0.1"));
+    TestServerOptions options;
+    StartTestServerWithGeneratedCode(
+        CreateSecureMessenger("TestServer"), &server_hostport_, options);
+    client_messenger_ = CreateSecureMessenger("Client");
+    proxy_cache_ = std::make_unique<ProxyCache>(client_messenger_.get());
+  }
+
+  void TearDown() override {
+    client_messenger_->Shutdown();
+    RpcTestBase::TearDown();
+  }
+
+ protected:
+  std::unique_ptr<Messenger> CreateSecureMessenger(const std::string& name) {
+    auto builder = CreateMessengerBuilder(name);
+    builder.SetListenProtocol(SecureStreamProtocol());
+    builder.AddStreamFactory(
+        SecureStreamProtocol(),
+        SecureStreamFactory(TcpStream::Factory(), MemTracker::GetRootTracker(),
+                            secure_context_.get()));
+    return EXPECT_RESULT(builder.Build());
+  }
+
+  HostPort server_hostport_;
+  std::unique_ptr<SecureContext> secure_context_;
+  std::unique_ptr<Messenger> client_messenger_;
+  std::unique_ptr<ProxyCache> proxy_cache_;
+};
+
+TEST_F(TestRpcSecure, TLS) {
+  rpc_test::CalculatorServiceProxy p(
+      proxy_cache_.get(), server_hostport_, SecureStreamProtocol());
+
+  RpcController controller;
+  controller.set_timeout(5s);
+  rpc_test::AddRequestPB req;
+  req.set_x(10);
+  req.set_y(20);
+  rpc_test::AddResponsePB resp;
+  ASSERT_OK(p.Add(req, &resp, &controller));
+  ASSERT_EQ(30, resp.result());
 }
 
 } // namespace rpc
