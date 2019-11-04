@@ -64,13 +64,15 @@ SLACK_LINK = "https://www.yugabyte.com/slack"
 HELP_LINK = "https://docs.yugabyte.com/latest/faq/"
 
 # Yugabyte DB configs.
+IP_ANY = "0.0.0.0"
+IP_LOCALHOST = "127.0.0.1"
+DEFAULT_BIND_IP = IP_LOCALHOST
 DEFAULT_MASTER_RPC_PORT = 7100
 DEFAULT_TSERVER_RPC_PORT = 9100
 DEFAULT_MASTER_WEBSERVER_PORT = 7000
 DEFAULT_TSERVER_WEBSERVER_PORT = 9000
 DEFAULT_YSQL_PORT = 5433
 DEFAULT_YCQL_PORT = 9042
-DEFAULT_BIND_IP = "0.0.0.0"
 DEFAULT_WEBSERVER_PORT = 7200
 VERSION_METADATA_PATH = os.path.join(YUGABYTE_DIR, "version_metadata.json")
 YUGABYTE_API_CLIENT_PROGRAMS = {
@@ -84,7 +86,7 @@ METRICS_SNAPSHOT_LIST = [
     "handler_latency_yb_tserver_TabletServerService_Write_count",
     "handler_latency_yb_tserver_TabletServerService_Read_sum",
     "handler_latency_yb_tserver_TabletServerService_Write_sum",
-    "disk_usage", "cpu_usage"
+    "disk_usage", "cpu_usage", "node_up"
 ]
 
 # Internal constants.
@@ -292,28 +294,34 @@ class YugabyteProcessManager(object):
     # Starts yb-master, yb-tserver, and yugaware processes.
     # After initializing, creates a callhome thread.
     def start_processes(self):
-        if self.configs.temp_data.get("is_daemon"):
+        if self.configs.temp_data.get("daemon"):
             daemon_success = multiprocessing.Queue()
             self.daemonize(daemon_success)
+
+
+        bind_ip = self.configs.saved_data.get("bind_ip")
+        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+        master_rpc_port = self.configs.saved_data.get("master_rpc_port")
+        master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
+        tserver_rpc_port = self.configs.saved_data.get("tserver_rpc_port")
 
         common_gflags = [
             "--stop_on_parent_termination",
             "--undefok=stop_on_parent_termination",
             "--fs_data_dirs={}".format(self.configs.saved_data.get("data_dir")),
-            "--webserver_interface={}".format(self.configs.saved_data.get("bind_ip")),
+            "--webserver_interface={}".format(bind_ip),
             "--metrics_snapshotter_tserver_metrics_whitelist={}".format(
                 ",".join(METRICS_SNAPSHOT_LIST)),
             "--yb_num_shards_per_tserver={}".format(YB_NUM_SHARDS_PER_TSERVER),
             "--ysql_num_shards_per_tserver={}".format(YSQL_NUM_SHARDS_PER_TSERVER)
         ]
 
-        bind_address = "127.0.0.1:{}"
-        master_address = bind_address.format(self.configs.saved_data.get("master_rpc_port"))
-        tserver_address = bind_address.format(self.configs.saved_data.get("tserver_rpc_port"))
+
         yb_master_cmd = [os.path.join(BIN_DIR, "yb-master")] + common_gflags + \
             [
-                "--master_addresses={}".format(master_address),
-                "--rpc_bind_addresses={}".format(master_address),
+                "--master_addresses={}".format(master_addresses),
+                "--rpc_bind_addresses={}:{}".format(bind_ip, master_rpc_port),
+                "--server_broadcast_addresses={}".format(master_addresses),
                 "--replication_factor=1",
                 "--use_initial_sys_catalog_snapshot",
                 "--server_dump_info_path={}".format(
@@ -328,14 +336,15 @@ class YugabyteProcessManager(object):
 
         yb_tserver_cmd = [os.path.join(BIN_DIR, "yb-tserver")] + common_gflags + \
             [
-                "--tserver_master_addrs={}".format(master_address),
-                "--rpc_bind_addresses={}".format(tserver_address),
-                "--cql_proxy_bind_address={}".format(
-                    bind_address.format(self.configs.saved_data.get("ycql_port"))),
+                "--tserver_master_addrs={}".format(master_addresses),
+                "--rpc_bind_addresses={}:{}".format(bind_ip, tserver_rpc_port),
+                "--server_broadcast_addresses={}:{}".format(advertise_ip, tserver_rpc_port),
+                "--cql_proxy_bind_address={}:{}".format(
+                    bind_ip, self.configs.saved_data.get("ycql_port")),
                 "--server_dump_info_path={}".format(
                     os.path.join(self.configs.saved_data.get("data_dir"), "tserver-info")),
-                "--start_pgsql_proxy", "--pgsql_proxy_bind_address={}".format(
-                    bind_address.format(self.configs.saved_data.get("ysql_port"))),
+                "--start_pgsql_proxy", "--pgsql_proxy_bind_address={}:{}".format(
+                    bind_ip, self.configs.saved_data.get("ysql_port")),
                 "--tserver_enable_metrics_snapshotter=true",
                 "--metrics_snapshotter_interval_ms=11000",
                 "--webserver_port={}".format(self.configs.saved_data.get("tserver_webserver_port"))
@@ -350,7 +359,7 @@ class YugabyteProcessManager(object):
             os.path.join(YUGAWARE_BIN_DIR, "yugaware"), "-Dconfig.file={}".format(YUGAWARE_CONF),
             "-Dplay.evolutions.db.default.autoApply=true",
             "-Dhttp.port={}".format(self.configs.saved_data.get("webserver_port")),
-            "-Dhttp.address={}".format(self.configs.saved_data.get("bind_ip"))
+            "-Dhttp.address={}".format(bind_ip)
         ]
 
         self.processes = {
@@ -423,7 +432,7 @@ class YugabyteProcessManager(object):
                                 "Join us on Slack at {}".format(
                                     Output.make_underline("{}\n".format(SLACK_LINK))))
                     Output.print_out(status)
-                    if self.configs.temp_data.get("is_daemon"):
+                    if self.configs.temp_data.get("daemon"):
                         # Let original process know daemon was successful so it can exit.
                         # This is to display the initial status message.
                         daemon_success.put(1)
@@ -450,7 +459,7 @@ class YugabyteProcessManager(object):
                 # https://github.com/Yugabyte/yugabyte-db/issues/1199.
                 if self.configs.temp_data.get("ui"):
                     yw_process = self.processes.get("yugaware")
-                    yw_proxy = YugaWareProxy(self.configs.saved_data.get("bind_ip"),
+                    yw_proxy = YugaWareProxy(advertise_ip,
                         self.configs.saved_data.get("webserver_port"))
                     if not self.is_yw_initialized() and self.set_isolation_level():
                         Output.log("Initiating webserver...")
@@ -466,8 +475,8 @@ class YugabyteProcessManager(object):
                         yw_proxy.insecure_login()
 
                         err = yw_proxy.import_universe(
-                            "127.0.0.1",
-                            self.configs.saved_data.get("master_rpc_port"),
+                            advertise_ip,
+                            master_rpc_port,
                             self.get_universe_uuid())
                         if err:
                             Output.log_error_and_exit(err)
@@ -521,6 +530,7 @@ class YugabyteProcessManager(object):
             for e in handlers:
                 atexit._exithandlers.remove(e)
             sys.exit()
+        Output.log("Daemon grandchild process begins execution.")
 
     # Sets env variables needed for yugabyted start.
     def set_env_vars(self):
@@ -574,10 +584,10 @@ class YugabyteProcessManager(object):
     def is_yw_initialized(self):
         # Check Play evolutions table was created.
         list_tables_cmd = [os.path.join(BIN_DIR, "ysqlsh"), "-d", WEBSERVER_DB, "-c", "\d"]
+        Output.log("Checking for play tables.")
         out, err, ret_code = run_process(list_tables_cmd)
-        if err or ret_code or "play_evolutions" not in out:
-            return False
-        return True
+        Output.log("Done checking for play tables.")
+        return not err and not ret_code and "play_evolutions" in out
 
     # Sets YSQL default isolation level.
     def set_isolation_level(self):
@@ -620,15 +630,15 @@ class YugabyteProcessManager(object):
                     return univ_uuid
         return None
 
-    def wait_yb_master(self, timeout=30):
+    def wait_yb_master(self, timeout=180):
         if (not self.processes.get("master").is_running()
                 or not self.processes.get("tserver").is_running()):
             return False
 
         Output.log("Waiting for yb master via ybadmin...")
         num_tservers = 1
-        master_addr = "{}:{}".format(
-            self.configs.saved_data.get("bind_ip"), self.configs.saved_data.get("master_rpc_port"))
+        master_addr = "{}:{}".format(self.advertise_ip(),
+                                     self.configs.saved_data.get("master_rpc_port"))
 
         start_time = time.time()
         cur_num_tservers = None
@@ -660,6 +670,20 @@ class YugabyteProcessManager(object):
 
     # Returns pretty output table.
     def get_status_string(self):
+
+        advertise_ip = self.advertise_ip()
+
+        ycql_port = self.configs.saved_data.get("ycql_port")
+        cql_hostname_param = ""
+        cql_port_param = ""
+        if advertise_ip != IP_LOCALHOST or ycql_port != DEFAULT_YCQL_PORT:
+            cql_hostname_param =  advertise_ip
+            cql_port_param = str(ycql_port)
+
+        ysql_hostname_param = "-h {}".format(advertise_ip) if advertise_ip != IP_LOCALHOST else ""
+        ysql_port = self.configs.saved_data.get("ysql_port")
+        ysql_port_param = "-p {}".format(ysql_port) if ysql_port != DEFAULT_YSQL_PORT else ""
+
         # Make sure ascii escape characters for color encoding do not count towards char limit.
         if self.get_failed_node_processes():
             title = Output.make_bold(Output.make_red("Yugabyte DB"))
@@ -667,23 +691,22 @@ class YugabyteProcessManager(object):
         else:
             title = Output.make_bold(Output.make_green("Yugabyte DB"))
             extra_len = len(Output.make_bold(Output.make_green("")))
-        bind_ip = self.configs.saved_data.get("bind_ip")
-        bind_ip = bind_ip if bind_ip != "0.0.0.0" else "127.0.0.1"
-        ysql_port = self.configs.saved_data.get("ysql_port")
-        ycql_port = self.configs.saved_data.get("ycql_port")
-        ysql_flags = " -p {}".format(ysql_port) if ysql_port != DEFAULT_YSQL_PORT else ""
-        ycql_flags = " {} {}".format(bind_ip, ycql_port) \
-            if bind_ip != "127.0.0.1" or ycql_port != DEFAULT_YCQL_PORT else ""
+
+
+        ysql_flags = " {} {}".format(ysql_hostname_param, ysql_port_param)
+        ycql_flags = " {} {}".format(cql_hostname_param, cql_port_param)
 
         # TODO: Check if YW is disabled. This could be from saving --ui flag, checking PID,
         # or some other method. The first is not preferred because it would deviate from how the
         # other saved data works in that they persist between runs but --ui shoudln't.
-        yw_status = "http://{}:{}".format(bind_ip, self.configs.saved_data.get("webserver_port"))
+
+        yw_status = "http://{}:{}".format(advertise_ip,
+                                          self.configs.saved_data.get("webserver_port"))
 
         status_info = [
             (Output.make_yellow("Webserver UI"), yw_status),
             (Output.make_yellow("JDBC"), "jdbc:postgresql://{}:{}/yugabyte".format(
-                bind_ip, ysql_port)),
+                advertise_ip, ysql_port)),
             (Output.make_yellow("YSQL"), "bin/ysqlsh{}".format(ysql_flags)),
             (Output.make_yellow("YCQL"), "bin/cqlsh{}".format(ycql_flags)),
             (Output.make_yellow("Data Dir"), self.configs.saved_data.get("data_dir")),
@@ -764,7 +787,7 @@ class YugabyteProcessManager(object):
             if hasattr(resource, var):
                 # Check soft limit, not hard limit.
                 value = resource.getrlimit(getattr(resource, var))[0]
-                if value < recommended_value:
+                if value != resource.RLIM_INFINITY and value < recommended_value:
                     failed.append((res, value, recommended_value, flag))
         if failed:
             msg = "Did not meet recommended system resource limits.\n"
@@ -982,6 +1005,11 @@ class YugabyteProcessManager(object):
             Output.log(traceback.format_exc(), logging.ERROR)
             sys.exit(1)
 
+    def advertise_ip(self):
+        bind_ip = self.configs.saved_data.get("bind_ip")
+        return bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+
+
 class Configs(object):
     def __init__(self, config_file):
         self.saved_data = {
@@ -1003,7 +1031,7 @@ class Configs(object):
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
             "demo_db": "retail",
-            "is_daemon": False,
+            "daemon": False,
             "ui": True,
         }
         self.config_file = config_file
@@ -1235,8 +1263,11 @@ class Diagnostics(object):
             if p.start_time:
                 payload["{}_start_time".format(p.name)] = p.start_time
 
+        bind_ip = self.configs.saved_data.get("bind_ip")
+        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+
         master_addrs = "{}:{}".format(
-            self.configs.saved_data.get("bind_ip"), self.configs.saved_data.get("master_rpc_port"))
+            advertise_ip, self.configs.saved_data.get("master_rpc_port"))
         # TODO: This is going to change for multi-node.
         cur_master_addr = master_addrs
         data = {
@@ -1374,11 +1405,11 @@ class LogAnalyzer(object):
 
 # Manages API calls to YW.
 class YugaWareProxy(object):
-    def __init__(self, bind_ip, webserver_port, univ_name="local-universe"):
+    def __init__(self, ip, webserver_port, univ_name="local-universe"):
         self.univ_name = univ_name
         self.api_token = ""
         self.cust_uuid = ""
-        self.url = "http://{}:{}/api/v1".format(bind_ip, webserver_port)
+        self.url = "http://{}:{}/api/v1".format(ip, webserver_port)
 
     # Retrieves permanent api_token. Returns error, if any.
     def login(self):
