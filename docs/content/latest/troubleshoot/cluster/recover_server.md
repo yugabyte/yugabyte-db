@@ -36,7 +36,7 @@ It’ll join the cluster and load-balancer will automatically take the new yb-ts
 
 ## Master failure
 If a new yb-master needs to be started to replace a failed master, the master quorum needs to be updated. 
-Suppose, the original yb-masters were n1, n2, n3. And n3 needs to be replaced with a new yb-master onn4. Then you'll use the `yb-admin` sub-command `change_master_config`:
+Suppose, the original yb-masters were n1, n2, n3. And n3 needs to be replaced with a new yb-master n4. Then you'll use the `yb-admin` sub-command `change_master_config`:
 ```
 ./bin/yb-admin -master_addresses n1:7100,n2:7100 change_master_config REMOVE_SERVER n3 7100
 ./bin/yb-admin -master_addresses n1:7100,n2:7100 change_master_config ADD_SERVER n4 7100
