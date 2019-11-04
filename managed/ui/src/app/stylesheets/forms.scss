@@ -254,6 +254,10 @@
         top: 3px;
       }
     }
+    [class$=singleValue] b {
+      font-weight: 400;
+      font-size: 1em;
+    }
   }
   .Select-placeholder {
     line-height: 40px;
@@ -408,5 +412,44 @@
   }
   input.readonly + b, input.readonly + b + b {
     display: none;
+  }
+}
+
+.Select {
+
+  #react-select-3-group-1-heading {
+    padding-left: 10px;
+  }
+
+  .input-select__option {
+
+    .input-select__option-icon {
+      color: $YB_ORANGE;
+      font-size: 1.4em;
+      line-height: 1em;
+      margin-right: 10px;
+      vertical-align: middle;
+    }
+    b {
+      font-weight: 900;
+      font-size: 1.1em;
+    }
+  }
+  .input-select__single-value-icon {
+    color: $YB_ORANGE;
+    font-size: 1.3em;
+    line-height: 1em;
+    margin-right: 10px;
+    vertical-align: middle;
+    position: relative;
+    top: -1px;
+  }
+
+  [class$=control] {
+    & > div:first-child {
+      padding-top: 6px;
+      padding-left: 7px;
+      padding-bottom: 6px;
+    }
   }
 }
