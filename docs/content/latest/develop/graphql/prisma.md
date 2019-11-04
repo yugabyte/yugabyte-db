@@ -22,7 +22,7 @@ Explore how you can use Prisma, and its GraphQL support, to interact with Yugaby
 If YugabyteDB is installed, run the following `yb-ctl create` command to start a YugabyteDB 1-node cluster, setting the default transaction isolation level to `serializable`:
 
 ```sh
-./bin/yb-ctl create --tserver_flags='ysql_pg_conf="default_transaction_isolation=serializable"'
+./bin/yb-docker-ctl create --tserver_flags=ysql_pg_conf="default_transaction_isolation=serializable"
 ```
 
 {{< note title="Note" >}}
