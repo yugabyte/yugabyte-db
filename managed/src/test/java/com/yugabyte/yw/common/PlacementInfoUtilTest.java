@@ -74,9 +74,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     public AvailabilityZone az1;
     public AvailabilityZone az2;
     public AvailabilityZone az3;
+    public CloudType cloudType;
 
 
     public TestData(Common.CloudType cloud, int replFactor, int numNodes) {
+      cloudType = cloud;
       String customerCode = String.valueOf(customerIdx.nextInt(99999));
       customer = ModelFactory.testCustomer(customerCode,
               String.format("%s@customer.com", customerCode));
@@ -107,7 +109,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
       userIntent.ybSoftwareVersion = "0.0.1";
       userIntent.accessKeyCode = "akc";
-      userIntent.providerType = CloudType.aws;
+      userIntent.providerType = cloud;
       userIntent.preferredRegion = r1.uuid;
       Universe.saveDetails(univUuid, ApiUtils.mockUniverseUpdater(userIntent));
       universe = Universe.get(univUuid);
@@ -230,16 +232,23 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     public AvailabilityZone createAZ(Region r, Integer azIndex, Integer numNodes) {
       AvailabilityZone az = AvailabilityZone.create(r, "PlacementAZ " + azIndex, "az-" + azIndex, "subnet-" + azIndex);
-      for (int i = 0; i < numNodes; ++i) {
+      addNodes(az, numNodes, ApiUtils.UTIL_INST_TYPE);
+      return az;
+    }
+
+    public void addNodes(AvailabilityZone az, int numNodes, String instanceType) {
+      int azIndex = Integer.parseInt(az.name.replace("az-", ""));
+      int currentNodes = NodeInstance.listByZone(az.uuid, instanceType).size();
+      for (int i = currentNodes; i < currentNodes + numNodes; ++i) {
         NodeInstanceFormData.NodeInstanceData details = new NodeInstanceFormData.NodeInstanceData();
         details.ip = "10.255." + azIndex + "." + i;
-        details.region = r.code;
+        details.region = az.region.code;
         details.zone = az.code;
-        details.instanceType = ApiUtils.UTIL_INST_TYPE;
+        details.instanceType = instanceType;
         details.nodeName = "test_name";
         NodeInstance.create(az.uuid, details);
       }
-      return az;
+
     }
   }
 
@@ -361,6 +370,14 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       t.setAzUUIDs(udtp);
       setPerAZCounts(primaryCluster.placementInfo, udtp.nodeDetailsSet);
       primaryCluster.userIntent.instanceType = "m4.medium";
+
+      // In case of onprem we need to add nodes.
+      if (t.cloudType.equals(onprem)) {
+        t.addNodes(t.az2, 4, "m4.medium");
+        t.addNodes(t.az3, 4, "m4.medium");
+        t.addNodes(t.az1, 4, "m4.medium");
+      }
+
       PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(),
           primaryCluster.uuid, CREATE);
       Set<NodeDetails> nodes = udtp.nodeDetailsSet;
@@ -984,6 +1001,10 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
   private void testEditInstanceTagsHelper(TagTest mode) {
     for (TestData t : testData) {
+      // Edit tags are only applicable for aws
+      if (t.cloudType.equals(onprem)) {
+        continue;
+      }
       Universe universe = t.universe;
       UUID univUuid = t.univUuid;
       UniverseDefinitionTaskParams udtp = universe.getUniverseDetails();
