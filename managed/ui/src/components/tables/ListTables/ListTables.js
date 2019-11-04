@@ -117,7 +117,7 @@ class ListTableGrid extends Component {
     const formatActionButtons = function(item, row, disabled) {
       const actions = [
         <TableAction key={`${row.tableName}-backup-btn`} currentRow={row} actionType="create-backup"
-                    disabled={actions_disabled} />
+                    disabled={actions_disabled} btnClass={"btn-orange"}/>
       ];
       if (row.tableType !== "REDIS_TABLE_TYPE") {
         actions.push([

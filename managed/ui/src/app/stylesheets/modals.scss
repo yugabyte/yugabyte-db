@@ -86,6 +86,12 @@
   }
 }
 
+.form-group {
+  label {
+    min-height: 14px;
+  }
+}
+
 .modal-action-buttons {
   position: absolute;
   bottom: 14px;

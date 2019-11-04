@@ -133,6 +133,7 @@ class GraphPanel extends Component {
     super(props);
     this.state = {isOpen: false, ...this.props};
   }
+
   static propTypes = {
     type: PropTypes.oneOf(Object.keys(panelTypes)).isRequired,
     nodePrefixes: PropTypes.array
