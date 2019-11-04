@@ -20,11 +20,13 @@
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/write_batch.h"
 
+#include "yb/util/bytes_formatter.h"
 #include "yb/util/enums.h"
+#include "yb/util/result.h"
 
 namespace yb {
 
-YB_DEFINE_ENUM(OutputFormat, (kEscaped)(kHex));
+YB_DEFINE_ENUM(WriteBatchFieldKind, (kKey)(kValue));
 
 // Produces a human-readable representation of the given RocksDB WriteBatch, e.g.:
 // <pre>
@@ -33,8 +35,9 @@ YB_DEFINE_ENUM(OutputFormat, (kEscaped)(kHex));
 // </pre>
 class WriteBatchFormatter : public rocksdb::WriteBatch::Handler {
  public:
-  explicit WriteBatchFormatter(OutputFormat output_format = OutputFormat::kEscaped)
-      : output_format_(output_format) {}
+  explicit WriteBatchFormatter(
+      BinaryOutputFormat binary_output_format = BinaryOutputFormat::kEscaped)
+      : binary_output_format_(binary_output_format) {}
 
   virtual CHECKED_STATUS PutCF(
       uint32_t column_family_id,
@@ -58,16 +61,22 @@ class WriteBatchFormatter : public rocksdb::WriteBatch::Handler {
 
   std::string str() { return out_.str(); }
 
- private:
+ protected:
+  virtual std::string FormatKey(const Slice& key);
+  virtual std::string FormatValue(const Slice& value);
 
-  void StartOutputLine(const char* name);
-  void OutputField(const rocksdb::Slice& value);
+ private:
+  void StartOutputLine(const char* name, bool is_kv_op = true);
+  void AddSeparatorIfNeeded();
+  void OutputKey(const Slice& key);
+  void OutputValue(const Slice& value);
   void FinishOutputLine();
 
-  OutputFormat output_format_;
+  BinaryOutputFormat binary_output_format_;
   bool need_separator_ = false;
   std::stringstream out_;
   int update_index_ = 0;
+  bool parentheses_ = false;
 };
 
 } // namespace yb

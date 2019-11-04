@@ -184,8 +184,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
       const TabletId& tablet_id);
   void RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id);
 
-  void SetMemoryLimitScore(double score) {
-    memory_limit_score_ = score;
+  void SetRejectionScore(double score) {
+    rejection_score_ = score;
   }
 
   // This is a status error string used when there are multiple errors that need to be fetched
@@ -307,7 +307,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // Force consistent read on transactional table, even we have only single shard commands.
   ForceConsistentRead force_consistent_read_;
 
-  double memory_limit_score_ = 0.0;
+  double rejection_score_ = 0.0;
 
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };

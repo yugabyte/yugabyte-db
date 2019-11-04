@@ -23,9 +23,9 @@
 using yb::util::VarInt;
 using yb::util::FastEncodeDescendingSignedVarInt;
 using yb::util::FastDecodeDescendingSignedVarInt;
-using yb::util::FormatBytesAsStr;
-using yb::util::FormatSliceAsStr;
-using yb::util::QuotesType;
+using yb::FormatBytesAsStr;
+using yb::FormatSliceAsStr;
+using yb::QuotesType;
 using yb::util::to_char_ptr;
 using yb::util::to_uchar_ptr;
 

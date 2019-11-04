@@ -39,6 +39,8 @@
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
 #include "yb/docdb/deadline_info.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/docdb/kv_debug.h"
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/write_batch_formatter.h"
@@ -63,8 +65,7 @@ using std::vector;
 using std::make_shared;
 
 using yb::HybridTime;
-using yb::util::FormatBytesAsStr;
-using yb::FormatRocksDBSliceAsStr;
+using yb::FormatBytesAsStr;
 using strings::Substitute;
 
 using namespace std::placeholders;
@@ -76,9 +77,6 @@ namespace yb {
 namespace docdb {
 
 namespace {
-
-constexpr size_t kMaxWordsPerEncodedHybridTimeWithValueType =
-    ((kMaxBytesPerEncodedHybridTime + 1) + sizeof(size_t) - 1) / sizeof(size_t);
 
 // Main intent data::
 // Prefix + DocPath + IntentType + DocHybridTime -> TxnId + value of the intent
@@ -349,7 +347,7 @@ void PrepareNonTransactionWriteBatch(
       CHECK(s.ok())
           << "Failed decoding key: " << s.ToString() << "; "
           << "Problematic key: " << BestEffortDocDBKeyToStr(KeyBytes(kv_pair.key())) << "\n"
-          << "value: " << util::FormatBytesAsStr(kv_pair.value()) << "\n"
+          << "value: " << FormatBytesAsStr(kv_pair.value()) << "\n"
           << "put_batch:\n" << put_batch.DebugString();
     }
 #endif
@@ -1152,122 +1150,6 @@ yb::Status GetTtl(const Slice& encoded_subdoc_key,
   return Status::OK();
 }
 
-// ------------------------------------------------------------------------------------------------
-// Debug output
-// ------------------------------------------------------------------------------------------------
-
-namespace {
-
-Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type, KeyType* key_type) {
-  *key_type = GetKeyType(key_slice, db_type);
-  SubDocKey subdoc_key;
-  switch (*key_type) {
-    case KeyType::kIntentKey:
-    {
-      auto decoded_intent_key = VERIFY_RESULT(DecodeIntentKey(key_slice));
-      RETURN_NOT_OK(subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(
-          decoded_intent_key.intent_prefix));
-      return subdoc_key.ToString() + " " + ToString(decoded_intent_key.intent_types) + " " +
-             decoded_intent_key.doc_ht.ToString();
-    }
-    case KeyType::kReverseTxnKey:
-    {
-      RETURN_NOT_OK(key_slice.consume_byte(ValueTypeAsChar::kTransactionId));
-      auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&key_slice));
-      if (key_slice.empty() || key_slice.size() > kMaxBytesPerEncodedHybridTime + 1) {
-        return STATUS_FORMAT(
-            Corruption,
-            "Invalid doc hybrid time in reverse intent record, transaction id: $0, suffix: $1",
-            transaction_id, key_slice.ToDebugHexString());
-      }
-      size_t doc_ht_buffer[kMaxWordsPerEncodedHybridTimeWithValueType];
-      memcpy(doc_ht_buffer, key_slice.data(), key_slice.size());
-      for (size_t i = 0; i != kMaxWordsPerEncodedHybridTimeWithValueType; ++i) {
-        doc_ht_buffer[i] = ~doc_ht_buffer[i];
-      }
-      key_slice = Slice(pointer_cast<char*>(doc_ht_buffer), key_slice.size());
-
-      if (static_cast<ValueType>(key_slice[0]) != ValueType::kHybridTime) {
-        return STATUS_FORMAT(
-            Corruption,
-            "Invalid prefix of doc hybrid time in reverse intent record, transaction id: $0, "
-                "decoded suffix: $1",
-            transaction_id, key_slice.ToDebugHexString());
-      }
-      key_slice.consume_byte();
-      DocHybridTime doc_ht;
-      RETURN_NOT_OK(doc_ht.DecodeFrom(&key_slice));
-      return Format("TXN REV $0 $1", transaction_id, doc_ht);
-    }
-    case KeyType::kTransactionMetadata:
-    {
-      RETURN_NOT_OK(key_slice.consume_byte(ValueTypeAsChar::kTransactionId));
-      auto transaction_id = DecodeTransactionId(&key_slice);
-      RETURN_NOT_OK(transaction_id);
-      return Format("TXN META $0", *transaction_id);
-    }
-    case KeyType::kEmpty: FALLTHROUGH_INTENDED;
-    case KeyType::kValueKey:
-      RETURN_NOT_OK_PREPEND(
-          subdoc_key.FullyDecodeFrom(key_slice),
-          "Error: failed decoding RocksDB intent key " + FormatRocksDBSliceAsStr(key_slice));
-      return subdoc_key.ToString();
-  }
-  return STATUS_SUBSTITUTE(Corruption, "Corrupted KeyType: $0", yb::ToString(*key_type));
-}
-
-Result<std::string> DocDBValueToDebugStr(Slice value_slice, const KeyType& key_type) {
-  std::string prefix;
-  if (key_type == KeyType::kIntentKey) {
-    auto txn_id_res = VERIFY_RESULT(DecodeTransactionIdFromIntentValue(&value_slice));
-    prefix = Format("TransactionId($0) ", txn_id_res);
-    if (!value_slice.empty()) {
-          RETURN_NOT_OK(value_slice.consume_byte(ValueTypeAsChar::kWriteId));
-      if (value_slice.size() < sizeof(IntraTxnWriteId)) {
-        return STATUS_FORMAT(Corruption, "Not enought bytes for write id: $0", value_slice.size());
-      }
-      auto write_id = BigEndian::Load32(value_slice.data());
-      value_slice.remove_prefix(sizeof(write_id));
-      prefix += Format("WriteId($0) ", write_id);
-    }
-  }
-
-  // Empty values are allowed for weak intents.
-  if (!value_slice.empty() || key_type != KeyType::kIntentKey) {
-    Value v;
-    RETURN_NOT_OK_PREPEND(
-        v.Decode(value_slice),
-        Substitute("Error: failed to decode value $0", prefix));
-    return prefix + v.ToString();
-  } else {
-    return prefix + "none";
-  }
-}
-
-Result<std::string> DocDBValueToDebugStr(
-    KeyType key_type, const std::string& key_str, Slice value) {
-  switch (key_type) {
-    case KeyType::kTransactionMetadata: {
-      TransactionMetadataPB metadata_pb;
-      if (!metadata_pb.ParseFromArray(value.cdata(), value.size())) {
-        return STATUS_FORMAT(Corruption, "Bad metadata: $0", value.ToDebugHexString());
-      }
-      auto metadata = TransactionMetadata::FromPB(metadata_pb);
-      RETURN_NOT_OK(metadata);
-      return ToString(*metadata);
-    }
-    case KeyType::kReverseTxnKey: {
-      KeyType ignore_key_type;
-      return DocDBKeyToDebugStr(value, StorageDbType::kIntents, &ignore_key_type);
-    }
-    case KeyType::kEmpty: FALLTHROUGH_INTENDED;
-    case KeyType::kIntentKey: FALLTHROUGH_INTENDED;
-    case KeyType::kValueKey:
-      return DocDBValueToDebugStr(value, key_type);
-  }
-  FATAL_INVALID_ENUM_VALUE(KeyType, key_type);
-}
-
 template <class DumpStringFunc>
 void ProcessDumpEntry(
     Slice key, Slice value, IncludeBinary include_binary, StorageDbType db_type,
@@ -1285,12 +1167,15 @@ void ProcessDumpEntry(
     func(Format("$0 -> $1", *key_str, *value_str));
   }
   if (include_binary) {
-    func(Format("$0 -> $1\n", FormatRocksDBSliceAsStr(key), FormatRocksDBSliceAsStr(value)));
+    func(Format("$0 -> $1\n", FormatSliceAsStr(key), FormatSliceAsStr(value)));
   }
 }
 
-void AppendToStream(const std::string& s, ostream* out) {
-  *out << s << std::endl;
+void AppendLineToStream(
+    const std::string& s, ostream* out, const DocDbDumpLineFilter& filter) {
+  if (filter.empty() || filter(s)) {
+    *out << s << std::endl;
+  }
 }
 
 void AppendToContainer(const std::string& s, std::unordered_set<std::string>* out) {
@@ -1305,7 +1190,7 @@ std::string EntryToString(const rocksdb::Iterator& iterator, StorageDbType db_ty
   std::ostringstream out;
   ProcessDumpEntry(
       iterator.key(), iterator.value(), IncludeBinary::kFalse, db_type,
-      std::bind(&AppendToStream, _1, &out));
+      std::bind(&AppendLineToStream, _1, &out, DocDbDumpLineFilter()));
   return out.str();
 }
 
@@ -1323,26 +1208,28 @@ void DocDBDebugDump(rocksdb::DB* rocksdb, StorageDbType db_type, IncludeBinary i
   }
 }
 
-}  // namespace
-
 void DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out, StorageDbType db_type,
-                    IncludeBinary include_binary) {
-  DocDBDebugDump(rocksdb, db_type, include_binary, std::bind(&AppendToStream, _1, &out));
+                    IncludeBinary include_binary, const DocDbDumpLineFilter& line_filter) {
+  DocDBDebugDump(
+      rocksdb, db_type, include_binary,
+      std::bind(&AppendLineToStream, _1, &out, line_filter));
 }
 
-std::string DocDBDebugDumpToStr(DocDB docdb, IncludeBinary include_binary) {
+std::string DocDBDebugDumpToStr(
+    DocDB docdb, IncludeBinary include_binary, const DocDbDumpLineFilter& line_filter) {
   stringstream ss;
-  DocDBDebugDump(docdb.regular, ss, StorageDbType::kRegular, include_binary);
+  DocDBDebugDump(docdb.regular, ss, StorageDbType::kRegular, include_binary, line_filter);
   if (docdb.intents) {
-    DocDBDebugDump(docdb.intents, ss, StorageDbType::kIntents, include_binary);
+    DocDBDebugDump(docdb.intents, ss, StorageDbType::kIntents, include_binary, line_filter);
   }
   return ss.str();
 }
 
-std::string DocDBDebugDumpToStr(rocksdb::DB* rocksdb, StorageDbType db_type,
-                                IncludeBinary include_binary) {
+std::string DocDBDebugDumpToStr(
+    rocksdb::DB* rocksdb, StorageDbType db_type,
+    IncludeBinary include_binary, const DocDbDumpLineFilter& line_filter) {
   stringstream ss;
-  DocDBDebugDump(rocksdb, ss, db_type, include_binary);
+  DocDBDebugDump(rocksdb, ss, db_type, include_binary, line_filter);
   return ss.str();
 }
 

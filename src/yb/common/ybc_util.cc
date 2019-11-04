@@ -190,7 +190,7 @@ void YBCLogImpl(
 }
 
 const char* YBCFormatBytesAsStr(const char* data, size_t size) {
-  return YBCPAllocStdString(util::FormatBytesAsStr(data, size));
+  return YBCPAllocStdString(FormatBytesAsStr(data, size));
 }
 
 const char* YBCGetStackTrace() {

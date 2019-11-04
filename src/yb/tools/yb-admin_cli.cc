@@ -229,25 +229,27 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "modify_placement_info", " <placement_info> <replication_factor>",
+      "modify_placement_info", " <placement_info> <replication_factor> [placement_uuid]",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 4) {
+        if (args.size() != 4 && args.size() != 5) {
           return ClusterAdminCli::kInvalidArguments;
         }
         int rf = boost::lexical_cast<int>(args[3]);
-        RETURN_NOT_OK_PREPEND(client->ModifyPlacementInfo(args[2], rf),
+        string placement_uuid = args.size() == 5 ? args[4] : "";
+        RETURN_NOT_OK_PREPEND(client->ModifyPlacementInfo(args[2], rf, placement_uuid),
                               Substitute("Unable to modify placement info."));
         return Status::OK();
       });
 
   Register(
-      "add_read_replica_placement_info", " <placement_info> <replication_factor>",
+      "add_read_replica_placement_info", " <placement_info> <replication_factor> [placement_uuid]",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 4) {
+        if (args.size() != 4 && args.size() != 5) {
           return ClusterAdminCli::kInvalidArguments;
         }
         int rf = boost::lexical_cast<int>(args[3]);
-        RETURN_NOT_OK_PREPEND(client->AddReadReplicaPlacementInfo(args[2], rf),
+        string placement_uuid = args.size() == 5 ? args[4] : "";
+        RETURN_NOT_OK_PREPEND(client->AddReadReplicaPlacementInfo(args[2], rf, placement_uuid),
                               Substitute("Unable to add read replica placement info."));
         return Status::OK();
       });
@@ -267,13 +269,12 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "delete_read_replica_placement_info", " <placement_uuid>",
+      "delete_read_replica_placement_info", "",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 2 && args.size() != 3) {
+        if (args.size() != 2) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        string placement_uuid = args.size() == 3 ? args[2] : "";
-        RETURN_NOT_OK_PREPEND(client->DeleteReadReplicaPlacementInfo(placement_uuid),
+        RETURN_NOT_OK_PREPEND(client->DeleteReadReplicaPlacementInfo(),
                               Substitute("Unable to delete read replica placement info."));
         return Status::OK();
       });

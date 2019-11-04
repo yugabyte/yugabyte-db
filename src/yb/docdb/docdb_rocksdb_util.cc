@@ -47,9 +47,9 @@ DEFINE_int32(rocksdb_level0_file_num_compaction_trigger, 5,
              "Number of files to trigger level-0 compaction. -1 if compaction should not be "
              "triggered by number of files at all.");
 
-DEFINE_int32(rocksdb_level0_slowdown_writes_trigger, 24,
+DEFINE_int32(rocksdb_level0_slowdown_writes_trigger, -1,
              "The number of files above which writes are slowed down.");
-DEFINE_int32(rocksdb_level0_stop_writes_trigger, 48,
+DEFINE_int32(rocksdb_level0_stop_writes_trigger, -1,
              "The number of files above which compactions are stopped.");
 DEFINE_int32(rocksdb_universal_compaction_size_ratio, 20,
              "The percentage upto which files that are larger are include in a compaction.");
@@ -320,10 +320,10 @@ void PerformRocksDBSeek(
       "    Seek() calls:     $8\n",
       file_name, line,
       BestEffortDocDBKeyToStr(seek_key),
-      FormatRocksDBSliceAsStr(seek_key),
+      FormatSliceAsStr(seek_key),
       iter->Valid() ? BestEffortDocDBKeyToStr(KeyBytes(iter->key())) : "N/A",
-      iter->Valid() ? FormatRocksDBSliceAsStr(iter->key()) : "N/A",
-      iter->Valid() ? FormatRocksDBSliceAsStr(iter->value()) : "N/A",
+      iter->Valid() ? FormatSliceAsStr(iter->key()) : "N/A",
+      iter->Valid() ? FormatSliceAsStr(iter->value()) : "N/A",
       next_count,
       seek_count);
 }
@@ -534,8 +534,9 @@ void InitRocksDBOptions(
   AutoInitRocksDBFlags(options);
   if (compactions_enabled) {
     options->level0_file_num_compaction_trigger = FLAGS_rocksdb_level0_file_num_compaction_trigger;
-    options->level0_slowdown_writes_trigger = FLAGS_rocksdb_level0_slowdown_writes_trigger;
-    options->level0_stop_writes_trigger = FLAGS_rocksdb_level0_stop_writes_trigger;
+    options->level0_slowdown_writes_trigger = max_if_negative(
+        FLAGS_rocksdb_level0_slowdown_writes_trigger);
+    options->level0_stop_writes_trigger = max_if_negative(FLAGS_rocksdb_level0_stop_writes_trigger);
     // This determines the algo used to compute which files will be included. The "total size" based
     // computation compares the size of every new file with the sum of all files included so far.
     options->compaction_options_universal.stop_style =

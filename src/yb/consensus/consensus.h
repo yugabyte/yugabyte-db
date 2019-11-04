@@ -83,9 +83,6 @@ class TabletServerErrorPB;
 
 namespace consensus {
 
-class ConsensusCommitContinuation;
-class ReplicaOperationFactory;
-
 typedef int64_t ConsensusTerm;
 
 typedef std::function<void(

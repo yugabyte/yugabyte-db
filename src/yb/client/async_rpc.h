@@ -51,7 +51,7 @@ struct AsyncRpcData {
   RemoteTablet* tablet = nullptr;
   bool allow_local_calls_in_curr_thread = false;
   bool need_consistent_read = false;
-  double memory_limit_score = 0.0;
+  double rejection_score = 0.0;
   InFlightOps ops;
 };
 

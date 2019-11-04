@@ -115,7 +115,7 @@ class ReplicaState {
 
   ReplicaState(ConsensusOptions options, std::string peer_uuid,
                std::unique_ptr<ConsensusMetadata> cmeta,
-               ReplicaOperationFactory* operation_factory,
+               ConsensusContext* consensus_context,
                SafeOpIdWaiter* safe_op_id_waiter,
                RetryableRequests* retryable_requests,
                std::function<void(const OpIds&)> applied_ops_tracker);
@@ -252,8 +252,8 @@ class ReplicaState {
   // The vote must be set; use HasVotedCurrentTermUnlocked() to check.
   const std::string& GetVotedForCurrentTermUnlocked() const;
 
-  ReplicaOperationFactory* replica_operation_factory() const {
-    return operation_factory_;
+  ConsensusContext* context() const {
+    return context_;
   }
 
   // Returns the uuid of the peer to which this replica state belongs.
@@ -453,7 +453,7 @@ class ReplicaState {
 
   // When we receive a message from a remote peer telling us to start a operation, we use
   // this factory to start it.
-  ReplicaOperationFactory* const operation_factory_;
+  ConsensusContext* context_;
 
   // Used to wait for safe op id during apply of committed entries.
   SafeOpIdWaiter* safe_op_id_waiter_;

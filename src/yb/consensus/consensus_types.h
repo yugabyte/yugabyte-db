@@ -34,29 +34,6 @@ struct ConsensusOptions {
   std::string tablet_id;
 };
 
-// Factory for replica transactions.
-// An implementation of this factory must be registered prior to consensus
-// start, and is used to create transactions when the consensus implementation receives
-// messages from the leader.
-//
-// Replica transactions execute the following way:
-//
-// - When a ReplicateMsg is first received from the leader, the Consensus
-//   instance creates the ConsensusRound and calls StartReplicaOperation().
-//   This will trigger the Prepare(). At the same time replica consensus
-//   instance immediately stores the ReplicateMsg in the Log. Once the replicate
-//   message is stored in stable storage an ACK is sent to the leader (i.e. the
-//   replica Consensus instance does not wait for Prepare() to finish).
-class ReplicaOperationFactory {
- public:
-  virtual CHECKED_STATUS StartReplicaOperation(
-      const ConsensusRoundPtr& context, HybridTime propagated_safe_time) = 0;
-  virtual void SetPropagatedSafeTime(HybridTime ht) = 0;
-  virtual bool ShouldApplyWrite() = 0;
-
-  virtual ~ReplicaOperationFactory() {}
-};
-
 } // namespace consensus
 } // namespace yb
 

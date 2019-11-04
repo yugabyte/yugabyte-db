@@ -42,7 +42,7 @@ PTAlterTable::~PTAlterTable() {
 
 CHECKED_STATUS PTAlterTable::Analyze(SemContext *sem_context) {
   // Populate internal table_ variable.
-  bool is_system_ignored;
+  bool is_system_ignored = false;
   RETURN_NOT_OK(name_->AnalyzeName(sem_context, OBJECT_TABLE));
 
   // Permissions check happen in LookupTable if flag use_cassandra_authentication is enabled.

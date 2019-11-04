@@ -35,7 +35,7 @@ yb-ctl [ command ] [ argument, argument2, ... ]
 
 Creates a local YugabyteDB cluster. With no optional arguments, creates a 1-node cluster.
 
-For more details and examples, see [Create a local cluster](#create-a-local-cluster), [Create a cluster across multiple zones, regions, and clouds](#Create-a-cluster-across-multiple-zones-regions-and-clouds), and [Create a cluster with custom flags](#Create-a-cluster-with-custom-flags).
+For more details and examples, see [Create a local cluster](#create-a-local-cluster), [Create a cluster across multiple zones, regions, and clouds](#Create-a-cluster-across-multiple-zones-regions-and-clouds), and [Create a cluster with custom flags](#create-a-cluster-with-custom-flags).
 
 ### start
 

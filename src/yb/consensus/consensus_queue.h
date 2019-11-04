@@ -152,6 +152,8 @@ class PeerMessageQueue {
     // Member type of this peer in the config.
     RaftPeerPB::MemberType member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
 
+    uint64_t num_sst_files = 0;
+
    private:
     // The last term we saw from a given peer.
     // This is only used for sanity checking that a peer doesn't
@@ -165,6 +167,7 @@ class PeerMessageQueue {
                    const RaftPeerPB& local_peer_pb,
                    const std::string& tablet_id,
                    const server::ClockPtr& clock,
+                   ConsensusContext* context,
                    std::unique_ptr<ThreadPoolToken> raft_pool_observers_token);
 
   // Initialize the queue.
@@ -304,8 +307,8 @@ class PeerMessageQueue {
   void NotifyObserversOfFailedFollower(const std::string& uuid,
                                        const std::string& reason);
 
-  void SetPropagatedSafeTimeProvider(std::function<HybridTime()> provider) {
-    propagated_safe_time_provider_ = std::move(provider);
+  void SetContext(ConsensusContext* context) {
+    context_ = context;
   }
 
   const CloudInfoPB& local_cloud_info() const {
@@ -449,6 +452,7 @@ class PeerMessageQueue {
   CoarseTimePoint LeaderLeaseExpirationWatermark();
   MicrosTime HybridTimeLeaseExpirationWatermark();
   OpId OpIdWatermark();
+  uint64_t NumSSTFilesWatermark();
 
   CHECKED_STATUS ReadFromLogCache(int64_t from_index,
                                   int64_t to_index,
@@ -489,7 +493,7 @@ class PeerMessageQueue {
 
   server::ClockPtr clock_;
 
-  std::function<HybridTime()> propagated_safe_time_provider_;
+  ConsensusContext* context_ = nullptr;
 
   // Used to protect cdc_consumer_op_id_ and cdc_consumer_op_id_last_updated_.
   mutable rw_spinlock cdc_consumer_lock_;
@@ -509,6 +513,7 @@ struct MajorityReplicatedData {
   OpId op_id;
   CoarseTimePoint leader_lease_expiration;
   MicrosTime ht_lease_expiration;
+  uint64_t num_sst_files;
 };
 
 // The interface between RaftConsensus and the PeerMessageQueue.

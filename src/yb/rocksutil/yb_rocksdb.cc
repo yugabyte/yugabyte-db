@@ -21,8 +21,8 @@ using std::shared_ptr;
 using std::string;
 using strings::Substitute;
 
-using yb::util::FormatBytesAsStr;
-using yb::util::QuotesType;
+using yb::FormatBytesAsStr;
+using yb::QuotesType;
 
 namespace yb {
 

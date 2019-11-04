@@ -46,6 +46,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/test_consensus_context.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/log.h"
@@ -689,22 +690,18 @@ class TestDriver {
 
 // Fake ReplicaOperationFactory that allows for instantiating and unit
 // testing RaftConsensusState. Does not actually support running transactions.
-class MockOperationFactory : public ReplicaOperationFactory {
+class MockOperationFactory : public TestConsensusContext {
  public:
   CHECKED_STATUS StartReplicaOperation(
       const scoped_refptr<ConsensusRound>& round, HybridTime propagated_hybrid_time) override {
     return StartReplicaOperationMock(round.get());
   }
 
-  void SetPropagatedSafeTime(HybridTime ht) override {}
-
-  bool ShouldApplyWrite() override { return true; }
-
   MOCK_METHOD1(StartReplicaOperationMock, Status(ConsensusRound* round));
 };
 
 // A transaction factory for tests, usually this is implemented by TabletPeer.
-class TestOperationFactory : public ReplicaOperationFactory {
+class TestOperationFactory : public TestConsensusContext {
  public:
   TestOperationFactory() {
     CHECK_OK(ThreadPoolBuilder("test-operation-factory").set_max_threads(1).Build(&pool_));
@@ -721,10 +718,6 @@ class TestOperationFactory : public ReplicaOperationFactory {
                                                      txn, std::placeholders::_1));
     return Status::OK();
   }
-
-  void SetPropagatedSafeTime(HybridTime ht) override {}
-
-  bool ShouldApplyWrite() override { return true; }
 
   void ReplicateAsync(ConsensusRound* round) {
     CHECK_OK(consensus_->TEST_Replicate(round));

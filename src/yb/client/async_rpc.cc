@@ -285,7 +285,7 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(AsyncRpcData* data, YBConsistencyLevel con
         << "Read time should NOT be specified for serializable isolation: "
         << read_point->GetReadTime().ToString();
   }
-  req_.set_memory_limit_score(data->memory_limit_score);
+  req_.set_rejection_score(data->rejection_score);
 }
 
 template <class Req, class Resp>

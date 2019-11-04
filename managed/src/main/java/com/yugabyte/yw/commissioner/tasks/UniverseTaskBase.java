@@ -73,6 +73,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 
 import com.yugabyte.yw.commissioner.tasks.subtasks.CopyEncryptionKeyFile;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
 
 import java.util.stream.Collectors;
@@ -150,11 +151,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return universe;
   }
 
-  public Universe writeEncryptionEnabledToUniverse() {
+  public Universe writeEncryptionIntentToUniverse(boolean enable) {
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        LOG.info("Writing encryption at rest enabled to universe...");
+        LOG.info(String.format("Writing encryption at rest %b to universe...", enable));
         // Persist the updated information about the universe.
         // It should have been marked as being edited in lockUniverseForUpdate().
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -167,7 +168,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         universeDetails.encryptionAtRestConfig = taskParams().encryptionAtRestConfig;
         Cluster cluster = universeDetails.getPrimaryCluster();
         if (cluster != null) {
-          cluster.userIntent.enableEncryptionAtRest = true;
+          cluster.userIntent.enableEncryptionAtRest = enable;
           universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
         }
         universe.setUniverseDetails(universeDetails);
@@ -200,6 +201,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Add encryption file path
     params.encryptionKeyFilePath = file;
     params.isKubernetesUniverse = isKubernetesUniverse;
+    task.initialize(params);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createDisableEncryptionAtRestTask(String file) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("DisableEncryptionAtRest", executor);
+    DisableEncryptionAtRest task = new DisableEncryptionAtRest();
+    DisableEncryptionAtRest.Params params = new DisableEncryptionAtRest.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.disableEncryptionAtRest = file == null || file.length() == 0;
     task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);

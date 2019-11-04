@@ -200,6 +200,34 @@ Status Executor::PreExecTreeNode(PTInsertStmt *tnode) {
   }
 }
 
+shared_ptr<client::YBTable> Executor::GetTableFromStatement(const TreeNode *tnode) const {
+  if (tnode != nullptr) {
+    switch (tnode->opcode()) {
+      case TreeNodeOpcode::kPTAlterTable:
+        return static_cast<const PTAlterTable *>(tnode)->table();
+
+      case TreeNodeOpcode::kPTSelectStmt:
+        return static_cast<const PTSelectStmt *>(tnode)->table();
+
+      case TreeNodeOpcode::kPTInsertStmt:
+        return static_cast<const PTInsertStmt *>(tnode)->table();
+
+      case TreeNodeOpcode::kPTDeleteStmt:
+        return static_cast<const PTDeleteStmt *>(tnode)->table();
+
+      case TreeNodeOpcode::kPTUpdateStmt:
+        return static_cast<const PTUpdateStmt *>(tnode)->table();
+
+      case TreeNodeOpcode::kPTExplainStmt:
+        return GetTableFromStatement(static_cast<const PTExplainStmt *>(tnode)->stmt().get());
+
+      default: break;
+    }
+  }
+
+  return nullptr;
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecTreeNode(const TreeNode *tnode) {
@@ -327,8 +355,7 @@ Status Executor::ExecPTNode(const PTGrantRevokeRole* tnode) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
     if (s.IsInvalidArgument()) {
       error_code = ErrorCode::INVALID_REQUEST;
-    }
-    if (s.IsNotFound()) {
+    } else if (s.IsNotFound()) {
       error_code = ErrorCode::ROLE_NOT_FOUND;
     }
     // TODO (Bristy) : Set result_ properly.
@@ -1460,11 +1487,11 @@ void Executor::FlushAsync() {
   }
   // Use the same score on each tablet. So probability of rejecting write should be related
   // to used capacity.
-  auto memory_limit_score = RandomUniformReal<double>(0.01, 1);
+  auto rejection_score = RandomUniformReal<double>(0.01, 1);
   for (const auto& pair : flush_sessions) {
     auto session = pair.first;
     auto exec_context = pair.second;
-    session->SetMemoryLimitScore(memory_limit_score);
+    session->SetRejectionScore(rejection_score);
     TRACE("Flush Async");
     session->FlushAsync([this, exec_context](const Status& s) {
         FlushAsyncDone(s, exec_context);
@@ -2104,6 +2131,22 @@ Status Executor::ProcessStatementStatus(const ParseTree& parse_tree, const Statu
         errcode == ErrorCode::INVALID_ARGUMENTS        ||
         errcode == ErrorCode::OBJECT_NOT_FOUND         ||
         errcode == ErrorCode::TYPE_NOT_FOUND) {
+
+      if (errcode == ErrorCode::INVALID_ARGUMENTS) {
+        // Check the table schema is up-to-date.
+        const shared_ptr<client::YBTable> table = GetTableFromStatement(parse_tree.root().get());
+        if (table) {
+          const uint32_t current_schema_ver = table->schema().version();
+          uint32_t updated_schema_ver = 0;
+          const Status s_get_schema = ql_env_->GetUpToDateTableSchemaVersion(
+              table->name(), &updated_schema_ver);
+
+          if (s_get_schema.ok() && updated_schema_ver == current_schema_ver) {
+            return s; // Do not retry via STALE_METADATA code if the table schema is up-to-date.
+          }
+        }
+      }
+
       parse_tree.ClearAnalyzedTableCache(ql_env_);
       parse_tree.ClearAnalyzedUDTypeCache(ql_env_);
       parse_tree.set_stale();

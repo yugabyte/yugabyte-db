@@ -1925,9 +1925,8 @@ uint64_t DBImpl::GetCurrentVersionSstFilesUncompressedSize() {
 }
 
 uint64_t DBImpl::GetCurrentVersionNumSSTFiles() {
-  std::vector<rocksdb::LiveFileMetaData> file_metadata;
-  GetLiveFilesMetaData(&file_metadata);
-  return file_metadata.size();
+  InstrumentedMutexLock lock(&mutex_);
+  return default_cf_handle_->cfd()->current()->storage_info()->NumFiles();
 }
 
 void DBImpl::SetSSTFileTickers() {

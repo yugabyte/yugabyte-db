@@ -1,5 +1,6 @@
 package com.yugabyte.yw.forms;
 
+import com.avaje.ebean.annotation.EnumValue;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.EncryptionAtRestManager.KeyProvider;
@@ -9,15 +10,24 @@ import java.util.List;
 import java.util.Map;
 
 public class EncryptionAtRestKeyParams extends UniverseTaskParams {
+    public enum OpType {
+        @EnumValue("ENABLE")
+        ENABLE,
+        @EnumValue("DISABLE")
+        DISABLE;
+    }
+
     public UUID universeUUID;
 
     public Map<String, String> encryptionAtRestConfig;
 
-    public String encryptionKeyFilePath;
-
     public boolean isKubernetesUniverse = false;
 
-    public int expectedUniverseVersion = -1;
+    public OpType op;
+
+    private static OpType opTypeFromString(String opTypeString) {
+        return opTypeString == null ? OpType.ENABLE : OpType.valueOf(opTypeString);
+    }
 
     public static EncryptionAtRestKeyParams bindFromFormData(ObjectNode formData) {
         EncryptionAtRestKeyParams params = new EncryptionAtRestKeyParams();
@@ -30,6 +40,9 @@ public class EncryptionAtRestKeyParams extends UniverseTaskParams {
                 "key_size", formData.get("key_size").asText(),
                 "cmk_policy", cmkPolicy
         );
+        String keyOpString = null;
+        if (formData.get("key_op") != null) keyOpString = formData.get("key_op").asText();
+        params.op = opTypeFromString(keyOpString);
         return params;
     }
 }

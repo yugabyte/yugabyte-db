@@ -44,6 +44,7 @@
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
 #include "yb/util/protobuf_util.h"
+#include "yb/util/random_util.h"
 #include "yb/gutil/strings/split.h"
 
 #include "yb/consensus/consensus.proxy.h"
@@ -939,15 +940,23 @@ Status ClusterAdminClient::WaitUntilMasterLeaderReady() {
 }
 
 Status ClusterAdminClient::AddReadReplicaPlacementInfo(
-    const string& placement_info, int replication_factor) {
+    const string& placement_info, int replication_factor, const std::string& optional_uuid) {
   RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
 
   // Get the cluster config from the master leader.
   auto resp_cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
 
   auto* cluster_config = resp_cluster_config.mutable_cluster_config();
+  if (cluster_config->replication_info().read_replicas_size() > 0) {
+    return STATUS(InvalidCommand, "Already have a read replica placement, cannot add another.");
+  }
   auto* read_replica_config = cluster_config->mutable_replication_info()->add_read_replicas();
-  string uuid_str = boost::uuids::to_string(Uuid::Generate());
+
+  // If optional_uuid is set, make that the placement info, otherwise generate a random one.
+  string uuid_str = optional_uuid;
+  if (optional_uuid.empty()) {
+    uuid_str = RandomHumanReadableString(16);
+  }
   read_replica_config->set_num_replicas(replication_factor);
   read_replica_config->set_placement_uuid(uuid_str);
 
@@ -975,10 +984,21 @@ CHECKED_STATUS ClusterAdminClient::ModifyReadReplicaPlacementInfo(
   auto* cluster_config = master_resp.mutable_cluster_config();
 
   auto* replication_info = cluster_config->mutable_replication_info();
-  int idx = VERIFY_RESULT(GetReadReplicaConfigFromPlacementUuid(replication_info, placement_uuid));
-  auto* read_replica_config = replication_info->mutable_read_replicas(idx);
+  if (replication_info->read_replicas_size() == 0) {
+    return STATUS(InvalidCommand, "No read replica placement info to modify.");
+  }
 
-  auto config_placement_uuid = read_replica_config->placement_uuid();
+  auto* read_replica_config = replication_info->mutable_read_replicas(0);
+
+  std::string config_placement_uuid;
+  if (placement_uuid.empty())  {
+    // If there is no placement_uuid set, use the existing uuid.
+    config_placement_uuid = read_replica_config->placement_uuid();
+  } else {
+    // Otherwise, use the passed in value.
+    config_placement_uuid = placement_uuid;
+  }
+
   read_replica_config->Clear();
 
   read_replica_config->set_num_replicas(replication_factor);
@@ -997,17 +1017,18 @@ CHECKED_STATUS ClusterAdminClient::ModifyReadReplicaPlacementInfo(
   return Status::OK();
 }
 
-CHECKED_STATUS ClusterAdminClient::DeleteReadReplicaPlacementInfo(
-    const std::string& placement_uuid) {
+CHECKED_STATUS ClusterAdminClient::DeleteReadReplicaPlacementInfo() {
   RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
 
   auto master_resp = VERIFY_RESULT(GetMasterClusterConfig());
   auto* cluster_config = master_resp.mutable_cluster_config();
 
   auto* replication_info = cluster_config->mutable_replication_info();
-  int idx = VERIFY_RESULT(GetReadReplicaConfigFromPlacementUuid(replication_info, placement_uuid));
+  if (replication_info->read_replicas_size() == 0) {
+    return STATUS(InvalidCommand, "No read replica placement info to delete.");
+  }
 
-  replication_info->mutable_read_replicas()->ExtractSubrange(idx, 1, nullptr);
+  replication_info->clear_read_replicas();
 
   master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
 
@@ -1019,31 +1040,6 @@ CHECKED_STATUS ClusterAdminClient::DeleteReadReplicaPlacementInfo(
 
   LOG(INFO)<< "Deleted read replica placement.";
   return Status::OK();
-}
-
-Result<int> ClusterAdminClient::GetReadReplicaConfigFromPlacementUuid(
-    master::ReplicationInfoPB* replication_info, const string& placement_uuid) {
-  if (replication_info->read_replicas_size() == 0) {
-    return STATUS(InvalidCommand, "Need at least one placement info.");
-  }
-
-  if (placement_uuid.empty()) {
-    if (replication_info->read_replicas_size() != 1) {
-      return STATUS(InvalidCommand,
-                    Format("Need to specify placement uuid when there are $0 placements",
-                           replication_info->read_replicas_size()));
-    }
-    return 0;
-  }
-
-  for (int i = 0; i < replication_info->read_replicas_size(); i++) {
-    auto* read_replica_placement = replication_info->mutable_read_replicas(i);
-    if (read_replica_placement->placement_uuid() == placement_uuid) {
-      return i;
-    }
-  }
-
-  return STATUS(InvalidCommand, Format("Could not find existing placement $0.", placement_uuid));
 }
 
 Status ClusterAdminClient::FillPlacementInfo(
@@ -1088,7 +1084,7 @@ Status ClusterAdminClient::FillPlacementInfo(
 }
 
 Status ClusterAdminClient::ModifyPlacementInfo(
-    std::string placement_info, int replication_factor) {
+    std::string placement_info, int replication_factor, const std::string& optional_uuid) {
 
   // Wait to make sure that master leader is ready.
   RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
@@ -1125,6 +1121,16 @@ Status ClusterAdminClient::ModifyPlacementInfo(
     pb->mutable_cloud_info()->set_placement_zone(block[2]);
     pb->set_min_num_replicas(1);
   }
+
+  if (!optional_uuid.empty()) {
+    // If we have an optional uuid, set it.
+    live_replicas->set_placement_uuid(optional_uuid);
+  } else if (sys_cluster_config_entry->replication_info().live_replicas().has_placement_uuid()) {
+    // Otherwise, if we have an existing placement uuid, use that.
+    live_replicas->set_placement_uuid(
+        sys_cluster_config_entry->replication_info().live_replicas().placement_uuid());
+  }
+
   sys_cluster_config_entry->mutable_replication_info()->set_allocated_live_replicas(live_replicas);
   req_new_cluster_config.mutable_cluster_config()->CopyFrom(*sys_cluster_config_entry);
 

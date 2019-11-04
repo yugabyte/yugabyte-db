@@ -60,9 +60,9 @@ SHOW dynamic_library_path;
 (1 row)
 
 SHOW ssl_ciphers;
- ssl_ciphers
--------------
- none
+       ssl_ciphers
+--------------------------
+ HIGH:MEDIUM:+3DES:!aNULL
 (1 row)
 
 -- Variables of Type Enum

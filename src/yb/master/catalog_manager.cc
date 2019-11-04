@@ -2582,7 +2582,7 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
   TRACE(Substitute("Looking up $0", table_type));
   scoped_refptr<TableInfo> table = FindPtrOrNull(table_ids_map_, table_id);
   if (table == nullptr) {
-    Status s = STATUS_SUBSTITUTE(NotFound, "The object with id $1 does not exist", table_id);
+    Status s = STATUS_SUBSTITUTE(NotFound, "The object with id $0 does not exist", table_id);
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
 

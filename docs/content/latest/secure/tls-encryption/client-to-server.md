@@ -25,13 +25,13 @@ Flag                                 | Process    | Description                 
 `allow_insecure_connections`         | YB-TServer | [Optional] Set to `false` to disallow any client with unencrypted communication from joining this cluster. Default value is `true`. Note that this flag requires `use_client_to_server_encryption` to be enabled. |
 `certs_for_client_dir`               | YB-TServer | [Optional] Defaults to the same directory as the server to server encryption. This directory should contain the configuration for the client to perform TLS communication with the cluster. Default value for the YB-TServers is `<data drive>/yb-data/tserver/data/certs`  |
 
-To enable access control, follow these steps, start the `yb-tserver` processes with the following flag (described above):
+To enable access control, follow these steps, start YB-TServer (`yb-tserver`) nodes with the following flag (described above):
   
 ```
 --use_client_to_server_encryption=true`
 ```
 
-This setting allows both encrypted clients and unencrytped clients to connect to the cluster.
+This setting allows both encrypted and unencrypted clients to connect to the cluster.
 
 To prevent clients without the appropriate encryption from connecting, you must add the following flag:
 
