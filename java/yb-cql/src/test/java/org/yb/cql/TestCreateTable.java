@@ -21,8 +21,9 @@ import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
 
-import org.yb.YBTestRunner;
+import java.util.Set;
 
+import org.yb.YBTestRunner;
 import org.junit.runner.RunWith;
 
 @RunWith(value=YBTestRunner.class)
@@ -172,5 +173,37 @@ public class TestCreateTable extends BaseCQLTest {
   @Test
   public void testCreateTableSystemNamespace() throws Exception {
     runInvalidStmt("CREATE TABLE system.abc (c1 int, PRIMARY KEY(c1));");
+  }
+
+  @Test
+  public void testCreateTableNumTablets() throws Exception {
+    // Test default number of tablets.
+    session.execute("CREATE TABLE test_num_tablets_1 (id int PRIMARY KEY);");
+    Set<String> ids =
+      miniCluster.getClient().getTabletUUIDs(DEFAULT_TEST_KEYSPACE, "test_num_tablets_1");
+    assertEquals(ids.size(), NUM_TABLET_SERVERS * overridableNumShardsPerTServer());
+
+    // Test with tablets table property set.
+    session.execute("CREATE TABLE test_num_tablets_2 (id int PRIMARY KEY) WITH tablets = 10;");
+    ids = miniCluster.getClient().getTabletUUIDs(DEFAULT_TEST_KEYSPACE, "test_num_tablets_2");
+    assertEquals(ids.size(), 10);
+
+    // Test with tablets and transations table properties set.
+    assertFalse(miniCluster.getClient().tableExists("system", "transactions"));
+    session.execute(
+        "CREATE TABLE test_num_tablets_3 (id int PRIMARY KEY) WITH tablets = 10 " +
+        "AND transactions = { 'enabled' : true };");
+    ids = miniCluster.getClient().getTabletUUIDs(DEFAULT_TEST_KEYSPACE, "test_num_tablets_3");
+    assertEquals(ids.size(), 10);
+    assertTrue(miniCluster.getClient().tableExists("system", "transactions"));
+    // Test index table with tablets table property set.
+    session.execute("CREATE INDEX on test_num_tablets_3 (id) WITH tablets = 5;");
+    ids =
+      miniCluster.getClient().getTabletUUIDs(DEFAULT_TEST_KEYSPACE, "test_num_tablets_3_id_idx");
+    assertEquals(ids.size(), 5);
+
+    // Test with number of tablets exceeding the limit.
+    assertQueryError("CREATE TABLE test_num_tablets_4 (id int PRIMARY KEY) WITH tablets = 60;",
+        "Number of tablets exceeds system limit");
   }
 }

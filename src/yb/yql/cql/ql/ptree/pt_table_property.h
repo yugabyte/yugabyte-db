@@ -53,7 +53,8 @@ class PTTableProperty : public PTProperty {
     kMaxIndexInterval,
     kReadRepairChance,
     kSpeculativeRetry,
-    kTransactions
+    kTransactions,
+    kNumTablets
   };
 
   //------------------------------------------------------------------------------------------------
