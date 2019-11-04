@@ -14,7 +14,8 @@ import { VALIDATE_FROM_TOKEN, VALIDATE_FROM_TOKEN_RESPONSE,
          GET_LOGS_FAILURE, GET_RELEASES, GET_RELEASES_RESPONSE, REFRESH_RELEASES,
          REFRESH_RELEASES_RESPONSE, IMPORT_RELEASE, IMPORT_RELEASE_RESPONSE, UPDATE_RELEASE,
          UPDATE_RELEASE_RESPONSE, GET_ALERTS, GET_ALERTS_SUCCESS, GET_ALERTS_FAILURE,
-         API_TOKEN_LOADING, API_TOKEN, API_TOKEN_RESPONSE
+         API_TOKEN_LOADING, API_TOKEN, API_TOKEN_RESPONSE,
+         GET_SCHEDULES, GET_SCHEDULES_RESPONSE, DELETE_SCHEDULE, DELETE_SCHEDULE_RESPONSE
        } from '../actions/customers';
 
 import { sortVersionStrings, isDefinedNotNull } from '../utils/ObjectUtils';
@@ -40,12 +41,14 @@ const INITIAL_STATE = {
   addConfig: getInitialState({}),
   configs: getInitialState([]),
   deleteConfig: getInitialState({}),
+  deleteSchedule: getInitialState({}),
   releases: getInitialState([]),
   refreshReleases: getInitialState({}),
   importRelease: getInitialState({}),
   updateRelease: getInitialState({}),
   addCertificate: getInitialState({}),
   userCertificates: getInitialState({}),
+  schedules: getInitialState([]),
 };
 
 export default function(state = INITIAL_STATE, action) {
@@ -194,6 +197,14 @@ export default function(state = INITIAL_STATE, action) {
       return setLoadingState(state, "updateRelease", {});
     case UPDATE_RELEASE_RESPONSE:
       return setPromiseResponse(state, "updateRelease", action);
+    case GET_SCHEDULES:
+      return setLoadingState(state, "schedules", []);
+    case GET_SCHEDULES_RESPONSE:
+      return setPromiseResponse(state, "schedules", action);
+    case DELETE_SCHEDULE:
+      return setLoadingState(state, "deleteSchedule", {});
+    case DELETE_SCHEDULE_RESPONSE:
+      return setPromiseResponse(state, "deleteSchedule", action);
 
     default:
       return state;

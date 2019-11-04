@@ -39,7 +39,7 @@ export function isNonEmptyString(str) {
 }
 
 export function isEmptyString(str) {
-  return !(_.isString(str) && str.trim().length > 0);
+  return _.isString(str) && str.trim().length === 0;
 }
 
 export function removeNullProperties(obj) {

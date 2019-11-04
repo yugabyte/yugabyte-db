@@ -13,7 +13,8 @@ import { FETCH_UNIVERSE_INFO, RESET_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_RESPONSE,
   GET_UNIVERSE_PER_NODE_STATUS_RESPONSE, GET_UNIVERSE_PER_NODE_METRICS,
   GET_UNIVERSE_PER_NODE_METRICS_RESPONSE, GET_MASTER_LEADER, GET_MASTER_LEADER_RESPONSE, RESET_MASTER_LEADER,
   PERFORM_UNIVERSE_NODE_ACTION, PERFORM_UNIVERSE_NODE_ACTION_RESPONSE, FETCH_UNIVERSE_BACKUPS,
-  FETCH_UNIVERSE_BACKUPS_RESPONSE, RESET_UNIVERSE_BACKUPS, GET_HEALTH_CHECK,
+  FETCH_UNIVERSE_BACKUPS_RESPONSE, RESET_UNIVERSE_BACKUPS,
+  CREATE_UNIVERSE_BACKUP, CREATE_UNIVERSE_BACKUP_RESPONSE, GET_HEALTH_CHECK,
   GET_HEALTH_CHECK_RESPONSE, ADD_READ_REPLICA, ADD_READ_REPLICA_RESPONSE, EDIT_READ_REPLICA,
   EDIT_READ_REPLICA_RESPONSE, DELETE_READ_REPLICA, DELETE_READ_REPLICA_RESPONSE,
   IMPORT_UNIVERSE, IMPORT_UNIVERSE_RESPONSE, IMPORT_UNIVERSE_RESET, IMPORT_UNIVERSE_INIT
@@ -43,6 +44,7 @@ const INITIAL_STATE = {
   universeMasterLeader: getInitialState({}),
   rollingUpgrade: getInitialState({}),
   universeNodeAction: getInitialState({}),
+  createUniverseBackup: getInitialState({}),
   universeBackupList: getInitialState({}),
   healthCheck: getInitialState({}),
   universeImport: getInitialState({})
@@ -180,6 +182,11 @@ export default function(state = INITIAL_STATE, action) {
       return setPromiseResponse(state, "universeBackupList", action);
     case RESET_UNIVERSE_BACKUPS:
       return { ...state, error: null, "universeBackupList": setInitialState({})};
+
+    case CREATE_UNIVERSE_BACKUP:
+      return setLoadingState(state, "createUniverseBackup", {});
+    case CREATE_UNIVERSE_BACKUP_RESPONSE:
+      return setPromiseResponse(state, "createUniverseBackup", action);
 
     // Universe Health Checking
     case GET_HEALTH_CHECK:

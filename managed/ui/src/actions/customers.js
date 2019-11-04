@@ -87,6 +87,11 @@ export const IMPORT_RELEASE_RESPONSE = 'IMPORT_RELEASE_RESPONSE';
 export const UPDATE_RELEASE = 'UPDATE_RELEASE';
 export const UPDATE_RELEASE_RESPONSE = 'UPDATE_RELEASE_RESPONSE';
 
+export const GET_SCHEDULES = 'GET_SCHEDULES';
+export const GET_SCHEDULES_RESPONSE = 'GET_SCHEDULES_RESPONSE';
+export const DELETE_SCHEDULE = 'DELETE_SCHEDULE';
+export const DELETE_SCHEDULE_RESPONSE = 'DELETE_SCHEDULE_RESPONSE';
+
 export function validateToken() {
   let cUUID = Cookies.get("customerId");
   if (cUUID) {
@@ -420,6 +425,39 @@ export function fetchCustomerConfigsResponse(response) {
     payload: response
   };
 }
+
+export function getSchedules() {
+  const cUUID = localStorage.getItem("customerId");
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/schedules`);
+  return {
+    type: GET_SCHEDULES,
+    payload: request
+  };
+}
+
+export function getSchedulesResponse(response) {
+  return {
+    type: GET_SCHEDULES_RESPONSE,
+    payload: response
+  };
+}
+
+export function deleteSchedule(scheduleUUID) {
+  const cUUID = localStorage.getItem("customerId");
+  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/schedules/${scheduleUUID}`);
+  return {
+    type: DELETE_SCHEDULE,
+    payload: request
+  };
+}
+
+export function deleteScheduleResponse(response) {
+  return {
+    type: DELETE_SCHEDULE_RESPONSE,
+    payload: response
+  };
+}
+
 
 export function getLogs() {
   // TODO(bogdan): Maybe make this a URL param somehow?
