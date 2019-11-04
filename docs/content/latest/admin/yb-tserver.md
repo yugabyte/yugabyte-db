@@ -351,6 +351,12 @@ Default: `11000`
 
 ### Performance options
 
+#### --enable_ondisk_compression
+
+Enable Snappy compression at the the cluster level.
+
+Default: `true`
+
 #### --rocksdb_compact_flush_rate_limit_bytes_per_sec
 
 Used to control rate of memstore flush and SSTable file compaction.
