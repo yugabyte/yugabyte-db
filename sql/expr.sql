@@ -193,5 +193,12 @@ $$ RETURN NOT ((true OR false) AND (false OR true)) $$
 AS r(result boolean);
 
 --
+-- Test indirection logic for object.property, object["property"], and array[element]
+--
+SELECT * FROM cypher(
+$$ RETURN [1, {bool:true, int:3, array:[9, 11, {boom:false, float:3.14}, 13]}, 5, 7, 9][1].array[2]["float"] $$)
+AS r(result agtype);
+
+--
 -- End of tests
 --

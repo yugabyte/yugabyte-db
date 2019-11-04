@@ -232,6 +232,26 @@ SELECT bool_to_agtype(true) <> bool_to_agtype(false);
 --Invalid Map Key (should fail)
 SELECT agtype_build_map('[0]'::agtype, null);
 
+-- Test agtype object/array access operators object.property, object["property"], and array[element]
+-- Note: At this point, object.property and object["property"] are equivalent.
+--
+SELECT agtype_access_operator('{"bool":true, "array":[1,3,{"bool":false, "int":3, "float":3.14},7], "float":3.14}','"array"','2', '"float"');
+-- empty map access
+SELECT agtype_access_operator('{}', '"array"');
+-- empty array access
+SELECT agtype_access_operator('[]', '0');
+-- out of bounds array access
+SELECT agtype_access_operator('[0, 1]', '2');
+SELECT agtype_access_operator('[0, 1]', '-3');
+-- array AGTV_NULL element
+SELECT agtype_access_operator('[1, 3, 5, 7]', 'null');
+-- map AGTV_NULL key
+SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', 'null');
+-- invalid map key types
+SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', 'true');
+SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', '2');
+SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', '2.0');
+
 --
 -- Cleanup
 --

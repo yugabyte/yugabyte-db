@@ -76,6 +76,8 @@ static void add_indent(StringInfo out, bool indent, int level);
 static void cannot_cast_agtype_value(enum agtype_value_type type,
                                      const char *sqltype);
 static bool agtype_extract_scalar(agtype_container *agtc, agtype_value *res);
+static agtype *execute_array_access_operator(agtype *array, agtype *element);
+static agtype *execute_map_access_operator(agtype *map, agtype *key);
 
 PG_FUNCTION_INFO_V1(agtype_in);
 
@@ -1410,4 +1412,137 @@ PG_FUNCTION_INFO_V1(bool_to_agtype);
 Datum bool_to_agtype(PG_FUNCTION_ARGS)
 {
     return boolean_to_agtype(PG_GETARG_BOOL(0));
+}
+
+/*
+ * Helper function for agtype_access_operator map access.
+ * Note: This function expects that a map and a scalar key are being passed.
+ */
+static agtype *execute_map_access_operator(agtype *map, agtype *key)
+{
+    agtype_value *key_value;
+    agtype_value *map_value;
+    agtype_value new_key_value;
+
+    key_value = get_ith_agtype_value_from_container(&key->root, 0);
+    /* transform key where appropriate */
+    new_key_value.type = AGTV_STRING;
+    switch (key_value->type)
+    {
+    case AGTV_NULL:
+        return NULL;
+
+    case AGTV_INTEGER:
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("AGTV_INTEGER is not a valid key type")));
+    case AGTV_FLOAT:
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("AGTV_FLOAT is not a valid key type")));
+    case AGTV_NUMERIC:
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("AGTV_NUMERIC is not a valid key type")));
+    case AGTV_BOOL:
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("AGTV_BOOL is not a valid key type")));
+
+    case AGTV_STRING:
+        new_key_value.val.string = key_value->val.string;
+        break;
+
+    default:
+        ereport(ERROR, (errmsg("unknown agtype scalar type")));
+        break;
+    }
+
+    map_value = find_agtype_value_from_container(&map->root, AGT_FOBJECT,
+                                                 &new_key_value);
+    if (map_value == NULL)
+        return NULL;
+
+    return agtype_value_to_agtype(map_value);
+}
+
+/*
+ * Helper function for agtype_access_operator array access.
+ * Note: This function expects that an array and a scalar key are being passed.
+ */
+static agtype *execute_array_access_operator(agtype *array, agtype *element)
+{
+    agtype_value *array_value;
+    agtype_value *element_value;
+    int index;
+    int size;
+
+    element_value = get_ith_agtype_value_from_container(&element->root, 0);
+    /* if AGTV_NULL return NULL */
+    if (element_value->type == AGTV_NULL)
+        return NULL;
+    /* key must be an integer */
+    if (element_value->type != AGTV_INTEGER)
+        ereport(ERROR,
+                (errmsg("array index must resolve to an integer value")));
+    /* adjust for negative index values */
+    index = element_value->val.int_value;
+    size = AGT_ROOT_COUNT(array);
+    if (index < 0)
+        index = size + index;
+    /* check array bounds */
+    if ((index >= size) || (index < 0))
+        return NULL;
+
+    array_value = get_ith_agtype_value_from_container(&array->root, index);
+
+    if (array_value == NULL)
+        return NULL;
+
+    return agtype_value_to_agtype(array_value);
+}
+
+PG_FUNCTION_INFO_V1(agtype_access_operator);
+/*
+ * Execution function for object.property, object["property"],
+ * and array[element]
+ */
+Datum agtype_access_operator(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    Datum *args;
+    bool *nulls;
+    Oid *types;
+    agtype *object;
+    agtype *key;
+    int i;
+
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+    /* we need at least 2 parameters, the object, and a field or element */
+    if (nargs < 2)
+        PG_RETURN_NULL();
+
+    object = DATUM_GET_AGTYPE_P(args[0]);
+    for (i = 1; i < nargs; i++)
+    {
+        /* if we have a null, return null */
+        if (nulls[i] == true)
+            PG_RETURN_NULL();
+
+        key = DATUM_GET_AGTYPE_P(args[i]);
+        if (!(AGT_ROOT_IS_SCALAR(key)))
+        {
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("key must resolve to a scalar value")));
+        }
+
+        if (AGT_ROOT_IS_OBJECT(object))
+            object = execute_map_access_operator(object, key);
+        else if (AGT_ROOT_IS_ARRAY(object))
+            object = execute_array_access_operator(object, key);
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("container must be an array or object")));
+
+        if (object == NULL)
+            PG_RETURN_NULL();
+    }
+
+    return AGTYPE_P_GET_DATUM(object);
 }

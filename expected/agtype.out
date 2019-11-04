@@ -748,6 +748,63 @@ SELECT bool_to_agtype(true) <> bool_to_agtype(false);
 --Invalid Map Key (should fail)
 SELECT agtype_build_map('[0]'::agtype, null);
 ERROR:  key value must be scalar, not array, composite, or json
+-- Test agtype object/array access operators object.property, object["property"], and array[element]
+-- Note: At this point, object.property and object["property"] are equivalent.
+--
+SELECT agtype_access_operator('{"bool":true, "array":[1,3,{"bool":false, "int":3, "float":3.14},7], "float":3.14}','"array"','2', '"float"');
+ agtype_access_operator 
+------------------------
+ 3.14
+(1 row)
+
+-- empty map access
+SELECT agtype_access_operator('{}', '"array"');
+ agtype_access_operator 
+------------------------
+ 
+(1 row)
+
+-- empty array access
+SELECT agtype_access_operator('[]', '0');
+ agtype_access_operator 
+------------------------
+ 
+(1 row)
+
+-- out of bounds array access
+SELECT agtype_access_operator('[0, 1]', '2');
+ agtype_access_operator 
+------------------------
+ 
+(1 row)
+
+SELECT agtype_access_operator('[0, 1]', '-3');
+ agtype_access_operator 
+------------------------
+ 
+(1 row)
+
+-- array AGTV_NULL element
+SELECT agtype_access_operator('[1, 3, 5, 7]', 'null');
+ agtype_access_operator 
+------------------------
+ 
+(1 row)
+
+-- map AGTV_NULL key
+SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', 'null');
+ agtype_access_operator 
+------------------------
+ 
+(1 row)
+
+-- invalid map key types
+SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', 'true');
+ERROR:  AGTV_BOOL is not a valid key type
+SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', '2');
+ERROR:  AGTV_INTEGER is not a valid key type
+SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', '2.0');
+ERROR:  AGTV_FLOAT is not a valid key type
 --
 -- Cleanup
 --

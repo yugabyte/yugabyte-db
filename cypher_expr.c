@@ -8,6 +8,8 @@
 #include "nodes/parsenodes.h"
 #include "nodes/value.h"
 #include "parser/parse_coerce.h"
+#include "parser/parse_expr.h"
+#include "parser/parse_func.h"
 #include "parser/parse_node.h"
 #include "parser/parse_oper.h"
 #include "utils/builtins.h"
@@ -27,6 +29,8 @@ static Node *transform_cypher_bool_const(ParseState *pstate,
                                          cypher_bool_const *bc);
 static Node *transform_cypher_map(ParseState *pstate, cypher_map *cm);
 static Node *transform_cypher_list(ParseState *pstate, cypher_list *cl);
+static Node *transform_cypher_indirection(ParseState *pstate,
+                                          A_Indirection *ind);
 
 Node *transform_cypher_expr(ParseState *pstate, Node *expr,
                             ParseExprKind expr_kind)
@@ -81,6 +85,8 @@ static Node *transform_cypher_expr_recurse(ParseState *pstate, Node *expr)
 
         return expr;
     }
+    case T_A_Indirection:
+        return transform_cypher_indirection(pstate, (A_Indirection *)expr);
     case T_ExtensibleNode:
         if (is_ag_node(expr, cypher_bool_const))
         {
@@ -318,4 +324,69 @@ static Node *transform_cypher_list(ParseState *pstate, cypher_list *cl)
     fexpr->location = cl->location;
 
     return (Node *)fexpr;
+}
+
+static Node *transform_cypher_indirection(ParseState *pstate,
+                                          A_Indirection *a_ind)
+{
+    int location;
+    ListCell *lc;
+    Node *ind_arg_expr;
+    FuncExpr *func_expr;
+    Oid func_access_oid;
+    List *args = NIL;
+
+    /* we need the array type agtype[] */
+    Oid func_arg_types[] = {
+        (GetSysCacheOid2(TYPENAMENSP, CStringGetDatum("_agtype"),
+                         ObjectIdGetDatum(ag_catalog_namespace_id())))};
+    oidvector *parameter_types = buildoidvector(func_arg_types, 1);
+
+    /* get the agtype_access_operator function */
+    func_access_oid = GetSysCacheOid3(
+        PROCNAMEARGSNSP, PointerGetDatum("agtype_access_operator"),
+        PointerGetDatum(parameter_types),
+        ObjectIdGetDatum(ag_catalog_namespace_id()));
+
+    ind_arg_expr = transform_cypher_expr_recurse(pstate, a_ind->arg);
+    location = exprLocation(ind_arg_expr);
+
+    args = lappend(args, ind_arg_expr);
+    foreach (lc, a_ind->indirection)
+    {
+        Node *node = lfirst(lc);
+
+        if (IsA(node, A_Indices))
+        {
+            A_Indices *indices = (A_Indices *)node;
+
+            if (indices->is_slice)
+            {
+                ereport(ERROR, (errmsg("slices are not supported yet")));
+            }
+            else
+            {
+                node = transform_cypher_expr_recurse(pstate, indices->uidx);
+                args = lappend(args, node);
+            }
+        }
+        else if (IsA(node, String))
+        {
+            Const *const_str = makeConst(AGTYPEOID, -1, InvalidOid, -1,
+                                         string_to_agtype(strVal(node)), false,
+                                         false);
+            args = lappend(args, const_str);
+        }
+        else
+        {
+            ereport(ERROR,
+                    (errmsg("invalid indirection node %d", nodeTag(node))));
+        }
+    }
+
+    func_expr = makeFuncExpr(func_access_oid, AGTYPEOID, args, InvalidOid,
+                             InvalidOid, COERCE_EXPLICIT_CALL);
+    func_expr->location = location;
+
+    return (Node *)func_expr;
 }

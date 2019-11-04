@@ -349,5 +349,17 @@ CREATE CAST (boolean AS agtype)
 WITH FUNCTION bool_to_agtype(boolean);
 
 --
+-- agtype access operator [element], ["field"], object.field
+--
+
+CREATE FUNCTION agtype_access_operator(VARIADIC agtype[])
+RETURNS agtype
+LANGUAGE C
+STABLE
+STRICT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+--
 -- End of agensgraph--0.0.0.sql
 --
