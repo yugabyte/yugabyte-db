@@ -485,7 +485,10 @@ Sets the preferred availability zones (AZs) and regions.
 
 {{< note title="Note" >}}
 
-When nodes in the the "preferred" availability zones and regions are alive and healthy, the tablet leaders are placed on nodes in those zones and regions. By default, all nodes are eligible to have tablet leaders.
+When nodes in the the "preferred" availability zones and regions are alive and healthy, the tablet leaders are placed on nodes in those zones and regions. 
+By default, all nodes are eligible to have tablet leaders.
+Having all tablet leaders reside in 1 region will 
+reduce the number of network hops that the db must do to write transactions and thus increase performance and lowering latency.
 
 {{< /note >}}
 
