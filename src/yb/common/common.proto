@@ -219,6 +219,7 @@ message TablePropertiesPB {
   //
   // The field "use_mangled_column_name" helps indicating whether a table is using mangled_name.
   optional bool use_mangled_column_name =  6 [ default = false ];
+  optional int32 num_tablets = 7;
 }
 
 message SchemaPB {

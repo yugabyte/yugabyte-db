@@ -22,6 +22,10 @@
 
 #include "yb/util/backoff_waiter.h"
 
+DEFINE_int32(
+    max_num_tablets_for_table, 50,
+    "Max number of tablets that can be specified in a CREATE TABLE statement");
+
 namespace yb {
 namespace client {
 

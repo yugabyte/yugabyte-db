@@ -434,6 +434,18 @@ class TableProperties {
     return use_mangled_column_name_;
   }
 
+  void SetNumTablets(int num_tablets) {
+    num_tablets_ = num_tablets;
+  }
+
+  bool HasNumTablets() const {
+    return num_tablets_ > 0;
+  }
+
+  int num_tablets() const {
+    return num_tablets_;
+  }
+
   void ToTablePropertiesPB(TablePropertiesPB *pb) const;
 
   static TableProperties FromTablePropertiesPB(const TablePropertiesPB& pb);
@@ -451,6 +463,7 @@ class TableProperties {
   TableId copartition_table_id_ = kNoCopartitionTableId;
   boost::optional<uint32_t> wal_retention_secs_;
   bool use_mangled_column_name_ = false;
+  int num_tablets_ = 0;
 };
 
 // The schema for a set of rows.

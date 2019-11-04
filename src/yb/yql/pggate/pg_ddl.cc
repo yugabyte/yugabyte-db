@@ -135,8 +135,7 @@ Status PgCreateTable::AddColumnImpl(const char *attr_name,
 }
 
 Status PgCreateTable::SetNumTablets(int32_t num_tablets) {
-  // TODO: make gflag
-  if (num_tablets > 50) {
+  if (num_tablets > FLAGS_max_num_tablets_for_table) {
     return STATUS(InvalidArgument, "num_tablets exceeds system limit");
   }
   num_tablets_ = num_tablets;
