@@ -64,7 +64,7 @@ PROTO_OUTPUT_FILE_NAME_RE = re.compile(r'^([a-zA-Z_0-9-]+)[.]pb[.](h|cc)$')
 
 # Ignore some special-case CMake targets that do not have a one-to-one match with executables or
 # libraries.
-IGNORED_CMAKE_TARGETS = ['gen_version_info', 'latest_symlink', 'gen_proto', 'postgres']
+IGNORED_CMAKE_TARGETS = ['gen_version_info', 'latest_symlink', 'postgres']
 
 LIST_DEPS_CMD = 'deps'
 LIST_REVERSE_DEPS_CMD = 'rev-deps'
@@ -425,16 +425,16 @@ class CMakeDepGraph:
     def __init__(self, build_root):
         self.build_root = build_root
         self.cmake_targets = None
+        self.cmake_deps_path = os.path.join(self.build_root, 'yb_cmake_deps.txt')
         self.cmake_deps = None
         self._load()
 
     def _load(self):
-        cmake_deps_path = os.path.join(self.build_root, 'yb_cmake_deps.txt')
         logging.info("Loading dependencies between CMake targets from '{}'".format(
-            cmake_deps_path))
+            self.cmake_deps_path))
         self.cmake_deps = {}
         self.cmake_targets = set()
-        with open(cmake_deps_path) as cmake_deps_file:
+        with open(self.cmake_deps_path) as cmake_deps_file:
             for line in cmake_deps_file:
                 line = line.strip()
                 if not line:
@@ -458,7 +458,7 @@ class CMakeDepGraph:
             adding_targets = [cmake_target] + list(cmake_target_deps)
             self.cmake_targets.update(set(adding_targets))
         logging.info("Found {} CMake targets in '{}'".format(
-            len(self.cmake_targets), cmake_deps_path))
+            len(self.cmake_targets), self.cmake_deps_path))
 
     def _get_cmake_dep_set_of(self, target):
         """
@@ -466,7 +466,7 @@ class CMakeDepGraph:
         this set modifies this CMake dependency graph.
         """
         deps = self.cmake_deps.get(target)
-        if not deps:
+        if deps is None:
             deps = set()
             self.cmake_deps[target] = deps
             self.cmake_targets.add(target)
@@ -767,7 +767,8 @@ class DependencyGraphBuilder:
 
     def build(self):
         compile_commands_path = os.path.join(self.conf.build_root, 'compile_commands.json')
-        if not os.path.exists(compile_commands_path):
+        cmake_deps_path = os.path.join(self.conf.build_root, 'yb_cmake_deps.txt')
+        if not os.path.exists(compile_commands_path) or not os.path.exists(cmake_deps_path):
 
             # This is mostly useful during testing. We don't want to generate the list of compile
             # commands by default because it takes a while, so only generate it on demand.
@@ -1076,6 +1077,8 @@ class DependencyGraph:
         corresponding protobuf library target.
         """
 
+        logging.info("Validating dependencies on protobuf-generated headers")
+
         # TODO: only do this during graph generation.
         self._add_proto_generation_deps()
         self._check_for_circular_dependencies()
@@ -1092,6 +1095,9 @@ class DependencyGraph:
         #
         # However, we also need to get the CMake target name corresponding to the binary
         # containing the .cc.o file.
+
+        proto_dep_errors = []
+
         for node in self.get_nodes():
             if not node.path.endswith('.pb.cc.o'):
                 continue
@@ -1113,12 +1119,18 @@ class DependencyGraph:
                         recursive_cmake_deps = self.get_cmake_dep_graph().get_recursive_cmake_deps(
                             binary_cmake_target)
                         if proto_gen_target not in recursive_cmake_deps:
-                            raise RuntimeError(
+                            proto_dep_errors.append(
                                 "CMake target %s does not depend directly or indirectly on target "
                                 "%s but uses the header file %s. Recursive cmake deps of %s: %s" %
                                 (binary_cmake_target, proto_gen_target, pb_h_path,
                                  binary_cmake_target, recursive_cmake_deps)
                             )
+        if proto_dep_errors:
+            for error_msg in proto_dep_errors:
+                logging.error("Protobuf dependency error: %s", error_msg)
+            raise RuntimeError(
+                "Found targets that use protobuf-generated header files but do not declare the "
+                "dependency explicitly. See the log messages above.")
 
 
 class DependencyGraphTest(unittest.TestCase):
