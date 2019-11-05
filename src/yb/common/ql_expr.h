@@ -144,6 +144,7 @@ class QLTableRow {
 
   // Get the column value in PB format.
   CHECKED_STATUS ReadColumn(ColumnIdRep col_id, QLValue *col_value) const;
+  const QLValuePB* GetColumn(ColumnIdRep col_id) const;
   CHECKED_STATUS ReadSubscriptedColumn(const QLSubscriptedColPB& subcol,
                                        const QLValue& index,
                                        QLValue *col_value) const;
@@ -188,7 +189,8 @@ class QLExprExecutor {
   CHECKED_STATUS EvalExpr(const QLExpressionPB& ql_expr,
                           const QLTableRow& table_row,
                           QLValue *result,
-                          const Schema *schema = nullptr);
+                          const Schema *schema = nullptr,
+                          const QLValuePB** result_ptr = nullptr);
 
   // Evaluate the given QLExpressionPB (if needed) and replace its content with the result.
   CHECKED_STATUS EvalExpr(QLExpressionPB* ql_expr,

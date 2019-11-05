@@ -23,14 +23,26 @@ bfql::TSOpcode QLExprExecutor::GetTSWriteInstruction(const QLExpressionPB& ql_ex
 CHECKED_STATUS QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
                                         const QLTableRow& table_row,
                                         QLValue *result,
-                                        const Schema *schema) {
+                                        const Schema *schema,
+                                        const QLValuePB** result_ptr) {
   switch (ql_expr.expr_case()) {
     case QLExpressionPB::ExprCase::kValue:
-      *result = ql_expr.value();
+      if (result_ptr) {
+        *result_ptr = &ql_expr.value();
+      } else {
+        *result = ql_expr.value();
+      }
       break;
 
     case QLExpressionPB::ExprCase::kColumnId:
-      RETURN_NOT_OK(table_row.ReadColumn(ql_expr.column_id(), result));
+      if (result_ptr) {
+        *result_ptr = table_row.GetColumn(ql_expr.column_id());
+        if (!*result_ptr) {
+          result->SetNull();
+        }
+      } else {
+        RETURN_NOT_OK(table_row.ReadColumn(ql_expr.column_id(), result));
+      }
       break;
 
     case QLExpressionPB::ExprCase::kJsonColumn: {
@@ -632,14 +644,23 @@ CHECKED_STATUS QLExprExecutor::EvalCondition(const PgsqlConditionPB& condition,
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS QLTableRow::ReadColumn(ColumnIdRep col_id, QLValue *col_value) const {
+const QLValuePB* QLTableRow::GetColumn(ColumnIdRep col_id) const {
   const auto& col_iter = col_map_.find(col_id);
   if (col_iter == col_map_.end()) {
+    return nullptr;
+  }
+
+  return &col_iter->second.value;
+}
+
+CHECKED_STATUS QLTableRow::ReadColumn(ColumnIdRep col_id, QLValue *col_value) const {
+  auto value = GetColumn(col_id);
+  if (value == nullptr) {
     col_value->SetNull();
     return Status::OK();
   }
 
-  *col_value = col_iter->second.value;
+  *col_value = *value;
   return Status::OK();
 }
 
