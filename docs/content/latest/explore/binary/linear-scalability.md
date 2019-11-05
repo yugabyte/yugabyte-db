@@ -1,6 +1,11 @@
+
+
+**Note**: Verify that you have the required extra loopback addresses by reviewing the [Configure section](../../quick-start/install/#macOS).
+
 ## 1. Create universe
 
-If you have a previously running local universe, destroy it using the following.
+
+If you have a previously running local universe, destroy it using the `yb-ctl destroy` command.
 
 ```sh
 $ ./bin/yb-ctl destroy
@@ -72,7 +77,7 @@ Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">table
 
 ![Read and write IOPS with 4th node dead](/images/ce/linear-scalability-4-nodes-dead.png)
 
-- After 300s (i.e. 5 minutes), YugabyteDB's remaining nodes will re-spawn new tablets that were lost with the loss of node 4. Each remaining node's tablet count will increase from 9 to 12, thus getting back to the original state of 36 total tablets.
+- After 300 seconds (5 minutes), YugabyteDB's remaining nodes will re-spawn new tablets that were lost with the loss of node 4. Each remaining node's tablet count will increase from 9 to 12, thus getting back to the original state of 36 total tablets.
 
 ![Read and write IOPS with 4th node removed](/images/ce/linear-scalability-3-nodes-rebalanced.png)
 
