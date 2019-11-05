@@ -2865,7 +2865,7 @@ void CatalogManager::CleanUpDeletedTables() {
     std::lock_guard<LockType> l_map(lock_);
     // Garbage collecting.
     // Going through all tables under the global lock.
-    for (auto it : table_ids_map_) {
+    for (const auto& it : table_ids_map_) {
       scoped_refptr<TableInfo> table(it.second);
 
       if (!table->HasTasks()) {

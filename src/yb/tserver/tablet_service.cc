@@ -72,6 +72,7 @@
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/crc.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/faststring.h"
 #include "yb/util/flag_tags.h"
@@ -1149,6 +1150,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   // retrieve the isolation level from that metadata. Failure to do so was the cause of a
   // serialization anomaly tested by TestOneOrTwoAdmins
   // (https://github.com/YugaByte/yugabyte-db/issues/1572).
+
+  LongOperationTracker long_operation_tracker("Read", 1s);
 
   bool serializable_isolation = false;
   TabletPeerPtr tablet_peer;
