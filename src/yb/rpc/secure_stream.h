@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_RPC_SECURE_STREAM_H
-#define ENT_SRC_YB_RPC_SECURE_STREAM_H
+#ifndef YB_RPC_SECURE_STREAM_H
+#define YB_RPC_SECURE_STREAM_H
 
 #include "yb/rpc/stream.h"
 
@@ -85,4 +85,4 @@ StreamFactoryPtr SecureStreamFactory(
 } // namespace rpc
 } // namespace yb
 
-#endif // ENT_SRC_YB_RPC_SECURE_STREAM_H
+#endif // YB_RPC_SECURE_STREAM_H

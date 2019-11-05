@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.api.Play;
 import play.libs.Json;
 
 /**
@@ -206,14 +207,10 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      * @param keyProvider is the String representation of the KeyProvider enum that this interface
      *                    has been instantiated for
      */
-    protected EncryptionAtRestService(
-            ApiHelper apiHelper,
-            KeyProvider keyProvider,
-            EncryptionAtRestManager util
-    ) {
-        this.apiHelper = apiHelper;
+    protected EncryptionAtRestService(KeyProvider keyProvider) {
+        this.apiHelper = Play.current().injector().instanceOf(ApiHelper.class);
         this.keyProvider = keyProvider;
-        this.util = util;
+        this.util = Play.current().injector().instanceOf(EncryptionAtRestManager.class);
     }
 
     /**
@@ -313,11 +310,14 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      */
     public void removeKeyRotationHistory(UUID customerUUID, UUID universeUUID) {
         KmsConfig config = getKMSConfig(customerUUID);
+        // Remove key ref history for the universe
         if (config != null) KmsHistory.deleteAllTargetKeyRefs(
                 config.configUUID,
                 universeUUID,
                 KmsHistoryId.TargetType.UNIVERSE_KEY
         );
+        // Remove in-memory key ref -> key val cache entry, if it exists
+        this.util.removeUniverseKeyCacheEntry(universeUUID);
     }
 
     public void removeKeyRef(UUID customerUUID, UUID universeUUID) {
@@ -415,7 +415,30 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      *                     key for
      * @return the value of the encryption key if a matching key is found
      */
-    public abstract byte[] retrieveKey(UUID customerUUID, UUID universeUUID);
+    public byte[] retrieveKey(UUID customerUUID, UUID universeUUID) {
+        byte[] keyRef = getKeyRef(customerUUID, universeUUID);
+        byte[] keyVal = null;
+        if (keyRef == null) {
+            String errMsg = String.format(
+                    "Retrieve key could not find a key ref for universe %s...",
+                    universeUUID.toString()
+            );
+            LOG.warn(errMsg);
+            return null;
+        }
+        // Attempt to retrieve cached entry
+        keyVal = this.util.getUniverseKeyCacheEntry(universeUUID, keyRef);
+        // Retrieve through KMS provider if no cache entry exists
+        if (keyVal == null) {
+            LOG.info("Universe key cache entry empty. Retrieving key from service");
+            keyVal = retrieveKeyWithService(customerUUID, keyRef);
+            // Update cache entry
+            if (keyVal != null) this.util.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
+        }
+        return keyVal;
+    }
+
+    protected abstract byte[] retrieveKeyWithService(UUID customerUUID, byte[] keyRef);
 
     /**
      * This method checks whether any key ref rotation history entries exist for any universe

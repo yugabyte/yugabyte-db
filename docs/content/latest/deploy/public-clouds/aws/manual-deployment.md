@@ -535,6 +535,60 @@ using the [set_preferred_zones yb-admin command](../../../admin/yb-admin).
 For multi-row/multi-table transactional operations, colocating the leaders to be in a single zone/region can help reduce the number of 
 cross-region network hops involved in executing the transaction and as a result improve performance.
 
+By default, all nodes are eligible to have tablet leaders. 
+To get better transactional performance and lower latency, it's better that all tablet-leaders reside in the same region if possible.
+This will reduce the number of cross-region hops when writing transactions.
+For the current deployment, we want to explicitly prioritise the region/zone where leaders reside.
+When the "preferred zone" nodes are alive/healthy - the leaders of tablets are placed on nodes in those regions. 
+
+The following command sets the preferred zone to `aws.us-west.us-west-2c`:
+
+```sh
+ssh -i $PEM $ADMIN_USER@$MASTER1 \
+   ~/master/bin/yb-admin --master_addresses $MASTER_RPC_ADDRS \
+    set_preferred_zones  \
+    aws.us-west.us-west-2c
+```
+
+Looking again at the cluster config you should see `affinitized_leaders` added:
+
+```
+replication_info {
+  live_replicas {
+    num_replicas: 3
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "aws"
+        placement_region: "us-west"
+        placement_zone: "us-west-2a"
+      }
+      min_num_replicas: 1
+    }
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "aws"
+        placement_region: "us-west"
+        placement_zone: "us-west-2b"
+      }
+      min_num_replicas: 1
+    }
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "aws"
+        placement_region: "us-west"
+        placement_zone: "us-west-2c"
+      }
+      min_num_replicas: 1
+    }
+  }
+  affinitized_leaders {
+    placement_cloud: "aws"
+    placement_region: "us-west"
+    placement_zone: "us-west-2c"
+  }
+}
+```
+
 ## 8. Test PostgreSQL-compatible YSQL API
 
 Connect to the cluster using the `ysqlsh` utility that comes pre-bundled in the `bin` directory. 

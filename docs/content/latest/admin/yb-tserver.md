@@ -351,6 +351,12 @@ Default: `11000`
 
 ### Performance options
 
+#### --enable_ondisk_compression
+
+Enable Snappy compression at the the cluster level.
+
+Default: `true`
+
 #### --rocksdb_compact_flush_rate_limit_bytes_per_sec
 
 Used to control rate of memstore flush and SSTable file compaction.
@@ -462,12 +468,6 @@ Default: `15000`
 The number of reactor threads to be used for processing `ybclient` requests for CDC.
 
 Default: `50`
-
-#### --cdc_wal_retention_time_secs
-
-WAL retention time, in seconds, to be used for tables for which a CDC stream was created. If you change the value, make sure that [`yb-master --cdc_wal_retention_time_secs`](../yb-master/#cdc-wal-retention-time-secs) is also updated with the same value.
-
-Default: `14400` (4 hours)
 
 ## Admin UI
 

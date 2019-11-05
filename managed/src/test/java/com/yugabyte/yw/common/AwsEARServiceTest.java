@@ -79,13 +79,6 @@ public class AwsEARServiceTest extends FakeDBApplication {
 
     private class TestEncryptionAtRestService extends AwsEARService {
         public boolean flipKeyRefResult = false;
-        TestEncryptionAtRestService() {
-            super(
-                    mockApiHelper,
-                    testKeyProvider,
-                    Play.current().injector().instanceOf(EncryptionAtRestManager.class)
-            );
-        }
 
         private ObjectNode authConfig = Json.newObject()
                 .put("AWS_ACCESS_KEY_ID", "some_access_key")

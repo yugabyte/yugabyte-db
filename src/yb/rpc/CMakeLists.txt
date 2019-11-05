@@ -30,8 +30,6 @@
 # under the License.
 #
 
-YB_INCLUDE_EXTENSIONS()
-
 #### Global header protobufs
 PROTOBUF_GENERATE_CPP(
   RPC_HEADER_PROTO_SRCS RPC_HEADER_PROTO_HDRS RPC_HEADER_PROTO_TGTS
@@ -81,6 +79,7 @@ set(YRPC_SRCS
     rpc_with_call_id.cc
     rpc_with_queue.cc
     scheduler.cc
+    secure_stream.cc
     serialization.cc
     service_if.cc
     service_pool.cc
@@ -96,7 +95,8 @@ set(YRPC_LIBS
   yb_util
   gutil
   libev
-  ${RPC_LIBS_EXTENSIONS})
+  ${OPENSSL_CRYPTO_LIBRARY}
+  ${OPENSSL_SSL_LIBRARY})
 
 ADD_YB_LIBRARY(yrpc
   SRCS ${YRPC_SRCS}
