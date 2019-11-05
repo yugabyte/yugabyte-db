@@ -46,6 +46,11 @@ void QLResultSet::AppendColumn(const size_t index, const QLValue& value) {
   value.Serialize(rsrow_desc_->rscol_descs()[index].ql_type(), YQL_CLIENT_CQL, rows_data_);
 }
 
+void QLResultSet::AppendColumn(const size_t index, const QLValuePB& value) {
+  QLValue::Serialize(
+      rsrow_desc_->rscol_descs()[index].ql_type(), YQL_CLIENT_CQL, value, rows_data_);
+}
+
 size_t QLResultSet::rsrow_count() const {
   return CQLDecodeLength(rows_data_->data());
 }

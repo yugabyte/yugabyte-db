@@ -1528,19 +1528,19 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
                             : (value.bool_value() ? ValueType::kTrue
                                                   : ValueType::kFalse));
     case QLValuePB::kTimestampValue:
-      return PrimitiveValue(QLValue(value).timestamp_value(), sort_order);
+      return PrimitiveValue(QLValue::timestamp_value(value), sort_order);
     case QLValuePB::kDateValue:
       return PrimitiveValue::UInt32(value.date_value(), sort_order);
     case QLValuePB::kTimeValue:
       return PrimitiveValue(value.time_value(), sort_order);
     case QLValuePB::kInetaddressValue:
-      return PrimitiveValue(QLValue(value).inetaddress_value(), sort_order);
+      return PrimitiveValue(QLValue::inetaddress_value(value), sort_order);
     case QLValuePB::kJsonbValue:
-      return PrimitiveValue::Jsonb(QLValue(value).jsonb_value());
+      return PrimitiveValue::Jsonb(QLValue::jsonb_value(value));
     case QLValuePB::kUuidValue:
-      return PrimitiveValue(QLValue(value).uuid_value(), sort_order);
+      return PrimitiveValue(QLValue::uuid_value(value), sort_order);
     case QLValuePB::kTimeuuidValue:
-      return PrimitiveValue(QLValue(value).timeuuid_value(), sort_order);
+      return PrimitiveValue(QLValue::timeuuid_value(value), sort_order);
     case QLValuePB::kFrozenValue: {
       QLSeqValuePB frozen = value.frozen_value();
       PrimitiveValue pv(ValueType::kFrozen);

@@ -1325,8 +1325,13 @@ Status QLReadOperation::PopulateResultSet(const std::unique_ptr<common::QLScanSp
   int rscol_index = 0;
   for (const QLExpressionPB& expr : request_.selected_exprs()) {
     QLValue value;
-    RETURN_NOT_OK(EvalExpr(expr, table_row, &value, spec->schema()));
-    resultset->AppendColumn(rscol_index, value);
+    const QLValuePB* value_ptr = nullptr;
+    RETURN_NOT_OK(EvalExpr(expr, table_row, &value, spec->schema(), &value_ptr));
+    if (value_ptr) {
+      resultset->AppendColumn(rscol_index, *value_ptr);
+    } else {
+      resultset->AppendColumn(rscol_index, value);
+    }
     rscol_index++;
   }
 
