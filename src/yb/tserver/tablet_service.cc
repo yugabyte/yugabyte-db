@@ -1203,7 +1203,6 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
                      "Read request with row mark types must be part of a transaction"),
               TabletServerErrorPB::OPERATION_NOT_SUPPORTED, &context);
         }
-        serializable_isolation = true;
         has_row_lock = true;
       }
     }
@@ -1212,7 +1211,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   LeaderTabletPeer leader_peer;
   ReadContext read_context = {req, resp, &context};
 
-  if (serializable_isolation) {
+  if (serializable_isolation || has_row_lock) {
     // At this point we expect that we don't have pure read serializable transactions, and
     // always write read intents to detect conflicts with other writes.
     leader_peer = LookupLeaderTabletOrRespond(
@@ -1246,9 +1245,9 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   // safe_ht_to_read is used only for read restart, so if read_time is valid, then we would respond
   // with "restart required".
   ReadHybridTime& read_time = read_context.read_time;
-  if (!has_row_lock) {
-    read_time = ReadHybridTime::FromReadTimePB(*req);
-  }
+
+  read_time = ReadHybridTime::FromReadTimePB(*req);
+
   read_context.allow_retry = !read_time;
   read_context.require_lease = tablet::RequireLease(
       req->consistency_level() == YBConsistencyLevel::STRONG);
@@ -1281,7 +1280,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   host_port_pb.set_port(remote_address.port());
   read_context.host_port_pb = &host_port_pb;
 
-  if (serializable_isolation) {
+  if (serializable_isolation || has_row_lock) {
     WriteRequestPB write_req;
     *write_req.mutable_write_batch()->mutable_transaction() = req->transaction();
     if (has_row_lock) {
@@ -1289,6 +1288,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
       // See https://github.com/yugabyte/yugabyte-db/issues/1199 and
       // https://github.com/yugabyte/yugabyte-db/issues/2496.
       write_req.mutable_write_batch()->add_row_mark_type(RowMarkType::ROW_MARK_SHARE);
+      read_context.read_time.ToPB(write_req.mutable_read_time());
     }
     write_req.set_tablet_id(req->tablet_id());
     write_req.mutable_write_batch()->set_deprecated_may_have_metadata(true);
