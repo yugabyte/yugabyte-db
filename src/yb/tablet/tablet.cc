@@ -1902,7 +1902,8 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
     if (isolation_level == IsolationLevel::NON_TRANSACTIONAL) {
       auto now = clock_->Now();
       auto result = VERIFY_RESULT(docdb::ResolveOperationConflicts(
-          operation->doc_ops(), now, doc_db(), transaction_participant_.get()));
+          operation->doc_ops(), now, doc_db(), partial_range_key_intents,
+          transaction_participant_.get()));
       if (now != result) {
         clock_->Update(result);
       }
