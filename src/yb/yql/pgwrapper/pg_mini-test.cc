@@ -316,5 +316,35 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableReadOnly)) {
   }
 }
 
+void AssertAborted(const Status& status) {
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "Transaction aborted");
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SelectModifySelect)) {
+  {
+    auto read_conn = ASSERT_RESULT(Connect());
+    auto write_conn = ASSERT_RESULT(Connect());
+
+    ASSERT_OK(read_conn.Execute("CREATE TABLE t (i INT)"));
+    ASSERT_OK(read_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+    ASSERT_RESULT(read_conn.FetchMatrix("SELECT * FROM t", 0, 1));
+    ASSERT_OK(write_conn.Execute("INSERT INTO t VALUES (1)"));
+    ASSERT_NO_FATALS(AssertAborted(ResultToStatus(read_conn.Fetch("SELECT * FROM t"))));
+  }
+  {
+    auto read_conn = ASSERT_RESULT(Connect());
+    auto write_conn = ASSERT_RESULT(Connect());
+
+    ASSERT_OK(read_conn.Execute("CREATE TABLE t2 (i INT PRIMARY KEY)"));
+    ASSERT_OK(read_conn.Execute("INSERT INTO t2 VALUES (1)"));
+
+    ASSERT_OK(read_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+    ASSERT_RESULT(read_conn.FetchMatrix("SELECT * FROM t2", 1, 1));
+    ASSERT_OK(write_conn.Execute("DELETE FROM t2 WHERE i = 1"));
+    ASSERT_NO_FATALS(AssertAborted(ResultToStatus(read_conn.Fetch("SELECT * FROM t2"))));
+  }
+}
+
 } // namespace pgwrapper
 } // namespace yb
