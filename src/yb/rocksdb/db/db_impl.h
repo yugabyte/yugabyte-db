@@ -171,6 +171,9 @@ class DBImpl : public DB {
       ColumnFamilyHandle* column_family,
       const std::unordered_map<std::string, std::string>& options_map) override;
 
+  // Set whether DB should be flushed on shutdown.
+  void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) override;
+
   using DB::NumberLevels;
   virtual int NumberLevels(ColumnFamilyHandle* column_family) override;
   using DB::MaxMemCompactionLevel;
@@ -965,6 +968,9 @@ class DBImpl : public DB {
 
   // Returns flush tick of the last flush of this DB.
   int64_t last_flush_at_tick_ = 0;
+
+  // Whether DB should be flushed on shutdown.
+  bool disable_flush_on_shutdown_ = false;
 
   // No copying allowed
   DBImpl(const DBImpl&);

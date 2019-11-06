@@ -30,6 +30,8 @@ namespace yb {
 class Env;
 namespace tablet {
 
+YB_STRONGLY_TYPED_BOOL(IsDropTable);
+
 struct TabletOptions {
   std::shared_ptr<rocksdb::Cache> block_cache;
   std::shared_ptr<rocksdb::MemoryMonitor> memory_monitor;

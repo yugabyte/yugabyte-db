@@ -210,7 +210,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return shutdown_requested_.load(std::memory_order::memory_order_acquire);
   }
 
-  void Shutdown();
+  void Shutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
 
   CHECKED_STATUS ImportData(const std::string& source_dir);
 

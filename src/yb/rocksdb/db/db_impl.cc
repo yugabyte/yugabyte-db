@@ -646,7 +646,9 @@ DBImpl::~DBImpl() {
         if (!cfd->IsDropped() && !cfd->mem()->IsEmpty()) {
           cfd->Ref();
           mutex_.Unlock();
-          if (FLAGS_flush_rocksdb_on_shutdown) {
+          if (disable_flush_on_shutdown_) {
+            LOG_WITH_PREFIX(INFO) << "Skipping mem table flush - disable_flush_on_shutdown_ is set";
+          } else if (FLAGS_flush_rocksdb_on_shutdown) {
             LOG_WITH_PREFIX(INFO) << "Flushing mem table on shutdown";
             FlushMemTable(cfd, FlushOptions());
           } else {
@@ -2411,6 +2413,17 @@ void DBImpl::NotifyOnCompactionCompleted(
   // no need to signal bg_cv_ as it will be signaled at the end of the
   // flush process.
 #endif  // ROCKSDB_LITE
+}
+
+void DBImpl::SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {
+  // disable_flush_on_shutdown_ can only transition from false to true. This location
+  // can be called multiple times with arg as false. It is only called once with arg
+  // as true. Subsequently, the destructor reads this flag. Setting this flag
+  // to true and the destructor are expected to run on the same thread and hence
+  // it is not required for disable_flush_on_shutdown_ to be atomic.
+  if (disable_flush_on_shutdown) {
+    disable_flush_on_shutdown_ = disable_flush_on_shutdown;
+  }
 }
 
 Status DBImpl::SetOptions(ColumnFamilyHandle* column_family,

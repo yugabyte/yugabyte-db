@@ -629,6 +629,8 @@ class DB {
     return SetOptions(DefaultColumnFamily(), new_options);
   }
 
+  virtual void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {}
+
   // CompactFiles() inputs a list of files specified by file numbers and
   // compacts them to the specified level. Note that the behavior is different
   // from CompactRange() in that CompactFiles() performs the compaction job
