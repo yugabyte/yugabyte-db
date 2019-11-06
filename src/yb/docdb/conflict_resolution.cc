@@ -470,7 +470,10 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
 
       value_iter.Seek(key_slice);
       KeyBytes buffer;
-      while (value_iter.Valid() && value_iter.key().starts_with(key_slice)) {
+      // Inspect records whose doc keys are children of the intent's doc key.  If the intent's doc
+      // key is empty, it signifies an intent on the whole table.
+      while (value_iter.Valid() && (key_slice.starts_with(ValueTypeAsChar::kGroupEnd) ||
+                                    value_iter.key().starts_with(key_slice))) {
         auto existing_key = value_iter.key();
         auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&existing_key));
         VLOG(4) << "Check value overwrite: " << transaction_id_
