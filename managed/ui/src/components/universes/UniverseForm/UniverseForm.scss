@@ -287,3 +287,51 @@
 .universe-form-new .stepper-cell {
   margin-left: 25px;
 }
+
+.full-move-config {
+  margin-top: 25px;
+  margin-bottom: 15px;
+  display: grid;
+  grid-template-rows: 64px auto;
+  grid-template-columns: 1fr 1fr;
+  grid-gap: 20px;
+  line-height: 24px;
+
+  &.full-move-config--gray {
+    color: #999;
+  }
+
+  h5 {
+    margin-bottom: 15px;
+    font-size: 14px;
+  }
+  b, strong {
+    font-family: Montserrat, sans-serif;
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: -.02em;
+  }
+  strong {
+    display: block;
+  }
+  .full-move-config--config {
+    background-color: $YB_BACKGROUND;
+    border-radius: 5px;
+    padding: 12px 16px;
+    margin-top: 10px;
+
+    strong {
+      margin-bottom: 5px;
+    }
+
+    .full-move-config--region {
+      padding-bottom: 5px;
+      line-height: 20px;
+
+
+      div {
+        margin-left: 15px;
+      }
+    }
+  }
+}

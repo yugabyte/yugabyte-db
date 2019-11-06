@@ -13,8 +13,9 @@ import { UniverseStatusContainer } from '../../universes';
 import { getUniverseNodes, getPlacementRegions,
         getClusterProviderUUIDs, getProviderMetadata, isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { isAvailable, showOrRedirect } from 'utils/LayoutUtils';
-const moment = require('moment');
-const pluralize = require('pluralize');
+
+import pluralize from 'pluralize';
+import moment from 'moment';
 
 export default class UniverseTable extends Component {
 

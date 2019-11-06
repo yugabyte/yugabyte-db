@@ -15,6 +15,7 @@ import ClusterFields from './ClusterFields';
 import { getPrimaryCluster, getReadOnlyCluster } from "../../../utils/UniverseUtils";
 import { DeleteUniverseContainer } from '../../universes';
 import { getPromiseState } from 'utils/PromiseUtils';
+import pluralize from 'pluralize';
 
 const initialState = {
   instanceTypeSelected: '',
@@ -137,6 +138,10 @@ class UniverseForm extends Component {
   componentWillMount() {
     this.props.resetConfig();
     this.setState({editNotAllowed: true});
+  }
+
+  componentWillUnmount() {
+    this.props.resetConfig();
   }
 
   componentWillUpdate(newProps) {
@@ -437,29 +442,111 @@ class UniverseForm extends Component {
     // check nodes if all live nodes is going to be removed (full move)
     const existingPrimaryNodes = getPromiseState(universeConfigTemplate).isSuccess() ? universeConfigTemplate.data.nodeDetailsSet.filter(node => node.nodeName && (type === "Async" ? node.nodeName.includes("readonly") : !node.nodeName.includes("readonly"))) : [];
     const formChangedOrInvalid = hasFieldChanged || disableSubmit;
-    const submitControl = (existingPrimaryNodes.length && existingPrimaryNodes.filter(node => node.state !== "ToBeRemoved").length) || type === "Create"
-      ?
-        // not a full move
-        (<YBButton
+    let submitControl = (<YBButton
+      btnClass="btn btn-orange universe-form-submit-btn"
+      btnText={submitTextLabel}
+      disabled={"true"}
+    />);
+    if ((existingPrimaryNodes.length && existingPrimaryNodes.filter(node => node.state !== "ToBeRemoved").length) || type === "Create") {
+      submitControl = (<YBButton
+        btnClass="btn btn-orange universe-form-submit-btn"
+        btnText={submitTextLabel}
+        btnType={"submit"}
+        disabled={formChangedOrInvalid}
+      />);
+    } else if (getPromiseState(universeConfigTemplate).isSuccess()) {
+      const generateAZConfig = (nodes) => {
+        const regionMap = {};
+        nodes.forEach((node) => {
+          const regionName = node.cloudInfo.region;
+          if (!regionMap[regionName]) {
+            regionMap[regionName] = {
+              region: regionName,
+              zones: [{
+                az: node.cloudInfo.az,
+                count: 1
+              }]
+            };
+          } else {
+            // Check if new node is included in zones
+            const zoneIndex = regionMap[regionName].zones.findIndex(z => z.az === node.cloudInfo.az);
+            if (zoneIndex === -1) {
+              // Add new AZ to zone list
+              regionMap[regionName].zones.push({
+                az: node.cloudInfo.az,
+                count: 1
+              });
+            } else {
+              // AZ exists, increment count
+              regionMap[regionName].zones[zoneIndex].count += 1;
+            }
+          }
+        });
+        return Object.values(regionMap);
+      };
+
+      const renderConfig = ({azConfig}) => azConfig.map(
+        (region) =>
+          (<div className="full-move-config--region">
+            <strong>{region.region}</strong>
+            {region.zones.map((zone) => <div>{zone.az} - {zone.count} {pluralize('node', zone.count)}</div>)}
+          </div>)
+      );
+
+      const oldNodes = universeConfigTemplate.data.nodeDetailsSet.filter(node => node.nodeName);
+      const newNodes = universeConfigTemplate.data.nodeDetailsSet.filter(node => !node.nodeName);
+      const currentCluster = this.state.currentView === "Primary" ? getPrimaryCluster(universe.currentUniverse.data.universeDetails.clusters) : getReadOnlyCluster(universe.currentUniverse.data.universeDetails.clusters);
+      const newCluster = formValues[this.state.currentView === "Primary" ? "primary" : "async"];
+
+      const oldConfig = {
+        instance_type: oldNodes[0].cloudInfo.instance_type,
+        numVolumes: currentCluster.userIntent.deviceInfo.numVolumes,
+        volumeSize: currentCluster.userIntent.deviceInfo.volumeSize,
+        azConfig: generateAZConfig(oldNodes)
+      };
+      const newConfig = {
+        instance_type: newNodes[0].cloudInfo.instance_type,
+        numVolumes: newCluster.numVolumes,
+        volumeSize: newCluster.volumeSize,
+        azConfig: generateAZConfig(newNodes)
+      };
+
+      submitControl = (<Fragment>
+        <YBButton
+          onClick={showFullMoveModal}
           btnClass="btn btn-orange universe-form-submit-btn"
           btnText={submitTextLabel}
-          btnType={"submit"}
           disabled={formChangedOrInvalid}
-        />)
-      :
-        // full move
-        (<Fragment>
-          <YBButton
-            onClick={showFullMoveModal}
-            btnClass="btn btn-orange universe-form-submit-btn"
-            btnText={submitTextLabel}
-            disabled={formChangedOrInvalid}
-          />
-          <YBModal visible={showModal && visibleModal === "fullMoveModal"}
-                onHide={ closeModal } submitLabel={'Proceed'} cancelLabel={'Cancel'} showCancelButton={true} title={ "Confirm Full Move Update" } onFormSubmit={ handleSubmit(this.handleSubmitButtonClick) } >
-            This operation will migrate this universe and all it's data to a completely new set of nodes. Would like to proceed?
-          </YBModal>
-        </Fragment>);
+        />
+        {visibleModal === "fullMoveModal" && <YBModal visible={showModal && visibleModal === "fullMoveModal"}
+              onHide={ closeModal } submitLabel={'Proceed'} cancelLabel={'Cancel'} showCancelButton={true} title={ "Confirm Full Move Update" } onFormSubmit={ handleSubmit(this.handleSubmitButtonClick) } >
+          This operation will migrate this universe and all its data to a completely new set of nodes.
+          <div className={"full-move-config"}>
+            <div className={"text-lightgray full-move-config--general"}>
+              <h5>
+                Current:
+              </h5>
+              <b>{oldConfig.instance_type}</b> type<br/>
+              <b>{oldConfig.numVolumes}</b> {pluralize('volume', oldConfig.numVolumes)} of <b>{oldConfig.volumeSize}Gb</b> per instance<br/>
+            </div>
+            <div className={"full-move-config--general"}>
+              <h5>
+                New:
+              </h5>
+              <b>{newConfig.instance_type}</b> type<br/>
+              <b>{newConfig.numVolumes}</b> {pluralize('volume', newConfig.numVolumes)} of <b>{newConfig.volumeSize}Gb</b> per instance<br/>
+            </div>
+            <div className={"full-move-config--config text-lightgray"}>
+              {renderConfig(oldConfig)}
+            </div>
+            <div className={"full-move-config--config"}>
+              {renderConfig(newConfig)}
+            </div>
+          </div>
+          Would you like to proceed?
+        </YBModal>}
+      </Fragment>);
+    }
 
     return (
       <Grid id="page-wrapper" fluid={true} className="universe-form-new">
