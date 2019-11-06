@@ -133,13 +133,13 @@ DEFINE_int32(max_stale_read_bound_time_ms, 0, "If we are allowed to read from fo
 TAG_FLAG(max_stale_read_bound_time_ms, evolving);
 TAG_FLAG(max_stale_read_bound_time_ms, runtime);
 
-DEFINE_uint64(sst_files_soft_limit, 16,
+DEFINE_uint64(sst_files_soft_limit, 16 + 1000,
               "When majority SST files number is greater that this limit, we will start rejecting "
               "part of write requests. The higher number we higher, the higher probability of "
               "reject.");
 TAG_FLAG(sst_files_soft_limit, runtime);
 
-DEFINE_uint64(sst_files_hard_limit, 48,
+DEFINE_uint64(sst_files_hard_limit, 48 + 1000,
               "When majority SST files number is greater that this limit, we will reject all write "
               "requests.");
 TAG_FLAG(sst_files_hard_limit, runtime);
