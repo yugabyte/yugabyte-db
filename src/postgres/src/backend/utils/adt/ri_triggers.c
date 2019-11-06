@@ -830,10 +830,6 @@ ri_restrict(TriggerData *trigdata, bool is_no_action)
 					queryoids[i] = pk_type;
 				}
 
-				/*
-				* TODO In YB mode we currently only allow foreign key DMLs
-				* in YB serializable mode -- so no need for key share here
-				*/
 				appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
 
 				/* Prepare and save the plan */
