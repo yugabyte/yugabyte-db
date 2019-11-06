@@ -658,7 +658,7 @@ void Tablet::SetShutdownRequestedFlag() {
   shutdown_requested_.store(true, std::memory_order::memory_order_release);
 }
 
-void Tablet::Shutdown() {
+void Tablet::Shutdown(IsDropTable is_drop_table) {
   SetShutdownRequestedFlag();
 
   auto op_pause = PauseReadWriteOperations();
@@ -672,6 +672,13 @@ void Tablet::Shutdown() {
   }
 
   std::lock_guard<rw_spinlock> lock(component_lock_);
+  if (intents_db_) {
+    intents_db_.get()->SetDisableFlushOnShutdown(is_drop_table);
+  }
+  if (regular_db_) {
+    regular_db_.get()->SetDisableFlushOnShutdown(is_drop_table);
+  }
+
   // Shutdown the RocksDB instance for this table, if present.
   // Destroy intents and regular DBs in reverse order to their creation.
   // Also it makes sure that regular DB is alive during flush filter of intents db.

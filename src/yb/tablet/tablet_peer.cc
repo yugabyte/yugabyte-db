@@ -388,7 +388,7 @@ bool TabletPeer::StartShutdown() {
   return true;
 }
 
-void TabletPeer::CompleteShutdown() {
+void TabletPeer::CompleteShutdown(IsDropTable is_drop_table) {
   auto wait_start = CoarseMonoClock::now();
   auto last_report = wait_start;
   while (preparing_operations_.load(std::memory_order_acquire) != 0) {
@@ -418,7 +418,7 @@ void TabletPeer::CompleteShutdown() {
   VLOG_WITH_PREFIX(1) << "Shut down!";
 
   if (tablet_) {
-    tablet_->Shutdown();
+    tablet_->Shutdown(is_drop_table);
   }
 
   // Only mark the peer as SHUTDOWN when all other components have shut down.
@@ -470,9 +470,9 @@ void TabletPeer::WaitUntilShutdown() {
   }
 }
 
-void TabletPeer::Shutdown() {
+void TabletPeer::Shutdown(IsDropTable is_drop_table) {
   if (StartShutdown()) {
-    CompleteShutdown();
+    CompleteShutdown(is_drop_table);
   } else {
     WaitUntilShutdown();
   }

@@ -68,12 +68,17 @@
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/thread_status_util.h"
 
+#include "yb/util/atomic.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/stats/iostats_context_imp.h"
 
 DEFINE_int32(rocksdb_nothing_in_memtable_to_flush_sleep_ms, 10,
     "Used for a temporary workaround for http://bit.ly/ybissue437. How long to wait (ms) in case "
     "we could not flush any memtables, usually due to filters preventing us from doing so.");
+
+DEFINE_test_flag(bool, TEST_rocksdb_crash_on_flush, false,
+                 "When set, memtable flush in rocksdb crashes.");
 
 namespace rocksdb {
 
@@ -145,6 +150,10 @@ void FlushJob::RecordFlushIOStats() {
 }
 
 Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
+  if (PREDICT_FALSE(yb::GetAtomicFlag(&FLAGS_TEST_rocksdb_crash_on_flush))) {
+    CHECK(false) << "a flush should not have been scheduled.";
+  }
+
   AutoThreadOperationStageUpdater stage_run(
       ThreadStatus::STAGE_FLUSH_RUN);
   // Save the contents of the earliest memtable as a new Table
