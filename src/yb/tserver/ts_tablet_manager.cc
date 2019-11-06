@@ -987,7 +987,9 @@ Status TSTabletManager::DeleteTablet(
   }
 
   RaftGroupMetadataPtr meta = tablet_peer->tablet_metadata();
-  tablet_peer->Shutdown();
+  // TODO(raju): should tablet being tombstoned not avoid flushing memtable as well ?
+  tablet_peer->Shutdown((delete_type == TABLET_DATA_DELETED) ?
+      tablet::IsDropTable::kTrue : tablet::IsDropTable::kFalse);
 
   yb::OpId last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
 
