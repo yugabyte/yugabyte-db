@@ -53,9 +53,8 @@ Load data into producer universe
 Start pumping data into “yugabyte-producer” using yb-sample-apps
 YSQL Example: java -jar target/yb-sample-apps.jar --workload SqlSecondaryIndex  --nodes 127.0.0.1:5433
 
-
 Verify replication
-Connect to “yugabyte-consumer” universe via ysqlsh / cqlsh and confirm that you can see expected records.
+Connect to “yugabyte-consumer” universe via ysqlsh and confirm that you can see expected records.
 
 
 Verify 2-way replication
@@ -73,53 +72,70 @@ bin/yb-admin -master_addresses 10.150.0.27:7100,10.150.0.38:7100,10.150.0.42:710
 
 ## Simulate 2DC on a local machine
 
-1. Start local cluster A.
+### 1. Start the clusters
 
-```postgresql
-./bin/yb-ctl create --data_dir $YUGABYTE_HOME/yb-datacenter-A --ip_start 11
+Start the first local cluster that will simulate Data Center A.
+
+```sh
+$ ./bin/yb-ctl create --data_dir $YUGABYTE_HOME/yb-datacenter-A --ip_start 1
 ```
 
-This will start up a 1-node cluster on IP 127.0.0.11
+This will start up a 1-node cluster using IP address of `127.0.0.1`.
 
-Start a second local cluster B using:
-./bin/yb-ctl create --data_dir $YUGABYTE_HOME/yb-datacenter-B --ip_start 22
-This will start up a 1 node cluster on IP 127.0.0.22
+Now start the second local cluster that will simulate Data Center B.
 
-Create same tables on both clusters
+```sh
+$ ./bin/yb-ctl create --data_dir $YUGABYTE_HOME/yb-datacenter-B --ip_start 2
+```
 
-For example, for SQL:
-Connect to cluster A using ./bin/ysqlsh -h 127.0.0.11
+This will start up a 1-node cluster using IP address of `127.0.0.2`.
 
-Run the follow SQL commands:
+### 2. Create the database tables
+
+Create the database table on cluster A.
+
+Open `ysqlsh` specifying the host IP address of `127.0.0.1`.
+
+```sh
+$ ./bin/ysqlsh -h 127.0.0.1
+```
+
+b. Run the following `CREATE TABLE` statement.
+
+```postgresql
 CREATE TABLE sqlsecondaryindex(
 k text PRIMARY KEY,
 v text);
-CREATE INDEX sql_idx ON sqlsecondaryindex(v);
+```
 
-Now connect to cluster B using ./bin/ysqlsh -h 127.0.0.22
-Run the follow SQL commands:
+Now create the identical database table on cluster B.
+
+Open `ysqlsh` specifying the host IP address of `127.0.0.2`.
+
+```sh
+$ ./bin/ysqlsh -h 127.0.0.2
+```
+
+Run the following `CREATE TABLE` statement.
+
+```postgresql
 CREATE TABLE sqlsecondaryindex(
 k text PRIMARY KEY,
 v text);
-CREATE INDEX sql_idx ON sqlsecondaryindex(v);
+```
 
-### Set up replication
+### 3. Set up the replication
 
-    ```postgresql
-    yb-admin -master_addresses 127.0.0.22:7100 setup_universe_replication cluster-A 127.0.0.11:7100      <comma-separated-list-of-table-ids-from-cluster-A>
-    ```
+Set up cluster B to be the consumer of data from cluster A.
 
-This command will set up cluster B to be the consumer of data from cluster A.
+```postgresql
+yb-admin -master_addresses 127.0.0.22:7100 setup_universe_replication cluster-A 127.0.0.11:7100      <comma-separated-list-of-table-ids-from-cluster-A>
+```
 
-To enable 2-way replication, run:
+[Optional] To enable bidirectional (two-way) replication, run the following `yb-admin` `setup_universe_replication` command to set up cluster A to be the consumer of cluster B.
 
-    ```postgresql
-    yb-admin -master_addresses 127.0.0.11:7100 setup_universe_replication datacenter-B 127.0.0.22:7100      <comma-separated-list-of-table-ids-from-cluster-B>
-    ```
-
-This will set up cluster A to be the consumer of cluster B.
-
-Command syntax is:
-yb-admin -master_addresses <consumer_universe_master_addresses> setup_universe_replication <producer_universe_uuid_or_name> <producer_universe_master_addresses> <producer_table_id>,[<producer_table_id>..]
+```postgresql
+yb-admin -master_addresses 127.0.0.11:7100 setup_universe_replication datacenter-B 127.0.0.22:7100      <comma-separated-list-of-table-ids-from-cluster-B>
+```
 
 Now, use `ysqlsh` to load data on any or both of those clusters and see the data appear on the other cluster.
