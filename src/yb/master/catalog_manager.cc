@@ -2878,10 +2878,21 @@ void CatalogManager::CleanUpDeletedTables() {
         //
         // Eventually, for these DELETED tables, we'll want to also remove them from memory.
         if (l->data().started_deleting() && !l->data().is_deleted()) {
-          tables_to_delete.push_back(table);
-          // TODO(bogdan): uncomment this once we also untangle catalog loader logic.
-          // Since we have lock_, this table cannot be in the map AND be DELETED.
-          // DCHECK(!l->data().is_deleted());
+          // The current relevant order of operations during a DeleteTable is:
+          // 1) Mark the table as DELETING
+          // 2) Abort the current table tasks
+          // 3) Per tablet, send DeleteTable requests to all TS, then mark that tablet as DELETED
+          //
+          // This creates a race, wherein, after 2, HasTasks can be false, but we still have not
+          // gotten to point 3, which would add further tasks for the deletes.
+          //
+          // However, HasTasks is cheaper than AreAllTabletsDeleted...
+          if (table->AreAllTabletsDeleted()) {
+            tables_to_delete.push_back(table);
+            // TODO(bogdan): uncomment this once we also untangle catalog loader logic.
+            // Since we have lock_, this table cannot be in the map AND be DELETED.
+            // DCHECK(!l->data().is_deleted());
+          }
         }
       }
     }
@@ -2957,7 +2968,6 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
   }
 
   if (l->data().is_deleted()) {
-    DCHECK(!table->HasTasks()) << "IsDeleteTableDone found pending tasks " << table->NumTasks();
     LOG(INFO) << "Servicing IsDeleteTableDone request for table id "
               << req->table_id() << ": totally deleted";
       resp->set_done(true);
