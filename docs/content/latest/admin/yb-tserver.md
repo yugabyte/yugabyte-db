@@ -44,7 +44,7 @@ $ ./bin/yb-tserver --help
 - [Help](#help-options)
 - [General](#general-options)
 - [Logging](#logging-options)
-- [Cluster](#cluster-options)
+- [Geo-distribution](#geo-distribution-options)
 - [YSQL](#ysql-options)
 - [YCQL](#ycql-options)
 - [YEDIS](#yedis-options)
@@ -181,7 +181,17 @@ Default: `false`
 
 ---
 
-### Placement options
+### Geo-distribution options
+
+Settings related to managing geo-distributed clusters and Raft consensus.
+
+#### --leader_failure_max_missed_heartbeat_periods
+
+The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds (ms), is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
+
+For read replica clusters, set the value to `10` on both YB-Master and YB-TServer nodes.  Because the the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
+
+Default: `6`
 
 #### --placement_zone
 
@@ -200,6 +210,12 @@ Default: `datacenter1`
 Specifies the name of the cloud where this instance is deployed.
 
 Default: `cloud1`
+
+#### --raft_heartbeat_interval_ms
+
+The heartbeat interval, in milliseconds (ms), for Raft replication. The leader produces heartbeats to followers at this interval. The followers expect a heartbeat at this interval and consider a leader to have failed if it misses several in a row.
+
+Default: `500`
 
 ---
 
