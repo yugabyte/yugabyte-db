@@ -236,14 +236,13 @@ void TwoDCOutputClient::SendCDCWriteToTablet(const size_t record_idx) {
                   std::placeholders::_1, std::placeholders::_2, record_idx, write_rpc_handle));
     (**write_rpc_handle).SendRpc();
   } else {
-    LOG(WARNING) << "Invalid handle for CDC write: " << resp_.records(record_idx).DebugString();
+    LOG(WARNING) << "Invalid handle for CDC write, tablet ID: " << tablet->tablet_id();
   }
 }
 
 void TwoDCOutputClient::WriteCDCRecordDone(
     const Status& status, const WriteResponsePB& response, size_t record_idx,
     rpc::Rpcs::Handle handle) {
-  VLOG(1) << "Wrote CDC record: " << status << ": " << response.DebugString();
   auto retained = cdc_consumer_->rpcs()->Unregister(handle);
   if (!status.ok()) {
     HandleError(status, resp_.records(record_idx), true /* done */);
@@ -264,8 +263,8 @@ void TwoDCOutputClient::WriteCDCRecordDone(
 
 void TwoDCOutputClient::HandleError(const Status& s, const cdc::CDCRecordPB& bad_record,
                                     bool done) {
-  LOG(ERROR) << "Error while applying replicated record for " << bad_record.DebugString()
-             << ": " << s.ToString();
+  LOG(ERROR) << "Error while applying replicated record: " << s
+             << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
   {
     std::lock_guard<decltype(lock_)> l(lock_);
     error_status_ = s;
