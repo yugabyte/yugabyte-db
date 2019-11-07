@@ -459,11 +459,12 @@ Modifies the placement information (cloud, region, and zone) for a deployment.
 **Syntax**
 
 ```sh
-yb-admin modify_placement_info <placement_info> <replication_factor>
+yb-admin modify_placement_info <placement_info> <replication_factor> [ placement_id ]
 ```
 
 - *placement_info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
 - *replication_factor*: The number of replicas for each tablet.
+- *placement_id*: The identifier of the primary cluster, which can be any unique string. If not set, a randomly-generated ID will be used.
 
 **Example**
 
@@ -554,23 +555,24 @@ Add a read replica cluster to the master configuration.
 **Syntax**
 
 ```sh
-yb-admin add_read_replica_placement_info <placement_info> <replication_factor>
+yb-admin add_read_replica_placement_info <placement_info> <replication_factor> [ <placement_id> ]
 ```
 
 - *placement_info*: A comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
 - *replication_factor*: The number of replicas.
+- *placement_id*: The identifier of the read replica cluster, which can be any unique string. If not set, a randomly-generated ID will be used. Primary and read replica clusters must use different placement IDs.
 
 ##### modify_read_replica_placement_info
 
 **Syntax**
 
 ```sh
-yb-admin modify_read_replica_placement_info <placement_info> <replication_factor> [ <placement_uuid> ]
+yb-admin modify_read_replica_placement_info <placement_info> <replication_factor> [ <placement_id> ]
 ```
 
 - *placement_info*: A comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
 - *replication_factor*: The number of replicas.
-- *placement_uuid*: The UUID of the read replica cluster.
+- *placement_id*: The identifier of the read replica cluster, which can be any unique string. If not set, a randomly-generated ID will be used. Primary and read replica clusters must use different placement IDs.
 
 ##### delete_read_replica_placement_info
 
@@ -579,10 +581,10 @@ Delete the read replica.
 **Syntax**
 
 ```sh
-yb-admin delete_read_replica_placement_info <placement_uuid>
+yb-admin delete_read_replica_placement_info <placement_id>
 ```
 
-- *placement_uuid*: The UUID of the read replica cluster.
+- *placement_id*: The identifier of the read replica cluster, which can be any unique string. If not set, a randomly-generated ID will be used. Primary and read replica clusters must use different placement IDs.
 
 ---
 
