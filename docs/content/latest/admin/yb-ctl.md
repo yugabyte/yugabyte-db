@@ -15,18 +15,20 @@ showAsideToc: true
 
 The `yb-ctl` utility, located in the bin directory of YugabyteDB home, provides a simple command line interface for administering local clusters used for development and learning. It invokes the [`yb-master`](../admin/yb-master/) and [`yb-tserver`](../admin/yb-tserver/) binaries to perform the necessary administration.
 
-## Online help
+## Syntax
 
-Run `yb-ctl --help` to display the online help.
+Run `yb-ctl` commands from the YugabyteDB home directory.
+
+```sh
+./bin/yb-ctl [ command ] [ argument, argument2, ... ]
+```
+
+### Online help
+
+To display the online help, run `yb-ctl --help` from the YugabyteDB home directory.
 
 ```sh
 $ ./bin/yb-ctl --help
-```
-
-## Syntax
-
-```sh
-yb-ctl [ command ] [ argument, argument2, ... ]
 ```
 
 ## Commands

@@ -15,14 +15,6 @@ The `yb-admin` utility, located in the `bin` directory of YugabyteDB home, provi
 
 It invokes the [`yb-master`](../admin/yb-master/) and [`yb-tserver`](../admin/yb-tserver/) binaries to perform the necessary administration.
 
-## Online help
-
-Run `yb-admin --help` to display the online help.
-
-```sh
-$ ./bin/yb-admin --help
-```
-
 ## Syntax
 
 To use the `yb-admin` utility from the YugabyteDB home directory, run `./bin/yb-admin` using the following syntax.
@@ -31,12 +23,20 @@ To use the `yb-admin` utility from the YugabyteDB home directory, run `./bin/yb-
 yb-admin [ -master_addresses <master-addresses> ]  [ -timeout_ms <millisec> ] [ -certs_dir_name <dir_name> ] <command> [ command_options ]
 ```
 
-- *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - timeout_ms: The RPC timeout, in milliseconds. Default value is `60000`. A value of `0` means don't wait; `-1` means wait indefinitely.
 - certs_dir_name: The directory with certificates to use for secure server connections. Default value is `""`.
   - To connect to a cluster with TLS enabled, you must include the `-certs_dir_name` option with the directory location where the root certificate is located.
 - *command*: The operation to be performed. See command for syntax details and examples.
 - *command_options*: Configuration options, or flags, that can be applied to the command.
+
+### Online help
+
+To display the online help, run `yb-admin --help` from the YugabyteDB home directory.
+
+```sh
+$ ./bin/yb-admin --help
+```
 
 ## Commands
 
@@ -67,7 +67,7 @@ Gets the configuration for the universe.
 yb-admin -master_addresses <master-addresses> get_universe_config
 ```
 
-- *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 
 #### change_config
 
