@@ -15,7 +15,13 @@ showAsideToc: true
 
 The [YB-TServer](../../architecture/concepts/universe/#yb-tserver) binary (`yb-tserver`) is located in the `bin` directory of YugabyteDB home.
 
-## Example
+## Syntax
+
+```sh
+yb-tserver [ options ]
+```
+
+### Example
 
 ```sh
 $ ./bin/yb-tserver \
@@ -25,18 +31,12 @@ $ ./bin/yb-tserver \
 --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" &
 ```
 
-## Online help
+### Online help
 
-Run `yb-tserver --help` to display the online help.
+To display the online help, run `yb-tserver --help` from the YugabyteDB home directory.
 
 ```sh
 $ ./bin/yb-tserver --help
-```
-
-## Syntax
-
-```sh
-yb-tserver [ options ]
 ```
 
 ## Configuration options
