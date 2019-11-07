@@ -39,22 +39,31 @@ showAsideToc: true
   </li>
 </ul>
 
-## Prerequisites
+The following tutorial creates a simple Go application that connects to a YugabyteDB cluster using the [Go PostgreSQL driver](https://godoc.org/github.com/lib/pq), performs a few basic database operations — creating a table, inserting data, and running a SQL query — and then prints the results to the screen.
 
-This tutorial assumes that you have:
+## Before you begin
 
-- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
-- installed Go version 1.8+
+This tutorial assumes that you have satisfied the following prerequisites.
 
-## Install the Go PostgreSQL driver
+### YugabyteDB
 
-To install the driver locally, run:
+YugabyteDB is up and running. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
+
+### Go
+
+[Go version 1.8](https://golang.org/dl/), or later, is installed.
+
+### Go PostgreSQL driver
+
+The [Go PostgreSQL driver package (`pq`)](https://godoc.org/github.com/lib/pq) is a Go PostgreSQL driver for the `database/sql` package.
+
+To install the package locally, run the following command:
 
 ```sh
 $ go get github.com/lib/pq
 ```
 
-## Sample application
+## Create the application
 
 Create a file `ybsql_hello_world.go` and copy the contents below.
 
@@ -129,7 +138,7 @@ func main() {
 }
 ```
 
-## Running the application
+## Run the application
 
 To execute the file, run the following command:
 
