@@ -76,7 +76,7 @@ Changes the configuration of a tablet.
 **Syntax**
 
 ```sh
-yb-admin change_config -master_addresses server1:port,server2:port,server3:port,...  <tablet_id> [ ADD_SERVER | REMOVE_SERVER ] <peer_uuid> [ PRE_VOTER | PRE_OBSERVER ]
+yb-admin -master_addresses <master-addresses> change_config <tablet_id> [ ADD_SERVER | REMOVE_SERVER ] <peer_uuid> [ PRE_VOTER | PRE_OBSERVER ]
 ```
 
 - master_addresses: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
@@ -185,7 +185,7 @@ Prints a list of replica types and counts for the specified table.
 
 **Syntax**
 
-```
+```sh
 yb-admin -master_addresses <master-addresses> list_replica_type_counts <keyspace> <table_name>
 ```
 
@@ -223,7 +223,7 @@ Lists all tablets for the specified tablet server.
 
 **Syntax**
 
-```
+```sh
 yb-admin -master_addresses <master-addresses> list_tablets_for_tablet_server <ts_uuid>
 ```
 
@@ -487,7 +487,7 @@ Modifies the placement information (cloud, region, and zone) for a deployment.
 **Syntax**
 
 ```sh
-yb-admin -master_addresses <master-addresses> modify_placement_info <placement_info> <replication_factor> [ placement_id ]
+yb-admin -master_addresses <master-addresses> modify_placement_info <placement_info> <replication_factor> [ <placement_id> ]
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
@@ -615,7 +615,7 @@ Delete the read replica.
 **Syntax**
 
 ```sh
-yb-admin -master_addresses <master-addresses> delete_read_replica_placement_info <placement_id>
+yb-admin -master_addresses <master-addresses> delete_read_replica_placement_info [ <placement_id> ]
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
