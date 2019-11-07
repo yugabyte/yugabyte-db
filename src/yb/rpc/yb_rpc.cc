@@ -506,7 +506,7 @@ void YBOutboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents)
       auto passed = now - last_read_time_;
       const auto status = STATUS_FORMAT(
           NetworkError, "Read timeout, passed: $0, timeout: $1", passed, timeout);
-      VLOG(3) << connection->ToString() << ": " << status;
+      LOG(WARNING) << connection->ToString() << ": " << status;
       connection->reactor()->DestroyConnection(connection.get(), status);
       return;
     }
