@@ -23,8 +23,7 @@ namespace master {
 class YQLSizeEstimatesVTable : public YQLVirtualTable {
  public:
   explicit YQLSizeEstimatesVTable(const Master* const master);
-  CHECKED_STATUS RetrieveData(const QLReadRequestPB& request,
-                              std::unique_ptr<QLRowBlock>* vtable) const;
+  Result<std::shared_ptr<QLRowBlock>> RetrieveData(const QLReadRequestPB& request) const override;
  protected:
   Schema CreateSchema() const;
  private:

@@ -83,7 +83,8 @@ class ExternalMiniClusterITestBase : public YBTest {
  protected:
   void StartCluster(const std::vector<std::string>& extra_ts_flags = std::vector<std::string>(),
                     const std::vector<std::string>& extra_master_flags = std::vector<std::string>(),
-                    int num_tablet_servers = 3);
+                    int num_tablet_servers = 3,
+                    int num_masters = 1);
 
   gscoped_ptr<ExternalMiniCluster> cluster_;
   gscoped_ptr<itest::ExternalMiniClusterFsInspector> inspect_;
@@ -93,8 +94,10 @@ class ExternalMiniClusterITestBase : public YBTest {
 
 void ExternalMiniClusterITestBase::StartCluster(const std::vector<std::string>& extra_ts_flags,
                                                 const std::vector<std::string>& extra_master_flags,
-                                                int num_tablet_servers) {
+                                                int num_tablet_servers,
+                                                int num_masters) {
   ExternalMiniClusterOptions opts;
+  opts.num_masters = num_masters;
   opts.num_tablet_servers = num_tablet_servers;
   opts.extra_master_flags = extra_master_flags;
   opts.extra_tserver_flags = extra_ts_flags;
@@ -103,7 +106,10 @@ void ExternalMiniClusterITestBase::StartCluster(const std::vector<std::string>& 
   cluster_.reset(new ExternalMiniCluster(opts));
   ASSERT_OK(cluster_->Start());
   inspect_.reset(new itest::ExternalMiniClusterFsInspector(cluster_.get()));
-  ASSERT_OK(itest::CreateTabletServerMap(cluster_->master_proxy().get(),
+  int master_leader = 0;
+  ASSERT_OK(cluster_->GetLeaderMasterIndex(&master_leader));
+
+  ASSERT_OK(itest::CreateTabletServerMap(cluster_->master_proxy(master_leader).get(),
                                          &cluster_->proxy_cache(),
                                          &ts_map_));
   client_ = ASSERT_RESULT(cluster_->CreateClient());

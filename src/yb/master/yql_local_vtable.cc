@@ -48,11 +48,11 @@ LocalVTable::LocalVTable(const Master* const master)
       resolver_(new Resolver(master->messenger()->io_service())) {
 }
 
-Status LocalVTable::RetrieveData(const QLReadRequestPB& request,
-                                 std::unique_ptr<QLRowBlock>* vtable) const {
+Result<std::shared_ptr<QLRowBlock>> LocalVTable::RetrieveData(
+    const QLReadRequestPB& request) const {
   vector<std::shared_ptr<TSDescriptor> > descs;
   GetSortedLiveDescriptors(&descs);
-  vtable->reset(new QLRowBlock(schema_));
+  auto vtable = std::make_shared<QLRowBlock>(schema_);
 
   InetAddress remote_endpoint;
   RETURN_NOT_OK(remote_endpoint.FromString(request.remote_endpoint().host()));
@@ -88,7 +88,7 @@ Status LocalVTable::RetrieveData(const QLReadRequestPB& request,
   }
 
   for (const auto& entry : entries) {
-    QLRow& row = (*vtable)->Extend();
+    QLRow& row = vtable->Extend();
     auto private_ip = VERIFY_RESULT(entry.ips.private_ip_future.get());
     auto public_ip = VERIFY_RESULT(entry.ips.public_ip_future.get());
     const CloudInfoPB& cloud_info = entry.ts_info.registration().common().cloud_info();
@@ -121,7 +121,7 @@ Status LocalVTable::RetrieveData(const QLReadRequestPB& request,
     break;
   }
 
-  return Status::OK();
+  return vtable;
 }
 
 Schema LocalVTable::CreateSchema() const {
