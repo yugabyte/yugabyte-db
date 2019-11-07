@@ -6,6 +6,7 @@ import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.commissioner.SetUniverseKey;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.test.Helpers;
@@ -23,6 +24,7 @@ public class FakeDBApplication extends WithApplication {
   public ApiHelper mockApiHelper;
   HealthChecker mockHealthChecker;
   protected EncryptionAtRestManager mockEARManager;
+  protected SetUniverseKey mockSetUniverseKey;
 
   @Override
   protected Application provideApplication() {
@@ -30,6 +32,7 @@ public class FakeDBApplication extends WithApplication {
     mockApiHelper = mock(ApiHelper.class);
     mockCommissioner = mock(Commissioner.class);
     mockCallHome = mock(CallHome.class);
+    mockSetUniverseKey = mock(SetUniverseKey.class);
     Executors mockExecutors = mock(Executors.class);
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
@@ -39,6 +42,7 @@ public class FakeDBApplication extends WithApplication {
         .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
         .overrides(bind(Executors.class).toInstance(mockExecutors))
         .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
+        .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
       .build();
   }
 }
