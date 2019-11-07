@@ -340,6 +340,16 @@ bool TableInfo::IsAlterInProgress(uint32_t version) const {
   }
   return false;
 }
+bool TableInfo::AreAllTabletsDeleted() const {
+  shared_lock<decltype(lock_)> l(lock_);
+  for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
+    auto tablet_lock = e.second->LockForRead();
+    if (!tablet_lock->data().is_deleted()) {
+      return false;
+    }
+  }
+  return true;
+}
 
 bool TableInfo::IsCreateInProgress() const {
   shared_lock<decltype(lock_)> l(lock_);
