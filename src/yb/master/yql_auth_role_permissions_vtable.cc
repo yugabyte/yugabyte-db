@@ -26,16 +26,16 @@ YQLAuthRolePermissionsVTable::YQLAuthRolePermissionsVTable(const Master* const m
     : YQLVirtualTable(master::kSystemAuthRolePermissionsTableName, master, CreateSchema()) {
 }
 
-Status YQLAuthRolePermissionsVTable::RetrieveData(const QLReadRequestPB& request,
-                                                  std::unique_ptr<QLRowBlock>* vtable) const {
-  vtable->reset(new QLRowBlock(schema_));
+Result<std::shared_ptr<QLRowBlock>> YQLAuthRolePermissionsVTable::RetrieveData(
+    const QLReadRequestPB& request) const {
+  auto vtable = std::make_shared<QLRowBlock>(schema_);
   std::vector<scoped_refptr<RoleInfo>> roles;
   master_->catalog_manager()->permissions_manager()->GetAllRoles(&roles);
   for (const auto& rp : roles) {
     auto l = rp->LockForRead();
     const auto& pb = l->data().pb;
     for (const auto& resource : pb.resources()) {
-      QLRow& row = (*vtable)->Extend();
+      QLRow& row = vtable->Extend();
       RETURN_NOT_OK(SetColumnValue(kRole, pb.role(), &row));
       RETURN_NOT_OK(SetColumnValue(kResource, resource.canonical_resource(), &row));
 
@@ -58,7 +58,7 @@ Status YQLAuthRolePermissionsVTable::RetrieveData(const QLReadRequestPB& request
     }
   }
 
-  return Status::OK();
+  return vtable;
 }
 
 

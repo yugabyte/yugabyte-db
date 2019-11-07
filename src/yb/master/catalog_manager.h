@@ -66,6 +66,7 @@
 #include "yb/util/random.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/status.h"
+#include "yb/util/version_tracker.h"
 #include "yb/gutil/thread_annotations.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/scoped_leader_shared_lock.h"
@@ -584,6 +585,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     return permissions_manager_.get();
   }
 
+  uintptr_t tablets_version() const {
+    return tablet_map_.Version() + table_ids_map_.Version();
+  }
+
+  uintptr_t tablet_locations_version() const {
+    return tablet_locations_version_.load(std::memory_order_acquire);
+  }
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -957,6 +966,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Creates a new TableInfo object.
   scoped_refptr<TableInfo> NewTableInfo(TableId id);
 
+  template <class Loader>
+  CHECKED_STATUS Load(const std::string& title);
+
   // ----------------------------------------------------------------------------------------------
   // Private member fields
   // ----------------------------------------------------------------------------------------------
@@ -973,13 +985,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // are not saved in the name maps below.
 
   // Table map: table-id -> TableInfo
-  TableInfoMap table_ids_map_;
+  VersionTracker<TableInfoMap> table_ids_map_;
 
   // Table map: [namespace-id, table-name] -> TableInfo
+  // Don't have to use VersionTracker for it, since table_ids_map_ already updated at the same time.
   TableInfoByNameMap table_names_map_;
 
   // Tablet maps: tablet-id -> TabletInfo
-  TabletInfoMap tablet_map_;
+  VersionTracker<TabletInfoMap> tablet_map_;
 
   // Namespace maps: namespace-id -> NamespaceInfo and namespace-name -> NamespaceInfo
   typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
@@ -1103,6 +1116,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
  private:
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id);
+
+  // Should be bumped up when tablet locations are changed.
+  std::atomic<uintptr_t> tablet_locations_version_{0};
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

@@ -621,7 +621,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
   // it's important to end their tasks now; otherwise Shutdown() will
   // destroy master state used by these tasks.
   std::vector<scoped_refptr<TableInfo>> tables;
-  AppendValuesFromMap(table_ids_map_, &tables);
+  AppendValuesFromMap(*table_ids_map_, &tables);
   AbortAndWaitForAllTasks(tables);
 
   // Clear internal maps and run data loaders.
@@ -694,11 +694,24 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
   return StartRunningInitDbIfNeeded(term);
 }
 
+template <class Loader>
+Status CatalogManager::Load(const std::string& title) {
+  LOG(INFO) << __func__ << ": Loading " << title << " into memory.";
+  auto loader = std::make_unique<Loader>(this);
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Visit(loader.get()),
+      "Failed while visiting " + title + " in sys catalog");
+  return Status::OK();
+}
+
 Status CatalogManager::RunLoaders() {
   // Clear the table and tablet state.
   table_names_map_.clear();
-  table_ids_map_.clear();
-  tablet_map_.clear();
+  auto table_ids_map_checkout = table_ids_map_.CheckOut();
+  table_ids_map_checkout->clear();
+
+  auto tablet_map_checkout = tablet_map_.CheckOut();
+  tablet_map_checkout->clear();
 
   // Clear the namespace mappings.
   namespace_ids_map_.clear();
@@ -729,52 +742,14 @@ Status CatalogManager::RunLoaders() {
     ts_desc->set_has_tablet_report(false);
   }
 
-  // Visit tables and tablets, load them into memory.
-  // TODO(hector): Refactor this code.
-  LOG(INFO) << __func__ << ": Loading tables into memory.";
-  unique_ptr<TableLoader> table_loader(new TableLoader(this));
-  RETURN_NOT_OK_PREPEND(
-      sys_catalog_->Visit(table_loader.get()), "Failed while visiting tables in sys catalog");
-
-  LOG(INFO) << __func__ << ": Loading tablets into memory.";
-  unique_ptr<TabletLoader> tablet_loader(new TabletLoader(this));
-  RETURN_NOT_OK_PREPEND(
-      sys_catalog_->Visit(tablet_loader.get()), "Failed while visiting tablets in sys catalog");
-
-  LOG(INFO) << __func__ << ": Loading namespaces into memory.";
-  unique_ptr<NamespaceLoader> namespace_loader(new NamespaceLoader(this));
-  RETURN_NOT_OK_PREPEND(
-      sys_catalog_->Visit(namespace_loader.get()),
-      "Failed while visiting namespaces in sys catalog");
-
-  LOG(INFO) << __func__ << ": Loading user-defined types into memory.";
-  unique_ptr<UDTypeLoader> udtype_loader(new UDTypeLoader(this));
-  RETURN_NOT_OK_PREPEND(
-      sys_catalog_->Visit(udtype_loader.get()),
-      "Failed while visiting user-defined types in sys catalog");
-
-  LOG(INFO) << __func__ << ": Loading cluster configuration into memory.";
-  unique_ptr<ClusterConfigLoader> config_loader(new ClusterConfigLoader(this));
-  RETURN_NOT_OK_PREPEND(
-      sys_catalog_->Visit(config_loader.get()), "Failed while visiting config in sys catalog");
-
-  LOG(INFO) << __func__ << ": Loading roles into memory.";
-  unique_ptr<RoleLoader> role_loader(new RoleLoader(this));
-  RETURN_NOT_OK_PREPEND(
-      sys_catalog_->Visit(role_loader.get()),
-      "Failed while visiting roles in sys catalog");
-
-  LOG(INFO) << __func__ << ": Loading Redis config into memory.";
-  unique_ptr<RedisConfigLoader> redis_config_loader(new RedisConfigLoader(this));
-  RETURN_NOT_OK_PREPEND(
-      sys_catalog_->Visit(redis_config_loader.get()),
-      "Failed while visiting redis config in sys catalog");
-
-  LOG(INFO) << __func__ << ": Loading sys config into memory.";
-  unique_ptr<SysConfigLoader> sys_config_loader(new SysConfigLoader(this));
-  RETURN_NOT_OK_PREPEND(
-      sys_catalog_->Visit(sys_config_loader.get()),
-      "Failed while visiting sys config in sys catalog");
+  RETURN_NOT_OK(Load<TableLoader>("tables"));
+  RETURN_NOT_OK(Load<TabletLoader>("tablets"));
+  RETURN_NOT_OK(Load<NamespaceLoader>("namespaces"));
+  RETURN_NOT_OK(Load<UDTypeLoader>("user-defined types"));
+  RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration"));
+  RETURN_NOT_OK(Load<RoleLoader>("roles"));
+  RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config"));
+  RETURN_NOT_OK(Load<SysConfigLoader>("sys config"));
 
   return Status::OK();
 }
@@ -959,7 +934,8 @@ Status CatalogManager::PrepareSystemTables(int64_t term) {
 
 Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
   // Prepare sys catalog table info.
-  if (table_ids_map_.count(kSysCatalogTableId) == 0) {
+  auto sys_catalog_table_iter = table_ids_map_->find(kSysCatalogTableId);
+  if (sys_catalog_table_iter == table_ids_map_->end()) {
     scoped_refptr<TableInfo> table = NewTableInfo(kSysCatalogTableId);
     table->mutable_metadata()->StartMutation();
     SysTablesEntryPB& metadata = table->mutable_metadata()->mutable_dirty()->pb;
@@ -970,7 +946,8 @@ Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
     SchemaToPB(sys_catalog_->schema_with_ids_, metadata.mutable_schema());
     metadata.set_version(0);
 
-    table_ids_map_[table->id()] = table;
+    auto table_ids_map_checkout = table_ids_map_.CheckOut();
+    sys_catalog_table_iter = table_ids_map_checkout->emplace(table->id(), table).first;
     table_names_map_[{kSystemSchemaNamespaceId, kSysCatalogTableName}] = table;
 
     RETURN_NOT_OK(sys_catalog_->AddItem(table.get(), term));
@@ -978,9 +955,8 @@ Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
   }
 
   // Prepare sys catalog tablet info.
-  if (tablet_map_.count(kSysCatalogTabletId) == 0) {
-    scoped_refptr<TableInfo> table = table_ids_map_[kSysCatalogTableId];
-    DCHECK_NOTNULL(table.get());
+  if (tablet_map_->count(kSysCatalogTabletId) == 0) {
+    scoped_refptr<TableInfo> table = sys_catalog_table_iter->second;
     scoped_refptr<TabletInfo> tablet(new TabletInfo(table, kSysCatalogTabletId));
     tablet->mutable_metadata()->StartMutation();
     SysTabletsEntryPB& metadata = tablet->mutable_metadata()->mutable_dirty()->pb;
@@ -999,7 +975,8 @@ Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
 
     table->AddTablet(tablet.get());
 
-    tablet_map_[tablet->tablet_id()] = tablet;
+    auto tablet_map_checkout = tablet_map_.CheckOut();
+    (*tablet_map_checkout)[tablet->tablet_id()] = tablet;
 
     RETURN_NOT_OK(sys_catalog_->AddItem(tablet.get(), term));
     tablet->mutable_metadata()->CommitMutation();
@@ -1294,7 +1271,7 @@ void CatalogManager::Shutdown() {
   vector<scoped_refptr<TableInfo>> copy;
   {
     shared_lock<LockType> l(lock_);
-    AppendValuesFromMap(table_ids_map_, &copy);
+    AppendValuesFromMap(*table_ids_map_, &copy);
   }
   AbortAndWaitForAllTasks(copy);
 
@@ -1351,14 +1328,16 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
     tablet->mutable_metadata()->AbortMutation();
   }
   table->mutable_metadata()->AbortMutation();
+  auto tablet_map_checkout = tablet_map_.CheckOut();
   for (const TabletId& tablet_id_to_erase : tablet_ids_to_erase) {
-    CHECK_EQ(tablet_map_.erase(tablet_id_to_erase), 1)
+    CHECK_EQ(tablet_map_checkout->erase(tablet_id_to_erase), 1)
         << "Unable to erase tablet " << tablet_id_to_erase << " from tablet map.";
   }
 
+  auto table_ids_map_checkout = table_ids_map_.CheckOut();
   CHECK_EQ(table_names_map_.erase({table_namespace_id, table_name}), 1)
       << "Unable to erase table named " << table_name << " from table names map.";
-  CHECK_EQ(table_ids_map_.erase(table_id), 1)
+  CHECK_EQ(table_ids_map_checkout->erase(table_id), 1)
       << "Unable to erase tablet with id " << table_id << " from tablet ids map.";
 
   return CheckIfNoLongerLeaderAndSetupError(s, resp);
@@ -1417,7 +1396,7 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB req,
 
   std::lock_guard<LockType> l(lock_);
   TRACE("Acquired catalog manager lock");
-  parent_table_info = FindPtrOrNull(table_ids_map_,
+  parent_table_info = FindPtrOrNull(*table_ids_map_,
                                     schema.table_properties().CopartitionTableId());
   if (parent_table_info == nullptr) {
     s = STATUS(NotFound, "The object does not exist",
@@ -1576,7 +1555,7 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
                                       namespace_id, partitions, nullptr /* index_info */,
                                       nullptr /* tablets */, resp, &table));
 
-    scoped_refptr<TabletInfo> tablet = tablet_map_[kSysCatalogTabletId];
+    scoped_refptr<TabletInfo> tablet = tablet_map_->find(kSysCatalogTabletId)->second;
     auto tablet_lock = tablet->LockForWrite();
     tablet_lock->mutable_data()->pb.add_table_ids(table->id());
     table->AddTablet(tablet.get());
@@ -2052,9 +2031,11 @@ Status CatalogManager::CreateTabletsFromTable(const vector<Partition>& partition
 
   // Add the table/tablets to the in-memory map for the assignment.
   table->AddTablets(*tablets);
+  auto tablet_map_checkout = tablet_map_.CheckOut();
   for (TabletInfo* tablet : *tablets) {
-    InsertOrDie(&tablet_map_, tablet->tablet_id(), tablet);
+    InsertOrDie(tablet_map_checkout.get_ptr(), tablet->tablet_id(), tablet);
   }
+
   return Status::OK();
 }
 
@@ -2142,7 +2123,8 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
   // Add the new table in "preparing" state.
   *table = CreateTableInfo(req, schema, partition_schema, namespace_id, index_info);
   const TableId& table_id = (*table)->id();
-  table_ids_map_[table_id] = *table;
+  auto table_ids_map_checkout = table_ids_map_.CheckOut();
+  (*table_ids_map_checkout)[table_id] = *table;
   // Do not add Postgres tables to the name map as the table name is not unique in a namespace.
   if (req.table_type() != PGSQL_TABLE_TYPE) {
     table_names_map_[{namespace_id, req.name()}] = *table;
@@ -2352,10 +2334,10 @@ std::string CatalogManager::GenerateId(boost::optional<const SysRowEntry::Type> 
         if (FindPtrOrNull(namespace_ids_map_, id) == nullptr) return id;
         break;
       case SysRowEntry::TABLE:
-        if (FindPtrOrNull(table_ids_map_, id) == nullptr) return id;
+        if (FindPtrOrNull(*table_ids_map_, id) == nullptr) return id;
         break;
       case SysRowEntry::TABLET:
-        if (FindPtrOrNull(tablet_map_, id) == nullptr) return id;
+        if (FindPtrOrNull(*tablet_map_, id) == nullptr) return id;
         break;
       case SysRowEntry::UDTYPE:
         if (FindPtrOrNull(udtype_ids_map_, id) == nullptr) return id;
@@ -2456,7 +2438,7 @@ Status CatalogManager::FindTable(const TableIdentifierPB& table_identifier,
   SharedLock<LockType> l(lock_);
 
   if (table_identifier.has_table_id()) {
-    *table_info = FindPtrOrNull(table_ids_map_, table_identifier.table_id());
+    *table_info = FindPtrOrNull(*table_ids_map_, table_identifier.table_id());
   } else if (table_identifier.has_table_name()) {
     NamespaceId namespace_id;
 
@@ -2580,7 +2562,7 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
 
   // Lookup the table and verify if it exists.
   TRACE(Substitute("Looking up $0", table_type));
-  scoped_refptr<TableInfo> table = FindPtrOrNull(table_ids_map_, table_id);
+  scoped_refptr<TableInfo> table = FindPtrOrNull(*table_ids_map_, table_id);
   if (table == nullptr) {
     Status s = STATUS_SUBSTITUTE(NotFound, "The object with id $0 does not exist", table_id);
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
@@ -2631,7 +2613,7 @@ Status CatalogManager::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* r
   // Lookup the truncated table.
   TRACE("Looking up table $0", req->table_id());
   std::lock_guard<LockType> l_map(lock_);
-  scoped_refptr<TableInfo> table = FindPtrOrNull(table_ids_map_, req->table_id());
+  scoped_refptr<TableInfo> table = FindPtrOrNull(*table_ids_map_, req->table_id());
 
   if (table == nullptr) {
     Status s = STATUS(NotFound, "The object does not exist");
@@ -2841,6 +2823,7 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
       if (table_names_map_.erase({l->data().namespace_id(), l->data().name()}) != 1) {
         PANIC_RPC(rpc, "Could not remove table from map, name=" + table->ToString());
       }
+      table_ids_map_.Commit();
     }
   }
 
@@ -2865,7 +2848,7 @@ void CatalogManager::CleanUpDeletedTables() {
     std::lock_guard<LockType> l_map(lock_);
     // Garbage collecting.
     // Going through all tables under the global lock.
-    for (const auto& it : table_ids_map_) {
+    for (const auto& it : *table_ids_map_) {
       scoped_refptr<TableInfo> table(it.second);
 
       if (!table->HasTasks()) {
@@ -2948,7 +2931,7 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
   // Lookup the deleted table.
   TRACE("Looking up table $0", req->table_id());
   std::lock_guard<LockType> l_map(lock_);
-  scoped_refptr<TableInfo> table = FindPtrOrNull(table_ids_map_, req->table_id());
+  scoped_refptr<TableInfo> table = FindPtrOrNull(*table_ids_map_, req->table_id());
 
   if (table == nullptr) {
     LOG(INFO) << "Servicing IsDeleteTableDone request for table id "
@@ -3349,7 +3332,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
   SharedLock<LockType> l(lock_);
   RelationType relation_type;
 
-  for (const auto& entry : table_ids_map_) {
+  for (const auto& entry : *table_ids_map_) {
     auto& table_info = *entry.second;
     auto ltm = table_info.LockForRead();
 
@@ -3412,7 +3395,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
 
 scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const TableId& table_id) {
   SharedLock<LockType> l(lock_);
-  return FindPtrOrNull(table_ids_map_, table_id);
+  return FindPtrOrNull(*table_ids_map_, table_id);
 }
 
 scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableName(
@@ -3427,14 +3410,14 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableNa
 }
 
 scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& table_id) {
-  return FindPtrOrNull(table_ids_map_, table_id);
+  return FindPtrOrNull(*table_ids_map_, table_id);
 }
 
 void CatalogManager::GetAllTables(std::vector<scoped_refptr<TableInfo>> *tables,
                                   bool includeOnlyRunningTables) {
   tables->clear();
   SharedLock<LockType> l(lock_);
-  for (const TableInfoMap::value_type& e : table_ids_map_) {
+  for (const auto& e : *table_ids_map_) {
     if (includeOnlyRunningTables && !e.second->is_running()) {
       continue;
     }
@@ -3645,7 +3628,7 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
   scoped_refptr<TabletInfo> tablet;
   {
     SharedLock<LockType> l(lock_);
-    tablet = FindPtrOrNull(tablet_map_, report.tablet_id());
+    tablet = FindPtrOrNull(*tablet_map_, report.tablet_id());
   }
   RETURN_NOT_OK_PREPEND(CheckIsLeaderAndReady(),
       Substitute("This master is no longer the leader, unable to handle report for tablet $0",
@@ -3943,7 +3926,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
           return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND,
                             source_oid.status());
         }
-        for (const auto& iter : table_ids_map_) {
+        for (const auto& iter : *table_ids_map_) {
           const auto& table_id = iter.first;
           const auto& table = iter.second;
           if (IsPgsqlId(table_id) && CHECK_RESULT(GetPgsqlDatabaseOid(table_id)) == *source_oid) {
@@ -4041,7 +4024,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   {
     SharedLock<LockType> catalog_lock(lock_);
 
-    for (const TableInfoMap::value_type& entry : table_ids_map_) {
+    for (const TableInfoMap::value_type& entry : *table_ids_map_) {
       auto ltm = entry.second->LockForRead();
 
       if (!ltm->data().started_deleting() && ltm->data().namespace_id() == ns->id()) {
@@ -4175,7 +4158,7 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
     SharedLock<LockType> catalog_lock(lock_);
 
     // Delete tablets for each of user tables.
-    for (const TableInfoMap::value_type& entry : table_ids_map_) {
+    for (const TableInfoMap::value_type& entry : *table_ids_map_) {
       scoped_refptr<TableInfo> table = entry.second;
       auto l = table->LockForWrite();
       if (l->data().namespace_id() != database->id() || l->data().started_deleting()) {
@@ -4425,7 +4408,7 @@ Status CatalogManager::DeleteUDType(const DeleteUDTypeRequestPB* req,
 
     // Checking if any table uses this type.
     // TODO: this could be more efficient.
-    for (const TableInfoMap::value_type& entry : table_ids_map_) {
+    for (const TableInfoMap::value_type& entry : *table_ids_map_) {
       auto ltm = entry.second->LockForRead();
       if (!ltm->data().started_deleting()) {
         for (const auto &col : ltm->data().schema().columns()) {
@@ -4688,6 +4671,7 @@ Status CatalogManager::ResetTabletReplicasFromReportedConfig(
   }
 
   tablet->SetReplicaLocations(std::move(replica_locations));
+  tablet_locations_version_.fetch_add(1, std::memory_order_acq_rel);
 
   if (FLAGS_master_tombstone_evicted_tablet_replicas) {
     unordered_set<string> current_member_uuids;
@@ -4717,6 +4701,7 @@ void CatalogManager::UpdateTabletReplica(TSDescriptor* ts_desc,
   TabletReplica replica;
   NewReplica(ts_desc, report, &replica);
   tablet->UpdateReplicaLocations(replica);
+  tablet_locations_version_.fetch_add(1, std::memory_order_acq_rel);
 }
 
 void CatalogManager::NewReplica(TSDescriptor* ts_desc,
@@ -5079,7 +5064,7 @@ void CatalogManager::ExtractTabletsToProcess(
   //       or just a counter to avoid to take the lock and loop through the tablets
   //       if everything is "stable".
 
-  for (const TabletInfoMap::value_type& entry : tablet_map_) {
+  for (const TabletInfoMap::value_type& entry : *tablet_map_) {
     scoped_refptr<TabletInfo> tablet = entry.second;
     auto tablet_lock = tablet->LockForRead();
 
@@ -5093,7 +5078,7 @@ void CatalogManager::ExtractTabletsToProcess(
     // If the table is deleted or the tablet was replaced at table creation time.
     if (tablet_lock->data().is_deleted() || table_lock->data().started_deleting()) {
       // Process this table deletion only once (tombstones for table may remain longer).
-      if (table_ids_map_.find(tablet->table()->id()) != table_ids_map_.end()) {
+      if (table_ids_map_->find(tablet->table()->id()) != table_ids_map_->end()) {
         tablets_to_delete->push_back(tablet);
       }
       // Don't process deleted tables regardless.
@@ -5156,7 +5141,8 @@ void CatalogManager::HandleAssignCreatingTablet(TabletInfo* tablet,
   tablet->table()->AddTablet(replacement);
   {
     std::lock_guard<LockType> l_maps(lock_);
-    tablet_map_[replacement->tablet_id()] = replacement;
+    auto tablet_map_checkout = tablet_map_.CheckOut();
+    (*tablet_map_checkout)[replacement->tablet_id()] = replacement;
   }
 
   // Mark old tablet as replaced.
@@ -5346,8 +5332,9 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
     std::lock_guard<LockType> l(lock_);
     unlocker_out.Abort();
     unlocker_in.Abort();
+    auto tablet_map_checkout = tablet_map_.CheckOut();
     for (const TabletId& tablet_id_to_remove : tablet_ids_to_remove) {
-      CHECK_EQ(tablet_map_.erase(tablet_id_to_remove), 1)
+      CHECK_EQ(tablet_map_checkout->erase(tablet_id_to_remove), 1)
           << "Unable to erase " << tablet_id_to_remove << " from tablet map.";
     }
     return s;
@@ -5739,7 +5726,7 @@ Status CatalogManager::GetTabletLocations(const TabletId& tablet_id, TabletLocat
   scoped_refptr<TabletInfo> tablet_info;
   {
     SharedLock<LockType> l(lock_);
-    if (!FindCopy(tablet_map_, tablet_id, &tablet_info)) {
+    if (!FindCopy(*tablet_map_, tablet_id, &tablet_info)) {
       return STATUS_SUBSTITUTE(NotFound, "Unknown tablet $0", tablet_id);
     }
   }
@@ -5825,9 +5812,9 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   {
     SharedLock<LockType> l(lock_);
     namespace_ids_copy = namespace_ids_map_;
-    ids_copy = table_ids_map_;
+    ids_copy = *table_ids_map_;
     names_copy = table_names_map_;
-    tablets_copy = tablet_map_;
+    tablets_copy = *tablet_map_;
   }
 
   *out << "Dumping Current state of master.\nNamespaces:\n";
@@ -6007,7 +5994,7 @@ Status CatalogManager::SetBlackList(const BlacklistPB& blacklist) {
   }
 
   LOG(INFO) << "Set blacklist size = " << blacklist.hosts_size() << " with load "
-            << blacklist.initial_replica_load() << " for num_tablets = " << tablet_map_.size();
+            << blacklist.initial_replica_load() << " for num_tablets = " << tablet_map_->size();
 
   for (const auto& pb : blacklist.hosts()) {
     blacklistState.tservers_.insert(HostPortFromPB(pb));
@@ -6026,7 +6013,7 @@ Status CatalogManager::SetLeaderBlacklist(const BlacklistPB& leader_blacklist) {
 
   LOG(INFO) << "Set leader blacklist size = " << leader_blacklist.hosts_size() << " with load "
             << leader_blacklist.initial_leader_load() << " for num_tablets = "
-            << tablet_map_.size();
+            << tablet_map_->size();
 
   for (const auto& pb : leader_blacklist.hosts()) {
     leaderBlacklistState.tservers_.insert(HostPortFromPB(pb));
@@ -6212,7 +6199,7 @@ std::string BlacklistState::ToString() {
 int64_t CatalogManager::GetNumRelevantReplicas(const BlacklistState& state, bool leaders_only) {
   int64_t res = 0;
   std::lock_guard <LockType> tablet_map_lock(lock_);
-  for (const TabletInfoMap::value_type& entry : tablet_map_) {
+  for (const TabletInfoMap::value_type& entry : *tablet_map_) {
     scoped_refptr<TabletInfo> tablet = entry.second;
     auto l = tablet->LockForRead();
     // Not checking being created on purpose as we do not want initial load to be under accounted.
@@ -6279,7 +6266,7 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
     state.initial_load_ = blacklist_replicas;
   }
 
-  LOG(INFO) << "Blacklisted count " << blacklist_replicas << " in " << tablet_map_.size()
+  LOG(INFO) << "Blacklisted count " << blacklist_replicas << " in " << tablet_map_->size()
             << " tablets, across " << state.tservers_.size()
             << " servers, with initial load " << state.initial_load_;
 

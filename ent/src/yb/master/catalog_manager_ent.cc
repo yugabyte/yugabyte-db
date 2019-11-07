@@ -105,7 +105,7 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
     DCHECK(!ContainsKey(catalog_manager_->cdc_stream_map_, stream_id))
         << "CDC stream already exists: " << stream_id;
 
-    if (!ContainsKey(catalog_manager_->table_ids_map_, metadata.table_id())) {
+    if (!ContainsKey(*catalog_manager_->table_ids_map_, metadata.table_id())) {
       LOG(ERROR) << "Invalid table ID " << metadata.table_id() << " for stream " << stream_id;
       // TODO (#2059): Potentially signals a race condition that table got deleted while stream was
       // being created.
@@ -472,7 +472,7 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
     }
     case SysRowEntry::TABLE: { // Restore TABLES.
       TRACE("Looking up table");
-      scoped_refptr<TableInfo> table = FindPtrOrNull(table_ids_map_, entry.id());
+      scoped_refptr<TableInfo> table = FindPtrOrNull(*table_ids_map_, entry.id());
       if (table == nullptr) {
         // Restore Table.
         // TODO: implement
@@ -485,7 +485,7 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
     }
     case SysRowEntry::TABLET: { // Restore TABLETS.
       TRACE("Looking up tablet");
-      scoped_refptr<TabletInfo> tablet = FindPtrOrNull(tablet_map_, entry.id());
+      scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, entry.id());
       if (tablet == nullptr) {
         // Restore Tablet.
         // TODO: implement
@@ -559,7 +559,7 @@ Status CatalogManager::DeleteSnapshot(const DeleteSnapshotRequestPB* req,
   for (const SysRowEntry& entry : snapshot_pb.entries()) {
     if (entry.type() == SysRowEntry::TABLET) {
       TRACE("Looking up tablet");
-      scoped_refptr<TabletInfo> tablet = FindPtrOrNull(tablet_map_, entry.id());
+      scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, entry.id());
       if (tablet == nullptr) {
         LOG(WARNING) << "Deleting tablet not found " << entry.id();
       } else {
@@ -763,7 +763,7 @@ Status CatalogManager::ImportTableEntry(const SysRowEntry& entry,
   // Create new table if namespace was changed.
   if (new_namespace_id == table_data->old_namespace_id) {
     TRACE("Looking up table");
-    table = LockAndFindPtrOrNull(table_ids_map_, entry.id());
+    table = LockAndFindPtrOrNull(*table_ids_map_, entry.id());
 
     // Check table is active OR table name was changed.
     if (table != nullptr && (!table->is_running() || table->name() != meta.name())) {
@@ -793,7 +793,7 @@ Status CatalogManager::ImportTableEntry(const SysRowEntry& entry,
 
     TRACE("Looking up new table");
     {
-      table = LockAndFindPtrOrNull(table_ids_map_, table_data->new_table_id);
+      table = LockAndFindPtrOrNull(*table_ids_map_, table_data->new_table_id);
 
       if (table == nullptr) {
         return STATUS_SUBSTITUTE(
@@ -855,7 +855,7 @@ Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
   // Update tablets IDs map.
   if (table_data.new_table_id == table_data.old_table_id) {
     TRACE("Looking up tablet");
-    scoped_refptr<TabletInfo> tablet = LockAndFindPtrOrNull(tablet_map_, entry.id());
+    scoped_refptr<TabletInfo> tablet = LockAndFindPtrOrNull(*tablet_map_, entry.id());
 
     if (tablet != nullptr) {
       IdPairPB* const pair = table_data.tablet_id_map->Add();
