@@ -83,6 +83,26 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Note: this fixes a bug in the 97->98 upgrade script
+-- table_owner_is ( table, user, description )
+/*
+CREATE OR REPLACE FUNCTION table_owner_is ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    owner NAME := _get_rel_owner('{r,p}'::char[], $1);
+BEGIN
+    -- Make sure the table exists.
+    IF owner IS NULL THEN
+        RETURN ok(FALSE, $3) || E'\n' || diag(
+            E'    Table ' || quote_ident($1) || ' does not exist'
+        );
+    END IF;
+
+    RETURN is(owner, $2, $3);
+END;
+$$ LANGUAGE plpgsql;
+*/
+
 -- _hasc( schema, table, constraint_type )
 CREATE OR REPLACE FUNCTION _hasc ( NAME, NAME, CHAR )
 RETURNS BOOLEAN AS $$

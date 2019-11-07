@@ -12,9 +12,9 @@ ok 9 - extensions_are(exts, desc) should have the proper diagnostics
 ok 10 - extensions_are(exts) should pass
 ok 11 - extensions_are(exts) should have the proper description
 ok 12 - extensions_are(exts) should have the proper diagnostics
-ok 13 - extensions_are(public, exts, desc) should pass
-ok 14 - extensions_are(public, exts, desc) should have the proper description
-ok 15 - extensions_are(public, exts, desc) should have the proper diagnostics
+ok 13 - extensions_are(ci_schema, exts, desc) should pass
+ok 14 - extensions_are(ci_schema, exts, desc) should have the proper description
+ok 15 - extensions_are(ci_schema, exts, desc) should have the proper diagnostics
 ok 16 - extensions_are(non-sch, exts) should pass
 ok 17 - extensions_are(non-sch, exts) should have the proper description
 ok 18 - extensions_are(non-sch, exts) should have the proper diagnostics

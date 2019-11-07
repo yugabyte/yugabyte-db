@@ -15,8 +15,8 @@ documentation in `doc/pgtap.mmd` or
 To build it, just do this:
 
     make
-    make installcheck
     make install
+    make installcheck
 
 If you encounter an error such as:
 

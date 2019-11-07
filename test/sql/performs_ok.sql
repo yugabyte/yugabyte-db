@@ -23,10 +23,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    performs_ok( 'SELECT TRUE', 99.99 ),
+    performs_ok( 'SELECT TRUE', 199.99 ),
     true,
     'simple select numeric',
-    'Should run in less than 99.99 ms',
+    'Should run in less than 199.99 ms',
     ''
 );
 

@@ -1,9 +1,10 @@
+# THERE IS ANOTHER .gitignore IN test/sql!
+
 .*.swp
 pgtap.sql
 pgtap-core.sql
 pgtap-schema.sql
 uninstall_pgtap.sql
-test/setup.sql
 results
 pgtap.so
 regression.*
@@ -11,6 +12,7 @@ regression.*
 *.html1
 *.sql.orig
 bbin
+
 /sql/pgtap--?.??.?.sql
 /sql/pgtap--?.?.?.sql
 /sql/pgtap-core--*
@@ -21,6 +23,10 @@ bbin
 /sql/pgtap--0.98.0--0.99.0.sql
 /sql/pgtap--0.99.0--1.0.0.sql
 /sql/pgtap-static.sql
+/sql/pgtap-static.sql.tmp*
+*.sql.orig
+
+test/build
 
 # Misc mac crap
 .DS_Store

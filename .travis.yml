@@ -1,12 +1,12 @@
 language: c
 before_install:
   - wget https://gist.githubusercontent.com/petere/5893799/raw/apt.postgresql.org.sh
-  - wget https://gist.githubusercontent.com/petere/6023944/raw/pg-travis-test.sh
   - sudo sh ./apt.postgresql.org.sh
   - sudo rm -vf /etc/apt/sources.list.d/pgdg-source.list
+script:
+  - bash ./pg-travis-test.sh
+
 env:
-  - PGVERSION=8.4
-  - PGVERSION=9.0
   - PGVERSION=9.1
   - PGVERSION=9.2
   - PGVERSION=9.3
@@ -14,5 +14,14 @@ env:
   - PGVERSION=9.5
   - PGVERSION=9.6
   - PGVERSION=10
-  - PGVERSION=11
+  - PGVERSION=11 UPDATE_FROM=0.99.0
+  # Duplication below is via s/-/- PARALLEL_CONN=1/
+  - PARALLEL_CONN=1 PGVERSION=9.1
+  - PARALLEL_CONN=1 PGVERSION=9.2
+  - PARALLEL_CONN=1 PGVERSION=9.3
+  - PARALLEL_CONN=1 PGVERSION=9.4
+  - PARALLEL_CONN=1 PGVERSION=9.5
+  - PARALLEL_CONN=1 PGVERSION=9.6
+  - PARALLEL_CONN=1 PGVERSION=10
+  - PARALLEL_CONN=1 PGVERSION=11 UPDATE_FROM=0.99.0
 script: bash ./pg-travis-test.sh
