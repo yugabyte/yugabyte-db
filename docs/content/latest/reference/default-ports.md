@@ -15,7 +15,7 @@ menu:
 | Service    | Port | Configuration setting (default)                              |
 | ---------- | ---- | ------------------------------------------------------------ |
 | yb-master  | 7100 | yb-master: [`--rpc_bind_addresses 0.0.0.0:7100`](../../admin/yb-master/#rpc-bind-addresses) |
-| yb-tserver | 9100 | yb-tserver: [`--tserver_master_addrs 0.0.0.0:9100`](../../admin/yb-tserver/#tserver-master-addrs)<br/>yb-tserver: [`--server_broadcast_addresses=0.0.0.0:9100`](../yb-tserver/#server-broadcast-addresses) |
+| yb-tserver | 9100 | yb-tserver: [`--tserver_master_addrs 0.0.0.0:9100`](../../admin/yb-tserver/#tserver-master-addrs)<br/>yb-tserver: [`--server_broadcast_addresses=0.0.0.0:9100`](../../admin/yb-tserver/#server-broadcast-addresses) |
 
 ## Admin web server
 
@@ -31,6 +31,6 @@ menu:
 
 | API     | Port  | Configuration setting (default)           |
 | ------- | ----- | ----------------------------------------- |
-| ysql    | 5433  | yb-tserver: `--pgsql_proxy_bind_address 0.0.0.0:5433` |
-| ycql    | 9042  | yb-tserver: `--cql_proxy_bind_address 0.0.0.0:9042`   |
-| yedis   | 6379  | yb-tserver: `--redis_proxy_bind_address 0.0.0.0:6379` |
+| ysql    | 5433  | yb-tserver: [`--pgsql_proxy_bind_address 0.0.0.0:5433`](../../admin/yb-tserver/#pgsql-proxy-bind-address) |
+| ycql    | 9042  | yb-tserver: [`--cql_proxy_bind_address 0.0.0.0:9042`](../../admin/yb-tserver/#cql-proxy-bind-address)   |
+| yedis   | 6379  | yb-tserver: [`--redis_proxy_bind_address 0.0.0.0:6379`](../../admin/yb-tserver/#redis-proxy-bind-address) |
