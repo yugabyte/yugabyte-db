@@ -1,7 +1,7 @@
 ---
-title: Build a Python App
-linkTitle: Build a Python App
-description: Build a Python App
+title: Build a Python application
+linkTitle: Build a Python application
+description: Build a Python application
 menu:
   latest:
     parent: build-apps
@@ -35,69 +35,101 @@ showAsideToc: true
   </li>
 </ul>
 
+This SQLAlchemy ORM example, running on Python, implements a simple REST API server for an e-commerce application scenario. Database access in this application is managed through [SQL Alchemy ORM](https://docs.sqlalchemy.org/en/13/orm/). The e-commerce database (`ysql-sqlalchemy`) includes the following tables:
 
-## Prerequisites
+- `users` table — the users of the e-commerce site
+- `products` table — the products being sold
+- `orders` table — the orders placed by the users
+- `orderline` table — each line item of an order
 
-This tutorial assumes that you have:
+The source for this application can be found in the [`python/sqlalchemy` directory](https://github.com/yugabyte/orm-examples/tree/master/python/sqlalchemy) of Yugabyte's [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples) GitHub repository.
 
-- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
+## Before you begin
 
-- installed Go 1.8+ as well as the following dependencies.
+To configure and run this application, make sure that you've completed these prerequisites.
+
+### YugabyteDB
+
+YugabyteDB is up and running. If you are new to YugabyteDB, you can have YugabyteDB up and running within five minutes by following the steps in [Quick start](../../../../quick-start/).
+
+### Python
+
+Python 3 is installed
+
+### Python packages (dependencies)
+
+Python packages (dependencies) are installed
+
+- [SQLAlchemy (`SQLAlchemy`)](https://www.sqlalchemy.org/)
+- [Psycopg2 (`psycopg2-binary`)](http://initd.org/psycopg/)
+- [JSONpickle (`jsonpickle`)](https://jsonpickle.github.io/)
+
+To quickly install these three packages, run the following command.
 
 ```sh
-go get github.com/jinzhu/gorm
-go get github.com/jinzhu/gorm/dialects/postgres
-go get github.com/google/uuid
-go get github.com/gorilla/mux
-go get github.com/lib/pq
-go get github.com/lib/pq/hstore
+$ pip3 install psycopg2-binary sqlalchemy jsonpickle
 ```
 
-## Clone the orm-examples repo
+## Clone the "orm-examples" repository
+
+Clone the Yugabyte [`orm-examples` repository](https://github.com/yugabyte/orm-examples) by running the following command.
 
 ```sh
 $ git clone https://github.com/yugabyte/orm-examples.git
 ```
-```sh
-export GOPATH=$GOPATH:$HOME/orm-examples/golang/gorm
+
+Update the database settings in the `src/config.py` file to match the following. If YSQL authentication is enabled, add the password (default for the `yugabyte` user is `yugabyte`).
+
+```
+import logging
+
+
+listen_port = 8080
+db_user = 'yugabyte'
+db_password = None
+database = 'ysql_sqlalchemy'
+schema = 'ysql_sqlalchemy'
+db_host = 'localhost'
+db_port = 5433
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s:%(levelname)s:%(message)s"
+    )
 ```
 
-This repository has a Python example that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through SQL Alchemy ORM. It consists of the following.
+## Start the REST API server
 
-- The users of the e-commerce site are stored in the users table.
-- The products table contains a list of products the e-commerce site sells.
-- The orders placed by the users are populated in the orders table. An order can consist of multiple line items, each of these are inserted in the orderline table.
-
-The source for the above application can be found in the [repo](https://github.com/yugabyte/orm-examples/tree/master/golang/gorm). There are a number of options that can be customized in the properties file located at `src/config/config.json`. 
-
-## Build & run the app
+Run the following Python script to start the server.
 
 ```sh
-$ cd ./golang/gorm
+python3 ./src/rest-service.py
 ```
 
-```sh
-$ ./build-and-run.sh
-```
+The REST API server will start and listen for your requests at `http://localhost:8080`.
 
-## Send requests to the app
+## Send requests to the application
 
 Create 2 users.
+
 ```sh
 $ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@yb.com" }' \
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
+
 ```sh
 $ curl --data '{ "firstName" : "Tom", "lastName" : "Stewart", "email" : "tstewart@yb.com" }' \
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
 
 Create 2 products.
+
 ```sh
 $ curl \
   --data '{ "productName": "Notebook", "description": "200 page notebook", "price": 7.50 }' \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/products
 ```
+
 ```sh
 $ curl \
   --data '{ "productName": "Pencil", "description": "Mechanical pencil", "price": 2.50 }' \
@@ -105,11 +137,13 @@ $ curl \
 ```
 
 Create 2 orders.
+
 ```sh
 $ curl \
   --data '{ "userId": "2", "products": [ { "productId": 1, "units": 2 } ] }' \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/orders
 ```
+
 ```sh
 $ curl \
   --data '{ "userId": "2", "products": [ { "productId": 1, "units": 2 }, { "productId": 2, "units": 4 } ] }' \
@@ -121,19 +155,22 @@ $ curl \
 ### Using the YSQL shell
 
 ```sh
-$ ./bin/ysqlsh 
+$ ./bin/ysqlsh
 ```
+
 ```
 ysqlsh (11.2)
 Type "help" for help.
 
 yugabyte=#
 ```
+
 ```postgresql
 yugabyte=# SELECT count(*) FROM users;
 ```
+
 ```
- count 
+ count
 -------
      2
 (1 row)
@@ -142,8 +179,9 @@ yugabyte=# SELECT count(*) FROM users;
 ```postgresql
 yugabyte=# SELECT count(*) FROM products;
 ```
+
 ```
- count 
+ count
 -------
      2
 (1 row)
@@ -152,8 +190,9 @@ yugabyte=# SELECT count(*) FROM products;
 ```postgresql
 yugabyte=# SELECT count(*) FROM orders;
 ```
+
 ```
- count 
+ count
 -------
      2
 (1 row)
@@ -164,7 +203,8 @@ yugabyte=# SELECT count(*) FROM orders;
 ```sh
 $ curl http://localhost:8080/users
 ```
-```
+
+```json
 {
   "content": [
     {
@@ -184,11 +224,11 @@ $ curl http://localhost:8080/users
 }  
 ```
 
-
 ```sh
 $ curl http://localhost:8080/products
 ```
-```
+
+```json
 {
   "content": [
     {
@@ -211,7 +251,8 @@ $ curl http://localhost:8080/products
 ```sh
 $ curl http://localhost:8080/orders
 ```
-```
+
+```json
 {
   "content": [
     {
@@ -247,4 +288,4 @@ $ curl http://localhost:8080/orders
 
 ## Explore the source
 
-As highlighted earlier, the source for the above application can be found in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/golang/gorm) repo.
+The source for the application above can be found in the Yugabyte [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/python/sqlalchemy) repository.
