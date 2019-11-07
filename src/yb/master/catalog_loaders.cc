@@ -40,7 +40,7 @@ namespace master {
 ////////////////////////////////////////////////////////////
 
 Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metadata) {
-  CHECK(!ContainsKey(catalog_manager_->table_ids_map_, table_id))
+  CHECK(!ContainsKey(*catalog_manager_->table_ids_map_, table_id))
         << "Table already exists: " << table_id;
 
   // Setup the table info.
@@ -55,7 +55,8 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
 
   // Add the table to the IDs map and to the name map (if the table is not deleted). Do not
   // add Postgres tables to the name map as the table name is not unique in a namespace.
-  catalog_manager_->table_ids_map_[table->id()] = table;
+  auto table_ids_map_checkout = catalog_manager_->table_ids_map_.CheckOut();
+  (*table_ids_map_checkout)[table->id()] = table;
   if (l->data().table_type() != PGSQL_TABLE_TYPE && !l->data().started_deleting()) {
     catalog_manager_->table_names_map_[{l->data().namespace_id(), l->data().name()}] = table;
   }
@@ -76,7 +77,7 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
 Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& metadata) {
   // Lookup the table.
   scoped_refptr<TableInfo> first_table(FindPtrOrNull(
-                                    catalog_manager_->table_ids_map_, metadata.table_id()));
+                                    *catalog_manager_->table_ids_map_, metadata.table_id()));
 
   // Setup the tablet info.
   TabletInfo* tablet = new TabletInfo(first_table, tablet_id);
@@ -84,7 +85,8 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
   l->mutable_data()->pb.CopyFrom(metadata);
 
   // Add the tablet to the tablet manager.
-  auto inserted = catalog_manager_->tablet_map_.emplace(tablet->tablet_id(), tablet).second;
+  auto tablet_map_checkout = catalog_manager_->tablet_map_.CheckOut();
+  auto inserted = tablet_map_checkout->emplace(tablet->tablet_id(), tablet).second;
   if (!inserted) {
     return STATUS_FORMAT(
         IllegalState, "Loaded tablet that already in map: $0", tablet->tablet_id());
@@ -110,7 +112,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
   }
 
   for (auto table_id : table_ids) {
-    scoped_refptr<TableInfo> table(FindPtrOrNull(catalog_manager_->table_ids_map_, table_id));
+    scoped_refptr<TableInfo> table(FindPtrOrNull(*catalog_manager_->table_ids_map_, table_id));
 
     if (table == nullptr) {
       // If the table is missing and the tablet is in "preparing" state
@@ -125,7 +127,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       // if the tablet is not in a "preparing" state, something is wrong...
       LOG(ERROR) << "Missing table " << table_id << " required by tablet " << tablet_id
                   << ", metadata: " << metadata.DebugString()
-                  << ", tables: " << yb::ToString(catalog_manager_->table_ids_map_);
+                  << ", tables: " << yb::ToString(*catalog_manager_->table_ids_map_);
       return STATUS(Corruption, "Missing table for tablet: ", tablet_id);
     }
 

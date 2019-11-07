@@ -24,8 +24,7 @@ namespace master {
 class YQLTablesVTable : public YQLVirtualTable {
  public:
   explicit YQLTablesVTable(const Master* const master);
-  CHECKED_STATUS RetrieveData(const QLReadRequestPB& request,
-                              std::unique_ptr<QLRowBlock>* vtable) const;
+  Result<std::shared_ptr<QLRowBlock>> RetrieveData(const QLReadRequestPB& request) const override;
  protected:
   Schema CreateSchema() const;
  private:

@@ -46,9 +46,9 @@ Status YQLColumnsVTable::PopulateColumnInformation(const Schema& schema,
   return Status::OK();
 }
 
-Status YQLColumnsVTable::RetrieveData(const QLReadRequestPB& request,
-                                      std::unique_ptr<QLRowBlock>* vtable) const {
-  vtable->reset(new QLRowBlock(schema_));
+Result<std::shared_ptr<QLRowBlock>> YQLColumnsVTable::RetrieveData(
+    const QLReadRequestPB& request) const {
+  auto vtable = std::make_shared<QLRowBlock>(schema_);
   std::vector<scoped_refptr<TableInfo> > tables;
   master_->catalog_manager()->GetAllTables(&tables, true);
   for (scoped_refptr<TableInfo> table : tables) {
@@ -73,7 +73,7 @@ Status YQLColumnsVTable::RetrieveData(const QLReadRequestPB& request,
     // Fill in the hash keys first.
     int32_t num_hash_columns = schema.num_hash_key_columns();
     for (int32_t i = 0; i < num_hash_columns; i++) {
-      QLRow& row = (*vtable)->Extend();
+      QLRow& row = vtable->Extend();
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i, &row));
       // kind (always partition_key for hash columns)
       RETURN_NOT_OK(SetColumnValue(kKind, "partition_key", &row));
@@ -83,7 +83,7 @@ Status YQLColumnsVTable::RetrieveData(const QLReadRequestPB& request,
     // Now fill in the range columns
     int32_t num_range_columns = schema.num_range_key_columns();
     for (int32_t i = num_hash_columns; i < num_hash_columns + num_range_columns; i++) {
-      QLRow& row = (*vtable)->Extend();
+      QLRow& row = vtable->Extend();
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i, &row));
       // kind (always clustering for range columns)
       RETURN_NOT_OK(SetColumnValue(kKind, "clustering", &row));
@@ -92,7 +92,7 @@ Status YQLColumnsVTable::RetrieveData(const QLReadRequestPB& request,
 
     // Now fill in the rest of the columns.
     for (int32_t i = num_hash_columns + num_range_columns; i < schema.num_columns(); i++) {
-      QLRow &row = (*vtable)->Extend();
+      QLRow &row = vtable->Extend();
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i, &row));
       // kind (always regular for regular columns)
       RETURN_NOT_OK(SetColumnValue(kKind, "regular", &row));
@@ -100,7 +100,7 @@ Status YQLColumnsVTable::RetrieveData(const QLReadRequestPB& request,
     }
   }
 
-  return Status::OK();
+  return vtable;
 }
 
 Schema YQLColumnsVTable::CreateSchema() const {

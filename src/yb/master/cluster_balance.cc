@@ -931,7 +931,7 @@ void ClusterLoadBalancer::GetAllReportedDescriptors(TSDescriptorVector* ts_descs
 }
 
 const TabletInfoMap& ClusterLoadBalancer::GetTabletMap() const {
-  return catalog_manager_->tablet_map_;
+  return *catalog_manager_->tablet_map_;
 }
 
 const scoped_refptr<TableInfo> ClusterLoadBalancer::GetTableInfo(const TableId& table_uuid) const {
@@ -954,7 +954,7 @@ const Status ClusterLoadBalancer::GetTabletsForTable(
 }
 
 const TableInfoMap& ClusterLoadBalancer::GetTableMap() const {
-  return catalog_manager_->table_ids_map_;
+  return *catalog_manager_->table_ids_map_;
 }
 
 const PlacementInfoPB& ClusterLoadBalancer::GetClusterPlacementInfo() const {

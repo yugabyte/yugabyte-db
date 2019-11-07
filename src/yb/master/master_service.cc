@@ -46,6 +46,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/server/webserver.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
 #include "yb/util/shared_lock.h"
@@ -91,6 +92,8 @@ MasterServiceImpl::MasterServiceImpl(Master* server)
 void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
                                     TSHeartbeatResponsePB* resp,
                                     RpcContext rpc) {
+  LongOperationTracker long_operation_tracker("TSHeartbeat", 1s);
+
   // If CatalogManager is not initialized don't even know whether or not we will
   // be a leader (so we can't tell whether or not we can accept tablet reports).
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
