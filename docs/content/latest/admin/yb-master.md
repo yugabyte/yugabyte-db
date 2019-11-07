@@ -15,14 +15,6 @@ showAsideToc: true
 
 Use the `yb-master` options to configure and customize your YB-Master services. The [YB-Master](../../architecture/concepts/universe/#yb-master-process) binary (`yb-master`) is located in the `bin` directory of YugabyteDB home.
 
-## Online help
-
-Run `yb-master --help` to display the online help.
-
-```sh
-$ ./bin/yb-master --help
-```
-
 ## Syntax
 
 ```sh
@@ -38,6 +30,14 @@ $ ./bin/yb-master \
 --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
 --replication_factor=3 &
 --enable_ysql=true
+```
+
+### Online help
+
+To display the online help, run `yb-master --help` from the YugabyteDB home directory.
+
+```sh
+$ ./bin/yb-master --help
 ```
 
 ## Configuration options
