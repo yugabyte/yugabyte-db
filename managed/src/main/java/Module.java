@@ -4,6 +4,7 @@ import com.google.inject.AbstractModule;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.CallHome;
+import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.common.services.LocalYBClientService;
@@ -56,6 +57,7 @@ public class Module extends AbstractModule {
       bind(HealthChecker.class).asEagerSingleton();
       bind(EncryptionAtRestManager.class).asEagerSingleton();
       bind(EncryptionAtRestUniverseKeyCache.class).asEagerSingleton();
+      bind(SetUniverseKey.class).asEagerSingleton();
     }
   }
 }

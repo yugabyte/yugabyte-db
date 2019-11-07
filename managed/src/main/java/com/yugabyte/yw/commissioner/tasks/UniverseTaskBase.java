@@ -382,6 +382,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.universeUUID = taskParams().universeUUID;
     params.universeEncrypted = universeEncrypted;
     params.nodeAddress = HostAndPort.fromParts(node.cloudInfo.private_ip, node.masterRpcPort);
+    params.nodeName = node.nodeName;
     WaitForEncryptionKeyInMemory task = new WaitForEncryptionKeyInMemory();
     task.initialize(params);
     subTaskGroup.addTask(task);

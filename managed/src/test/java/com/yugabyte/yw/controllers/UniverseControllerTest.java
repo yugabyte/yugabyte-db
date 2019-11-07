@@ -1694,11 +1694,6 @@ public class UniverseControllerTest extends WithApplication {
             any(Map.class),
             eq(true)
     );
-    verify(mockEARManager, times(1)).getNumKeyRotations(
-            eq(customer.uuid),
-            any(UUID.class),
-            any(Map.class)
-    );
   }
 
   @Test
@@ -1795,11 +1790,6 @@ public class UniverseControllerTest extends WithApplication {
     verify(mockCommissioner).submit(eq(TaskType.SetUniverseKey), argCaptor.capture());
     verify(mockEARManager, times(1)).getServiceInstance("SMARTKEY");
     verify(mockEARManager, times(1)).generateUniverseKey(
-            eq(customer.uuid),
-            eq(UUID.fromString(testUniUUID)),
-            any(Map.class)
-    );
-    verify(mockEARManager, times(1)).getNumKeyRotations(
             eq(customer.uuid),
             eq(UUID.fromString(testUniUUID)),
             any(Map.class)

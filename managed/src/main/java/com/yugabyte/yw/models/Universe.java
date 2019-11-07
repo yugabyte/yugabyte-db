@@ -719,4 +719,8 @@ public class Universe extends Model {
   public Map<String, String> getEncryptionAtRestConfig() {
     return getUniverseDetails().encryptionAtRestConfig;
   }
+
+  public boolean universeIsLocked() {
+    return getUniverseDetails().updateInProgress;
+  }
 }

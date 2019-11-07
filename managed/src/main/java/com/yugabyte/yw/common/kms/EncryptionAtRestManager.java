@@ -137,7 +137,6 @@ public class EncryptionAtRestManager {
         try {
             kmsProvider = config.get("kms_provider");
             keyService = getServiceInstance(kmsProvider);
-            universe = Universe.get(universeUUID);
             if (forceCreate || (!universe.isEncryptedAtRest() &&
                     !(getNumKeyRotations(customerUUID, universeUUID, config) > 0))) {
                 LOG.info(String.format(
@@ -220,33 +219,35 @@ public class EncryptionAtRestManager {
             Map<String, String> config
     ) {
         int numRotations = 0;
-        EncryptionAtRestService keyService;
-        Customer customer = Customer.get(customerUUID);
-        if (customer == null) {
-            String errMsg = String.format("Invalid Customer UUID: %s", customerUUID.toString());
-            LOG.error(errMsg);
-            throw new IllegalArgumentException(errMsg);
-        }
-        Universe universe = Universe.get(universeUUID);
-        if (universe == null) {
-            String errMsg = String.format("Invalid Universe UUID: %s", universeUUID.toString());
-            LOG.error(errMsg);
-            throw new IllegalArgumentException(errMsg);
-        }
-        try {
-            String keyProvider = config.get("kms_provider");
-            keyService = getServiceInstance(keyProvider);
-            List<KmsHistory> keyRotations = keyService
-                    .getKeyRotationHistory(customerUUID, universeUUID);
-            if (keyRotations != null) numRotations = keyRotations.size();
-        } catch (Exception e) {
-            String errMsg = String.format(
-                    "Error attempting to retrieve the number of key rotations " +
-                            "for customer %s and universe %s",
-                    customerUUID.toString(),
-                    universeUUID.toString()
-            );
-            LOG.error(errMsg, e);
+        if (config != null) {
+            EncryptionAtRestService keyService;
+            Customer customer = Customer.get(customerUUID);
+            if (customer == null) {
+                String errMsg = String.format("Invalid Customer UUID: %s", customerUUID.toString());
+                LOG.error(errMsg);
+                throw new IllegalArgumentException(errMsg);
+            }
+            Universe universe = Universe.get(universeUUID);
+            if (universe == null) {
+                String errMsg = String.format("Invalid Universe UUID: %s", universeUUID.toString());
+                LOG.error(errMsg);
+                throw new IllegalArgumentException(errMsg);
+            }
+            try {
+                String keyProvider = config.get("kms_provider");
+                keyService = getServiceInstance(keyProvider);
+                List<KmsHistory> keyRotations = keyService
+                        .getKeyRotationHistory(customerUUID, universeUUID);
+                if (keyRotations != null) numRotations = keyRotations.size();
+            } catch (Exception e) {
+                String errMsg = String.format(
+                        "Error attempting to retrieve the number of key rotations " +
+                                "for customer %s and universe %s",
+                        customerUUID.toString(),
+                        universeUUID.toString()
+                );
+                LOG.error(errMsg, e);
+            }
         }
         return numRotations;
     }
