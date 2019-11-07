@@ -1546,3 +1546,109 @@ Datum agtype_access_operator(PG_FUNCTION_ARGS)
 
     return AGTYPE_P_GET_DATUM(object);
 }
+
+PG_FUNCTION_INFO_V1(agtype_string_match_starts_with);
+/*
+ * Execution function for STARTS WITH
+ */
+Datum agtype_string_match_starts_with(PG_FUNCTION_ARGS)
+{
+    agtype *lhs = AG_GET_ARG_AGTYPE_P(0);
+    agtype *rhs = AG_GET_ARG_AGTYPE_P(1);
+
+    if (AGT_ROOT_IS_SCALAR(lhs) && AGT_ROOT_IS_SCALAR(rhs))
+    {
+        agtype_value *lhs_value;
+        agtype_value *rhs_value;
+
+        lhs_value = get_ith_agtype_value_from_container(&lhs->root, 0);
+        rhs_value = get_ith_agtype_value_from_container(&rhs->root, 0);
+
+        if (lhs_value->type == AGTV_STRING && rhs_value->type == AGTV_STRING)
+        {
+            if (lhs_value->val.string.len < rhs_value->val.string.len)
+                return boolean_to_agtype(false);
+
+            if (strncmp(lhs_value->val.string.val, rhs_value->val.string.val,
+                        rhs_value->val.string.len) == 0)
+                return boolean_to_agtype(true);
+            else
+                return boolean_to_agtype(false);
+        }
+    }
+    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                    errmsg("agtype string values expected")));
+}
+
+PG_FUNCTION_INFO_V1(agtype_string_match_ends_with);
+/*
+ * Execution function for ENDS WITH
+ */
+Datum agtype_string_match_ends_with(PG_FUNCTION_ARGS)
+{
+    agtype *lhs = AG_GET_ARG_AGTYPE_P(0);
+    agtype *rhs = AG_GET_ARG_AGTYPE_P(1);
+
+    if (AGT_ROOT_IS_SCALAR(lhs) && AGT_ROOT_IS_SCALAR(rhs))
+    {
+        agtype_value *lhs_value;
+        agtype_value *rhs_value;
+
+        lhs_value = get_ith_agtype_value_from_container(&lhs->root, 0);
+        rhs_value = get_ith_agtype_value_from_container(&rhs->root, 0);
+
+        if (lhs_value->type == AGTV_STRING && rhs_value->type == AGTV_STRING)
+        {
+            if (lhs_value->val.string.len < rhs_value->val.string.len)
+                return boolean_to_agtype(false);
+
+            if (strncmp(lhs_value->val.string.val + lhs_value->val.string.len -
+                            rhs_value->val.string.len,
+                        rhs_value->val.string.val,
+                        rhs_value->val.string.len) == 0)
+                return boolean_to_agtype(true);
+            else
+                return boolean_to_agtype(false);
+        }
+    }
+    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                    errmsg("agtype string values expected")));
+}
+
+PG_FUNCTION_INFO_V1(agtype_string_match_contains);
+/*
+ * Execution function for CONTAINS
+ */
+Datum agtype_string_match_contains(PG_FUNCTION_ARGS)
+{
+    agtype *lhs = AG_GET_ARG_AGTYPE_P(0);
+    agtype *rhs = AG_GET_ARG_AGTYPE_P(1);
+
+    if (AGT_ROOT_IS_SCALAR(lhs) && AGT_ROOT_IS_SCALAR(rhs))
+    {
+        agtype_value *lhs_value;
+        agtype_value *rhs_value;
+
+        lhs_value = get_ith_agtype_value_from_container(&lhs->root, 0);
+        rhs_value = get_ith_agtype_value_from_container(&rhs->root, 0);
+
+        if (lhs_value->type == AGTV_STRING && rhs_value->type == AGTV_STRING)
+        {
+            char *l;
+            char *r;
+
+            if (lhs_value->val.string.len < rhs_value->val.string.len)
+                return boolean_to_agtype(false);
+
+            l = pnstrdup(lhs_value->val.string.val, lhs_value->val.string.len);
+            r = pnstrdup(rhs_value->val.string.val, rhs_value->val.string.len);
+
+            if (strstr(l, r) == NULL)
+                return boolean_to_agtype(false);
+            else
+                return boolean_to_agtype(true);
+        }
+    }
+    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                    errmsg("agtype string values expected")));
+}

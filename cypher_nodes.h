@@ -130,6 +130,22 @@ typedef struct cypher_list
     int location;
 } cypher_list;
 
+enum cypher_string_match_op
+{
+    CSMO_STARTS_WITH,
+    CSMO_ENDS_WITH,
+    CSMO_CONTAINS
+};
+
+typedef struct cypher_string_match
+{
+    ExtensibleNode extensible;
+    enum cypher_string_match_op operation;
+    Node *lhs;
+    Node *rhs;
+    int location;
+} cypher_string_match;
+
 /* clauses */
 void out_cypher_return(StringInfo str, const ExtensibleNode *node);
 void out_cypher_with(StringInfo str, const ExtensibleNode *node);
@@ -149,4 +165,6 @@ void out_cypher_bool_const(StringInfo str, const ExtensibleNode *node);
 void out_cypher_map(StringInfo str, const ExtensibleNode *node);
 void out_cypher_list(StringInfo str, const ExtensibleNode *node);
 
+/* string match */
+void out_cypher_string_match(StringInfo str, const ExtensibleNode *node);
 #endif

@@ -232,6 +232,7 @@ SELECT bool_to_agtype(true) <> bool_to_agtype(false);
 --Invalid Map Key (should fail)
 SELECT agtype_build_map('[0]'::agtype, null);
 
+--
 -- Test agtype object/array access operators object.property, object["property"], and array[element]
 -- Note: At this point, object.property and object["property"] are equivalent.
 --
@@ -251,6 +252,19 @@ SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', 'null');
 SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', 'true');
 SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', '2');
 SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', '2.0');
+
+--
+-- Test STARTS WITH, ENDS WITH, and CONTAINS
+--
+SELECT agtype_string_match_starts_with('"abcdefghijklmnopqrstuvwxyz"', '"abcd"');
+SELECT agtype_string_match_ends_with('"abcdefghijklmnopqrstuvwxyz"', '"wxyz"');
+SELECT agtype_string_match_contains('"abcdefghijklmnopqrstuvwxyz"', '"abcd"');
+SELECT agtype_string_match_contains('"abcdefghijklmnopqrstuvwxyz"', '"hijk"');
+SELECT agtype_string_match_contains('"abcdefghijklmnopqrstuvwxyz"', '"wxyz"');
+-- should all fail
+SELECT agtype_string_match_starts_with('"abcdefghijklmnopqrstuvwxyz"', '"bcde"');
+SELECT agtype_string_match_ends_with('"abcdefghijklmnopqrstuvwxyz"', '"vwxy"');
+SELECT agtype_string_match_contains('"abcdefghijklmnopqrstuvwxyz"', '"hijl"');
 
 --
 -- Cleanup

@@ -361,5 +361,33 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 --
+-- agtype string match function
+--
+
+CREATE FUNCTION agtype_string_match_starts_with(agtype, agtype)
+RETURNS agtype
+LANGUAGE C
+STABLE
+STRICT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION agtype_string_match_ends_with(agtype, agtype)
+RETURNS agtype
+LANGUAGE C
+STABLE
+STRICT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION agtype_string_match_contains(agtype, agtype)
+RETURNS agtype
+LANGUAGE C
+STABLE
+STRICT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+--
 -- End of agensgraph--0.0.0.sql
 --

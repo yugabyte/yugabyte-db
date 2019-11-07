@@ -31,6 +31,8 @@ static Node *transform_cypher_map(ParseState *pstate, cypher_map *cm);
 static Node *transform_cypher_list(ParseState *pstate, cypher_list *cl);
 static Node *transform_cypher_indirection(ParseState *pstate,
                                           A_Indirection *ind);
+static Node *transform_cypher_string_match(ParseState *pstate,
+                                           cypher_string_match *csm_node);
 
 Node *transform_cypher_expr(ParseState *pstate, Node *expr,
                             ParseExprKind expr_kind)
@@ -100,6 +102,11 @@ static Node *transform_cypher_expr_recurse(ParseState *pstate, Node *expr)
         else if (is_ag_node(expr, cypher_list))
         {
             return transform_cypher_list(pstate, (cypher_list *)expr);
+        }
+        else if (is_ag_node(expr, cypher_string_match))
+        {
+            return transform_cypher_string_match(pstate,
+                                                 (cypher_string_match *)expr);
         }
         else
         {
@@ -387,6 +394,50 @@ static Node *transform_cypher_indirection(ParseState *pstate,
     func_expr = makeFuncExpr(func_access_oid, AGTYPEOID, args, InvalidOid,
                              InvalidOid, COERCE_EXPLICIT_CALL);
     func_expr->location = location;
+
+    return (Node *)func_expr;
+}
+
+static Node *transform_cypher_string_match(ParseState *pstate,
+                                           cypher_string_match *csm_node)
+{
+    Node *expr;
+    FuncExpr *func_expr;
+    Oid func_access_oid;
+    List *args = NIL;
+    Datum func_name;
+
+    Oid func_arg_types[] = {AGTYPEOID, AGTYPEOID};
+    oidvector *parameter_types = buildoidvector(func_arg_types, 2);
+
+    switch (csm_node->operation)
+    {
+    case CSMO_STARTS_WITH:
+        func_name = PointerGetDatum("agtype_string_match_starts_with");
+        break;
+    case CSMO_ENDS_WITH:
+        func_name = PointerGetDatum("agtype_string_match_ends_with");
+        break;
+    case CSMO_CONTAINS:
+        func_name = PointerGetDatum("agtype_string_match_contains");
+        break;
+
+    default:
+        ereport(ERROR, (errmsg("unknown CSMO operation")));
+    }
+
+    func_access_oid = GetSysCacheOid3(
+        PROCNAMEARGSNSP, func_name, PointerGetDatum(parameter_types),
+        ObjectIdGetDatum(ag_catalog_namespace_id()));
+
+    expr = transform_cypher_expr_recurse(pstate, csm_node->lhs);
+    args = lappend(args, expr);
+    expr = transform_cypher_expr_recurse(pstate, csm_node->rhs);
+    args = lappend(args, expr);
+
+    func_expr = makeFuncExpr(func_access_oid, AGTYPEOID, args, InvalidOid,
+                             InvalidOid, COERCE_EXPLICIT_CALL);
+    func_expr->location = csm_node->location;
 
     return (Node *)func_expr;
 }

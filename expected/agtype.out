@@ -748,6 +748,7 @@ SELECT bool_to_agtype(true) <> bool_to_agtype(false);
 --Invalid Map Key (should fail)
 SELECT agtype_build_map('[0]'::agtype, null);
 ERROR:  key value must be scalar, not array, composite, or json
+--
 -- Test agtype object/array access operators object.property, object["property"], and array[element]
 -- Note: At this point, object.property and object["property"] are equivalent.
 --
@@ -805,6 +806,58 @@ SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', '2');
 ERROR:  AGTV_INTEGER is not a valid key type
 SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', '2.0');
 ERROR:  AGTV_FLOAT is not a valid key type
+--
+-- Test STARTS WITH, ENDS WITH, and CONTAINS
+--
+SELECT agtype_string_match_starts_with('"abcdefghijklmnopqrstuvwxyz"', '"abcd"');
+ agtype_string_match_starts_with 
+---------------------------------
+ true
+(1 row)
+
+SELECT agtype_string_match_ends_with('"abcdefghijklmnopqrstuvwxyz"', '"wxyz"');
+ agtype_string_match_ends_with 
+-------------------------------
+ true
+(1 row)
+
+SELECT agtype_string_match_contains('"abcdefghijklmnopqrstuvwxyz"', '"abcd"');
+ agtype_string_match_contains 
+------------------------------
+ true
+(1 row)
+
+SELECT agtype_string_match_contains('"abcdefghijklmnopqrstuvwxyz"', '"hijk"');
+ agtype_string_match_contains 
+------------------------------
+ true
+(1 row)
+
+SELECT agtype_string_match_contains('"abcdefghijklmnopqrstuvwxyz"', '"wxyz"');
+ agtype_string_match_contains 
+------------------------------
+ true
+(1 row)
+
+-- should all fail
+SELECT agtype_string_match_starts_with('"abcdefghijklmnopqrstuvwxyz"', '"bcde"');
+ agtype_string_match_starts_with 
+---------------------------------
+ false
+(1 row)
+
+SELECT agtype_string_match_ends_with('"abcdefghijklmnopqrstuvwxyz"', '"vwxy"');
+ agtype_string_match_ends_with 
+-------------------------------
+ false
+(1 row)
+
+SELECT agtype_string_match_contains('"abcdefghijklmnopqrstuvwxyz"', '"hijl"');
+ agtype_string_match_contains 
+------------------------------
+ false
+(1 row)
+
 --
 -- Cleanup
 --

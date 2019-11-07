@@ -193,10 +193,33 @@ $$ RETURN NOT ((true OR false) AND (false OR true)) $$
 AS r(result boolean);
 
 --
--- Test indirection logic for object.property, object["property"], and array[element]
+-- Test indirection transform logic for object.property, object["property"], and array[element]
 --
 SELECT * FROM cypher(
 $$ RETURN [1, {bool:true, int:3, array:[9, 11, {boom:false, float:3.14}, 13]}, 5, 7, 9][1].array[2]["float"] $$)
+AS r(result agtype);
+
+--
+-- Test STARTS WITH, ENDS WITH, and CONTAINS transform logic
+--
+SELECT * FROM cypher(
+$$ RETURN "abcdefghijklmnopqrstuvwxyz" STARTS WITH "abcd" $$)
+AS r(result agtype);
+SELECT * FROM cypher(
+$$ RETURN "abcdefghijklmnopqrstuvwxyz" ENDS WITH "wxyz" $$)
+AS r(result agtype);
+SELECT * FROM cypher(
+$$ RETURN "abcdefghijklmnopqrstuvwxyz" CONTAINS "klmn" $$)
+AS r(result agtype);
+-- these should fail
+SELECT * FROM cypher(
+$$ RETURN "abcdefghijklmnopqrstuvwxyz" STARTS WITH "bcde" $$)
+AS r(result agtype);
+SELECT * FROM cypher(
+$$ RETURN "abcdefghijklmnopqrstuvwxyz" ENDS WITH "vwxy" $$)
+AS r(result agtype);
+SELECT * FROM cypher(
+$$ RETURN "abcdefghijklmnopqrstuvwxyz" CONTAINS "klmo" $$)
 AS r(result agtype);
 
 --

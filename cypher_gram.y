@@ -850,24 +850,39 @@ expr:
         }
     | expr STARTS WITH expr %prec STARTS
         {
-            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                            errmsg("STARTS WITH not implemented"),
-                            ag_scanner_errposition(@2, scanner)));
-            $$ = NULL;
+            cypher_string_match *n;
+
+            n = make_ag_node(cypher_string_match);
+            n->operation = CSMO_STARTS_WITH;
+            n->lhs = $1;
+            n->rhs = $4;
+            n->location = @2;
+
+            $$ = (Node *)n;
         }
     | expr ENDS WITH expr %prec ENDS
         {
-            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                            errmsg("ENDS WITH not implemented"),
-                            ag_scanner_errposition(@2, scanner)));
-            $$ = NULL;
+            cypher_string_match *n;
+
+            n = make_ag_node(cypher_string_match);
+            n->operation = CSMO_ENDS_WITH;
+            n->lhs = $1;
+            n->rhs = $4;
+            n->location = @2;
+
+            $$ = (Node *)n;
         }
     | expr CONTAINS expr
         {
-            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                            errmsg("CONTAINS not implemented"),
-                            ag_scanner_errposition(@2, scanner)));
-            $$ = NULL;
+            cypher_string_match *n;
+
+            n = make_ag_node(cypher_string_match);
+            n->operation = CSMO_CONTAINS;
+            n->lhs = $1;
+            n->rhs = $3;
+            n->location = @2;
+
+            $$ = (Node *)n;
         }
     | expr '[' expr ']'
         {
@@ -1001,7 +1016,7 @@ list:
 
             n = make_ag_node(cypher_list);
             n->elems = $2;
-            
+
             $$ = (Node *)n;
         }
     ;
