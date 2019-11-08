@@ -227,17 +227,11 @@ The following options, or flags, support the use of the [YSQL API](../../api/ysq
 
 Enables the YSQL API. Replaces the deprecated `--start_pgsql_proxy` option.
 
-Default: `false`
-
-{{< note title="Note" >}}
-
-To enable YSQL, you must set `--enable_ysql=true` on all YB-Master and YB-TServer nodes.
-
-{{< /note >}}
+Default: `true`
 
 #### --ysql_enable_auth
 
-Enables YSQL authentication. 
+Enables YSQL authentication.
 
 {{< note title="Note" >}}
 
