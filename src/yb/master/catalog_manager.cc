@@ -4130,9 +4130,6 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
   {
     TRACE("Removing from maps");
     std::lock_guard<LockType> l_map(lock_);
-    CHECK(FindPtrOrNull(namespace_names_map_, database->name()) == nullptr)
-      << "YSQL database name should not be included in namespace_names_map_. "
-      << "If included, its name must be removed from map here when dropping";
     if (namespace_ids_map_.erase(database->id()) < 1) {
       PANIC_RPC(rpc, "Could not remove namespace from map, name=" + l->data().name());
     }
