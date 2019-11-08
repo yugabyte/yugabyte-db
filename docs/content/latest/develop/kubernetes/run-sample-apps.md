@@ -8,12 +8,6 @@ Create a cluster.
 $ kubectl apply -f yugabyte-statefulset.yaml
 ```
 
-Initialize the YSQL API.
-
-```sh
-$ kubectl exec -it yb-master-0 bash --  -c "YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses=yb-master-0.yb-masters.default.svc.cluster.local:7100,yb-master-1.yb-masters.default.svc.cluster.local:7100,yb-master-2.yb-masters.default.svc.cluster.local:7100 /home/yugabyte/postgres/bin/initdb -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres"
-```
-
 Initialize the YEDIS API.
 
 ```sh

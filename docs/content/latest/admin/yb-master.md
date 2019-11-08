@@ -28,8 +28,7 @@ $ ./bin/yb-master \
 --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
 --rpc_bind_addresses 172.151.17.130 \
 --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
---replication_factor=3 &
---enable_ysql=true
+--replication_factor=3
 ```
 
 ### Online help
@@ -120,13 +119,7 @@ Default: The `www` directory in the YugabyteDB home directory.
 
 Enables the YSQL API when value is `true`. Replaces the deprecated `--start_pgsql_proxy` option.
 
-Default: `false`
-
-{{< note title="Note" >}}
-
-To enable YSQL, you must set `--enable_ysql=true` on all YB-Master and YB-TServer nodes.
-
-{{< /note >}}
+Default: `true`
 
 ---
 

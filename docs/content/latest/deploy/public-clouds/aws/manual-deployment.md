@@ -331,7 +331,6 @@ This step prepares the config files for the 3 masters. The config files need to,
     echo --placement_cloud=$CLOUD               >> $CONFIG_FILE
     echo --placement_region=$REGION             >> $CONFIG_FILE
     echo --placement_zone=$AZ                   >> $CONFIG_FILE
-    echo --enable_ysql                          >> $CONFIG_FILE
 "
 )
 ```
@@ -348,7 +347,6 @@ This step prepares the config files for the 3 masters. The config files need to,
     echo --placement_cloud=$CLOUD               >> $CONFIG_FILE
     echo --placement_region=$REGION             >> $CONFIG_FILE
     echo --placement_zone=$AZ                   >> $CONFIG_FILE
-    echo --enable_ysql                          >> $CONFIG_FILE
 "
 )
 ```
@@ -365,7 +363,6 @@ This step prepares the config files for the 3 masters. The config files need to,
     echo --placement_cloud=$CLOUD               >> $CONFIG_FILE
     echo --placement_region=$REGION             >> $CONFIG_FILE
     echo --placement_zone=$AZ                   >> $CONFIG_FILE
-    echo --enable_ysql                          >> $CONFIG_FILE
 "
 )
 ```
@@ -399,7 +396,6 @@ done
       echo --placement_cloud=$CLOUD                           >> $CONFIG_FILE
       echo --placement_region=$REGION                         >> $CONFIG_FILE
       echo --placement_zone=$AZ                               >> $CONFIG_FILE
-      echo --enable_ysql                                      >> $CONFIG_FILE
       echo --pgsql_proxy_bind_address=$ip:5433                >> $CONFIG_FILE
     "
  done
@@ -422,7 +418,6 @@ done
       echo --placement_cloud=$CLOUD                           >> $CONFIG_FILE
       echo --placement_region=$REGION                         >> $CONFIG_FILE
       echo --placement_zone=$AZ                               >> $CONFIG_FILE
-      echo --enable_ysql                                      >> $CONFIG_FILE
       echo --pgsql_proxy_bind_address=$ip:5433                >> $CONFIG_FILE
     "
  done
@@ -445,7 +440,6 @@ done
       echo --placement_cloud=$CLOUD                           >> $CONFIG_FILE
       echo --placement_region=$REGION                         >> $CONFIG_FILE
       echo --placement_zone=$AZ                               >> $CONFIG_FILE
-      echo --enable_ysql                                      >> $CONFIG_FILE
       echo --pgsql_proxy_bind_address=$ip:5433                >> $CONFIG_FILE
     "
  done
