@@ -1,6 +1,9 @@
 <?xml version="1.0"?>
 <!-- Copyright (c) YugaByte, Inc. -->
-<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
+<project
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                        http://maven.apache.org/xsd/maven-4.0.0.xsd"
+    xmlns="http://maven.apache.org/POM/4.0.0"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <modelVersion>4.0.0</modelVersion>
   <parent>
@@ -9,8 +12,8 @@
     <version>0.8.0-SNAPSHOT</version>
   </parent>
 
-  <artifactId>yb-loadtester</artifactId>
-  <name>YB Load Tester</name>
+  <artifactId>yb-multiapi</artifactId>
+  <name>YB Multi API</name>
 
   <dependencies>
     <dependency>
@@ -38,16 +41,10 @@
       </exclusions>
     </dependency>
     <dependency>
-      <groupId>log4j</groupId>
-      <artifactId>log4j</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-log4j12</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-api</artifactId>
+      <groupId>org.yb</groupId>
+      <artifactId>yb-pgsql</artifactId>
+      <type>test-jar</type>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>${junit.groupId}</groupId>
@@ -61,14 +58,6 @@
     <dependency>
       <groupId>commons-codec</groupId>
       <artifactId>commons-codec</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.yugabyte</groupId>
-      <artifactId>jedis</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.yugabyte.spark</groupId>
-      <artifactId>spark-cassandra-connector_2.10</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.spark</groupId>
@@ -90,11 +79,6 @@
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
     </dependency>
-    <dependency>
-      <groupId>com.yugabyte</groupId>
-      <artifactId>yb-sample-apps</artifactId>
-      <version>1.0.9</version>
-    </dependency>
   </dependencies>
 
   <build>
@@ -115,22 +99,6 @@
               <overWriteSnapshots>true</overWriteSnapshots>
               <overWriteIfNewer>true</overWriteIfNewer>
             </configuration>
-          </execution>
-        </executions>
-      </plugin>
-      <!-- Attach source and javadoc to packaged jar -->
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-source-plugin</artifactId>
-        <configuration>
-          <finalName>yb-sample-apps</finalName>
-        </configuration>
-        <executions>
-          <execution>
-            <id>attach-sources</id>
-            <goals>
-              <goal>jar</goal>
-            </goals>
           </execution>
         </executions>
       </plugin>
