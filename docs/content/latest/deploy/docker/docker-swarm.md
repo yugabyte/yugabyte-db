@@ -167,8 +167,7 @@ $ docker service create \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 --fs_data_dirs=/mnt/data0 \
 --master_addresses=yb-master1:7100,yb-master2:7100,yb-master3:7100 \
---replication_factor=3 \
---enable_ysql=true
+--replication_factor=3
 ```
 
 ```sh
@@ -180,8 +179,7 @@ $ docker service create \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 --fs_data_dirs=/mnt/data0 \
 --master_addresses=yb-master1:7100,yb-master2:7100,yb-master3:7100 \
---replication_factor=3 \
---enable_ysql=true
+--replication_factor=3
 ```
 
 ```sh
@@ -193,8 +191,7 @@ $ docker service create \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 --fs_data_dirs=/mnt/data0 \
 --master_addresses=yb-master1:7100,yb-master2:7100,yb-master3:7100 \
---replication_factor=3 \
---enable_ysql=true
+--replication_factor=3
 ```
 
 - Run the command below to see the services that are now live.

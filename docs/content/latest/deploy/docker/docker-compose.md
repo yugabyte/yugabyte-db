@@ -57,8 +57,7 @@ services:
       command: [ "/home/yugabyte/bin/yb-master",
                 "--fs_data_dirs=/mnt/disk0,/mnt/disk1",
                 "--master_addresses=yb-master-n1:7100",
-                "--replication_factor=1",
-                "--enable_ysql=true"]
+                "--replication_factor=1"]
       ports:
       - "7000:7000"
       environment:

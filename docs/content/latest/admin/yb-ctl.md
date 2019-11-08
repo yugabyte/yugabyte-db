@@ -107,8 +107,6 @@ For details and examples, see [Initialize the YEDIS API](#initialize-the-yedis-a
 
 ## Optional arguments
 
-
-
 ### --help | -h
 
 Shows the help message and then exits.
