@@ -169,3 +169,11 @@ void out_cypher_list(StringInfo str, const ExtensibleNode *node)
     write_node_field(elems);
     write_location_field(location);
 }
+
+void out_cypher_param(StringInfo str, const ExtensibleNode *node)
+{
+    DEFINE_AG_NODE(cypher_param);
+
+    write_string_field(name);
+    write_location_field(location);
+}

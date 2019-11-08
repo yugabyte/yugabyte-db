@@ -307,19 +307,43 @@ $$) AS t(a text);
 --
 -- parameter
 --
-
--- This fails for now because there is no logic in parser implementation
--- to handle parameters.
+PREPARE cypher_parameter (agtype) AS
 SELECT * FROM cypher($$
-RETURN $_$09A_z, $A, $z
-$$) AS t(a text, b text, c text);
+RETURN $var
+$$, $1) as t(i agtype);
+EXECUTE cypher_parameter('{"var":1}'::agtype);
 
--- invalid parameter names
+PREPARE cypher_parameterobject (agtype) AS
+SELECT * FROM cypher($$
+RETURN $var.innervar
+$$, $1) as t(i agtype);
+EXECUTE cypher_parameterobject('{"var":{"innervar":1}}'::agtype);
 
-SELECT * FROM cypher($cypher$
-RETURN $$
-$cypher$) AS t(a text);
+PREPARE cypher_parameterarray (agtype) AS
+SELECT * FROM cypher($$
+RETURN $var[$indexvar]
+$$, $1) as t(i agtype);
+EXECUTE cypher_parameterarray('{"var":[1, 2, 3], "indexvar":1}'::agtype);
+
+PREPARE cypher_parametermissingargument (agtype) AS
+SELECT * FROM cypher($$
+RETURN $var, $missingvar
+$$, $1) as t(i agtype, j agtype);
+EXECUTE cypher_parametermissingargument('{"var":1}'::agtype);
+
+PREPARE cypher_parameterinvalidargument (agtype) AS
+SELECT * FROM cypher($$
+RETURN $var
+$$, $1) as t(i agtype);
+EXECUTE cypher_parameterinvalidargument('[1]'::agtype);
+
+--Missing Parameter Argument
+PREPARE cypher_missingparamarguement (int) AS
+SELECT $1, * FROM cypher($$
+RETURN $var
+$$) as t(i agtype);
 
 SELECT * FROM cypher($$
-RETURN $0
-$$) AS t(a text);
+RETURN $var
+$$) as t(i agtype);
+

@@ -37,7 +37,7 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate);
 static const char *expr_get_const_cstring(Node *expr, const char *source_str);
 static int get_query_location(const int location, const char *source_str);
 static void cypher_parse_error_callback(void *arg);
-static Query *parse_and_analyze_cypher(const char *query_str);
+static Query *parse_and_analyze_cypher(const char *query_str, Param *params);
 static void check_result_type(Query *query, RangeTblFunction *rtfunc,
                               ParseState *pstate);
 
@@ -216,6 +216,7 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     RangeTblFunction *rtfunc = linitial(rte->functions);
     FuncExpr *funcexpr = (FuncExpr *)rtfunc->funcexpr;
     Node *arg;
+    Node *params;
     const char *query_str;
     cypher_parse_error_callback_arg ecb_arg;
     ErrorContextCallback ecb;
@@ -236,7 +237,6 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     }
 
     // NOTE: Remove asserts once the prototype of cypher() function is fixed.
-    Assert(list_length(funcexpr->args) == 1);
     arg = linitial(funcexpr->args);
     Assert(exprType(arg) == CSTRINGOID);
 
@@ -260,6 +260,26 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
                         parser_errposition(pstate, exprLocation(arg))));
     }
 
+    /*
+     * Check to see if the cypher function had any parameters passed to it,
+     * if so make sure Postgres parsed the second argument to a Param node.
+     */
+    if (list_length(funcexpr->args) == 2)
+    {
+        params = lsecond(funcexpr->args);
+        if (!IsA(params, Param))
+            ereport(
+                ERROR,
+                (errcode(ERRCODE_SYNTAX_ERROR),
+                 errmsg(
+                     "Second argument of cypher function must be a parameter"),
+                 parser_errposition(pstate, exprLocation(params))));
+    }
+    else
+    {
+        params = NULL;
+    }
+
     // install error context callback to adjust the error position
     ecb_arg.source_str = pstate->p_sourcetext;
     ecb_arg.query_loc = get_query_location(((Const *)arg)->location,
@@ -269,7 +289,7 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     ecb.arg = &ecb_arg;
     error_context_stack = &ecb;
 
-    query = parse_and_analyze_cypher(query_str);
+    query = parse_and_analyze_cypher(query_str, (Param *)params);
 
     // uninstall error context callback
     error_context_stack = ecb.previous;
@@ -329,7 +349,7 @@ static void cypher_parse_error_callback(void *arg)
     errposition(pos + geterrposition());
 }
 
-static Query *parse_and_analyze_cypher(const char *query_str)
+static Query *parse_and_analyze_cypher(const char *query_str, Param *params)
 {
     List *stmt;
     ParseState *pstate;
@@ -338,6 +358,15 @@ static Query *parse_and_analyze_cypher(const char *query_str)
     stmt = parse_cypher(query_str);
 
     pstate = make_parsestate(NULL);
+
+    /*
+     * In order to avoid using a global variable in the cypher_expr.c file or
+     * tightly coupling the grammar logic with the transform logic, we are
+     * using the p_ref_hook_state variable in the ParseState to hold then
+     * information we need to handle cypher parameters. The side effect of
+     * this is we can no longer support SQL subqueries in a Cypher query.
+     */
+    pstate->p_ref_hook_state = params;
     query = transform_cypher_stmt(pstate, stmt);
     free_parsestate(pstate);
 

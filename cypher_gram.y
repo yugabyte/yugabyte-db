@@ -932,6 +932,16 @@ atom:
         {
             $$ = $2;
         }
+    | PARAMETER
+        {
+            cypher_param *n;
+
+            n  = make_ag_node(cypher_param);
+            n->name = $1;
+            n->location = @1;
+
+            $$ = (Node *)n;
+        }
     ;
 
 literal:
