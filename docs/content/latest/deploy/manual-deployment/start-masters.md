@@ -41,7 +41,6 @@ For the full list of flags, see the [yb-master Reference](../../../admin/yb-mast
 $ ./bin/yb-master \
   --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
   --rpc_bind_addresses 172.151.17.130 \
-  --enable_ysql=true \
   --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
   >& /home/centos/disk1/yb-master.out &
 ```
@@ -53,7 +52,6 @@ $ ./bin/yb-master \
 ```sh
 --master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
 --rpc_bind_addresses=172.151.17.130
---enable_ysql=true
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2
 ```
 
