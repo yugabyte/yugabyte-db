@@ -8,11 +8,14 @@
  *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.common;
+package com.yugabyte.yw.common.kms.services;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -51,7 +54,7 @@ enum TestAlgorithm implements SupportedAlgorithmInterface {
 class TestEncryptionAtRestService extends EncryptionAtRestService<TestAlgorithm> {
     public TestEncryptionAtRestService(
             ApiHelper apiHelper,
-            EncryptionAtRestManager.KeyProvider keyProvider,
+            KeyProvider keyProvider,
             EncryptionAtRestManager util,
             boolean createRequest
     ) {
@@ -61,7 +64,7 @@ class TestEncryptionAtRestService extends EncryptionAtRestService<TestAlgorithm>
 
     public TestEncryptionAtRestService(
             ApiHelper apiHelper,
-            EncryptionAtRestManager.KeyProvider keyProvider,
+            KeyProvider keyProvider,
             EncryptionAtRestManager util
     ) {
         this(apiHelper, keyProvider, util, false);
@@ -124,7 +127,7 @@ public class EncryptionAtRestServiceTest extends WithApplication {
         EncryptionAtRestService newService = new EncryptionAtRestManager()
                 .getServiceInstance("SMARTKEY");
         assertEquals(
-                EncryptionAtRestManager.KeyProvider.SMARTKEY.getServiceInstance().hashCode(),
+                KeyProvider.SMARTKEY.getServiceInstance().hashCode(),
                 newService.hashCode()
         );
     }
@@ -132,7 +135,7 @@ public class EncryptionAtRestServiceTest extends WithApplication {
     @Test
     public void testCreateAndRetrieveEncryptionKeyInvalidAlgorithm() {
         EncryptionAtRestService service = new TestEncryptionAtRestService(
-                null, EncryptionAtRestManager.KeyProvider.AWS, mockUtil
+                null, KeyProvider.AWS, mockUtil
         );
         assertNull(service.createKey(
                 UUID.randomUUID(),
@@ -147,7 +150,7 @@ public class EncryptionAtRestServiceTest extends WithApplication {
     @Test
     public void testCreateAndRetrieveEncryptionKeyInvalidKeySize() {
         EncryptionAtRestService service = new TestEncryptionAtRestService(
-                null, EncryptionAtRestManager.KeyProvider.AWS, mockUtil
+                null, KeyProvider.AWS, mockUtil
         );
         assertNull(service.createKey(
                 UUID.randomUUID(),
@@ -163,7 +166,7 @@ public class EncryptionAtRestServiceTest extends WithApplication {
     public void testCreateAndRetrieveEncryptionKeyDuplicate() {
         EncryptionAtRestService service = new TestEncryptionAtRestService(
                 null,
-                EncryptionAtRestManager.KeyProvider.SMARTKEY,
+                KeyProvider.SMARTKEY,
                 mockUtil,
                 false
         );
@@ -181,7 +184,7 @@ public class EncryptionAtRestServiceTest extends WithApplication {
     public void testCreateKey() {
         EncryptionAtRestService service = new TestEncryptionAtRestService(
                 null,
-                EncryptionAtRestManager.KeyProvider.AWS,
+                KeyProvider.AWS,
                 mockUtil,
                 true
         );

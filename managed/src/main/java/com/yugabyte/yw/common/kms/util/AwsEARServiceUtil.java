@@ -8,8 +8,11 @@
  *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.common;
+package com.yugabyte.yw.common.kms.util;
 
+import com.amazonaws.services.identitymanagement.AmazonIdentityManagement;
+import com.amazonaws.services.identitymanagement.AmazonIdentityManagementClientBuilder;
+import com.amazonaws.services.identitymanagement.model.User;
 import com.amazonaws.services.kms.AWSKMS;
 import com.amazonaws.services.kms.AWSKMSClientBuilder;
 import com.amazonaws.services.kms.model.AliasListEntry;
@@ -25,44 +28,29 @@ import com.amazonaws.services.kms.model.ListKeysRequest;
 import com.amazonaws.services.kms.model.ListKeysResult;
 import com.avaje.ebean.annotation.EnumValue;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.EncryptionAtRestManager.KeyProvider;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import java.io.File;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.Application;
+import play.api.Play;
 
-enum AwsAlgorithm implements SupportedAlgorithmInterface {
-    AES(Arrays.asList(128, 256));
+public class AwsEARServiceUtil {
+    private static final String CMK_POLICY = "default_cmk_policy.json";
 
-    private List<Integer> keySizes;
+    private static final Logger LOG = LoggerFactory.getLogger(AwsEARServiceUtil.class);
 
-    public List<Integer> getKeySizes() {
-        return this.keySizes;
-    }
-
-    private AwsAlgorithm(List<Integer> keySizes) {
-        this.keySizes = keySizes;
-    }
-}
-
-public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
-    /**
-     * Constructor
-     *
-     * @param apiHelper is a library to make requests against a third party encryption key provider
-     * @param keyProvider is a String representation of "SMARTKEY" (if it is valid in this context)
-     */
-    public AwsEARService() {
-        super(KeyProvider.AWS);
-    }
-
-    enum KeyType {
+    public enum KeyType {
         @EnumValue("CMK")
         CMK,
         @EnumValue("DATA_KEY")
@@ -75,9 +63,14 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
      *
      * @param customerUUID the customer the authConfig should be retrieved for
      */
-    private void setUserCredentials(UUID customerUUID) {
+    // Rely on the AWS credential provider chain
+    // We set system properties as the first-choice option
+    // To debug, a user can set AWS_ACCESS_KEY_ID, AWS_SECRET_KEY, AWS_REGION env vars
+    // which will override any existing KMS configuration credentials
+    // https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html
+    private static void setUserCredentials(UUID customerUUID) {
         Properties p = new Properties(System.getProperties());
-        ObjectNode authConfig = getAuthConfig(customerUUID);
+        ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(customerUUID, KeyProvider.AWS);
         if (authConfig != null) {
             LOG.info("Setting credentials from AWS KMS configuration for AWS client");
             // Try using a kms_config if one exists
@@ -113,45 +106,125 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
     }
 
     /**
-     * Instantiates a AWSKMS client to send requests to
+     * Instantiates a AWS KMS client using the default credential provider chain
      *
-     * @param creds are the required credentials to get a client instance
-     * @return a AWSKMS client
+     * @param customerUUID the customer that should have their AWS credentials retrieved
+     * @return a AWS KMS client
      */
-    protected AWSKMS getClient(UUID customerUUID) {
-        // Rely on the AWS credential provider chain
-        // We set system properties as the first-choice option
-        // To debug, a user can set AWS_ACCESS_KEY_ID, AWS_SECRET_KEY, AWS_REGION env vars
-        // which will override any existing KMS configuration credentials
-        // https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html
+    public static AWSKMS getKMSClient(UUID customerUUID) {
         setUserCredentials(customerUUID);
         return AWSKMSClientBuilder.defaultClient();
     }
 
     /**
-     * A method to prefix an alias base name with the proper format for AWS
-     *
-     * @param aliasName the name of the alias
-     * @return the basename of the alias prefixed with 'alias/'
+     * Instantiates an AWS IAM client using the default credential provider chain
+     * @param customerUUID the customer that should have their AWS credentials retrieved
+     * @return a AWS IAM client
      */
-    private String generateAliasName(String aliasName) {
-        final String aliasNameBase = "alias/%s";
-        return String.format(aliasNameBase, aliasName);
+    public static AmazonIdentityManagement getIAMClient(UUID customerUUID) {
+        setUserCredentials(customerUUID);
+        return AmazonIdentityManagementClientBuilder.defaultClient();
+    }
+
+    /**
+     * Reads the policy base from a JSON file
+     *
+     * @return the policy base
+     */
+    public static ObjectNode getPolicyBase() {
+        ObjectNode policy = null;
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            Application application = Play.current().injector().instanceOf(Application.class);
+            policy = (ObjectNode) mapper.readTree(application.resourceAsStream(CMK_POLICY));
+        } catch (Exception e) {
+            String errMsg = "Error occurred retrieving default cmk policy base";
+            LOG.error(errMsg, e);
+        }
+        return policy;
+    }
+
+    /**
+     * Retrieve the current AWS IAM User
+     *
+     * @param customerUUID the customer associated to the AWS credentials used
+     * @return an AWS IAM User
+     */
+    public static User getIAMUser(UUID customerUUID) {
+        return AwsEARServiceUtil.getIAMClient(customerUUID).getUser().getUser();
+    }
+
+    /**
+     * Parses the AWS account id from an arn
+     *
+     * @param arn the Amazon resource name
+     * @return the AWS account id
+     */
+    public static String parseAccountIdFromArn(String arn) {
+        return arn.split(":")[4];
+    }
+
+    /**
+     * Binds a AWS KMS CMK policy statement field to a dynamically retrieved Amazon resource name
+     *
+     * @param statement the AWS KMS CMK policy
+     * @param arn the arn to attach to the policy statement
+     * @return a CMK policy statement with the inputted arn attached
+     */
+    private static ObjectNode bindArnToStatement(ObjectNode statement, String arn) {
+        String principalField = "Principal";
+        ObjectNode principal = (ObjectNode) statement.get(principalField);
+        principal.put("AWS", arn);
+        statement.set(principalField, principal);
+        return statement;
+    }
+
+    /**
+     * Bind dynamically retrieved arns to default cmk policy base
+     *
+     * @param policyBase is the base of the CMK policy
+     * @param userArn the current user's arn
+     * @param rootArn the root user arn of the account associated to the current user arn
+     * @return a bound AWS KMS CMK policy
+     */
+    public static ObjectNode bindParamsToPolicyBase(
+            ObjectNode policyBase,
+            String userArn,
+            String rootArn
+    ) {
+        String statementField = "Statement";
+        ArrayNode statements = (ArrayNode) policyBase.get(statementField);
+        statements.set(0, bindArnToStatement((ObjectNode) statements.get(0), rootArn));
+        statements.set(1, bindArnToStatement((ObjectNode) statements.get(1), userArn));
+        return (ObjectNode) policyBase.set(statementField, statements);
+    }
+
+    /**
+     * Generates the YB default AWS KMS CMK policy
+     *
+     * @param customerUUID the customer associated to the AWS credentials
+     * @return a String of the default policy
+     */
+    public static String generateDefaultPolicy(UUID customerUUID) {
+        ObjectNode policyBase = getPolicyBase();
+        String userArn = getIAMUser(customerUUID).getArn();
+        String rootArn = String.format("arn:aws:iam::%s:root", parseAccountIdFromArn(userArn));
+        return bindParamsToPolicyBase(policyBase, userArn, rootArn).toString();
     }
 
     /**
      * Creates a new AWS KMS alias to be able to search for the CMK by
      *
      * @param universeUUID will be the name of the alias
-     * @param customerUUID is the customer the alias is being created for
-     * @param kId is the CMK that the alias should target
+     * @param kId is the CMk that the alias should attach itself to
+     * @param aliasName is the name of the alias attached to the CMK with kId
      */
-    private void createAlias(UUID customerUUID, String kId, String aliasName) {
+    private static void createAlias(UUID customerUUID, String kId, String aliasName) {
         final String aliasNameBase = "alias/%s";
         final CreateAliasRequest req = new CreateAliasRequest()
                 .withAliasName(aliasName)
                 .withTargetKeyId(kId);
-        getClient(customerUUID).createAlias(req);
+        AwsEARServiceUtil.getKMSClient(customerUUID).createAlias(req);
     }
 
     /**
@@ -161,11 +234,11 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
      * @param aliasName is the name of the alias in AWS
      * @return the alias if found, or null otherwise
      */
-    private AliasListEntry getAlias(UUID customerUUID, String aliasName) {
+    public static AliasListEntry getAlias(UUID customerUUID, String aliasName) {
         ListAliasesRequest req = new ListAliasesRequest().withLimit(100);
         AliasListEntry uniAlias = null;
         boolean done = false;
-        AWSKMS client = getClient(customerUUID);
+        AWSKMS client = AwsEARServiceUtil.getKMSClient(customerUUID);
         while (!done) {
             ListAliasesResult result = client.listAliases(req);
             for (AliasListEntry alias : result.getAliases()) {
@@ -180,11 +253,18 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
         return uniAlias;
     }
 
-    private String getCMKArn(UUID customerUUID, String cmkId) {
+    /**
+     * Retrieve the Amazon resource name (arn) of an AWS KMS CMK with id of cmkId
+     *
+     * @param customerUUID the customer that should have their credentials used to make AWS requests
+     * @param cmkId the id of the AWS KMS CMK that should have it's arn retrieved
+     * @return the arn of the CMK, or null if something goes wrong
+     */
+    public static String getCMKArn(UUID customerUUID, String cmkId) {
         String cmkArn = null;
         ListKeysRequest req = new ListKeysRequest().withLimit(1000);
         boolean done = false;
-        AWSKMS client = getClient(customerUUID);
+        AWSKMS client = AwsEARServiceUtil.getKMSClient(customerUUID);
         while (!done) {
             ListKeysResult result = client.listKeys(req);
             for (KeyListEntry key : result.getKeys()) {
@@ -206,12 +286,15 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
      * @param encryptedUniverseKey is the ciphertext blob of the universe master key
      * @return a plaintext byte array of the universe master key
      */
-    private byte[] decryptUniverseKey(UUID customerUUID, byte[] encryptedUniverseKey) {
+    public static byte[] decryptUniverseKey(UUID customerUUID, byte[] encryptedUniverseKey) {
         if (encryptedUniverseKey == null) return null;
         ByteBuffer encryptedKeyBuffer = ByteBuffer.wrap(encryptedUniverseKey);
         encryptedKeyBuffer.rewind();
         final DecryptRequest req = new DecryptRequest().withCiphertextBlob(encryptedKeyBuffer);
-        ByteBuffer decryptedKeyBuffer = getClient(customerUUID).decrypt(req).getPlaintext();
+        ByteBuffer decryptedKeyBuffer = AwsEARServiceUtil
+                .getKMSClient(customerUUID)
+                .decrypt(req)
+                .getPlaintext();
         decryptedKeyBuffer.rewind();
         byte[] decryptedUniverseKey = new byte[decryptedKeyBuffer.remaining()];
         decryptedKeyBuffer.get(decryptedUniverseKey);
@@ -227,7 +310,7 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
      * @param keySize is the desired universe master key size
      * @return a ciphertext blob of the universe master key
      */
-    private byte[] generateDataKey(
+    public static byte[] generateDataKey(
             UUID customerUUID,
             String cmkId,
             String algorithm,
@@ -241,7 +324,7 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
                                 String.format(keySpecBase, algorithm, Integer.toString(keySize))
                         );
         ByteBuffer encryptedKeyBuffer =
-                getClient(customerUUID)
+                AwsEARServiceUtil.getKMSClient(customerUUID)
                         .generateDataKeyWithoutPlaintext(dataKeyRequest)
                         .getCiphertextBlob();
         encryptedKeyBuffer.rewind();
@@ -250,10 +333,16 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
         return encryptedKeyBytes;
     }
 
-    @Override
-    protected AwsAlgorithm[] getSupportedAlgorithms() { return AwsAlgorithm.values(); }
-
-    private String createOrRetrieveCMKWithAlias(
+    /**
+     * Search for and create/retrieve a CMK with matching alias name
+     *
+     * @param customerUUID the customer associated to AWS credentials used
+     * @param policy the user-provided custom CMK policy
+     * @param description the description of the CMK (if creation is required)
+     * @param aliasBaseName the name of the alias associated with/to be associated with the CMK
+     * @return the CMK id
+     */
+    public static String createOrRetrieveCMKWithAlias(
             UUID customerUUID,
             String policy,
             String description,
@@ -266,10 +355,15 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
             // Create the CMK
             CreateKeyRequest req = new CreateKeyRequest();
             if (description != null) req = req.withDescription(description);
+            // Use user-provided CMK policy
             if (policy != null && policy.length() > 0) req = req.withPolicy(policy);
-            CreateKeyResult createResult = getClient(customerUUID).createKey(req);
+                // Use YB default CMK policy
+            else req = req.withPolicy(AwsEARServiceUtil.generateDefaultPolicy(customerUUID));
+            CreateKeyResult createResult = AwsEARServiceUtil
+                    .getKMSClient(customerUUID)
+                    .createKey(req);
             final String kId = createResult.getKeyMetadata().getKeyId();
-            // Point it to an alias
+            // Associate CMK with alias
             createAlias(customerUUID, kId, aliasName);
             result = kId;
         } else {
@@ -278,103 +372,14 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
         return result;
     }
 
-    private String createOrRetrieveCMK(
-            UUID customerUUID,
-            UUID universeUUID,
-            String policy
-    ) {
-        return createOrRetrieveCMKWithAlias(
-                customerUUID,
-                policy,
-                "Yugabyte Universe Key",
-                universeUUID.toString()
-        );
-    }
-
-    @Override
-    protected byte[] createKeyWithService(
-            UUID universeUUID,
-            UUID customerUUID,
-            Map<String, String> config
-    ) {
-        byte[] result = null;
-        String typeString = config.get("key_type");
-        KeyType type = typeString == null || typeString.length() == 0 ?
-                KeyType.DATA_KEY : KeyType.valueOf(typeString);
-        String cmkId = createOrRetrieveCMK(
-                customerUUID,
-                universeUUID,
-                config.get("cmk_policy")
-        );
-        switch (type) {
-            case CMK:
-                result = getCMKArn(customerUUID, cmkId).getBytes();
-                break;
-            default:
-            case DATA_KEY:
-                final String algorithm = config.get("algorithm");
-                final int keySize = Integer.parseInt(config.get("key_size"));
-                final ObjectNode validateResult = validateEncryptionKeyParams(algorithm, keySize);
-                if (!validateResult.get("result").asBoolean()) {
-                    final String errMsg = String.format(
-                            "Invalid encryption key parameters detected for create operation in " +
-                                    "universe %s: %s",
-                            universeUUID,
-                            validateResult.get("errors").asText()
-                    );
-                    LOG.error(errMsg);
-                    throw new IllegalArgumentException(errMsg);
-                }
-                result = generateDataKey(customerUUID, cmkId, algorithm, keySize);
-                if (result != null && result.length > 0) {
-                    addKeyRef(customerUUID, universeUUID, result);
-                }
-                break;
-        }
-        return result;
-    }
-
-    @Override
-    protected byte[] rotateKeyWithService(
-            UUID customerUUID,
-            UUID universeUUID,
-            Map<String, String> config
-    ) {
-        final String aliasName = generateAliasName(universeUUID.toString());
-        final AliasListEntry alias = getAlias(customerUUID, aliasName);
-        final String cmkId = alias.getTargetKeyId();
-        final String algorithm = config.get("algorithm");
-        final int keySize = Integer.parseInt(config.get("key_size"));
-        return generateDataKey(customerUUID, cmkId, algorithm, keySize);
-    }
-
-    public byte[] retrieveKeyWithService(
-            UUID customerUUID,
-            UUID universeUUID,
-            byte[] keyRef,
-            Map<String, String> config
-    ) {
-        byte[] keyVal = null;
-        try {
-            String typeString = config.get("key_type");
-            KeyType type = typeString == null || typeString.length() == 0 ?
-                    KeyType.DATA_KEY : KeyType.valueOf(typeString);
-            switch (type) {
-                case CMK:
-                    keyVal = keyRef;
-                    break;
-                default:
-                case DATA_KEY:
-                    keyVal = decryptUniverseKey(customerUUID, keyRef);
-                    if (keyVal == null) LOG.warn("Could not retrieve key from key ref");
-                    else this.util.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
-                    break;
-            }
-        } catch (Exception e) {
-            final String errMsg = "Error occurred retrieving encryption key";
-            LOG.error(errMsg, e);
-            throw new RuntimeException(errMsg, e);
-        }
-        return keyVal;
+    /**
+     * A method to prefix an alias base name with the proper format for AWS
+     *
+     * @param aliasName the name of the alias
+     * @return the basename of the alias prefixed with 'alias/'
+     */
+    public static String generateAliasName(String aliasName) {
+        final String aliasNameBase = "alias/%s";
+        return String.format(aliasNameBase, aliasName);
     }
 }

@@ -8,7 +8,7 @@
  *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.common;
+package com.yugabyte.yw.common.kms.services;
 
 import com.amazonaws.services.kms.AWSKMS;
 import com.amazonaws.services.kms.model.AliasListEntry;
@@ -28,6 +28,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertNotNull;
@@ -53,7 +55,7 @@ public class AwsEARServiceTest extends FakeDBApplication {
     ApiHelper mockApiHelper;
     TestEncryptionAtRestService encryptionService;
 
-    EncryptionAtRestManager.KeyProvider testKeyProvider = EncryptionAtRestManager.KeyProvider.AWS;
+    KeyProvider testKeyProvider = KeyProvider.AWS;
     String testAlgorithm = "AES";
     int testKeySize = 256;
 
@@ -80,25 +82,10 @@ public class AwsEARServiceTest extends FakeDBApplication {
     private class TestEncryptionAtRestService extends AwsEARService {
         public boolean flipKeyRefResult = false;
 
-        private ObjectNode authConfig = Json.newObject()
-                .put("AWS_ACCESS_KEY_ID", "some_access_key")
-                .put("AWS_SECRET_ACCESS_KEY", "some_secret_key_id")
-                .put("AWS_REGION", "us-west-2");
-
-        @Override
-        public ObjectNode getAuthConfig(UUID customerUUID) {
-            return this.authConfig;
-        }
-
         @Override
         public byte[] getKeyRef(UUID customerUUID, UUID universeUUID) {
             this.flipKeyRefResult = !this.flipKeyRefResult;
             return this.flipKeyRefResult ? null : new String("some_key_ref").getBytes();
-        }
-
-        @Override
-        protected AWSKMS getClient(UUID customerUUID) {
-            return mockClient;
         }
     }
 

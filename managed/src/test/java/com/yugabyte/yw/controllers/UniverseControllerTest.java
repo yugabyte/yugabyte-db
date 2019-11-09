@@ -74,9 +74,10 @@ import org.mockito.Matchers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.SmartKeyEARService;
-import com.yugabyte.yw.common.AwsEARService;
-import com.yugabyte.yw.common.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
+import com.yugabyte.yw.common.kms.services.AwsEARService;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.HealthChecker;
@@ -1622,11 +1623,6 @@ public class UniverseControllerTest extends WithApplication {
 
   @Test
   public void testCreateUniverseEncryptionAtRestWithEncryptionAtRestKMSConfigExists() {
-    when(mockEARManager.maskConfigData(
-            eq(customer.uuid),
-            any(JsonNode.class),
-            eq(EncryptionAtRestManager.KeyProvider.SMARTKEY)
-    )).thenReturn(Json.newObject());
     ObjectNode kmsConfigReq = Json.newObject()
             .put("base_url", "some_base_url")
             .put("api_key", "some_api_token");
@@ -1692,11 +1688,6 @@ public class UniverseControllerTest extends WithApplication {
     verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), argCaptor.capture());
     // Verify that the KMS provider service started to run for the correct provider
     verify(mockEARManager, times(1)).getServiceInstance("SMARTKEY");
-    verify(mockEARManager, times(1)).maskConfigData(
-            eq(customer.uuid),
-            any(JsonNode.class),
-            eq(EncryptionAtRestManager.KeyProvider.SMARTKEY)
-    );
     verify(mockEARManager, times(1)).generateUniverseKey(
             eq(customer.uuid),
             any(UUID.class),
@@ -1712,11 +1703,6 @@ public class UniverseControllerTest extends WithApplication {
 
   @Test
   public void testUniverseSetKey() {
-    when(mockEARManager.maskConfigData(
-            eq(customer.uuid),
-            any(JsonNode.class),
-            eq(EncryptionAtRestManager.KeyProvider.SMARTKEY)
-    )).thenReturn(Json.newObject());
     ObjectNode kmsConfigReq = Json.newObject()
             .put("base_url", "some_base_url")
             .put("api_key", "some_api_token");
@@ -1808,11 +1794,6 @@ public class UniverseControllerTest extends WithApplication {
             .forClass(UniverseTaskParams.class);
     verify(mockCommissioner).submit(eq(TaskType.SetUniverseKey), argCaptor.capture());
     verify(mockEARManager, times(1)).getServiceInstance("SMARTKEY");
-    verify(mockEARManager, times(1)).maskConfigData(
-            eq(customer.uuid),
-            any(JsonNode.class),
-            eq(EncryptionAtRestManager.KeyProvider.SMARTKEY)
-    );
     verify(mockEARManager, times(1)).generateUniverseKey(
             eq(customer.uuid),
             eq(UUID.fromString(testUniUUID)),
