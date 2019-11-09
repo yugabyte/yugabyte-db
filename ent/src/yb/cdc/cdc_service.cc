@@ -73,9 +73,6 @@ constexpr int kMaxDurationForTabletLookup = 50;
 const client::YBTableName kCdcStateTableName(
     master::kSystemNamespaceName, master::kCdcStateTableName);
 
-const auto kCdcStateCheckpointInterval = FLAGS_cdc_state_checkpoint_update_interval_ms * 1ms;
-const auto kCheckpointOpIdInterval = FLAGS_cdc_checkpoint_opid_interval_ms * 1ms;
-
 CDCServiceImpl::CDCServiceImpl(TSTabletManager* tablet_manager,
                                const scoped_refptr<MetricEntity>& metric_entity)
     : CDCServiceIf(metric_entity),
@@ -327,10 +324,7 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
       s.IsNotFound() ? CDCErrorPB::CHECKPOINT_TOO_OLD : CDCErrorPB::UNKNOWN_ERROR,
       context);
 
-  s = UpdateCheckpoint(
-      producer_tablet, resp->checkpoint().op_id(),
-      req->has_from_checkpoint() ? req->from_checkpoint().op_id() : consensus::MinimumOpId(),
-      session);
+  s = UpdateCheckpoint(producer_tablet, resp->checkpoint().op_id(), op_id, session);
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
   tablet_peer->consensus()->UpdateCDCConsumerOpId(GetMinSentCheckpointForTablet(req->tablet_id()));
@@ -509,7 +503,12 @@ Result<OpIdPB> CDCServiceImpl::GetLastCheckpoint(
     std::shared_lock<decltype(lock_)> l(lock_);
     auto it = tablet_checkpoints_.find(producer_tablet);
     if (it != tablet_checkpoints_.end()) {
-      return it->second.cdc_state_checkpoint.op_id;
+      // Use checkpoint from cache only if it is current.
+      if (it->second.cdc_state_checkpoint.op_id.index() > 0 &&
+          CoarseMonoClock::Now() - it->second.cdc_state_checkpoint.last_update_time <=
+              (FLAGS_cdc_state_checkpoint_update_interval_ms * 1ms)) {
+        return it->second.cdc_state_checkpoint.op_id;
+      }
     }
   }
 
@@ -565,7 +564,8 @@ Status CDCServiceImpl::UpdateCheckpoint(const ProducerTabletInfo& producer_table
       }
 
       // Check if we need to update cdc_state table.
-      if (now - it->second.cdc_state_checkpoint.last_update_time <= kCdcStateCheckpointInterval) {
+      if (now - it->second.cdc_state_checkpoint.last_update_time <=
+          (FLAGS_cdc_state_checkpoint_update_interval_ms * 1ms)) {
         update_cdc_state = false;
       } else {
         it->second.cdc_state_checkpoint.last_update_time = now;
@@ -612,7 +612,8 @@ OpIdPB CDCServiceImpl::GetMinSentCheckpointForTablet(const std::string& tablet_i
       // We don't want to include streams that are not being actively polled.
       // So, if the stream has not been polled in the last x seconds,
       // then we ignore that stream while calculating min op ID.
-      if (now - checkpoint->second.sent_checkpoint.last_update_time <= kCheckpointOpIdInterval &&
+      if (now - checkpoint->second.sent_checkpoint.last_update_time <=
+          (FLAGS_cdc_checkpoint_opid_interval_ms * 1ms) &&
           checkpoint->second.sent_checkpoint.op_id.index() < min_op_id.index()) {
         min_op_id = checkpoint->second.sent_checkpoint.op_id;
       }
