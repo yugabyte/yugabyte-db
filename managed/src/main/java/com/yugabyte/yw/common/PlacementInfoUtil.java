@@ -1523,12 +1523,12 @@ public class PlacementInfoUtil {
       }
     }
     for (PlacementCloud pc : pi.cloudList) {
-      
+
       int remainingMasters = numTotalMasters;
       int azsRemaining = totalAZs;
 
       for (PlacementRegion pr : pc.regionList) {
-        
+
         int numAzsInRegion = pr.azList.size();
         // Distribute masters in each region according to the number of AZs in each region.
         int mastersInRegion = (int) Math.round(remainingMasters * ((double) numAzsInRegion / azsRemaining));
@@ -1667,7 +1667,7 @@ public class PlacementInfoUtil {
     }
     return namespaceToConfig;
   }
-      
+
 
   // Compute the master addresses of the pods in the deployment if multiAZ.
   public static String computeMasterAddresses(PlacementInfo pi, Map<UUID, Integer> azToNumMasters,
@@ -2006,29 +2006,42 @@ public class PlacementInfoUtil {
   private static ObjectNode getNodeAliveStatus(NodeDetails nodeDetails, JsonNode nodeJson) {
     boolean tserverAlive = false;
     boolean masterAlive = false;
+    List<String> nodeValues = new ArrayList<String>();
 
     if (nodeJson.get("data") != null) {
       for (JsonNode json : nodeJson.get("data")) {
         String[] name = json.get("name").asText().split(":", 2);
         if (name.length == 2 && name[0].equals(nodeDetails.cloudInfo.private_ip)) {
+          boolean alive = false;
+          for (JsonNode upData : json.get("y")) {
+            try {
+              alive = alive || (1 == (int)Float.parseFloat(upData.asText()));
+            } catch (NumberFormatException nfe) {
+              LOG.debug("Invalid number in node alive data: " + upData.asText());
+              // ignore this value
+            }
+          }
+
           switch (SwamperHelper.TargetType.createFromPort(Integer.valueOf(name[1]))) {
             case TSERVER_EXPORT:
-              for (JsonNode upData : json.get("y")) {
-                tserverAlive = tserverAlive || upData.asText().equals("1");
-              }
+                tserverAlive = tserverAlive || alive;
               break;
             case MASTER_EXPORT:
-              for (JsonNode upData : json.get("y")) {
-                masterAlive = masterAlive || upData.asText().equals("1");
-              }
-              break;
+                masterAlive = masterAlive || alive;
             default:
               break;
+          }
+
+          if (!alive) {
+            nodeValues.add(json.toString());
           }
         }
       }
     }
 
+    if (!masterAlive || !tserverAlive) {
+      LOG.debug("Master or tserver considered not alive based on data: %s", nodeValues);
+    }
     nodeDetails.state = (!masterAlive && !tserverAlive) ?
         NodeDetails.NodeState.Unreachable : nodeDetails.state;
 
