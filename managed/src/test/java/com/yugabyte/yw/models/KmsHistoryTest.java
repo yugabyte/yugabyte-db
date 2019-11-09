@@ -11,7 +11,7 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.yugabyte.yw.common.EncryptionAtRestManager.KeyProvider;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.FakeDBApplication;
 import org.junit.Test;
 import play.libs.Json;

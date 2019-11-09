@@ -8,19 +8,22 @@
  *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.common;
+package com.yugabyte.yw.common.kms.services;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.EncryptionAtRestManager.KeyProvider;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import play.api.Play;
 import play.libs.Json;
 
 /**
@@ -47,6 +50,11 @@ enum SmartKeyAlgorithm implements SupportedAlgorithmInterface {
  */
 public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorithm> {
     /**
+     * To be used to make requests against SmartKey APIs
+     */
+    private ApiHelper apiHelper;
+
+    /**
      * Constructor
      *
      * @param apiHelper is a library to make requests against a third party encryption key provider
@@ -54,6 +62,7 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
      */
     public SmartKeyEARService() {
         super(KeyProvider.SMARTKEY);
+        this.apiHelper = Play.current().injector().instanceOf(ApiHelper.class);
     }
 
     /**
@@ -191,7 +200,8 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
         if (errors != null) throw new RuntimeException(errors.toString());
         keyVal = Base64.getDecoder().decode(response.get("value").asText());
         // Update cache entry
-        if (keyVal != null) this.util.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
+        if (keyVal != null) EncryptionAtRestUtil
+                .setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
         return keyVal;
     }
 }
