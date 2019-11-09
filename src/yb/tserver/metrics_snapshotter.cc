@@ -329,6 +329,12 @@ Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
     }
   }
 
+  if (tserver_metrics_whitelist_.find("node_up") != tserver_metrics_whitelist_.end()) {
+    RETURN_NOT_OK(DoPrometheusMetricsSnapshot(table, session, "tserver",
+                                              server_->permanent_uuid(), "node_up",
+                                              1));
+  }
+
   if (tserver_metrics_whitelist_.find("disk_usage") != tserver_metrics_whitelist_.end()) {
     struct statvfs stat;
     set<uint64_t> fs_ids;
