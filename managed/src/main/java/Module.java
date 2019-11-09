@@ -12,6 +12,9 @@ import com.yugabyte.yw.scheduler.Scheduler;
 import play.Configuration;
 import play.Environment;
 
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
+
 /**
  * This class is a Guice module that tells Guice to bind different types
  *
@@ -52,6 +55,7 @@ public class Module extends AbstractModule {
       bind(Scheduler.class).asEagerSingleton();
       bind(HealthChecker.class).asEagerSingleton();
       bind(EncryptionAtRestManager.class).asEagerSingleton();
+      bind(EncryptionAtRestUniverseKeyCache.class).asEagerSingleton();
     }
   }
 }

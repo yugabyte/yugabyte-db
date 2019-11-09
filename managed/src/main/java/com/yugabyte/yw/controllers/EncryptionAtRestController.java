@@ -15,8 +15,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.EncryptionAtRestService;
-import com.yugabyte.yw.common.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import java.util.Arrays;
@@ -79,7 +79,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
                 "Listing KMS configurations for customer %s",
                 customerUUID.toString()
         ));
-        List<ObjectNode> kmsConfigs = Arrays.stream(EncryptionAtRestManager.KeyProvider.values())
+        List<ObjectNode> kmsConfigs = Arrays.stream(EncryptionAtRestService.getKeyProviders())
                 .filter(provider -> provider.getProviderService() != null)
                 .map(provider -> {
                     EncryptionAtRestService keyService = keyManager

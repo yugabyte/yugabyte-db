@@ -8,14 +8,16 @@
  *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.common;
+package com.yugabyte.yw.common.kms.services;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.SmartKeyEARService;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
@@ -38,8 +40,7 @@ public class SmartKeyEARServiceTest extends FakeDBApplication {
     TestEncryptionAtRestService encryptionService;
     EncryptionAtRestManager mockUtil;
 
-    EncryptionAtRestManager.KeyProvider testKeyProvider = EncryptionAtRestManager
-            .KeyProvider.SMARTKEY;
+    KeyProvider testKeyProvider = KeyProvider.SMARTKEY;
     String testAlgorithm = "AES";
     int testKeySize = 256;
     UUID testUniUUID = UUID.randomUUID();
@@ -197,11 +198,6 @@ public class SmartKeyEARServiceTest extends FakeDBApplication {
                 "algorithm", testAlgorithm,
                 "key_size", Integer.toString(testKeySize)
         );
-        when(this.mockEARManager.maskConfigData(
-                any(UUID.class),
-                any(ObjectNode.class),
-                any(EncryptionAtRestManager.KeyProvider.class)
-        )).thenReturn(Json.newObject().put("encrypted", "abc"));
     }
 
     @Test

@@ -3,7 +3,7 @@ package com.yugabyte.yw.forms;
 import com.avaje.ebean.annotation.EnumValue;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.common.EncryptionAtRestManager.KeyProvider;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import java.util.UUID;
 import java.util.List;
