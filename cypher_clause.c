@@ -42,9 +42,6 @@ static Query *transform_cypher_return(ParseState *pstate,
 
     query->targetList = transform_cypher_item_list(pstate, clause->items);
 
-    // resolve any still-unresolved output columns as being type text
-    resolveTargetListUnknowns(pstate, query->targetList);
-
     query->jointree = makeFromExpr(NIL, NULL);
 
     assign_query_collations(pstate, query);
@@ -57,7 +54,7 @@ static List *transform_cypher_item_list(ParseState *pstate, List *items)
     List *targets = NIL;
     ListCell *li;
 
-    foreach(li, items)
+    foreach (li, items)
     {
         ResTarget *item = lfirst(li);
         Node *expr;

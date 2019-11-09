@@ -35,3 +35,11 @@ SELECT * FROM ROWS FROM (cypher($$RETURN 0$$) AS (c text)) WITH ORDINALITY;
 
 SELECT cypher($$RETURN 0$$);
 SELECT (SELECT * FROM cypher($$RETURN 0$$) AS r(c agtype));
+
+-- Attributes returned from cypher() function are agtype. If other than agtype
+-- is given in the column definition list and there is a type coercion from
+-- agtype to the given type, agtype will be coerced to that type. If there is
+-- not such a coercion, an error is thrown.
+
+SELECT * FROM cypher($$RETURN true$$) AS (c bool);
+SELECT * FROM cypher($$RETURN 0$$) AS (c oid);

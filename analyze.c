@@ -6,13 +6,17 @@
 #include "catalog/pg_type.h"
 #include "fmgr.h"
 #include "mb/pg_wchar.h"
+#include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/parsenodes.h"
 #include "nodes/pg_list.h"
 #include "nodes/primnodes.h"
 #include "parser/analyze.h"
+#include "parser/parse_coerce.h"
+#include "parser/parse_collate.h"
 #include "parser/parse_node.h"
+#include "parser/parse_relation.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
@@ -38,8 +42,8 @@ static const char *expr_get_const_cstring(Node *expr, const char *source_str);
 static int get_query_location(const int location, const char *source_str);
 static void cypher_parse_error_callback(void *arg);
 static Query *parse_and_analyze_cypher(const char *query_str, Param *params);
-static void check_result_type(Query *query, RangeTblFunction *rtfunc,
-                              ParseState *pstate);
+static Query *coerce_target_list(Query *query, RangeTblFunction *rtfunc,
+                                 const char *sourcetext);
 
 void post_parse_analyze_init(void)
 {
@@ -293,10 +297,13 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
 
     query = parse_and_analyze_cypher(query_str, (Param *)params);
 
-    // uninstall error context callback
+    /*
+     * uninstall the error context callback because error positions after this
+     * point do not need adjustment
+     */
     error_context_stack = ecb.previous;
 
-    check_result_type(query, rtfunc, pstate);
+    query = coerce_target_list(query, rtfunc, pstate->p_sourcetext);
 
     // rte->functions and rte->funcordinality are kept for debugging.
     // rte->alias, rte->eref, and rte->lateral need to be the same.
@@ -378,14 +385,28 @@ static Query *parse_and_analyze_cypher(const char *query_str, Param *params)
     return query;
 }
 
-static void check_result_type(Query *query, RangeTblFunction *rtfunc,
-                              ParseState *pstate)
+/*
+ * Since some target entries of query may be referenced for sorting (ORDER BY),
+ * we cannot apply the coercion directly to the expressions of the target
+ * entries. Therefore, we do the coercion by doing SELECT over query.
+ */
+static Query *coerce_target_list(Query *query, RangeTblFunction *rtfunc,
+                                 const char *sourcetext)
 {
-    ListCell *lc;
+    ParseState *pstate;
+    Query *outer_query;
+    RangeTblEntry *rte;
+    int rtindex;
+    RangeTblRef *rtr;
+    ListCell *lt;
     ListCell *lc1;
     ListCell *lc2;
     ListCell *lc3;
 
+    pstate = make_parsestate(NULL);
+    pstate->p_sourcetext = sourcetext;
+
+    // check the number of attributes first
     if (list_length(query->targetList) != rtfunc->funccolcount)
     {
         ereport(ERROR,
@@ -394,29 +415,79 @@ static void check_result_type(Query *query, RangeTblFunction *rtfunc,
                  parser_errposition(pstate, exprLocation(rtfunc->funcexpr))));
     }
 
-    // NOTE: Implement automatic type coercion instead of this.
-    lc1 = list_head(rtfunc->funccoltypes);
-    lc2 = list_head(rtfunc->funccoltypmods);
-    lc3 = list_head(rtfunc->funccolcollations);
-    foreach (lc, query->targetList)
+    outer_query = makeNode(Query);
+    outer_query->commandType = CMD_SELECT;
+
+    rte = addRangeTableEntryForSubquery(pstate, query, makeAlias("_", NIL),
+                                        false, true);
+    rtindex = list_length(pstate->p_rtable);
+    rtr = makeNode(RangeTblRef);
+    rtr->rtindex = rtindex;
+    pstate->p_joinlist = lappend(pstate->p_joinlist, rtr);
+    /*
+     * It is unnecessary to update p_namespace because rte is the only
+     * RangeTblEntry here and p_namespace is not referenced below.
+     */
+
+    outer_query->targetList = expandRelAttrs(pstate, rte, rtindex, 0, -1);
+
+    // do the type coercion for each target entry
+    lc1 = list_head(rtfunc->funccolnames);
+    lc2 = list_head(rtfunc->funccoltypes);
+    lc3 = list_head(rtfunc->funccoltypmods);
+    foreach (lt, outer_query->targetList)
     {
-        TargetEntry *te = lfirst(lc);
+        TargetEntry *te = lfirst(lt);
         Node *expr = (Node *)te->expr;
+        Oid current_type;
+        Oid target_type;
 
         Assert(!te->resjunk);
 
-        if (exprType(expr) != lfirst_oid(lc1) ||
-            exprTypmod(expr) != lfirst_int(lc2) ||
-            exprCollation(expr) != lfirst_oid(lc3))
+        current_type = exprType(expr);
+        target_type = lfirst_oid(lc2);
+        if (current_type != target_type)
         {
-            ereport(ERROR,
-                    (errcode(ERRCODE_DATATYPE_MISMATCH),
-                     errmsg("return row and column definition list do not match"),
-                     parser_errposition(pstate, exprLocation(rtfunc->funcexpr))));
+            int32 target_typmod = lfirst_int(lc3);
+            Node *new_expr;
+
+            /*
+             * The coercion context of this coercion is COERCION_EXPLICIT
+             * because the target type is explicitly metioned in the column
+             * definition list and we need to do this by looking up all
+             * possible coercion.
+             */
+            new_expr = coerce_to_target_type(pstate, expr, current_type,
+                                             target_type, target_typmod,
+                                             COERCION_EXPLICIT,
+                                             COERCE_EXPLICIT_CAST, -1);
+            if (!new_expr)
+            {
+                char *colname = strVal(lfirst(lc1));
+
+                ereport(ERROR,
+                        (errcode(ERRCODE_CANNOT_COERCE),
+                         errmsg("cannot cast type %s to %s for column \"%s\"",
+                                format_type_be(current_type),
+                                format_type_be(target_type), colname),
+                         parser_errposition(pstate,
+                                            exprLocation(rtfunc->funcexpr))));
+            }
+
+            te->expr = (Expr *)new_expr;
         }
 
         lc1 = lnext(lc1);
         lc2 = lnext(lc2);
         lc3 = lnext(lc3);
     }
+
+    outer_query->rtable = pstate->p_rtable;
+    outer_query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
+
+    assign_query_collations(pstate, outer_query);
+
+    free_parsestate(pstate);
+
+    return outer_query;
 }

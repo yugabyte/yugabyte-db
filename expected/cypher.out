@@ -67,3 +67,17 @@ SELECT (SELECT * FROM cypher($$RETURN 0$$) AS r(c agtype));
  0
 (1 row)
 
+-- Attributes returned from cypher() function are agtype. If other than agtype
+-- is given in the column definition list and there is a type coercion from
+-- agtype to the given type, agtype will be coerced to that type. If there is
+-- not such a coercion, an error is thrown.
+SELECT * FROM cypher($$RETURN true$$) AS (c bool);
+ c 
+---
+ t
+(1 row)
+
+SELECT * FROM cypher($$RETURN 0$$) AS (c oid);
+ERROR:  cannot cast type agtype to oid for column "c"
+LINE 1: SELECT * FROM cypher($$RETURN 0$$) AS (c oid);
+                      ^
