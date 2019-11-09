@@ -8,13 +8,15 @@
  *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.common;
+package com.yugabyte.yw.common.kms.services;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.EncryptionAtRestManager.KeyProvider;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.KmsHistoryId;
@@ -46,16 +48,6 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      * Logger for service
      */
     protected static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestService.class);
-
-    /**
-     * To be used to make requests against a KMS provider
-     */
-    protected ApiHelper apiHelper;
-
-    /**
-     * A util storing useful util methods for the encryption at rest service
-     */
-    protected EncryptionAtRestManager util;
 
     /**
      * A human-friendly representation of a given instance's service provider
@@ -194,9 +186,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      *                    has been instantiated for
      */
     protected EncryptionAtRestService(KeyProvider keyProvider) {
-        this.apiHelper = Play.current().injector().instanceOf(ApiHelper.class);
         this.keyProvider = keyProvider;
-        this.util = Play.current().injector().instanceOf(EncryptionAtRestManager.class);
     }
 
     /**
@@ -242,7 +232,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
     public KmsConfig createAuthConfig(UUID customerUUID, ObjectNode config) {
         final KmsConfig existingConfig = getKMSConfig(customerUUID);
         if (existingConfig != null) return null;
-        final ObjectNode encryptedConfig = this.util.maskConfigData(
+        final ObjectNode encryptedConfig = EncryptionAtRestUtil.maskConfigData(
                 customerUUID,
                 config,
                 this.keyProvider
@@ -250,16 +240,8 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
         return KmsConfig.createKMSConfig(customerUUID, this.keyProvider, encryptedConfig);
     }
 
-    /**
-     * This method attempts to retrieve KmsConfig data representing the authentication
-     * information for the given encryption service provider
-     *
-     * @param customerUUID the UUID of the customer that this config is for
-     * @return an ObjectNode containing authentication information, or null if none exists
-     */
     public ObjectNode getAuthConfig(UUID customerUUID) {
-        final ObjectNode config = KmsConfig.getKMSAuthObj(customerUUID, this.keyProvider);
-        return (ObjectNode) this.util.unmaskConfigData(customerUUID, config, this.keyProvider);
+        return EncryptionAtRestUtil.getAuthConfig(customerUUID, this.keyProvider);
     }
 
     /**
@@ -303,7 +285,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
                 KmsHistoryId.TargetType.UNIVERSE_KEY
         );
         // Remove in-memory key ref -> key val cache entry, if it exists
-        this.util.removeUniverseKeyCacheEntry(universeUUID);
+        EncryptionAtRestUtil.removeUniverseKeyCacheEntry(universeUUID);
     }
 
     public void removeKeyRef(UUID customerUUID, UUID universeUUID) {
@@ -419,7 +401,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
             return null;
         }
         // Attempt to retrieve cached entry
-        keyVal = this.util.getUniverseKeyCacheEntry(universeUUID, keyRef);
+        keyVal = EncryptionAtRestUtil.getUniverseKeyCacheEntry(universeUUID, keyRef);
         // Retrieve through KMS provider if no cache entry exists
         if (keyVal == null) {
             LOG.info("Universe key cache entry empty. Retrieving key from service");
@@ -458,5 +440,9 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
         if (config != null) result = KmsHistory
                 .configHasHistory(config.configUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
         return result;
+    }
+
+    public static KeyProvider[] getKeyProviders() {
+        return KeyProvider.values();
     }
 }

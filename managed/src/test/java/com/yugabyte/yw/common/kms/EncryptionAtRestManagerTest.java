@@ -1,8 +1,13 @@
-package com.yugabyte.yw.common;
+package com.yugabyte.yw.common.kms;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.util.Base64;
@@ -66,29 +71,6 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
     }
 
     @Test
-    public void testGenerateSalt() {
-        String salt = testManager
-                .generateSalt(testCustomer.uuid, EncryptionAtRestManager.KeyProvider.SMARTKEY);
-        assertNotNull(salt);
-    }
-
-    @Test
-    public void testMaskAndUnmaskConfigData() {
-        JsonNode originalObj = Json.newObject().put("test_key", "test_val");
-        ObjectNode encryptedObj = testManager.maskConfigData(
-                testCustomer.uuid,
-                originalObj,
-                EncryptionAtRestManager.KeyProvider.SMARTKEY
-        );
-        JsonNode unencryptedObj = testManager.unmaskConfigData(
-                testCustomer.uuid,
-                encryptedObj,
-                EncryptionAtRestManager.KeyProvider.SMARTKEY
-        );
-        assertEquals(originalObj.get("test_key").asText(), unencryptedObj.get("test_key").asText());
-    }
-
-    @Test
     public void testGetServiceInstanceKeyProviderDoesNotExist() {
         EncryptionAtRestService keyService = testManager.getServiceInstance("NONSENSE");
         assertNull(keyService);
@@ -148,65 +130,4 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
                 .getNumKeyRotations(testCustomer.uuid, testUniverse.universeUUID, keyConfig);
         assertEquals(numRotations, 0);
     }
-
-    @Test
-    public void testGetUniverseKeyCacheEntryNoEntry() {
-        assertNull(testManager.getUniverseKeyCacheEntry(
-                UUID.randomUUID(),
-                new String("some_key_ref").getBytes())
-        );
-    }
-
-    @Test
-    public void testSetAndGetUniverseKeyCacheEntry() {
-        UUID universeUUID = UUID.randomUUID();
-        byte[] keyRef = new String("some_key_ref").getBytes();
-        byte[] keyVal = new String("some_key_val").getBytes();
-        testManager.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
-        assertEquals(
-                Base64.getEncoder().encodeToString(keyVal),
-                Base64.getEncoder().encodeToString(
-                        testManager.getUniverseKeyCacheEntry(universeUUID, keyRef)
-                )
-        );
-    }
-
-    @Test
-    public void testSetUpdateAndGetUniverseKeyCacheEntry() {
-        UUID universeUUID = UUID.randomUUID();
-        byte[] keyRef = new String("some_key_ref").getBytes();
-        byte[] keyVal = new String("some_key_val").getBytes();
-        testManager.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
-        assertEquals(
-                Base64.getEncoder().encodeToString(keyVal),
-                Base64.getEncoder().encodeToString(
-                        testManager.getUniverseKeyCacheEntry(universeUUID, keyRef)
-                )
-        );
-        keyVal = new String("some_new_key_val").getBytes();
-        testManager.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
-        assertEquals(
-                Base64.getEncoder().encodeToString(keyVal),
-                Base64.getEncoder().encodeToString(
-                        testManager.getUniverseKeyCacheEntry(universeUUID, keyRef)
-                )
-        );
-    }
-
-    @Test
-    public void testClearUniverseKeyCacheEntry() {
-        UUID universeUUID = UUID.randomUUID();
-        byte[] keyRef = new String("some_key_ref").getBytes();
-        byte[] keyVal = new String("some_key_val").getBytes();
-        testManager.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
-        assertEquals(
-                Base64.getEncoder().encodeToString(keyVal),
-                Base64.getEncoder().encodeToString(
-                        testManager.getUniverseKeyCacheEntry(universeUUID, keyRef)
-                )
-        );
-        testManager.removeUniverseKeyCacheEntry(universeUUID);
-        assertNull(testManager.getUniverseKeyCacheEntry(universeUUID, keyRef));
-    }
-
 }

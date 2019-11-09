@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.test.Helpers;
