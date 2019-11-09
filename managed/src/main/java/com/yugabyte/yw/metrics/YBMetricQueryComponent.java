@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.SslHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.common.SwamperHelper;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -87,8 +88,10 @@ public class YBMetricQueryComponent {
    "values": List of DATA_ENTRY_FORMAT
   }
   */
-  private static final String METRIC_DATA_FORMAT = "{\"metric\":{\"service_method\":\"%s\"}," +
+  private static final String SERVICE_METRIC_FORMAT = "{\"metric\":{\"service_method\":\"%s\"}," +
                                                    "\"values\":%s}";
+  private static final String NODE_METRIC_FORMAT = "{\"metric\": {\"node_prefix\": \"%s:%d\"}," +
+                                                    "\"values\":%s} ";
 
   // The final return format needs to be as follows:
   /*
@@ -167,9 +170,21 @@ public class YBMetricQueryComponent {
     }
   }
 
-  private Map<String, String> getTservers(Universe universe) {
+  class TServerMappings {
+    public Map<String, String> nameToUUID;
+    public Map<String, String> uuidToIP;
+
+    public TServerMappings(Map<String, String> nameToUUID,
+                           Map<String, String> uuidToIP) {
+      this.nameToUUID = nameToUUID;
+      this.uuidToIP = uuidToIP;
+    }
+  };
+
+  private TServerMappings getTservers(Universe universe) {
     YBClient client = null;
-    Map<String, String> tserverMap = new HashMap<>();
+    Map<String, String> nameToUUID = new HashMap<>();
+    Map<String, String> uuidToIP = new HashMap<>();
     String masterAddresses = universe.getMasterAddresses();
     String certificate = universe.getCertificate();
     try {
@@ -178,11 +193,12 @@ public class YBMetricQueryComponent {
       // Fetch the tablet servers.
       ListTabletServersResponse listTServerResp = client.listTabletServers();
       for (ServerInfo tserver : listTServerResp.getTabletServersList()) {
-        String tserverUUID = tserver.getUuid();
+        String uuid = tserver.getUuid();
         String host = tserver.getHost();
         NodeDetails node = universe.getNodeByPrivateIP(host);
         if (node != null) {
-          tserverMap.put(node.nodeName, tserverUUID);
+          nameToUUID.put(node.nodeName, uuid);
+          uuidToIP.put(uuid, host);
         }
       }
     } catch (Exception e) {
@@ -192,7 +208,8 @@ public class YBMetricQueryComponent {
         ybService.closeClient(client, masterAddresses);
       }
     }
-    return tserverMap;
+
+    return new TServerMappings(nameToUUID, uuidToIP);
   }
 
   private ResultSet cassandraTserverSelectQuery(String metric, String tserverUUID,
@@ -352,8 +369,10 @@ public class YBMetricQueryComponent {
   private void insertMetrics(List<String> totalMetrics, Map<Long, Double> newVals,
                              String method) {
     if (!newVals.isEmpty()) {
-      totalMetrics.add(String.format(METRIC_DATA_FORMAT, method,
+      totalMetrics.add(String.format(SERVICE_METRIC_FORMAT, method,
                                       mapToStringList(newVals)));
+      // Note that we are passing a List<String> to the %s parameter and expecting
+      // it to be serialized as [ s1, s2 ], which also matches the json array format
     }
   }
 
@@ -390,20 +409,27 @@ public class YBMetricQueryComponent {
       if (universe == null) {
         return null;
       }
+      universe = Universe.get(universe.universeUUID);
+      TServerMappings tserverMaps = getTservers(universe);
       CassandraConnection cc = null;
-      Map<String, String> tserverNameToUUID;
+
       switch (queryKey) {
         case "total_rpcs_per_sec":
           cc = createCassandraConnection(universe.universeUUID);
           if (cc.session == null) {
             return responseJson;
           }
-          universe = Universe.get(universe.universeUUID);
-          tserverNameToUUID = getTservers(universe);
           for (String method : serviceMethods) {
             String metricName = String.format(COUNT_METRIC_STRING, method);
-            List<ResultSet> results = queryRunner(metricName, cc.session, tserverNameToUUID, params,
-                                                  universe, startTime, endTime);
+            List<ResultSet> results = queryRunner(
+              metricName,
+              cc.session,
+              tserverMaps.nameToUUID,
+              params,
+              universe,
+              startTime,
+              endTime
+            );
             NavigableMap<Long, Double> metricsVals = calculateRate(results, Function.Sum,
                                                                    results.size());
             insertMetrics(metricResults, metricsVals, method);
@@ -414,15 +440,27 @@ public class YBMetricQueryComponent {
           if (cc.session == null) {
             return responseJson;
           }
-          universe = Universe.get(universe.universeUUID);
-          tserverNameToUUID = getTservers(universe);
           for (String method : serviceMethods) {
             String metricCount = String.format(COUNT_METRIC_STRING, method);
             String metricSum = String.format(SUM_METRIC_STRING, method);
-            List<ResultSet> resultCount = queryRunner(metricCount, cc.session, tserverNameToUUID,
-                                                      params, universe, startTime, endTime);
-            List<ResultSet> resultSum = queryRunner(metricSum, cc.session, tserverNameToUUID,
-                                                    params, universe, startTime, endTime);
+            List<ResultSet> resultCount = queryRunner(
+              metricCount,
+              cc.session,
+              tserverMaps.nameToUUID,
+              params,
+              universe,
+              startTime,
+              endTime
+            );
+            List<ResultSet> resultSum = queryRunner(
+              metricSum,
+              cc.session,
+              tserverMaps.nameToUUID,
+              params,
+              universe,
+              startTime,
+              endTime
+            );
             NavigableMap<Long, Double> metricsCount = calculateRate(resultCount, Function.Average,
                                                                     resultCount.size());
             NavigableMap<Long, Double> metricsSum = calculateRate(resultSum, Function.Average,
@@ -436,14 +474,24 @@ public class YBMetricQueryComponent {
           if (cc.session == null) {
             return responseJson;
           }
-          universe = Universe.get(universe.universeUUID);
-          tserverNameToUUID = getTservers(universe);
-          List<ResultSet> totalDiskRaw = queryRunner(TOTAL_DISK_STRING, cc.session,
-                                                     tserverNameToUUID, params, universe,
-                                                     startTime, endTime);
-          List<ResultSet> freeDiskRaw = queryRunner(FREE_DISK_STRING, cc.session,
-                                                    tserverNameToUUID, params, universe,
-                                                    startTime, endTime);
+          List<ResultSet> totalDiskRaw = queryRunner(
+            TOTAL_DISK_STRING,
+            cc.session,
+            tserverMaps.nameToUUID,
+            params,
+            universe,
+            startTime,
+            endTime
+          );
+          List<ResultSet> freeDiskRaw = queryRunner(
+            FREE_DISK_STRING,
+            cc.session,
+            tserverMaps.nameToUUID,
+            params,
+            universe,
+            startTime,
+            endTime
+          );
           NavigableMap<Long, Double> totalDiskMetrics = convertToGb(totalDiskRaw);
           NavigableMap<Long, Double> freeDiskMetrics = convertToGb(freeDiskRaw);
           insertMetrics(metricResults, totalDiskMetrics, "size");
@@ -454,20 +502,81 @@ public class YBMetricQueryComponent {
           if (cc.session == null) {
             return responseJson;
           }
-          universe = Universe.get(universe.universeUUID);
-          tserverNameToUUID = getTservers(universe);
-          List<ResultSet> userCpuRaw = queryRunner(CPU_USAGE_USER_STRING, cc.session,
-                                                    tserverNameToUUID, params, universe,
-                                                    startTime, endTime);
-          List<ResultSet> systemCpuRaw = queryRunner(CPU_USAGE_SYSTEM_STRING, cc.session,
-                                                    tserverNameToUUID, params, universe,
-                                                    startTime, endTime);
+          List<ResultSet> userCpuRaw = queryRunner(
+            CPU_USAGE_USER_STRING,
+            cc.session,
+            tserverMaps.nameToUUID,
+            params,
+            universe,
+            startTime,
+            endTime
+          );
+          List<ResultSet> systemCpuRaw = queryRunner(
+            CPU_USAGE_SYSTEM_STRING,
+            cc.session,
+            tserverMaps.nameToUUID,
+            params,
+            universe,
+            startTime,
+            endTime
+          );
           NavigableMap<Long, Double> userCpuMetrics = divideByConstant(userCpuRaw, 0.01);
           NavigableMap<Long, Double> systemCpuMetrics = divideByConstant(systemCpuRaw, 0.01);
           insertMetrics(metricResults, userCpuMetrics, "user");
           insertMetrics(metricResults, systemCpuMetrics, "system");
           break;
-      default:
+        case "node_up":
+          cc = createCassandraConnection(universe.universeUUID);
+          if (cc.session == null) {
+            return responseJson;
+          }
+          List<ResultSet> results = queryRunner(
+            "node_up",
+            cc.session,
+            tserverMaps.nameToUUID,
+            params,
+            universe,
+            startTime,
+            endTime
+          );
+          Map<String, List<String>> nodeUpMetrics = new HashMap<>();
+          for (ResultSet rs : results) {
+            Iterator<Row> rowIter = rs.iterator();
+            while (rowIter.hasNext()) {
+              Row row = rowIter.next();
+              String nodeIP = tserverMaps.uuidToIP.get(row.getString("node"));
+
+              if (null != nodeIP) {
+                long timestampSec = row.getTimestamp("ts").getTime() / 1000;
+                double val = (double) getValue(row);
+                String valStr = String.format(DATA_ENTRY_FORMAT, timestampSec, val);
+
+                if (null == nodeUpMetrics.get(nodeIP)) {
+                  nodeUpMetrics.put(nodeIP, new ArrayList<String>());
+                }
+                nodeUpMetrics.get(nodeIP).add(valStr);
+              }
+            }
+          }
+
+          for (Entry<String, List<String>> nodeUpMetric : nodeUpMetrics.entrySet()) {
+            metricResults.add(String.format(
+              NODE_METRIC_FORMAT,
+              nodeUpMetric.getKey(),
+              SwamperHelper.TargetType.MASTER_EXPORT.getPort(),
+              nodeUpMetric.getValue()
+            ));
+            metricResults.add(String.format(
+              NODE_METRIC_FORMAT,
+              nodeUpMetric.getKey(),
+              SwamperHelper.TargetType.TSERVER_EXPORT.getPort(),
+              nodeUpMetric.getValue()
+            ));
+            // Note that we are passing a List<String> to the %s parameter and expecting
+            // it to be serialized as [ s1, s2 ], which also matches the json array format
+          }
+          break;
+        default:
           LOG.warn("Query: " + queryKey + " not supported.");
       }
       if (cc != null) {
