@@ -1,7 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 
+#include <boost/lexical_cast.hpp>
+
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
+#include "yb/common/ql_value.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/error.h"
 #include "yb/client/table.h"
@@ -30,6 +33,7 @@
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 DECLARE_int32(cdc_wal_retention_time_secs);
+DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 
 namespace yb {
 namespace cdc {
@@ -109,6 +113,19 @@ void AssertChangeRecords(const google::protobuf::RepeatedPtrField<cdc::KeyValueP
   ASSERT_EQ(changes[0].value().int32_value(), expected_int);
   ASSERT_EQ(changes[1].key(), "string_val");
   ASSERT_EQ(changes[1].value().string_value(), expected_str);
+}
+
+void VerifyCdcState(client::YBClient* client) {
+  client::TableHandle table;
+  client::YBTableName cdc_state_table(master::kSystemNamespaceName, master::kCdcStateTableName);
+  ASSERT_OK(table.Open(cdc_state_table, client));
+  ASSERT_EQ(1, boost::size(client::TableRange(table)));
+  const auto& row = client::TableRange(table).begin();
+  string checkpoint = row->column(2).string_value();
+  size_t split = checkpoint.find(".");
+  auto index = boost::lexical_cast<int>(checkpoint.substr(split + 1, string::npos));
+  // Verify that op id index has been advanced and is not 0.
+  ASSERT_GT(index, 0);
 }
 
 void CDCServiceTest::GetTablet(std::string* tablet_id) {
@@ -506,6 +523,89 @@ TEST_F(CDCServiceTest, TestCheckpointUpdatedForRemoteRows) {
   };
 
   ASSERT_NO_FATALS(CheckChanges());
+}
+
+// Test to ensure that cdc_state table's checkpoint is updated as expected.
+// This also tests for #2897 to ensure that cdc_state table checkpoint is not overwritten to 0.0
+// in case the consumer does not send from checkpoint.
+TEST_F(CDCServiceTest, TestCheckpointUpdate) {
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+
+  CDCStreamId stream_id;
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+
+  std::string tablet_id;
+  GetTablet(&tablet_id);
+
+  const auto& proxy = cluster_->mini_tablet_server(0)->server()->proxy();
+
+  // Insert test rows.
+  tserver::WriteRequestPB write_req;
+  tserver::WriteResponsePB write_resp;
+  write_req.set_tablet_id(tablet_id);
+  {
+    RpcController rpc;
+    AddTestRowInsert(1, 11, "key1", &write_req);
+    AddTestRowInsert(2, 22, "key2", &write_req);
+
+    SCOPED_TRACE(write_req.DebugString());
+    ASSERT_OK(proxy->Write(write_req, &write_resp, &rpc));
+    SCOPED_TRACE(write_resp.DebugString());
+    ASSERT_FALSE(write_resp.has_error());
+  }
+
+  // Get CDC changes.
+  GetChangesRequestPB change_req;
+  GetChangesResponsePB change_resp;
+
+  change_req.set_tablet_id(tablet_id);
+  change_req.set_stream_id(stream_id);
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
+
+  {
+    RpcController rpc;
+    SCOPED_TRACE(change_req.DebugString());
+    ASSERT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
+    SCOPED_TRACE(change_resp.DebugString());
+    ASSERT_FALSE(change_resp.has_error());
+    ASSERT_EQ(change_resp.records_size(), 2);
+  }
+
+  // Call GetChanges again and pass in checkpoint that producer can mark as committed.
+  change_req.mutable_from_checkpoint()->CopyFrom(change_resp.checkpoint());
+  change_resp.Clear();
+  {
+    RpcController rpc;
+    SCOPED_TRACE(change_req.DebugString());
+    ASSERT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
+    SCOPED_TRACE(change_resp.DebugString());
+    ASSERT_FALSE(change_resp.has_error());
+    // No more changes, so 0 records should be received.
+    ASSERT_EQ(change_resp.records_size(), 0);
+  }
+
+  // Verify that cdc_state table has correct checkpoint.
+  ASSERT_NO_FATALS(VerifyCdcState(client_.get()));
+
+  // Call GetChanges again but without any from checkpoint.
+  change_req.Clear();
+  change_req.set_tablet_id(tablet_id);
+  change_req.set_stream_id(stream_id);
+  change_resp.Clear();
+  {
+    RpcController rpc;
+    SCOPED_TRACE(change_req.DebugString());
+    ASSERT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
+    SCOPED_TRACE(change_resp.DebugString());
+    ASSERT_FALSE(change_resp.has_error());
+    // Verify that producer uses the "from_checkpoint" from cdc_state table and does not send back
+    // any records.
+    ASSERT_EQ(change_resp.records_size(), 0);
+  }
+
+  // Verify that cdc_state table's checkpoint is unaffected.
+  ASSERT_NO_FATALS(VerifyCdcState(client_.get()));
 }
 
 } // namespace cdc
