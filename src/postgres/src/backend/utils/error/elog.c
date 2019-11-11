@@ -601,6 +601,19 @@ errcode(int sqlerrcode)
 	return 0;					/* return value does not matter */
 }
 
+int
+yb_txn_errcode(uint16_t txn_errcode)
+{
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+
+	/* we don't bother incrementing recursion_depth */
+	CHECK_STACK_DEPTH();
+
+	edata->yb_txn_errcode = txn_errcode;
+
+	return 0;					/* return value does not matter */
+}
+
 
 /*
  * errcode_for_file_access --- add SQLSTATE error code to the current error

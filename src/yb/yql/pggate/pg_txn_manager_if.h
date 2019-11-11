@@ -45,6 +45,7 @@ YBC_CLASS_START_REF_COUNTED_THREAD_SAFE
 YBC_VIRTUAL_DESTRUCTOR
 
 YBC_STATUS_METHOD_NO_ARGS(BeginTransaction)
+YBC_STATUS_METHOD_NO_ARGS(RestartTransaction)
 YBC_STATUS_METHOD_NO_ARGS(CommitTransaction)
 YBC_STATUS_METHOD_NO_ARGS(AbortTransaction)
 YBC_STATUS_METHOD(SetIsolationLevel, ((int, isolation)));
@@ -59,7 +60,6 @@ YBC_STATUS_METHOD(SetDeferrable, ((bool, deferrable)));
   yb::Result<client::YBSession*> GetTransactionalSession();
 
   Status BeginWriteTransactionIfNecessary(bool read_only_op);
-  Status RestartTransaction();
 
   bool CanRestart() { return can_restart_.load(std::memory_order_acquire); }
   void PreventRestart();

@@ -22,6 +22,7 @@
 
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction.h"
+#include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/strings/substitute.h"
@@ -214,11 +215,17 @@ void AsyncRpc::Failed(const Status& status) {
         resp->set_status(status.IsTryAgain() ? PgsqlResponsePB::PGSQL_STATUS_RESTART_REQUIRED_ERROR
                                              : PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
         resp->set_error_message(error_message);
-        const uint8_t* pgerr = status.ErrorData(PgsqlErrorTag::kCategory);
-        if (pgerr != nullptr) {
-          resp->set_pg_error_code(static_cast<uint32_t>(PgsqlErrorTag::Decode(pgerr)));
+        const uint8_t* pg_err_ptr = status.ErrorData(PgsqlErrorTag::kCategory);
+        if (pg_err_ptr != nullptr) {
+          resp->set_pg_error_code(static_cast<uint32_t>(PgsqlErrorTag::Decode(pg_err_ptr)));
         } else {
           resp->set_pg_error_code(static_cast<uint32_t>(YBPgErrorCode::YB_PG_INTERNAL_ERROR));
+        }
+        const uint8_t* txn_err_ptr = status.ErrorData(TransactionErrorTag::kCategory);
+        if (txn_err_ptr != nullptr) {
+          resp->set_txn_error_code(static_cast<uint16_t>(TransactionErrorTag::Decode(txn_err_ptr)));
+        } else {
+          resp->set_txn_error_code(static_cast<uint16_t>(TransactionErrorCode::kNone));
         }
         break;
       }
@@ -308,7 +315,7 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
       read_point->RestartRequired(req_.tablet_id(), restart_read_time);
     }
     Failed(STATUS(TryAgain, Format("Restart read required at: $0", restart_read_time), Slice(),
-                  PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)));
+                  TransactionError(TransactionErrorCode::kReadRestartRequired)));
     return false;
   }
   return true;

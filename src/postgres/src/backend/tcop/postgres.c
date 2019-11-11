@@ -3809,31 +3809,27 @@ static void YBPrepareCacheRefreshIfNeeded(MemoryContext oldcontext,
 	}
 }
 
+static const char* yb_parse_command_tag(const char *query_string)
+{
+	List* parsetree_list = pg_parse_query(query_string);
+	RawStmt* raw_parse_tree = linitial_node(RawStmt, parsetree_list);
+	return CreateCommandTag(raw_parse_tree->stmt);
+}
+
 /*
- * Only retry DML commands: DELETE, INSERT, SELECT, UPDATE
+ * Only retry SELECT, INSERT, UPDATE and DELETE commands.
  * Do the minimum parsing to find out what the command is
  */
-static bool check_retry_allowed(const char *query_string)
+static bool yb_check_retry_allowed(const char *query_string)
 {
-  if (!query_string)
-  {
-    return false;
-  }
+	if (!query_string)
+		return false;
 
-  List *parsetree_list = pg_parse_query(query_string);
-  RawStmt *raw_parse_tree = linitial_node(RawStmt, parsetree_list);
-  const char *commandTag = CreateCommandTag(raw_parse_tree->stmt);
-  if (strncmp(commandTag, "DELETE", 6) == 0 ||
-      strncmp(commandTag, "INSERT", 6) == 0 ||
-      strncmp(commandTag, "SELECT", 6) == 0 ||
-      strncmp(commandTag, "UPDATE", 6) == 0)
-  {
-    return true;
-  }
-  else
-  {
-    return false;
-  }
+	const char* commandTag = yb_parse_command_tag(query_string);
+	return (strncmp(commandTag, "DELETE", 6) == 0 ||
+	        strncmp(commandTag, "INSERT", 6) == 0 ||
+	        strncmp(commandTag, "SELECT", 6) == 0 ||
+	        strncmp(commandTag, "UPDATE", 6) == 0);
 }
 
 static void YBCheckSharedCatalogCacheVersion() {
@@ -3856,6 +3852,228 @@ static void YBCheckSharedCatalogCacheVersion() {
 
 	if (yb_catalog_cache_version < shared_catalog_version) {
 		YBRefreshCache();
+	}
+}
+
+/* Whether an error we've got is a "restart read" error. */
+static bool
+yb_is_read_restart_nedeed(const ErrorData* edata)
+{
+	if (!IsYugaByteEnabled())
+		return false;
+
+	return YBCIsRestartReadError(edata->yb_txn_errcode);
+}
+
+/* Whether we are allowed to restart current query/txn in case of "restart read" error. */
+static bool
+yb_is_read_restart_possible(int attempt, const PortalRestartData* restart_data)
+{
+	if (!IsYugaByteEnabled())
+		return false;
+
+	if (YBIsDataSendAttempted())
+		return false;
+
+	if (attempt >= YBCGetMaxReadRestartAttempts())
+		return false;
+
+	if (!restart_data)
+		return false;
+
+	// Can't currently restart named statements
+	if (restart_data->portal_name[0] != '\0')
+		return false;
+
+	// Can't currently restart parametrized prepared statements
+	if (restart_data->num_params > 0)
+		return false;
+
+	// Can only restart SELECT queries
+	if (!restart_data->query_string)
+		return false;
+	const char* command_tag = yb_parse_command_tag(restart_data->query_string);
+	if (strncmp(command_tag, "SELECT", 6) != 0)
+		return false;
+
+	return true;
+}
+
+/*
+ * Collect data necessary for yb_restart_portal invocation.
+ */
+static PortalRestartData*
+yb_collect_portal_restart_data(const char* portal_name)
+{
+	Portal portal = GetPortalByName(portal_name);
+
+	if (portal == NULL)
+		return NULL;
+
+	PortalRestartData* result = (PortalRestartData*) palloc(sizeof(PortalRestartData));
+
+	result->portal_name  = pstrdup(portal_name);
+	result->query_string = pstrdup(unnamed_stmt_psrc->query_string);
+
+	result->num_params  = unnamed_stmt_psrc->num_params;
+	result->param_types = NULL;
+	if (unnamed_stmt_psrc->param_types)
+	{
+		result->param_types = (Oid*) palloc(result->num_params * sizeof(Oid));
+		memcpy(result->param_types,
+		       unnamed_stmt_psrc->param_types,
+		       result->num_params * sizeof(Oid));
+	}
+
+	result->num_formats = 0;
+	result->formats     = NULL;
+	if (portal->formats)
+	{
+		result->num_formats = portal->tupDesc->natts;
+		result->formats     = (int16*) palloc(result->num_formats * sizeof(int16));
+		memcpy(result->formats,
+		       portal->formats,
+		       result->num_formats * sizeof(int16));
+	}
+
+	return result;
+}
+
+/*
+ * Create a new portal to replace one that might've been partially processed.
+ */
+static void
+yb_restart_portal(const PortalRestartData* rd)
+{
+
+	/* 1. Redo Parse: Create Cached stmt (no output) */
+	exec_parse_message(rd->query_string,
+	                   rd->portal_name,
+	                   rd->param_types,
+	                   rd->num_params,
+	                   DestNone);
+
+	/* 2. Redo the Bind step */
+
+	/* Create portal */
+	bool no_portal_name = rd->portal_name[0] == '\0';
+	Portal portal = CreatePortal(rd->portal_name,
+	                             no_portal_name /* allowDup */,
+	                             no_portal_name /* dupSilent */);
+
+	/* Set portal data */
+	MemoryContext oldContext = MemoryContextSwitchTo(portal->portalContext);
+	const char    *stmt_name = no_portal_name ? NULL : pstrdup(rd->portal_name);
+
+	/*
+	 * TODO params are none for now - we do not support retrying for prepared statements yet.
+	 * (i.e. if portal is named or has params)
+	 */
+	ParamListInfo params = NULL;
+
+	MemoryContextSwitchTo(oldContext);
+
+	CachedPlan *cplan = GetCachedPlan(unnamed_stmt_psrc,
+	                                  params,
+	                                  false /* useResOwner */,
+	                                  NULL) /* queryEnv */;
+
+	PortalDefineQuery(portal,
+	                  stmt_name,
+	                  rd->query_string,
+	                  unnamed_stmt_psrc->commandTag,
+	                  cplan->stmt_list,
+	                  cplan);
+
+	/* Start portal */
+	PortalStart(portal, params, 0 /* eflags */, InvalidSnapshot);
+
+	/* Set the output format */
+	PortalSetResultFormat(portal, rd->num_formats, rd->formats);
+}
+
+/*
+ * Wraps exec_simple_query, attempting to transparently do read restarts when possible.
+ * Accepts execution memory context to revert to in case of an error.
+ */
+static void
+yb_exec_simple_query_attempting_to_restart_read(const char* query_string,
+                                                MemoryContext exec_context)
+{
+	for (int attempt = 0;; ++attempt) {
+		PG_TRY();
+		{
+			exec_simple_query(query_string);
+			return;
+		}
+		PG_CATCH();
+		{
+			// Switch the context from the current execution back to the original context
+			// when server started processing user request.
+			MemoryContext     error_context = MemoryContextSwitchTo(exec_context);
+			ErrorData*        edata         = CopyErrorData();
+			PortalRestartData restart_data  = {
+			    .portal_name  = "",
+			    .query_string = query_string,
+			    .num_params   = 0,
+			    .param_types  = NULL,
+			    .num_formats  = 0,
+			    .formats      = NULL
+			};
+
+			if (yb_is_read_restart_nedeed(edata) &&
+                yb_is_read_restart_possible(attempt, &restart_data)) {
+				/* Cleanup the error, signal txn restart and let the loop continue. */
+				FlushErrorState();
+				PopActiveSnapshot(); // Restart read error occurrs after portal snapshot is pushed.
+				YBCRestartTransaction();
+			} else {
+				/* If we shouldn't restart - propagate the error. */
+				MemoryContextSwitchTo(error_context);
+				PG_RE_THROW();
+			}
+		}
+		PG_END_TRY();
+	}
+}
+
+/*
+ * Wraps exec_execute_message, attempting to transparently do read restarts when possible.
+ * Accepts execution memory context to revert to in case of an error.
+ */
+static void
+yb_exec_execute_message_attempting_to_restart_read(const char* portal_name,
+                                                   long max_rows,
+                                                   MemoryContext exec_context)
+{
+	for (int attempt = 0;; ++attempt) {
+		PG_TRY();
+		{
+			exec_execute_message(portal_name, max_rows);
+			return;
+		}
+		PG_CATCH();
+		{
+			// Switch the context from the current execution back to the original context
+			// when server started processing user request.
+			MemoryContext      error_context = MemoryContextSwitchTo(exec_context);
+			ErrorData*         edata         = CopyErrorData();
+			PortalRestartData* restart_data  = yb_collect_portal_restart_data(portal_name);
+
+			if (yb_is_read_restart_nedeed(edata) &&
+                yb_is_read_restart_possible(attempt, restart_data)) {
+				/* Cleanup the error, signal txn restart, recreate portal and let the loop continue. */
+				FlushErrorState();
+				PopActiveSnapshot(); // Restart read error occurrs after portal snapshot is pushed.
+				yb_restart_portal(restart_data);
+				YBCRestartTransaction();
+			} else {
+				/* If we shouldn't restart - propagate the error. */
+				MemoryContextSwitchTo(error_context);
+				PG_RE_THROW();
+			}
+		}
+		PG_END_TRY();
 	}
 }
 
@@ -4424,28 +4642,20 @@ PostgresMain(int argc, char *argv[],
 
 				PG_TRY();
 				{
-					if (am_walsender)
-					{
-						if (!exec_replication_command(query_string))
-							exec_simple_query(query_string);
-					} else
-						exec_simple_query(query_string);
+					if (!am_walsender || !exec_replication_command(query_string))
+                      yb_exec_simple_query_attempting_to_restart_read(query_string, oldcontext);
 				}
 				PG_CATCH();
 				{
-          bool need_retry = false;
-          YBPrepareCacheRefreshIfNeeded(oldcontext,
-                                        check_retry_allowed(query_string),
-                                        &need_retry);
+					bool need_retry = false;
+					YBPrepareCacheRefreshIfNeeded(oldcontext,
+                                                  yb_check_retry_allowed(query_string),
+                                                  &need_retry);
 
 					if (need_retry)
 					{
-						if (am_walsender)
-						{
-							if (!exec_replication_command(query_string))
-								exec_simple_query(query_string);
-						} else
-							exec_simple_query(query_string);
+						if (!am_walsender || !exec_replication_command(query_string))
+                          yb_exec_simple_query_attempting_to_restart_read(query_string, oldcontext);
 					} else
 					{
 						PG_RE_THROW();
@@ -4541,54 +4751,26 @@ PostgresMain(int argc, char *argv[],
 
 					PG_TRY();
 					{
-						exec_execute_message(portal_name, max_rows);
+                      yb_exec_execute_message_attempting_to_restart_read(portal_name,
+                                                                         max_rows,
+                                                                         oldcontext);
 					}
 					PG_CATCH();
 					{
-						Portal old_portal = GetPortalByName(portal_name);
+
+						PortalRestartData* restart_data =
+                            yb_collect_portal_restart_data(portal_name);
 
 						/*
 						 * TODO Do not support retrying for prepared statements
 						 * yet. (i.e. if portal is named or has params).
 						 */
-						bool can_retry = IsYugaByteEnabled() &&
-						                 old_portal &&
-						                 portal_name[0] == '\0' &&
-						                 !old_portal->portalParams &&
-						                 check_retry_allowed(unnamed_stmt_psrc->query_string);
-
-						/* Stuff we might need for retrying below */
-						char *query_string = NULL;
-						int num_params = 0;
-						Oid *param_types = NULL;
-						int   nformats = 0;
-						int16 *formats = NULL;
-
-						if (can_retry)
-						{
-							/*
-							 * Copy the data needed to retry before transaction
-							 * abort cleans it up.
-							 */
-							query_string = pstrdup(unnamed_stmt_psrc->query_string);
-							num_params   = unnamed_stmt_psrc->num_params;
-							if (unnamed_stmt_psrc->param_types)
-							{
-								param_types = (Oid *) palloc(num_params * sizeof(Oid));
-								memcpy(param_types,
-								       unnamed_stmt_psrc->param_types,
-								       num_params * sizeof(Oid));
-							}
-
-							if (old_portal->formats)
-							{
-								nformats = old_portal->tupDesc->natts;
-								formats  = (int16 *) palloc(nformats * sizeof(int16));
-								memcpy(formats,
-								       old_portal->formats,
-								       nformats * sizeof(int16));
-							}
-						}
+						bool can_retry =
+						    IsYugaByteEnabled() &&
+						    restart_data &&
+						    restart_data->portal_name[0] == '\0' &&
+						    restart_data->num_params == 0 &&
+                                yb_check_retry_allowed(unnamed_stmt_psrc->query_string);
 
 						bool need_retry = false;
 						/*
@@ -4601,57 +4783,12 @@ PostgresMain(int argc, char *argv[],
 
 						if (need_retry && can_retry)
 						{
+                          yb_restart_portal(restart_data);
 
-							/* 1. Redo Parse: Create Cached stmt (no output) */
-							exec_parse_message(query_string,
-							                   portal_name,
-							                   param_types,
-							                   num_params,
-							                   DestNone);
-
-							/* 2. Redo the Bind step */
-							Portal portal;
-							/* Create portal */
-							if (portal_name[0] == '\0')
-								portal = CreatePortal(portal_name, true, true);
-							else
-								portal = CreatePortal(portal_name,
-								                      false,
-								                      false);
-
-							/* Set portal data */
-							MemoryContext oldContext = MemoryContextSwitchTo(
-									portal->portalContext);
-							char          *stmt_name;
-							if (portal_name[0])
-								stmt_name = pstrdup(portal_name);
-							else
-								stmt_name = NULL;
-
-							/* TODO params are none for now (see above) */
-							ParamListInfo params = NULL;
-
-							MemoryContextSwitchTo(oldContext);
-
-							CachedPlan *cplan = GetCachedPlan(unnamed_stmt_psrc,
-							                                  params,
-							                                  false,
-							                                  NULL);
-
-							PortalDefineQuery(portal,
-							                  stmt_name,
-							                  query_string,
-							                  unnamed_stmt_psrc->commandTag,
-							                  cplan->stmt_list,
-							                  cplan);
-
-							/* Start portal */
-							PortalStart(portal, params, 0, InvalidSnapshot);
-							/* Set the output format */
-							PortalSetResultFormat(portal, nformats, formats);
-
-							/* 3. Now ready to retry the execute step. */
-							exec_execute_message(portal_name, max_rows);
+							/* Now ready to retry the execute step. */
+                          yb_exec_execute_message_attempting_to_restart_read(portal_name,
+                                                                             max_rows,
+                                                                             CurrentMemoryContext);
 						}
 						else
 						{

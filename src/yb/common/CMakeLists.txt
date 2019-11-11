@@ -107,6 +107,7 @@ set(COMMON_SRCS
   doc_hybrid_time.cc
   consistent_read_point.cc
   transaction.cc
+  transaction_error.cc
   types.cc
   wire_protocol.cc
   ql_bfunc.cc

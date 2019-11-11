@@ -24,6 +24,7 @@
 #include "yb/yql/pggate/pggate_if_cxx_decl.h"
 
 #include "yb/common/pgsql_error.h"
+#include "yb/common/transaction_error.h"
 #include "yb/util/yb_pg_errcodes.h"
 
 namespace yb {
@@ -163,6 +164,11 @@ bool PgDocOp::CheckRestartUnlocked(client::YBPgsqlOp* op) {
     pg_error_code = static_cast<YBPgErrorCode>(response.pg_error_code());
   }
 
+  TransactionErrorCode txn_error_code = TransactionErrorCode::kNone;
+  if (response.has_txn_error_code()) {
+    txn_error_code = static_cast<TransactionErrorCode>(response.txn_error_code());
+  }
+
   if (response.status() == PgsqlResponsePB::PGSQL_STATUS_RESTART_REQUIRED_ERROR &&
       pg_session_->pg_txn_manager()->CanRestart()) {
     exec_status_ = pg_session_->RestartTransaction();
@@ -181,6 +187,7 @@ bool PgDocOp::CheckRestartUnlocked(client::YBPgsqlOp* op) {
         PgsqlError(pg_error_code));
   }
 
+  exec_status_ = exec_status_.CloneAndAddErrorCode(TransactionError(txn_error_code));
   return false;
 }
 

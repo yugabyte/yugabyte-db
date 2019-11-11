@@ -1762,6 +1762,7 @@ ExecutePlan(EState *estate,
 		 */
 		if (sendTuples)
 		{
+			YBMarkDataSendAttempted();
 			/*
 			 * If we are not able to send the tuple, we assume the destination
 			 * has closed and no more tuples can be sent. If that's the case,

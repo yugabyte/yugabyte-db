@@ -89,7 +89,7 @@ extern bool IsYBRelation(Relation relation);
  */
 extern bool IsYBBackedRelation(Relation relation);
 
-extern bool YBNeedRetryAfterCacheRefresh(ErrorData *error);
+extern bool YBNeedRetryAfterCacheRefresh(ErrorData *edata);
 
 extern void YBReportFeatureUnsupported(const char *err_msg);
 
@@ -151,7 +151,13 @@ extern void YBInitPostgresBackend(const char *program_name,
  * This should be called on all exit paths from the PostgreSQL backend process.
  * Only main PostgreSQL backend thread is expected to call this.
  */
-extern void	YBOnPostgresBackendShutdown();
+extern void YBOnPostgresBackendShutdown();
+
+/*
+ * Signals PgTxnManager to restart current transaction - pick a new read point, etc.
+ * This relies on transaction/session read time already being marked for restart by YB layer.
+ */
+extern void YBCRestartTransaction();
 
 /*
  * Commits the current YugaByte-level transaction. Returns true in case of

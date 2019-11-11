@@ -30,6 +30,7 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/transaction.h"
+#include "yb/common/transaction_error.h"
 #include "yb/common/pgsql_error.h"
 
 #include "yb/consensus/opid_util.h"
@@ -204,8 +205,9 @@ class TransactionState {
           ClearRequests(STATUS(AlreadyPresent, "Transaction committed"));
           break;
         case TransactionStatus::ABORTED:
-          ClearRequests(STATUS(Expired, "Transaction aborted",
-            PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)));
+          ClearRequests(
+              STATUS(Expired, "Transaction aborted",
+                     TransactionError(TransactionErrorCode::kAborted)));
           break;
         case TransactionStatus::CREATED: FALLTHROUGH_INTENDED;
         case TransactionStatus::PENDING: FALLTHROUGH_INTENDED;
