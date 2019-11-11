@@ -665,14 +665,30 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
     string table_uuid = table->id();
     string state = SysTablesEntryPB_State_Name(l->data().pb.state());
     Capitalize(&state);
+    string ysql_table_oid;
+    if (table->GetTableType() == PGSQL_TABLE_TYPE) {
+      const auto result = GetPgsqlTableOid(table_uuid);
+      if (result.ok()) {
+        ysql_table_oid = std::to_string(*result);
+      } else {
+        LOG(ERROR) << "Failed to get OID of '" << table_uuid << "' ysql table";
+      }
+    }
     (*ordered_tables[table_cat])[table_uuid] = Substitute(
-        "<tr><td>$0</td><td><a href=\"/table?id=$4\">$1</a>"
-            "</td><td>$2</td><td>$3</td><td>$4</td></tr>\n",
+        "<tr>" \
+        "<td>$0</td>" \
+        "<td><a href=\"/table?id=$4\">$1</a></td>" \
+        "<td>$2</td>" \
+        "<td>$3</td>" \
+        "<td>$4</td>" \
+        "<td>$5</td>" \
+        "</tr>\n",
         EscapeForHtmlToString(keyspace),
         EscapeForHtmlToString(l->data().name()),
         state,
         EscapeForHtmlToString(l->data().pb.state_msg()),
-        EscapeForHtmlToString(table_uuid));
+        EscapeForHtmlToString(table_uuid),
+        ysql_table_oid);
   }
 
   for (int i = 0; i < kNumTypes; ++i) {
@@ -689,11 +705,12 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
                 << table_type_[i].substr(1) << " type tables.\n";
     } else {
       *output << "<table class='table table-striped' style='table-layout: fixed;'>\n";
-      *output << "  <tr><th style='width: 2*;'>Keyspace</th>\n"
-              << "      <th style='width: 3*;'>Table Name</th>\n"
-              << "      <th style='width: 1*;'>State</th>\n"
-              << "      <th style='width: 2*'>Message</th>\n"
-              << "      <th style='width: 4*'>UUID</th></tr>\n";
+      *output << "  <tr><th width='14%'>Keyspace</th>\n"
+              << "      <th width='21%'>Table Name</th>\n"
+              << "      <th width='9%'>State</th>\n"
+              << "      <th width='14%'>Message</th>\n"
+              << "      <th width='28%'>UUID</th>\n"
+              << "      <th width='14%'>YSQL OID</th></tr>\n";
       for (const StringMap::value_type &table : *(ordered_tables[i])) {
         *output << table.second;
       }
