@@ -656,11 +656,15 @@ void Batcher::ProcessRpcStatus(const AsyncRpc &rpc, const Status &s) {
   // RPCs are in-flight, then accessing state_ will crash. We probably need to keep
   // track of the in-flight RPCs, and in the destructor, change each of them to an
   // "aborted" state.
-  CHECK_EQ(state_, BatcherState::kTransactionReady);
+  std::lock_guard<decltype(mutex_)> lock(mutex_);
+  if (state_ != BatcherState::kTransactionReady) {
+    LOG(DFATAL) << "ProcessRpcStatus in wrong state " << ToString(state_) << ": " << rpc.ToString()
+                << ", " << s;
+    return;
+  }
 
   if (PREDICT_FALSE(!s.ok())) {
     // Mark each of the ops as failed, since the whole RPC failed.
-    std::lock_guard<decltype(mutex_)> lock(mutex_);
     for (auto& in_flight_op : rpc.ops()) {
       CombineErrorUnlocked(in_flight_op, s);
     }
