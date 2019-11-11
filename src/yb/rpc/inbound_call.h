@@ -192,14 +192,6 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
     return result;
   }
 
-  // Retain this object, so it would not get deleted even when all external references to it are
-  // destroyed. We need this function to have ability to add InboundCall to data structures that
-  // could operate only on raw pointers.
-  void RetainSelf();
-
-  // Stop retaining this object.
-  void UnretainSelf();
-
  protected:
   void NotifyTransferred(const Status& status, Connection* conn) override;
 
@@ -255,7 +247,6 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   };
 
   InboundCallTask task_;
-  InboundCallPtr retained_self_;
   InboundCallHandler* tracker_ = nullptr;
 
   DISALLOW_COPY_AND_ASSIGN(InboundCall);
