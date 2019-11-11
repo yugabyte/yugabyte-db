@@ -374,6 +374,9 @@ bool YBCIsInitDbModeEnvVarSet();
 // This is called by initdb. Used to customize some behavior.
 void YBCInitFlags();
 
+// Retrieves value of ysql_max_read_restart_attempts gflag
+int32_t YBCGetMaxReadRestartAttempts();
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

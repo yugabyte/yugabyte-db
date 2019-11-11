@@ -612,6 +612,10 @@ YBCStatus YBCGetSharedCatalogVersion(YBCPgSession pg_session, uint64_t* catalog_
   return ToYBCStatus(result.status());
 }
 
+int32_t YBCGetMaxReadRestartAttempts() {
+  return FLAGS_ysql_max_read_restart_attempts;
+}
+
 } // extern "C"
 
 } // namespace pggate

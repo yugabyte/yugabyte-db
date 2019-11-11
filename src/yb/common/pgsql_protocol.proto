@@ -333,7 +333,18 @@ message PgsqlResponsePB {
   // Number of rows affected by the operation. Currently only used for update and delete.
   optional int32 rows_affected_count = 7;
 
-  // External Status : PostgreSQL error code encoded as in errcodes.h or yb_pg_errcodes.h.
+  //
+  // External statuses.
+  //
+  // If you add more of those, make sure they are correctly picked up, e.g.
+  // by PgDocReadOp::ReceiveResponse and PgDocOp::CheckRestartUnlocked
+  //
+
+  // PostgreSQL error code encoded as in errcodes.h or yb_pg_errcodes.h.
   // See https://www.postgresql.org/docs/11/errcodes-appendix.html
   optional uint64 pg_error_code = 8;
+
+  // Transaction error code, obtained by static_cast of TransactionErrorTag::Decode
+  // of Status::ErrorData(TransactionErrorTag::kCategory)
+  optional uint32 txn_error_code = 9;
 }
