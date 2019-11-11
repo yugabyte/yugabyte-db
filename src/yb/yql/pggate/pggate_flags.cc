@@ -58,6 +58,9 @@ DEFINE_int32(ysql_session_max_batch_size, 512,
 DEFINE_bool(ysql_non_txn_copy, false,
             "Execute COPY inserts non-transactionally.");
 
+DEFINE_int32(ysql_max_read_restart_attempts, 10,
+             "How many read restarts can we try transparently before giving up");
+
 // Top-level flag to enable all YSQL beta features.
 DEFINE_bool(ysql_beta_features, true,
             "Whether to enable all ysql beta features");

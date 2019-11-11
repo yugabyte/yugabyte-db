@@ -1016,11 +1016,11 @@ HeapScanDesc ybc_heap_beginscan(Relation relation,
                                 Snapshot snapshot,
                                 int nkeys,
                                 ScanKey key,
-								bool temp_snap)
+                                bool temp_snap)
 {
-  // Restart should not be prevented if operation caused by system read of system table.
+	// Restart should not be prevented if operation caused by system read of system table.
 	YbScanDesc ybScan = ybcBeginScan(relation, NULL /* index */, false /* index_cols_only */,
-									                 nkeys, key, !IsSystemRelation(relation) /* prevent_restart */);
+	                                 nkeys, key, !IsSystemRelation(relation) /* prevent_restart */);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
@@ -1094,7 +1094,7 @@ void ybc_pkey_beginscan(Relation relation,
 	Assert(index->rd_index->indisprimary);
 
 	YbScanDesc ybScan = ybcBeginScan(relation, index, scan_desc->xs_want_itup /* index_cols_only */,
-									                 nkeys, key, true /* prevent_restart */);
+	                                 nkeys, key, true /* prevent_restart */);
 	ybScan->index = index;
 
 	scan_desc->opaque = ybScan;
@@ -1117,8 +1117,8 @@ void ybc_index_beginscan(Relation index,
 	 * because we are scanning the index directly, not scanning base table with an index.
 	 */
 	YbScanDesc ybScan = ybcBeginScan(index /* relation */, NULL /* index */,
-									                 false /* index_cols_only */, nkeys, key,
-									                 true /* prevent_restart */);
+	                                 false /* index_cols_only */, nkeys, key,
+	                                 true /* prevent_restart */);
 	ybScan->index = index;
 
 	scan_desc->opaque = ybScan;

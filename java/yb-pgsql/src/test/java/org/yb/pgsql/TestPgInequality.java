@@ -34,7 +34,7 @@ import java.util.*;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgInequality extends BasePgSQLTest {
-  private static final Logger LOG = LoggerFactory.getLogger(TestPgSelect.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestPgInequality.class);
 
   private void createTable(String tableName) throws SQLException {
     try (Statement statement = connection.createStatement()) {

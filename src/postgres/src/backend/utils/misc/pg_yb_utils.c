@@ -234,11 +234,13 @@ HandleYBStatus(YBCStatus status)
 	if (YBShouldReportErrorStatus()) {
 		YBC_LOG_ERROR("HandleYBStatus: %s", msg_buf);
 	}
-	const uint32 pg_err_code = YBCStatusPgsqlError(status);
+	const uint32_t pg_err_code  = YBCStatusPgsqlError(status);
+	const uint16_t txn_err_code = YBCStatusTransactionError(status);
 	YBCFreeStatus(status);
 	ereport(ERROR,
-			(errcode(pg_err_code),
-			 errmsg("%s", msg_buf)));
+			(errmsg("%s", msg_buf),
+			 errcode(pg_err_code),
+			 yb_txn_errcode(txn_err_code)));
 }
 
 void
@@ -346,6 +348,14 @@ YBOnPostgresBackendShutdown()
 	}
 	YBCDestroyPgGate();
 	shutdown_done = true;
+}
+
+void
+YBCRestartTransaction()
+{
+	if (!IsYugaByteEnabled())
+		return;
+	HandleYBStatus(YBCPgTxnManager_RestartTransaction_Status(YBCGetPgTxnManager()));
 }
 
 static void
