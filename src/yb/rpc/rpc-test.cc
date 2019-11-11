@@ -175,6 +175,28 @@ TEST_F(TestRpc, TestCall) {
   }
 }
 
+TEST_F(TestRpc, BigTimeout) {
+  // Set up server.
+  TestServerOptions options;
+  options.messenger_options.keep_alive_timeout = 60s;
+  HostPort server_addr;
+  StartTestServer(&server_addr, options);
+
+  // Set up client.
+  LOG(INFO) << "Connecting to " << server_addr;
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
+  Proxy p(client_messenger.get(), server_addr);
+
+  for (int i = 0; i < 10; i++) {
+    ASSERT_OK(DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod()));
+  }
+
+  LOG(INFO) << "Calls OK";
+
+  auto call_consumption = MemTracker::GetRootTracker()->FindChild("Call")->consumption();
+  ASSERT_EQ(call_consumption, 0);
+}
+
 // Test that connecting to an invalid server properly throws an error.
 TEST_F(TestRpc, TestCallToBadServer) {
   auto client_messenger = CreateAutoShutdownMessengerHolder("Client");

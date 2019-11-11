@@ -215,15 +215,5 @@ void InboundCall::InboundCallTask::Done(const Status& status) {
   }
 }
 
-void InboundCall::RetainSelf() {
-  LOG_IF_WITH_PREFIX(DFATAL, retained_self_) << "Aleady retained";
-  retained_self_ = shared_from(this);
-}
-
-void InboundCall::UnretainSelf() {
-  LOG_IF_WITH_PREFIX(DFATAL, !retained_self_) << "Not retained";
-  retained_self_.reset();
-}
-
 }  // namespace rpc
 }  // namespace yb
