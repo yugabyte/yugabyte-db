@@ -163,6 +163,57 @@ public class EncryptionAtRestManager {
         return universeKeyData;
     }
 
+    public byte[] getCurrentUniverseKey(
+            UUID customerUUID,
+            UUID universeUUID,
+            Map<String, String> config,
+            byte[] keyRef
+    ) {
+        byte[] keyVal = null;
+        EncryptionAtRestService keyService;
+        String kmsProvider;
+        Universe universe = Universe.get(universeUUID);
+        try {
+            kmsProvider = config.get("kms_provider");
+            keyService = getServiceInstance(kmsProvider);
+            keyVal = keyService.retrieveKey(customerUUID, universeUUID, keyRef, config);
+        } catch (Exception e) {
+            String errMsg = String.format(
+                    "Error attempting to retrieve the current universe key for " +
+                            "customer %s and universe %s",
+                    customerUUID.toString(),
+                    universeUUID.toString()
+            );
+            LOG.error(errMsg, e);
+        }
+        return keyVal;
+    }
+
+    public byte[] getCurrentUniverseKeyRef(
+            UUID customerUUID,
+            UUID universeUUID,
+            Map<String, String> config
+    ) {
+        byte[] keyRef = null;
+        EncryptionAtRestService keyService;
+        String kmsProvider;
+        Universe universe = Universe.get(universeUUID);
+        try {
+            kmsProvider = config.get("kms_provider");
+            keyService = getServiceInstance(kmsProvider);
+            keyRef = keyService.getKeyRef(customerUUID, universeUUID);
+        } catch (Exception e) {
+            String errMsg = String.format(
+                    "Error attempting to retrieve the current universe key ref for " +
+                            "customer %s and universe %s",
+                    customerUUID.toString(),
+                    universeUUID.toString()
+            );
+            LOG.error(errMsg, e);
+        }
+        return keyRef;
+    }
+
     public int getNumKeyRotations(
             UUID customerUUID,
             UUID universeUUID,

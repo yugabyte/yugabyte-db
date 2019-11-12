@@ -267,18 +267,7 @@ public class UniverseController extends AuthenticatedController {
             LOG.warn(errMsg);
             primaryCluster.userIntent.enableEncryptionAtRest = false;
           } else {
-            int numRotations = keyManager.getNumKeyRotations(
-                    customerUUID,
-                    universe.universeUUID,
-                    taskParams.encryptionAtRestConfig
-            );
-            taskParams.encryptionKeyFilePath = CertificateHelper.createEncryptionKeyFile(
-                    customerUUID,
-                    universe.universeUUID,
-                    data,
-                    appConfig.getString("yb.storage.path"),
-                    numRotations
-            );
+            taskParams.enableEncryptionAtRest = true;
           }
         } else if (
                 primaryCluster.userIntent.enableVolumeEncryption
@@ -359,20 +348,10 @@ public class UniverseController extends AuthenticatedController {
             String errMsg = "Was not able to retrieve a universe key from desired KMS provider";
             throw new RuntimeException(errMsg);
           }
-          int numRotations = keyManager.getNumKeyRotations(
-                  customerUUID,
-                  universeUUID,
-                  taskParams.encryptionAtRestConfig
-          );
-          taskParams.encryptionKeyFilePath = CertificateHelper.createEncryptionKeyFile(
-                  customerUUID,
-                  universe.universeUUID,
-                  data,
-                  appConfig.getString("yb.storage.path"),
-                  numRotations
-          );
+          taskParams.enableEncryptionAtRest = true;
           break;
         case DISABLE:
+          taskParams.disableEncryptionAtRest = true;
           break;
         default:
           throw new IllegalArgumentException(
@@ -483,19 +462,8 @@ public class UniverseController extends AuthenticatedController {
           taskType = TaskType.EditKubernetesUniverse;
           taskParams.isKubernetesUniverse = true;
         }
-        Map<String, String> encryptionAtRestConfig = universe.getEncryptionAtRestConfig();
-        int numRotations = keyManager.getNumKeyRotations(
-                customerUUID,
-                universeUUID,
-                encryptionAtRestConfig
-        );
         if (universe.isEncryptedAtRest()) {
-          taskParams.encryptionKeyFilePath = CertificateHelper.getEncryptionFile(
-                  customerUUID,
-                  universe.universeUUID,
-                  appConfig.getString("yb.storage.path"),
-                  numRotations
-          );
+          taskParams.enableEncryptionAtRest = true;
         }
       }
 
@@ -972,6 +940,10 @@ public class UniverseController extends AuthenticatedController {
       TaskType taskType = TaskType.UpgradeUniverse;
       if (taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes)) {
         taskType = TaskType.UpgradeKubernetesUniverse;
+      }
+
+      if (universe.isEncryptedAtRest()) {
+        taskParams.enableEncryptionAtRest = true;
       }
 
       UUID taskUUID = commissioner.submit(taskType, taskParams);

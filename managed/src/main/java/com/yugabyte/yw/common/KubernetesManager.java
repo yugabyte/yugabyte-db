@@ -37,16 +37,6 @@ public class KubernetesManager {
     return execCommand(config, commandList);
   }
 
-  public ShellProcessHandler.ShellResponse copyEncryptionKeyFile(Map<String, String> config, String file, String universePrefix, String podName) {
-    String nodePath = String.format(
-            "%s/%s:/mnt/disk0",
-            universePrefix,
-            podName
-    );
-    List<String> commandList = ImmutableList.of("kubectl", "cp", file, nodePath);
-    return execCommand(config, commandList);
-  }
-
   public ShellProcessHandler.ShellResponse applySecret(Map<String, String> config, String universePrefix, String pullSecret) {
     List<String> commandList = ImmutableList.of("kubectl",  "create",
         "-f", pullSecret, "--namespace", universePrefix);

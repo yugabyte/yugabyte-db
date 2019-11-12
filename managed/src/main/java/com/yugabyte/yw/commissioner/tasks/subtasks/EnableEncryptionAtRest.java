@@ -10,20 +10,33 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import java.io.File;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.YBClient;
 import play.api.Play;
+import org.yb.util.Pair;
 
 public class EnableEncryptionAtRest extends AbstractTaskBase {
 
   public static final Logger LOG = LoggerFactory.getLogger(EnableEncryptionAtRest.class);
+
+  public static final int KEY_IN_MEMORY_TIMEOUT = 500;
 
   // The YB client.
   public YBClientService ybService = null;
@@ -47,19 +60,51 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.get(taskParams().universeUUID);
+    Customer customer = Customer.get(universe.customerId);
     String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificate();
     YBClient client = null;
-    if (taskParams().encryptionKeyFilePath != null) {
+    if (taskParams().enableEncryptionAtRest) {
       try {
         LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
         client = ybService.getClient(hostPorts, certificate);
-        File tempKeyFile = new File(taskParams().encryptionKeyFilePath);
-        String nodeFilePath = "/home/yugabyte/encryption-key-dir/";
-        if (taskParams().isKubernetesUniverse) {
-          nodeFilePath = "/mnt/disk0/";
+        EncryptionAtRestManager manager = Play.current()
+                .injector()
+                .instanceOf(EncryptionAtRestManager.class);
+        Map<String, String> encryptionAtRestConfig = universe.getEncryptionAtRestConfig();
+        byte[] currentKeyRef = manager.getCurrentUniverseKeyRef(
+                customer.uuid,
+                universe.universeUUID,
+                encryptionAtRestConfig
+        );
+        final byte[] currentKeyVal = manager.getCurrentUniverseKey(
+                customer.uuid,
+                universe.universeUUID,
+                encryptionAtRestConfig,
+                currentKeyRef
+        );
+        final String encodedKeyRef = Base64.getEncoder().encodeToString(currentKeyRef);
+        List<HostAndPort> masterAddrs = Arrays
+                .stream(hostPorts.split(","))
+                .map(addr -> HostAndPort.fromString(addr))
+                .collect(Collectors.toList());
+        for (HostAndPort hp : masterAddrs) {
+          client.addUniverseKeys(ImmutableMap.of(encodedKeyRef, currentKeyVal), hp);
         }
-        client.enableEncryptionAtRest(nodeFilePath + tempKeyFile.getName());
+        for (HostAndPort hp : masterAddrs) {
+          if (!client
+                  .waitForMasterHasUniverseKeyInMemory(KEY_IN_MEMORY_TIMEOUT, encodedKeyRef, hp)) {
+            throw new RuntimeException(
+                    "Timeout occured waiting for universe encryption key to be set in memory"
+            );
+          }
+        }
+        client.enableEncryptionAtRestInMemory(encodedKeyRef);
+        Pair<Boolean, String> isEncryptionEnabled = client.isEncryptionEnabled();
+        if (!isEncryptionEnabled.getFirst() ||
+                !isEncryptionEnabled.getSecond().equals(encodedKeyRef)) {
+          throw new RuntimeException("Error occured enabling encryption at rest");
+        }
       } catch (Exception e) {
         LOG.error("{} hit error : {}", getName(), e.getMessage());
         throw new RuntimeException(e);
