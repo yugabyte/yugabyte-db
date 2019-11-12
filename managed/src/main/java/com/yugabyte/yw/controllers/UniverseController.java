@@ -139,8 +139,9 @@ public class UniverseController extends AuthenticatedController {
           UniverseDefinitionTaskParams.ClusterOperationType.valueOf(clustOp.asText());
       UniverseDefinitionTaskParams taskParams = bindFormDataToTaskParams(formData);
 
+      taskParams.currentClusterType = currentClusterType;
       // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster uuid.
-      Cluster c = currentClusterType.equals(ClusterType.PRIMARY) ?
+      Cluster c = taskParams.currentClusterType .equals(ClusterType.PRIMARY) ?
           taskParams.getPrimaryCluster() : taskParams.getReadOnlyClusters().get(0);
       if (checkIfNodeParamsValid(taskParams, c)) {
         PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid, clusterOpType);
