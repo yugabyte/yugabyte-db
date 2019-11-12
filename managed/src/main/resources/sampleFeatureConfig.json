@@ -1,7 +1,8 @@
 {
   "universe": {
     "import": "disabled",
-    "create": "disabled"
+    "create": "disabled",
+    "defaultYSQL": "enabled"
   },
   "config": {
     "infra": "hidden",
@@ -18,12 +19,12 @@
   },
   "menu": {
     "dashboard": "hidden",
-    "configs": "disabled",
-    "config": "disabled"
+    "config": "disabled",
+    "metrics": "disabled"
   },
   "universes": {
     "details": {
-      "tasks": "disabled",
+      "tasks": "hidden",
       "backups": "disabled",
       "health": "disabled",
       "metrics": "hidden",
