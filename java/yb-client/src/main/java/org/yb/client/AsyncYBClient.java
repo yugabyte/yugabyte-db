@@ -690,9 +690,35 @@ public class AsyncYBClient implements AutoCloseable {
     return sendRpcToTablet(rpc);
   }
 
+  /**
+   * Enable encryption at rest in memory
+   */
+  public Deferred<ChangeEncryptionInfoInMemoryResponse> enableEncryptionAtRestInMemory(
+          final String versionId) throws Exception {
+    checkIsClosed();
+    ChangeEncryptionInfoInMemoryRequest rpc = new ChangeEncryptionInfoInMemoryRequest(
+            this.masterTable, versionId, true);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Disable encryption at rest in memory
+   */
+  public Deferred<ChangeEncryptionInfoInMemoryResponse> disableEncryptionAtRestInMemory()
+          throws Exception {
+    checkIsClosed();
+    ChangeEncryptionInfoInMemoryRequest rpc = new ChangeEncryptionInfoInMemoryRequest(
+            this.masterTable, "", false);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+
   public Deferred<ChangeEncryptionInfoResponse> enableEncryptionAtRest(String keyFile) {
     checkIsClosed();
-    ChangeEncryptionInfoRequest rpc = new ChangeEncryptionInfoRequest(this.masterTable, keyFile, true);
+    ChangeEncryptionInfoRequest rpc = new ChangeEncryptionInfoRequest(
+            this.masterTable, keyFile, true);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }
@@ -702,6 +728,41 @@ public class AsyncYBClient implements AutoCloseable {
     ChangeEncryptionInfoRequest rpc = new ChangeEncryptionInfoRequest(this.masterTable, "", false);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
+  }
+
+  public Deferred<IsEncryptionEnabledResponse> isEncryptionEnabled() throws Exception {
+    checkIsClosed();
+    IsEncryptionEnabledRequest rpc = new IsEncryptionEnabledRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  public Deferred<AddUniverseKeysResponse> addUniverseKeys(
+          Map<String, byte[]> universeKeys, HostAndPort hp) throws Exception {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    AddUniverseKeysRequest rpc = new AddUniverseKeysRequest(universeKeys);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<AddUniverseKeysResponse> d = rpc.getDeferred();
+    client.sendRpc(rpc);
+    return d;
+  }
+
+  public Deferred<HasUniverseKeyInMemoryResponse> hasUniverseKeyInMemory(
+          String universeKeyId, HostAndPort hp) throws Exception {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    HasUniverseKeyInMemoryRequest rpc = new HasUniverseKeyInMemoryRequest(universeKeyId);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<HasUniverseKeyInMemoryResponse> d = rpc.getDeferred();
+    client.sendRpc(rpc);
+    return d;
   }
 
   /**
