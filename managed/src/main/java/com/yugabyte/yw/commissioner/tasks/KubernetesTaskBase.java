@@ -411,7 +411,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.commandType = commandType;
     params.nodePrefix = taskParams().nodePrefix;
     params.universeUUID = taskParams().universeUUID;
-    params.encryptionKeyFilePath = taskParams().encryptionKeyFilePath;
 
     if (az != null) {
       params.nodePrefix = String.format("%s-%s", params.nodePrefix, az);

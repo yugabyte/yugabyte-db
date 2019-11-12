@@ -41,7 +41,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
-import com.yugabyte.yw.commissioner.tasks.subtasks.CopyEncryptionKeyFile;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
@@ -608,8 +607,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.rootCA = taskParams().rootCA;
       
       UUID custUUID = Customer.get(Universe.get(taskParams().universeUUID).customerId).uuid;
-
-      params.encryptionKeyFilePath = taskParams().encryptionKeyFilePath;
 
       params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
       // Set if updating master addresses only.

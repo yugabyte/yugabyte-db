@@ -251,13 +251,6 @@ public class NodeManager extends DevopsBase {
           subcommand.add("--rootCA_key");
           subcommand.add(cert.privateKey);
         }
-        if (taskParam.encryptionKeyFilePath != null && node.isMaster) {
-          String filePath = taskParam.encryptionKeyFilePath;
-          subcommand.add("--encryption_key_source_file");
-          subcommand.add(filePath);
-          subcommand.add("--encryption_key_target_dir");
-          subcommand.add("/home/yugabyte/encryption-key-dir");
-        }
         if (taskParam.callhomeLevel != null){
           extra_gflags.put("callhome_collection_level", taskParam.callhomeLevel.toString().toLowerCase());
           if(taskParam.callhomeLevel.toString().equals("NONE")){
@@ -468,50 +461,5 @@ public class NodeManager extends DevopsBase {
 
     return execCommand(nodeTaskParam.getRegion().uuid, null, null, type.toString().toLowerCase(),
       commandArgs, getCloudArgs(nodeTaskParam));
-  }
-
-  public List<ShellProcessHandler.ShellResponse> copyEncryptionKeyFile(
-          NodeTaskParams nodeTaskParam
-  ) {
-    Universe universe = Universe.get(nodeTaskParam.universeUUID);
-    String[] masterAddresses = universe.getMasterAddresses().split(",");
-    String keyFile = String.format(
-            "%s/keys/%s/%s.pem",
-            appConfig.getString("yb.storage.path"),
-            nodeTaskParam.getProvider().uuid,
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.accessKeyCode
-    );
-    List<ShellProcessHandler.ShellResponse> responses = new ArrayList<>();
-    for (String master : masterAddresses) {
-      String privateIp = master.split(":")[0];
-      String destination = "/home/yugabyte/encryption-key-dir";
-      String destinationPath = String.format(
-              "yugabyte@%s:%s", privateIp, destination
-      );
-      List<String> createDirectoryCommandList = ImmutableList.of(
-              "ssh",
-              "-i", keyFile,
-              "-ostricthostkeychecking=no",
-              String.format("yugabyte@%s", privateIp),
-              "-p", "54422",
-              String.format("mkdir -p %s", destination)
-      );
-      List<String> copyKeyFileCommandList = ImmutableList.of(
-              "scp",
-              "-i", keyFile,
-              "-ostricthostkeychecking=no",
-              "-P", "54422", // TODO: (Daniel) - Should the port be hardcoded?
-              nodeTaskParam.encryptionKeyFilePath, destinationPath
-      );
-      // Ensure encryption-key-dir exists
-      ShellProcessHandler.ShellResponse createEncryptionKeyDirResult = shellProcessHandler
-              .run(createDirectoryCommandList, new HashMap<>());
-      // Copy encryption key file over to master node
-      ShellProcessHandler.ShellResponse copyResult = shellProcessHandler
-              .run(copyKeyFileCommandList, new HashMap<>());
-      responses.add(createEncryptionKeyDirResult);
-      responses.add(copyResult);
-    }
-    return responses;
   }
 }

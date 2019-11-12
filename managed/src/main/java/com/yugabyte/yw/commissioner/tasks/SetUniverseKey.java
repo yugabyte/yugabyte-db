@@ -23,8 +23,6 @@ public class SetUniverseKey extends UniverseTaskBase {
     public void run() {
         LOG.info("Started {} task.", getName());
         try {
-            String encryptionKeyFilePath = taskParams().encryptionKeyFilePath;
-
             // Create the task list sequence.
             subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
@@ -32,20 +30,15 @@ public class SetUniverseKey extends UniverseTaskBase {
             // 'updateInProgress' flag to prevent other updates from happening.
             lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
-            // Copy the key file over to master nodes
-            createCopyEncryptionKeyFileTask();
-
             // Enable encryption-at-rest if key file is passed in
-            createEnableEncryptionAtRestTask(encryptionKeyFilePath)
+            createEnableEncryptionAtRestTask(taskParams().enableEncryptionAtRest)
                     .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-            createDisableEncryptionAtRestTask(encryptionKeyFilePath)
+            createDisableEncryptionAtRestTask(taskParams().disableEncryptionAtRest)
                     .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
             // Update the universe model to reflect encryption is now enabled
-            writeEncryptionIntentToUniverse(
-                    encryptionKeyFilePath != null && encryptionKeyFilePath.length() > 0
-            );
+            writeEncryptionIntentToUniverse(taskParams().enableEncryptionAtRest);
 
             // Marks the update of this universe as a success only if all the tasks before it succeeded.
             createMarkUniverseUpdateSuccessTasks()

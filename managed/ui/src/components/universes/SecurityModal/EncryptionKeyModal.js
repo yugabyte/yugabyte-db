@@ -7,7 +7,6 @@ import * as Yup from "yup";
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
 import { YBModal, YBFormToggle, YBFormSelect, YBFormDropZone } from '../../common/forms/fields';
 import { readUploadedFile } from "../../../utils/UniverseUtils";
-import _ from 'lodash';
 import { isNonEmptyObject } from 'utils/ObjectUtils';
 
 
@@ -44,14 +43,14 @@ export default class EncryptionKeyModal extends Component {
       "kms_provider": kmsProvider
     };
 
-    if (values.enableEncryptionAtRest) {
-      if (values.awsCmkPolicy) {
-        readUploadedFile(values.awsCmkPolicy).then(text => {
-          data.cmk_policy = text;
-        });
-      }
+    if (values.enableEncryptionAtRest && values.awsCmkPolicy) {
+      readUploadedFile(values.awsCmkPolicy).then(text => {
+        data.cmk_policy = text;
+        handleSubmitKey(setEncryptionKey(universeUUID, data));
+      });
+    } else {
+      handleSubmitKey(setEncryptionKey(universeUUID, data));
     }
-    handleSubmitKey(setEncryptionKey(universeUUID, data));
   }
 
   render() {

@@ -136,16 +136,12 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         // Update master addresses to the latest required ones.
         createMoveMasterTasks(new ArrayList(mastersToAdd), new ArrayList(mastersToRemove));
 
-        // Add encryption key file to the new master nodes
-        if (taskParams().encryptionKeyFilePath != null) {
-          createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.COPY_KEY_FILE);
-        }
-        // Enable encryption-at-rest if key file is passed in
-        createEnableEncryptionAtRestTask(taskParams().encryptionKeyFilePath, true)
+        // Enable encryption-at-rest if that is the intent and the key creation succeeded
+        createEnableEncryptionAtRestTask(taskParams().enableEncryptionAtRest)
                 .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
         // Update the universe model to reflect encryption is now enabled
-        writeEncryptionIntentToUniverse(taskParams().encryptionKeyFilePath != null);
+        writeEncryptionIntentToUniverse(taskParams().enableEncryptionAtRest);
       }
 
       // Bring up new tservers.

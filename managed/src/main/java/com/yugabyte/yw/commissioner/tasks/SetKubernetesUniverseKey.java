@@ -25,12 +25,6 @@ public class SetKubernetesUniverseKey extends KubernetesTaskBase {
     public void run() {
         LOG.info("Started {} task.", getName());
         try {
-            String encryptionKeyFilePath = taskParams().encryptionKeyFilePath;
-            // Verify the task params.
-            if (encryptionKeyFilePath == null || encryptionKeyFilePath.isEmpty()) {
-                throw new IllegalArgumentException("An encryption key file path has not been set");
-            }
-
             // Create the task list sequence.
             subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
@@ -38,11 +32,11 @@ public class SetKubernetesUniverseKey extends KubernetesTaskBase {
             // 'updateInProgress' flag to prevent other updates from happening.
             lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
-            // Copy rotated key file contents to masters in k8s pods
-            createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.COPY_KEY_FILE);
-
             // Enable encryption-at-rest with new key file contents
-            createEnableEncryptionAtRestTask(encryptionKeyFilePath, true)
+            createEnableEncryptionAtRestTask(taskParams().enableEncryptionAtRest)
+                    .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+            createDisableEncryptionAtRestTask(taskParams().disableEncryptionAtRest)
                     .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
             // Update the universe model to reflect encryption is now enabled

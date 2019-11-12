@@ -146,7 +146,10 @@ public enum TaskType {
 
   KubernetesWaitForPod("subtasks.KubernetesWaitForPod"),
 
-  CopyEncryptionKeyFile("subtasks.CopyEncryptionKeyFile");
+  @Deprecated
+  CopyEncryptionKeyFile("subtasks.CopyEncryptionKeyFile"),
+
+  WaitForEncryptionKeyInMemory("subtasks.WaitForEncryptionKeyInMemory");
 
   private String relativeClassPath;
 

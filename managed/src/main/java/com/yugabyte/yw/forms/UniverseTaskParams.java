@@ -20,8 +20,11 @@ public class UniverseTaskParams extends AbstractTaskParams {
   // not verify expected version of the universe.
   public int expectedUniverseVersion;
 
-  // Flag for creating encryption-at-rest key file
-  public String encryptionKeyFilePath;
+  // Flag for enabling encryption at rest
+  public boolean enableEncryptionAtRest = false;
+
+  // Flag for disabling encryption at rest
+  public boolean disableEncryptionAtRest = false;
 
   public String cmkArn;
 
