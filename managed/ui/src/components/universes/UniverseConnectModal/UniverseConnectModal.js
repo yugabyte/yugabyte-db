@@ -13,6 +13,7 @@ import { isNonEmptyObject } from "../../../utils/ObjectUtils";
 import { YBLoading } from '../../common/indicators';
 import { YBCodeBlock, YBCopyButton } from '../../common/descriptors';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
+import { isEnabled } from 'utils/LayoutUtils';
 
 import './UniverseConnectModal.scss';
 
@@ -51,13 +52,13 @@ class UniverseConnectModal extends Component {
       const primaryCluster = getPrimaryCluster(clusters);
       const userIntent = primaryCluster && primaryCluster.userIntent;
 
-      const ycqlServiceUrl = getUniverseEndpoint(universeUUID) + "/yqlservers";
+      const ycqlServiceUrl = getUniverseEndpoint(universeUUID) + "/ysqlservers";
       // check if there's a Hosted Zone
       if (userIntent.providerType === "aws" && universeInfo.dnsName) {
         this.setState({connectIp: universeInfo.dnsName.lastIndexOf(".") === universeInfo.dnsName.length - 1 ? universeInfo.dnsName.substr(0, universeInfo.dnsName.length - 1) : universeInfo.dnsName});
         axios.get(ycqlServiceUrl)
           .then((response) => this.setState({
-            endpointName: "YCQL",
+            endpointName: "YSQL",
             endpointPayload: response.data
           }))
           .catch(() => console.log("YCQL endpoint is unavailable"));
@@ -66,7 +67,7 @@ class UniverseConnectModal extends Component {
         axios.get(ycqlServiceUrl)
           .then((response) => this.setState({
             connectIp: response.data.split(',')[0].trim().split(':')[0],
-            endpointName: "YCQL",
+            endpointName: "YSQL",
             endpointPayload: response.data
           }))
           .catch(() => console.log("YCQL endpoint is unavailable"));
@@ -76,6 +77,7 @@ class UniverseConnectModal extends Component {
 
   render() {
     const {
+      currentCustomer,
       showOverviewConnectModal,
       closeModal,
       modal: { showModal, visibleModal },
@@ -99,7 +101,8 @@ class UniverseConnectModal extends Component {
       const endpointsContent = (
         <Fragment>
           <FlexContainer className="btn-group-cnt endpoint-buttons">
-            {userIntent.enableYSQL && <FlexShrink>{this.renderEndpointUrl(ysqlServiceUrl, "YSQL")}</FlexShrink>}
+            {(userIntent.enableYSQL || isEnabled(currentCustomer.data.features, "universe.defaultYSQL")) &&
+              <FlexShrink>{this.renderEndpointUrl(ysqlServiceUrl, "YSQL")}</FlexShrink>}
             <FlexShrink>{this.renderEndpointUrl(ycqlServiceUrl, "YCQL")}</FlexShrink>
             <FlexShrink>{this.renderEndpointUrl(yedisServiceUrl, "YEDIS")}</FlexShrink>
           </FlexContainer>
@@ -120,7 +123,7 @@ class UniverseConnectModal extends Component {
                 <td>:</td>
                 <td title={`jdbc:postgresql://${connectIp}:5433/postgres`}>jdbc:postgresql://{connectIp}:5433/postgres</td>
               </tr>
-              {userIntent.enableYSQL &&
+              {(userIntent.enableYSQL || isEnabled(currentCustomer.data.features, "universe.defaultYSQL")) &&
                 <tr>
                   <td>YSQL Shell</td>
                   <td>:    </td>
