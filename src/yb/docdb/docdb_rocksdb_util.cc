@@ -47,9 +47,9 @@ DEFINE_int32(rocksdb_level0_file_num_compaction_trigger, 5,
              "Number of files to trigger level-0 compaction. -1 if compaction should not be "
              "triggered by number of files at all.");
 
-DEFINE_int32(rocksdb_level0_slowdown_writes_trigger, 24,
+DEFINE_int32(rocksdb_level0_slowdown_writes_trigger, -1,
              "The number of files above which writes are slowed down.");
-DEFINE_int32(rocksdb_level0_stop_writes_trigger, 48,
+DEFINE_int32(rocksdb_level0_stop_writes_trigger, -1,
              "The number of files above which compactions are stopped.");
 DEFINE_int32(rocksdb_universal_compaction_size_ratio, 20,
              "The percentage upto which files that are larger are include in a compaction.");

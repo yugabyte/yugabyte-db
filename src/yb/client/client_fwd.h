@@ -31,6 +31,9 @@ class scoped_refptr;
 namespace yb {
 namespace client {
 
+class RejectionScoreSource;
+typedef std::shared_ptr<RejectionScoreSource> RejectionScoreSourcePtr;
+
 class YBClient;
 
 class YBError;

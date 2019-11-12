@@ -50,6 +50,7 @@
 #include "yb/client/error_collector.h"
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/rejection_score_source.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
@@ -613,7 +614,7 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
   InFlightOps ops(begin, end);
   auto op_group = GetOpGroup(*begin);
   AsyncRpcData data{this, tablet, allow_local_calls_in_curr_thread, need_consistent_read,
-                    rejection_score_, std::move(ops)};
+                    std::move(ops)};
   switch (op_group) {
     case OpGroup::kWrite:
       return std::make_shared<WriteRpc>(&data);
@@ -700,6 +701,14 @@ void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
     CombineErrorUnlocked(rpc.ops()[err_pb.row_index()], StatusFromPB(err_pb.error()));
   }
+}
+
+double Batcher::RejectionScore(int attempt_num) {
+  if (!rejection_score_source_) {
+    return 0.0;
+  }
+
+  return rejection_score_source_->Get(attempt_num);
 }
 
 }  // namespace internal

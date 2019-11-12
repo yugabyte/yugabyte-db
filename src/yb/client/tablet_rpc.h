@@ -44,7 +44,9 @@ class TabletRpc {
  public:
   virtual const tserver::TabletServerErrorPB* response_error() const = 0;
   virtual void Failed(const Status& status) = 0;
-  virtual void SendRpcToTserver() = 0;
+
+  // attempt_num starts with 1.
+  virtual void SendRpcToTserver(int attempt_num) = 0;
  protected:
   ~TabletRpc() {}
 };

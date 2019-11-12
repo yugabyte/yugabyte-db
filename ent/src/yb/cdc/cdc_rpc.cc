@@ -86,7 +86,7 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
   }
 
  private:
-  void SendRpcToTserver() override {
+  void SendRpcToTserver(int attempt_num) override {
     InvokeAsync(invoker_.proxy().get(),
                 PrepareController(invoker_.client().default_rpc_timeout()),
                 std::bind(&CDCWriteRpc::Finished, this, Status::OK()));
@@ -208,7 +208,7 @@ class CDCReadRpc : public rpc::Rpc, public client::internal::TabletRpc {
   }
 
  private:
-  void SendRpcToTserver() override {
+  void SendRpcToTserver(int attempt_num) override {
     // should be fast because the proxy cache has EndPoint from the tablet lookup.
     cdc_proxy_ = std::make_shared<CDCServiceProxy>(
        &invoker_.client().proxy_cache(), invoker_.ProxyEndpoint());

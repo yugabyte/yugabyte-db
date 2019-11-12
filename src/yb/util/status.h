@@ -199,6 +199,8 @@ class StatusErrorCode {
  public:
   virtual uint8_t Category() const = 0;
   virtual size_t EncodedSize() const = 0;
+  // Serialization should not be changed after error code is released, since it is
+  // transferred over the wire.
   virtual uint8_t* Encode(uint8_t* out) const = 0;
   virtual std::string Message() const = 0;
 
@@ -274,6 +276,39 @@ bool operator!=(const typename Tag::Value& lhs, const StatusErrorCodeImpl<Tag>& 
   return lhs != rhs.value();
 }
 
+// Base class for all error tags that use integral representation.
+// For instance time duration.
+template <class Traits>
+class IntegralBackedErrorTag {
+ public:
+  typedef typename Traits::ValueType Value;
+
+  static Value Decode(const uint8_t* source) {
+    if (!source) {
+      return Value();
+    }
+    return Traits::FromRepresentation(
+        Load<typename Traits::RepresentationType, LittleEndian>(source));
+  }
+
+  static size_t DecodeSize(const uint8_t* source) {
+    return sizeof(typename Traits::RepresentationType);
+  }
+
+  static size_t EncodedSize(Value value) {
+    return sizeof(typename Traits::RepresentationType);
+  }
+
+  static uint8_t* Encode(Value value, uint8_t* out) {
+    Store<typename Traits::RepresentationType, LittleEndian>(out, Traits::ToRepresentation(value));
+    return out + sizeof(typename Traits::RepresentationType);
+  }
+
+  static std::string DecodeToString(const uint8_t* source) {
+    return Traits::ToString(Decode(source));
+  }
+};
+
 template <class Enum>
 typename std::enable_if<std::is_enum<Enum>::value, std::string>::type
 IntegralToString(Enum e) {
@@ -286,33 +321,28 @@ IntegralToString(Value value) {
   return std::to_string(value);
 }
 
+// Base class for error tags that have integral value type.
+template <class Value>
+class PlainIntegralTraits {
+ public:
+  typedef Value ValueType;
+  typedef ValueType RepresentationType;
+
+  static ValueType FromRepresentation(RepresentationType source) {
+    return source;
+  }
+
+  static RepresentationType ToRepresentation(ValueType value) {
+    return value;
+  }
+
+  static std::string ToString(ValueType value) {
+    return IntegralToString(value);
+  }
+};
+
 template <class ValueType>
-struct IntegralErrorTag {
-  typedef ValueType Value;
-
-  static Value Decode(const uint8_t* source) {
-    if (!source) {
-      return Value();
-    }
-    return Load<Value, LittleEndian>(source);
-  }
-
-  static size_t DecodeSize(const uint8_t* source) {
-    return sizeof(Value);
-  }
-
-  static size_t EncodedSize(Value value) {
-    return sizeof(Value);
-  }
-
-  static uint8_t* Encode(Value value, uint8_t* out) {
-    Store<Value, LittleEndian>(out, value);
-    return out + sizeof(Value);
-  }
-
-  static std::string DecodeToString(const uint8_t* source) {
-    return IntegralToString(Decode(source));
-  }
+struct IntegralErrorTag : public IntegralBackedErrorTag<PlainIntegralTraits<ValueType>> {
 };
 
 struct StatusCategoryDescription {

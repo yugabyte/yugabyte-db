@@ -70,7 +70,7 @@ class TransactionRpcBase : public rpc::Rpc, public internal::TabletRpc {
   }
 
  private:
-  void SendRpcToTserver() override {
+  void SendRpcToTserver(int attempt_num) override {
     InvokeAsync(invoker_.proxy().get(),
                 PrepareController(),
                 std::bind(&TransactionRpcBase::Finished, this, Status::OK()));
