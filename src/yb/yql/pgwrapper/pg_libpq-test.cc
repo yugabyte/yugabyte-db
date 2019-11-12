@@ -475,13 +475,12 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
   for (auto* tserver : cluster_->tserver_daemons()) {
     auto tablets = ASSERT_RESULT(cluster_->GetTabletIds(tserver));
     for (const auto& tablet : tablets) {
-      int64_t value;
-      auto status = tserver->GetInt64Metric(
-          &METRIC_ENTITY_tablet, tablet.c_str(), &METRIC_transaction_not_found, "value", &value);
-      if (status.ok()) {
-        total_not_found += value;
+      auto result = tserver->GetInt64Metric(
+          &METRIC_ENTITY_tablet, tablet.c_str(), &METRIC_transaction_not_found, "value");
+      if (result.ok()) {
+        total_not_found += *result;
       } else {
-        ASSERT_TRUE(status.IsNotFound()) << status;
+        ASSERT_TRUE(result.status().IsNotFound()) << result.status();
       }
     }
   }

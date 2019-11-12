@@ -1214,16 +1214,17 @@ struct IOMetrics {
       const ExternalMiniCluster& cluster, int ts_index,
       const MetricPrototype* metric_proto, int64_t* value) {
     const ExternalTabletServer& ts = *CHECK_NOTNULL(cluster.tablet_server(ts_index));
-    const Status s = ts.GetInt64CQLMetric(
+    const auto result = ts.GetInt64CQLMetric(
         &METRIC_ENTITY_server, "yb.cqlserver", CHECK_NOTNULL(metric_proto),
-        "total_count", CHECK_NOTNULL(value));
+        "total_count");
 
-    if (!s.ok()) {
+    if (!result.ok()) {
       LOG(ERROR) << "Failed to get metric " << metric_proto->name() << " from TS"
           << ts_index << ": " << ts.bind_host() << ":" << ts.cql_http_port()
-          << " with error " << s.CodeAsString();
+          << " with error " << result.status();
     }
-    ASSERT_OK(s);
+    ASSERT_OK(result);
+    *CHECK_NOTNULL(value) = *result;
   }
 
   void load(const ExternalMiniCluster& cluster) {

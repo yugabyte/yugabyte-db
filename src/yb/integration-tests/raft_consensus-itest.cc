@@ -1607,13 +1607,12 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
 
   // Check that the 'term' metric is correctly exposed.
   {
-    int64_t term_from_metric = -1;
-    ASSERT_OK(cluster_->tablet_server_by_uuid(replica_ts->uuid())->GetInt64Metric(
-                  &METRIC_ENTITY_tablet,
-                  nullptr,
-                  &METRIC_raft_term,
-                  "value",
-                  &term_from_metric));
+    int64_t term_from_metric = ASSERT_RESULT(
+        cluster_->tablet_server_by_uuid(replica_ts->uuid())->GetInt64Metric(
+            &METRIC_ENTITY_tablet,
+            nullptr,
+            &METRIC_raft_term,
+            "value"));
     ASSERT_EQ(term_from_metric, 1);
   }
 
@@ -2562,13 +2561,11 @@ TEST_F(RaftConsensusITest, TestMemoryRemainsConstantDespiteTwoDeadFollowers) {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(kMaxWaitTime);
   while (true) {
-    int64_t num_rejections = 0;
-    ASSERT_OK(cluster_->tablet_server(leader_ts_idx)->GetInt64Metric(
+    int64_t num_rejections = ASSERT_RESULT(cluster_->tablet_server(leader_ts_idx)->GetInt64Metric(
         &METRIC_ENTITY_tablet,
         nullptr,
         &METRIC_not_leader_rejections,
-        "value",
-        &num_rejections));
+        "value"));
     if (num_rejections >= kMinRejections) {
       break;
     } else if (deadline.ComesBefore(MonoTime::Now())) {

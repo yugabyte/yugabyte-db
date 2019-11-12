@@ -164,6 +164,7 @@ class PeerMessageQueue {
   PeerMessageQueue(const scoped_refptr<MetricEntity>& metric_entity,
                    const scoped_refptr<log::Log>& log,
                    const std::shared_ptr<MemTracker>& server_tracker,
+                   const std::shared_ptr<MemTracker>& parent_tracker,
                    const RaftPeerPB& local_peer_pb,
                    const std::string& tablet_id,
                    const server::ClockPtr& clock,
@@ -316,8 +317,7 @@ class PeerMessageQueue {
   }
 
   // Read replicated log records starting from the OpId immediately after last_op_id.
-  CHECKED_STATUS ReadReplicatedMessagesForCDC(const OpId& last_op_id, ReplicateMsgs *msgs,
-                                              bool* have_more_messages);
+  Result<ReadOpsResult> ReadReplicatedMessagesForCDC(const OpId& last_op_id);
 
   void UpdateCDCConsumerOpId(const OpId& op_id);
 
@@ -398,7 +398,7 @@ class PeerMessageQueue {
   // Returns true iff given 'desired_op' is found in the local WAL.
   // If the op is not found, returns false.
   // If the log cache returns some error other than NotFound, crashes with a fatal error.
-  bool IsOpInLog(const OpId& desired_op) const;
+  bool IsOpInLog(const yb::OpId& desired_op) const;
 
   void NotifyObserversOfMajorityReplOpChange(const MajorityReplicatedData& data);
 
@@ -454,13 +454,10 @@ class PeerMessageQueue {
   OpId OpIdWatermark();
   uint64_t NumSSTFilesWatermark();
 
-  CHECKED_STATUS ReadFromLogCache(int64_t from_index,
-                                  int64_t to_index,
-                                  int max_batch_size,
-                                  const std::string& peer_uuid,
-                                  ReplicateMsgs* messages,
-                                  OpId* preceding_id,
-                                  bool* have_more_messages);
+  Result<ReadOpsResult> ReadFromLogCache(int64_t from_index,
+                                         int64_t to_index,
+                                         int max_batch_size,
+                                         const std::string& peer_uuid);
 
   std::vector<PeerMessageQueueObserver*> observers_;
 
@@ -488,6 +485,8 @@ class PeerMessageQueue {
   DFAKE_MUTEX(append_fake_lock_);
 
   LogCache log_cache_;
+
+  std::shared_ptr<MemTracker> operations_mem_tracker_;
 
   Metrics metrics_;
 

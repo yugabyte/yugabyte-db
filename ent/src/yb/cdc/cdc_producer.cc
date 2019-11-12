@@ -71,18 +71,15 @@ Status CDCProducer::GetChanges(const std::string& stream_id,
     request_scope = RequestScope(txn_participant);
   }
 
-  ReplicateMsgs messages;
-  bool have_more_messages;
-  RETURN_NOT_OK(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(from_op_id, &messages,
-                                                                       &have_more_messages));
+  auto read_ops = VERIFY_RESULT(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(from_op_id));
 
   TxnStatusMap txn_map = VERIFY_RESULT(BuildTxnStatusMap(
-      messages, have_more_messages, tablet_peer->Now(), txn_participant));
+      read_ops.messages, read_ops.have_more_messages, tablet_peer->Now(), txn_participant));
 
   OpIdPB checkpoint;
   checkpoint.set_term(0);
   checkpoint.set_index(0);
-  auto ordered_msgs = VERIFY_RESULT(SortWrites(messages, txn_map, &checkpoint));
+  auto ordered_msgs = VERIFY_RESULT(SortWrites(read_ops.messages, txn_map, &checkpoint));
 
   for (const auto& msg : ordered_msgs) {
     switch (msg->op_type()) {

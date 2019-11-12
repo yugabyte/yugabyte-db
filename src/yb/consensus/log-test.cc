@@ -179,12 +179,12 @@ TEST_F(LogTest, TestMultipleEntriesInABatch) {
   {
     LogIndexEntry entry;
     ASSERT_OK(log_->log_index_->GetEntry(1, &entry));
-    ASSERT_EQ(1, entry.op_id.term());
+    ASSERT_EQ(1, entry.op_id.term);
     ASSERT_EQ(1, entry.segment_sequence_number);
     int64_t offset = entry.offset_in_segment;
 
     ASSERT_OK(log_->log_index_->GetEntry(2, &entry));
-    ASSERT_EQ(1, entry.op_id.term());
+    ASSERT_EQ(1, entry.op_id.term);
     ASSERT_EQ(1, entry.segment_sequence_number);
     int64_t second_offset = entry.offset_in_segment;
 
@@ -195,13 +195,13 @@ TEST_F(LogTest, TestMultipleEntriesInABatch) {
 
   // Test LookupOpId
   {
-    OpId loaded_op;
-    ASSERT_OK(log_->GetLogReader()->LookupOpId(1, &loaded_op));
-    ASSERT_EQ("1.1", consensus::OpIdToString(loaded_op));
-    ASSERT_OK(log_->GetLogReader()->LookupOpId(2, &loaded_op));
-    ASSERT_EQ("1.2", consensus::OpIdToString(loaded_op));
-    Status s = log_->GetLogReader()->LookupOpId(3, &loaded_op);
-    ASSERT_TRUE(s.IsNotFound()) << "unexpected status: " << s.ToString();
+    auto loaded_op = ASSERT_RESULT(log_->GetLogReader()->LookupOpId(1));
+    ASSERT_EQ(yb::OpId(1, 1), loaded_op);
+    loaded_op = ASSERT_RESULT(log_->GetLogReader()->LookupOpId(2));
+    ASSERT_EQ(yb::OpId(1, 2), loaded_op);
+    auto result = log_->GetLogReader()->LookupOpId(3);
+    ASSERT_TRUE(!result.ok() && result.status().IsNotFound())
+        << "unexpected status: " << result.status();
   }
 
   ASSERT_OK(log_->Close());
@@ -634,9 +634,6 @@ TEST_F(LogTest, TestGCWithLogRunning) {
   }
 }
 
-// This test relies on kEntriesPerIndexChunk being 1000000, and that's no longer
-// the case after D1719 (2fe27d886390038bc734ea28638a1b1435e7d0d4) on Mac.
-#if !defined(__APPLE__)
 // Test that, when we are set to retain a given number of log segments,
 // we also retain any relevant log index chunks, even if those operations
 // are not necessary for recovery.
@@ -664,9 +661,8 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
 
   // And we should still be able to read ops in the retained segment, even though
   // the GC index was higher.
-  OpId loaded_op;
-  ASSERT_OK(log_->GetLogReader()->LookupOpId(999995, &loaded_op));
-  ASSERT_EQ("1.999995", consensus::OpIdToString(loaded_op));
+  auto loaded_op = ASSERT_RESULT(log_->GetLogReader()->LookupOpId(999995));
+  ASSERT_EQ(yb::OpId(1, 999995), loaded_op);
 
   // If we drop the retention count down to 1, we can now GC, and the log index
   // chunk should also be GCed.
@@ -674,10 +670,13 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
   ASSERT_OK(log_->GC(1000003, &num_gced_segments));
   ASSERT_EQ(1, num_gced_segments);
 
-  Status s = log_->GetLogReader()->LookupOpId(999995, &loaded_op);
-  ASSERT_TRUE(s.IsNotFound()) << "unexpected status: " << s.ToString();
-}
+  auto result = log_->GetLogReader()->LookupOpId(999995);
+// This test relies on kEntriesPerIndexChunk being 1000000, and that's no longer
+// the case after D1719 (2fe27d886390038bc734ea28638a1b1435e7d0d4) on Mac.
+#if !defined(__APPLE__)
+  ASSERT_TRUE(!result.ok() && result.status().IsNotFound()) << "unexpected status: " << result;
 #endif
+}
 
 // Tests that we can append FLUSH_MARKER messages to the log queue to make sure
 // all messages up to a certain point were fsync()ed without actually

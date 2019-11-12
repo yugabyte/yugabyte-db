@@ -122,7 +122,7 @@ class LogReader {
 
   // Look up the OpId for the given operation index.
   // Returns a bad Status if the log index fails to load (eg. due to an IO error).
-  CHECKED_STATUS LookupOpId(int64_t op_index, consensus::OpId* op_id) const;
+  Result<yb::OpId> LookupOpId(int64_t op_index) const;
 
   // Returns the number of segments.
   const int num_segments() const;
