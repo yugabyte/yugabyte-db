@@ -13,6 +13,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/rejection_score_source.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_handle.h"
@@ -742,7 +743,7 @@ void QLStressTest::AddWriter(
     auto session = NewSession();
     while (!stop.load(std::memory_order_acquire)) {
       auto new_key = *key + 1;
-      session->SetRejectionScore(RandomUniformReal<double>(0.01, 1));
+      session->SetRejectionScoreSource(std::make_shared<RejectionScoreSource>());
       auto write_status = WriteRow(session, new_key, value_prefix + std::to_string(new_key));
       if (!allow_failures) {
         ASSERT_OK(write_status);

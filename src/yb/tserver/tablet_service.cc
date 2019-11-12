@@ -76,6 +76,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/faststring.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/math_util.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
@@ -134,16 +135,25 @@ DEFINE_int32(max_stale_read_bound_time_ms, 0, "If we are allowed to read from fo
 TAG_FLAG(max_stale_read_bound_time_ms, evolving);
 TAG_FLAG(max_stale_read_bound_time_ms, runtime);
 
-DEFINE_uint64(sst_files_soft_limit, 16 + 1000,
+DEFINE_uint64(sst_files_soft_limit, 24,
               "When majority SST files number is greater that this limit, we will start rejecting "
-              "part of write requests. The higher number we higher, the higher probability of "
-              "reject.");
+              "part of write requests. The higher the number of SST files, the higher probability "
+              "of rejection.");
 TAG_FLAG(sst_files_soft_limit, runtime);
 
-DEFINE_uint64(sst_files_hard_limit, 48 + 1000,
+DEFINE_uint64(sst_files_hard_limit, 48,
               "When majority SST files number is greater that this limit, we will reject all write "
               "requests.");
 TAG_FLAG(sst_files_hard_limit, runtime);
+
+DEFINE_uint64(min_rejection_delay_ms, 100, ".");
+TAG_FLAG(min_rejection_delay_ms, runtime);
+
+DEFINE_uint64(max_rejection_delay_ms, 5000, ".");
+TAG_FLAG(max_rejection_delay_ms, runtime);
+
+DEFINE_test_flag(int32, TEST_write_rejection_percentage, 0,
+                 "Reject specified percentage of writes.");
 
 DEFINE_test_flag(bool, assert_reads_from_follower_rejected_because_of_staleness, false,
                  "If set, we verify that the consistency level is CONSISTENT_PREFIX, and that "
@@ -234,6 +244,26 @@ Status GetTabletRef(const TabletPeerPtr& tablet_peer,
   return Status::OK();
 }
 
+// overlimit - we have 2 bounds, value and random score.
+// overlimit is calculated as:
+// score + (value - lower_bound) / (upper_bound - lower_bound).
+// And it will be >= 1.0 when this function is invoked.
+template<class Resp>
+bool RejectWrite(tablet::TabletPeer* tablet_peer, const std::string& message, double overlimit,
+                 Resp* resp, rpc::RpcContext* context) {
+  int64_t delay_ms = fit_bounds<int64_t>((overlimit - 1.0) * FLAGS_max_rejection_delay_ms,
+                                         FLAGS_min_rejection_delay_ms,
+                                         FLAGS_max_rejection_delay_ms);
+  auto status = STATUS(ServiceUnavailable, message, TabletServerDelay(delay_ms * 1ms));
+  YB_LOG_EVERY_N_SECS(WARNING, 1)
+      << "T " << tablet_peer->tablet_id() << " P " << tablet_peer->permanent_uuid()
+      << ": Rejecting Write request, " << status << THROTTLE_MSG;
+  SetupErrorAndRespond(resp->mutable_error(), status,
+                       TabletServerErrorPB::UNKNOWN_ERROR,
+                       context);
+  return false;
+}
+
 } // namespace
 
 template<class Resp>
@@ -260,22 +290,29 @@ bool TabletServiceImpl::CheckWriteThrottlingOrRespond(
     return false;
   }
 
-  uint64_t num_sst_files = tablet_peer->raft_consensus()->MajorityNumSSTFiles();
-  auto sst_files_soft_limit = FLAGS_sst_files_soft_limit;
-  if (num_sst_files > sst_files_soft_limit) {
-    auto sst_files_hard_limit = FLAGS_sst_files_hard_limit;
-    if ((num_sst_files + score * (sst_files_hard_limit - sst_files_soft_limit) >=
-         sst_files_hard_limit)) {
+  const uint64_t num_sst_files = tablet_peer->raft_consensus()->MajorityNumSSTFiles();
+  const auto sst_files_soft_limit = FLAGS_sst_files_soft_limit;
+  const int64_t sst_files_used_delta = num_sst_files - sst_files_soft_limit;
+  if (sst_files_used_delta > 0) {
+    const auto sst_files_hard_limit = FLAGS_sst_files_hard_limit;
+    const auto sst_files_full_delta = sst_files_hard_limit - sst_files_soft_limit;
+    if (sst_files_used_delta > sst_files_full_delta * (1 - score)) {
       tablet->metrics()->majority_sst_files_rejections->Increment();
-      auto status = STATUS_FORMAT(
-          ServiceUnavailable, "SST files limit exceeded $0 against ($1, $2), score: $3",
-          num_sst_files, sst_files_soft_limit, sst_files_hard_limit, score);
-      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Rejecting Write request, " << status << THROTTLE_MSG;
-      SetupErrorAndRespond(resp->mutable_error(), status,
-                           TabletServerErrorPB::UNKNOWN_ERROR,
-                           context);
-      return false;
+      auto message = Format("SST files limit exceeded $0 against ($1, $2), score: $3",
+                            num_sst_files, sst_files_soft_limit, sst_files_hard_limit, score);
+      auto overlimit = sst_files_full_delta > 0
+          ? score + static_cast<double>(sst_files_used_delta) / sst_files_full_delta
+          : 2.0;
+      return RejectWrite(tablet_peer, message, overlimit, resp, context);
     }
+  }
+
+  if (FLAGS_TEST_write_rejection_percentage != 0 &&
+      score >= 1.0 - FLAGS_TEST_write_rejection_percentage * 0.01) {
+    auto status = Format("TEST: Write request rejected, desired percentage: $0, score: $1",
+                         FLAGS_TEST_write_rejection_percentage, score);
+    return RejectWrite(tablet_peer, status, score + FLAGS_TEST_write_rejection_percentage * 0.01,
+                       resp, context);
   }
 
   return true;

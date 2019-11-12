@@ -196,17 +196,15 @@ class CassandraFuture {
 
   CHECKED_STATUS Wait() {
     cass_future_wait(future_.get());
-    const CassError rc = cass_future_error_code(future_.get());
-    VLOG(2) << "Last operation RC: " << rc;
+    return CheckErrorCode();
+  }
 
-    if (rc != CASS_OK) {
-      const char* message = nullptr;
-      size_t message_sz = 0;
-      cass_future_error_message(future_.get(), &message, &message_sz);
-      return STATUS(RuntimeError, Slice(message, message_sz));
+  CHECKED_STATUS WaitFor(MonoDelta duration) {
+    if (!cass_future_wait_timed(future_.get(), duration.ToMicroseconds())) {
+      return STATUS(TimedOut, "Future timed out");
     }
 
-    return Status::OK();
+    return CheckErrorCode();
   }
 
   CassandraResult Result() {
@@ -218,6 +216,23 @@ class CassandraFuture {
   }
 
  private:
+  CHECKED_STATUS CheckErrorCode() {
+    const CassError rc = cass_future_error_code(future_.get());
+    VLOG(2) << "Last operation RC: " << rc;
+
+    if (rc != CASS_OK) {
+      const char* message = nullptr;
+      size_t message_sz = 0;
+      cass_future_error_message(future_.get(), &message, &message_sz);
+      if (rc == CASS_ERROR_LIB_REQUEST_TIMED_OUT) {
+        return STATUS(TimedOut, Slice(message, message_sz));
+      }
+      return STATUS(RuntimeError, Slice(message, message_sz));
+    }
+
+    return Status::OK();
+  }
+
   CassFuturePtr future_;
 };
 
@@ -355,6 +370,8 @@ CassandraStatement CassandraPrepared::Bind() {
   return CassandraStatement(cass_prepared_bind(prepared_.get()));
 }
 
+const MonoDelta kTimeOut = RegularBuildVsSanitizers(12s, 60s);
+
 class CppCassandraDriver {
  public:
   explicit CppCassandraDriver(
@@ -382,7 +399,7 @@ class CppCassandraDriver {
     cass_cluster_ = CHECK_NOTNULL(cass_cluster_new());
     CHECK_EQ(CASS_OK, cass_cluster_set_contact_points(cass_cluster_, hosts.c_str()));
     CHECK_EQ(CASS_OK, cass_cluster_set_port(cass_cluster_, port));
-    cass_cluster_set_request_timeout(cass_cluster_, RegularBuildVsSanitizers(12000, 60000));
+    cass_cluster_set_request_timeout(cass_cluster_, kTimeOut.ToMilliseconds());
 
     // Setup cluster configuration: partitions metadata refresh timer = 3 seconds.
     cass_cluster_set_partition_aware_routing(
@@ -1444,8 +1461,6 @@ TEST_F_EX(CppCassandraDriverTest, TransactionalWrite, CppCassandraDriverTransact
   ASSERT_OK(table.CreateTable(
       &session_, kTableName, {"key", "value"}, {"(key)"}, true /* transactional */));
 
-  TestThreadHolder thread_holder;
-
   constexpr int kIterations = 20;
   auto prepared = ASSERT_RESULT(session_.Prepare(Format(
       "BEGIN TRANSACTION"
@@ -1544,4 +1559,79 @@ TEST_F_EX(CppCassandraDriverTest, ManyTables, CppCassandraDriverTestThreeMasters
   }
 }
 
-} // namespace yb
+class CppCassandraDriverRejectionTest : public CppCassandraDriverTest {
+ public:
+  std::vector<std::string> ExtraTServerFlags() override {
+    return {"--TEST_write_rejection_percentage=15"s,
+            "--linear_backoff_ms=10"};
+  }
+
+  bool UsePartitionAwareRouting() override {
+    // Disable partition aware routing in this test because of TSAN issue (#1837).
+    // Should be reenabled when issue is fixed.
+    return false;
+  }
+};
+
+TEST_F_EX(CppCassandraDriverTest, Rejection, CppCassandraDriverRejectionTest) {
+  constexpr int kBatchSize = 50;
+  constexpr int kWriters = 21;
+
+  typedef TestTable<int64_t, int64_t> MyTable;
+  typedef MyTable::ColumnsTuple ColumnsType;
+  MyTable table;
+  ASSERT_OK(table.CreateTable(&session_, "test.key_value", {"key", "value"}, {"(key)"}));
+
+  TestThreadHolder thread_holder;
+  std::atomic<int64_t> key(0);
+  std::atomic<int> pending_writes(0);
+  std::atomic<int> max_pending_writes(0);
+
+  for (int i = 0; i != kWriters; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &stop = thread_holder.stop_flag(), &table, &key, &pending_writes,
+         &max_pending_writes] {
+      SetFlagOnExit set_flag_on_exit(&stop);
+      auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+      while (!stop.load()) {
+        CassandraBatch batch(CassBatchType::CASS_BATCH_TYPE_LOGGED);
+        auto prepared = table.PrepareInsert(&session);
+        if (!prepared.ok()) {
+          // Prepare could be failed because cluster has heavy load.
+          // It is ok to just retry in this case, because we expect total number of writes.
+          continue;
+        }
+        for (int i = 0; i != kBatchSize; ++i) {
+          auto current_key = key++;
+          ColumnsType tuple(current_key, -current_key);
+          auto statement = prepared->Bind();
+          table.BindInsert(&statement, tuple);
+          batch.Add(&statement);
+        }
+        auto future = session.SubmitBatch(batch);
+        auto status = future.WaitFor(kTimeOut / 2);
+        if (status.IsTimedOut()) {
+          auto pw = ++pending_writes;
+          auto mpw = max_pending_writes.load();
+          while (pw > mpw) {
+            if (max_pending_writes.compare_exchange_weak(mpw, pw)) {
+              // Assert that we don't have too many pending writers.
+              ASSERT_LE(pw, kWriters / 3);
+              break;
+            }
+          }
+          auto wait_status = future.Wait();
+          ASSERT_TRUE(wait_status.ok() || wait_status.IsTimedOut()) << wait_status;
+          --pending_writes;
+        } else {
+          ASSERT_OK(status);
+        }
+      }
+    });
+  }
+
+  thread_holder.WaitAndStop(30s);
+  LOG(INFO) << "Max pending writes: " << max_pending_writes.load();
+}
+
+}  // namespace yb

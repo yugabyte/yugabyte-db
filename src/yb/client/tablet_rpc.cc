@@ -21,6 +21,7 @@
 #include "yb/client/meta_cache.h"
 
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_error.h"
 #include "yb/util/flag_tags.h"
 
 DEFINE_test_flag(bool, assert_local_op, false,
@@ -210,7 +211,7 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
   VLOG(2) << "Tablet " << tablet_id_ << ": Writing batch to replica "
           << current_ts_->ToString();
 
-  rpc_->SendRpcToTserver();
+  rpc_->SendRpcToTserver(retrier_->attempt_num());
 }
 
 Status TabletInvoker::FailToNewReplica(const Status& reason,
@@ -307,7 +308,10 @@ bool TabletInvoker::Done(Status* status) {
       // The whole operation is completed if we can't schedule a retry.
       return !FailToNewReplica(*status, rsp_err).ok();
     } else {
-      auto retry_status = retrier_->DelayedRetry(command_, *status);
+      tserver::TabletServerDelay delay(*status);
+      auto retry_status = delay.value().Initialized()
+          ? retrier_->DelayedRetry(command_, *status, delay.value())
+          : retrier_->DelayedRetry(command_, *status);
       if (!retry_status.ok()) {
         command_->Finished(retry_status);
       }

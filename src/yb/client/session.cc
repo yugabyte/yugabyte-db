@@ -73,11 +73,11 @@ void YBSession::SetTransaction(YBTransactionPtr transaction) {
   }
 }
 
-void YBSession::SetRejectionScore(double score) {
-  rejection_score_ = score;
+void YBSession::SetRejectionScoreSource(RejectionScoreSourcePtr rejection_score_source) {
   if (batcher_) {
-    batcher_->SetRejectionScore(score);
+    batcher_->SetRejectionScoreSource(rejection_score_source);
   }
+  rejection_score_source_ = std::move(rejection_score_source);
 }
 
 YBSession::~YBSession() {
@@ -190,7 +190,7 @@ internal::Batcher& YBSession::Batcher() {
     if (timeout_.Initialized()) {
       batcher_->SetTimeout(timeout_);
     }
-    batcher_->SetRejectionScore(rejection_score_);
+    batcher_->SetRejectionScoreSource(rejection_score_source_);
   }
   return *batcher_;
 }

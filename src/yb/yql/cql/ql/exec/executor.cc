@@ -20,6 +20,7 @@
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
+#include "yb/client/rejection_score_source.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
@@ -1495,11 +1496,11 @@ void Executor::FlushAsync() {
   }
   // Use the same score on each tablet. So probability of rejecting write should be related
   // to used capacity.
-  auto rejection_score = RandomUniformReal<double>(0.01, 1);
+  auto rejection_score_source = std::make_shared<client::RejectionScoreSource>();
   for (const auto& pair : flush_sessions) {
     auto session = pair.first;
     auto exec_context = pair.second;
-    session->SetRejectionScore(rejection_score);
+    session->SetRejectionScoreSource(rejection_score_source);
     TRACE("Flush Async");
     session->FlushAsync([this, exec_context](const Status& s) {
         FlushAsyncDone(s, exec_context);

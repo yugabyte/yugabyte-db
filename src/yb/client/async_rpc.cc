@@ -255,7 +255,7 @@ void SetTransactionMetadata(const TransactionMetadata& metadata, tserver::ReadRe
 
 } // namespace
 
-void AsyncRpc::SendRpcToTserver() {
+void AsyncRpc::SendRpcToTserver(int attempt_num) {
   MonoTime end_time = MonoTime::Now();
   if (async_rpc_metrics_) {
     async_rpc_metrics_->time_to_send->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
@@ -292,7 +292,6 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(AsyncRpcData* data, YBConsistencyLevel con
         << "Read time should NOT be specified for serializable isolation: "
         << read_point->GetReadTime().ToString();
   }
-  req_.set_rejection_score(data->rejection_score);
 }
 
 template <class Req, class Resp>
@@ -322,7 +321,7 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
 }
 
 template <class Req, class Resp>
-void AsyncRpcBase<Req, Resp>::SendRpcToTserver() {
+void AsyncRpcBase<Req, Resp>::SendRpcToTserver(int attempt_num) {
   if (!tablet_invoker_.current_ts().HasCapability(CAPABILITY_PickReadTimeAtTabletServer)) {
     ConsistentReadPoint* read_point = batcher_->read_point();
     if (read_point && !read_point->GetReadTime()) {
@@ -336,7 +335,8 @@ void AsyncRpcBase<Req, Resp>::SendRpcToTserver() {
     }
   }
 
-  AsyncRpc::SendRpcToTserver();
+  req_.set_rejection_score(batcher_->RejectionScore(attempt_num));
+  AsyncRpc::SendRpcToTserver(attempt_num);
 }
 
 WriteRpc::WriteRpc(AsyncRpcData* data)
