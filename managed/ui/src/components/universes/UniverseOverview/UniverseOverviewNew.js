@@ -360,11 +360,11 @@ export default class UniverseOverviewNew extends Component {
                 >
                   <div>1. Create a sample retail database:</div>
                   <YBCodeBlock>
-                    yugabyte-db demo create retail
+                    yugabyted demo create retail
                   </YBCodeBlock>
                   <div>2. Connect to the database:</div>
                   <YBCodeBlock>
-                    yugabyte-db demo run retail
+                    yugabyted demo run retail
                   </YBCodeBlock>
                   <div>3. Explore more YSQL <a href="https://docs.yugabyte.com/latest/quick-start/explore-ysql/">here</a>.</div>
                 </YBModal>

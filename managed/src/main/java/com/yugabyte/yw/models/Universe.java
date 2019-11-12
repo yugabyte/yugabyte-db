@@ -158,7 +158,6 @@ public class Universe extends Model {
     }
     universeDetailsJson.set("clusters", clustersArrayJson);
     json.set("universeDetails", universeDetailsJson);
-
     return json;
   }
 
