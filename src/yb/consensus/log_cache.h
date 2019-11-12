@@ -64,6 +64,13 @@ namespace consensus {
 
 class ReplicateMsg;
 
+struct ReadOpsResult {
+  ReplicateMsgs messages;
+  yb::OpId preceding_op;
+  bool have_more_messages = false;
+  int64_t read_from_disk_size = 0;
+};
+
 // Write-through cache for the log.
 //
 // This stores a set of log messages by their index. New operations can be appended to the end as
@@ -101,22 +108,16 @@ class LogCache {
   // If the ops being requested are not available in the log, this will synchronously read these ops
   // from disk. Therefore, this function may take a substantial amount of time and should not be
   // called with important locks held, etc.
-  CHECKED_STATUS ReadOps(int64_t after_op_index,
-                         int max_size_bytes,
-                         ReplicateMsgs* messages,
-                         OpId* preceding_op,
-                         bool* have_more_messages = nullptr);
+  Result<ReadOpsResult> ReadOps(int64_t after_op_index,
+                                int max_size_bytes);
 
   // Same as above but also includes a 'to_op_index' parameter which will be used to limit results
   // until 'to_op_index' (inclusive).
   //
   // If 'to_op_index' is 0, then all operations after 'after_op_index' will be included.
-  CHECKED_STATUS ReadOps(int64_t after_op_index,
-                         int64_t to_op_index,
-                         int max_size_bytes,
-                         ReplicateMsgs* messages,
-                         OpId* preceding_op,
-                         bool* have_more_messages = nullptr);
+  Result<ReadOpsResult> ReadOps(int64_t after_op_index,
+                                int64_t to_op_index,
+                                int max_size_bytes);
 
   // Append the operations into the log and the cache.  When the messages have completed writing
   // into the on-disk log, fires 'callback'.
@@ -141,7 +142,7 @@ class LogCache {
   int64_t BytesUsed() const;
 
   int64_t num_cached_ops() const {
-    return metrics_.log_cache_num_ops->value();
+    return metrics_.num_ops->value();
   }
 
   // Dump the current contents of the cache to the log.
@@ -162,7 +163,7 @@ class LogCache {
   // Returns "Incomplete" if the op has not yet been written.
   // Returns "NotFound" if the op has been GCed.
   // Returns another bad Status if the log index fails to load (eg. due to an IO error).
-  CHECKED_STATUS LookupOpId(int64_t op_index, OpId* op_id) const;
+  Result<yb::OpId> LookupOpId(int64_t op_index) const;
 
   // Start memory tracking of following operations in case they are still present in cache.
   void TrackOperationsMemory(const OpIds& op_ids);
@@ -253,10 +254,12 @@ class LogCache {
     explicit Metrics(const scoped_refptr<MetricEntity>& metric_entity);
 
     // Keeps track of the total number of operations in the cache.
-    scoped_refptr<AtomicGauge<int64_t> > log_cache_num_ops;
+    scoped_refptr<AtomicGauge<int64_t>> num_ops;
 
     // Keeps track of the memory consumed by the cache, in bytes.
-    scoped_refptr<AtomicGauge<int64_t> > log_cache_size;
+    scoped_refptr<AtomicGauge<int64_t>> size;
+
+    scoped_refptr<Counter> disk_reads;
   };
   Metrics metrics_;
 

@@ -291,26 +291,15 @@ TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
     // we'll just treat the lack of a metric as non-fatal. If the entity
     // or metric is truly missing, we'll eventually timeout and fail.
     for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
-      int64_t value;
-      Status s = cluster_->tablet_server(i)->GetInt64Metric(
-          &METRIC_ENTITY_tablet,
-          nullptr,
-          &METRIC_leader_memory_pressure_rejections,
-          "value",
-          &value);
-      if (!s.IsNotFound()) {
-        ASSERT_OK(s);
-        total_num_rejections += value;
-      }
-      s = cluster_->tablet_server(i)->GetInt64Metric(
-          &METRIC_ENTITY_tablet,
-          nullptr,
-          &METRIC_follower_memory_pressure_rejections,
-          "value",
-          &value);
-      if (!s.IsNotFound()) {
-        ASSERT_OK(s);
-        total_num_rejections += value;
+      for (const auto* metric : { &METRIC_leader_memory_pressure_rejections,
+                                  &METRIC_follower_memory_pressure_rejections }) {
+        auto result = cluster_->tablet_server(i)->GetInt64Metric(
+            &METRIC_ENTITY_tablet, nullptr, metric, "value");
+        if (result.ok()) {
+          total_num_rejections += *result;
+        } else {
+          ASSERT_TRUE(result.status().IsNotFound()) << result.status();
+        }
       }
     }
     if (total_num_rejections >= kMinRejections) {

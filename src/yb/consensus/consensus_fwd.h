@@ -35,6 +35,7 @@ class VoteResponsePB;
 struct ConsensusOptions;
 struct ConsensusBootstrapInfo;
 struct LeaderState;
+struct ReadOpsResult;
 struct RetryableRequestsCounts;
 struct StateChangeContext;
 

@@ -226,20 +226,21 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     TableType table_type,
     ThreadPool* raft_pool,
     RetryableRequests* retryable_requests) {
-  gscoped_ptr<PeerProxyFactory> rpc_factory(new RpcPeerProxyFactory(
-      messenger, proxy_cache, local_peer_pb.cloud_info()));
+  auto rpc_factory = std::make_unique<RpcPeerProxyFactory>(
+      messenger, proxy_cache, local_peer_pb.cloud_info());
 
   // The message queue that keeps track of which operations need to be replicated
   // where.
-  gscoped_ptr<PeerMessageQueue> queue(
-      new PeerMessageQueue(metric_entity,
-                           log,
-                           server_mem_tracker,
-                           local_peer_pb,
-                           options.tablet_id,
-                           clock,
-                           consensus_context,
-                           raft_pool->NewToken(ThreadPool::ExecutionMode::SERIAL)));
+  auto queue = std::make_unique<PeerMessageQueue>(
+      metric_entity,
+      log,
+      server_mem_tracker,
+      parent_mem_tracker,
+      local_peer_pb,
+      options.tablet_id,
+      clock,
+      consensus_context,
+      raft_pool->NewToken(ThreadPool::ExecutionMode::SERIAL));
 
   DCHECK(local_peer_pb.has_permanent_uuid());
   const string& peer_uuid = local_peer_pb.permanent_uuid();
@@ -253,20 +254,20 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
 
   // A manager for the set of peers that actually send the operations both remotely
   // and to the local wal.
-  gscoped_ptr<PeerManager> peer_manager(
-    new PeerManager(options.tablet_id,
-                    peer_uuid,
-                    rpc_factory.get(),
-                    queue.get(),
-                    raft_pool_token.get(),
-                    log));
+  auto peer_manager = std::make_unique<PeerManager>(
+      options.tablet_id,
+      peer_uuid,
+      rpc_factory.get(),
+      queue.get(),
+      raft_pool_token.get(),
+      log);
 
   return std::make_shared<RaftConsensus>(
       options,
       std::move(cmeta),
-      rpc_factory.Pass(),
-      queue.Pass(),
-      peer_manager.Pass(),
+      std::move(rpc_factory),
+      std::move(queue),
+      std::move(peer_manager),
       std::move(raft_pool_token),
       metric_entity,
       peer_uuid,
@@ -281,9 +282,10 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
 
 RaftConsensus::RaftConsensus(
     const ConsensusOptions& options, std::unique_ptr<ConsensusMetadata> cmeta,
-    gscoped_ptr<PeerProxyFactory> proxy_factory,
-    gscoped_ptr<PeerMessageQueue> queue, gscoped_ptr<PeerManager> peer_manager,
-    unique_ptr<ThreadPoolToken> raft_pool_token,
+    std::unique_ptr<PeerProxyFactory> proxy_factory,
+    std::unique_ptr<PeerMessageQueue> queue,
+    std::unique_ptr<PeerManager> peer_manager,
+    std::unique_ptr<ThreadPoolToken> raft_pool_token,
     const scoped_refptr<MetricEntity>& metric_entity,
     const std::string& peer_uuid, const scoped_refptr<server::Clock>& clock,
     ConsensusContext* consensus_context, const scoped_refptr<log::Log>& log,
@@ -294,9 +296,9 @@ RaftConsensus::RaftConsensus(
     : raft_pool_token_(std::move(raft_pool_token)),
       log_(log),
       clock_(clock),
-      peer_proxy_factory_(proxy_factory.Pass()),
-      peer_manager_(peer_manager.Pass()),
-      queue_(queue.Pass()),
+      peer_proxy_factory_(std::move(proxy_factory)),
+      peer_manager_(std::move(peer_manager)),
+      queue_(std::move(queue)),
       rng_(GetRandomSeed32()),
       withhold_votes_until_(MonoTime::Min()),
       mark_dirty_clbk_(std::move(mark_dirty_clbk)),
@@ -2928,9 +2930,8 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
   return Status::OK();
 }
 
-Status RaftConsensus::ReadReplicatedMessagesForCDC(const OpId& from, ReplicateMsgs* msgs,
-                                                   bool* have_more_messages) {
-  return queue_->ReadReplicatedMessagesForCDC(from, msgs, have_more_messages);
+Result<ReadOpsResult> RaftConsensus::ReadReplicatedMessagesForCDC(const OpId& from) {
+  return queue_->ReadReplicatedMessagesForCDC(from);
 }
 
 void RaftConsensus::UpdateCDCConsumerOpId(const OpIdPB& op_id) {

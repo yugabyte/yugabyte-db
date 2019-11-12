@@ -107,21 +107,6 @@ using rpc::PeriodicTimer;
 using rpc::RpcController;
 using strings::Substitute;
 
-Result<PeerPtr> Peer::NewRemotePeer(const RaftPeerPB& peer_pb,
-                                    const string& tablet_id,
-                                    const string& leader_uuid,
-                                    PeerMessageQueue* queue,
-                                    ThreadPoolToken* raft_pool_token,
-                                    PeerProxyPtr proxy,
-                                    Consensus* consensus,
-                                    rpc::Messenger* messenger) {
-  auto new_peer = std::make_shared<Peer>(
-      peer_pb, tablet_id, leader_uuid, std::move(proxy), queue, raft_pool_token, consensus,
-      messenger);
-  RETURN_NOT_OK(new_peer->Init());
-  return Result<PeerPtr>(std::move(new_peer));
-}
-
 Peer::Peer(
     const RaftPeerPB& peer_pb, string tablet_id, string leader_uuid, PeerProxyPtr proxy,
     PeerMessageQueue* queue, ThreadPoolToken* raft_pool_token, Consensus* consensus,

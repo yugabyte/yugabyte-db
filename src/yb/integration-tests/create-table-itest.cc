@@ -191,12 +191,11 @@ TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
   int64_t num_create_attempts = 0;
   while (num_create_attempts < 3) {
     SleepFor(MonoDelta::FromMilliseconds(100));
-    ASSERT_OK(cluster_->tablet_server(0)->GetInt64Metric(
+    num_create_attempts = ASSERT_RESULT(cluster_->tablet_server(0)->GetInt64Metric(
         &METRIC_ENTITY_server,
         "yb.tabletserver",
         &METRIC_handler_latency_yb_tserver_TabletServerAdminService_CreateTablet,
-        "total_count",
-        &num_create_attempts));
+        "total_count"));
     LOG(INFO) << "Waiting for the master to retry creating the tablet 3 times... "
               << num_create_attempts << " RPCs seen so far";
 

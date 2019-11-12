@@ -527,13 +527,20 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   //
   // 'entity_id' may be NULL, in which case the first entity of the same type as 'entity_proto' will
   // be matched.
-  CHECKED_STATUS GetInt64Metric(const MetricEntityPrototype* entity_proto,
-                                const char* entity_id,
-                                const MetricPrototype* metric_proto,
-                                const char* value_field,
-                                int64_t* value) const {
+  Result<int64_t> GetInt64Metric(const MetricEntityPrototype* entity_proto,
+                                 const char* entity_id,
+                                 const MetricPrototype* metric_proto,
+                                 const char* value_field) const {
     return GetInt64MetricFromHost(
-        bound_http_hostport(), entity_proto, entity_id, metric_proto, value_field, value);
+        bound_http_hostport(), entity_proto, entity_id, metric_proto, value_field);
+  }
+
+  Result<int64_t> GetInt64Metric(const char* entity_proto_name,
+                                 const char* entity_id,
+                                 const char* metric_proto_name,
+                                 const char* value_field) const {
+    return GetInt64MetricFromHost(
+        bound_http_hostport(), entity_proto_name, entity_id, metric_proto_name, value_field);
   }
 
   std::string LogPrefix();
@@ -542,12 +549,17 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   void RemoveLogListener(StringListener* listener);
 
-  static CHECKED_STATUS GetInt64MetricFromHost(const HostPort& hostport,
-                                               const MetricEntityPrototype* entity_proto,
-                                               const char* entity_id,
-                                               const MetricPrototype* metric_proto,
-                                               const char* value_field,
-                                               int64_t* value);
+  static Result<int64_t> GetInt64MetricFromHost(const HostPort& hostport,
+                                                const MetricEntityPrototype* entity_proto,
+                                                const char* entity_id,
+                                                const MetricPrototype* metric_proto,
+                                                const char* value_field);
+
+  static Result<int64_t> GetInt64MetricFromHost(const HostPort& hostport,
+                                                const char* entity_proto_name,
+                                                const char* entity_id,
+                                                const char* metric_proto_name,
+                                                const char* value_field);
 
   // Get the current value of the flag for the given daemon.
   Result<std::string> GetFlag(const std::string& flag);
@@ -718,14 +730,13 @@ class ExternalTabletServer : public ExternalDaemon {
     return cql_http_port_;
   }
 
-  CHECKED_STATUS GetInt64CQLMetric(const MetricEntityPrototype* entity_proto,
-                                   const char* entity_id,
-                                   const MetricPrototype* metric_proto,
-                                   const char* value_field,
-                                   int64_t* value) const {
+  Result<int64_t> GetInt64CQLMetric(const MetricEntityPrototype* entity_proto,
+                                    const char* entity_id,
+                                    const MetricPrototype* metric_proto,
+                                    const char* value_field) const {
     return GetInt64MetricFromHost(
         HostPort(bind_host(), cql_http_port()),
-        entity_proto, entity_id, metric_proto, value_field, value);
+        entity_proto, entity_id, metric_proto, value_field);
   }
 
  protected:
