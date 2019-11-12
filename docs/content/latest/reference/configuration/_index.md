@@ -1,5 +1,5 @@
 ---
-title: Configuraiton
+title: Configuration
 linkTitle: Configuration
 description: Configuration
 headcontent: Deploy YugabyteDB to any public cloud or private data center of your choice using either YugabyteDB or the Yugabyte Platform.
@@ -8,7 +8,7 @@ section: REFERENCE
 menu:
   latest:
     identifier: configuration
-    weight: 634
+    weight: 1100
 ---
 
 <div class="row">
@@ -17,7 +17,7 @@ menu:
     <a class="section-link icon-offset" href="yb-master/">
       <div class="head">
         <img class="icon" src="/images/section_icons/reference/configuration/yb-master.png" aria-hidden="true" />
-        <div class="title">YB-Master</div>
+        <div class="title">YB-Master nodes</div>
       </div>
       <div class="body">
         Configure YB-Master nodes to manage YugabyteDB metadata, tablets and coordinate cluster-wide operations.
@@ -29,7 +29,7 @@ menu:
     <a class="section-link icon-offset" href="yb-tserver/">
       <div class="head">
         <img class="icon" src="/images/section_icons/reference/configuration/yb-tserver.png" aria-hidden="true" />
-        <div class="title">YB-TServer</div>
+        <div class="title">YB-TServer nodes</div>
       </div>
       <div class="body">
         Configure YB-TServer nodes that perform IO for end user requests.

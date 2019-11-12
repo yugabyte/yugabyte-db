@@ -1,11 +1,11 @@
 ---
-title: yb-master
-linkTitle: yb-master
-description: yb-master
+title: YB-Master nodes
+linkTitle: YB-Master nodes
+description: YB-Master nodes
 menu:
   latest:
     identifier: yb-master
-    parent: admin
+    parent: configuration
     weight: 2440
 aliases:
   - admin/yb-master
@@ -64,6 +64,12 @@ Specifies the configuration file to load flags from.
 #### --master_addresses
 
 Specifies a comma-separated list of all the RPC addresses for `yb-master` consensus-configuration.
+
+{{< note title="Note" >}}
+
+The number of comma-separated values should match the total number of YB-Master nodes (or the replication factor).
+
+{{< /note >}}
 
 Mandatory.
 
@@ -307,7 +313,7 @@ Default: `false`
 
 ### Change data capture (CDC) options
 
-To learn about CDD, see [Change data capture (CDC)](../../architecture/#cdc-architecture).
+To learn more about CDC, see [Change data capture (CDC)](../../architecture/#cdc-architecture).
 
 For other CDC configuration options, see [YB-TServer's CDC options](../yb-tserver/#change-data-capture-cdc-options).
 

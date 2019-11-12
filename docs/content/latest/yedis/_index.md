@@ -74,7 +74,7 @@ testing (using e.g., Jepsen) and performance work is in the YSQL and YCQL areas.
     <a class="section-link icon-offset" href="api/">
       <div class="head">
         <img class="icon" src="/images/section_icons/index/api.png" aria-hidden="true" />
-        <div class="title">API Reference</div>
+        <div class="title">API reference</div>
       </div>
       <div class="body">
          Complete API reference.

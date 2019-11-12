@@ -68,18 +68,18 @@ $ minikube service  yb-master-ui --url
 http://192.168.99.100:31283
 ```
 
-Now, you can view the [yb-master-0 Admin UI](../../admin/yb-master/#admin-ui) is available at the above URL.
+Now, you can view the [yb-master-0 Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at the above URL.
 
 ### 4.1 Overview and master status
 
-The yb-master-0 home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. The `Num User Tables` is 0 since there are no user tables created yet. YugabyteDB version is also shown for your reference.
+The yb-master-0 home page shows that we have a cluster (or universe) with **Replication Factor** of 1 and **Num Nodes (TServers)** as `1`. The **Num User Tables** is `0` because there are no user tables created yet. YugabyteDB version is also shown for your reference.
 
 ![master-home](/images/admin/master-home-kubernetes-rf1.png)
 
-The Masters section highlights the 1 yb-master along its corresponding cloud, region and zone placement information.
+The **Masters** section highlights the 1 YB-Master node along its corresponding cloud, region and zone placement information.
 
 ### 4.2 TServer status
 
-Clicking on the `See all nodes` takes us to the Tablet Servers page where we can observe the 1 tserver along with the time since it last connected to this master via regular heartbeats. Additionally, we can see that the `Load (Num Tablets)` is balanced across all available tservers. These tablets are the shards of the user tables currently managed by the cluster (which in this case is the `system_redis.redis` table). As new tables get added, new tablets will get automatically created and distributed evenly across all the available tservers.
+Clicking on the **See all nodes** takes us to the Tablet Servers page where we can observe the one YB-TServer along with the time since it last connected to this YB-Master using regular heartbeats. Additionally, we can see that the **Load (Num Tablets)** is balanced across all available tservers. These tablets are the shards of the user tables currently managed by the cluster (which in this case is the `system_redis.redis` table). As new tables get added, new tablets will get automatically created and distributed evenly across all the available YB-TServer nodes.
 
 ![tserver-list](/images/admin/master-tservers-list-kubernetes-rf1.png)

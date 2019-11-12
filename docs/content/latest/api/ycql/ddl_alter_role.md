@@ -18,7 +18,7 @@ showAsideToc: true
 The `ALTER ROLE` statement changes the properties of an existing role.
 It allows modifying properties `SUPERUSER`, `PASSWORD`, and `LOGIN`.
 
-This statment is enabled by setting the yb-tserver gflag [`use_cassandra_authentication`](../../../admin/yb-tserver/#config-flags) to `true`.
+This statement is enabled by setting the YB-TServer configuration option [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) to `true`.
 
 ## Syntax
 

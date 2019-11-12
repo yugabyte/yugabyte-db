@@ -1,11 +1,11 @@
 ---
-title: yb-tserver
-linkTitle: yb-tserver
-description: yb-tserver
+title: YB-TServer nodes
+linkTitle: YB-TServer nodes
+description: YB-TServer nodes
 menu:
   latest:
     identifier: yb-tserver
-    parent: admin
+    parent: configuration
     weight: 2450
 aliases:
   - admin/yb-tserver
@@ -80,6 +80,12 @@ Shows version and build info, then exits.
 #### --tserver_master_addrs
 
 Comma-separated list of all the `yb-master` RPC addresses. Mandatory.
+
+{{< note title="Note" >}}
+
+The number of comma-separated values should match the total number of YB-Master nodes (or the replication factor).
+
+{{< /note >}}
 
 #### --fs_data_dirs
 

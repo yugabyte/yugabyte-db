@@ -1,9 +1,9 @@
 ---
 title: CLIs
 linkTitle: CLIs
-description: Command line interfaces
+description: CLIs
 image: /images/section_icons/index/admin.png
-headcontent: Admin commands and tools reference.
+headcontent: Command line interfaces (CLIs) and tools reference.
 type: page
 section: REFERENCE
 menu:

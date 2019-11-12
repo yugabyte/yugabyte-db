@@ -1,7 +1,7 @@
 ---
-title: Client authentication
-linkTitle: Client authentication
-description: Client authentication
+title: Fine-grained authentication
+linkTitle: Fine-grained authentication
+description: Fine-grained authentication
 headcontent: Configure fine-grained access control for YSQL clients
 image: /images/section_icons/secure/authentication.png
 menu:
@@ -13,9 +13,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-YugabyteDB client authentication for YSQL manages access control for primarily for remote clients. By default, client authentication is restricted to localhost connections. The two
+YugabyteDB fine-grained authentication for YSQL manages access control for primarily for remote clients. By default, client authentication is restricted to localhost connections. The two
 
-This client authentication is managed in YugabyteDB by the YB-TServer's configuration flag [`--ysql_hba_conf`](../../admin/yb-tserver#ysql-hba-conf), which works similar to the `pg_hb.conf` file in PostgreSQL. The settings include records that specify allowed connection types, users, client IP addresses, and the authentication method.
+This client authentication is managed in YugabyteDB by the YB-TServer's configuration flag [`--ysql_hba_conf`](../../reference/configuration/yb-tserver#ysql-hba-conf), which works similar to the `pg_hb.conf` file in PostgreSQL. The settings include records that specify allowed connection types, users, client IP addresses, and the authentication method.
 
 The default setting for `listen_addresses` in YugabyteDB accepts connections only from `localhost`. To allow remote connections, you must add client authentication records to the YB-TServer `==ysql_hba_conf` configuration settings.
 
@@ -32,7 +32,7 @@ For local clusters created using the `yb-ctl` utility, remote client connections
 
 ## For deployable clusters
 
-YugabyteDB clusters that are manually deployed can allow remote client authentication by changing the `listen_addresses` to support all connections using an asterisk (`*`) or a list of comma-separated addresses. In order to configure the `listen_addresses`, you must configure the YB-TServer configuration setting [`--pgsql_proxy_bind_address`](../../../admin/yb-tserver#pgsql-proxy-bind-address). For example, setting the following:
+YugabyteDB clusters that are manually deployed can allow remote client authentication by changing the `listen_addresses` to support all connections using an asterisk (`*`) or a list of comma-separated addresses. In order to configure the `listen_addresses`, you must configure the YB-TServer configuration setting [`--pgsql_proxy_bind_address`](../../../configuration/reference/yb-tserver#pgsql-proxy-bind-address). For example, setting the following:
 
 ```sh
 yb-tserver --pgsql_proxy_bind_address='*'

@@ -32,7 +32,7 @@ $ minikube service  yb-master-ui --url
 http://192.168.99.100:31283
 ```
 
-Now, you can view the [yb-master-0 Admin UI](../../admin/yb-master/#admin-ui) is available at the above URL.
+Now, you can view the [yb-master-0 Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at the above URL.
 
 ## 3. Add node and observe linear scale-out
 

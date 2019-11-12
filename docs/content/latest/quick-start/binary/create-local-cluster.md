@@ -64,7 +64,7 @@ $ ./bin/yb-ctl status
 
 ## 3. Check cluster status with Admin UI
 
-Node 1's [YB-Master Admin UI](../../admin/yb-master/#admin-ui) is available at `http://127.0.0.1:7000` and the [YB-TServer Admin UI](../../admin/yb-tserver/#admin-ui) is available at `http://127.0.0.1:9000`. If you created a multi-node cluster, you can visit the other nodes' Admin UIs by using their corresponding IP addresses.
+Node 1's [YB-Master Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at `http://127.0.0.1:7000` and the [YB-TServer Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at `http://127.0.0.1:9000`. If you created a multi-node cluster, you can visit the other nodes' Admin UIs by using their corresponding IP addresses.
 
 ### 3.1 Overview and Master status
 
