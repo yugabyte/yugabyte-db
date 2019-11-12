@@ -144,8 +144,8 @@ class RaftConsensusQuorumTest : public YBTest {
   void BuildPeers() {
     vector<LocalTestPeerProxyFactory*> proxy_factories;
     for (int i = 0; i < config_.peers_size(); i++) {
-      auto proxy_factory = new LocalTestPeerProxyFactory(peers_.get());
-      proxy_factories.push_back(proxy_factory);
+      auto proxy_factory = std::make_unique<LocalTestPeerProxyFactory>(peers_.get());
+      proxy_factories.push_back(proxy_factory.get());
 
       auto operation_factory = new TestOperationFactory();
 
@@ -157,33 +157,34 @@ class RaftConsensusQuorumTest : public YBTest {
 
       RaftPeerPB local_peer_pb;
       ASSERT_OK(GetRaftConfigMember(config_, peer_uuid, &local_peer_pb));
-      gscoped_ptr<PeerMessageQueue> queue(
-          new PeerMessageQueue(metric_entity_,
-                               logs_[i],
-                               MemTracker::FindOrCreateTracker(peer_uuid),
-                               local_peer_pb,
-                               kTestTablet,
-                               clock_,
-                               nullptr /* consensus_context */,
-                               raft_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL)));
+      auto queue = std::make_unique<PeerMessageQueue>(
+          metric_entity_,
+          logs_[i],
+          MemTracker::FindOrCreateTracker(peer_uuid),
+          MemTracker::FindOrCreateTracker(peer_uuid),
+          local_peer_pb,
+          kTestTablet,
+          clock_,
+          nullptr /* consensus_context */,
+          raft_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL));
 
       unique_ptr<ThreadPoolToken> pool_token(
           raft_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT));
 
-      gscoped_ptr<PeerManager> peer_manager(
-          new PeerManager(options_.tablet_id,
-                          config_.peers(i).permanent_uuid(),
-                          proxy_factory,
-                          queue.get(),
-                          pool_token.get(),
-                          logs_[i]));
+      auto peer_manager = std::make_unique<PeerManager>(
+          options_.tablet_id,
+          config_.peers(i).permanent_uuid(),
+          proxy_factory.get(),
+          queue.get(),
+          pool_token.get(),
+          logs_[i]);
 
       shared_ptr<RaftConsensus> peer(
           new RaftConsensus(options_,
                             std::move(cmeta),
-                            gscoped_ptr<PeerProxyFactory>(proxy_factory).Pass(),
-                            queue.Pass(),
-                            peer_manager.Pass(),
+                            std::move(proxy_factory),
+                            std::move(queue),
+                            std::move(peer_manager),
                             std::move(pool_token),
                             metric_entity_,
                             config_.peers(i).permanent_uuid(),

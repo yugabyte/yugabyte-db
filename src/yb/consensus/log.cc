@@ -632,7 +632,7 @@ Status Log::UpdateIndexForBatch(const LogEntryBatch& batch) {
   for (const LogEntryPB& entry_pb : batch.entry_batch_pb_.entry()) {
     LogIndexEntry index_entry;
 
-    index_entry.op_id = entry_pb.replicate().id();
+    index_entry.op_id = yb::OpId::FromPB(entry_pb.replicate().id());
     index_entry.segment_sequence_number = batch.active_segment_sequence_number_;
     index_entry.offset_in_segment = batch.offset_;
     RETURN_NOT_OK(log_index_->AddEntry(index_entry));

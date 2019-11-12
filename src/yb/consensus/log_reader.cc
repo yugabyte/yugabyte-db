@@ -282,7 +282,7 @@ scoped_refptr<ReadableLogSegment> LogReader::GetSegmentBySequenceNumber(int64_t 
 Status LogReader::ReadBatchUsingIndexEntry(const LogIndexEntry& index_entry,
                                            faststring* tmp_buf,
                                            LogEntryBatchPB* batch) const {
-  const int64_t index = index_entry.op_id.index();
+  const int64_t index = index_entry.op_id.index;
 
   scoped_refptr<ReadableLogSegment> segment = GetSegmentBySequenceNumber(
     index_entry.segment_sequence_number);
@@ -321,6 +321,8 @@ Status LogReader::ReadReplicatesInRange(
 
   ReplicateMsgs replicates_tmp;
   LogIndexEntry prev_index_entry;
+  prev_index_entry.segment_sequence_number = -1;
+  prev_index_entry.offset_in_segment = -1;
 
   int64_t total_size = 0;
   bool limit_exceeded = false;
@@ -387,12 +389,11 @@ Status LogReader::ReadReplicatesInRange(
   return Status::OK();
 }
 
-Status LogReader::LookupOpId(int64_t op_index, OpId* op_id) const {
+Result<yb::OpId> LogReader::LookupOpId(int64_t op_index) const {
   LogIndexEntry index_entry;
   RETURN_NOT_OK_PREPEND(log_index_->GetEntry(op_index, &index_entry),
                         strings::Substitute("Failed to read log index for op $0", op_index));
-  *op_id = index_entry.op_id;
-  return Status::OK();
+  return index_entry.op_id;
 }
 
 Status LogReader::GetSegmentsSnapshot(SegmentSequence* segments) const {

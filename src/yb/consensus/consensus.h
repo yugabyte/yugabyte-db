@@ -342,8 +342,7 @@ class Consensus {
   virtual MonoTime TimeSinceLastMessageFromLeader() = 0;
 
   // Read majority replicated messages for CDC producer.
-  virtual CHECKED_STATUS ReadReplicatedMessagesForCDC(const OpId& from, ReplicateMsgs* msgs,
-                                                      bool* have_more_messages) = 0;
+  virtual Result<ReadOpsResult> ReadReplicatedMessagesForCDC(const OpId& from) = 0;
 
   virtual void UpdateCDCConsumerOpId(const OpIdPB& op_id) = 0;
 

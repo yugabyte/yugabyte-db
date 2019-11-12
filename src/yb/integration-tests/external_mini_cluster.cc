@@ -1936,17 +1936,25 @@ const string& ExternalDaemon::uuid() const {
   return status_->node_instance().permanent_uuid();
 }
 
-Status ExternalDaemon::GetInt64MetricFromHost(const HostPort& hostport,
-                                              const MetricEntityPrototype* entity_proto,
-                                              const char* entity_id,
-                                              const MetricPrototype* metric_proto,
-                                              const char* value_field,
-                                              int64_t* value) {
+Result<int64_t> ExternalDaemon::GetInt64MetricFromHost(const HostPort& hostport,
+                                                       const MetricEntityPrototype* entity_proto,
+                                                       const char* entity_id,
+                                                       const MetricPrototype* metric_proto,
+                                                       const char* value_field) {
+  return GetInt64MetricFromHost(hostport, entity_proto->name(), entity_id, metric_proto->name(),
+                                value_field);
+}
+
+Result<int64_t> ExternalDaemon::GetInt64MetricFromHost(const HostPort& hostport,
+                                                       const char* entity_proto_name,
+                                                       const char* entity_id,
+                                                       const char* metric_proto_name,
+                                                       const char* value_field) {
   // Fetch metrics whose name matches the given prototype.
   string url = Substitute(
       "http://$0/jsonmetricz?metrics=$1",
       hostport.ToString(),
-      metric_proto->name());
+      metric_proto_name);
   EasyCurl curl;
   faststring dst;
   RETURN_NOT_OK(curl.FetchURL(url, &dst));
@@ -1960,7 +1968,7 @@ Status ExternalDaemon::GetInt64MetricFromHost(const HostPort& hostport,
     // Find the desired entity.
     string type;
     RETURN_NOT_OK(r.ExtractString(entity, "type", &type));
-    if (type != entity_proto->name()) {
+    if (type != entity_proto_name) {
       continue;
     }
     if (entity_id) {
@@ -1977,21 +1985,22 @@ Status ExternalDaemon::GetInt64MetricFromHost(const HostPort& hostport,
     for (const Value* metric : metrics) {
       string name;
       RETURN_NOT_OK(r.ExtractString(metric, "name", &name));
-      if (name != metric_proto->name()) {
+      if (name != metric_proto_name) {
         continue;
       }
-      RETURN_NOT_OK(r.ExtractInt64(metric, value_field, value));
-      return Status::OK();
+      int64_t value;
+      RETURN_NOT_OK(r.ExtractInt64(metric, value_field, &value));
+      return value;
     }
   }
   string msg;
   if (entity_id) {
     msg = Substitute("Could not find metric $0.$1 for entity $2",
-                     entity_proto->name(), metric_proto->name(),
+                     entity_proto_name, metric_proto_name,
                      entity_id);
   } else {
     msg = Substitute("Could not find metric $0.$1",
-                     entity_proto->name(), metric_proto->name());
+                     entity_proto_name, metric_proto_name);
   }
   return STATUS(NotFound, msg);
 }

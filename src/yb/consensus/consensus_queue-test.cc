@@ -108,6 +108,7 @@ class ConsensusQueueTest : public YBTest {
     queue_.reset(new PeerMessageQueue(metric_entity_,
                                       log_.get(),
                                       nullptr /* server_tracker */,
+                                      nullptr /* parent_tracker */,
                                       FakeRaftPeerPB(kLeaderUuid),
                                       kTestTablet,
                                       clock_,
@@ -880,16 +881,13 @@ TEST_F(ConsensusQueueTest, TestReadReplicatedMessagesForCDC) {
   queue_->ResponseFromPeer(response.responder_uuid(), response, &more_pending);
   ASSERT_TRUE(more_pending);
 
-  ReplicateMsgs msgs;
-  bool more_messages;
-  ASSERT_OK(queue_->ReadReplicatedMessagesForCDC(MakeOpIdForIndex(0), &msgs, &more_messages));
-  ASSERT_EQ(last_committed_index, msgs.size());
-  msgs.clear();
+  auto read_result = ASSERT_RESULT(queue_->ReadReplicatedMessagesForCDC(MakeOpIdForIndex(0)));
+  ASSERT_EQ(last_committed_index, read_result.messages.size());
 
   // Read from some index > 0
   int start = 10;
-  ASSERT_OK(queue_->ReadReplicatedMessagesForCDC(MakeOpIdForIndex(start), &msgs, &more_messages));
-  ASSERT_EQ(last_committed_index - start, msgs.size());
+  read_result = ASSERT_RESULT(queue_->ReadReplicatedMessagesForCDC(MakeOpIdForIndex(start)));
+  ASSERT_EQ(last_committed_index - start, read_result.messages.size());
 }
 
 }  // namespace consensus

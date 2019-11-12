@@ -83,10 +83,10 @@ class MockQueue : public PeerMessageQueue {
   explicit MockQueue(const scoped_refptr<MetricEntity>& metric_entity, log::Log* log,
                      const server::ClockPtr& clock,
                      std::unique_ptr<ThreadPoolToken> raft_pool_observers_token)
-      : PeerMessageQueue(metric_entity, log, nullptr /* server_tracker */,
-                         FakeRaftPeerPB(kLocalPeerUuid), kTestTablet, clock,
-                         nullptr /* consensus_queue */,
-                         std::move(raft_pool_observers_token)) {}
+      : PeerMessageQueue(
+          metric_entity, log, nullptr /* server_tracker */, nullptr /* parent_tracker */,
+          FakeRaftPeerPB(kLocalPeerUuid), kTestTablet, clock, nullptr /* consensus_queue */,
+          std::move(raft_pool_observers_token)) {}
 
   MOCK_METHOD1(Init, void(const OpId& locally_replicated_index));
   MOCK_METHOD3(SetLeaderMode, void(const OpId& committed_opid,
@@ -129,9 +129,9 @@ class RaftConsensusSpy : public RaftConsensus {
 
   RaftConsensusSpy(const ConsensusOptions& options,
                    std::unique_ptr<ConsensusMetadata> cmeta,
-                   gscoped_ptr<PeerProxyFactory> proxy_factory,
-                   gscoped_ptr<PeerMessageQueue> queue,
-                   gscoped_ptr<PeerManager> peer_manager,
+                   std::unique_ptr<PeerProxyFactory> proxy_factory,
+                   std::unique_ptr<PeerMessageQueue> queue,
+                   std::unique_ptr<PeerManager> peer_manager,
                    std::unique_ptr<ThreadPoolToken> raft_pool_token,
                    const scoped_refptr<MetricEntity>& metric_entity,
                    const std::string& peer_uuid,
@@ -143,9 +143,9 @@ class RaftConsensusSpy : public RaftConsensus {
                      mark_dirty_clbk)
     : RaftConsensus(options,
                     std::move(cmeta),
-                    proxy_factory.Pass(),
-                    queue.Pass(),
-                    peer_manager.Pass(),
+                    std::move(proxy_factory),
+                    std::move(queue),
+                    std::move(peer_manager),
                     std::move(raft_pool_token),
                     metric_entity,
                     peer_uuid,
@@ -246,7 +246,7 @@ class RaftConsensusTest : public YBTest {
     config_ = BuildRaftConfigPBForTests(num_peers);
     config_.set_opid_index(kInvalidOpIdIndex);
 
-    gscoped_ptr<PeerProxyFactory> proxy_factory(new LocalTestPeerProxyFactory(nullptr));
+    auto proxy_factory = std::make_unique<LocalTestPeerProxyFactory>(nullptr);
 
     string peer_uuid = config_.peers(num_peers - 1).permanent_uuid();
 
@@ -259,9 +259,9 @@ class RaftConsensusTest : public YBTest {
 
     consensus_.reset(new RaftConsensusSpy(options_,
                                           std::move(cmeta),
-                                          proxy_factory.Pass(),
-                                          gscoped_ptr<PeerMessageQueue>(queue_),
-                                          gscoped_ptr<PeerManager>(peer_manager_),
+                                          std::move(proxy_factory),
+                                          std::unique_ptr<PeerMessageQueue>(queue_),
+                                          std::unique_ptr<PeerManager>(peer_manager_),
                                           std::move(raft_pool_token),
                                           metric_entity_,
                                           peer_uuid,

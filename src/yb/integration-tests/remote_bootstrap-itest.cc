@@ -931,42 +931,32 @@ void RemoteBootstrapITest::DeleteLeaderDuringRemoteBootstrapStressTest(YBTableTy
 
 namespace {
 int64_t CountUpdateConsensusCalls(ExternalTabletServer* ets, const string& tablet_id) {
-  int64_t ret;
-  CHECK_OK(ets->GetInt64Metric(
-               &METRIC_ENTITY_server,
-               "yb.tabletserver",
-               &METRIC_handler_latency_yb_consensus_ConsensusService_UpdateConsensus,
-               "total_count",
-               &ret));
-  return ret;
+  return CHECK_RESULT(ets->GetInt64Metric(
+      &METRIC_ENTITY_server,
+      "yb.tabletserver",
+      &METRIC_handler_latency_yb_consensus_ConsensusService_UpdateConsensus,
+      "total_count"));
 }
 int64_t CountLogMessages(ExternalTabletServer* ets) {
   int64_t total = 0;
 
-  int64_t count;
-  CHECK_OK(ets->GetInt64Metric(
-               &METRIC_ENTITY_server,
-               "yb.tabletserver",
-               &METRIC_glog_info_messages,
-               "value",
-               &count));
-  total += count;
+  total += CHECK_RESULT(ets->GetInt64Metric(
+      &METRIC_ENTITY_server,
+      "yb.tabletserver",
+      &METRIC_glog_info_messages,
+      "value"));
 
-  CHECK_OK(ets->GetInt64Metric(
-               &METRIC_ENTITY_server,
-               "yb.tabletserver",
-               &METRIC_glog_warning_messages,
-               "value",
-               &count));
-  total += count;
+  total += CHECK_RESULT(ets->GetInt64Metric(
+      &METRIC_ENTITY_server,
+      "yb.tabletserver",
+      &METRIC_glog_warning_messages,
+      "value"));
 
-  CHECK_OK(ets->GetInt64Metric(
-               &METRIC_ENTITY_server,
-               "yb.tabletserver",
-               &METRIC_glog_error_messages,
-               "value",
-               &count));
-  total += count;
+  total += CHECK_RESULT(ets->GetInt64Metric(
+      &METRIC_ENTITY_server,
+      "yb.tabletserver",
+      &METRIC_glog_error_messages,
+      "value"));
 
   return total;
 }

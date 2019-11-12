@@ -84,6 +84,9 @@ METRIC_DEFINE_gauge_int64(tablet, log_cache_num_ops, "Log Cache Operation Count"
 METRIC_DEFINE_gauge_int64(tablet, log_cache_size, "Log Cache Memory Usage",
                           MetricUnit::kBytes,
                           "Amount of memory in use for caching the local log.");
+METRIC_DEFINE_counter(tablet, log_cache_disk_reads, "Log Cache Disk Reads",
+                      MetricUnit::kEntries,
+                      "Amount of operations read from disk.");
 
 namespace {
 
@@ -201,8 +204,8 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& com
     return log_status;
   }
 
-  metrics_.log_cache_size->IncrementBy(prepare_result.mem_required);
-  metrics_.log_cache_num_ops->IncrementBy(msgs.size());
+  metrics_.size->IncrementBy(prepare_result.mem_required);
+  metrics_.num_ops->IncrementBy(msgs.size());
 
   return Status::OK();
 }
@@ -225,7 +228,7 @@ bool LogCache::HasOpBeenWritten(int64_t index) const {
   return index < next_sequential_op_index_;
 }
 
-Status LogCache::LookupOpId(int64_t op_index, OpId* op_id) const {
+Result<yb::OpId> LogCache::LookupOpId(int64_t op_index) const {
   // First check the log cache itself.
   {
     std::lock_guard<simple_spinlock> l(lock_);
@@ -240,13 +243,12 @@ Status LogCache::LookupOpId(int64_t op_index, OpId* op_id) const {
     }
     auto iter = cache_.find(op_index);
     if (iter != cache_.end()) {
-      *op_id = iter->second.msg->id();
-      return Status::OK();
+      return yb::OpId::FromPB(iter->second.msg->id());
     }
   }
 
   // If it misses, read from the log.
-  return log_->GetLogReader()->LookupOpId(op_index, op_id);
+  return log_->GetLogReader()->LookupOpId(op_index);
 }
 
 namespace {
@@ -262,28 +264,22 @@ int64_t TotalByteSizeForMessage(const ReplicateMsg& msg) {
 
 } // anonymous namespace
 
-Status LogCache::ReadOps(int64_t after_op_index,
-                         int max_size_bytes,
-                         ReplicateMsgs* messages,
-                         OpId* preceding_op,
-                         bool* have_more_messages) {
-  return ReadOps(after_op_index, 0 /* to_op_index */, max_size_bytes,
-                 messages, preceding_op, have_more_messages);
+Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
+                                        int max_size_bytes) {
+  return ReadOps(after_op_index, 0 /* to_op_index */, max_size_bytes);
 }
 
-Status LogCache::ReadOps(int64_t after_op_index,
-                         int64_t to_op_index,
-                         int max_size_bytes,
-                         ReplicateMsgs* messages,
-                         OpId* preceding_op,
-                         bool* have_more_messages) {
-  DCHECK_ONLY_NOTNULL(messages);
-  DCHECK_ONLY_NOTNULL(preceding_op);
+Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
+                                        int64_t to_op_index,
+                                        int max_size_bytes) {
   DCHECK_GE(after_op_index, 0);
-  RETURN_NOT_OK(LookupOpId(after_op_index, preceding_op));
-  if (have_more_messages) {
-    *have_more_messages = false;
-  }
+
+  VLOG_WITH_PREFIX_UNLOCKED(4) << "ReadOps, after_op_index: " << after_op_index
+                               << ", to_op_index: " << to_op_index
+                               << ", max_size_bytes: " << max_size_bytes;
+
+  ReadOpsResult result;
+  result.preceding_op = VERIFY_RESULT(LookupOpId(after_op_index));
 
   std::unique_lock<simple_spinlock> l(lock_);
   int64_t next_index = after_op_index + 1;
@@ -292,7 +288,6 @@ Status LogCache::ReadOps(int64_t after_op_index,
   // Return as many operations as we can, up to the limit.
   int64_t remaining_space = max_size_bytes;
   while (remaining_space > 0 && next_index < to_index) {
-
     // If the messages the peer needs haven't been loaded into the queue yet, load them.
     MessageCache::const_iterator iter = cache_.lower_bound(next_index);
     if (iter == cache_.end() || iter->first != next_index) {
@@ -312,19 +307,22 @@ Status LogCache::ReadOps(int64_t after_op_index,
         log_->GetLogReader()->ReadReplicatesInRange(
             next_index, up_to, remaining_space, &raw_replicate_ptrs),
         Substitute("Failed to read ops $0..$1", next_index, up_to));
-      l.lock();
+      metrics_.disk_reads->IncrementBy(raw_replicate_ptrs.size());
       LOG_WITH_PREFIX_UNLOCKED(INFO)
           << "Successfully read " << raw_replicate_ptrs.size() << " ops from disk.";
+      l.lock();
 
       for (auto& msg : raw_replicate_ptrs) {
         CHECK_EQ(next_index, msg->id().index());
 
-        remaining_space -= TotalByteSizeForMessage(*msg);
-        if (remaining_space > 0 || messages->empty()) {
-          messages->push_back(msg);
+        auto current_message_size = TotalByteSizeForMessage(*msg);
+        remaining_space -= current_message_size;
+        if (remaining_space >= 0 || result.messages.empty()) {
+          result.messages.push_back(msg);
+          result.read_from_disk_size += current_message_size;
           next_index++;
-        } else if (have_more_messages) {
-          *have_more_messages = true;
+        } else {
+          result.have_more_messages = true;
         }
       }
 
@@ -340,20 +338,20 @@ Status LogCache::ReadOps(int64_t after_op_index,
           continue;
         }
 
-        remaining_space -= TotalByteSizeForMessage(*msg);
-        if (remaining_space < 0 && !messages->empty()) {
-          if (have_more_messages) {
-            *have_more_messages = true;
-          }
+        auto current_message_size = TotalByteSizeForMessage(*msg);
+        remaining_space -= current_message_size;
+        if (remaining_space < 0 && !result.messages.empty()) {
+          result.have_more_messages = true;
           break;
         }
 
-        messages->push_back(msg);
+        result.messages.push_back(msg);
         next_index++;
       }
     }
   }
-  return Status::OK();
+
+  return result;
 }
 
 size_t LogCache::EvictThroughOp(int64_t index, int64_t bytes_to_evict) {
@@ -406,8 +404,8 @@ void LogCache::AccountForMessageRemovalUnlocked(const CacheEntry& entry) {
   if (entry.tracked) {
     tracker_->Release(entry.mem_usage);
   }
-  metrics_.log_cache_size->DecrementBy(entry.mem_usage);
-  metrics_.log_cache_num_ops->Decrement();
+  metrics_.size->DecrementBy(entry.mem_usage);
+  metrics_.num_ops->Decrement();
 }
 
 int64_t LogCache::BytesUsed() const {
@@ -420,9 +418,10 @@ string LogCache::StatsString() const {
 }
 
 string LogCache::StatsStringUnlocked() const {
-  return Substitute("LogCacheStats(num_ops=$0, bytes=$1)",
-                    metrics_.log_cache_num_ops->value(),
-                    metrics_.log_cache_size->value());
+  return Substitute("LogCacheStats(num_ops=$0, bytes=$1, disk_reads=$2)",
+                    metrics_.num_ops->value(),
+                    metrics_.size->value(),
+                    metrics_.disk_reads->value());
 }
 
 std::string LogCache::ToString() const {
@@ -524,11 +523,12 @@ void LogCache::TrackOperationsMemory(const OpIds& op_ids) {
   }
 }
 
-#define INSTANTIATE_METRIC(x) \
-  x.Instantiate(metric_entity, 0)
+#define INSTANTIATE_METRIC(x, ...) \
+  x(BOOST_PP_CAT(METRIC_log_cache_, x).Instantiate(metric_entity, ## __VA_ARGS__))
 LogCache::Metrics::Metrics(const scoped_refptr<MetricEntity>& metric_entity)
-  : log_cache_num_ops(INSTANTIATE_METRIC(METRIC_log_cache_num_ops)),
-    log_cache_size(INSTANTIATE_METRIC(METRIC_log_cache_size)) {
+  : INSTANTIATE_METRIC(num_ops, 0),
+    INSTANTIATE_METRIC(size, 0),
+    INSTANTIATE_METRIC(disk_reads) {
 }
 #undef INSTANTIATE_METRIC
 
