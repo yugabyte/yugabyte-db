@@ -1,9 +1,9 @@
 ---
 title: CLIs
 linkTitle: CLIs
-description: Command line interfaces
+description: CLIs
 image: /images/section_icons/index/admin.png
-headcontent: Admin commands and tools reference.
+headcontent: Command line interfaces (CLIs) and tools reference.
 type: page
 section: REFERENCE
 menu:
@@ -13,6 +13,12 @@ menu:
 aliases:
   - admin
 ---
+
+{{< note title="Note" >}}
+
+Information about configuring the [YB-Master (`yb-master`)](../reference/configuration/yb-master) and [YB-TServer (`yb-tserver`)](../reference/configuration/yb-tserver) nodes is now in the [Configuration](../reference/configuration/) section.
+
+{{< /note >}}
 
 
 <div class="row">
@@ -48,31 +54,6 @@ aliases:
       </div>
       <div class="body">
         Create and manage Docker-based local clusters using docker-compose.
-      </div>
-    </a>
-  </div>
-
-  
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="yb-tserver/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/admin/yb-tserver.png" aria-hidden="true" />
-        <div class="title">yb-tserver</div>
-      </div>
-      <div class="body">
-        Data node that hosts and serves user data.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="yb-master/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/admin/yb-master.png" aria-hidden="true" />
-        <div class="title">yb-master</div>
-      </div>
-      <div class="body">
-        Manage metadata of data stored in yb-tserver and coordinates cluster-wide operations.
       </div>
     </a>
   </div>
