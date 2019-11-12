@@ -1198,7 +1198,7 @@ public class PlacementInfoUtil {
             .collect(Collectors.toSet());
     int numDeltaNodes = userIntent.numNodes - nodesInCluster.size();
     Map<String, NodeDetails> deltaNodesMap = new HashMap<String, NodeDetails>();
-    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodeDetailsSet);
+    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodesInCluster);
     LOG.info("Nodes desired={} vs existing={}.", userIntent.numNodes, nodesInCluster.size());
     if (numDeltaNodes < 0) {
       // Desired action is to remove nodes from a given cluster.
