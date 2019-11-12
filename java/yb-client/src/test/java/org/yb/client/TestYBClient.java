@@ -49,6 +49,7 @@ import org.yb.Common.HostPortPB;
 import org.yb.Common.TableType;
 import org.yb.Schema;
 import org.yb.Type;
+import org.yb.util.Pair;
 import org.yb.master.Master;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.tserver.Tserver.TabletServerErrorPB;
@@ -586,5 +587,46 @@ public class TestYBClient extends BaseYBClientTest {
                            new CreateTableOptions());
     assertFalse(syncClient.getTablesList().getTablesList().isEmpty());
     assertTrue(syncClient.getTablesList().getTablesList().contains(tableName));
+  }
+
+  @Test(timeout = 100000)
+  public void testEncryptionClientCommands() throws Exception {
+    LOG.info("Starting testEncryptionClientCommands");
+
+    final String keyId1 = "key1";
+    final String keyId2 = "key2";
+
+    Map<String, byte[]> universeKeys = new HashMap<>();
+    byte[] bytes = new byte[32];
+    new Random().nextBytes(bytes);
+    universeKeys.put(keyId1, bytes);
+    for (HostAndPort hp : miniCluster.getMasterHostPorts()) {
+      syncClient.addUniverseKeys(universeKeys, hp);
+      syncClient.waitForMasterHasUniverseKeyInMemory(10000, keyId1, hp);
+      assertFalse(syncClient.hasUniverseKeyInMemory(keyId2, hp));
+    }
+
+    syncClient.enableEncryptionAtRestInMemory(keyId1);
+    Pair<Boolean, String> status = syncClient.isEncryptionEnabled();
+    assertTrue(status.getFirst());
+    assertEquals(status.getSecond(), keyId1);
+    LOG.info("finished first");
+
+    // Now, lets trigger a key rotation.
+    new Random().nextBytes(bytes);
+
+    universeKeys.clear();
+    universeKeys.put(keyId2, bytes);
+    for (HostAndPort hp : miniCluster.getMasterHostPorts()) {
+      LOG.info("Processing add 2nd time");
+      syncClient.addUniverseKeys(universeKeys, hp);
+      syncClient.waitForMasterHasUniverseKeyInMemory(10000, keyId2, hp);
+      assertTrue(syncClient.hasUniverseKeyInMemory(keyId1, hp));
+    }
+
+    syncClient.enableEncryptionAtRestInMemory(keyId2);
+    status = syncClient.isEncryptionEnabled();
+    assertTrue(status.getFirst());
+    assertEquals(status.getSecond(), keyId2);
   }
 }

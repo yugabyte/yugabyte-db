@@ -726,7 +726,7 @@ void MasterServiceImpl::AddUniverseKeys(const AddUniverseKeysRequestPB* req,
 void MasterServiceImpl::HasUniverseKeyInMemory(const HasUniverseKeyInMemoryRequestPB* req,
                                                HasUniverseKeyInMemoryResponsePB* resp,
                                                rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &EncryptionManager::HasUniverseKeyInMemory);
+  HandleOnAllMasters(req, resp, &rpc, &EncryptionManager::HasUniverseKeyInMemory);
 }
 
 void MasterServiceImpl::SetupUniverseReplication(const SetupUniverseReplicationRequestPB* req,
