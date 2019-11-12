@@ -33,9 +33,9 @@ This section covers deployment for a single region or zone (or a single data cen
 
 ## Run YB-Master services with command line parameters
 
-- Run `yb-master` binary on each of the nodes as shown below. Note how multiple directories can be provided to the `--fs_data_dirs` flag. For each YB-Master, replace the RPC bind address flag with the private IP of the host running the YB-Master.
+- Run `yb-master` binary on each of the nodes as shown below. Note how multiple directories can be provided to the `--fs_data_dirs` option. For each YB-Master node, replace the RPC bind address configuration with the private IP address of the host running the YB-Master.
 
-For the full list of flags, see the [yb-master Reference](../../../admin/yb-master/).
+For the full list of configuration options (or flags), see the [YB-Master reference](../../../reference/configuration/yb-master/).
 
 ```sh
 $ ./bin/yb-master \
@@ -47,7 +47,7 @@ $ ./bin/yb-master \
 
 ## Run YB-Master services with configuration file
 
-- Alternatively, you can also create a `master.conf` file with the following flags and then run `yb-master` with the `--flagfile` option as shown below. For each YB-Master node, replace the RPC bind address flag with the private IP of the host running the YB-Master node.
+- Alternatively, you can also create a `master.conf` file with the following flags and then run `yb-master` with the `--flagfile` option as shown below. For each YB-Master node, replace the RPC bind address configuration option with the private IP address of the YB-Master node.
 
 ```sh
 --master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100

@@ -1,8 +1,8 @@
 ---
 title: Develop
 linkTitle: Develop
-description: Develop apps on YugabyteDB
-headcontent: Get started building applications on top of YugabyteDB.
+description: Develop applications
+headcontent: Get started building applications based on YugabyteDB.
 image: /images/section_icons/index/develop.png
 aliases:
   - /develop/

@@ -20,7 +20,7 @@ The `REVOKE PERMISSION` statement is used to revoke a permission (or all the gra
 
 When a database object is deleted (keyspace, table, or role), all the permissions on that object are automatically deleted.
 
-This statment is enabled by setting the yb-tserver gflag [`use_cassandra_authentication`](../../../admin/yb-tserver/#config-flags) to `true`.
+This statement is enabled by setting the YB-TServer configuration option [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#config-flags) to `true`.
 
 ## Syntax
 

@@ -1,11 +1,11 @@
 ---
-title: yb-master
-linkTitle: yb-master
-description: yb-master
+title: YB-Master nodes
+linkTitle: YB-Master nodes
+description: YB-Master nodes
 menu:
   latest:
     identifier: yb-master
-    parent: admin
+    parent: configuration
     weight: 2440
 aliases:
   - admin/yb-master
@@ -13,7 +13,7 @@ isTocNested: 3
 showAsideToc: true
 ---
 
-Use the `yb-master` options to configure and customize your YB-Master services. The [YB-Master](../../architecture/concepts/universe/#yb-master-process) binary (`yb-master`) is located in the `bin` directory of YugabyteDB home.
+Use the `yb-master` options to configure and customize your YB-Master services. The [YB-Master](../../../architecture/concepts/yb-master) binary (`yb-master`) is located in the `bin` directory of YugabyteDB home.
 
 ## Syntax
 
@@ -63,9 +63,17 @@ Specifies the configuration file to load flags from.
 
 #### --master_addresses
 
-Specifies a comma-separated list of all the RPC addresses for `yb-master` consensus-configuration.
+Specifies a comma-separated list of all RPC addresses for `yb-master` consensus-configuration.
+
+{{< note title="Note" >}}
+
+The number of comma-separated values should match the total number of YB-Master nodes (or the replication factor).
+
+{{< /note >}}
 
 Mandatory.
+
+Default: `127.0.0.1:7100`
 
 #### --fs_data_dirs
 
@@ -307,7 +315,7 @@ Default: `false`
 
 ### Change data capture (CDC) options
 
-To learn about CDD, see [Change data capture (CDC)](../../architecture/#cdc-architecture).
+To learn more about CDC, see [Change data capture (CDC)](../../architecture/#cdc-architecture).
 
 For other CDC configuration options, see [YB-TServer's CDC options](../yb-tserver/#change-data-capture-cdc-options).
 
