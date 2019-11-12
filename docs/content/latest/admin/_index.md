@@ -16,7 +16,7 @@ aliases:
 
 {{< note title="Note" >}}
 
-Information about configuring the YB-Master (`yb-master`) and YB-TServer (`yb-tserver`) nodes is now in the [Configuration reference section](../reference/configuration/) section.
+Information about configuring the [YB-Master (`yb-master`)](../reference/configuration/yb-master) and [YB-TServer (`yb-tserver`)](../reference/configuration/yb-tserver) nodes is now in the [Configuration](../reference/configuration/) section.
 
 {{< /note >}}
 
