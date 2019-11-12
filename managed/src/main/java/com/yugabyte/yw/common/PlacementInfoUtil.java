@@ -1082,25 +1082,31 @@ public class PlacementInfoUtil {
    * @param taskParams
    */
   public static void configureNodeEditUsingPlacementInfo(UniverseDefinitionTaskParams taskParams) {
-    PlacementInfo primaryPlacementInfo = taskParams.getPrimaryCluster().placementInfo;
+    // TODO: this only works for a case when we have on read replica,
+    // if we have more than one we need to revisit this logic.
+    Cluster currentCluster = taskParams.currentClusterType.equals(PRIMARY) ?
+        taskParams.getPrimaryCluster() : taskParams.getReadOnlyClusters().get(0);
+
     Universe universe = Universe.get(taskParams.universeUUID);
-    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-    Collection<NodeDetails> existingNodes = universe.getNodesInCluster(primaryCluster.uuid);
+    Collection<NodeDetails> existingNodes = universe.getNodesInCluster(currentCluster.uuid);
 
     // If placementInfo is null then user has chosen to Reset AZ config
     // Hence a new full move configuration is generated
-    if (primaryPlacementInfo == null) {
+    if (currentCluster.placementInfo == null) {
       // Remove primary cluster nodes which will be added back in ToBeRemoved state
       taskParams.nodeDetailsSet.removeIf((NodeDetails nd) -> {
-        return (nd.placementUuid.equals(primaryCluster.uuid));
+        return (nd.placementUuid.equals(currentCluster.uuid));
       });
-      Cluster cluster = taskParams.getPrimaryCluster();
-      taskParams.getPrimaryCluster().placementInfo = getPlacementInfo(cluster.clusterType, cluster.userIntent);
-      configureDefaultNodeStates(cluster, taskParams.nodeDetailsSet, universe);
+      currentCluster.placementInfo =
+          getPlacementInfo(currentCluster.clusterType, currentCluster.userIntent);
+      configureDefaultNodeStates(currentCluster, taskParams.nodeDetailsSet, universe);
     } else {
       // In other operations we need to distinguish between expand and full-move.
-      Map<UUID, Integer> requiredAZToNodeMap = getAzUuidToNumNodes(taskParams.getPrimaryCluster().placementInfo);
-      Map<UUID, Integer> existingAZToNodeMap = getAzUuidToNumNodes(universe.getUniverseDetails().nodeDetailsSet);
+      Map<UUID, Integer> requiredAZToNodeMap =
+          getAzUuidToNumNodes(currentCluster.placementInfo);
+      Map<UUID, Integer> existingAZToNodeMap = getAzUuidToNumNodes(
+          universe.getUniverseDetails().getNodesInCluster(currentCluster.uuid)
+      );
 
       boolean isSimpleExpand = true;
       for (UUID requiredAZUUID: requiredAZToNodeMap.keySet()) {
@@ -1117,7 +1123,7 @@ public class PlacementInfoUtil {
       }
       if (isSimpleExpand) {
         // If simple expand we can go in the configure using placement info path
-        configureNodesUsingPlacementInfo(taskParams.getPrimaryCluster(),
+        configureNodesUsingPlacementInfo(currentCluster,
                                          taskParams.nodeDetailsSet, true);
         // Break execution sequence because there are no nodes to be decomissioned
         return;
@@ -1127,8 +1133,8 @@ public class PlacementInfoUtil {
         int startIndex = getNextIndexToConfigure(existingNodes);
         int iter = 0;
         LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
-        for (int cIdx = 0; cIdx < primaryPlacementInfo.cloudList.size(); cIdx++) {
-          PlacementCloud cloud = primaryPlacementInfo.cloudList.get(cIdx);
+        for (int cIdx = 0; cIdx < currentCluster.placementInfo.cloudList.size(); cIdx++) {
+          PlacementCloud cloud = currentCluster.placementInfo.cloudList.get(cIdx);
           for (int rIdx = 0; rIdx < cloud.regionList.size(); rIdx++) {
             PlacementRegion region = cloud.regionList.get(rIdx);
             for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
@@ -1141,7 +1147,7 @@ public class PlacementInfoUtil {
                 iter ++;
                 placements.add(new PlacementIndexes(azIdx, rIdx, cIdx, true));
                 NodeDetails nodeDetails =
-                    createNodeDetailsWithPlacementIndex(taskParams.getPrimaryCluster(),
+                    createNodeDetailsWithPlacementIndex(currentCluster,
                         new PlacementIndexes(azIdx, rIdx, cIdx, true),
                         startIndex + iter);
                 taskParams.nodeDetailsSet.add(nodeDetails);
@@ -1358,7 +1364,7 @@ public class PlacementInfoUtil {
     LOG.info("Placement info: {}.", cluster.placementInfo);
     finalSanityCheckConfigure(cluster,
             taskParams.getNodesInCluster(cluster.uuid),
-            taskParams.resetAZConfig);
+            taskParams.resetAZConfig || taskParams.userAZSelected);
   }
 
   /**
