@@ -55,15 +55,17 @@ DEFINE_int64(rpcs_shutdown_extra_delay_ms, 5000 * yb::kTimeMultiplier,
              "Extra allowed time for a single RPC command to complete after its deadline.");
 DEFINE_int64(retryable_rpc_single_call_timeout_ms, 2500 * yb::kTimeMultiplier,
              "Timeout of single RPC call in retryable RPC command.");
-DEFINE_int32(
-    min_backoff_ms_exponent, 7,
-    "Min amount of backoff delay if the server responds with TOO BUSY (default: 128ms). "
-    "Set this to some amount, during which the server might have recovered.");
-DEFINE_int32(
-    max_backoff_ms_exponent, 16,
-    "Max amount of backoff delay if the server responds with TOO BUSY (default: 64 sec). "
-    "Set this to some duration, past which you are okay having no backoff for a Ddos "
-    "style build-up, during times when the server is overloaded, and unable to recover.");
+DEFINE_int32(min_backoff_ms_exponent, 7,
+             "Min amount of backoff delay if the server responds with TOO BUSY (default: 128ms). "
+             "Set this to some amount, during which the server might have recovered.");
+DEFINE_int32(max_backoff_ms_exponent, 16,
+             "Max amount of backoff delay if the server responds with TOO BUSY (default: 64 sec). "
+             "Set this to some duration, past which you are okay having no backoff for a Ddos "
+             "style build-up, during times when the server is overloaded, and unable to recover.");
+
+DEFINE_int32(linear_backoff_ms, 1,
+             "Number of milliseconds added to delay while using linear backoff strategy.");
+
 TAG_FLAG(min_backoff_ms_exponent, hidden);
 TAG_FLAG(min_backoff_ms_exponent, advanced);
 TAG_FLAG(max_backoff_ms_exponent, hidden);
@@ -84,7 +86,6 @@ RpcRetrier::RpcRetrier(CoarseTimePoint deadline, Messenger* messenger, ProxyCach
       proxy_cache_(*proxy_cache) {
   DCHECK(deadline != CoarseTimePoint());
 }
-
 
 bool RpcRetrier::HandleResponse(
     RpcCommand* rpc, Status* out_status, RetryWhenBusy retry_when_busy) {
@@ -113,20 +114,32 @@ bool RpcRetrier::HandleResponse(
 
 Status RpcRetrier::DelayedRetry(
     RpcCommand* rpc, const Status& why_status, BackoffStrategy strategy) {
-  if (!why_status.ok() && (last_error_.ok() || last_error_.IsTimedOut())) {
-    last_error_ = why_status;
-  }
   // Add some jitter to the retry delay.
   //
   // If the delay causes us to miss our deadline, RetryCb will fail the
   // RPC on our behalf.
   // makes the call redundant by then.
-  int num_ms =
-      (strategy == BackoffStrategy::kExponential
-           ? 1 << std::min(
-                 FLAGS_min_backoff_ms_exponent + attempt_num_, FLAGS_max_backoff_ms_exponent)
-           : attempt_num_) +
-      RandomUniformInt(0, 4);
+  if (strategy == BackoffStrategy::kExponential) {
+    retry_delay_ = fit_bounds<MonoDelta>(
+        retry_delay_ * 2,
+        1ms * (1ULL << (FLAGS_min_backoff_ms_exponent + 1)),
+        1ms * (1ULL << FLAGS_max_backoff_ms_exponent));
+  } else {
+    retry_delay_ += 1ms * FLAGS_linear_backoff_ms;
+  }
+
+  return DoDelayedRetry(rpc, why_status);
+}
+
+Status RpcRetrier::DelayedRetry(RpcCommand* rpc, const Status& why_status, MonoDelta add_delay) {
+  retry_delay_ += add_delay;
+  return DoDelayedRetry(rpc, why_status);
+}
+
+Status RpcRetrier::DoDelayedRetry(RpcCommand* rpc, const Status& why_status) {
+  if (!why_status.ok() && (last_error_.ok() || last_error_.IsTimedOut())) {
+    last_error_ = why_status;
+  }
   attempt_num_++;
 
   RpcRetrierState expected_state = RpcRetrierState::kIdle;
@@ -145,7 +158,8 @@ Status RpcRetrier::DelayedRetry(
 
   auto retain_rpc = rpc->shared_from_this();
   task_id_ = messenger_->ScheduleOnReactor(
-      std::bind(&RpcRetrier::DoRetry, this, rpc, _1), MonoDelta::FromMilliseconds(num_ms),
+      std::bind(&RpcRetrier::DoRetry, this, rpc, _1),
+      retry_delay_ + MonoDelta::FromMilliseconds(RandomUniformInt(0, 4)),
       SOURCE_LOCATION(), messenger_);
 
   // Scheduling state can be changed only in this method, so we expected both

@@ -29,8 +29,11 @@ void SetupErrorAndRespond(TabletServerErrorPB* error,
                           rpc::RpcContext* context) {
   // Generic "service unavailable" errors will cause the client to retry later.
   if (code == TabletServerErrorPB::UNKNOWN_ERROR && s.IsServiceUnavailable()) {
-    context->RespondRpcFailure(rpc::ErrorStatusPB::ERROR_SERVER_TOO_BUSY, s);
-    return;
+    TabletServerDelay delay(s);
+    if (!delay.value().Initialized()) {
+      context->RespondRpcFailure(rpc::ErrorStatusPB::ERROR_SERVER_TOO_BUSY, s);
+      return;
+    }
   }
 
   StatusToPB(s, error->mutable_status());

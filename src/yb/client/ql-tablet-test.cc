@@ -884,7 +884,7 @@ TEST_F(QLTabletTest, ManySstFilesBootstrap) {
     google::FlagSaver flag_saver;
 
     auto original_rocksdb_level0_stop_writes_trigger = 48;
-    FLAGS_sst_files_hard_limit = std::numeric_limits<uint64_t>::max();
+    FLAGS_sst_files_hard_limit = std::numeric_limits<uint64_t>::max() / 4;
     FLAGS_sst_files_soft_limit = FLAGS_sst_files_hard_limit;
     FLAGS_rocksdb_level0_stop_writes_trigger = 10000;
     FLAGS_rocksdb_level0_slowdown_writes_trigger = 10000;
