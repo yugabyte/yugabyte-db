@@ -45,6 +45,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistGFlags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForEncryptionKeyInMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
@@ -72,10 +73,10 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 
-import com.yugabyte.yw.commissioner.tasks.subtasks.CopyEncryptionKeyFile;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
 
+import java.util.Base64;
 import java.util.stream.Collectors;
 import java.util.HashMap;
 import java.util.ArrayList;
@@ -186,59 +187,26 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /**
    * Runs task for enabling encryption-at-rest key file on master
    */
-  public SubTaskGroup createEnableEncryptionAtRestTask(String file) {
-    return createEnableEncryptionAtRestTask(file, false);
-  }
-
-  /**
-   * Runs task for enabling encryption-at-rest key file on master
-   */
-  public SubTaskGroup createEnableEncryptionAtRestTask(String file, boolean isKubernetesUniverse) {
+  public SubTaskGroup createEnableEncryptionAtRestTask(boolean enableIntent) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("EnableEncryptionAtRest", executor);
     EnableEncryptionAtRest task = new EnableEncryptionAtRest();
     EnableEncryptionAtRest.Params params = new EnableEncryptionAtRest.Params();
     params.universeUUID = taskParams().universeUUID;
-    // Add encryption file path
-    params.encryptionKeyFilePath = file;
-    params.isKubernetesUniverse = isKubernetesUniverse;
+    params.enableEncryptionAtRest = enableIntent;
     task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
   }
 
-  public SubTaskGroup createDisableEncryptionAtRestTask(String file) {
+  public SubTaskGroup createDisableEncryptionAtRestTask(boolean disableIntent) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("DisableEncryptionAtRest", executor);
     DisableEncryptionAtRest task = new DisableEncryptionAtRest();
     DisableEncryptionAtRest.Params params = new DisableEncryptionAtRest.Params();
     params.universeUUID = taskParams().universeUUID;
-    params.disableEncryptionAtRest = file == null || file.length() == 0;
+    params.disableEncryptionAtRest = disableIntent;
     task.initialize(params);
     subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  public SubTaskGroup createCopyEncryptionKeyFileTask() {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("CopyEncryptionKeyFile", executor);
-    // Find universeNodes through universeUUID;
-    Universe universe = Universe.get(taskParams().universeUUID);
-    UUID primaryClusterUUID = universe.getUniverseDetails().getPrimaryCluster().uuid;
-    Set<NodeDetails> nodes = universe.getUniverseDetails().getNodesInCluster(primaryClusterUUID);
-    for (NodeDetails node : nodes) {
-      CopyEncryptionKeyFile.Params params = new CopyEncryptionKeyFile.Params();
-      // Add the node name.
-      params.nodeName = node.nodeName;
-      // Add the universe uuid.
-      params.universeUUID = taskParams().universeUUID;
-      params.encryptionKeyFilePath = taskParams().encryptionKeyFilePath;
-      // Add the az uuid.
-      params.azUuid = node.azUuid;
-      params.placementUuid = node.placementUuid;
-      CopyEncryptionKeyFile task = new CopyEncryptionKeyFile();
-      task.initialize(params);
-      subTaskGroup.addTask(task);
-    }
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
   }
@@ -400,6 +368,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       task.initialize(params);
       subTaskGroup.addTask(task);
     }
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   *
+   * @return
+   */
+  public SubTaskGroup createWaitForKeyInMemoryTask(NodeDetails node, boolean universeEncrypted) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForEncryptionKeyInMemory", executor);
+    WaitForEncryptionKeyInMemory.Params params = new WaitForEncryptionKeyInMemory.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.universeEncrypted = universeEncrypted;
+    params.nodeAddress = HostAndPort.fromParts(node.cloudInfo.private_ip, node.masterRpcPort);
+    WaitForEncryptionKeyInMemory task = new WaitForEncryptionKeyInMemory();
+    task.initialize(params);
+    subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
   }

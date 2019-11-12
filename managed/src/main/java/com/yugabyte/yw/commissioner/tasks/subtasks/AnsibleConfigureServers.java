@@ -35,7 +35,6 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean enableYSQL = false;
     public boolean enableNodeToNodeEncrypt = false;
     public boolean enableClientToNodeEncrypt = false;
-    public String encryptionKeyFilePath;
     public boolean allowInsecure = true;
     public Map<String, String> gflags = new HashMap<>();
     public boolean updateMasterAddrsOnly = false;

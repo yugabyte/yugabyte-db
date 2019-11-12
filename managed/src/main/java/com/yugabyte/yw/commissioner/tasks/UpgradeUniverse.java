@@ -283,6 +283,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
     createWaitForServersTasks(new HashSet<NodeDetails>(Arrays.asList(node)), processType);
     createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
         .setSubTaskGroupType(subGroupType);
+    createWaitForKeyInMemoryTask(node, taskParams().enableEncryptionAtRest);
     createSetNodeStateTask(node, NodeDetails.NodeState.Live).setSubTaskGroupType(subGroupType);
   }
 
