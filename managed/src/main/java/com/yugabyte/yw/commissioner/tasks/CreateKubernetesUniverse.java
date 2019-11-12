@@ -93,13 +93,9 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       createPlacementInfoTask(null /* blacklistNodes */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      if (taskParams().encryptionKeyFilePath != null) {
-        createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.COPY_KEY_FILE, pi);
-
-        // Enable encryption-at-rest if key file is passed in
-        createEnableEncryptionAtRestTask(taskParams().encryptionKeyFilePath, true)
-                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      }
+      // Enable encryption-at-rest if key file is passed in
+      createEnableEncryptionAtRestTask(taskParams().enableEncryptionAtRest)
+              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Wait for a master leader to hear from all the tservers.
       createWaitForTServerHeartBeatsTask()
