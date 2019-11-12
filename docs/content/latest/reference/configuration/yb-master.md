@@ -13,7 +13,7 @@ isTocNested: 3
 showAsideToc: true
 ---
 
-Use the `yb-master` options to configure and customize your YB-Master services. The [YB-Master](../../architecture/concepts/universe/#yb-master-process) binary (`yb-master`) is located in the `bin` directory of YugabyteDB home.
+Use the `yb-master` options to configure and customize your YB-Master services. The [YB-Master](../../../architecture/concepts/yb-master) binary (`yb-master`) is located in the `bin` directory of YugabyteDB home.
 
 ## Syntax
 
@@ -63,7 +63,7 @@ Specifies the configuration file to load flags from.
 
 #### --master_addresses
 
-Specifies a comma-separated list of all the RPC addresses for `yb-master` consensus-configuration.
+Specifies a comma-separated list of all RPC addresses for `yb-master` consensus-configuration.
 
 {{< note title="Note" >}}
 
@@ -72,6 +72,8 @@ The number of comma-separated values should match the total number of YB-Master 
 {{< /note >}}
 
 Mandatory.
+
+Default: `127.0.0.1:7100`
 
 #### --fs_data_dirs
 

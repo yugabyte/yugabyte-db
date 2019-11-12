@@ -13,7 +13,7 @@ isTocNested: 3
 showAsideToc: true
 ---
 
-The [YB-TServer](../../architecture/concepts/universe/#yb-tserver) binary (`yb-tserver`) is located in the `bin` directory of YugabyteDB home.
+The [YB-TServer](../../../architecture/concepts/yb-tserver/) binary (`yb-tserver`) is located in the `bin` directory of YugabyteDB home.
 
 ## Syntax
 
@@ -86,6 +86,8 @@ Comma-separated list of all the `yb-master` RPC addresses. Mandatory.
 The number of comma-separated values should match the total number of YB-Master nodes (or the replication factor).
 
 {{< /note >}}
+
+Default: `127.0.0.1:7100`
 
 #### --fs_data_dirs
 

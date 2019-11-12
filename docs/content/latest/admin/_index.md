@@ -14,6 +14,15 @@ aliases:
   - admin
 ---
 
+{{< note title="Note" >}}
+
+For information about configuring the YB-Master (`yb-master`) and YB-TServer (`yb-tserver`) nodes, see [`Configuration`](../reference/configuration/):
+
+- [YB-Master nodes](../reference/configuration/yb-master)
+- [YB-TServer nodes](../reference/configuration/yb-tserver/)
+
+{{< /note >}}
+
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
