@@ -8,6 +8,8 @@ menu:
     identifier: default-ports
     parent: configuration
     weight: 2740
+aliases:
+  - reference/default-ports
 ---
 
 
