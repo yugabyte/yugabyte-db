@@ -17,7 +17,7 @@ showAsideToc: true
 
 The `CREATE ROLE` statement is used to create a new role that is used to authenticate into YCQL and as a group of permissions used to restrict operations on the database objects. Note that users are specific roles that are login enabled. There is no explicit `CREATE USER` command in YCQL.
 
-This statment is enabled by setting the yb-tserver gflag [`use_cassandra_authentication`](../../../admin/yb-tserver/#config-flags) to `true`.
+This statement is enabled by setting the YB-TServer configuration option [`use_cassandra_authentication`](../../../../../reference/configuration/yb-tserver/#use-cassandra-authentication) to `true`.
 
 ## Syntax
 

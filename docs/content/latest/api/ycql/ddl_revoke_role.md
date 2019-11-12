@@ -17,7 +17,7 @@ showAsideToc: true
 
 The `REVOKE ROLE` statement is used to revoke a role (which represents a group of permissions and the SUPERUSER status) from another role.
 
-This statment is enabled by setting the yb-tserver gflag [`use_cassandra_authentication`](../../../admin/yb-tserver/#config-flags) to `true`.
+This statement is enabled by setting the YB-TServer configuration option [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#config-flags) to `true`.
 
 ## Syntax
 

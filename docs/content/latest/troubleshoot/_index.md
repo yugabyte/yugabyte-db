@@ -33,7 +33,7 @@ menu:
         <div class="title">Cluster level issues</div>
       </div>
       <div class="body">
-        Diagnostics and solutions for typical YugabyteDB cluster issues.
+        Diagnose and solve common YugabyteDB cluster issues.
       </div>
     </a>
   </div>

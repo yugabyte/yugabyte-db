@@ -1,6 +1,6 @@
 ---
-title: Troubleshooting overview
-linkTitle: Troubleshooting overview
+title: Troubleshooting
+linkTitle: Troubleshooting
 description: Troubleshooting overview
 aliases:
   - /troubleshoot/overview/
@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## 1. Check that YugabyteDB is running
+## 1. Verify that YugabyteDB is running
 
 First, ensure that the expected YugabyteDB processes are running on the current node.
 At a minimum, the tserver process needs to be running to be able to connect to this node with a CQL client or application.
@@ -21,7 +21,7 @@ At a minimum, the tserver process needs to be running to be able to connect to t
 Additionally, depending on the setup, you might expect a master process to also be running on this node.
 Follow the instructions on the [check processes](../nodes/check-processes/) page.
 
-## 2. Check cluster level issues
+## 2. Check cluster-level issues
 
 Next, check the list of [cluster issues](../cluster) and the respective fixes for each of them.
 

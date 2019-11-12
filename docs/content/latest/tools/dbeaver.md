@@ -1,7 +1,7 @@
 ---
 title: DBeaver
 linkTitle: DBeaver
-description: Use DBeaver database with YugabyteDB
+description: DBeaver
 menu:
   latest:
     identifier: dbeaver
