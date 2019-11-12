@@ -16,7 +16,7 @@ import time
 import traceback
 import uuid
 from datetime import datetime
-from signal import SIGABRT, SIGINT, SIGKILL, SIGTERM, SIG_DFL, signal
+from signal import SIGABRT, SIGINT, SIGKILL, SIGTERM, SIG_DFL, SIG_IGN, signal
 from threading import Thread
 
 # Version-dependent imports
@@ -30,7 +30,7 @@ else:
     from urllib.parse import urlencode
 
 """
-Run `yugabyted` to start a single-node Yugabyte DB process. If no options are specified,
+Run `yugabyted` to start a single-node YugabyteDB process. If no options are specified,
 `yugabyted` will assume the following default directory tree:
 
 yugabyte
@@ -63,7 +63,7 @@ BOOL_CHOICES = TRUE_CHOICES + FALSE_CHOICES
 SLACK_LINK = "https://www.yugabyte.com/slack"
 HELP_LINK = "https://docs.yugabyte.com/latest/faq/"
 
-# Yugabyte DB configs.
+# YugabyteDB configs.
 IP_ANY = "0.0.0.0"
 IP_LOCALHOST = "127.0.0.1"
 DEFAULT_BIND_IP = IP_LOCALHOST
@@ -90,6 +90,7 @@ METRICS_SNAPSHOT_LIST = [
 ]
 
 # Internal constants.
+DEFAULT_DEMO_DATABASE = "retail"
 SAMPLE_DATA_LINKS = {
     "retail": "https://docs.yugabyte.com/latest/quick-start/explore-ysql/",
     "chinook": "https://docs.yugabyte.com/latest/sample-data/chinook/",
@@ -114,29 +115,29 @@ class YugabyteProcessManager(object):
         self.stop_callhome = False
         self.alerts = []
 
-    # Starts Yugabyte DB node.
+    # Starts YugabyteDB node.
     def start(self):
         self.validate_resources()
-        Output.print_and_log("Starting Yugabyte DB (this may take a couple minutes)...")
+        Output.print_and_log("Starting YugabyteDB (this may take a couple minutes)...")
         self.set_env_vars()
         self.set_signals(self.kill_yugabyte)
         atexit.register(self.kill_yugabyte)
         self.install_yb()
         self.start_processes()
 
-    # Prints status of Yugabyte DB.
+    # Prints status of YugabyteDB.
     def status(self):
         if os.path.isdir(self.configs.saved_data.get("data_dir")):
             Output.print_out(self.get_status_string())
         else:
-            Output.print_out("Yugabyte DB is not running.")
+            Output.print_out("YugabyteDB is not running.")
 
-    # Prints Yugabyte DB version.
+    # Prints YugabyteDB version.
     def version(self):
-        title = "Yugabyte DB Information"
+        title = "YugabyteDB Information"
         with open(VERSION_METADATA_PATH) as metadata:
             data = json.load(metadata)
-            title = "Yugabyte DB Version"
+            title = "YugabyteDB Version"
             output = "\n" + "-" * 70 + "\n"
             output += ("| {:^66} |\n").format(title)
             output += "-" * 70 + "\n"
@@ -158,14 +159,14 @@ class YugabyteProcessManager(object):
     # Starts an interactive YSQL shell.
     def connect_ysql(self):
         if self.get_failed_node_processes():
-            Output.log_error_and_exit("Yugabyte DB is not running. Cannot connect to YSQL.")
+            Output.log_error_and_exit("YugabyteDB is not running. Cannot connect to YSQL.")
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
         ysql_proxy.connect()
 
     # Starts an interactive YCQL shell.
     def connect_ycql(self):
         if self.get_failed_node_processes():
-            Output.log_error_and_exit("Yugabyte DB is not running. Cannot connect to YCQL.")
+            Output.log_error_and_exit("YugabyteDB is not running. Cannot connect to YCQL.")
         path = os.path.join(BIN_DIR, YUGABYTE_API_CLIENT_PROGRAMS["ycql"])
         cmd = [
             path, self.configs.saved_data.get("bind_ip"),
@@ -173,11 +174,32 @@ class YugabyteProcessManager(object):
         ]
         os.execv(path, cmd)
 
+    # Creates demo database and starts an interactive shell into it. Destroys the sample database
+    # after shell quits.
+    def demo(self):
+        if self.get_failed_node_processes():
+            Output.log_error_and_exit(
+                "YugabyteDB is not running. Please run `yugabyted start` before starting a demo.")
+
+        db_name = DEMO_DB_PREFIX + self.configs.temp_data.get("demo_db")
+        ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
+        if ysql_proxy.db_exists(db_name):
+            Output.log_error_and_exit(
+                "Demo is already running. Concurrent demos are currently unsupported.")
+        # TODO: Race condition currently exists when running demo too close to each other. This
+        # will be solved when concurrent isolated demos are implemented.
+        self.create_demo()
+
+        # Ignore kill SIGINT to match normal ysqlsh and psql behavior.
+        signal(SIGINT, SIG_IGN)
+        signal(SIGABRT, self.destroy_demo)
+        signal(SIGTERM, self.destroy_demo)
+        atexit.register(self.destroy_demo)
+        self.run_demo()
+        self.set_signals(SIG_DFL)
+
     # Create target demo database if it does not exist.
     def create_demo(self):
-        if self.get_failed_node_processes():
-            Output.log_error_and_exit("Yugabyte DB is not running. Cannot create sample database.")
-
         demo_db = self.configs.temp_data.get("demo_db")
         db_name = DEMO_DB_PREFIX + demo_db
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
@@ -201,28 +223,9 @@ class YugabyteProcessManager(object):
 
             msg = "Successfully loaded sample database!"
             Output.print_and_log(msg)
-            Output.print_out(
-                "\n################################\n"
-                "#  WELCOME TO THE {} DEMO  #\n"
-                "################################\n"
-                "{}\n"
-                "################################\n"
-                "# NEXT STEP: RUN THE DEMO\n"
-                "################################\n"
-                "$ {} demo run {}\n\n".format(
-                    SCRIPT_NAME, demo_db.upper(), Configs.get_demo_info()[demo_db]["output"],
-                    demo_db)
-            )
-        else:
-            Output.log_error_and_exit(
-                "{0} sample database has already been created. "
-                "Use `{} demo run {0}` to interact with it.".format(SCRIPT_NAME, demo_db))
 
     # Run YSQL shell in target demo database.
     def run_demo(self):
-        if self.get_failed_node_processes():
-            Output.log_error_and_exit("Yugabyte DB is not running. Cannot connect to YSQL.")
-
         demo_db = self.configs.temp_data.get("demo_db")
         db_name = DEMO_DB_PREFIX + demo_db
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
@@ -235,14 +238,10 @@ class YugabyteProcessManager(object):
             ysql_proxy.connect(db=db_name)
         else:
             Output.log_error_and_exit(
-                "{0} demo has not been created."
-                "Run `{} demo create {0}`.".format(SCRIPT_NAME, demo_db))
+                "{} demo was not loaded properly.".format(SCRIPT_NAME))
 
     # Destroy target demo database if it exists.
-    def destroy_demo(self):
-        if self.get_failed_node_processes():
-            Output.log_error_and_exit("Yugabyte DB is not running. Cannot destroy sample database.")
-
+    def destroy_demo(self, signum=None, frame=None):
         demo_db = self.configs.temp_data.get("demo_db")
         db_name = DEMO_DB_PREFIX + demo_db
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
@@ -250,7 +249,7 @@ class YugabyteProcessManager(object):
             _, err = ysql_proxy.drop_db(db_name)
             if err:
                 Output.log_error_and_exit("Failed to drop database {}: {}".format(demo_db, err))
-        msg = "Destroyed demo database {}.".format(demo_db)
+        msg = "Deleted demo database {}.".format(demo_db)
         Output.print_and_log(msg)
 
     # Checks yb-master and yb-tserver are running. Returns failed processes.
@@ -272,7 +271,7 @@ class YugabyteProcessManager(object):
         pgid = os.getpgid(cur_pid)
         if not pgid:
             Output.log_error_and_exit(
-                "PGID could not be found for PID {}. Is Yugabyte DB running?".format(cur_pid))
+                "PGID could not be found for PID {}. Is YugabyteDB running?".format(cur_pid))
 
         self.set_signals(SIG_DFL)
 
@@ -285,11 +284,11 @@ class YugabyteProcessManager(object):
             # requires KILL signal to terminate and nodes currently do not gracefully terminate.
             os.killpg(pgid, SIGKILL)
             Output.log_error_and_exit(
-                "Yugabyte DB may not have terminated properly... "
+                "YugabyteDB may not have terminated properly... "
                 "Please check PGID {}.".format(pgid))
         except OSError as err:
             Output.log_error_and_exit(
-                "Failed to kill PGID {}... Is Yugabyte DB running?\n{}".format(pgid, str(err)))
+                "Failed to kill PGID {}... Is YugabyteDB running?\n{}".format(pgid, str(err)))
 
     # Starts yb-master, yb-tserver, and yugaware processes.
     # After initializing, creates a callhome thread.
@@ -379,7 +378,7 @@ class YugabyteProcessManager(object):
         for p in self.processes.values():
             pid = p.get_pid()
             if pid:
-                Output.print_out("Yugabyte DB is already running!")
+                Output.print_out("YugabyteDB is already running!")
                 # Clear self.processes so kill_yugabyte() doesn't kill existing processes.
                 self.processes = {}
                 return
@@ -427,7 +426,7 @@ class YugabyteProcessManager(object):
                         break
                 if first_run_success and self.is_yb_initialized():
                     status = self.get_status_string() + \
-                        Output.make_green("Yugabyte DB started successfully!\n") + \
+                        Output.make_green("YugabyteDB started successfully!\n") + \
                         Output.make_magenta(
                                 "Join us on Slack at {}".format(
                                     Output.make_underline("{}\n".format(SLACK_LINK))))
@@ -461,7 +460,7 @@ class YugabyteProcessManager(object):
                     yw_process = self.processes.get("yugaware")
                     yw_proxy = YugaWareProxy(advertise_ip,
                         self.configs.saved_data.get("webserver_port"))
-                    if not self.is_yw_initialized() and self.set_isolation_level():
+                    if not self.is_yw_initialized():
                         Output.log("Initiating webserver...")
                         if not self.init_yw():
                             Output.log_error_and_exit("Failed to initialize webserver.")
@@ -584,34 +583,8 @@ class YugabyteProcessManager(object):
     def is_yw_initialized(self):
         # Check Play evolutions table was created.
         list_tables_cmd = [os.path.join(BIN_DIR, "ysqlsh"), "-d", WEBSERVER_DB, "-c", "\d"]
-        Output.log("Checking for play tables.")
         out, err, ret_code = run_process(list_tables_cmd)
-        Output.log("Done checking for play tables.")
         return not err and not ret_code and "play_evolutions" in out
-
-    # Sets YSQL default isolation level.
-    def set_isolation_level(self):
-        Output.log("Setting transaction isolation to serializable.")
-        pg_conf = os.path.join(self.configs.saved_data.get("data_dir"), "pg_data/postgresql.conf")
-        iso_config = "default_transaction_isolation = 'serializable'"
-        pattern = "^\s*{}$".format(iso_config)
-        changed = False
-        if os.path.exists(pg_conf):
-            with open(pg_conf, "r+") as f:
-                for line in f:
-                    if re.match(pattern, line):
-                        return True
-                f.write(iso_config)
-                changed = True
-        if changed:
-            # tserver must be restarted for conf changes to go through.
-            Output.log("Restarting tserver...", logging.DEBUG)
-            tserver = self.processes.get("tserver")
-            tserver.kill()
-            tserver.start()
-            self.wait_yb_master()
-            Output.log("Restarted tserver.", logging.DEBUG)
-        return changed
 
     # Rudimentary yb-admin call.
     def get_universe_uuid(self):
@@ -686,10 +659,10 @@ class YugabyteProcessManager(object):
 
         # Make sure ascii escape characters for color encoding do not count towards char limit.
         if self.get_failed_node_processes():
-            title = Output.make_bold(Output.make_red("Yugabyte DB"))
+            title = Output.make_bold(Output.make_red("YugabyteDB"))
             extra_len = len(Output.make_bold(Output.make_red("")))
         else:
-            title = Output.make_bold(Output.make_green("Yugabyte DB"))
+            title = Output.make_bold(Output.make_green("YugabyteDB"))
             extra_len = len(Output.make_bold(Output.make_green("")))
 
 
@@ -799,10 +772,10 @@ class YugabyteProcessManager(object):
                 msg += "{0}: {1}. {2}: {3}. Use 'ulimit {4} {3}' to set.\n".format(
                     Output.make_yellow("Current " + name), value,
                     Output.make_green("Recommended"), recommended_value, flag)
-            msg += "Note Yugabyte DB will still run, although it may fail for larger workloads. " \
+            msg += "Note YugabyteDB will still run, although it may fail for larger workloads. " \
                 "For more info, see " + Output.make_underline(
                 "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config/")
-            yw_alert += ". Note Yugabyte DB will still run, although it may fail for larger " \
+            yw_alert += ". Note YugabyteDB will still run, although it may fail for larger " \
                 "workloads. For more info, see " \
                 "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config/"
             self.alerts.append((ALERT_WARNING, ULIMIT_ERR_CODE, yw_alert))
@@ -851,8 +824,6 @@ class YugabyteProcessManager(object):
 
             self.configs.temp_data["daemon"] = args.daemon
             self.configs.temp_data["ui"] = args.ui
-        elif args.parser == "demo":
-            self.configs.temp_data["demo_db"] = args.demo_db
 
         if has_errors:
             sys.exit(1)
@@ -875,21 +846,22 @@ class YugabyteProcessManager(object):
         # Parent subparser for common args
         common_parser = argparse.ArgumentParser(add_help=False)
         common_parser.add_argument(
-            "--config", default=DEFAULT_CONF, help="Yugabyte DB configuration file")
+            "--config", default=DEFAULT_CONF, help="YugabyteDB configuration file")
         # TODO: Refactor data_dir to be a list for multi-node. How should the config file and
         # data dir be set for local mulit-node setups? Note: daemon mode may be affected.
         common_parser.add_argument(
-            "--data_dir", help="Directory where Yugabyte DB will store data.")
+            "--data_dir", help="Directory where YugabyteDB will store data.")
 
-        start_msg = "To start Yugabyte DB, run '{}'.\n\n".format(
+        start_msg = "To start YugabyteDB, run '{}'.\n\n".format(
             Output.make_green("{} start".format(SCRIPT_NAME)))
         parser = PrettyArgParser(description=start_msg)
         all_parsers = {"default": parser}
         subparsers = parser.add_subparsers(dest="parser")
         for cmd, description in (
-                ("start", "Start Yugabyte DB."),
-                ("status", "Print status of Yugabyte DB."),
-                ("version", "Version of Yugabyte DB."),):
+                ("start", "Start YugabyteDB."),
+                ("status", "Print status of YugabyteDB."),
+                ("version", "Version of YugabyteDB."),
+                ("demo", "Load and interact with preset demo data.")):
             subparser = subparsers.add_parser(cmd, help=description, parents=[common_parser])
             func = getattr(self, cmd, None)
             subparser.set_defaults(func=func)
@@ -906,41 +878,11 @@ class YugabyteProcessManager(object):
             cur_parser.set_defaults(func=func)
             all_parsers[api] = cur_parser
 
-        # Add YSQL demo commands.
-        demo = subparsers.add_parser("demo", help="Load and interact with preset demo data.")
-        all_parsers["demo"] = demo
-        demo_subparser = demo.add_subparsers()
-
-        create_help = "Create sample database if it does not exist yet."
-        create_demo = demo_subparser.add_parser("create", help=create_help)
-        create_demo_subparser = create_demo.add_subparsers(dest="demo_db")
-        run_help = "Open interactive shell in sample database."
-        run_demo = demo_subparser.add_parser("run", help=run_help)
-        run_demo_subparser = run_demo.add_subparsers(dest="demo_db")
-        destroy_help = "Destroy sample database."
-        destroy_demo = demo_subparser.add_parser("destroy", help=destroy_help)
-        destroy_demo_subparser = destroy_demo.add_subparsers(dest="demo_db")
-        for demo_type, demo_help in (
-                ("retail", "A simple database with tables like products and reviews."),
-                ("northwind", "A retail database featuring foreign keys."),
-                ("club", "A database featuring indices and foreign keys."),
-                ("sports", "A database featuring indices, foreign keys, and constraints."),):
-            for action, action_help, cur_subparser in (
-                    ("create", create_help, create_demo_subparser),
-                    ("destroy", destroy_help, destroy_demo_subparser),
-                    ("run", run_help, run_demo_subparser)):
-                help_msg = "{} {}".format(action_help, demo_help)
-                cur_parser = cur_subparser.add_parser(
-                    demo_type, help=help_msg, parents=[common_parser])
-                func = getattr(self, "{}_demo".format(action), None)
-                cur_parser.set_defaults(func=func)
-                all_parsers["{}_{}".format(action, demo_type)] = cur_parser
-
         # Commands that can alter configuration file.
         for cmd in ("start",):
             cur_parser = all_parsers[cmd]
             cur_parser.add_argument(
-                "--log_dir", help="Directory to store Yugabyte DB logs.")
+                "--log_dir", help="Directory to store YugabyteDB logs.")
             cur_parser.add_argument(
                 "--ycql_port", help="Port on which YCQL will run.")
             cur_parser.add_argument(
@@ -1030,7 +972,7 @@ class Configs(object):
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
-            "demo_db": "retail",
+            "demo_db": DEFAULT_DEMO_DATABASE,
             "daemon": False,
             "ui": True,
         }
@@ -1338,7 +1280,8 @@ class YsqlProxy(object):
         cmd = [self.path, "-p", self.port]
         if db:
             cmd.extend(["-d", db])
-        os.execv(self.path, cmd)
+        shell = subprocess.Popen(cmd)
+        shell.communicate()
 
     # Checks if db exists.
     # Note that this will return false if ysqlsh can't connect, even if db exists.
@@ -1679,9 +1622,9 @@ class PrettyArgParser(argparse.ArgumentParser):
 
     # Add epilog help message to errors.
     def error(self, message):
-        self.print_usage(sys.stderr)
-        err = "{} {}\n{}\n".format(Output.make_red("Error:"), message, self.epilog)
-        self.exit(2, err)
+        Output.print_out("{} {}.".format(Output.make_red("Error:"), message))
+        self.print_help(sys.stderr)
+        self.exit(2)
 
 
 # Class that capitalizes argparse help message.

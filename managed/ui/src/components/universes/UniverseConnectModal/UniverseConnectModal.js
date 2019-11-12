@@ -95,8 +95,8 @@ class UniverseConnectModal extends Component {
       const userIntent = primaryCluster && primaryCluster.userIntent;
       const universeId = universeInfo.universeUUID;
 
-      const ycqlServiceUrl = getUniverseEndpoint(universeId) + "/yqlservers";
       const ysqlServiceUrl = getUniverseEndpoint(universeId) + "/ysqlservers";
+      const ycqlServiceUrl = getUniverseEndpoint(universeId) + "/yqlservers";
       const yedisServiceUrl = getUniverseEndpoint(universeId) + "/redisservers";
       const endpointsContent = (
         <Fragment>
