@@ -342,8 +342,8 @@ bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
   }
-  resp->set_micros_elapsed(MonoTime::Now().GetDeltaSince(timing_.time_received)
-      .ToMicroseconds());
+  resp->set_elapsed_millis(MonoTime::Now().GetDeltaSince(timing_.time_received)
+      .ToMilliseconds());
   return true;
 }
 

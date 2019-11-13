@@ -537,7 +537,7 @@ bool OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
                           RpcCallInProgressPB* resp) {
   std::lock_guard<simple_spinlock> l(lock_);
   InitHeader(resp->mutable_header());
-  resp->set_micros_elapsed(MonoTime::Now().GetDeltaSince(start_).ToMicroseconds());
+  resp->set_elapsed_millis(MonoTime::Now().GetDeltaSince(start_).ToMilliseconds());
   resp->set_state(state());
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
