@@ -94,26 +94,31 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
 
   switch (request_.stmt_type()) {
     case PgsqlWriteRequestPB::PGSQL_INSERT:
-      return ApplyInsert(data);
+      return ApplyInsert(data, IsUpsert::kFalse);
 
     case PgsqlWriteRequestPB::PGSQL_UPDATE:
       return ApplyUpdate(data);
 
     case PgsqlWriteRequestPB::PGSQL_DELETE:
       return ApplyDelete(data);
+
+    case PgsqlWriteRequestPB::PGSQL_UPSERT:
+      return ApplyInsert(data, IsUpsert::kTrue);
   }
   return Status::OK();
 }
 
-Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
+Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUpsert is_upsert) {
   QLTableRow::SharedPtr table_row = std::make_shared<QLTableRow>();
-  RETURN_NOT_OK(ReadColumns(data, table_row));
-  if (!table_row->IsEmpty()) {
-    VLOG(4) << "Duplicate row: " << table_row->ToString();
-    // Primary key or unique index value found.
-    response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
-    response_->set_error_message("Duplicate key found in primary key or unique index");
-    return Status::OK();
+  if (!is_upsert) {
+    RETURN_NOT_OK(ReadColumns(data, table_row));
+    if (!table_row->IsEmpty()) {
+      VLOG(4) << "Duplicate row: " << table_row->ToString();
+      // Primary key or unique index value found.
+      response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
+      response_->set_error_message("Duplicate key found in primary key or unique index");
+      return Status::OK();
+    }
   }
 
   const MonoDelta ttl = Value::kMaxTtl;
@@ -342,7 +347,8 @@ Status PgsqlWriteOperation::GetDocPaths(
 
   if (mode == GetDocPathsMode::kIntents) {
     const google::protobuf::RepeatedPtrField<PgsqlColumnValuePB>* column_values = nullptr;
-    if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_INSERT) {
+    if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_INSERT ||
+        request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPSERT) {
       column_values = &request_.column_values();
     } else if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE) {
       column_values = &request_.column_new_values();

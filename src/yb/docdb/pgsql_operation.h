@@ -33,6 +33,8 @@ class YQLStorageIf;
 
 namespace docdb {
 
+YB_STRONGLY_TYPED_BOOL(IsUpsert);
+
 class PgsqlWriteOperation :
     public DocOperationBase<DocOperationType::PGSQL_WRITE_OPERATION, PgsqlWriteRequestPB>,
     public DocExprExecutor {
@@ -62,7 +64,8 @@ class PgsqlWriteOperation :
   }
 
   // Insert, update, and delete operations.
-  CHECKED_STATUS ApplyInsert(const DocOperationApplyData& data);
+  CHECKED_STATUS ApplyInsert(
+      const DocOperationApplyData& data, IsUpsert is_upsert = IsUpsert::kFalse);
   CHECKED_STATUS ApplyUpdate(const DocOperationApplyData& data);
   CHECKED_STATUS ApplyDelete(const DocOperationApplyData& data);
 

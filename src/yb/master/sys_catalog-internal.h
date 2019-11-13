@@ -120,11 +120,16 @@ class SysCatalogWriter {
                                      const QLTableRow& source_row,
                                      const TableId& target_table_id,
                                      const Schema& target_schema,
-                                     const uint32_t target_schema_version) {
+                                     const uint32_t target_schema_version,
+                                     bool is_upsert) {
     PgsqlWriteRequestPB* pgsql_write = req_.add_pgsql_write_batch();
 
     pgsql_write->set_client(YQL_CLIENT_PGSQL);
-    pgsql_write->set_stmt_type(PgsqlWriteRequestPB::PGSQL_INSERT);
+    if (is_upsert) {
+      pgsql_write->set_stmt_type(PgsqlWriteRequestPB::PGSQL_UPSERT);
+    } else {
+      pgsql_write->set_stmt_type(PgsqlWriteRequestPB::PGSQL_INSERT);
+    }
     pgsql_write->set_table_id(target_table_id);
     pgsql_write->set_schema_version(target_schema_version);
 

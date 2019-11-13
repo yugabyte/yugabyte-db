@@ -504,6 +504,10 @@ YBPgsqlWriteOp *YBPgsqlWriteOp::NewDelete(const std::shared_ptr<YBTable>& table)
   return NewYBPgsqlWriteOp(table, PgsqlWriteRequestPB::PGSQL_DELETE);
 }
 
+YBPgsqlWriteOp *YBPgsqlWriteOp::NewUpsert(const std::shared_ptr<YBTable>& table) {
+  return NewYBPgsqlWriteOp(table, PgsqlWriteRequestPB::PGSQL_UPSERT);
+}
+
 std::string YBPgsqlWriteOp::ToString() const {
   return "PGSQL_WRITE " + write_request_->ShortDebugString();
 }
