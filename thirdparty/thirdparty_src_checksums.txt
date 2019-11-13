@@ -1,6 +1,6 @@
 a26d338c9024eeedb68e485db0b3a25a5fa00df2c23b9453f77e712c588d3079  bitshuffle-55f9b4c.tar.gz
 8f32d4617390d1c2d16f26a27ab60d97807b35440d45891fa340fc2648b04406  boost-1.69.0.tar.bz2
-8f8299b59caaead1b83bda13c8f0feec652daea22d2247ff5f05cde5266c9901  cassandra-cpp-driver-2.9.0-yb-4.tar.gz
+46857c147a6327411952d34a15552cc7b73bb19ccfd6bc564e119be9af6a69d1  cassandra-cpp-driver-2.9.0-yb-6.tar.gz
 a45b62dde5d7d5fdcdfa876b0af92f164d434b06e9e89b5d0b1cbc65dfe3f418  cfe-7.0.1.tar.xz
 4c93c7d2bb07923a8b272da3ef7914438080aeb693725f4fc5c19cd0e2613bed  clang-tools-extra-7.0.1.tar.xz
 782edfc119ee172f169c91dd79f2c964fb6b248bd9b73523149030ed505bbe18  compiler-rt-7.0.1.tar.xz
