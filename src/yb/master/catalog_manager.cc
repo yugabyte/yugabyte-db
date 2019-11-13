@@ -1685,6 +1685,8 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
                                           CreateNamespaceResponsePB* resp,
                                           rpc::RpcContext* rpc) {
   const uint32_t database_oid = CHECK_RESULT(GetPgsqlDatabaseOid(namespace_id));
+  vector<TableId> source_table_ids;
+  vector<TableId> target_table_ids;
   for (const auto& table : tables) {
     CreateTableRequestPB table_req;
     CreateTableResponsePB table_resp;
@@ -1730,8 +1732,11 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
       return SetupError(resp->mutable_error(), table_resp.error().code(), s);
     }
 
-    RETURN_NOT_OK(sys_catalog_->CopyPgsqlTable(table->id(), table_id, leader_ready_term_));
+    source_table_ids.push_back(table->id());
+    target_table_ids.push_back(table_id);
   }
+  RETURN_NOT_OK(
+      sys_catalog_->CopyPgsqlTables(source_table_ids, target_table_ids, leader_ready_term_));
   return Status::OK();
 }
 

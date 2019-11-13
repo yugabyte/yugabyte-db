@@ -158,6 +158,11 @@ class SysCatalogTable {
                                 const TableId& target_table_id,
                                 int64_t leader_term);
 
+  // Copy the content of co-located tables in sys catalog as a batch.
+  CHECKED_STATUS CopyPgsqlTables(const std::vector<TableId>& source_table_ids,
+                                 const std::vector<TableId>& target_table_ids,
+                                 int64_t leader_term);
+
   // Drop YSQL table by removing the table metadata in sys-catalog.
   CHECKED_STATUS DeleteYsqlSystemTable(const string& table_id);
 

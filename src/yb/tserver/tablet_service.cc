@@ -853,7 +853,9 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
           auto key = entry.column_new_values(0).expr().value().int32_value();
           LOG(INFO) << txn_id << " UPDATE: " << key << " = "
                     << entry.column_new_values(1).expr().value().string_value();
-        } else if (entry.stmt_type() == PgsqlWriteRequestPB::PGSQL_INSERT) {
+        } else if (
+            entry.stmt_type() == PgsqlWriteRequestPB::PGSQL_INSERT ||
+            entry.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPSERT) {
           docdb::DocKey doc_key;
           CHECK_OK(doc_key.FullyDecodeFrom(entry.ybctid_column_value().value().binary_value()));
           LOG(INFO) << txn_id << " INSERT: " << doc_key.hashed_group()[0].GetInt32() << " = "
