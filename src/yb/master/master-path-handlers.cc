@@ -649,17 +649,17 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
 
     table_cat = kUserTable;
     string keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
+    bool is_platform = keyspace.compare(kSystemPlatformNamespace) == 0;
 
     // Determine the table category. YugaWare tables should be displayed as system tables.
-    if (!master_->catalog_manager()->IsUserTable(*table)
-        || keyspace.compare(kSystemPlatformNamespace) == 0) {
+    if (master_->catalog_manager()->IsUserIndex(*table) && !is_platform) {
+      table_cat = kIndexTable;
+    } else if (!master_->catalog_manager()->IsUserTable(*table) || is_platform) {
       // Skip system tables if we should.
       if (skip_system_tables) {
         continue;
       }
       table_cat = kSystemTable;
-    } else if (master_->catalog_manager()->IsUserIndex(*table)) {
-      table_cat = kIndexTable;
     }
 
     string table_uuid = table->id();
