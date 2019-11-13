@@ -23,7 +23,7 @@ from build_definitions import *
 class CassandraCppDriverDependency(Dependency):
     def __init__(self):
         super(CassandraCppDriverDependency, self).__init__(
-                'cassandra-cpp-driver', '2.9.0-yb-4',
+                'cassandra-cpp-driver', '2.9.0-yb-6',
                 'https://github.com/YugaByte/cassandra-cpp-driver/archive/{0}.tar.gz',
                 BUILD_GROUP_INSTRUMENTED)
         self.copy_sources = False

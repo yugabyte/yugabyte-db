@@ -15,20 +15,6 @@
 
 #include <tuple>
 
-// Include driver internal headers first.
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-local-typedefs"
-
-#include "partition_aware_policy.hpp"
-#include "statement.hpp"
-
-#pragma GCC diagnostic pop
-// Undefine conflicting macros.
-#undef HAVE_LONG_LONG
-#undef DECLARE_POD
-#undef PROPAGATE_POD_FROM_TEMPLATE_ARGUMENT
-#undef ENFORCE_POD
-
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
@@ -273,15 +259,15 @@ class CassandraStatement {
 
   void Bind(size_t index, const cass_json_t& v);
 
-  const cass::Request* request() {
-    return cass_statement_->from();
+  CassStatement* get() const {
+    return cass_statement_.get();
   }
 
  private:
   friend class CassandraBatch;
   friend class CassandraSession;
 
-  CassStatementPtr cass_statement_ = nullptr;
+  CassStatementPtr cass_statement_;
 };
 
 typedef std::unique_ptr<CassBatch, FuncDeleter<CassBatch, &cass_batch_free>> CassBatchPtr;
@@ -1144,11 +1130,10 @@ void TestTokenForTypes(
   table.BindInsert(&statement, input);
 
   int64_t token = 0;
-  string full_table_name;
-  bool token_available = cass::PartitionAwarePolicy::get_yb_hash_code(
-      statement.request(), &token, &full_table_name);
+  bool token_available = cass_partition_aware_policy_get_yb_hash_code(
+      statement.get(), &token);
   LOG(INFO) << "Got token: " << (token_available ? "OK" : "ERROR") << " token=" << token
-            << " (0x" << std::hex << token << ")" << " table=" << full_table_name;
+            << " (0x" << std::hex << token << ")";
   ASSERT_TRUE(token_available);
 
   if (exp_token > 0) {
