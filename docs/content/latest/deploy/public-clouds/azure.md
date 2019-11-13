@@ -24,6 +24,12 @@ menu:
       Terraform
     </a>
   </li>
+  <li>
+    <a href="#azure-arm" class="nav-link" id="azure-arm-tab" data-toggle="tab" role="tab" aria-controls="terraform" aria-selected="true">
+      <i class="icon-shell"></i>
+      Azure ARM Template
+    </a>
+  </li>
 </ul>
 
 <div class="tab-content">
@@ -32,5 +38,8 @@ menu:
   </div>
   <div id="terraform" class="tab-pane fade" role="tabpanel" aria-labelledby="terraform-tab">
     {{% includeMarkdown "azure/terraform.md" /%}}
+  </div>
+  <div id="azure-arm" class="tab-pane fade" role="tabpanel" aria-labelledby="azure-arm-tab">
+    {{% includeMarkdown "azure/azure-arm.md" /%}}
   </div>
 </div>

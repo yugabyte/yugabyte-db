@@ -24,6 +24,12 @@ menu:
       Terraform
     </a>
   </li>
+  <li>
+    <a href="#deployment-manager" class="nav-link" id="deployment-manager-tab" data-toggle="tab" role="tab" aria-controls="deployment-manager" aria-selected="true">
+      <i class="icon-shell"></i>
+      Google Cloud Deployment Manager
+    </a>
+  </li>
 </ul>
 
 <div class="tab-content">
@@ -32,5 +38,8 @@ menu:
   </div>
   <div id="terraform" class="tab-pane fade" role="tabpanel" aria-labelledby="terraform-tab">
     {{% includeMarkdown "gcp/terraform.md" /%}}
+  </div>
+  <div id="deployment-manager" class="tab-pane fade" role="tabpanel" aria-labelledby="deployment-manager-tab">
+    {{% includeMarkdown "gcp/gcp-deployment-manager.md" /%}}
   </div>
 </div>
