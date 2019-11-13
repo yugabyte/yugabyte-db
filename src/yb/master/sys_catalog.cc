@@ -43,6 +43,7 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/ql_protocol_util.h"
 
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/consensus.h"
@@ -119,6 +120,7 @@ std::string SysCatalogTable::schema_column_metadata() { return kSysCatalogTableC
 SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
                                  ElectedLeaderCallback leader_cb)
     : metric_registry_(metrics),
+      metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_, "yb.master")),
       master_(master),
       leader_cb_(std::move(leader_cb)) {
   CHECK_OK(ThreadPoolBuilder("inform_removed_master").Build(&inform_removed_master_pool_));
@@ -126,9 +128,8 @@ SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
   CHECK_OK(ThreadPoolBuilder("prepare").set_min_threads(1).Build(&tablet_prepare_pool_));
   CHECK_OK(ThreadPoolBuilder("append").set_min_threads(1).Build(&append_pool_));
 
-  auto metric_entity = METRIC_ENTITY_server.Instantiate(metric_registry_, "yb.master");
   setup_config_dns_histogram_ = METRIC_dns_resolve_latency_during_sys_catalog_setup.Instantiate(
-      metric_entity);
+      metric_entity_);
 }
 
 SysCatalogTable::~SysCatalogTable() {
@@ -653,18 +654,52 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   auto iter = tablet->NewRowIterator(schema_, boost::none);
   RETURN_NOT_OK(iter);
 
+  auto doc_iter = dynamic_cast<yb::docdb::DocRowwiseIterator*>(iter->get());
+  CHECK(doc_iter != nullptr);
+  QLConditionPB cond;
+  cond.set_op(QL_OP_AND);
+  QLAddInt8Condition(&cond, schema_with_ids_.column_id(type_col_idx), QL_OP_EQUAL, tables_entry);
+  yb::docdb::DocQLScanSpec spec(
+      schema_with_ids_, boost::none /* hash_code */, boost::none /* max_hash_code */,
+      {} /* hashed_components */, &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
+  RETURN_NOT_OK(doc_iter->Init(spec));
+
   QLTableRow value_map;
   QLValue entry_type, entry_id, metadata;
+  uint64_t count = 0;
+  auto start = CoarseMonoClock::Now();
   while (VERIFY_RESULT((**iter).HasNext())) {
+    ++count;
     RETURN_NOT_OK((**iter).NextRow(&value_map));
     RETURN_NOT_OK(value_map.GetValue(schema_with_ids_.column_id(type_col_idx), &entry_type));
-    if (entry_type.int8_value() != tables_entry) {
-      continue;
-    }
+    CHECK_EQ(entry_type.int8_value(), tables_entry);
     RETURN_NOT_OK(value_map.GetValue(schema_with_ids_.column_id(entry_id_col_idx), &entry_id));
     RETURN_NOT_OK(value_map.GetValue(schema_with_ids_.column_id(metadata_col_idx), &metadata));
     RETURN_NOT_OK(visitor->Visit(entry_id.binary_value(), metadata.binary_value()));
   }
+  auto duration = CoarseMonoClock::Now() - start;
+  string id = Format("num_entries_with_type_$0_loaded", std::to_string(tables_entry));
+  if (visitor_duration_metrics_.find(id) == visitor_duration_metrics_.end()) {
+    string description = id + " metric for SysCatalogTable::Visit";
+    std::unique_ptr<GaugePrototype<uint64>> counter_gauge =
+        std::make_unique<OwningGaugePrototype<uint64>>(
+            "server", id, description, yb::MetricUnit::kEntries, description,
+            yb::EXPOSE_AS_COUNTER);
+    visitor_duration_metrics_[id] = metric_entity_->FindOrCreateGauge(
+        std::move(counter_gauge), static_cast<uint64>(0) /* initial_value */);
+  }
+  visitor_duration_metrics_[id]->IncrementBy(count);
+
+  id = Format("duration_ms_loading_entries_with_type_$0", std::to_string(tables_entry));
+  if (visitor_duration_metrics_.find(id) == visitor_duration_metrics_.end()) {
+    string description = id + " metric for SysCatalogTable::Visit";
+    std::unique_ptr<GaugePrototype<uint64>> duration_gauge =
+        std::make_unique<OwningGaugePrototype<uint64>>(
+            "server", id, description, yb::MetricUnit::kMilliseconds, description);
+    visitor_duration_metrics_[id] = metric_entity_->FindOrCreateGauge(
+        std::move(duration_gauge), static_cast<uint64>(0) /* initial_value */);
+  }
+  visitor_duration_metrics_[id]->IncrementBy(ToMilliseconds(duration));
   return Status::OK();
 }
 
