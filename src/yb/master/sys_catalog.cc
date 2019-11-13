@@ -720,15 +720,56 @@ Status SysCatalogTable::CopyPgsqlTable(const TableId& source_table_id,
   std::unique_ptr<SysCatalogWriter> writer = NewWriter(leader_term);
   while (VERIFY_RESULT(iter->HasNext())) {
     RETURN_NOT_OK(iter->NextRow(&source_row));
-    RETURN_NOT_OK(writer->InsertPgsqlTableRow(source_table_info->schema, source_row,
-                                              target_table_id, target_table_info->schema,
-                                              target_table_info->schema_version));
+    RETURN_NOT_OK(writer->InsertPgsqlTableRow(
+        source_table_info->schema, source_row, target_table_id, target_table_info->schema,
+        target_table_info->schema_version, true /* is_upsert */));
   }
 
   VLOG(1) << Format("Copied $0 rows from $1 to $2", writer->req().pgsql_write_batch_size(),
                     source_table_id, target_table_id);
 
-  return !writer->req().pgsql_write_batch().empty() ? SyncWrite(writer.get()) : Status::OK();
+  return writer->req().pgsql_write_batch().empty() ? Status::OK() : SyncWrite(writer.get());
+}
+
+Status SysCatalogTable::CopyPgsqlTables(
+    const vector<TableId>& source_table_ids, const vector<TableId>& target_table_ids,
+    const int64_t leader_term) {
+  TRACE_EVENT0("master", "CopyPgsqlTables");
+
+  std::unique_ptr<SysCatalogWriter> writer = NewWriter(leader_term);
+
+  DSCHECK_EQ(
+      source_table_ids.size(), target_table_ids.size(), InvalidArgument,
+      "size mismatch between source tables and target tables");
+
+  for (int i = 0; i < source_table_ids.size(); ++i) {
+    auto& source_table_id = source_table_ids[i];
+    auto& target_table_id = target_table_ids[i];
+
+    const auto* tablet = tablet_peer()->tablet();
+    const auto* meta = tablet->metadata();
+    const tablet::TableInfo* source_table_info = VERIFY_RESULT(meta->GetTableInfo(source_table_id));
+    const tablet::TableInfo* target_table_info = VERIFY_RESULT(meta->GetTableInfo(target_table_id));
+
+    const Schema source_projection = source_table_info->schema.CopyWithoutColumnIds();
+    std::unique_ptr<common::YQLRowwiseIteratorIf> iter =
+        VERIFY_RESULT(tablet->NewRowIterator(source_projection, boost::none, source_table_id));
+    QLTableRow source_row;
+    int count = 0;
+    while (VERIFY_RESULT(iter->HasNext())) {
+      RETURN_NOT_OK(iter->NextRow(&source_row));
+
+      RETURN_NOT_OK(writer->InsertPgsqlTableRow(
+          source_table_info->schema, source_row, target_table_id, target_table_info->schema,
+          target_table_info->schema_version, true /* is_upsert */));
+      ++count;
+    }
+    LOG(INFO) << Format("Copied $0 rows from $1 to $2", count, source_table_id, target_table_id);
+  }
+  LOG(INFO) << Format("Copied total $0 rows", writer->req().pgsql_write_batch_size());
+  LOG(INFO) << Format("Copied total $0 bytes", writer->req().SpaceUsedLong());
+
+  return writer->req().pgsql_write_batch().empty() ? Status::OK() : SyncWrite(writer.get());
 }
 
 Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id) {

@@ -103,6 +103,7 @@ message PgsqlWriteRequestPB {
     PGSQL_INSERT = 1;
     PGSQL_UPDATE = 2;
     PGSQL_DELETE = 3;
+    PGSQL_UPSERT = 4;
   }
 
   // Client info
