@@ -27,10 +27,10 @@ menu:
     <a class="section-link icon-offset" href="client-authentication/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">Client authentication</div>
+        <div class="title">Fine-grained authentication</div>
       </div>
       <div class="body">
-          Configure fine-grained access control for remote clients.
+          Configure advanced, host-based access control for clients.
       </div>
     </a>
   </div>

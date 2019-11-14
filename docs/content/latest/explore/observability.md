@@ -1,6 +1,6 @@
 ---
 title: Observability with Prometheus
-linkTitle: 6. Observability 
+linkTitle: Observability 
 description: Observability with Prometheus
 aliases:
   - /latest/explore/cloud-native/observability/

@@ -1,6 +1,6 @@
 ---
 title: Linear scalability
-linkTitle: 1. Linear scalability
+linkTitle: Linear scalability
 description: Linear scalability
 aliases:
   - /explore/linear-scalability/
