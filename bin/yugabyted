@@ -542,8 +542,14 @@ class YugabyteProcessManager(object):
             return
 
         post_install_script_path = os.path.join(YUGABYTE_DIR, 'bin', 'post_install.sh')
-        post_install_completion_flag_path = post_install_script_path + '.completed'
-        if os.path.exists(post_install_completion_flag_path):
+        post_install_completion_bin_path = post_install_script_path + ".completed"
+        post_install_completion_flag_path = os.path.join(
+            YUGABYTE_DIR, os.path.basename(post_install_completion_bin_path))
+
+        # Check both "bin" and top-level "yugabyte" dir in case post_install was run
+        # from another source (e.g. yb-ctl).
+        if os.path.exists(post_install_completion_flag_path) \
+                or os.path.exists(post_install_completion_bin_path):
             return
 
         Output.log("Running the post-installation script {}".format(post_install_script_path))
