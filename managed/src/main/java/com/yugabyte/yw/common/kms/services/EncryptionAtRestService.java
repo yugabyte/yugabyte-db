@@ -116,7 +116,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
     public byte[] createKey(UUID universeUUID, UUID customerUUID, Map<String, String> config) {
         byte[] key = null;
         try {
-            final byte[] existingEncryptionKey = retrieveKey(customerUUID, universeUUID);
+            final byte[] existingEncryptionKey = retrieveKey(customerUUID, universeUUID, config);
             if (existingEncryptionKey != null && existingEncryptionKey.length > 0) {
                 final String errMsg = String.format(
                         "Encryption key for customer %s and universe %s already exists" +
@@ -151,7 +151,6 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      * previous key that has now been rotated
      */
     public byte[] rotateKey(UUID customerUUID, UUID universeUUID, Map<String, String> config) {
-        byte[] key = null;
         final byte[] ref = rotateKeyWithService(customerUUID, universeUUID, config);
         if (ref == null || ref.length == 0) {
             final String errMsg = "rotateKeyWithService returned empty key ref";
@@ -159,7 +158,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
             throw new RuntimeException(errMsg);
         }
         addKeyRef(customerUUID, universeUUID, ref);
-        return retrieveKey(customerUUID, universeUUID);
+        return retrieveKey(customerUUID, universeUUID, config);
     }
 
     /**
