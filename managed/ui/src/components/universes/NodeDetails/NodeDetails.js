@@ -26,7 +26,7 @@ export default class NodeDetails extends Component {
   }
 
   render() {
-    const { universe: { currentUniverse, universePerNodeStatus, universePerNodeMetrics, universeMasterLeader }} = this.props;
+    const { universe: { currentUniverse, universePerNodeStatus, universePerNodeMetrics, universeMasterLeader }, customer} = this.props;
     const universeDetails = currentUniverse.data.universeDetails;
     const nodeDetails = universeDetails.nodeDetailsSet;
     if (!isNonEmptyArray(nodeDetails)) {
@@ -107,8 +107,8 @@ export default class NodeDetails extends Component {
 
     return (
       <Fragment>
-        <NodeDetailsTable isKubernetesCluster={primaryCluster.userIntent.providerType === "kubernetes"} isReadOnlyUniverse={isReadOnlyUniverse} nodeDetails={primaryNodeDetails} providerUUID={primaryCluster.userIntent.provider} clusterType='primary' />
-        { readOnlyCluster && <NodeDetailsTable isKubernetesCluster={readOnlyCluster.userIntent.providerType === "kubernetes"} isReadOnlyUniverse={isReadOnlyUniverse} nodeDetails={readOnlyNodeDetails} providerUUID={readOnlyCluster.userIntent.provider} clusterType='readonly' /> }
+        <NodeDetailsTable isKubernetesCluster={primaryCluster.userIntent.providerType === "kubernetes"} isReadOnlyUniverse={isReadOnlyUniverse} nodeDetails={primaryNodeDetails} providerUUID={primaryCluster.userIntent.provider} clusterType='primary' customer={customer} />
+        { readOnlyCluster && <NodeDetailsTable isKubernetesCluster={readOnlyCluster.userIntent.providerType === "kubernetes"} isReadOnlyUniverse={isReadOnlyUniverse} nodeDetails={readOnlyNodeDetails} providerUUID={readOnlyCluster.userIntent.provider} clusterType='readonly' customer={customer} /> }
       </Fragment>
     );
   }
