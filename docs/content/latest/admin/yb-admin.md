@@ -255,6 +255,12 @@ Returns tables in the following format:
 - *namespace*: Name of the database or keyspace.
 - *table_name*: Name of the table.
 
+{{< note title="Tip" >}}
+
+To display a list of tables and their UUID (`table_id`) values, open the **YB-Master UI** (`<master_host>:7000/`) and click **Tables** in the navigation bar.
+
+{{< /note >}}
+
 **Example**
 
 ```sh
@@ -543,7 +549,13 @@ yb-admin -master_addresses <master-addresses> setup_universe_replication <produc
 
 - *producer_universe_uuid*: The UUID of the producer universe.
 - *producer_master_addresses*: Comma-separated list of master producer addresses.
-- *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (IDs).
+- *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
+
+{{< note title="Tip" >}}
+
+To display a list of tables and their UUID (`table_id`) values, open the **YB-Master UI** (`<master_host>:7000/`) and click **Tables** in the navigation bar.
+
+{{< /note >}}
 
 **Example**
 
@@ -729,6 +741,12 @@ yb-admin -master_addresses <master-addresses> create_cdc_stream <table_id>
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - *table_id*: The identifier (ID) of the table.
+
+{{< note title="Tip" >}}
+
+To display a list of tables and their UUID (`table_id`) values, open the **YB-Master UI** (`<master_host>:7000/`) and click **Tables** in the navigation bar.
+
+{{< /note >}}
 
 ---
 

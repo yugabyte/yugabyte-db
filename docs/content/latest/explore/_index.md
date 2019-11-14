@@ -86,4 +86,16 @@ menu:
       </div>
     </a>
   </div>
+  </div>
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="two-data-centers/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
+        <div class="title">Two data center (2DC) deployment</div>
+      </div>
+      <div class="body">
+        Replicate data changes between two data centers.
+      </div>
+    </a>
+  </div>
 </div>
