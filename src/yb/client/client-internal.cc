@@ -325,7 +325,12 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
     }
     case CLOSEST_REPLICA:
     case FIRST_REPLICA: {
-      rt->GetRemoteTabletServers(candidates);
+      if (PREDICT_TRUE(FLAGS_assert_tablet_server_select_is_in_zone.empty())) {
+        rt->GetRemoteTabletServers(candidates);
+      } else {
+        rt->GetRemoteTabletServers(candidates, internal::IncludeFailedReplicas::kTrue);
+      }
+
       // Filter out all the blacklisted candidates.
       vector<RemoteTabletServer*> filtered;
       for (RemoteTabletServer* rts : *candidates) {
@@ -390,6 +395,7 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
                  << " instead of the expected zone "
                  << FLAGS_assert_tablet_server_select_is_in_zone
                  << " Cloud info: " << cloud_info_pb_.ShortDebugString()
+                 << " for selection policy " << selection
                  << msg;
     }
   }
