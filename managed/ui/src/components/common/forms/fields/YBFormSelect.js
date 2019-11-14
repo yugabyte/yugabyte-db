@@ -25,6 +25,7 @@ export default class YBFormSelect extends Component {
   };
 
   render() {
+    const { field, options } = this.props;
     const customStyles = {
       option: (provided, state) => ({
         ...provided,
@@ -87,6 +88,7 @@ export default class YBFormSelect extends Component {
           {...this.props}
           onChange={this.handleChange}
           onBlur={this.handleBlur}
+          value={options ? options.find(option => option.value === field.value) : ''}
           isOptionDisabled={(option) => !!option.disabled}
         />
       </YBLabel>
