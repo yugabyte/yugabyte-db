@@ -9,7 +9,6 @@ import { YBModal, YBFormToggle, YBFormSelect, YBFormDropZone } from '../../commo
 import { readUploadedFile } from "../../../utils/UniverseUtils";
 import { isNonEmptyObject } from 'utils/ObjectUtils';
 
-
 export default class EncryptionKeyModal extends Component {
   componentDidMount() {
     const { configList, fetchKMSConfigList } = this.props;
@@ -81,7 +80,7 @@ export default class EncryptionKeyModal extends Component {
                               then: Yup.mixed().required('KMS Provider is required')})
     });
 
-    if (encryptionAtRestConfig.kms_provider) {
+    if (isNonEmptyObject(encryptionAtRestConfig) && encryptionAtRestConfig.kms_provider) {
       initialValues.selectKMSProvider = encryptionAtRestConfig.kms_provider;
       initialValues.awsCmkPolicy = encryptionAtRestConfig.cmk_policy;
     }
