@@ -91,10 +91,10 @@ menu:
     <a class="section-link icon-offset" href="two-data-centers/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
-        <div class="title">Two data center (2DC) deployment</div>
+        <div class="title">Two data center deployment</div>
       </div>
       <div class="body">
-        Replicate data changes between two data centers.
+        Replicate data changes between two geo-distributed data centers (2DC).
       </div>
     </a>
   </div>

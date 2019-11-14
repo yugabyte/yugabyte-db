@@ -1,10 +1,10 @@
 ---
-title: Two data center (2DC) deployment
-linkTitle: Two data center (2DC) deployment
+title: Two data center deployment
+linkTitle: Two data center deployment
 description: Two data center (2DC) deployment
 menu:
   latest:
-    identifier: tw0-data-centers
+    identifier: two-data-centers
     parent: explore
     weight: 250
 ---
