@@ -6,7 +6,6 @@ import json
 import logging
 import multiprocessing
 import os
-import Queue
 import re
 import resource
 import shutil
@@ -22,9 +21,11 @@ from threading import Thread
 # Version-dependent imports
 PY_VERSION = sys.version_info[0]
 if sys.version_info[0] < 3:
+    import Queue as queue
     from urllib2 import Request, urlopen, URLError, HTTPError
     from urllib import urlencode
 else:
+    import queue
     from urllib.request import Request, urlopen
     from urllib.error import URLError, HTTPError
     from urllib.parse import urlencode
@@ -518,7 +519,7 @@ class YugabyteProcessManager(object):
             # Keep the parent process alive until the daemon confirms yugabyted started properly.
             try:
                 queue.get(timeout=60)
-            except Queue.empty as e:
+            except queue.Empty as e:
                 Output.log_error_and_exit("Timed out trying to start {} daemon.", SCRIPT_NAME)
             sys.exit()
         os.chdir(YUGABYTE_DIR)
