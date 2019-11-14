@@ -5,7 +5,7 @@ description: Contributing to the core database
 image: /images/section_icons/index/quick_start.png
 headcontent: How to contribute code to the core database?
 type: page
-section: CONTRIBUTOR GUIDES
+section: CONTRIBUTE
 menu:
   latest:
     identifier: contribute-db-core

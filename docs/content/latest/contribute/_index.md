@@ -5,7 +5,7 @@ description: Get involved with YugabyteDB
 image: /images/section_icons/index/quick_start.png
 headcontent: Contributing code to improve YugabyteDB.
 type: page
-section: CONTRIBUTOR GUIDES
+section: CONTRIBUTE
 menu:
   latest:
     identifier: contribute-to-yugabyte-db
