@@ -1,6 +1,6 @@
 ## Before you begin
 
-- YugabyteDB is installed and ready for use. If you are new to YugabyteDB, you can create a local YugabyteDB cluster in under five minutes by following the steps in the [Quick start](/quick-start/install/).
+- YugabyteDB is installed and ready for use. If you are new to YugabyteDB, you can create a local YugabyteDB cluster in under five minutes by following the steps in the [Quick start](../../quick-start/install/).
 
 - Verify that you have the required extra loopback addresses by reviewing the Configure section.
 
@@ -8,7 +8,7 @@
 
 ## 1. Create two "data centers"
 
-1. Create and start your first local cluster that will simulate "Data Center - East" by running the following `yb-ctl create` command from your YugabyteDB home directory.
+Create and start your first local cluster that will simulate "Data Center - East" by running the following `yb-ctl create` command from your YugabyteDB home directory.
 
 ```sh
 $ ./bin/yb-ctl create --data_dir /Users/yugabyte_user/yugabyte/yb-datacenter-east --ip_start 1
@@ -31,7 +31,7 @@ Waiting for cluster to be ready.
 ----------------------------------------------------------------------------------------------------
 ```
 
-2. Create and start your second local cluster that will simulate "Data Center = West" by running the following `yb-ctl create` command from your YugabyteDB home directory.
+Create and start your second local cluster that will simulate "Data Center = West" by running the following `yb-ctl create` command from your YugabyteDB home directory.
 
 ```sh
 $ ./bin/yb-ctl create --data_dir yb-datacenter-west --ip_start 2
@@ -64,13 +64,13 @@ Open `ysqlsh` specifying the host IP address of `127.0.0.1`.
 $ ./bin/ysqlsh -h 127.0.0.1
 ```
 
-b. Run the following `CREATE TABLE` statement.
+Run the following `CREATE TABLE` statement.
 
 ```postgresql
 CREATE TABLE users (
     email varchar(35) PRIMARY KEY,
-    username varchar(20))
-    ;
+    username varchar(20)
+    );
 ```
 
 Now create the identical database table on cluster B.
@@ -86,11 +86,11 @@ Run the following `CREATE TABLE` statement.
 ```postgresql
 CREATE TABLE users (
     email varchar(35) PRIMARY KEY,
-    username varchar(20))
-    ;
+    username varchar(20)
+    );
 ```
 
-You now have the identical database table on each of your clusters and can now set up 2DC asynchronous replication. 
+You now have the identical database table on each of your clusters and can now set up 2DC asynchronous replication.
 
 ## 3. Configure unidirectional replication
 
@@ -123,7 +123,7 @@ I1113 12:02:46.443816 136273344 mem_tracker.cc:252] MemTracker: soft memory limi
 Replication setup successfully
 ```
 
-## Verify unidirectional replication
+## 4. Verify unidirectional replication
 
 Now that you've configured unidirectional replication, you can now add data to the `users` table on the "Data Center - West" cluster and see the data appear in the `users` table on "Data Center - East" cluster. 
 
@@ -157,7 +157,7 @@ You should see the following in the results.
 (2 rows)
 ```
 
-## [Optional] Configure bidirectional replication
+## 5. Configure bidirectional replication (optional)
 
 Bidirectional asynchronous replication lets you insert data into the same table on either of the clusters and have the data changes added to the other cluster.
 
@@ -169,18 +169,16 @@ To configure bidirectional asynchronous replication for the same table, you need
 *producer-table-ids*: `000030a9000030008000000000004000`
 
 ```sh
-yb-admin -master_addresses 127.0.0.1:7100 setup_universe_replication 0a315687-e9bd-430f-b6f4-ac831193a394  127.0.0.2:7100 000030a9000030008000000000004000
+$ ./bin/yb-admin -master_addresses 127.0.0.1:7100 setup_universe_replication 0a315687-e9bd-430f-b6f4-ac831193a394  127.0.0.2:7100 000030a9000030008000000000004000
 ```
 
-You should see a message like the following:
+You should see a message that shows the following:
 
 ```
-I1113 12:01:55.088129 366120384 mem_tracker.cc:250] MemTracker: hard memory limit is 13.600000 GB
-I1113 12:01:55.088822 366120384 mem_tracker.cc:252] MemTracker: soft memory limit is 11.560000 GB
 Replication setup successfully
 ```
 
-## [Optional] Verify bidirectional replication
+## 6. Verify bidirectional replication (optional)
 
 Now that you've configured bidirectional replication, you can now add data to the `users` table on the "Data Center - West" cluster and see the data appear in the `users` table on "Data Center - East" cluster.
 
@@ -216,9 +214,34 @@ You should see the following in the results.
 (4 rows)
 ```
 
+## 7. Clean up
+
+At this point, you've finished the tutorial and can either stop and save your examples or destroy and remove the clusters and their associated data directories.
+
+To stop the simulated "data centers", use the `yb-ctl stop` commands using the `--data_dir` option to specify the cluster.
+
+**Example - stopping "Data Center - East"** 
+
+```sh
+$ ./bin/yb-ctl stop --data_dir /Users/yugabyte_user/yugabyte/yb-datacenter-east
+```
+
+To destroy the simulated "data centers" and remove its associate data directory, use the `yb-ctl destroy` command with the `--data_dir` option to specify the cluster.
+
+**Example — destroying and removing the "Data Center - West"**
+
+```sh
+$ ./bin/yb-ctl stop --data_dir /Users/yugabyte_user/yugabyte/yb-datacenter-west
+```
+
 ## What's next
 
 For more information, see the following in the Architecture section:
 
 - [Two data center (2DC) deployments](../../architecture/2dc-deployments/)
 - [Change data capture (CDC)](../../architecture/cdc-architecture)
+
+For detailed design documents, see the following GitHub repository pages:
+
+- [Two Data Center Deployment Support with YugaByte DB](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-2DC-deployment.md)
+- [Change Data Capture in YugabyteDB](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-change-data-capture.md)
