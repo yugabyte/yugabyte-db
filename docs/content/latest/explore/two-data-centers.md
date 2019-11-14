@@ -2,18 +2,14 @@
 title: Two data center (2DC) deployment
 linkTitle: Two data center (2DC) deployment
 description: Two data center (2DC) deployment
-aliases:
-  - /explore/global-distribution/
-  - /latest/explore/global-distribution/
-  - /latest/explore/planet-scale/global-distribution/
 menu:
   latest:
-    identifier: global-distribution
+    identifier: tw0-data-centers
     parent: explore
-    weight: 220
+    weight: 250
 ---
 
-By default, YugabyteDB universes provide synchronous replication and strong consistency across geo-distributed data centers. But sometimes asynchronous replication will meet your need for disaster recovery, auditing and compliance, and other applications. For more information, see [Two data center (2DC) deployments](../architecture/2dc-deployments/) in the Architecture section.
+By default, YugabyteDB universes provide synchronous replication and strong consistency across geo-distributed data centers. But sometimes asynchronous replication will meet your need for disaster recovery, auditing and compliance, and other applications. For more information, see [Two data center (2DC) deployments](../../architecture/2dc-deployments/) in the Architecture section.
 
 This tutorial simulates a geo-distributed two data center (2DC) deployment using two local YugabyteDB clusters, one representing "Data Center - East" and the other representing "Data Center - West." Explore unidirectional (one-way) asynchronous replication and bidirectional (two-way) asynchronous replication using the `yb-ctl` and `yb-admin` utilities on your laptop or another local machine.
 

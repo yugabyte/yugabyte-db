@@ -54,7 +54,7 @@ Waiting for cluster to be ready.
 ----------------------------------------------------------------------------------------------------
 ```
 
-## 2. Create identical database tables
+## 2. Create database tables
 
 In the default `yugabyte` database, create the database table `users` on the "Data Center - East" cluster.
 
@@ -92,7 +92,7 @@ CREATE TABLE users (
 
 You now have the identical database table on each of your clusters and can now set up 2DC asynchronous replication. 
 
-## 3. Configure unidirectional asynchronous replication
+## 3. Configure unidirectional replication
 
 To configure "Data Center - West" to be the consumer of data changes from the "Data Center - East" cluster, you need to use the `yb-admin` `setup_universe_replication` command. Review the syntax and then you can run the command.
 
@@ -123,7 +123,7 @@ I1113 12:02:46.443816 136273344 mem_tracker.cc:252] MemTracker: soft memory limi
 Replication setup successfully
 ```
 
-## Verify replication
+## Verify unidirectional replication
 
 Now that you've configured unidirectional replication, you can now add data to the `users` table on the "Data Center - West" cluster and see the data appear in the `users` table on "Data Center - East" cluster. 
 
@@ -157,7 +157,7 @@ You should see the following in the results.
 (2 rows)
 ```
 
-## [Optional] Configure bidirectional asynchronous replication
+## [Optional] Configure bidirectional replication
 
 Bidirectional asynchronous replication lets you insert data into the same table on either of the clusters and have the data changes added to the other cluster.
 
@@ -180,9 +180,9 @@ I1113 12:01:55.088822 366120384 mem_tracker.cc:252] MemTracker: soft memory limi
 Replication setup successfully
 ```
 
-### Verify bidirectional replication
+## [Optional] Verify bidirectional replication
 
-Now that you've configured bidirectional replication, you can now add data to the `users` table on the "Data Center - West" cluster and see the data appear in the `users` table on "Data Center - East" cluster. 
+Now that you've configured bidirectional replication, you can now add data to the `users` table on the "Data Center - West" cluster and see the data appear in the `users` table on "Data Center - East" cluster.
 
 To add data to the "Data Center - West" cluster, open the YSQL shell (`ysqlsh`) by running the following command, making sure you are pointing to the new producer host.
 
@@ -221,4 +221,4 @@ You should see the following in the results.
 For more information, see the following in the Architecture section:
 
 - [Two data center (2DC) deployments](../../architecture/2dc-deployments/)
-- [Change data capture (CDC)](../../architecture/change-data-capture-cdc)
+- [Change data capture (CDC)](../../architecture/cdc-architecture)
