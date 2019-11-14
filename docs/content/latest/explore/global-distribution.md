@@ -1,6 +1,6 @@
 ---
 title: Global distribution
-linkTitle: 3. Global distribution
+linkTitle: Global distribution
 description: Global distribution
 aliases:
   - /explore/global-distribution/
