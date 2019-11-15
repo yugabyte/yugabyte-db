@@ -42,7 +42,7 @@ Finally create an instance of the custom resource with which the operator would 
 kubectl create -f deploy/crds/yugabyte_v1alpha1_ybcluster_cr.yaml
 ```
 
-Verify that the cluster is up and running with the following command. You should see 3 pods each for YB-Master and YB-TServer nodes.
+Verify that the cluster is up and running with the following command. You should see 3 pods each for YB-Master and YB-TServer services.
 
 ```sh
 kubectl get po,sts,svc
@@ -74,11 +74,11 @@ Specify the required data replication factor. This is a **required** field.
 
 ### TLS
 
-Enable TLS encryption for YugabyteDB, if desired. It is disabled by default. You can use the TLS encryption with 3 GFlags, explained later. If you have set `enabled` to true, then you need to generate root certificate and key. Specify the two under `rootCA.cert` & `rootCA.key`. Refer [YugabytedB docs](https://docs.yugabyte.com/latest/secure/tls-encryption/prepare-nodes/#create-the-openssl-ca-configuration) (till [generate root configuration](https://docs.yugabyte.com/latest/secure/tls-encryption/prepare-nodes/#generate-root-configuration) section) for an idea on how to generate the certificate & key files.
+Enable TLS encryption for YugabyteDB, if desired. It is disabled by default. You can use the TLS encryption with 3 GFlags, explained later. If you have set `enabled` to true, then you need to generate root certificate and key. Specify the two under `rootCA.cert` & `rootCA.key`. Refer to  [YugabyteDB docs](https://docs.yugabyte.com/latest/secure/tls-encryption/prepare-nodes/#create-the-openssl-ca-configuration) (till [generate root configuration](https://docs.yugabyte.com/latest/secure/tls-encryption/prepare-nodes/#generate-root-configuration) section) for an idea on how to generate the certificate & key files.
 
 ### YB-Master and YB-TServer
 
-YB-Master and YB-TServer are two essential components of a YugabyteDB cluster. YB-Master is responsible for recording and maintaining system metadata & for admin activities. YB-TServer nodes are mainly responsible for data I/O.
+YB-Master and YB-TServer are two essential components of a YugabyteDB cluster. YB-Master is responsible for recording and maintaining system metadata & for admin activities. YB-TServer services are mainly responsible for data I/O.
 Specify YB-Master and YB-TServer attributes under `master`/`tserver`. The valid attributes are as described below. These two are **required** fields.
 
 #### Replicas

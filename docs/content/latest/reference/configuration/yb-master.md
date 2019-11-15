@@ -1,12 +1,12 @@
 ---
-title: YB-Master nodes
-linkTitle: YB-Master nodes
-description: YB-Master nodes
+title: YB-Master service
+linkTitle: YB-Master service
+description: YB-Master service
 menu:
   latest:
     identifier: yb-master
     parent: configuration
-    weight: 2440
+    weight: 2450
 aliases:
   - admin/yb-master
 isTocNested: 3
@@ -67,7 +67,7 @@ Specifies a comma-separated list of all RPC addresses for `yb-master` consensus-
 
 {{< note title="Note" >}}
 
-The number of comma-separated values should match the total number of YB-Master nodes (or the replication factor).
+The number of comma-separated values should match the total number of YB-Master service (or the replication factor).
 
 {{< /note >}}
 
@@ -227,7 +227,7 @@ Default: Server automatically picks a valid default internally, typically 8.
 
 #### --max_clock_skew_usec
 
-The expected maximum clock skew, in microseconds (µs), between any two nodes in your deployment.
+The expected maximum clock skew, in microseconds (µs), between any two services in your deployment.
 
 Default: `50000` (50,000 µs = 50ms)
 
@@ -247,7 +247,7 @@ Settings related to managing geo-distributed clusters and Raft consensus.
 
 The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds, is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
 
-For read replica clusters, set the value to `10` on both YB-Master and YB-TServer nodes.  Because the the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
+For read replica clusters, set the value to `10` on both YB-Master and YB-TServer services.  Because the the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
 
 Default: `6`
 
@@ -307,7 +307,7 @@ Default: `false`
 
 #### --use_node_to_node_encryption
 
-Enable server-server, or node-to-node, encryption between YugabyteDB YB-Master and YB-TServer nodes in a cluster or universe. To work properly, all YB-Master nodes must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) setting enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) must be disabled.
+Enable server-server, or node-to-node, encryption between YugabyteDB YB-Master and YB-TServer services in a cluster or universe. To work properly, all YB-Master services must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) setting enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) must be disabled.
 
 Default: `false`
 

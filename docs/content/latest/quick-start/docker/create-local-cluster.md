@@ -38,7 +38,7 @@ feea0823209a   5039       master     yb-master-n1         http://192.168.64.2:70
 
 ## 3. Check cluster status with Admin UI
 
-The [yb-master-n1 Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at `http://localhost:7000` and the [yb-tserver-n1 Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at `http://localhost:9000`. To avoid port conflicts, other YB-Master and YB-TServer nodes do not have their admin ports mapped to `localhost`.
+The [yb-master-n1 Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at `http://localhost:7000` and the [yb-tserver-n1 Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at `http://localhost:9000`. To avoid port conflicts, other YB-Master and YB-TServer services do not have their admin ports mapped to `localhost`.
 
 {{< note title="Note" >}}
 

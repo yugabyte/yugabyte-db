@@ -96,8 +96,8 @@ yb-admin -master_addresses <master-addresses> change_master_config [ ADD_SERVER|
 ```
 
 - master_addresses: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-- ADD_SERVER | REMOVE_SERVER: Adds or removes a new YB-Master node.
-  - After adding or removing a node, verify the status of the YB-Master on the YB-Master UI page (http://node-ip:7000) or run the [`yb-admin dump_masters_state` command](#dump-masters-state).
+- ADD_SERVER | REMOVE_SERVER: Adds or removes a new YB-Master service.
+  - After adding or removing a node, verify the status of the YB-Master service on the YB-Master UI page (http://node-ip:7000) or run the [`yb-admin dump_masters_state` command](#dump-masters-state).
 - *ip_addr*: The IP address of the server node.
 - *port*: The port of the server node.
 - `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
@@ -156,7 +156,7 @@ yb-admin -master_addresses <master-addresses> list_all_tablet_servers
 
 #### list_all_masters
 
-Displays a list of all YB-Master nodes in a table listing the master UUID, RPC host and port, state, and role.
+Displays a list of all YB-Master services in a table listing the master UUID, RPC host and port, state, and role.
 
 **Syntax**
 
@@ -195,7 +195,7 @@ yb-admin -master_addresses <master-addresses> list_replica_type_counts <keyspace
 
 #### dump_masters_state
 
-Prints the status of the YB-Master nodes.
+Prints the status of the YB-Master services.
 
 **Syntax**
 
@@ -772,9 +772,9 @@ $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 get_leader_blackli
 
 #### change_blacklist
 
-Changes the blacklist for YB-TServer nodes.
+Changes the blacklist for YB-TServer services.
 
-After old YB-TServer nodes are terminated, you can use this command to clean up the blacklist.
+After old YB-TServer services are terminated, you can use this command to clean up the blacklist.
 
 **Syntax**
 
@@ -783,7 +783,7 @@ yb-admin -master_addresses <master-addresses> change_blacklist [ ADD | REMOVE ] 
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-- ADD | REMOVE: Adds or removes the specified YB-TServer nodes.
+- ADD | REMOVE: Adds or removes the specified YB-TServer services.
 - *ip_addr:port*: The IP address and port of the YB-TServer.
 
 **Example**
