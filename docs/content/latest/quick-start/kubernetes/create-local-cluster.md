@@ -76,10 +76,10 @@ The yb-master-0 home page shows that we have a cluster (or universe) with **Repl
 
 ![master-home](/images/admin/master-home-kubernetes-rf1.png)
 
-The **Masters** section highlights the 1 YB-Master node along its corresponding cloud, region and zone placement information.
+The **Masters** section highlights the one YB-Master service along its corresponding cloud, region and zone placement information.
 
 ### 4.2 TServer status
 
-Clicking on the **See all nodes** takes us to the Tablet Servers page where we can observe the one YB-TServer along with the time since it last connected to this YB-Master using regular heartbeats. Additionally, we can see that the **Load (Num Tablets)** is balanced across all available tservers. These tablets are the shards of the user tables currently managed by the cluster (which in this case is the `system_redis.redis` table). As new tables get added, new tablets will get automatically created and distributed evenly across all the available YB-TServer nodes.
+Clicking on the **See all nodes** takes us to the Tablet Servers page where we can observe the one YB-TServer along with the time since it last connected to this YB-Master using regular heartbeats. Additionally, we can see that the **Load (Num Tablets)** is balanced across all available tservers. These tablets are the shards of the user tables currently managed by the cluster (which in this case is the `system_redis.redis` table). As new tables get added, new tablets will get automatically created and distributed evenly across all the available YB-TServer services.
 
 ![tserver-list](/images/admin/master-tservers-list-kubernetes-rf1.png)

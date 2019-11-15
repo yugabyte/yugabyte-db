@@ -402,7 +402,7 @@ done
 )
 ```
 
-### Create configuration file for AZ2 YB-TServer nodes
+### Create configuration file for AZ2 YB-TServer services
 
 ```sh
 (CLOUD=aws; REGION=us-west; AZ=us-west-2b; CONFIG_FILE=~/yb-conf/tserver.conf; \
@@ -424,7 +424,7 @@ done
 )
 ```
 
-### Create configuration file for AZ3 YB-TServer nodes
+### Create configuration file for AZ3 YB-TServer services
 
 ```sh
 (CLOUD=aws; REGION=us-west; AZ=us-west-2c; CONFIG_FILE=~/yb-conf/tserver.conf; \
@@ -457,9 +457,9 @@ for ip in $ALL_NODES; do \
 done
 ```
 
-## 5. Start YB-Master nodes
+## 5. Start YB-Master services
 
-Note: On the first time when all three yb-master’s are started, it creates the cluster. If a yb-master process is restarted (after cluster has been created) such as during a rolling upgrade of software it simply rejoins the cluster.
+Note: On the first time when all three YB-Master services are started, it creates the cluster. If a YB-Master service is restarted (after cluster has been created) such as during a rolling upgrade of software it simply rejoins the cluster.
 
 ```sh
 for ip in $MASTER_NODES; do \
@@ -481,7 +481,7 @@ for ip in $MASTER_NODES; do  \
 done
 ```
 
-Check yb-master UI by going to any of the 3 masters.
+Check the YB-Master UI by going to any of the 3 YB-Master services.
 
 ```
 http://<any-master-ip>:7000/
@@ -495,11 +495,11 @@ $ links http://<a-master-ip>:7000/
 
 ### Troubleshooting
 
-Make sure all the ports detailed in the earlier section are opened up. Else, check the log at `/mnt/d0/yb-master.out` for stdout/stderr output from yb-master process. Also, check INFO/WARNING/ERROR/FATAL glogs output by the process in the `/mnt/d0/yb-data/master/logs/*`
+Make sure all the ports detailed in the earlier section are opened up. Else, check the log at `/mnt/d0/yb-master.out` for `stdout` or `stderr` output from the YB-Master service. Also, check INFO/WARNING/ERROR/FATAL glogs output by the process in the `/mnt/d0/yb-data/master/logs/*`
 
-## 6. Start YB-TServer nodes
+## 6. Start YB-TServer services
 
-After starting all the YB-Master nodes in the previous step, start YB-TServer services on all the nodes.
+After starting all the YB-Master services in the previous step, start YB-TServer services on all the nodes.
 
 ```sh
 for ip in $ALL_NODES; do \

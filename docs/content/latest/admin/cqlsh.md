@@ -98,7 +98,7 @@ cqlsh> SHOW VERSION
 
 ### SHOW HOST
 
-Prints the IP address and port of the YB-TServer node that `cqlsh` is connected to in addition to the cluster name. Example:
+Prints the IP address and port of the YB-TServer service that `cqlsh` is connected to in addition to the cluster name. Example:
 
 ```sql
 cqlsh> SHOW HOST
