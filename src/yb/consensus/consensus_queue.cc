@@ -539,7 +539,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(int64_t from_index,
 
 // Read majority replicated messages from cache for CDC.
 // CDC producer will use this to get the messages to send in response to cdc::GetChanges RPC.
-Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(const OpId& last_op_id) {
+Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(const yb::OpId& last_op_id) {
   // The batch of messages read from cache.
 
   int64_t to_index;
@@ -548,19 +548,17 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(const OpId&
     to_index = queue_state_.majority_replicated_opid.index();
   }
 
-  if (last_op_id.index() >= to_index) {
+  if (last_op_id.index >= to_index) {
     // Nothing to read.
     return ReadOpsResult();
   }
 
   auto result = ReadFromLogCache(
-      last_op_id.index(), to_index, FLAGS_consensus_max_batch_size_bytes, local_peer_uuid_);
-  if (PREDICT_FALSE(!result.ok())) {
-    if (PREDICT_TRUE(result.status().IsNotFound())) {
-      string msg = Format("The logs from index $0 have been garbage collected and cannot be read "
-                          "($1)", last_op_id.index(), result.status());
-      LOG_WITH_PREFIX_UNLOCKED(INFO) << msg;
-    }
+      last_op_id.index, to_index, FLAGS_consensus_max_batch_size_bytes, local_peer_uuid_);
+  if (PREDICT_FALSE(!result.ok()) && PREDICT_TRUE(result.status().IsNotFound())) {
+    LOG_WITH_PREFIX_UNLOCKED(INFO) << Format(
+        "The logs from index $0 have been garbage collected and cannot be read ($1)",
+        last_op_id.index, result.status());
   }
 
   return result;
@@ -600,20 +598,20 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
   return Status::OK();
 }
 
-void PeerMessageQueue::UpdateCDCConsumerOpId(const OpIdPB& op_id) {
+void PeerMessageQueue::UpdateCDCConsumerOpId(const yb::OpId& op_id) {
   std::lock_guard<rw_spinlock> l(cdc_consumer_lock_);
   cdc_consumer_op_id_ = op_id;
   cdc_consumer_op_id_last_updated_ = CoarseMonoClock::Now();
 }
 
-OpId PeerMessageQueue::GetCDCConsumerOpIdToEvict() {
+yb::OpId PeerMessageQueue::GetCDCConsumerOpIdToEvict() {
   std::shared_lock<rw_spinlock> l(cdc_consumer_lock_);
   // For log cache eviction, we only want to include CDC consumers that are actively polling.
   // If CDC consumer checkpoint has not been updated recently, we exclude it.
   if (CoarseMonoClock::Now() - cdc_consumer_op_id_last_updated_ <= kCDCConsumerCheckpointInterval) {
     return cdc_consumer_op_id_;
   } else {
-    return MaximumOpId();
+    return yb::OpId::Max();
   }
 }
 
@@ -1037,7 +1035,7 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
     UpdateAllReplicatedOpId(&queue_state_.all_replicated_opid);
 
     auto evict_op = std::min(
-        queue_state_.all_replicated_opid.index(), GetCDCConsumerOpIdToEvict().index());
+        queue_state_.all_replicated_opid.index(), GetCDCConsumerOpIdToEvict().index);
     log_cache_.EvictThroughOp(evict_op);
 
     UpdateMetrics();

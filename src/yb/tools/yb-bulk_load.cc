@@ -203,13 +203,13 @@ Status BulkLoadTask::PopulateColumnValue(const string &column,
     YB_SET_INT_VALUE(ql_valuepb, column, 32);
     YB_SET_INT_VALUE(ql_valuepb, column, 64);
     case DataType::FLOAT: {
-      auto value = util::CheckedStold(column);
+      auto value = CheckedStold(column);
       RETURN_NOT_OK(value);
       ql_valuepb->set_float_value(*value);
       break;
     }
     case DataType::DOUBLE: {
-      auto value = util::CheckedStold(column);
+      auto value = CheckedStold(column);
       RETURN_NOT_OK(value);
       ql_valuepb->set_double_value(*value);
       break;

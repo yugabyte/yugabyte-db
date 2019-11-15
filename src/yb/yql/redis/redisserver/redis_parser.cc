@@ -61,21 +61,21 @@ CHECKED_STATUS add_string_subkey(string subkey, RedisKeyValuePB* kv_pb) {
 }
 
 CHECKED_STATUS add_timestamp_subkey(const string &subkey, RedisKeyValuePB *kv_pb) {
-  auto timestamp = util::CheckedStoll(subkey);
+  auto timestamp = CheckedStoll(subkey);
   RETURN_NOT_OK(timestamp);
   kv_pb->add_subkey()->set_timestamp_subkey(*timestamp);
   return Status::OK();
 }
 
 CHECKED_STATUS add_double_subkey(const string &subkey, RedisKeyValuePB *kv_pb) {
-  auto double_key = util::CheckedStold(subkey);
+  auto double_key = CheckedStold(subkey);
   RETURN_NOT_OK(double_key);
   kv_pb->add_subkey()->set_double_subkey(*double_key);
   return Status::OK();
 }
 
 Result<int64_t> ParseInt64(const Slice& slice, const char* field) {
-  auto result = util::CheckedStoll(slice);
+  auto result = CheckedStoll(slice);
   if (!result.ok()) {
     return STATUS_SUBSTITUTE(InvalidArgument,
         "$0 field $1 is not a valid number", field, slice.ToDebugString());
@@ -287,7 +287,7 @@ CHECKED_STATUS ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientComma
           return STATUS_SUBSTITUTE(InvalidCommand, "$0 should be at the end of the command",
                                    string(args[i].cdata(), args[i].size()));
         }
-        auto temp = util::CheckedStoll(args[i + 1]);
+        auto temp = CheckedStoll(args[i + 1]);
         RETURN_NOT_OK(temp);
         int64_t ttl = 0;
         if (upper_arg == kExpireIn) {
@@ -555,13 +555,13 @@ CHECKED_STATUS ParseTsBoundArg(const Slice& slice, RedisSubKeyBoundPB* bound_pb,
       case RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSREVRANGEBYTIME:
         FALLTHROUGH_INTENDED;
       case RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSRANGEBYTIME: {
-        auto ts_bound = util::CheckedStoll(slice);
+        auto ts_bound = CheckedStoll(slice);
         RETURN_NOT_OK(ts_bound);
         bound_pb->mutable_subkey_bound()->set_timestamp_subkey(*ts_bound);
         break;
       }
       case RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZRANGEBYSCORE: {
-        auto double_bound = util::CheckedStold(slice);
+        auto double_bound = CheckedStold(slice);
         RETURN_NOT_OK(double_bound);
         bound_pb->mutable_subkey_bound()->set_double_subkey(*double_bound);
         break;
@@ -576,7 +576,7 @@ CHECKED_STATUS ParseTsBoundArg(const Slice& slice, RedisSubKeyBoundPB* bound_pb,
 
 CHECKED_STATUS
 ParseIndexBoundArg(const Slice& slice, RedisIndexBoundPB* bound_pb) {
-  auto index_bound = util::CheckedStoll(slice);
+  auto index_bound = CheckedStoll(slice);
   RETURN_NOT_OK(index_bound);
   bound_pb->set_index(*index_bound);
   return Status::OK();
@@ -785,7 +785,7 @@ CHECKED_STATUS ParseTsGet(YBRedisReadOp* op, const RedisClientCommand& args) {
 
   const auto& key = args[1];
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
-  auto timestamp = util::CheckedStoll(args[2]);
+  auto timestamp = CheckedStoll(args[2]);
   RETURN_NOT_OK(timestamp);
   op->mutable_request()->mutable_key_value()->add_subkey()->set_timestamp_subkey(*timestamp);
 
@@ -1204,7 +1204,7 @@ Result<ptrdiff_t> RedisParser::ParseNumber(char prefix,
   number_buffer_.reserve(kMaxNumberLength);
   IoVecsToBuffer(source_, number_begin, expected_stop, &number_buffer_);
   number_buffer_.push_back(0);
-  auto parsed_number = VERIFY_RESULT(util::CheckedStoll(
+  auto parsed_number = VERIFY_RESULT(CheckedStoll(
       Slice(number_buffer_.data(), number_buffer_.size() - 1)));
   static_assert(sizeof(parsed_number) == sizeof(ptrdiff_t), "Expected size");
   SCHECK_BOUNDS(parsed_number,

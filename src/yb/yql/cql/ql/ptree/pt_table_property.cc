@@ -91,13 +91,13 @@ Status PTTableProperty::AnalyzeSpeculativeRetry(const string &val) {
   string numeric_val;
   if (StringEndsWith(val, common::kSpeculativeRetryMs, common::kSpeculativeRetryMsLen,
                      &numeric_val)) {
-    RETURN_NOT_OK(util::CheckedStold(numeric_val));
+    RETURN_NOT_OK(CheckedStold(numeric_val));
     return Status::OK();
   }
 
   if (StringEndsWith(val, common::kSpeculativeRetryPercentile,
                      common::kSpeculativeRetryPercentileLen, &numeric_val)) {
-    auto percentile = util::CheckedStold(numeric_val);
+    auto percentile = CheckedStold(numeric_val);
     RETURN_NOT_OK(percentile);
 
     if (*percentile < 0.0 || *percentile > 100.0) {

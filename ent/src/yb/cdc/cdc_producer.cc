@@ -15,7 +15,10 @@
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/raft_consensus.h"
+#include "yb/consensus/replicate_msgs_holder.h"
+
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
@@ -34,6 +37,14 @@ using docdb::PrimitiveValue;
 using tablet::TransactionParticipant;
 
 namespace {
+
+// Use boost::unordered_map instead of std::unordered_map because gcc release build
+// fails to compile correctly when TxnStatusMap is used with Result<> (due to what seems like
+// a bug in gcc where it tries to incorrectly destroy Status part of Result).
+typedef boost::unordered_map<
+    TransactionId, TransactionStatusResult, TransactionIdHash> TxnStatusMap;
+typedef std::pair<uint64_t, size_t> RecordTimeIndex;
+
 void AddColumnToMap(const ColumnSchema& col_schema,
                     const docdb::PrimitiveValue& col,
                     cdc::KeyValuePairPB* kv_pair) {
@@ -54,72 +65,11 @@ void AddPrimaryKey(const docdb::SubDocKey& decoded_key,
     i++;
   }
 }
-} // namespace
 
-Status CDCProducer::GetChanges(const std::string& stream_id,
-                               const std::string& tablet_id,
-                               const OpIdPB& from_op_id,
-                               const StreamMetadata& stream_metadata,
-                               const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                               GetChangesResponsePB* resp) {
-
-  // Request scope on transaction participant so that transactions are not removed from participant
-  // while RequestScope is active.
-  RequestScope request_scope;
-  auto txn_participant = tablet_peer->tablet()->transaction_participant();
-  if (txn_participant) {
-    request_scope = RequestScope(txn_participant);
-  }
-
-  auto read_ops = VERIFY_RESULT(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(from_op_id));
-
-  TxnStatusMap txn_map = VERIFY_RESULT(BuildTxnStatusMap(
-      read_ops.messages, read_ops.have_more_messages, tablet_peer->Now(), txn_participant));
-
-  OpIdPB checkpoint;
-  checkpoint.set_term(0);
-  checkpoint.set_index(0);
-  auto ordered_msgs = VERIFY_RESULT(SortWrites(read_ops.messages, txn_map, &checkpoint));
-
-  for (const auto& msg : ordered_msgs) {
-    switch (msg->op_type()) {
-      case consensus::OperationType::UPDATE_TRANSACTION_OP:
-        RETURN_NOT_OK(PopulateTransactionRecord(msg, resp->add_records()));
-        break;
-
-      case consensus::OperationType::WRITE_OP:
-        RETURN_NOT_OK(PopulateWriteRecord(msg, txn_map, stream_metadata,
-                                          *tablet_peer->tablet()->schema(), resp));
-        break;
-
-      default:
-        // Nothing to do for other operation types.
-        break;
-    }
-  }
-
-  resp->mutable_checkpoint()->mutable_op_id()->CopyFrom(
-      checkpoint.index() > 0 ? checkpoint : from_op_id);
-  return Status::OK();
-}
-
-Result<ReplicateMsgs> CDCProducer::SortWrites(const ReplicateMsgs& msgs,
-                                              const TxnStatusMap& txn_map,
-                                              OpIdPB* checkpoint) {
-
-  std::vector<RecordTimeIndex> records = VERIFY_RESULT(GetCommittedRecordIndexes(
-      msgs, txn_map, checkpoint));
-  std::sort(records.begin(), records.end());
-
-  ReplicateMsgs ordered_msgs;
-  ordered_msgs.reserve(records.size());
-  for (const auto& record : records) {
-    ordered_msgs.emplace_back(msgs[record.second]);
-  }
-  return ordered_msgs;
-}
-
-Result<bool> CDCProducer::SetCommittedRecordIndexForReplicateMsg(
+// Set committed record information including commit time for record.
+// This will look at transaction status to determine commit time to be used for CDC record.
+// Returns true if we need to stop processing WAL records beyond this, false otherwise.
+Result<bool> SetCommittedRecordIndexForReplicateMsg(
     const ReplicateMsgPtr& msg, size_t index, const TxnStatusMap& txn_map,
     std::vector<RecordTimeIndex>* records) {
 
@@ -179,8 +129,8 @@ Result<bool> CDCProducer::SetCommittedRecordIndexForReplicateMsg(
   FATAL_INVALID_ENUM_VALUE(consensus::OperationType, msg->op_type());
 }
 
-Result<std::vector<RecordTimeIndex>> CDCProducer::GetCommittedRecordIndexes(
-    const ReplicateMsgs& msgs, const TxnStatusMap& txn_map, OpIdPB* checkpoint) {
+Result<std::vector<RecordTimeIndex>> GetCommittedRecordIndexes(
+    const ReplicateMsgs& msgs, const TxnStatusMap& txn_map, OpId* checkpoint) {
   size_t index = 0;
   std::vector<RecordTimeIndex> records;
 
@@ -189,22 +139,69 @@ Result<std::vector<RecordTimeIndex>> CDCProducer::GetCommittedRecordIndexes(
     if (!msg->write_request().has_external_hybrid_time()) {
       // If the message came from an external source, ignore it when producing change list.
       // Note that checkpoint, however, will be updated and will account for external message too.
-      bool stop = VERIFY_RESULT(SetCommittedRecordIndexForReplicateMsg(msg, index, txn_map,
-                                                                       &records));
+      bool stop = VERIFY_RESULT(SetCommittedRecordIndexForReplicateMsg(
+          msg, index, txn_map, &records));
       if (stop) {
         return records;
       }
     }
-    *checkpoint = msg->id();
+    *checkpoint = OpId::FromPB(msg->id());
     index++;
   }
   return records;
 }
 
-Result<TxnStatusMap> CDCProducer::BuildTxnStatusMap(const ReplicateMsgs& messages,
-                                                    bool more_replicate_msgs,
-                                                    const HybridTime& hybrid_time,
-                                                    TransactionParticipant* txn_participant) {
+// Order WAL records based on transaction commit time.
+// Records in WAL don't represent the exact order in which records are written in DB due to delay
+// in writing txn APPLYING record.
+// Consider the following WAL entries:
+// TO: WRITE K0
+// T1: WRITE K1 (TXN1)
+// T2: WRITE K2 (TXN2)
+// T3: WRITE K3
+// T4: APPLYING TXN2
+// T5: APPLYING TXN1
+// T6: WRITE K4
+// The order in which keys are written to DB in this example is K0, K3, K2, K1, K4.
+// This method will also set checkpoint to the op id of last processed record.
+Result<ReplicateMsgs> SortWrites(const ReplicateMsgs& msgs,
+                                 const TxnStatusMap& txn_map,
+                                 OpId* checkpoint) {
+  std::vector<RecordTimeIndex> records = VERIFY_RESULT(GetCommittedRecordIndexes(
+      msgs, txn_map, checkpoint));
+  std::sort(records.begin(), records.end());
+
+  ReplicateMsgs ordered_msgs;
+  ordered_msgs.reserve(records.size());
+  for (const auto& record : records) {
+    ordered_msgs.emplace_back(msgs[record.second]);
+  }
+  return ordered_msgs;
+}
+
+Result<TransactionStatusResult> GetTransactionStatus(
+    const TransactionId& txn_id,
+    const HybridTime& hybrid_time,
+    TransactionParticipant* txn_participant) {
+  static const std::string reason = "cdc";
+
+  std::promise<Result<TransactionStatusResult>> txn_status_promise;
+  auto future = txn_status_promise.get_future();
+  auto callback = [&txn_status_promise](Result<TransactionStatusResult> result) {
+    txn_status_promise.set_value(std::move(result));
+  };
+
+  txn_participant->RequestStatusAt(
+      {&txn_id, hybrid_time, hybrid_time, 0, &reason, TransactionLoadFlags{}, callback});
+  future.wait();
+  return future.get();
+}
+
+// Build transaction status as of hybrid_time.
+Result<TxnStatusMap> BuildTxnStatusMap(const ReplicateMsgs& messages,
+                                       bool more_replicate_msgs,
+                                       const HybridTime& hybrid_time,
+                                       TransactionParticipant* txn_participant) {
   TxnStatusMap txn_map;
   // First go through all APPLYING records and mark transaction as committed.
   for (const auto& msg : messages) {
@@ -256,27 +253,9 @@ Result<TxnStatusMap> CDCProducer::BuildTxnStatusMap(const ReplicateMsgs& message
   return txn_map;
 }
 
-Result<TransactionStatusResult> CDCProducer::GetTransactionStatus(
-    const TransactionId& txn_id,
-    const HybridTime& hybrid_time,
-    TransactionParticipant* txn_participant) {
-  static const std::string reason = "cdc";
-
-  std::promise<Result<TransactionStatusResult>> txn_status_promise;
-  auto future = txn_status_promise.get_future();
-  auto callback = [&txn_status_promise](Result<TransactionStatusResult> result) {
-    txn_status_promise.set_value(std::move(result));
-  };
-
-  txn_participant->RequestStatusAt(
-      {&txn_id, hybrid_time, hybrid_time, 0, &reason, TransactionLoadFlags{}, callback});
-  future.wait();
-  return future.get();
-}
-
-Status CDCProducer::SetRecordTxnAndTime(const TransactionId& txn_id,
-                                        const TxnStatusMap& txn_map,
-                                        CDCRecordPB* record) {
+CHECKED_STATUS SetRecordTxnAndTime(const TransactionId& txn_id,
+                                   const TxnStatusMap& txn_map,
+                                   CDCRecordPB* record) {
   auto txn_status = txn_map.find(txn_id);
   if (txn_status == txn_map.end()) {
     return STATUS(IllegalState, "Unexpected transaction ID", boost::uuids::to_string(txn_id));
@@ -286,11 +265,12 @@ Status CDCProducer::SetRecordTxnAndTime(const TransactionId& txn_id,
   return Status::OK();
 }
 
-Status CDCProducer::PopulateWriteRecord(const ReplicateMsgPtr& msg,
-                                        const TxnStatusMap& txn_map,
-                                        const StreamMetadata& metadata,
-                                        const Schema& schema,
-                                        GetChangesResponsePB* resp) {
+// Populate CDC record corresponding to WAL batch in ReplicateMsg.
+CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
+                                   const TxnStatusMap& txn_map,
+                                   const StreamMetadata& metadata,
+                                   const Schema& schema,
+                                   GetChangesResponsePB* resp) {
   const auto& batch = msg->write_request().write_batch();
 
   // Write batch may contain records from different rows.
@@ -364,12 +344,70 @@ Status CDCProducer::PopulateWriteRecord(const ReplicateMsgPtr& msg,
   return Status::OK();
 }
 
-Status CDCProducer::PopulateTransactionRecord(const ReplicateMsgPtr& msg,
-                                              CDCRecordPB* record) {
+// Populate CDC record corresponding to WAL UPDATE_TRANSACTION_OP entry.
+CHECKED_STATUS PopulateTransactionRecord(const ReplicateMsgPtr& msg,
+                                         CDCRecordPB* record) {
   record->set_operation(CDCRecordPB_OperationType_WRITE);
   record->set_time(msg->transaction_state().commit_hybrid_time());
   record->mutable_transaction_state()->CopyFrom(msg->transaction_state());
   // TODO: Deserialize record.
+  return Status::OK();
+}
+
+} // namespace
+
+Status GetChanges(const std::string& stream_id,
+                  const std::string& tablet_id,
+                  const OpId& from_op_id,
+                  const StreamMetadata& stream_metadata,
+                  const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                  const MemTrackerPtr& mem_tracker,
+                  consensus::ReplicateMsgsHolder* msgs_holder,
+                  GetChangesResponsePB* resp) {
+  // Request scope on transaction participant so that transactions are not removed from participant
+  // while RequestScope is active.
+  RequestScope request_scope;
+  auto txn_participant = tablet_peer->tablet()->transaction_participant();
+  if (txn_participant) {
+    request_scope = RequestScope(txn_participant);
+  }
+
+  auto read_ops = VERIFY_RESULT(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(from_op_id));
+  ScopedTrackedConsumption consumption;
+  if (read_ops.read_from_disk_size && mem_tracker) {
+    consumption = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);
+  }
+
+  TxnStatusMap txn_map = VERIFY_RESULT(BuildTxnStatusMap(
+      read_ops.messages, read_ops.have_more_messages, tablet_peer->Now(), txn_participant));
+
+  OpId checkpoint;
+  auto ordered_messages = VERIFY_RESULT(SortWrites(read_ops.messages, txn_map, &checkpoint));
+
+  for (const auto& msg : ordered_messages) {
+    switch (msg->op_type()) {
+      case consensus::OperationType::UPDATE_TRANSACTION_OP:
+        RETURN_NOT_OK(PopulateTransactionRecord(msg, resp->add_records()));
+        break;
+
+      case consensus::OperationType::WRITE_OP:
+        RETURN_NOT_OK(PopulateWriteRecord(msg, txn_map, stream_metadata,
+                                          *tablet_peer->tablet()->schema(), resp));
+        break;
+
+      default:
+        // Nothing to do for other operation types.
+        break;
+    }
+  }
+
+  if (consumption) {
+    consumption.Add(resp->SpaceUsedLong());
+  }
+  *msgs_holder = consensus::ReplicateMsgsHolder(
+      nullptr, std::move(ordered_messages), std::move(consumption));
+  (checkpoint.index > 0 ? checkpoint : from_op_id).ToPB(
+      resp->mutable_checkpoint()->mutable_op_id());
   return Status::OK();
 }
 

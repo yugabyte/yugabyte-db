@@ -241,15 +241,15 @@ PTLiteralString::~PTLiteralString() {
 }
 
 CHECKED_STATUS PTLiteralString::ToInt64(int64_t *value, bool negate) const {
-  auto temp = negate ? util::CheckedStoll(string("-") + value_->c_str())
-              : util::CheckedStoll(*value_);
+  auto temp = negate ? CheckedStoll(string("-") + value_->c_str())
+              : CheckedStoll(*value_);
   RETURN_NOT_OK(temp);
   *value = *temp;
   return Status::OK();
 }
 
 CHECKED_STATUS PTLiteralString::ToDouble(long double *value, bool negate) const {
-  auto temp = util::CheckedStold(*value_);
+  auto temp = CheckedStold(*value_);
   RETURN_NOT_OK(temp);
   *value = negate ? -*temp : *temp;
   return Status::OK();
