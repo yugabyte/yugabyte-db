@@ -700,6 +700,7 @@ export default class ClusterFields extends Component {
       instanceType: formValues[clusterType].instanceType,
       ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
       replicationFactor: formValues[clusterType].replicationFactor,
+      enableEncryptionAtRest: formValues[clusterType].enableEncryptionAtRest,
       deviceInfo: {
         volumeSize: formValues[clusterType].volumeSize,
         numVolumes: formValues[clusterType].numVolumes,
