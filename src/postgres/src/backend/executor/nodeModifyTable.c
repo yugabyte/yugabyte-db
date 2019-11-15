@@ -1123,6 +1123,9 @@ ExecUpdate(ModifyTableState *mtstate,
 	}
 	else if (IsYBRelation(resultRelationDesc))
 	{
+		if (resultRelInfo->ri_WithCheckOptions != NIL)
+			ExecWithCheckOptions(WCO_RLS_UPDATE_CHECK, resultRelInfo, slot, estate);
+
 		/*
 		 * Check the constraints of the tuple.
 		 */
