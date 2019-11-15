@@ -152,6 +152,9 @@ class KubernetesDetails():
     def __init__(self, node_fqdn, config_map):
         self.namespace = node_fqdn.split('.')[2]
         self.pod_name = node_fqdn.split('.')[0]
+        # The pod names are yb-master-n/yb-tserver-n where n is the pod number
+        # and yb-master/yb-tserver are the container names.
+        self.container = self.pod_name.rsplit('-', 1)[0]
         self.config = config_map[self.namespace]
 
 
@@ -190,6 +193,8 @@ class NodeChecker():
                 '-t',
                 '-n={}'.format(self.k8s_details.namespace),
                 self.k8s_details.pod_name,
+                '-c',
+                self.k8s_details.container,
                 '--',
                 'bash',
                 '-c',
