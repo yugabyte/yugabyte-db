@@ -188,6 +188,56 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "add_universe_key_to_all_masters", " key_id key_path",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 4) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        string key_id = args[2];
+        faststring contents;
+        RETURN_NOT_OK(ReadFileToString(Env::Default(), args[3], &contents));
+        string universe_key = contents.ToString();
+
+        RETURN_NOT_OK_PREPEND(client->AddUniverseKeyToAllMasters(key_id, universe_key),
+                              "Unable to add universe key to all masters.");
+        return Status::OK();
+      });
+
+  Register(
+      "all_masters_have_universe_key_in_memory", " key_id",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 3) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        RETURN_NOT_OK_PREPEND(client->AllMastersHaveUniverseKeyInMemory(args[2]),
+                              "Unable to check whether master has universe key in memory.");
+        return Status::OK();
+      });
+
+  Register(
+      "rotate_universe_key_in_memory", " key_id",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 3) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        string key_id = args[2];
+
+        RETURN_NOT_OK_PREPEND(client->RotateUniverseKeyInMemory(key_id),
+                              "Unable rotate universe key in memory.");
+        return Status::OK();
+      });
+
+  Register(
+      "disable_encryption_in_memory", "",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 2) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        RETURN_NOT_OK_PREPEND(client->DisableEncryptionInMemory(), "Unable to disable encryption.");
+        return Status::OK();
+      });
+
+  Register(
       "create_cdc_stream", " <table_id>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 3) {
