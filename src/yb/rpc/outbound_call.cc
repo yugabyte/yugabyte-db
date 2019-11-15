@@ -536,9 +536,13 @@ string OutboundCall::ToString() const {
 bool OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
                           RpcCallInProgressPB* resp) {
   std::lock_guard<simple_spinlock> l(lock_);
+  auto state_value = state();
+  if (!req.dump_timed_out() && state_value == RpcCallState::TIMED_OUT) {
+    return false;
+  }
   InitHeader(resp->mutable_header());
   resp->set_elapsed_millis(MonoTime::Now().GetDeltaSince(start_).ToMilliseconds());
-  resp->set_state(state());
+  resp->set_state(state_value);
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
   }
