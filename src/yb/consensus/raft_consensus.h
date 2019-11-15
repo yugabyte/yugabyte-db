@@ -244,9 +244,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     TEST_delay_update_.store(duration, std::memory_order_release);
   }
 
-  Result<ReadOpsResult> ReadReplicatedMessagesForCDC(const OpId& from) override;
+  Result<ReadOpsResult> ReadReplicatedMessagesForCDC(const yb::OpId& from) override;
 
-  void UpdateCDCConsumerOpId(const OpIdPB& op_id) override;
+  void UpdateCDCConsumerOpId(const yb::OpId& op_id) override;
 
   // Start memory tracking of following operation in case it is still present in our caches.
   void TrackOperationMemory(const yb::OpId& op_id);

@@ -4449,7 +4449,7 @@ AexprConst:
 ;
 
 Iconst: ICONST {
-  auto val = util::CheckedStoll($1->c_str());
+  auto val = CheckedStoll($1->c_str());
   if (!val.ok()) {
     PARSER_CQL_INVALID_MSG(@1, "invalid integer");
   } else {

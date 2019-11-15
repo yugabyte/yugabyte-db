@@ -19,6 +19,9 @@
 #include <iosfwd>
 #include <vector>
 
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+
 namespace yb {
 
 struct OpId {
@@ -32,6 +35,10 @@ struct OpId {
 
   static OpId Invalid() {
     return OpId(kUnknownTerm, -1);
+  }
+
+  static OpId Max() {
+    return OpId(std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max());
   }
 
   bool valid() const {
@@ -71,6 +78,11 @@ struct OpId {
   static OpId FromPB(const PB& pb) {
     return OpId(pb.term(), pb.index());
   }
+
+  std::string ToString() const;
+
+  // Parse OpId from TERM.INDEX string.
+  static Result<OpId> FromString(Slice input);
 };
 
 inline bool operator==(const OpId& lhs, const OpId& rhs) {

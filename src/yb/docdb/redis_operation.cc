@@ -1080,7 +1080,7 @@ Status RedisWriteOperation::ApplyIncr(const DocOperationApplyData& data) {
   // If no value is present, 0 is the default.
   int64_t old_value = 0, new_value;
   if (value->type != REDIS_TYPE_NONE) {
-    auto old = util::CheckedStoll(value->value);
+    auto old = CheckedStoll(value->value);
     if (!old.ok()) {
       // This can happen if there are leading or trailing spaces, or the value
       // is out of range.

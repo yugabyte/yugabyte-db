@@ -11,12 +11,14 @@
 // under the License.
 //
 
+#ifndef ENT_SRC_YB_CDC_CDC_UTIL_H
+#define ENT_SRC_YB_CDC_CDC_UTIL_H
+
 #include <stdlib.h>
 #include <string>
 #include <boost/functional/hash.hpp>
 
-#ifndef ENT_SRC_YB_CDC_CDC_UTIL_H
-#define ENT_SRC_YB_CDC_CDC_UTIL_H
+#include "yb/util/format.h"
 
 namespace yb {
 namespace cdc {
@@ -37,6 +39,11 @@ struct ProducerTabletInfo {
            tablet_id == other.tablet_id;
   }
 
+  std::string ToString() const {
+    return Format("{ universe_uuid: $0 stream_id: $1 tablet_id: $2 }",
+                  universe_uuid, stream_id, tablet_id);
+  }
+
   struct Hash {
     std::size_t operator()(const ProducerTabletInfo& p) const noexcept {
       std::size_t hash = 0;
@@ -48,6 +55,10 @@ struct ProducerTabletInfo {
     }
   };
 };
+
+inline size_t hash_value(const ProducerTabletInfo& p) noexcept {
+  return ProducerTabletInfo::Hash()(p);
+}
 
 } // namespace cdc
 } // namespace yb
