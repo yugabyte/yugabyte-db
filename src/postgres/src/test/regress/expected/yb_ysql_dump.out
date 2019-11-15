@@ -2,8 +2,8 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-1.3.2.0-b0
--- Dumped by ysql_dump version 11.2-YB-1.3.2.0-b0
+-- Dumped from database version 11.2-YB-2.0.4.0-b0
+-- Dumped by ysql_dump version 11.2-YB-2.0.4.0-b0
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -18,6 +18,34 @@ SET row_security = off;
 SET default_tablespace = '';
 
 SET default_with_oids = false;
+
+--
+-- Name: rls_private; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+CREATE TABLE public.rls_private (
+    k integer NOT NULL,
+    v text,
+    PRIMARY KEY((k) HASH)
+);
+
+ALTER TABLE ONLY public.rls_private FORCE ROW LEVEL SECURITY;
+
+
+ALTER TABLE public.rls_private OWNER TO yugabyte_test;
+
+--
+-- Name: rls_public; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+CREATE TABLE public.rls_public (
+    k integer NOT NULL,
+    v text,
+    PRIMARY KEY((k) HASH)
+);
+
+
+ALTER TABLE public.rls_public OWNER TO yugabyte_test;
 
 --
 -- Name: tbl1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -256,6 +284,22 @@ ALTER TABLE ONLY public.tbl2 ALTER COLUMN a SET DEFAULT nextval('public.tbl2_a_s
 
 
 --
+-- Data for Name: rls_private; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.rls_private (k, v) FROM stdin;
+\.
+
+
+--
+-- Data for Name: rls_public; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.rls_public (k, v) FROM stdin;
+\.
+
+
+--
 -- Data for Name: tbl1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
@@ -390,5 +434,53 @@ CREATE INDEX tbl8_idx2 ON public.tbl8 USING lsm (a HASH, b);
 
 
 --
+-- Name: rls_public p1; Type: POLICY; Schema: public; Owner: yugabyte_test
+--
+
+CREATE POLICY p1 ON public.rls_public USING (((k % 2) = 0));
+
+
+--
+-- Name: rls_private p2; Type: POLICY; Schema: public; Owner: yugabyte_test
+--
+
+CREATE POLICY p2 ON public.rls_private FOR INSERT WITH CHECK (((k % 2) = 1));
+
+
+--
+-- Name: rls_private p3; Type: POLICY; Schema: public; Owner: yugabyte_test
+--
+
+CREATE POLICY p3 ON public.rls_private FOR UPDATE USING (((k % 2) = 1));
+
+
+--
+-- Name: rls_private; Type: ROW SECURITY; Schema: public; Owner: yugabyte_test
+--
+
+ALTER TABLE public.rls_private ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: rls_public; Type: ROW SECURITY; Schema: public; Owner: yugabyte_test
+--
+
+ALTER TABLE public.rls_public ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: TABLE rls_private; Type: ACL; Schema: public; Owner: yugabyte_test
+--
+
+GRANT SELECT ON TABLE public.rls_private TO rls_user;
+
+
+--
+-- Name: TABLE rls_public; Type: ACL; Schema: public; Owner: yugabyte_test
+--
+
+GRANT ALL ON TABLE public.rls_public TO PUBLIC;
+
+
+--
 -- YSQL database dump complete
 --
+
