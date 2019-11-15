@@ -26,7 +26,10 @@
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/raft_consensus.h"
+#include "yb/consensus/replicate_msgs_holder.h"
+
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_handle.h"
@@ -270,7 +273,8 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
                              context);
 
   // Check that requested tablet_id is part of the CDC stream.
-  Status s = CheckTabletValidForStream(req->stream_id(), req->tablet_id());
+  ProducerTabletInfo producer_tablet = {"" /* UUID */, req->stream_id(), req->tablet_id()};
+  Status s = CheckTabletValidForStream(producer_tablet);
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
@@ -298,12 +302,11 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
     return;
   }
 
-  ProducerTabletInfo producer_tablet = {"" /* UUID */, req->stream_id(), req->tablet_id()};
   auto session = async_client_init_->client()->NewSession();
-  OpIdPB op_id;
+  OpId op_id;
 
   if (req->has_from_checkpoint()) {
-    op_id = req->from_checkpoint().op_id();
+    op_id = OpId::FromPB(req->from_checkpoint().op_id());
   } else {
     auto result = GetLastCheckpoint(producer_tablet, session);
     RPC_CHECK_AND_RETURN_ERROR(result.ok(), result.status(), resp->mutable_error(),
@@ -315,16 +318,18 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
   RPC_CHECK_AND_RETURN_ERROR(record.ok(), record.status(), resp->mutable_error(),
                              CDCErrorPB::INTERNAL_ERROR, context);
 
-  CDCProducer cdc_producer;
-  s = cdc_producer.GetChanges(req->stream_id(), req->tablet_id(), op_id, *record->get(),
-                              tablet_peer, resp);
+  consensus::ReplicateMsgsHolder msgs_holder;
+  MemTrackerPtr mem_tracker = GetMemTracker(tablet_peer, producer_tablet);
+  s = cdc::GetChanges(
+      req->stream_id(), req->tablet_id(), op_id, *record->get(), tablet_peer, mem_tracker,
+      &msgs_holder, resp);
   RPC_STATUS_RETURN_ERROR(
       s,
       resp->mutable_error(),
       s.IsNotFound() ? CDCErrorPB::CHECKPOINT_TOO_OLD : CDCErrorPB::UNKNOWN_ERROR,
       context);
 
-  s = UpdateCheckpoint(producer_tablet, resp->checkpoint().op_id(), op_id, session);
+  s = UpdateCheckpoint(producer_tablet, OpId::FromPB(resp->checkpoint().op_id()), op_id, session);
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
   tablet_peer->consensus()->UpdateCDCConsumerOpId(GetMinSentCheckpointForTablet(req->tablet_id()));
@@ -368,7 +373,7 @@ std::shared_ptr<CDCServiceProxy> CDCServiceImpl::GetCDCServiceProxy(RemoteTablet
   DCHECK(!hostport.host().empty());
 
   {
-    std::shared_lock<decltype(lock_)> l(lock_);
+    std::shared_lock<decltype(mutex_)> l(mutex_);
     auto it = cdc_service_map_.find(hostport);
     if (it != cdc_service_map_.end()) {
       return it->second;
@@ -378,7 +383,7 @@ std::shared_ptr<CDCServiceProxy> CDCServiceImpl::GetCDCServiceProxy(RemoteTablet
   auto cdc_service = std::make_shared<CDCServiceProxy>(&async_client_init_->client()->proxy_cache(),
                                                        hostport);
   {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard<decltype(mutex_)> l(mutex_);
     cdc_service_map_.emplace(hostport, cdc_service);
   }
   return cdc_service;
@@ -477,17 +482,17 @@ void CDCServiceImpl::GetCheckpoint(const GetCheckpointRequestPB* req,
   }
 
   // Check that requested tablet_id is part of the CDC stream.
-  s = CheckTabletValidForStream(req->stream_id(), req->tablet_id());
+  ProducerTabletInfo producer_tablet = {"" /* UUID */, req->stream_id(), req->tablet_id()};
+  s = CheckTabletValidForStream(producer_tablet);
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
   auto session = async_client_init_->client()->NewSession();
-  ProducerTabletInfo producer_tablet = {"" /* UUID */, req->stream_id(), req->tablet_id()};
 
   auto result = GetLastCheckpoint(producer_tablet, session);
   RPC_CHECK_AND_RETURN_ERROR(result.ok(), result.status(), resp->mutable_error(),
                              CDCErrorPB::INTERNAL_ERROR, context);
 
-  resp->mutable_checkpoint()->mutable_op_id()->CopyFrom(*result);
+  result->ToPB(resp->mutable_checkpoint()->mutable_op_id());
   context.RespondSuccess();
 }
 
@@ -496,18 +501,18 @@ void CDCServiceImpl::Shutdown() {
   rpcs_.Shutdown();
 }
 
-Result<OpIdPB> CDCServiceImpl::GetLastCheckpoint(
+Result<OpId> CDCServiceImpl::GetLastCheckpoint(
     const ProducerTabletInfo& producer_tablet,
     const std::shared_ptr<client::YBSession>& session) {
   {
-    std::shared_lock<decltype(lock_)> l(lock_);
+    std::shared_lock<decltype(mutex_)> l(mutex_);
     auto it = tablet_checkpoints_.find(producer_tablet);
     if (it != tablet_checkpoints_.end()) {
       // Use checkpoint from cache only if it is current.
-      if (it->second.cdc_state_checkpoint.op_id.index() > 0 &&
-          CoarseMonoClock::Now() - it->second.cdc_state_checkpoint.last_update_time <=
+      if (it->cdc_state_checkpoint.op_id.index > 0 &&
+          CoarseMonoClock::Now() - it->cdc_state_checkpoint.last_update_time <=
               (FLAGS_cdc_state_checkpoint_update_interval_ms * 1ms)) {
-        return it->second.cdc_state_checkpoint.op_id;
+        return it->cdc_state_checkpoint.op_id;
       }
     }
   }
@@ -523,30 +528,20 @@ Result<OpIdPB> CDCServiceImpl::GetLastCheckpoint(
   table.AddColumns({master::kCdcCheckpoint}, req);
   RETURN_NOT_OK(session->ApplyAndFlush(op));
 
-  OpIdPB op_id;
   auto row_block = ql::RowsResult(op.get()).GetRowBlock();
   if (row_block->row_count() == 0) {
-    op_id.set_term(0);
-    op_id.set_index(0);
-    return op_id;
+    return OpId(0, 0);
   }
 
   DCHECK_EQ(row_block->row_count(), 1);
   DCHECK_EQ(row_block->row(0).column(0).type(), InternalType::kStringValue);
 
-  std::vector<std::string> checkpoint;
-  checkpoint.reserve(2);
-  // Checkpoint is stored in the format "{term}.{index}".
-  boost::split(checkpoint, row_block->row(0).column(0).string_value(), boost::is_any_of("."));
-  DCHECK_EQ(checkpoint.size(), 2);
-  op_id.set_term(boost::lexical_cast<int>(checkpoint[0]));
-  op_id.set_index(boost::lexical_cast<int>(checkpoint[1]));
-  return op_id;
+  return OpId::FromString(row_block->row(0).column(0).string_value());
 }
 
 Status CDCServiceImpl::UpdateCheckpoint(const ProducerTabletInfo& producer_tablet,
-                                        const OpIdPB& sent_op_id,
-                                        const OpIdPB& commit_op_id,
+                                        const OpId& sent_op_id,
+                                        const OpId& commit_op_id,
                                         const std::shared_ptr<client::YBSession>& session) {
   bool update_cdc_state = true;
   auto now = CoarseMonoClock::Now();
@@ -554,24 +549,24 @@ Status CDCServiceImpl::UpdateCheckpoint(const ProducerTabletInfo& producer_table
   TabletCheckpoint commit_checkpoint({commit_op_id, now});
 
   {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard<decltype(mutex_)> l(mutex_);
     auto it = tablet_checkpoints_.find(producer_tablet);
     if (it != tablet_checkpoints_.end()) {
-      it->second.sent_checkpoint = sent_checkpoint;
+      it->sent_checkpoint = sent_checkpoint;
 
-      if (commit_op_id.index() > 0) {
-        it->second.cdc_state_checkpoint.op_id = commit_op_id;
+      if (commit_op_id.index > 0) {
+        it->cdc_state_checkpoint.op_id = commit_op_id;
       }
 
       // Check if we need to update cdc_state table.
-      if (now - it->second.cdc_state_checkpoint.last_update_time <=
+      if (now - it->cdc_state_checkpoint.last_update_time <=
           (FLAGS_cdc_state_checkpoint_update_interval_ms * 1ms)) {
         update_cdc_state = false;
       } else {
-        it->second.cdc_state_checkpoint.last_update_time = now;
+        it->cdc_state_checkpoint.last_update_time = now;
       }
     } else {
-      tablet_checkpoints_[producer_tablet] = {commit_checkpoint, sent_checkpoint};
+      tablet_checkpoints_.emplace(producer_tablet, commit_checkpoint, sent_checkpoint);
     }
   }
 
@@ -583,40 +578,32 @@ Status CDCServiceImpl::UpdateCheckpoint(const ProducerTabletInfo& producer_table
     DCHECK(!producer_tablet.stream_id.empty() && !producer_tablet.tablet_id.empty());
     QLAddStringHashValue(req, producer_tablet.stream_id);
     QLAddStringHashValue(req, producer_tablet.tablet_id);
-    table.AddStringColumnValue(req, master::kCdcCheckpoint,
-                               Format("$0.$1", commit_op_id.term(), commit_op_id.index()));
+    table.AddStringColumnValue(req, master::kCdcCheckpoint, commit_op_id.ToString());
     RETURN_NOT_OK(session->ApplyAndFlush(op));
   }
 
   return Status::OK();
 }
 
-OpIdPB CDCServiceImpl::GetMinSentCheckpointForTablet(const std::string& tablet_id) {
-  OpIdPB min_op_id = consensus::MaximumOpId();
+OpId CDCServiceImpl::GetMinSentCheckpointForTablet(const std::string& tablet_id) {
+  OpId min_op_id = OpId::Max();
   auto now = CoarseMonoClock::Now();
 
-  std::shared_lock<rw_spinlock> l(lock_);
-  auto it = stream_tablets_.right.equal_range(tablet_id);
-  if (it.first == it.second) {
+  std::shared_lock<rw_spinlock> l(mutex_);
+  auto it_range = tablet_checkpoints_.get<TabletTag>().equal_range(tablet_id);
+  if (it_range.first == it_range.second) {
     LOG(WARNING) << "Tablet ID not found in stream_tablets map: " << tablet_id;
     return min_op_id;
   }
 
-  for (StreamTabletBiMap::right_const_iterator right = it.first; right != it.second; ++right) {
-    ProducerTabletInfo producer_tablet{"" /*UUID*/, right->second, tablet_id};
-    auto checkpoint = tablet_checkpoints_.find(producer_tablet);
-    if (checkpoint == tablet_checkpoints_.end()) {
-      LOG(WARNING) << "Sent Checkpoint not found for tablet_id " << tablet_id
-                   << ", stream id " << right->second;
-    } else {
-      // We don't want to include streams that are not being actively polled.
-      // So, if the stream has not been polled in the last x seconds,
-      // then we ignore that stream while calculating min op ID.
-      if (now - checkpoint->second.sent_checkpoint.last_update_time <=
-          (FLAGS_cdc_checkpoint_opid_interval_ms * 1ms) &&
-          checkpoint->second.sent_checkpoint.op_id.index() < min_op_id.index()) {
-        min_op_id = checkpoint->second.sent_checkpoint.op_id;
-      }
+  auto cdc_checkpoint_opid_interval = FLAGS_cdc_checkpoint_opid_interval_ms * 1ms;
+  for (auto it = it_range.first; it != it_range.second; ++it) {
+    // We don't want to include streams that are not being actively polled.
+    // So, if the stream has not been polled in the last x seconds,
+    // then we ignore that stream while calculating min op ID.
+    if (now - it->sent_checkpoint.last_update_time <= cdc_checkpoint_opid_interval &&
+        it->sent_checkpoint.op_id.index < min_op_id.index) {
+      min_op_id = it->sent_checkpoint.op_id;
     }
   }
   return min_op_id;
@@ -653,13 +640,13 @@ Result<std::shared_ptr<StreamMetadata>> CDCServiceImpl::GetStream(const std::str
 
 void CDCServiceImpl::AddStreamMetadataToCache(const std::string& stream_id,
                                               const std::shared_ptr<StreamMetadata>& metadata) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard<decltype(mutex_)> l(mutex_);
   stream_metadata_.emplace(stream_id, metadata);
 }
 
 std::shared_ptr<StreamMetadata> CDCServiceImpl::GetStreamMetadataFromCache(
     const std::string& stream_id) {
-  std::shared_lock<decltype(lock_)> l(lock_);
+  std::shared_lock<decltype(mutex_)> l(mutex_);
   auto it = stream_metadata_.find(stream_id);
   if (it != stream_metadata_.end()) {
     return it->second;
@@ -668,38 +655,52 @@ std::shared_ptr<StreamMetadata> CDCServiceImpl::GetStreamMetadataFromCache(
   }
 }
 
-Status CDCServiceImpl::CheckTabletValidForStream(const std::string& stream_id,
-                                                 const std::string& tablet_id) {
-  {
-    std::shared_lock<rw_spinlock> l(lock_);
-    auto it = stream_tablets_.left.equal_range(stream_id);
-    if (it.first != it.second) {
-      // Found tablets.
-      for (StreamTabletBiMap::left_const_iterator left = it.first; left != it.second; ++left) {
-        if (left->second == tablet_id) {
-          return Status::OK();
-        }
-      }
+MemTrackerPtr CDCServiceImpl::GetMemTracker(
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    const ProducerTabletInfo& producer_info) {
+  std::shared_lock<rw_spinlock> l(mutex_);
+  auto it = tablet_checkpoints_.find(producer_info);
+  if (it == tablet_checkpoints_.end()) {
+    return nullptr;
+  }
+  if (!it->mem_tracker) {
+    auto cdc_mem_tracker = MemTracker::FindOrCreateTracker(
+        "CDC", tablet_peer->tablet()->mem_tracker());
+    const_cast<MemTrackerPtr&>(it->mem_tracker) = MemTracker::FindOrCreateTracker(
+        producer_info.stream_id, cdc_mem_tracker);
+  }
+  return it->mem_tracker;
+}
 
+Status CDCServiceImpl::CheckTabletValidForStream(const ProducerTabletInfo& info) {
+  {
+    std::shared_lock<rw_spinlock> l(mutex_);
+    if (tablet_checkpoints_.count(info) != 0) {
+      return Status::OK();
+    }
+    const auto& stream_index = tablet_checkpoints_.get<StreamTag>();
+    if (stream_index.find(info.stream_id) != stream_index.end()) {
       // Did not find matching tablet ID.
-      return STATUS(InvalidArgument,
-                    Format("Tablet ID $0 is not part of stream ID $1", tablet_id, stream_id));
+      return STATUS_FORMAT(InvalidArgument, "Tablet ID $0 is not part of stream ID $1",
+                           info.tablet_id, info.stream_id);
     }
   }
 
-  auto tablets = VERIFY_RESULT(GetTablets(stream_id));
+  auto tablets = VERIFY_RESULT(GetTablets(info.stream_id));
   bool found = false;
   {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<rw_spinlock> l(mutex_);
     for (const auto &tablet : tablets) {
-      stream_tablets_.insert(stream_tablet_value(stream_id, tablet.tablet_id()));
-      if (tablet.tablet_id() == tablet_id) {
+      ProducerTabletInfo producer_info{info.universe_uuid, info.stream_id, tablet.tablet_id()};
+      tablet_checkpoints_.emplace(producer_info, TabletCheckpoint(), TabletCheckpoint());
+      if (tablet.tablet_id() == info.tablet_id) {
         found = true;
       }
     }
   }
-  return found ? Status::OK() : STATUS(InvalidArgument,
-      Format("Tablet ID $0 is not part of stream ID $1", tablet_id, stream_id));
+  return found ? Status::OK()
+               : STATUS_FORMAT(InvalidArgument, "Tablet ID $0 is not part of stream ID $1",
+                               info.tablet_id, info.stream_id);
 }
 
 }  // namespace cdc

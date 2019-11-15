@@ -317,12 +317,12 @@ class PeerMessageQueue {
   }
 
   // Read replicated log records starting from the OpId immediately after last_op_id.
-  Result<ReadOpsResult> ReadReplicatedMessagesForCDC(const OpId& last_op_id);
+  Result<ReadOpsResult> ReadReplicatedMessagesForCDC(const yb::OpId& last_op_id);
 
-  void UpdateCDCConsumerOpId(const OpId& op_id);
+  void UpdateCDCConsumerOpId(const yb::OpId& op_id);
 
   // Get the maximum op ID that can be evicted for CDC consumer from log cache.
-  OpId GetCDCConsumerOpIdToEvict();
+  yb::OpId GetCDCConsumerOpIdToEvict();
 
   size_t LogCacheSize();
   size_t EvictLogCache(size_t bytes_to_evict);
@@ -496,7 +496,7 @@ class PeerMessageQueue {
 
   // Used to protect cdc_consumer_op_id_ and cdc_consumer_op_id_last_updated_.
   mutable rw_spinlock cdc_consumer_lock_;
-  OpId cdc_consumer_op_id_ = MaximumOpId();
+  yb::OpId cdc_consumer_op_id_ = yb::OpId::Max();
   CoarseTimePoint cdc_consumer_op_id_last_updated_ = ToCoarse(MonoTime::kMin);
 };
 

@@ -881,12 +881,14 @@ TEST_F(ConsensusQueueTest, TestReadReplicatedMessagesForCDC) {
   queue_->ResponseFromPeer(response.responder_uuid(), response, &more_pending);
   ASSERT_TRUE(more_pending);
 
-  auto read_result = ASSERT_RESULT(queue_->ReadReplicatedMessagesForCDC(MakeOpIdForIndex(0)));
+  auto read_result = ASSERT_RESULT(queue_->ReadReplicatedMessagesForCDC(
+      yb::OpId::FromPB(MakeOpIdForIndex(0))));
   ASSERT_EQ(last_committed_index, read_result.messages.size());
 
   // Read from some index > 0
   int start = 10;
-  read_result = ASSERT_RESULT(queue_->ReadReplicatedMessagesForCDC(MakeOpIdForIndex(start)));
+  read_result = ASSERT_RESULT(queue_->ReadReplicatedMessagesForCDC(
+      yb::OpId::FromPB(MakeOpIdForIndex(start))));
   ASSERT_EQ(last_committed_index - start, read_result.messages.size());
 }
 
