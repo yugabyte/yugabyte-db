@@ -123,7 +123,3 @@ In `/etc/systemd/user.conf` and `/etc/systemd/system.conf`, add at the end of fi
 
 Something similar may be needed for other distributions.
 {{< /note >}}
-
-
-
-
