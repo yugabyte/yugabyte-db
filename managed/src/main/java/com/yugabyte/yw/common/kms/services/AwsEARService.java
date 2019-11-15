@@ -119,7 +119,11 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
             Map<String, String> config
     ) {
         final String aliasName = AwsEARServiceUtil.generateAliasName(universeUUID.toString());
-        final String cmkId = AwsEARServiceUtil.getAlias(customerUUID, aliasName).getTargetKeyId();
+        final String cmkId = createOrRetrieveUniverseCMK(
+                customerUUID,
+                universeUUID,
+                config.get("cmk_policy")
+        );
         final String algorithm = config.get("algorithm");
         final int keySize = Integer.parseInt(config.get("key_size"));
         return AwsEARServiceUtil.generateDataKey(customerUUID, cmkId, algorithm, keySize);
