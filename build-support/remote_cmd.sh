@@ -20,14 +20,41 @@
 #
 work_dir=$1
 
+if [[ $# -lt 3 ]]; then
+  echo "Too few arguments to remote_cmd.sh: expected at least <work_dir> <PATH> <executable>" >&2
+  exit 1
+fi
+
 cd "$work_dir"
 if [[ $? -ne 0 ]]; then
   echo "Failed to set current directory to '$work_dir'" >&2
   exit 1
 fi
 
-if [[ -n ${2:-} ]]; then
-  export PATH=$2
-fi
+export PATH=$2
 shift 2
-exec "$@"
+
+readonly ARG_SEPARATOR=$'=:\t:='
+
+args=()
+if [[ -z ${YB_ENCODED_REMOTE_CMD_LINE:-} ]]; then
+  echo "YB_ENCODED_REMOTE_CMD_LINE is not set" >&2
+  exit 1
+fi
+
+while [[ $YB_ENCODED_REMOTE_CMD_LINE == *$ARG_SEPARATOR ]]; do
+  args+=( "${YB_ENCODED_REMOTE_CMD_LINE%%$ARG_SEPARATOR*}" )
+  if [[ ${#args[@]} -gt 1000 ]]; then
+    echo "Too many args encoded in YB_ENCODED_REMOTE_CMD_LINE (${#args[@]}): ${args[*]}" >&2
+    exit 1
+  fi
+  YB_ENCODED_REMOTE_CMD_LINE=${YB_ENCODED_REMOTE_CMD_LINE#*$ARG_SEPARATOR}
+done
+
+if [[ -n $YB_ENCODED_REMOTE_CMD_LINE ]]; then
+  echo "Got extra args in YB_ENCODED_REMOTE_CMD_LINE, could not unpack:" \
+       "'${YB_ENCODED_REMOTE_CMD_LINE}'" >&2
+  exit 1
+fi
+
+exec "$@" "${args[@]}"

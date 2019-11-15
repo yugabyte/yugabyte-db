@@ -396,6 +396,9 @@ if [[ $local_build_only == "false" &&
     # Exit code 255: ssh: connect to host ... port ...: Connection refused
     # $YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY: we return this when we fail to find files or
     #   directories that are supposed to exist. We retry to work around NFS issues.
+    #
+    # "file not recognized: file truncated" could happen when re-running an interrupted build
+    # while the old compiler process is still running.
     if [[ $exit_code -eq 126 ||
           $exit_code -eq 127 ||
           $exit_code -eq 141 ||
@@ -404,7 +407,8 @@ if [[ $local_build_only == "false" &&
           $exit_code -eq $YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY ]] ||
         egrep "\
 ccache: error: Failed to open .*: No such file or directory|\
-Fatal error: can't create .*: Stale file handle|\
+: Stale file handle|\
+file not recognized: file truncated|\
 /usr/bin/env: bash: Input/output error\
 " "$stderr_path" &&
         ! grep ": syntax error " "$stderr_path"
@@ -581,6 +585,7 @@ if "$is_linking" && ! is_configure_mode_invocation && [[
 fi
 
 set_default_compiler_type
+find_thirdparty_by_url
 find_compiler_by_type "$YB_COMPILER_TYPE"
 
 case "$cc_or_cxx" in

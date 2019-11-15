@@ -14,7 +14,7 @@
 #ifndef YB_UTIL_NTP_CLOCK_H
 #define YB_UTIL_NTP_CLOCK_H
 
-#include "../../../../src/yb/util/physical_time.h"
+#include "yb/util/physical_time.h"
 
 namespace yb {
 
