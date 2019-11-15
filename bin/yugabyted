@@ -58,6 +58,7 @@ BIN_DIR = os.path.join(YUGABYTE_DIR, "bin")
 DEFAULT_DATA_DIR = os.path.join(YUGABYTE_DIR, "yugabyte-data")
 DEFAULT_LOG_DIR = os.path.join(YUGABYTE_DIR, "yugabyte-logs")
 DEFAULT_CONF = os.path.join(DEFAULT_CONF_DIR, "{}.conf".format(SCRIPT_NAME))
+DEFAULT_CALLHOME = True
 TRUE_CHOICES = ["true", "True", "t", "T", "yes", "Yes", "y", "Y", "1"]
 FALSE_CHOICES = ["false", "False", "f", "F", "no", "No", "n", "N", "0"]
 BOOL_CHOICES = TRUE_CHOICES + FALSE_CHOICES
@@ -536,7 +537,8 @@ class ControlScript(object):
             try:
                 queue.get(timeout=60)
             except queue.Empty as e:
-                Output.log_error_and_exit("Timed out trying to start {} daemon.", SCRIPT_NAME)
+                Output.log_error_and_exit(
+                    "Timed out trying to start {} daemon.".format(SCRIPT_NAME))
             sys.exit()
         os.chdir(YUGABYTE_DIR)
         os.setsid()
@@ -999,6 +1001,7 @@ class Configs(object):
             "polling_interval": "5",
             "master_flags": "",
             "tserver_flags": "",
+            "callhome": DEFAULT_CALLHOME
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
