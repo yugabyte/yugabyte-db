@@ -292,8 +292,8 @@ class Reactor {
 
   // Add any connections on this reactor thread into the given status dump.
   // May be called from another thread.
-  CHECKED_STATUS DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
-                         DumpRunningRpcsResponsePB* resp);
+  CHECKED_STATUS DumpRunningRpcs(
+      const DumpRunningRpcsRequestPB& req, DumpRunningRpcsResponsePB* resp);
 
   // Block until the Reactor thread is shut down
   //

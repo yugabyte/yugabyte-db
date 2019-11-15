@@ -55,16 +55,25 @@ using namespace std::placeholders;
 
 namespace {
 
+template <class Map>
+bool GetBool(const Map& map, const typename Map::key_type& key, bool default_value) {
+  auto it = map.find(key);
+  if (it == map.end()) {
+    return default_value;
+  }
+
+  return ParseLeadingBoolValue(it->second, default_value);
+}
+
 void RpczPathHandler(Messenger* messenger,
                      const Webserver::WebRequest& req, stringstream* output) {
   DumpRunningRpcsRequestPB dump_req;
   DumpRunningRpcsResponsePB dump_resp;
 
-  string arg = FindWithDefault(req.parsed_args, "include_traces", "false");
-  dump_req.set_include_traces(ParseLeadingBoolValue(arg.c_str(), false));
+  dump_req.set_include_traces(GetBool(req.parsed_args, "include_traces", false));
+  dump_req.set_dump_timed_out(GetBool(req.parsed_args, "timed_out", false));
 
-  WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp),
-             "DumpRunningRpcs failed");
+  WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
 
   JsonWriter writer(output, JsonWriter::PRETTY);
   writer.Protobuf(dump_resp);

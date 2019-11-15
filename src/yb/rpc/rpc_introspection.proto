@@ -105,6 +105,7 @@ message RpcConnectionPB {
 
 message DumpRunningRpcsRequestPB {
   optional bool include_traces = 1 [ default = false ];
+  optional bool dump_timed_out = 2;
 }
 
 message DumpRunningRpcsResponsePB {
