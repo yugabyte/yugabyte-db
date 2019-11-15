@@ -66,6 +66,7 @@
 #include "pg_trace.h"
 
 #include "pg_yb_utils.h"
+#include "libpq/yb_pqcomm_extensions.h"
 
 /*
  *	User-tweakable parameters
@@ -190,10 +191,8 @@ typedef struct TransactionStateData
 	bool		didLogXid;		/* has xid been included in WAL record? */
 	int			parallelModeLevel;	/* Enter/ExitParallelMode counter */
 	struct TransactionStateData *parent;	/* back link to parent */
-	bool		ybDataSendAttempted; /* Whether we attempted to be sent some tuples to frontend as
-				                      * part of this execution. Note that data might actually be
-				                      * cached in buffer defined in pqcomm.c, thus delaying the
-				                      * sending.*/
+	bool		ybDataSent; /* Whether some tuples have been transmitted to
+				             * frontend as part of this execution */
 	bool		isYBTxnWithPostgresRel; /* does the current transaction
 				                         * operate on a postgres table? */
 } TransactionStateData;
@@ -227,7 +226,7 @@ static TransactionStateData TopTransactionStateData = {
 	false,						/* didLogXid */
 	0,							/* parallelModeLevel */
 	NULL,						/* link to parent state block */
-	false,						/* ybDataSendAttempted */
+	false,						/* ybDataSent */
 	false						/* isYBTxnWithPostgresRel */
 };
 
@@ -995,26 +994,25 @@ ForceSyncCommit(void)
 	forceSyncCommit = true;
 }
 
-
 /*
  * Mark current transaction as having sent some data back to the client.
  * This prevents automatic transaction restart.
  */
-void YBMarkDataSendAttempted(void)
+void YBMarkDataSent(void)
 {
 	TransactionState s = CurrentTransactionState;
-	s->ybDataSendAttempted = true;
+	s->ybDataSent = true;
 }
 
 /*
  * Whether some data has been transmitted to frontend as part of this transaction.
  */
-bool YBIsDataSendAttempted(void)
+bool YBIsDataSent(void)
 {
 	// Note: we don't support nested transactions (savepoints) yet,
 	// but once we do - we have to make sure this works as intended.
 	TransactionState s = CurrentTransactionState;
-	return s->ybDataSendAttempted;
+	return s->ybDataSent;
 }
 
 /* ----------------------------------------------------------------
@@ -1852,7 +1850,7 @@ static void
 YBStartTransaction(TransactionState s)
 {
 	s->isYBTxnWithPostgresRel = !IsYugaByteEnabled();
-	s->ybDataSendAttempted    = false;
+	s->ybDataSent             = false;
 
 	if (YBTransactionsEnabled())
 	{
@@ -1860,6 +1858,7 @@ YBStartTransaction(TransactionState s)
 		YBCPgTxnManager_SetIsolationLevel(YBCGetPgTxnManager(), XactIsoLevel);
 		YBCPgTxnManager_SetReadOnly(YBCGetPgTxnManager(), XactReadOnly);
 		YBCPgTxnManager_SetDeferrable(YBCGetPgTxnManager(), XactDeferrable);
+		YBRestoreOutputBufferPosition();
 	}
 }
 

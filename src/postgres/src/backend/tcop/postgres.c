@@ -83,6 +83,7 @@
 #include "utils/timestamp.h"
 #include "mb/pg_wchar.h"
 #include "pg_yb_utils.h"
+#include "libpq/yb_pqcomm_extensions.h"
 #include "utils/rel.h"
 
 /* ----------------
@@ -3872,7 +3873,7 @@ yb_is_read_restart_possible(int attempt, const PortalRestartData* restart_data)
 	if (!IsYugaByteEnabled())
 		return false;
 
-	if (YBIsDataSendAttempted())
+	if (YBIsDataSent())
 		return false;
 
 	if (attempt >= YBCGetMaxReadRestartAttempts())
@@ -3885,10 +3886,6 @@ yb_is_read_restart_possible(int attempt, const PortalRestartData* restart_data)
 	if (restart_data->portal_name[0] != '\0')
 		return false;
 
-	// Can't currently restart parametrized prepared statements
-	if (restart_data->num_params > 0)
-		return false;
-
 	// Can only restart SELECT queries
 	if (!restart_data->query_string)
 		return false;
@@ -3897,6 +3894,23 @@ yb_is_read_restart_possible(int attempt, const PortalRestartData* restart_data)
 		return false;
 
 	return true;
+}
+
+/*
+ * Make a deep copy of ParamListInfo, allocating it in the current memory context.
+ */
+static ParamListInfo
+yb_copy_param_list(ParamListInfo source)
+{
+	if (source == NULL)
+		return NULL;
+
+	size_t alloc_size = offsetof(ParamListInfoData, params) +
+	                    source->numParams * sizeof(ParamExternData);
+	ParamListInfo result = (ParamListInfo) palloc(alloc_size);
+	// No allocated data structure pointers within ParamListInfo so we use a simple memcpy
+	memcpy(result, source, alloc_size);
+	return result;
 }
 
 /*
@@ -3919,21 +3933,20 @@ yb_collect_portal_restart_data(const char* portal_name)
 	result->param_types = NULL;
 	if (unnamed_stmt_psrc->param_types)
 	{
-		result->param_types = (Oid*) palloc(result->num_params * sizeof(Oid));
-		memcpy(result->param_types,
-		       unnamed_stmt_psrc->param_types,
-		       result->num_params * sizeof(Oid));
+		size_t alloc_size = result->num_params * sizeof(Oid);
+		result->param_types = (Oid*) palloc(alloc_size);
+		memcpy(result->param_types, unnamed_stmt_psrc->param_types, alloc_size);
 	}
+	result->params = result->num_params > 0 ? yb_copy_param_list(portal->portalParams) : NULL;
 
 	result->num_formats = 0;
 	result->formats     = NULL;
 	if (portal->formats)
 	{
 		result->num_formats = portal->tupDesc->natts;
-		result->formats     = (int16*) palloc(result->num_formats * sizeof(int16));
-		memcpy(result->formats,
-		       portal->formats,
-		       result->num_formats * sizeof(int16));
+		size_t alloc_size   = result->num_formats * sizeof(int16);
+		result->formats     = (int16*) palloc(alloc_size);
+		memcpy(result->formats, portal->formats, alloc_size);
 	}
 
 	return result;
@@ -3963,13 +3976,9 @@ yb_restart_portal(const PortalRestartData* rd)
 
 	/* Set portal data */
 	MemoryContext oldContext = MemoryContextSwitchTo(portal->portalContext);
-	const char    *stmt_name = no_portal_name ? NULL : pstrdup(rd->portal_name);
 
-	/*
-	 * TODO params are none for now - we do not support retrying for prepared statements yet.
-	 * (i.e. if portal is named or has params)
-	 */
-	ParamListInfo params = NULL;
+	const char    *stmt_name = no_portal_name ? NULL : pstrdup(rd->portal_name);
+	ParamListInfo params     = yb_copy_param_list(rd->params);
 
 	MemoryContextSwitchTo(oldContext);
 
@@ -4003,6 +4012,7 @@ yb_exec_simple_query_attempting_to_restart_read(const char* query_string,
 	for (int attempt = 0;; ++attempt) {
 		PG_TRY();
 		{
+			YBSaveOutputBufferPosition();
 			exec_simple_query(query_string);
 			return;
 		}
@@ -4022,10 +4032,11 @@ yb_exec_simple_query_attempting_to_restart_read(const char* query_string,
 			};
 
 			if (yb_is_read_restart_nedeed(edata) &&
-                yb_is_read_restart_possible(attempt, &restart_data)) {
+			   yb_is_read_restart_possible(attempt, &restart_data)) {
 				/* Cleanup the error, signal txn restart and let the loop continue. */
 				FlushErrorState();
 				PopActiveSnapshot(); // Restart read error occurrs after portal snapshot is pushed.
+				YBRestoreOutputBufferPosition();
 				YBCRestartTransaction();
 			} else {
 				/* If we shouldn't restart - propagate the error. */
@@ -4049,6 +4060,7 @@ yb_exec_execute_message_attempting_to_restart_read(const char* portal_name,
 	for (int attempt = 0;; ++attempt) {
 		PG_TRY();
 		{
+			YBSaveOutputBufferPosition();
 			exec_execute_message(portal_name, max_rows);
 			return;
 		}
@@ -4061,11 +4073,12 @@ yb_exec_execute_message_attempting_to_restart_read(const char* portal_name,
 			PortalRestartData* restart_data  = yb_collect_portal_restart_data(portal_name);
 
 			if (yb_is_read_restart_nedeed(edata) &&
-                yb_is_read_restart_possible(attempt, restart_data)) {
+			    yb_is_read_restart_possible(attempt, restart_data)) {
 				/* Cleanup the error, signal txn restart, recreate portal and let the loop continue. */
 				FlushErrorState();
 				PopActiveSnapshot(); // Restart read error occurrs after portal snapshot is pushed.
 				yb_restart_portal(restart_data);
+				YBRestoreOutputBufferPosition();
 				YBCRestartTransaction();
 			} else {
 				/* If we shouldn't restart - propagate the error. */
