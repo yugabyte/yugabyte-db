@@ -26,6 +26,7 @@ import multiprocessing
 import subprocess
 import json
 import hashlib
+import time
 
 from subprocess import check_call
 
@@ -38,7 +39,7 @@ from yb.common_util import YB_SRC_ROOT, get_build_type_from_build_root, get_bool
 
 REMOVE_CONFIG_CACHE_MSG_RE = re.compile(r'error: run.*\brm config[.]cache\b.*and start over')
 
-ALLOW_REMOTE_COMPILATION = False
+ALLOW_REMOTE_COMPILATION = True
 
 CONFIG_ENV_VARS = [
     'CFLAGS',
@@ -123,7 +124,7 @@ class PostgresBuilder:
         self.env_vars_for_build_stamp = set()
 
         # Check if the outer build is using runs the compiler on build workers.
-        self.build_uses_remote_compilation = os.environ.get('YB_REMOTE_COMPILATION')
+        self.build_uses_remote_compilation = os.environ.get('YB_REMOTE_COMPILATION') == '1'
         if self.build_uses_remote_compilation == 'auto':
             raise RuntimeError(
                 "No 'auto' value is allowed for YB_REMOTE_COMPILATION at this point")
@@ -230,6 +231,8 @@ class PostgresBuilder:
             raise RuntimeError(
                     ("Invalid step specified for setting env vars, must be either 'configure' "
                      "or 'make'").format(step))
+        is_configure_step = step == 'configure'
+        is_make_step = step == 'make'
 
         self.set_env_var('YB_PG_BUILD_STEP', step)
         self.set_env_var('YB_BUILD_ROOT', self.build_root)
@@ -254,7 +257,7 @@ class PostgresBuilder:
                 '-Wno-error=builtin-requires-header'
             ]
 
-        if step == 'make':
+        if is_make_step:
             additional_c_cxx_flags += [
                 '-Wall',
                 '-Werror',
@@ -322,9 +325,8 @@ class PostgresBuilder:
             for env_var_name in ['CFLAGS', 'CXXFLAGS', 'CPPFLAGS', 'LDFLAGS', 'LDFLAGS_EX', 'LIBS']:
                 if env_var_name in os.environ:
                     logging.info("%s: %s", env_var_name, os.environ[env_var_name])
-        # PostgreSQL builds pretty fast, and we don't want to use our remote compilation over SSH
-        # for it as it might have issues with parallelism.
-        self.remote_compilation_allowed = ALLOW_REMOTE_COMPILATION and step == 'make'
+
+        self.remote_compilation_allowed = ALLOW_REMOTE_COMPILATION and is_make_step
 
         self.set_env_var(
             'YB_REMOTE_COMPILATION',
@@ -717,6 +719,7 @@ class PostgresBuilder:
         self.build_postgres()
 
     def build_postgres(self):
+        start_time_sec = time.time()
         if self.args.clean:
             self.clean_postgres()
 
@@ -736,13 +739,19 @@ class PostgresBuilder:
                 logging.info("Still need to create compile_commands.json, proceeding.")
             else:
                 return
+
         with WorkDirContext(self.pg_build_root):
             if self.should_build:
                 self.sync_postgres_source()
                 if os.environ.get('YB_PG_SKIP_CONFIGURE', '0') != '1':
+                    configure_start_time_sec = time.time()
                     self.configure_postgres()
+                    logging.info("The configure step of building PostgreSQL took %.1f sec",
+                                 time.time() - configure_start_time_sec)
+            make_start_time_sec = time.time()
             self.make_postgres()
-
+            logging.info("The make step of building PostgreSQL took %.1f sec",
+                         time.time() - make_start_time_sec)
         final_build_stamp_no_env = self.get_build_stamp(include_env_vars=False)
         if final_build_stamp_no_env == initial_build_stamp_no_env:
             logging.info("Updating build stamp file at %s", self.build_stamp_path)
@@ -750,6 +759,7 @@ class PostgresBuilder:
                 build_stamp_file.write(initial_build_stamp)
         else:
             logging.warning("PostgreSQL build stamp changed during the build! Not updating.")
+        logging.info("PostgreSQL build took %.1f sec", time.time() - start_time_sec)
 
 
 if __name__ == '__main__':

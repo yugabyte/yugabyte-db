@@ -1233,7 +1233,7 @@ find_test_binary() {
 }
 
 show_disk_usage() {
-  header "Disk usage (df -h)"
+  heading "Disk usage (df -h)"
 
   df -h
 
