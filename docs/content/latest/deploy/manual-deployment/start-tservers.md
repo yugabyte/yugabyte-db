@@ -32,7 +32,7 @@ This section covers deployment for a single region/zone (or a single data center
 
 ## Run YB-TServer with command line options
 
-- Run the YB-TServer service (`yb-tserver`) as shown here. Note that all of the master addresses have to be provided using the `--tserver_master_addrs` option. For each YB-TServer, replace the RPC bind address configuration option with the private IP address of the YB-TServer node.
+- Run the YB-TServer service (`yb-tserver`) as shown here. Note that all of the master addresses have to be provided using the `--tserver_master_addrs` option. For each YB-TServer, replace the RPC bind address configuration option with the private IP address of the YB-TServer service.
 
 For the full list of configuration options, see the [YB-TServer reference](../../../reference/configuration/yb-tserver/).
 
@@ -51,13 +51,13 @@ If you need to turn on the YEDIS API as well, add `--redis_proxy_bind_address=17
 
 {{< note title="Note" >}}
 
-The number of comma-separated values in the `--tserver_master_addrs` option should match the total number of YB-Master nodes (or the replication factor).
+The number of comma-separated values in the `--tserver_master_addrs` option should match the total number of YB-Master services (or the replication factor).
 
 {{< /note >}}
 
 ## Run YB-TServer with configuration file
 
-- Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the `--flagfile` option as shown here. For each YB-TServer node, replace the RPC bind address flags with the private IP address of the host running the YB-TServer service.
+- Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the `--flagfile` option as shown here. For each YB-TServer service, replace the RPC bind address flags with the private IP address of the host running the YB-TServer service.
 
 ```sh
 --tserver_master_addrs=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
@@ -76,7 +76,7 @@ $ ./bin/yb-tserver --flagfile tserver.conf >& /home/centos/disk1/yb-tserver.out 
 
 ## Verify health
 
-Make sure all the 4 YB-TServer nodes are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
+Make sure all four YB-TServer services are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
 
 You can do this as shown below.
 
