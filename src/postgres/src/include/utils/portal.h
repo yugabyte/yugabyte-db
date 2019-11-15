@@ -197,12 +197,14 @@ typedef struct PortalData
 /* Data needed to restart a Portal after its execution failed */
 typedef struct PortalRestartData
 {
-	const char	*portal_name;	/* text of query (as of 8.4, never NULL) */
-	const char	*query_string;	/* text of query (as of 8.4, never NULL) */
-	int			num_params;		/* length of param_types array */
-	Oid			*param_types;	/* array of parameter type OIDs, or NULL */
-	int			num_formats;	/* length of formats array  */
-	int16		*formats;		/* array of format codes, one for each column */
+	const char		*portal_name;	/* text of query (as of 8.4, never NULL) */
+	const char		*query_string;	/* text of query (as of 8.4, never NULL) */
+	int				num_params;		/* length of param_types array */
+	Oid				*param_types;	/* array of parameter type OIDs, or NULL */
+	ParamListInfo	params;			/* params to pass to query */
+
+	int				num_formats;	/* length of formats array  */
+	int16			*formats;		/* array of format codes, one for each column */
 } PortalRestartData;
 
 /*

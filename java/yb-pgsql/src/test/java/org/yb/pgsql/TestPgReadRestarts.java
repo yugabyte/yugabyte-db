@@ -52,8 +52,14 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 public class TestPgReadRestarts extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgReadRestarts.class);
 
+  /** Size (in bytes) of PG output buffer, longer stuff is flushed immediately */
+  private static int PG_OUTPUT_BUFFER_SIZE = 8192;
+
   /** How many inserts we attempt to do? */
-  private static final int NUM_INSERTS = 1000;
+  private static final int NUM_INSERTS = 800;
+
+  /** Maximum value to insert in a table column {@code i} (minimum is 0) */
+  private static final int MAX_INT_TO_INSERT = 5;
 
   /**
    * How long do we wait until NUM_INSERTS inserts finish?
@@ -84,23 +90,12 @@ public class TestPgReadRestarts extends BasePgSQLTest {
    */
   @Test
   public void selectCount() throws Exception {
-    String queryString = "SELECT COUNT(*) FROM test_rr";
-    new ConcurrentInsertSelectTester<Statement>(
+    new RegularStatementTester(
+        "SELECT COUNT(*) FROM test_rr",
         getShortString(),
-        false /* expectNonTxnRestarts */ ,
-        false /* expectSnapshotRestarts */ ,
-        false /* expectSerializableRestart */) {
-
-      @Override
-      public Statement createStatement(Connection conn) throws Exception {
-        return conn.createStatement();
-      }
-
-      @Override
-      public ResultSet executeQuery(Statement stmt) throws Exception {
-        return stmt.executeQuery(queryString);
-      }
-    }.runTest();
+        false /* expectNonTxnRestartErrors */,
+        false /* expectSnapshotRestartErrors */
+    ).runTest();
   }
 
   /**
@@ -108,22 +103,146 @@ public class TestPgReadRestarts extends BasePgSQLTest {
    */
   @Test
   public void selectCountPrepared() throws Exception {
-    String queryString = "SELECT COUNT(*) FROM test_rr";
-
-    new ConcurrentInsertSelectTester<PreparedStatement>(
+    new PreparedStatementTester(
+        "SELECT COUNT(*) FROM test_rr",
         getShortString(),
-        false /* expectNonTxnRestarts */ ,
-        false /* expectSnapshotRestarts */ ,
-        false /* expectSerializableRestart */) {
+        false /* expectNonTxnRestartErrors */,
+        false /* expectSnapshotRestartErrors */
+    ).runTest();
+  }
+
+  /**
+   * Same as the previous test but uses parameterized PreparedStatements with bindvars.
+   */
+  @Test
+  public void selectCountPreparedParameterized() throws Exception {
+    new PreparedStatementTester(
+        "SELECT COUNT(*) FROM test_rr WHERE i > ?",
+        getShortString(),
+        false /* expectNonTxnRestartErrors */,
+        false /* expectSnapshotRestartErrors */) {
 
       @Override
       public PreparedStatement createStatement(Connection conn) throws Exception {
-        return conn.prepareStatement(queryString);
+        PreparedStatement pstmt = super.createStatement(conn);
+        pstmt.setInt(1, 0);
+        return pstmt;
       }
+    }.runTest();
+  }
+
+  /**
+   * Doing SELECT * operation on short strings and expect restarts to happen transparently.
+   * <p>
+   * We expect data retrieved to fit into PG output buffer, thus making transparent read restarts
+   * possible.
+   */
+  @Test
+  public void selectStarShort() throws Exception {
+    // NOTE: Right now this greatly depends on #ops and length of the string.
+    // Ideally it should be a SELECT * with LIMIT clause, but we can't use it because of
+    // https://github.com/yugabyte/yugabyte-db/issues/2812
+    new RegularStatementTester(
+        "SELECT t,i FROM test_rr",
+        getShortString(),
+        false /* expectNonTxnRestartErrors */,
+        false /* expectSnapshotRestartErrors */
+    ).runTest();
+  }
+
+  /**
+   * Same as the previous test but uses PreparedStatements (with no parameters)
+   */
+  @Test
+  public void selectStarShortPrepared() throws Exception {
+    // NOTE: Right now this greatly depends on #ops and length of the string.
+    // Ideally it should be a SELECT * with LIMIT clause, but we can't use it because of
+    // https://github.com/yugabyte/yugabyte-db/issues/2812
+    new PreparedStatementTester(
+        "SELECT t,i FROM test_rr",
+        getShortString(),
+        false /* expectNonTxnRestartErrors */,
+        false /* expectSnapshotRestartErrors */
+    ).runTest();
+  }
+
+  /**
+   * Same as the previous test but uses parameterized PreparedStatements with bindvars.
+   */
+  @Test
+  public void selectStarShortPreparedParameterized() throws Exception {
+    // NOTE: Right now this greatly depends on #ops and length of the string.
+    // Ideally it should be a SELECT * with LIMIT clause, but we can't use it because of
+    // https://github.com/yugabyte/yugabyte-db/issues/2812
+    new PreparedStatementTester(
+        "SELECT t,i FROM test_rr WHERE i > ?",
+        getShortString(),
+        false /* expectNonTxnRestartErrors */,
+        false /* expectSnapshotRestartErrors */) {
 
       @Override
-      public ResultSet executeQuery(PreparedStatement stmt) throws Exception {
-        return stmt.executeQuery();
+      public PreparedStatement createStatement(Connection conn) throws Exception {
+        PreparedStatement pstmt = super.createStatement(conn);
+        pstmt.setInt(1, 0);
+        return pstmt;
+      }
+    }.runTest();
+  }
+
+  /**
+   * Doing SELECT * operation on long strings and expect restarts to NEVER happen.
+   * <p>
+   * We expect data retrieved to be longer than what PG output buffer could handle, thus making
+   * transparent read restarts impossible.
+   */
+  @Test
+  public void selectStarLong() throws Exception {
+    // NOTE: Right now this greatly depends on #ops and length of the string.
+    // Ideally there should be a LIMIT clause, but we can't use it because of
+    // https://github.com/yugabyte/yugabyte-db/issues/2812
+    new RegularStatementTester(
+        "SELECT * FROM test_rr",
+        getLongString(),
+        true /* expectNonTxnRestartErrors */,
+        true /* expectSnapshotRestartErrors */
+    ).runTest();
+  }
+
+  /**
+   * Same as the previous test but uses PreparedStatements (with no parameters)
+   */
+  @Test
+  public void selectStarLongPrepared() throws Exception {
+    // NOTE: Right now this greatly depends on #ops and length of the string.
+    // Ideally there should be a LIMIT clause, but we can't use it because of
+    // https://github.com/yugabyte/yugabyte-db/issues/2812
+    new PreparedStatementTester(
+        "SELECT * FROM test_rr",
+        getLongString(),
+        true /* expectNonTxnRestartErrors */,
+        true /* expectSnapshotRestartErrors */
+    ).runTest();
+  }
+
+  /**
+   * Same as the previous test but uses parameterized PreparedStatements with bindvars.
+   */
+  @Test
+  public void selectStarLongPreparedParameterized() throws Exception {
+    // NOTE: Right now this greatly depends on #ops and length of the string.
+    // Ideally there should be a LIMIT clause, but we can't use it because of
+    // https://github.com/yugabyte/yugabyte-db/issues/2812
+    new PreparedStatementTester(
+        "SELECT * FROM test_rr WHERE i > ?",
+        getLongString(),
+        true /* expectNonTxnRestartErrors */,
+        true /* expectSnapshotRestartErrors */) {
+
+      @Override
+      public PreparedStatement createStatement(Connection conn) throws Exception {
+        PreparedStatement pstmt = super.createStatement(conn);
+        pstmt.setInt(1, 0);
+        return pstmt;
       }
     }.runTest();
   }
@@ -132,9 +251,19 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   // Helpers methods
   //
 
-  /** Some short string to be inserted, order of magnitude shorter than PG network buffer */
+  /** Some short string to be inserted, order of magnitude shorter than PG output buffer */
   private static String getShortString() {
-    return "Some arbitrary string";
+    return "s";
+  }
+
+  /** Some string that is longer than PG output buffer */
+  private static String getLongString() {
+    StringBuffer sb = new StringBuffer();
+    // Making string one char longer than buffer size, hence the "<=" condition
+    for (int i = 0; i <= PG_OUTPUT_BUFFER_SIZE; ++i) {
+      sb.append("a");
+    }
+    return sb.toString();
   }
 
   /** Whether this exception represents expected transaction concurrency related error */
@@ -184,7 +313,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
         for (int i = 0; i < NUM_INSERTS; ++i) {
           if (Thread.interrupted()) return; // Skips all post-loop checks
           try {
-            stmt.setInt(2, rnd.nextInt());
+            stmt.setInt(2, rnd.nextInt(MAX_INT_TO_INSERT + 1));
             stmt.executeUpdate();
             ++insertsSucceeded;
           } catch (Exception ex) {
@@ -226,19 +355,18 @@ public class TestPgReadRestarts extends BasePgSQLTest {
     private static final int NUM_THREADS = 4;
 
     private final String valueToInsert;
-    private final boolean expectNonTxnRestarts;
-    private final boolean expectSnapshotRestarts;
-    private final boolean expectSerializableRestart;
+    private final boolean expectNonTxnRestartErrors;
+    private final boolean expectSnapshotRestartErrors;
+    /** We never expect SERIALIZABLE transaction to result in "restart read" */
+    private final boolean expectSerializableRestartErrors = false;
 
     public ConcurrentInsertSelectTester(
         String valueToInsert,
-        boolean expectNonTxnRestarts,
-        boolean expectSnapshotRestarts,
-        boolean expectSerializableRestart) {
+        boolean expectNonTxnRestartErrors,
+        boolean expectSnapshotRestartErrors) {
       this.valueToInsert = valueToInsert;
-      this.expectNonTxnRestarts = expectNonTxnRestarts;
-      this.expectSnapshotRestarts = expectSnapshotRestarts;
-      this.expectSerializableRestart = expectSerializableRestart;
+      this.expectNonTxnRestartErrors = expectNonTxnRestartErrors;
+      this.expectSnapshotRestartErrors = expectSnapshotRestartErrors;
     }
 
     public abstract Stmt createStatement(Connection conn) throws Exception;
@@ -279,17 +407,23 @@ public class TestPgReadRestarts extends BasePgSQLTest {
         if (onlyEmptyResults) {
           fail("SELECT thread didn't yield any meaningful result! Flawed test?");
         }
-        if (!expectNonTxnRestarts) {
-          assertEquals(
+        if (expectNonTxnRestartErrors) {
+          assertTrue(
+              "No SELECTs resulted in 'restart read required' - but we expected them to!",
+              selectsRestartRequired > 0);
+        } else {
+          assertTrue(
               selectsRestartRequired + " of " + selectsAttempted
                   + " SELECTs resulted in 'restart read required', likely a regression!",
-              selectsRestartRequired, 0);
+              selectsRestartRequired == 0);
         }
       }));
 
       Map<IsolationLevel, Boolean> isoLevelsWithRestartsExpected = new LinkedHashMap<>();
-      isoLevelsWithRestartsExpected.put(IsolationLevel.REPEATABLE_READ, expectSnapshotRestarts);
-      isoLevelsWithRestartsExpected.put(IsolationLevel.SERIALIZABLE, expectSerializableRestart);
+      isoLevelsWithRestartsExpected.put(
+          IsolationLevel.REPEATABLE_READ, expectSnapshotRestartErrors);
+      isoLevelsWithRestartsExpected.put(
+          IsolationLevel.SERIALIZABLE, expectSerializableRestartErrors);
 
       /*
        * Two SELECTs grouped in a transaction. Their result should match.
@@ -299,6 +433,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
           IsolationLevel isolation = isoEntry.getKey();
           boolean expectRestart = isoEntry.getValue();
           int selectsAttempted = 0;
+          int selectsFirstOpRestartRequired = 0;
           int selectsSucceeded = 0;
           try (Connection selectTxnConn = newConnectionBuilder()
               .setIsolationLevel(isolation)
@@ -323,11 +458,8 @@ public class TestPgReadRestarts extends BasePgSQLTest {
                   LOG.error("Rollback failed", ex1);
                   fail("Rollback failed: " + ex1.getMessage());
                 }
-                if (isRestartReadError(ex)
-                    && numCompletedOps == 0
-                    && !expectRestart) {
-                  fail("SELECT in " + isolation
-                      + ": got 'restart read required' on first operation!");
+                if (isRestartReadError(ex) && numCompletedOps == 0) {
+                  ++selectsFirstOpRestartRequired;
                 }
                 if (!isTxnError(ex)) {
                   throw ex;
@@ -342,6 +474,19 @@ public class TestPgReadRestarts extends BasePgSQLTest {
               + selectsAttempted + " succeeded");
           assertTrue("No SELECT operations in " + isolation
               + " succeeded, ever! Flawed test?", selectsSucceeded > 0);
+          if (expectRestart) {
+            assertTrue(
+                "No SELECTs in " + isolation
+                    + " resulted in 'restart read required' on first operation"
+                    + " - but we expected them to!",
+                selectsFirstOpRestartRequired > 0);
+          } else {
+            assertTrue(
+                selectsFirstOpRestartRequired + " of " + selectsAttempted
+                    + " SELECTs in " + isolation
+                    + " resulted in 'restart read required' on first operation!",
+                selectsFirstOpRestartRequired == 0);
+          }
         }));
       }
 
@@ -361,6 +506,54 @@ public class TestPgReadRestarts extends BasePgSQLTest {
         es.awaitTermination(10, TimeUnit.SECONDS);
         LOG.info("Executor shutdown complete");
       }
+    }
+  }
+
+  /** ConcurrentInsertSelectTester that uses regular Statement */
+  private class RegularStatementTester extends ConcurrentInsertSelectTester<Statement> {
+    protected String queryString;
+
+    public RegularStatementTester(
+        String queryString,
+        String valueToInsert,
+        boolean expectNonTxnRestartErrors,
+        boolean expectSnapshotRestartErrors) {
+      super(valueToInsert, expectNonTxnRestartErrors, expectSnapshotRestartErrors);
+      this.queryString = queryString;
+    }
+
+    @Override
+    public Statement createStatement(Connection conn) throws Exception {
+      return conn.createStatement();
+    }
+
+    @Override
+    public ResultSet executeQuery(Statement stmt) throws Exception {
+      return stmt.executeQuery(queryString);
+    }
+  }
+
+  /** ConcurrentInsertSelectTester that uses regular PreparedStatement */
+  private class PreparedStatementTester extends ConcurrentInsertSelectTester<PreparedStatement> {
+    protected String queryString;
+
+    public PreparedStatementTester(
+        String queryString,
+        String valueToInsert,
+        boolean expectNonTxnRestartErrors,
+        boolean expectSnapshotRestartErrors) {
+      super(valueToInsert, expectNonTxnRestartErrors, expectSnapshotRestartErrors);
+      this.queryString = queryString;
+    }
+
+    @Override
+    public PreparedStatement createStatement(Connection conn) throws Exception {
+      return conn.prepareStatement(queryString);
+    }
+
+    @Override
+    public ResultSet executeQuery(PreparedStatement stmt) throws Exception {
+      return stmt.executeQuery();
     }
   }
 }
