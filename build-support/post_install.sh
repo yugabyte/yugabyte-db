@@ -89,4 +89,5 @@ fi
 
 ln -sfT "$linuxbrew_dir" "$BREW_HOME"
 
-find $distribution_dir -type f -exec sed -i --binary "s%$ORIG_BREW_HOME%$BREW_HOME%g" {} \;
+find "$distribution_dir" -type f -not -path "$distribution_dir/yugabyte-logs/*" \
+   -exec sed -i --binary "s%$ORIG_BREW_HOME%$BREW_HOME%g" {} \;
