@@ -17,10 +17,10 @@ menu:
     <a class="section-link icon-offset" href="yb-master/">
       <div class="head">
         <img class="icon" src="/images/section_icons/reference/configuration/yb-master.png" aria-hidden="true" />
-        <div class="title">YB-Master nodes</div>
+        <div class="title">YB-Master service</div>
       </div>
       <div class="body">
-        Configure YB-Master nodes to manage YugabyteDB metadata, tablets and coordinate cluster-wide operations.
+        Configure YB-Master services to manage YugabyteDB metadata, tablets and coordinate cluster-wide operations.
       </div>
     </a>
   </div>
@@ -29,10 +29,10 @@ menu:
     <a class="section-link icon-offset" href="yb-tserver/">
       <div class="head">
         <img class="icon" src="/images/section_icons/reference/configuration/yb-tserver.png" aria-hidden="true" />
-        <div class="title">YB-TServer nodes</div>
+        <div class="title">YB-TServer service</div>
       </div>
       <div class="body">
-        Configure YB-TServer nodes that perform IO for end user requests.
+        Configure YB-TServer services that perform IO for end user requests.
       </div>
     </a>
   </div>
