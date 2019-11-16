@@ -870,6 +870,7 @@ Status TabletPeer::StartReplicaOperation(
   // This sets the monotonic counter to at least replicate_msg.monotonic_counter() atomically.
   tablet_->UpdateMonotonicCounter(replicate_msg->monotonic_counter());
 
+  auto operation_type = operation->operation_type();
   OperationDriverPtr driver = VERIFY_RESULT(NewReplicaOperationDriver(&operation));
 
   // Unretained is required to avoid a refcount cycle.
@@ -879,6 +880,11 @@ Status TabletPeer::StartReplicaOperation(
   if (propagated_safe_time) {
     driver->SetPropagatedSafeTime(propagated_safe_time, tablet_->mvcc_manager());
   }
+
+  if (operation_type == OperationType::kWrite) {
+    tablet()->mvcc_manager()->AddPending(&ht);
+  }
+
   driver->ExecuteAsync();
   return Status::OK();
 }
@@ -1003,13 +1009,13 @@ int64_t TabletPeer::LeaderTerm() const {
   return consensus ? consensus->LeaderTerm() : yb::OpId::kUnknownTerm;
 }
 
-consensus::LeaderStatus TabletPeer::LeaderStatus() const {
+consensus::LeaderStatus TabletPeer::LeaderStatus(bool allow_stale) const {
   shared_ptr<consensus::Consensus> consensus;
   {
     std::lock_guard<simple_spinlock> lock(lock_);
     consensus = consensus_;
   }
-  return consensus ? consensus->GetLeaderStatus() : consensus::LeaderStatus::NOT_LEADER;
+  return consensus ? consensus->GetLeaderStatus(allow_stale) : consensus::LeaderStatus::NOT_LEADER;
 }
 
 HybridTime TabletPeer::HtLeaseExpiration() const {

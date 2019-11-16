@@ -736,8 +736,10 @@ void Tablet::StartOperation(WriteOperationState* operation_state) {
   // before a crash or at another node.
   HybridTime ht = operation_state->hybrid_time_even_if_unset();
   bool was_valid = ht.is_valid();
-  mvcc_.AddPending(&ht);
   if (!was_valid) {
+    // Add only leader operation here, since follower operations already registered in MVCC,
+    // as soon as they received.
+    mvcc_.AddPending(&ht);
     operation_state->set_hybrid_time(ht);
   }
 }

@@ -136,8 +136,7 @@ void Batcher::Abort(const Status& status) {
 
     InFlightOps to_abort;
     for (auto& op : ops_) {
-      std::lock_guard<simple_spinlock> l(op->lock_);
-      if (op->state == InFlightOpState::kBufferedToTabletServer) {
+      if (op->state.load(std::memory_order_acquire) == InFlightOpState::kBufferedToTabletServer) {
         to_abort.push_back(op);
       }
     }
@@ -279,10 +278,8 @@ void Batcher::FlushAsync(StatusFunctor callback) {
 Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
   // As soon as we get the op, start looking up where it belongs,
   // so that when the user calls Flush, we are ready to go.
-  auto in_flight_op = std::make_shared<InFlightOp>();
+  auto in_flight_op = std::make_shared<InFlightOp>(yb_op);
   RETURN_NOT_OK(yb_op->GetPartitionKey(&in_flight_op->partition_key));
-  in_flight_op->yb_op = yb_op;
-  in_flight_op->state = InFlightOpState::kLookingUpTablet;
 
   if (yb_op->table()->partition_schema().IsHashPartitioning()) {
     switch (yb_op->type()) {
@@ -377,10 +374,6 @@ void Batcher::TabletLookupFinished(
   {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
 
-    if (lookup_result.ok()) {
-      op->tablet = *lookup_result;
-    }
-
     --outstanding_lookups_;
     all_lookups_finished = outstanding_lookups_ == 0;
 
@@ -391,17 +384,55 @@ void Batcher::TabletLookupFinished(
       return;
     }
 
+    if (state_ != BatcherState::kResolvingTablets && state_ != BatcherState::kGatheringOps) {
+      LOG(DFATAL) << "Lookup finished in wrong state: " << ToString(state_);
+      return;
+    }
+
+    if (lookup_result.ok()) {
+      op->tablet = *lookup_result;
+#ifndef NDEBUG
+      const Partition& partition = op->tablet->partition();
+
+      bool partition_contains_row = false;
+      std::string partition_key;
+      switch (op->yb_op->type()) {
+        case YBOperation::QL_READ: FALLTHROUGH_INTENDED;
+        case YBOperation::QL_WRITE: FALLTHROUGH_INTENDED;
+        case YBOperation::PGSQL_READ: FALLTHROUGH_INTENDED;
+        case YBOperation::PGSQL_WRITE: FALLTHROUGH_INTENDED;
+        case YBOperation::REDIS_READ: FALLTHROUGH_INTENDED;
+        case YBOperation::REDIS_WRITE: {
+          CHECK_OK(op->yb_op->GetPartitionKey(&partition_key));
+          partition_contains_row = partition.ContainsKey(partition_key);
+          break;
+        }
+      }
+
+      if (!partition_contains_row) {
+        const Schema& schema = GetSchema(op->yb_op->table()->schema());
+        const PartitionSchema& partition_schema = op->yb_op->table()->partition_schema();
+        LOG(DFATAL)
+            << "Row " << op->yb_op->ToString()
+            << " not in partition " << partition_schema.PartitionDebugString(partition, schema)
+            << " partition_key: '" << Slice(partition_key).ToDebugHexString() << "'";
+      }
+#endif
+    }
+
     VLOG(3) << "TabletLookupFinished for " << op->yb_op->ToString() << ": " << lookup_result
             << ", outstanding lookups: " << outstanding_lookups_;
 
     if (lookup_result.ok()) {
-      std::lock_guard<simple_spinlock> l2(op->lock_);
-      CHECK_EQ(op->state, InFlightOpState::kLookingUpTablet);
       CHECK(*lookup_result);
 
-      op->state = InFlightOpState::kBufferedToTabletServer;
-
-      ops_queue_.push_back(op);
+      auto expected_state = InFlightOpState::kLookingUpTablet;
+      if (op->state.compare_exchange_strong(
+          expected_state, InFlightOpState::kBufferedToTabletServer, std::memory_order_acq_rel)) {
+        ops_queue_.push_back(op);
+      } else {
+        LOG(DFATAL) << "Finished lookup for operation in a bad state: " << ToString(expected_state);
+      }
     } else {
       MarkInFlightOpFailedUnlocked(op, lookup_result.status());
     }
@@ -418,17 +449,7 @@ void Batcher::TabletLookupFinished(
 
 void Batcher::TransactionReady(const Status& status, const BatcherPtr& self) {
   if (status.ok()) {
-    {
-      std::lock_guard<decltype(mutex_)> lock(mutex_);
-      if (state_ != BatcherState::kTransactionPrepare) {
-        // Batcher was aborted.
-        LOG_IF(DFATAL, state_ != BatcherState::kAborted)
-            << "Batcher in a wrong state when transaction get ready: " << state_;
-        return;
-      }
-      state_ = BatcherState::kTransactionReady;
-    }
-    FlushBuffersIfReady();
+    ExecuteOperations();
   } else {
     Abort(status);
   }
@@ -461,6 +482,11 @@ OpGroup GetOpGroup(const InFlightOpPtr& op) {
 }
 
 void Batcher::FlushBuffersIfReady() {
+  // We're only ready to flush if both of the following conditions are true:
+  // 1. The batcher is in the "resolving tablets" state (i.e. FlushAsync was called).
+  // 2. All outstanding ops have finished lookup. Why? To avoid a situation
+  //    where ops are flushed one by one as they finish lookup.
+
   {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
     if (outstanding_lookups_ != 0) {
@@ -470,33 +496,33 @@ void Batcher::FlushBuffersIfReady() {
       return;
     }
 
-    if (state_ == BatcherState::kResolvingTablets) {
-      state_ = BatcherState::kTransactionPrepare;
-
-      // All operations were added, and tablets for them were resolved.
-      // So we could sort them.
-      std::sort(ops_queue_.begin(),
-                ops_queue_.end(),
-                [](const InFlightOpPtr& lhs, const InFlightOpPtr& rhs) {
-        if (lhs->tablet.get() == rhs->tablet.get()) {
-          auto lgroup = GetOpGroup(lhs);
-          auto rgroup = GetOpGroup(rhs);
-          if (lgroup != rgroup) {
-            return lgroup < rgroup;
-          }
-          return lhs->sequence_number_ < rhs->sequence_number_;
-        }
-        return lhs->tablet.get() < rhs->tablet.get();
-      });
-    } else if (state_ != BatcherState::kTransactionReady) {
-      VLOG(3) << "FlushBuffersIfReady: batcher not yet in transaction ready state: " << state_;
+    if (state_ != BatcherState::kResolvingTablets) {
       return;
     }
 
+    state_ = BatcherState::kTransactionPrepare;
   }
 
-  bool force_consistent_read = force_consistent_read_;
+  // All operations were added, and tablets for them were resolved.
+  // So we could sort them.
+  std::sort(ops_queue_.begin(),
+            ops_queue_.end(),
+            [](const InFlightOpPtr& lhs, const InFlightOpPtr& rhs) {
+    if (lhs->tablet.get() == rhs->tablet.get()) {
+      auto lgroup = GetOpGroup(lhs);
+      auto rgroup = GetOpGroup(rhs);
+      if (lgroup != rgroup) {
+        return lgroup < rgroup;
+      }
+      return lhs->sequence_number_ < rhs->sequence_number_;
+    }
+    return lhs->tablet.get() < rhs->tablet.get();
+  });
 
+  ExecuteOperations();
+}
+
+void Batcher::ExecuteOperations() {
   auto transaction = this->transaction();
   if (transaction) {
     // If this Batcher is executed in context of transaction,
@@ -511,17 +537,16 @@ void Batcher::FlushBuffersIfReady() {
                               &transaction_metadata_)) {
       return;
     }
-
-    // Set force_consistent_read to true, so async rpc would use read time from batcher.
-    force_consistent_read = true;
   }
 
-  // We're only ready to flush if:
-  // 1. The batcher is in the flushing state (i.e. FlushAsync was called).
-  // 2. All outstanding ops have finished lookup. Why? To avoid a situation
-  //    where ops are flushed one by one as they finish lookup.
   {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
+    if (state_ != BatcherState::kTransactionPrepare) {
+      // Batcher was aborted.
+      LOG_IF(DFATAL, state_ != BatcherState::kAborted)
+          << "Batcher in a wrong state at the moment the transaction became ready: " << state_;
+      return;
+    }
     state_ = BatcherState::kTransactionReady;
   }
 
@@ -529,6 +554,10 @@ void Batcher::FlushBuffersIfReady() {
   if (ops_queue_.empty()) {
     return;
   }
+
+  const bool force_consistent_read = force_consistent_read_ || this->transaction();
+
+  const size_t ops_number = ops_queue_.size();
 
   // Use big enough value for preallocated storage, to avoid unnecessary allocations.
   boost::container::small_vector<std::shared_ptr<AsyncRpc>, 40> rpcs;
@@ -559,6 +588,8 @@ void Batcher::FlushBuffersIfReady() {
       start->get()->tablet.get(), start, ops_queue_.end(),
       allow_local_calls_in_curr_thread_, need_consistent_read));
 
+  LOG_IF(DFATAL, ops_number != ops_queue_.size())
+    << "Ops queue was modified while creating RPCs";
   ops_queue_.clear();
 
   for (const auto& rpc : rpcs) {

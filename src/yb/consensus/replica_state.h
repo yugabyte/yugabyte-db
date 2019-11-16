@@ -170,7 +170,7 @@ class ReplicaState {
   // Returns OK if leader, IllegalState otherwise.
   CHECKED_STATUS CheckActiveLeaderUnlocked(LeaderLeaseCheckMode lease_check_mode) const;
 
-  LeaderState GetLeaderState() const;
+  LeaderState GetLeaderState(bool allow_stale = false) const;
 
   // now is used as a cache for current time. It is in/out parameter and could contain or receive
   // current time if it was used during leader state calculation.

@@ -1326,6 +1326,8 @@ class CppCassandraDriverLowSoftLimitTest : public CppCassandraDriverTest {
 
 TEST_F_EX(CppCassandraDriverTest, BatchWriteDuringSoftMemoryLimit,
           CppCassandraDriverLowSoftLimitTest) {
+  FLAGS_external_mini_cluster_max_log_bytes = 512_MB;
+
   constexpr int kBatchSize = 500;
   constexpr int kWriters = 4;
   constexpr int kNumMetrics = 5;
@@ -1377,7 +1379,7 @@ TEST_F_EX(CppCassandraDriverTest, BatchWriteDuringSoftMemoryLimit,
   thread_holder.WaitAndStop(30s);
   auto total_writes_value = total_writes.load();
   LOG(INFO) << "Total writes: " << total_writes_value;
-  ASSERT_GE(total_writes_value, RegularBuildVsSanitizers(1500, 100));
+  ASSERT_GE(total_writes_value, RegularBuildVsSanitizers(1500, 50));
 }
 
 class CppCassandraDriverBackpressureTest : public CppCassandraDriverTest {

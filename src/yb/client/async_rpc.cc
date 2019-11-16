@@ -342,38 +342,9 @@ void AsyncRpcBase<Req, Resp>::SendRpcToTserver(int attempt_num) {
 WriteRpc::WriteRpc(AsyncRpcData* data)
     : AsyncRpcBase(data, YBConsistencyLevel::STRONG) {
   TRACE_TO(trace_, "WriteRpc initiated to $0", data->tablet->tablet_id());
-#ifndef NDEBUG
-  const Schema& schema = GetSchema(table()->schema());
-#endif
-
   // Add the rows
   int ctr = 0;
   for (auto& op : ops_) {
-#ifndef NDEBUG
-    const Partition& partition = op->tablet->partition();
-    const PartitionSchema& partition_schema = table()->partition_schema();
-
-    bool partition_contains_row = false;
-    std::string partition_key;
-    switch (op->yb_op->type()) {
-      case YBOperation::QL_READ: FALLTHROUGH_INTENDED;
-      case YBOperation::QL_WRITE: FALLTHROUGH_INTENDED;
-      case YBOperation::PGSQL_READ: FALLTHROUGH_INTENDED;
-      case YBOperation::PGSQL_WRITE: FALLTHROUGH_INTENDED;
-      case YBOperation::REDIS_READ: FALLTHROUGH_INTENDED;
-      case YBOperation::REDIS_WRITE: {
-        CHECK_OK(op->yb_op->GetPartitionKey(&partition_key));
-        partition_contains_row = partition.ContainsKey(partition_key);
-        break;
-      }
-    }
-
-    CHECK(partition_contains_row)
-        << "Row " << op->yb_op->ToString()
-        << " not in partition " << partition_schema.PartitionDebugString(partition, schema)
-        << " partition_key: '" << Slice(partition_key).ToDebugHexString() << "'";
-
-#endif
     // Move write request PB into tserver write request PB for performance.
     // Will restore in ProcessResponseFromTserver.
     switch (op->yb_op->type()) {

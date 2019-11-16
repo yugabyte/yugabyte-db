@@ -288,7 +288,7 @@ class TabletPeer : public consensus::ConsensusContext,
   }
 
   int64_t LeaderTerm() const override;
-  consensus::LeaderStatus LeaderStatus() const;
+  consensus::LeaderStatus LeaderStatus(bool allow_stale = false) const;
 
   HybridTime HtLeaseExpiration() const override;
 

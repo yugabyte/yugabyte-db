@@ -843,7 +843,6 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
   // Don't vote for anyone if we're a leader.
   withhold_votes_until_ = MonoTime::Max();
 
-  state_->SetLeaderNoOpCommittedUnlocked(false);
   queue_->RegisterObserver(this);
 
   // Refresh queue and peers before initiating NO_OP.
@@ -1041,12 +1040,13 @@ void RaftConsensus::UpdateMajorityReplicated(
   leader_lease_wait_cond_.notify_all();
 
   VLOG_WITH_PREFIX(1) << "Marking majority replicated up to "
-      << majority_replicated_data.op_id.ShortDebugString();
+      << majority_replicated_data.ToString();
   TRACE("Marking majority replicated up to $0", majority_replicated_data.op_id.ShortDebugString());
   bool committed_index_changed = false;
   s = state_->UpdateMajorityReplicatedUnlocked(
       majority_replicated_data.op_id, committed_op_id, &committed_index_changed);
-  if (state_->GetLeaderStateUnlocked().ok()) {
+  auto leader_state = state_->GetLeaderStateUnlocked();
+  if (leader_state.ok() && leader_state.status == LeaderStatus::LEADER_AND_READY) {
     state_->context()->MajorityReplicated();
   }
   if (PREDICT_FALSE(!s.ok())) {
@@ -2504,8 +2504,8 @@ RaftPeerPB::Role RaftConsensus::role() const {
   return GetRoleUnlocked();
 }
 
-LeaderState RaftConsensus::GetLeaderState() const {
-  return state_->GetLeaderState();
+LeaderState RaftConsensus::GetLeaderState(bool allow_stale) const {
+  return state_->GetLeaderState(allow_stale);
 }
 
 std::string RaftConsensus::LogPrefix() {
@@ -2776,6 +2776,7 @@ void RaftConsensus::DoElectionCallback(const LeaderElectionData& data,
   state_->UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked(
       result.old_leader_lease, result.old_leader_ht_lease);
 
+  state_->SetLeaderNoOpCommittedUnlocked(false);
   // Convert role to LEADER.
   SetLeaderUuidUnlocked(state_->GetPeerUuid());
 
