@@ -514,6 +514,8 @@ struct MajorityReplicatedData {
   CoarseTimePoint leader_lease_expiration;
   MicrosTime ht_lease_expiration;
   uint64_t num_sst_files;
+
+  std::string ToString() const;
 };
 
 // The interface between RaftConsensus and the PeerMessageQueue.

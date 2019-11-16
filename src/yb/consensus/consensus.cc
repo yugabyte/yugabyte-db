@@ -81,8 +81,8 @@ Status ConsensusRound::CheckBoundTerm(int64_t current_term) const {
   return Status::OK();
 }
 
-LeaderStatus Consensus::GetLeaderStatus() const {
-  return GetLeaderState().status;
+LeaderStatus Consensus::GetLeaderStatus(bool allow_stale) const {
+  return GetLeaderState(allow_stale).status;
 }
 
 int64_t Consensus::LeaderTerm() const {

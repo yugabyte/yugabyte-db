@@ -125,6 +125,12 @@ METRIC_DEFINE_gauge_int64(tablet, in_progress_ops, "Leader Operations in Progres
 
 const auto kCDCConsumerCheckpointInterval = FLAGS_cdc_checkpoint_opid_interval_ms * 1ms;
 
+std::string MajorityReplicatedData::ToString() const {
+  return Format(
+      "{ op_id: $0 leader_lease_expiration: $1 ht_lease_expiration: $2 num_sst_files: $3 }",
+      op_id, leader_lease_expiration, ht_lease_expiration, num_sst_files);
+}
+
 std::string PeerMessageQueue::TrackedPeer::ToString() const {
   return Substitute("Peer: $0, Is new: $1, Last received: $2, Next index: $3, "
                     "Last known committed idx: $4, Last exchange result: $5, "

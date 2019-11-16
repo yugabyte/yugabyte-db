@@ -342,14 +342,11 @@ class ServicePoolImpl final : public InboundCallHandler {
     time += kTimeoutCheckGranularity;
     while (CoarseTimePoint(next_check_timeout) > time) {
       if (next_check_timeout_.compare_exchange_weak(
-          next_check_timeout, time.time_since_epoch(),
-          std::memory_order_acq_rel)) {
+              next_check_timeout, time.time_since_epoch(), std::memory_order_acq_rel)) {
         check_timeout_strand_.dispatch([this, time] {
           auto check_timeout_task = check_timeout_task_.load(std::memory_order_acquire);
           if (check_timeout_task != kUninitializedScheduledTaskId) {
             scheduler_.Abort(check_timeout_task);
-          } else {
-            DCHECK_EQ(scheduled_tasks_.load(std::memory_order_acquire), 0);
           }
           scheduled_tasks_.fetch_add(1, std::memory_order_acq_rel);
           auto task_id = scheduler_.Schedule(

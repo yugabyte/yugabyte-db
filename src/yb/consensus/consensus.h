@@ -277,9 +277,12 @@ class Consensus {
 
   // Returns the leader status (see LeaderStatus type description for details).
   // If leader is ready, then also returns term, otherwise OpId::kUnknownTerm is returned.
-  virtual LeaderState GetLeaderState() const = 0;
+  //
+  // allow_stale could be used to avoid refreshing cache, when we are OK to read slightly outdated
+  // value.
+  virtual LeaderState GetLeaderState(bool allow_stale = false) const = 0;
 
-  LeaderStatus GetLeaderStatus() const;
+  LeaderStatus GetLeaderStatus(bool allow_stale = false) const;
   int64_t LeaderTerm() const;
 
   // Returns the uuid of this peer.

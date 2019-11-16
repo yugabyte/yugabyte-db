@@ -376,7 +376,8 @@ void RemoteTablet::GetRemoteTabletServers(
                 }
                 continue;
               }
-              if (!replica.ts->local_tserver()->LeaderAndReady(tablet_id_)) {
+              if (!replica.ts->local_tserver()->LeaderAndReady(
+                      tablet_id_, /* allow_stale */ true)) {
                 // Should continue here because otherwise failed state will be cleared.
                 continue;
               }
