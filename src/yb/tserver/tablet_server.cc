@@ -365,12 +365,12 @@ Status TabletServer::GetTabletStatus(const GetTabletStatusRequestPB* req,
   return Status::OK();
 }
 
-bool TabletServer::LeaderAndReady(const TabletId& tablet_id) const {
+bool TabletServer::LeaderAndReady(const TabletId& tablet_id, bool allow_stale) const {
   tablet::TabletPeerPtr peer;
   if (!tablet_manager_->LookupTablet(tablet_id, &peer)) {
     return false;
   }
-  return peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
+  return peer->LeaderStatus(allow_stale) == consensus::LeaderStatus::LEADER_AND_READY;
 }
 
 Status TabletServer::SetUniverseKeyRegistry(

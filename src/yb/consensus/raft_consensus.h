@@ -167,7 +167,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   RaftPeerPB::Role role() const override;
 
-  LeaderState GetLeaderState() const override;
+  LeaderState GetLeaderState(bool allow_stale = false) const override;
 
   std::string peer_uuid() const override;
 
