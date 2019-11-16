@@ -363,7 +363,8 @@ Status GetChanges(const std::string& stream_id,
                   const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                   const MemTrackerPtr& mem_tracker,
                   consensus::ReplicateMsgsHolder* msgs_holder,
-                  GetChangesResponsePB* resp) {
+                  GetChangesResponsePB* resp,
+                  int64_t* last_readable_opid_index) {
   // Request scope on transaction participant so that transactions are not removed from participant
   // while RequestScope is active.
   RequestScope request_scope;
@@ -372,7 +373,8 @@ Status GetChanges(const std::string& stream_id,
     request_scope = RequestScope(txn_participant);
   }
 
-  auto read_ops = VERIFY_RESULT(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(from_op_id));
+  auto read_ops = VERIFY_RESULT(tablet_peer->consensus()->
+    ReadReplicatedMessagesForCDC(from_op_id, last_readable_opid_index));
   ScopedTrackedConsumption consumption;
   if (read_ops.read_from_disk_size && mem_tracker) {
     consumption = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);

@@ -539,13 +539,17 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(int64_t from_index,
 
 // Read majority replicated messages from cache for CDC.
 // CDC producer will use this to get the messages to send in response to cdc::GetChanges RPC.
-Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(const yb::OpId& last_op_id) {
+Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(const yb::OpId& last_op_id,
+                                                                     int64_t* repl_index) {
   // The batch of messages read from cache.
 
   int64_t to_index;
   {
     LockGuard lock(queue_lock_);
     to_index = queue_state_.majority_replicated_opid.index();
+  }
+  if (repl_index) {
+    *repl_index = to_index;
   }
 
   if (last_op_id.index >= to_index) {

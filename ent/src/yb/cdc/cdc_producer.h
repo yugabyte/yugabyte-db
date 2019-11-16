@@ -50,7 +50,8 @@ CHECKED_STATUS GetChanges(const std::string& stream_id,
                           const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                           const std::shared_ptr<MemTracker>& mem_tracker,
                           consensus::ReplicateMsgsHolder* msgs_holder,
-                          GetChangesResponsePB* resp);
+                          GetChangesResponsePB* resp,
+                          int64_t* last_readable_opid_index = nullptr);
 
 }  // namespace cdc
 }  // namespace yb

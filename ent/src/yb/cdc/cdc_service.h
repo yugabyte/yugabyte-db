@@ -20,9 +20,13 @@
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index_container.hpp>
 
+#include "yb/cdc/cdc_metrics.h"
 #include "yb/cdc/cdc_producer.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_util.h"
+
+#include <boost/bimap.hpp>
+#include <boost/bimap/multiset_of.hpp>
 
 #include "yb/client/async_initializer.h"
 
@@ -60,7 +64,8 @@ struct TabletCheckpoint {
 class CDCServiceImpl : public CDCServiceIf {
  public:
   CDCServiceImpl(tserver::TSTabletManager* tablet_manager,
-                 const scoped_refptr<MetricEntity>& metric_entity);
+                 const scoped_refptr<MetricEntity>& metric_entity_server,
+                 MetricRegistry* metric_registry);
 
   CDCServiceImpl(const CDCServiceImpl&) = delete;
   void operator=(const CDCServiceImpl&) = delete;
@@ -82,6 +87,13 @@ class CDCServiceImpl : public CDCServiceIf {
                      rpc::RpcContext rpc) override;
 
   void Shutdown() override;
+
+  // Used in cdc_service-int-test.cc.
+  scoped_refptr<CDCTabletMetrics> GetCDCTabletMetrics(const ProducerTabletInfo& producer,
+      std::shared_ptr<tablet::TabletPeer> tablet_peer = nullptr);
+  std::shared_ptr<CDCServerMetrics> GetCDCServerMetrics() {
+    return server_metrics_;
+  }
 
  private:
   template <class ReqType, class RespType>
@@ -130,6 +142,9 @@ class CDCServiceImpl : public CDCServiceIf {
   tserver::TSTabletManager* tablet_manager_;
 
   boost::optional<yb::client::AsyncClientInitialiser> async_client_init_;
+
+  MetricRegistry* metric_registry_;
+  std::shared_ptr<CDCServerMetrics> server_metrics_;
 
   // Used to protect tablet_checkpoints_ and stream_metadata_ maps.
   mutable rw_spinlock mutex_;
