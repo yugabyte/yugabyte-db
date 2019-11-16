@@ -82,6 +82,8 @@ public class SetUniverseKey {
                     masterAddr.toString()
             );
             LOG.error(errMsg, e);
+        } finally {
+            ybService.closeClient(client, hostPorts);
         }
     }
 
