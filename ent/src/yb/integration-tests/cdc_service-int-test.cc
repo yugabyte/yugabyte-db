@@ -5,6 +5,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/ql_value.h"
+#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/error.h"
 #include "yb/client/table.h"
@@ -35,6 +36,9 @@
 DECLARE_int32(cdc_wal_retention_time_secs);
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 
+METRIC_DECLARE_entity(cdc);
+METRIC_DECLARE_gauge_int64(last_read_opid_index);
+
 namespace yb {
 namespace cdc {
 
@@ -52,7 +56,7 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
     YBMiniClusterTestBase::SetUp();
 
     MiniClusterOptions opts;
-    opts.num_tablet_servers = 1;
+    opts.num_tablet_servers = server_count();
     opts.num_masters = 1;
     cluster_.reset(new MiniCluster(env_.get(), opts));
     ASSERT_OK(cluster_->Start());
@@ -62,7 +66,7 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
         &client_->proxy_cache(),
         HostPort::FromBoundEndpoint(cluster_->mini_tablet_server(0)->bound_rpc_addr()));
 
-    CreateTable(1, &table_);
+    CreateTable(tablet_count(), &table_);
   }
 
   void DoTearDown() override {
@@ -85,6 +89,9 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
 
   void CreateTable(int num_tablets, TableHandle* table);
   void GetTablet(std::string* tablet_id);
+
+  virtual int server_count() { return 1; }
+  virtual int tablet_count() { return 1; }
 
   std::unique_ptr<CDCServiceProxy> cdc_proxy_;
   std::unique_ptr<client::YBClient> client_;
@@ -132,7 +139,7 @@ void CDCServiceTest::GetTablet(std::string* tablet_id) {
   std::vector<TabletId> tablet_ids;
   std::vector<std::string> ranges;
   ASSERT_OK(client_->GetTablets(kTableName, 0 /* max_tablets */, &tablet_ids, &ranges));
-  ASSERT_EQ(tablet_ids.size(), 1);
+  ASSERT_EQ(tablet_ids.size(), tablet_count());
   *tablet_id = tablet_ids[0];
 }
 
@@ -186,7 +193,9 @@ TEST_F(CDCServiceTest, TestGetChanges) {
   std::string tablet_id;
   GetTablet(&tablet_id);
 
-  const auto& proxy = cluster_->mini_tablet_server(0)->server()->proxy();
+  const auto& tserver = cluster_->mini_tablet_server(0)->server();
+  // Use proxy for to most accurately simulate normal requests.
+  const auto& proxy = tserver->proxy();
 
   // Insert test rows.
   tserver::WriteRequestPB write_req;
@@ -233,6 +242,14 @@ TEST_F(CDCServiceTest, TestGetChanges) {
                                            expected_results[i].first,
                                            expected_results[i].second));
     }
+
+    // Verify the CDC Service-level metrics match what we just did.
+    auto cdc_service = dynamic_cast<CDCServiceImpl*>(
+        tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+    auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
+    ASSERT_EQ(metrics->last_read_opid_index->value(), metrics->last_readable_opid_index->value());
+    ASSERT_EQ(metrics->last_read_opid_index->value(), change_resp.records_size() + 1 /* checkpt */);
+    ASSERT_EQ(metrics->rpc_payload_bytes_responded->TotalCount(), 1);
   }
 
   // Insert another row.
@@ -341,7 +358,13 @@ TEST_F(CDCServiceTest, TestGetCheckpoint) {
   }
 }
 
-TEST_F(CDCServiceTest, TestListTablets) {
+class CDCServiceTestMultipleServers : public CDCServiceTest {
+ public:
+  virtual int server_count() override { return 2; }
+  virtual int tablet_count() override { return 4; }
+};
+
+TEST_F_EX(CDCServiceTest, TestListTablets, CDCServiceTestMultipleServers) {
   CDCStreamId stream_id;
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
 
@@ -353,6 +376,7 @@ TEST_F(CDCServiceTest, TestListTablets) {
 
   req.set_stream_id(stream_id);
 
+  // Test a simple query for all tablets.
   {
     RpcController rpc;
     SCOPED_TRACE(req.DebugString());
@@ -360,9 +384,121 @@ TEST_F(CDCServiceTest, TestListTablets) {
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error());
 
-    ASSERT_EQ(resp.tablets_size(), 1);
+    ASSERT_EQ(resp.tablets_size(), tablet_count());
     ASSERT_EQ(resp.tablets(0).tablet_id(), tablet_id);
   }
+
+  // Query for tablets only on the first server.  We should only get a subset.
+  {
+    req.set_local_only(true);
+    RpcController rpc;
+    SCOPED_TRACE(req.DebugString());
+    ASSERT_OK(cdc_proxy_->ListTablets(req, &resp, &rpc));
+    SCOPED_TRACE(resp.DebugString());
+    ASSERT_FALSE(resp.has_error());
+
+    ASSERT_EQ(resp.tablets_size(), tablet_count() / server_count());
+  }
+}
+
+TEST_F_EX(CDCServiceTest, TestGetChangesProxyRouting, CDCServiceTestMultipleServers) {
+  CDCStreamId stream_id;
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+
+  // Figure out [1] all tablets and [2] which ones are local to the first server.
+  std::vector<std::string> local_tablets, all_tablets;
+  for (bool is_local : {true, false}) {
+    RpcController rpc;
+    ListTabletsRequestPB req;
+    ListTabletsResponsePB resp;
+    req.set_stream_id(stream_id);
+    req.set_local_only(is_local);
+    ASSERT_OK(cdc_proxy_->ListTablets(req, &resp, &rpc));
+    ASSERT_FALSE(resp.has_error());
+    auto& cur_tablets = is_local ? local_tablets : all_tablets;
+    for (int i = 0; i < resp.tablets_size(); ++i) {
+      cur_tablets.push_back(resp.tablets(i).tablet_id());
+    }
+    std::sort(cur_tablets.begin(), cur_tablets.end());
+  }
+  ASSERT_LT(local_tablets.size(), all_tablets.size());
+  ASSERT_LT(0, local_tablets.size());
+  {
+    // Overlap between these two lists should be all the local tablets
+    std::vector<std::string> tablet_intersection;
+    std::set_intersection(local_tablets.begin(), local_tablets.end(),
+        all_tablets.begin(), all_tablets.end(),
+        std::back_inserter(tablet_intersection));
+    ASSERT_TRUE(std::equal(local_tablets.begin(), local_tablets.end(),
+        tablet_intersection.begin()));
+  }
+  // Difference should be all tablets on the other server.
+  std::vector<std::string> remote_tablets;
+  std::set_difference(all_tablets.begin(), all_tablets.end(),
+      local_tablets.begin(), local_tablets.end(),
+      std::back_inserter(remote_tablets));
+  ASSERT_LT(0, remote_tablets.size());
+  ASSERT_EQ(all_tablets.size() - local_tablets.size(), remote_tablets.size());
+
+  // Insert test rows, equal amount per tablet.
+  int cur_row = 1;
+  int to_write = 2;
+  for (bool is_local : {true, false}) {
+    const auto& tserver = cluster_->mini_tablet_server(is_local?0:1)->server();
+    // Use proxy for to most accurately simulate normal requests.
+    const auto& proxy = tserver->proxy();
+    auto& cur_tablets = is_local ? local_tablets : remote_tablets;
+    for (auto& tablet_id : cur_tablets) {
+      tserver::WriteRequestPB write_req;
+      tserver::WriteResponsePB write_resp;
+      write_req.set_tablet_id(tablet_id);
+      RpcController rpc;
+      for (int i = 1; i <= to_write; ++i) {
+        AddTestRowInsert(cur_row, 11 * cur_row, "key" + std::to_string(cur_row), &write_req);
+        ++cur_row;
+      }
+
+      SCOPED_TRACE(write_req.DebugString());
+      ASSERT_OK(proxy->Write(write_req, &write_resp, &rpc));
+      SCOPED_TRACE(write_resp.DebugString());
+      ASSERT_FALSE(write_resp.has_error());
+    }
+  }
+
+  // Query for all tablets on the first server. Ensure the non-local ones have errors.
+  for (bool is_local : {true, false}) {
+    auto& cur_tablets = is_local ? local_tablets : remote_tablets;
+    for (auto tablet_id : cur_tablets) {
+      std::vector<bool> proxy_options{false};
+      // Verify that remote tablet queries work only when proxy forwarding is enabled.
+      if (!is_local) proxy_options.push_back(true);
+      for (auto use_proxy : proxy_options) {
+        GetChangesRequestPB change_req;
+        GetChangesResponsePB change_resp;
+        change_req.set_tablet_id(tablet_id);
+        change_req.set_stream_id(stream_id);
+        change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
+        change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
+        change_req.set_serve_as_proxy(use_proxy);
+        RpcController rpc;
+        SCOPED_TRACE(change_req.DebugString());
+        ASSERT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
+        SCOPED_TRACE(change_resp.DebugString());
+        bool should_error = !(is_local || use_proxy);
+        ASSERT_EQ(change_resp.has_error(), should_error);
+        if (!should_error) {
+          ASSERT_EQ(to_write, change_resp.records_size());
+        }
+      }
+    }
+  }
+
+  // Verify the CDC metrics match what we just did.
+  const auto& tserver = cluster_->mini_tablet_server(0)->server();
+  auto cdc_service = dynamic_cast<CDCServiceImpl*>(
+      tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  auto server_metrics = cdc_service->GetCDCServerMetrics();
+  ASSERT_EQ(server_metrics->cdc_rpc_proxy_count->value(), remote_tablets.size());
 }
 
 TEST_F(CDCServiceTest, TestOnlyGetLocalChanges) {

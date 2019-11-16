@@ -29,8 +29,8 @@ struct ConsumerTabletInfo {
 };
 
 struct ProducerTabletInfo {
-  std::string universe_uuid;
-  std::string stream_id;
+  std::string universe_uuid; /* needed on Consumer side for uniqueness. Empty on Producer */
+  std::string stream_id; /* unique ID on Producer, but not on Consumer. */
   std::string tablet_id;
 
   bool operator==(const ProducerTabletInfo& other) const {

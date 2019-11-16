@@ -196,6 +196,10 @@ class ServicePoolImpl final : public InboundCallHandler {
     return service_->service_name();
   }
 
+  ServiceIfPtr TEST_get_service() const {
+    return service_;
+  }
+
   void Overflow(const InboundCallPtr& call, const char* type, size_t limit) {
     const auto err_msg =
         Substitute("$0 request on $1 from $2 dropped due to backpressure. "
@@ -475,6 +479,10 @@ const Counter* ServicePool::RpcsQueueOverflowMetric() const {
 
 std::string ServicePool::service_name() const {
   return impl_->service_name();
+}
+
+ServiceIfPtr ServicePool::TEST_get_service() const {
+  return impl_->TEST_get_service();
 }
 
 } // namespace rpc

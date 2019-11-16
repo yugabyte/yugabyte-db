@@ -63,6 +63,8 @@ DEFINE_int32(cdc_state_checkpoint_update_interval_ms, 15 * 1000,
 
 DECLARE_int32(cdc_checkpoint_opid_interval_ms);
 
+METRIC_DEFINE_entity(cdc);
+
 namespace yb {
 namespace cdc {
 
@@ -77,9 +79,12 @@ const client::YBTableName kCdcStateTableName(
     master::kSystemNamespaceName, master::kCdcStateTableName);
 
 CDCServiceImpl::CDCServiceImpl(TSTabletManager* tablet_manager,
-                               const scoped_refptr<MetricEntity>& metric_entity)
-    : CDCServiceIf(metric_entity),
-      tablet_manager_(tablet_manager) {
+                               const scoped_refptr<MetricEntity>& metric_entity_server,
+                               MetricRegistry* metric_registry)
+    : CDCServiceIf(metric_entity_server),
+      tablet_manager_(tablet_manager),
+      metric_registry_(metric_registry),
+      server_metrics_(std::make_shared<CDCServerMetrics>(metric_entity_server)) {
   const auto server = tablet_manager->server();
   async_client_init_.emplace(
       "cdc_client", FLAGS_cdc_ybclient_reactor_threads, FLAGS_cdc_read_rpc_timeout_ms / 1000,
@@ -318,11 +323,12 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
   RPC_CHECK_AND_RETURN_ERROR(record.ok(), record.status(), resp->mutable_error(),
                              CDCErrorPB::INTERNAL_ERROR, context);
 
+  int64_t last_readable_index;
   consensus::ReplicateMsgsHolder msgs_holder;
   MemTrackerPtr mem_tracker = GetMemTracker(tablet_peer, producer_tablet);
   s = cdc::GetChanges(
       req->stream_id(), req->tablet_id(), op_id, *record->get(), tablet_peer, mem_tracker,
-      &msgs_holder, resp);
+      &msgs_holder, resp, &last_readable_index);
   RPC_STATUS_RETURN_ERROR(
       s,
       resp->mutable_error(),
@@ -333,6 +339,25 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
   tablet_peer->consensus()->UpdateCDCConsumerOpId(GetMinSentCheckpointForTablet(req->tablet_id()));
+
+  // Update relevant GetChanges metrics before handing off the Response.
+  scoped_refptr<CDCTabletMetrics> tablet_metric = GetCDCTabletMetrics(producer_tablet, tablet_peer);
+  if (tablet_metric) {
+    auto lid = resp->checkpoint().op_id();
+    tablet_metric->last_read_opid_term->set_value(lid.term());
+    tablet_metric->last_read_opid_index->set_value(lid.index());
+    tablet_metric->last_readable_opid_index->set_value(last_readable_index);
+    if (resp->records_size() > 0) {
+      auto& last_record = resp->records(resp->records_size()-1);
+      tablet_metric->last_read_hybridtime->set_value(last_record.time());
+      tablet_metric->last_read_physicaltime->set_value(
+          HybridTime(last_record.time()).GetPhysicalValueMicros());
+      // Only count bytes responded if we are including a response payload.
+      tablet_metric->rpc_payload_bytes_responded->Increment(resp->ByteSize());
+    } else {
+      tablet_metric->rpc_heartbeats_responded->Increment();
+    }
+  }
 
   context.RespondSuccess();
 }
@@ -401,6 +426,10 @@ void CDCServiceImpl::TabletLeaderGetChanges(const GetChangesRequestPB* req,
                  peer->permanent_uuid())),
       resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, *context.get());
 
+  // Increment Proxy Metric.
+  server_metrics_->cdc_rpc_proxy_count->Increment();
+
+  // Forward this Request Info to the proper TabletServer.
   GetChangesRequestPB new_req;
   new_req.CopyFrom(*req);
   new_req.set_serve_as_proxy(false);
@@ -609,6 +638,38 @@ OpId CDCServiceImpl::GetMinSentCheckpointForTablet(const std::string& tablet_id)
   return min_op_id;
 }
 
+scoped_refptr<CDCTabletMetrics>
+    CDCServiceImpl::GetCDCTabletMetrics(const ProducerTabletInfo& producer,
+        std::shared_ptr<tablet::TabletPeer> tablet_peer) {
+  // 'nullptr' not recommended: using for tests.
+  if (tablet_peer == nullptr) {
+    auto status = tablet_manager_->GetTabletPeer(producer.tablet_id, &tablet_peer);
+    if (!status.ok() || tablet_peer == nullptr) return nullptr;
+  }
+
+  auto tablet = tablet_peer->shared_tablet();
+  if (tablet == nullptr) return nullptr;
+
+  std::string key = "CDCMetrics::" + producer.stream_id;
+  scoped_refptr<tablet::enterprise::TabletScopedIf> metrics_raw =
+      tablet->get_additional_metadata(key);
+  scoped_refptr<CDCTabletMetrics> ret;
+  if (metrics_raw == nullptr) {
+    //  Create a new METRIC_ENTITY_cdc here.
+    MetricEntity::AttributeMap attrs;
+    attrs["tablet_id"] = producer.tablet_id;
+    attrs["stream_id"] = producer.stream_id;
+    auto entity = METRIC_ENTITY_cdc.Instantiate(metric_registry_,
+        std::to_string(ProducerTabletInfo::Hash {}(producer)), attrs);
+    ret = new CDCTabletMetrics(entity, key);
+    // Adding the new metric to the tablet so it maintains the same lifetime scope.
+    tablet->add_additional_metadata(ret);
+  } else {
+    ret = dynamic_cast<CDCTabletMetrics*>(metrics_raw.get());
+  }
+  return ret;
+}
+
 Result<std::shared_ptr<StreamMetadata>> CDCServiceImpl::GetStream(const std::string& stream_id) {
   auto stream = GetStreamMetadataFromCache(stream_id);
   if (stream != nullptr) {
@@ -686,13 +747,16 @@ Status CDCServiceImpl::CheckTabletValidForStream(const ProducerTabletInfo& info)
     }
   }
 
+  // If we don't recognize the stream_id, populate our full tablet list for this stream.
   auto tablets = VERIFY_RESULT(GetTablets(info.stream_id));
   bool found = false;
   {
     std::lock_guard<rw_spinlock> l(mutex_);
     for (const auto &tablet : tablets) {
+      // Add every tablet in the stream.
       ProducerTabletInfo producer_info{info.universe_uuid, info.stream_id, tablet.tablet_id()};
       tablet_checkpoints_.emplace(producer_info, TabletCheckpoint(), TabletCheckpoint());
+      // If this is the tablet that the user requested.
       if (tablet.tablet_id() == info.tablet_id) {
         found = true;
       }
