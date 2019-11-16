@@ -81,7 +81,7 @@ Status TabletServer::RegisterServices() {
 
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
       FLAGS_svc_queue_length_default,
-      std::make_unique<CDCServiceImpl>(tablet_manager_.get(), metric_entity())));
+      std::make_unique<CDCServiceImpl>(tablet_manager_.get(), metric_entity(), metric_registry())));
 
   return super::RegisterServices();
 }

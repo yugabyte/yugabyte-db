@@ -29,58 +29,64 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#ifndef YB_RPC_SERVICE_POOL_H
-#define YB_RPC_SERVICE_POOL_H
-
-#include <string>
-#include <vector>
+#ifndef ENT_SRC_YB_CDC_CDC_METRICS_H
+#define ENT_SRC_YB_CDC_CDC_METRICS_H
 
 #include "yb/gutil/macros.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/rpc/rpc_fwd.h"
-#include "yb/rpc/rpc_service.h"
-#include "yb/util/blocking_queue.h"
-#include "yb/util/mutex.h"
-#include "yb/util/thread.h"
-#include "yb/util/status.h"
+
+#include "yb/util/monotime.h"
+
+#include "yb/tablet/tablet.h"
 
 namespace yb {
 
 class Counter;
+template<class T>
+class AtomicGauge;
 class Histogram;
 class MetricEntity;
-class Socket;
 
-namespace rpc {
+namespace cdc {
 
-// A pool of threads that handle new incoming RPC calls.
-// Also includes a queue that calls get pushed onto for handling by the pool.
-class ServicePool : public RpcService {
+// Container for all metrics specific to a single tablet.
+class CDCTabletMetrics : public yb::tablet::enterprise::TabletScopedIf {
  public:
-  ServicePool(size_t max_tasks,
-              ThreadPool* thread_pool,
-              Scheduler* scheduler,
-              ServiceIfPtr service,
-              const scoped_refptr<MetricEntity>& metric_entity);
-  virtual ~ServicePool();
+  explicit CDCTabletMetrics(const scoped_refptr<MetricEntity>& metric_entity_cdc,
+      const std::string& key);
 
-  void StartShutdown() override;
-  void CompleteShutdown() override;
+  virtual std::string Key() const { return key_; }
 
-  void QueueInboundCall(InboundCallPtr call) override;
-  void Handle(InboundCallPtr call) override;
-  const Counter* RpcsTimedOutInQueueMetricForTests() const;
-  const Counter* RpcsQueueOverflowMetric() const;
-  std::string service_name() const;
+  scoped_refptr<Histogram> rpc_payload_bytes_responded;
+  scoped_refptr<Counter> rpc_heartbeats_responded;
+  // For rpc_latency & rpcs_responded_count, use 'handler_latency_yb_cdc_CDCService_GetChanges'.
 
-  ServiceIfPtr TEST_get_service() const;
+  // Info about ID last read by CDC Consumer.
+  scoped_refptr<AtomicGauge<int64_t> > last_read_opid_term;
+  scoped_refptr<AtomicGauge<int64_t> > last_read_opid_index;
+  scoped_refptr<AtomicGauge<uint64_t> > last_read_hybridtime;
+  scoped_refptr<AtomicGauge<uint64_t> > last_read_physicaltime;
+
+  // Info about last majority-replicated OpID by CDC Producer (upon last poll).
+  scoped_refptr<AtomicGauge<int64_t> > last_readable_opid_index;
+  // For last_committed_hybridtime, use 'hybrid_clock_hybrid_time'.
+
  private:
-  std::unique_ptr<ServicePoolImpl> impl_;
+  scoped_refptr<MetricEntity> entity_;
+  std::string key_;
 };
 
-} // namespace rpc
-} // namespace yb
+class CDCServerMetrics {
+ public:
+  explicit CDCServerMetrics(const scoped_refptr<MetricEntity>& metric_entity_server);
 
-#endif // YB_RPC_SERVICE_POOL_H
+  scoped_refptr<Counter> cdc_rpc_proxy_count;
+  // Future Metric: scoped_refptr<Counter> cdc_rpc_error_count;
+
+ private:
+  scoped_refptr<MetricEntity> entity_;
+};
+
+} // namespace cdc
+} // namespace yb
+#endif // ENT_SRC_YB_CDC_CDC_METRICS_H

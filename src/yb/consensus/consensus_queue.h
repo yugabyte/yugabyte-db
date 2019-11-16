@@ -317,7 +317,8 @@ class PeerMessageQueue {
   }
 
   // Read replicated log records starting from the OpId immediately after last_op_id.
-  Result<ReadOpsResult> ReadReplicatedMessagesForCDC(const yb::OpId& last_op_id);
+  Result<ReadOpsResult> ReadReplicatedMessagesForCDC(const yb::OpId& last_op_id,
+                                                     int64_t* last_replicated_opid_index = nullptr);
 
   void UpdateCDCConsumerOpId(const yb::OpId& op_id);
 
