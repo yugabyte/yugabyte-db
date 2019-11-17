@@ -252,19 +252,25 @@ export default class CustomerProfile extends Component {
                     <Row>
                       <Col md={6} sm={12}>
                         <h3>Alerting controls</h3>
-                        <Field name="alertingData.alertingEmail" type="text" component={YBFormInput} label="Alert email" placeholder="Email to forward alerts to"/>
-                        <Field render={({field, form}) => (
-                          <YBToggle onToggle={handleChange}
-                            name="alertingData.sendAlertsToYb"
-                            input={{
-                              value: field.value.sendAlertsToYb,
-                              onChange: field.onChange,
-                            }}
-                            label="Send alert emails to YugaByte team"
-                            subLabel="Whether or not to send alerting emails to the YugaByte team."
-                          />
-                        )}
+                        <Field
+                          name="alertingData.alertingEmail"
+                          type="text"
+                          component={YBFormInput}
+                          label="Alert email"
+                          placeholder="Email to forward alerts to"
                         />
+                        <Field name="alertingData.sendAlertsToYb">
+                          {({field, form}) => (<YBToggle onToggle={handleChange}
+                              name="alertingData.sendAlertsToYb"
+                              input={{
+                                value: field.value,
+                                onChange: field.onChange,
+                              }}
+                              label="Send alert emails to YugaByte team"
+                              subLabel="Whether or not to send alerting emails to the YugaByte team."
+                            />
+                          )}
+                        </Field>
                         <Field name="callhomeLevel"
                           component={YBControlledSelectWithLabel}
                           label="Callhome Level"
