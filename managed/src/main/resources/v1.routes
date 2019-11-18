@@ -19,6 +19,8 @@ GET     /app_version                              com.yugabyte.yw.controllers.Se
 GET     /logs/:maxLines                           com.yugabyte.yw.controllers.SessionController.getLogs(maxLines: java.lang.Integer)
 GET     /ui_theme                                 com.yugabyte.yw.controllers.SessionController.getUITheme()
 
+GET     /prometheus_metrics                       com.yugabyte.yw.controllers.MetricsController.index()
+
 # Initialize cloud information.
 GET     /customers/:cUUID/regions                 com.yugabyte.yw.controllers.RegionController.listAllRegions(cUUID: java.util.UUID)
 
