@@ -8,13 +8,14 @@ section: RELEASES
 menu:
   latest:
     identifier: releases
-    weight: 2682
+    weight: 2608
 ---
 
 Download YugabyteDB using the table below and then follow the [Quick Start](../quick-start/) instructions to get started.
 
 Release | Date | Binary | Docker Image Tag
 --------|------|-------------------------------|-----------------
+[v2.0.5](./v2.0.5) | November 15, 2019 | <a href="https://downloads.yugabyte.com/yugabyte-2.0.5.2-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.0.5.2-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.0.5.2-b3
 [v2.0.3](./v2.0.3) | October 28, 2019 | <a href="https://downloads.yugabyte.com/yugabyte-2.0.3.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.0.3.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.0.3.0-b7
 [v2.0.1](./v2.0.1) | October 08, 2019 | <a href="https://downloads.yugabyte.com/yugabyte-2.0.1.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.0.1.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.0.1.0-b19
 [v2.0.0](./v2.0.0) | September 17, 2019 | <a href="https://downloads.yugabyte.com/yugabyte-2.0.0.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.0.0.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.0.0.0-b16
