@@ -45,6 +45,8 @@ import scala.concurrent.ExecutionContext;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import io.prometheus.client.CollectorRegistry;
+
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
@@ -81,6 +83,8 @@ public class HealthCheckerTest extends FakeDBApplication {
   AccessKey accessKey;
   CustomerConfig customerConfig;
 
+  CollectorRegistry testRegistry;
+
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
@@ -97,13 +101,16 @@ public class HealthCheckerTest extends FakeDBApplication {
         any(), any(), any(), any(), any(), any(), any())
     ).thenReturn(dummyShellResponse);
 
+    testRegistry = new CollectorRegistry();
+
     // Finally setup the mocked instance.
     healthChecker = new HealthChecker(
         mockActorSystem,
         mockConfig,
         mockEnvironment,
         mockExecutionContext,
-        mockHealthManager);
+        mockHealthManager,
+        testRegistry);
   }
 
   private Universe setupUniverse(String name) {
@@ -178,6 +185,12 @@ public class HealthCheckerTest extends FakeDBApplication {
   private void testSingleUniverse(Universe u, String expectedEmail) {
     healthChecker.checkSingleUniverse(u, defaultCustomer, customerConfig, true);
     verifyHealthManager(u, expectedEmail);
+
+    String[] labels = { HealthChecker.kUnivMetricLabel };
+    String [] labelValues = { u.universeUUID.toString() };
+    Double val = testRegistry.getSampleValue(HealthChecker.kUnivMetricName, labels, labelValues);
+    assertEquals(val.intValue(), 1);
+
   }
 
   private void testSingleK8sUniverse(Universe u, String expectedEmail) {
