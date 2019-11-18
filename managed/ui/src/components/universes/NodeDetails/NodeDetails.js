@@ -12,12 +12,13 @@ export default class NodeDetails extends Component {
 
   componentDidMount() {
     const { universe: { currentUniverse } } = this.props;
-    if (getPromiseState(currentUniverse).isSuccess() &&
-        hasLiveNodes(currentUniverse.data)) {
+    if (getPromiseState(currentUniverse).isSuccess()) {
       const uuid = currentUniverse.data.universeUUID;
       this.props.getUniversePerNodeStatus(uuid);
-      this.props.getUniversePerNodeMetrics(uuid);
       this.props.getMasterLeader(uuid);
+      if (hasLiveNodes(currentUniverse.data.universeDetails.nodeDetailsSet)) {
+        this.props.getUniversePerNodeMetrics(uuid);
+      }
     }
   }
 
