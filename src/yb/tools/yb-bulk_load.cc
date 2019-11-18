@@ -31,6 +31,7 @@
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/docdb.h"
+#include "yb/master/master_util.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rpc/messenger.h"
@@ -484,7 +485,8 @@ CHECKED_STATUS BulkLoad::InitDBUtil(const TabletId &tablet_id) {
 Status BulkLoad::InitYBBulkLoad() {
   // Convert table_name to lowercase since we store table names in lowercase.
   string table_name_lower = boost::to_lower_copy(FLAGS_table_name);
-  YBTableName table_name(FLAGS_namespace_name, table_name_lower);
+  YBTableName table_name(
+      master::GetDefaultDatabaseType(FLAGS_namespace_name), FLAGS_namespace_name, table_name_lower);
 
   YBClientBuilder builder;
   builder.add_master_server_addr(FLAGS_master_addresses);

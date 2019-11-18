@@ -93,7 +93,7 @@ using master::SysTablesEntryPB;
 using master::SysSnapshotEntryPB;
 using master::TableIdentifierPB;
 
-const YBTableName kTableName("my_keyspace", "snapshot_test_table");
+const YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "snapshot_test_table");
 
 class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
  public:

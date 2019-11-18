@@ -33,6 +33,7 @@
 #include "yb/master/master-path-handlers.h"
 
 #include <algorithm>
+#include <array>
 #include <functional>
 #include <map>
 #include <iomanip>
@@ -47,6 +48,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
@@ -58,6 +60,38 @@
 #include "yb/util/version_info.pb.h"
 
 namespace yb {
+
+namespace {
+static constexpr const char* kDBTypeNameUnknown = "unknown";
+static constexpr const char* kDBTypeNameCql = "ycql";
+static constexpr const char* kDBTypeNamePgsql = "ysql";
+static constexpr const char* kDBTypeNameRedis = "yedis";
+
+const char* DatabaseTypeName(YQLDatabase db) {
+  switch (db) {
+    case YQL_DATABASE_UNKNOWN: break;
+    case YQL_DATABASE_CQL: return kDBTypeNameCql;
+    case YQL_DATABASE_PGSQL: return kDBTypeNamePgsql;
+    case YQL_DATABASE_REDIS: return kDBTypeNameRedis;
+  }
+  CHECK(false) << "Unexpected db type " << db;
+  return kDBTypeNameUnknown;
+}
+
+YQLDatabase DatabaseTypeByName(const string& db_type_name) {
+  static const std::array<pair<const char*, YQLDatabase>, 3> db_types{
+      make_pair(kDBTypeNameCql, YQLDatabase::YQL_DATABASE_CQL),
+      make_pair(kDBTypeNamePgsql, YQLDatabase::YQL_DATABASE_PGSQL),
+      make_pair(kDBTypeNameRedis, YQLDatabase::YQL_DATABASE_REDIS)};
+  for (const auto& db : db_types) {
+    if (db_type_name == db.first) {
+      return db.second;
+    }
+  }
+  return YQLDatabase::YQL_DATABASE_UNKNOWN;
+}
+
+} // namespace
 
 using consensus::RaftPeerPB;
 using std::vector;
@@ -735,31 +769,38 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   // True if table_id, false if (keyspace, table).
-  bool has_id = false;
-  if (ContainsKey(req.parsed_args, "id")) {
-    has_id = true;
-  } else if (ContainsKey(req.parsed_args, "keyspace_name") &&
-             ContainsKey(req.parsed_args, "table_name")) {
-    has_id = false;
-  } else {
-    *output << " Missing 'id' argument or 'keyspace_name, table_name' argument pair.";
-    *output << " Arguments must either contain the table id or the "
-               " (keyspace_name, table_name) pair.";
-    return;
+  const auto arg_end = req.parsed_args.end();
+  auto id_arg = req.parsed_args.find("id");
+  auto keyspace_arg = arg_end;
+  auto table_arg = arg_end;
+  if (id_arg == arg_end) {
+    keyspace_arg = req.parsed_args.find("keyspace_name");
+    table_arg = req.parsed_args.find("table_name");
+    if (keyspace_arg == arg_end || table_arg == arg_end) {
+      *output << " Missing 'id' argument or 'keyspace_name, table_name' argument pair.";
+      *output << " Arguments must either contain the table id or the "
+                 " (keyspace_name, table_name) pair.";
+      return;
+    }
   }
 
   scoped_refptr<TableInfo> table;
 
-  if (has_id) {
-    string table_id;
-    FindCopy(req.parsed_args, "id", &table_id);
-    table = master_->catalog_manager()->GetTableInfo(table_id);
+  if (id_arg != arg_end) {
+    table = master_->catalog_manager()->GetTableInfo(id_arg->second);
   } else {
-    string keyspace, table_name;
-    FindCopy(req.parsed_args, "table_name", &table_name);
-    FindCopy(req.parsed_args, "keyspace_name", &keyspace);
-    table = master_->catalog_manager()
-        ->GetTableInfoFromNamespaceNameAndTableName(keyspace, table_name);
+    const auto keyspace_type_arg = req.parsed_args.find("keyspace_type");
+    const auto keyspace_type = (keyspace_type_arg == arg_end
+        ? GetDefaultDatabaseType(keyspace_arg->second)
+        : DatabaseTypeByName(keyspace_type_arg->second));
+    if (keyspace_type == YQLDatabase::YQL_DATABASE_UNKNOWN) {
+      *output << "Wrong keyspace_type found '" << keyspace_type_arg->second << "'."
+              << "Possible values are: " << kDBTypeNameCql << ", "
+              << kDBTypeNamePgsql << ", " << kDBTypeNameRedis << ".";
+      return;
+    }
+    table = master_->catalog_manager()->GetTableInfoFromNamespaceNameAndTableName(
+        keyspace_type, keyspace_arg->second, table_arg->second);
   }
 
   if (table == nullptr) {
@@ -1151,6 +1192,9 @@ class JsonKeyspaceDumper : public Visitor<PersistentNamespaceInfo>, public JsonD
 
     jw_->String("keyspace_name");
     jw_->String(metadata.name());
+
+    jw_->String("keyspace_type");
+    jw_->String(DatabaseTypeName((metadata.database_type())));
 
     jw_->EndObject();
     return Status::OK();

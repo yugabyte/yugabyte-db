@@ -160,8 +160,9 @@ class TwoDCTest : public YBTest {
 
   Result<YBTableName> CreateTable(YBClient* client, const std::string& namespace_name,
                                   const std::string& table_name, uint32_t num_tablets) {
-    YBTableName table = YBTableName(namespace_name, table_name);
-    RETURN_NOT_OK(client->CreateNamespaceIfNotExists(table.namespace_name()));
+    YBTableName table(YQL_DATABASE_CQL, namespace_name, table_name);
+    RETURN_NOT_OK(client->CreateNamespaceIfNotExists(table.namespace_name(),
+                                                     table.namespace_type()));
 
     // Add a table, make sure it reports itself.
     gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());

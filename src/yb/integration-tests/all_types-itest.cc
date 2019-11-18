@@ -269,8 +269,9 @@ class AllTypesItest : public YBTest {
     CreateAllTypesSchema();
     gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
 
-    const YBTableName table_name("my_keyspace", "all-types-table");
-    RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name()));
+    const YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "all-types-table");
+    RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name(),
+                                                      table_name.namespace_type()));
     RETURN_NOT_OK(table_creator->table_name(table_name)
                   .schema(&schema_)
                   .num_tablets(kNumTablets)

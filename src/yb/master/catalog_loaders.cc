@@ -31,6 +31,7 @@
 //
 
 #include "yb/master/catalog_loaders.h"
+#include "yb/master/master_util.h"
 
 namespace yb {
 namespace master {
@@ -160,21 +161,21 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
   // Setup the namespace info.
   NamespaceInfo *const ns = new NamespaceInfo(ns_id);
   auto l = ns->LockForWrite();
+  const auto& pb_data = l->data().pb;
+
   l->mutable_data()->pb.CopyFrom(metadata);
 
-  if (!l->data().pb.has_database_type() ||
-      l->data().pb.database_type() == YQL_DATABASE_UNKNOWN) {
-    LOG(INFO) << "Updating database type of namespace " << l->data().pb.name();
-    l->mutable_data()->pb.set_database_type(l->data().pb.name() == common::kRedisKeyspaceName
-                                            ? YQLDatabase::YQL_DATABASE_REDIS
-                                            : YQLDatabase::YQL_DATABASE_CQL);
+  if (!pb_data.has_database_type() || pb_data.database_type() == YQL_DATABASE_UNKNOWN) {
+    LOG(INFO) << "Updating database type of namespace " << pb_data.name();
+    l->mutable_data()->pb.set_database_type(GetDefaultDatabaseType(pb_data.name()));
   }
 
   // Add the namespace to the IDs map and to the name map (if the namespace is not deleted).
-  // Do not add Postgres namespace to the name map as it will be identified by id only.
   catalog_manager_->namespace_ids_map_[ns_id] = ns;
-  if (!l->data().pb.name().empty() && l->data().pb.database_type() != YQL_DATABASE_PGSQL) {
-    catalog_manager_->namespace_names_map_[l->data().pb.name()] = ns;
+  if (!pb_data.name().empty()) {
+    catalog_manager_->namespace_names_mapper_[pb_data.database_type()][pb_data.name()] = ns;
+  } else {
+    LOG(WARNING) << "Namespace with id " << ns_id << " has empty name";
   }
 
   l->Commit();

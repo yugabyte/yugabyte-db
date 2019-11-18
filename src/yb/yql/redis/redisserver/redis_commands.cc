@@ -176,11 +176,10 @@ BOOST_PP_SEQ_FOR_EACH(DEFINE_HISTOGRAM, ~, REDIS_COMMANDS)
 BOOST_PP_SEQ_FOR_EACH(PARSER_FORWARD, ~, REDIS_COMMANDS)
 
 YBTableName RedisServiceData::GetYBTableNameForRedisDatabase(const string& db_name) {
-  if (db_name == "0") {
-    return YBTableName(common::kRedisKeyspaceName, common::kRedisTableName);
-  } else {
-    return YBTableName(common::kRedisKeyspaceName, StrCat(common::kRedisTableName, "_", db_name));
-  }
+  return YBTableName(YQL_DATABASE_REDIS,
+                     common::kRedisKeyspaceName,
+                     db_name == "0" ? string(common::kRedisTableName)
+                                    : StrCat(common::kRedisTableName, "_", db_name));
 }
 
 namespace {

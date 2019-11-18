@@ -346,7 +346,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
                    TableHandle* table) {
     auto num_replicas = FLAGS_replication_factor;
     // The implementation allows table name without a keyspace.
-    YBTableName table_name(table_name_orig.has_namespace() ?
+    YBTableName table_name(table_name_orig.namespace_type(), table_name_orig.has_namespace() ?
         table_name_orig.namespace_name() : kKeyspaceName, table_name_orig.table_name());
 
     bool added_replicas = false;
@@ -427,8 +427,8 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 
 
 const string ClientTest::kKeyspaceName("my_keyspace");
-const YBTableName ClientTest::kTableName(kKeyspaceName, "client-testtb");
-const YBTableName ClientTest::kTable2Name(kKeyspaceName, "client-testtb2");
+const YBTableName ClientTest::kTableName(YQL_DATABASE_CQL, kKeyspaceName, "client-testtb");
+const YBTableName ClientTest::kTable2Name(YQL_DATABASE_CQL, kKeyspaceName, "client-testtb2");
 
 namespace {
 
@@ -509,7 +509,8 @@ TEST_F(ClientTest, TestListTabletServers) {
 
 TEST_F(ClientTest, TestBadTable) {
   shared_ptr<YBTable> t;
-  Status s = client_->OpenTable(YBTableName(kKeyspaceName, "xxx-does-not-exist"), &t);
+  Status s = client_->OpenTable(
+      YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "xxx-does-not-exist"), &t);
   ASSERT_TRUE(s.IsNotFound());
   ASSERT_STR_CONTAINS(s.ToString(false), "Not found: The object does not exist");
 }
@@ -521,7 +522,7 @@ TEST_F(ClientTest, TestMasterDown) {
   cluster_->mini_master()->Shutdown();
   shared_ptr<YBTable> t;
   client_->data_->default_admin_operation_timeout_ = MonoDelta::FromSeconds(1);
-  Status s = client_->OpenTable(YBTableName(kKeyspaceName, "other-tablet"), &t);
+  Status s = client_->OpenTable(YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "other-tablet"), &t);
   ASSERT_TRUE(s.IsTimedOut());
 }
 
@@ -576,7 +577,7 @@ void CheckCounts(const TableHandle& table, const std::vector<int>& expected) {
 TEST_F(ClientTest, TestScanMultiTablet) {
   // 5 tablets, each with 10 rows worth of space.
   TableHandle table;
-  ASSERT_NO_FATALS(CreateTable(YBTableName("TestScanMultiTablet"), 5, &table));
+  ASSERT_NO_FATALS(CreateTable(YBTableName(YQL_DATABASE_CQL, "TestScanMultiTablet"), 5, &table));
 
   // Insert rows with keys 12, 13, 15, 17, 22, 23, 25, 27...47 into each
   // tablet, except the first which is empty.
@@ -682,7 +683,7 @@ TEST_F(ClientTest, TestScanPredicateNonKeyColNotProjected) {
 
 TEST_F(ClientTest, TestGetTabletServerBlacklist) {
   TableHandle table;
-  ASSERT_NO_FATALS(CreateTable(YBTableName("blacklist"), kNumTablets, &table));
+  ASSERT_NO_FATALS(CreateTable(YBTableName(YQL_DATABASE_CQL, "blacklist"), kNumTablets, &table));
   InsertTestRows(table, 1, 0);
 
   // Look up the tablet and its replicas into the metadata cache.
@@ -755,7 +756,7 @@ TEST_F(ClientTest, TestGetTabletServerBlacklist) {
 
 TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
   TableHandle table;
-  ASSERT_NO_FATALS(CreateTable(YBTableName("split-table"),
+  ASSERT_NO_FATALS(CreateTable(YBTableName(YQL_DATABASE_CQL, "split-table"),
                                kNumTablets,
                                &table));
 
@@ -1260,7 +1261,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
   }
 
   {
-    const YBTableName kRenamedTableName(kKeyspaceName, "RenamedTable");
+    const YBTableName kRenamedTableName(YQL_DATABASE_CQL, kKeyspaceName, "RenamedTable");
     gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     ASSERT_OK(table_alterer
               ->RenameTo(kRenamedTableName)
@@ -1326,8 +1327,8 @@ TEST_F(ClientTest, TestGetTableSchema) {
   ASSERT_TRUE(schema_.Equals(schema));
 
   // Verify that a get schema request for a missing table throws not found
-  Status s = client_->GetTableSchema(YBTableName(kKeyspaceName, "MissingTableName"), &schema,
-                                     &partition_schema);
+  Status s = client_->GetTableSchema(
+      YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "MissingTableName"), &schema, &partition_schema);
   ASSERT_TRUE(s.IsNotFound());
   ASSERT_STR_CONTAINS(s.ToString(), "The object does not exist");
 }
@@ -1449,7 +1450,7 @@ TEST_F(ClientTest, TestStaleLocations) {
 // in this file. However, some things like alter table are not yet
 // working on replicated tables - see KUDU-304
 TEST_F(ClientTest, TestReplicatedMultiTabletTable) {
-  const YBTableName kReplicatedTable("replicated");
+  const YBTableName kReplicatedTable(YQL_DATABASE_CQL, "replicated");
   const int kNumRowsToWrite = 100;
 
   TableHandle table;
@@ -1471,7 +1472,7 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTable) {
 }
 
 TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
-  const YBTableName kReplicatedTable("replicated_failover_on_reads");
+  const YBTableName kReplicatedTable(YQL_DATABASE_CQL, "replicated_failover_on_reads");
   const int kNumRowsToWrite = 100;
   const int kNumTries = 100;
 
@@ -1514,7 +1515,7 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
 // TODO Remove the leader promotion part when we have automated
 // leader election.
 TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
-  const YBTableName kReplicatedTable("replicated_failover_on_writes");
+  const YBTableName kReplicatedTable(YQL_DATABASE_CQL, "replicated_failover_on_writes");
   const int kNumRowsToWrite = 100;
 
   TableHandle table;
@@ -1886,7 +1887,7 @@ TEST_F(ClientTest, CreateTableWithoutTservers) {
       .Build());
 
   gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
-  Status s = table_creator->table_name(YBTableName(kKeyspaceName, "foobar"))
+  Status s = table_creator->table_name(YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "foobar"))
       .schema(&schema_)
       .Create();
   ASSERT_TRUE(s.IsInvalidArgument());
@@ -1898,7 +1899,7 @@ TEST_F(ClientTest, TestCreateTableWithTooManyTablets) {
   auto many_tablets = FLAGS_replication_factor + 1;
 
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-  Status s = table_creator->table_name(YBTableName(kKeyspaceName, "foobar"))
+  Status s = table_creator->table_name(YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "foobar"))
       .schema(&schema_)
       .num_tablets(many_tablets)
       .Create();
@@ -1913,7 +1914,7 @@ TEST_F(ClientTest, TestCreateTableWithTooManyTablets) {
 // TODO(bogdan): Disabled until ENG-2687
 TEST_F(ClientTest, DISABLED_TestCreateTableWithTooManyReplicas) {
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-  Status s = table_creator->table_name(YBTableName(kKeyspaceName, "foobar"))
+  Status s = table_creator->table_name(YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "foobar"))
       .schema(&schema_)
       .num_tablets(2)
       .Create();
@@ -1968,7 +1969,7 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
 
 TEST_F(ClientTest, TestReadFromFollower) {
   // Create table and write some rows.
-  const YBTableName kReadFromFollowerTable("TestReadFromFollower");
+  const YBTableName kReadFromFollowerTable(YQL_DATABASE_CQL, "TestReadFromFollower");
   TableHandle table;
   ASSERT_NO_FATALS(CreateTable(kReadFromFollowerTable, 1, &table));
   ASSERT_NO_FATALS(InsertTestRows(table, FLAGS_test_scan_num_rows));
@@ -2074,9 +2075,10 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   const std::string kPgsqlTableId = "pgsqlrangepartitionedtableid";
   const size_t kColIdx = 1;
   const int64_t kKeyValue = 48238;
-  auto pgsql_table_name = YBTableName(kPgsqlKeyspaceID, kPgsqlKeyspaceName, kPgsqlTableName);
+  auto pgsql_table_name = YBTableName(
+      YQL_DATABASE_PGSQL, kPgsqlKeyspaceID, kPgsqlKeyspaceName, kPgsqlTableName);
 
-  auto yql_table_name = YBTableName(kKeyspaceName, "yqlrangepartitionedtable");
+  auto yql_table_name = YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "yqlrangepartitionedtable");
 
   YBSchemaBuilder schemaBuilder;
   schemaBuilder.AddColumn("key")->PrimaryKey()->Type(yb::STRING)->NotNull();

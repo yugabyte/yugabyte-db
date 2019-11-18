@@ -122,8 +122,11 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     int before_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
 
     // Add a tablet, make sure it reports itself.
-    CreateTabletForTesting(cluster_->mini_master(), YBTableName("my_keyspace", "fake-table"),
-                           schema_, &tablet_id_1, &table_id_1);
+    CreateTabletForTesting(cluster_->mini_master(),
+                           YBTableName(YQL_DATABASE_CQL, "my_keyspace", "fake-table"),
+                           schema_,
+                           &tablet_id_1,
+                           &table_id_1);
 
     TabletLocationsPB locs;
     ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_1, 1, &locs));
@@ -150,8 +153,10 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
 
     // Record the number of rows before the new table.
     before_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
-    CreateTabletForTesting(cluster_->mini_master(), YBTableName("my_keyspace", "fake-table2"),
-                           schema_copy, &tablet_id_2);
+    CreateTabletForTesting(cluster_->mini_master(),
+                           YBTableName(YQL_DATABASE_CQL, "my_keyspace", "fake-table2"),
+                           schema_copy,
+                           &tablet_id_2);
     // Sleep for enough to make sure the TS has plenty of time to re-heartbeat.
     SleepFor(MonoDelta::FromSeconds(2));
     after_create_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
@@ -159,7 +164,6 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     // For a copartitioned table, we expect just 1 write per tablet.
     expected_rows = 2 + FLAGS_yb_num_shards_per_tserver * (co_partition ? 1 : 4);
     EXPECT_EQ(expected_rows, after_create_rows_inserted - before_rows_inserted);
-
     ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_2, 1, &locs));
 
     if (co_partition) {

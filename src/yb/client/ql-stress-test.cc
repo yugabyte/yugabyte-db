@@ -214,7 +214,8 @@ TEST_F(QLStressTest, LargeNumberOfTables) {
     InitSchemaBuilder(&b);
     CompleteSchemaBuilder(&b);
     TableHandle table;
-    client::YBTableName table_name("my_keyspace", "ql_client_test_table_" + std::to_string(i));
+    client::YBTableName table_name(
+        YQL_DATABASE_CQL, "my_keyspace", "ql_client_test_table_" + std::to_string(i));
     ASSERT_OK(table.Create(table_name, num_tablets_per_table, client_.get(), &b));
 
     int num_rows = num_tablets_per_table * 5;
@@ -931,7 +932,9 @@ TEST_F_EX(QLStressTest, DynamicCompactionPriority, QLStressDynamicCompactionPrio
   CompleteSchemaBuilder(&b);
 
   TableHandle table2;
-  ASSERT_OK(table2.Create(YBTableName(kTableName.namespace_name(), kTableName.table_name() + "_2"),
+  ASSERT_OK(table2.Create(YBTableName(kTableName.namespace_type(),
+                                      kTableName.namespace_name(),
+                                      kTableName.table_name() + "_2"),
                           NumTablets(), client_.get(), &b));
 
   TestThreadHolder thread_holder;

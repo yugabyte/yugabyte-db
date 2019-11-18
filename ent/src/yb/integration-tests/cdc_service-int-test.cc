@@ -48,7 +48,7 @@ using rpc::RpcController;
 
 const std::string kCDCTestKeyspace = "my_keyspace";
 const std::string kCDCTestTableName = "cdc_test_table";
-const client::YBTableName kTableName(kCDCTestKeyspace, kCDCTestTableName);
+const client::YBTableName kTableName(YQL_DATABASE_CQL, kCDCTestKeyspace, kCDCTestTableName);
 
 class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
  protected:
@@ -99,7 +99,8 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
 };
 
 void CDCServiceTest::CreateTable(int num_tablets, TableHandle* table) {
-  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
+                                                kTableName.namespace_type()));
 
   client::YBSchemaBuilder builder;
   builder.AddColumn("key")->Type(INT32)->HashPrimaryKey()->NotNull();
@@ -124,7 +125,8 @@ void AssertChangeRecords(const google::protobuf::RepeatedPtrField<cdc::KeyValueP
 
 void VerifyCdcState(client::YBClient* client) {
   client::TableHandle table;
-  client::YBTableName cdc_state_table(master::kSystemNamespaceName, master::kCdcStateTableName);
+  client::YBTableName cdc_state_table(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
   ASSERT_OK(table.Open(cdc_state_table, client));
   ASSERT_EQ(1, boost::size(client::TableRange(table)));
   const auto& row = client::TableRange(table).begin();

@@ -60,6 +60,7 @@
 #include "yb/gutil/sysinfo.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_rpc.h"
+#include "yb/master/master_util.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
@@ -452,10 +453,13 @@ Status YBClient::Data::CreateTable(YBClient* client,
       // response could be sent back, or due to a I/O pause or a
       // network blip leading to a timeout, etc...)
       YBTableInfo info;
-      string keyspace = req.has_namespace_() ? req.namespace_().name() :
-                        (req.name() == common::kRedisTableName ? common::kRedisKeyspaceName : "");
-      const YBTableName table_name(!keyspace.empty()
-          ? YBTableName(keyspace, req.name()) : YBTableName(req.name()));
+      const string keyspace = req.has_namespace_()
+          ? req.namespace_().name()
+          : (req.name() == common::kRedisTableName ? common::kRedisKeyspaceName : "");
+      const YQLDatabase db_type = req.has_namespace_() && req.namespace_().has_database_type()
+          ? req.namespace_().database_type()
+          : (keyspace.empty() ? YQL_DATABASE_CQL : master::GetDefaultDatabaseType(keyspace));
+      const YBTableName table_name(db_type, req.name());
 
       // A fix for https://yugabyte.atlassian.net/browse/ENG-529:
       // If we've been retrying table creation, and the table is now in the process is being

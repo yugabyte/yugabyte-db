@@ -154,7 +154,7 @@ class PTQualifiedName : public PTName {
   CHECKED_STATUS AnalyzeName(SemContext *sem_context, ObjectType object_type);
 
   client::YBTableName ToTableName() const {
-    return client::YBTableName(first_name().c_str(), last_name().c_str());
+    return client::YBTableName(YQL_DATABASE_CQL, first_name().c_str(), last_name().c_str());
   }
 
   virtual string QLName() const override {
