@@ -145,7 +145,7 @@ class TestQLQuery : public QLTestBase {
     CHECK_OK(processor->Run("CREATE TABLE scan_bounds_test (h1 int, h2 text, r1 int, v1 int,"
                                 " PRIMARY KEY((h1, h2), r1));"));
 
-    client::YBTableName name(kDefaultKeyspaceName, "scan_bounds_test");
+    client::YBTableName name(YQL_DATABASE_CQL, kDefaultKeyspaceName, "scan_bounds_test");
     shared_ptr<client::YBTable> table;
 
     ASSERT_OK(client_->OpenTable(name, &table));
@@ -1678,7 +1678,7 @@ TEST_F(TestQLQuery, TestDeleteColumn) {
   CHECK_OK(processor->Run("CREATE TABLE delete_column (h int, v1 int, v2 int,"
                             " PRIMARY KEY(h));"));
 
-  client::YBTableName name(kDefaultKeyspaceName, "delete_column");
+  client::YBTableName name(YQL_DATABASE_CQL, kDefaultKeyspaceName, "delete_column");
 
   for (int i = 0; i < 2; i++) {
     string stmt = Substitute("INSERT INTO delete_column (h, v1, v2) VALUES "
@@ -1719,7 +1719,7 @@ TEST_F(TestQLQuery, TestTtlWritetimeInWhereClauseOfSelectStatements) {
   CHECK_OK(
       processor->Run("CREATE TABLE ttl_writetime_test (h int, v1 int, v2 int, PRIMARY KEY(h))"));
 
-  client::YBTableName name(kDefaultKeyspaceName, "ttl_writetime_test");
+  client::YBTableName name(YQL_DATABASE_CQL, kDefaultKeyspaceName, "ttl_writetime_test");
 
   shared_ptr<client::YBTable> table;
 

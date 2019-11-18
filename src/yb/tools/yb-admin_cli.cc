@@ -487,7 +487,8 @@ Result<YBTableName> ResolveTableName(ClusterAdminClientClass* client,
   const auto typed_name = VERIFY_RESULT(ParseNamespaceName(full_namespace_name));
   const auto& namespace_info = VERIFY_RESULT_REF(client->GetNamespaceInfo(typed_name.db_type,
                                                                           typed_name.name));
-  return YBTableName(namespace_info.id(), namespace_info.name(), table_name);
+  return YBTableName(
+      namespace_info.database_type(), namespace_info.id(), namespace_info.name(), table_name);
 }
 
 }  // namespace tools

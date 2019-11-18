@@ -15,6 +15,7 @@
 // Treenode definitions for all name nodes.
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/common/redis_constants_common.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 

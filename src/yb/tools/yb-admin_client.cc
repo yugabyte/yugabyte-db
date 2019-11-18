@@ -36,6 +36,7 @@
 
 #include <boost/tti/has_member_function.hpp>
 
+#include "yb/common/redis_constants_common.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/client/client.h"
 #include "yb/client/table_creator.h"
@@ -441,7 +442,8 @@ Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
 }
 
 Status ClusterAdminClient::SetupRedisTable() {
-  const YBTableName table_name(common::kRedisKeyspaceName, common::kRedisTableName);
+  const YBTableName table_name(
+      YQL_DATABASE_REDIS, common::kRedisKeyspaceName, common::kRedisTableName);
   RETURN_NOT_OK(yb_client_->CreateNamespaceIfNotExists(common::kRedisKeyspaceName,
                                                        YQLDatabase::YQL_DATABASE_REDIS));
   // Try to create the table.
@@ -464,7 +466,8 @@ Status ClusterAdminClient::SetupRedisTable() {
 }
 
 Status ClusterAdminClient::DropRedisTable() {
-  const YBTableName table_name(common::kRedisKeyspaceName, common::kRedisTableName);
+  const YBTableName table_name(
+      YQL_DATABASE_REDIS, common::kRedisKeyspaceName, common::kRedisTableName);
   Status s = yb_client_->DeleteTable(table_name, true /* wait */);
   if (s.ok()) {
     LOG(INFO) << "Table '" << table_name.ToString() << "' deleted.";

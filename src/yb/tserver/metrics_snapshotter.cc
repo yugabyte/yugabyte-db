@@ -312,7 +312,8 @@ Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
   shared_ptr<YBSession> session = client_->NewSession();
   session->SetTimeout(15s);
 
-  const YBTableName kTableName(master::kSystemNamespaceName, kMetricsSnapshotsTableName);
+  const YBTableName kTableName(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kMetricsSnapshotsTableName);
 
   client::TableHandle table;
   RETURN_NOT_OK(table.Open(kTableName, client_));

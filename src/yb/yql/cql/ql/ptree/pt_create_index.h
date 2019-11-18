@@ -60,7 +60,8 @@ class PTCreateIndex : public PTCreateTable {
   }
 
   client::YBTableName yb_table_name() const override {
-    return client::YBTableName(PTCreateTable::yb_table_name().namespace_name().c_str(),
+    return client::YBTableName(YQL_DATABASE_CQL,
+                               PTCreateTable::yb_table_name().namespace_name().c_str(),
                                name_->c_str());
   }
 

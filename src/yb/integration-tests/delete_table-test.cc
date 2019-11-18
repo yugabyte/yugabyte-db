@@ -443,7 +443,8 @@ TEST_F(DeleteTableTest, TestDeleteTableWithConcurrentWrites) {
   int n_iters = AllowSlowTests() ? 20 : 1;
   for (int i = 0; i < n_iters; i++) {
     TestWorkload workload(cluster_.get());
-    workload.set_table_name(YBTableName("my_keyspace", Substitute("table-$0", i)));
+    workload.set_table_name(YBTableName(YQL_DATABASE_CQL, "my_keyspace",
+        Substitute("table-$0", i)));
 
     // We'll delete the table underneath the writers, so we expcted
     // a NotFound error during the writes.
@@ -485,7 +486,7 @@ TEST_F(DeleteTableTest, DeleteTableWithConcurrentWritesNoRestarts) {
   constexpr auto kNumIters = 10;
   for (int iter = 0; iter < kNumIters; iter++) {
     TestWorkload workload(cluster_.get());
-    workload.set_table_name(YBTableName("my_keyspace", Format("table-$0", iter)));
+    workload.set_table_name(YBTableName(YQL_DATABASE_CQL, "my_keyspace", Format("table-$0", iter)));
 
     // We'll delete the table underneath the writers, so we expect a NotFound error during the
     // writes.
@@ -1131,7 +1132,8 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   // injecting any faults, then we delete the second tablet while exercising
   // several fault injection points.
   ASSERT_OK(client_->CreateNamespaceIfNotExists(
-      TestWorkloadOptions::kDefaultTableName.namespace_name()));
+      TestWorkloadOptions::kDefaultTableName.namespace_name(),
+      TestWorkloadOptions::kDefaultTableName.namespace_type()));
   const int kNumTablets = 2;
   Schema schema(GetSimpleTestSchema());
   client::YBSchema client_schema(client::YBSchemaFromSchema(schema));

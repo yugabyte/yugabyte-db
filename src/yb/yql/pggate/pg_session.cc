@@ -176,7 +176,8 @@ Status PgSession::GetCatalogMasterVersion(uint64_t *version) {
 }
 
 Status PgSession::CreateSequencesDataTable() {
-  const YBTableName table_name(kPgSequencesDataNamespaceId,
+  const YBTableName table_name(YQL_DATABASE_PGSQL,
+                               kPgSequencesDataNamespaceId,
                                kPgSequencesNamespaceName,
                                kPgSequencesDataTableName);
   RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kPgSequencesNamespaceName,

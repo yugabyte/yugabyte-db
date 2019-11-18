@@ -1247,8 +1247,11 @@ Status YBClient::ListTablesWithIds(
     }
     tables_with_ids->emplace_back(
         table_info.id(),
-        YBTableName(table_info.namespace_().id(), table_info.namespace_().name(),
-                    table_info.id(), table_info.name()));
+        YBTableName(master::GetDatabaseTypeForTable(table_info.table_type()),
+                    table_info.namespace_().id(),
+                    table_info.namespace_().name(),
+                    table_info.id(),
+                    table_info.name()));
   }
   return Status::OK();
 }

@@ -48,6 +48,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
+#include "yb/master/master_util.h"
 #include "yb/util/env.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random.h"
@@ -71,7 +72,8 @@ using client::YBTableType;
 using client::YBTableName;
 using std::shared_ptr;
 
-const YBTableName TestWorkloadOptions::kDefaultTableName("my_keyspace", "test-workload");
+const YBTableName TestWorkloadOptions::kDefaultTableName(
+    YQL_DATABASE_CQL, "my_keyspace", "test-workload");
 
 class TestWorkload::State {
  public:
@@ -268,7 +270,9 @@ void TestWorkload::State::Setup(YBTableType table_type, const TestWorkloadOption
   client::YBClientBuilder client_builder;
   client_builder.default_rpc_timeout(options.default_rpc_timeout);
   client_ = CHECK_RESULT(cluster_->CreateClient(&client_builder));
-  CHECK_OK(client_->CreateNamespaceIfNotExists(options.table_name.namespace_name()));
+  CHECK_OK(client_->CreateNamespaceIfNotExists(
+      options.table_name.namespace_name(),
+      master::GetDatabaseTypeForTable(client::YBTable::ClientToPBTableType(table_type))));
 
   // Retry YBClient::TableExists() until we make that call retry reliably.
   // See KUDU-1074.

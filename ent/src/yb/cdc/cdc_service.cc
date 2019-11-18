@@ -76,7 +76,7 @@ using client::internal::RemoteTabletServer;
 
 constexpr int kMaxDurationForTabletLookup = 50;
 const client::YBTableName kCdcStateTableName(
-    master::kSystemNamespaceName, master::kCdcStateTableName);
+    YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
 
 CDCServiceImpl::CDCServiceImpl(TSTabletManager* tablet_manager,
                                const scoped_refptr<MetricEntity>& metric_entity_server,

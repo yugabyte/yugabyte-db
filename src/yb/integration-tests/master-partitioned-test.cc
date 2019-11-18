@@ -199,7 +199,7 @@ void MasterPartitionedTest::CheckLeaderMasterIsResponsive(int master_idx) {
 
 void MasterPartitionedTest::CreateTable(const YBTableName& table_name, int num_tablets) {
   ASSERT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name(),
-                                                YQLDatabase::YQL_DATABASE_REDIS));
+                                                table_name.namespace_type()));
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   master::ReplicationInfoPB replication_info;
   replication_info.mutable_live_replicas()->set_num_replicas(3);
@@ -226,7 +226,7 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
   SleepFor(MonoDelta::FromMilliseconds(4000));
   ASSERT_OK(cluster_->WaitForTabletServerCount(num_tservers_));
 
-  YBTableName table_name("my_keyspace", "test_table");
+  YBTableName table_name(YQL_DATABASE_REDIS, "my_keyspace", "test_table");
   ASSERT_NO_FATALS(CreateTable(table_name, FLAGS_num_test_tablets));
   LOG(INFO) << "Created table successfully!";
 

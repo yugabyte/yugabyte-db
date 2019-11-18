@@ -32,6 +32,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/master_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
@@ -183,7 +184,7 @@ int main(int argc, char *argv[]) {
   for (int i = 0; i < FLAGS_num_iter; ++i) {
     auto client = CreateYBClient();
     if (!use_redis_table) {
-      const YBTableName table_name("my_keyspace", FLAGS_table_name);
+      const YBTableName table_name(yb::YQL_DATABASE_CQL, "my_keyspace", FLAGS_table_name);
       SetupYBTable(client.get());
 
       yb::client::TableHandle table;
@@ -244,7 +245,8 @@ void SetupYBTable(YBClient* client) {
     FLAGS_table_name = yb::common::kRedisTableName;
     keyspace = yb::common::kRedisKeyspaceName;
   }
-  const YBTableName table_name(keyspace, FLAGS_table_name);
+  const YBTableName table_name(
+      yb::master::GetDefaultDatabaseType(keyspace), keyspace, FLAGS_table_name);
   CHECK_OK(client->CreateNamespaceIfNotExists(table_name.namespace_name(),
                                               YQLDatabase::YQL_DATABASE_REDIS));
 

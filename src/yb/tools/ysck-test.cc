@@ -50,6 +50,8 @@ using std::unordered_map;
 using std::vector;
 using client::YBTableName;
 
+static const YBTableName kTableName(YQL_DATABASE_CQL, "test");
+
 class MockYsckTabletServer : public YsckTabletServer {
  public:
   explicit MockYsckTabletServer(const string& uuid)
@@ -147,7 +149,7 @@ class YsckTest : public YBTest {
     shared_ptr<YsckTablet> tablet(new YsckTablet("1"));
     CreateAndFillTablet(tablet, 1, true);
 
-    CreateAndAddTable({ tablet }, YBTableName("test"), 1);
+    CreateAndAddTable({tablet}, kTableName, 1);
   }
 
   void CreateOneSmallReplicatedTable() {
@@ -161,7 +163,7 @@ class YsckTest : public YBTest {
       tablets.push_back(tablet);
     }
 
-    CreateAndAddTable(tablets, YBTableName("test"), num_replicas);
+    CreateAndAddTable(tablets, kTableName, num_replicas);
   }
 
   void CreateOneOneTabletReplicatedBrokenTable() {
@@ -171,7 +173,7 @@ class YsckTest : public YBTest {
     shared_ptr<YsckTablet> tablet(new YsckTablet("1"));
     CreateAndFillTablet(tablet, 2, false);
 
-    CreateAndAddTable({ tablet }, YBTableName("test"), 3);
+    CreateAndAddTable({tablet}, kTableName, 3);
   }
 
   void CreateAndAddTable(vector<shared_ptr<YsckTablet>> tablets,

@@ -431,7 +431,8 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 
   // Create a table with a single tablet.
   void CreateTable() {
-    ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
+    ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
+                                                  kTableName.namespace_type()));
 
     ASSERT_OK(table_.Create(kTableName, 1, client::YBSchema(schema_), client_.get()));
   }

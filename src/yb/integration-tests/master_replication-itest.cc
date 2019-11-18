@@ -62,8 +62,8 @@ using client::YBTableName;
 using std::shared_ptr;
 
 const std::string kKeyspaceName("my_keyspace");
-const YBTableName kTableName1(kKeyspaceName, "testMasterReplication-1");
-const YBTableName kTableName2(kKeyspaceName, "testMasterReplication-2");
+const YBTableName kTableName1(YQL_DATABASE_CQL, kKeyspaceName, "testMasterReplication-1");
+const YBTableName kTableName2(YQL_DATABASE_CQL, kKeyspaceName, "testMasterReplication-2");
 
 const int kNumTabletServerReplicas = 3;
 

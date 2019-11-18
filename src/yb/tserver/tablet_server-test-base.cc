@@ -340,7 +340,8 @@ void TabletServerTestBase::VerifyRows(const Schema& schema, const vector<KeyValu
   ASSERT_EQ(count, expected.size());
 }
 
-const client::YBTableName TabletServerTestBase::kTableName("my_keyspace", "test-table");
+const client::YBTableName TabletServerTestBase::kTableName(
+    YQL_DATABASE_CQL, "my_keyspace", "test-table");
 const char* TabletServerTestBase::kTabletId = "test-tablet";
 
 } // namespace tserver

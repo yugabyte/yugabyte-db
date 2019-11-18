@@ -145,14 +145,24 @@ typedef std::unordered_map<
 //
 // Thread-safe.
 class CatalogManager : public tserver::TabletPeerLookupIf {
+  typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
+
+  class NamespaceNameMapper {
+   public:
+    NamespaceInfoMap& operator[](YQLDatabase db_type);
+    const NamespaceInfoMap& operator[](YQLDatabase db_type) const;
+    void clear();
+
+   private:
+    std::array<NamespaceInfoMap, 4> typed_maps_;
+  };
+
  public:
   // Some code refers to ScopedLeaderSharedLock as CatalogManager::ScopedLeaderSharedLock.
   using ScopedLeaderSharedLock = ::yb::master::ScopedLeaderSharedLock;
 
   explicit CatalogManager(Master *master);
   virtual ~CatalogManager();
-
-  static YQLDatabase GetDatabaseTypeForTable(const TableType table_type);
 
   CHECKED_STATUS Init(bool is_first_run);
 
@@ -381,7 +391,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Get Table info given namespace id and table name.
   scoped_refptr<TableInfo> GetTableInfoFromNamespaceNameAndTableName(
-      const NamespaceName& namespace_name, const TableName& table_name);
+      YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name);
 
   // Return all the available TableInfo. The flag 'includeOnlyRunningTables' determines whether
   // to retrieve all Tables irrespective of their state or just the tables with the state
@@ -673,7 +683,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                     int64_t term,
                                     YQLVirtualTable* vtable);
 
-  CHECKED_STATUS PrepareNamespace(const NamespaceName& name, const NamespaceId& id, int64_t term);
+  CHECKED_STATUS PrepareNamespace(YQLDatabase db_type,
+                                  const NamespaceName& name,
+                                  const NamespaceId& id,
+                                  int64_t term);
 
   CHECKED_STATUS ConsensusStateToTabletLocations(const consensus::ConsensusStatePB& cstate,
                                                  TabletLocationsPB* locs_pb);
@@ -999,9 +1012,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   VersionTracker<TabletInfoMap> tablet_map_;
 
   // Namespace maps: namespace-id -> NamespaceInfo and namespace-name -> NamespaceInfo
-  typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
   NamespaceInfoMap namespace_ids_map_;
-  NamespaceInfoMap namespace_names_map_;
+  NamespaceNameMapper namespace_names_mapper_;
 
   // User-Defined type maps: udtype-id -> UDTypeInfo and udtype-name -> UDTypeInfo
   UDTypeInfoMap udtype_ids_map_;
@@ -1122,6 +1134,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
  private:
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id);
+  void RemoveFromNamespaceMaps(const NamespaceInfo& ns, rpc::RpcContext* rpc);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
