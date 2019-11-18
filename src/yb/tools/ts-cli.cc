@@ -101,6 +101,9 @@ DEFINE_bool(force, false, "If true, allows the set_flag command to set a flag "
 DEFINE_string(certs_dir_name, "",
               "Directory with certificates to use for secure server connection.");
 
+DECLARE_string(certs_dir);
+DECLARE_bool(use_client_to_server_encryption);
+
 // Check that the value of argc matches what's expected, otherwise return a
 // non-zero exit code. Should be used in main().
 #define CHECK_ARGC_OR_RETURN_WITH_USAGE(op, expected) \
