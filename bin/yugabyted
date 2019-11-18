@@ -63,6 +63,14 @@ FALSE_CHOICES = ["false", "False", "f", "F", "no", "No", "n", "N", "0"]
 BOOL_CHOICES = TRUE_CHOICES + FALSE_CHOICES
 SLACK_LINK = "https://www.yugabyte.com/slack"
 HELP_LINK = "https://docs.yugabyte.com/latest/faq/"
+DEFAULT_DEMO_DATABASE = "retail"
+SAMPLE_DATA_LINKS = {
+    "retail": "https://docs.yugabyte.com/latest/quick-start/explore-ysql/",
+    "chinook": "https://docs.yugabyte.com/latest/sample-data/chinook/",
+    "sports": "https://docs.yugabyte.com/latest/sample-data/sportsdb/",
+    "northwind": "https://docs.yugabyte.com/latest/sample-data/northwind/"
+}
+EXIT_SIGNALS = (SIGABRT, SIGINT, SIGTERM)
 
 # YugabyteDB configs.
 IP_ANY = "0.0.0.0"
@@ -90,15 +98,6 @@ METRICS_SNAPSHOT_LIST = [
     "disk_usage", "cpu_usage", "node_up"
 ]
 
-# Internal constants.
-DEFAULT_DEMO_DATABASE = "retail"
-SAMPLE_DATA_LINKS = {
-    "retail": "https://docs.yugabyte.com/latest/quick-start/explore-ysql/",
-    "chinook": "https://docs.yugabyte.com/latest/sample-data/chinook/",
-    "sports": "https://docs.yugabyte.com/latest/sample-data/sportsdb/",
-    "northwind": "https://docs.yugabyte.com/latest/sample-data/northwind/"
-}
-
 # YugaWare configs. These have their own separate subdirectory to preserve our itest flow.
 YUGAWARE_DIR = os.path.join(YUGABYTE_DIR, "ui")
 YUGAWARE_BIN_DIR = os.path.join(YUGAWARE_DIR, "bin")
@@ -109,22 +108,34 @@ DEMO_DB_PREFIX = "yb_demo_"
 ALERT_WARNING = "Warning"
 ULIMIT_ERR_CODE = "LOW_ULIMITS"
 
-class YugabyteProcessManager(object):
+class ControlScript(object):
     def __init__(self):
         self.configs = None
         self.processes = {}
         self.stop_callhome = False
         self.alerts = []
+        self.script = ScriptProcessManager()
 
     # Starts YugabyteDB node.
     def start(self):
+        if self.script.is_running():
+            Output.print_out("YugabyteDB is already running!")
+            sys.exit(1)
         self.validate_resources()
         Output.print_and_log("Starting YugabyteDB (this may take a couple minutes)...")
         self.set_env_vars()
-        self.set_signals(self.kill_yugabyte)
-        atexit.register(self.kill_yugabyte)
         self.install_yb()
         self.start_processes()
+
+    # Kills currently running yugabyted process if it exists.
+    def stop(self):
+        err = self.script.kill()
+        if err:
+            Output.print_out(
+                "Failed to shut down {}: {}. Please check PID in {}".format(
+                    SCRIPT_NAME, err, self.script.pidfile))
+        else:
+            Output.print_out("Shudown complete.")
 
     # Prints status of YugabyteDB.
     def status(self):
@@ -264,7 +275,7 @@ class YugabyteProcessManager(object):
         return failed_processes
 
     # Called after receiving certain signals or on exit. Kills all subprocesses.
-    def kill_yugabyte(self, signum=None, frame=None):
+    def kill_children(self, signum=None, frame=None):
         if signum:
             Output.log("Received signal: {}".format(signum), logging.DEBUG)
         Output.print_and_log("Shutting down...")
@@ -278,6 +289,7 @@ class YugabyteProcessManager(object):
 
         for p in self.processes.values():
             p.delete_pidfile()
+        self.script.delete_pidfile()
 
         try:
             # Kill process group instead of self.processes to ensure
@@ -297,7 +309,10 @@ class YugabyteProcessManager(object):
         if self.configs.temp_data.get("daemon"):
             daemon_success = multiprocessing.Queue()
             self.daemonize(daemon_success)
+        self.script.write_pid(os.getpid())
 
+        self.set_signals(self.kill_children)
+        atexit.register(self.kill_children)
 
         bind_ip = self.configs.saved_data.get("bind_ip")
         advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
@@ -315,7 +330,6 @@ class YugabyteProcessManager(object):
             "--yb_num_shards_per_tserver={}".format(YB_NUM_SHARDS_PER_TSERVER),
             "--ysql_num_shards_per_tserver={}".format(YSQL_NUM_SHARDS_PER_TSERVER)
         ]
-
 
         yb_master_cmd = [os.path.join(BIN_DIR, "yb-master")] + common_gflags + \
             [
@@ -379,8 +393,10 @@ class YugabyteProcessManager(object):
         for p in self.processes.values():
             pid = p.get_pid()
             if pid:
-                Output.print_out("YugabyteDB is already running!")
-                # Clear self.processes so kill_yugabyte() doesn't kill existing processes.
+                Output.print_out(
+                    "{} is already running... Is there an existing YugabyteDB process?".format(
+                        p.name))
+                # Clear self.processes so kill_children() doesn't kill existing processes.
                 self.processes = {}
                 return
 
@@ -513,7 +529,7 @@ class YugabyteProcessManager(object):
     def daemonize(self, queue):
         if os.fork():
             # Delete any custom exit handlers so daemon has full control.
-            handlers = [e for e in atexit._exithandlers if e[0] == self.kill_yugabyte]
+            handlers = [e for e in atexit._exithandlers if e[0] == self.kill_children]
             for e in handlers:
                 atexit._exithandlers.remove(e)
             # Keep the parent process alive until the daemon confirms yugabyted started properly.
@@ -526,7 +542,7 @@ class YugabyteProcessManager(object):
         os.setsid()
         os.umask(0)
         if os.fork():
-            handlers = [e for e in atexit._exithandlers if e[0] == self.kill_yugabyte]
+            handlers = [e for e in atexit._exithandlers if e[0] == self.kill_children]
             for e in handlers:
                 atexit._exithandlers.remove(e)
             sys.exit()
@@ -650,7 +666,6 @@ class YugabyteProcessManager(object):
 
     # Returns pretty output table.
     def get_status_string(self):
-
         advertise_ip = self.advertise_ip()
 
         ycql_port = self.configs.saved_data.get("ycql_port")
@@ -668,9 +683,11 @@ class YugabyteProcessManager(object):
         if self.get_failed_node_processes():
             title = Output.make_bold(Output.make_red("YugabyteDB"))
             extra_len = len(Output.make_bold(Output.make_red("")))
+            status = "Stopped"
         else:
             title = Output.make_bold(Output.make_green("YugabyteDB"))
             extra_len = len(Output.make_bold(Output.make_green("")))
+            status = "Running"
 
 
         ysql_flags = " {} {}".format(ysql_hostname_param, ysql_port_param)
@@ -684,6 +701,7 @@ class YugabyteProcessManager(object):
                                           self.configs.saved_data.get("webserver_port"))
 
         status_info = [
+            (Output.make_yellow("Status"), status),
             (Output.make_yellow("Webserver UI"), yw_status),
             (Output.make_yellow("JDBC"), "jdbc:postgresql://{}:{}/yugabyte".format(
                 advertise_ip, ysql_port)),
@@ -731,7 +749,7 @@ class YugabyteProcessManager(object):
 
     # Calls func after receiving certain exit signals.
     def set_signals(self, func):
-        for sig in (SIGABRT, SIGINT, SIGTERM):
+        for sig in EXIT_SIGNALS:
             signal(sig, func)
 
     # Returns true if Java is installed. While Java 8+ is necessary for YW, we don't explicitly
@@ -866,6 +884,7 @@ class YugabyteProcessManager(object):
         subparsers = parser.add_subparsers(dest="parser")
         for cmd, description in (
                 ("start", "Start YugabyteDB."),
+                ("stop", "Stop running YugabyteDB."),
                 ("status", "Print status of YugabyteDB."),
                 ("version", "Version of YugabyteDB."),
                 ("demo", "Load and interact with preset demo data.")):
@@ -907,16 +926,17 @@ class YugabyteProcessManager(object):
             cur_parser.add_argument(
                 "--bind_ip", help="IP address to which {} processes will bind.".format(SCRIPT_NAME))
             cur_parser.add_argument(
-                "--daemon", choices=BOOL_CHOICES,
+                "--daemon", choices=BOOL_CHOICES, default="true", metavar="BOOL",
                 help="Runs {} in the background as a daemon. Does not persist on restart. "
-                     "Default false".format(SCRIPT_NAME))
+                     "Default true".format(SCRIPT_NAME))
             cur_parser.add_argument(
-                "--callhome", help="Enable or disable callhome feature that sends analytics "
-                "data to Yugabyte. Default true.", choices=BOOL_CHOICES)
+                "--callhome", choices=BOOL_CHOICES, default="true", metavar="BOOL",
+                help="Enable or disable callhome feature that sends analytics data to Yugabyte. "
+                     "Default true.")
             group = cur_parser.add_mutually_exclusive_group()
             group.add_argument(
-                "--ui", help="Toggle enabling or disabling webserver UI. Default true.",
-                choices=BOOL_CHOICES, default="true")
+                "--ui", choices=BOOL_CHOICES, default="true", metavar="BOOL",
+                help="Toggle enabling or disabling webserver UI. Default true.")
 
             # Hidden commands for development/advanced users
             cur_parser.add_argument(
@@ -934,15 +954,18 @@ class YugabyteProcessManager(object):
         args = parser.parse_args()
         self.validate_and_set_configs(args)
 
-        log_dir = self.configs.saved_data.get("log_dir")
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
+        if args.parser == "start":
+            # Should we log for non-start commands? If we do, we need to ensure logs are written
+            # cleanly and with clarity on the source when running concurrent yugabyted commands.
+            log_dir = self.configs.saved_data.get("log_dir")
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)
 
-        Output.log_dir = log_dir
-        logging.basicConfig(
-            level=logging.DEBUG, filemode="a",
-            filename=os.path.join(log_dir, "{}.log".format(SCRIPT_NAME)),
-            format="[%(filename)s:%(lineno)d] %(asctime)s %(levelname)s: %(message)s")
+            Output.log_dir = log_dir
+            logging.basicConfig(
+                level=logging.DEBUG, filemode="a",
+                filename=os.path.join(log_dir, "{}.log".format(SCRIPT_NAME)),
+                format="[%(filename)s:%(lineno)d] %(asctime)s %(levelname)s: %(message)s")
 
         try:
             args.func()
@@ -980,7 +1003,7 @@ class Configs(object):
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
             "demo_db": DEFAULT_DEMO_DATABASE,
-            "daemon": False,
+            "daemon": True,
             "ui": True,
         }
         self.config_file = config_file
@@ -1058,10 +1081,14 @@ class ProcessManager(object):
         with open(out_log, "a") as out_log, open(err_log, "a") as err_log:
             self.process = subprocess.Popen(self.cmd, stdout=out_log, stderr=err_log)
             self.start_time = time.time()
-        # TODO: Redirect YW logs to yugabyte-logs
+        self.write_pid(self.process.pid)
+
+    # Records given pid in pidfile.
+    # TODO: Redirect YW logs to yugabyte-logs
+    def write_pid(self, pid):
         with open(self.pidfile, "w+") as pid_file:
-            pid_file.write(str(self.process.pid))
-            Output.log("{} started running with PID {}.".format(self.name, self.process.pid))
+            pid_file.write(str(pid))
+            Output.log("{} started running with PID {}.".format(self.name, pid))
 
     # Returns pid of this process if it's running.
     def get_pid(self):
@@ -1098,7 +1125,7 @@ class ProcessManager(object):
                 try:
                     os.kill(pid, SIGTERM)
                 except OSError as e:
-                    pass
+                    return e
         self.delete_pidfile()
 
     # Delete corresponding pidfile for this process.
@@ -1108,7 +1135,8 @@ class ProcessManager(object):
                 os.remove(self.pidfile)
             except OSError as e:
                 if os.path.exists(self.pidfile):
-                    Output.log_error_and_exit("Failed to delete {}.".format(self.pidfile))
+                    Output.log(
+                        "Failed to delete {}.".format(self.pidfile), level=logging.ERROR)
         self.start_time = None
 
     # Check fatal errors in fatal/error logs, if any. Overwritten in YBProcessManager
@@ -1132,6 +1160,19 @@ class ProcessManager(object):
     @staticmethod
     def is_process_running(name, pid_dir):
         return ProcessManager(name, cmd="", log_dir="", data_dir=pid_dir).get_pid() is not None
+
+
+# Class for managing yugabyted process components - e.g. pidfiles and lockfiles.
+# Maybe this class can take over the ControlScript.start_processes functionality?
+class ScriptProcessManager(ProcessManager):
+    def __init__(self):
+        super(ScriptProcessManager, self).__init__(SCRIPT_NAME, "", YUGABYTE_DIR, YUGABYTE_DIR)
+
+    def start(self):
+        return
+
+    def is_running(self):
+        return self.get_pid() is not None
 
 
 class YBProcessManager(ProcessManager):
@@ -1657,4 +1698,4 @@ def run_process(cmd):
     return out.decode('utf-8'), err.decode('utf-8'), proc.returncode
 
 if __name__ == '__main__':
-    YugabyteProcessManager().run()
+    ControlScript().run()
