@@ -27,7 +27,10 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-kms" % "1.11.638",
   "com.amazonaws" % "aws-java-sdk-iam" % "1.11.670",
   "com.amazonaws" % "aws-java-sdk-sts" % "1.11.678",
-  "com.cronutils" % "cron-utils" % "9.0.1"
+  "com.cronutils" % "cron-utils" % "9.0.1",
+  "io.prometheus" % "simpleclient" % "0.8.0",
+  "io.prometheus" % "simpleclient_hotspot" % "0.8.0",
+  "io.prometheus" % "simpleclient_servlet" % "0.8.0"
 )
 // Default to true if nothing passed on the env, so we can pick up YB jars from local java itest.
 lazy val mavenLocal = Option(System.getenv("USE_MAVEN_LOCAL")).getOrElse("false")
