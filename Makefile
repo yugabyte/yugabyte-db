@@ -71,6 +71,9 @@ endif
 
 # We need to do various things with the PostgreSQL version.
 VERSION = $(shell $(PG_CONFIG) --version | awk '{print $$2}')
+$(info )
+$(info GNUmake running against Postgres version $(VERSION), with pg_config located at $(shell dirname `which "$(PG_CONFIG)"`))
+$(info )
 
 #
 # Major version check
@@ -438,10 +441,13 @@ pgtap-version-%: $(EXTENSION_DIR)/pgtap--%.sql
 $(EXTENSION_DIR)/pgtap--$(EXTVERSION).sql: sql/pgtap--$(EXTVERSION).sql
 	$(MAKE) install
 
-# Need to explicitly exclude the current version. I wonder if there's a way to do this with % in the target?
-# Note that we need to capture the test failure so the rule doesn't abort
+# Install an old version of pgTap via pgxn. NOTE! This rule works in
+# conjunction with the rule above, which handles installing our version.
+#
+# Note that we need to capture the test failure so the rule doesn't abort;
+# that's why the test is written with || and not &&.
 $(EXTENSION_DIR)/pgtap--%.sql:
-	@ver=$(@:$(EXTENSION_DIR)/pgtap--%.sql=%); [ "$$ver" = "$(EXTVERSION)" ] || (echo Installing pgtap version $$ver from pgxn; pgxn install pgtap=$$ver)
+	@ver=$(@:$(EXTENSION_DIR)/pgtap--%.sql=%); [ "$$ver" = "$(EXTVERSION)" ] || (echo Installing pgtap version $$ver from pgxn; pgxn install --pg_config=$(PG_CONFIG) pgtap=$$ver)
 
 # This is separated out so it can be called before calling updatecheck_run
 .PHONY: updatecheck_deps

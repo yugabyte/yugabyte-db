@@ -5,9 +5,57 @@
 set -eux
 failed=''
 
+#export DEBUG=9
+export UPGRADE_TO=${UPGRADE_TO:-}
+
 sudo apt-get update
 
-packages="python-setuptools postgresql-$PGVERSION postgresql-server-dev-$PGVERSION postgresql-common"
+get_packages() {
+    echo "postgresql-$1 postgresql-server-dev-$1"
+}
+get_path() {
+    # See also test/test_MVU.sh
+    echo "/usr/lib/postgresql/$1/bin/"
+}
+
+test_cmd() (
+if [ "$1" == '-s' ]; then
+    status="$2"
+    shift 2
+else
+    status="$1"
+fi
+
+set +ux
+echo
+echo #############################################################################
+echo "PG-TRAVIS: running $@"
+echo #############################################################################
+"$@"
+rc=$?
+set -ux
+if [ $rc -ne 0 ]; then
+    echo
+    echo '!!!!!!!!!!!!!!!!'
+    echo "$@"
+    echo '!!!!!!!!!!!!!!!!'
+    echo
+    failed="$failed '$status'"
+fi
+)
+
+test_make() {
+    # Many tests depend on install, so just use sudo for all of them
+    test_cmd -s "$*" sudo make "$@"
+}
+
+########################################################
+# Install packages
+packages="python-setuptools postgresql-common $(get_packages $PGVERSION)"
+
+if [ -n "$UPGRADE_TO" ]; then
+    packages="$packages $(get_packages $UPGRADE_TO)"
+fi
 
 # bug: http://www.postgresql.org/message-id/20130508192711.GA9243@msgid.df7cb.de
 sudo update-alternatives --remove-all postmaster.1.gz
@@ -20,26 +68,20 @@ sudo chmod a+x /etc/init.d/postgresql
 
 sudo apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install $packages
 
+# Need to explicitly set which pg_config we want to use
+export PG_CONFIG="$(get_path $PGVERSION)pg_config"
+[ "$PG_CONFIG" != 'pg_config' ]
+
+# Make life easier for test_MVU.sh
+sudo usermod -a -G postgres $USER
+
+
+# Setup cluster
 export PGPORT=55435
 export PGUSER=postgres
-export PG_CONFIG=/usr/lib/postgresql/$PGVERSION/bin/pg_config
 sudo pg_createcluster --start $PGVERSION test -p $PGPORT -- -A trust
 
 sudo easy_install pgxnclient
-
-test_make() {
-    set +ux
-    # Many tests depend on install, so just use sudo for all of them
-    if ! sudo make "$@"; then
-        echo
-        echo '!!!!!!!!!!!!!!!!'
-        echo "make $@ failed"
-        echo '!!!!!!!!!!!!!!!!'
-        echo
-        failed="$failed '$@'"
-    fi
-    set -ux
-}
 
 test_make clean regress
 
@@ -54,6 +96,13 @@ for t in all install ; do
     test_make clean $t
     test_make $t
 done
+
+if [ -n "$UPGRADE_TO" ]; then
+    # We need to tell test_MVU.sh to run some steps via sudo since we're
+    # actually installing from pgxn into a system directory.  We also use a
+    # different port number to avoid conflicting with existing clusters.
+    test_cmd test/test_MVU.sh -s 55667 55778 $PGVERSION $UPGRADE_TO "$(get_path $PGVERSION)" "$(get_path $UPGRADE_TO)"
+fi
 
 if [ -n "$failed" ]; then
     set +ux
