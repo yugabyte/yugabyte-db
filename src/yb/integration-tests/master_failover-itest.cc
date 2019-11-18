@@ -182,7 +182,7 @@ TEST_F(MasterFailoverTest, DISABLED_TestCreateTableSync) {
   ASSERT_OK(cluster_->master(leader_idx)->Pause());
   ScopedResumeExternalDaemon resume_daemon(cluster_->master(leader_idx));
 
-  YBTableName table_name("testCreateTableSync");
+  YBTableName table_name(YQL_DATABASE_CQL, "testCreateTableSync");
   ASSERT_OK(CreateTable(table_name, kWaitForCreate));
   ASSERT_OK(OpenTableAndScanner(table_name));
 }
@@ -202,7 +202,7 @@ TEST_F(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued) {
   int leader_idx;
   ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
 
-  YBTableName table_name("testPauseAfterCreateTableIssued");
+  YBTableName table_name(YQL_DATABASE_CQL, "testPauseAfterCreateTableIssued");
   LOG(INFO) << "Issuing CreateTable for " << table_name.ToString();
   ASSERT_OK(CreateTable(table_name, kNoWaitForCreate));
 
@@ -230,7 +230,7 @@ TEST_F(MasterFailoverTest, TestDeleteTableSync) {
 
   ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
 
-  YBTableName table_name("testDeleteTableSync");
+  YBTableName table_name(YQL_DATABASE_CQL, "testDeleteTableSync");
   ASSERT_OK(CreateTable(table_name, kWaitForCreate));
 
   LOG(INFO) << "Pausing leader master";
@@ -260,14 +260,14 @@ TEST_F(MasterFailoverTest, TestRenameTableSync) {
 
   ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
 
-  YBTableName table_name_orig("testAlterTableSync");
+  YBTableName table_name_orig(YQL_DATABASE_CQL, "testAlterTableSync");
   ASSERT_OK(CreateTable(table_name_orig, kWaitForCreate));
 
   LOG(INFO) << "Pausing leader master";
   ASSERT_OK(cluster_->master(leader_idx)->Pause());
   ScopedResumeExternalDaemon resume_daemon(cluster_->master(leader_idx));
 
-  YBTableName table_name_new("testAlterTableSyncRenamed");
+  YBTableName table_name_new(YQL_DATABASE_CQL, "testAlterTableSyncRenamed");
   ASSERT_OK(RenameTable(table_name_orig, table_name_new));
   shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(table_name_new, &table));

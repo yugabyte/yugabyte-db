@@ -26,6 +26,7 @@
 #include "yb/gutil/bind.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog-internal.h"
 #include "yb/master/async_snapshot_tasks.h"

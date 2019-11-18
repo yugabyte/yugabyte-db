@@ -84,8 +84,8 @@ const std::string kKeyColumn = "key"s;
 const std::string kRangeKey1Column = "range_key1"s;
 const std::string kRangeKey2Column = "range_key2"s;
 const std::string kValueColumn = "int_val"s;
-const YBTableName kTable1Name("my_keyspace", "ql_client_test_table1");
-const YBTableName kTable2Name("my_keyspace", "ql_client_test_table2");
+const YBTableName kTable1Name(YQL_DATABASE_CQL, "my_keyspace", "ql_client_test_table1");
+const YBTableName kTable2Name(YQL_DATABASE_CQL, "my_keyspace", "ql_client_test_table2");
 
 int32_t ValueForKey(int32_t key) {
   return key * 2;
@@ -444,7 +444,7 @@ TEST_F(QLTabletTest, TransactionsTableTablets) {
   ASSERT_OK(table.Create(kTable1Name, 8, client_.get(), &builder));
 
   // Wait for transactions table to be created.
-  YBTableName table_name(master::kSystemNamespaceName, kTransactionsTableName);
+  YBTableName table_name(YQL_DATABASE_CQL, master::kSystemNamespaceName, kTransactionsTableName);
   master::IsCreateTableDoneResponsePB resp;
   ASSERT_OK(WaitForTableCreation(table_name, &resp));
   ASSERT_TRUE(resp.done());

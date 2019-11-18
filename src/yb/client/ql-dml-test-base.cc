@@ -32,7 +32,7 @@ using namespace std::literals;
 namespace yb {
 namespace client {
 
-const client::YBTableName kTableName("my_keyspace", "ql_client_test_table");
+const client::YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "ql_client_test_table");
 const std::string KeyValueTableTest::kKeyColumn = "key";
 const std::string KeyValueTableTest::kValueColumn = "value";
 
@@ -64,7 +64,8 @@ void QLDmlTestBase::SetUp() {
   ASSERT_OK(CreateClient());
 
   // Create test table
-  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
+                                                kTableName.namespace_type()));
 }
 
 void QLDmlTestBase::DoTearDown() {
@@ -111,7 +112,8 @@ Result<YBqlWriteOpPtr> KeyValueTableTest::Increment(
 
 void KeyValueTableTest::CreateTable(
     Transactional transactional, int num_tablets, YBClient* client, TableHandle* table) {
-  ASSERT_OK(client->CreateNamespaceIfNotExists(kTableName.namespace_name()));
+  ASSERT_OK(client->CreateNamespaceIfNotExists(kTableName.namespace_name(),
+                                               kTableName.namespace_type()));
 
   YBSchemaBuilder builder;
   builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();

@@ -1354,7 +1354,7 @@ void RightPad(const int length, string *s) {
 Status Executor::ExecPTNode(const PTExplainStmt *tnode) {
   TreeNode::SharedPtr subStmt = tnode->stmt();
   PTDmlStmt *dmlStmt = down_cast<PTDmlStmt *>(subStmt.get());
-  const YBTableName explainTable("Explain");
+  const YBTableName explainTable(YQL_DATABASE_CQL, "Explain");
   ColumnSchema explainColumn("QUERY PLAN", STRING);
   auto explainColumns = std::make_shared<std::vector<ColumnSchema>>(
       std::initializer_list<ColumnSchema>{explainColumn});

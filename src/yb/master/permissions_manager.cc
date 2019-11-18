@@ -15,12 +15,15 @@
 
 #include "yb/util/crypt.h"
 
-#include "yb/master/permissions_manager.h"
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager-internal.h"
+#include "yb/master/master_util.h"
+#include "yb/master/permissions_manager.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/master/catalog_manager-internal.h"
+
 #include "yb/util/shared_lock.h"
 
 using std::shared_ptr;
@@ -810,13 +813,15 @@ Status PermissionsManager::GrantRevokePermission(
     // We can't match Apache Cassandra's error because when a namespace is not provided, the error
     // is detected by the semantic analysis in PTQualifiedName::AnalyzeName.
     DCHECK(req->has_namespace_());
-    ns = FindPtrOrNull(catalog_manager_->namespace_names_map_, req->namespace_().name());
+    const auto& namespace_info = req->namespace_();
+    ns = FindPtrOrNull(catalog_manager_->namespace_names_mapper_[GetDatabaseType(namespace_info)],
+                       namespace_info.name());
 
     if (req->resource_type() == ResourceType::KEYSPACE) {
       if (ns == nullptr) {
         // Matches Apache Cassandra's error.
-        s = STATUS_SUBSTITUTE(NotFound, "Resource <keyspace $0> doesn't exist",
-                              req->namespace_().name());
+        s = STATUS_SUBSTITUTE(
+            NotFound, "Resource <keyspace $0> doesn't exist", namespace_info.name());
         return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
       }
     } else {
@@ -825,8 +830,9 @@ Status PermissionsManager::GrantRevokePermission(
       }
       if (table == nullptr) {
         // Matches Apache Cassandra's error.
-        s = STATUS_SUBSTITUTE(NotFound, "Resource <object '$0.$1'> doesn't exist",
-            req->namespace_().name(), req->resource_name());
+        s = STATUS_SUBSTITUTE(
+            NotFound, "Resource <object '$0.$1'> doesn't exist",
+            namespace_info.name(), req->resource_name());
         return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
       }
     }

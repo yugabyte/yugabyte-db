@@ -159,7 +159,8 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
 };
 
 void CreateTableStressTest::CreateBigTable(const YBTableName& table_name, int num_tablets) {
-  ASSERT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name()));
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name(),
+                                                table_name.namespace_type()));
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(table_name)
             .schema(&schema_)
@@ -171,7 +172,7 @@ void CreateTableStressTest::CreateBigTable(const YBTableName& table_name, int nu
 TEST_F(CreateTableStressTest, GetTableLocationsBenchmark) {
   FLAGS_max_create_tablets_per_ts = FLAGS_benchmark_num_tablets;
   DontVerifyClusterBeforeNextTearDown();
-  YBTableName table_name("my_keyspace", "test_table");
+  YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "test_table");
   LOG(INFO) << CURRENT_TEST_NAME() << ": Step 1. Creating big table "
             << table_name.ToString() << " ...";
   LOG_TIMING(INFO, "creating big table") {
@@ -257,7 +258,7 @@ TEST_F(CreateTableStressTest, CreateAndDeleteBigTable) {
     LOG(INFO) << "Skipping slow test";
     return;
   }
-  YBTableName table_name("my_keyspace", "test_table");
+  YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "test_table");
   ASSERT_NO_FATALS(CreateBigTable(table_name, FLAGS_num_test_tablets));
   master::GetTableLocationsResponsePB resp;
   ASSERT_OK(WaitForRunningTabletCount(cluster_->mini_master(), table_name,
@@ -293,7 +294,7 @@ TEST_F(CreateTableStressTest, RestartMasterDuringCreation) {
     return;
   }
 
-  YBTableName table_name("my_keyspace", "test_table");
+  YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "test_table");
   ASSERT_NO_FATALS(CreateBigTable(table_name, FLAGS_num_test_tablets));
 
   for (int i = 0; i < 3; i++) {
@@ -321,7 +322,7 @@ TEST_F(CreateTableStressTest, TestGetTableLocationsOptions) {
     return;
   }
 
-  YBTableName table_name("my_keyspace", "test_table");
+  YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "test_table");
   LOG(INFO) << CURRENT_TEST_NAME() << ": Step 1. Creating big table "
             << table_name.ToString() << " ...";
   LOG_TIMING(INFO, "creating big table") {
@@ -455,9 +456,11 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
   });
 
   for (int num_tables_created = 0; num_tables_created < 20;) {
-    YBTableName table_name("my_keyspace", Substitute("test-$0", num_tables_created));
+    YBTableName table_name(
+        YQL_DATABASE_CQL, "my_keyspace", Substitute("test-$0", num_tables_created));
     LOG(INFO) << "Creating table " << table_name.ToString();
-    Status s = client_->CreateNamespaceIfNotExists(table_name.namespace_name());
+    Status s = client_->CreateNamespaceIfNotExists(table_name.namespace_name(),
+                                                   table_name.namespace_type());
     if (s.ok()) {
       unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
       s = table_creator->table_name(table_name)

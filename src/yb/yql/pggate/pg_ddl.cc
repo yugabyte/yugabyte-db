@@ -88,7 +88,10 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              bool if_not_exist,
                              bool add_primary_key)
     : PgDdl(pg_session),
-      table_name_(GetPgsqlNamespaceId(table_id.database_oid), database_name, table_name),
+      table_name_(YQL_DATABASE_PGSQL,
+                  GetPgsqlNamespaceId(table_id.database_oid),
+                  database_name,
+                  table_name),
       table_id_(table_id),
       num_tablets_(-1),
       is_pg_catalog_table_(strcmp(schema_name, "pg_catalog") == 0 ||
@@ -367,7 +370,7 @@ Status PgAlterTable::DropColumn(const char *name) {
 }
 
 Status PgAlterTable::RenameTable(const char *db_name, const char *newname) {
-  client::YBTableName new_table_name(db_name, newname);
+  client::YBTableName new_table_name(YQL_DATABASE_PGSQL, db_name, newname);
   table_alterer->RenameTo(new_table_name);
   return Status::OK();
 }

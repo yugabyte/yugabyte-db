@@ -415,8 +415,6 @@ Status CheckIfTableDeletedOrNotRunning(TableInfo::lock_type* lock, RespClass* re
   return Status::OK();
 }
 
-} // namespace
-
 #define RETURN_NAMESPACE_NOT_FOUND(s, resp)                                       \
   do {                                                                            \
     if (PREDICT_FALSE(!s.ok())) {                                                 \
@@ -428,20 +426,37 @@ Status CheckIfTableDeletedOrNotRunning(TableInfo::lock_type* lock, RespClass* re
     }                                                                             \
   } while (false)
 
+size_t GetNameMapperIndex(YQLDatabase db_type) {
+  switch (db_type) {
+    case YQL_DATABASE_UNKNOWN: break;
+    case YQL_DATABASE_CQL: return 1;
+    case YQL_DATABASE_PGSQL: return 2;
+    case YQL_DATABASE_REDIS: return 3;
+  }
+  CHECK(false) << "Unexpected db type " << db_type;
+  return 0;
+}
+
+}  // anonymous namespace
+
 ////////////////////////////////////////////////////////////
 // CatalogManager
 ////////////////////////////////////////////////////////////
 
-YQLDatabase CatalogManager::GetDatabaseTypeForTable(const TableType table_type) {
-  switch (table_type) {
-    case TableType::YQL_TABLE_TYPE: return YQLDatabase::YQL_DATABASE_CQL;
-    case TableType::REDIS_TABLE_TYPE: return YQLDatabase::YQL_DATABASE_REDIS;
-    case TableType::PGSQL_TABLE_TYPE: return YQLDatabase::YQL_DATABASE_PGSQL;
-    case TableType::TRANSACTION_STATUS_TABLE_TYPE:
-      // Transactions status table is created in "system" keyspace in CQL.
-      return YQLDatabase::YQL_DATABASE_CQL;
+CatalogManager::NamespaceInfoMap& CatalogManager::NamespaceNameMapper::operator[](
+    YQLDatabase db_type) {
+  return typed_maps_[GetNameMapperIndex(db_type)];
+}
+
+const CatalogManager::NamespaceInfoMap& CatalogManager::NamespaceNameMapper::operator[](
+    YQLDatabase db_type) const {
+  return typed_maps_[GetNameMapperIndex(db_type)];
+}
+
+void CatalogManager::NamespaceNameMapper::clear() {
+  for (auto& m : typed_maps_) {
+    m.clear();
   }
-  return YQL_DATABASE_UNKNOWN;
 }
 
 CatalogManager::CatalogManager(Master* master)
@@ -728,7 +743,7 @@ Status CatalogManager::RunLoaders() {
 
   // Clear the namespace mappings.
   namespace_ids_map_.clear();
-  namespace_names_map_.clear();
+  namespace_names_mapper_.clear();
 
   // Clear the type mappings.
   udtype_ids_map_.clear();
@@ -886,9 +901,12 @@ Status CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
 }
 
 Status CatalogManager::PrepareDefaultNamespaces(int64_t term) {
-  RETURN_NOT_OK(PrepareNamespace(kSystemNamespaceName, kSystemNamespaceId, term));
-  RETURN_NOT_OK(PrepareNamespace(kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term));
-  RETURN_NOT_OK(PrepareNamespace(kSystemAuthNamespaceName, kSystemAuthNamespaceId, term));
+  RETURN_NOT_OK(PrepareNamespace(
+      YQL_DATABASE_CQL, kSystemNamespaceName, kSystemNamespaceId, term));
+  RETURN_NOT_OK(PrepareNamespace(
+      YQL_DATABASE_CQL, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term));
+  RETURN_NOT_OK(PrepareNamespace(
+      YQL_DATABASE_CQL, kSystemAuthNamespaceName, kSystemAuthNamespaceId, term));
   return Status::OK();
 }
 
@@ -1125,13 +1143,13 @@ bool CatalogManager::IsYcqlTable(const TableInfo& table) {
 }
 
 Status CatalogManager::PrepareNamespace(
-    const NamespaceName& name, const NamespaceId& id, int64_t term) {
+    YQLDatabase db_type, const NamespaceName& name, const NamespaceId& id, int64_t term) {
   // Verify we have the catalog manager lock.
   if (!lock_.is_locked()) {
     return STATUS(IllegalState, "We don't have the catalog manager lock!");
   }
 
-  if (FindPtrOrNull(namespace_names_map_, name) != nullptr) {
+  if (FindPtrOrNull(namespace_names_mapper_[db_type], name) != nullptr) {
     LOG(INFO) << "Keyspace " << name << " already created, skipping initialization";
     return Status::OK();
   }
@@ -1139,7 +1157,7 @@ Status CatalogManager::PrepareNamespace(
   // Create entry.
   SysNamespaceEntryPB ns_entry;
   ns_entry.set_name(name);
-  ns_entry.set_database_type(YQLDatabase::YQL_DATABASE_CQL);
+  ns_entry.set_database_type(db_type);
 
   // Create in memory object.
   scoped_refptr<NamespaceInfo> ns = new NamespaceInfo(id);
@@ -1149,7 +1167,7 @@ Status CatalogManager::PrepareNamespace(
   l->mutable_data()->pb = std::move(ns_entry);
 
   namespace_ids_map_[id] = ns;
-  namespace_names_map_[l->mutable_data()->pb.name()] = ns;
+  namespace_names_mapper_[db_type][l->mutable_data()->pb.name()] = ns;
 
   // Write to sys_catalog and in memory.
   RETURN_NOT_OK(sys_catalog_->AddItem(ns.get(), term));
@@ -2461,12 +2479,14 @@ Status CatalogManager::FindTable(const TableIdentifierPB& table_identifier,
     NamespaceId namespace_id;
 
     if (table_identifier.has_namespace_()) {
-      if (table_identifier.namespace_().has_id()) {
-        namespace_id = table_identifier.namespace_().id();
-      } else if (table_identifier.namespace_().has_name()) {
+      const auto& namespace_info = table_identifier.namespace_();
+      if (namespace_info.has_id()) {
+        namespace_id = namespace_info.id();
+      } else if (namespace_info.has_name()) {
         // Find namespace by its name.
-        scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_names_map_,
-            table_identifier.namespace_().name());
+        scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(
+            namespace_names_mapper_[GetDatabaseType(namespace_info)],
+            namespace_info.name());
 
         if (ns == nullptr) {
           // The namespace was not found. This is a correct case. Just return NULL.
@@ -2499,7 +2519,8 @@ Status CatalogManager::FindNamespaceUnlocked(const NamespaceIdentifierPB& ns_ide
       return STATUS(NotFound, "Keyspace identifier not found", ns_identifier.id());
     }
   } else if (ns_identifier.has_name()) {
-    *ns_info = FindPtrOrNull(namespace_names_map_, ns_identifier.name());
+    *ns_info = FindPtrOrNull(
+        namespace_names_mapper_[GetDatabaseType(ns_identifier)], ns_identifier.name());
     if (*ns_info == nullptr) {
       return STATUS(NotFound, "Keyspace name not found", ns_identifier.name());
     }
@@ -3417,14 +3438,10 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const TableId& table_id) {
 }
 
 scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableName(
-    const NamespaceName& namespace_name, const TableName& table_name) {
-
+    YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name) {
   SharedLock<LockType> l(lock_);
-  const scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_names_map_, namespace_name);
-  if (ns == nullptr) {
-    return nullptr;
-  }
-  return FindPtrOrNull(table_names_map_, {ns->id(), table_name});
+  const auto ns = FindPtrOrNull(namespace_names_mapper_[db_type], namespace_name);
+  return ns ? FindPtrOrNull(table_names_map_, {ns->id(), table_name}) : nullptr;
 }
 
 scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& table_id) {
@@ -3903,21 +3920,19 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 
   scoped_refptr<NamespaceInfo> ns;
   std::vector<scoped_refptr<TableInfo>> pgsql_tables;
+  const auto db_type = GetDatabaseType(*req);
   {
     std::lock_guard<LockType> l(lock_);
     TRACE("Acquired catalog manager lock");
 
     // Validate the user request.
 
-    // Verify that the namespace does not exist except for namespace for YSQL database that is
-    // identified by id only.
-    if (req->database_type() != YQL_DATABASE_PGSQL) {
-      ns = FindPtrOrNull(namespace_names_map_, req->name());
-      if (ns != nullptr) {
-        resp->set_id(ns->id());
-        s = STATUS_SUBSTITUTE(AlreadyPresent, "Keyspace '$0' already exists", req->name());
-        return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_ALREADY_PRESENT, s);
-      }
+    // Verify that the namespace does not exist
+    ns = FindPtrOrNull(namespace_names_mapper_[db_type], req->name());
+    if (ns != nullptr) {
+      resp->set_id(ns->id());
+      s = STATUS_SUBSTITUTE(AlreadyPresent, "Keyspace '$0' already exists", req->name());
+      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_ALREADY_PRESENT, s);
     }
 
     // Add the new namespace.
@@ -3929,13 +3944,11 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     ns->mutable_metadata()->StartMutation();
     SysNamespaceEntryPB *metadata = &ns->mutable_metadata()->mutable_dirty()->pb;
     metadata->set_name(req->name());
-    if (req->has_database_type()) {
-      metadata->set_database_type(req->database_type());
-    }
+    metadata->set_database_type(db_type);
 
     // For namespace created for a Postgres database, save the list of tables and indexes for
     // for the database that need to be copied.
-    if (req->database_type() == YQL_DATABASE_PGSQL) {
+    if (db_type == YQL_DATABASE_PGSQL) {
       if (req->source_namespace_id().empty()) {
         metadata->set_next_pg_oid(req->next_pg_oid());
       } else {
@@ -3966,12 +3979,9 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
       }
     }
 
-    // Add the namespace to the in-memory map for the assignment. Namespaces for YSQL databases
-    // are identified by the id only and should not be added to the name map.
+    // Add the namespace to the in-memory map for the assignment.
     namespace_ids_map_[ns->id()] = ns;
-    if (req->database_type() != YQL_DATABASE_PGSQL) {
-      namespace_names_map_[req->name()] = ns;
-    }
+    namespace_names_mapper_[db_type][req->name()] = ns;
 
     resp->set_id(ns->id());
   }
@@ -4003,7 +4013,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
         resp));
   }
 
-  if (req->database_type() == YQL_DATABASE_PGSQL && !pgsql_tables.empty()) {
+  if (db_type == YQL_DATABASE_PGSQL && !pgsql_tables.empty()) {
     RETURN_NOT_OK(CopyPgsqlSysTables(ns->id(), pgsql_tables, resp, rpc));
   }
 
@@ -4083,18 +4093,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
     return CheckIfNoLongerLeaderAndSetupError(s, resp);
   }
 
-  // Remove it from the maps.
-  {
-    TRACE("Removing from maps");
-
-    std::lock_guard<LockType> l_map(lock_);
-    if (namespace_names_map_.erase(ns->name()) < 1) {
-      PANIC_RPC(rpc, "Could not remove namespace from map, name=" + l->data().name());
-    }
-    if (namespace_ids_map_.erase(ns->id()) < 1) {
-      PANIC_RPC(rpc, "Could not remove namespace from map, name=" + l->data().name());
-    }
-  }
+  RemoveFromNamespaceMaps(*ns, rpc);
 
   // Update the in-memory state.
   TRACE("Committing in-memory state");
@@ -4144,14 +4143,7 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
     return CheckIfNoLongerLeaderAndSetupError(s, resp);
   }
 
-  // Remove it from the maps.
-  {
-    TRACE("Removing from maps");
-    std::lock_guard<LockType> l_map(lock_);
-    if (namespace_ids_map_.erase(database->id()) < 1) {
-      PANIC_RPC(rpc, "Could not remove namespace from map, name=" + l->data().name());
-    }
-  }
+  RemoveFromNamespaceMaps(*database, rpc);
 
   // Update the in-memory state.
   TRACE("Committing in-memory state");
@@ -6359,6 +6351,16 @@ void CatalogManager::HandleNewTableId(const TableId& table_id) {
 
 scoped_refptr<TableInfo> CatalogManager::NewTableInfo(TableId id) {
   return make_scoped_refptr<TableInfo>(id, tasks_tracker_);
+}
+
+void CatalogManager::RemoveFromNamespaceMaps(const NamespaceInfo& ns, rpc::RpcContext* rpc) {
+  TRACE("Removing from namespace maps");
+  std::lock_guard<LockType> l_map(lock_);
+  if (namespace_names_mapper_[ns.database_type()].erase(ns.name()) < 1 ||
+      namespace_ids_map_.erase(ns.id()) < 1) {
+    PANIC_RPC(rpc,
+              Format("Could not remove namespace from maps, name=$0, id=$1", ns.name(), ns.id()));
+  }
 }
 
 }  // namespace master

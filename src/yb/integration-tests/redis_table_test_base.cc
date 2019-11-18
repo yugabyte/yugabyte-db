@@ -48,7 +48,7 @@ using redisserver::ParseSet;
 using redisserver::ParseGet;
 
 YBTableName RedisTableTestBase::table_name() {
-  return YBTableName(common::kRedisKeyspaceName, common::kRedisTableName);
+  return YBTableName(YQL_DATABASE_REDIS, common::kRedisKeyspaceName, common::kRedisTableName);
 }
 
 void RedisTableTestBase::CreateTable() {
