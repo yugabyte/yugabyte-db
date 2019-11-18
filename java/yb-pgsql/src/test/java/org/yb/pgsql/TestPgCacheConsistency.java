@@ -135,6 +135,59 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
         assertEquals(expectedRows, getRowSet(rs));
       }
       expectedRows.clear();
+
+      // Test functions.
+
+      // Create a function on connection 1.
+      statement1.execute("create or replace function inc(n in integer)\n" +
+                                 "  returns integer\n" +
+                                 "  language 'plpgsql'\n" +
+                                 "as $$\n" +
+                                 "begin\n" +
+                                 "  return n + 1;\n" +
+                                 "end\n" +
+                                 "$$");
+
+      // Check result from connection 1.
+      expectedRows.add(new Row( 11));
+      try (ResultSet rs = statement1.executeQuery("SELECT inc(10)")) {
+        assertEquals(expectedRows, getRowSet(rs));
+      }
+      expectedRows.clear();
+
+      // Check result from connection 2.
+      expectedRows.add(new Row( 16));
+      try (ResultSet rs = statement2.executeQuery("SELECT inc(15)")) {
+        assertEquals(expectedRows, getRowSet(rs));
+      }
+      expectedRows.clear();
+
+      // Alter (replace) the function (increment 1 -> 101) from connection 2.
+      statement2.execute("create or replace function inc(n in integer)\n" +
+                                 "  returns integer\n" +
+                                 "  language 'plpgsql'\n" +
+                                 "as $$\n" +
+                                 "begin\n" +
+                                 "  return n + 101;\n" +
+                                 "end\n" +
+                                 "$$");
+
+      // Wait for tserver heartbeat to propagate the catalog version.
+      waitForTServerHeartbeat();
+
+      // Check result from connection 1.
+      expectedRows.add(new Row( 111));
+      try (ResultSet rs = statement1.executeQuery("SELECT inc(10)")) {
+        assertEquals(expectedRows, getRowSet(rs));
+      }
+      expectedRows.clear();
+
+      // Check result from connection 2.
+      expectedRows.add(new Row( 116));
+      try (ResultSet rs = statement2.executeQuery("SELECT inc(15)")) {
+        assertEquals(expectedRows, getRowSet(rs));
+      }
+      expectedRows.clear();
     }
   }
 
