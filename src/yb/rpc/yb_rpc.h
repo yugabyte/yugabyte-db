@@ -89,7 +89,10 @@ class YBInboundConnectionContext : public YBConnectionContext {
 
   std::weak_ptr<Connection> connection_;
 
+  // Last time data was sent to network layer below application.
   CoarseTimePoint last_write_time_;
+  // Last time we queued heartbeat for sending.
+  CoarseTimePoint last_heartbeat_sending_time_;
 };
 
 class YBInboundCall : public InboundCall {
