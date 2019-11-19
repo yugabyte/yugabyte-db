@@ -103,7 +103,7 @@ public class EncryptionAtRestUtil {
     }
 
     public static byte[] getUniverseKeyCacheEntry(UUID universeUUID, byte[] keyRef) {
-        LOG.info(String.format(
+        LOG.debug(String.format(
                 "Retrieving universe key cache entry for universe %s and keyRef %s",
                 universeUUID.toString(),
                 Base64.getEncoder().encodeToString(keyRef)
@@ -113,7 +113,7 @@ public class EncryptionAtRestUtil {
     }
 
     public static void setUniverseKeyCacheEntry(UUID universeUUID, byte[] keyRef, byte[] keyVal) {
-        LOG.info(String.format(
+        LOG.debug(String.format(
                 "Setting universe key cache entry for universe %s and keyRef %s",
                 universeUUID.toString(),
                 Base64.getEncoder().encodeToString(keyRef)
@@ -123,7 +123,7 @@ public class EncryptionAtRestUtil {
     }
 
     public static void removeUniverseKeyCacheEntry(UUID universeUUID) {
-        LOG.info(String.format(
+        LOG.debug(String.format(
                 "Removing universe key cache entry for universe %s",
                 universeUUID.toString()
         ));
