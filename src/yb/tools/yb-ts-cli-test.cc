@@ -41,6 +41,7 @@
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/test_workload.h"
+#include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/subprocess.h"
 
@@ -65,7 +66,7 @@ string YBTsCliTest::GetTsCliToolPath() const {
   return GetToolPath(kTsCliToolName);
 }
 
-// Test deleting a tablet.
+// Test deleting a tablet with TLS encryption disabled.
 TEST_F(YBTsCliTest, TestDeleteTablet) {
   MonoDelta timeout = MonoDelta::FromSeconds(30);
   vector<string> ts_flags, master_flags;
@@ -93,6 +94,60 @@ TEST_F(YBTsCliTest, TestDeleteTablet) {
   argv.push_back(exe_path);
   argv.push_back("--server_address");
   argv.push_back(yb::ToString(cluster_->tablet_server(0)->bound_rpc_addr()));
+  argv.push_back("delete_tablet");
+  argv.push_back(tablet_id);
+  argv.push_back("Deleting for yb-ts-cli-test");
+  ASSERT_OK(Subprocess::Call(argv));
+
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(0, tablet_id, tablet::TABLET_DATA_TOMBSTONED));
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
+  ASSERT_OK(itest::WaitUntilTabletInState(ts, tablet_id, tablet::SHUTDOWN, timeout));
+}
+
+// Test deleting a tablet with TLS encryption enabled.
+TEST_F(YBTsCliTest, TestTLSDeleteTablet) {
+  MonoDelta timeout = MonoDelta::FromSeconds(30);
+  vector<string> ts_flags, master_flags;
+  ts_flags.push_back("--enable_leader_failure_detection=false");
+  master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
+
+  // Set secure connection parameters
+  const auto sub_dir = JoinPathSegments("ent", "test_certs");
+  auto root_dir = env_util::GetRootDir(sub_dir) + "/../../";
+  auto certs_dir = JoinPathSegments(root_dir, sub_dir);
+  ts_flags.push_back("--use_node_to_node_encryption=true");
+  ts_flags.push_back("--certs_dir=" + certs_dir);
+  ts_flags.push_back("--use_client_to_server_encryption=true");
+  ts_flags.push_back("--certs_for_client_dir" + certs_dir);
+  ts_flags.push_back("--allow_insecure_connections=false");
+  master_flags.push_back("--use_node_to_node_encryption=true");
+  master_flags.push_back("--certs_dir=" + certs_dir);
+  master_flags.push_back("--allow_insecure_connections=false");
+
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
+
+  TestWorkload workload(cluster_.get());
+  workload.Setup(); // Easy way to create a new tablet.
+
+  vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB> tablets;
+  for (const auto& entry : ts_map_) {
+    TServerDetails* ts = entry.second.get();
+    ASSERT_OK(itest::WaitForNumTabletsOnTS(ts, 1, timeout, &tablets));
+  }
+  string tablet_id = tablets[0].tablet_status().tablet_id();
+
+  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
+                                            tablet_id, timeout));
+  }
+
+  string exe_path = GetTsCliToolPath();
+  vector<string> argv;
+  argv.push_back(exe_path);
+  argv.push_back("--server_address");
+  argv.push_back(yb::ToString(cluster_->tablet_server(0)->bound_rpc_addr()));
+  argv.push_back("--certs_dir_name");
+  argv.push_back(certs_dir); // Set certs_dir_name.
   argv.push_back("delete_tablet");
   argv.push_back(tablet_id);
   argv.push_back("Deleting for yb-ts-cli-test");
