@@ -140,22 +140,22 @@ hypo_getNewOid(Oid relid)
 	char		relpersistence;
 
 	/* Open the relation on which we want a new OID */
-	relation = heap_open(relid, AccessShareLock);
+	relation = table_open(relid, AccessShareLock);
 
 	reltablespace = relation->rd_rel->reltablespace;
 	relpersistence = relation->rd_rel->relpersistence;
 
 	/* Close the relation and release the lock now */
-	heap_close(relation, AccessShareLock);
+	table_close(relation, AccessShareLock);
 
 	/* Open pg_class to aks a new OID */
-	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
+	pg_class = table_open(RelationRelationId, RowExclusiveLock);
 
 	/* ask for a new relfilenode */
 	newoid = GetNewRelFileNode(reltablespace, pg_class, relpersistence);
 
 	/* Close pg_class and release the lock now */
-	heap_close(pg_class, RowExclusiveLock);
+	table_close(pg_class, RowExclusiveLock);
 
 	return newoid;
 }
@@ -297,7 +297,7 @@ hypo_get_relation_info_hook(PlannerInfo *root,
 		Relation	relation;
 
 		/* Open the current relation */
-		relation = heap_open(relationObjectId, AccessShareLock);
+		relation = table_open(relationObjectId, AccessShareLock);
 
 		if (relation->rd_rel->relkind == RELKIND_RELATION
 #if PG_VERSION_NUM >= 90300
@@ -324,7 +324,7 @@ hypo_get_relation_info_hook(PlannerInfo *root,
 		}
 
 		/* Close the relation release the lock now */
-		heap_close(relation, AccessShareLock);
+		table_close(relation, AccessShareLock);
 	}
 
 	if (prev_get_relation_info_hook)

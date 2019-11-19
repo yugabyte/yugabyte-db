@@ -1396,7 +1396,7 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 			if (indexpr_item == NULL)
 				elog(ERROR, "too few entries in indexprs list");
 			indexkey = (Node *) lfirst(indexpr_item);
-			indexpr_item = lnext(indexpr_item);
+			indexpr_item = lnext(entry->indexprs, indexpr_item);
 
 			/* Deparse */
 			str = deparse_expression(indexkey, context, false, false);
@@ -1546,7 +1546,7 @@ hypo_estimate_index_simple(hypoIndex * entry, BlockNumber *pages, double *tuples
 	rel = makeNode(RelOptInfo);
 
 	/* Open the hypo index' relation */
-	relation = heap_open(entry->relid, AccessShareLock);
+	relation = table_open(entry->relid, AccessShareLock);
 
 	if (!RelationNeedsWAL(relation) && RecoveryInProgress())
 		ereport(ERROR,
@@ -1567,7 +1567,7 @@ hypo_estimate_index_simple(hypoIndex * entry, BlockNumber *pages, double *tuples
 					  &rel->pages, &rel->tuples, &rel->allvisfrac);
 
 	/* Close the relation and release the lock now */
-	heap_close(relation, AccessShareLock);
+	table_close(relation, AccessShareLock);
 
 	hypo_estimate_index(entry, rel);
 	*pages = entry->pages;
