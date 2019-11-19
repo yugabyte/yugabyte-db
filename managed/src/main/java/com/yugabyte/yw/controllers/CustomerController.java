@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.controllers;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -16,6 +17,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.CallHomeManager;
 import com.yugabyte.yw.common.CloudQueryHelper;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
@@ -23,6 +25,8 @@ import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -189,6 +193,8 @@ public class CustomerController extends AuthenticatedController {
     boolean hasContainerMetric = formData.get().metrics.stream().anyMatch(s -> s.startsWith("container"));
     String universeFilterLabel = hasContainerMetric ? "namespace" : "node_prefix";
     String nodeFilterLabel = hasContainerMetric ? "pod_name" : "exported_instance";
+    String containerLabel = "container_name";
+    String pvcLabel = "persistentvolumeclaim";
 
     ObjectNode filterJson = Json.newObject();
     if (!params.containsKey("nodePrefix")) {
@@ -196,9 +202,46 @@ public class CustomerController extends AuthenticatedController {
         .map((universe -> universe.getUniverseDetails().nodePrefix)).collect(Collectors.joining("|"));
       filterJson.put(universeFilterLabel, String.join("|", universePrefixes));
     } else {
-      filterJson.put(universeFilterLabel, params.remove("nodePrefix"));
-      if (params.containsKey("nodeName")) {
-        filterJson.put(nodeFilterLabel, params.remove("nodeName"));
+      // Check if it is a kubernetes deployment.
+      if (hasContainerMetric) {
+        if (params.containsKey("nodeName")) {
+          // Get the correct namespace by appending the zone if it exists.
+          String[] nodeWithZone = params.remove("nodeName").split("_");
+          filterJson.put(nodeFilterLabel, nodeWithZone[0]);
+          // The pod name is of the format yb-<server>-<replica_num> and we just need the
+          // container, which is yb-<server>.
+          String containerName = nodeWithZone[0].substring(0, nodeWithZone[0].lastIndexOf("-"));
+          String pvcName = String.format("(.*)-%s", nodeWithZone[0]);
+          String completeNamespace = params.remove("nodePrefix");
+          if (nodeWithZone.length == 2) {
+             completeNamespace = String.format("%s-%s", completeNamespace,
+                                                      nodeWithZone[1]);
+          }
+          filterJson.put(universeFilterLabel, completeNamespace);
+          filterJson.put(containerLabel, containerName);
+          filterJson.put(pvcLabel, pvcName);
+
+        } else {
+          // If no nodename, we need to figure out the correct regex for the namespace.
+          // We get this by getting the correct universe and then checking that the
+          // provider for that universe is multi-az or not.
+          final String nodePrefix = params.remove("nodePrefix");
+          String completeNamespace = nodePrefix;
+          List<Universe> universes =  customer.getUniverses().stream()
+            .filter(u -> u.getUniverseDetails().nodePrefix.equals(nodePrefix))
+            .collect(Collectors.toList());
+          Provider provider = Provider.get(UUID.fromString(
+            universes.get(0).getUniverseDetails().getPrimaryCluster().userIntent.provider));
+          if (PlacementInfoUtil.isMultiAZ(provider)) {
+            completeNamespace = String.format("%s-(.*)", completeNamespace);
+          }
+          filterJson.put(universeFilterLabel, completeNamespace);
+        }
+      } else {
+        filterJson.put(universeFilterLabel, params.remove("nodePrefix"));
+        if (params.containsKey("nodeName")) {
+          filterJson.put(nodeFilterLabel, params.remove("nodeName"));
+        }
       }
     }
     if (params.containsKey("tableName")) {

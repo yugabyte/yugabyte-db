@@ -15,7 +15,10 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import org.junit.Before;
 import org.junit.Test;
@@ -273,12 +276,48 @@ public class CustomerControllerTest extends WithApplication {
   }
 
   @Test
-  public void testCustomerMetricsForContainerMetrics() {
+  public void testCustomerMetricsForContainerMetricsMultiAZ() {
     String authToken = customer.createAuthToken();
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("container_metrics")));
     params.put("start", "1479281737000");
     params.put("nodePrefix", "demo");
+    Universe u1 = createUniverse("demo", customer.getCustomerId());
+    Provider provider = Provider.get(UUID.fromString(u1.getUniverseDetails()
+                                         .getPrimaryCluster()
+                                         .userIntent.provider));
+    Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
+    Region r1 = Region.create(provider, "region-2", "PlacementRegion-2", "default-image");
+
+    ObjectNode response = Json.newObject();
+    response.put("foo", "bar");
+    ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
+    ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
+    when(mockMetricQueryHelper.query(anyList(), anyMap())).thenReturn(response);
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("POST",
+        baseRoute + customer.uuid + "/metrics", authToken, params);
+    verify(mockMetricQueryHelper).query((List<String>) metricKeys.capture(),
+        (Map<String, String>) queryParams.capture());
+    assertThat(queryParams.getValue(), is(notNullValue()));
+    JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
+    assertValue(filters, "namespace", "demo-(.*)");
+    assertEquals(OK, result.status());
+    assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
+  }
+
+  @Test
+  public void testCustomerMetricsForContainerMetricsSingleAZ() {
+    String authToken = customer.createAuthToken();
+    ObjectNode params = Json.newObject();
+    params.set("metrics", Json.toJson(ImmutableList.of("container_metrics")));
+    params.put("start", "1479281737000");
+    params.put("nodePrefix", "demo");
+    Universe u1 = createUniverse("demo", customer.getCustomerId());
+    Provider provider = Provider.get(UUID.fromString(u1.getUniverseDetails()
+                                         .getPrimaryCluster()
+                                         .userIntent.provider));
+    Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
+    AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");

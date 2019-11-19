@@ -11,24 +11,33 @@ export default class DiskUsagePanel extends Component {
   }
 
   render() {
-    const { metric, isKubernetes } = this.props;
+    const { metric } = this.props;
     const space = {
       free: undefined,
       used: undefined,
       size: undefined
     };
     if (isNonEmptyArray(metric.data)) {
-      if (isKubernetes) {
-        space.used = metric.data.find((item)=>item.name==="container_volume_stats").y[0];
-        space.size = metric.data.find((item) => item.name==="container_volume_max_usage").y[0];
+      const diskUsedObj = metric.data.find((item)=>item.name === "used");
+      const diskFreeObj = metric.data.find((item)=>item.name === "free");
+      const diskSizeObj = metric.data.find((item)=>item.name === "size");
+      const reducer = arr => arr.reduce((p, c) => parseFloat(p) + parseFloat(c), 0 ) / arr.length;
+
+      // If at least two out of three objects are defined we can figure out the rest
+      if (!!diskUsedObj && !!diskFreeObj) {
+        space.used = reducer(diskUsedObj.y);
+        space.free = reducer(diskFreeObj.y);
+        space.size = space.used + space.free;
+      } else if (!!diskUsedObj && !!diskSizeObj) {
+        space.used = reducer(diskUsedObj.y);
+        space.size = reducer(diskSizeObj.y);
         space.free = space.size - space.used;
-      } else {
-        const freeArray = metric.data.find((item)=>item.name==="free").y;
-        const sizeArray = metric.data.find((item)=>item.name==="size").y;
-        const reducer = arr => arr.reduce((p, c) => parseFloat(p) + parseFloat(c), 0 ) / arr.length;
-        space.free = reducer(freeArray);
-        space.size = reducer(sizeArray);
+      } else if (!!diskFreeObj && !!diskSizeObj) {
+        space.free = reducer(diskSizeObj.y);
+        space.size = reducer(diskSizeObj.y);
         space.used = space.size - space.free;
+      } else {
+        console.error(`Metric missing properties. Free: ${diskFreeObj}, Used: ${diskUsedObj}, Size: ${diskSizeObj}`);
       }
     }
     const value = space.size ? Math.round(space.used * 1000 / space.size) / 1000 : 0;
