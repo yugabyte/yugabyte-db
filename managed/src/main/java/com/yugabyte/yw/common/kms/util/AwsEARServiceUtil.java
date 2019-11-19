@@ -12,6 +12,9 @@ package com.yugabyte.yw.common.kms.util;
 
 import com.amazonaws.services.identitymanagement.AmazonIdentityManagement;
 import com.amazonaws.services.identitymanagement.AmazonIdentityManagementClientBuilder;
+import com.amazonaws.services.identitymanagement.model.GetRoleRequest;
+import com.amazonaws.services.identitymanagement.model.GetRoleResult;
+import com.amazonaws.services.identitymanagement.model.Role;
 import com.amazonaws.services.identitymanagement.model.User;
 import com.amazonaws.services.kms.AWSKMS;
 import com.amazonaws.services.kms.AWSKMSClientBuilder;
@@ -26,12 +29,18 @@ import com.amazonaws.services.kms.model.ListAliasesRequest;
 import com.amazonaws.services.kms.model.ListAliasesResult;
 import com.amazonaws.services.kms.model.ListKeysRequest;
 import com.amazonaws.services.kms.model.ListKeysResult;
+import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
+import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
+import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClient;
+import com.amazonaws.services.securitytoken.model.GetCallerIdentityRequest;
+import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
 import com.avaje.ebean.annotation.EnumValue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -57,6 +66,38 @@ public class AwsEARServiceUtil {
         DATA_KEY;
     }
 
+    private enum CredentialType {
+        @EnumValue("KMS_CONFIG")
+        KMS_CONFIG,
+        @EnumValue("CLOUD_PROVIDER")
+        CLOUD_PROVIDER;
+    }
+
+    /**
+     * Determines which source to retrieve AWS credentials from
+     *
+     * @param customerUUID
+     * @return KMS_CONFIG if one exists, CLOUD_PROVIDER otherwise
+     */
+    private static CredentialType getCredentialType(UUID customerUUID) {
+        CredentialType type = null;
+        ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(customerUUID, KeyProvider.AWS);
+        Provider provider = Provider.get(customerUUID, CloudType.aws);
+        Map<String, String> providerConfig = provider == null ? null : provider.getConfig();
+        if (authConfig == null &&
+                provider != null &&
+                providerConfig.get("AWS_ACCESS_KEY_ID") != null &&
+                providerConfig.get("AWS_SECRET_ACCESS_KEY") != null &&
+                ((Region) provider.regions.toArray()[0]).code != null) {
+            type = CredentialType.CLOUD_PROVIDER;
+        } else if (authConfig != null) {
+            type = CredentialType.KMS_CONFIG;
+        } else {
+            throw new RuntimeException("Could not find AWS credentials for AWS KMS integration");
+        }
+        return type;
+    }
+
     /**
      * Tries to set AWS credential system properties if any exist in authConfig
      * for the specified customer
@@ -70,37 +111,34 @@ public class AwsEARServiceUtil {
     // https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html
     private static void setUserCredentials(UUID customerUUID) {
         Properties p = new Properties(System.getProperties());
-        ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(customerUUID, KeyProvider.AWS);
-        if (authConfig != null) {
-            LOG.info("Setting credentials from AWS KMS configuration for AWS client");
-            // Try using a kms_config if one exists
-            JsonNode accessKeyId = authConfig.get("AWS_ACCESS_KEY_ID");
-            JsonNode secretAccessKey = authConfig.get("AWS_SECRET_ACCESS_KEY");
-            JsonNode region = authConfig.get("AWS_REGION");
-            if (accessKeyId != null && secretAccessKey != null && region != null) {
-                p.setProperty("aws.accessKeyId", accessKeyId.asText());
-                p.setProperty("aws.secretKey", secretAccessKey.asText());
-                p.setProperty("aws.region", region.asText());
-            } else {
-                LOG.info(
-                        "Defaulting to attempt to use instance profile credentials for AWS client"
+        CredentialType credentialType = getCredentialType(customerUUID);
+        switch (credentialType) {
+            case KMS_CONFIG:
+                ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(
+                        customerUUID,
+                        KeyProvider.AWS
                 );
-            }
-        } else {
-            LOG.info("Setting credentials from AWS cloud provider for AWS client");
-            // Otherwise, try using cloud provider credentials
-            Provider provider = Provider.get(customerUUID, CloudType.aws);
-            if (provider != null) {
+                if (authConfig.get("AWS_ACCESS_KEY_ID") != null &&
+                        authConfig.get("AWS_SECRET_ACCESS_KEY") != null &&
+                        authConfig.get("AWS_REGION") != null) {
+                    p.setProperty("aws.accessKeyId", authConfig.get("AWS_ACCESS_KEY_ID").asText());
+                    p.setProperty(
+                            "aws.secretKey",
+                            authConfig.get("AWS_SECRET_ACCESS_KEY").asText()
+                    );
+                    p.setProperty("aws.region", authConfig.get("AWS_REGION").asText());
+                }
+                break;
+            case CLOUD_PROVIDER:
+                Provider provider = Provider.get(customerUUID, CloudType.aws);
                 Map<String, String> config = provider.getConfig();
                 String accessKeyId = config.get("AWS_ACCESS_KEY_ID");
                 String secretAccessKey = config.get("AWS_SECRET_ACCESS_KEY");
                 String region = ((Region) provider.regions.toArray()[0]).code;
-                if (accessKeyId != null && secretAccessKey != null && region != null) {
-                    p.setProperty("aws.accessKeyId", accessKeyId);
-                    p.setProperty("aws.secretKey", secretAccessKey);
-                    p.setProperty("aws.region", region);
-                }
-            }
+                p.setProperty("aws.accessKeyId", accessKeyId);
+                p.setProperty("aws.secretKey", secretAccessKey);
+                p.setProperty("aws.region", region);
+                break;
         }
         System.setProperties(p);
     }
@@ -118,12 +156,24 @@ public class AwsEARServiceUtil {
 
     /**
      * Instantiates an AWS IAM client using the default credential provider chain
+     *
      * @param customerUUID the customer that should have their AWS credentials retrieved
      * @return a AWS IAM client
      */
     public static AmazonIdentityManagement getIAMClient(UUID customerUUID) {
         setUserCredentials(customerUUID);
         return AmazonIdentityManagementClientBuilder.defaultClient();
+    }
+
+    /**
+     * Instantiates an AWS STS client using the default credential provider chain
+     *
+     * @param customerUUID the customer that should have their AWS credentials retrieved
+     * @return a AWS STS client
+     */
+    public static AWSSecurityTokenService getSTSClient(UUID customerUUID) {
+        setUserCredentials(customerUUID);
+        return AWSSecurityTokenServiceClientBuilder.defaultClient();
     }
 
     /**
@@ -152,16 +202,6 @@ public class AwsEARServiceUtil {
      */
     public static User getIAMUser(UUID customerUUID) {
         return AwsEARServiceUtil.getIAMClient(customerUUID).getUser().getUser();
-    }
-
-    /**
-     * Parses the AWS account id from an arn
-     *
-     * @param arn the Amazon resource name
-     * @return the AWS account id
-     */
-    public static String parseAccountIdFromArn(String arn) {
-        return arn.split(":")[4];
     }
 
     /**
@@ -200,6 +240,27 @@ public class AwsEARServiceUtil {
     }
 
     /**
+     * Retrieves the identity of the AWS credentials being used by this integration
+     *
+     * @param customerUUID the customer who's credentials are being tested for identity
+     * @return the current caller identity
+     */
+    private static GetCallerIdentityResult getCallerIdentity(UUID customerUUID) {
+        AWSSecurityTokenService client = getSTSClient(customerUUID);
+        GetCallerIdentityRequest req = new GetCallerIdentityRequest();
+        return client.getCallerIdentity(req);
+    }
+
+    /**
+     *
+     * @param arn
+     * @return
+     */
+    private static String getResourceNameFromArn(String arn) {
+        return (arn.split(":")[5]).split("/")[1];
+    }
+
+    /**
      * Generates the YB default AWS KMS CMK policy
      *
      * @param customerUUID the customer associated to the AWS credentials
@@ -207,9 +268,25 @@ public class AwsEARServiceUtil {
      */
     public static String generateDefaultPolicy(UUID customerUUID) {
         ObjectNode policyBase = getPolicyBase();
-        String userArn = getIAMUser(customerUUID).getArn();
-        String rootArn = String.format("arn:aws:iam::%s:root", parseAccountIdFromArn(userArn));
-        return bindParamsToPolicyBase(policyBase, userArn, rootArn).toString();
+        GetCallerIdentityResult callerIdentity = getCallerIdentity(customerUUID);
+        if (callerIdentity != null) {
+            String credentialsArn = callerIdentity.getArn();
+            if (credentialsArn.contains(":assumed-role/")) {
+                credentialsArn = getRole(
+                        customerUUID,
+                        getResourceNameFromArn(credentialsArn)
+                ).getArn();
+            } else if (!credentialsArn.contains(":user/")) {
+                throw new RuntimeException(
+                        "Credentials provided are not associated to a user or role"
+                );
+            }
+            String rootArn = String.format("arn:aws:iam::%s:root", callerIdentity.getAccount());
+            return bindParamsToPolicyBase(policyBase, credentialsArn, rootArn).toString();
+        } else {
+            LOG.error("Could not get AWS caller identity from provided credentials");
+            return null;
+        }
     }
 
     /**
@@ -244,6 +321,7 @@ public class AwsEARServiceUtil {
             for (AliasListEntry alias : result.getAliases()) {
                 if (alias.getAliasName().equals(aliasName)) {
                     uniAlias = alias;
+                    done = true;
                     break;
                 }
             }
@@ -251,6 +329,19 @@ public class AwsEARServiceUtil {
             if (!result.getTruncated()) done = true;
         }
         return uniAlias;
+    }
+
+    /**
+     * Queries AWS IAM for a role matching the inputted role name
+     *
+     * @param customerUUID the customer the KMS Config is associated to
+     * @param roleName the name of the AWS IAM role being queried for
+     * @return the role found
+     */
+    private static Role getRole(UUID customerUUID, String roleName) {
+        GetRoleRequest req = new GetRoleRequest().withRoleName(roleName);
+        GetRoleResult result = getIAMClient(customerUUID).getRole(req);
+        return result.getRole();
     }
 
     /**
@@ -270,6 +361,7 @@ public class AwsEARServiceUtil {
             for (KeyListEntry key : result.getKeys()) {
                 if (key.getKeyId().equals(cmkId)) {
                     cmkArn = key.getKeyArn();
+                    done = true;
                     break;
                 }
             }

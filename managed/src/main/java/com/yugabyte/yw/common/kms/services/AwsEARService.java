@@ -66,6 +66,35 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
         );
     }
 
+    private byte[] generateUniverseKey(
+            UUID customerUUID,
+            UUID universeUUID,
+            String algorithm,
+            int keySize,
+            String cmkId
+    ) {
+        byte[] result = null;
+        try {
+            ObjectNode validateResult = validateEncryptionKeyParams(algorithm, keySize);
+            if (!validateResult.get("result").asBoolean()) {
+                final String errMsg = String.format(
+                        "Invalid encryption key parameters detected for create/rotate data key" +
+                                " operation in universe %s: %s",
+                        universeUUID,
+                        validateResult.get("errors").asText()
+                );
+                LOG.error(errMsg);
+                throw new IllegalArgumentException(errMsg);
+            }
+            result = AwsEARServiceUtil.generateDataKey(customerUUID, cmkId, algorithm, keySize);
+        } catch (Exception e) {
+            LOG.error(String.format(
+                    "Error generating universe key for universe %s", universeUUID.toString()
+            ));
+        }
+        return result;
+    }
+
     @Override
     protected AwsAlgorithm[] getSupportedAlgorithms() { return AwsAlgorithm.values(); }
 
@@ -90,20 +119,13 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
                 break;
             default:
             case DATA_KEY:
-                final String algorithm = config.get("algorithm");
-                final int keySize = Integer.parseInt(config.get("key_size"));
-                final ObjectNode validateResult = validateEncryptionKeyParams(algorithm, keySize);
-                if (!validateResult.get("result").asBoolean()) {
-                    final String errMsg = String.format(
-                            "Invalid encryption key parameters detected for create operation in " +
-                                    "universe %s: %s",
-                            universeUUID,
-                            validateResult.get("errors").asText()
-                    );
-                    LOG.error(errMsg);
-                    throw new IllegalArgumentException(errMsg);
-                }
-                result = AwsEARServiceUtil.generateDataKey(customerUUID, cmkId, algorithm, keySize);
+                result = generateUniverseKey(
+                        customerUUID,
+                        universeUUID,
+                        config.get("algorithm"),
+                        Integer.parseInt(config.get("key_size")),
+                        cmkId
+                );
                 if (result != null && result.length > 0) {
                     addKeyRef(customerUUID, universeUUID, result);
                 }
@@ -118,15 +140,18 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
             UUID universeUUID,
             Map<String, String> config
     ) {
-        final String aliasName = AwsEARServiceUtil.generateAliasName(universeUUID.toString());
         final String cmkId = createOrRetrieveUniverseCMK(
                 customerUUID,
                 universeUUID,
                 config.get("cmk_policy")
         );
-        final String algorithm = config.get("algorithm");
-        final int keySize = Integer.parseInt(config.get("key_size"));
-        return AwsEARServiceUtil.generateDataKey(customerUUID, cmkId, algorithm, keySize);
+        return generateUniverseKey(
+                customerUUID,
+                universeUUID,
+                config.get("algorithm"),
+                Integer.parseInt(config.get("key_size")),
+                cmkId
+        );
     }
 
     @Override
