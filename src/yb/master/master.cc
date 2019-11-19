@@ -139,6 +139,10 @@ Master::Master(const MasterOptions& opts)
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       GetAtomicFlag(&FLAGS_inbound_rpc_memory_limit),
       mem_tracker()));
+
+  LOG(INFO) << "yb::master::Master created at " << this;
+  LOG(INFO) << "yb::master::TSManager created at " << ts_manager_.get();
+  LOG(INFO) << "yb::master::CatalogManager created at " << catalog_manager_.get();
 }
 
 Master::~Master() {
