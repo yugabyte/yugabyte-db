@@ -23,12 +23,10 @@
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/twodc_write_interface.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
-
-DEFINE_test_flag(bool, twodc_write_hybrid_time_override, false,
-  "Override external_hybrid_time with initialHybridTimeValue for testing.");
 
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 
@@ -62,9 +60,8 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
 
   CHECKED_STATUS ApplyChanges(const cdc::GetChangesResponsePB* resp) override;
 
-  void WriteCDCRecordDone(
-      const Status& status, const WriteResponsePB& response, const size_t record_idx,
-      rpc::Rpcs::Handle handle);
+  void WriteCDCRecordDone(const Status& status, const WriteResponsePB& response,
+                          rpc::Rpcs::Handle handle);
 
  private:
   void TabletLookupCallback(
@@ -74,14 +71,14 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
 
   void WriteIfAllRecordsProcessed();
 
-  void SendCDCWriteToTablet(const size_t record_idx);
+  void SendNextCDCWriteToTablet();
 
   // Increment processed record count.
   // Returns true if all records are processed, false if there are still some pending records.
   bool IncProcessedRecordCount();
 
   void HandleResponse();
-  void HandleError(const Status& s, const cdc::CDCRecordPB& bad_record, bool done);
+  void HandleError(const Status& s, bool done);
 
   bool UseLocalTserver();
 
@@ -103,13 +100,10 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   uint32_t processed_record_count_ GUARDED_BY(lock_) = 0;
   uint32_t record_count_ GUARDED_BY(lock_) = 0;
 
-  // Map of CDCRecord index -> RemoteTablet.
-  std::unordered_map<size_t, client::internal::RemoteTablet*> records_;
-
   // This will cache the response to an ApplyChanges() request.
   cdc::GetChangesResponsePB resp_;
 
-
+  std::unique_ptr<TwoDCWriteInterface> write_strategy_;
 };
 
 Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
@@ -129,10 +123,10 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
     DCHECK(consensus::OpIdEquals(op_id_, consensus::MinimumOpId()));
     op_id_ = resp->checkpoint().op_id();
     error_status_ = Status::OK();
-    records_.clear();
     done_processing_ = false;
     processed_record_count_ = 0;
     record_count_ = resp->records_size();
+    ResetWriteInterface(&write_strategy_);
   }
 
   // Ensure we have records.
@@ -194,7 +188,6 @@ bool TwoDCOutputClient::UseLocalTserver() {
 void TwoDCOutputClient::WriteIfAllRecordsProcessed() {
   bool done = IncProcessedRecordCount();
   if (done) {
-
     // Found tablets for all records, now we should write the records.
     // But first, check if there were any errors during tablet lookup for any record.
     bool has_error = false;
@@ -210,7 +203,7 @@ void TwoDCOutputClient::WriteIfAllRecordsProcessed() {
       HandleResponse();
     } else {
       // Apply the writes on consumer.
-      SendCDCWriteToTablet(0);
+      SendNextCDCWriteToTablet();
     }
   }
 }
@@ -220,92 +213,65 @@ void TwoDCOutputClient::TabletLookupCallback(
     const Result<client::internal::RemoteTabletPtr>& tablet) {
   if (!tablet.ok()) {
     bool done = IncProcessedRecordCount();
-    HandleError(tablet.status(), resp_.records(record_idx), done);
+    HandleError(tablet.status(), done);
     return;
   }
 
-  {
-    std::lock_guard<decltype(lock_)> l(lock_);
-    records_.emplace(record_idx, tablet->get());
-  }
+  write_strategy_->ProcessRecord(tablet->get()->tablet_id(), resp_.records(record_idx));
 
   WriteIfAllRecordsProcessed();
 }
 
 void TwoDCOutputClient::TabletLookupCallbackFastTrack(const size_t record_idx) {
-  {
-    std::lock_guard<decltype(lock_)> l(lock_);
-    // We don't need a remote tablet if we already know the tablet id, set the value in record_ to
-    // nullptr.
-    records_.emplace(record_idx, nullptr);
-  }
+  write_strategy_->ProcessRecord(consumer_tablet_info_.tablet_id, resp_.records(record_idx));
 
   WriteIfAllRecordsProcessed();
 }
 
-void TwoDCOutputClient::SendCDCWriteToTablet(const size_t record_idx) {
-  client::internal::RemoteTablet* tablet;
-  {
-    std::shared_lock<decltype(lock_)> l(lock_);
-    tablet = records_[record_idx];
-  }
-
-  WriteRequestPB req;
-  req.set_tablet_id(UseLocalTserver() ? consumer_tablet_info_.tablet_id : tablet->tablet_id());
-  if (PREDICT_FALSE(FLAGS_twodc_write_hybrid_time_override)) {
-    // Used only for testing external hybrid time.
-    req.set_external_hybrid_time(yb::kInitialHybridTimeValue);
-  } else {
-    req.set_external_hybrid_time(resp_.records(record_idx).time());
-  }
-
-  for (const auto& kv_pair : resp_.records(record_idx).changes()) {
-    auto* write_pair = req.mutable_write_batch()->add_write_pairs();
-    write_pair->set_key(kv_pair.key());
-    write_pair->set_value(kv_pair.value().binary_value());
-  }
+void TwoDCOutputClient::SendNextCDCWriteToTablet() {
+  auto write_request = write_strategy_->GetNextWriteRequest();
 
   auto deadline = CoarseMonoClock::Now() +
                   MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms);
   auto write_rpc_handle = cdc_consumer_->rpcs()->Prepare();
   if (write_rpc_handle != cdc_consumer_->rpcs()->InvalidHandle()) {
+    // Send in nullptr for RemoteTablet since cdc rpc now gets the tablet_id from the write request.
     *write_rpc_handle = CreateCDCWriteRpc(
         deadline,
-        tablet,
+        nullptr /* RemoteTablet */,
         local_client_.get(),
-        &req,
+        write_request.get(),
         std::bind(&TwoDCOutputClient::WriteCDCRecordDone, this,
-                  std::placeholders::_1, std::placeholders::_2, record_idx, write_rpc_handle),
+                  std::placeholders::_1, std::placeholders::_2, write_rpc_handle),
         UseLocalTserver());
     (**write_rpc_handle).SendRpc();
   } else {
-    LOG(WARNING) << "Invalid handle for CDC write, tablet ID: " << tablet->tablet_id();
+    LOG(WARNING) << "Invalid handle for CDC write, tablet ID: " << write_request->tablet_id();
   }
 }
 
-void TwoDCOutputClient::WriteCDCRecordDone(
-    const Status& status, const WriteResponsePB& response, size_t record_idx,
-    rpc::Rpcs::Handle handle) {
+void TwoDCOutputClient::WriteCDCRecordDone(const Status& status, const WriteResponsePB& response,
+                                           rpc::Rpcs::Handle handle) {
   auto retained = cdc_consumer_->rpcs()->Unregister(handle);
   if (!status.ok()) {
-    HandleError(status, resp_.records(record_idx), true /* done */);
+    HandleError(status, true /* done */);
     return;
   } else if (response.has_error()) {
-    HandleError(StatusFromPB(response.error().status()), resp_.records(record_idx),
-                true /* done */);
+    HandleError(StatusFromPB(response.error().status()), true /* done */);
     return;
   }
 
-  if (record_idx == resp_.records_size() - 1) {
+  cdc_consumer_->IncrementNumSuccessfulWriteRpcs();
+
+  if (!write_strategy_->HasMoreWrites()) {
     // Last record, return response to caller.
     HandleResponse();
   } else {
-    SendCDCWriteToTablet(record_idx + 1);
+    SendNextCDCWriteToTablet();
   }
 }
 
-void TwoDCOutputClient::HandleError(const Status& s, const cdc::CDCRecordPB& bad_record,
-                                    bool done) {
+void TwoDCOutputClient::HandleError(const Status& s, bool done) {
   LOG(ERROR) << "Error while applying replicated record: " << s
              << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
   {
