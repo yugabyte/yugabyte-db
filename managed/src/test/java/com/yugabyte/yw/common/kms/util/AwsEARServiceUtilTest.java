@@ -26,11 +26,4 @@ public class AwsEARServiceUtilTest extends FakeDBApplication {
         assertEquals(statements.get(0).get("Principal").get("AWS").asText(), rootArn);
         assertEquals(statements.get(1).get("Principal").get("AWS").asText(), userArn);
     }
-
-    @Test
-    public void testParseAccountIdFromArn() {
-        String accountId = "123456789123";
-        String sampleArn = String.format("arn:aws:iam::%s:user/daniel", accountId);
-        assertEquals(AwsEARServiceUtil.parseAccountIdFromArn(sampleArn), accountId);
-    }
 }

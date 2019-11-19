@@ -33,7 +33,7 @@
   </appender>
 
   <logger name="play" level="INFO" />
-  <logger name="com.yugabyte.yw" level="DEBUG" />
+  <logger name="com.yugabyte.yw" level="INFO" />
   <logger name="org.yb" level="INFO" />
   <logger name="application" level="DEBUG" />
 

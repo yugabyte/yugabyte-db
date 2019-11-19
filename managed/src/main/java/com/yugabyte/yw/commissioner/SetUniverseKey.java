@@ -99,7 +99,7 @@ public class SetUniverseKey {
         Customer c = Customer.get(u.customerId);
         try {
             if (!u.universeIsLocked() && u.isEncryptedAtRest()) {
-                LOG.info(String.format(
+                LOG.debug(String.format(
                         "Setting universe encryption key for customer %s and universe %s",
                         c.uuid.toString(),
                         u.universeUUID.toString()

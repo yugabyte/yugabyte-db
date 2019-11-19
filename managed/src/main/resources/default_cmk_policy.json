@@ -17,7 +17,17 @@
       "Principal": {
         "AWS": ""
       },
-      "Action": "kms:*",
+      "Action": [
+        "kms:CreateAlias",
+        "kms:DeleteAlias",
+        "kms:UpdateAlias",
+        "kms:Decrypt",
+        "kms:DescribeKey",
+        "kms:GenerateDataKeyWithoutPlaintext",
+        "kms:GetKeyPolicy",
+        "kms:PutKeyPolicy",
+        "kms:UpdateKeyDescription"
+      ],
       "Resource": "*"
     }
   ]
