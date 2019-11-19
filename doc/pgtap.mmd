@@ -4196,6 +4196,7 @@ view or composite type.
 ### `col_not_null()` ###
 
     SELECT col_not_null( :schema, :table, :column, :description );
+    SELECT col_not_null( :schema, :table, :column );
     SELECT col_not_null( :table, :column, :description );
     SELECT col_not_null( :table, :column );
 
@@ -4225,6 +4226,7 @@ first, eh?
 ### `col_is_null()` ###
 
     SELECT col_is_null( :schema, :table, :column, :description );
+    SELECT col_is_null( :schema, :table, :column );
     SELECT col_is_null( :table, :column, :description );
     SELECT col_is_null( :table, :column );
 
