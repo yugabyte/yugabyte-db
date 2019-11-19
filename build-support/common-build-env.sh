@@ -52,8 +52,9 @@ if [[ $YB_SRC_ROOT == */ ]]; then
   fatal "YB_SRC_ROOT ends with '/' (not allowed): '$YB_SRC_ROOT'"
 fi
 
-if [[ ! -d $YB_SRC_ROOT/submodules/yugabyte-bash-common ]]; then
-  ( cd "$$YB_SRC_ROOT"; git submodule update --init --recursive )
+YB_BASH_COMMON_DIR=$YB_SRC_ROOT/submodules/yugabyte-bash-common
+if [[ ! -d $YB_BASH_COMMON_DIR || -z "$( ls -A "$YB_BASH_COMMON_DIR" )" ]]; then
+  ( cd "$YB_SRC_ROOT"; git submodule update --init --recursive )
 fi
 
 . "$YB_SRC_ROOT/submodules/yugabyte-bash-common/src/yugabyte-bash-common.sh"
@@ -173,6 +174,10 @@ readonly EPHEMERAL_DRIVES_GLOB="/mnt/ephemeral* /mnt/d*"
 readonly EPHEMERAL_DRIVES_FILTER_REGEX="^/mnt/(ephemeral|d)[0-9]+"  # No "$" in the end.
 
 declare -i -r DIRECTORY_EXISTENCE_WAIT_TIMEOUT_SEC=100
+
+declare -i -r YB_DOWNLOAD_LOCK_TIMEOUT_SEC=120
+
+readonly YB_DOWNLOAD_LOCKS_DIR=/tmp/yb_download_locks
 
 # -------------------------------------------------------------------------------------------------
 # Functions
@@ -982,9 +987,28 @@ download_and_extract_archive() {
   local tar_gz_name=${url##*/}
   local install_dir_name=${tar_gz_name%.tar.gz}
   local dest_dir=$dest_dir_parent/$install_dir_name
-  if [[ ! -d $dest_dir ]]; then
-    "$YB_SRC_ROOT/python/yb/download_and_extract_archive.py" \
-      --url "$url" --dest-dir-parent "$dest_dir_parent"
+  if [[ ! -d $dest_dir && ! -L $dest_dir ]]; then
+    if [[ ! -d $YB_DOWNLOAD_LOCKS_DIR ]]; then
+      ( umask 0; mkdir -p "$YB_DOWNLOAD_LOCKS_DIR" )
+    fi
+    (
+      umask 0
+      lock_path=$YB_DOWNLOAD_LOCKS_DIR/$install_dir_name
+      (
+        flock -w "$YB_DOWNLOAD_LOCK_TIMEOUT_SEC" 200
+        if [[ ! -d $dest_dir && ! -L $dest_dir ]]; then
+          log "[Host $(hostname)] Acquired lock $lock_path, proceeding with archive installation."
+          (
+            set -x
+            "$YB_SRC_ROOT/python/yb/download_and_extract_archive.py" \
+              --url "$url" --dest-dir-parent "$dest_dir_parent"
+          )
+        else
+          log "[Host $(hostname)] Acquired lock $lock_path but directory $dest_dir already" \
+              "exists. This is OK."
+        fi
+      ) 200>"$lock_path"
+    )
   fi
   extracted_dir=$dest_dir
 }
