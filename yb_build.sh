@@ -1135,7 +1135,9 @@ export YB_COMPILER_TYPE
 if "$verbose"; then
   # http://stackoverflow.com/questions/22803607/debugging-cmakelists-txt
   cmake_opts+=( -Wdev --debug-output --trace -DYB_VERBOSE=1 )
-  make_opts+=( VERBOSE=1 SH="bash -x" )
+  if ! using_ninja; then
+    make_opts+=( VERBOSE=1 SH="bash -x" )
+  fi
   export YB_SHOW_COMPILER_COMMAND_LINE=1
 fi
 
