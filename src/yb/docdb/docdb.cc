@@ -366,6 +366,8 @@ void PrepareNonTransactionWriteBatch(
     // same key (row/column) within a transaction. We set it based on the position of the write
     // operation in its write batch.
 
+    hybrid_time = kv_pair.has_external_hybrid_time() ?
+        HybridTime(kv_pair.external_hybrid_time()) : hybrid_time;
     std::array<Slice, 2> key_parts = {{
         Slice(kv_pair.key()),
         doc_ht_buffer.EncodeWithValueType(hybrid_time, write_id),

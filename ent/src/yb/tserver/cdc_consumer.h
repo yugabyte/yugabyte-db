@@ -81,6 +81,14 @@ class CDCConsumer {
     return rpcs_;
   }
 
+  void IncrementNumSuccessfulWriteRpcs() {
+    TEST_num_successful_write_rpcs++;
+  }
+
+  uint32_t GetNumSuccessfulWriteRpcs() {
+    return TEST_num_successful_write_rpcs.load(std::memory_order_acquire);
+  }
+
  private:
   // Runs a thread that periodically polls for any new threads.
   void RunThread();
@@ -136,6 +144,8 @@ class CDCConsumer {
   std::atomic<int32_t> cluster_config_version_ GUARDED_BY(master_data_mutex_) = {-1};
 
   std::shared_ptr<rpc::Rpcs> rpcs_ = std::make_shared<rpc::Rpcs>();
+
+  std::atomic<uint32_t> TEST_num_successful_write_rpcs {0};
 };
 
 } // namespace enterprise

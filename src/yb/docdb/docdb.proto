@@ -22,6 +22,7 @@ option java_package = "org.yb.docdb";
 message KeyValuePairPB {
   optional bytes key = 1;
   optional bytes value = 2;
+  optional fixed64 external_hybrid_time = 3;
 }
 
 // A set of key/value pairs to be written into RocksDB.
