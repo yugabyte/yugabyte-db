@@ -118,7 +118,7 @@ TEST_F(YBTsCliTest, TestTLSDeleteTablet) {
   ts_flags.push_back("--use_node_to_node_encryption=true");
   ts_flags.push_back("--certs_dir=" + certs_dir);
   ts_flags.push_back("--use_client_to_server_encryption=true");
-  ts_flags.push_back("--certs_for_client_dir" + certs_dir);
+  ts_flags.push_back("--certs_for_client_dir=" + certs_dir);
   ts_flags.push_back("--allow_insecure_connections=false");
   master_flags.push_back("--use_node_to_node_encryption=true");
   master_flags.push_back("--certs_dir=" + certs_dir);
