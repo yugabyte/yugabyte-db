@@ -111,12 +111,43 @@ memory_usage:
 
 
 container_cpu_usage:
-  metric: "container_cpu_usage_seconds_total"
-  function: "rate|sum"
+  metric: "container_cpu_usage_seconds_total/container_cpu_request"
+  function: "rate|avg"
   range: "1m"
   filters:
     pod_name: "yb-tserver-(.*)"
-  group_by: "saved_name"
+    container_name: "yb-tserver"
+  layout:
+    title: "CPU Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "container_cpu_usage_seconds_total/container_cpu_request": "cpu_usage"
+      ticksuffix: "&nbsp;%"
+
+container_cpu_request:
+  metric: "kube_pod_container_resource_requests_cpu_cores"
+  function: "avg"
+  filters:
+    pod_name: "yb-tserver-(.*)"
+    container_name: "yb-tserver"
+  layout:
+    title: "CPU Request"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "kube_pod_container_resource_requests_cpu_cores": "cpu_requests"
+      ticksuffix: "&nbsp;"
+
+container_cpu_usage_seconds_total:
+  metric: "container_cpu_usage_seconds_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    pod_name: "yb-tserver-(.*)"
+    container_name: "yb-tserver"
   layout:
     title: "CPU Usage"
     xaxis:
@@ -127,24 +158,27 @@ container_cpu_usage:
       ticksuffix: "&nbsp;"
 
 container_memory_usage:
-  metric: "container_memory_usage_bytes"
-  function: "sum"
+  metric: "container_memory_working_set_bytes"
+  function: "avg"
   operator: "/ 1073741824"
   filters:
     pod_name: "yb-tserver-(.*)"
+    container_name: "yb-tserver"
   layout:
     title: "Memory Usage"
     xaxis:
       type: "date"
     yaxis:
       ticksuffix: "&nbsp;GB"
+      alias:
+        "container_memory_working_set_bytes": "memory_usage"
 
 container_volume_stats:
-  metric: "container_fs_usage_bytes"
+  metric: "kubelet_volume_stats_used_bytes"
   function: "sum"
   operator: "/ 1073741824"
   filters:
-    pod_name: "yb-tserver-(.*)"
+    persistentvolumeclaim: "(.*)-yb-tserver-(.*)"
   layout:
     title: "Persistent Volume Stats"
     xaxis:
@@ -152,14 +186,14 @@ container_volume_stats:
     yaxis:
       ticksuffix: "&nbsp;GB"
       alias:
-        "container_fs_usage_bytes": "used"
+        "kubelet_volume_stats_used_bytes": "used"
 
 container_volume_max_usage:
-  metric: "container_fs_limit_bytes"
+  metric: "kubelet_volume_stats_capacity_bytes"
   function: "sum"
   operator: "/ 1073741824"
   filters:
-    pod_name: "yb-tserver-(.*)"
+    persistentvolumeclaim: "(.*)-yb-tserver-(.*)"
   layout:
     title: "Persistent Volume Stats"
     xaxis:
@@ -167,7 +201,7 @@ container_volume_max_usage:
     yaxis:
       ticksuffix: "&nbsp;GB"
       alias:
-        "container_fs_limit_bytes": "used"
+        "kubelet_volume_stats_capacity_bytes": "used"
 
 network_bytes:
   metric: ""
