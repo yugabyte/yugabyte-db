@@ -63,11 +63,12 @@
 DECLARE_int32(replication_factor);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
-DECLARE_bool(twodc_write_hybrid_time_override);
+DECLARE_bool(TEST_twodc_write_hybrid_time);
 DECLARE_int32(cdc_wal_retention_time_secs);
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_int32(replication_failure_delay_exponent);
 DECLARE_double(respond_write_failed_probability);
+DECLARE_int32(cdc_max_apply_batch_num_records);
 
 namespace yb {
 
@@ -93,7 +94,7 @@ constexpr int kRpcTimeout = NonTsanVsTsan(30, 60);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 
-class TwoDCTest : public YBTest {
+class TwoDCTest : public YBTest, public testing::WithParamInterface<int> {
  public:
   Result<std::vector<std::shared_ptr<client::YBTable>>>
       SetUpWithParams(std::vector<uint32_t> num_consumer_tablets,
@@ -104,6 +105,7 @@ class TwoDCTest : public YBTest {
     FLAGS_cdc_write_rpc_timeout_ms = (kRpcTimeout / 6) * 1000;
     // Not a useful test for us. It's testing Public+Private IP NW errors and we're only public
     FLAGS_TEST_check_broadcast_address = false;
+    FLAGS_cdc_max_apply_batch_num_records = GetParam();
 
     YBTest::SetUp();
     MiniClusterOptions opts;
@@ -317,6 +319,19 @@ class TwoDCTest : public YBTest {
     }
   }
 
+  uint32_t GetSuccessfulWriteOps(MiniCluster* cluster) {
+    uint32_t size = 0;
+    for (const auto& mini_tserver : cluster->mini_tablet_servers()) {
+      auto* tserver = dynamic_cast<tserver::enterprise::TabletServer*>(
+          mini_tserver->server());
+      CDCConsumer* cdc_consumer;
+      if (tserver && (cdc_consumer = tserver->GetCDCConsumer())) {
+        size += cdc_consumer->GetNumSuccessfulWriteRpcs();
+      }
+    }
+    return size;
+  }
+
   void WriteTransactionalWorkload(uint32_t start, uint32_t end, YBClient* client,
                                   client::TransactionManager* txn_mgr, const YBTableName& table) {
     auto session = client->NewSession();
@@ -461,7 +476,9 @@ class TwoDCTest : public YBTest {
   YBSchema schema_;
 };
 
-TEST_F(TwoDCTest, SetupUniverseReplication) {
+INSTANTIATE_TEST_CASE_P(BatchSize, TwoDCTest, ::testing::Values(1, 100));
+
+TEST_P(TwoDCTest, SetupUniverseReplication) {
   auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3));
 
   std::vector<std::shared_ptr<client::YBTable>> producer_tables;
@@ -496,7 +513,7 @@ TEST_F(TwoDCTest, SetupUniverseReplication) {
 }
 
 // Test for #2250 to verify that replication for tables with the same prefix gets set up correctly.
-TEST_F(TwoDCTest, SetupUniverseReplicationMultipleTables) {
+TEST_P(TwoDCTest, SetupUniverseReplicationMultipleTables) {
   // Setup the two clusters without any tables.
   auto tables = ASSERT_RESULT(SetUpWithParams({}, {}, 1));
 
@@ -532,7 +549,7 @@ TEST_F(TwoDCTest, SetupUniverseReplicationMultipleTables) {
   Destroy();
 }
 
-TEST_F(TwoDCTest, PollWithConsumerRestart) {
+TEST_P(TwoDCTest, PollWithConsumerRestart) {
   // Avoid long delays with node failures so we can run with more aggressive test timing
   FLAGS_replication_failure_delay_exponent = 7; // 2^7 == 128ms
 
@@ -567,7 +584,7 @@ TEST_F(TwoDCTest, PollWithConsumerRestart) {
   Destroy();
 }
 
-TEST_F(TwoDCTest, PollWithProducerRestart) {
+TEST_P(TwoDCTest, PollWithProducerRestart) {
   // Avoid long delays with node failures so we can run with more aggressive test timing
   FLAGS_replication_failure_delay_exponent = 7; // 2^7 == 128ms
 
@@ -601,7 +618,7 @@ TEST_F(TwoDCTest, PollWithProducerRestart) {
   Destroy();
 }
 
-TEST_F(TwoDCTest, ApplyOperations) {
+TEST_P(TwoDCTest, ApplyOperations) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   // Use just one tablet here to more easily catch lower-level write issues with this test.
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));
@@ -629,7 +646,7 @@ TEST_F(TwoDCTest, ApplyOperations) {
   Destroy();
 }
 
-TEST_F(TwoDCTest, ApplyOperationsWithTransactions) {
+TEST_P(TwoDCTest, ApplyOperationsWithTransactions) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, replication_factor));
 
@@ -660,7 +677,7 @@ TEST_F(TwoDCTest, ApplyOperationsWithTransactions) {
   Destroy();
 }
 
-TEST_F(TwoDCTest, TestExternalWriteHybridTime) {
+TEST_P(TwoDCTest, TestExternalWriteHybridTime) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, replication_factor));
 
@@ -685,7 +702,7 @@ TEST_F(TwoDCTest, TestExternalWriteHybridTime) {
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 
   // Delete 2nd record but replicate at a low timestamp (timestamp lower than insertion timestamp).
-  FLAGS_twodc_write_hybrid_time_override = true;
+  FLAGS_TEST_twodc_write_hybrid_time = true;
   DeleteWorkload(1, 2, producer_client(), tables[0]->name());
 
   // Verify that record exists on consumer universe, but is deleted from producer universe.
@@ -696,7 +713,7 @@ TEST_F(TwoDCTest, TestExternalWriteHybridTime) {
   Destroy();
 }
 
-TEST_F(TwoDCTest, BiDirectionalWrites) {
+TEST_P(TwoDCTest, BiDirectionalWrites) {
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, 1));
 
   // Setup bi-directional replication.
@@ -746,7 +763,7 @@ TEST_F(TwoDCTest, BiDirectionalWrites) {
   Destroy();
 }
 
-TEST_F(TwoDCTest, ToggleReplicationEnabled) {
+TEST_P(TwoDCTest, ToggleReplicationEnabled) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, replication_factor));
 
@@ -776,7 +793,7 @@ TEST_F(TwoDCTest, ToggleReplicationEnabled) {
   Destroy();
 }
 
-TEST_F(TwoDCTest, TestDeleteUniverse) {
+TEST_P(TwoDCTest, TestDeleteUniverse) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
 
   auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, replication_factor));
@@ -801,7 +818,7 @@ TEST_F(TwoDCTest, TestDeleteUniverse) {
   Destroy();
 }
 
-TEST_F(TwoDCTest, TestWalRetentionSet) {
+TEST_P(TwoDCTest, TestWalRetentionSet) {
   FLAGS_cdc_wal_retention_time_secs = 8 * 3600;
 
   auto tables = ASSERT_RESULT(SetUpWithParams({8, 4, 4, 12}, {8, 4, 12, 8}, 3));
@@ -828,7 +845,7 @@ TEST_F(TwoDCTest, TestWalRetentionSet) {
   Destroy();
 }
 
-TEST_F(TwoDCTest, TestProducerUniverseExpansion) {
+TEST_P(TwoDCTest, TestProducerUniverseExpansion) {
   // Test that after new node(s) are added to producer universe, we are able to get replicated data
   // from the new node(s).
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, 1));
@@ -865,7 +882,7 @@ TEST_F(TwoDCTest, TestProducerUniverseExpansion) {
   Destroy();
 }
 
-TEST_F(TwoDCTest, ApplyOperationsRandomFailures) {
+TEST_P(TwoDCTest, ApplyOperationsRandomFailures) {
   SetAtomicFlag(0.25, &FLAGS_respond_write_failed_probability);
 
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
@@ -905,6 +922,52 @@ TEST_F(TwoDCTest, ApplyOperationsRandomFailures) {
 
   // Stop replication on producer
   ASSERT_OK(DeleteUniverseReplication(kUniverseId, producer_client(), producer_cluster()));
+  Destroy();
+}
+
+TEST_P(TwoDCTest, TestInsertDeleteWorkloadWithRestart) {
+  // Good test for batching, make sure we can handle operations on the same key with different
+  // hybrid times. Then, do a restart and make sure we can successfully bootstrap the batched data.
+  // In additional, make sure we write exactly num_total_ops / batch_size batches to the cluster to
+  // ensure batching is actually enabled.
+  constexpr uint32_t num_ops_per_workload = 100;
+  constexpr uint32_t num_runs = 5;
+
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));
+
+  WriteWorkload(0, num_ops_per_workload, producer_client(), tables[0]->name());
+  for (int i = 0; i < num_runs; i++) {
+    WriteWorkload(0, num_ops_per_workload, producer_client(), tables[0]->name(), true);
+    WriteWorkload(0, num_ops_per_workload, producer_client(), tables[0]->name());
+  }
+
+  // Count the number of ops in total.
+  uint32_t expected_num_writes =
+      (num_ops_per_workload * (num_runs * 2 + 1)) / FLAGS_cdc_max_apply_batch_num_records;
+
+  LOG(INFO) << "expected num writes: " <<expected_num_writes;
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  producer_tables.reserve(1);
+  producer_tables.push_back(tables[0]);
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+  AssertLoggedWaitFor([&]() {
+    return GetSuccessfulWriteOps(consumer_cluster()) == expected_num_writes;
+  }, MonoDelta::FromSeconds(60), "Wait for all batches to finish.");
+
+  // Verify that both clusters have the same records.
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+
+  ASSERT_OK(consumer_cluster_->RestartSync());
+
+  // Verify that both clusters have the same records.
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+  // Stop replication on consumer.
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+
   Destroy();
 }
 
