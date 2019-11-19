@@ -121,6 +121,14 @@ public class MetricConfig extends Model {
       String countQuery = getQuery(metricPrefix + "_count", additionalFilters);
       return "(" + sumQuery + ") / (" + countQuery + ")";
     }
+    else if (metric.contains("/")) {
+      String[] metricNames = metric.split("/");
+      MetricConfig numerator = get(metricNames[0]);
+      MetricConfig denominator = get(metricNames[1]);
+      String numQuery = numerator.getQuery(numerator.getConfig().metric, additionalFilters);
+      String demonQuery = denominator.getQuery(denominator.getConfig().metric, additionalFilters);
+      return String.format("((%s)/(%s))*100", numQuery, demonQuery);
+    }
 
     String queryStr;
     StringBuilder query = new StringBuilder();
