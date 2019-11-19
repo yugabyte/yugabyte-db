@@ -323,7 +323,6 @@ values. Here's an example, testing a hypothetical `users` table:
     CREATE OR REPLACE FUNCTION test_user(
     ) RETURNS SETOF TEXT AS $$
        SELECT is( nick, 'theory', 'Should have nick') FROM users;
-    END;
     $$ LANGUAGE sql;
 
 See below for details on the pgTAP assertion functions. Once you've defined
