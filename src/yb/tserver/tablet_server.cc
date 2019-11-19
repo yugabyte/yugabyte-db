@@ -139,6 +139,9 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       tablet_server_service_(nullptr) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
+
+  LOG(INFO) << "yb::tserver::TabletServer created at " << this;
+  LOG(INFO) << "yb::tserver::TSTabletManager created at " << tablet_manager_.get();
 }
 
 TabletServer::~TabletServer() {
