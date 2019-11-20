@@ -39,14 +39,14 @@ const mapDispatchToProps = (dispatch) => {
         .catch(err => console.err('Error submitting KMS configuration: ', err));
     },
 
-    deleteKMSConfig: (provider) => {
-      dispatch(deleteKMSProviderConfig(provider)).then((response) => {
-        if (response.status === 200) {
-          return dispatch(deleteKMSProviderConfigResponse(provider));
+    deleteKMSConfig: (configUUID) => {
+      dispatch(deleteKMSProviderConfig(configUUID)).then((response) => {
+        if (response.payload.status === 200) {
+          return dispatch(deleteKMSProviderConfigResponse(configUUID));
         }
         console.warn('Warning: Deleting configuration returned unsuccessful response.');
       })
-      .catch(err => console.err(err));
+      .catch(err => console.error(err));
     }
   };
 };

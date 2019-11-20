@@ -54,16 +54,12 @@ public class EncryptionAtRestUniverseKeyCache {
     }
 
     public byte[] getCacheEntry(UUID universeUUID, byte[] keyRef) {
+        byte[] result = null;
         EncryptionAtRestUniverseKeyCacheEntry cacheEntry = this.cache.get(universeUUID);
-        if (cacheEntry == null || !Arrays.equals(cacheEntry.getKeyRef(), keyRef)) {
-            String errMsg = String.format(
-                    "Could not retrieve cached universe encryption key for universe %s",
-                    universeUUID.toString()
-            );
-            System.out.println(errMsg);
-            return null;
+        if (cacheEntry != null && Arrays.equals(cacheEntry.getKeyRef(), keyRef)) {
+            result = cacheEntry.getKeyVal();
         }
-        return cacheEntry.getKeyVal();
+        return result;
     }
 
     public void removeCacheEntry(UUID universeUUID) {

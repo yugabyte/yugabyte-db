@@ -8,6 +8,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.util.Base64;
@@ -35,22 +36,18 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
     Customer testCustomer;
     Universe testUniverse;
     String keyProvider = "SMARTKEY";
-    Map<String, String> keyConfig;
+    EncryptionAtRestConfig keyConfig;
 
     @Before
     public void setUp() {
         testCustomer = ModelFactory.testCustomer();
         testUniverse = ModelFactory.createUniverse();
         EncryptionAtRestService keyService = testManager.getServiceInstance(keyProvider);
-        keyService.createAuthConfig(testCustomer.uuid, Json.newObject()
+        keyService.createAuthConfig(testCustomer.uuid, "some_config_name", Json.newObject()
                 .put("api_key", "some_api_key")
                 .put("base_url", "some_base_url")
         );
-        keyConfig = ImmutableMap.of(
-                "kms_provider", keyProvider,
-                "algorithm", "AES",
-                "key_size", "256"
-        );
+        keyConfig = new EncryptionAtRestConfig();
 
         when(mockApiHelper.postRequest(
                 eq("https://some_base_url/sys/v1/session/auth"),
@@ -84,7 +81,7 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
 
     @Test
     @Ignore public void testGenerateUniverseKey() {
-
+        // TODO: (Daniel) - Fix params
         byte[] universeKeyData = testManager.generateUniverseKey(
                 testCustomer.uuid,
                 testUniverse.universeUUID,
@@ -95,39 +92,36 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
 
     @Test
     public void testGetNumKeyRotationsNoHistory() {
-        int numRotations = testManager
-                .getNumKeyRotations(testCustomer.uuid, testUniverse.universeUUID);
+        int numRotations = testManager.getNumKeyRotations(testUniverse.universeUUID);
         assertEquals(numRotations, 0);
     }
 
     @Test
     public void testGetNumKeyRotations() {
         EncryptionAtRestService keyService = testManager.getServiceInstance(keyProvider);
+        UUID configUUID = UUID.randomUUID();
         keyService.addKeyRef(
-                testCustomer.uuid,
+                configUUID,
                 testUniverse.universeUUID,
                 new String("some_key_ref").getBytes()
         );
-        int numRotations = testManager
-                .getNumKeyRotations(testCustomer.uuid, testUniverse.universeUUID);
+        int numRotations = testManager.getNumKeyRotations(testUniverse.universeUUID, configUUID);
         assertEquals(numRotations, 1);
     }
 
     @Test
     public void testClearUniverseKeyHistory() {
         EncryptionAtRestService keyService = testManager.getServiceInstance(keyProvider);
+        UUID configUUID = UUID.randomUUID();
         keyService.addKeyRef(
-                testCustomer.uuid,
+                configUUID,
                 testUniverse.universeUUID,
                 new String("some_key_ref").getBytes()
         );
-        int numRotations = testManager
-                .getNumKeyRotations(testCustomer.uuid, testUniverse.universeUUID);
+        int numRotations = testManager.getNumKeyRotations(testUniverse.universeUUID, configUUID);
         assertEquals(numRotations, 1);
-        testManager
-                .clearUniverseKeyHistory(testCustomer.uuid, testUniverse.universeUUID);
-        numRotations = testManager
-                .getNumKeyRotations(testCustomer.uuid, testUniverse.universeUUID);
+        testManager.clearUniverseKeyHistory(testUniverse.universeUUID);
+        numRotations = testManager.getNumKeyRotations(testUniverse.universeUUID);
         assertEquals(numRotations, 0);
     }
 }

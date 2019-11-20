@@ -7,15 +7,18 @@ import {browserHistory} from 'react-router';
 import _ from 'lodash';
 import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, areIntentsEqual, isEmptyObject,
   isNonEmptyArray, trimSpecialChars } from 'utils/ObjectUtils';
-import { YBTextInput, YBTextInputWithLabel, YBSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel,
-  YBToggle, YBUnControlledNumericInput, YBControlledNumericInputWithLabel, YBDropZone } from 'components/common/forms/fields';
+import {
+  YBTextInput,YBTextInputWithLabel, YBSelectWithLabel, YBMultiSelectWithLabel,
+  YBRadioButtonBarWithLabel, YBToggle, YBUnControlledNumericInput,
+  YBControlledNumericInputWithLabel
+} from 'components/common/forms/fields';
 import { getPromiseState } from 'utils/PromiseUtils';
 import AZSelectorTable from './AZSelectorTable';
 import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
 import GFlagArrayComponent from './GFlagArrayComponent';
 import { getPrimaryCluster, getReadOnlyCluster,
-  getClusterByType, isKubernetesUniverse, readUploadedFile } from "../../../utils/UniverseUtils";
+  getClusterByType, isKubernetesUniverse } from "../../../utils/UniverseUtils";
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
@@ -86,7 +89,6 @@ export default class ClusterFields extends Component {
     this.toggleEnableClientToNodeEncrypt = this.toggleEnableClientToNodeEncrypt.bind(this);
     this.toggleEnableEncryptionAtRest = this.toggleEnableEncryptionAtRest.bind(this);
     this.handleSelectAuthConfig = this.handleSelectAuthConfig.bind(this);
-    this.handleUploadKeyPolicy = this.handleUploadKeyPolicy.bind(this);
     this.numNodesChangedViaAzList = this.numNodesChangedViaAzList.bind(this);
     this.replicationFactorChanged = this.replicationFactorChanged.bind(this);
     this.softwareVersionChanged = this.softwareVersionChanged.bind(this);
@@ -137,6 +139,8 @@ export default class ClusterFields extends Component {
       const readOnlyCluster = getReadOnlyCluster(universeDetails.clusters);
       const userIntent = clusterType === "async" ? readOnlyCluster && { ...readOnlyCluster.userIntent, universeName: primaryCluster.userIntent.universeName } : primaryCluster && primaryCluster.userIntent;
       const providerUUID = userIntent && userIntent.provider;
+      const encryptionAtRestEnabled = universeDetails.encryptionAtRestConfig &&
+          universeDetails.encryptionAtRestConfig.enableEncryptionAtRest;
       if (userIntent && providerUUID) {
         const storageType = (userIntent.deviceInfo === null) ? null : userIntent.deviceInfo.storageType;
         this.setState({
@@ -150,7 +154,7 @@ export default class ClusterFields extends Component {
           enableYSQL: userIntent.enableYSQL,
           enableNodeToNodeEncrypt: userIntent.enableNodeToNodeEncrypt,
           enableClientToNodeEncrypt: userIntent.enableClientToNodeEncrypt,
-          enableEncryptionAtRest: userIntent.enableEncryptionAtRest,
+          enableEncryptionAtRest: encryptionAtRestEnabled,
           accessKeyCode: userIntent.accessKeyCode,
           deviceInfo: userIntent.deviceInfo,
           storageType: storageType,
@@ -572,16 +576,6 @@ export default class ClusterFields extends Component {
     this.setState({selectEncryptionAtRestConfig: value});
   }
 
-  handleUploadKeyPolicy(e, file) {
-    const { updateFormField, clusterType } = this.props;
-    updateFormField(`${clusterType}.useCmkPolicy`, file);
-    this.setState({useCmkPolicy: file});
-
-    readUploadedFile(file).then(text => {
-      updateFormField(`${clusterType}.cmkPolicyContent`, text);
-    });
-  }
-
   replicationFactorChanged = value => {
     const { updateFormField, clusterType, universe: { currentUniverse: { data }}} = this.props;
     const clusterExists = isDefinedNotNull(data.universeDetails) ? isEmptyObject(getClusterByType(data.universeDetails.clusters, clusterType)) : null;
@@ -700,7 +694,6 @@ export default class ClusterFields extends Component {
       instanceType: formValues[clusterType].instanceType,
       ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
       replicationFactor: formValues[clusterType].replicationFactor,
-      enableEncryptionAtRest: formValues[clusterType].enableEncryptionAtRest,
       deviceInfo: {
         volumeSize: formValues[clusterType].volumeSize,
         numVolumes: formValues[clusterType].numVolumes,
@@ -853,10 +846,13 @@ export default class ClusterFields extends Component {
         return <option key={gcpType} value={gcpType}>{API_UI_STORAGE_TYPES[gcpType]}</option>;
       });
     const kmsConfigList = [
-      <option value="0" key={`kms-option-0`}>Use auto-generated key</option>,
-      ...cloud.authConfig.data.map((config, index) => (
-        <option value={config.provider} key={`kms-option-${index + 1}`}>{config.provider}</option>
-      ))
+      <option value="0" key={`kms-option-0`}>Select Configuration</option>,
+      ...cloud.authConfig.data.map((config, index) => {
+        const labelName = config.metadata.provider + " - " + config.metadata.name;
+        return (<option value={
+          config.metadata.configUUID
+        } key={`kms-option-${index + 1}`}>{labelName}</option>);
+      })
     ];
     const isFieldReadOnly = isNonEmptyObject(universe.currentUniverse.data) && (this.props.type === "Edit" || (this.props.type === "Async" && this.state.isReadOnlyExists));
 
@@ -955,7 +951,6 @@ export default class ClusterFields extends Component {
     let selectTlsCert = <span />;
     let enableEncryptionAtRest = <span />;
     let selectEncryptionAtRestConfig = <span />;
-    let useCmkPolicy = <span />;
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
 
     if (isDefinedNotNull(currentProvider) &&
@@ -1012,16 +1007,6 @@ export default class ClusterFields extends Component {
             }}
           />
         );
-        if (this.state.selectEncryptionAtRestConfig === 'AWS') {
-          useCmkPolicy = (
-            <div className={"right-side-form-field"}>
-              <Field component={YBDropZone} name={`${clusterType}.useCmkPolicy`}
-                title={"Upload CM Key Policy"} className="upload-file-button"
-                onChange={this.handleUploadKeyPolicy}
-              />
-            </div>
-          );
-        }
       }
     }
 
@@ -1291,9 +1276,6 @@ export default class ClusterFields extends Component {
               <div className="form-right-aligned-labels right-side-form-field">
                 <Row>
                   {selectEncryptionAtRestConfig}
-                </Row>
-                <Row>
-                  {useCmkPolicy}
                 </Row>
               </div>
             </Col>

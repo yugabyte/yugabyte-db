@@ -20,18 +20,15 @@ import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.YBClient;
-import play.api.Play;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.Duration;
 
@@ -98,22 +95,25 @@ public class SetUniverseKey {
     private void setUniverseKey(Universe u) {
         Customer c = Customer.get(u.customerId);
         try {
-            if (!u.universeIsLocked() && u.isEncryptedAtRest()) {
+            if (!u.universeIsLocked() && keyManager.getNumKeyRotations(u.universeUUID) > 0) {
                 LOG.debug(String.format(
-                        "Setting universe encryption key for customer %s and universe %s",
-                        c.uuid.toString(),
+                        "Setting universe encryption key for universe %s",
                         u.universeUUID.toString()
                 ));
-                byte[] keyRef = keyManager.getCurrentUniverseKeyRef(c.uuid, u.universeUUID);
-                byte[] keyVal = keyManager.getCurrentUniverseKey(c.uuid, u.universeUUID, keyRef);
+                UUID configUUID = keyManager.getCurrentKMSConfigUUID(u.universeUUID);
+                byte[] keyRef = keyManager.getCurrentUniverseKeyRef(u.universeUUID, configUUID);
+                byte[] keyVal = keyManager.getCurrentUniverseKey(
+                        u.universeUUID,
+                        configUUID,
+                        keyRef
+                );
                 Arrays.stream(u.getMasterAddresses().split(","))
                         .map(addrString -> HostAndPort.fromString(addrString))
                         .forEach(addr -> setKeyInMaster(u, addr, keyRef, keyVal));
             }
         } catch (Exception e) {
             String errMsg = String.format(
-                    "Error setting universe encryption key for customer %s and universe %s",
-                    c.uuid.toString(),
+                    "Error setting universe encryption key for universe %s",
                     u.universeUUID.toString()
             );
             LOG.error(errMsg, e);

@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertNotNull;
@@ -56,8 +57,6 @@ public class AwsEARServiceTest extends FakeDBApplication {
     TestEncryptionAtRestService encryptionService;
 
     KeyProvider testKeyProvider = KeyProvider.AWS;
-    String testAlgorithm = "AES";
-    int testKeySize = 256;
 
     String testCmkId = "some_cmk_id";
 
@@ -72,7 +71,7 @@ public class AwsEARServiceTest extends FakeDBApplication {
 
     UUID testUniUUID = UUID.randomUUID();
     UUID testCustomerUUID = UUID.randomUUID();
-    Map<String, String> config = null;
+    EncryptionAtRestConfig config;
 
     byte[] mockEncryptionKey =
             new String("tcIQ6E6HJu4m3C4NbVf/1yNe/6jYi/0LAYDsIouwcnU=").getBytes();
@@ -119,32 +118,10 @@ public class AwsEARServiceTest extends FakeDBApplication {
         when(mockClient.decrypt(any(DecryptRequest.class))).thenReturn(mockDecryptResult);
         when(mockDecryptResult.getPlaintext()).thenReturn(decryptedKeyBuffer);
         encryptionService = new TestEncryptionAtRestService();
-        config = ImmutableMap.of(
-                "kms_provider", testKeyProvider.name(),
-                "algorithm", testAlgorithm,
-                "key_size", Integer.toString(testKeySize),
-                "cmk_policy", "some_test_policy"
-        );
-    }
+        config = new EncryptionAtRestConfig();
+        // TODO: (Daniel) - Create KMS Config and link to here
+        config.kmsConfigUUID = null;
 
-    @Test
-    public void testCreateEncryptionKeyInvalidEncryptionAlgorithm() {
-        Map<String, String> testConfig = new HashMap<>(config);
-        testConfig.replace("algorithm", "nonsense");
-        assertNull(encryptionService.createKey(testUniUUID, testCustomerUUID, testConfig));
-        verify(mockClient, times(0)).generateDataKeyWithoutPlaintext(
-                any(GenerateDataKeyWithoutPlaintextRequest.class)
-        );
-    }
-
-    @Test
-    public void testCreateEncryptionKeyInvalidEncryptionKeySize() {
-        Map<String, String> testConfig = new HashMap<>(config);
-        testConfig.replace("key_size", "257");
-        assertNull(encryptionService.createKey(testUniUUID, testCustomerUUID, testConfig));
-        verify(mockClient, times(0)).generateDataKeyWithoutPlaintext(
-                any(GenerateDataKeyWithoutPlaintextRequest.class)
-        );
     }
 
     @Test
@@ -152,12 +129,9 @@ public class AwsEARServiceTest extends FakeDBApplication {
         CreateAliasRequest createAliasReq = new CreateAliasRequest()
                 .withAliasName(String.format("alias/%s", testUniUUID.toString()))
                 .withTargetKeyId(testCmkId);
-        CreateKeyRequest createKeyReq = new CreateKeyRequest()
-                .withDescription("Yugaware KMS Integration")
-                .withPolicy(config.get("cmk_policy"));
         ListAliasesRequest listAliasReq = new ListAliasesRequest().withLimit(100);
         byte[] encryptionKey = encryptionService.createKey(testUniUUID, testCustomerUUID, config);
-        verify(mockClient, times(1)).createKey(createKeyReq);
+        verify(mockClient, times(1)).createKey(any(CreateKeyRequest.class));
         verify(mockClient, times(1)).listAliases(listAliasReq);
         verify(mockClient, times(1)).createAlias(createAliasReq);
         assertNotNull(encryptionKey);
@@ -170,12 +144,9 @@ public class AwsEARServiceTest extends FakeDBApplication {
         UpdateAliasRequest updateAliasReq = new UpdateAliasRequest()
                 .withAliasName("alias/" + testUniUUID.toString())
                 .withTargetKeyId(testCmkId);
-        CreateKeyRequest createKeyReq = new CreateKeyRequest()
-                .withDescription("Yugaware KMS Integration")
-                .withPolicy(config.get("cmk_policy"));
         ListAliasesRequest listAliasReq = new ListAliasesRequest().withLimit(100);
         byte[] encryptionKey = encryptionService.createKey(testUniUUID, testCustomerUUID, config);
-        verify(mockClient, times(1)).createKey(createKeyReq);
+        verify(mockClient, times(1)).createKey(any(CreateKeyRequest.class));
         verify(mockClient, times(1)).listAliases(listAliasReq);
         verify(mockClient, times(1)).updateAlias(updateAliasReq);
         assertNotNull(encryptionKey);

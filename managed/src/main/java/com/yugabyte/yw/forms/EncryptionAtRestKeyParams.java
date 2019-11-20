@@ -10,49 +10,38 @@
 
 package com.yugabyte.yw.forms;
 
-import com.avaje.ebean.annotation.EnumValue;
+import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
+import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import java.util.UUID;
 import java.util.Map;
 
 public class EncryptionAtRestKeyParams extends UniverseTaskParams {
-    public enum OpType {
-        @EnumValue("ENABLE")
-        ENABLE,
-        @EnumValue("DISABLE")
-        DISABLE;
+    public static OpType opTypeFromString(String opTypeString) {
+        return opTypeString == null ? OpType.UNDEFINED : OpType.valueOf(opTypeString);
     }
 
-    public OpType op;
-
-    private static OpType opTypeFromString(String opTypeString) {
-        return opTypeString == null ? OpType.ENABLE : OpType.valueOf(opTypeString);
-    }
-
-    public static EncryptionAtRestKeyParams bindFromFormData(ObjectNode formData) {
+    public static EncryptionAtRestKeyParams bindFromFormData(
+            UUID universeUUID,
+            ObjectNode formData
+    ) {
         EncryptionAtRestKeyParams params = new EncryptionAtRestKeyParams();
-        String cmkPolicy = "";
-        String keyType = "";
-        String algorithm = "";
-        String keySize = "";
-        if (formData.get("cmk_policy") != null) cmkPolicy = formData.get("cmk_policy").asText();
-        if (formData.get("key_type") != null) keyType = formData.get("key_type").asText();
-        if (formData.get("algorithm") != null) algorithm = formData.get("algorithm").asText();
-        if (formData.get("key_size") != null) keySize = formData.get("key_size").asText();
-        if (formData.get("kms_provider") != null) {
-            params.encryptionAtRestConfig = ImmutableMap.of(
-                    "kms_provider", formData.get("kms_provider").asText(),
-                    "algorithm", algorithm,
-                    "key_size", keySize,
-                    "cmk_policy", cmkPolicy,
-                    "key_type", keyType
-            );
+        if (formData.get("kmsConfigUUID") != null) {
+            params.encryptionAtRestConfig.kmsConfigUUID =
+                    UUID.fromString(formData.get("kmsConfigUUID").asText());
+            if (formData.get("key_type") != null) {
+                params.encryptionAtRestConfig.type =
+                        Enum.valueOf(KeyType.class, formData.get("key_type").asText());
+            }
+            if (formData.get("key_op") != null) {
+                params.encryptionAtRestConfig.opType =
+                        opTypeFromString(formData.get("key_op").asText());
+            }
+        } else {
+            throw new IllegalArgumentException("kmsConfigUUID is a required field");
         }
-        params.universeUUID = UUID.fromString(formData.get("universeUUID").asText());
-        String keyOpString = null;
-        if (formData.get("key_op") != null) keyOpString = formData.get("key_op").asText();
-        params.op = opTypeFromString(keyOpString);
+        params.universeUUID = universeUUID;
         return params;
     }
 }

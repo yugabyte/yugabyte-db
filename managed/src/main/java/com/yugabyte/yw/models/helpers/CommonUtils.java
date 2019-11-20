@@ -18,8 +18,10 @@ public class CommonUtils {
     JsonNode maskedData = config.deepCopy();
     for (Iterator<String> it = maskedData.fieldNames(); it.hasNext(); ) {
       String key = it.next();
+      String keyLowerCase = key.toLowerCase();
       // TODO: make this a constant
-      if (key.toLowerCase().contains("key") || key.toLowerCase().contains("secret") ||  key.toLowerCase().contains("api")) {
+      if (keyLowerCase.contains("key") || keyLowerCase.contains("secret") ||
+              keyLowerCase.contains("api") || keyLowerCase.contains("policy")) {
         ((ObjectNode) maskedData).put(key, maskedData.get(key).asText().replaceAll(maskRegex, "*"));
       }
     }

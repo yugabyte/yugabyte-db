@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
@@ -49,17 +50,9 @@ enum SmartKeyAlgorithm implements SupportedAlgorithmInterface {
  * https://support.smartkey.io/api/index.html
  */
 public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorithm> {
-    /**
-     * To be used to make requests against SmartKey APIs
-     */
+
     private ApiHelper apiHelper;
 
-    /**
-     * Constructor
-     *
-     * @param apiHelper is a library to make requests against a third party encryption key provider
-     * @param keyProvider is a String representation of "SMARTKEY" (if it is valid in this context)
-     */
     public SmartKeyEARService() {
         super(KeyProvider.SMARTKEY);
         this.apiHelper = Play.current().injector().instanceOf(ApiHelper.class);
@@ -95,11 +88,11 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
     @Override
     protected byte[] createKeyWithService(
             UUID universeUUID,
-            UUID customerUUID,
-            Map<String, String> config
+            UUID configUUID,
+            EncryptionAtRestConfig config
     ) {
-        final String algorithm = config.get("algorithm");
-        final int keySize = Integer.parseInt(config.get("key_size"));
+        final String algorithm = "AES";
+        final int keySize = 256;
         final ObjectNode validateResult = validateEncryptionKeyParams(algorithm, keySize);
         if (!validateResult.get("result").asBoolean()) {
             final String errMsg = String.format(
@@ -120,7 +113,7 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
                 .put("obj_type", algorithm)
                 .put("key_size", keySize);
         payload.set("key_ops", keyOps);
-        final ObjectNode authConfig = getAuthConfig(customerUUID);
+        final ObjectNode authConfig = getAuthConfig(configUUID);
         final String sessionToken = retrieveSessionAuthorization(authConfig);
         final Map<String, String> headers = ImmutableMap.of(
                 "Authorization", sessionToken,
@@ -133,28 +126,27 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
         if (errors != null) throw new RuntimeException(errors.toString());
         final String kId = response.get("kid").asText();
         byte[] ref = kId.getBytes();
-        if (ref != null && ref.length > 0) addKeyRef(customerUUID, universeUUID, ref);
+        if (ref != null && ref.length > 0) addKeyRef(configUUID, universeUUID, ref);
         return ref;
     }
 
     @Override
     protected byte[] rotateKeyWithService(
-            UUID customerUUID,
             UUID universeUUID,
-            Map<String, String> config
+            UUID configUUID,
+            EncryptionAtRestConfig config
     ) {
-        final byte[] currentKey = retrieveKey(customerUUID, universeUUID);
+        final byte[] currentKey = retrieveKey(universeUUID, configUUID, config);
         if (currentKey == null || currentKey.length == 0) {
             final String errMsg = String.format(
-                    "Universe encryption key for customer %s in universe %s does not exist",
-                    customerUUID.toString(),
+                    "Universe encryption key for universe %s does not exist",
                     universeUUID.toString()
             );
             LOG.error(errMsg);
             throw new IllegalArgumentException(errMsg);
         }
-        final String algorithm = config.get("algorithm");
-        final int keySize = Integer.parseInt(config.get("key_size"));
+        final String algorithm = "AES";
+        final int keySize = 256;
         final String endpoint = "/crypto/v1/keys/rekey";
         final ArrayNode keyOps = Json.newArray()
                 .add("EXPORT")
@@ -164,7 +156,7 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
                 .put("obj_type", algorithm)
                 .put("key_size", keySize);
         payload.set("key_ops", keyOps);
-        final ObjectNode authConfig = getAuthConfig(customerUUID);
+        final ObjectNode authConfig = getAuthConfig(configUUID);
         final String sessionToken = retrieveSessionAuthorization(authConfig);
         final Map<String, String> headers = ImmutableMap.of(
                 "Authorization", sessionToken,
@@ -181,13 +173,13 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
 
     @Override
     public byte[] retrieveKeyWithService(
-            UUID customerUUID,
             UUID universeUUID,
+            UUID configUUID,
             byte[] keyRef,
-            Map<String, String> config
+            EncryptionAtRestConfig config
     ) {
         byte[] keyVal = null;
-        final ObjectNode authConfig = getAuthConfig(customerUUID);
+        final ObjectNode authConfig = getAuthConfig(configUUID);
         final String endpoint = String.format("/crypto/v1/keys/%s/export", new String(keyRef));
         final String sessionToken = retrieveSessionAuthorization(authConfig);
         final Map<String, String> headers = ImmutableMap.of(

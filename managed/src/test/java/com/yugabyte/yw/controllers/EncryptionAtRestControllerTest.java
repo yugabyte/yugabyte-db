@@ -32,6 +32,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -60,9 +61,9 @@ public class EncryptionAtRestControllerTest extends WithApplication {
     @Mock
     play.Configuration mockAppConfig;
     private Customer customer;
+    private Universe universe;
     private String authToken;
     private ApiHelper mockApiHelper;
-    private UUID mockUniverseUUID;
     private EncryptionAtRestManager mockUtil;
 
     String mockEncryptionKey = "RjZiNzVGekljNFh5Zmh0NC9FQ1dpM0FaZTlMVGFTbW1Wa1dnaHRzdDhRVT0=";
@@ -75,7 +76,6 @@ public class EncryptionAtRestControllerTest extends WithApplication {
     protected Application provideApplication() {
         mockApiHelper = mock(ApiHelper.class);
         mockUtil = mock(EncryptionAtRestManager.class);
-        mockUniverseUUID = UUID.randomUUID();
         return new GuiceApplicationBuilder()
                 .configure((Map) Helpers.inMemoryDatabase())
                 .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
@@ -86,13 +86,14 @@ public class EncryptionAtRestControllerTest extends WithApplication {
     @Before
     public void setUp() {
         customer = ModelFactory.testCustomer();
+        universe = ModelFactory.createUniverse();
         authToken = customer.createAuthToken();
         String mockApiKey = "some_api_key";
         Map<String, String> authorizationHeaders = ImmutableMap.of(
                 "Authorization", String.format("Basic %s", mockApiKey)
         );
         ObjectNode createReqPayload = Json.newObject()
-                .put("name", mockUniverseUUID.toString())
+                .put("name", universe.universeUUID.toString())
                 .put("obj_type", algorithm)
                 .put("key_size", keySize);
         ArrayNode keyOps = Json.newArray()
@@ -116,7 +117,7 @@ public class EncryptionAtRestControllerTest extends WithApplication {
         when(mockApiHelper.getRequest(any(String.class), any(Map.class)))
                 .thenReturn(Json.newObject().put("value", mockEncryptionKey));
         Map<String, String> mockQueryParams = ImmutableMap.of(
-                "name", mockUniverseUUID.toString(),
+                "name", universe.universeUUID.toString(),
                 "limit", "1"
         );
         when(mockApiHelper.getRequest(any(String.class), any(Map.class), any(Map.class)))
@@ -126,22 +127,14 @@ public class EncryptionAtRestControllerTest extends WithApplication {
     }
 
     @Test
-    public void testCreateAndListKMSConfigs() {
-        ObjectNode testConfig = Json.newObject().put("some_key", "some_val");
-        String url = "/api/v1/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
-        Result createResult = doRequestWithAuthTokenAndBody(
-                "POST",
-                url,
-                authToken,
-                testConfig
-        );
-        assertOk(createResult);
-        url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
+    public void testListKMSConfigs() {
+        ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", Json.newObject());
+        String url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
         Result listResult = doRequestWithAuthToken("GET", url, authToken);
         assertOk(listResult);
         JsonNode json = Json.parse(contentAsString(listResult));
         assertTrue(json.isArray());
-        assertEquals(json.size(), 1);
+        assertEquals(1, json.size());
     }
 
     @Test
@@ -156,20 +149,27 @@ public class EncryptionAtRestControllerTest extends WithApplication {
 
     @Test
     public void testDeleteConfig() {
-        String url = "/api/v1/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
-        Result createResult = doRequestWithAuthTokenAndBody(
-                "POST",
-                url,
-                authToken,
-                Json.newObject()
-        );
-        assertOk(createResult);
-        Result deleteResult = doRequestWithAuthToken("DELETE", url, authToken);
-        assertOk(deleteResult);
-        url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
+        ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", Json.newObject());
+        String url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
         Result listResult = doRequestWithAuthToken("GET", url, authToken);
         assertOk(listResult);
         JsonNode json = Json.parse(contentAsString(listResult));
+        assertTrue(json.isArray());
+        assertEquals(json.size(), 1);
+        UUID kmsConfigUUID = UUID.fromString(
+                ((ArrayNode) json)
+                        .get(0)
+                        .get("metadata")
+                        .get("configUUID")
+                        .asText()
+        );
+        url = "/api/v1/customers/" + customer.uuid + "/kms_configs/" + kmsConfigUUID.toString();
+        Result deleteResult = doRequestWithAuthToken("DELETE", url, authToken);
+        assertOk(deleteResult);
+        url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
+        listResult = doRequestWithAuthToken("GET", url, authToken);
+        assertOk(listResult);
+        json = Json.parse(contentAsString(listResult));
         assertTrue(json.isArray());
         assertEquals(json.size(), 0);
     }
@@ -188,7 +188,7 @@ public class EncryptionAtRestControllerTest extends WithApplication {
                 kmsConfigReq
         );
         assertOk(createKMSResult);
-        String url = "/api/customers/" + customer.uuid + "/universes/" + mockUniverseUUID +
+        String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID +
                 "/kms/SMARTKEY/create_key";
         ObjectNode createPayload = Json.newObject()
                 .put("kms_provider", "SMARTKEY")
@@ -208,26 +208,17 @@ public class EncryptionAtRestControllerTest extends WithApplication {
 
     @Test
     public void testRecoverKeyNotFound() {
-        String mockApiKey = "some_api_key";
-        String url = "/api/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
-        ObjectNode configPayload = Json.newObject()
-                .put("base_url", "some_base_url")
-                .put("api_key", mockApiKey);
-        Result createConfigResult = doRequestWithAuthTokenAndBody(
-                "POST",
-                url,
-                authToken,
-                configPayload
-        );
-        assertOk(createConfigResult);
-        url = "/api/customers/" + customer.uuid + "/universes/" + mockUniverseUUID +
-                "/kms/SMARTKEY";
-        Result recoverKeyResult = doRequestWithAuthToken("GET", url, authToken);
+        ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", Json.newObject());
+        String url = "/api/customers/" + customer.uuid + "/universes/" +
+                universe.universeUUID + "/kms";
+        ObjectNode body = Json.newObject()
+                .put("reference", "NzNiYmY5M2UtNWYyNy00NzE3LTgyYTktMTVjYzUzMDIzZWRm");
+        Result recoverKeyResult = doRequestWithAuthTokenAndBody("POST", url, authToken, body);
         JsonNode json = Json.parse(contentAsString(recoverKeyResult));
-        assertErrorNodeValue(json, String.format(
-                "No key found for customer %s for universe %s with SMARTKEY",
-                customer.uuid.toString(),
-                mockUniverseUUID.toString()
-        ));
+        String expectedErrorMsg = String.format(
+                "No universe key found for universe %s",
+                universe.universeUUID.toString()
+        );
+        assertErrorNodeValue(json, expectedErrorMsg);
     }
 }

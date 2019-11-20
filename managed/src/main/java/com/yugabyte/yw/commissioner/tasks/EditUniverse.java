@@ -252,10 +252,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createWaitForMasterLeaderTask()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      // Enable encryption-at-rest if key file is passed in
-      createEnableEncryptionAtRestTask(taskParams().enableEncryptionAtRest)
-              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
       // Update these older ones to be not masters anymore so tserver info can be updated with the
       // final master list and other future cluster client operations.
       createUpdateNodeProcessTasks(removeMasters, ServerType.MASTER, false);

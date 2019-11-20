@@ -1,5 +1,10 @@
 package com.yugabyte.yw.models.helpers;
 
+import java.lang.reflect.Field;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+
 
 /**
  * These are the various types of user tasks and internal tasks.
@@ -57,7 +62,12 @@ public enum TaskType {
 
   SetUniverseKey("SetUniverseKey"),
 
+  @Deprecated
   SetKubernetesUniverseKey("SetKubernetesUniverseKey"),
+
+  CreateKMSConfig("CreateKMSConfig"),
+
+  DeleteKMSConfig("DeleteKMSConfig"),
 
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
@@ -160,5 +170,16 @@ public enum TaskType {
   @Override
   public String toString() {
     return this.relativeClassPath;
+  }
+
+  public static List<TaskType> filteredValues() {
+    return Arrays.stream(TaskType.values()).filter(value -> {
+      try {
+        Field field = TaskType.class.getField(value.name());
+        return !field.isAnnotationPresent(Deprecated.class);
+      } catch (Exception e) {
+        return false;
+      }
+    }).collect(Collectors.toList());
   }
 }

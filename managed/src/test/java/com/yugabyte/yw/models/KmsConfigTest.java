@@ -24,28 +24,9 @@ public class KmsConfigTest extends FakeDBApplication {
         KmsConfig config = KmsConfig.createKMSConfig(
                 customerUUID,
                 KeyProvider.AWS,
-                Json.newObject().put("test_key", "test_val")
+                Json.newObject().put("test_key", "test_val"),
+                "some config name"
         );
         assertEquals(1, KmsConfig.listKMSConfigs(customerUUID).size());
-    }
-
-    @Test
-    public void testUpdate() {
-        UUID customerUUID = UUID.randomUUID();
-        KmsConfig config = KmsConfig.createKMSConfig(
-                customerUUID,
-                KeyProvider.AWS,
-                Json.newObject().put("test_key", "test_val")
-        );
-        KmsConfig.updateKMSAuthObj(
-                customerUUID,
-                KeyProvider.AWS,
-                Json.newObject().put("test_key", "new_test_val")
-        );
-        KmsConfig updatedConfig = KmsConfig.getAll(customerUUID).get(0);
-        assertEquals(
-                updatedConfig.authConfig.get("test_key").asText(),
-                "new_test_val"
-        );
     }
 }

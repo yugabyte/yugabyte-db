@@ -13,11 +13,18 @@ package com.yugabyte.yw.commissioner.tasks;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 
 public class SetUniverseKey extends UniverseTaskBase {
     public static final Logger LOG = LoggerFactory.getLogger(SetUniverseKey.class);
+
+    @Override
+    protected EncryptionAtRestKeyParams taskParams() {
+        return (EncryptionAtRestKeyParams)taskParams;
+    }
 
     @Override
     public void run() {
@@ -30,15 +37,11 @@ public class SetUniverseKey extends UniverseTaskBase {
             // 'updateInProgress' flag to prevent other updates from happening.
             lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
-            // Enable encryption-at-rest if key file is passed in
-            createEnableEncryptionAtRestTask(taskParams().enableEncryptionAtRest)
-                    .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-            createDisableEncryptionAtRestTask(taskParams().disableEncryptionAtRest)
-                    .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-            // Update the universe model to reflect encryption is now enabled
-            writeEncryptionIntentToUniverse(taskParams().enableEncryptionAtRest);
+            // Manage encryption at rest
+            SubTaskGroup manageEncryptionKeyTask = createManageEncryptionAtRestTask();
+            if (manageEncryptionKeyTask != null) {
+                manageEncryptionKeyTask.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+            }
 
             // Marks the update of this universe as a success only if all the tasks before it succeeded.
             createMarkUniverseUpdateSuccessTasks()

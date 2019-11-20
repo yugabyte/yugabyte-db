@@ -40,7 +40,7 @@ public class TaskRunner implements Runnable {
     // Initialize the map which holds the task types to their task class.
     Map<TaskType, Class<? extends ITask>> typeMap = new HashMap<TaskType, Class<? extends ITask>>();
 
-    for (TaskType taskType : TaskType.values()) {
+    for (TaskType taskType : TaskType.filteredValues()) {
       String className = "com.yugabyte.yw.commissioner.tasks." + taskType.toString();
       Class<? extends ITask> taskClass;
       try {
