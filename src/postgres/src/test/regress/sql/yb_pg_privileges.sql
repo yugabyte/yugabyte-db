@@ -76,9 +76,8 @@ INSERT INTO atest2 VALUES ('foo', true); -- fail
 INSERT INTO atest1 SELECT 1, b FROM atest1; -- ok
 UPDATE atest1 SET a = 1 WHERE a = 2; -- ok
 UPDATE atest2 SET col2 = NOT col2; -- fail
--- TODO(jason): try uncommenting after issue #1199 is resolved.
--- SELECT * FROM atest1 FOR UPDATE; -- ok
--- SELECT * FROM atest2 FOR UPDATE; -- fail
+SELECT * FROM atest1 FOR UPDATE; -- ok
+SELECT * FROM atest2 FOR UPDATE; -- fail
 DELETE FROM atest2; -- fail
 TRUNCATE atest2; -- fail
 COPY atest2 FROM stdin; -- fail
@@ -101,9 +100,8 @@ UPDATE atest1 SET a = 1 WHERE a = 2; -- fail
 UPDATE atest2 SET col2 = NULL; -- ok
 UPDATE atest2 SET col2 = NOT col2; -- fails; requires SELECT on atest2
 UPDATE atest2 SET col2 = true FROM atest1 WHERE atest1.a = 5; -- ok
--- TODO(jason): try uncommenting after issue #1199 is resolved.
--- SELECT * FROM atest1 FOR UPDATE; -- fail
--- SELECT * FROM atest2 FOR UPDATE; -- fail
+SELECT * FROM atest1 FOR UPDATE; -- fail
+SELECT * FROM atest2 FOR UPDATE; -- fail
 DELETE FROM atest2; -- fail
 TRUNCATE atest2; -- fail
 COPY atest2 FROM stdin; -- fail

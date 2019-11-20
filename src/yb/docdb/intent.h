@@ -31,6 +31,11 @@ struct DecodedIntentKey {
 // Decodes intent RocksDB key.
 Result<DecodedIntentKey> DecodeIntentKey(const Slice &encoded_intent_key);
 
+// Decode intent RocksDB value.
+// encoded_intent_value - input intent value to decode.
+// transaction_id_slice - input transaction id (to double-check with transaction id in value).
+// write_id - output write id.
+// body - output the rest of the data after write id.
 CHECKED_STATUS DecodeIntentValue(
     const Slice& encoded_intent_value, const Slice& transaction_id_slice, IntraTxnWriteId* write_id,
     Slice* body);
@@ -48,7 +53,8 @@ YB_DEFINE_ENUM(IntentStrength, (kWeak)(kStrong));
 
 YB_DEFINE_ENUM(OperationKind, (kRead)(kWrite));
 
-IntentTypeSet GetStrongIntentTypeSet(IsolationLevel level, OperationKind operation_kind);
+IntentTypeSet GetStrongIntentTypeSet(
+    IsolationLevel level, OperationKind operation_kind, RowMarkType row_mark);
 
 inline IntentTypeSet StrongToWeak(IntentTypeSet inp) {
   IntentTypeSet result(inp.ToUIntPtr() >> kStrongIntentFlag);
