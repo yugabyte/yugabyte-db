@@ -71,13 +71,23 @@ public class KmsHistory extends Model {
         return keyHistory;
     }
 
-    public static List<KmsHistory> getAllTargetKeyRefs(
+    public static List<KmsHistory> getAllConfigTargetKeyRefs(
             UUID configUUID,
             UUID targetUUID,
             KmsHistoryId.TargetType type
     ) {
         return KmsHistory.find.where()
                 .eq("config_uuid", configUUID)
+                .eq("target_uuid", targetUUID)
+                .eq("type", type)
+                .findList();
+    }
+
+    public static List<KmsHistory> getAllTargetKeyRefs(
+            UUID targetUUID,
+            KmsHistoryId.TargetType type
+    ) {
+        return KmsHistory.find.where()
                 .eq("target_uuid", targetUUID)
                 .eq("type", type)
                 .findList();
@@ -108,10 +118,15 @@ public class KmsHistory extends Model {
     public static void deleteKeyRef(KmsHistory keyHistory) { keyHistory.delete(); }
 
     public static void deleteAllTargetKeyRefs(
+            UUID targetUUID,
+            KmsHistoryId.TargetType type
+    ) { getAllTargetKeyRefs(targetUUID, type).forEach(KmsHistory::deleteKeyRef); }
+
+    public static void deleteAllConfigTargetKeyRefs(
             UUID configUUID,
             UUID targetUUID,
             KmsHistoryId.TargetType type
-    ) { getAllTargetKeyRefs(configUUID, targetUUID, type).forEach(KmsHistory::deleteKeyRef); }
+    ) { getAllConfigTargetKeyRefs(configUUID, targetUUID, type).forEach(KmsHistory::deleteKeyRef); }
 
     public static boolean configHasHistory(UUID configUUID, KmsHistoryId.TargetType type) {
         return KmsHistory.find.where()

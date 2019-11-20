@@ -139,9 +139,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         // Enable encryption-at-rest if that is the intent and the key creation succeeded
         createEnableEncryptionAtRestTask(taskParams().enableEncryptionAtRest)
                 .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-        // Update the universe model to reflect encryption is now enabled
-        writeEncryptionIntentToUniverse(taskParams().enableEncryptionAtRest);
       }
 
       // Bring up new tservers.

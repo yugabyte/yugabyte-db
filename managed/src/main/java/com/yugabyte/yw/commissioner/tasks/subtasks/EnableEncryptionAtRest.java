@@ -71,16 +71,13 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
         EncryptionAtRestManager manager = Play.current()
                 .injector()
                 .instanceOf(EncryptionAtRestManager.class);
-        Map<String, String> encryptionAtRestConfig = universe.getEncryptionAtRestConfig();
         byte[] currentKeyRef = manager.getCurrentUniverseKeyRef(
                 customer.uuid,
-                universe.universeUUID,
-                encryptionAtRestConfig
+                universe.universeUUID
         );
         final byte[] currentKeyVal = manager.getCurrentUniverseKey(
                 customer.uuid,
                 universe.universeUUID,
-                encryptionAtRestConfig,
                 currentKeyRef
         );
         final String encodedKeyRef = Base64.getEncoder().encodeToString(currentKeyRef);

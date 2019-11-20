@@ -71,9 +71,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // The UUID of the rootCA to be used to generate client certificates and facilitate TLS communication.
   public UUID rootCA = null;
 
-  // Flag for if it is a kubernetes provided universe
-  public boolean isKubernetesUniverse = false;
-
   // This flag represents whether user has chosen to provide placement info
   // In Edit Universe if this flag is set we go through the NEW_CONFIG_FROM_PLACEMENT_INFO path
   public boolean userAZSelected = false;

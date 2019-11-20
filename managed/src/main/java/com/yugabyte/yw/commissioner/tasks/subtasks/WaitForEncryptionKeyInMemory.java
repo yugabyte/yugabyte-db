@@ -62,8 +62,7 @@ public class WaitForEncryptionKeyInMemory extends NodeTaskBase {
                         .instanceOf(EncryptionAtRestManager.class);
                 byte[] currentKeyRef = manager.getCurrentUniverseKeyRef(
                         customer.uuid,
-                        universe.universeUUID,
-                        encryptionAtRestConfig
+                        universe.universeUUID
                 );
                 final String encodedKeyRef = Base64.getEncoder().encodeToString(currentKeyRef);
                 if (!client.waitForMasterHasUniverseKeyInMemory(

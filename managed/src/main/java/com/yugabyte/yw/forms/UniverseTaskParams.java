@@ -29,7 +29,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
   public String cmkArn;
 
   // Store encryption key provider specific configuration/authorization values
-  public Map<String, String> encryptionAtRestConfig;
+  public Map<String, String> encryptionAtRestConfig = null;
 
   // The set of nodes that are part of this universe. Should contain nodes in both primary and
   // readOnly clusters.
