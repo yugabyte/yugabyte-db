@@ -96,7 +96,7 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
     @Test
     public void testGetNumKeyRotationsNoHistory() {
         int numRotations = testManager
-                .getNumKeyRotations(testCustomer.uuid, testUniverse.universeUUID, keyConfig);
+                .getNumKeyRotations(testCustomer.uuid, testUniverse.universeUUID);
         assertEquals(numRotations, 0);
     }
 
@@ -109,7 +109,7 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
                 new String("some_key_ref").getBytes()
         );
         int numRotations = testManager
-                .getNumKeyRotations(testCustomer.uuid, testUniverse.universeUUID, keyConfig);
+                .getNumKeyRotations(testCustomer.uuid, testUniverse.universeUUID);
         assertEquals(numRotations, 1);
     }
 
@@ -122,12 +122,12 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
                 new String("some_key_ref").getBytes()
         );
         int numRotations = testManager
-                .getNumKeyRotations(testCustomer.uuid, testUniverse.universeUUID, keyConfig);
+                .getNumKeyRotations(testCustomer.uuid, testUniverse.universeUUID);
         assertEquals(numRotations, 1);
         testManager
-                .clearUniverseKeyHistory(testCustomer.uuid, testUniverse.universeUUID, keyConfig);
+                .clearUniverseKeyHistory(testCustomer.uuid, testUniverse.universeUUID);
         numRotations = testManager
-                .getNumKeyRotations(testCustomer.uuid, testUniverse.universeUUID, keyConfig);
+                .getNumKeyRotations(testCustomer.uuid, testUniverse.universeUUID);
         assertEquals(numRotations, 0);
     }
 }

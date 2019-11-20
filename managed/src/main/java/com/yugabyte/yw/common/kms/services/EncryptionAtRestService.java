@@ -253,7 +253,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
      */
     public List<KmsHistory> getKeyRotationHistory(UUID customerUUID, UUID universeUUID) {
         KmsConfig config = getKMSConfig(customerUUID);
-        List<KmsHistory> rotationHistory = KmsHistory.getAllTargetKeyRefs(
+        List<KmsHistory> rotationHistory = KmsHistory.getAllConfigTargetKeyRefs(
                 config.configUUID,
                 universeUUID,
                 KmsHistoryId.TargetType.UNIVERSE_KEY
@@ -278,7 +278,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
     public void removeKeyRotationHistory(UUID customerUUID, UUID universeUUID) {
         KmsConfig config = getKMSConfig(customerUUID);
         // Remove key ref history for the universe
-        if (config != null) KmsHistory.deleteAllTargetKeyRefs(
+        if (config != null) KmsHistory.deleteAllConfigTargetKeyRefs(
                 config.configUUID,
                 universeUUID,
                 KmsHistoryId.TargetType.UNIVERSE_KEY

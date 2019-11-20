@@ -108,6 +108,9 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createEnableEncryptionAtRestTask(taskParams().enableEncryptionAtRest)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
+      // Update the universe model to reflect encryption is now enabled
+      writeEncryptionIntentToUniverse(taskParams().enableEncryptionAtRest);
+
       // Wait for a master leader to hear from all the tservers.
       createWaitForTServerHeartBeatsTask()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

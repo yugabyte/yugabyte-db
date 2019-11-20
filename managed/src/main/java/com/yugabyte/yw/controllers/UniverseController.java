@@ -238,7 +238,6 @@ public class UniverseController extends AuthenticatedController {
       if (primaryCluster != null) {
         if (primaryCluster.userIntent.providerType.equals(CloudType.kubernetes)) {
           taskType = TaskType.CreateKubernetesUniverse;
-          taskParams.isKubernetesUniverse = true;
         }
 
         if (primaryCluster.userIntent.enableNodeToNodeEncrypt ||
@@ -362,7 +361,6 @@ public class UniverseController extends AuthenticatedController {
       Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
       if (primaryCluster != null) {
         if (primaryCluster.userIntent.providerType.equals(CloudType.kubernetes)) {
-          taskParams.isKubernetesUniverse = true;
           taskType = TaskType.SetKubernetesUniverseKey;
         }
       }
@@ -460,7 +458,6 @@ public class UniverseController extends AuthenticatedController {
 
         if (primaryCluster.userIntent.providerType.equals(CloudType.kubernetes)) {
           taskType = TaskType.EditKubernetesUniverse;
-          taskParams.isKubernetesUniverse = true;
         }
         if (universe.isEncryptedAtRest()) {
           taskParams.enableEncryptionAtRest = true;
@@ -623,10 +620,8 @@ public class UniverseController extends AuthenticatedController {
     // If the universe was created with universe encryption at rest key created through an
     // integration, then we should remove the key history from local storage to enable safe
     // deletion of the KMS configuration only when all associated universes have been deleted
-    if (universe.isEncryptedAtRest() || keyManager.getNumKeyRotations(
-            customerUUID,
-            universeUUID,
-            universe.getEncryptionAtRestConfig()) > 0) {
+    if (universe.isEncryptedAtRest() ||
+            keyManager.getNumKeyRotations(customerUUID, universeUUID) > 0) {
       keyManager.clearUniverseKeyHistory(customerUUID, universeUUID);
     }
 
