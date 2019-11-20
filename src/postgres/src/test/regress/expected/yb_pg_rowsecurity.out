@@ -1452,9 +1452,20 @@ EXPLAIN (COSTS OFF) DELETE FROM t1 WHERE f_leak(b);
          Filter: (((a % 2) = 0) AND f_leak(b))
 (3 rows)
 
--- TODO(dmitry) Uncomment after fixing of #2938
--- DELETE FROM only t1 WHERE f_leak(b) RETURNING *, t1;
--- DELETE FROM t1 WHERE f_leak(b) RETURNING *, t1;
+DELETE FROM only t1 WHERE f_leak(b) RETURNING *, t1;
+NOTICE:  f_leak => bbbbbb_updt
+NOTICE:  f_leak => daddad_updt
+ a |      b      | k |        t1         
+---+-------------+---+-------------------
+ 2 | bbbbbb_updt | 2 | (2,bbbbbb_updt,2)
+ 4 | daddad_updt | 4 | (4,daddad_updt,4)
+(2 rows)
+
+DELETE FROM t1 WHERE f_leak(b) RETURNING *, t1;
+ a | b | k | t1 
+---+---+---+----
+(0 rows)
+
 --
 -- S.b. view on top of Row-level security
 --

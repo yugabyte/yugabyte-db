@@ -42,7 +42,7 @@ alter table atacc1 drop a;
 ERROR:  column "a" of relation "atacc1" does not exist
 -- SELECTs
 select * from atacc1;
- b | c | d
+ b | c | d 
 ---+---+---
  2 | 3 | 4
 (1 row)
@@ -64,7 +64,7 @@ ERROR:  column "........pg.dropped.1........" does not exist
 LINE 1: select * from atacc1 group by "........pg.dropped.1........"...
                                       ^
 select atacc1.* from atacc1;
- b | c | d
+ b | c | d 
 ---+---+---
  2 | 3 | 4
 (1 row)
@@ -78,7 +78,7 @@ ERROR:  column atacc1.a does not exist
 LINE 1: select atacc1.a from atacc1;
                ^
 select b,c,d from atacc1;
- b | c | d
+ b | c | d 
 ---+---+---
  2 | 3 | 4
 (1 row)
@@ -189,7 +189,7 @@ ERROR:  cannot drop system column "xmin"
 -- try creating a view and altering that, should fail
 create view myview as select * from atacc1;
 select * from myview;
- b | c | d
+ b | c | d 
 ---+---+---
 (0 rows)
 
@@ -209,7 +209,7 @@ ERROR:  column "a" does not exist
 insert into atacc1 values (21, 22, 23);
 create table test1 as select * from atacc1;
 select * from test1;
- b  | c  | d
+ b  | c  | d  
 ----+----+----
  21 | 22 | 23
 (1 row)
@@ -217,7 +217,7 @@ select * from test1;
 drop table test1;
 select * into test2 from atacc1;
 select * from test2;
- b  | c  | d
+ b  | c  | d  
 ----+----+----
  21 | 22 | 23
 (1 row)
@@ -244,7 +244,7 @@ delete from atacc1 where b = 5;
 -- test rename
 alter table atacc1 rename b to e;
 select * from atacc1;
- e  | c  | d
+ e  | c  | d  
 ----+----+----
  21 | 22 | 23
 (1 row)
@@ -255,7 +255,7 @@ alter table atacc1 drop d;
 alter table atacc1 drop b;
 ERROR:  column "b" of relation "atacc1" does not exist
 select * from atacc1;
- e
+ e  
 ----
  21
 (1 row)
@@ -267,7 +267,7 @@ drop table atacc1;
 CREATE TABLE tmp (regtable int);
 ALTER TABLE tmp RENAME TO tmp_new;
 SELECT * FROM tmp_new;
- regtable
+ regtable 
 ----------
 (0 rows)
 
@@ -330,12 +330,12 @@ alter table def_test alter column c1 set default 10;
 alter table def_test alter column c2 set default 'new_default';
 insert into def_test default values;
 select * from def_test order by c1, c2;
- c1 |       c2
+ c1 |       c2        
 ----+-----------------
   5 | initial_default
  10 | new_default
     | initial_default
-    |
+    | 
 (4 rows)
 
 -- set defaults to an incorrect type: this should fail
@@ -358,14 +358,14 @@ insert into def_view_test default values;
 alter table def_view_test alter column c2 set default 'view_default';
 insert into def_view_test default values;
 select * from def_view_test ORDER BY c1 NULLS FIRST, c2 NULLS FIRST;
- c1 |       c2
+ c1 |       c2        
 ----+-----------------
-    |
-    |
+    | 
+    | 
     | initial_default
   5 | initial_default
  10 | new_default
- 45 |
+ 45 | 
  45 | view_default
 (7 rows)
 
@@ -376,18 +376,18 @@ drop table def_test;
 CREATE TABLE test_add_column(c1 integer);
 \d test_add_column
           Table "public.test_add_column"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- c1     | integer |           |          |
+ c1     | integer |           |          | 
 
 ALTER TABLE test_add_column
 	ADD COLUMN c2 integer;
 \d test_add_column
           Table "public.test_add_column"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- c1     | integer |           |          |
- c2     | integer |           |          |
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
 
 ALTER TABLE test_add_column
 	ADD COLUMN c2 integer; -- fail because c2 already exists
@@ -397,10 +397,10 @@ ALTER TABLE ONLY test_add_column
 ERROR:  column "c2" of relation "test_add_column" already exists
 \d test_add_column
           Table "public.test_add_column"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- c1     | integer |           |          |
- c2     | integer |           |          |
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
 
 ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c2 integer; -- skipping because c2 already exists
@@ -410,10 +410,10 @@ ALTER TABLE ONLY test_add_column
 NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
 \d test_add_column
           Table "public.test_add_column"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- c1     | integer |           |          |
- c2     | integer |           |          |
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
 
 ALTER TABLE test_add_column
 	ADD COLUMN c2 integer, -- fail because c2 already exists
@@ -421,10 +421,10 @@ ALTER TABLE test_add_column
 ERROR:  column "c2" of relation "test_add_column" already exists
 \d test_add_column
           Table "public.test_add_column"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- c1     | integer |           |          |
- c2     | integer |           |          |
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
 
 ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
@@ -432,11 +432,11 @@ ALTER TABLE test_add_column
 NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
 \d test_add_column
           Table "public.test_add_column"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- c1     | integer |           |          |
- c2     | integer |           |          |
- c3     | integer |           |          |
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+ c3     | integer |           |          | 
 
 ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
@@ -445,11 +445,11 @@ NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
 NOTICE:  column "c3" of relation "test_add_column" already exists, skipping
 \d test_add_column
           Table "public.test_add_column"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- c1     | integer |           |          |
- c2     | integer |           |          |
- c3     | integer |           |          |
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+ c3     | integer |           |          | 
 
 ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
@@ -459,12 +459,12 @@ NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
 NOTICE:  column "c3" of relation "test_add_column" already exists, skipping
 \d test_add_column
           Table "public.test_add_column"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- c1     | integer |           |          |
- c2     | integer |           |          |
- c3     | integer |           |          |
- c4     | integer |           |          |
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+ c3     | integer |           |          | 
+ c4     | integer |           |          | 
 
 DROP TABLE test_add_column;
 -- test Add/Set/Drop Identity
@@ -476,10 +476,10 @@ CREATE TABLE test_identity(
 ALTER TABLE test_identity ALTER COLUMN c1 ADD GENERATED ALWAYS AS IDENTITY;
 \d test_identity;
                       Table "public.test_identity"
- Column |  Type   | Collation | Nullable |           Default
+ Column |  Type   | Collation | Nullable |           Default            
 --------+---------+-----------+----------+------------------------------
  c1     | integer |           | not null | generated always as identity
- c2     | integer |           | not null |
+ c2     | integer |           | not null | 
 
 INSERT INTO test_identity (c1, c2) VALUES (0, 0);
 ERROR:  cannot insert into column "c1"
@@ -491,28 +491,28 @@ INSERT INTO test_identity (c2) VALUES (2);
 ALTER TABLE test_identity ALTER COLUMN c1 DROP IDENTITY;
 \d test_identity;
            Table "public.test_identity"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- c1     | integer |           | not null |
- c2     | integer |           | not null |
+ c1     | integer |           | not null | 
+ c2     | integer |           | not null | 
 
 ALTER TABLE test_identity ALTER COLUMN c1 DROP IDENTITY;
 ERROR:  column "c1" of relation "test_identity" is not an identity column
 \d test_identity;
            Table "public.test_identity"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- c1     | integer |           | not null |
- c2     | integer |           | not null |
+ c1     | integer |           | not null | 
+ c2     | integer |           | not null | 
 
 -- test ADD GENERATED BY DEFAULT
 ALTER TABLE test_identity ALTER COLUMN c1 ADD GENERATED BY DEFAULT AS IDENTITY;
 \d test_identity;
                         Table "public.test_identity"
- Column |  Type   | Collation | Nullable |             Default
+ Column |  Type   | Collation | Nullable |             Default              
 --------+---------+-----------+----------+----------------------------------
  c1     | integer |           | not null | generated by default as identity
- c2     | integer |           | not null |
+ c2     | integer |           | not null | 
 
 INSERT INTO test_identity (c1, c2) VALUES (1000, 3);
 INSERT INTO test_identity (c2) VALUES (4);
@@ -521,44 +521,44 @@ INSERT INTO test_identity (c2) VALUES (5);
 ALTER TABLE test_identity ALTER COLUMN c1 DROP IDENTITY IF EXISTS;
 \d test_identity;
            Table "public.test_identity"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- c1     | integer |           | not null |
- c2     | integer |           | not null |
+ c1     | integer |           | not null | 
+ c2     | integer |           | not null | 
 
 ALTER TABLE test_identity ALTER COLUMN c1 DROP IDENTITY IF EXISTS;
 NOTICE:  column "c1" of relation "test_identity" is not an identity column, skipping
 \d test_identity;
            Table "public.test_identity"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- c1     | integer |           | not null |
- c2     | integer |           | not null |
+ c1     | integer |           | not null | 
+ c2     | integer |           | not null | 
 
 -- test SET GENERATED
 ALTER TABLE test_identity ALTER COLUMN c1 ADD GENERATED BY DEFAULT AS IDENTITY (INCREMENT 10 MINVALUE 10);
 \d test_identity;
                         Table "public.test_identity"
- Column |  Type   | Collation | Nullable |             Default
+ Column |  Type   | Collation | Nullable |             Default              
 --------+---------+-----------+----------+----------------------------------
  c1     | integer |           | not null | generated by default as identity
- c2     | integer |           | not null |
+ c2     | integer |           | not null | 
 
 ALTER TABLE test_identity ALTER c1 SET GENERATED ALWAYS;
 \d test_identity;
                       Table "public.test_identity"
- Column |  Type   | Collation | Nullable |           Default
+ Column |  Type   | Collation | Nullable |           Default            
 --------+---------+-----------+----------+------------------------------
  c1     | integer |           | not null | generated always as identity
- c2     | integer |           | not null |
+ c2     | integer |           | not null | 
 
 ALTER TABLE test_identity ALTER c1 SET GENERATED BY DEFAULT;
 \d test_identity;
                         Table "public.test_identity"
- Column |  Type   | Collation | Nullable |             Default
+ Column |  Type   | Collation | Nullable |             Default              
 --------+---------+-----------+----------+----------------------------------
  c1     | integer |           | not null | generated by default as identity
- c2     | integer |           | not null |
+ c2     | integer |           | not null | 
 
 INSERT INTO test_identity (c2) VALUES (6);
 INSERT INTO test_identity (c2) VALUES (7);
@@ -572,7 +572,7 @@ ALTER TABLE test_identity ALTER c1 SET INCREMENT 50 RESTART WITH 100;
 INSERT INTO test_identity (c2) VALUES (12);
 INSERT INTO test_identity (c2) VALUES (13);
 SELECT * FROM test_identity ORDER BY c2;
-  c1  | c2
+  c1  | c2 
 ------+----
     1 |  1
     2 |  2
@@ -598,14 +598,38 @@ alter table test_update_dropped drop column b;
 update test_update_dropped set a = 3 where a = 2;
 \d test_update_dropped;
         Table "public.test_update_dropped"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
+ a      | integer |           |          | 
 
 select * from test_update_dropped;
- a
+ a 
 ---
  3
 (1 row)
 
 DROP TABLE test_update_dropped;
+-- Test that deleting table with a returning clause after dropping a column
+-- does not result in spurious error #2938.
+create table test_delete_dropped(a int, b int);
+insert into test_delete_dropped(a, b) values(1, 1), (2, 2);
+alter table test_delete_dropped drop column b;
+delete from test_delete_dropped where a = 1 returning *;
+ a 
+---
+ 1
+(1 row)
+
+\d test_delete_dropped;
+        Table "public.test_delete_dropped"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+
+select * from test_delete_dropped;
+ a 
+---
+ 2
+(1 row)
+
+DROP TABLE test_delete_dropped;
