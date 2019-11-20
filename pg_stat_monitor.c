@@ -3472,7 +3472,7 @@ update_agg_counters(uint64 queryid, uint64 id, uint64 type)
 	entry->key.queryid = queryid;
 	entry->key.id = id;
 	entry->key.type = key.type;
-	entry->counters.total_calls = 1;
+	entry->counters.total_calls++;
 	if (entry->counters.total_calls == 1)
 		entry->counters.first_call_time = GetCurrentTimestamp();
 	entry->counters.last_call_time= GetCurrentTimestamp();
