@@ -100,6 +100,9 @@ class MasterServiceImpl : public MasterServiceIf,
   void DeleteNamespace(const DeleteNamespaceRequestPB* req,
                        DeleteNamespaceResponsePB* resp,
                        rpc::RpcContext rpc) override;
+  void AlterNamespace(const AlterNamespaceRequestPB* req,
+                      AlterNamespaceResponsePB* resp,
+                      rpc::RpcContext rpc) override;
   void ListNamespaces(const ListNamespacesRequestPB* req,
                       ListNamespacesResponsePB* resp,
                       rpc::RpcContext rpc) override;

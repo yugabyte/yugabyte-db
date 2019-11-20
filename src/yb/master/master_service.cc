@@ -338,6 +338,12 @@ void MasterServiceImpl::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   HandleIn(req, resp, &rpc, &CatalogManager::DeleteNamespace);
 }
 
+void MasterServiceImpl::AlterNamespace(const AlterNamespaceRequestPB* req,
+                                       AlterNamespaceResponsePB* resp,
+                                       RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::AlterNamespace);
+}
+
 void MasterServiceImpl::ListNamespaces(const ListNamespacesRequestPB* req,
                                        ListNamespacesResponsePB* resp,
                                        RpcContext rpc) {

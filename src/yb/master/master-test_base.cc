@@ -232,6 +232,26 @@ Status MasterTestBase::CreateNamespace(const NamespaceName& ns_name,
   return Status::OK();
 }
 
+Status MasterTestBase::AlterNamespace(const NamespaceName& ns_name,
+                                      const NamespaceId& ns_id,
+                                      const boost::optional<YQLDatabase>& database_type,
+                                      const std::string& new_name,
+                                      AlterNamespaceResponsePB* resp) {
+  AlterNamespaceRequestPB req;
+  req.mutable_namespace_()->set_id(ns_id);
+  req.mutable_namespace_()->set_name(ns_name);
+  if (database_type) {
+    req.mutable_namespace_()->set_database_type(*database_type);
+  }
+  req.set_new_name(new_name);
+
+  RETURN_NOT_OK(proxy_->AlterNamespace(req, resp, ResetAndGetController()));
+  if (resp->has_error()) {
+    RETURN_NOT_OK(StatusFromPB(resp->error().status()));
+  }
+  return Status::OK();
+}
+
 Status MasterTestBase::DeleteTableSync(const NamespaceName& ns_name, const TableName& table_name,
                                        TableId* table_id) {
   RETURN_NOT_OK(DeleteTable(ns_name, table_name, table_id));

@@ -82,6 +82,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                                 PgOid source_database_oid,
                                 PgOid nexte_oid);
   CHECKED_STATUS DropDatabase(const std::string& database_name, PgOid database_oid);
+  client::YBNamespaceAlterer *NewNamespaceAlterer(const std::string& namespace_name,
+                                                  PgOid database_oid);
 
   CHECKED_STATUS ReserveOids(PgOid database_oid,
                              PgOid nexte_oid,

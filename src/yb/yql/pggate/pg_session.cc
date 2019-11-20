@@ -162,6 +162,11 @@ Status PgSession::DropDatabase(const string& database_name, PgOid database_oid) 
   return Status::OK();
 }
 
+client::YBNamespaceAlterer* PgSession::NewNamespaceAlterer(
+    const std::string& namespace_name, PgOid database_oid) {
+  return client_->NewNamespaceAlterer(namespace_name, GetPgsqlNamespaceId(database_oid));
+}
+
 Status PgSession::ReserveOids(const PgOid database_oid,
                               const PgOid next_oid,
                               const uint32_t count,

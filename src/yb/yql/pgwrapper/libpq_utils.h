@@ -68,7 +68,7 @@ class PGConn {
   PGConn(PGConn&& rhs);
   PGConn& operator=(PGConn&& rhs);
 
-  static Result<PGConn> Connect(const HostPort& host_port);
+  static Result<PGConn> Connect(const HostPort& host_port, const std::string& db_name = "");
 
   CHECKED_STATUS Execute(const std::string& command);
 
