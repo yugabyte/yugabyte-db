@@ -591,7 +591,6 @@ java_test_name=""
 show_report=true
 running_any_tests=false
 clean_postgres=false
-export_compile_commands=false
 make_ninja_extra_args=""
 java_lint=false
 
@@ -918,9 +917,6 @@ while [[ $# -gt 0 ]]; do
     --no-postgres|--skip-postgres|--np|--sp)
       export YB_SKIP_POSTGRES_BUILD=1
     ;;
-    --gen-compilation-db|--gcdb)
-      export_compile_commands=true
-    ;;
     --run-java-test-methods-separately|--rjtms)
       export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
     ;;
@@ -1056,16 +1052,6 @@ if "$use_nfs_shared_thirdparty" && "$no_shared_thirdparty"; then
   fatal "--use-shared-thirdparty and --no-shared-thirdparty cannot be specified at the same time"
 fi
 
-if "$export_compile_commands" && ! "$force_no_run_cmake"; then
-  force_run_cmake=true
-fi
-
-if "$export_compile_commands"; then
-  log "Will export compile commands (create a compilation database JSON file)"
-  export CMAKE_EXPORT_COMPILE_COMMANDS=1
-  export YB_EXPORT_COMPILE_COMMANDS=1
-fi
-
 configure_remote_compilation
 do_not_use_local_thirdparty_flag_path=$YB_SRC_ROOT/thirdparty/.yb_thirdparty_do_not_use
 
@@ -1086,6 +1072,13 @@ if "$java_lint"; then
   lint_java_code
   exit
 fi
+
+if ! is_jenkins && is_src_root_on_nfs && \
+  [[ -z ${YB_CCACHE_DIR:-} && $HOME =~ $YB_NFS_PATH_RE ]]; then
+  export YB_CCACHE_DIR=$HOME/.ccache
+  log "Setting YB_CCACHE_DIR=$YB_CCACHE_DIR by default for NFS-based builds"
+fi
+
 # -------------------------------------------------------------------------------------------------
 # Recursively invoke this script in order to save the log to a file.
 # -------------------------------------------------------------------------------------------------
