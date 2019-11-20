@@ -109,6 +109,8 @@ public class AppInit {
 
       // Import new local releases into release metadata
       releaseManager.importLocalReleases();
+
+      Logger.info("AppInit completed");
     }
   }
 }

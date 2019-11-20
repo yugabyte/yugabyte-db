@@ -156,8 +156,6 @@ public class YBMetricQueryComponent {
     }
     cc.cluster = builder.build();
 
-    LOG.info("Connected to cluster: " + cc.cluster.getClusterName());
-    LOG.info("Creating a session...");
     cc.session = cc.cluster.connect();
     return cc;
   }
