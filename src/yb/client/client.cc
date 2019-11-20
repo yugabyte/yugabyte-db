@@ -47,6 +47,7 @@
 #include "yb/client/meta_cache.h"
 #include "yb/client/session.h"
 #include "yb/client/table_alterer.h"
+#include "yb/client/namespace_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/tablet_server.h"
 
@@ -98,6 +99,8 @@ using yb::master::ListTabletServersResponsePB;
 using yb::master::ListTabletServersResponsePB_Entry;
 using yb::master::CreateNamespaceRequestPB;
 using yb::master::CreateNamespaceResponsePB;
+using yb::master::AlterNamespaceRequestPB;
+using yb::master::AlterNamespaceResponsePB;
 using yb::master::DeleteNamespaceRequestPB;
 using yb::master::DeleteNamespaceResponsePB;
 using yb::master::ListNamespacesRequestPB;
@@ -576,6 +579,11 @@ Status YBClient::DeleteNamespace(const std::string& namespace_name,
   }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteNamespace);
   return Status::OK();
+}
+
+YBNamespaceAlterer* YBClient::NewNamespaceAlterer(
+    const string& namespace_name, const std::string& namespace_id) {
+  return new YBNamespaceAlterer(this, namespace_name, namespace_id);
 }
 
 Result<vector<master::NamespaceIdentifierPB>> YBClient::ListNamespaces(

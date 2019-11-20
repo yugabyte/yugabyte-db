@@ -1471,5 +1471,66 @@ TEST_F(MasterTest, TestGetTableSchemaIsAtomicWithCreateTable) {
   t->Join();
 }
 
+class NamespaceTest : public MasterTest, public testing::WithParamInterface<YQLDatabase> {};
+
+TEST_P(NamespaceTest, RenameNamespace) {
+  ListNamespacesResponsePB namespaces;
+
+  // Check default namespace.
+  {
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
+    // Including system namespace.
+    ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
+    CheckNamespaces(
+        {
+            EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES
+        }, namespaces);
+  }
+
+  // Create a new namespace.
+  const NamespaceName other_ns_name = "testns";
+  NamespaceId other_ns_id;
+  {
+    CreateNamespaceResponsePB resp;
+    ASSERT_OK(CreateNamespace(other_ns_name, GetParam() /* database_type */, &resp));
+    other_ns_id = resp.id();
+  }
+  {
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
+    // Including system namespace.
+    ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
+    CheckNamespaces(
+        {
+            EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES,
+            std::make_tuple(other_ns_name, other_ns_id),
+        }, namespaces);
+  }
+
+  // Rename the namespace
+  const NamespaceName other_ns_new_name = "testns_newname";
+  {
+    AlterNamespaceResponsePB resp;
+    ASSERT_OK(AlterNamespace(other_ns_name,
+                             other_ns_id,
+                             boost::none /* database_type */,
+                             other_ns_new_name,
+                             &resp));
+  }
+  {
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
+    // Including system namespace.
+    ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
+    CheckNamespaces(
+        {
+            EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES,
+            std::make_tuple(other_ns_new_name, other_ns_id),
+        }, namespaces);
+  }
+}
+
+INSTANTIATE_TEST_CASE_P(
+    DatabaseType, NamespaceTest,
+    ::testing::Values(YQLDatabase::YQL_DATABASE_CQL, YQLDatabase::YQL_DATABASE_PGSQL));
+
 } // namespace master
 } // namespace yb

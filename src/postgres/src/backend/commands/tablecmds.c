@@ -3012,11 +3012,6 @@ renameatt(RenameStmt *stmt)
 		return InvalidObjectAddress;
 	}
 
-	if (IsYugaByteEnabled())
-	{
-		YBCRename(stmt, relid);
-	}
-
 	attnum =
 		renameatt_internal(relid,
 						   stmt->subname,	/* old att name */
@@ -3025,6 +3020,11 @@ renameatt(RenameStmt *stmt)
 						   false,	/* recursing? */
 						   0,	/* expected inhcount */
 						   stmt->behavior);
+
+	if (IsYugaByteEnabled())
+	{
+		YBCRename(stmt, relid);
+	}
 
 	ObjectAddressSubSet(address, RelationRelationId, relid, attnum);
 
@@ -3218,13 +3218,13 @@ RenameRelation(RenameStmt *stmt)
 		return InvalidObjectAddress;
 	}
 
+	RenameRelationInternal(relid, stmt->newname, false);
+
 	/* Do the work */
 	if (IsYugaByteEnabled())
 	{
       YBCRename(stmt, relid);
 	}
-
-	RenameRelationInternal(relid, stmt->newname, false);
 
 	ObjectAddressSet(address, RelationRelationId, relid);
 

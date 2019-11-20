@@ -796,6 +796,10 @@ YBCRename(RenameStmt *stmt, Oid relationId)
 					errmsg("Renaming this object is not yet supported.")));
 
 	}
+
+	if (IsYBRelationById(relationId)) {
+		YBCExecAlterTable(handle);
+	}
 }
 
 void

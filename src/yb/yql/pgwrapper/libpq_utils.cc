@@ -88,12 +88,15 @@ struct PGConn::CopyData {
   }
 };
 
-Result<PGConn> PGConn::Connect(const HostPort& host_port) {
+Result<PGConn> PGConn::Connect(const HostPort& host_port, const std::string& db_name) {
   auto start = CoarseMonoClock::now();
   auto deadline = start + 60s;
   for (;;) {
-    PGConnPtr result(PQconnectdb(Format(
-        "host=$0 port=$1 user=postgres", host_port.host(), host_port.port()).c_str()));
+    auto conn_info = Format("host=$0 port=$1 user=postgres", host_port.host(), host_port.port());
+    if (!db_name.empty()) {
+      conn_info = Format("$0 dbname=$1", conn_info, db_name);
+    }
+    PGConnPtr result(PQconnectdb(conn_info.c_str()));
     auto status = PQstatus(result.get());
     if (status == ConnStatusType::CONNECTION_OK) {
       return PGConn(std::move(result));

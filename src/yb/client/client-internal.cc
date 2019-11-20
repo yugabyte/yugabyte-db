@@ -258,6 +258,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(GetTabletLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListMasters);
 YB_CLIENT_SPECIALIZE_SIMPLE(CreateNamespace);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteNamespace);
+YB_CLIENT_SPECIALIZE_SIMPLE(AlterNamespace);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListNamespaces);
 YB_CLIENT_SPECIALIZE_SIMPLE(ReservePgsqlOids);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetYsqlCatalogConfig);
@@ -696,6 +697,26 @@ Status YBClient::Data::WaitForTruncateTableToFinish(YBClient* client,
       deadline, "Waiting on Truncate Table to be completed",
       "Timed out waiting for Table Truncation",
       std::bind(&YBClient::Data::IsTruncateTableInProgress, this, client, table_id, _1, _2));
+}
+
+Status YBClient::Data::AlterNamespace(YBClient* client,
+                                      const AlterNamespaceRequestPB& req,
+                                      CoarseTimePoint deadline) {
+  AlterNamespaceResponsePB resp;
+  Status s =
+      SyncLeaderMasterRpc<AlterNamespaceRequestPB, AlterNamespaceResponsePB>(
+          deadline,
+          client,
+          req,
+          &resp,
+          nullptr /* num_attempts */,
+          "AlterNamespace",
+          &MasterServiceProxy::AlterNamespace);
+  RETURN_NOT_OK(s);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
 }
 
 Status YBClient::Data::AlterTable(YBClient* client,

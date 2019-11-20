@@ -1126,6 +1126,14 @@ RenameDatabase(const char *oldname, const char *newname)
 	namestrcpy(&(((Form_pg_database) GETSTRUCT(newtup))->datname), newname);
 	CatalogTupleUpdate(rel, &newtup->t_self, newtup);
 
+	if (IsYugaByteEnabled()) {
+		YBCPgStatement handle = NULL;
+		HandleYBStatus(YBCPgNewAlterDatabase(ybc_pg_session, oldname, db_id, &handle));
+		HandleYBStmtStatus(YBCPgAlterDatabaseRenameDatabase(handle, newname), handle);
+		HandleYBStmtStatus(YBCPgExecAlterDatabase(handle), handle);
+		HandleYBStatus(YBCPgDeleteStatement(handle));
+	}
+
 	InvokeObjectPostAlterHook(DatabaseRelationId, db_id, 0);
 
 	ObjectAddressSet(address, DatabaseRelationId, db_id);
