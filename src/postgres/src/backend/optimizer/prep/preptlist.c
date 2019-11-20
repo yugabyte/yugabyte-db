@@ -401,13 +401,26 @@ expand_targetlist(List *tlist, int command_type,
 					// This case is added only for DELETE from YugaByte table with RETURNING clause.
 					if (IsYugaByteEnabled())
 					{
-						// Query all attribute in the YugaByte relation.
-						new_expr = (Node *) makeVar(result_relation,
-													attrno,
-													atttype,
-													atttypmod,
-													attcollation,
-													0);
+						if (att_tup->attisdropped) {
+						/* Insert NULL for dropped column */
+							new_expr = (Node *) makeConst(INT4OID,
+														  -1,
+														  InvalidOid,
+														  sizeof(int32),
+														  (Datum) 0,
+														  true, /* isnull */
+														  true /* byval */ );
+						}
+						else 
+						{
+							// Query all attribute in the YugaByte relation.
+							new_expr = (Node *) makeVar(result_relation,
+														attrno,
+														atttype,
+														atttypmod,
+														attcollation,
+														0);
+						}
 						break;
 					}
 					/* FALLTHROUGH */

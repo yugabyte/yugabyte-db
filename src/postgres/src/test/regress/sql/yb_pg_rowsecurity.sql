@@ -716,9 +716,8 @@ SET row_security TO ON;
 EXPLAIN (COSTS OFF) DELETE FROM only t1 WHERE f_leak(b);
 EXPLAIN (COSTS OFF) DELETE FROM t1 WHERE f_leak(b);
 
--- TODO(dmitry) Uncomment after fixing of #2938
--- DELETE FROM only t1 WHERE f_leak(b) RETURNING *, t1;
--- DELETE FROM t1 WHERE f_leak(b) RETURNING *, t1;
+DELETE FROM only t1 WHERE f_leak(b) RETURNING *, t1;
+DELETE FROM t1 WHERE f_leak(b) RETURNING *, t1;
 
 --
 -- S.b. view on top of Row-level security
