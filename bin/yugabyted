@@ -35,14 +35,13 @@ Run `yugabyted` to start a single-node YugabyteDB process. If no options are spe
 `yugabyted` will assume the following default directory tree:
 
 yugabyte
-+-- yugabyted
 +-- conf
 |   |   +-- yugabyted.conf
-|   |   +-- yb-master.conf
-|   |   +-- yb-tserver.conf
 +-- bin
+|   |   +-- yugabyted
 |   |   +-- yb-master
 |   |   +-- yb-tserver
+|   |   +-- ...
 +-- ui
 |   |   +-- bin...
 |   |   +-- ...
@@ -52,7 +51,7 @@ yugabyte
 """
 # Script constants.
 SCRIPT_NAME = os.path.basename(__file__)
-YUGABYTE_DIR = os.path.dirname(os.path.realpath(__file__))
+YUGABYTE_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 DEFAULT_CONF_DIR = os.path.join(YUGABYTE_DIR, "conf")
 BIN_DIR = os.path.join(YUGABYTE_DIR, "bin")
 DEFAULT_DATA_DIR = os.path.join(YUGABYTE_DIR, "yugabyte-data")
@@ -280,6 +279,7 @@ class ControlScript(object):
         if signum:
             Output.log("Received signal: {}".format(signum), logging.DEBUG)
         Output.print_and_log("Shutting down...")
+        self.script.daemon_success.put(-1)
         cur_pid = os.getpid()
         pgid = os.getpgid(cur_pid)
         if not pgid:
@@ -308,8 +308,7 @@ class ControlScript(object):
     # After initializing, creates a callhome thread.
     def start_processes(self):
         if self.configs.temp_data.get("daemon"):
-            daemon_success = multiprocessing.Queue()
-            self.daemonize(daemon_success)
+            self.daemonize()
         self.script.write_pid(os.getpid())
 
         self.set_signals(self.kill_children)
@@ -452,7 +451,7 @@ class ControlScript(object):
                     if self.configs.temp_data.get("daemon"):
                         # Let original process know daemon was successful so it can exit.
                         # This is to display the initial status message.
-                        daemon_success.put(1)
+                        self.script.daemon_success.put(1)
                         # Ignore any console output as important information will be logged.
                         with open('/dev/null', 'r') as dev_null:
                             sys.stderr.flush()
@@ -527,7 +526,7 @@ class ControlScript(object):
 
     # Pushes yugabyted script to background as a daemon. The process is not tied to a shell, but
     # it will not survive between machine restarts.
-    def daemonize(self, queue):
+    def daemonize(self):
         if os.fork():
             # Delete any custom exit handlers so daemon has full control.
             handlers = [e for e in atexit._exithandlers if e[0] == self.kill_children]
@@ -535,7 +534,7 @@ class ControlScript(object):
                 atexit._exithandlers.remove(e)
             # Keep the parent process alive until the daemon confirms yugabyted started properly.
             try:
-                queue.get(timeout=60)
+                self.script.daemon_success.get(timeout=180)
             except queue.Empty as e:
                 Output.log_error_and_exit(
                     "Timed out trying to start {} daemon.".format(SCRIPT_NAME))
@@ -607,8 +606,10 @@ class ControlScript(object):
     # Returns if yugaware was properly initialized before.
     def is_yw_initialized(self):
         # Check Play evolutions table was created.
+        Output.log("Checking play_evolutions table")
         list_tables_cmd = [os.path.join(BIN_DIR, "ysqlsh"), "-d", WEBSERVER_DB, "-c", "\d"]
         out, err, ret_code = run_process(list_tables_cmd)
+        Output.log("Finished play evolutions table")
         return not err and not ret_code and "play_evolutions" in out
 
     # Rudimentary yb-admin call.
@@ -1170,6 +1171,9 @@ class ProcessManager(object):
 class ScriptProcessManager(ProcessManager):
     def __init__(self):
         super(ScriptProcessManager, self).__init__(SCRIPT_NAME, "", YUGABYTE_DIR, YUGABYTE_DIR)
+        # Used to retrieve status of daemon process. When daemon successfully initializes,
+        # it will put a value here which can be checked on.
+        self.daemon_success = multiprocessing.Queue()
 
     def start(self):
         return
