@@ -61,10 +61,11 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/schema.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/row_mark.h"
+#include "yb/common/schema.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
@@ -833,14 +834,6 @@ Status Tablet::PrepareTransactionWriteBatch(
   }
 
   auto isolation_level = metadata_with_write_id->first.isolation;
-  if (put_batch.row_mark_type_size() > 0) {
-    // We used this as a shorthand to acquire the right locks for this operation. This doesn't
-    // change the isolation level of the current transaction.
-    // TODO https://github.com/yugabyte/yugabyte-db/issues/2496:
-    // Use a new method to acquire the right locks. This would avoid any confusion.
-    isolation_level = IsolationLevel::SERIALIZABLE_ISOLATION;
-  }
-
   auto write_id = metadata_with_write_id->second;
   yb::docdb::PrepareTransactionWriteBatch(
       put_batch, hybrid_time, rocksdb_write_batch, transaction_id, isolation_level,
@@ -1889,15 +1882,16 @@ Status Tablet::TEST_SwitchMemtable() {
 
 Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
   auto write_batch = operation->request()->mutable_write_batch();
-  auto isolation_level = VERIFY_RESULT(GetIsolationLevelFromPB(*write_batch));
+  const IsolationLevel isolation_level = VERIFY_RESULT(GetIsolationLevelFromPB(*write_batch));
+  const RowMarkType row_mark_type = GetRowMarkTypeFromPB(*write_batch);
 
   const bool transactional_table = metadata_->schema().table_properties().is_transactional();
 
   const auto partial_range_key_intents = UsePartialRangeKeyIntents(metadata_.get());
   auto prepare_result = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
       operation->doc_ops(), write_batch->read_pairs(), metrics_->write_lock_latency,
-      isolation_level, operation->state()->kind(), transactional_table, operation->deadline(),
-      partial_range_key_intents, &shared_lock_manager_));
+      isolation_level, operation->state()->kind(), row_mark_type, transactional_table,
+      operation->deadline(), partial_range_key_intents, &shared_lock_manager_));
 
   RequestScope request_scope;
   if (transaction_participant_) {

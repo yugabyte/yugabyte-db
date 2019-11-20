@@ -15,6 +15,7 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
 
@@ -399,9 +400,11 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
     boost::container::small_vector<RefCntPrefix, 8> paths;
 
     KeyBytes encoded_key_buffer;
+    RowMarkType row_mark = GetRowMarkTypeFromPB(write_batch_);
     EnumerateIntentsCallback callback = std::bind(
         &TransactionConflictResolverContext::ProcessIntent, this, resolver,
-        GetStrongIntentTypeSet(metadata_.isolation, docdb::OperationKind::kWrite), _1, _3);
+        GetStrongIntentTypeSet(metadata_.isolation, docdb::OperationKind::kWrite, row_mark), _1,
+        _3);
     for (const auto& doc_op : doc_ops_) {
       paths.clear();
       IsolationLevel ignored_isolation_level;
@@ -429,10 +432,11 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
       return Status::OK();
     }
 
+    RowMarkType row_mark = GetRowMarkTypeFromPB(write_batch_);
     return EnumerateIntents(
         pairs,
         std::bind(&TransactionConflictResolverContext::ProcessIntent, this, resolver,
-                  GetStrongIntentTypeSet(metadata_.isolation, kind), _1, _3),
+                  GetStrongIntentTypeSet(metadata_.isolation, kind, row_mark), _1, _3),
         resolver->partial_range_key_intents());
   }
 
@@ -610,7 +614,8 @@ class OperationConflictResolverContext : public ConflictResolverContext {
       IsolationLevel isolation;
       RETURN_NOT_OK(doc_op->GetDocPaths(GetDocPathsMode::kIntents, &doc_paths, &isolation));
 
-      strong_intent_types = GetStrongIntentTypeSet(isolation, OperationKind::kWrite);
+      strong_intent_types = GetStrongIntentTypeSet(isolation, OperationKind::kWrite,
+                                                   RowMarkType::ROW_MARK_ABSENT);
 
       for (const auto& doc_path : doc_paths) {
         VLOG(4) << "Doc path: " << SubDocKey::DebugSliceToString(doc_path.as_slice());
