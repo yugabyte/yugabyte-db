@@ -158,6 +158,13 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
     RegisterTCMallocTracker("Central Cache", "tcmalloc.central_cache_free_bytes");
     RegisterTCMallocTracker("Transfer Cache", "tcmalloc.transfer_cache_free_bytes");
     RegisterTCMallocTracker("PageHeap Free", "tcmalloc.pageheap_free_bytes");
+
+    auto root = MemTracker::GetRootTracker();
+    root->SetPollChildrenConsumptionFunctors([]() {
+          for (auto& tracker : common_mem_trackers) {
+            tracker->UpdateConsumption();
+          }
+        });
   }
 #endif
 
