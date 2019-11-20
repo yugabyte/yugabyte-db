@@ -1,6 +1,5 @@
 {
-  ".": ["$BUILD_ROOT/version_metadata.json",
-        "bin/yugabyted"],
+  ".": ["$BUILD_ROOT/version_metadata.json"],
   "postgres": ["$BUILD_ROOT/postgres/*"],
   "www": ["www/*"],
   "bin": ["bin/bulk_load_cleanup.sh",
@@ -8,6 +7,7 @@
           "bin/log_cleanup.sh",
           "bin/yb-check-failed-tablets.sh",
           "bin/configure",
+          "bin/yugabyted",
           "submodules/yugabyte-installation/bin/yb-ctl",
           "bin/yb-prof.py",
           "$BUILD_ROOT/bin/log-dump",
