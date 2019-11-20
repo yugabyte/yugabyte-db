@@ -439,6 +439,10 @@ std::vector<MemTrackerPtr> MemTracker::ListTrackers() {
 }
 
 bool MemTracker::UpdateConsumption(bool force) {
+  if (poll_children_consumption_functors_) {
+    poll_children_consumption_functors_();
+  }
+
   if (consumption_functor_) {
     auto now = CoarseMonoClock::now();
     auto interval = std::chrono::microseconds(
