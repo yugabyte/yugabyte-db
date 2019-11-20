@@ -166,7 +166,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           LOG.error(msg);
           throw new RuntimeException(msg);
         }
-        universeDetails.encryptionAtRestConfig = taskParams().encryptionAtRestConfig;
+        universeDetails.encryptionAtRestConfig = enable ?
+                taskParams().encryptionAtRestConfig : null;
         Cluster cluster = universeDetails.getPrimaryCluster();
         if (cluster != null) {
           cluster.userIntent.enableEncryptionAtRest = enable;

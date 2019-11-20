@@ -1,4 +1,12 @@
-// Copyright (c) YugaByte, Inc.
+/*
+ * Copyright 2019 YugaByte, Inc. and Contributors
+ *
+ * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+ * may not use this file except in compliance with the License. You
+ * may obtain a copy of the License at
+ *
+ *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ */
 
 package com.yugabyte.yw.commissioner;
 
@@ -90,29 +98,14 @@ public class SetUniverseKey {
     private void setUniverseKey(Universe u) {
         Customer c = Customer.get(u.customerId);
         try {
-            Map<String, String> encryptionAtRestConfig = u.getEncryptionAtRestConfig();
-            boolean hasEncryptionMemory = keyManager.getNumKeyRotations(
-                    c.uuid,
-                    u.universeUUID,
-                    encryptionAtRestConfig
-            ) > 0;
-            if (!u.universeIsLocked() && hasEncryptionMemory) {
+            if (!u.universeIsLocked() && u.isEncryptedAtRest()) {
                 LOG.info(String.format(
                         "Setting universe encryption key for customer %s and universe %s",
                         c.uuid.toString(),
                         u.universeUUID.toString()
                 ));
-                byte[] keyRef = keyManager.getCurrentUniverseKeyRef(
-                        c.uuid,
-                        u.universeUUID,
-                        encryptionAtRestConfig
-                );
-                byte[] keyVal = keyManager.getCurrentUniverseKey(
-                        c.uuid,
-                        u.universeUUID,
-                        encryptionAtRestConfig,
-                        keyRef
-                );
+                byte[] keyRef = keyManager.getCurrentUniverseKeyRef(c.uuid, u.universeUUID);
+                byte[] keyVal = keyManager.getCurrentUniverseKey(c.uuid, u.universeUUID, keyRef);
                 Arrays.stream(u.getMasterAddresses().split(","))
                         .map(addrString -> HostAndPort.fromString(addrString))
                         .forEach(addr -> setKeyInMaster(u, addr, keyRef, keyVal));
