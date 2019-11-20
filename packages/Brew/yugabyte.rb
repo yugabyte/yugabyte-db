@@ -10,6 +10,8 @@ class Yugabyte < Formula
     rm_f buildpath/"lib/six-1.7.3-py2.py3-none-any.zip"
     prefix.install Dir["*"]
     bin.install_symlink prefix/"yugabyte-db"
+    bin.install_symlink prefix/"bin/ysqlsh"
+    bin.install_symlink prefix/"bin/ycqlsh"
   end
 
   plist_options :manual => "yugabyte-db start"

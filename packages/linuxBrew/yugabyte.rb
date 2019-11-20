@@ -11,6 +11,8 @@ class Yugabyte < Formula
   def install
     libexec.install Dir["*"]
     bin.install_symlink libexec/"yugabyte-db"
+    bin.install_symlink libexec/"bin/ysqlsh"
+    bin.install_symlink libexec/"bin/ycqlsh"
   end
 
   test do
