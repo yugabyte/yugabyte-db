@@ -9,7 +9,7 @@ import './stylesheets/YBDropZone.scss';
 export default class YBDropZone extends Component {
   onDrop = (file) => {
     this.props.input.onChange(file[0]);
-  }
+  };
   render() {
     const { input, title, meta: { touched, error } } = this.props;
     return (
@@ -34,7 +34,7 @@ export default class YBDropZone extends Component {
 export class YBDropZoneWithLabel extends Component {
   onDrop = (file, e) => {
     this.props.input.onChange(file[0]);
-  }
+  };
   render() {
     const { input, title, meta: { touched, error } } = this.props;
     const { insetError, infoContent, label,

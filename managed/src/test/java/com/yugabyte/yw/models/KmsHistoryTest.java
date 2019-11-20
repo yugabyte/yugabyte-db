@@ -38,7 +38,7 @@ public class KmsHistoryTest extends FakeDBApplication {
         UUID universeUUID = UUID.randomUUID();
         KmsHistory.createKmsHistory(configUUID, universeUUID, TargetType.UNIVERSE_KEY, "a");
         KmsHistory keyRef = KmsHistory
-                .getCurrentKeyRef(configUUID, universeUUID, TargetType.UNIVERSE_KEY);
+                .getCurrentConfigKeyRef(configUUID, universeUUID, TargetType.UNIVERSE_KEY);
         assertEquals(keyRef.keyRef, "a");
     }
 

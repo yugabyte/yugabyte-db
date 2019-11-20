@@ -10,11 +10,13 @@
 
 package com.yugabyte.yw.common.kms.services;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -34,40 +36,18 @@ enum AwsAlgorithm implements SupportedAlgorithmInterface {
     }
 }
 
+/**
+ * An implementation of EncryptionAtRestService to communicate with AWS KMS
+ * https://aws.amazon.com/kms/
+ */
 public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
-    /**
-     * Constructor
-     *
-     * @param apiHelper is a library to make requests against a third party encryption key provider
-     * @param keyProvider is a String representation of "SMARTKEY" (if it is valid in this context)
-     */
+
     public AwsEARService() {
         super(KeyProvider.AWS);
     }
 
-    /**
-     * Search for and create/retrieve a CMK for an inputted universe
-     *
-     * @param customerUUID the customer associated to the universe
-     * @param universeUUID the universe that the CMK is associated to (1:1 relationship)
-     * @param policy the user-provided custom CMK policy
-     * @return the CMK id associated with the universe
-     */
-    private String createOrRetrieveUniverseCMK(
-            UUID customerUUID,
-            UUID universeUUID,
-            String policy
-    ) {
-        return AwsEARServiceUtil.createOrRetrieveCMKWithAlias(
-                customerUUID,
-                policy,
-                "Yugabyte Universe Key",
-                universeUUID.toString()
-        );
-    }
-
-    private byte[] generateUniverseKey(
-            UUID customerUUID,
+    private byte[] generateUniverseDataKey(
+            UUID configUUID,
             UUID universeUUID,
             String algorithm,
             int keySize,
@@ -75,7 +55,7 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
     ) {
         byte[] result = null;
         try {
-            ObjectNode validateResult = validateEncryptionKeyParams(algorithm, keySize);
+            final ObjectNode validateResult = validateEncryptionKeyParams(algorithm, keySize);
             if (!validateResult.get("result").asBoolean()) {
                 final String errMsg = String.format(
                         "Invalid encryption key parameters detected for create/rotate data key" +
@@ -86,7 +66,7 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
                 LOG.error(errMsg);
                 throw new IllegalArgumentException(errMsg);
             }
-            result = AwsEARServiceUtil.generateDataKey(customerUUID, cmkId, algorithm, keySize);
+            result = AwsEARServiceUtil.generateDataKey(configUUID, cmkId, algorithm, keySize);
         } catch (Exception e) {
             LOG.error(String.format(
                     "Error generating universe key for universe %s", universeUUID.toString()
@@ -95,87 +75,128 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
         return result;
     }
 
+    private String getCMKId(UUID configUUID) {
+        final ObjectNode authConfig = getAuthConfig(configUUID);
+        final JsonNode cmkNode = authConfig.get("cmk_id");
+        return cmkNode == null ? null : cmkNode.asText();
+    }
+
     @Override
     protected AwsAlgorithm[] getSupportedAlgorithms() { return AwsAlgorithm.values(); }
 
     @Override
+    protected ObjectNode createAuthConfigWithService(UUID configUUID, ObjectNode config) {
+        // Skip creating a CMK for the KMS Configuration if the user inputted one
+        if (config.get("cmk_id") != null) return config;
+        final String description = String.format(
+                "Yugabyte Master Key for KMS Configuration %s",
+                configUUID.toString()
+        );
+        ObjectNode result = null;
+        try {
+            final String inputtedCMKPolicy = config.get("cmk_policy") == null ?
+                    null : config.get("cmk_policy").asText();
+            final String cmkId = AwsEARServiceUtil.createCMK(
+                    configUUID,
+                    description,
+                    inputtedCMKPolicy
+            ).getKeyMetadata().getKeyId();
+            if (cmkId != null) {
+                config.remove("cmk_policy");
+                config.put("cmk_id", cmkId);
+            }
+            result = config;
+        } catch (Exception e) {
+            final String errMsg = String.format(
+                    "Error attempting to create CMK with AWS KMS with config %s",
+                    configUUID.toString()
+            );
+            LOG.error(errMsg, e);
+        }
+        return result;
+    }
+
+    @Override
     protected byte[] createKeyWithService(
             UUID universeUUID,
-            UUID customerUUID,
-            Map<String, String> config
+            UUID configUUID,
+            EncryptionAtRestConfig config
     ) {
         byte[] result = null;
-        String typeString = config.get("key_type");
-        KeyType type = typeString == null || typeString.length() == 0 ?
-                KeyType.DATA_KEY : KeyType.valueOf(typeString);
-        String cmkId = createOrRetrieveUniverseCMK(
-                customerUUID,
-                universeUUID,
-                config.get("cmk_policy")
-        );
-        switch (type) {
-            case CMK:
-                result = AwsEARServiceUtil.getCMKArn(customerUUID, cmkId).getBytes();
-                break;
-            default:
-            case DATA_KEY:
-                result = generateUniverseKey(
-                        customerUUID,
-                        universeUUID,
-                        config.get("algorithm"),
-                        Integer.parseInt(config.get("key_size")),
-                        cmkId
-                );
-                if (result != null && result.length > 0) {
-                    addKeyRef(customerUUID, universeUUID, result);
-                }
-                break;
+        final String cmkId = getCMKId(configUUID);
+        if (cmkId != null) {
+            // Ensure an alias exists from KMS CMK to universe UUID
+            AwsEARServiceUtil.createOrUpdateCMKAlias(configUUID, cmkId, universeUUID.toString());
+            switch (config.type) {
+                case CMK:
+                    result = AwsEARServiceUtil.getCMK(configUUID, cmkId).getKeyArn().getBytes();
+                    break;
+                default:
+                case DATA_KEY:
+                    String algorithm = "AES";
+                    int keySize = 256;
+                    result = generateUniverseDataKey(
+                            configUUID,
+                            universeUUID,
+                            algorithm,
+                            keySize,
+                            cmkId
+                    );
+                    if (result != null && result.length > 0) {
+                        addKeyRef(configUUID, universeUUID, result);
+                    }
+                    break;
+            }
         }
         return result;
     }
 
     @Override
     protected byte[] rotateKeyWithService(
-            UUID customerUUID,
             UUID universeUUID,
-            Map<String, String> config
+            UUID configUUID,
+            EncryptionAtRestConfig config
     ) {
-        final String cmkId = createOrRetrieveUniverseCMK(
-                customerUUID,
-                universeUUID,
-                config.get("cmk_policy")
-        );
-        return generateUniverseKey(
-                customerUUID,
-                universeUUID,
-                config.get("algorithm"),
-                Integer.parseInt(config.get("key_size")),
-                cmkId
-        );
+        byte[] result = null;
+        final String cmkId = getCMKId(configUUID);
+        if (cmkId != null) {
+            // Ensure an alias exists from KMS CMK to universe UUID
+            AwsEARServiceUtil.createOrUpdateCMKAlias(configUUID, cmkId, universeUUID.toString());
+            String algorithm = "AES";
+            int keySize = 256;
+            result = generateUniverseDataKey(
+                    configUUID,
+                    universeUUID,
+                    algorithm,
+                    keySize,
+                    cmkId
+            );
+        }
+        return result;
     }
 
     @Override
     public byte[] retrieveKeyWithService(
-            UUID customerUUID,
             UUID universeUUID,
+            UUID configUUID,
             byte[] keyRef,
-            Map<String, String> config
+            EncryptionAtRestConfig config
     ) {
         byte[] keyVal = null;
         try {
-            String typeString = config.get("key_type");
-            KeyType type = typeString == null || typeString.length() == 0 ?
-                    KeyType.DATA_KEY : KeyType.valueOf(typeString);
-            switch (type) {
+            switch (config.type) {
                 case CMK:
                     keyVal = keyRef;
                     break;
                 default:
                 case DATA_KEY:
-                    keyVal = AwsEARServiceUtil.decryptUniverseKey(customerUUID, keyRef);
-                    if (keyVal == null) LOG.warn("Could not retrieve key from key ref");
-                    else EncryptionAtRestUtil
-                            .setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
+                    keyVal = AwsEARServiceUtil.decryptUniverseKey(configUUID, keyRef);
+                    if (keyVal == null) {
+                        LOG.warn("Could not retrieve key from key ref");
+                    } else {
+                        EncryptionAtRestUtil
+                                .setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
+                    }
                     break;
             }
         } catch (Exception e) {
@@ -184,5 +205,13 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
             throw new RuntimeException(errMsg, e);
         }
         return keyVal;
+    }
+
+    @Override
+    protected void cleanupWithService(UUID universeUUID, UUID configUUID) {
+        final String aliasName = AwsEARServiceUtil.generateAliasName(universeUUID.toString());
+        if (AwsEARServiceUtil.getAlias(configUUID, aliasName) != null) {
+            AwsEARServiceUtil.deleteAlias(configUUID, aliasName);
+        }
     }
 }

@@ -47,18 +47,17 @@ POST    /customers/:cUUID/configs                  com.yugabyte.yw.controllers.C
 GET     /customers/:cUUID/configs                  com.yugabyte.yw.controllers.CustomerConfigController.list(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID/configs/:configUUID      com.yugabyte.yw.controllers.CustomerConfigController.delete(cUUID: java.util.UUID, configUUID: java.util.UUID)
 
-# KMS API
-GET     /customers/:cUUID/kms_configs/:kmsProvider                            com.yugabyte.yw.controllers.EncryptionAtRestController.getKMSConfig(cUUID: java.util.UUID, kmsProvider: String)
+# KMS Configuration API
+GET     /customers/:cUUID/kms_configs/:configUUID                             com.yugabyte.yw.controllers.EncryptionAtRestController.getKMSConfig(cUUID: java.util.UUID, configUUID: java.util.UUID)
 GET     /customers/:cUUID/kms_configs                                         com.yugabyte.yw.controllers.EncryptionAtRestController.listKMSConfigs(cUUID: java.util.UUID)
 POST    /customers/:cUUID/kms_configs/:kmsProvider                            com.yugabyte.yw.controllers.EncryptionAtRestController.createKMSConfig(cUUID: java.util.UUID, kmsProvider: String)
-DELETE  /customers/:cUUID/kms_configs/:kmsProvider                            com.yugabyte.yw.controllers.EncryptionAtRestController.deleteKMSConfig(cUUID: java.util.UUID, kmsProvider: String)
-GET     /customers/:cUUID/universes/:uniUUID/kms/:kmsProvider                 com.yugabyte.yw.controllers.EncryptionAtRestController.retrieveKey(cUUID: java.util.UUID, uniUUID: java.util.UUID, kmsProvider: String)
-POST    /customers/:cUUID/universes/:uniUUID/kms/:kmsProvider/create_key      com.yugabyte.yw.controllers.EncryptionAtRestController.createKey(cUUID: java.util.UUID, uniUUID: java.util.UUID, kmsProvider: String)
-POST    /customers/:cUUID/universes/:uniUUID/kms/:kmsProvider/rotate_key      com.yugabyte.yw.controllers.EncryptionAtRestController.rotateKey(cUUID: java.util.UUID, uniUUID: java.util.UUID, kmsProvider: String)
-GET     /customers/:cUUID/universes/:uniUUID/kms/:kmsProvider/key_ref         com.yugabyte.yw.controllers.EncryptionAtRestController.getKeyRef(cUUID: java.util.UUID, uniUUID: java.util.UUID, kmsProvider: String)
-POST    /customers/:cUUID/universes/:uniUUID/kms/:kmsProvider/key_ref         com.yugabyte.yw.controllers.EncryptionAtRestController.addKeyRef(cUUID: java.util.UUID, uniUUID: java.util.UUID, kmsProvider: String)
-GET     /customers/:cUUID/universes/:uniUUID/kms/:kmsProvider/key_ref_history com.yugabyte.yw.controllers.EncryptionAtRestController.getKeyRefHistory(cUUID: java.util.UUID, uniUUID: java.util.UUID, kmsProvider: String)
-DELETE  /customers/:cUUID/universes/:uniUUID/kms/:kmsProvider/key_ref_history com.yugabyte.yw.controllers.EncryptionAtRestController.removeKeyRefHistory(cUUID: java.util.UUID, uniUUID: java.util.UUID, kmsProvider: String)
+DELETE  /customers/:cUUID/kms_configs/:configUUID                             com.yugabyte.yw.controllers.EncryptionAtRestController.deleteKMSConfig(cUUID: java.util.UUID, configUUID: java.util.UUID)
+
+# KMS History API
+GET     /customers/:cUUID/universes/:uniUUID/kms                              com.yugabyte.yw.controllers.EncryptionAtRestController.getKeyRefHistory(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/kms                              com.yugabyte.yw.controllers.EncryptionAtRestController.retrieveKey(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+DELETE  /customers/:cUUID/universes/:uniUUID/kms                              com.yugabyte.yw.controllers.EncryptionAtRestController.removeKeyRefHistory(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /customers/:cUUID/universes/:uniUUID/kms/key_ref                      com.yugabyte.yw.controllers.EncryptionAtRestController.getCurrentKeyRef(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Customer profile API
 GET     /customers/:cUUID                         com.yugabyte.yw.controllers.CustomerController.index(cUUID: java.util.UUID)

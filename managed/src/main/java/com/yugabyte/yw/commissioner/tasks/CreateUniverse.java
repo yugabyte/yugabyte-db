@@ -19,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.Common;
 import org.yb.client.YBClient;
 
+import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.UniverseOpType;
@@ -104,12 +105,11 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createPlacementInfoTask(null /* blacklistNodes */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      // Enable encryption-at-rest if key file is passed in
-      createEnableEncryptionAtRestTask(taskParams().enableEncryptionAtRest)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Update the universe model to reflect encryption is now enabled
-      writeEncryptionIntentToUniverse(taskParams().enableEncryptionAtRest);
+      // Manage encryption at rest
+      SubTaskGroup manageEncryptionKeyTask = createManageEncryptionAtRestTask();
+      if (manageEncryptionKeyTask != null) {
+        manageEncryptionKeyTask.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
 
       // Wait for a master leader to hear from all the tservers.
       createWaitForTServerHeartBeatsTask()

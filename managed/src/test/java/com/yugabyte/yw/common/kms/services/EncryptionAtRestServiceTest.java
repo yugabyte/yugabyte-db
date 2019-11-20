@@ -16,6 +16,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -78,8 +79,8 @@ class TestEncryptionAtRestService extends EncryptionAtRestService<TestAlgorithm>
     @Override
     protected byte[] createKeyWithService(
             UUID universeUUID,
-            UUID customerUUID,
-            Map<String, String> config
+            UUID configUUID,
+            EncryptionAtRestConfig config
     ) {
         return "some_key_id".getBytes();
     }
@@ -87,18 +88,18 @@ class TestEncryptionAtRestService extends EncryptionAtRestService<TestAlgorithm>
     @Override
     protected byte[] rotateKeyWithService(
             UUID universeUUID,
-            UUID customerUUID,
-            Map<String, String> config
+            UUID configUUID,
+            EncryptionAtRestConfig config
     ) {
         return "some_key_id".getBytes();
     }
 
     @Override
     public byte[] retrieveKeyWithService(
-            UUID customerUUID,
             UUID universeUUID,
+            UUID configUUID,
             byte[] keyRef,
-            Map<String, String> config
+            EncryptionAtRestConfig config
     ) {
         this.createRequest = !this.createRequest;
         return this.createRequest ? null : "some_key_value".getBytes();
@@ -109,8 +110,12 @@ class TestEncryptionAtRestService extends EncryptionAtRestService<TestAlgorithm>
 public class EncryptionAtRestServiceTest extends WithApplication {
     EncryptionAtRestManager mockUtil;
 
+    EncryptionAtRestConfig config;
+
     @Before
-    public void setUp() {}
+    public void setUp() {
+        config = new EncryptionAtRestConfig();
+    }
 
     @Test
     public void testGetServiceNotImplemented() {
@@ -133,36 +138,6 @@ public class EncryptionAtRestServiceTest extends WithApplication {
     }
 
     @Test
-    public void testCreateAndRetrieveEncryptionKeyInvalidAlgorithm() {
-        EncryptionAtRestService service = new TestEncryptionAtRestService(
-                null, KeyProvider.AWS, mockUtil
-        );
-        assertNull(service.createKey(
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                ImmutableMap.of(
-                        "algorithm", "UNSUPPORTED",
-                        "key_size", "1997"
-                )
-        ));
-    }
-
-    @Test
-    public void testCreateAndRetrieveEncryptionKeyInvalidKeySize() {
-        EncryptionAtRestService service = new TestEncryptionAtRestService(
-                null, KeyProvider.AWS, mockUtil
-        );
-        assertNull(service.createKey(
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                ImmutableMap.of(
-                        "algorithm", "TEST_ALGORITHM",
-                        "key_size", "1997"
-                )
-        ));
-    }
-
-    @Test
     public void testCreateAndRetrieveEncryptionKeyDuplicate() {
         EncryptionAtRestService service = new TestEncryptionAtRestService(
                 null,
@@ -170,13 +145,11 @@ public class EncryptionAtRestServiceTest extends WithApplication {
                 mockUtil,
                 false
         );
+        EncryptionAtRestConfig testConfig = config.clone();
         assertNull(service.createKey(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
-                ImmutableMap.of(
-                        "algorithm", "TEST_ALGORITHM",
-                        "key_size", "1"
-                )
+                testConfig
         ));
     }
 
@@ -190,12 +163,13 @@ public class EncryptionAtRestServiceTest extends WithApplication {
         );
         UUID customerUUID = UUID.randomUUID();
         UUID universeUUID = UUID.randomUUID();
-        service.createAuthConfig(customerUUID, Json.newObject().put("some_key", "some_value"));
-        Map<String, String> config = ImmutableMap.of(
-                "algorithm", "TEST_ALGORITHM",
-                "key_size", "1"
+        service.createAuthConfig(
+                customerUUID,
+                "some_config_name",
+                Json.newObject().put("some_key", "some_value")
         );
-        byte[] key = service.createKey(universeUUID, customerUUID, config);
+        EncryptionAtRestConfig testConfig = config.clone();
+        byte[] key = service.createKey(universeUUID, customerUUID, testConfig);
         assertNotNull(key);
         assertEquals("some_key_value", new String(key));
     }

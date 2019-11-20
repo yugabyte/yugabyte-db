@@ -31,9 +31,7 @@ public class DisableEncryptionAtRest extends AbstractTaskBase {
     // Timeout for failing to respond to pings.
     private static final long TIMEOUT_SERVER_WAIT_MS = 120000;
 
-    public static class Params extends EncryptionAtRestKeyParams {
-        public boolean disableEncryptionAtRest;
-    }
+    public static class Params extends EncryptionAtRestKeyParams {}
 
     @Override
     protected Params taskParams() {
@@ -52,17 +50,15 @@ public class DisableEncryptionAtRest extends AbstractTaskBase {
         String hostPorts = universe.getMasterAddresses();
         String certificate = universe.getCertificate();
         YBClient client = null;
-        if (taskParams().disableEncryptionAtRest) {
-            try {
-                LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
-                client = ybService.getClient(hostPorts, certificate);
-                client.disableEncryptionAtRestInMemory();
-            } catch (Exception e) {
-                LOG.error("{} hit error : {}", getName(), e.getMessage());
-                throw new RuntimeException(e);
-            } finally {
-                ybService.closeClient(client, hostPorts);
-            }
+        try {
+            LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
+            client = ybService.getClient(hostPorts, certificate);
+            client.disableEncryptionAtRestInMemory();
+        } catch (Exception e) {
+            LOG.error("{} hit error : {}", getName(), e.getMessage());
+            throw new RuntimeException(e);
+        } finally {
+            ybService.closeClient(client, hostPorts);
         }
     }
 }

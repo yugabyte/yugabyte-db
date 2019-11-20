@@ -11,13 +11,13 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import java.util.Base64;
 import java.util.Map;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.YBClient;
@@ -28,10 +28,11 @@ public class WaitForEncryptionKeyInMemory extends NodeTaskBase {
 
     public YBClientService ybService = null;
 
+    public EncryptionAtRestManager keyManager = null;
+
     public static final int KEY_IN_MEMORY_TIMEOUT = 5000;
 
     public static class Params extends NodeTaskParams {
-        public boolean universeEncrypted;
         public HostAndPort nodeAddress;
     }
 
@@ -39,6 +40,7 @@ public class WaitForEncryptionKeyInMemory extends NodeTaskBase {
     public void initialize(ITaskParams params) {
         super.initialize(params);
         ybService = Play.current().injector().instanceOf(YBClientService.class);
+        keyManager = Play.current().injector().instanceOf(EncryptionAtRestManager.class);
     }
 
     @Override
@@ -48,21 +50,17 @@ public class WaitForEncryptionKeyInMemory extends NodeTaskBase {
 
     @Override
     public void run() {
-        if (taskParams().universeEncrypted) {
+        Universe universe = Universe.get(taskParams().universeUUID);
+        if (universe != null && keyManager.getNumKeyRotations(universe.universeUUID) > 0) {
             YBClient client = null;
-            Universe universe = Universe.get(taskParams().universeUUID);
-            Customer customer = Customer.get(universe.customerId);
             String hostPorts = universe.getMasterAddresses();
             String certificate = universe.getCertificate();
             try {
                 client = ybService.getClient(hostPorts, certificate);
-                Map<String, String> encryptionAtRestConfig = universe.getEncryptionAtRestConfig();
-                EncryptionAtRestManager manager = Play.current()
-                        .injector()
-                        .instanceOf(EncryptionAtRestManager.class);
-                byte[] currentKeyRef = manager.getCurrentUniverseKeyRef(
-                        customer.uuid,
-                        universe.universeUUID
+                UUID configUUID = keyManager.getCurrentKMSConfigUUID(universe.universeUUID);
+                byte[] currentKeyRef = keyManager.getCurrentUniverseKeyRef(
+                        universe.universeUUID,
+                        configUUID
                 );
                 final String encodedKeyRef = Base64.getEncoder().encodeToString(currentKeyRef);
                 if (!client.waitForMasterHasUniverseKeyInMemory(

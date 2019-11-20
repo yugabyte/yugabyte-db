@@ -5,28 +5,19 @@ import { Button } from 'react-bootstrap';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../panels';
-import { YBConfirmModal } from '../../modals';
 
 class ListKeyManagementConfiguration extends Component {
-  state = {
-    visibleModal: '',
-  }
-
   render() {
     const { configs, onCreate, onDelete } = this.props;
 
     const actionList = (item, row) => {
-      const kmsProvider = row.provider;
+      const { configUUID, in_use } = row.metadata;
       return (
         <Button
           title={"Delete provider"}
           bsClass="btn btn-default btn-config pull-right"
-          onClick={() => {
-            if (kmsProvider === 'AWS') {
-              this.setState({ visibleModal: 'confirmDeleteKMSConfig' });
-            } else {
-              onDelete(kmsProvider);
-            }}}>
+          disabled={in_use}
+          onClick={() => onDelete(configUUID)}>
           Delete Configuration
         </Button>
       );
@@ -34,9 +25,10 @@ class ListKeyManagementConfiguration extends Component {
 
     const showConfigProperties = (item, row) => {
       const displayed = [];
-      Object.keys(row).forEach(key => {
+      const credentials = row.credentials;
+      Object.keys(credentials).forEach(key => {
         if (key !== 'provider') {
-          displayed.push(`${key}: ${row[key]}`);
+          displayed.push(`${key}: ${credentials[key]}`);
         }
       });
       return (
@@ -69,7 +61,11 @@ class ListKeyManagementConfiguration extends Component {
             <Fragment>
               <BootstrapTable data={configs.data} className="backup-list-table middle-aligned-table">
                 <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
-                <TableHeaderColumn dataField="provider" dataSort
+                <TableHeaderColumn dataField="metadata" dataFormat={cell => cell.name} dataSort
+                                   columnClassName="no-border name-column" className="no-border">
+                  Name
+                </TableHeaderColumn>
+                <TableHeaderColumn dataField="metadata" dataFormat={cell => cell.provider} dataSort
                       columnClassName="no-border name-column" className="no-border">
                   Provider
                 </TableHeaderColumn>
@@ -85,14 +81,6 @@ class ListKeyManagementConfiguration extends Component {
           }
           noBackground
           />
-        <YBConfirmModal name={"confirmDeleteKMSConfig"} title={"Delete Configuration"}
-                        hideConfirmModal={() => this.setState({ visibleModal: '' })}
-                        currentModal={"confirmDeleteKMSConfig"} visibleModal={this.state.visibleModal}
-                        onConfirm={() => onDelete('AWS')} confirmLabel={"Delete"}
-                        cancelLabel={"Cancel"}>
-          <p>This configuration and the original key will be deleted and is unrecoverable.</p>
-          <p>Are you sure you want to delete this AWS KMS configuration?</p>
-        </YBConfirmModal>
       </div>
     );
   }

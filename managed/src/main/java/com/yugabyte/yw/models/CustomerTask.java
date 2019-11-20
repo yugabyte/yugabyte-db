@@ -38,7 +38,10 @@ public class CustomerTask extends Model {
     Node,
 
     @EnumValue("Backup")
-    Backup
+    Backup,
+
+    @EnumValue("KMS Configuration")
+    KMSConfiguration;
   }
 
   public enum TaskType {
@@ -103,7 +106,7 @@ public class CustomerTask extends Model {
         case Backup:
           return completed ? "Backed up" : "Backing up";
         case SetEncryptionKey:
-          return completed ? "Setting encryption key" : "Set encryption key";
+          return completed ? "Set encryption key" : "Setting encryption key";
         default:
           return null;
       }
