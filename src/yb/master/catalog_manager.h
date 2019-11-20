@@ -307,6 +307,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                  DeleteNamespaceResponsePB* resp,
                                  rpc::RpcContext* rpc);
 
+  // Alter the specified Namespace.
+  CHECKED_STATUS AlterNamespace(const AlterNamespaceRequestPB* req,
+                                AlterNamespaceResponsePB* resp,
+                                rpc::RpcContext* rpc);
+
   // Delete YSQL database tables.
   CHECKED_STATUS DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
                                     DeleteNamespaceResponsePB* resp,

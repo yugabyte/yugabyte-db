@@ -60,6 +60,7 @@
 #endif
 #include "yb/client/permissions.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/client/namespace_alterer.h"
 
 #include "yb/common/partition.h"
 #include "yb/common/roles_permissions.h"
@@ -328,6 +329,9 @@ class YBClient {
   CHECKED_STATUS DeleteNamespace(const std::string& namespace_name,
                                  const boost::optional<YQLDatabase>& database_type = boost::none,
                                  const std::string& namespace_id = "");
+
+  YBNamespaceAlterer* NewNamespaceAlterer(const string& namespace_name,
+                                          const std::string& namespace_id);
 
   // For Postgres: reserve oids for a Postgres database.
   CHECKED_STATUS ReservePgsqlOids(const std::string& namespace_id,
@@ -599,6 +603,7 @@ class YBClient {
   friend class YBNoOp;
   friend class YBTable;
   friend class YBTableAlterer;
+  friend class YBNamespaceAlterer;
   friend class YBTableCreator;
   friend class internal::Batcher;
   friend class internal::GetTableSchemaRpc;

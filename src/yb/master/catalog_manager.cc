@@ -3110,7 +3110,12 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     // Lookup the new namespace and verify if it exists.
     TRACE("Looking up new namespace");
     scoped_refptr<NamespaceInfo> ns;
-    RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->new_namespace(), &ns), resp);
+    NamespaceIdentifierPB namespace_identifier = req->new_namespace();
+    // Use original namespace_id as new_namespace_id for YSQL tables.
+    if (table->GetTableType() == PGSQL_TABLE_TYPE && !namespace_identifier.has_id()) {
+      namespace_identifier.set_id(table->namespace_id());
+    }
+    RETURN_NAMESPACE_NOT_FOUND(FindNamespace(namespace_identifier, &ns), resp);
 
     new_namespace_id = ns->id();
   }
@@ -3215,7 +3220,8 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
         Substitute("An error occurred while updating sys-catalog tables entry: $0",
                    s.ToString()));
     LOG(WARNING) << s.ToString();
-    if (req->has_new_namespace() || req->has_new_table_name()) {
+    if (table->GetTableType() != PGSQL_TABLE_TYPE &&
+        (req->has_new_namespace() || req->has_new_table_name())) {
       std::lock_guard<LockType> catalog_lock(lock_);
       CHECK_EQ(table_names_map_.erase({new_namespace_id, new_table_name}), 1);
     }
@@ -3229,7 +3235,8 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     TRACE("Removing (namespace, table) combination ($0, $1) from by-name map",
         namespace_id, table_name);
     std::lock_guard<LockType> l_map(lock_);
-    if (table_names_map_.erase({namespace_id, table_name}) != 1) {
+    if (table->GetTableType() != PGSQL_TABLE_TYPE &&
+        table_names_map_.erase({namespace_id, table_name}) != 1) {
       PANIC_RPC(rpc, "Could not remove table from map, name=" + l->data().name());
     }
   }
@@ -4233,6 +4240,66 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
 
   // Invoke any background tasks and return (notably, table cleanup).
   background_tasks_->Wake();
+  return Status::OK();
+}
+
+Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
+                                      AlterNamespaceResponsePB* resp,
+                                      rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing AlterNamespace request from " << RequestorString(rpc)
+            << ": " << req->ShortDebugString();
+
+  RETURN_NOT_OK(CheckOnline());
+
+  scoped_refptr<NamespaceInfo> database;
+  RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &database), resp);
+
+  if (req->namespace_().has_database_type() &&
+      database->database_type() != req->namespace_().database_type()) {
+    Status s = STATUS(NotFound, "Database not found", database->name());
+    return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+  }
+
+  TRACE("Locking database");
+  auto l = database->LockForWrite();
+
+  const string old_name = l->data().pb.name();
+
+  if (req->has_new_name() && req->new_name() != old_name) {
+    const string new_name = req->new_name();
+
+    // Verify that the new name does not exist.
+    scoped_refptr<NamespaceInfo> ns;
+    NamespaceIdentifierPB ns_identifier;
+    ns_identifier.set_name(new_name);
+    if (req->namespace_().has_database_type()) {
+      ns_identifier.set_database_type(req->namespace_().database_type());
+    }
+    // TODO: This check will only work for YSQL once we add support for YSQL namespaces in
+    // namespace_name_map (#1476).
+    std::lock_guard<LockType> catalog_lock(lock_);
+    TRACE("Acquired catalog manager lock");
+    auto s = FindNamespaceUnlocked(ns_identifier, &ns);
+    if (ns != nullptr && req->namespace_().has_database_type() &&
+        ns->database_type() == req->namespace_().database_type()) {
+      Status s = STATUS_SUBSTITUTE(AlreadyPresent,
+          "Namespace '$0' already exists", ns->name());
+      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
+    }
+
+    namespace_names_mapper_[req->namespace_().database_type()][new_name] = database;
+    namespace_names_mapper_[req->namespace_().database_type()].erase(old_name);
+
+    l->mutable_data()->pb.set_name(new_name);
+  }
+
+  RETURN_NOT_OK(sys_catalog_->UpdateItem(database.get(), leader_ready_term_));
+
+  TRACE("Committing in-memory state");
+  l->Commit();
+
+  LOG(INFO) << "Successfully altered namespace " << req->namespace_().name()
+            << " per request from " << RequestorString(rpc);
   return Status::OK();
 }
 

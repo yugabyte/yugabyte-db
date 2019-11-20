@@ -85,6 +85,10 @@ class YBClient::Data {
                                  std::vector<internal::RemoteTabletServer*>* candidates,
                                  internal::RemoteTabletServer** ts);
 
+  CHECKED_STATUS AlterNamespace(YBClient* client,
+                                const master::AlterNamespaceRequestPB& req,
+                                CoarseTimePoint deadline);
+
   CHECKED_STATUS CreateTable(YBClient* client,
                              const master::CreateTableRequestPB& req,
                              const YBSchema& schema,

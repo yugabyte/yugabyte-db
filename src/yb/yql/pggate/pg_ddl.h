@@ -86,6 +86,32 @@ class PgDropDatabase : public PgDdl {
   const PgOid database_oid_;
 };
 
+class PgAlterDatabase : public PgDdl {
+ public:
+  // Public types.
+  typedef scoped_refptr<PgDropDatabase> ScopedRefPtr;
+  typedef scoped_refptr<const PgDropDatabase> ScopedRefPtrConst;
+
+  typedef std::unique_ptr<PgDropDatabase> UniPtr;
+  typedef std::unique_ptr<const PgDropDatabase> UniPtrConst;
+
+  // Constructors.
+  PgAlterDatabase(PgSession::ScopedRefPtr pg_session,
+                  const char *database_name,
+                  PgOid database_oid);
+  virtual ~PgAlterDatabase();
+
+  StmtOp stmt_op() const override { return StmtOp::STMT_ALTER_DATABASE; }
+
+  CHECKED_STATUS RenameDatabase(const char *newname);
+
+  // Execute.
+  CHECKED_STATUS Exec();
+
+ private:
+  client::YBNamespaceAlterer* namespace_alterer_;
+};
+
 //--------------------------------------------------------------------------------------------------
 // CREATE TABLE
 //--------------------------------------------------------------------------------------------------

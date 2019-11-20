@@ -145,6 +145,21 @@ YBCStatus YBCPgExecDropDatabase(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropDatabase(handle));
 }
 
+YBCStatus YBCPgNewAlterDatabase(YBCPgSession pg_session,
+                               const char *database_name,
+                               const YBCPgOid database_oid,
+                               YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewAlterDatabase(pg_session, database_name, database_oid, handle));
+}
+
+YBCStatus YBCPgAlterDatabaseRenameDatabase(YBCPgStatement handle, const char *newname) {
+  return ToYBCStatus(pgapi->AlterDatabaseRenameDatabase(handle, newname));
+}
+
+YBCStatus YBCPgExecAlterDatabase(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecAlterDatabase(handle));
+}
+
 YBCStatus YBCPgReserveOids(YBCPgSession pg_session,
                            const YBCPgOid database_oid,
                            const YBCPgOid next_oid,

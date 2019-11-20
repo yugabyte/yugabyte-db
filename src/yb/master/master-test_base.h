@@ -176,6 +176,12 @@ class MasterTestBase : public YBTest {
                          const boost::optional<YQLDatabase>& database_type,
                          CreateNamespaceResponsePB* resp);
 
+  Status AlterNamespace(const NamespaceName& ns_name,
+                        const NamespaceId& ns_id,
+                        const boost::optional<YQLDatabase>& database_type,
+                        const std::string& new_name,
+                        AlterNamespaceResponsePB* resp);
+
   RpcController* ResetAndGetController() {
     controller_->Reset();
     return controller_.get();

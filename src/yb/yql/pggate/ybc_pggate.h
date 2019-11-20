@@ -117,6 +117,14 @@ YBCStatus YBCPgNewDropDatabase(YBCPgSession pg_session,
                                YBCPgStatement *handle);
 YBCStatus YBCPgExecDropDatabase(YBCPgStatement handle);
 
+// Alter database.
+YBCStatus YBCPgNewAlterDatabase(YBCPgSession pg_session,
+                               const char *database_name,
+                               YBCPgOid database_oid,
+                               YBCPgStatement *handle);
+YBCStatus YBCPgAlterDatabaseRenameDatabase(YBCPgStatement handle, const char *newname);
+YBCStatus YBCPgExecAlterDatabase(YBCPgStatement handle);
+
 // Reserve oids.
 YBCStatus YBCPgReserveOids(YBCPgSession pg_session,
                            YBCPgOid database_oid,

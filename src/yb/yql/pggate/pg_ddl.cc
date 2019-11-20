@@ -17,6 +17,7 @@
 
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/namespace_alterer.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/entity_ids.h"
@@ -73,6 +74,26 @@ PgDropDatabase::~PgDropDatabase() {
 
 Status PgDropDatabase::Exec() {
   return pg_session_->DropDatabase(database_name_, database_oid_);
+}
+
+PgAlterDatabase::PgAlterDatabase(PgSession::ScopedRefPtr pg_session,
+                               const char *database_name,
+                               PgOid database_oid)
+    : PgDdl(pg_session),
+      namespace_alterer_(pg_session_->NewNamespaceAlterer(database_name, database_oid)) {
+}
+
+PgAlterDatabase::~PgAlterDatabase() {
+  delete namespace_alterer_;
+}
+
+Status PgAlterDatabase::Exec() {
+  return namespace_alterer_->SetDatabaseType(YQL_DATABASE_PGSQL)->Alter();
+}
+
+Status PgAlterDatabase::RenameDatabase(const char *newname) {
+  namespace_alterer_->RenameTo(newname);
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------

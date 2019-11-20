@@ -154,6 +154,14 @@ class PgApiImpl {
                                  PgStatement **handle);
   CHECKED_STATUS ExecDropDatabase(PgStatement *handle);
 
+  // Alter database.
+  CHECKED_STATUS NewAlterDatabase(PgSession *pg_session,
+                                 const char *database_name,
+                                 PgOid database_oid,
+                                 PgStatement **handle);
+  CHECKED_STATUS AlterDatabaseRenameDatabase(PgStatement *handle, const char *newname);
+  CHECKED_STATUS ExecAlterDatabase(PgStatement *handle);
+
   // Reserve oids.
   CHECKED_STATUS ReserveOids(PgSession *pg_session,
                              PgOid database_oid,
