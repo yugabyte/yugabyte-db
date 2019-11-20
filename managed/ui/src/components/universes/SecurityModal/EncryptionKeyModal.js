@@ -5,8 +5,7 @@ import { Row, Col } from 'react-bootstrap';
 import { Field, Formik } from 'formik';
 import * as Yup from "yup";
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
-import { YBModal, YBFormToggle, YBFormSelect, YBFormDropZone } from '../../common/forms/fields';
-import { readUploadedFile } from "../../../utils/UniverseUtils";
+import { YBModal, YBFormToggle, YBFormSelect } from '../../common/forms/fields';
 import { isNonEmptyObject } from 'utils/ObjectUtils';
 
 export default class EncryptionKeyModal extends Component {
@@ -18,11 +17,12 @@ export default class EncryptionKeyModal extends Component {
   }
 
   handleSubmitForm = (values) => {
-    const { currentUniverse: { data: { universeUUID, universeDetails }},
-            setEncryptionKey, handleSubmitKey } = this.props;
-    const primaryCluster = universeDetails.clusters.find(x => x.clusterType === 'PRIMARY');
-    const encryptionAtRestEnabled =
-      primaryCluster && primaryCluster.userIntent.enableEncryptionAtRest;
+    const {
+      currentUniverse: {data: {universeUUID, universeDetails}},
+      setEncryptionKey, handleSubmitKey
+    } = this.props;
+    const encryptionAtRestEnabled = universeDetails.encryptionAtRestConfig &&
+        universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled;
 
     // When the both the encryption enabled and rotate key values didn't change
     // we don't submit the form.
@@ -31,38 +31,28 @@ export default class EncryptionKeyModal extends Component {
     }
     // When the form is submitted without changing the KMS provider select,
     // we would have the value as string otherwise it would be an object.
-    const kmsProvider = isNonEmptyObject(values.selectKMSProvider) ?
-      values.selectKMSProvider.value : values.selectKMSProvider;
+    const kmsConfigUUID = isNonEmptyObject(values.selectKMSProvider) ?
+        values.selectKMSProvider.value : values.selectKMSProvider;
 
     const data = {
-      "universeUUID": universeUUID,
       "key_op": values.enableEncryptionAtRest ? "ENABLE" : "DISABLE",
-      "algorithm": "AES",
-      "key_size": "256",
-      "kms_provider": kmsProvider
+      "kmsConfigUUID": kmsConfigUUID
     };
 
-    if (values.enableEncryptionAtRest && values.awsCmkPolicy) {
-      readUploadedFile(values.awsCmkPolicy).then(text => {
-        data.cmk_policy = text;
-        handleSubmitKey(setEncryptionKey(universeUUID, data));
-      });
-    } else {
-      handleSubmitKey(setEncryptionKey(universeUUID, data));
-    }
-  }
+    handleSubmitKey(setEncryptionKey(universeUUID, data));
+  };
 
   render() {
     const { modalVisible, onHide, configList, currentUniverse } = this.props;
     const { data: {universeDetails }} = currentUniverse;
-    const primaryCluster = universeDetails.clusters.find(x => x.clusterType === 'PRIMARY');
-    const encryptionAtRestEnabled = primaryCluster && primaryCluster.userIntent.enableEncryptionAtRest;
     const encryptionAtRestConfig = universeDetails.encryptionAtRestConfig;
+    const encryptionAtRestEnabled = encryptionAtRestConfig &&
+        encryptionAtRestConfig.encryptionAtRestEnabled;
     const labelText = currentUniverse.data.name ? `Enable Encryption-at-Rest for ${this.props.name}?` : 'Enable Encryption-at-Rest?';
-    const kmsOptions = [
-      { value: 'auto-generated', label: 'Use auto-generated key' },
-      ...configList.data.map(config => ({ value: config.provider, label: config.provider }))
-    ];
+    const kmsOptions = configList.data.map(config => ({
+      value: config.metadata.configUUID,
+      label: config.metadata.provider + " - " + config.metadata.name
+    }));
 
     const initialValues = {
       'enableEncryptionAtRest': encryptionAtRestEnabled,
@@ -80,9 +70,8 @@ export default class EncryptionKeyModal extends Component {
                               then: Yup.mixed().required('KMS Provider is required')})
     });
 
-    if (isNonEmptyObject(encryptionAtRestConfig) && encryptionAtRestConfig.kms_provider) {
-      initialValues.selectKMSProvider = encryptionAtRestConfig.kms_provider;
-      initialValues.awsCmkPolicy = encryptionAtRestConfig.cmk_policy;
+    if (isNonEmptyObject(encryptionAtRestConfig) && encryptionAtRestConfig.kmsConfigUUID) {
+      initialValues.selectKMSProvider = encryptionAtRestConfig.kmsConfigUUID;
     }
 
     return (
@@ -114,15 +103,6 @@ export default class EncryptionKeyModal extends Component {
                   </Col>
                   <Col lg={7}>
                     <Field name="selectKMSProvider" component={YBFormSelect} options={kmsOptions}/>
-                  </Col>
-                </Row>
-              }
-              {props.values.selectKMSProvider && props.values.selectKMSProvider.value === 'AWS' &&
-                <Row className="config-provider-row">
-                  <Col lg={11}>
-                    <Field component={YBFormDropZone} name={'awsCmkPolicy'}
-                      title={"Upload CM Key Policy"} className="upload-file-button"
-                    />
                   </Col>
                 </Row>
               }

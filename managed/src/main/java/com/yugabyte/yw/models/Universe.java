@@ -40,6 +40,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -711,13 +712,20 @@ public class Universe extends Model {
      */
   public boolean isEncryptedAtRest() {
     boolean result = false;
-    Cluster cluster = getUniverseDetails().getPrimaryCluster();
-    if (cluster != null) result = cluster.userIntent.enableEncryptionAtRest;
+    EncryptionAtRestConfig config = getUniverseDetails().encryptionAtRestConfig;
+    if (config != null) result = config.encryptionAtRestEnabled;
     return result;
   }
 
-  public Map<String, String> getEncryptionAtRestConfig() {
+  public EncryptionAtRestConfig getEncryptionAtRestConfig() {
     return getUniverseDetails().encryptionAtRestConfig;
+  }
+
+  public UUID getKMSConfigUUID() {
+    UUID result = null;
+    EncryptionAtRestConfig config = getUniverseDetails().encryptionAtRestConfig;
+    if (config != null) result = config.kmsConfigUUID;
+    return result;
   }
 
   public boolean universeIsLocked() {

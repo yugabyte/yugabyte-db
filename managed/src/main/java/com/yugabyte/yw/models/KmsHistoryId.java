@@ -11,9 +11,11 @@
 package com.yugabyte.yw.models;
 
 import com.avaje.ebean.annotation.EnumValue;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.io.Serializable;
 import java.util.UUID;
 import javax.persistence.Embeddable;
+import play.libs.Json;
 
 @Embeddable
 public class KmsHistoryId implements Serializable {
@@ -35,10 +37,21 @@ public class KmsHistoryId implements Serializable {
     }
 
     @Override
+    public String toString() {
+        JsonNode instance = Json.newObject()
+                .put("configUUID", configUUID.toString())
+                .put("targetUUID", targetUUID.toString())
+                .put("type", type.name());
+        return Json.newObject().set("KmsHistoryId", instance).toString();
+    }
+
+    @Override
     public boolean equals(Object o) {
         if (!(o instanceof KmsHistoryId)) return false;
         KmsHistoryId oCast = (KmsHistoryId) o;
-        return oCast.configUUID.equals(this.configUUID) && oCast.targetUUID.equals(this.targetUUID);
+        return oCast.configUUID.equals(this.configUUID) &&
+                oCast.targetUUID.equals(this.targetUUID) &&
+                oCast.type.equals(this.type);
     }
 
     @Override

@@ -62,6 +62,7 @@ import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
@@ -152,11 +153,42 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return universe;
   }
 
-  public Universe writeEncryptionIntentToUniverse(boolean enable) {
+  public SubTaskGroup createManageEncryptionAtRestTask() {
+    SubTaskGroup subTaskGroup = null;
+    AbstractTaskBase task = null;
+    UniverseDefinitionTaskParams params = null;
+    switch (taskParams().encryptionAtRestConfig.opType) {
+      case ENABLE:
+        subTaskGroup = new SubTaskGroup("EnableEncryptionAtRest", executor);
+        task = new EnableEncryptionAtRest();
+        EnableEncryptionAtRest.Params enableParams = new EnableEncryptionAtRest.Params();
+        enableParams.universeUUID = taskParams().universeUUID;
+        task.initialize(enableParams);
+        subTaskGroup.addTask(task);
+        subTaskGroupQueue.add(subTaskGroup);
+        break;
+      case DISABLE:
+        subTaskGroup = new SubTaskGroup("DisableEncryptionAtRest", executor);
+        task = new DisableEncryptionAtRest();
+        DisableEncryptionAtRest.Params disableParams = new DisableEncryptionAtRest.Params();
+        disableParams.universeUUID = taskParams().universeUUID;
+        task.initialize(disableParams);
+        subTaskGroup.addTask(task);
+        subTaskGroupQueue.add(subTaskGroup);
+        break;
+      default:
+      case UNDEFINED:
+        break;
+    }
+
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        LOG.info(String.format("Writing encryption at rest %b to universe...", enable));
+        LOG.info(String.format(
+                "Setting encryption at rest status to %s for universe %s",
+                taskParams().encryptionAtRestConfig.opType.name(),
+                universe.universeUUID.toString()
+        ));
         // Persist the updated information about the universe.
         // It should have been marked as being edited in lockUniverseForUpdate().
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -166,13 +198,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           LOG.error(msg);
           throw new RuntimeException(msg);
         }
-        universeDetails.encryptionAtRestConfig = enable ?
-                taskParams().encryptionAtRestConfig : null;
-        Cluster cluster = universeDetails.getPrimaryCluster();
-        if (cluster != null) {
-          cluster.userIntent.enableEncryptionAtRest = enable;
-          universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
-        }
+
+        universeDetails.encryptionAtRestConfig = taskParams().encryptionAtRestConfig;
+
+        universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled =
+                taskParams().encryptionAtRestConfig.opType.equals(OpType.ENABLE);
         universe.setUniverseDetails(universeDetails);
       }
     };
@@ -181,34 +211,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     Universe universe = Universe.saveDetails(taskParams().universeUUID, updater);
     LOG.debug("Wrote user intent for universe {}.", taskParams().universeUUID);
 
-    // Return the universe object that we have already updated.
-    return universe;
-  }
-
-  /**
-   * Runs task for enabling encryption-at-rest key file on master
-   */
-  public SubTaskGroup createEnableEncryptionAtRestTask(boolean enableIntent) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("EnableEncryptionAtRest", executor);
-    EnableEncryptionAtRest task = new EnableEncryptionAtRest();
-    EnableEncryptionAtRest.Params params = new EnableEncryptionAtRest.Params();
-    params.universeUUID = taskParams().universeUUID;
-    params.enableEncryptionAtRest = enableIntent;
-    task.initialize(params);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  public SubTaskGroup createDisableEncryptionAtRestTask(boolean disableIntent) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("DisableEncryptionAtRest", executor);
-    DisableEncryptionAtRest task = new DisableEncryptionAtRest();
-    DisableEncryptionAtRest.Params params = new DisableEncryptionAtRest.Params();
-    params.universeUUID = taskParams().universeUUID;
-    params.disableEncryptionAtRest = disableIntent;
-    task.initialize(params);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -377,11 +379,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @return
    */
-  public SubTaskGroup createWaitForKeyInMemoryTask(NodeDetails node, boolean universeEncrypted) {
+  public SubTaskGroup createWaitForKeyInMemoryTask(NodeDetails node) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForEncryptionKeyInMemory", executor);
     WaitForEncryptionKeyInMemory.Params params = new WaitForEncryptionKeyInMemory.Params();
     params.universeUUID = taskParams().universeUUID;
-    params.universeEncrypted = universeEncrypted;
     params.nodeAddress = HostAndPort.fromParts(node.cloudInfo.private_ip, node.masterRpcPort);
     params.nodeName = node.nodeName;
     WaitForEncryptionKeyInMemory task = new WaitForEncryptionKeyInMemory();

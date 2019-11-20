@@ -352,8 +352,8 @@ export function createKMSProviderConfigResponse(result) {
   };
 }
 
-export function deleteKMSProviderConfig(provider) {
-  const endpoint = getCustomerEndpoint() + `/kms_configs/${provider}`;
+export function deleteKMSProviderConfig(configUUID) {
+  const endpoint = getCustomerEndpoint() + `/kms_configs/${configUUID}`;
   const request = axios.delete(endpoint);
   return {
     type: DELETE_KMS_CONFIGURATION,

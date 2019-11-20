@@ -135,10 +135,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
         // Update master addresses to the latest required ones.
         createMoveMasterTasks(new ArrayList(mastersToAdd), new ArrayList(mastersToRemove));
-
-        // Enable encryption-at-rest if that is the intent and the key creation succeeded
-        createEnableEncryptionAtRestTask(taskParams().enableEncryptionAtRest)
-                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
       // Bring up new tservers.

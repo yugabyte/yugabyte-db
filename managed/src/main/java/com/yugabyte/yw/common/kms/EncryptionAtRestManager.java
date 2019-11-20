@@ -10,18 +10,13 @@
 
 package com.yugabyte.yw.common.kms;
 
-import com.avaje.ebean.annotation.EnumValue;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.kms.services.AwsEARService;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
-import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
-import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.KmsHistoryId;
 import com.yugabyte.yw.models.Universe;
@@ -31,10 +26,6 @@ import java.util.UUID;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.api.Play;
-import play.libs.Json;
-import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -107,28 +98,13 @@ public class EncryptionAtRestManager {
     }
 
     public byte[] generateUniverseKey(
-            UUID customerUUID,
+            UUID configUUID,
             UUID universeUUID,
-            Map<String, String> config
-    ) {
-        return generateUniverseKey(customerUUID, universeUUID, config, false);
-    }
-
-    public byte[] generateUniverseKey(
-            UUID customerUUID,
-            UUID universeUUID,
-            Map<String, String> config,
-            boolean forceCreate
+            EncryptionAtRestConfig config
     ) {
         EncryptionAtRestService keyService;
-        String kmsProvider;
+        KmsConfig kmsConfig;
         byte[] universeKeyData = null;
-        Customer customer = Customer.get(customerUUID);
-        if (customer == null) {
-            String errMsg = String.format("Invalid Customer UUID: %s", customerUUID.toString());
-            LOG.error(errMsg);
-            throw new IllegalArgumentException(errMsg);
-        }
         Universe universe = Universe.get(universeUUID);
         if (universe == null) {
             String errMsg = String.format("Invalid Universe UUID: %s", universeUUID.toString());
@@ -136,26 +112,32 @@ public class EncryptionAtRestManager {
             throw new IllegalArgumentException(errMsg);
         }
         try {
-            kmsProvider = config.get("kms_provider");
-            keyService = getServiceInstance(kmsProvider);
-            if (forceCreate || !(universe.isEncryptedAtRest() ||
-                    getNumKeyRotations(customerUUID, universeUUID) > 0)) {
+            kmsConfig = KmsConfig.get(configUUID);
+            keyService = getServiceInstance(kmsConfig.keyProvider.name());
+            if (getNumKeyRotations(universeUUID, configUUID) == 0) {
                 LOG.info(String.format(
                         "Creating universe key for universe %s",
                         universeUUID.toString()
                 ));
-                universeKeyData = keyService.createKey(universeUUID, customerUUID, config);
+                universeKeyData = keyService.createKey(
+                        universeUUID,
+                        configUUID,
+                        config
+                );
             } else {
                 LOG.info(String.format(
                         "Rotating universe key for universe %s",
                         universeUUID.toString()
                 ));
-                universeKeyData = keyService.rotateKey(customerUUID, universeUUID, config);
+                universeKeyData = keyService.rotateKey(
+                        universeUUID,
+                        configUUID,
+                        config
+                );
             }
         } catch (Exception e) {
             String errMsg = String.format(
-                    "Error attempting to generate universe key for customer %s and universe %s",
-                    customerUUID.toString(),
+                    "Error attempting to generate universe key for universe %s",
                     universeUUID.toString()
             );
             LOG.error(errMsg, e);
@@ -163,63 +145,86 @@ public class EncryptionAtRestManager {
         return universeKeyData;
     }
 
-    public byte[] getCurrentUniverseKey(
-            UUID customerUUID,
-            UUID universeUUID,
-            byte[] keyRef
-    ) {
-        byte[] keyVal = null;
-        EncryptionAtRestService keyService;
-        String kmsProvider;
-        Universe universe = Universe.get(universeUUID);
-        Map<String, String> config = universe.getEncryptionAtRestConfig();
-        try {
-            kmsProvider = config.get("kms_provider");
-            keyService = getServiceInstance(kmsProvider);
-            keyVal = keyService.retrieveKey(customerUUID, universeUUID, keyRef, config);
-        } catch (Exception e) {
-            String errMsg = String.format(
-                    "Error attempting to retrieve the current universe key for " +
-                            "customer %s and universe %s",
-                    customerUUID.toString(),
-                    universeUUID.toString()
-            );
-            LOG.error(errMsg, e);
-        }
-        return keyVal;
+    public UUID getCurrentKMSConfigUUID(UUID universeUUID) {
+        KmsHistory latestHistory = KmsHistory.getCurrentConfig(
+                universeUUID,
+                KmsHistoryId.TargetType.UNIVERSE_KEY
+        );
+        return latestHistory.configUuid;
     }
 
-    public byte[] getCurrentUniverseKeyRef(UUID customerUUID, UUID universeUUID) {
+    public UUID getKeyRefKMSConfigUUID(UUID universeUUID, byte[] keyRef) {
+        KmsHistory keyRefEntry = KmsHistory.getKeyRefConfig(
+                universeUUID,
+                Base64.getEncoder().encodeToString(keyRef),
+                KmsHistoryId.TargetType.UNIVERSE_KEY
+        );
+        return keyRefEntry.configUuid;
+    }
+
+    public byte[] getCurrentUniverseKeyRef(UUID universeUUID) {
+        return getCurrentUniverseKeyRef(
+                universeUUID,
+                Universe.get(universeUUID).getKMSConfigUUID()
+        );
+    }
+
+    public byte[] getCurrentUniverseKeyRef(UUID universeUUID, UUID configUUID) {
         byte[] keyRef = null;
         EncryptionAtRestService keyService;
-        String kmsProvider;
-        Universe universe = Universe.get(universeUUID);
-        Map<String, String> config = universe.getEncryptionAtRestConfig();
         try {
-            kmsProvider = config.get("kms_provider");
-            keyService = getServiceInstance(kmsProvider);
-            keyRef = keyService.getKeyRef(customerUUID, universeUUID);
+            keyService = getServiceInstance(KmsConfig.get(configUUID).keyProvider.name());
+            keyRef = keyService.getKeyRef(configUUID, universeUUID);
         } catch (Exception e) {
             String errMsg = String.format(
                     "Error attempting to retrieve the current universe key ref for " +
-                            "customer %s and universe %s",
-                    customerUUID.toString(),
-                    universeUUID.toString()
+                            "universe %s with config %s",
+                    universeUUID.toString(),
+                    configUUID.toString()
             );
             LOG.error(errMsg, e);
         }
         return keyRef;
     }
 
-    public int getNumKeyRotations(UUID customerUUID, UUID universeUUID) {
-        int numRotations = 0;
+    public byte[] getCurrentUniverseKey(UUID universeUUID, byte[] keyRef) {
+        return getCurrentUniverseKey(
+                universeUUID,
+                Universe.get(universeUUID).getKMSConfigUUID(),
+                keyRef
+        );
+    }
+
+    public byte[] getCurrentUniverseKey(UUID universeUUID, UUID configUUID, byte[] keyRef) {
+        byte[] keyVal = null;
         EncryptionAtRestService keyService;
-        Customer customer = Customer.get(customerUUID);
-        if (customer == null) {
-            String errMsg = String.format("Invalid Customer UUID: %s", customerUUID.toString());
-            LOG.error(errMsg);
-            throw new IllegalArgumentException(errMsg);
+        Universe universe = Universe.get(universeUUID);
+        try {
+            keyService = getServiceInstance(KmsConfig.get(configUUID).keyProvider.name());
+            keyVal = keyService.retrieveKey(
+                    universeUUID,
+                    configUUID,
+                    keyRef,
+                    universe.getEncryptionAtRestConfig()
+            );
+        } catch (Exception e) {
+            String errMsg = String.format(
+                    "Error attempting to retrieve the current universe key for universe %s " +
+                            "with config %s",
+                    universeUUID.toString(),
+                    configUUID.toString()
+            );
+            LOG.error(errMsg, e);
         }
+        return keyVal;
+    }
+
+    public int getNumKeyRotations(UUID universeUUID) {
+        return getNumKeyRotations(universeUUID, null);
+    }
+
+    public int getNumKeyRotations(UUID universeUUID, UUID configUUID) {
+        int numRotations = 0;
         Universe universe = Universe.get(universeUUID);
         if (universe == null) {
             String errMsg = String.format("Invalid Universe UUID: %s", universeUUID.toString());
@@ -227,16 +232,21 @@ public class EncryptionAtRestManager {
             throw new IllegalArgumentException(errMsg);
         }
         try {
-            List<KmsHistory> keyRotations = KmsHistory.getAllTargetKeyRefs(
-                    universeUUID,
-                    KmsHistoryId.TargetType.UNIVERSE_KEY
-            );
+            List<KmsHistory> keyRotations = configUUID == null ?
+                    KmsHistory.getAllTargetKeyRefs(
+                            universeUUID,
+                            KmsHistoryId.TargetType.UNIVERSE_KEY
+                    ) :
+                    KmsHistory.getAllConfigTargetKeyRefs(
+                            configUUID,
+                            universeUUID,
+                            KmsHistoryId.TargetType.UNIVERSE_KEY
+                    );
             if (keyRotations != null) numRotations = keyRotations.size();
         } catch (Exception e) {
             String errMsg = String.format(
                     "Error attempting to retrieve the number of key rotations " +
-                            "for customer %s and universe %s",
-                    customerUUID.toString(),
+                            "universe %s",
                     universeUUID.toString()
             );
             LOG.error(errMsg, e);
@@ -244,14 +254,7 @@ public class EncryptionAtRestManager {
         return numRotations;
     }
 
-    public void clearUniverseKeyHistory(UUID customerUUID, UUID universeUUID) {
-        EncryptionAtRestService keyService;
-        Customer customer = Customer.get(customerUUID);
-        if (customer == null) {
-            String errMsg = String.format("Invalid Customer UUID: %s", customerUUID.toString());
-            LOG.error(errMsg);
-            throw new IllegalArgumentException(errMsg);
-        }
+    public void clearUniverseKeyHistory(UUID universeUUID) {
         Universe universe = Universe.get(universeUUID);
         if (universe == null) {
             String errMsg = String.format("Invalid Universe UUID: %s", universeUUID.toString());
@@ -268,5 +271,13 @@ public class EncryptionAtRestManager {
             LOG.error(errMsg, e);
             throw e;
         }
+    }
+
+    public void cleanupEncryptionAtRest(UUID customerUUID, UUID universeUUID) {
+        clearUniverseKeyHistory(universeUUID);
+        KmsConfig.listKMSConfigs(customerUUID).stream().forEach(config -> {
+            EncryptionAtRestService keyService = getServiceInstance(config.keyProvider.name());
+            keyService.cleanup(universeUUID, config.configUUID);
+        });
     }
 }

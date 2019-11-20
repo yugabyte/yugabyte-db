@@ -209,7 +209,6 @@ class UniverseForm extends Component {
         enableYSQL: self.getYSQLstate(),
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt,
-        enableEncryptionAtRest: formValues[clusterType].enableEncryptionAtRest,
         providerType: self.getCurrentProvider(formValues[clusterType].provider).code,
         instanceType: formValues[clusterType].instanceType,
         numNodes: formValues[clusterType].numNodes,
@@ -273,12 +272,17 @@ class UniverseForm extends Component {
             submitPayload.rootCA = formValues['primary'].tlsCertificateId;
           }
 
+          const kmsConfigUUID = formValues['primary'].selectEncryptionAtRestConfig;
+
+          // Default universe key parameters... we can eventually expose this in the UI to
+          // allow users to configure their universe keys at a more granular level
           submitPayload.encryptionAtRestConfig = {
-            "kms_provider": formValues['primary'].selectEncryptionAtRestConfig,
-            "algorithm": "AES",
-            "key_size": "256",
-            "cmk_policy": formValues['primary'].cmkPolicyContent
+            "key_op": formValues['primary'].enableEncryptionAtRest ? "ENABLE" : "UNDEFINED"
           };
+          // Ensure a configuration was actually selected
+          if (kmsConfigUUID !== null) {
+            submitPayload.encryptionAtRestConfig['configUUID'] = kmsConfigUUID;
+          }
         }
         if (cluster.clusterType === "ASYNC" && isNonEmptyObject(getIntentValues("async"))) {
           asyncClusterFound = true;
@@ -603,8 +607,7 @@ class PrimaryClusterFields extends Component {
         'primary.numVolumes', 'primary.volumeSize', 'primary.storageType',
         'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL',
         'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt',
-        'primary.enableEncryptionAtRest', 'primary.selectEncryptionAtRestConfig',
-        'primary.useCmkPolicy'
+        'primary.enableEncryptionAtRest', 'primary.selectEncryptionAtRestConfig'
       ]}
         component={ClusterFields} {...this.props} clusterType={"primary"} />
     );

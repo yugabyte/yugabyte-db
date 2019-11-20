@@ -231,11 +231,12 @@ export default function(state = INITIAL_STATE, action) {
       return state;
     case DELETE_KMS_CONFIGURATION_RESPONSE:
       // Remove target provider from authConfig list
-      const authConfig = state.authConfig.filter(val => val.provider !== action.payload);
-      return {
-        ...state,
-        authConfig,
-      };
+      const authConfig = state
+          .authConfig
+          .data
+          .filter(val => val.metadata.configUUID !== action.payload);
+      state.authConfig['data'] = authConfig;
+      return state;
     default:
       return state;
   }

@@ -23,6 +23,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
+import javax.persistence.Transient;
 import javax.persistence.IdClass;
 import javax.persistence.AttributeOverride;
 import javax.persistence.AttributeOverrides;
@@ -33,6 +34,8 @@ import javax.persistence.EmbeddedId;
 public class KmsHistory extends Model {
     public static final Logger LOG = LoggerFactory.getLogger(KmsHistory.class);
 
+    public static final int SCHEMA_VERSION = 1;
+
     @EmbeddedId
     @AttributeOverrides({
             @AttributeOverride( name = "configUUID", column = @Column(name = "config_uuid") ),
@@ -40,6 +43,15 @@ public class KmsHistory extends Model {
             @AttributeOverride( name = "type", column = @Column(name = "type"))
     })
     public KmsHistoryId uuid;
+
+    @Transient
+    public UUID configUuid;
+
+    @Transient
+    public UUID targetUuid;
+
+    @Transient
+    public KmsHistoryId.TargetType type;
 
     @Constraints.Required
     @Temporal(TemporalType.TIMESTAMP)
@@ -66,7 +78,7 @@ public class KmsHistory extends Model {
         keyHistory.uuid = new KmsHistoryId(configUUID, targetUUID, targetType);
         keyHistory.keyRef = keyRef;
         keyHistory.timestamp = new Date();
-        keyHistory.version = 1;
+        keyHistory.version = SCHEMA_VERSION;
         keyHistory.save();
         return keyHistory;
     }
@@ -93,7 +105,41 @@ public class KmsHistory extends Model {
                 .findList();
     }
 
-    public static KmsHistory getCurrentKeyRef(
+    public static KmsHistory getCurrentConfig(UUID targetUUID, KmsHistoryId.TargetType type) {
+        String latestConfigUUIDQuery = "SELECT config_uuid FROM kms_history" +
+                " WHERE timestamp IN (" +
+                "SELECT MAX(timestamp) AS timestamp" +
+                " FROM kms_history " +
+                " WHERE type = :type" +
+                " AND target_uuid = :targetUUID" +
+                ")";
+        RawSql rawSql = RawSqlBuilder.parse(latestConfigUUIDQuery).create();
+        Query<KmsHistory> query = Ebean.find(KmsHistory.class);
+        query.setRawSql(rawSql);
+        query.setParameter("type", type);
+        query.setParameter("targetUUID", targetUUID);
+        return query.findUnique();
+    }
+
+    public static KmsHistory getKeyRefConfig(
+            UUID targetUUID,
+            String keyRef,
+            KmsHistoryId.TargetType type
+    ) {
+        String keyRefConfigQuery = "SELECT config_uuid FROM kms_history" +
+                " WHERE type = :type" +
+                " AND target_uuid = :targetUUID" +
+                " AND key_ref = :keyRef";
+        RawSql rawSql = RawSqlBuilder.parse(keyRefConfigQuery).create();
+        Query<KmsHistory> query = Ebean.find(KmsHistory.class);
+        query.setRawSql(rawSql);
+        query.setParameter("type", type);
+        query.setParameter("targetUUID", targetUUID);
+        query.setParameter("keyRef", keyRef);
+        return query.findUnique();
+    }
+
+    public static KmsHistory getCurrentConfigKeyRef(
             UUID configUUID,
             UUID targetUUID,
             KmsHistoryId.TargetType type
@@ -104,12 +150,31 @@ public class KmsHistory extends Model {
                 " FROM kms_history " +
                 " WHERE config_uuid = :configUUID" +
                 " AND type = :type" +
-                " AND target_uuid = :targetUUID LIMIT 1" +
+                " AND target_uuid = :targetUUID" +
                 ")";
         RawSql rawSql = RawSqlBuilder.parse(latestKeyQuery).create();
         Query<KmsHistory> query = Ebean.find(KmsHistory.class);
         query.setRawSql(rawSql);
         query.setParameter("configUUID", configUUID);
+        query.setParameter("type", type);
+        query.setParameter("targetUUID", targetUUID);
+        return query.findUnique();
+    }
+
+    public static KmsHistory getCurrentKeyRef(
+            UUID targetUUID,
+            KmsHistoryId.TargetType type
+    ) {
+        String latestKeyQuery = "SELECT key_ref FROM kms_history" +
+                " WHERE timestamp IN (" +
+                "SELECT MAX(timestamp) AS timestamp" +
+                " FROM kms_history " +
+                " WHERE type = :type" +
+                " AND target_uuid = :targetUUID" +
+                ")";
+        RawSql rawSql = RawSqlBuilder.parse(latestKeyQuery).create();
+        Query<KmsHistory> query = Ebean.find(KmsHistory.class);
+        query.setRawSql(rawSql);
         query.setParameter("type", type);
         query.setParameter("targetUUID", targetUUID);
         return query.findUnique();

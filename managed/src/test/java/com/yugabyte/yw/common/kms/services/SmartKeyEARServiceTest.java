@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
@@ -45,7 +46,7 @@ public class SmartKeyEARServiceTest extends FakeDBApplication {
     int testKeySize = 256;
     UUID testUniUUID = UUID.randomUUID();
     UUID testCustomerUUID = UUID.randomUUID();
-    Map<String, String> config = null;
+    EncryptionAtRestConfig config;
 
     String mockEncodedEncryptionKey =
             "RjZiNzVGekljNFh5Zmh0NC9FQ1dpM0FaZTlMVGFTbW1Wa1dnaHRzdDhRVT0=";
@@ -173,6 +174,7 @@ public class SmartKeyEARServiceTest extends FakeDBApplication {
 
     @Before
     public void setUp() {
+        config = new EncryptionAtRestConfig();
         payload.put("name", testUniUUID.toString());
         payload.put("obj_type", testAlgorithm);
         payload.put("key_size", testKeySize);
@@ -193,25 +195,6 @@ public class SmartKeyEARServiceTest extends FakeDBApplication {
                 anyMap()
         )).thenReturn(Json.parse(rekeyMockResponse));
         encryptionService = new TestEncryptionAtRestService();
-        config = ImmutableMap.of(
-                "kms_provider", testKeyProvider.name(),
-                "algorithm", testAlgorithm,
-                "key_size", Integer.toString(testKeySize)
-        );
-    }
-
-    @Test
-    public void testCreateEncryptionKeyInvalidEncryptionAlgorithm() {
-        Map<String, String> testConfig = new HashMap<>(config);
-        testConfig.replace("algorithm", "nonsense");
-        assertNull(encryptionService.createKey(testUniUUID, testCustomerUUID, testConfig));
-    }
-
-    @Test
-    public void testCreateEncryptionKeyInvalidEncryptionKeySize() {
-        Map<String, String> testConfig = new HashMap<>(config);
-        testConfig.replace("key_size", "257");
-        assertNull(encryptionService.createKey(testUniUUID, testCustomerUUID, testConfig));
     }
 
     @Test
@@ -223,6 +206,7 @@ public class SmartKeyEARServiceTest extends FakeDBApplication {
         )).thenReturn(Json.newObject().put("access_token", "some_access_token"));
         encryptionService.createAuthConfig(
                 testCustomerUUID,
+                "some_config_name",
                 Json.newObject().put("some_key", "some_val")
         );
         byte[] encryptionKey = encryptionService.createKey(testUniUUID, testCustomerUUID, config);
@@ -235,15 +219,11 @@ public class SmartKeyEARServiceTest extends FakeDBApplication {
         ObjectNode testPayload = Json.newObject()
                 .put("name", testUniUUID.toString())
                 .put("obj_type", testAlgorithm)
-                .put("key_size", 128);
+                .put("key_size", 256);
         testPayload.set("key_ops", keyOps);
         when(mockApiHelper.postRequest(anyString(), eq(testPayload), anyMap()))
                 .thenReturn(Json.newObject().put("error", postCreateMockErroneousResponse));
-        Map<String, String> testConfig = ImmutableMap.of(
-                "kms_provider", testKeyProvider.name(),
-                "algorithm", testAlgorithm,
-                "key_size", Integer.toString(128)
-        );
-        assertNull(encryptionService.createKey(testUniUUID, testCustomerUUID, testConfig));
+        UUID configUUID = null;
+        assertNull(encryptionService.createKey(testUniUUID, configUUID, config));
     }
 }

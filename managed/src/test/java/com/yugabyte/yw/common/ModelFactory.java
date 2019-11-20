@@ -3,10 +3,14 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -116,5 +120,22 @@ public class ModelFactory {
 
   public static CustomerConfig setCallhomeLevel(Customer customer, String level) {
     return CustomerConfig.createCallHomeConfig(customer.uuid, level);
+  }
+
+  /*
+   * KMS Configuration creation helpers.
+   */
+  public static KmsConfig createKMSConfig(
+          UUID customerUUID,
+          String keyProvider,
+          ObjectNode authConfig
+  ) {
+    EncryptionAtRestManager keyManager = new EncryptionAtRestManager();
+    EncryptionAtRestService keyService = keyManager.getServiceInstance(keyProvider);
+    return keyService.createAuthConfig(
+            customerUUID,
+            "Test KMS Configuration",
+            authConfig
+    );
   }
 }

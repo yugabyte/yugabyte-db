@@ -34,8 +34,13 @@ import java.util.UUID;
 public class KmsConfig extends Model {
     public static final Logger LOG = LoggerFactory.getLogger(KmsConfig.class);
 
+    public static final int SCHEMA_VERSION = 2;
+
     @Id
     public UUID configUUID;
+
+    @Column(length=100, nullable = false)
+    public String name;
 
     @Column(nullable = false)
     public UUID customerUUID;
@@ -55,41 +60,36 @@ public class KmsConfig extends Model {
 
     public static final Find<UUID, KmsConfig> find = new Find<UUID, KmsConfig>(){};
 
-    public static List<KmsConfig> getAll(UUID customerUUID) {
+    public static KmsConfig get(UUID configUUID) {
         return KmsConfig.find.where()
-                .eq("customer_uuid", customerUUID)
-                .findList();
-    }
-
-    public static KmsConfig get(UUID customerUUID, UUID configUUID) {
-        return KmsConfig.find.where()
-                .eq("customer_uuid", customerUUID).idEq(configUUID)
+                .idEq(configUUID)
                 .findUnique();
     }
 
     public static KmsConfig createKMSConfig(
             UUID customerUUID,
             KeyProvider keyProvider,
-            ObjectNode authConfig
+            ObjectNode authConfig,
+            String name
     ) {
         KmsConfig kmsConfig = new KmsConfig();
         kmsConfig.keyProvider = keyProvider;
         kmsConfig.customerUUID = customerUUID;
         kmsConfig.authConfig = authConfig;
-        kmsConfig.version = 1;
+        kmsConfig.version = SCHEMA_VERSION;
+        kmsConfig.name = name;
         kmsConfig.save();
         return kmsConfig;
     }
 
-    public static KmsConfig getKMSConfig(UUID customerUUID, KeyProvider keyProvider) {
+    public static KmsConfig getKMSConfig(UUID configUUID) {
         return KmsConfig.find.where()
-                .eq("customer_uuid", customerUUID)
-                .eq("key_provider", keyProvider)
+                .idEq(configUUID)
                 .findUnique();
     }
 
-    public static ObjectNode getKMSAuthObj(UUID customerUUID, KeyProvider keyProvider) {
-        KmsConfig config = getKMSConfig(customerUUID, keyProvider);
+    public static ObjectNode getKMSAuthObj(UUID configUUID) {
+        KmsConfig config = getKMSConfig(configUUID);
         if (config == null) return null;
         return (ObjectNode) config.authConfig.deepCopy();
     }
@@ -97,18 +97,15 @@ public class KmsConfig extends Model {
     public static List<KmsConfig> listKMSConfigs(UUID customerUUID) {
         return KmsConfig.find.where()
                 .eq("customer_uuid", customerUUID)
+                .eq("version", SCHEMA_VERSION)
                 .findList();
     }
 
-    public static KmsConfig updateKMSAuthObj(
-            UUID customerUUID,
-            KeyProvider keyProvider,
-            ObjectNode newAuth
-    ) {
-        KmsConfig config = getKMSConfig(customerUUID, keyProvider);
-        if (config == null) return null;
-        config.authConfig = newAuth;
-        config.save();
-        return config;
+    public static KmsConfig updateKMSConfig(UUID configUUID, ObjectNode updatedConfig) {
+        KmsConfig existingConfig = get(configUUID);
+        if (existingConfig == null) return null;
+        existingConfig.authConfig = updatedConfig;
+        existingConfig.save();
+        return existingConfig;
     }
 }

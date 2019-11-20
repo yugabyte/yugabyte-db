@@ -266,8 +266,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public boolean enableClientToNodeEncrypt = false;
 
-    public boolean enableEncryptionAtRest = false;
-
     public boolean enableVolumeEncryption = false;
 
     // Info of all the gflags that the user would like to save to the universe. These will be
@@ -286,8 +284,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
              providerType + ", RF=" + replicationFactor + ", regions=" + regionList + ", pref=" +
              preferredRegion + ", ybVersion=" + ybSoftwareVersion + ", accessKey=" + accessKeyCode +
              ", deviceInfo='" + deviceInfo + "', timeSync=" + useTimeSync + ", publicIP=" +
-             assignPublicIP + ", tags=" + instanceTags + ", enableEncryptionAtRest= " +
-             enableEncryptionAtRest;
+             assignPublicIP + ", tags=" + instanceTags;
     }
 
     public UserIntent clone() {
@@ -310,7 +307,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.enableYSQL = enableYSQL;
       newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
-      newUserIntent.enableEncryptionAtRest = enableEncryptionAtRest;
       newUserIntent.instanceTags = new HashMap<>(instanceTags);
       return newUserIntent;
     }
@@ -328,8 +324,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           ybSoftwareVersion.equals(other.ybSoftwareVersion) &&
           (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode)) &&
           assignPublicIP == other.assignPublicIP &&
-          useTimeSync == other.useTimeSync &&
-          enableEncryptionAtRest == other.enableEncryptionAtRest) {
+          useTimeSync == other.useTimeSync) {
         return true;
       }
       return false;

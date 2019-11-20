@@ -13,7 +13,7 @@ export default class YBFormDropZone extends Component {
     if (acceptedFiles.length === 0) { return; }
     setFieldValue(name, acceptedFiles[0]);
     setFieldTouched(name, true);
-  }
+  };
 
   render() {
     const { title, field: {name}, form, accept } = this.props;
