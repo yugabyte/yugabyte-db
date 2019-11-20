@@ -256,8 +256,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   bool has_txn_ops_ = false;
   bool has_non_txn_ops_ = false;
 
-  // True if the read request has a FOR SHARE or FOR KEY SHARE lock.
-  bool has_for_share_lock_ = false;
+  // True if the read request has a row mark.
+  bool has_row_mark_ = false;
 
   // Local tablet-server shared memory segment handle. This has a value of nullptr
   // if the shared memory has not been initialized (e.g. during initdb).

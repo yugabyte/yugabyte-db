@@ -37,8 +37,9 @@
 #include <string>
 #include <vector>
 
-#include "yb/common/schema.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/row_mark.h"
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/leader_lease.h"
 #include "yb/consensus/raft_consensus.h"
@@ -1221,10 +1222,12 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
 #endif
   }
 
-  bool has_row_lock = false;
-  // For postgres requests check that the syscatalog version matches.
+  // Get the most restrictive row mark present in the batch of PostgreSQL requests.
+  // TODO: rather handle individual row marks once we start batching read requests (issue #2495)
+  RowMarkType batch_row_mark = RowMarkType::ROW_MARK_ABSENT;
   if (!req->pgsql_batch().empty()) {
     for (const auto& pg_req : req->pgsql_batch()) {
+      // For postgres requests check that the syscatalog version matches.
       if (pg_req.has_ysql_catalog_version() &&
           pg_req.ysql_catalog_version() < server_->ysql_catalog_version()) {
         SetupErrorAndRespond(resp->mutable_error(),
@@ -1233,24 +1236,24 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
             TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
         return;
       }
-      if (pg_req.row_mark_type_size() > 0 &&
-          (pg_req.row_mark_type(0) == RowMarkType::ROW_MARK_SHARE ||
-           pg_req.row_mark_type(0) == RowMarkType::ROW_MARK_KEYSHARE)) {
+      RowMarkType current_row_mark = GetRowMarkTypeFromPB(pg_req);
+      if (IsValidRowMarkType(current_row_mark)) {
         if (!req->has_transaction()) {
           SetupErrorAndRespond(resp->mutable_error(),
               STATUS(NotSupported,
                      "Read request with row mark types must be part of a transaction"),
               TabletServerErrorPB::OPERATION_NOT_SUPPORTED, &context);
         }
-        has_row_lock = true;
+        batch_row_mark = GetStrongestRowMarkType({current_row_mark, batch_row_mark});
       }
     }
   }
+  const bool has_row_mark = IsValidRowMarkType(batch_row_mark);
 
   LeaderTabletPeer leader_peer;
   ReadContext read_context = {req, resp, &context};
 
-  if (serializable_isolation || has_row_lock) {
+  if (serializable_isolation || has_row_mark) {
     // At this point we expect that we don't have pure read serializable transactions, and
     // always write read intents to detect conflicts with other writes.
     leader_peer = LookupLeaderTabletOrRespond(
@@ -1319,14 +1322,11 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   host_port_pb.set_port(remote_address.port());
   read_context.host_port_pb = &host_port_pb;
 
-  if (serializable_isolation || has_row_lock) {
+  if (serializable_isolation || has_row_mark) {
     WriteRequestPB write_req;
     *write_req.mutable_write_batch()->mutable_transaction() = req->transaction();
-    if (has_row_lock) {
-      // This will have to be modified once we support more row locks.
-      // See https://github.com/yugabyte/yugabyte-db/issues/1199 and
-      // https://github.com/yugabyte/yugabyte-db/issues/2496.
-      write_req.mutable_write_batch()->add_row_mark_type(RowMarkType::ROW_MARK_SHARE);
+    if (has_row_mark) {
+      write_req.mutable_write_batch()->set_row_mark_type(batch_row_mark);
       read_context.read_time.ToPB(write_req.mutable_read_time());
     }
     write_req.set_tablet_id(req->tablet_id());

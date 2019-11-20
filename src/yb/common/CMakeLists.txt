@@ -99,6 +99,7 @@ set(COMMON_SRCS
   partial_row.cc
   partition.cc
   row_key-util.cc
+  row_mark.cc
   schema.cc
   index.cc
   jsonb.cc

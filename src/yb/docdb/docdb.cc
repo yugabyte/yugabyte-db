@@ -20,6 +20,7 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/redis_protocol.pb.h"
+#include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/conflict_resolution.h"
@@ -140,8 +141,9 @@ struct DetermineKeysToLockResult {
 Result<DetermineKeysToLockResult> DetermineKeysToLock(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const google::protobuf::RepeatedPtrField<KeyValuePairPB>& read_pairs,
-    IsolationLevel isolation_level,
-    OperationKind operation_kind,
+    const IsolationLevel isolation_level,
+    const OperationKind operation_kind,
+    const RowMarkType row_mark_type,
     bool transactional_table,
     PartialRangeKeyIntents partial_range_key_intents) {
   DetermineKeysToLockResult result;
@@ -155,7 +157,8 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
     if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
       level = isolation_level;
     }
-    IntentTypeSet strong_intent_types = GetStrongIntentTypeSet(level, operation_kind);
+    IntentTypeSet strong_intent_types = GetStrongIntentTypeSet(level, operation_kind,
+                                                               row_mark_type);
     if (isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION &&
         operation_kind == OperationKind::kWrite &&
         doc_op->RequireReadSnapshot()) {
@@ -249,8 +252,9 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const google::protobuf::RepeatedPtrField<KeyValuePairPB>& read_pairs,
     const scoped_refptr<Histogram>& write_lock_latency,
-    IsolationLevel isolation_level,
-    OperationKind operation_kind,
+    const IsolationLevel isolation_level,
+    const OperationKind operation_kind,
+    const RowMarkType row_mark_type,
     bool transactional_table,
     CoarseTimePoint deadline,
     PartialRangeKeyIntents partial_range_key_intents,
@@ -258,8 +262,8 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   PrepareDocWriteOperationResult result;
 
   auto determine_keys_to_lock_result = VERIFY_RESULT(DetermineKeysToLock(
-      doc_write_ops, read_pairs, isolation_level, operation_kind, transactional_table,
-      partial_range_key_intents));
+      doc_write_ops, read_pairs, isolation_level, operation_kind, row_mark_type,
+      transactional_table, partial_range_key_intents));
   if (determine_keys_to_lock_result.lock_batch.empty()) {
     LOG(ERROR) << "Empty lock batch, doc_write_ops: " << yb::ToString(doc_write_ops)
                << ", read pairs: " << yb::ToString(read_pairs);
@@ -541,8 +545,12 @@ class PrepareTransactionWriteBatchHelper {
         intra_txn_write_id_(intra_txn_write_id) {
   }
 
-  void Setup(IsolationLevel isolation_level, OperationKind kind) {
-    strong_intent_types_ = GetStrongIntentTypeSet(isolation_level, kind);
+  void Setup(
+      IsolationLevel isolation_level,
+      OperationKind kind,
+      RowMarkType row_mark) {
+    row_mark_ = row_mark;
+    strong_intent_types_ = GetStrongIntentTypeSet(isolation_level, kind, row_mark);
   }
 
   // Using operator() to pass this object conveniently to EnumerateIntents.
@@ -554,14 +562,19 @@ class PrepareTransactionWriteBatchHelper {
 
     const auto transaction_value_type = ValueTypeAsChar::kTransactionId;
     const auto write_id_value_type = ValueTypeAsChar::kWriteId;
+    const auto row_lock_value_type = ValueTypeAsChar::kRowLock;
     IntraTxnWriteId big_endian_write_id = BigEndian::FromHost32(*intra_txn_write_id_);
     std::array<Slice, 5> value = {{
         Slice(&transaction_value_type, 1),
         Slice(transaction_id_.data, transaction_id_.size()),
         Slice(&write_id_value_type, 1),
         Slice(pointer_cast<char*>(&big_endian_write_id), sizeof(big_endian_write_id)),
-        value_slice
+        value_slice,
     }};
+    // Store a row lock indicator rather than data (in value_slice) for row lock intents.
+    if (IsValidRowMarkType(row_mark_)) {
+      value.back() = Slice(&row_lock_value_type, 1);
+    }
 
     ++*intra_txn_write_id_;
 
@@ -623,6 +636,7 @@ class PrepareTransactionWriteBatchHelper {
 
   // TODO(dtxn) weak & strong intent in one batch.
   // TODO(dtxn) extract part of code knowning about intents structure to lower level.
+  RowMarkType row_mark_;
   HybridTime hybrid_time_;
   rocksdb::WriteBatch* rocksdb_write_batch_;
   const TransactionId& transaction_id_;
@@ -652,11 +666,18 @@ void PrepareTransactionWriteBatch(
     IntraTxnWriteId* write_id) {
   VLOG(4) << "PrepareTransactionWriteBatch(), write_id = " << *write_id;
 
+  RowMarkType row_mark = GetRowMarkTypeFromPB(put_batch);
+
   PrepareTransactionWriteBatchHelper helper(
       hybrid_time, rocksdb_write_batch, transaction_id, write_id);
 
   if (!put_batch.write_pairs().empty()) {
-    helper.Setup(isolation_level, OperationKind::kWrite);
+    if (IsValidRowMarkType(row_mark)) {
+      LOG(WARNING) << "Performing a write with row lock "
+                   << RowMarkType_Name(row_mark)
+                   << " when only reads are expected";
+    }
+    helper.Setup(isolation_level, OperationKind::kWrite, row_mark);
 
     // We cannot recover from failures here, because it means that we cannot apply replicated
     // operation.
@@ -665,7 +686,7 @@ void PrepareTransactionWriteBatch(
   }
 
   if (!put_batch.read_pairs().empty()) {
-    helper.Setup(isolation_level, OperationKind::kRead);
+    helper.Setup(isolation_level, OperationKind::kRead, row_mark);
     CHECK_OK(EnumerateIntents(put_batch.read_pairs(), std::ref(helper), partial_range_key_intents));
   }
 
@@ -1307,6 +1328,11 @@ CHECKED_STATUS IntentToWriteRequest(
     DCHECK_GE(stored_write_id, *write_id)
       << "Value: " << intent_iter->value().ToDebugHexString();
     *write_id = stored_write_id;
+
+    // Intents for row locks should be ignored (i.e. should not be written as regular records).
+    if (intent_value.starts_with(ValueTypeAsChar::kRowLock)) {
+      return Status::OK();
+    }
 
     // After strip of prefix and suffix intent_key contains just SubDocKey w/o a hybrid time.
     // Time will be added when writing batch to RocksDB.
