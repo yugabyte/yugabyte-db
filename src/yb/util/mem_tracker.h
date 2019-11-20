@@ -75,6 +75,7 @@ YB_STRONGLY_TYPED_BOOL(CreateMetrics);
 YB_STRONGLY_TYPED_BOOL(OnlyChildren);
 
 typedef std::function<int64_t()> ConsumptionFunctor;
+typedef std::function<void()> PollChildrenConsumptionFunctors;
 
 struct SoftLimitExceededResult {
   bool exceeded;
@@ -364,6 +365,11 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
     return add_to_parent_;
   }
 
+  void SetPollChildrenConsumptionFunctors(
+      PollChildrenConsumptionFunctors poll_children_consumption_functors) {
+    poll_children_consumption_functors_ = std::move(poll_children_consumption_functors);
+  }
+
  private:
   bool CheckLimitExceeded() const {
     return limit_ >= 0 && limit_ < consumption();
@@ -413,6 +419,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   const int64_t soft_limit_;
   const std::string id_;
   const ConsumptionFunctor consumption_functor_;
+  PollChildrenConsumptionFunctors poll_children_consumption_functors_;
   const std::string descr_;
   std::shared_ptr<MemTracker> parent_;
   CoarseMonoClock::time_point last_consumption_update_ = CoarseMonoClock::time_point::min();
