@@ -179,6 +179,8 @@ declare -i -r YB_DOWNLOAD_LOCK_TIMEOUT_SEC=120
 
 readonly YB_DOWNLOAD_LOCKS_DIR=/tmp/yb_download_locks
 
+readonly YB_NFS_PATH_RE="^/(n|z|u|net|Volumes/net)/"
+
 # -------------------------------------------------------------------------------------------------
 # Functions
 # -------------------------------------------------------------------------------------------------
@@ -1419,7 +1421,7 @@ is_jenkins_phabricator_build() {
 
 # Check if we're using an NFS partition in YugaByte's build environment.
 is_src_root_on_nfs() {
-  if [[ $YB_SRC_ROOT =~ ^/(n|z|u|net|Volumes/net)/ ]]; then
+  if [[ $YB_SRC_ROOT =~ $YB_NFS_PATH_RE ]]; then
     return 0
   fi
   return 1
