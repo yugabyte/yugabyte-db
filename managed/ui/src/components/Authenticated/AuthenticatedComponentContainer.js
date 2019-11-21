@@ -2,8 +2,6 @@
 
 import { connect } from 'react-redux';
 import AuthenticatedComponent from './AuthenticatedComponent';
-import { fetchHostInfo, fetchHostInfoSuccess,
-  fetchHostInfoFailure } from '../../actions/customers';
 import { fetchUniverseList, fetchUniverseListResponse, resetUniverseList }
   from '../../actions/universe';
 import { getProviderList, getProviderListResponse, getSupportedRegionData,
@@ -23,16 +21,6 @@ import { queryMetrics } from '../../actions/graph';
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    fetchHostInfo: () => {
-      dispatch(fetchHostInfo()).then((response)=>{
-        if (response.payload.status !== 200) {
-          dispatch(fetchHostInfoFailure(response.payload));
-        } else {
-          dispatch(fetchHostInfoSuccess(response.payload));
-        }
-      });
-    },
-
     fetchSoftwareVersions: () => {
       dispatch(fetchSoftwareVersions()).then((response)=>{
         if (response.payload.status !== 200) {
