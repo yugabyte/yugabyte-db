@@ -84,9 +84,9 @@ SELECT
   ss.query,
   ss.slow_query
 FROM pg_stat_agg() agg 
-INNER JOIN (SELECT DISTINCT queryid, userid, query, host, min_time, max_time, mean_time, hist_calls, hist_min_time, hist_max_time,hist_mean_time,slow_query,cpu_user_time,cpu_sys_time
+INNER JOIN (SELECT DISTINCT queryid, dbid, userid, query, host, min_time, max_time, mean_time, hist_calls, hist_min_time, hist_max_time,hist_mean_time,slow_query,cpu_user_time,cpu_sys_time
 FROM pg_stat_monitor) ss 
-ON agg.queryid = ss.queryid AND agg.type = 0;
+ON agg.queryid = ss.queryid AND agg.type = 0 AND id = dbid;
 
 CREATE VIEW pg_stat_agg_user AS
 SELECT
@@ -110,7 +110,7 @@ SELECT
   ss.slow_query
 FROM pg_stat_agg() agg 
 INNER JOIN (SELECT DISTINCT queryid, userid, query, host, min_time, max_time, mean_time, hist_calls, hist_min_time, hist_max_time,hist_mean_time,slow_query,cpu_user_time,cpu_sys_time FROM pg_stat_monitor) ss 
-ON agg.queryid = ss.queryid AND agg.type = 1;
+ON agg.queryid = ss.queryid AND agg.type = 1 AND id = userid;
 
 CREATE VIEW pg_stat_agg_host AS
 SELECT
@@ -134,7 +134,7 @@ SELECT
   ss.slow_query 
 FROM pg_stat_agg() agg 
 INNER JOIN (SELECT DISTINCT queryid, userid, query, host, min_time, max_time, mean_time, hist_calls, hist_min_time, hist_max_time,hist_mean_time,slow_query,cpu_user_time,cpu_sys_time FROM pg_stat_monitor) ss 
-ON agg.queryid = ss.queryid AND agg.type = 2;
+ON agg.queryid = ss.queryid AND agg.type = 2 AND id = host;
 
 GRANT SELECT ON pg_stat_agg_database TO PUBLIC;
 

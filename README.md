@@ -130,6 +130,29 @@ There are four views, and complete statistics can be accessed using these views.
      query          | text                     |           |          | 
      slow_query     | text                     |           |          |    
 
+Examples
+1 - Here in this query we are getting the exact value of f1 = '05:06:07-07' where in case of slow query.
+ 
+    # select userid, queryid, query, slow_query, max_time, total_calls from pg_stat_agg_user; 
+    -[ RECORD 1 ]----------------------------------------------------------------------------------------
+    userid      | 10
+    queryid     | -203926152419851453
+    query       | SELECT f1 FROM TIMETZ_TBL WHERE f1 < $1
+    slow_query  | SELECT f1 FROM TIMETZ_TBL WHERE f1 < '05:06:07-07';
+    max_time    | 1.237875
+    total_calls | 8
+
+2 - Collect all the statistics based on user.
+
+    # select usename, query, max_time, total_calls from pg_stat_agg_user au, pg_user u where au.userid = u.usesysid; 
+     usename |                          query                          | max_time | total_calls 
+    ---------+---------------------------------------------------------+----------+-------------
+     vagrant | select userid, query, total_calls from pg_stat_agg_user | 0.268842 |           7
+     foo     | select userid, query, total_calls from pg_stat_agg_user | 0.208551 |           1
+     vagrant | select * from pg_stat_monitor_reset()                   |   0.0941 |           1
+    (3 rows) 
+
+
 #### Limitation
 There are some limitations and Todo's. 
 
