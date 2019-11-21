@@ -2872,6 +2872,12 @@ InternalIterator* DBImpl::NewInternalIterator(
   return NewInternalIterator(roptions, cfd, super_version, arena);
 }
 
+int DBImpl::GetCfdImmNumNotFlushed() {
+  auto cfd = down_cast<ColumnFamilyHandleImpl*>(DefaultColumnFamily())->cfd();
+  InstrumentedMutexLock guard_lock(&mutex_);
+  return cfd->imm()->NumNotFlushed();
+}
+
 FlushAbility DBImpl::GetFlushAbility() {
   auto cfd = down_cast<ColumnFamilyHandleImpl*>(DefaultColumnFamily())->cfd();
   InstrumentedMutexLock guard_lock(&mutex_);

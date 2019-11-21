@@ -1928,6 +1928,10 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
 
     uint64_t num_log_segments = peer->GetNumLogSegments();
     data_entry->set_num_log_segments(num_log_segments);
+
+    auto num_memtables = tablet->GetNumMemtables();
+    data_entry->set_num_memtables_intents(num_memtables.first);
+    data_entry->set_num_memtables_regular(num_memtables.second);
   }
 
   context.RespondSuccess();
