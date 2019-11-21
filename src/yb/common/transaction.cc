@@ -78,13 +78,19 @@ Result<TransactionMetadata> TransactionMetadata::FromPB(const TransactionMetadat
 }
 
 void TransactionMetadata::ToPB(TransactionMetadataPB* dest) const {
-  dest->set_transaction_id(transaction_id.data, transaction_id.size());
   if (isolation != IsolationLevel::NON_TRANSACTIONAL) {
-    dest->set_isolation(isolation);
-    dest->set_status_tablet(status_tablet);
-    dest->set_priority(priority);
-    dest->set_deprecated_start_hybrid_time(DEPRECATED_start_time.ToUint64());
+    ForceToPB(dest);
+  } else {
+    dest->set_transaction_id(transaction_id.data, transaction_id.size());
   }
+}
+
+void TransactionMetadata::ForceToPB(TransactionMetadataPB* dest) const {
+  dest->set_transaction_id(transaction_id.data, transaction_id.size());
+  dest->set_isolation(isolation);
+  dest->set_status_tablet(status_tablet);
+  dest->set_priority(priority);
+  dest->set_deprecated_start_hybrid_time(DEPRECATED_start_time.ToUint64());
 }
 
 bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs) {

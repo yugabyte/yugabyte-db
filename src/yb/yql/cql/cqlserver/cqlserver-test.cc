@@ -83,7 +83,7 @@ void TestCQLService::SetUp() {
   opts.SetMasterAddresses(master_addresses);
 
   io_.reset(new boost::asio::io_service());
-  server_.reset(new CQLServer(opts, io_.get(), nullptr, client::LocalTabletFilter()));
+  server_.reset(new CQLServer(opts, io_.get(), nullptr));
   LOG(INFO) << "Starting CQL server...";
   CHECK_OK(server_->Start());
   LOG(INFO) << "CQL server successfully started.";

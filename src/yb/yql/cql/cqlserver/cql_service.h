@@ -49,7 +49,7 @@ class CQLServiceImpl : public CQLServerServiceIf,
  public:
   // Constructor.
   CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts,
-                 client::LocalTabletFilter local_tablet_filter);
+                 ql::TransactionPoolProvider transaction_pool_provider);
   ~CQLServiceImpl();
 
   void CompleteInit();
@@ -91,9 +91,11 @@ class CQLServiceImpl : public CQLServerServiceIf,
   // Return the messenger.
   rpc::Messenger* messenger() { return messenger_; }
 
-  client::TransactionPool* GetTransactionPool();
-
   server::Clock* clock();
+
+  const ql::TransactionPoolProvider& transaction_pool_provider() const {
+    return transaction_pool_provider_;
+  }
 
  private:
   constexpr static int kRpcTimeoutSec = 5;
@@ -158,12 +160,7 @@ class CQLServiceImpl : public CQLServerServiceIf,
   // Used to requeue the cql_inbound call to handle the response callback(s).
   rpc::Messenger* messenger_ = nullptr;
 
-  client::LocalTabletFilter local_tablet_filter_;
-
-  std::atomic<client::TransactionPool*> transaction_pool_{nullptr};
-  std::mutex transaction_pool_mutex_;
-  std::unique_ptr<client::TransactionManager> transaction_manager_holder_;
-  std::unique_ptr<client::TransactionPool> transaction_pool_holder_;
+  ql::TransactionPoolProvider transaction_pool_provider_;
 };
 
 }  // namespace cqlserver

@@ -37,6 +37,9 @@
 #include <string>
 #include <vector>
 
+#include "yb/client/transaction.h"
+#include "yb/client/transaction_pool.h"
+
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
@@ -2013,6 +2016,21 @@ void TabletServiceImpl::IsTabletServerReady(const IsTabletServerReadyRequestPB* 
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::TakeTransaction(const TakeTransactionRequestPB* req,
+                                        TakeTransactionResponsePB* resp,
+                                        rpc::RpcContext context) {
+  auto transaction = server_->TransactionPool()->Take();
+  auto metadata = transaction->Release();
+  if (!metadata.ok()) {
+    LOG(INFO) << "Take failed: " << metadata.status();
+    context.RespondFailure(metadata.status());
+    return;
+  }
+  metadata->ForceToPB(resp->mutable_metadata());
+  VLOG(2) << "Taken metadata: " << metadata->ToString();
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::Shutdown() {
 }
 
@@ -2026,7 +2044,6 @@ scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
   }
   return nullptr;
 }
-
 
 }  // namespace tserver
 }  // namespace yb
