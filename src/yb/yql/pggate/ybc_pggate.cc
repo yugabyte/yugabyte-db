@@ -631,6 +631,10 @@ int32_t YBCGetMaxReadRestartAttempts() {
   return FLAGS_ysql_max_read_restart_attempts;
 }
 
+int32_t YBCGetOutputBufferSize() {
+  return FLAGS_ysql_output_buffer_size;
+}
+
 } // extern "C"
 
 } // namespace pggate

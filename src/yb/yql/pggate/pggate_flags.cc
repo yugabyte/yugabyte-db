@@ -61,6 +61,11 @@ DEFINE_bool(ysql_non_txn_copy, false,
 DEFINE_int32(ysql_max_read_restart_attempts, 10,
              "How many read restarts can we try transparently before giving up");
 
+DEFINE_int32(ysql_output_buffer_size, 262144,
+             "Size of postgres-level output buffer, in bytes. "
+             "While fetched data resides within this buffer and hasn't been flushed to client yet, "
+             "we're free to transparently restart operation in case of restart read error.");
+
 // Top-level flag to enable all YSQL beta features.
 DEFINE_bool(ysql_beta_features, true,
             "Whether to enable all ysql beta features");

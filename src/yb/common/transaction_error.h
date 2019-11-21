@@ -24,7 +24,8 @@ YB_DEFINE_ENUM(TransactionErrorCode,
     (kNone)
     (kAborted)
     (kReadRestartRequired)
-    (kConflict));
+    (kConflict)
+    (kSnapshotTooOld));
 
 struct TransactionErrorTag : IntegralErrorTag<TransactionErrorCode> {
   // It is part of the wire protocol and should not be changed once released.

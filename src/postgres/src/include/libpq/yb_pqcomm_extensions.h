@@ -20,6 +20,5 @@
 
 extern void YBSaveOutputBufferPosition(void);
 extern void YBRestoreOutputBufferPosition(void);
-extern void YBResetSavedOutputBufferPosition(void);
 
 #endif // YB_PQCOMM_EXTENSIONS_H

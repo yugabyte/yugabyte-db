@@ -3889,8 +3889,7 @@ yb_is_read_restart_possible(int attempt, const PortalRestartData* restart_data)
 	// Can only restart SELECT queries
 	if (!restart_data->query_string)
 		return false;
-	const char* command_tag = yb_parse_command_tag(restart_data->query_string);
-	if (strncmp(command_tag, "SELECT", 6) != 0)
+	if (strncmp(restart_data->command_tag, "SELECT", 6) != 0)
 		return false;
 
 	return true;
@@ -3927,17 +3926,20 @@ yb_collect_portal_restart_data(const char* portal_name)
 	PortalRestartData* result = (PortalRestartData*) palloc(sizeof(PortalRestartData));
 
 	result->portal_name  = pstrdup(portal_name);
-	result->query_string = pstrdup(unnamed_stmt_psrc->query_string);
+	result->query_string = pstrdup(portal->sourceText);
+	result->command_tag  = pstrdup(portal->commandTag);
 
-	result->num_params  = unnamed_stmt_psrc->num_params;
+	result->params      = yb_copy_param_list(portal->portalParams);
+	result->num_params  = result->params ? result->params->numParams : 0;
 	result->param_types = NULL;
-	if (unnamed_stmt_psrc->param_types)
+	if (result->num_params > 0)
 	{
-		size_t alloc_size = result->num_params * sizeof(Oid);
-		result->param_types = (Oid*) palloc(alloc_size);
-		memcpy(result->param_types, unnamed_stmt_psrc->param_types, alloc_size);
+		result->param_types = (Oid*) palloc(result->num_params * sizeof(Oid));
+		for (int i = 0; i < result->num_params; ++i)
+		{
+			result->param_types[i] = result->params->params[i].ptype;
+		}
 	}
-	result->params = result->num_params > 0 ? yb_copy_param_list(portal->portalParams) : NULL;
 
 	result->num_formats = 0;
 	result->formats     = NULL;
@@ -3954,6 +3956,7 @@ yb_collect_portal_restart_data(const char* portal_name)
 
 /*
  * Create a new portal to replace one that might've been partially processed.
+ * Can only restart unnamed portal.
  */
 static void
 yb_restart_portal(const PortalRestartData* rd)
@@ -3985,12 +3988,12 @@ yb_restart_portal(const PortalRestartData* rd)
 	CachedPlan *cplan = GetCachedPlan(unnamed_stmt_psrc,
 	                                  params,
 	                                  false /* useResOwner */,
-	                                  NULL) /* queryEnv */;
+	                                  NULL /* queryEnv */);
 
 	PortalDefineQuery(portal,
 	                  stmt_name,
 	                  rd->query_string,
-	                  unnamed_stmt_psrc->commandTag,
+	                  rd->command_tag,
 	                  cplan->stmt_list,
 	                  cplan);
 
@@ -4025,8 +4028,10 @@ yb_exec_simple_query_attempting_to_restart_read(const char* query_string,
 			PortalRestartData restart_data  = {
 			    .portal_name  = "",
 			    .query_string = query_string,
+			    .command_tag  = yb_parse_command_tag(query_string),
 			    .num_params   = 0,
 			    .param_types  = NULL,
+			    .params       = NULL,
 			    .num_formats  = 0,
 			    .formats      = NULL
 			};
@@ -4057,6 +4062,7 @@ yb_exec_execute_message_attempting_to_restart_read(const char* portal_name,
                                                    long max_rows,
                                                    MemoryContext exec_context)
 {
+	PortalRestartData* restart_data = NULL;
 	for (int attempt = 0;; ++attempt) {
 		PG_TRY();
 		{
@@ -4070,7 +4076,8 @@ yb_exec_execute_message_attempting_to_restart_read(const char* portal_name,
 			// when server started processing user request.
 			MemoryContext      error_context = MemoryContextSwitchTo(exec_context);
 			ErrorData*         edata         = CopyErrorData();
-			PortalRestartData* restart_data  = yb_collect_portal_restart_data(portal_name);
+			if (!restart_data)
+				restart_data = yb_collect_portal_restart_data(portal_name);
 
 			if (yb_is_read_restart_nedeed(edata) &&
 			    yb_is_read_restart_possible(attempt, restart_data)) {
