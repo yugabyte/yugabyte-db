@@ -228,6 +228,9 @@ struct TransactionMetadata {
 
   void ToPB(TransactionMetadataPB* dest) const;
 
+  // Fill dest with full metadata even when isolation is non transactional.
+  void ForceToPB(TransactionMetadataPB* dest) const;
+
   std::string ToString() const {
     return Format("{ transaction_id: $0 isolation: $1 status_tablet: $2 priority: $3 }",
                   transaction_id, isolation, status_tablet, priority);

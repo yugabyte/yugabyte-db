@@ -54,6 +54,10 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   uint64_t ysql_catalog_version() const override;
 
+  client::TransactionPool* TransactionPool() override {
+    return nullptr;
+  }
+
  private:
   Master* master_ = nullptr;
   scoped_refptr<MetricEntity> metric_entity_;

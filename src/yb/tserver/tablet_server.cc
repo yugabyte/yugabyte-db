@@ -39,6 +39,9 @@
 
 #include <glog/logging.h>
 
+#include "yb/client/transaction_manager.h"
+#include "yb/client/transaction_pool.h"
+
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/service_if.h"
@@ -69,6 +72,7 @@ using yb::rpc::ServiceIf;
 using yb::tablet::TabletPeer;
 
 using namespace yb::size_literals;
+using namespace std::placeholders;
 
 DEFINE_int32(tablet_server_svc_num_threads, -1,
              "Number of RPC worker threads for the TS service. If -1, it is auto configured.");
@@ -136,7 +140,8 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
       master_config_index_(0),
-      tablet_server_service_(nullptr) {
+      tablet_server_service_(nullptr),
+      shared_object_(CHECK_RESULT(TServerSharedObject::Create())) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
 
@@ -241,6 +246,12 @@ Status TabletServer::Init() {
                         "Could not init Tablet Manager");
 
   initted_.store(true, std::memory_order_release);
+
+  auto bound_addresses = rpc_server()->GetBoundAddresses();
+  if (!bound_addresses.empty()) {
+    shared_object_->SetEndpoint(bound_addresses.front());
+  }
+
   return Status::OK();
 }
 
@@ -433,14 +444,14 @@ rocksdb::Env* TabletServer::GetRocksDBEnv() {
 }
 
 int TabletServer::GetSharedMemoryFd() {
-  return shared_memory_.GetFd();
+  return shared_object_.GetFd();
 }
 
 void TabletServer::SetYSQLCatalogVersion(uint64_t new_version) {
   std::lock_guard<simple_spinlock> l(lock_);
   if (new_version > ysql_catalog_version_) {
     ysql_catalog_version_ = new_version;
-    shared_memory_.SetYSQLCatalogVersion(new_version);
+    shared_object_->SetYSQLCatalogVersion(new_version);
   } else if (new_version < ysql_catalog_version_) {
     LOG(DFATAL) << "Ignoring ysql catalog version update: new version too old. "
                  << "New: " << new_version << ", Old: " << ysql_catalog_version_;
@@ -449,6 +460,24 @@ void TabletServer::SetYSQLCatalogVersion(uint64_t new_version) {
 
 TabletPeerLookupIf* TabletServer::tablet_peer_lookup() {
   return tablet_manager_.get();
+}
+
+client::TransactionPool* TabletServer::TransactionPool() {
+  auto result = transaction_pool_.load(std::memory_order_acquire);
+  if (result) {
+    return result;
+  }
+  std::lock_guard<decltype(transaction_pool_mutex_)> lock(transaction_pool_mutex_);
+  if (transaction_pool_holder_) {
+    return transaction_pool_holder_.get();
+  }
+  transaction_manager_holder_ = std::make_unique<client::TransactionManager>(
+      &tablet_manager()->client(), clock(),
+      std::bind(&TSTabletManager::PreserveLocalLeadersOnly, tablet_manager(), _1));
+  transaction_pool_holder_ = std::make_unique<client::TransactionPool>(
+      transaction_manager_holder_.get(), metric_entity().get());
+  transaction_pool_.store(transaction_pool_holder_.get(), std::memory_order_release);
+  return transaction_pool_holder_.get();
 }
 
 }  // namespace tserver
