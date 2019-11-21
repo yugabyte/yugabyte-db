@@ -22,6 +22,7 @@ class ProviderConfiguration extends Component {
   }
 
   componentWillMount() {
+    this.props.fetchHostInfo();
     this.props.fetchCustomerTasksList();
   }
 
