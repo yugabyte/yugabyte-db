@@ -62,7 +62,7 @@ using yb::master::IsInitDbDoneRequestPB;
 using yb::master::IsInitDbDoneResponsePB;
 using yb::master::MasterServiceProxy;
 
-using yb::tserver::TServerSharedMemory;
+using yb::tserver::TServerSharedObject;
 
 #if defined(__APPLE__) && !defined(NDEBUG)
 // We are experiencing more slowness in tests on macOS in debug mode.
@@ -93,20 +93,6 @@ static constexpr const size_t kPgSequenceLastValueColIdx = 2;
 static constexpr const char* const kPgSequenceIsCalledColName = "is_called";
 static constexpr const size_t kPgSequenceIsCalledColIdx = 3;
 
-namespace {
-
-std::unique_ptr<TServerSharedMemory> InitTServerSharedMemory() {
-  // Do not use shared memory in initdb or if explicity set to be ignored.
-  if (YBCIsInitDbModeEnvVarSet() || FLAGS_pggate_ignore_tserver_shm) {
-    return nullptr;
-  }
-  return std::make_unique<TServerSharedMemory>(
-      FLAGS_pggate_tserver_shm_fd,
-      SharedMemorySegment::AccessMode::kReadOnly);
-}
-
-}  // namespace
-
 //--------------------------------------------------------------------------------------------------
 // Class PgSession
 //--------------------------------------------------------------------------------------------------
@@ -115,12 +101,13 @@ PgSession::PgSession(
     client::YBClient* client,
     const string& database_name,
     scoped_refptr<PgTxnManager> pg_txn_manager,
-    scoped_refptr<server::HybridClock> clock)
+    scoped_refptr<server::HybridClock> clock,
+    const tserver::TServerSharedObject* tserver_shared_object)
     : client_(client),
       session_(client_->NewSession()),
       pg_txn_manager_(std::move(pg_txn_manager)),
       clock_(std::move(clock)),
-      tserver_shared_memory_(InitTServerSharedMemory()) {
+      tserver_shared_object_(tserver_shared_object) {
   session_->SetTimeout(MonoDelta::FromMilliseconds(FLAGS_pg_yb_session_timeout_ms));
   session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
 }
@@ -643,7 +630,7 @@ Status PgSession::CombineStatuses(Status first_status, Status second_status) {
 Result<YBSession*> PgSession::GetSession(bool transactional, bool read_only_op) {
   if (transactional) {
     YBSession* txn_session = VERIFY_RESULT(pg_txn_manager_->GetTransactionalSession());
-    pg_txn_manager_->BeginWriteTransactionIfNecessary(read_only_op);
+    RETURN_NOT_OK(pg_txn_manager_->BeginWriteTransactionIfNecessary(read_only_op));
     VLOG(2) << __PRETTY_FUNCTION__
             << ": read_only_op=" << read_only_op << ", returning transactional session";
     return txn_session;
@@ -687,8 +674,8 @@ Status PgSession::IsInitDbDone(bool* initdb_done) {
 }
 
 Result<uint64_t> PgSession::GetSharedCatalogVersion() {
-  if (tserver_shared_memory_) {
-    return tserver_shared_memory_->GetYSQLCatalogVersion();
+  if (tserver_shared_object_) {
+    return (**tserver_shared_object_).ysql_catalog_version();
   } else {
     return STATUS(NotSupported, "Tablet server shared memory has not been opened");
   }

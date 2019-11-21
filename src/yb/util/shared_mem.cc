@@ -233,7 +233,7 @@ Result<SharedMemorySegment> SharedMemorySegment::Open(
     AccessMode access_mode,
     size_t segment_size) {
   void* segment_address = VERIFY_RESULT(MMap(fd, access_mode, segment_size));
-  return SharedMemorySegment(segment_address, fd, segment_size);
+  return SharedMemorySegment(DCHECK_NOTNULL(segment_address), fd, segment_size);
 }
 
 SharedMemorySegment::SharedMemorySegment(void* base_address, int fd, size_t segment_size)
@@ -251,13 +251,13 @@ SharedMemorySegment::SharedMemorySegment(SharedMemorySegment&& other)
 }
 
 SharedMemorySegment::~SharedMemorySegment() {
-  if (fd_ != -1) {
-    close(fd_);
-  }
-
   if (base_address_ && munmap(base_address_, segment_size_) == -1) {
     LOG(ERROR) << "Failed to unmap shared memory segment: errno=" << errno
                << ": " << ErrnoToString(errno);
+  }
+
+  if (fd_ != -1) {
+    close(fd_);
   }
 }
 

@@ -19,6 +19,12 @@
 
 #include "yb/common/common.pb.h"
 
+#include "yb/tserver/tserver_shared_mem.h"
+#include "yb/tserver/tserver_service.proxy.h"
+
+using namespace std::literals;
+using namespace std::placeholders;
+
 namespace yb {
 namespace pggate {
 
@@ -32,9 +38,11 @@ using client::LocalTabletFilter;
 
 PgTxnManager::PgTxnManager(
     AsyncClientInitialiser* async_client_init,
-    scoped_refptr<ClockBase> clock)
+    scoped_refptr<ClockBase> clock,
+    const tserver::TServerSharedObject* tserver_shared_object)
     : async_client_init_(async_client_init),
-      clock_(std::move(clock)) {
+      clock_(std::move(clock)),
+      tserver_shared_object_(tserver_shared_object) {
 }
 
 PgTxnManager::~PgTxnManager() {
@@ -98,7 +106,25 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op) {
       session_->DeferReadPoint();
     }
   } else {
-    txn_ = std::make_shared<YBTransaction>(GetOrCreateTransactionManager());
+    if (tserver_shared_object_) {
+      if (!tablet_server_proxy_) {
+        LOG(INFO) << "Using TServer endpoint: " << (**tserver_shared_object_).endpoint();
+        tablet_server_proxy_ = std::make_unique<tserver::TabletServerServiceProxy>(
+          &async_client_init_->client()->proxy_cache(),
+          HostPort((**tserver_shared_object_).endpoint()));
+      }
+      tserver::TakeTransactionRequestPB req;
+      tserver::TakeTransactionResponsePB resp;
+      rpc::RpcController controller;
+      // TODO(dtxn) propagate timeout from higher level
+      controller.set_timeout(10s);
+      RETURN_NOT_OK(tablet_server_proxy_->TakeTransaction(req, &resp, &controller));
+      txn_ = YBTransaction::Take(
+          GetOrCreateTransactionManager(),
+          VERIFY_RESULT(TransactionMetadata::FromPB(resp.metadata())));
+    } else {
+      txn_ = std::make_shared<YBTransaction>(GetOrCreateTransactionManager());
+    }
     if (isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
       txn_->InitWithReadPoint(isolation, std::move(*session_->read_point()));
     } else {

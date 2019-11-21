@@ -56,7 +56,7 @@ namespace client {
 namespace {
 
 YB_STRONGLY_TYPED_BOOL(Child);
-YB_DEFINE_ENUM(TransactionState, (kRunning)(kAborted)(kCommitted));
+YB_DEFINE_ENUM(TransactionState, (kRunning)(kAborted)(kCommitted)(kReleased));
 
 } // namespace
 
@@ -85,6 +85,16 @@ class YBTransaction::Impl final {
     metadata_.priority = RandomUniformInt<uint64_t>();
     CompleteConstruction();
     VLOG_WITH_PREFIX(2) << "Started, metadata: " << metadata_;
+  }
+
+  Impl(TransactionManager* manager, YBTransaction* transaction, const TransactionMetadata& metadata)
+      : manager_(manager),
+        transaction_(transaction),
+        metadata_(metadata),
+        read_point_(manager->clock()),
+        child_(Child::kFalse) {
+    CompleteConstruction();
+    VLOG_WITH_PREFIX(2) << "Taken, metadata: " << metadata_;
   }
 
   Impl(TransactionManager* manager, YBTransaction* transaction, ChildTransactionData data)
@@ -190,8 +200,8 @@ class YBTransaction::Impl final {
           waiters_.push_back(std::move(waiter));
         }
         lock.unlock();
-        RequestStatusTablet(deadline);
         VLOG_WITH_PREFIX(2) << "Prepare, rejected (not ready, requesting status tablet)";
+        RequestStatusTablet(deadline);
         return false;
       }
 
@@ -419,6 +429,37 @@ class YBTransaction::Impl final {
     return read_point_;
   }
 
+  Result<TransactionMetadata> Release() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    auto state = state_.load(std::memory_order_acquire);
+    if (state != TransactionState::kRunning) {
+      return STATUS_FORMAT(IllegalState, "Attempt to release transaction in the wrong state $0: $1",
+                           metadata_.transaction_id, AsString(state));
+    }
+    state_.store(TransactionState::kReleased, std::memory_order_release);
+
+    if (!ready_) {
+      CountDownLatch latch(1);
+      Status pick_status;
+      auto transaction = transaction_->shared_from_this();
+      waiters_.push_back([&latch, &pick_status](const Status& status) {
+        pick_status = status;
+        latch.CountDown();
+      });
+      lock.unlock();
+      RequestStatusTablet(TransactionRpcDeadline());
+      latch.Wait();
+      RETURN_NOT_OK(pick_status);
+      lock.lock();
+    }
+    return metadata_;
+  }
+
+  void StartHeartbeat() {
+    VLOG_WITH_PREFIX(2) << __PRETTY_FUNCTION__;
+    RequestStatusTablet(TransactionRpcDeadline());
+  }
+
  private:
   void CompleteConstruction() {
     log_prefix_ = Format("$0: ", to_string(metadata_.transaction_id));
@@ -489,7 +530,7 @@ class YBTransaction::Impl final {
 
   void DoAbort(
       CoarseTimePoint deadline, const Status& status, const YBTransactionPtr& transaction) {
-    VLOG_WITH_PREFIX(1) << Format("Abort, status: $1", status);
+    VLOG_WITH_PREFIX(1) << "Abort, status: " << status;
 
     if (!status.ok()) {
       // We already stopped to send heartbeats, so transaction would be aborted anyway.
@@ -610,8 +651,14 @@ class YBTransaction::Impl final {
         expected, true, std::memory_order_acq_rel)) {
       return;
     }
-    manager_->PickStatusTablet(
-        std::bind(&Impl::StatusTabletPicked, this, _1, deadline, transaction_->shared_from_this()));
+    VLOG_WITH_PREFIX(2) << "RequestStatusTablet()";
+    auto transaction = transaction_->shared_from_this();
+    if (metadata_.status_tablet.empty()) {
+      manager_->PickStatusTablet(
+          std::bind(&Impl::StatusTabletPicked, this, _1, deadline, transaction));
+    } else {
+      LookupStatusTablet(metadata_.status_tablet, deadline, transaction);
+    }
   }
 
   void StatusTabletPicked(const Result<std::string>& tablet,
@@ -624,8 +671,14 @@ class YBTransaction::Impl final {
       return;
     }
 
+    LookupStatusTablet(*tablet, deadline, transaction);
+  }
+
+  void LookupStatusTablet(const std::string& tablet_id,
+                          const CoarseTimePoint& deadline,
+                          const YBTransactionPtr& transaction) {
     manager_->client()->LookupTabletById(
-        *tablet,
+        tablet_id,
         deadline,
         std::bind(&Impl::LookupTabletDone, this, _1, transaction),
         client::UseCache::kTrue);
@@ -640,20 +693,39 @@ class YBTransaction::Impl final {
       return;
     }
 
+    bool precreated;
+    std::vector<Waiter> waiters;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       status_tablet_ = std::move(*result);
-      metadata_.status_tablet = status_tablet_->tablet_id();
+      if (metadata_.status_tablet.empty()) {
+        metadata_.status_tablet = status_tablet_->tablet_id();
+        precreated = false;
+      } else {
+        precreated = true;
+        ready_ = true;
+        waiters_.swap(waiters);
+      }
     }
-    SendHeartbeat(TransactionStatus::CREATED, metadata_.transaction_id,
-                  transaction_->shared_from_this());
+    if (precreated) {
+      for (const auto& waiter : waiters) {
+        waiter(Status::OK());
+      }
+    }
+    SendHeartbeat(precreated ? TransactionStatus::PENDING : TransactionStatus::CREATED,
+                  metadata_.transaction_id, transaction_->shared_from_this());
   }
 
   void NotifyWaiters(const Status& status) {
     std::vector<Waiter> waiters;
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      SetError(status, &lock);
+      if (status.ok()) {
+        DCHECK(!ready_);
+        ready_ = true;
+      } else {
+        SetError(status, &lock);
+      }
       waiters_.swap(waiters);
     }
     for (const auto& waiter : waiters) {
@@ -665,8 +737,18 @@ class YBTransaction::Impl final {
                      const TransactionId& id,
                      std::weak_ptr<YBTransaction> weak_transaction) {
     auto transaction = weak_transaction.lock();
-    if (!transaction || state_.load(std::memory_order_acquire) != TransactionState::kRunning) {
-      VLOG(1) << id << " Send heartbeat cancelled: " << yb::ToString(transaction);
+    if (!transaction) {
+      // Cannot use LOG_WITH_PREFIX here, since this was actually destroyed.
+      VLOG(1) << id << ": Transaction destroyed";
+      return;
+    }
+
+    auto current_state = state_.load(std::memory_order_acquire);
+    bool allow_heartbeat =
+        current_state == TransactionState::kRunning ||
+        (current_state == TransactionState::kReleased && status == TransactionStatus::CREATED);
+    if (!allow_heartbeat) {
+      VLOG_WITH_PREFIX(1) << " Send heartbeat cancelled: " << yb::ToString(transaction);
       return;
     }
 
@@ -701,17 +783,7 @@ class YBTransaction::Impl final {
 
     if (status.ok()) {
       if (transaction_status == TransactionStatus::CREATED) {
-        std::vector<Waiter> waiters;
-        {
-          std::lock_guard<std::mutex> lock(mutex_);
-          DCHECK(!ready_);
-          ready_ = true;
-          waiters_.swap(waiters);
-        }
-        VLOG_WITH_PREFIX(1) << "Created, notifying waiters: " << waiters.size();
-        for (const auto& waiter : waiters) {
-          waiter(Status::OK());
-        }
+        NotifyWaiters(Status::OK());
       }
       std::weak_ptr<YBTransaction> weak_transaction(transaction);
       manager_->client()->messenger()->scheduler().Schedule(
@@ -840,6 +912,11 @@ YBTransaction::YBTransaction(TransactionManager* manager)
     : impl_(new Impl(manager, this)) {
 }
 
+YBTransaction::YBTransaction(
+    TransactionManager* manager, const TransactionMetadata& metadata, PrivateOnlyTag)
+    : impl_(new Impl(manager, this, metadata)) {
+}
+
 YBTransaction::YBTransaction(TransactionManager* manager, ChildTransactionData data)
     : impl_(new Impl(manager, this, std::move(data))) {
 }
@@ -943,6 +1020,17 @@ Status YBTransaction::ApplyChildResult(const ChildTransactionResultPB& result) {
 
 std::string YBTransaction::ToString() const {
   return impl_->ToString();
+}
+
+Result<TransactionMetadata> YBTransaction::Release() {
+  return impl_->Release();
+}
+
+YBTransactionPtr YBTransaction::Take(
+    TransactionManager* manager, const TransactionMetadata& metadata) {
+  auto result = std::make_shared<YBTransaction>(manager, metadata, PrivateOnlyTag());
+  result->impl_->StartHeartbeat();
+  return result;
 }
 
 } // namespace client

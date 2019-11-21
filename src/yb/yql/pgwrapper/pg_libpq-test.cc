@@ -89,7 +89,9 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
   auto iterations_left = kIterations;
 
   for (int iteration = 0; iterations_left > 0; ++iteration) {
-    SCOPED_TRACE(Format("Iteration: $0", iteration));
+    auto iteration_title = Format("Iteration: $0", iteration);
+    SCOPED_TRACE(iteration_title);
+    LOG(INFO) << iteration_title;
 
     auto status = conn.Execute("DELETE FROM t");
     if (!status.ok()) {

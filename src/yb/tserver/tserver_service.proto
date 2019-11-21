@@ -66,6 +66,9 @@ service TabletServerService {
   rpc Publish(PublishRequestPB) returns (PublishResponsePB);
 
   rpc IsTabletServerReady(IsTabletServerReadyRequestPB) returns (IsTabletServerReadyResponsePB);
+
+  // Takes precreated transaction from this tserver.
+  rpc TakeTransaction(TakeTransactionRequestPB) returns (TakeTransactionResponsePB);
 }
 
 message GetLogLocationRequestPB {
@@ -166,4 +169,11 @@ message AbortTransactionResponsePB {
   optional fixed64 status_hybrid_time = 3;
 
   optional fixed64 propagated_hybrid_time = 4;
+}
+
+message TakeTransactionRequestPB {
+}
+
+message TakeTransactionResponsePB {
+  optional TransactionMetadataPB metadata = 1;
 }

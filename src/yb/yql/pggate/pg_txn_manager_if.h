@@ -54,12 +54,13 @@ YBC_STATUS_METHOD(SetDeferrable, ((bool, deferrable)));
 
 #ifdef YBC_CXX_DECLARATION_MODE
   PgTxnManager(client::AsyncClientInitialiser* async_client_init,
-               scoped_refptr<ClockBase> clock);
+               scoped_refptr<ClockBase> clock,
+               const tserver::TServerSharedObject* tserver_shared_object);
 
   // Returns the transactional session, starting a new transaction if necessary.
   yb::Result<client::YBSession*> GetTransactionalSession();
 
-  Status BeginWriteTransactionIfNecessary(bool read_only_op);
+  CHECKED_STATUS BeginWriteTransactionIfNecessary(bool read_only_op);
 
   bool CanRestart() { return can_restart_.load(std::memory_order_acquire); }
   void PreventRestart();
@@ -72,6 +73,7 @@ YBC_STATUS_METHOD(SetDeferrable, ((bool, deferrable)));
 
   client::AsyncClientInitialiser* async_client_init_ = nullptr;
   scoped_refptr<ClockBase> clock_;
+  const tserver::TServerSharedObject* const tserver_shared_object_;
 
   bool txn_in_progress_ = false;
   client::YBTransactionPtr txn_;
@@ -87,6 +89,8 @@ YBC_STATUS_METHOD(SetDeferrable, ((bool, deferrable)));
   bool deferrable_ = false;
 
   std::atomic<bool> can_restart_{true};
+
+  std::unique_ptr<tserver::TabletServerServiceProxy> tablet_server_proxy_;
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);
 #endif  // YBC_CXX_DECLARATION_MODE

@@ -54,8 +54,14 @@ struct ChildTransactionData {
 // After YBTransaction is created, it could be used during construction of YBSession,
 // to indicate that this session will send commands related to this transaction.
 class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
+ private:
+  class PrivateOnlyTag {};
+
  public:
   explicit YBTransaction(TransactionManager* manager);
+
+  // Trick to allow std::make_shared with this ctor only from methods of this class.
+  YBTransaction(TransactionManager* manager, const TransactionMetadata& metadata, PrivateOnlyTag);
 
   // Creates "child" transaction.
   // Child transaction shares same metadata as parent transaction, so all writes are done
@@ -137,6 +143,14 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   std::string ToString() const;
 
   const IsolationLevel isolation() const;
+
+  // Releases this transaction object returning its metadata.
+  // So this transaction could be used by some other application instance.
+  Result<TransactionMetadata> Release();
+
+  // Creates transaction by metadata, could be used in pair with release to transfer transaction
+  // between application instances.
+  static YBTransactionPtr Take(TransactionManager* manager, const TransactionMetadata& metadata);
 
  private:
   class Impl;

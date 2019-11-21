@@ -294,6 +294,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Flush some tablet if the memstore memory limit is exceeded
   void MaybeFlushTablet();
 
+  client::YBClient& client();
+
   tablet::TabletOptions* TEST_tablet_options() { return &tablet_options_; }
 
   std::vector<std::shared_ptr<TsTabletManagerListener>> TEST_listeners;
@@ -405,6 +407,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   void InitLocalRaftPeerPB();
 
   std::string LogPrefix() const;
+
+  std::string TabletLogPrefix(const std::string& tablet_id) const;
 
   void CleanupCheckpoints();
 
