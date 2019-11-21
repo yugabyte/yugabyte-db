@@ -385,6 +385,9 @@ void YBCInitFlags();
 // Retrieves value of ysql_max_read_restart_attempts gflag
 int32_t YBCGetMaxReadRestartAttempts();
 
+// Retrieves value of ysql_output_buffer_size gflag
+int32_t YBCGetOutputBufferSize();
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

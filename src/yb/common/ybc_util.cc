@@ -159,6 +159,9 @@ uint32_t YBCStatusPgsqlError(YBCStatus s) {
         case TransactionErrorCode::kConflict:
           result = YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE;
           break;
+        case TransactionErrorCode::kSnapshotTooOld:
+          result = YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
+          break;
         case TransactionErrorCode::kNone: FALLTHROUGH_INTENDED;
         default:
           result = YBPgErrorCode::YB_PG_INTERNAL_ERROR;

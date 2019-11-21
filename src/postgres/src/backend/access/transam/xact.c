@@ -66,7 +66,6 @@
 #include "pg_trace.h"
 
 #include "pg_yb_utils.h"
-#include "libpq/yb_pqcomm_extensions.h"
 
 /*
  *	User-tweakable parameters
@@ -1858,7 +1857,6 @@ YBStartTransaction(TransactionState s)
 		YBCPgTxnManager_SetIsolationLevel(YBCGetPgTxnManager(), XactIsoLevel);
 		YBCPgTxnManager_SetReadOnly(YBCGetPgTxnManager(), XactReadOnly);
 		YBCPgTxnManager_SetDeferrable(YBCGetPgTxnManager(), XactDeferrable);
-		YBRestoreOutputBufferPosition();
 	}
 }
 
