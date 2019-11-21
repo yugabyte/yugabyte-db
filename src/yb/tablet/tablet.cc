@@ -675,10 +675,10 @@ void Tablet::Shutdown(IsDropTable is_drop_table) {
 
   std::lock_guard<rw_spinlock> lock(component_lock_);
   if (intents_db_) {
-    intents_db_.get()->SetDisableFlushOnShutdown(is_drop_table);
+    intents_db_->SetDisableFlushOnShutdown(is_drop_table);
   }
   if (regular_db_) {
-    regular_db_.get()->SetDisableFlushOnShutdown(is_drop_table);
+    regular_db_->SetDisableFlushOnShutdown(is_drop_table);
   }
 
   // Shutdown the RocksDB instance for this table, if present.
@@ -2186,6 +2186,26 @@ uint64_t Tablet::GetCurrentVersionNumSSTFiles() const {
     return 0;
   }
   return regular_db_->GetCurrentVersionNumSSTFiles();
+}
+
+std::pair<int, int> Tablet::GetNumMemtables() const {
+  int intents_num_memtables = 0;
+  int regular_num_memtables = 0;
+
+  {
+    ScopedPendingOperation scoped_operation(&pending_op_counter_);
+    std::lock_guard<rw_spinlock> lock(component_lock_);
+    if (intents_db_) {
+      // NOTE: 1 is added on behalf of cfd->mem().
+      intents_num_memtables = 1 + intents_db_->GetCfdImmNumNotFlushed();
+    }
+    if (regular_db_) {
+      // NOTE: 1 is added on behalf of cfd->mem().
+      regular_num_memtables = 1 + regular_db_->GetCfdImmNumNotFlushed();
+    }
+  }
+
+  return std::make_pair(intents_num_memtables, regular_num_memtables);
 }
 
 // ------------------------------------------------------------------------------------------------

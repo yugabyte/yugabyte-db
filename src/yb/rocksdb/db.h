@@ -803,6 +803,9 @@ class DB {
   // rocksdb instance.
   virtual uint64_t GetCurrentVersionDataSstFilesSize() { return 0; }
 
+  // Returns number of memtables not flushed in default column family memtable list.
+  virtual int GetCfdImmNumNotFlushed() { return 0; }
+
   // Returns a list of all table files for the current version with their level, start key and end
   // key.
   virtual void GetLiveFilesMetaData(std::vector<LiveFileMetaData>* /*metadata*/) {}
