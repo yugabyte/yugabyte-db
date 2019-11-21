@@ -17,9 +17,11 @@ or it can be downloaded using the git:
     git clone git://github.com/Percona-Lab/pg_stat_monitor.git
     
 After downloading the code, set the path for the [PostgreSQL][1] binary:
+
     cd pg_stat_monitor
     make USE_PGXS=1
     make USE_PGXS=1 install
+
 #### Usage
 There are four views, and complete statistics can be accessed using these views.
 
