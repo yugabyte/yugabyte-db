@@ -764,7 +764,9 @@ Status Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
       HybridTime(operation_state->request()->external_hybrid_time()) :
       operation_state->hybrid_time();
 
-  set_hybrid_time(hybrid_time, &frontiers);
+  // Even if we have an external hybrid time, use the local commit hybrid time in the consensus
+  // frontier.
+  set_hybrid_time(operation_state->hybrid_time(), &frontiers);
   return ApplyKeyValueRowOperations(put_batch, &frontiers, hybrid_time);
 }
 
