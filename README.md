@@ -161,6 +161,6 @@ Copyright (c) 2006 - 2019, Percona LLC.
 See [`LICENSE`][2] for full detail
 
 [1]: https://www.postgresql.org/
-[2]: LICENCE
+[2]: https://github.com/Percona-Lab/pg_stat_monitor/blob/master/LICENSE
 [3]: https://github.com/Percona-Lab/pg_stat_monitor/issues/new
 [4]: CONTRIBUTING.md
