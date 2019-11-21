@@ -894,6 +894,10 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   // to check what happens when this server receives raft consensus requests since at this point,
   // this tablet server could be a voter (if the ChangeRole request in Finish succeeded and its
   // initial role was PRE_VOTER).
+  //
+  // TODO(bogdan): This leads to a bunch of startup / shutdown race conditions, as this call is not
+  // executed on the thread pool, like the other OpenTablet calls, so on shutdown, it could be
+  // running initialization code for TabletPeer, Raft, Log, etc, which exposes some of these races.
   OpenTablet(meta, nullptr);
 
   // If OpenTablet fails, tablet_peer->error() will be set.

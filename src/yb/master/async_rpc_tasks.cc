@@ -123,6 +123,9 @@ Status RetryingTSRpcTask::Run() {
     UnregisterAsyncTask();  // May delete this.
     return STATUS(IllegalState, "Unable to run task because it has been aborted");
   }
+  // TODO(bogdan): There is a race between scheduling and running and can cause this to fail.
+  // Should look into removing the kScheduling state, if not needed, and simplifying the state
+  // transitions!
   DCHECK(task_state == MonitoredTaskState::kWaiting) << "State: " << ToString(task_state);
 
   const Status s = ResetTSProxy();

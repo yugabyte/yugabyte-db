@@ -181,13 +181,14 @@ class ThreadPool::Impl {
     }
     bool added = share_.task_queue.push(task);
     DCHECK(added); // BasketQueue always succeed.
-    --adding_;
     Worker* worker = nullptr;
     while (share_.waiting_workers.pop(worker)) {
       if (worker->Notify()) {
+        --adding_;
         return true;
       }
     }
+    --adding_;
 
     // We increment created_workers_ every time, the first max_worker increments would produce
     // a new worker. And after that, we will just increment it doing nothing after that.
@@ -221,13 +222,13 @@ class ThreadPool::Impl {
         worker->Stop();
       }
     }
-    workers_.clear();
     // Shutdown is quite rare situation otherwise enqueue is quite frequent.
     // Because of this we use "atomic lock" in enqueue and busy wait in shutdown.
     // So we could process enqueue quickly, and stuck in shutdown for sometime.
-    while(adding_ != 0) {
+    while (adding_ != 0) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+    workers_.clear();
     ThreadPoolTask* task = nullptr;
     while (share_.task_queue.pop(task)) {
       task->Done(shutdown_status_);
