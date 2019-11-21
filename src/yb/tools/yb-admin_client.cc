@@ -844,14 +844,16 @@ Status ClusterAdminClient::ListTabletsForTabletServer(const PeerId& ts_uuid) {
        << "Is Leader" << kColumnSep
        << "State" << kColumnSep
        << "Num SST Files" << kColumnSep
-       << "Num Log Segments" << endl;
+       << "Num Log Segments" << kColumnSep
+       << "Num Memtables (Intents/Regular)" << endl;
   for (const auto& entry : resp.entries()) {
     cout << RightPadToWidth(entry.table_name(), kTableNameColWidth) << kColumnSep
          << RightPadToUuidWidth(entry.tablet_id()) << kColumnSep
          << entry.is_leader() << kColumnSep
          << PBEnumToString(entry.state()) << kColumnSep
          << entry.num_sst_files() << kColumnSep
-         << entry.num_log_segments() << endl;
+         << entry.num_log_segments() << kColumnSep
+         << entry.num_memtables_intents() << "/" << entry.num_memtables_regular() << endl;
   }
   return Status::OK();
 }

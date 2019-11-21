@@ -473,6 +473,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   uint64_t GetCurrentVersionSstFilesUncompressedSize() const;
   uint64_t GetCurrentVersionNumSSTFiles() const;
 
+  // Returns the number of memtables in intents and regular db-s.
+  std::pair<int, int> GetNumMemtables() const;
+
   void SetHybridTimeLeaseProvider(HybridTimeLeaseProvider provider) {
     ht_lease_provider_ = std::move(provider);
   }

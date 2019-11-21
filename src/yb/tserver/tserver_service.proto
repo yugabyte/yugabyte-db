@@ -108,6 +108,8 @@ message ListTabletsForTabletServerResponsePB {
     optional tablet.RaftGroupStatePB state = 4;
     optional uint64 num_sst_files = 5;
     optional uint64 num_log_segments = 6;
+    optional uint64 num_memtables_intents = 7;
+    optional uint64 num_memtables_regular = 8;
   }
 
   repeated Entry entries = 1;

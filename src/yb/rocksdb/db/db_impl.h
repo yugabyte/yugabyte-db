@@ -633,6 +633,8 @@ class DBImpl : public DB {
 
   uint64_t GetCurrentVersionNumSSTFiles() override;
 
+  int GetCfdImmNumNotFlushed() override;
+
   // Updates stats_ object with SST files size metrics.
   void SetSSTFileTickers();
 
