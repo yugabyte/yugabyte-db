@@ -381,7 +381,7 @@ class Log : public RefCountedThreadSafe<Log> {
   gscoped_ptr<WritableLogSegment> active_segment_;
 
   // The current (active) segment sequence number.
-  uint64_t active_segment_sequence_number_;
+  std::atomic<uint64_t> active_segment_sequence_number_ = {0};
 
   // The writable file for the next allocated segment
   std::shared_ptr<WritableFile> next_segment_file_;

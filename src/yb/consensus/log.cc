@@ -367,7 +367,6 @@ Log::Log(LogOptions options, string log_path,
       tablet_wal_path_(std::move(tablet_wal_path)),
       schema_(schema),
       schema_version_(schema_version),
-      active_segment_sequence_number_(0),
       log_state_(kLogInitialized),
       max_segment_size_(options_.segment_size_bytes),
       appender_(new Appender(this, append_thread_pool)),
@@ -409,6 +408,7 @@ Status Log::Init() {
     vector<scoped_refptr<ReadableLogSegment> > segments;
     RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
     active_segment_sequence_number_ = segments.back()->header().sequence_number();
+    LOG_WITH_PREFIX(INFO) << "Opened existing logs. Last segment is " << segments.back()->path();
   }
 
   if (durable_wal_write_) {
@@ -837,6 +837,8 @@ yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed, MonoDelta dura
       if (duration) {
         return yb::OpId();
       }
+      // TODO(bogdan): If the log is closed at this point, consider refactoring to return status
+      // and fail cleanly.
       LOG_WITH_PREFIX(DFATAL) << "Long wait for safe op id: " << min_allowed
                               << ", passed: " << (CoarseMonoClock::Now() - start);
     }
@@ -1156,7 +1158,6 @@ Status Log::CreatePlaceholderSegment(const WritableFileOptions& opts,
 }
 
 uint64_t Log::active_segment_sequence_number() const {
-  SharedLock<rw_spinlock> read_lock(state_lock_.get_lock());
   return active_segment_sequence_number_;
 }
 
