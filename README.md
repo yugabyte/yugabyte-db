@@ -131,7 +131,7 @@ There are four views, and complete statistics can be accessed using these views.
      slow_query     | text                     |           |          |    
 
 Examples
-1 - Here in this query we are getting the exact value of f1 = '05:06:07-07' where in case of slow query.
+1 - Here in this query we are getting the exact value of f1 which is '05:06:07-07' in case of slow query.
  
     # select userid, queryid, query, slow_query, max_time, total_calls from pg_stat_agg_user; 
     -[ RECORD 1 ]----------------------------------------------------------------------------------------
