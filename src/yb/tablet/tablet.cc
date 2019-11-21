@@ -66,6 +66,7 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
+#include "yb/common/transaction_error.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
@@ -2061,12 +2062,14 @@ HybridTime Tablet::UpdateHistoryCutoff(HybridTime proposed_cutoff) {
 Status Tablet::RegisterReaderTimestamp(HybridTime read_point) {
   std::lock_guard<std::mutex> lock(active_readers_mutex_);
   if (read_point < earliest_read_time_allowed_) {
-    return STATUS_FORMAT(
+    return STATUS(
         SnapshotTooOld,
-        "Snapshot too old. Read point: $0, earliest read time allowed: $1, delta (usec): $2",
-        read_point,
-        earliest_read_time_allowed_,
-        earliest_read_time_allowed_.PhysicalDiff(read_point));
+        Format(
+          "Snapshot too old. Read point: $0, earliest read time allowed: $1, delta (usec): $2",
+          read_point,
+          earliest_read_time_allowed_,
+          earliest_read_time_allowed_.PhysicalDiff(read_point)),
+        TransactionError(TransactionErrorCode::kSnapshotTooOld));
 }
   active_readers_cnt_[read_point]++;
   return Status::OK();

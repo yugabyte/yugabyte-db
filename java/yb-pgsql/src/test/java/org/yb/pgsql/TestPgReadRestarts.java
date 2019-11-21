@@ -52,11 +52,14 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 public class TestPgReadRestarts extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgReadRestarts.class);
 
-  /** Size (in bytes) of PG output buffer, longer stuff is flushed immediately */
-  private static int PG_OUTPUT_BUFFER_SIZE = 8192;
+  /**
+   * Size (in bytes) of PG output buffer, longer stuff is flushed immediately.
+   * This is controlled by ysql_output_buffer_size gflag, but we're testing the default value.
+   */
+  private static int PG_OUTPUT_BUFFER_SIZE = 262144; // 256 KiB
 
   /** How many inserts we attempt to do? */
-  private static final int NUM_INSERTS = 800;
+  private static final int NUM_INSERTS = 1000;
 
   /** Maximum value to insert in a table column {@code i} (minimum is 0) */
   private static final int MAX_INT_TO_INSERT = 5;
@@ -140,10 +143,10 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   @Test
   public void selectStarShort() throws Exception {
     // NOTE: Right now this greatly depends on #ops and length of the string.
-    // Ideally it should be a SELECT * with LIMIT clause, but we can't use it because of
+    // Ideally we'd want to use LIMIT clause, but we can't because of
     // https://github.com/yugabyte/yugabyte-db/issues/2812
     new RegularStatementTester(
-        "SELECT t,i FROM test_rr",
+        "SELECT * FROM test_rr",
         getShortString(),
         false /* expectNonTxnRestartErrors */,
         false /* expectSnapshotRestartErrors */
@@ -156,10 +159,10 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   @Test
   public void selectStarShortPrepared() throws Exception {
     // NOTE: Right now this greatly depends on #ops and length of the string.
-    // Ideally it should be a SELECT * with LIMIT clause, but we can't use it because of
+    // Ideally we'd want to use LIMIT clause, but we can't because of
     // https://github.com/yugabyte/yugabyte-db/issues/2812
     new PreparedStatementTester(
-        "SELECT t,i FROM test_rr",
+        "SELECT * FROM test_rr",
         getShortString(),
         false /* expectNonTxnRestartErrors */,
         false /* expectSnapshotRestartErrors */
@@ -172,10 +175,10 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   @Test
   public void selectStarShortPreparedParameterized() throws Exception {
     // NOTE: Right now this greatly depends on #ops and length of the string.
-    // Ideally it should be a SELECT * with LIMIT clause, but we can't use it because of
+    // Ideally we'd want to use LIMIT clause, but we can't because of
     // https://github.com/yugabyte/yugabyte-db/issues/2812
     new PreparedStatementTester(
-        "SELECT t,i FROM test_rr WHERE i > ?",
+        "SELECT * FROM test_rr WHERE i > ?",
         getShortString(),
         false /* expectNonTxnRestartErrors */,
         false /* expectSnapshotRestartErrors */) {
@@ -281,6 +284,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
     String sqlState = ((PSQLException) ex).getSQLState();
     // Using Yoda conditions to avoid NPE in the theoretical case of sqlState being null.
     return PSQLState.IN_FAILED_SQL_TRANSACTION.getState().equals(sqlState)
+        || SNAPSHOT_TOO_OLD_PSQL_STATE.equals(sqlState)
         || SERIALIZATION_FAILURE_PSQL_STATE.equals(sqlState);
   }
 

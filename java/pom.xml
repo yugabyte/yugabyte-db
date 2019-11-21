@@ -114,7 +114,7 @@
 
     <!-- Test configuration -->
     <testdata.dir>target/testdata</testdata.dir>
-    <testArgLine>-enableassertions -Xmx1900m
+    <testArgLine>-enableassertions -Xmx3000m
       -Djava.security.egd=file:/dev/./urandom -Djava.net.preferIPv4Stack=true
       -Djava.awt.headless=true
     </testArgLine>

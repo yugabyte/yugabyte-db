@@ -98,6 +98,7 @@
 
 #include "access/xact.h"
 #include "libpq/yb_pqcomm_extensions.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 /*
  * Cope with the various platform-specific ways to spell TCP keepalive socket
@@ -130,11 +131,11 @@ static List *sock_paths = NIL;
 /*
  * Buffers for low-level I/O.
  *
- * The receive buffer is fixed size. Send buffer is usually 8k, but can be
+ * The receive buffer is fixed size.
+ * Send buffer is controlled by ysql_output_buffer_size pggate gflag, but can be
  * enlarged by pq_putmessage_noblock() if the message doesn't fit otherwise.
  */
 
-#define PQ_SEND_BUFFER_SIZE 8192
 #define PQ_RECV_BUFFER_SIZE 8192
 
 static char *PqSendBuffer;
@@ -198,7 +199,7 @@ void
 pq_init(void)
 {
 	/* initialize state variables */
-	PqSendBufferSize = PQ_SEND_BUFFER_SIZE;
+	PqSendBufferSize = YBCGetOutputBufferSize();
 	PqSendBuffer = MemoryContextAlloc(TopMemoryContext, PqSendBufferSize);
 	PqSendPointer = PqSendStart = PqRecvPointer = PqRecvLength = 0;
 	PqSendYbSavedBufPos = 0;
@@ -320,18 +321,14 @@ YBSaveOutputBufferPosition(void)
 	PqSendYbSavedBufPos = PqSendPointer;
 }
 
-/* Rollback output buffer to a previously saved position, discarding everything added after it. */
+/*
+ * Rollback output buffer to a previously saved position, discarding everything added after it.
+ * Should ONLY be called after YBSaveOutputBufferPosition.
+ */
 void
 YBRestoreOutputBufferPosition(void)
 {
 	PqSendPointer = PqSendYbSavedBufPos;
-}
-
-/* Clear output buffer savepoint state. */
-void
-YBResetSavedOutputBufferPosition(void)
-{
-	PqSendYbSavedBufPos = PqSendStart;
 }
 
 
@@ -806,6 +803,8 @@ StreamConnection(pgsocket server_fd, Port *port)
 		}
 
 #ifdef WIN32
+
+		#define PQ_SEND_BUFFER_SIZE 8192
 
 		/*
 		 * This is a Win32 socket optimization.  The OS send buffer should be
