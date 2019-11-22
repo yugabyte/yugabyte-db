@@ -2,7 +2,7 @@
 title: TLS encryption
 linkTitle: TLS encryption
 description: TLS encryption
-headcontent: Enable TLS encryption over the wire in YugabyteDB (Yugabyte Platform only).
+headcontent: Enable encryption in transit to protect network communications.
 image: /images/section_icons/secure/tls-encryption.png
 aliases:
   - /secure/tls-encryption/
@@ -15,8 +15,8 @@ menu:
 
 YugabyteDB supports Transport Layer Security (TLS) encryption using [OpenSSL](https://www.openssl.org), which is natively available for Linux, BSD, and macOS operating systems. You can configure YugabyteDB to encrypt network communication, including:
 
-* Server-server — between YB-Masters and YB-TServers
-* Client-server — using CLIs and APIs for YCQL (YSQL support in progress)
+* Server-server — between YB-TServer and YB-Master services
+* Client-server — using CLIs and APIs for YSQL and YCQL
 
 {{< note title="Note" >}}
 
@@ -56,7 +56,7 @@ In this section, we will look at how to set up a 3-node YugabyteDB cluster with 
         <div class="title">3. Client-server encryption</div>
       </div>
       <div class="body">
-          Enable client-server encryption for YCQL (YSQL support is in-progress).
+          Enable client-server encryption for YSQL and YCQL.
       </div>
     </a>
   </div>
