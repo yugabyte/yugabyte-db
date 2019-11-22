@@ -103,3 +103,28 @@ CREATE OR REPLACE FUNCTION col_is_null (
     SELECT _col_is_null( $1, $2, $3, false );
 $$ LANGUAGE SQL;
 
+-- _keys( schema, table, constraint_type )
+CREATE OR REPLACE FUNCTION _keys ( NAME, NAME, CHAR )
+RETURNS SETOF NAME[] AS $$
+    SELECT _pg_sv_column_array(x.conrelid,x.conkey) -- name[] doesn't support collation
+      FROM pg_catalog.pg_namespace n
+      JOIN pg_catalog.pg_class c       ON n.oid = c.relnamespace
+      JOIN pg_catalog.pg_constraint x  ON c.oid = x.conrelid
+     WHERE n.nspname = $1
+       AND c.relname = $2
+       AND x.contype = $3
+  ORDER BY 1
+$$ LANGUAGE sql;
+
+-- _keys( table, constraint_type )
+CREATE OR REPLACE FUNCTION _keys ( NAME, CHAR )
+RETURNS SETOF NAME[] AS $$
+    SELECT _pg_sv_column_array(x.conrelid,x.conkey) -- name[] doesn't support collation
+      FROM pg_catalog.pg_class c
+      JOIN pg_catalog.pg_constraint x  ON c.oid = x.conrelid
+       AND c.relname = $1
+       AND x.contype = $2
+     WHERE pg_catalog.pg_table_is_visible(c.oid)
+  ORDER BY 1
+$$ LANGUAGE sql;
+

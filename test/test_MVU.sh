@@ -122,6 +122,11 @@ out=$(which $2)
 echo $out
 )
 
+run_make() (
+cd $(dirname $0)/..
+$sudo make $@
+)
+
 modify_config() (
 # See below for definition of ctl_separator
 if [ -z "$ctl_separator" ]; then
@@ -207,6 +212,11 @@ exit_trap() {
     # Force sudo on a debian system (see below)
     [ -z "$ctl_separator" ] || sudo=$(which sudo)
 
+    # Attempt to shut down any running clusters, otherwise we'll get log spew
+    # when the temporary directories vanish.
+    $old_pg_ctl stop > /dev/null 2>&1
+    $new_pg_ctl stop > /dev/null 2>&1
+
     # Do not simply stick this command in the trap command; the quoting gets
     # tricky, but the quoting is also damn critical to make sure rm -rf doesn't
     # hose you if the temporary directory names have spaces in them!
@@ -227,17 +237,17 @@ if which pg_ctlcluster > /dev/null 2>&1; then
     export PGUSER=$USER
 
     old_initdb="sudo pg_createcluster $OLD_VERSION $cluster_name -u $USER -p $OLD_PORT -d $old_dir -- -A trust"
+    old_pg_ctl="sudo pg_ctlcluster $OLD_VERSION test_pg_upgrade"
     new_initdb="sudo pg_createcluster $NEW_VERSION $cluster_name -u $USER -p $NEW_PORT -d $new_dir -- -A trust"
-    old_pg_ctl="sudo pg_ctlcluster $PGVERSION test_pg_upgrade"
-    new_pg_ctl=$old_pg_ctl
+    new_pg_ctl="sudo pg_ctlcluster $NEW_VERSION test_pg_upgrade"
+
     # See also ../pg-travis-test.sh
     new_pg_upgrade=/usr/lib/postgresql/$NEW_VERSION/bin/pg_upgrade
 else
     ctl_separator=''
     old_initdb="$(find_at_path "$OLD_PATH" initdb) -D $old_dir -N"
-    new_initdb="$(find_at_path "$NEW_PATH" initdb) -D $new_dir -N"
-    # s/initdb/pg_ctl/g
     old_pg_ctl=$(find_at_path "$OLD_PATH" pg_ctl)
+    new_initdb="$(find_at_path "$NEW_PATH" initdb) -D $new_dir -N"
     new_pg_ctl=$(find_at_path "$NEW_PATH" pg_ctl)
 
     new_pg_upgrade=$(find_at_path "$NEW_PATH" pg_upgrade)
@@ -268,8 +278,7 @@ echo "Installing pgtap"
 # If user requested sudo then we need to use it for the install step. TODO:
 # it'd be nice to move this into the Makefile, if the PGXS make stuff allows
 # it...
-( cd $(dirname $0)/.. && $sudo make clean install )
-
+run_make clean install 
 
 banner "Loading extension"
 psql -c 'CREATE EXTENSION pgtap' # Also uses PGPORT
@@ -285,43 +294,98 @@ export PGDATA=$new_dir
 export PGPORT=$NEW_PORT
 modify_config $NEW_VERSION
 
-cd $upgrade_dir
-if [ $DEBUG -ge 9 ]; then
-    echo $old_dir; ls -la $old_dir; egrep 'director|unix|conf' $old_dir/postgresql.conf
-    echo $new_dir; ls -la $new_dir; egrep 'director|unix|conf' $new_dir/postgresql.conf
-fi
-echo $new_pg_upgrade -d "$old_dir" -D "$new_dir" -b "$OLD_PATH" -B "$NEW_PATH"
-$new_pg_upgrade -d "$old_dir" -D "$new_dir" -b "$OLD_PATH" -B "$NEW_PATH" || rc=$?
-if [ $rc -ne 0 ]; then
-    # Dump log, but only if we're not keeping the directory
-    if [ -z "$keep" ]; then
-        for f in `ls *.log`; do
-            echo; echo; echo; echo; echo; echo
-            echo "`pwd`/$f:"
-            cat "$f"
-        done
-        ls -la
-    else
-        error "pg_upgrade logs are at $upgrade_dir"
+(
+    cd $upgrade_dir
+    if [ $DEBUG -ge 9 ]; then
+        echo $old_dir; ls -la $old_dir; egrep 'director|unix|conf' $old_dir/postgresql.conf
+        echo $new_dir; ls -la $new_dir; egrep 'director|unix|conf' $new_dir/postgresql.conf
     fi
-    die $rc "pg_upgrade returned $rc"
-fi
+    echo $new_pg_upgrade -d "$old_dir" -D "$new_dir" -b "$OLD_PATH" -B "$NEW_PATH"
+    $new_pg_upgrade -d "$old_dir" -D "$new_dir" -b "$OLD_PATH" -B "$NEW_PATH" || rc=$?
+    if [ $rc -ne 0 ]; then
+        # Dump log, but only if we're not keeping the directory
+        if [ -z "$keep" ]; then
+            for f in `ls *.log`; do
+                echo; echo; echo; echo; echo; echo
+                echo "`pwd`/$f:"
+                cat "$f"
+            done
+            ls -la
+        else
+            error "pg_upgrade logs are at $upgrade_dir"
+        fi
+        die $rc "pg_upgrade returned $rc"
+    fi
+)
 
 
 
-# TODO: turn this stuff on. It's pointless to test via `make regress` because
-# that creates a new install; need to figure out the best way to test the new
-# cluster
-exit
 ##################################################################################################
 banner "Testing UPGRADED cluster"
 
 # Run our tests against the upgraded cluster, but first make sure the old
 # cluster is still down, to ensure there's no chance of testing it instead.
-status=$($old_pg_ctl status) || die 3 "$old_pg_ctl status exited with $?"
-debug 1 "$old_pg_ctl status returned $status"
-[ "$status" == 'pg_ctl: no server running' ] || die 3 "old cluster is still running
+# Note that some versions of pg_ctl return different exit codes when the server
+# isn't running.
+echo ensuring OLD cluster is stopped
+rc=0
+status=$($old_pg_ctl status) || rc=$?
+[ "$status" == 'pg_ctl: no server running' ] || die 3 "$old_pg_ctl status returned '$status' and exited with $?"
+debug 4 "$old_pg_ctl status exited with $rc"
 
-$old_pg_ctl status returned
-$status"
-( cd $(dirname $0)/..; $sudo make clean regress )
+# TODO: send log output to a file so it doesn't mix in with STDOUT
+echo starting NEW cluster
+$new_pg_ctl start $ctl_separator -w || die $? "$new_pg_ctl start $ctl_separator -w returned $?"
+$new_pg_ctl status # Should error if not running on most versions
+
+psql -E -c '\dx'
+psql -E -c 'SELECT pgtap_version(), pg_version_num(), version();'
+
+# We want to make sure to use the NEW pg_config
+export PG_CONFIG=$(find_at_path "$NEW_PATH" pg_config)
+[ -x "$PG_CONFIG" ] || ( debug_ls 1 "$NEW_PATH"; die 4 "unable to find executable pg_config at $NEW_PATH" )
+
+# When crossing certain upgrade boundaries we need to exclude some tests
+# because they test functions not available in the previous version.
+int_ver() {
+    local ver
+    ver=$(echo $1 | tr -d .)
+    # "multiply" versions less than 7.0 by 10 so that version 10.x becomes 100,
+    # 11 becomes 110, etc.
+    [ $ver -ge 70 ] || ver="${ver}0"
+    echo $ver
+}
+EXCLUDE_TEST_FILES=''
+add_exclude() {
+    local old new
+    old=$(int_ver $1)
+    new=$(int_ver $2)
+    shift 2
+    if [ $(int_ver $OLD_VERSION) -le $old -a $(int_ver $NEW_VERSION) -ge $new ]; then
+        EXCLUDE_TEST_FILES="$EXCLUDE_TEST_FILES $@"
+    fi
+}
+
+add_exclude 9.1 9.2 test/sql/throwtap.sql
+add_exclude 9.4 9.5 test/sql/policy.sql test/sql/throwtap.sql 
+add_exclude 9.6 10 test/sql/partitions.sql
+
+# Use this if there's a single test failing in Travis that you can't figure out...
+#(cd $(dirname $0)/..; pg_prove -v --pset tuples_only=1 test/sql/throwtap.sql)
+
+export EXCLUDE_TEST_FILES
+run_make clean test
+
+if [ -n "$EXCLUDE_TEST_FILES" ]; then
+    banner "Rerunning test after a reinstall due to version differences"
+    echo "Excluded tests: $EXCLUDE_TEST_FILES"
+    export EXCLUDED_TEST_FILES=''
+
+    # Need to build with the new version, then install
+    run_make install
+
+    psql -E -c 'DROP EXTENSION pgtap; CREATE EXTENSION pgtap;'
+
+    run_make test
+fi
+

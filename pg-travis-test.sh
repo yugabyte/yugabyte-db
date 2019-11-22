@@ -2,23 +2,34 @@
 
 # Based on https://gist.github.com/petere/6023944
 
-set -eux
-failed=''
+set -E -e -u -o pipefail 
 
-#export DEBUG=9
+#
+# NOTE: you can control what tests run by setting the TARGETS environment
+# variable for a particular branch in the Travis console
+#
+
+# You can set this to higher levels for more debug output
+#export DEBUG=1
+#set -x
+
 export UPGRADE_TO=${UPGRADE_TO:-}
+failed=''
+tests_run=0
 
 sudo apt-get update
 
 get_packages() {
-    echo "postgresql-$1 postgresql-server-dev-$1"
+    echo "libtap-parser-sourcehandler-pgtap-perl postgresql-$1 postgresql-server-dev-$1"
 }
 get_path() {
     # See also test/test_MVU.sh
     echo "/usr/lib/postgresql/$1/bin/"
 }
 
-test_cmd() (
+# Do NOT use () here; we depend on being able to set failed
+test_cmd() {
+#local status rc
 if [ "$1" == '-s' ]; then
     status="$2"
     shift 2
@@ -26,28 +37,75 @@ else
     status="$1"
 fi
 
-set +ux
 echo
 echo #############################################################################
 echo "PG-TRAVIS: running $@"
 echo #############################################################################
-"$@"
-rc=$?
-set -ux
+tests_run=$((tests_run + 1))
+# Use || so as not to trip up -e, and a sub-shell to be safe.
+rc=0
+( "$@" ) || rc=$?
 if [ $rc -ne 0 ]; then
     echo
-    echo '!!!!!!!!!!!!!!!!'
-    echo "$@"
-    echo '!!!!!!!!!!!!!!!!'
+    echo '!!!!!!!!!!!!!!!! FAILURE !!!!!!!!!!!!!!!!'
+    echo "$@" returned $rc
+    echo '!!!!!!!!!!!!!!!! FAILURE !!!!!!!!!!!!!!!!'
     echo
     failed="$failed '$status'"
 fi
-)
+}
+
+# Ensure test_cmd sets failed properly
+test_cmd fail > /dev/null 2>&1
+if [ -z "$failed" ]; then
+    echo "code error: test_cmd() did not set \$failed"
+    exit 91
+fi
+failed=''
 
 test_make() {
     # Many tests depend on install, so just use sudo for all of them
     test_cmd -s "$*" sudo make "$@"
 }
+
+########################################################
+# TEST TARGETS
+sanity() {
+    test_make clean regress
+}
+
+update() {
+    # pg_regress --launcher not supported prior to 9.1
+    # There are some other failures in 9.1 and 9.2 (see https://travis-ci.org/decibel/pgtap/builds/358206497).
+    echo $PGVERSION | grep -qE "8[.]|9[.][012]" || test_make clean updatecheck
+}
+
+tests_run_by_target_all=11 # 1 + 5 * 2
+all() {
+    # the test* targets use pg_prove, which assumes it's making a default psql
+    # connection to a database that has pgTap installed, so we need to set that
+    # up.
+    test_cmd psql -Ec 'CREATE EXTENSION pgtap'
+
+    # TODO: install software necessary to allow testing 'html' target
+    # UPDATE tests_run_by_target_all IF YOU ADD ANY TESTS HERE!
+    for t in all install test test-serial test-parallel ; do
+        # Test from a clean slate...
+        test_make uninstall clean $t
+        # And then test again
+        test_make $t
+    done
+}
+
+upgrade() {
+if [ -n "$UPGRADE_TO" ]; then
+    # We need to tell test_MVU.sh to run some steps via sudo since we're
+    # actually installing from pgxn into a system directory.  We also use a
+    # different port number to avoid conflicting with existing clusters.
+    test_cmd test/test_MVU.sh -s 55667 55778 $PGVERSION $UPGRADE_TO "$(get_path $PGVERSION)" "$(get_path $UPGRADE_TO)"
+fi
+}
+
 
 ########################################################
 # Install packages
@@ -83,29 +141,27 @@ sudo pg_createcluster --start $PGVERSION test -p $PGPORT -- -A trust
 
 sudo easy_install pgxnclient
 
-test_make clean regress
-
-# pg_regress --launcher not supported prior to 9.1
-# There are some other failures in 9.1 and 9.2 (see https://travis-ci.org/decibel/pgtap/builds/358206497).
-echo $PGVERSION | grep -qE "8[.]|9[.][012]" || test_make clean updatecheck
-
-# Explicitly test these other targets
-
-# TODO: install software necessary to allow testing the 'test' and 'html' targets
-for t in all install ; do
-    test_make clean $t
-    test_make $t
+set +x
+total_tests=$((3 + $tests_run_by_target_all))
+for t in ${TARGETS:-sanity update upgrade all}; do
+    $t
 done
 
-if [ -n "$UPGRADE_TO" ]; then
-    # We need to tell test_MVU.sh to run some steps via sudo since we're
-    # actually installing from pgxn into a system directory.  We also use a
-    # different port number to avoid conflicting with existing clusters.
-    test_cmd test/test_MVU.sh -s 55667 55778 $PGVERSION $UPGRADE_TO "$(get_path $PGVERSION)" "$(get_path $UPGRADE_TO)"
+# You can use this to check tests that are failing pg_prove
+pg_prove -f --pset tuples_only=1 test/sql/unique.sql test/sql/check.sql || true
+
+if [ $tests_run -eq $total_tests ]; then
+    echo Ran $tests_run tests
+elif [ $tests_run -gt 0 ]; then
+    echo "WARNING! ONLY RAN $tests_run OUT OF $total_tests TESTS!"
+    # We don't consider this an error...
+else
+    echo No tests were run!
+    exit 2
 fi
 
 if [ -n "$failed" ]; then
-    set +ux
+    echo
     # $failed will have a leading space if it's not empty
     echo "These test targets failed:$failed"
     exit 1
