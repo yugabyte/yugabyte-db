@@ -1,6 +1,6 @@
 # YSQL Tablet Colocation
 
-Note: This is new feature that is still in design phase.
+> **Note:** This is new feature that is still in design phase.
 
 ## Motivation
 A lot of applications using relational databases have a high number of tables and indexes (1000+). These tables are typically small and single database size is less than 500 GB. These applications still want to be able to use distributed SQL database like YugabyteDB to leverage high availability and data resilience.
@@ -25,17 +25,17 @@ We’ll also provide a gflag --ysql_colocation which if enabled will create colo
 This is useful if the DB has 1-2 large tables and several small tables. In this case, the small tables can be colocated in a single tablet while the large tables have their own tablets.
 
 __Syntax:__
-
+```
 CREATE TABLE name (columns) WITH colocated = true | false
-
+```
 Note that this property is only used when the parent DB is colocated. It has no effect otherwise.
 
 ### Ability to specify that schema is colocated (P1)
 
 __Syntax:__
-
+```
 CREATE SCHEMA name WITH colocated = true | false
-
+```
 In some situations, it may be useful for applications to create multiple schemas (instead of multiple DBs) and use 1 tablet per schema.
 Using this configuration:
 * Enables applications to use PG connection pooling. Typically, connection pools are created per database.
@@ -45,16 +45,16 @@ Connection pools become important for scaling applications since we have a limit
 
 ## Design
 
-### Single vs multiple rocksDB
-Today, there is one rocksDB created per tablet. This rocksDB only has data for a single tablet. With multiple tables in a single tablet, we have two options:
-Use single rocksDB for the entire tablet (i.e. for all tables).
-Use multiple rocksDBs with one rocksDB per table.
+### Single vs multiple RocksDB
+Today, there is one RocksDB created per tablet. This RocksDB only has data for a single tablet. With multiple tables in a single tablet, we have two options:
+* Use single RocksDB for the entire tablet (i.e. for all tables).
+* Use multiple RocksDBs with one RocksDB per table.
 
 More analysis on this can be found here.
 
-We decided to use single rockDB for entire tablet. This is because:
-It enables us to leverage code that was written for postgres system tables. Today, all postgres system tables are colocated on a single tablet in master and uses a single rocksDB. We can leverage a lot of that code.
-We may hit other scaling limits with multiple rocksdb. For example, it’s possible that having 1 million rocksDBs (1000 DBs, with 1000 tables per DB) will cause other side effects.
+We decided to use single RocksDB for entire tablet. This is because:
+* It enables us to leverage code that was written for postgres system tables. Today, all postgres system tables are colocated on a single tablet in master and uses a single RocksDB. We can leverage a lot of that code.
+* We may hit other scaling limits with multiple Rocksdb. For example, it’s possible that having 1 million RocksDBs (1000 DBs, with 1000 tables per DB) will cause other side effects.
 
 ### Create and Drop DB / Table
 
@@ -62,7 +62,7 @@ We may hit other scaling limits with multiple rocksdb. For example, it’s possi
 When a DB is created with colocated=true, catalog manager will need to create a tablet for this database. Catalog manager’s NamespaceInfo and TableInfo objects will need to maintain colocated property.
 
 Today, tablet’s RaftGroupReplicaSuperBlockPB has a primary_table_id. For system tables, this is the table ID of sys catalog table. Primary table ID seems to be used in two ways:
-Rows of primary table ID are not prefixed with table ID while writing to rocksDB. All other table rows are prefixed with cotable ID.
+Rows of primary table ID are not prefixed with table ID while writing to RocksDB. All other table rows are prefixed with cotable ID.
 Remote bootstrap client checks that tablet being bootstrapped has a primary table. (It’s not clear why it needs this).
 
 Since there is no “primary table” in a colocated DB, we have two options:
@@ -71,7 +71,7 @@ Create a dummy table for the database and make that the primary table.
 
 Tablet creation requires a Schema and partition range to be specified. In this case, Schema will empty and partition range will be [-infinity, infinity).
 
-Currently, rocks DB files are created in the folder tserver/data/table-id/tablet-id/. Since this tablet will have multiple tables, the directory structure will change to tserver/data/tablet-id/.
+Currently, RocksDB files are created in the folder tserver/data/table-id/tablet-id/. Since this tablet will have multiple tables, the directory structure will change to tserver/data/tablet-id/.
 
 #### Create Table
 When a table is created in a colocated database, catalog manager should add that table to the tablet that was created for the database and not create new tablets.
@@ -82,7 +82,7 @@ If the table is created with colocated=false, then it should go through the curr
 #### Drop Table
 When a colocated table is dropped, catalog manager should simply mark the table as deleted (and not remove any tablets). It’ll then need to invoke ChangeMetadataRequest to replicate the table removal. Note that currently ChangeMetadata operation does not support table removal and we’ll need to add this capability.
 
-It can then run a background task to delete all rows corresponding to that table from rocksDB.
+It can then run a background task to delete all rows corresponding to that table from RocksDB.
 
 If the table being dropped has colocated=false, then it should go through the current drop table process and delete the tablets.
 
@@ -101,7 +101,7 @@ We can reuse “tablespace” field of these tables for storing this information
 * Add is_colocated in SysTabletEntryPB to indicate if a tablet is a colocated tablet.
 * Add is_colocated in CreateTabletRequestPB
 * For SysCatalogTable, Tablet::AddTable is called when creating a new table. There is no corresponding way to do that when the tablet is in a tserver. Hence we need to add an RPC AddTableToTablet in the TabletServerAdminService, and add AsyncAddTableToTablet task to call that RPC.
-* Modify RaftGroupMetadata::CreateNew to take is_colocated parameter. If the table is colocated, use rocksdb/tablet-<id> as the rocksdb_dir and wal/tablet-<id> as the wal_dir.
+* Modify RaftGroupMetadata::CreateNew to take is_colocated parameter. If the table is colocated, use Rocksdb/tablet-<id> as the Rocksdb_dir and wal/tablet-<id> as the wal_dir.
 
 ### Load balancing
 Today, load balancing is looks at all tables and then balances all tablets for each table. We need to make load balancer aware of tablet colocation in order to avoid balancing the same tablet.
@@ -149,3 +149,7 @@ Current design for tablet splitting won’t work as is for colocated tablets.
 The design finds a split key (approximate mid-key) for the tablet and splits the tablet range into two partitions.
 Since colocated tablets have multiple tables with different schemas, we cannot find the “mid point” of the tablet.
 We could potentially split the tablet such that some tables are in one tablet and other tables are in the second tablet, but this will require some changes to the design.
+
+
+[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/ysql-tablet-colocation.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
+
