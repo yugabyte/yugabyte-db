@@ -45,36 +45,31 @@ Use the `CREATE TABLE` statement to create a new table in a database. It defines
 
 ## Semantics
 
-Create a table with *table_name*. An error is raised if `qualified_name` already exists in the specified database, unless the `IF NOT EXISTS` clause is used.
+Create a table with *table_name*. If `qualified_name` already exists in the specified database, an error will be raised unless the `IF NOT EXISTS` clause is used.
 
-### Primary Key
+### Primary key
 
 Primary key can be defined in either `column_constraint` or `table_constraint`, but not in both.
-There are 2 types of primary key columns:
+There are two types of primary key columns:
 
 - `Hash primary key columns`: The primary key may have zero or more leading hash-partitioned columns.
 By default, only the first column is treated as the hash-partition column. But this behavior can be modified by explicit use of the HASH annotation.
 
-- `Range primary key columns`: A table can have zero or more range primary key columns and 
-it controls the top-level ordering of rows within a table (if there are no hash partition columns) or 
-the ordering of rows among rows that share a common set of hash partitioned column values.
-By default, the range primary key columns are stored in ascending order. But this behavior can be controlled by explicit use of the ASC/DESC annotation.
+- `Range primary key columns`: A table can have zero or more range primary key columns and it controls the top-level ordering of rows within a table (if there are no hash partition columns) or the ordering of rows among rows that share a common set of hash partitioned column values. By default, the range primary key columns are stored in ascending order. But this behavior can be controlled by explicit use of `ASC` or `DESC`.
 
-For example, if the primary key specification is `PRIMARY KEY ((a, b) HASH, c DESC)` then columns `a` & `b` are used together to hash partition the table,
-and rows that share the same values for `a` and `b` are stored in descending order of their value for `c`.
+For example, if the primary key specification is `PRIMARY KEY ((a, b) HASH, c DESC)` then columns `a` & `b` are used together to hash partition the table, and rows that share the same values for `a` and `b` are stored in descending order of their value for `c`.
 
 If the primary key specification is `PRIMARY KEY(a, b)`, then column `a` is used to hash partition
 the table and rows that share the same value for `a` are stored in ascending order of their value
 for `b`.
 
-### Foreign Key
+### Foreign key
 
-`FOREIGN KEY` and `REFERENCES` specifies that the set of columns can only contain values that are present in the referenced column(s) of the referenced table.
-It is used to enforce referential integrity of data.
+`FOREIGN KEY` and `REFERENCES` specifies that the set of columns can only contain values that are present in the referenced column(s) of the referenced table. It is used to enforce referential integrity of data.
 
 ### Unique
 
-This enforces that the set of columns specified in the `UNIQUE` constraint are unique in the table, i.e., no two rows can have the same values for the set of columns specified in the `UNIQUE` constraint.
+This enforces that the set of columns specified in the `UNIQUE` constraint are unique in the table, that is, no two rows can have the same values for the set of columns specified in the `UNIQUE` constraint.
 
 ### Check
 
@@ -82,24 +77,21 @@ This is used to enforce that data in the specified table meets the requirements 
 
 ### Default
 
-This clause is used to specify a default value for the column. If an `INSERT` statement does not specify a value for the column, then the default value is used.
-If no default is specified for a column, then the default is NULL.
+This clause is used to specify a default value for the column. If an `INSERT` statement does not specify a value for the column, then the default value is used. If no default is specified for a column, then the default is NULL.
 
 ### Temporary or Temp
 
-Using this qualifier will create a temporary table. Temporary tables are only visible in the current client session or transaction in which they are created
-and are automatically dropped at the end of the session or transaction.
-Any indexes created on temporary tables are temporary as well.
+Using this qualifier will create a temporary table. Temporary tables are only visible in the current client session or transaction in which they are created and are automatically dropped at the end of the session or transaction. Any indexes created on temporary tables are temporary as well.
 
-### Storage Parameters
+### Storage parameters
 
-Represent storage parameters [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS).
-This is ignored and only present for compatibility with Postgres.
+The `tablets` property specifies the number of tablets to be used. This is useful for two data center (2DC) deployments. See example below: [Create CDC table specifying number of tablets](#create-cdc-table-specifying-number-of-tablets). Use the `AND` operator to use multiple table properties.
 
+Other storage parameters [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS) are ignored and only present for compatibility with PostgreSQL.
 
 ## Examples
 
-### Table with primary key.
+### Table with primary key
 
 ```postgresql
 yugabyte=# CREATE TABLE sample(k1 int,
@@ -109,7 +101,8 @@ yugabyte=# CREATE TABLE sample(k1 int,
                                PRIMARY KEY (k1, k2));
 ```
 
-In this example, the first column `k1` will be HASH, while second column `k2` will be ASC.
+In this example, the first column `k1` will be `HASH`, while second column `k2` will be `ASC`.
+
 ```
 yugabyte=# \d sample
                Table "public.sample"
@@ -123,7 +116,8 @@ Indexes:
     "sample_pkey" PRIMARY KEY, lsm (k1 HASH, k2)
 ```
 
-### Table with range primary key.
+### Table with range primary key
+
 ```postgresql
 yugabyte=# CREATE TABLE range(k1 int,
                               k2 int,
@@ -132,7 +126,7 @@ yugabyte=# CREATE TABLE range(k1 int,
                               PRIMARY KEY (k1 ASC, k2 DESC));
 ```
 
-### Table with check constraint.
+### Table with check constraint
 
 ```postgresql
 yugabyte=# CREATE TABLE student_grade(student_id int,
@@ -142,7 +136,7 @@ yugabyte=# CREATE TABLE student_grade(student_id int,
                                       PRIMARY KEY (student_id, class_id, term_id));
 ```
 
-### Table with default value.
+### Table with default value
 
 ```postgresql
 yugabyte=# CREATE TABLE cars(id int PRIMARY KEY,
@@ -151,19 +145,20 @@ yugabyte=# CREATE TABLE cars(id int PRIMARY KEY,
                              color text NOT NULL DEFAULT 'WHITE' CHECK (color in ('RED', 'WHITE', 'BLUE')));
 ```
 
-### Table with foreign key constraint.
+### Table with foreign key constraint
 
 Define two tables with a foreign keys constraint.
+
 ```postgresql
 yugabyte=# CREATE TABLE products(id int PRIMARY KEY,
                                  descr text);
 yugabyte=# CREATE TABLE orders(id int PRIMARY KEY,
                                pid int REFERENCES products(id) ON DELETE CASCADE,
                                amount int);
-
 ```
 
 Insert some rows.
+
 ```postgresql
 yugabyte=# SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 yugabyte=# INSERT INTO products VALUES (1, 'Phone X'), (2, 'Tablet Z');
@@ -171,6 +166,7 @@ yugabyte=# INSERT INTO orders VALUES (1, 1, 3), (2, 1, 3), (3, 2, 2);
 
 yugabyte=# SELECT o.id AS order_id, p.id as product_id, p.descr, o.amount FROM products p, orders o WHERE o.pid = p.id;
 ```
+
 ```
 order_id | product_id |  descr   | amount
 ----------+------------+----------+--------
@@ -181,9 +177,11 @@ order_id | product_id |  descr   | amount
 ```
 
 Inserting a row referencing a non-existent product is not allowed.
+
 ```postgresql
 yugabyte=# INSERT INTO orders VALUES (1, 3, 3);
 ```
+
 ```
 ERROR:  insert or update on table "orders" violates foreign key constraint "orders_pid_fkey"
 DETAIL:  Key (pid)=(3) is not present in table "products".
@@ -203,11 +201,27 @@ yugabyte=# SELECT o.id AS order_id, p.id as product_id, p.descr, o.amount FROM p
 (1 row)
 ```
 
-### Table with unique constraint.
+### Table with unique constraint
 
 ```postgresql
 yugabyte=# CREATE TABLE translations(message_id int UNIQUE,
                                      message_txt text);
+```
+
+### Create CDC table specifying number of tablets
+
+For two data center (2DC) deployments that require the identical number of tablets on both clusters, you can use the `CREATE TABLE` statement with the `WITH` clause to specify the number of tablets.
+
+```postgresql
+yugabyte=# CREATE TABLE tracking (id int PRIMARY KEY) WITH tablets = 10;
+```
+
+If you create an index for these tables, you can also specify the number of tablets for the index.
+
+You can also use `AND` to add other table properties, like in this example.
+
+```postgresql
+yugabyte=# CREATE TABLE tracking (id int PRIMARY KEY) WITH tablets = 10 AND transactions = { 'enabled' : true };
 ```
 
 ## See also
