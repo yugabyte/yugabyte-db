@@ -35,7 +35,7 @@ class PhysicalClock {
 };
 
 typedef std::shared_ptr<PhysicalClock> PhysicalClockPtr;
-typedef std::function<PhysicalClockPtr()> PhysicalClockProvider;
+typedef std::function<PhysicalClockPtr(const std::string&)> PhysicalClockProvider;
 
 // Clock with user controlled return values.
 class MockClock : public PhysicalClock {

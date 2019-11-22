@@ -369,4 +369,44 @@ TEST_F_EX(ClientStressTest, MasterQueueFull, ClientStressTestSmallQueueMultiMast
   }
 }
 
+class RF1ClientStressTest : public ClientStressTest {
+ public:
+  ExternalMiniClusterOptions default_opts() override {
+    ExternalMiniClusterOptions result;
+    result.num_tablet_servers = 1;
+    result.extra_master_flags = { "--replication_factor=1" };
+    return result;
+  }
+};
+
+// Test that config change works while running a workload.
+TEST_F_EX(ClientStressTest, IncreaseReplicationFactorUnderLoad, RF1ClientStressTest) {
+  TestWorkload work(cluster_.get());
+  work.set_num_write_threads(1);
+  work.set_num_tablets(6);
+  work.Setup();
+  work.Start();
+
+  // Fill table with some records.
+  std::this_thread::sleep_for(1s);
+
+  ASSERT_OK(cluster_->AddTabletServer(/* start_cql_proxy= */ false, {"--time_source=skewed,-500"}));
+
+  master::ReplicationInfoPB replication_info;
+  replication_info.mutable_live_replicas()->set_num_replicas(2);
+  ASSERT_OK(work.client().SetReplicationInfo(replication_info));
+
+  LOG(INFO) << "Replication factor changed";
+
+  auto deadline = CoarseMonoClock::now() + 3s;
+  while (CoarseMonoClock::now() < deadline) {
+    ASSERT_NO_FATALS(cluster_->AssertNoCrashes());
+    std::this_thread::sleep_for(100ms);
+  }
+
+  work.StopAndJoin();
+
+  LOG(INFO) << "Written rows: " << work.rows_inserted();
+}
+
 }  // namespace yb

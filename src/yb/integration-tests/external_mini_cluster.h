@@ -198,7 +198,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Add a new TS to the cluster. The new TS is started.  Requires that the master is already
   // running.
   CHECKED_STATUS AddTabletServer(
-      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy);
+      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      const std::vector<std::string>& extra_flags = {});
 
   // Shuts down the whole cluster or part of it, depending on the selected 'mode'.  Currently, this
   // uses SIGKILL on each daemon for a non-graceful shutdown.

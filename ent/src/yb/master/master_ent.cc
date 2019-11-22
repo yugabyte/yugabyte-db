@@ -41,7 +41,7 @@ Master::~Master() {
 
 Status Master::RegisterServices() {
 #if !defined(__APPLE__)
-  server::HybridClock::RegisterProvider(NtpClock::Name(), [] {
+  server::HybridClock::RegisterProvider(NtpClock::Name(), [](const std::string&) {
     return std::make_shared<NtpClock>();
   });
 #endif
