@@ -1617,6 +1617,8 @@ void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
   if (tablet) {
     resp->set_num_sst_files(tablet->GetCurrentVersionNumSSTFiles());
   }
+
+  resp->set_propagated_hybrid_time(tablet_peer->clock().Now().ToUint64());
   context.RespondSuccess();
 }
 

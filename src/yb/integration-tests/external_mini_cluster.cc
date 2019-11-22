@@ -1047,7 +1047,8 @@ string ExternalMiniCluster::GetBindIpForTabletServer(int index) const {
   }
 }
 
-Status ExternalMiniCluster::AddTabletServer(bool start_cql_proxy) {
+Status ExternalMiniCluster::AddTabletServer(
+    bool start_cql_proxy, const std::vector<std::string>& extra_flags) {
   CHECK(GetLeaderMaster() != nullptr)
       << "Must have started at least 1 master before adding tablet servers";
 
@@ -1095,6 +1096,7 @@ Status ExternalMiniCluster::AddTabletServer(bool start_cql_proxy) {
   } else {
     flags.push_back("--enable_ysql=false");
   }
+  flags.insert(flags.end(), extra_flags.begin(), extra_flags.end());
 
   scoped_refptr<ExternalTabletServer> ts = new ExternalTabletServer(
       idx, messenger_, proxy_cache_.get(),

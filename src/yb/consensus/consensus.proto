@@ -414,6 +414,9 @@ message ConsensusResponsePB {
 
   // Number of SST files in this follower regular db.
   optional int64 num_sst_files = 5;
+
+  // Hybrid time on the follower when this request was processed.
+  optional fixed64 propagated_hybrid_time = 6;
 }
 
 // A message reflecting the status of an in-flight transaction.

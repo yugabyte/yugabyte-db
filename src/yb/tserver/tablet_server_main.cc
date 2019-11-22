@@ -46,6 +46,7 @@
 #include "yb/master/call_home.h"
 #include "yb/rpc/io_thread_pool.h"
 #include "yb/rpc/scheduler.h"
+#include "yb/server/skewed_clock.h"
 #include "yb/tserver/factory.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/consensus/log_util.h"
@@ -133,6 +134,8 @@ int TabletServerMain(int argc, char** argv) {
   // Do not sync GLOG to disk for INFO, WARNING.
   // ERRORs, and FATALs will still cause a sync to disk.
   FLAGS_logbuflevel = google::GLOG_WARNING;
+
+  server::SkewedClock::Register();
 
   // Only write FATALs by default to stderr.
   FLAGS_stderrthreshold = google::FATAL;
