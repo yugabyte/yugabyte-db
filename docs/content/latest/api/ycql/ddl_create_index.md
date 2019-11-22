@@ -97,7 +97,7 @@ Where
 
 ### UNIQUE INDEX
 
- - A unique index disallows duplicate values from being inserted into the indexed columns. It can be used to ensure uniqueness of index column values.
+- A unique index disallows duplicate values from being inserted into the indexed columns. It can be used to ensure uniqueness of index column values.
 
 ## Examples
 
@@ -121,7 +121,7 @@ cqlsh:example> CREATE TABLE orders (customer_id INT,
 cqlsh:example> CREATE INDEX orders_by_date ON orders (order_date) INCLUDE (amount);
 ```
 
-### Create an index for query by the jsonb attribute `product->>'name'`
+### Create an index for query by the JSONB attribute `product->>'name'`
 
 ```sql
 cqlsh:example> CREATE INDEX product_name ON orders (product->>'name') INCLUDE (amount);

@@ -82,30 +82,33 @@ Where
 
 #### PARTITION KEY
 
- - Partition key is required and defines a split of rows into _partitions_.
- - Rows that share the same partition key form a partition and will be colocated on the same replica node.
+- Partition key is required and defines a split of rows into _partitions_.
+- Rows that share the same partition key form a partition and will be colocated on the same replica node.
 
 #### CLUSTERING KEY
 
- - Clustering key is optional and defines an ordering for rows within a partition.
- - Default ordering is ascending (`ASC`) but can be set for each clustering column as ascending or descending using the `CLUSTERING ORDER BY` table property.
+- Clustering key is optional and defines an ordering for rows within a partition.
+- Default ordering is ascending (`ASC`) but can be set for each clustering column as ascending or descending using the `CLUSTERING ORDER BY` table property.
 
 ### STATIC COLUMNS
 
- - Columns declared as `STATIC` will share the same value for all rows within a partition (i.e. rows having the same partition key).
- - Columns in the primary key cannot be static.
- - A table without clustering columns cannot have static columns (without clustering columns the primary key and the partition key are identical so static columns would be the same as regular columns).
+- Columns declared as `STATIC` will share the same value for all rows within a partition (i.e. rows having the same partition key).
+- Columns in the primary key cannot be static.
+- A table without clustering columns cannot have static columns (without clustering columns the primary key and the partition key are identical so static columns would be the same as regular columns).
 
 ### TABLE PROPERTIES
 
- - The `CLUSTERING ORDER BY` property can be used to set the ordering for each clustering column individually (default is `ASC`).
- - The `default_time_to_live` property sets the default expiration time (TTL) in seconds for a table. The expiration time can be overridden by setting TTL for individual rows. The default value is `0` and means rows do not expire.
- - The `transactions` property specifies if distributed transactions are enabled in the table. To enable distributed transactions, use `transactions = { 'enabled' : true }`.
- - The other CQL table properties are allowed in the syntax but are currently ignored internally (have no effect).
+- The `CLUSTERING ORDER BY` property can be used to set the ordering for each clustering column individually (default is `ASC`).
+- The `default_time_to_live` property sets the default expiration time (TTL) in seconds for a table. The expiration time can be overridden by setting TTL for individual rows. The default value is `0` and means rows do not expire.
+- The `transactions` property specifies if distributed transactions are enabled in the table. To enable distributed transactions, use `transactions = { 'enabled' : true }`.
+- The `tablets` property specifies the number of tablets to be used. This is useful for two data center (2DC) deployments. See example below: [Create CDC table specifying number of tablets](#create-cdc-table-specifying-number-of-tablets)
+- Use the `AND` operator to use multiple table properties.
+- The other CQL table properties are allowed in the syntax but are currently ignored internally (have no effect).
 
 ## Examples
 
 ### Use column constraint to define primary key
+
  'user_id' is the partitioning column and there are no clustering columns.
 
 ```sql
@@ -159,7 +162,7 @@ cqlsh:example> SELECT * FROM devices;
 
 ### Use table property to define the order (ascending or descending) for clustering columns
 
-Timestmap column 'ts' will be stored in descending order (latest values first).
+Timestamp column 'ts' will be stored in descending order (latest values first).
 
 ```sql
 cqlsh:example> CREATE TABLE user_actions(user_id INT,
@@ -228,6 +231,7 @@ cqlsh:example> SELECT * FROM sensor_data;
 -----------+---------------------------------+-------
          2 | 2017-10-01 18:22:34.000000+0000 |   3.4
 ```
+
 Second select 3 seconds later (at time T + 9).
 
 ```sql
@@ -240,6 +244,22 @@ cqlsh:example> SELECT * FROM sensor_data;
 
 ```
 
+### Create CDC table specifying number of tablets
+
+For two data center (2DC) deployments that require the identical number of tablets on both clusters, you can use the `CREATE TABLE` statement with the `WITH` clause to specify the number of tablets.
+
+```sql
+cqlsh:example> CREATE TABLE tracking (id int PRIMARY KEY) WITH tablets = 10;
+```
+
+If you create an index for these tables, you can also specify the number of tablets for the index.
+
+You can also use `AND` to add other table properties, like in this example.
+
+```sql
+cqlsh:example> CREATE TABLE tracking (id int PRIMARY KEY) WITH tablets = 10 AND transactions = { 'enabled' : true };
+```
+
 ## See also
 
 [`ALTER TABLE`](../ddl_alter_table)
@@ -248,4 +268,3 @@ cqlsh:example> SELECT * FROM sensor_data;
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)
 [`UPDATE`](../dml_update)
-[Other CQL Statements](..)
