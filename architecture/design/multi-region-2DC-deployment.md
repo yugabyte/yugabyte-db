@@ -241,8 +241,6 @@ This combination of `WAITING_TO_COMMIT` status and `tablets_received_applying_re
   * Currently: Certain potentially unsafe combinations of DDL/DML are allowed. For example, in having a *unique key constraint* on a column in an active-active *last writer wins* mode is unsafe since a violation could easily be introduced by inserting different values on the two clusters - each of these operations is legal in itself. The ensuing replication can, however, violate the unique key constraint. This will cause the two clusters to permanently diverge and the replication to fail.
   * Future: Detect such unsafe combinations and warn the user. Such combinations should possibly be disallowed by default.
 
-[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/multi-region-2DC-deployment.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
-
 # Impact on Application Design
 Since 2DC replication is done asynchronously and by replicating the WAL (and thereby bypassing the query layer), application design needs to follow these patterns:
 
@@ -255,3 +253,5 @@ Since 2DC replication is done asynchronously and by replicating the WAL (and the
 * **Avoid serial columns in primary key (only for active-active mode)**:
   * Since both universes will generate the same sequence numbers, this can result in conflicting rows. It’s better to use UUIDs  instead.
 
+
+[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/multi-region-2DC-deployment.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
