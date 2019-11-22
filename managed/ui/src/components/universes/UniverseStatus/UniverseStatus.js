@@ -11,13 +11,18 @@ export default class UniverseStatus extends Component {
     const {currentUniverse: { universeUUID}} = this.props;
     return isNonEmptyArray(customerTaskList) ? customerTaskList.some(function(taskItem) {
       return (taskItem.targetUUID === universeUUID && (taskItem.status === "Running" ||
-      taskItem.status === "Initializing") && Number(taskItem.percentComplete) !== 100);
+      taskItem.status === "Initializing") && Number(taskItem.percentComplete) !== 100) && taskItem.target.toLowerCase() !== "backup";
     }) : false;
   };
 
   componentWillReceiveProps(nextProps) {
-    const { tasks: {customerTaskList}, refreshUniverseData} = nextProps;
-    if (!this.hasPendingTasksForUniverse(customerTaskList) && this.hasPendingTasksForUniverse(this.props.tasks.customerTaskList)) {
+    const {
+      currentUniverse: { universeDetails },
+      tasks: { customerTaskList},
+      refreshUniverseData
+    } = nextProps;
+
+    if (!universeDetails.updateInProgress && !this.hasPendingTasksForUniverse(customerTaskList) && this.hasPendingTasksForUniverse(this.props.tasks.customerTaskList)) {
       refreshUniverseData();
     }
   }
@@ -30,12 +35,9 @@ export default class UniverseStatus extends Component {
     let statusText = "";
     const universePendingTask = isNonEmptyArray(customerTaskList) ? customerTaskList.find(function(taskItem) {
       return (taskItem.targetUUID === universeUUID && (taskItem.status === "Running" ||
-        taskItem.status === "Initializing") && Number(taskItem.percentComplete) !== 100);
+        taskItem.status === "Initializing") && Number(taskItem.percentComplete) !== 100) && taskItem.target.toLowerCase() !== "backup";
     }) : null;
 
-    if (!updateInProgress && isNonEmptyObject(universePendingTask)) {
-      this.props.fetchCurrentUniverse(universeUUID);
-    }
     if (showLabelText) {
       statusText = "Loading";
     }
