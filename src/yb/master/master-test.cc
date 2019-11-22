@@ -62,6 +62,7 @@ DECLARE_string(callhome_url);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(simulate_slow_table_create_secs);
 DECLARE_bool(return_error_if_namespace_not_found);
+DECLARE_bool(simulate_crash_after_table_marked_deleting);
 
 namespace yb {
 namespace master {
@@ -477,6 +478,38 @@ TEST_F(MasterTest, TestCreateTableInvalidSchema) {
   ASSERT_TRUE(resp.has_error());
   ASSERT_EQ(AppStatusPB::INVALID_ARGUMENT, resp.error().status().code());
   ASSERT_EQ("Duplicate column name: col", resp.error().status().message());
+}
+
+TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
+  FLAGS_simulate_crash_after_table_marked_deleting = true;
+  const char *kTableName = "testtb";
+  const Schema kTableSchema({ ColumnSchema("key", INT32)},
+                            1);
+
+  ASSERT_OK(CreateTable(kTableName, kTableSchema));
+  vector<TabletId> tablet_ids;
+  for (auto elem : *mini_master_->master()->catalog_manager()->tablet_map_) {
+    auto tablet = elem.second;
+    if (tablet->table()->name() == kTableName) {
+      tablet_ids.push_back(elem.first);
+    }
+  }
+
+  // Delete the table
+  TableId id;
+  ASSERT_OK(DeleteTable(default_namespace_name, kTableName, &id));
+
+  // Restart the master to force a reload of the tablets.
+  ASSERT_OK(mini_master_->Restart());
+  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  // Verify that the test table's tablets are in the DELETED state.
+  for (const auto& tablet_id : tablet_ids) {
+    auto iter = mini_master_->master()->catalog_manager()->tablet_map_->find(tablet_id);
+    ASSERT_NE(iter, mini_master_->master()->catalog_manager()->tablet_map_->end());
+    auto l = iter->second->LockForRead();
+    ASSERT_EQ(l->data().pb.state(), SysTabletsEntryPB::DELETED);
+  }
 }
 
 // Regression test for KUDU-253/KUDU-592: crash if the GetTableLocations RPC call is
