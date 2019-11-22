@@ -30,7 +30,7 @@ class CatalogManager : public yb::master::CatalogManager {
  public:
   explicit CatalogManager(yb::master::Master* master) : super(master) {}
 
-  CHECKED_STATUS RunLoaders() override;
+  CHECKED_STATUS RunLoaders(int64_t term) override;
 
   // API to start a snapshot creation.
   CHECKED_STATUS CreateSnapshot(const CreateSnapshotRequestPB* req,
