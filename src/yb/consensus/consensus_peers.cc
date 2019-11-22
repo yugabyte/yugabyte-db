@@ -342,6 +342,10 @@ void Peer::ProcessResponse() {
     return;
   }
 
+  if (response_.has_propagated_hybrid_time()) {
+    queue_->clock()->Update(HybridTime(response_.propagated_hybrid_time()));
+  }
+
   // We should try to evict a follower which returns a WRONG UUID error.
   if (response_.has_error() &&
       response_.error().code() == tserver::TabletServerErrorPB::WRONG_SERVER_UUID) {

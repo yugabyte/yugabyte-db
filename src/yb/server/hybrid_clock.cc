@@ -78,17 +78,23 @@ namespace {
 std::mutex providers_mutex;
 std::unordered_map<std::string, PhysicalClockProvider> providers;
 
-PhysicalClockPtr GetClock(const std::string& name) {
-  if (name.empty()) {
+// options should be in format clock_name[,extra_data] and extra_data would be passed to
+// clock factory.
+PhysicalClockPtr GetClock(const std::string& options) {
+  if (options.empty()) {
     return WallClock();
   }
+
+  auto pos = options.find(',');
+  auto name = pos == std::string::npos ? options : options.substr(0, pos);
+  auto arg = pos == std::string::npos ? std::string() : options.substr(pos + 1);
   std::lock_guard<std::mutex> lock(providers_mutex);
   auto it = providers.find(name);
   if (it == providers.end()) {
     LOG(DFATAL) << "Unknown time source: " << name;
     return WallClock();
   }
-  return it->second();
+  return it->second(arg);
 }
 
 } // namespace

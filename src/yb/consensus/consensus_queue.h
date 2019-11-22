@@ -331,6 +331,10 @@ class PeerMessageQueue {
   // Start memory tracking of following operations in case they are still present in our caches.
   void TrackOperationsMemory(const OpIds& op_ids);
 
+  const server::ClockPtr& clock() const {
+    return clock_;
+  }
+
  private:
   FRIEND_TEST(ConsensusQueueTest, TestQueueAdvancesCommittedIndex);
   FRIEND_TEST(ConsensusQueueTest, TestReadReplicatedMessagesForCDC);
