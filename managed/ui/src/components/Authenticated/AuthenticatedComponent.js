@@ -40,7 +40,7 @@ class AuthenticatedComponent extends Component {
   };
 
   componentWillReceiveProps(nextProps) {
-    const {tasks} = nextProps;
+    const { tasks } = nextProps;
     if (this.props.fetchMetadata !== nextProps.fetchMetadata && nextProps.fetchMetadata) {
       this.props.getProviderListItems();
       this.props.fetchUniverseList();
