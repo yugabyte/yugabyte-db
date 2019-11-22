@@ -85,6 +85,7 @@ class UniverseForm extends Component {
       }
     } else {
       if (this.props.location && this.props.location.pathname) {
+        this.props.fetchCurrentUniverse(universeUUID);
         browserHistory.push(`/universes/${universeUUID}`);
       }
     }
@@ -98,6 +99,7 @@ class UniverseForm extends Component {
 
   handleSubmitButtonClick = () => {
     const { type } = this.props;
+    setTimeout(this.props.fetchCustomerTasks, 2000);
     if (type === "Create") {
       this.createUniverse();
       this.transitionToDefaultRoute();
