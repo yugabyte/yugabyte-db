@@ -32,6 +32,7 @@ import com.google.common.base.Stopwatch;
 import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.yb.AssertionWrappers;
 import org.yb.client.BaseYBClientTest;
 import org.yb.client.TestUtils;
@@ -51,6 +52,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.yb.AssertionWrappers.assertTrue;
@@ -553,7 +555,8 @@ public class MiniYBCluster implements AutoCloseable {
         "--cql_proxy_webserver_port=" + cqlWebPort,
         "--pgsql_proxy_webserver_port=" + pgsqlWebPort,
         "--yb_client_admin_operation_timeout_sec=" + YB_CLIENT_ADMIN_OPERATION_TIMEOUT_SEC,
-        "--callhome_enabled=false");
+        "--callhome_enabled=false",
+        "--process_info_dir=" + getProcessInfoDir());
     addFlagsFromEnv(tsCmdLine, "YB_EXTRA_TSERVER_FLAGS");
 
     if (startPgSqlProxy) {
@@ -606,7 +609,8 @@ public class MiniYBCluster implements AutoCloseable {
       "--catalog_manager_bg_task_wait_ms=" + CATALOG_MANAGER_BG_TASK_WAIT_MS,
       "--rpc_slow_query_threshold_ms=" + RPC_SLOW_QUERY_THRESHOLD,
       "--webserver_port=" + masterWebPort,
-      "--callhome_enabled=false");
+      "--callhome_enabled=false",
+      "--process_info_dir=" + getProcessInfoDir());
     addFlagsFromEnv(masterCmdLine, "YB_EXTRA_MASTER_FLAGS");
     return masterCmdLine;
   }
@@ -947,6 +951,9 @@ public class MiniYBCluster implements AutoCloseable {
   public void shutdown() throws Exception {
     LOG.info("Shutting down mini cluster");
     shutdownDaemons();
+    String processInfoDir = getProcessInfoDir();
+    processCoreFiles(processInfoDir);
+    pathsToDelete.add(processInfoDir);
     for (String path : pathsToDelete) {
       try {
         File f = new File(path);
@@ -961,6 +968,28 @@ public class MiniYBCluster implements AutoCloseable {
       }
     }
     LOG.info("Mini cluster shutdown finished");
+  }
+
+  private void processCoreFiles(String folder) {
+    File[] files = (new File(folder)).listFiles();
+    for (File file : files == null ? new File[]{} : files) {
+      String fileName = file.getAbsolutePath();
+      try {
+        String exeFile = new String(Files.readAllBytes(Paths.get(fileName)));
+        int pid = Integer.parseInt(file.getName());
+        CoreFileUtil.processCoreFile(
+            pid, exeFile, exeFile, null /* coreFileDir */,
+            CoreFileUtil.CoreFileMatchMode.EXACT_PID);
+      } catch (Exception e) {
+        LOG.warn("Failed to analyze PID from '{}' file", fileName, e);
+      }
+    }
+  }
+
+  private String getProcessInfoDir() {
+    Path path = Paths.get(TestUtils.getBaseTmpDir()).resolve("process_info");
+    path.toFile().mkdirs();
+    return path.toAbsolutePath().toString();
   }
 
   private void shutdownDaemons() throws Exception {

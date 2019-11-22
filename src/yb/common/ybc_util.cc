@@ -13,22 +13,30 @@
 #include "yb/common/ybc_util.h"
 
 #include <stdarg.h>
+#include <fstream>
 
 #include "yb/common/pgsql_error.h"
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/ybc-internal.h"
 
-#include "yb/util/logging.h"
-#include "yb/util/init.h"
-#include "yb/util/version_info.h"
-#include "yb/util/status.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/debug-util.h"
+#include "yb/util/env.h"
+#include "yb/util/flag_tags.h"
+#include "yb/util/init.h"
+#include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status.h"
+#include "yb/util/version_info.h"
+
 #include "yb/gutil/stringprintf.h"
 
 using std::string;
+DEFINE_test_flag(string,
+                 process_info_dir,
+                 string(),
+                 "Directory where all postgres process will writes their PIDs and executable name");
 
 namespace yb {
 
@@ -40,6 +48,21 @@ void ChangeWorkingDir(const char* dir) {
     LOG(WARNING) << "Failed to change working directory to " << dir << ", error was "
                  << errno << " " << std::strerror(errno) << "!";
   }
+}
+
+void WriteCurrentProcessInfo(const string& destination_dir) {
+  string executable_path;
+  if (Env::Default()->GetExecutablePath(&executable_path).ok()) {
+    const auto destination_file = Format("$0/$1", destination_dir, getpid());
+    std::ofstream out(destination_file, std::ios_base::out);
+    out << executable_path;
+    if (out) {
+      LOG(INFO) << "Process info is written to " << destination_file;
+      return;
+    }
+  }
+  LOG(WARNING) << "Unable to write process info to "
+               << destination_dir << " dir: error " << errno << " " << std::strerror(errno);
 }
 
 Status InitInternal(const char* argv0) {
@@ -201,7 +224,11 @@ YBCStatus YBCInit(const char* argv0,
                   YBCCStringToTextWithLenFn cstring_to_text_with_len_fn) {
   YBCSetPAllocFn(palloc_fn);
   YBCSetCStringToTextWithLenFn(cstring_to_text_with_len_fn);
-  return ToYBCStatus(yb::InitInternal(argv0));
+  auto status = yb::InitInternal(argv0);
+  if (status.ok() && !FLAGS_process_info_dir.empty()) {
+    WriteCurrentProcessInfo(FLAGS_process_info_dir);
+  }
+  return ToYBCStatus(status);
 }
 
 void YBCLogImpl(
