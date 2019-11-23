@@ -14,10 +14,7 @@
       "runtime": {
          "requires": {
             "plpgsql": 0,
-            "PostgreSQL": "8.3.0"
-         },
-         "recommends": {
-            "PostgreSQL": "8.4.0"
+            "PostgreSQL": "9.1.0"
          }
       }
    },
