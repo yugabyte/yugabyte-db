@@ -13,6 +13,7 @@
 package org.yb.pgsql;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.FilenameUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
@@ -23,10 +24,14 @@ import org.yb.minicluster.LogPrinter;
 import org.yb.util.*;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * A wrapper for running the pg_regress utility.
@@ -198,6 +203,55 @@ public class PgRegressRunner {
         }
         LOG.warn("Side-by-side diff between expected output and actual output:\n" +
             new SideBySideDiff(expectedFile, resultFile).getSideBySideDiff());
+      }
+    }
+
+    if (!ConfForTesting.isCI()) {
+      final Path pgRegressOutputPath = Paths.get(pgRegressOutputDir.toString());
+
+      final Path resultsDirPath = pgRegressOutputPath.resolve("results");
+      Set<String> resultFileNames = Files.find(
+          resultsDirPath,
+          1,  // maxDepth
+          (filePath, fileAttr) -> fileAttr.isRegularFile()
+      ).map(path ->
+          FilenameUtils.removeExtension(resultsDirPath.relativize(path).getFileName().toString())
+      ).collect(Collectors.toSet());
+
+      LOG.info("Copying test result files and generated SQL and expected output " +
+               pgRegressOutputPath + " back to " + getPgRegressDir());
+      final Set<String> copiedFiles = new TreeSet<>();
+      final Set<String> failedFiles = new TreeSet<>();
+      final Set<String> skippedFiles = new TreeSet<>();
+      Files.find(
+          pgRegressOutputPath,
+          Integer.MAX_VALUE,
+          (filePath, fileAttr) -> fileAttr.isRegularFile()
+      ).forEach(pathToCopy -> {
+        String fileName = pathToCopy.toFile().getName();
+        String relPathStr = pgRegressOutputPath.relativize(pathToCopy).toString();
+        String fileNameNoExt = FilenameUtils.removeExtension(fileName);
+        File srcFile = pathToCopy.toFile();
+        File destFile = new File(getPgRegressDir(), relPathStr);
+        if ((resultFileNames.contains(fileNameNoExt) || fileName.endsWith(".diffs")) &&
+            !fileName.endsWith(".source")) {
+          try {
+            FileUtils.copyFile(srcFile, destFile);
+            copiedFiles.add(relPathStr);
+          } catch (IOException ex) {
+            LOG.warn("Failed copying file " + srcFile + " to " + destFile, ex);
+            failedFiles.add(relPathStr);
+          }
+        } else {
+          skippedFiles.add(relPathStr);
+        }
+      });
+
+      String fromWhereToWhere = "from " + pgRegressOutputPath + " to " + getPgRegressDir() + ": ";
+      LOG.info("Copied files " + fromWhereToWhere + copiedFiles);
+      LOG.info("Skipped copying files " + fromWhereToWhere + skippedFiles);
+      if (!failedFiles.isEmpty()) {
+        LOG.info("Failed copying files " + fromWhereToWhere + failedFiles);
       }
     }
 
