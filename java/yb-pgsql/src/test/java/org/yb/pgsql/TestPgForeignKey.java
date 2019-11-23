@@ -50,7 +50,7 @@ public class TestPgForeignKey extends BasePgSQLTest {
   @Test
   public void testPgRegress() throws Exception {
     runPgRegressTest("yb_foreign_key_serial_schedule");
-   }
+  }
 
   private void checkRows(Statement statement,
                          String table_name,

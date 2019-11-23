@@ -44,7 +44,7 @@ public class TestPgSequences extends BasePgSQLTest {
       statement.execute("DROP SEQUENCE s1 CASCADE");
       statement.execute("DROP SEQUENCE s2 CASCADE");
     } catch (Exception e) {
-      // Ignore it.
+      LOG.info("Exception while dropping sequences s1 and s2", e);
     }
   }
 

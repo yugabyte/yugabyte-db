@@ -21,7 +21,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.pgsql.cleaners.ClusterCleaner;
 import org.yb.pgsql.cleaners.RoleCleaner;
-import org.yb.pgsql.cleaners.TabletServerCleaner;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.io.File;
@@ -32,7 +31,6 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.TreeMap;
 
 import static org.yb.AssertionWrappers.assertThat;
 import static org.yb.AssertionWrappers.fail;
@@ -44,22 +42,6 @@ import static org.yb.pgsql.ComparableArray.arrayOf;
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestPgConfiguration extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgConfiguration.class);
-
-  private TabletServerCleaner tabletServerCleaner;
-
-  @Override
-  protected TreeMap<Integer, ClusterCleaner> getCleaners() {
-    TreeMap<Integer, ClusterCleaner> cleaners = super.getCleaners();
-    tabletServerCleaner = new TabletServerCleaner();
-    cleaners.put(0, tabletServerCleaner);
-    cleaners.put(1, new RoleCleaner());
-    return cleaners;
-  }
-
-  @Before
-  public void before() {
-    tabletServerCleaner.snapshot(miniCluster);
-  }
 
   @Test
   public void testPostgresConfigDefault() throws Exception {
