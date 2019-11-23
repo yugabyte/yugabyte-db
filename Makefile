@@ -85,13 +85,8 @@ $(info )
 #
 # TODO: update this
 # TODO9.1: update the $(TB_DIR) target below when de-supporting 9.1
-ifeq ($(shell echo $(VERSION) | grep -qE "^(7[.]|8[.]0)" && echo yes || echo no),yes)
-$(error pgTAP requires PostgreSQL 8.1 or later. This is $(VERSION))
-endif
-
-# Compile the C code only if we're on 8.3 or older.
-ifeq ($(shell echo $(VERSION) | grep -qE "^8[.][123]" && echo yes || echo no),yes)
-MODULES = src/pgtap
+ifeq ($(shell echo $(VERSION) | grep -qE "^([78][.]|9[.]0)" && echo yes || echo no),yes)
+$(error pgTAP requires PostgreSQL 9.1 or later. This is $(VERSION))
 endif
 
 # Make sure we build these.
@@ -138,16 +133,6 @@ endif
 # Partition tests tests not supported by 9.x and earlier.
 ifeq ($(shell echo $(VERSION) | grep -qE "[89][.]" && echo yes || echo no),yes)
 EXCLUDE_TEST_FILES += test/sql/partitions.sql
-endif
-
-# Enum tests not supported by 8.2 and earlier.
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][12]" && echo yes || echo no),yes)
-EXCLUDE_TEST_FILES += test/sql/enumtap.sql
-endif
-
-# Values tests not supported by 8.1 and earlier.
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][1]" && echo yes || echo no),yes)
-EXCLUDE_TEST_FILES += test/sql/valueset.sql
 endif
 
 #
@@ -223,21 +208,6 @@ endif
 ifeq ($(shell echo $(VERSION) | grep -qE "^(9[.][01]|8[.][1234])" && echo yes || echo no),yes)
 	patch -p0 < compat/install-9.1.patch
 endif
-ifeq ($(shell echo $(VERSION) | grep -qE "^(9[.]0|8[.][1234])" && echo yes || echo no),yes)
-	patch -p0 < compat/install-9.0.patch
-endif
-ifeq ($(shell echo $(VERSION) | grep -qE "^8[.][1234]" && echo yes || echo no),yes)
-	patch -p0 < compat/install-8.4.patch
-endif
-ifeq ($(shell echo $(VERSION) | grep -qE "^8[.][123]" && echo yes || echo no),yes)
-	patch -p0 < compat/install-8.3.patch
-endif
-ifeq ($(shell echo $(VERSION) | grep -qE "^8[.][12]" && echo yes || echo no),yes)
-	patch -p0 < compat/install-8.2.patch
-endif
-ifeq ($(shell echo $(VERSION) | grep -qE "^8[.][1]" && echo yes || echo no),yes)
-	patch -p0 < compat/install-8.1.patch
-endif
 	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(NUMVERSION),g' sql/pgtap.sql > sql/pgtap.tmp
 	mv sql/pgtap.tmp sql/pgtap.sql
 
@@ -298,10 +268,10 @@ sql/pgtap-static.sql: sql/pgtap.sql.in
 	sed -e 's#MODULE_PATHNAME#$$libdir/pgtap#g' -e 's#__OS__#$(OSNAME)#g' -e 's#__VERSION__#$(NUMVERSION)#g' $@.tmp > $@
 EXTRA_CLEAN += sql/pgtap-static.sql sql/pgtap-static.sql.tmp
 
-sql/pgtap-core.sql: sql/pgtap-static.sql
+sql/pgtap-core.sql: sql/pgtap-static.sql compat/gencore
 	$(PERL) compat/gencore 0 sql/pgtap-static.sql > sql/pgtap-core.sql
 
-sql/pgtap-schema.sql: sql/pgtap-static.sql
+sql/pgtap-schema.sql: sql/pgtap-static.sql compat/gencore
 	$(PERL) compat/gencore 1 sql/pgtap-static.sql > sql/pgtap-schema.sql
 
 $(B_DIR)/static/: $(B_DIR)

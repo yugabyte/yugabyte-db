@@ -10,7 +10,7 @@ my %keep = map { chomp; $_ => 1 } <DATA>;
 my ($name, $type) = $invert ? ('Schema', 'schema-testing') : ('Core', 'assertion');
 print qq{
 -- This file defines pgTAP $name, a portable collection of $type
--- functions for TAP-based unit testing on PostgreSQL 8.3 or higher. It is
+-- functions for TAP-based unit testing on PostgreSQL 9.1 or higher. It is
 -- distributed under the revised FreeBSD license. The home page for the pgTAP
 -- project is:
 
@@ -85,7 +85,9 @@ performs_ok
 performs_within
 _time_trials
 _ident_array_to_string
+_prokind
 tap_funky
+_funkargs
 _got_func
 has_function
 hasnt_function
