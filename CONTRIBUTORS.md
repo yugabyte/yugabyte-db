@@ -1,6 +1,7 @@
 People who contributed to hypopg:
 
   * Julien Rouhaud
+  * Yuzuko Hosoya
   * Thom brown
   * Ronan Dunklau
   * Мосолов Константин
@@ -8,3 +9,6 @@ People who contributed to hypopg:
   * Rob Stolarz
   * Jeremy Finzel
   * Christoph Berg
+  * Joel Van Horn
+  * Michael Lroll
+  * Godwottery
