@@ -48,6 +48,10 @@ make install USE_PGXS=1 DESTDIR=%{buildroot}
 %{_docdir}/pgsql/contrib/README.pgtap
 
 %changelog
+* Mon Nov 25 2019 Jim Nasby <nasbyj@amazon.com> 1.1.0
+- Update to 1.1.0
+- Remove support for PostgreSQL prior to 9.1
+
 * Thu Feb 21 2019 Jim Nasby <jim@nasby.net> 1.0.0
 - Update to 1.0.0
 

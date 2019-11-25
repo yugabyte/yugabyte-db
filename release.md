@@ -36,22 +36,23 @@ Here are the steps to take to make a release of pgTAP:
     of the document.
 
 *   Add an item to the top of the `%changelog` section of `contrib/pgtap.spec`.
-    It should use the version you're about to release, as well as the date and
-    your name and email address. Add at least one bullet mentioning the
-    upgrade.
+    It should use the version you're about to release, as well as the date (use
+    `date +'%a %b %d %Y'`) and your name and email address. Add at least one
+    bullet mentioning the upgrade.
 
 *   Run `make html` (you'll need
-    [MultiMarkdown](http://fletcherpenney.net/multimarkdown/) in your path and
-    the [Pod::Simple::XHTML](https://metacpan.org/module/Pod::Simple::XHTML)
-    Perl module installed), then checkout the `gh-pages` branch and make these
-    changes:
+    [MultiMarkdown](http://fletcherpenney.net/multimarkdown/) (Macports: port
+    install multimarkdown) in your path and the
+    [Pod::Simple::XHTML](https://metacpan.org/module/Pod::Simple::XHTML)
+    (Macports: port install p5-pod-simple) Perl module installed), then
+    checkout the `gh-pages` branch and make these changes:
 
-    +   Open `documentation.html` and delete all the lines between these "DOC"
-        comments, until the main div looks like this:
+    +   `cp .documentation.html.template documentation.html`. Edit
+        documentation.html, the main div should look like this:
 
             <div id="main">
-              <!-- DOC INTRO HERE -->
-              <!-- END DOC INTRO HERE -->
+              <!-- DOCS INTRO HERE -->
+              <!-- END DOCS INTRO HERE -->
               <div id="toc">
                 <!-- TOC SANS "pgTAP x.xx" -->
                 <!-- END TOC -->
@@ -61,7 +62,7 @@ Here are the steps to take to make a release of pgTAP:
             </div>
 
     +   Copy the first `<h1>` and `<p>` from `doc/pgtap.html` into the
-        `DOC INTRO HERE` section.
+        `DOCS INTRO HERE` section.
 
     +   Copy the rest of `doc/pgtap.html` into the
         `DOCS HERE, WITH INTRO MOVED ABOVE` section.

@@ -8273,14 +8273,9 @@ Compatibility
 =============
 
 Here are some notes on how pgTAP is built for particular versions of
-PostgreSQL. This helps you to understand any side-effects. If you'd rather not
-have these changes in your schema, build `pgTAP` with a schema just for it,
-instead:
-
-    make TAPSCHEMA=tap
-
-To see the specifics for each version of PostgreSQL, consult the files in the
-`compat/` directory in the pgTAP distribution.
+PostgreSQL. This helps you to understand any side-effects. To see the specifics
+for each version of PostgreSQL, consult the files in the `compat/` directory in
+the pgTAP distribution.
 
 10 and Up
 ---------
@@ -8299,59 +8294,21 @@ No changes. Everything should just work.
 
 9.2 and Down
 ------------
+* Lacks full automated testing. Recommend using 9.4 or higher.
 * Diagnostic output from `lives_ok()` and xUnit function exceptions will not
   include schema, table, column, data type, or constraint information, since
   such diagnostics were not introduced until 9.3.
 
 9.1 and Down
 ------------
+* Lacks full automated testing. Recommend using 9.4 or higher.
 * Diagnostic output from `lives_ok()` and xUnit function exceptions will not
   error context or details, since such diagnostics were not introduced until
   9.2.
 
 9.0 and Down
 ------------
-* The `foreign_table_owner_is()` function will not work, because, of course,
-  there were no foreign tables until 9.1.
-* The `extensions_are()` functions are not available, because extensions were
-  not introduced until 9.1.
-
-8.4 and Down
-------------
-* The `sequence_privs_are()` function does not work, because privileges could
-  not be granted on sequences before 9.0.
-
-* The `triggers_are()` function does not ignore internally-created triggers.
-
-8.3 and Down
-------------
-* A patch is applied to modify `results_eq()` and `row_eq()` to cast records
-  to text before comparing them. This means that things will mainly be
-  correct, but it also means that two queries with incompatible types that
-  convert to the same text string may be considered incorrectly equivalent.
-
-* A C function, `pg_typeof()`, is built and installed in a DSO. This is for
-  compatibility with the same function that ships in 8.4 core, and is required
-  for `cmp_ok()` and `isa_ok()` to work.
-
-* The variadic forms of `diag()` and `collect_tap()` are not available.
-  You can pass an array of TAP to `collect_tap()`, however.
-
-* These permission-testing functions don't work, because one cannot grant
-  permissions on the relevant objects until 8.4:
-
-    + `has_any_column_privilege()`
-    + `has_column_privilege()`
-    + `has_foreign_data_wrapper_privilege()`
-    + `has_server_privilege()`
-
-* These inheritance-testing functions are not available, because internally
-  the use a recursive common table expression query not supported before 8.4:
-
-    + `is_ancestor_of()`
-    + `isnt_ancestor_of()`
-    + `is_descendent_of()`
-    + `isnt_descendent_of()`
+No longer supported.
 
 Metadata
 ========
