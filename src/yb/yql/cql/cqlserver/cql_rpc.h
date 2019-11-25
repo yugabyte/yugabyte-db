@@ -49,6 +49,14 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
     compression_scheme_ = compression_scheme;
   }
 
+  // Accessor methods for registered CQL events.
+  CQLMessage::Events registered_events() const {
+    return registered_events_;
+  }
+  void add_registered_events(CQLMessage::Events events) {
+    registered_events_ |= events;
+  }
+
   static std::string Name() { return "CQL"; }
 
  private:
@@ -75,6 +83,9 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
 
   // CQL message compression scheme to use.
   CQLMessage::CompressionScheme compression_scheme_ = CQLMessage::CompressionScheme::kNone;
+
+  // Stored registered events for the connection.
+  CQLMessage::Events registered_events_ = CQLMessage::kNoEvents;
 
   rpc::BinaryCallParser parser_;
 

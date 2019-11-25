@@ -123,6 +123,18 @@ class CQLMessage {
   static constexpr char kLZ4Compression[] = "lz4";
   static constexpr char kSnappyCompression[] = "snappy";
 
+  // Supported events.
+  static constexpr char kTopologyChangeEvent[] = "TOPOLOGY_CHANGE";
+  static constexpr char kStatusChangeEvent[] = "STATUS_CHANGE";
+  static constexpr char kSchemaChangeEvent[] = "SCHEMA_CHANGE";
+
+  using Events = uint8_t;
+  static constexpr Events kNoEvents       = 0x00;
+  static constexpr Events kTopologyChange = 0x01;
+  static constexpr Events kStatusChange   = 0x02;
+  static constexpr Events kSchemaChange   = 0x04;
+  static constexpr Events kAllEvents      = kTopologyChange | kStatusChange | kSchemaChange;
+
   // Basic datatype mapping for CQL message body:
   //   Int        -> int32_t
   //   Long       -> int64_t
@@ -452,11 +464,13 @@ class RegisterRequest : public CQLRequest {
   RegisterRequest(const Header& header, const Slice& body);
   virtual ~RegisterRequest() override;
 
+  Events events() const { return events_; }
+
  protected:
   virtual CHECKED_STATUS ParseBody() override;
 
  private:
-  std::vector<std::string> event_types_;
+  Events events_;
 };
 
 // ------------------------------------ CQL response -----------------------------------
@@ -465,6 +479,9 @@ class CQLResponse : public CQLMessage {
   virtual ~CQLResponse();
   virtual void Serialize(CompressionScheme compression_scheme, faststring* mesg) const;
 
+  Events registered_events() const { return registered_events_; }
+  void set_registered_events(Events events) { registered_events_ = events; }
+
  protected:
   CQLResponse(const CQLRequest& request, Opcode opcode);
   CQLResponse(StreamId stream_id, Opcode opcode);
@@ -472,6 +489,9 @@ class CQLResponse : public CQLMessage {
 
   // Function to serialize a response body that all CQLResponse subclasses need to implement
   virtual void SerializeBody(faststring* mesg) const = 0;
+
+ private:
+  Events registered_events_ = kNoEvents;
 };
 
 // ------------------------------ Individual CQL responses -----------------------------------

@@ -142,6 +142,9 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &e) {
         const auto cql_port = first_rpc_address().port();
 
         // Queue event for all clients to add a node.
+        //
+        // TODO: the event should be sent only if there is appropriate subscription.
+        //       https://github.com/yugabyte/yugabyte-db/issues/3090
         cqlserver_event_list->AddEvent(
             BuildTopologyChangeEvent(TopologyChangeEventResponse::kNewNode,
                                      Endpoint(addr.address(), cql_port)));
@@ -151,6 +154,9 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &e) {
     // Queue node refresh event, to remove any nodes that are down. Note that the 'MOVED_NODE'
     // event forces the client to refresh its entire cluster topology. The RPC address associated
     // with the event doesn't have much significance.
+    //
+    // TODO: the event should be sent only if there is appropriate subscription.
+    //       https://github.com/yugabyte/yugabyte-db/issues/3090
     cqlserver_event_list->AddEvent(
         BuildTopologyChangeEvent(TopologyChangeEventResponse::kMovedNode, first_rpc_address()));
 

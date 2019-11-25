@@ -60,6 +60,10 @@ constexpr char CQLMessage::kNoCompactOption[];
 constexpr char CQLMessage::kLZ4Compression[];
 constexpr char CQLMessage::kSnappyCompression[];
 
+constexpr char CQLMessage::kTopologyChangeEvent[];
+constexpr char CQLMessage::kStatusChangeEvent[];
+constexpr char CQLMessage::kSchemaChangeEvent[];
+
 Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
                                                     const int64_t pos,
                                                     const shared_ptr<QLType>& type,
@@ -727,7 +731,23 @@ RegisterRequest::~RegisterRequest() {
 }
 
 Status RegisterRequest::ParseBody() {
-  return ParseStringList(&event_types_);
+  vector<string> event_types;
+  RETURN_NOT_OK(ParseStringList(&event_types));
+  events_ = kNoEvents;
+
+  for (const string& event_type : event_types) {
+    if (event_type == kTopologyChangeEvent) {
+      events_ |= kTopologyChange;
+    } else if (event_type == kStatusChangeEvent) {
+      events_ |= kStatusChange;
+    } else if (event_type == kSchemaChangeEvent) {
+      events_ |= kSchemaChange;
+    } else {
+      return STATUS(NetworkError, "Invalid event type in register request");
+    }
+  }
+
+  return Status::OK();
 }
 
 // --------------------------- Serialization utility functions -------------------------------
@@ -1606,10 +1626,13 @@ SchemaChangeResultResponse::~SchemaChangeResultResponse() {
 void SchemaChangeResultResponse::Serialize(const CompressionScheme compression_scheme,
                                            faststring* mesg) const {
   ResultResponse::Serialize(compression_scheme, mesg);
-  // TODO: Replace this hack that piggybacks a SCHEMA_CHANGE event along a SCHEMA_CHANGE result
-  // response with a formal event notification mechanism.
-  SchemaChangeEventResponse event(change_type_, target_, keyspace_, object_, argument_types_);
-  event.Serialize(compression_scheme, mesg);
+
+  if (registered_events() & kSchemaChange) {
+    // TODO: Replace this hack that piggybacks a SCHEMA_CHANGE event along a SCHEMA_CHANGE result
+    // response with a formal event notification mechanism.
+    SchemaChangeEventResponse event(change_type_, target_, keyspace_, object_, argument_types_);
+    event.Serialize(compression_scheme, mesg);
+  }
 }
 
 void SchemaChangeResultResponse::SerializeResultBody(faststring* mesg) const {
@@ -1647,7 +1670,7 @@ std::string EventResponse::ToString() const {
 //----------------------------------------------------------------------------------------
 TopologyChangeEventResponse::TopologyChangeEventResponse(const string& topology_change_type,
                                                          const Endpoint& node)
-    : EventResponse("TOPOLOGY_CHANGE"), topology_change_type_(topology_change_type),
+    : EventResponse(kTopologyChangeEvent), topology_change_type_(topology_change_type),
       node_(node) {
 }
 
@@ -1666,7 +1689,7 @@ std::string TopologyChangeEventResponse::BodyToString() const {
 //----------------------------------------------------------------------------------------
 StatusChangeEventResponse::StatusChangeEventResponse(const string& status_change_type,
                                                      const Endpoint& node)
-    : EventResponse("STATUS_CHANGE"), status_change_type_(status_change_type),
+    : EventResponse(kStatusChangeEvent), status_change_type_(status_change_type),
       node_(node) {
 }
 
@@ -1688,7 +1711,7 @@ const vector<string> SchemaChangeEventResponse::kEmptyArgumentTypes = {};
 SchemaChangeEventResponse::SchemaChangeEventResponse(
     const string& change_type, const string& target,
     const string& keyspace, const string& object, const vector<string>& argument_types)
-    : EventResponse("SCHEMA_CHANGE"), change_type_(change_type), target_(target),
+    : EventResponse(kSchemaChangeEvent), change_type_(change_type), target_(target),
       keyspace_(keyspace), object_(object), argument_types_(argument_types) {
 }
 
