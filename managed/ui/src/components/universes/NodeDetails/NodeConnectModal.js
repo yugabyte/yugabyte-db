@@ -50,7 +50,7 @@ class NodeConnectModal extends Component {
       return <span/>; 
     }
     const accessKeyInfo = accessKey.keyInfo;
-    const privateSSHCommand = `sudo ssh -i ${ accessKeyInfo.privateKey } -ostricthostkeychecking=no yugabyte@${nodeIPs.privateIP} -p 54422`;
+    const privateSSHCommand = `sudo ssh -i ${ accessKeyInfo.privateKey } -ostricthostkeychecking=no -p 54422 yugabyte@${nodeIPs.privateIP}`;
     const btnId = _.uniqueId('node_action_btn_');
     return (
       <Fragment>
