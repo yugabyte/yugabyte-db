@@ -160,7 +160,7 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   if (!CQLRequest::ParseRequest(call_->serialized_request(), compression_scheme,
                                 &request, &response)) {
     cql_metrics_->num_errors_parsing_cql_->Increment();
-    SendResponse(*response);
+    PrepareAndSendResponse(response);
     return;
   }
 
@@ -174,7 +174,14 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   call_->SetRequest(request_, service_impl_);
   retry_count_ = 0;
   response.reset(ProcessRequest(*request_));
-  if (response != nullptr) {
+  PrepareAndSendResponse(response);
+}
+
+void CQLProcessor::PrepareAndSendResponse(const unique_ptr<CQLResponse>& response) {
+  if (response) {
+    const CQLConnectionContext& context =
+        static_cast<const CQLConnectionContext&>(call_->connection()->context());
+    response->set_registered_events(context.registered_events());
     SendResponse(*response);
   }
 }
@@ -370,6 +377,9 @@ CQLResponse* CQLProcessor::ProcessRequest(const AuthResponseRequest& req) {
 }
 
 CQLResponse* CQLProcessor::ProcessRequest(const RegisterRequest& req) {
+  CQLConnectionContext& context =
+      static_cast<CQLConnectionContext&>(call_->connection()->context());
+  context.add_registered_events(req.events());
   return new ReadyResponse(req);
 }
 
@@ -384,9 +394,7 @@ shared_ptr<const CQLStatement> CQLProcessor::GetPreparedStatement(const CQLMessa
 
 void CQLProcessor::StatementExecuted(const Status& s, const ExecutedResult::SharedPtr& result) {
   unique_ptr<CQLResponse> response(s.ok() ? ProcessResult(result) : ProcessError(s));
-  if (response) {
-    SendResponse(*response);
-  }
+  PrepareAndSendResponse(response);
 }
 
 CQLResponse* CQLProcessor::ProcessError(const Status& s,

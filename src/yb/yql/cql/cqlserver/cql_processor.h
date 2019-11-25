@@ -97,6 +97,7 @@ class CQLProcessor : public ql::QLProcessor {
                             boost::optional<CQLMessage::QueryId> query_id = boost::none);
 
   // Send response back to client.
+  void PrepareAndSendResponse(const std::unique_ptr<CQLResponse>& response);
   void SendResponse(const CQLResponse& response);
 
   // Pointer to the containing CQL service implementation.

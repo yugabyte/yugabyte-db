@@ -49,6 +49,11 @@ DECLARE_int32(rpc_max_message_size);
 DEFINE_int32(max_message_length, 254_MB,
              "The maximum message length of the cql message.");
 
+// By default the CQL server sends CQL EVENTs (opcode=0x0c) only if the connection was
+// subscribed (via REGISTER request) for particular events. The flag allows to send all
+// available event always - even if the connection was not subscribed for events.
+DEFINE_bool(cql_server_always_send_events, false,
+            "All CQL connections automatically subscribed for all CQL events.");
 
 namespace yb {
 namespace cqlserver {
@@ -62,6 +67,12 @@ CQLConnectionContext::CQLConnectionContext(
               this),
       read_buffer_(receive_buffer_size, buffer_tracker),
       call_tracker_(call_tracker) {
+  VLOG(1) << "CQL Connection Context: FLAGS_cql_server_always_send_events = " <<
+      FLAGS_cql_server_always_send_events;
+
+  if (FLAGS_cql_server_always_send_events) {
+    registered_events_ = CQLMessage::kAllEvents;
+  }
 }
 
 Result<rpc::ProcessDataResult> CQLConnectionContext::ProcessCalls(
