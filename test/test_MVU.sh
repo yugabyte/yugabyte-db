@@ -8,70 +8,17 @@
 
 set -E -e -u -o pipefail 
 
-rc=0
-
-# ###########
-# TODO: break these functions into a library shell script so they can be used elsewhere
-
-err_report() {
-  echo "errexit on line $(caller)" >&2
-}
+BASEDIR=`dirname $0`
+if ! . $BASEDIR/../tools/util.sh; then
+  echo "FATAL: error sourcing $BASEDIR/../tools/util.sh" 1>&2
+  exit 99
+fi
 trap err_report ERR
 
-error() {
-    echo "$@" >&2
-}
+debug 19 "Arguments: $@"
 
-die() {
-    local rc # Kinda silly here, but be safe...
-    rc=$1
-    shift
-    error "$@"
-    exit $rc
-}
+rc=0
 
-DEBUG=${DEBUG:-0}
-debug() {
-    local level
-    level=$1
-    shift
-    [ $level -gt $DEBUG ] || error "$@"
-}
-
-debug_do() {
-    local level
-    level=$1
-    shift
-    [ $level -gt $DEBUG ] || ( "$@" )
-}
-
-debug_ls() {
-# Reverse test since we *exit* if we shouldn't debug! Also, note that unlike
-# `exit`, `return` does not default to 0.
-[ $1 -le $DEBUG ] || return 0
-(
-level=$1
-shift
-
-# Look through each argument and see if more than one exist. If so, we don't
-# need to print what it is we're listing.
-location=''
-for a in "$@"; do
-    if [ -e "$a" ]; then
-        if [ -n "$location" ]; then
-            location=''
-            break
-        else
-            location=$a
-        fi
-    fi
-done
-
-error # blank line
-[ -z "$location" ] || error "$location"
-ls "$@" >&2
-)
-}
 
 byte_len() (
 [ $# -eq 1 ] || die 99 "Expected 1 argument, not $# ($@)"
@@ -114,13 +61,6 @@ banner() {
     echo '###################################'
     echo
 }
-
-find_at_path() (
-export PATH="$1:$PATH" # Unfortunately need to maintain old PATH to be able to find `which` :(
-out=$(which $2)
-[ -n "$out" ] || die 2 "unable to find $2"
-echo $out
-)
 
 run_make() (
 cd $(dirname $0)/..

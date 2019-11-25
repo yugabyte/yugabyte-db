@@ -183,7 +183,7 @@ endif
 B_DIR ?= .build
 
 # Determine the OS. Borrowed from Perl's Configure.
-OSNAME := $(shell $(SHELL) ./getos.sh)
+OSNAME := $(shell $(SHELL) tools/getos.sh)
 
 .PHONY: test
 
@@ -286,7 +286,7 @@ installcheck: test/setup.sql
 
 html:
 	multimarkdown doc/pgtap.mmd > doc/pgtap.html
-	./tocgen doc/pgtap.html 2> doc/toc.html
+	tools/tocgen doc/pgtap.html 2> doc/toc.html
 	perl -MPod::Simple::XHTML -E "my \$$p = Pod::Simple::XHTML->new; \$$p->html_header_tags('<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">'); \$$p->strip_verbatim_indent(sub { my \$$l = shift; (my \$$i = \$$l->[0]) =~ s/\\S.*//; \$$i }); \$$p->parse_from_file('`perldoc -l pg_prove`')" > doc/pg_prove.html
 
 #
@@ -396,7 +396,8 @@ $(TB_DIR)/run.sch: $(TB_DIR)/which_schedule $(GENERATED_SCHEDULES)
 # Don't generate noise if we're not running tests...
 .PHONY: extension_check
 extension_check: 
-	@[ -z "$(MISSING_EXTENSIONS)" ] || (echo; echo '***************************'; echo "WARNING: Some mandatory extensions ($(MISSING_EXTENSIONS)) are not installed; ignoring tests: $(EXTENSION_TEST_FILES)"; echo '***************************'; echo)
+	@tools/missing_extensions.sh "$(MISSING_EXTENSIONS)" "$(EXTENSION_TEST_FILES)"
+
 
 
 # These tests have specific dependencies
