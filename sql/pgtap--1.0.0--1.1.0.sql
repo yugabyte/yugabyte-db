@@ -128,3 +128,59 @@ RETURNS SETOF NAME[] AS $$
   ORDER BY 1
 $$ LANGUAGE sql;
 
+
+-- finish
+DROP FUNCTION finish();
+DROP FUNCTION _finish (INTEGER, INTEGER, INTEGER);
+
+CREATE OR REPLACE FUNCTION _finish (INTEGER, INTEGER, INTEGER, BOOLEAN DEFAULT NULL)
+RETURNS SETOF TEXT AS $$
+DECLARE
+    curr_test ALIAS FOR $1;
+    exp_tests INTEGER := $2;
+    num_faild ALIAS FOR $3;
+    plural    CHAR;
+    raise_ex  ALIAS FOR $4;
+BEGIN
+    plural    := CASE exp_tests WHEN 1 THEN '' ELSE 's' END;
+
+    IF curr_test IS NULL THEN
+        RAISE EXCEPTION '# No tests run!';
+    END IF;
+
+    IF exp_tests = 0 OR exp_tests IS NULL THEN
+         -- No plan. Output one now.
+        exp_tests = curr_test;
+        RETURN NEXT '1..' || exp_tests;
+    END IF;
+
+    IF curr_test <> exp_tests THEN
+        RETURN NEXT diag(
+            'Looks like you planned ' || exp_tests || ' test' ||
+            plural || ' but ran ' || curr_test
+        );
+    ELSIF num_faild > 0 THEN
+        IF raise_ex THEN
+            RAISE EXCEPTION  '% test% failed of %', num_faild, CASE num_faild WHEN 1 THEN '' ELSE 's' END, exp_tests;
+        END IF;
+        RETURN NEXT diag(
+            'Looks like you failed ' || num_faild || ' test' ||
+            CASE num_faild WHEN 1 THEN '' ELSE 's' END
+            || ' of ' || exp_tests
+        );
+    ELSE
+
+    END IF;
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION finish (exception_on_failure BOOLEAN DEFAULT NULL)
+RETURNS SETOF TEXT AS $$
+    SELECT * FROM _finish(
+        _get('curr_test'),
+        _get('plan'),
+        num_failed(),
+        $1
+    );
+$$ LANGUAGE sql;

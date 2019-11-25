@@ -147,5 +147,5 @@ SELECT * FROM test_records();
 
 /****************************************************************************/
 -- Finish the tests and clean up.
-SELECT * FROM finish();
+SELECT * FROM finish(false); -- Arbitrarily decided to test `finish(false)` here... :)
 ROLLBACK;

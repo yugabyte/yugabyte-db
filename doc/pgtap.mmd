@@ -300,6 +300,11 @@ discrepancy between the planned number of tests and the number actually run:
 
     SELECT * FROM finish();
 
+If you need to throw an exception if some test failed, you can pass an
+option to `finish()`.
+    
+    SELECT * FROM finish(true);    
+    
 What a sweet unit!
 ------------------
 

@@ -180,13 +180,14 @@ RETURNS INTEGER AS $$
     SELECT _get('failed');
 $$ LANGUAGE SQL strict;
 
-CREATE OR REPLACE FUNCTION _finish (INTEGER, INTEGER, INTEGER)
+CREATE OR REPLACE FUNCTION _finish (INTEGER, INTEGER, INTEGER, BOOLEAN DEFAULT NULL)
 RETURNS SETOF TEXT AS $$
 DECLARE
     curr_test ALIAS FOR $1;
     exp_tests INTEGER := $2;
     num_faild ALIAS FOR $3;
     plural    CHAR;
+    raise_ex  ALIAS FOR $4;
 BEGIN
     plural    := CASE exp_tests WHEN 1 THEN '' ELSE 's' END;
 
@@ -206,6 +207,9 @@ BEGIN
             plural || ' but ran ' || curr_test
         );
     ELSIF num_faild > 0 THEN
+        IF raise_ex THEN
+            RAISE EXCEPTION  '% test% failed of %', num_faild, CASE num_faild WHEN 1 THEN '' ELSE 's' END, exp_tests;
+        END IF;
         RETURN NEXT diag(
             'Looks like you failed ' || num_faild || ' test' ||
             CASE num_faild WHEN 1 THEN '' ELSE 's' END
@@ -218,12 +222,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION finish ()
+CREATE OR REPLACE FUNCTION finish (exception_on_failure BOOLEAN DEFAULT NULL)
 RETURNS SETOF TEXT AS $$
     SELECT * FROM _finish(
         _get('curr_test'),
         _get('plan'),
-        num_failed()
+        num_failed(),
+        $1
     );
 $$ LANGUAGE sql;
 

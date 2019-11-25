@@ -43,13 +43,16 @@ EXTRA_CLEAN += $(SCHEDULE_DEST_FILES)
 SCHEDULE_FILES = $(wildcard test/schedule/*.sch)
 
 # These are our actual regression tests
-TEST_FILES 	= $(filter-out $(SCHEDULE_DEST_FILES),$(wildcard test/sql/*.sql))
+TEST_FILES 	?= $(filter-out $(SCHEDULE_DEST_FILES),$(wildcard test/sql/*.sql))
 
 # Plain test names
 ALL_TESTS	= $(notdir $(TEST_FILES:.sql=))
 
 # Some tests fail when run in parallel
-SERIAL_TESTS = coltap hastap
+SERIAL_TESTS ?= coltap hastap
+
+# Remove tests from SERIAL_TESTS that do not appear in ALL_TESTS
+SERIAL_TESTS := $(foreach test,$(SERIAL_TESTS),$(findstring $(test),$(ALL_TESTS)))
 
 # Some tests fail when run by pg_prove
 # TODO: The first 2 of these fail because they have tests that intentionally
@@ -336,7 +339,7 @@ test: test-serial test-parallel
 # dependencies (such as excluded tests) have changed since the last time we
 # ran.
 TB_DIR = test/build
-GENERATED_SCHEDULE_DEPS = $(TB_DIR)/tests $(TB_DIR)/exclude_tests
+GENERATED_SCHEDULE_DEPS = $(TB_DIR)/all_tests $(TB_DIR)/exclude_tests
 REGRESS = --schedule $(TB_DIR)/run.sch # Set this again just to be safe
 REGRESS_OPTS = --inputdir=test --load-language=plpgsql --max-connections=$(PARALLEL_CONN) --schedule $(SETUP_SCH) $(REGRESS_CONF)
 SETUP_SCH = test/schedule/main.sch # schedule to use for test setup; this can be forcibly changed by some targets!
@@ -372,12 +375,12 @@ $(TB_DIR)/which_schedule: $(TB_DIR)/ set_parallel_conn
 	@[ "`cat $@ 2>/dev/null`" = "$(SCHEDULE)" ] || (echo "Schedule changed to $(SCHEDULE)"; echo "$(SCHEDULE)" > $@)
 
 # Generated schedule files, one for serial one for parallel
-.PHONY: $(TB_DIR)/tests # Need this target to force schedule rebuild if $(TEST) changes
-$(TB_DIR)/tests: $(TB_DIR)/
-	@[ "`cat $@ 2>/dev/null`" = "$(TEST)" ] || (echo "Rebuilding $@"; echo "$(TEST)" > $@)
+.PHONY: $(TB_DIR)/all_tests # Need this target to force schedule rebuild if $(ALL_TESTS) changes
+$(TB_DIR)/all_tests: $(TB_DIR)/
+	@[ "`cat $@ 2>/dev/null`" = "$(ALL_TESTS)" ] || (echo "Rebuilding $@"; echo "$(ALL_TESTS)" > $@)
 
 .PHONY: $(TB_DIR)/exclude_tests # Need this target to force schedule rebuild if $(EXCLUDE_TEST) changes
-$(TB_DIR)/exclude_tests: $(TB_DIR)/
+$(TB_DIR)/exclude_tests: $(TB_DIR)/ $(TB_DIR)/all_tests
 	@[ "`cat $@ 2>/dev/null`" = "$(EXCLUDE_TEST)" ] || (echo "Rebuilding $@"; echo "$(EXCLUDE_TEST)" > $@)
 
 $(TB_DIR)/serial.sch: $(GENERATED_SCHEDULE_DEPS)
