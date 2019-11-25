@@ -15,6 +15,9 @@
          "requires": {
             "plpgsql": 0,
             "PostgreSQL": "9.1.0"
+         },
+         "recommends": {
+            "PostgreSQL": "9.4.0"
          }
       }
    },
