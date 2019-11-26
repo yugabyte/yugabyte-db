@@ -128,14 +128,16 @@ class ControlScript(object):
         self.start_processes()
 
     # Kills currently running yugabyted process if it exists.
-    def stop(self):
+    def stop(self, *args):
         err = self.script.kill()
         if err:
             Output.print_out(
                 "Failed to shut down {}: {}. Please check PID in {}".format(
                     SCRIPT_NAME, err, self.script.pidfile))
+            sys.exit(1)
         else:
             Output.print_out("Shudown complete.")
+        sys.exit(0)
 
     # Prints status of YugabyteDB.
     def status(self):
@@ -532,6 +534,12 @@ class ControlScript(object):
             handlers = [e for e in atexit._exithandlers if e[0] == self.kill_children]
             for e in handlers:
                 atexit._exithandlers.remove(e)
+
+            # If parent is interrupted, kill the children as well. Note there is potentially a
+            # window where the daemon hasn't created its pidfile yet and this will error out before
+            # it can kill the daemon.
+            self.set_signals(self.stop)
+
             # Keep the parent process alive until the daemon confirms yugabyted started properly.
             try:
                 self.script.daemon_success.get(timeout=180)
