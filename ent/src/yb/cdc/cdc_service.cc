@@ -61,6 +61,9 @@ TAG_FLAG(cdc_ybclient_reactor_threads, advanced);
 DEFINE_int32(cdc_state_checkpoint_update_interval_ms, 15 * 1000,
              "Rate at which CDC state's checkpoint is updated.");
 
+DEFINE_string(certs_for_cdc_dir, "",
+              "Directory that contains certificate authorities for CDC producer universes.");
+
 DECLARE_int32(cdc_checkpoint_opid_interval_ms);
 
 METRIC_DEFINE_entity(cdc);

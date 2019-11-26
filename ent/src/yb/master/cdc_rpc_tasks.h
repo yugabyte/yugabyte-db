@@ -21,7 +21,6 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/master/master.proxy.h"
-#include "yb/rpc/messenger.h"
 
 #include "yb/util/status.h"
 #include "yb/util/result.h"
@@ -35,6 +34,13 @@ class YBTableName;
 
 } // namespace client
 
+namespace rpc {
+
+class Messenger;
+class SecureContext;
+
+} // namespace rpc
+
 namespace master {
 
 class TableIdentifierPB;
@@ -43,7 +49,10 @@ class TabletLocationsPB;
 class CDCRpcTasks {
  public:
   static Result<std::shared_ptr<CDCRpcTasks>> CreateWithMasterAddrs(
-      const std::string& master_addrs);
+      const std::string& producer_id, const std::string& master_addrs);
+
+  ~CDCRpcTasks();
+
   Result<google::protobuf::RepeatedPtrField<TabletLocationsPB>> GetTableLocations(
       const std::string& table_id);
   // Returns a list of (table id, table name).
@@ -51,7 +60,10 @@ class CDCRpcTasks {
   client::YBClient* client() const {
     return yb_client_.get();
   }
+
  private:
+  std::unique_ptr<rpc::SecureContext> secure_context_;
+  std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<client::YBClient> yb_client_;
 };
 
