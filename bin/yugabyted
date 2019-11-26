@@ -83,6 +83,7 @@ DEFAULT_TSERVER_WEBSERVER_PORT = 9000
 DEFAULT_YSQL_PORT = 5433
 DEFAULT_YCQL_PORT = 9042
 DEFAULT_WEBSERVER_PORT = 7200
+DEFAULT_CALLHOME = True
 VERSION_METADATA_PATH = os.path.join(YUGABYTE_DIR, "version_metadata.json")
 YUGABYTE_API_CLIENT_PROGRAMS = {
     "ysql": "ysqlsh",
@@ -122,7 +123,7 @@ class ControlScript(object):
             Output.print_out("YugabyteDB is already running!")
             sys.exit(1)
         self.validate_resources()
-        Output.print_and_log("Starting YugabyteDB (this may take a couple minutes)...")
+        Output.print_and_log("Starting YugabyteDB...")
         self.set_env_vars()
         self.install_yb()
         self.start_processes()
@@ -423,6 +424,8 @@ class ControlScript(object):
                 os.makedirs(self.configs.saved_data.get("data_dir"))
 
             # Start or initialize yb-master and yb-tserver.
+            if is_first_run:
+                Output.begin_replace_line("Initializing database...")
             for name in ("master", "tserver"):
                 process = self.processes.get(name)
                 process.remove_error_logs()
@@ -434,44 +437,12 @@ class ControlScript(object):
                             logging.ERROR)
                     should_callhome = True
 
-            # Print startup information and start callhome thread on first successful startup.
-            # Preemptively assume YW will successfully start up.
-            if is_first_run and self.wait_yb_master():
-                first_run_success = True
-                for name in ("master", "tserver"):
-                    process = self.processes.get(name)
-                    if not process.is_running():
-                        first_run_success = False
-                        break
-                if first_run_success and self.is_yb_initialized():
-                    status = self.get_status_string() + \
-                        Output.make_green("YugabyteDB started successfully!\n") + \
-                        Output.make_magenta(
-                                "Join us on Slack at {}".format(
-                                    Output.make_underline("{}\n".format(SLACK_LINK))))
-                    Output.print_out(status)
-                    if self.configs.temp_data.get("daemon"):
-                        # Let original process know daemon was successful so it can exit.
-                        # This is to display the initial status message.
-                        self.script.daemon_success.put(1)
-                        # Ignore any console output as important information will be logged.
-                        with open('/dev/null', 'r') as dev_null:
-                            sys.stderr.flush()
-                            sys.stdout.flush()
-                            os.dup2(dev_null.fileno(), sys.stdin.fileno())
-                            os.dup2(dev_null.fileno(), sys.stderr.fileno())
-                            os.dup2(dev_null.fileno(), sys.stdout.fileno())
-
-                if self.configs.saved_data.get("callhome"):
-                    callhome_thread = Thread(target=self.callhome_loop)
-                    callhome_thread.daemon = True
-                    callhome_thread.start()
-
-                is_first_run = False
-
-
-            yw_logged_in = False
             if self.wait_yb_master():
+                if is_first_run:
+                    Output.print_replace("Database initialized " + Output.CHECK)
+                    Output.print_out(Output.make_bold("Ready to serve queries " + Output.CHECK))
+
+                yw_logged_in = False
                 # Start or initialize yugaware after setting YSQL default isolation level.
                 # This if required to start YW because of
                 # https://github.com/Yugabyte/yugabyte-db/issues/1199.
@@ -480,13 +451,18 @@ class ControlScript(object):
                     yw_proxy = YugaWareProxy(advertise_ip,
                         self.configs.saved_data.get("webserver_port"))
                     if not self.is_yw_initialized():
-                        Output.log("Initiating webserver...")
+                        Output.log("Setting up admin console schema...")
+                        Output.begin_replace_line("Initiating webserver...")
                         if not self.init_yw():
-                            Output.log_error_and_exit("Failed to initialize webserver.")
+                            Output.log_error_and_exit("Failed to set up admin console schema...")
+                        Output.print_replace("Admin console schema setup complete " + Output.CHECK)
+
                         yw_process.start()
+                        Output.begin_replace_line("Setting up admin console...")
                         err = self.wait_yw_login(yw_proxy)
                         if err:
                             Output.log_error_and_exit(err)
+                        Output.print_replace("Admin console setup complete " + Output.CHECK)
                         yw_logged_in = True
 
                         yw_proxy.set_security("insecure")
@@ -510,12 +486,55 @@ class ControlScript(object):
                             yw_first_run = True
                             # TODO: If insecure login fails here, we should assume importing
                             # universe and setting security level failed and retry initializing YW.
+                            Output.begin_replace_line("Setting up admin console...")
                             yw_logged_in = not self.wait_yw_login(yw_proxy, insecure=True)
+                            Output.print_replace("Admin console setup complete " + Output.CHECK)
                             should_callhome = True
                         else:
                             yw_logged_in = False
-                    if self.alerts and yw_process.is_running() and yw_logged_in:
-                        yw_proxy.send_alerts(self.alerts)
+                    if yw_process.is_running() and yw_logged_in:
+                        Output.print_out(Output.make_bold("Admin console ready " + Output.CHECK))
+                        if self.alerts:
+                            yw_proxy.send_alerts(self.alerts)
+
+            # Print startup information and start callhome thread on first successful startup.
+            # Preemptively assume YW will successfully start up.
+            if is_first_run and self.wait_yb_master():
+                first_run_success = True
+                for name in ("master", "tserver", "yugaware"):
+                    process = self.processes.get(name)
+                    if process is not None and not process.is_running():
+                        first_run_success = False
+                        break
+                if first_run_success and self.is_yb_initialized() \
+                        and (not self.configs.temp_data.get("ui") or self.is_yw_initialized()):
+                    status = self.get_status_string() + \
+                        Output.make_green(
+                            "YugabyteDB started successfully! To load a sample dataset, "
+                            "try 'yugabyted demo'.\n") + \
+                        Output.make_magenta(
+                                "Join us on Slack at {}".format(
+                                    Output.make_underline("{}\n".format(SLACK_LINK))))
+                    Output.print_out(status)
+                    if self.configs.temp_data.get("daemon"):
+                        # Let original process know daemon was successful so it can exit.
+                        # This is to display the initial status message.
+                        self.script.daemon_success.put(1)
+                        # Ignore any console output as important information will be logged.
+                        with open('/dev/null', 'r') as dev_null:
+                            sys.stderr.flush()
+                            sys.stdout.flush()
+                            os.dup2(dev_null.fileno(), sys.stdin.fileno())
+                            os.dup2(dev_null.fileno(), sys.stderr.fileno())
+                            os.dup2(dev_null.fileno(), sys.stdout.fileno())
+
+                if self.configs.saved_data.get("callhome"):
+                    callhome_thread = Thread(target=self.callhome_loop)
+                    callhome_thread.daemon = True
+                    callhome_thread.start()
+
+                is_first_run = False
+
 
             if should_callhome:
                 self.callhome()
@@ -1008,9 +1027,9 @@ class Configs(object):
             "webserver_port": DEFAULT_WEBSERVER_PORT,
             "universe_uuid": "",
             "polling_interval": "5",
+            "callhome": DEFAULT_CALLHOME,
             "master_flags": "",
             "tserver_flags": "",
-            "callhome": DEFAULT_CALLHOME
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
@@ -1321,12 +1340,12 @@ class YBAdminProxy(object):
     # Returns node_uuid by finding the UUID corresponding to current master's IP
     @staticmethod
     def get_node_uuid(master_addrs, cur_master_addr):
-        cmd = [YBAdminProxy.path, "--master_addressses", master_addrs, "list_all_masters"]
+        cmd = [YBAdminProxy.path, "--master_addresses", master_addrs, "list_all_masters"]
         out, err, ret_code = run_process(cmd)
         if ret_code:
             return None
-        for line in out:
-            master_uuid, rpc_addr, _, _ = out.split()
+        for line in out.splitlines()[1:]:
+            master_uuid, rpc_addr, _, _ = line.split()
             if rpc_addr == cur_master_addr:
                 return master_uuid
         return None
@@ -1612,12 +1631,36 @@ class Output(object):
     BLUE = u"\u001b[34m"
     MAGENTA = u"\u001b[35m"
     CYAN = u"\u001b[36m"
+    CHECK = u"\u2705"
     log_dir = None
     start_time_sec = time.time()
+    last_replace_msg = None
 
     @staticmethod
     def print_out(msg):
         print(msg)
+        Output.last_replace_msg = None
+
+    # Writes one line that may be replaced with the print_replace method.
+    # Note - ONLY one line can be replaced. E.g. only characters after a newline can be replaced.
+    @staticmethod
+    def begin_replace_line(msg):
+        sys.stdout.write(msg)
+        Output.last_replace_msg = msg
+        sys.stdout.flush()
+
+    # Replaces last line printed (if any) with new message. If begin_replace_line wasn't called,
+    # then print normally,
+    # Note - ONLY one line can be replaced. E.g. only characters after a newline can be replaced.
+    @staticmethod
+    def print_replace(msg, last_replacement=True):
+        if Output.last_replace_msg is not None:
+            sys.stdout.write(u"\r{:<{}}".format(msg, len(Output.last_replace_msg)))
+            if last_replacement:
+                sys.stdout.write("\n")
+            sys.stdout.flush()
+        else:
+            Output.print_out(msg)
 
     @staticmethod
     def log(msg, level=logging.INFO):
