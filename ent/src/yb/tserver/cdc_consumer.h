@@ -27,8 +27,10 @@ class ThreadPool;
 
 namespace rpc {
 
+class Messenger;
 class ProxyCache;
 class Rpcs;
+class SecureContext;
 
 } // namespace rpc
 
@@ -50,6 +52,14 @@ namespace enterprise {
 class CDCPoller;
 class TabletServer;
 
+struct CDCClient {
+  std::unique_ptr<rpc::Messenger> messenger;
+  std::unique_ptr<rpc::SecureContext> secure_context;
+  std::shared_ptr<client::YBClient> client;
+
+  ~CDCClient();
+};
+
 class CDCConsumer {
  public:
   static Result<std::unique_ptr<CDCConsumer>> Create(
@@ -60,7 +70,7 @@ class CDCConsumer {
   CDCConsumer(std::function<bool(const std::string&)> is_leader_for_tablet,
       rpc::ProxyCache* proxy_cache,
       const std::string& ts_uuid,
-      std::unique_ptr<client::YBClient> local_client);
+      std::unique_ptr<CDCClient> local_client);
 
   ~CDCConsumer();
   void Shutdown();
@@ -131,10 +141,10 @@ class CDCConsumer {
   std::unique_ptr<ThreadPool> thread_pool_;
 
   std::string log_prefix_;
-  std::shared_ptr<client::YBClient> local_client_;
+  std::unique_ptr<CDCClient> local_client_;
 
   // map: {universe_uuid : ...}.
-  std::unordered_map<std::string, std::shared_ptr<client::YBClient>> remote_clients_
+  std::unordered_map<std::string, std::unique_ptr<CDCClient>> remote_clients_
     GUARDED_BY(producer_pollers_map_mutex_);
   std::unordered_map<std::string, std::string> uuid_master_addrs_
     GUARDED_BY(master_data_mutex_);
