@@ -63,7 +63,7 @@ DEFINE_uint64(rocksdb_compaction_size_threshold_bytes, 2ULL * 1024 * 1024 * 1024
              "Threshold beyond which compaction is considered large.");
 DEFINE_uint64(rocksdb_max_file_size_for_compaction, 0,
              "Maximal allowed file size to participate in RocksDB compaction. 0 - unlimited.");
-DEFINE_int32(rocksdb_max_write_buffer_number, 3,
+DEFINE_int32(rocksdb_max_write_buffer_number, 2,
              "Maximum number of write buffers that are built up in memory.");
 
 DEFINE_int64(db_block_size_bytes, 32_KB,
