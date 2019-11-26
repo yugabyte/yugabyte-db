@@ -641,6 +641,18 @@ yb-admin -master_addresses <master-addresses> delete_read_replica_placement_info
 
 For details on enabling encryption at rest, see [Encryption at rest](../../secure/encryption-at-rest).
 
+#### add_universe_keys
+
+#### has_universe_key_in_memory
+
+#### rotate_universe_key_in_memory
+
+Rotates the in-memory universe key.
+
+#### disable_encryption_in_memory
+
+Disables the in-memory encryption.
+
 ##### rotate_universe_key
 
 Rotates the universe key.
