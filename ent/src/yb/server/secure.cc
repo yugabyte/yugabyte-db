@@ -49,8 +49,14 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
 }
 
 Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
-    const std::string& root_dir, const std::string& name, SecureContextType type,
-    rpc::MessengerBuilder* builder) {
+    const std::string& root_dir, const std::string& name,
+    SecureContextType type, rpc::MessengerBuilder* builder) {
+  return SetupSecureContext(std::string(), root_dir, name, type, builder);
+}
+
+Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
+    const std::string& cert_dir, const std::string& root_dir, const std::string& name,
+    SecureContextType type, rpc::MessengerBuilder* builder) {
   auto use = type == SecureContextType::kServerToServer ? FLAGS_use_node_to_node_encryption
                                                         : FLAGS_use_client_to_server_encryption;
   if (!use) {
@@ -58,7 +64,9 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
   }
 
   std::string dir;
-  if (type == SecureContextType::kClientToServer) {
+  if (!cert_dir.empty()) {
+    dir = cert_dir;
+  } else if (type == SecureContextType::kClientToServer) {
     dir = FLAGS_certs_for_client_dir;
   }
   if (dir.empty()) {

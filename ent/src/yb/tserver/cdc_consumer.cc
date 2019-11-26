@@ -14,7 +14,9 @@
 #include <shared_mutex>
 #include <chrono>
 
+#include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
+#include "yb/rpc/secure_stream.h"
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/twodc_output_client.h"
 #include "yb/tserver/tablet_server.h"
@@ -25,12 +27,15 @@
 #include "yb/client/client.h"
 
 #include "yb/gutil/map-util.h"
+#include "yb/server/secure.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/string_util.h"
 #include "yb/util/thread.h"
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
+DECLARE_bool(use_node_to_node_encryption);
+DECLARE_string(certs_for_cdc_dir);
 
 using namespace std::chrono_literals;
 
@@ -38,6 +43,12 @@ namespace yb {
 
 namespace tserver {
 namespace enterprise {
+
+CDCClient::~CDCClient() {
+  if (messenger) {
+    messenger->Shutdown();
+  }
+}
 
 Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
     std::function<bool(const std::string&)> is_leader_for_tablet,
@@ -51,13 +62,23 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
     hostport_strs.push_back(HostPort::ToCommaSeparatedString(hp));
   }
 
-  auto local_client = VERIFY_RESULT(client::YBClientBuilder()
+  auto local_client = std::make_unique<CDCClient>();
+  if (FLAGS_use_node_to_node_encryption) {
+    rpc::MessengerBuilder messenger_builder("cdc-consumer");
+
+    local_client->secure_context = VERIFY_RESULT(server::SetupSecureContext(
+        "", "", server::SecureContextType::kServerToServer, &messenger_builder));
+
+    local_client->messenger = VERIFY_RESULT(messenger_builder.Build());
+  }
+
+  local_client->client = VERIFY_RESULT(client::YBClientBuilder()
       .master_server_addrs(hostport_strs)
       .set_client_name("CDCConsumerLocal")
       .default_rpc_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms))
-      .Build());
+      .Build(local_client->messenger.get()));
 
-  local_client->SetLocalTabletServer(tserver->permanent_uuid(), tserver->proxy(), tserver);
+  local_client->client->SetLocalTabletServer(tserver->permanent_uuid(), tserver->proxy(), tserver);
   auto cdc_consumer = std::make_unique<CDCConsumer>(std::move(is_leader_for_tablet), proxy_cache,
       tserver->permanent_uuid(), std::move(local_client));
 
@@ -72,7 +93,7 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
 CDCConsumer::CDCConsumer(std::function<bool(const std::string&)> is_leader_for_tablet,
                          rpc::ProxyCache* proxy_cache,
                          const string& ts_uuid,
-                         std::unique_ptr<client::YBClient> local_client) :
+                         std::unique_ptr<CDCClient> local_client) :
   is_leader_for_tablet_(std::move(is_leader_for_tablet)),
   log_prefix_(Format("[TS $0]: ", ts_uuid)),
   local_client_(std::move(local_client)) {}
@@ -96,10 +117,10 @@ void CDCConsumer::Shutdown() {
     {
       SharedLock<rw_spinlock> read_lock(producer_pollers_map_mutex_);
       for (auto &uuid_and_client : remote_clients_) {
-        uuid_and_client.second->Shutdown();
+        uuid_and_client.second->client->Shutdown();
       }
     }
-    local_client_->Shutdown();
+    local_client_->client->Shutdown();
   }
 
   if (run_trigger_poll_thread_) {
@@ -220,18 +241,47 @@ void CDCConsumer::TriggerPollForNewTablets() {
         // See if we need to create a new client connection
         if (!ContainsKey(remote_clients_, uuid)) {
           CHECK(ContainsKey(uuid_master_addrs_, uuid));
+
+          auto remote_client = std::make_unique<CDCClient>();
+          std::string dir;
+          if (FLAGS_use_node_to_node_encryption) {
+            rpc::MessengerBuilder messenger_builder("cdc-consumer");
+            if (!FLAGS_certs_for_cdc_dir.empty()) {
+              dir = JoinPathSegments(FLAGS_certs_for_cdc_dir, uuid);
+            }
+
+            auto secure_context_result = server::SetupSecureContext(
+                dir, "", "", server::SecureContextType::kServerToServer, &messenger_builder);
+            if (!secure_context_result.ok()) {
+              LOG(WARNING) << "Could not create secure context for " << uuid
+                         << ": " << secure_context_result.status().ToString();
+              return; // Don't finish creation.  Try again on the next heartbeat.
+            }
+            remote_client->secure_context = std::move(*secure_context_result);
+
+            auto messenger_result = messenger_builder.Build();
+            if (!messenger_result.ok()) {
+              LOG(WARNING) << "Could not build messenger for " << uuid
+                         << ": " << secure_context_result.status().ToString();
+              return; // Don't finish creation.  Try again on the next heartbeat.
+            }
+            remote_client->messenger = std::move(*messenger_result);
+          }
+
           auto client_result = yb::client::YBClientBuilder()
               .set_client_name("CDCConsumerRemote::" + uuid)
               .add_master_server_addr(uuid_master_addrs_[uuid])
               .skip_master_flagfile()
               .default_rpc_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms))
-              .Build();
+              .Build(remote_client->messenger.get());
           if (!client_result.ok()) {
             LOG(WARNING) << "Could not create a new YBClient for " << uuid
                          << ": " << client_result.status().ToString();
             return; // Don't finish creation.  Try again on the next heartbeat.
           }
-          remote_clients_[uuid] = CHECK_RESULT(client_result);
+
+          remote_client->client = CHECK_RESULT(client_result);
+          remote_clients_[uuid] = std::move(remote_client);
         }
 
         // now create the poller
@@ -243,8 +293,8 @@ void CDCConsumer::TriggerPollForNewTablets() {
             std::bind(&CDCConsumer::ShouldContinuePolling, this, entry.first),
             std::bind(&CDCConsumer::RemoveFromPollersMap, this, entry.first),
             thread_pool_.get(),
-            local_client_,
-            remote_clients_[uuid],
+            local_client_->client,
+            remote_clients_[uuid]->client,
             this,
             use_local_tserver);
         LOG_WITH_PREFIX(INFO) << Format("Start polling for producer tablet $0",
@@ -268,7 +318,7 @@ void CDCConsumer::RemoveFromPollersMap(const cdc::ProducerTabletInfo producer_ta
     if (!ContainsKey(uuid_master_addrs_, producer_tablet_info.universe_uuid)) {
       auto it = remote_clients_.find(producer_tablet_info.universe_uuid);
       if (it != remote_clients_.end()) {
-        client_to_delete = it->second;
+        client_to_delete = it->second->client;
         remote_clients_.erase(it);
       }
     }
