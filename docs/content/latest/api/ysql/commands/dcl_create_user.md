@@ -1,7 +1,7 @@
 ---
 title: CREATE USER
 linkTitle: CREATE USER
-description: Users and roles
+description: CREATE USER
 summary: CREATE USER
 menu:
   latest:
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`CREATE USER` is an alias for [`CREATE ROLE`](../dcl_create_role) and is used to create a role.
+Use the `CREATE USER` statement to create a user. The `CREATE USER` statement is an alias for [`CREATE ROLE`](../dcl_create_role), but creates a role that has LOGIN privileges by default.
 
 ## Syntax
 
