@@ -1057,9 +1057,13 @@ do_not_use_local_thirdparty_flag_path=$YB_SRC_ROOT/thirdparty/.yb_thirdparty_do_
 
 if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "1" ]]; then
   set_prebuilt_thirdparty_url
-fi
-
-if [[ -f $do_not_use_local_thirdparty_flag_path ]] ||
+  download_thirdparty
+  export NO_REBUILD_THIRDPARTY=1
+  log "Using downloaded third-party directory: $YB_THIRDPARTY_DIR"
+  if using_linuxbrew; then
+    log "Using Linuxbrew directory: $YB_LINUXBREW_DIR"
+  fi
+elif [[ -f $do_not_use_local_thirdparty_flag_path ]] ||
    "$use_nfs_shared_thirdparty" ||
    using_remote_compilation && ! "$no_shared_thirdparty"; then
   find_thirdparty_dir
@@ -1076,7 +1080,9 @@ fi
 if ! is_jenkins && is_src_root_on_nfs && \
   [[ -z ${YB_CCACHE_DIR:-} && $HOME =~ $YB_NFS_PATH_RE ]]; then
   export YB_CCACHE_DIR=$HOME/.ccache
-  log "Setting YB_CCACHE_DIR=$YB_CCACHE_DIR by default for NFS-based builds"
+  if "$build_cxx"; then
+    log "Setting YB_CCACHE_DIR=$YB_CCACHE_DIR by default for NFS-based builds"
+  fi
 fi
 
 # -------------------------------------------------------------------------------------------------
@@ -1207,8 +1213,10 @@ if "$no_tcmalloc"; then
 fi
 
 detect_num_cpus_and_set_make_parallelism
-log "Using make parallelism of $YB_MAKE_PARALLELISM" \
-    "(YB_REMOTE_COMPILATION=${YB_REMOTE_COMPILATION:-undefined})"
+if "$build_cxx"; then
+  log "Using make parallelism of $YB_MAKE_PARALLELISM" \
+      "(YB_REMOTE_COMPILATION=${YB_REMOTE_COMPILATION:-undefined})"
+fi
 
 add_brew_bin_to_path
 
