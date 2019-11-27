@@ -87,7 +87,11 @@ class TransactionIntentApplier {
       const RemoveIntentsData& data, const TransactionId& transaction_id) = 0;
   virtual CHECKED_STATUS RemoveIntents(
       const RemoveIntentsData& data, const TransactionIdSet& transactions) = 0;
+
   virtual HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) = 0;
+
+  // See MvccManager::SafeTimeForFollower
+  virtual HybridTime ApplierSafeTimeForFollower() = 0;
 
  protected:
   ~TransactionIntentApplier() {}

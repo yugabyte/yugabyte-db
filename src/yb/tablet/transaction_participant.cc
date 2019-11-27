@@ -162,6 +162,7 @@ class RunningTransactionContext {
   virtual ~RunningTransactionContext() {}
 
   virtual bool RemoveUnlocked(const TransactionId& id, const std::string& reason) = 0;
+  virtual void EnqueueRemoveUnlocked(const TransactionId& id) = 0;
 
   int64_t NextRequestIdUnlocked() {
     return ++request_serial_;
@@ -628,10 +629,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
       if (last_known_status_hybrid_time_ <= time_of_status) {
         last_known_status_hybrid_time_ = time_of_status;
         last_known_status_ = response.status();
-        if (response.status() == TransactionStatus::ABORTED &&
-            ThreadRestrictions::IsWaitAllowed() && // Required by IsLeader
-            context_.participant_context_.IsLeader()) {
-          context_.RemoveUnlocked(id(), "aborted"s);
+        if (response.status() == TransactionStatus::ABORTED) {
+          context_.EnqueueRemoveUnlocked(id());
         }
       }
       time_of_status = last_known_status_hybrid_time_;
@@ -938,6 +937,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   // Cleans transactions that are requested and now is safe to clean.
   // See RemoveUnlocked for details.
   void CleanTransactionsUnlocked() {
+    ProcessRemoveQueueUnlocked();
+
     int64_t min_request = running_requests_.empty() ? std::numeric_limits<int64_t>::max()
                                                     : running_requests_.front();
     while (!cleanup_queue_.empty() && cleanup_queue_.front().request_id < min_request) {
@@ -1183,6 +1184,38 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
   void TransactionsModifiedUnlocked() {
     metric_transactions_running_->set_value(transactions_.size());
+  }
+
+  void EnqueueRemoveUnlocked(const TransactionId& id) override {
+    remove_queue_.emplace_back(RemoveQueueEntry{id, participant_context_.Now()});
+    ProcessRemoveQueueUnlocked();
+  }
+
+  void ProcessRemoveQueueUnlocked() {
+    if (!remove_queue_.empty()) {
+      // When a transaction participant receives an "aborted" response from the coordinator,
+      // it puts this transaction into a "remove queue", also storing the current hybrid
+      // time. Then queue entries where time is less than current safe time are removed.
+      //
+      // This is correct because, from a transaction participant's point of view:
+      //
+      // (1) After we receive a response for a transaction status request, and
+      // learn that the transaction is unknown to the coordinator, our local
+      // hybrid time is at least as high as the local hybrid time on the
+      // transaction status coordinator at the time the transaction was deleted
+      // from the coordinator, due to hybrid time propagation on RPC response.
+      //
+      // (2) If our safe time is greater than the hybrid time when the
+      // transaction was deleted from the coordinator, then we have already
+      // applied this transaction's provisional records if the transaction was
+      // committed.
+      auto safe_time = applier_.ApplierSafeTimeForFollower();
+      while (!remove_queue_.empty() && safe_time >= remove_queue_.front().time) {
+        static const std::string kRemoveFromQueue = "remove_queue"s;
+        RemoveUnlocked(remove_queue_.front().id, kRemoveFromQueue);
+        remove_queue_.pop_front();
+      }
+    }
   }
 
   // Tries to remove transaction with specified id.
@@ -1441,9 +1474,22 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   // Contains only ids greater than first running request id, otherwise entry is removed
   // from both collections.
   std::priority_queue<int64_t, std::vector<int64_t>, std::greater<void>> complete_requests_;
+
   // Queue of transaction ids that should be cleaned, paired with request that should be completed
   // in order to be able to do clean.
+  // Guarded by RunningTransactionContext::mutex_
   std::deque<CleanupQueueEntry> cleanup_queue_;
+
+  // Remove queue maintains transactions that could be cleaned when safe time for follower reaches
+  // appropriate time for an entry.
+  // Since we add entries with increasing time, this queue is ordered by time.
+  struct RemoveQueueEntry {
+    TransactionId id;
+    HybridTime time;
+  };
+
+  // Guarded by RunningTransactionContext::mutex_
+  std::deque<RemoveQueueEntry> remove_queue_;
 
   std::unordered_set<TransactionId, TransactionIdHash> recently_removed_transactions_;
   struct RecentlyRemovedTransaction {
