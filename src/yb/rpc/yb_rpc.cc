@@ -208,12 +208,17 @@ void YBInboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents) 
     const auto deadline =
         std::max(last_heartbeat_sending_time_, last_write_time_) + HeartbeatPeriod();
     if (now >= deadline) {
-      VLOG(4) << connection->ToString() << ": " << "Sending heartbeat, now: " << AsString(now)
-              << ", deadline: " << AsString(deadline)
-              << ", last_write_time_: " << AsString(last_write_time_)
-              << ", last_heartbeat_sending_time_: " << AsString(last_heartbeat_sending_time_);
-      connection->QueueOutboundData(HeartbeatOutboundData::Instance());
-      last_heartbeat_sending_time_ = now;
+      if (last_write_time_ >= last_heartbeat_sending_time_) {
+        // last_write_time_ < last_heartbeat_sending_time_ means that last heartbeat we've queued
+        // for sending is still in queue due to RPC/networking issues, so no need to queue
+        // another one.
+        VLOG(4) << connection->ToString() << ": " << "Sending heartbeat, now: " << AsString(now)
+                << ", deadline: " << AsString(deadline)
+                << ", last_write_time_: " << AsString(last_write_time_)
+                << ", last_heartbeat_sending_time_: " << AsString(last_heartbeat_sending_time_);
+        connection->QueueOutboundData(HeartbeatOutboundData::Instance());
+        last_heartbeat_sending_time_ = now;
+      }
       timer_.Start(HeartbeatPeriod());
     } else {
       timer_.Start(deadline - now);

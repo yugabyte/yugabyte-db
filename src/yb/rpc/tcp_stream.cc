@@ -193,7 +193,6 @@ Status TcpStream::DoWrite() {
     iovec iov[kMaxIov];
     auto fill_result = FillIov(iov);
 
-    context_->UpdateLastWrite();
     if (!fill_result.only_heartbeats) {
       context_->UpdateLastActivity();
     }
@@ -215,6 +214,8 @@ Status TcpStream::DoWrite() {
         return Status::OK();
       }
     }
+
+    context_->UpdateLastWrite();
 
     send_position_ += written;
     while (!sending_.empty()) {
