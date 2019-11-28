@@ -173,7 +173,8 @@ class TransactionParticipant : public TransactionStatusManager {
 
   size_t TEST_GetNumRunningTransactions() const;
 
-  size_t TEST_CountIntents() const;
+  // Returns pair of number of intents and number of transactions.
+  std::pair<size_t, size_t> TEST_CountIntents() const;
 
  private:
   int64_t RegisterRequest() override;

@@ -259,21 +259,6 @@ size_t TransactionTestBase::CountRunningTransactions() {
   return result;
 }
 
-size_t TransactionTestBase::CountIntents() {
-  size_t result = 0;
-  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
-  for (const auto &peer : peers) {
-    auto participant = peer->tablet()->transaction_participant();
-    auto intents_count = participant ? participant->TEST_CountIntents() : 0;
-    if (intents_count) {
-      result += intents_count;
-      LOG(INFO) << Format("T $0 P $1: Intents present: $2", peer->tablet_id(),
-                          peer->permanent_uuid(), intents_count);
-    }
-  }
-  return result;
-}
-
 void TransactionTestBase::CheckNoRunningTransactions() {
   MonoTime deadline = MonoTime::Now() + 7s * kTimeMultiplier;
   bool has_bad = false;

@@ -25,6 +25,7 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/row_mark.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 
 using namespace std::literals;
 
@@ -38,6 +39,7 @@ DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_int32(ysql_num_shards_per_tserver);
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 DECLARE_uint64(max_clock_skew_usec);
+DECLARE_int64(db_write_buffer_size);
 
 namespace yb {
 namespace pgwrapper {
@@ -585,6 +587,60 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SelectModifySelect)) {
     ASSERT_OK(write_conn.Execute("DELETE FROM t2 WHERE i = 1"));
     ASSERT_NO_FATALS(AssertAborted(ResultToStatus(read_conn.Fetch("SELECT * FROM t2"))));
   }
+}
+
+class PgMiniSmallWriteBufferTest : public PgMiniTest {
+ public:
+  void SetUp() override {
+    FLAGS_db_write_buffer_size = 256_KB;
+    PgMiniTest::SetUp();
+  }
+};
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallWriteBufferTest) {
+  const std::string kTableName = "key_value";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (key INTEGER NOT NULL PRIMARY KEY, value VARCHAR)",
+      kTableName));
+
+  TestThreadHolder thread_holder;
+  constexpr int kTotalBatches = RegularBuildVsSanitizers(50, 5);
+  constexpr int kBatchSize = 1000;
+
+  std::atomic<int> key(0);
+
+  thread_holder.AddThreadFunctor([this, &kTableName, &stop = thread_holder.stop_flag(), &key] {
+    constexpr int kValueSize = 128;
+
+    SetFlagOnExit set_flag(&stop);
+    auto conn = ASSERT_RESULT(Connect());
+
+    auto se = ScopeExit([&key] {
+      LOG(INFO) << "Total keys: " << key;
+    });
+
+    while (!stop.load(std::memory_order_acquire) && key < kBatchSize * kTotalBatches) {
+      ASSERT_OK(conn.CopyBegin(Format("COPY $0 FROM STDIN WITH BINARY", kTableName)));
+      for (int j = 0; j != kBatchSize; ++j) {
+        conn.CopyStartRow(2);
+        conn.CopyPutInt32(++key);
+        conn.CopyPutString(RandomHumanReadableString(kValueSize));
+      }
+
+      ASSERT_OK(conn.CopyEnd());
+    }
+  });
+
+  thread_holder.AddThread(RestartsThread(cluster_.get(), 5s, &thread_holder.stop_flag()));
+
+  thread_holder.WaitAndStop(120s); // Actually will stop when enough batches were copied
+
+  auto intents_count = CountIntents(cluster_.get());
+  LOG(INFO) << "Intents count: " << intents_count;
+
+  ASSERT_LE(intents_count, 30000);
+  ASSERT_EQ(key.load(std::memory_order_relaxed), kTotalBatches * kBatchSize);
 }
 
 } // namespace pgwrapper

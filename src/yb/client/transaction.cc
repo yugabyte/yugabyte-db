@@ -735,7 +735,7 @@ class YBTransaction::Impl final {
 
   void SendHeartbeat(TransactionStatus status,
                      const TransactionId& id,
-                     std::weak_ptr<YBTransaction> weak_transaction) {
+                     const std::weak_ptr<YBTransaction>& weak_transaction) {
     auto transaction = weak_transaction.lock();
     if (!transaction) {
       // Cannot use LOG_WITH_PREFIX here, since this was actually destroyed.
@@ -796,12 +796,18 @@ class YBTransaction::Impl final {
       if (status.IsAborted()) {
         // Service is shutting down, no reason to retry.
         SetError(status);
+        if (transaction_status == TransactionStatus::CREATED) {
+          NotifyWaiters(status);
+        }
         return;
       } else if (status.IsExpired()) {
         SetError(status);
         // If state is committed, then we should not cleanup.
         if (state_.load(std::memory_order_acquire) == TransactionState::kRunning) {
           DoAbortCleanup(transaction);
+        }
+        if (transaction_status == TransactionStatus::CREATED) {
+          NotifyWaiters(status);
         }
         return;
       }
