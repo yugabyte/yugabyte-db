@@ -293,6 +293,8 @@ Result<scoped_refptr<master::TableInfo>> FindTable(
 
 CHECKED_STATUS WaitForInitDb(MiniCluster* cluster);
 
+size_t CountIntents(MiniCluster* cluster);
+
 }  // namespace yb
 
 #endif /* YB_INTEGRATION_TESTS_MINI_CLUSTER_H_ */

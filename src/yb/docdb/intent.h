@@ -26,7 +26,16 @@ struct DecodedIntentKey {
   Slice intent_prefix;
   IntentTypeSet intent_types;
   DocHybridTime doc_ht;
+
+  std::string ToString() const {
+    return Format("{ intent_prefix: $0 intent_types: $1 doc_ht: $2 }",
+                  intent_prefix.ToDebugHexString(), intent_types, doc_ht);
+  }
 };
+
+inline std::ostream& operator<<(std::ostream& out, const DecodedIntentKey& decoded_intent_key) {
+  return out << decoded_intent_key.ToString();
+}
 
 // Decodes intent RocksDB key.
 Result<DecodedIntentKey> DecodeIntentKey(const Slice &encoded_intent_key);
