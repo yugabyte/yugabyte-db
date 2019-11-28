@@ -43,11 +43,13 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/util/alignment.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/crc.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/malloc.h"
 #include "yb/util/memenv/memenv.h"
+#include "yb/util/os-util.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
 #include "yb/util/path_util.h"
@@ -800,6 +802,21 @@ TEST_F(TestEnv, TestGetTotalRAMBytes) {
 
   // Can't test much about it.
   ASSERT_GT(ram, 0);
+}
+
+TEST_F(TestEnv, TestGetFreeSpace) {
+  char cwd[1024];
+  char* ret = getcwd(cwd, sizeof(cwd));
+  ASSERT_NE(ret, nullptr);
+
+  auto free_space = ASSERT_RESULT(env_->GetFreeSpaceBytes(cwd));
+
+  string cmd = strings::Substitute("df $0 -B1 | tail -1 | awk '{print $$4}' | tr -d '\\n'", cwd);
+  string df_free_space_str;
+  ASSERT_TRUE(RunShellProcess(cmd, &df_free_space_str));
+  auto df_free_space = ASSERT_RESULT(CheckedStoll(df_free_space_str));
+
+  ASSERT_EQ(df_free_space, free_space);
 }
 
 // Test that CopyFile() copies all the bytes properly.

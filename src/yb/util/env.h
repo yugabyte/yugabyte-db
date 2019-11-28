@@ -456,6 +456,9 @@ class Env {
 
   // Get the total amount of RAM installed on this machine.
   virtual CHECKED_STATUS GetTotalRAMBytes(int64_t* ram) = 0;
+
+  // Get free space available on the path's filesystem.
+  virtual Result<uint64_t> GetFreeSpaceBytes(const std::string& path) = 0;
  private:
   // No copying allowed
   Env(const Env&);
@@ -777,6 +780,9 @@ class EnvWrapper : public Env {
   }
   CHECKED_STATUS GetTotalRAMBytes(int64_t* ram) override {
     return target_->GetTotalRAMBytes(ram);
+  }
+  Result<uint64_t> GetFreeSpaceBytes(const std::string& path) override {
+    return target_->GetFreeSpaceBytes(path);
   }
  private:
   Env* target_;
