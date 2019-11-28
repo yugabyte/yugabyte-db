@@ -719,7 +719,8 @@ Status Log::Sync() {
 Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segments_to_gc) const {
   // Find the prefix of segments in the segment sequence that is guaranteed not to include
   // 'min_op_idx'.
-  RETURN_NOT_OK(reader_->GetSegmentPrefixNotIncluding(min_op_idx, segments_to_gc));
+  RETURN_NOT_OK(reader_->GetSegmentPrefixNotIncluding(
+      min_op_idx, cdc_min_replicated_index_.load(std::memory_order_acquire), segments_to_gc));
 
   int max_to_delete = std::max(reader_->num_segments() - FLAGS_log_min_segments_to_retain, 0);
   if (segments_to_gc->size() > max_to_delete) {

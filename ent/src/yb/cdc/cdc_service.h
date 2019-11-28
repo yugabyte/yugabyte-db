@@ -70,6 +70,8 @@ class CDCServiceImpl : public CDCServiceIf {
   CDCServiceImpl(const CDCServiceImpl&) = delete;
   void operator=(const CDCServiceImpl&) = delete;
 
+  ~CDCServiceImpl();
+
   void CreateCDCStream(const CreateCDCStreamRequestPB* req,
                        CreateCDCStreamResponsePB* resp,
                        rpc::RpcContext rpc) override;
@@ -85,6 +87,12 @@ class CDCServiceImpl : public CDCServiceIf {
   void GetCheckpoint(const GetCheckpointRequestPB* req,
                      GetCheckpointResponsePB* resp,
                      rpc::RpcContext rpc) override;
+
+  // Update peers in other tablet servers about the latest minimum applied cdc index for a specific
+  // tablet.
+  void UpdateCdcReplicatedIndex(const UpdateCdcReplicatedIndexRequestPB* req,
+                                UpdateCdcReplicatedIndexResponsePB* resp,
+                                rpc::RpcContext rpc) override;
 
   void Shutdown() override;
 
@@ -128,7 +136,11 @@ class CDCServiceImpl : public CDCServiceIf {
                                  rpc::RpcContext* context,
                                  const std::shared_ptr<tablet::TabletPeer>& peer);
 
+  Result<client::internal::RemoteTabletPtr> GetRemoteTablet(const TabletId& tablet_id);
   Result<client::internal::RemoteTabletServer *> GetLeaderTServer(const TabletId& tablet_id);
+  CHECKED_STATUS GetTServers(const TabletId& tablet_id,
+                             std::vector<client::internal::RemoteTabletServer*>* servers);
+
   std::shared_ptr<CDCServiceProxy> GetCDCServiceProxy(client::internal::RemoteTabletServer* ts);
 
   OpId GetMinSentCheckpointForTablet(const std::string& tablet_id);
@@ -136,6 +148,15 @@ class CDCServiceImpl : public CDCServiceIf {
   std::shared_ptr<MemTracker> GetMemTracker(
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
       const ProducerTabletInfo& producer_info);
+
+  OpId GetMinAppliedCheckpointForTablet(const std::string& tablet_id,
+                                        const std::shared_ptr<client::YBSession>& session);
+
+  void UpdatePeersCdcMinReplicatedIndex(const TabletId& tablet_id, int64_t min_index);
+
+  // This method is used to read the cdc_state table to find the minimum replicated index for each
+  // tablet and then update the peers' log objects.
+  void ReadCdcMinReplicatedIndexForAllTabletsAndUpdatePeers();
 
   yb::rpc::Rpcs rpcs_;
 
@@ -204,13 +225,26 @@ class CDCServiceImpl : public CDCServiceIf {
     >
   > TabletCheckpoints;
 
-  TabletCheckpoints tablet_checkpoints_;
+  TabletCheckpoints tablet_checkpoints_ GUARDED_BY(mutex_);;
 
-  std::unordered_map<std::string, std::shared_ptr<StreamMetadata>> stream_metadata_;
+  std::unordered_map<std::string, std::shared_ptr<StreamMetadata>> stream_metadata_
+      GUARDED_BY(mutex_);
 
   // Map of HostPort -> CDCServiceProxy. This is used to redirect requests to tablet leader's
   // CDC service proxy.
-  CDCServiceProxyMap cdc_service_map_;
+  CDCServiceProxyMap cdc_service_map_ GUARDED_BY(mutex_);
+
+  // Thread used to read the cdc_state table and get the minimum checkpoint for each tablet
+  // and then, for each tablet this tserver is a leader, update the log minimum cdc replicated
+  // index so we can use this information to correctly keep log files that are needed so we
+  // can continue replicating cdc records. This thread runs periodically to handle leadership
+  // changes. The interval is controlled by flag FLAGS_update_min_cdc_indices_interval_secs.
+  // TODO(hector): It would be better to do this update only when a local peer becomes a leader.
+  std::unique_ptr<std::thread> get_minimum_checkpoints_and_update_peers_thread_;
+
+  // True when this service is stopped. Used to inform
+  // get_minimum_checkpoints_and_update_peers_thread_ that it should exit.
+  std::atomic<bool> cdc_service_stopped_{false};
 };
 
 }  // namespace cdc

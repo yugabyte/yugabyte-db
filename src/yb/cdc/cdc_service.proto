@@ -47,6 +47,8 @@ service CDCService {
   rpc ListTablets (ListTabletsRequestPB) returns (ListTabletsResponsePB);
   rpc GetChanges (GetChangesRequestPB) returns (GetChangesResponsePB);
   rpc GetCheckpoint (GetCheckpointRequestPB) returns (GetCheckpointResponsePB);
+  rpc UpdateCdcReplicatedIndex (UpdateCdcReplicatedIndexRequestPB)
+      returns (UpdateCdcReplicatedIndexResponsePB);
 }
 
 message CDCErrorPB {
@@ -197,4 +199,16 @@ message GetCheckpointRequestPB {
 message GetCheckpointResponsePB {
   optional CDCErrorPB error = 1;
   optional CDCCheckpointPB checkpoint = 2;
+}
+
+message UpdateCdcReplicatedIndexRequestPB {
+  // Tablet being updated.
+  optional bytes tablet_id = 1;
+
+  // Minimum replicated index across all the streams for this tablet.
+  optional int64 replicated_index = 2;
+}
+
+message UpdateCdcReplicatedIndexResponsePB {
+  optional CDCErrorPB error = 1;
 }
