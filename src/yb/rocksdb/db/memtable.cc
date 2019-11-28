@@ -481,10 +481,20 @@ void MemTable::Add(SequenceNumber s, ValueType type,
   UpdateFlushState();
 }
 
-class OnlyUserKeyComparator : public MemTableRep::KeyComparator {
+// This comparator is used for deciding whether to erase a found key from a memtable instead of
+// writing a deletion mark. This is exactly what we need for erasing records in memory
+// (without writing new deletion marks). It expects a special key consisting of the user key being
+// erased followed by 8 0xff bytes as the first argument, and a key from a memtable as the second
+// argument (with the usual user_key + value_type + seqno format).
+// It returns zero if the user key parts of both arguments match and the second argument's value
+// type is not a deletion.
+//
+// Note: this comparator's return value cannot be used to establish order,
+// only to test for "equality" as defined above.
+class EraseHelperKeyComparator : public MemTableRep::KeyComparator {
  public:
-  explicit OnlyUserKeyComparator(const Comparator* user_comparator)
-      : user_comparator_(user_comparator) {}
+  explicit EraseHelperKeyComparator(const Comparator* user_comparator, bool* had_delete)
+      : user_comparator_(user_comparator), had_delete_(had_delete) {}
 
   int operator()(const char* prefix_len_key1, const char* prefix_len_key2) const override {
     // Internal keys are encoded as length-prefixed strings.
@@ -500,11 +510,27 @@ class OnlyUserKeyComparator : public MemTableRep::KeyComparator {
   }
 
   int Compare(const Slice& a, const Slice& b) const {
-    return user_comparator_->Compare(ExtractUserKey(a), ExtractUserKey(b));
+    auto user_b = ExtractUserKey(b);
+    auto result = user_comparator_->Compare(ExtractUserKey(a), user_b);
+    if (result == 0) {
+      // This comparator is used only to check whether we should delete the entry we found.
+      // So any non zero result should satisfy our needs.
+      // `b` is a value stored in mem table, so we check only it.
+      // `a` is key that we created for erase and user key is always followed by eight 0xff.
+      auto value_type = static_cast<ValueType>(b[user_b.size()]);
+      DCHECK_LE(value_type, ValueType::kTypeColumnFamilySingleDeletion);
+      if (value_type == ValueType::kTypeSingleDeletion ||
+          value_type == ValueType::kTypeColumnFamilySingleDeletion) {
+        *had_delete_ = true;
+        return -1;
+      }
+    }
+    return result;
   }
 
  private:
   const Comparator* user_comparator_;
+  bool* had_delete_;
 };
 
 bool MemTable::Erase(const Slice& user_key) {
@@ -522,13 +548,17 @@ bool MemTable::Erase(const Slice& user_key) {
   // Fill key tail with 0xffffffffffffffff so it we be less than actual user key.
   // Please note descending order is used for key tail.
   EncodeFixed64(p, -1LL);
-  OnlyUserKeyComparator only_user_key_comparator(comparator_.comparator.user_comparator());
+  bool had_delete = false;
+  EraseHelperKeyComparator only_user_key_comparator(
+      comparator_.comparator.user_comparator(), &had_delete);
   if (table_->Erase(buf, only_user_key_comparator)) {
     // this is a bit ugly, but is the way to avoid locked instructions
     // when incrementing an atomic
     num_erased_.store(num_erased_.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
 
     UpdateFlushState();
+    return true;
+  } else if (had_delete) { // Do nothing in case when we already had delete.
     return true;
   }
 

@@ -86,8 +86,6 @@ class TransactionTestBase : public KeyValueTableTest {
 
   bool HasTransactions();
 
-  size_t CountIntents();
-
   size_t CountRunningTransactions();
 
   void CheckNoRunningTransactions();

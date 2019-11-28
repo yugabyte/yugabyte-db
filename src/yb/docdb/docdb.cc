@@ -1372,13 +1372,20 @@ CHECKED_STATUS IntentToWriteRequest(
 }
 
 Status PrepareApplyIntentsBatch(
-    const TransactionId &transaction_id, HybridTime commit_ht, const KeyBounds* key_bounds,
+    const TransactionId& transaction_id, HybridTime commit_ht, const KeyBounds* key_bounds,
     rocksdb::WriteBatch* regular_batch,
     rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_batch) {
   // regular_batch or intents_batch could be null. In this case we don't fill apply batch for
   // appropriate DB.
 
-  Slice reverse_index_upperbound;
+  KeyBytes txn_reverse_index_prefix;
+  Slice transaction_id_slice(transaction_id.data, TransactionId::static_size());
+  AppendTransactionKeyPrefix(transaction_id, &txn_reverse_index_prefix);
+  txn_reverse_index_prefix.AppendValueType(ValueType::kMaxByte);
+  Slice key_prefix = txn_reverse_index_prefix.AsSlice();
+  key_prefix.remove_suffix(1);
+  Slice reverse_index_upperbound = txn_reverse_index_prefix.AsSlice();
+
   auto reverse_index_iter = CreateRocksDBIterator(
       intents_db, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
       rocksdb::kDefaultQueryId, nullptr /* read_filter */, &reverse_index_upperbound);
@@ -1392,28 +1399,23 @@ Status PrepareApplyIntentsBatch(
         rocksdb::kDefaultQueryId);
   }
 
-  KeyBytes txn_reverse_index_prefix;
-  Slice transaction_id_slice(transaction_id.data, TransactionId::static_size());
-  AppendTransactionKeyPrefix(transaction_id, &txn_reverse_index_prefix);
-
-  KeyBytes txn_reverse_index_upperbound = txn_reverse_index_prefix;
-  txn_reverse_index_upperbound.AppendValueType(ValueType::kMaxByte);
-  reverse_index_upperbound = txn_reverse_index_upperbound.AsSlice();
-
-  reverse_index_iter.Seek(txn_reverse_index_prefix.data());
+  reverse_index_iter.Seek(key_prefix);
 
   DocHybridTimeBuffer doc_ht_buffer;
+
+  const auto& log_prefix = intents_db->GetOptions().log_prefix;
 
   IntraTxnWriteId write_id = 0;
   while (reverse_index_iter.Valid()) {
     rocksdb::Slice key_slice(reverse_index_iter.key());
 
-    if (!key_slice.starts_with(txn_reverse_index_prefix.data())) {
+    if (!key_slice.starts_with(key_prefix)) {
       break;
     }
 
-    VLOG(4) << "Apply reverse index record: "
-            << EntryToString(reverse_index_iter, StorageDbType::kIntents);
+    VLOG(4) << log_prefix << "Apply reverse index record to ["
+            << (regular_batch ? "R" : "") << (intents_batch ? "I" : "")
+            << "]: " << EntryToString(reverse_index_iter, StorageDbType::kIntents);
 
     // If the key ends at the transaction id then it is transaction metadata (status tablet,
     // isolation level etc.).

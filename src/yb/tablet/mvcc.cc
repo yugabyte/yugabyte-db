@@ -232,7 +232,7 @@ void MvccManager::UpdatePropagatedSafeTimeOnLeader(HybridTime ht_lease) {
 #ifndef NDEBUG
     // This should only be called from RaftConsensus::UpdateMajorityReplicated, and ht_lease passed
     // in here should keep increasing, so we should not see propagated_safe_time_ going backwards.
-    CHECK_GE(ht, propagated_safe_time_) << LogPrefix();
+    CHECK_GE(ht, propagated_safe_time_) << LogPrefix() << "ht_lease: " << ht_lease;
     propagated_safe_time_ = ht;
 #else
     // Do not crash in production.
