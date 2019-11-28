@@ -28,6 +28,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/uio.h>
@@ -120,7 +121,10 @@ DEFINE_int32(o_direct_block_alignment_bytes, 4096,
 TAG_FLAG(o_direct_block_alignment_bytes, advanced);
 
 DEFINE_test_flag(bool, TEST_simulate_fs_without_fallocate, false,
-    "If true, the system simulates a file system that doesn't support fallocate");
+    "If true, the system simulates a file system that doesn't support fallocate.");
+
+DEFINE_test_flag(int64, TEST_simulate_free_space_bytes, -1,
+    "If a non-negative value, GetFreeSpaceBytes will return the specified value.");
 
 using base::subtle::Atomic64;
 using base::subtle::Barrier_AtomicIncrement;
@@ -1341,6 +1345,57 @@ class PosixEnv : public Env {
 
   FileFactory* GetFileFactory() {
     return file_factory_.get();
+  }
+
+  Result<uint64_t> GetFreeSpaceBytes(const std::string& path) override {
+    if (PREDICT_FALSE(FLAGS_TEST_simulate_free_space_bytes >= 0)) {
+      return FLAGS_TEST_simulate_free_space_bytes;
+    }
+    struct statvfs stat;
+    auto ret = statvfs(path.c_str(), &stat);
+    if (ret != 0) {
+      if (errno == EACCES) {
+        return STATUS_SUBSTITUTE(NotAuthorized,
+            "Caller doesn't have the required permission on a component of the path $0",
+            path);
+      } else if (errno == EIO) {
+        return STATUS_SUBSTITUTE(IOError,
+            "I/O error occurred while reading from '$0' filesystem",
+            path);
+      } else if (errno == ELOOP) {
+        return STATUS_SUBSTITUTE(InternalError,
+            "Too many symbolic links while translating '$0' path",
+            path);
+      } else if (errno == ENAMETOOLONG) {
+        return STATUS_SUBSTITUTE(NotSupported,
+            "Path '$0' is too long",
+            path);
+      } else if (errno == ENOENT) {
+        return STATUS_SUBSTITUTE(NotFound,
+            "File specified by path '$0' doesn't exist",
+            path);
+      } else if (errno == ENOMEM) {
+        return STATUS(InternalError, "Insufficient memory");
+      } else if (errno == ENOSYS) {
+        return STATUS_SUBSTITUTE(NotSupported,
+            "Filesystem for path '$0' doesn't support statvfs",
+            path);
+      } else if (errno == ENOTDIR) {
+        return STATUS_SUBSTITUTE(InvalidArgument,
+            "A component of the path '$0' is not a directory",
+            path);
+      } else {
+        return STATUS_SUBSTITUTE(InternalError,
+            "Failed to read information about filesystem for path '%s': errno=$0: $1",
+            path,
+            errno,
+            ErrnoToString(errno));
+      }
+    }
+    uint64_t block_size = static_cast<uint64_t>(stat.f_bsize);
+    uint64_t available_blocks = static_cast<uint64_t>(stat.f_bavail);
+
+    return available_blocks * block_size;
   }
 
  private:

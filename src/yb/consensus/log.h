@@ -63,6 +63,11 @@ namespace yb {
 class MetricEntity;
 class ThreadPool;
 
+namespace cdc {
+class CDCServiceTest_TestLogRetentionByOpId_MaxRentionTime_Test;
+class CDCServiceTest_TestLogRetentionByOpId_MinSpace_Test;
+}
+
 namespace log {
 
 struct LogMetrics;
@@ -267,12 +272,24 @@ class Log : public RefCountedThreadSafe<Log> {
     return log_prefix_;
   }
 
+  void set_cdc_min_replicated_index(int64_t cdc_min_replicated_index) {
+    // TODO: check that the passed index is greater than the current index.
+    cdc_min_replicated_index_.store(cdc_min_replicated_index, std::memory_order_release);
+  }
+
+  int64_t cdc_min_replicated_index() {
+    return cdc_min_replicated_index_.load(std::memory_order_acquire);
+  }
+
  private:
   friend class LogTest;
   friend class LogTestBase;
+
   FRIEND_TEST(LogTest, TestMultipleEntriesInABatch);
   FRIEND_TEST(LogTest, TestReadLogWithReplacedReplicates);
   FRIEND_TEST(LogTest, TestWriteAndReadToAndFromInProgressSegment);
+  FRIEND_TEST(cdc::CDCServiceTest, TestLogRetentionByOpId_MaxRentionTime);
+  FRIEND_TEST(cdc::CDCServiceTest, TestLogRetentionByOpId_MinSpace);
 
   class Appender;
 
@@ -477,6 +494,8 @@ class Log : public RefCountedThreadSafe<Log> {
   const std::string log_prefix_;
 
   std::atomic<uint32_t> wal_retention_secs_{0};
+
+  std::atomic<int64_t> cdc_min_replicated_index_{std::numeric_limits<int64_t>::max()};
 
   DISALLOW_COPY_AND_ASSIGN(Log);
 };
