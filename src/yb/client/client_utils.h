@@ -34,7 +34,7 @@ Result<std::unique_ptr<rpc::Messenger>> CreateClientMessenger(
     int32_t num_reactors,
     const scoped_refptr<MetricEntity> &metric_entity,
     const std::shared_ptr<MemTracker> &parent_mem_tracker,
-    std::unique_ptr<rpc::SecureContext> *secure_context = nullptr);
+    rpc::SecureContext *secure_context = nullptr);
 
 } // namespace client
 } // namespace yb
