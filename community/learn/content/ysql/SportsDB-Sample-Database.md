@@ -2,14 +2,14 @@
 
 ![SportsDB ER Diagram](https://blog.yugabyte.com/wp-content/uploads/2019/07/sportsdb-distrbutedsql-postgresql-01.png)
 
-In this post we are going to walk you through how to download and install the PostgreSQL compatible version of SportsDB onto the YugaByte DB distributed SQL database with a replication factor of 3.
+In this post we are going to walk you through how to download and install the PostgreSQL compatible version of SportsDB onto the YugabyteDB distributed SQL database with a replication factor of 3.
 
-## Download and Install YugaByte DB
+## Download and Install YugabyteDB
 The latest instructions on how to get up and running are on our Quickstart page here:
 
 https://docs.yugabyte.com/latest/quick-start/
 
-<strong>Note:</strong> Due to the hardware limitations of my laptop and size of the scripts, I temporarily bumped up the available memory accessible to YugaByte by adding the above <code>tserver_flags</code> argument. Depending on your setup, you might need to bump it up as well if you see errors like the one below while executing the database scripts. For example:
+<strong>Note:</strong> Due to the hardware limitations of my laptop and size of the scripts, I temporarily bumped up the available memory accessible to Yugabyte by adding the above <code>tserver_flags</code> argument. Depending on your setup, you might need to bump it up as well if you see errors like the one below while executing the database scripts. For example:
 
 ```
 Service unavailable (yb/tserver/tablet_service.cc:239): Soft memory limit exceeded (at 96.13% of capacity)
@@ -25,16 +25,16 @@ $ ./bin/yb-ctl --rf 3 create --tserver_flags "memory_limit_hard_bytes=6442450944
 
 ### Download the SportsDB Scripts
 
-You can download the SportsDB database that is compatible with YugaByte DB from our GitHub repo. The five files you’ll need are:
+You can download the SportsDB database that is compatible with YugabyteDB from our GitHub repo. The five files you’ll need are:
 
 
-* _[sportsdb_tables.sql](https://github.com/YugaByte/yugabyte-db/blob/master/sample/sportsdb_tables.sql)_ which creates tables and sequences
-* _[sportsdb_inserts.sql](https://github.com/YugaByte/yugabyte-db/blob/master/sample/sportsdb_inserts.sql)_ which loads the sample data into the sportsdb database
-* _[sportsdb_constraints.sql](https://github.com/YugaByte/yugabyte-db/blob/master/sample/sportsdb_constraints.sql)_ which creates unique constraints
-* _[sportsdb_fks.sql](https://github.com/YugaByte/yugabyte-db/blob/master/sample/sportsdb_fks.sql)_ which creates foreign key constraints
-* _[sportsdb_indexes.sql](https://github.com/YugaByte/yugabyte-db/blob/master/sample/sportsdb_indexes.sql)_ which creates indexes
+* _[sportsdb_tables.sql](https://github.com/Yugabyte/yugabyte-db/blob/master/sample/sportsdb_tables.sql)_ which creates tables and sequences
+* _[sportsdb_inserts.sql](https://github.com/Yugabyte/yugabyte-db/blob/master/sample/sportsdb_inserts.sql)_ which loads the sample data into the sportsdb database
+* _[sportsdb_constraints.sql](https://github.com/Yugabyte/yugabyte-db/blob/master/sample/sportsdb_constraints.sql)_ which creates unique constraints
+* _[sportsdb_fks.sql](https://github.com/Yugabyte/yugabyte-db/blob/master/sample/sportsdb_fks.sql)_ which creates foreign key constraints
+* _[sportsdb_indexes.sql](https://github.com/Yugabyte/yugabyte-db/blob/master/sample/sportsdb_indexes.sql)_ which creates indexes
 
-We’ve purposely broken up what would otherwise be a very large script. By breaking it up into building blocks, it’ll be easier to see what YugaByteDB is doing and spot any problems (if you encounter them) a lot easier.
+We’ve purposely broken up what would otherwise be a very large script. By breaking it up into building blocks, it’ll be easier to see what YugabyteDB is doing and spot any problems (if you encounter them) a lot easier.
 
 ### Create the SportsDB Database
 
@@ -103,7 +103,7 @@ Finally, let’s create our indexes by executing:
 sportsdb=# \i /Users/yugabyte/sportsdb_indexes.sql
 ```
 
-<strong>Note:</strong> If you have worked with the SportDB sample database in the past, you know that the index creation section specifies the use of a BTREE index. YugaByte DB makes use of LSM trees, so we’ve modified the script as such. You can read more about LSM vs BTREE in our post, <a href="https://blog.yugabyte.com/a-busy-developers-guide-to-database-storage-engines-the-basics/">“A Busy Developer’s Guide to Database Storage Engines  -  The Basics.”</a> Even if we had not specified LSM, you would have seen an informational message that advised you that YugaByte DB had made the switch behind the scenes.
+<strong>Note:</strong> If you have worked with the SportDB sample database in the past, you know that the index creation section specifies the use of a BTREE index. YugabyteDB makes use of LSM trees, so we’ve modified the script as such. You can read more about LSM vs BTREE in our post, <a href="https://blog.yugabyte.com/a-busy-developers-guide-to-database-storage-engines-the-basics/">“A Busy Developer’s Guide to Database Storage Engines  -  The Basics.”</a> Even if we had not specified LSM, you would have seen an informational message that advised you that YugabyteDB had made the switch behind the scenes.
 
 ## Explore SportsDB
-That’s it! You are ready to start exploring SportsDB running on YugaByte DB using your favorite PostgreSQL admin or development tool. You can learn more about the SportsDB project, libraries, samples, web services and more by visiting the project page <a href="http://www.sportsdb.org/sd">here.</a>
+That’s it! You are ready to start exploring SportsDB running on YugabyteDB using your favorite PostgreSQL admin or development tool. You can learn more about the SportsDB project, libraries, samples, web services and more by visiting the project page <a href="http://www.sportsdb.org/sd">here.</a>

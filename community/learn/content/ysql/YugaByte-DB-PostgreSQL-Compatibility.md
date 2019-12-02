@@ -1,8 +1,8 @@
-This table documents the compatibility of YugaByte DB against a comprehensive list of PostgreSQL commands and syntax. In the first column you can find a links with the queries you'll need to test the compatibility yourself.
+This table documents the compatibility of YugabyteDB against a comprehensive list of PostgreSQL commands and syntax. In the first column you can find a links with the queries you'll need to test the compatibility yourself.
 
-|  **Functional Category** | **Feature** | **YugaByte 1.3** | **Notes** |
+|  **Functional Category** | **Feature** | **Yugabyte 1.3** | **Notes** |
 | :---: | :--- | :---: | :---: |
-|  [Fundamentals](https://github.com/YugaByte/yugabyte-db/wiki/YSQL-Tutorial:-Fundamentals)| SELECT data from one column | :heavy_check_mark: |  |
+|  [Fundamentals](https://github.com/Yugabyte/yugabyte-db/wiki/YSQL-Tutorial:-Fundamentals)| SELECT data from one column | :heavy_check_mark: |  |
 |   | SELECT data from multiple columns | :heavy_check_mark:  | |
 |   | SELECT data from all columns | :heavy_check_mark: |  |
 |   | SELECT with an expression | :heavy_check_mark: |  |
@@ -21,7 +21,7 @@ This table documents the compatibility of YugaByte DB against a comprehensive li
 || WHERE clause with an IN operator  |  | | 
 ||  WHERE clause with a LIKE operator |  | | 
 ||  WHERE clause with a BETWEEN operator |  | |  
-||  WHERE clause with a not equal <> operator |  | | 
+||  WHERE clause with a not equal &lt;&gt; operator |  | | 
 || SELECT with a LIMIT clause |  | | 
 ||SELECT with LIMIT and OFFSET clauses|  | |  |
 || SELECT with LIMIT and ORDER BY clauses  |  | | 
