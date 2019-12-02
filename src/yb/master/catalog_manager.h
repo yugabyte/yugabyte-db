@@ -880,7 +880,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Truncate the specified table/index.
   CHECKED_STATUS TruncateTable(const TableId& table_id,
-                               bool is_index,
                                TruncateTableResponsePB* resp,
                                rpc::RpcContext* rpc);
 
