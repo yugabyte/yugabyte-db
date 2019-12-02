@@ -52,7 +52,7 @@ class CQLServerEnt : public cqlserver::CQLServer {
   CHECKED_STATUS SetupMessengerBuilder(rpc::MessengerBuilder* builder) override {
     RETURN_NOT_OK(CQLServer::SetupMessengerBuilder(builder));
     secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-        options_.rpc_opts.rpc_bind_addresses, fs_manager_.get(),
+        options_.rpc_opts.rpc_bind_addresses, *fs_manager_,
         server::SecureContextType::kClientToServer, builder));
     return Status::OK();
   }

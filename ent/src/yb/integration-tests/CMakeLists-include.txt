@@ -10,7 +10,10 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 
-file(COPY ${CMAKE_SOURCE_DIR}/ent/test_certs DESTINATION ${CMAKE_BINARY_DIR}/ent)
+file(COPY
+  ${CMAKE_SOURCE_DIR}/ent/test_certs DESTINATION
+  ${CMAKE_BINARY_DIR}/ent
+  FILE_PERMISSIONS OWNER_WRITE OWNER_READ)
 
 set(YB_SOURCE_DIR         ${CMAKE_SOURCE_DIR}/src)
 set(YB_CURRENT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})

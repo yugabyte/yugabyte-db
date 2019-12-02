@@ -37,15 +37,30 @@ DEFINE_string(certs_for_client_dir, "",
 
 namespace yb {
 namespace server {
+namespace {
+
+string DefaultCertsDir(const string& root_dir) {
+  return JoinPathSegments(root_dir, "certs");
+}
+
+string DefaultRootDir(const FsManager& fs_manager) {
+  return DirName(fs_manager.GetRaftGroupMetadataDir());
+}
+
+} // namespace
+
+string DefaultCertsDir(const FsManager& fs_manager) {
+  return DefaultCertsDir(DefaultRootDir(fs_manager));
+}
 
 Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
-    const std::string& hosts, FsManager* fs_manager, SecureContextType type,
+    const std::string& hosts, const FsManager& fs_manager, SecureContextType type,
     rpc::MessengerBuilder* builder) {
   std::vector<HostPort> host_ports;
   RETURN_NOT_OK(HostPort::ParseStrings(hosts, 0, &host_ports));
 
   return server::SetupSecureContext(
-      DirName(fs_manager->GetRaftGroupMetadataDir()), host_ports[0].host(), type, builder);
+      DefaultRootDir(fs_manager), host_ports[0].host(), type, builder);
 }
 
 Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
@@ -73,26 +88,37 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
     dir = FLAGS_certs_dir;
   }
   if (dir.empty()) {
-    dir = JoinPathSegments(root_dir, "certs");
+    dir = DefaultCertsDir(root_dir);
   }
 
-  LOG(INFO) << "Certs directory: " << dir << ", name: " << name;
+  auto context = VERIFY_RESULT(CreateSecureContext(dir, name));
+  ApplySecureContext(context.get(), builder);
+  return context;
+}
+
+Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContext(
+    const std::string& certs_dir, const std::string& name) {
+
+  LOG(INFO) << "Certs directory: " << certs_dir << ", name: " << name;
 
   auto result = std::make_unique<rpc::SecureContext>();
   faststring data;
-  RETURN_NOT_OK(ReadFileToString(Env::Default(), JoinPathSegments(dir, "ca.crt"), &data));
+  RETURN_NOT_OK(ReadFileToString(Env::Default(), JoinPathSegments(certs_dir, "ca.crt"), &data));
   RETURN_NOT_OK(result->AddCertificateAuthority(data));
 
   if (!name.empty()) {
     RETURN_NOT_OK(ReadFileToString(
-        Env::Default(), JoinPathSegments(dir, Format("node.$0.key", name)), &data));
+        Env::Default(), JoinPathSegments(certs_dir, Format("node.$0.key", name)), &data));
     RETURN_NOT_OK(result->UsePrivateKey(data));
 
     RETURN_NOT_OK(ReadFileToString(
-        Env::Default(), JoinPathSegments(dir, Format("node.$0.crt", name)), &data));
+        Env::Default(), JoinPathSegments(certs_dir, Format("node.$0.crt", name)), &data));
     RETURN_NOT_OK(result->UseCertificate(data));
   }
+  return result;
+}
 
+void ApplySecureContext(rpc::SecureContext* context, rpc::MessengerBuilder* builder) {
   auto parent_mem_tracker = builder->last_used_parent_mem_tracker();
   auto buffer_tracker = MemTracker::FindOrCreateTracker(
       -1, "Encrypted Read Buffer", parent_mem_tracker);
@@ -100,15 +126,7 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
   builder->SetListenProtocol(rpc::SecureStreamProtocol());
   builder->AddStreamFactory(
       rpc::SecureStreamProtocol(),
-      rpc::SecureStreamFactory(rpc::TcpStream::Factory(), buffer_tracker, result.get()));
-
-  return std::move(result);
-}
-
-Result<std::unique_ptr<rpc::SecureContext>> SetupClientSecureContext(
-    rpc::MessengerBuilder* builder) {
-  return SetupSecureContext(
-      std::string(), std::string(), server::SecureContextType::kClientToServer, builder);
+      rpc::SecureStreamFactory(rpc::TcpStream::Factory(), buffer_tracker, context));
 }
 
 } // namespace server

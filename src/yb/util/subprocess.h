@@ -167,6 +167,10 @@ class Subprocess {
   void SetEnv(const std::string& key, const std::string& value);
   void SetParentDeathSignal(int signal);
 
+  // Issues Start() then Wait() and collects the output from the child process
+  // (stdout or stderr) into the output parameter.
+  CHECKED_STATUS Call(std::string* output, bool read_stderr = false);
+
  private:
   enum State {
     kNotStarted,

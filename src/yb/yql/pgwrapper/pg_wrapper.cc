@@ -102,9 +102,9 @@ void ReadCSVConfigValues(const string& csv, vector<string>* lines) {
   lines->insert(lines->end(), csv_lines.begin(), csv_lines.end());
 }
 
-Result<string> WritePostgresConfig(const string& data_dir) {
+Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   // First add default configuration created by local initdb.
-  string default_conf_path = JoinPathSegments(data_dir, "postgresql.conf");
+  string default_conf_path = JoinPathSegments(conf.data_dir, "postgresql.conf");
   std::ifstream conf_file;
   conf_file.open(default_conf_path, std::ios_base::in);
   if (!conf_file) {
@@ -124,6 +124,17 @@ Result<string> WritePostgresConfig(const string& data_dir) {
 
   if (!FLAGS_ysql_pg_conf.empty()) {
     ReadCSVConfigValues(FLAGS_ysql_pg_conf, &lines);
+  }
+
+  if (conf.enable_tls) {
+    lines.push_back("ssl=on");
+    lines.push_back(Format("ssl_cert_file='$0/node.$1.crt'",
+                           conf.certs_for_client_dir,
+                           conf.cert_base_name));
+    lines.push_back(Format("ssl_key_file='$0/node.$1.key'",
+                           conf.certs_for_client_dir,
+                           conf.cert_base_name));
+    lines.push_back(Format("ssl_ca_file='$0/ca.crt'", conf.certs_for_client_dir));
   }
 
   if (!FLAGS_ysql_timezone.empty()) {
@@ -150,17 +161,22 @@ Result<string> WritePostgresConfig(const string& data_dir) {
     lines.push_back("log_min_messages=" + FLAGS_ysql_log_min_messages);
   }
 
-  string conf_path = JoinPathSegments(data_dir, "ysql_pg.conf");
+  string conf_path = JoinPathSegments(conf.data_dir, "ysql_pg.conf");
   RETURN_NOT_OK(WriteConfigFile(conf_path, lines));
   return "config_file=" + conf_path;
 }
 
-Result<string> WritePgHbaConfig(const string& data_dir) {
+Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
   vector<string> lines;
 
-  if (FLAGS_ysql_enable_auth) {
-    lines.push_back("host all all 0.0.0.0/0 md5");
-    lines.push_back("host all all ::0/0 md5");
+  if (FLAGS_ysql_enable_auth || conf.enable_tls) {
+    const auto host_type =  conf.enable_tls ? "hostssl" : "host";
+    const auto auth_method = FLAGS_ysql_enable_auth ? (conf.enable_tls ? "md5 clientcert=1" : "md5")
+                                                    : "cert";
+
+    for (const auto addr : {"0.0.0.0/0", "::0/0"}) {
+      lines.push_back(Format("$0 all all $1 $2", host_type, addr, auth_method));
+    }
   }
 
   if (!FLAGS_ysql_hba_conf.empty()) {
@@ -173,18 +189,18 @@ Result<string> WritePgHbaConfig(const string& data_dir) {
     lines.push_back("host all all ::0/0 trust");
   }
 
-  string conf_path = JoinPathSegments(data_dir, "ysql_hba.conf");
+  string conf_path = JoinPathSegments(conf.data_dir, "ysql_hba.conf");
   RETURN_NOT_OK(WriteConfigFile(conf_path, lines));
   return "hba_file=" + conf_path;
 }
 
-Result<vector<string>> WritePgConfigFiles(const string& data_dir) {
+Result<vector<string>> WritePgConfigFiles(const PgProcessConf& conf) {
   vector<string> args;
   args.push_back("-c");
-  args.push_back(VERIFY_RESULT_PREPEND(WritePostgresConfig(data_dir),
+  args.push_back(VERIFY_RESULT_PREPEND(WritePostgresConfig(conf),
       "Failed to write ysql pg configuration: "));
   args.push_back("-c");
-  args.push_back(VERIFY_RESULT_PREPEND(WritePgHbaConfig(data_dir),
+  args.push_back(VERIFY_RESULT_PREPEND(WritePgHbaConfig(conf),
       "Failed to write ysql hba configuration: "));
   return args;
 }
@@ -257,7 +273,7 @@ Status PgWrapper::Start() {
   argv.push_back("-c");
   argv.push_back("yb_pg_metrics.port=" + std::to_string(FLAGS_pgsql_proxy_webserver_port));
 
-  auto config_file_args = CHECK_RESULT(WritePgConfigFiles(conf_.data_dir));
+  auto config_file_args = CHECK_RESULT(WritePgConfigFiles(conf_));
   argv.insert(argv.end(), config_file_args.begin(), config_file_args.end());
 
   if (FLAGS_pg_verbose_error_log) {
@@ -384,6 +400,11 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
     proc->SetEnv("YB_ENABLED_IN_POSTGRES", "1");
     proc->SetEnv("FLAGS_pggate_master_addresses", conf_.master_addresses);
     proc->SetEnv("FLAGS_pggate_tserver_shm_fd", std::to_string(conf_.tserver_shm_fd));
+    // Postgres process can't compute default certs dir by itself
+    // as it knows nothing about t-server's root data directory.
+    // Solution is to specify it explicitly.
+    proc->SetEnv("FLAGS_certs_dir", conf_.certs_dir);
+    proc->SetEnv("FLAGS_certs_for_client_dir", conf_.certs_for_client_dir);
 
     proc->SetEnv("YB_PG_TRANSACTIONS_ENABLED", FLAGS_pg_transactions_enabled ? "1" : "0");
 
@@ -398,15 +419,19 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
 #endif
 
     // Pass non-default flags to the child process using FLAGS_... environment variables.
+    static const std::vector<string> explicit_flags{"pggate_master_addresses",
+                                                    "pggate_tserver_shm_fd",
+                                                    "certs_dir",
+                                                    "certs_for_client_dir"};
     std::vector<google::CommandLineFlagInfo> flag_infos;
     google::GetAllFlags(&flag_infos);
     for (const auto& flag_info : flag_infos) {
-      string env_var_name = "FLAGS_" + flag_info.name;
       // Skip the flags that we set explicitly using conf_ above.
-      if (flag_info.name != "pggate_master_addresses"
-          && flag_info.name != "pggate_tserver_shm_fd"
-          && !flag_info.is_default) {
-        proc->SetEnv(env_var_name, flag_info.current_value);
+      if (!flag_info.is_default &&
+          std::find(explicit_flags.begin(),
+                    explicit_flags.end(),
+                    flag_info.name) == explicit_flags.end()) {
+        proc->SetEnv("FLAGS_" + flag_info.name, flag_info.current_value);
       }
     }
   } else {
