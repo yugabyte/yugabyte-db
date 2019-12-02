@@ -407,12 +407,12 @@ Status CheckIfTableDeletedOrNotRunning(TableInfo::lock_type* lock, RespClass* re
   // This covers both in progress and fully deleted objects.
   if (lock->data().started_deleting()) {
     Status s = STATUS_SUBSTITUTE(NotFound,
-        "The table '$0.$1' does not exist", lock->data().namespace_id(), lock->data().name());
+        "The object '$0.$1' does not exist", lock->data().namespace_id(), lock->data().name());
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
   if (!lock->data().is_running()) {
     Status s = STATUS_SUBSTITUTE(ServiceUnavailable,
-        "The table '$0.$1' is not running", lock->data().namespace_id(), lock->data().name());
+        "The object '$0.$1' is not running", lock->data().namespace_id(), lock->data().name());
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
   return Status::OK();
@@ -2590,29 +2590,25 @@ Status CatalogManager::TruncateTable(const TruncateTableRequestPB* req,
   RETURN_NOT_OK(CheckOnline());
 
   for (int i = 0; i < req->table_ids_size(); i++) {
-    RETURN_NOT_OK(TruncateTable(req->table_ids(i), false /* is_index */, resp, rpc));
+    RETURN_NOT_OK(TruncateTable(req->table_ids(i), resp, rpc));
   }
 
   return Status::OK();
 }
 
 Status CatalogManager::TruncateTable(const TableId& table_id,
-                                     const bool is_index,
                                      TruncateTableResponsePB* resp,
                                      rpc::RpcContext* rpc) {
-  const char* table_type = is_index ? "index" : "table";
-
   // Lookup the table and verify if it exists.
-  TRACE(Substitute("Looking up $0", table_type));
+  TRACE(Substitute("Looking up object by id $0", table_id));
   scoped_refptr<TableInfo> table = FindPtrOrNull(*table_ids_map_, table_id);
   if (table == nullptr) {
     Status s = STATUS_SUBSTITUTE(NotFound, "The object with id $0 does not exist", table_id);
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
 
-  TRACE(Substitute("Locking $0", table_type));
+  TRACE(Substitute("Locking object with id $0", table_id));
   auto l = table->LockForRead();
-  DCHECK(is_index == PROTO_IS_INDEX(l->data().pb));
   RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
 
   // Send a Truncate() request to each tablet in the table.
@@ -2623,9 +2619,12 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
   background_tasks_->Wake();
 
   // Truncate indexes also.
+  // Note: PG table does not have references to indexes in the base table, so associated indexes
+  //       must be truncated from the PG code separately.
+  const bool is_index = PROTO_IS_INDEX(l->data().pb);
   DCHECK(!is_index || l->data().pb.indexes().empty()) << "indexes should be empty for index table";
   for (const auto& index_info : l->data().pb.indexes()) {
-    RETURN_NOT_OK(TruncateTable(index_info.table_id(), true /* is_index */, resp, rpc));
+    RETURN_NOT_OK(TruncateTable(index_info.table_id(), resp, rpc));
   }
 
   return Status::OK();
