@@ -12,7 +12,7 @@ SELECT a.employee_id AS employee_id_1,
        a.customer_id
 FROM orders a,
      orders b
-WHERE a.employee_id <> b.employee_id
+WHERE a.employee_id &lt;&gt; b.employee_id
   AND a.customer_id=b.customer_id
 ORDER BY a.employee_id;
 ```

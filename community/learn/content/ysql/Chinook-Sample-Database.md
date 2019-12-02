@@ -1,4 +1,4 @@
-In this post we are going to walk you through how to download and install the PostgreSQL compatible version of the Chinook sample db onto the YugaByte DB distributed SQL database with a replication factor of 3.
+In this post we are going to walk you through how to download and install the PostgreSQL compatible version of the Chinook sample db onto the YugabyteDB distributed SQL database with a replication factor of 3.
 
 The Chinook data model represents a digital media store, including tables for artists, albums, media tracks, invoices and customers. Media related data was created using real data from an iTunes Library. Customer and employee information was created using fictitious names and addresses that can be located on Google maps, and other well formatted data (phone, fax, email, etc.). Sales information was auto generated using random data for a four year period. The basic characteristics of Chinook include:
 
@@ -10,7 +10,7 @@ Here’s an ER diagram of the Chinook data model:
 
 ![](https://3lr6t13cowm230cj0q42yphj-wpengine.netdna-ssl.com/wp-content/uploads/2019/07/distributed-sql-scale-out-postgresql-chinook-01.png)
 
-## Download and Install YugaByte DB
+## Download and Install YugabyteDB
 
 The latest instructions on how to get up and running are on our Quickstart page here:
 
@@ -20,13 +20,13 @@ https://docs.yugabyte.com/latest/quick-start/
 
 ### Download the Chinook Scripts
 
-You can download the Chinook database that is compatible with YugaByte DB from our GitHub repo. The three files are:
+You can download the Chinook database that is compatible with YugabyteDB from our GitHub repo. The three files are:
 
-* [chinook_ddl.sql](https://github.com/YugaByte/yugabyte-db/blob/master/sample/chinook_ddl.sql) which creates tables and constraints
-* [chinook_genres_artists_albums.sql](https://github.com/YugaByte/yugabyte-db/blob/master/sample/chinook_genres_artists_albums.sql) which loads artist and album information
-* [chinook_songs.sql](https://github.com/YugaByte/yugabyte-db/blob/master/sample/chinook_songs.sql) which loads individual song information
+* [chinook_ddl.sql](https://github.com/Yugabyte/yugabyte-db/blob/master/sample/chinook_ddl.sql) which creates tables and constraints
+* [chinook_genres_artists_albums.sql](https://github.com/Yugabyte/yugabyte-db/blob/master/sample/chinook_genres_artists_albums.sql) which loads artist and album information
+* [chinook_songs.sql](https://github.com/Yugabyte/yugabyte-db/blob/master/sample/chinook_songs.sql) which loads individual song information
 
-We’ve purposely broken up what would otherwise be a very large script. By breaking it up into building blocks, it’ll be easier to see what YugaByteDB is doing and spot any problems (if you encounter them) a lot easier.
+We’ve purposely broken up what would otherwise be a very large script. By breaking it up into building blocks, it’ll be easier to see what YugabyteDB is doing and spot any problems (if you encounter them) a lot easier.
 
 ### Create the Chinook Database
 
