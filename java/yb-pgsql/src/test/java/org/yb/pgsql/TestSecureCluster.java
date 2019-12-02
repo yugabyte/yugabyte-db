@@ -23,6 +23,11 @@ import java.nio.file.FileSystems;
 import java.sql.Statement;
 import java.util.*;
 
+// This test tests node to node encryption only.
+// Postgres connections to t-server and master are encrypted as well.
+// But postgres client connections are not encrypted.
+// Some extra work required to adopt BasePgSQLTest for using encrypted connection.
+// Encrypted client connections are tested in pg_wrapper-test test now.
 @RunWith(value=YBTestRunner.class)
 public class TestSecureCluster extends BasePgSQLTest {
   private String certsDir = null;
@@ -47,7 +52,6 @@ public class TestSecureCluster extends BasePgSQLTest {
   protected Map<String, String> getMasterAndTServerFlags() {
     Map<String, String> flagMap = super.getMasterAndTServerFlags();
     flagMap.put("use_node_to_node_encryption", "true");
-    flagMap.put("use_client_to_server_encryption", "true");
     flagMap.put("allow_insecure_connections", "false");
     flagMap.put("certs_dir", certsDir);
     return flagMap;

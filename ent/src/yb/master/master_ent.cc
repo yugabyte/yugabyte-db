@@ -56,7 +56,7 @@ Status Master::RegisterServices() {
 Status Master::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   RETURN_NOT_OK(super::SetupMessengerBuilder(builder));
   secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-      options_.rpc_opts.rpc_bind_addresses, fs_manager_.get(),
+      options_.rpc_opts.rpc_bind_addresses, *fs_manager_,
       server::SecureContextType::kServerToServer, builder));
   return Status::OK();
 }

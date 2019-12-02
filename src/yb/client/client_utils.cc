@@ -38,13 +38,13 @@ Result<std::unique_ptr<rpc::Messenger>> CreateClientMessenger(
     int32_t num_reactors,
     const scoped_refptr<MetricEntity>& metric_entity,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
-    std::unique_ptr<rpc::SecureContext>* secure_context) {
+    rpc::SecureContext* secure_context) {
   rpc::MessengerBuilder builder(client_name);
   builder.set_num_reactors(num_reactors);
   builder.set_metric_entity(metric_entity);
   builder.UseDefaultConnectionContextFactory(parent_mem_tracker);
   if (secure_context) {
-    *secure_context = VERIFY_RESULT(server::SetupClientSecureContext(&builder));
+    server::ApplySecureContext(secure_context, &builder);
   }
   auto messenger = VERIFY_RESULT(builder.Build());
   if (PREDICT_FALSE(FLAGS_running_test)) {
