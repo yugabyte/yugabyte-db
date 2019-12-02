@@ -1,4 +1,5 @@
-pg_stat_monitor - Statistics collector for [PostgreSQL][1].
+
+### pg_stat_monitor - Statistics collector for [PostgreSQL][1].
 
 The pg_stat_monitor is statistics collector tool based on PostgreSQL's pg_stat_statement. PostgreSQL’s “pg_stat_statment” provides the basic statistics which is sometimes not enough. The major flaw in this that it accumulates all the queries and its statistics and does not provide aggregate statistics, in that case, the user needs to calculate the aggregate which is quite expensive.
 
