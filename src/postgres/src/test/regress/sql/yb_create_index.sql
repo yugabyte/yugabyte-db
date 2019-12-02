@@ -167,23 +167,22 @@ INSERT INTO test_unique VALUES (2, 2, 2);
 SELECT * FROM test_unique;
 
 -- Test cascade-truncate indexes
--- TODO(dmitry) Temporary commented out due to issue #1632
--- CREATE TABLE test_truncate (a int PRIMARY KEY, b int);
--- CREATE UNIQUE INDEX test_truncate_index ON test_truncate (b);
+CREATE TABLE test_truncate (a int PRIMARY KEY, b int);
+CREATE UNIQUE INDEX test_truncate_index ON test_truncate (b);
 
--- INSERT INTO test_truncate VALUES (1, 2);
--- INSERT INTO test_truncate VALUES (2, 2);
+INSERT INTO test_truncate VALUES (1, 2);
+INSERT INTO test_truncate VALUES (2, 2);
 
--- EXPLAIN SELECT b FROM test_truncate WHERE b = 2;
--- SELECT b FROM test_truncate WHERE b = 2;
+EXPLAIN SELECT b FROM test_truncate WHERE b = 2;
+SELECT b FROM test_truncate WHERE b = 2;
 
--- TRUNCATE test_truncate;
--- SELECT b FROM test_truncate WHERE b = 2;
+TRUNCATE test_truncate;
+SELECT b FROM test_truncate WHERE b = 2;
 
--- INSERT INTO test_truncate VALUES (2, 2);
--- INSERT INTO test_truncate VALUES (1, 2);
+INSERT INTO test_truncate VALUES (2, 2);
+INSERT INTO test_truncate VALUES (1, 2);
 
--- DROP TABLE test_truncate;
+DROP TABLE test_truncate;
 
 -- Test index methods
 CREATE TABLE test_method (k int PRIMARY KEY, v int);
