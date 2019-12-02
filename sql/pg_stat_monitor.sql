@@ -1,10 +1,10 @@
-CREATE EXTENSION pg_stat_statements;
+CREATE EXTENSION pg_stat_monitor;
 
 --
 -- simple and compound statements
 --
-SET pg_stat_statements.track_utility = FALSE;
-SELECT pg_stat_statements_reset();
+SET pg_stat_monitor.track_utility = FALSE;
+SELECT pg_stat_monitor_reset();
 
 SELECT 1 AS "int";
 
@@ -51,12 +51,12 @@ PREPARE pgss_test (int) AS SELECT $1, 'test' LIMIT 1;
 EXECUTE pgss_test(1);
 DEALLOCATE pgss_test;
 
-SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
+SELECT query, calls, rows FROM pg_stat_monitor ORDER BY query COLLATE "C";
 
 --
 -- CRUD: INSERT SELECT UPDATE DELETE on test table
 --
-SELECT pg_stat_statements_reset();
+SELECT pg_stat_monitor_reset();
 
 -- utility "create table" should not be shown
 CREATE TEMP TABLE test (a int, b char(20));
@@ -99,24 +99,24 @@ SELECT * FROM test ORDER BY a;
 -- SELECT with IN clause
 SELECT * FROM test WHERE a IN (1, 2, 3, 4, 5);
 
-SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
+SELECT query, calls, rows FROM pg_stat_monitor ORDER BY query COLLATE "C";
 
 --
--- pg_stat_statements.track = none
+-- pg_stat_monitor.track = none
 --
-SET pg_stat_statements.track = 'none';
-SELECT pg_stat_statements_reset();
+SET pg_stat_monitor.track = 'none';
+SELECT pg_stat_monitor_reset();
 
 SELECT 1 AS "one";
 SELECT 1 + 1 AS "two";
 
-SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
+SELECT query, calls, rows FROM pg_stat_monitor ORDER BY query COLLATE "C";
 
 --
--- pg_stat_statements.track = top
+-- pg_stat_monitor.track = top
 --
-SET pg_stat_statements.track = 'top';
-SELECT pg_stat_statements_reset();
+SET pg_stat_monitor.track = 'top';
+SELECT pg_stat_monitor_reset();
 
 DO LANGUAGE plpgsql $$
 BEGIN
@@ -144,13 +144,13 @@ $$ SELECT (i + 1.0)::INTEGER LIMIT 1 $$ LANGUAGE SQL;
 SELECT PLUS_ONE(8);
 SELECT PLUS_ONE(10);
 
-SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
+SELECT query, calls, rows FROM pg_stat_monitor ORDER BY query COLLATE "C";
 
 --
--- pg_stat_statements.track = all
+-- pg_stat_monitor.track = all
 --
-SET pg_stat_statements.track = 'all';
-SELECT pg_stat_statements_reset();
+SET pg_stat_monitor.track = 'all';
+SELECT pg_stat_monitor_reset();
 
 -- we drop and recreate the functions to avoid any caching funnies
 DROP FUNCTION PLUS_ONE(INTEGER);
@@ -175,13 +175,13 @@ $$ SELECT (i + 1.0)::INTEGER LIMIT 1 $$ LANGUAGE SQL;
 SELECT PLUS_ONE(3);
 SELECT PLUS_ONE(1);
 
-SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
+SELECT query, calls, rows FROM pg_stat_monitor ORDER BY query COLLATE "C";
 
 --
 -- utility commands
 --
-SET pg_stat_statements.track_utility = TRUE;
-SELECT pg_stat_statements_reset();
+SET pg_stat_monitor.track_utility = TRUE;
+SELECT pg_stat_monitor_reset();
 
 SELECT 1;
 CREATE INDEX test_b ON test(b);
@@ -193,6 +193,6 @@ DROP TABLE IF EXISTS test \;
 DROP FUNCTION IF EXISTS PLUS_ONE(INTEGER);
 DROP FUNCTION PLUS_TWO(INTEGER);
 
-SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
+SELECT query, calls, rows FROM pg_stat_monitor ORDER BY query COLLATE "C";
 
-DROP EXTENSION pg_stat_statements;
+DROP EXTENSION pg_stat_monitor;
