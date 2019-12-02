@@ -1,7 +1,8 @@
 ```
 create_table ::= CREATE [ TEMPORARY | TEMP ] TABLE [ IF NOT EXISTS ] 
                  table_name ( [ table_elem [ , ... ] ] ) 
-                 [ WITH ( storage_parameters ) | WITHOUT OIDS ]
+                 [ WITH ( storage_parameters ) | WITHOUT OIDS ] 
+                 [ SPLIT ( INTO integer TABLETS ) ]
 
 table_elem ::= column_name data_type [ column_constraint [ ... ] ]
                | table_constraint
