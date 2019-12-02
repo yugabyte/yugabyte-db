@@ -2743,6 +2743,18 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				JumbleExpr(jstate, (Node *) expr->aggfilter);
 			}
 			break;
+#if PG_VERSION_NUM >= 120000
+		case T_SubscriptingRef:
+			{
+				SubscriptingRef *sbsref = (SubscriptingRef *) node;
+
+				JumbleExpr(jstate, (Node *) sbsref->refupperindexpr);
+				JumbleExpr(jstate, (Node *) sbsref->reflowerindexpr);
+				JumbleExpr(jstate, (Node *) sbsref->refexpr);
+				JumbleExpr(jstate, (Node *) sbsref->refassgnexpr);
+			}
+			break;
+#else
 		case T_ArrayRef:
 			{
 				ArrayRef   *aref = (ArrayRef *) node;
@@ -2753,6 +2765,7 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				JumbleExpr(jstate, (Node *) aref->refassgnexpr);
 			}
 			break;
+#endif
 		case T_FuncExpr:
 			{
 				FuncExpr   *expr = (FuncExpr *) node;
@@ -3313,9 +3326,13 @@ fill_in_constant_lengths(pgssJumbleState *jstate, const char *query,
 	/* initialize the flex scanner --- should match raw_parser() */
 	yyscanner = scanner_init(query,
 							 &yyextra,
-							 ScanKeywords,
-							 NumScanKeywords);
-
+#if PG_VERSION_NUM >= 120000
+							&ScanKeywords,
+							ScanKeywordTokens);
+#else
+							ScanKeywords,
+							NumScanKeywords);
+#endif
 	/* we don't want to re-emit any escape string warnings */
 	yyextra.escape_string_warning = false;
 
