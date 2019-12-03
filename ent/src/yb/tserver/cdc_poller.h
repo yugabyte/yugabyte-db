@@ -67,7 +67,7 @@ class CDCPoller {
   // Begins poll process for a producer tablet.
   void Poll();
 
-  std::string ToString() const;
+  std::string LogPrefixUnlocked() const;
 
  private:
   bool CheckOnline();
