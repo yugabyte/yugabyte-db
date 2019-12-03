@@ -30,9 +30,8 @@
 namespace yb {
 namespace pggate {
 
-PgDocOp::PgDocOp(PgSession::
-    ScopedRefPtr pg_session, PreventRestart prevent_restart)
-    : pg_session_(std::move(pg_session)), prevent_restart_(prevent_restart) {
+PgDocOp::PgDocOp(PgSession::ScopedRefPtr pg_session)
+    : pg_session_(std::move(pg_session)) {
   exec_params_.limit_count = FLAGS_ysql_prefetch_limit;
   exec_params_.limit_offset = 0;
   exec_params_.limit_use_default = true;
@@ -123,9 +122,6 @@ Status PgDocOp::GetResult(string *result_set) {
   // rows.
   RETURN_NOT_OK(SendRequestIfNeededUnlocked());
 
-  if (prevent_restart_) {
-    pg_session_->pg_txn_manager()->PreventRestart();
-  }
   return Status::OK();
 }
 
@@ -152,9 +148,9 @@ Status PgDocOp::SendRequestIfNeededUnlocked() {
   return Status::OK();
 }
 
-bool PgDocOp::CheckRestartUnlocked(client::YBPgsqlOp* op) {
+void PgDocOp::HandleResponseStatus(client::YBPgsqlOp* op) {
   if (op->succeeded()) {
-    return false;
+    return;
   }
 
   const auto& response = op->response();
@@ -169,16 +165,7 @@ bool PgDocOp::CheckRestartUnlocked(client::YBPgsqlOp* op) {
     txn_error_code = static_cast<TransactionErrorCode>(response.txn_error_code());
   }
 
-  if (response.status() == PgsqlResponsePB::PGSQL_STATUS_RESTART_REQUIRED_ERROR &&
-      pg_session_->pg_txn_manager()->CanRestart()) {
-    exec_status_ = pg_session_->RestartTransaction();
-    if (exec_status_.ok()) {
-      exec_status_ = SendRequestUnlocked();
-      if (exec_status_.ok()) {
-        return true;
-      }
-    }
-  } else if (response.status() == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR) {
+  if (response.status() == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR) {
     // We're doing this to eventually replace the error message by one mentioning the index name.
     exec_status_ = STATUS(AlreadyPresent, op->response().error_message(), Slice(),
         PgsqlError(pg_error_code));
@@ -188,15 +175,14 @@ bool PgDocOp::CheckRestartUnlocked(client::YBPgsqlOp* op) {
   }
 
   exec_status_ = exec_status_.CloneAndAddErrorCode(TransactionError(txn_error_code));
-  return false;
 }
 
 //--------------------------------------------------------------------------------------------------
 
 PgDocReadOp::PgDocReadOp(
-    PgSession::ScopedRefPtr pg_session, PreventRestart prevent_restart,
+    PgSession::ScopedRefPtr pg_session,
     client::YBPgsqlReadOp *read_op)
-    : PgDocOp(std::move(pg_session), prevent_restart), read_op_(read_op) {
+    : PgDocOp(std::move(pg_session)), read_op_(read_op) {
 }
 
 PgDocReadOp::~PgDocReadOp() {
@@ -261,11 +247,11 @@ void PgDocReadOp::ReceiveResponse(Status exec_status) {
   waiting_for_response_ = false;
   exec_status_ = exec_status;
 
-  if (exec_status.ok() && CheckRestartUnlocked(read_op_.get())) {
-    return;
+  if (exec_status.ok()) {
+    HandleResponseStatus(read_op_.get());
   }
 
-  // exec_status_ could be changed by CheckRestartUnlocked
+  // exec_status_ could be changed by HandleResponseStatus.
   if (!exec_status_.ok()) {
     end_of_data_ = true;
     return;
@@ -305,7 +291,7 @@ void PgDocReadOp::ReceiveResponse(Status exec_status) {
 //--------------------------------------------------------------------------------------------------
 
 PgDocWriteOp::PgDocWriteOp(PgSession::ScopedRefPtr pg_session, client::YBPgsqlWriteOp *write_op)
-    : PgDocOp(pg_session, PreventRestart::kTrue), write_op_(write_op) {
+    : PgDocOp(pg_session), write_op_(write_op) {
 }
 
 PgDocWriteOp::~PgDocWriteOp() {
@@ -338,9 +324,10 @@ void PgDocWriteOp::ReceiveResponse(Status exec_status) {
   cv_.notify_all();
   exec_status_ = exec_status;
 
-  if (exec_status.ok() && CheckRestartUnlocked(write_op_.get())) {
-    return;
+  if (exec_status.ok()) {
+    HandleResponseStatus(write_op_.get());
   }
+
   if (!is_canceled_ && exec_status_.ok()) {
     // Save it to cache.
     WriteToCacheUnlocked(write_op_);
@@ -354,7 +341,7 @@ void PgDocWriteOp::ReceiveResponse(Status exec_status) {
 //--------------------------------------------------------------------------------------------------
 
 PgDocCompoundOp::PgDocCompoundOp(PgSession::ScopedRefPtr pg_session)
-    : PgDocOp(std::move(pg_session), PreventRestart::kTrue) {
+    : PgDocOp(std::move(pg_session)) {
 }
 
 PgDocCompoundOp::~PgDocCompoundOp() {

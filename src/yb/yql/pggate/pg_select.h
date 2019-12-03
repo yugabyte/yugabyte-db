@@ -42,7 +42,7 @@ class PgSelect : public PgDml {
   void UseIndex(const PgObjectId& index_id);
 
   // Prepare SELECT before execution.
-  CHECKED_STATUS Prepare(PreventRestart prevent_restart);
+  CHECKED_STATUS Prepare();
 
   // Setup internal structures for binding values during prepare.
   void PrepareColumns();
