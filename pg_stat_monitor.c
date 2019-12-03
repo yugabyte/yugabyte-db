@@ -98,7 +98,7 @@ PG_MODULE_MAGIC;
 
 /* Location of permanent stats file (valid when database is shut down) */
 #define PGSS_DUMP_FILE	PGSTAT_STAT_PERMANENT_DIRECTORY "/pg_stat_monitor.stat"
-#define  ArrayGetTextDatum(x) arry_get_datum(x)
+#define  ArrayGetTextDatum(x) array_get_datum(x)
 
 /*
  * Location of external query text file.  We don't keep it in the core
@@ -354,7 +354,7 @@ PG_FUNCTION_INFO_V1(pg_stat_monitor);
 /* Extended version function prototypes */
 PG_FUNCTION_INFO_V1(pg_stat_agg);
 static uint pg_get_client_addr();
-static Datum arry_get_datum(double arr[]);
+static Datum array_get_datum(double arr[]);
 static void update_agg_counters(uint64 queryid, uint64 id, uint64 type);
 static void hash_remove_agg(uint64 queryid);
 static pgssAggEntry *agg_entry_alloc(pgssAggHashKey *key);
@@ -3422,23 +3422,27 @@ comp_location(const void *a, const void *b)
 
 /* Convert array into Text dataum */
 static Datum
-arry_get_datum(double arr[])
+array_get_datum(double arr[])
 {
-	int 	j;
-	char	str[1024];
-	bool	first = true;
+	int     j;
+	char    str[1024];
+	char    tmp[10];
+	bool    first = true;
 
 	/* Need to calculate the actual size, and avoid unnessary memory usage */
-	memset(str, 0, 1024);
 	for (j = 0; j < 24; j++)
 	{
 		if (first)
 		{
 			snprintf(str, 1024, "%s %04.1f", str, arr[j]);
+			snprintf(tmp, 10, "%04.1f", arr[j]);
+			strcat(str,tmp);
 			first = false;
 			continue;
 		}
 		sprintf(str, "%s, %04.1f", str, arr[j]);
+		snprintf(tmp, 10, ", %04.1f", arr[j]);
+		strcat(str,tmp);
 	}
 	return CStringGetTextDatum(str);
 }
