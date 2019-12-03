@@ -927,21 +927,21 @@ expr_list_opt:
 
 atom:
     literal
-    | var
-    | '(' expr ')'
-        {
-            $$ = $2;
-        }
     | PARAMETER
         {
             cypher_param *n;
 
-            n  = make_ag_node(cypher_param);
+            n = make_ag_node(cypher_param);
             n->name = $1;
             n->location = @1;
 
             $$ = (Node *)n;
         }
+    | '(' expr ')'
+        {
+            $$ = $2;
+        }
+    | var
     ;
 
 literal:

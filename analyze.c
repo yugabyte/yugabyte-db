@@ -216,8 +216,8 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     RangeTblFunction *rtfunc = linitial(rte->functions);
     FuncExpr *funcexpr = (FuncExpr *)rtfunc->funcexpr;
     Node *arg;
-    Node *params;
     const char *query_str;
+    Node *params;
     cypher_parse_error_callback_arg ecb_arg;
     ErrorContextCallback ecb;
     Query *query;
@@ -268,12 +268,14 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     {
         params = lsecond(funcexpr->args);
         if (!IsA(params, Param))
+        {
             ereport(
                 ERROR,
-                (errcode(ERRCODE_SYNTAX_ERROR),
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                  errmsg(
-                     "Second argument of cypher function must be a parameter"),
+                     "second argument of cypher function must be a parameter"),
                  parser_errposition(pstate, exprLocation(params))));
+        }
     }
     else
     {
@@ -358,6 +360,7 @@ static Query *parse_and_analyze_cypher(const char *query_str, Param *params)
     stmt = parse_cypher(query_str);
 
     pstate = make_parsestate(NULL);
+    pstate->p_sourcetext = query_str;
 
     /*
      * In order to avoid using a global variable in the cypher_expr.c file or
@@ -367,7 +370,9 @@ static Query *parse_and_analyze_cypher(const char *query_str, Param *params)
      * this is we can no longer support SQL subqueries in a Cypher query.
      */
     pstate->p_ref_hook_state = params;
+
     query = transform_cypher_stmt(pstate, stmt);
+
     free_parsestate(pstate);
 
     return query;
