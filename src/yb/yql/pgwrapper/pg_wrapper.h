@@ -48,7 +48,7 @@ struct PgProcessConf {
   std::string certs_dir;
   std::string certs_for_client_dir;
   std::string cert_base_name;
-  bool enable_tls;
+  bool enable_tls = false;
 
   // File descriptor of the local tserver's shared memory.
   int tserver_shm_fd = -1;
