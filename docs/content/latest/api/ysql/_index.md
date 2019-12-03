@@ -84,12 +84,15 @@ DCL statements protect and prevent the database from corruptions.
 |-----------|-------------|
 | [`ALTER DEFAULT PRIVILEGES`](commands/dcl_alter_default_privileges) | Define default privileges |
 | [`ALTER GROUP`](commands/dcl_alter_group) | Alter a group |
+| [`ALTER POLICY`](commands/dcl_alter_policy) | Alter a row level security policy |
 | [`ALTER ROLE`](commands/dcl_alter_role) | Alter a role (user or group) |
 | [`ALTER USER`](commands/dcl_alter_user) | Alter a user |
 | [`CREATE GROUP`](commands/dcl_create_group) | Create a new group (role) |
+| [`CREATE POLICY`](commands/dcl_create_policy) | Create a new row level security policy |
 | [`CREATE ROLE`](commands/dcl_create_role) | Create a new role (user or group) |
 | [`CREATE USER`](commands/dcl_create_user) | Create a new user (role) |
 | [`DROP GROUP`](commands/dcl_drop_group) | Drop a group |
+| [`DROP POLICY`](commands/dcl_drop_policy) | Drop a row level security policy |
 | [`DROP ROLE`](commands/dcl_drop_role) | Drop a role (user or group) |
 | [`DROP OWNED`](commands/dcl_drop_owned) | Drop owned objects |
 | [`DROP USER`](commands/dcl_drop_user) | Drop a user |

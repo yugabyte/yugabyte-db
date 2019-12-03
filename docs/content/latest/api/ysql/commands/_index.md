@@ -23,6 +23,7 @@ The following SQL statements are supported by the Yugabyte Structured Query Lang
 | [`ALTER DEFAULT PRIVILEGES`](dcl_alter_default_privileges) | Defines default access privileges |
 | [`ALTER DOMAIN`](ddl_alter_domain) | Alters a domain |
 | [`ALTER GROUP`](dcl_alter_group) | Alter a group |
+| [`ALTER POLICY`](dcl_alter_policy) | Alter a row level security policy |
 | [`ALTER ROLE`](dcl_alter_role) | Alter a role |
 | [`ALTER SEQUENCE`](ddl_alter_sequence) | Alters a sequence definition |
 | [`ALTER TABLE`](ddl_alter_table) | Changes table definition |
@@ -40,6 +41,7 @@ The following SQL statements are supported by the Yugabyte Structured Query Lang
 | [`CREATE GROUP`](dcl_create_group) | Create a new group (role) |
 | [`CREATE OPERATOR`](ddl_create_operator) | Create a new operator |
 | [`CREATE OPERATOR CLASS`](ddl_create_operator_class) | Create a new operator class |
+| [`CREATE POLICY`](dcl_create_policy) | Create a new row level security policy |
 | [`CREATE PROCEDURE`](ddl_create_procedure) | Create a new procedure |
 | [`CREATE ROLE`](dcl_create_role) | Create a new role (user or group) |
 | [`CREATE RULE`](ddl_create_rule) | Create a new rule |
@@ -64,6 +66,7 @@ The following SQL statements are supported by the Yugabyte Structured Query Lang
 | [`DROP OPERATOR`](ddl_drop_operator) | Delete an operator |
 | [`DROP OPERATOR CLASS`](ddl_drop_operator_class) | Delete an operator class |
 | [`DROP OWNED`](dcl_drop_owned) | Delete objects owned by role |
+| [`DROP POLICY`](dcl_drop_policy) | Delete a row level security policy |
 | [`DROP PROCEDURE`](ddl_drop_procedure) | Delete a procedure |
 | [`DROP ROLE`](dcl_drop_role) | Delete a role (user or group) |
 | [`DROP RULE`](ddl_drop_rule) | Delete a rule |
