@@ -86,6 +86,20 @@ Drop the named constraint from the table.
 
 Rename a column to the specified name.
 
+#### ENABLE / DISABLE ROW LEVEL SECURITY
+
+This enables or disables row level security for the table.
+If enabled and no policies exist for the table, then a default-deny policy is applied.
+If disabled, then existing policies for the table will not be applied and will be ignored.
+See [CREATE POLICY](../dcl_create_policy) for details on how to create row level security policies.
+
+#### FORCE / NO FORCE ROW LEVEL SECURITY
+
+This controls the application of row security policies for the table when the user is the table owner.
+If enabled, row level security policies will be applied when the user is the table owner.
+If disabled (the default) then row level security will not be applied when the user is the table owner.
+See [CREATE POLICY](../dcl_create_policy) for details on how to create row level security policies.
+
 ### *alter_table_constraint*
 
 Specify a table constraint.
