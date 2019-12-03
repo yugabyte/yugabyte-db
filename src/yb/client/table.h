@@ -21,6 +21,8 @@
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
 
+DECLARE_int32(max_num_tablets_for_table);
+
 namespace yb {
 namespace client {
 

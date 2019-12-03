@@ -36,10 +36,10 @@ constexpr int64_t kMaxError =
 RandomErrorClock::RandomErrorClock(PhysicalClockPtr clock) : impl_(std::move(clock)) {}
 
 void RandomErrorClock::Register() {
-  HybridClock::RegisterProvider(kName, [] {
+  HybridClock::RegisterProvider(kName, [](const std::string& options) {
     return std::make_shared<RandomErrorClock>(WallClock());
   });
-  HybridClock::RegisterProvider(kNtpName, [] {
+  HybridClock::RegisterProvider(kNtpName, [](const std::string& options) {
     return CreateNtpClock();
   });
 }

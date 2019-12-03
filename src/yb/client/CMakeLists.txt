@@ -43,6 +43,7 @@ set(CLIENT_SRCS
   in_flight_op.cc
   meta_cache.cc
   meta_data_cache.cc
+  namespace_alterer.cc
   permissions.cc
   session.cc
   schema.cc

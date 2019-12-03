@@ -13,20 +13,22 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The `yb-ctl` utility, located in the bin directory of YugabyteDB home, provides a simple command line interface for administering local clusters used for development and learning. It invokes the [`yb-master`](../admin/yb-master/) and [`yb-tserver`](../admin/yb-tserver/) binaries to perform the necessary administration.
-
-## Online help
-
-Run `yb-ctl --help` to display the online help.
-
-```sh
-$ ./bin/yb-ctl --help
-```
+The `yb-ctl` utility, located in the bin directory of YugabyteDB home, provides a simple command line interface for administering local clusters used for development and learning. It invokes the [`yb-master`](../reference/configuration/yb-master/) and [`yb-tserver`](../reference/configuration/yb-tserver/) binaries to perform the necessary administration.
 
 ## Syntax
 
+Run `yb-ctl` commands from the YugabyteDB home directory.
+
 ```sh
-yb-ctl [ command ] [ argument, argument2, ... ]
+./bin/yb-ctl [ command ] [ argument, argument2, ... ]
+```
+
+### Online help
+
+To display the online help, run `yb-ctl --help` from the YugabyteDB home directory.
+
+```sh
+$ ./bin/yb-ctl --help
 ```
 
 ## Commands
@@ -105,8 +107,6 @@ For details and examples, see [Initialize the YEDIS API](#initialize-the-yedis-a
 
 ## Optional arguments
 
-
-
 ### --help | -h
 
 Shows the help message and then exits.
@@ -134,6 +134,14 @@ For details and examples, see [Create a cluster with custom flags](#create-a-clu
 Specifies a list of YB-TServer flags, separated by commas.
 
 For details and examples, see [Create a cluster with custom flags](#create-a-cluster-with-custom-flags).
+
+**Example**
+
+To enable [YSQL authentication](../../secure/authentication/ysql-authentication), you can use the `--tserver_flags` option to add the `yb-tserver` [`--ysql_enable-auth`](../yb-tserver/#ysql-enable-auth) option to the `yb-ctl create | start | restart` commands.
+
+```sh
+$./bin/yb-ctl create --tserver_flags "ysql_enable_auth=true"
+```
 
 ### --placement_info
 

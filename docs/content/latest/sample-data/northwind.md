@@ -42,14 +42,14 @@ To use the Northwind sample database, you must have installed and configured Yug
 
 You can download the Northwind database files, which are compatible with YugabyteDB, from the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). Here are the two files you’ll need.
 
-[northwind_ddl.sql](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/northwind_ddl.sql) — Creates tables and other database objects
-[northwind_data.sql](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/northwind_data.sql) — Loads the sample data
+- [northwind_ddl.sql](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/northwind_ddl.sql) — Creates tables and other database objects
+- [northwind_data.sql](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/northwind_data.sql) — Loads the sample data
 
 ### 2. Open the YSQL shell
 
 To open the YSQL shell, run the `ysqlsh` command from the YugabyteDB root directory.
 
-``sh
+```sh
 $ ./bin/ysqlsh
 ```
 
@@ -73,7 +73,7 @@ Confirm that you have the Northwind database by listing out the databases on you
 yugabyte=# \l
 ```
 
-![Northwind list of databases](/images/datasets/northwind/northwind-list-of-dbs.png)
+![Northwind list of databases](/images/sample-data/northwind/northwind-list-of-dbs.png)
 
 Connect to the Northwind database.
 
@@ -97,7 +97,7 @@ You can verify that all 14 tables have been created by running the `\d` command.
 northwind=# \d
 ```
 
-![Northwind list of relations](/images/datasets/northwind/northwind-list-of-relations.png)
+![Northwind list of relations](/images/sample-data/northwind/northwind-list-of-relations.png)
 
 ### 5. Load the sample data
 

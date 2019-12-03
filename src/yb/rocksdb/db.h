@@ -629,6 +629,8 @@ class DB {
     return SetOptions(DefaultColumnFamily(), new_options);
   }
 
+  virtual void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {}
+
   // CompactFiles() inputs a list of files specified by file numbers and
   // compacts them to the specified level. Note that the behavior is different
   // from CompactRange() in that CompactFiles() performs the compaction job
@@ -800,6 +802,9 @@ class DB {
   // Returns the combined size of all the SST Files data blocks for the current version in the
   // rocksdb instance.
   virtual uint64_t GetCurrentVersionDataSstFilesSize() { return 0; }
+
+  // Returns number of memtables not flushed in default column family memtable list.
+  virtual int GetCfdImmNumNotFlushed() { return 0; }
 
   // Returns a list of all table files for the current version with their level, start key and end
   // key.

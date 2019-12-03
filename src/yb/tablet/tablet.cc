@@ -61,10 +61,12 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/schema.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/row_mark.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction_error.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
@@ -658,7 +660,7 @@ void Tablet::SetShutdownRequestedFlag() {
   shutdown_requested_.store(true, std::memory_order::memory_order_release);
 }
 
-void Tablet::Shutdown() {
+void Tablet::Shutdown(IsDropTable is_drop_table) {
   SetShutdownRequestedFlag();
 
   auto op_pause = PauseReadWriteOperations();
@@ -672,6 +674,13 @@ void Tablet::Shutdown() {
   }
 
   std::lock_guard<rw_spinlock> lock(component_lock_);
+  if (intents_db_) {
+    intents_db_->SetDisableFlushOnShutdown(is_drop_table);
+  }
+  if (regular_db_) {
+    regular_db_->SetDisableFlushOnShutdown(is_drop_table);
+  }
+
   // Shutdown the RocksDB instance for this table, if present.
   // Destroy intents and regular DBs in reverse order to their creation.
   // Also it makes sure that regular DB is alive during flush filter of intents db.
@@ -729,8 +738,10 @@ void Tablet::StartOperation(WriteOperationState* operation_state) {
   // before a crash or at another node.
   HybridTime ht = operation_state->hybrid_time_even_if_unset();
   bool was_valid = ht.is_valid();
-  mvcc_.AddPending(&ht);
   if (!was_valid) {
+    // Add only leader operation here, since follower operations already registered in MVCC,
+    // as soon as they received.
+    mvcc_.AddPending(&ht);
     operation_state->set_hybrid_time(ht);
   }
 }
@@ -753,7 +764,9 @@ Status Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
       HybridTime(operation_state->request()->external_hybrid_time()) :
       operation_state->hybrid_time();
 
-  set_hybrid_time(hybrid_time, &frontiers);
+  // Even if we have an external hybrid time, use the local commit hybrid time in the consensus
+  // frontier.
+  set_hybrid_time(operation_state->hybrid_time(), &frontiers);
   return ApplyKeyValueRowOperations(put_batch, &frontiers, hybrid_time);
 }
 
@@ -824,14 +837,6 @@ Status Tablet::PrepareTransactionWriteBatch(
   }
 
   auto isolation_level = metadata_with_write_id->first.isolation;
-  if (put_batch.row_mark_type_size() > 0) {
-    // We used this as a shorthand to acquire the right locks for this operation. This doesn't
-    // change the isolation level of the current transaction.
-    // TODO https://github.com/yugabyte/yugabyte-db/issues/2496:
-    // Use a new method to acquire the right locks. This would avoid any confusion.
-    isolation_level = IsolationLevel::SERIALIZABLE_ISOLATION;
-  }
-
   auto write_id = metadata_with_write_id->second;
   yb::docdb::PrepareTransactionWriteBatch(
       put_batch, hybrid_time, rocksdb_write_batch, transaction_id, isolation_level,
@@ -1493,6 +1498,11 @@ HybridTime Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadl
   return SafeTime(RequireLease::kFalse, min_allowed, deadline);
 }
 
+HybridTime Tablet::ApplierSafeTimeForFollower() {
+  return mvcc_.SafeTimeForFollower(
+      /* min_allowed= */ HybridTime::kMin, /* deadline= */ CoarseTimePoint::min());
+}
+
 Status Tablet::CreatePreparedChangeMetadata(ChangeMetadataOperationState *operation_state,
                                             const Schema* schema) {
   if (schema) {
@@ -1880,15 +1890,16 @@ Status Tablet::TEST_SwitchMemtable() {
 
 Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
   auto write_batch = operation->request()->mutable_write_batch();
-  auto isolation_level = VERIFY_RESULT(GetIsolationLevelFromPB(*write_batch));
+  const IsolationLevel isolation_level = VERIFY_RESULT(GetIsolationLevelFromPB(*write_batch));
+  const RowMarkType row_mark_type = GetRowMarkTypeFromPB(*write_batch);
 
   const bool transactional_table = metadata_->schema().table_properties().is_transactional();
 
   const auto partial_range_key_intents = UsePartialRangeKeyIntents(metadata_.get());
   auto prepare_result = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
       operation->doc_ops(), write_batch->read_pairs(), metrics_->write_lock_latency,
-      isolation_level, operation->state()->kind(), transactional_table, operation->deadline(),
-      partial_range_key_intents, &shared_lock_manager_));
+      isolation_level, operation->state()->kind(), row_mark_type, transactional_table,
+      operation->deadline(), partial_range_key_intents, &shared_lock_manager_));
 
   RequestScope request_scope;
   if (transaction_participant_) {
@@ -1902,7 +1913,8 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
     if (isolation_level == IsolationLevel::NON_TRANSACTIONAL) {
       auto now = clock_->Now();
       auto result = VERIFY_RESULT(docdb::ResolveOperationConflicts(
-          operation->doc_ops(), now, doc_db(), transaction_participant_.get()));
+          operation->doc_ops(), now, doc_db(), partial_range_key_intents,
+          transaction_participant_.get()));
       if (now != result) {
         clock_->Update(result);
       }
@@ -2057,12 +2069,14 @@ HybridTime Tablet::UpdateHistoryCutoff(HybridTime proposed_cutoff) {
 Status Tablet::RegisterReaderTimestamp(HybridTime read_point) {
   std::lock_guard<std::mutex> lock(active_readers_mutex_);
   if (read_point < earliest_read_time_allowed_) {
-    return STATUS_FORMAT(
+    return STATUS(
         SnapshotTooOld,
-        "Snapshot too old. Read point: $0, earliest read time allowed: $1, delta (usec): $2",
-        read_point,
-        earliest_read_time_allowed_,
-        earliest_read_time_allowed_.PhysicalDiff(read_point));
+        Format(
+          "Snapshot too old. Read point: $0, earliest read time allowed: $1, delta (usec): $2",
+          read_point,
+          earliest_read_time_allowed_,
+          earliest_read_time_allowed_.PhysicalDiff(read_point)),
+        TransactionError(TransactionErrorCode::kSnapshotTooOld));
 }
   active_readers_cnt_[read_point]++;
   return Status::OK();
@@ -2179,6 +2193,26 @@ uint64_t Tablet::GetCurrentVersionNumSSTFiles() const {
     return 0;
   }
   return regular_db_->GetCurrentVersionNumSSTFiles();
+}
+
+std::pair<int, int> Tablet::GetNumMemtables() const {
+  int intents_num_memtables = 0;
+  int regular_num_memtables = 0;
+
+  {
+    ScopedPendingOperation scoped_operation(&pending_op_counter_);
+    std::lock_guard<rw_spinlock> lock(component_lock_);
+    if (intents_db_) {
+      // NOTE: 1 is added on behalf of cfd->mem().
+      intents_num_memtables = 1 + intents_db_->GetCfdImmNumNotFlushed();
+    }
+    if (regular_db_) {
+      // NOTE: 1 is added on behalf of cfd->mem().
+      regular_num_memtables = 1 + regular_db_->GetCfdImmNumNotFlushed();
+    }
+  }
+
+  return std::make_pair(intents_num_memtables, regular_num_memtables);
 }
 
 // ------------------------------------------------------------------------------------------------

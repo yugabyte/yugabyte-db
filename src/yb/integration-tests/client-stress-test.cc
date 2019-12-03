@@ -291,26 +291,15 @@ TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
     // we'll just treat the lack of a metric as non-fatal. If the entity
     // or metric is truly missing, we'll eventually timeout and fail.
     for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
-      int64_t value;
-      Status s = cluster_->tablet_server(i)->GetInt64Metric(
-          &METRIC_ENTITY_tablet,
-          nullptr,
-          &METRIC_leader_memory_pressure_rejections,
-          "value",
-          &value);
-      if (!s.IsNotFound()) {
-        ASSERT_OK(s);
-        total_num_rejections += value;
-      }
-      s = cluster_->tablet_server(i)->GetInt64Metric(
-          &METRIC_ENTITY_tablet,
-          nullptr,
-          &METRIC_follower_memory_pressure_rejections,
-          "value",
-          &value);
-      if (!s.IsNotFound()) {
-        ASSERT_OK(s);
-        total_num_rejections += value;
+      for (const auto* metric : { &METRIC_leader_memory_pressure_rejections,
+                                  &METRIC_follower_memory_pressure_rejections }) {
+        auto result = cluster_->tablet_server(i)->GetInt64Metric(
+            &METRIC_ENTITY_tablet, nullptr, metric, "value");
+        if (result.ok()) {
+          total_num_rejections += *result;
+        } else {
+          ASSERT_TRUE(result.status().IsNotFound()) << result.status();
+        }
       }
     }
     if (total_num_rejections >= kMinRejections) {
@@ -378,6 +367,46 @@ TEST_F_EX(ClientStressTest, MasterQueueFull, ClientStressTestSmallQueueMultiMast
   for (auto& item : items) {
     ASSERT_OK(item.future.get());
   }
+}
+
+class RF1ClientStressTest : public ClientStressTest {
+ public:
+  ExternalMiniClusterOptions default_opts() override {
+    ExternalMiniClusterOptions result;
+    result.num_tablet_servers = 1;
+    result.extra_master_flags = { "--replication_factor=1" };
+    return result;
+  }
+};
+
+// Test that config change works while running a workload.
+TEST_F_EX(ClientStressTest, IncreaseReplicationFactorUnderLoad, RF1ClientStressTest) {
+  TestWorkload work(cluster_.get());
+  work.set_num_write_threads(1);
+  work.set_num_tablets(6);
+  work.Setup();
+  work.Start();
+
+  // Fill table with some records.
+  std::this_thread::sleep_for(1s);
+
+  ASSERT_OK(cluster_->AddTabletServer(/* start_cql_proxy= */ false, {"--time_source=skewed,-500"}));
+
+  master::ReplicationInfoPB replication_info;
+  replication_info.mutable_live_replicas()->set_num_replicas(2);
+  ASSERT_OK(work.client().SetReplicationInfo(replication_info));
+
+  LOG(INFO) << "Replication factor changed";
+
+  auto deadline = CoarseMonoClock::now() + 3s;
+  while (CoarseMonoClock::now() < deadline) {
+    ASSERT_NO_FATALS(cluster_->AssertNoCrashes());
+    std::this_thread::sleep_for(100ms);
+  }
+
+  work.StopAndJoin();
+
+  LOG(INFO) << "Written rows: " << work.rows_inserted();
 }
 
 }  // namespace yb

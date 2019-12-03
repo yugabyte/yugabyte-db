@@ -47,6 +47,7 @@
 #include "yb/client/meta_cache.h"
 #include "yb/client/session.h"
 #include "yb/client/table_alterer.h"
+#include "yb/client/namespace_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/tablet_server.h"
 
@@ -98,6 +99,8 @@ using yb::master::ListTabletServersResponsePB;
 using yb::master::ListTabletServersResponsePB_Entry;
 using yb::master::CreateNamespaceRequestPB;
 using yb::master::CreateNamespaceResponsePB;
+using yb::master::AlterNamespaceRequestPB;
+using yb::master::AlterNamespaceResponsePB;
 using yb::master::DeleteNamespaceRequestPB;
 using yb::master::DeleteNamespaceResponsePB;
 using yb::master::ListNamespacesRequestPB;
@@ -270,6 +273,11 @@ YBClientBuilder& YBClientBuilder::add_master_server_endpoint(const string& endpo
   return *this;
 }
 
+YBClientBuilder& YBClientBuilder::skip_master_flagfile(bool should_skip) {
+  data_->skip_master_flagfile_ = should_skip;
+  return *this;
+}
+
 YBClientBuilder& YBClientBuilder::default_admin_operation_timeout(const MonoDelta& timeout) {
   data_->default_admin_operation_timeout_ = timeout;
   return *this;
@@ -342,6 +350,7 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
 
   c->data_->master_server_endpoint_ = data_->master_server_endpoint_;
   c->data_->master_server_addrs_ = data_->master_server_addrs_;
+  c->data_->skip_master_flagfile_ = data_->skip_master_flagfile_;
   c->data_->default_admin_operation_timeout_ = data_->default_admin_operation_timeout_;
   c->data_->default_rpc_timeout_ = data_->default_rpc_timeout_;
 
@@ -570,6 +579,11 @@ Status YBClient::DeleteNamespace(const std::string& namespace_name,
   }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteNamespace);
   return Status::OK();
+}
+
+YBNamespaceAlterer* YBClient::NewNamespaceAlterer(
+    const string& namespace_name, const std::string& namespace_id) {
+  return new YBNamespaceAlterer(this, namespace_name, namespace_id);
 }
 
 Result<vector<master::NamespaceIdentifierPB>> YBClient::ListNamespaces(
@@ -1241,8 +1255,11 @@ Status YBClient::ListTablesWithIds(
     }
     tables_with_ids->emplace_back(
         table_info.id(),
-        YBTableName(table_info.namespace_().id(), table_info.namespace_().name(),
-                    table_info.id(), table_info.name()));
+        YBTableName(master::GetDatabaseTypeForTable(table_info.table_type()),
+                    table_info.namespace_().id(),
+                    table_info.namespace_().name(),
+                    table_info.id(),
+                    table_info.name()));
   }
   return Status::OK();
 }

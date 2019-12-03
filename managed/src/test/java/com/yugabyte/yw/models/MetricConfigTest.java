@@ -65,6 +65,28 @@ public class MetricConfigTest extends FakeDBApplication {
   }
 
   @Test
+  public void testDivisionMetric() {
+    JsonNode configJson = Json.parse(
+        "{\"metric\": \"test_usage/test_request\", \"function\": \"irate|avg\"," +
+        "\"filters\": {\"pod_name\":\"yb-tserver-(.*)\"}}");
+    MetricConfig metricConfig = MetricConfig.create("metric", configJson);
+    metricConfig.save();
+    JsonNode containerUsage = Json.parse(
+        "{\"metric\": \"test_usage\", \"function\": \"irate|avg\"," +
+        "\"range\": \"1m\"," +
+        "\"filters\": {\"pod_name\":\"yb-tserver-(.*)\"}}");
+    JsonNode containerRequest = Json.parse(
+        "{\"metric\": \"test_request\", \"function\": \"avg\"," +
+        "\"filters\": {\"pod_name\":\"yb-tserver-(.*)\"}}");
+    MetricConfig usage = MetricConfig.create("test_usage", containerUsage);
+    MetricConfig request = MetricConfig.create("test_request", containerRequest);
+    usage.save();
+    request.save();
+    String query = metricConfig.getQuery(new HashMap<>());
+    assertThat(query, allOf(notNullValue(), equalTo("((avg(irate(test_usage{pod_name=~\"yb-tserver-(.*)\"}[1m])))/(avg(test_request{pod_name=~\"yb-tserver-(.*)\"})))*100")));
+  }
+
+  @Test
   public void testMultiMetric() {
     JsonNode configJson = Json.parse(
         "{\"metric\": \"log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg\"," +

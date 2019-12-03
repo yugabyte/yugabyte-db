@@ -44,6 +44,7 @@
 
 namespace yb {
 
+class MemTracker;
 class ThreadPoolToken;
 
 namespace log {

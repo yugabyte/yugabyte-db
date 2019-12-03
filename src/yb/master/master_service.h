@@ -100,6 +100,9 @@ class MasterServiceImpl : public MasterServiceIf,
   void DeleteNamespace(const DeleteNamespaceRequestPB* req,
                        DeleteNamespaceResponsePB* resp,
                        rpc::RpcContext rpc) override;
+  void AlterNamespace(const AlterNamespaceRequestPB* req,
+                      AlterNamespaceResponsePB* resp,
+                      rpc::RpcContext rpc) override;
   void ListNamespaces(const ListNamespacesRequestPB* req,
                       ListNamespacesResponsePB* resp,
                       rpc::RpcContext rpc) override;
@@ -243,6 +246,18 @@ class MasterServiceImpl : public MasterServiceIf,
   void IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* req,
                            IsEncryptionEnabledResponsePB* resp,
                            rpc::RpcContext rpc) override;
+
+  void GetUniverseKeyRegistry(const GetUniverseKeyRegistryRequestPB* req,
+                              GetUniverseKeyRegistryResponsePB* resp,
+                              rpc::RpcContext rpc) override;
+
+  void AddUniverseKeys(const AddUniverseKeysRequestPB* req,
+                       AddUniverseKeysResponsePB* resp,
+                       rpc::RpcContext rpc) override;
+
+  void HasUniverseKeyInMemory(const HasUniverseKeyInMemoryRequestPB* req,
+                              HasUniverseKeyInMemoryResponsePB* resp,
+                              rpc::RpcContext rpc) override;
 
   void SetupUniverseReplication(const SetupUniverseReplicationRequestPB* req,
                                 SetupUniverseReplicationResponsePB* resp,

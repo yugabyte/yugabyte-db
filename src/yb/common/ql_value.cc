@@ -242,34 +242,35 @@ void AppendToKey(const QLValuePB &value_pb, string *bytes) {
 }
 
 void QLValue::Serialize(
-    const std::shared_ptr<QLType>& ql_type, const QLClient& client, faststring* buffer) const {
+    const std::shared_ptr<QLType>& ql_type, const QLClient& client, const QLValuePB& pb,
+    faststring* buffer) {
   CHECK_EQ(client, YQL_CLIENT_CQL);
-  if (IsNull()) {
+  if (IsNull(pb)) {
     CQLEncodeLength(-1, buffer);
     return;
   }
 
   switch (ql_type->main()) {
     case INT8:
-      CQLEncodeNum(Store8, int8_value(), buffer);
+      CQLEncodeNum(Store8, int8_value(pb), buffer);
       return;
     case INT16:
-      CQLEncodeNum(NetworkByteOrder::Store16, int16_value(), buffer);
+      CQLEncodeNum(NetworkByteOrder::Store16, int16_value(pb), buffer);
       return;
     case INT32:
-      CQLEncodeNum(NetworkByteOrder::Store32, int32_value(), buffer);
+      CQLEncodeNum(NetworkByteOrder::Store32, int32_value(pb), buffer);
       return;
     case INT64:
-      CQLEncodeNum(NetworkByteOrder::Store64, int64_value(), buffer);
+      CQLEncodeNum(NetworkByteOrder::Store64, int64_value(pb), buffer);
       return;
     case FLOAT:
-      CQLEncodeFloat(NetworkByteOrder::Store32, float_value(), buffer);
+      CQLEncodeFloat(NetworkByteOrder::Store32, float_value(pb), buffer);
       return;
     case DOUBLE:
-      CQLEncodeFloat(NetworkByteOrder::Store64, double_value(), buffer);
+      CQLEncodeFloat(NetworkByteOrder::Store64, double_value(pb), buffer);
       return;
     case DECIMAL: {
-      auto decimal = util::DecimalFromComparable(decimal_value());
+      auto decimal = util::DecimalFromComparable(decimal_value(pb));
       bool is_out_of_range = false;
       CQLEncodeBytes(decimal.EncodeToSerializedBigDecimal(&is_out_of_range), buffer);
       if(is_out_of_range) {
@@ -279,62 +280,62 @@ void QLValue::Serialize(
       return;
     }
     case VARINT: {
-      CQLEncodeBytes(varint_value().EncodeToTwosComplement(), buffer);
+      CQLEncodeBytes(varint_value(pb).EncodeToTwosComplement(), buffer);
       return;
     }
     case STRING:
-      CQLEncodeBytes(string_value(), buffer);
+      CQLEncodeBytes(string_value(pb), buffer);
       return;
     case BOOL:
-      CQLEncodeNum(Store8, static_cast<uint8>(bool_value() ? 1 : 0), buffer);
+      CQLEncodeNum(Store8, static_cast<uint8>(bool_value(pb) ? 1 : 0), buffer);
       return;
     case BINARY:
-      CQLEncodeBytes(binary_value(), buffer);
+      CQLEncodeBytes(binary_value(pb), buffer);
       return;
     case TIMESTAMP: {
-      int64_t val = DateTime::AdjustPrecision(timestamp_value_pb(),
+      int64_t val = DateTime::AdjustPrecision(timestamp_value_pb(pb),
                                               DateTime::kInternalPrecision,
                                               DateTime::CqlInputFormat.input_precision);
       CQLEncodeNum(NetworkByteOrder::Store64, val, buffer);
       return;
     }
     case DATE: {
-      CQLEncodeNum(NetworkByteOrder::Store32, date_value(), buffer);
+      CQLEncodeNum(NetworkByteOrder::Store32, date_value(pb), buffer);
       return;
     }
     case TIME: {
-      CQLEncodeNum(NetworkByteOrder::Store64, time_value(), buffer);
+      CQLEncodeNum(NetworkByteOrder::Store64, time_value(pb), buffer);
       return;
     }
     case INET: {
       std::string bytes;
-      CHECK_OK(inetaddress_value().ToBytes(&bytes));
+      CHECK_OK(inetaddress_value(pb).ToBytes(&bytes));
       CQLEncodeBytes(bytes, buffer);
       return;
     }
     case JSONB: {
       std::string json;
-      Jsonb jsonb(jsonb_value());
+      Jsonb jsonb(jsonb_value(pb));
       CHECK_OK(jsonb.ToJsonString(&json));
       CQLEncodeBytes(json, buffer);
       return;
     }
     case UUID: {
       std::string bytes;
-      CHECK_OK(uuid_value().ToBytes(&bytes));
+      CHECK_OK(uuid_value(pb).ToBytes(&bytes));
       CQLEncodeBytes(bytes, buffer);
       return;
     }
     case TIMEUUID: {
       std::string bytes;
-      Uuid uuid = timeuuid_value();
+      Uuid uuid = timeuuid_value(pb);
       CHECK_OK(uuid.IsTimeUuid());
       CHECK_OK(uuid.ToBytes(&bytes));
       CQLEncodeBytes(bytes, buffer);
       return;
     }
     case MAP: {
-      QLMapValuePB map = map_value();
+      const QLMapValuePB& map = map_value(pb);
       DCHECK_EQ(map.keys_size(), map.values_size());
       int32_t start_pos = CQLStartCollection(buffer);
       int32_t length = static_cast<int32_t>(map.keys_size());
@@ -342,39 +343,39 @@ void QLValue::Serialize(
       const shared_ptr<QLType>& keys_type = ql_type->params()[0];
       const shared_ptr<QLType>& values_type = ql_type->params()[1];
       for (int i = 0; i < length; i++) {
-        QLValue(map.keys(i)).Serialize(keys_type, client, buffer);
-        QLValue(map.values(i)).Serialize(values_type, client, buffer);
+        QLValue::Serialize(keys_type, client, map.keys(i), buffer);
+        QLValue::Serialize(values_type, client, map.values(i), buffer);
       }
       CQLFinishCollection(start_pos, buffer);
       return;
     }
     case SET: {
-      QLSeqValuePB set = set_value();
+      const QLSeqValuePB& set = set_value(pb);
       int32_t start_pos = CQLStartCollection(buffer);
       int32_t length = static_cast<int32_t>(set.elems_size());
       CQLEncodeLength(length, buffer); // number of elements in collection
       const shared_ptr<QLType>& elems_type = ql_type->param_type(0);
       for (auto& elem : set.elems()) {
-        QLValue(elem).Serialize(elems_type, client, buffer);
+        QLValue::Serialize(elems_type, client, elem, buffer);
       }
       CQLFinishCollection(start_pos, buffer);
       return;
     }
     case LIST: {
-      QLSeqValuePB list = list_value();
+      const QLSeqValuePB& list = list_value(pb);
       int32_t start_pos = CQLStartCollection(buffer);
       int32_t length = static_cast<int32_t>(list.elems_size());
       CQLEncodeLength(length, buffer);
       const shared_ptr<QLType>& elems_type = ql_type->param_type(0);
       for (auto& elem : list.elems()) {
-        QLValue(elem).Serialize(elems_type, client, buffer);
+        QLValue::Serialize(elems_type, client, elem, buffer);
       }
       CQLFinishCollection(start_pos, buffer);
       return;
     }
 
     case USER_DEFINED_TYPE: {
-      QLMapValuePB map = map_value();
+      const QLMapValuePB& map = map_value(pb);
       DCHECK_EQ(map.keys_size(), map.values_size());
       int32_t start_pos = CQLStartCollection(buffer);
 
@@ -383,7 +384,7 @@ void QLValue::Serialize(
       int key_idx = 0;
       for (int i = 0; i < ql_type->udtype_field_names().size(); i++) {
         if (key_idx < map.keys_size() && map.keys(key_idx).int16_value() == i) {
-          QLValue(map.values(key_idx)).Serialize(ql_type->param_type(i), client, buffer);
+          QLValue::Serialize(ql_type->param_type(i), client, map.values(key_idx), buffer);
           key_idx++;
         } else { // entry not found -> writing null
           CQLEncodeLength(-1, buffer);
@@ -394,7 +395,7 @@ void QLValue::Serialize(
       return;
     }
     case FROZEN: {
-      QLSeqValuePB frozen = frozen_value();
+      const QLSeqValuePB& frozen = frozen_value(pb);
       const auto& type = ql_type->param_type(0);
       switch (type->main()) {
         case MAP: {
@@ -405,8 +406,8 @@ void QLValue::Serialize(
           const shared_ptr<QLType> &keys_type = type->params()[0];
           const shared_ptr<QLType> &values_type = type->params()[1];
           for (int i = 0; i < length; i++) {
-            QLValue(frozen.elems(2 * i)).Serialize(keys_type, client, buffer);
-            QLValue(frozen.elems(2 * i + 1)).Serialize(values_type, client, buffer);
+            QLValue::Serialize(keys_type, client, frozen.elems(2 * i), buffer);
+            QLValue::Serialize(values_type, client, frozen.elems(2 * i + 1), buffer);
           }
           CQLFinishCollection(start_pos, buffer);
           return;
@@ -418,7 +419,7 @@ void QLValue::Serialize(
           CQLEncodeLength(length, buffer); // number of elements in collection
           const shared_ptr<QLType> &elems_type = type->param_type(0);
           for (auto &elem : frozen.elems()) {
-            QLValue(elem).Serialize(elems_type, client, buffer);
+            QLValue::Serialize(elems_type, client, elem, buffer);
           }
           CQLFinishCollection(start_pos, buffer);
           return;
@@ -426,7 +427,7 @@ void QLValue::Serialize(
         case USER_DEFINED_TYPE: {
           int32_t start_pos = CQLStartCollection(buffer);
           for (int i = 0; i < frozen.elems_size(); i++) {
-            QLValue(frozen.elems(i)).Serialize(type->param_type(i), client, buffer);
+            QLValue::Serialize(type->param_type(i), client, frozen.elems(i), buffer);
           }
           CQLFinishCollection(start_pos, buffer);
           return;
@@ -447,6 +448,11 @@ void QLValue::Serialize(
   }
 
   LOG(FATAL) << "Internal error: unsupported type " << ql_type->ToString();
+}
+
+void QLValue::Serialize(
+    const std::shared_ptr<QLType>& ql_type, const QLClient& client, faststring* buffer) const {
+  return Serialize(ql_type, client, pb_, buffer);
 }
 
 Status QLValue::Deserialize(
@@ -629,6 +635,7 @@ Status QLValue::Deserialize(
       const auto& type = ql_type->param_type(0);
       switch (type->main()) {
         case MAP: {
+          std::map<QLValue, QLValue> map_values;
           const shared_ptr<QLType> &keys_type = type->param_type(0);
           const shared_ptr<QLType> &values_type = type->param_type(1);
           int32_t nr_elems = 0;
@@ -636,21 +643,31 @@ Status QLValue::Deserialize(
           for (int i = 0; i < nr_elems; i++) {
             QLValue key;
             RETURN_NOT_OK(key.Deserialize(keys_type, client, data));
-            *add_frozen_elem() = std::move(*key.mutable_value());
             QLValue value;
             RETURN_NOT_OK(value.Deserialize(values_type, client, data));
-            *add_frozen_elem() = std::move(*value.mutable_value());
+            map_values[key] = value;
           }
+
+          for (auto &pair : map_values) {
+            *add_frozen_elem() = std::move(pair.first.value());
+            *add_frozen_elem() = std::move(pair.second.value());
+          }
+
           return Status::OK();
         }
         case SET: {
           const shared_ptr<QLType> &elems_type = type->param_type(0);
           int32_t nr_elems = 0;
+
+          std::set<QLValue> set_values;
           RETURN_NOT_OK(CQLDecodeNum(sizeof(nr_elems), NetworkByteOrder::Load32, data, &nr_elems));
           for (int i = 0; i < nr_elems; i++) {
             QLValue elem;
             RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
-            *add_frozen_elem() = std::move(*elem.mutable_value());
+            set_values.insert(std::move(elem));
+          }
+          for (auto &elem : set_values) {
+            *add_frozen_elem() = std::move(elem.value());
           }
           return Status::OK();
         }
@@ -867,9 +884,9 @@ int Compare(const QLValuePB& lhs, const QLValuePB& rhs) {
     case QLValuePB::kJsonbValue:
       return GenericCompare(lhs.jsonb_value(), rhs.jsonb_value());
     case QLValuePB::kUuidValue:
-      return GenericCompare(QLValue(lhs).uuid_value(), QLValue(rhs).uuid_value());
+      return GenericCompare(QLValue::uuid_value(lhs), QLValue::uuid_value(rhs));
     case QLValuePB::kTimeuuidValue:
-      return GenericCompare(QLValue(lhs).timeuuid_value(), QLValue(rhs).timeuuid_value());
+      return GenericCompare(QLValue::timeuuid_value(lhs), QLValue::timeuuid_value(rhs));
     case QLValuePB::kFrozenValue:
       return Compare(lhs.frozen_value(), rhs.frozen_value());
     case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
@@ -927,13 +944,13 @@ int Compare(const QLValuePB& lhs, const QLValue& rhs) {
     case QLValuePB::kTimeValue: return GenericCompare(lhs.time_value(), rhs.time_value());
     case QLValuePB::kBinaryValue: return lhs.binary_value().compare(rhs.binary_value());
     case QLValuePB::kInetaddressValue:
-      return GenericCompare(QLValue(lhs).inetaddress_value(), rhs.inetaddress_value());
+      return GenericCompare(QLValue::inetaddress_value(lhs), rhs.inetaddress_value());
     case QLValuePB::kJsonbValue:
-      return GenericCompare(QLValue(lhs).jsonb_value(), rhs.jsonb_value());
+      return GenericCompare(QLValue::jsonb_value(lhs), rhs.jsonb_value());
     case QLValuePB::kUuidValue:
-      return GenericCompare(QLValue(lhs).uuid_value(), rhs.uuid_value());
+      return GenericCompare(QLValue::uuid_value(lhs), rhs.uuid_value());
     case QLValuePB::kTimeuuidValue:
-      return GenericCompare(QLValue(lhs).timeuuid_value(), rhs.timeuuid_value());
+      return GenericCompare(QLValue::timeuuid_value(lhs), rhs.timeuuid_value());
     case QLValuePB::kFrozenValue:
       return Compare(lhs.frozen_value(), rhs.frozen_value());
     case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;

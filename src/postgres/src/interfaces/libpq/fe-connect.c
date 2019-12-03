@@ -6647,11 +6647,13 @@ pqGetHomeDirectory(char *buf, int bufsize)
 	char		pwdbuf[BUFSIZ];
 	struct passwd pwdstr;
 	struct passwd *pwd = NULL;
+	const char* home = NULL;
 
 	(void) pqGetpwuid(geteuid(), &pwdstr, pwdbuf, sizeof(pwdbuf), &pwd);
-	if (pwd == NULL)
+	home = (pwd == NULL ? getenv("HOME") : pwd->pw_dir);
+	if (home == NULL)
 		return false;
-	strlcpy(buf, pwd->pw_dir, bufsize);
+	strlcpy(buf, home, bufsize);
 	return true;
 #else
 	char		tmppath[MAX_PATH];

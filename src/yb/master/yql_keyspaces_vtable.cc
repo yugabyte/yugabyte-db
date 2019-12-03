@@ -24,9 +24,9 @@ YQLKeyspacesVTable::YQLKeyspacesVTable(const Master* const master)
     : YQLVirtualTable(master::kSystemSchemaKeyspacesTableName, master, CreateSchema()) {
 }
 
-Status YQLKeyspacesVTable::RetrieveData(const QLReadRequestPB& request,
-                                        std::unique_ptr<QLRowBlock>* vtable) const {
-  vtable->reset(new QLRowBlock(schema_));
+Result<std::shared_ptr<QLRowBlock>> YQLKeyspacesVTable::RetrieveData(
+    const QLReadRequestPB& request) const {
+  auto vtable = std::make_shared<QLRowBlock>(schema_);
   std::vector<scoped_refptr<NamespaceInfo> > namespaces;
   master_->catalog_manager()->GetAllNamespaces(&namespaces);
   for (scoped_refptr<NamespaceInfo> ns : namespaces) {
@@ -35,7 +35,7 @@ Status YQLKeyspacesVTable::RetrieveData(const QLReadRequestPB& request,
       continue;
     }
 
-    QLRow& row = (*vtable)->Extend();
+    QLRow& row = vtable->Extend();
     RETURN_NOT_OK(SetColumnValue(kKeyspaceName, ns->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kDurableWrites, true, &row));
 
@@ -44,7 +44,7 @@ Status YQLKeyspacesVTable::RetrieveData(const QLReadRequestPB& request,
     RETURN_NOT_OK(SetColumnValue(kReplication, util::GetReplicationValue(repl_factor), &row));
   }
 
-  return Status::OK();
+  return vtable;
 }
 
 Schema YQLKeyspacesVTable::CreateSchema() const {

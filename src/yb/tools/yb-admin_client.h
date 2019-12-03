@@ -162,6 +162,10 @@ class ClusterAdminClient {
   Result<const master::NamespaceIdentifierPB&> GetNamespaceInfo(YQLDatabase db_type,
                                                                 const std::string& namespace_name);
 
+  CHECKED_STATUS LeaderStepDownWithNewLeader(
+      const std::string& tablet_id,
+      const std::string& dest_ts_uuid);
+
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
   CHECKED_STATUS GetTabletLocations(const TabletId& tablet_id,
@@ -187,9 +191,14 @@ class ClusterAdminClient {
   // Look up the RPC address of the server with the specified UUID from the Master.
   Result<HostPort> GetFirstRpcAddressForTS(const std::string& uuid);
 
+  // Step down the leader of this tablet.
+  // If leader_uuid is empty, look it up with the master.
+  // If leader_uuid is not empty, must provide a leader_proxy.
+  // If new_leader_uuid is not empty, it is used as a suggestion for the StepDown operation.
   CHECKED_STATUS LeaderStepDown(
       const PeerId& leader_uuid,
-      const std::string& tablet_id,
+      const TabletId& tablet_id,
+      const PeerId& new_leader_uuid,
       std::unique_ptr<consensus::ConsensusServiceProxy>* leader_proxy);
 
   CHECKED_STATUS StartElection(const std::string& tablet_id);

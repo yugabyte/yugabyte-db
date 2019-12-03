@@ -46,6 +46,7 @@
 #include "yb/util/test_util.h"
 
 using std::string;
+using namespace std::literals;
 
 namespace yb {
 
@@ -112,6 +113,40 @@ struct RegisterTestErrors<kMinTestError> {
 };
 
 RegisterTestErrors<kMaxTestError> register_test_errors;
+
+class ErrorDelayTraits {
+ public:
+  typedef MonoDelta ValueType;
+  typedef int64_t RepresentationType;
+
+  static MonoDelta FromRepresentation(RepresentationType source) {
+    return MonoDelta::FromNanoseconds(source);
+  }
+
+  static RepresentationType ToRepresentation(MonoDelta value) {
+    return value.ToNanoseconds();
+  }
+
+  static std::string ToString(MonoDelta value) {
+    return value.ToString();
+  }
+};
+
+class ErrorDelayTag : public IntegralBackedErrorTag<ErrorDelayTraits> {
+ public:
+  static constexpr uint8_t kCategory = kMaxTestError + 1;
+
+  static std::string ToMessage(MonoDelta value) {
+    return value.ToString();
+  }
+};
+
+typedef StatusErrorCodeImpl<ErrorDelayTag> ErrorDelay;
+
+const std::string kErrorDelayCategoryName = "error delay";
+
+static StatusCategoryRegisterer error_delay_category_registerer(
+    StatusCategoryDescription::Make<ErrorDelayTag>(&kErrorDelayCategoryName));
 
 TEST(StatusTest, TestPosixCode) {
   Status ok = Status::OK();
@@ -234,5 +269,11 @@ TEST(StatusTest, TestMoveAssignment) {
   }
 }
 
+TEST(StatusTest, IntegralBackedError) {
+  MonoDelta delay = 100ms;
+  auto status = STATUS(TimedOut, "TEST", ErrorDelay(delay));
+  LOG(INFO) << status;
+  ASSERT_EQ(ErrorDelay(status), delay);
+}
 
 }  // namespace yb

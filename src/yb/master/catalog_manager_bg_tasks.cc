@@ -39,6 +39,7 @@
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/cluster_balance.h"
+#include "yb/master/encryption_manager.h"
 #include "yb/util/flag_tags.h"
 
 using std::shared_ptr;
@@ -145,6 +146,9 @@ void CatalogManagerBgTasks::Run() {
         catalog_manager_->CleanUpDeletedTables();
       }
     }
+    WARN_NOT_OK(catalog_manager_->encryption_manager_->
+                GetUniverseKeyRegistry(&catalog_manager_->master_->proxy_cache()),
+                "Could not schedule GetUniverseKeyRegistry task.");
     // Wait for a notification or a timeout expiration.
     //  - CreateTable will call Wake() to notify about the tablets to add
     //  - HandleReportedTablet/ProcessPendingAssignments will call WakeIfHasPendingUpdates()

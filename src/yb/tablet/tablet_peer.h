@@ -130,9 +130,9 @@ class TabletPeer : public consensus::ConsensusContext,
   // Returns true if shutdown was just initiated, false if shutdown was already running.
   MUST_USE_RESULT bool StartShutdown();
   // Completes shutdown process and waits for it's completeness.
-  void CompleteShutdown();
+  void CompleteShutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
 
-  void Shutdown();
+  void Shutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
 
   // Check that the tablet is in a RUNNING state.
   CHECKED_STATUS CheckRunning() const;
@@ -288,7 +288,7 @@ class TabletPeer : public consensus::ConsensusContext,
   }
 
   int64_t LeaderTerm() const override;
-  consensus::LeaderStatus LeaderStatus() const;
+  consensus::LeaderStatus LeaderStatus(bool allow_stale = false) const;
 
   HybridTime HtLeaseExpiration() const override;
 

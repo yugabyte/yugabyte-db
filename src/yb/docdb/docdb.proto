@@ -22,6 +22,7 @@ option java_package = "org.yb.docdb";
 message KeyValuePairPB {
   optional bytes key = 1;
   optional bytes value = 2;
+  optional fixed64 external_hybrid_time = 3;
 }
 
 // A set of key/value pairs to be written into RocksDB.
@@ -29,12 +30,10 @@ message KeyValueWriteBatchPB {
   repeated KeyValuePairPB write_pairs = 1;
   optional TransactionMetadataPB transaction = 2;
   optional bool DEPRECATED_may_have_metadata = 3;
-  // Used by serializable isolation, to store read intents.
+  // Used by serializable isolation transactions and row locking statements to store read intents.
   // In case of read-modify-write operation both read_pairs and write_pairs could present.
   repeated KeyValuePairPB read_pairs = 5;
-  // Currently only used when we create read intents for read requests with ROW_MARK_SHARE or
-  // ROW_MARK_KEYSHARE row locks. When this list is non-empty, we acquire a strong read lock.
-  repeated RowMarkType row_mark_type = 6;
+  optional RowMarkType row_mark_type = 6;
 }
 
 message ConsensusFrontierPB {

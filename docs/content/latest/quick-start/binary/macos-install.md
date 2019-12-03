@@ -2,7 +2,7 @@
 
 1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
 
-2. Verify that you have Python 2 installed. Support for Python 3 is in the works.
+2. Verify that you have Python 2 installed. Support for Python 3 is in the works — to follow the status, see [Enhance yb-ctl and yb-docker-ctl to support Python3 #3025](https://github.com/yugabyte/yugabyte-db/issues/3025).
 
     ```sh
     $ python --version
@@ -77,18 +77,20 @@
 Download the YugabyteDB `tar.gz` file using the following `wget` command.
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugabyte-2.0.3.0-darwin.tar.gz
+$ wget https://downloads.yugabyte.com/yugabyte-2.0.6.0-darwin.tar.gz
 ```
 
 To unpack the archive file and change to the YugabyteDB home directory, run the following command.
 
 ```sh
-$ tar xvfz yugabyte-2.0.3.0-darwin.tar.gz && cd yugabyte-2.0.3.0/
+$ tar xvfz yugabyte-2.0.6.0-darwin.tar.gz && cd yugabyte-2.0.6.0/
 ```
 
 ## Configure
 
-Add the following loopback IP addresses for use in the add node scenarios of the [Explore core features](../../explore/) section.
+Some of the examples in the [Explore core features](../../explore/) section require extra loopback addresses that allow you to simulate the use of multiple hosts or nodes.
+
+To add six loopback addresses, run the following commands, which require `sudo` access.
 
 ```sh
 sudo ifconfig lo0 alias 127.0.0.2
@@ -97,4 +99,29 @@ sudo ifconfig lo0 alias 127.0.0.4
 sudo ifconfig lo0 alias 127.0.0.5
 sudo ifconfig lo0 alias 127.0.0.6
 sudo ifconfig lo0 alias 127.0.0.7
+```
+
+**Note**: The loopback addresses do not persist upon rebooting of your Mac.
+
+To verify that the extra loopback addresses exist, run the following command.
+
+```sh
+$ifconfig lo0
+```
+
+You should see some output like the following:
+
+```
+lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
+	options=1203<RXCSUM,TXCSUM,TXSTATUS,SW_TIMESTAMP>
+	inet 127.0.0.1 netmask 0xff000000
+	inet6 ::1 prefixlen 128
+	inet6 fe80::1%lo0 prefixlen 64 scopeid 0x1
+	inet 127.0.0.2 netmask 0xff000000
+	inet 127.0.0.3 netmask 0xff000000
+	inet 127.0.0.4 netmask 0xff000000
+	inet 127.0.0.5 netmask 0xff000000
+	inet 127.0.0.6 netmask 0xff000000
+	inet 127.0.0.7 netmask 0xff000000
+	nd6 options=201<PERFORMNUD,DAD>
 ```

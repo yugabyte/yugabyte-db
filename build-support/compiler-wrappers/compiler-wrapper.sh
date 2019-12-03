@@ -396,6 +396,9 @@ if [[ $local_build_only == "false" &&
     # Exit code 255: ssh: connect to host ... port ...: Connection refused
     # $YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY: we return this when we fail to find files or
     #   directories that are supposed to exist. We retry to work around NFS issues.
+    #
+    # "file not recognized: file truncated" could happen when re-running an interrupted build
+    # while the old compiler process is still running.
     if [[ $exit_code -eq 126 ||
           $exit_code -eq 127 ||
           $exit_code -eq 141 ||
@@ -404,7 +407,8 @@ if [[ $local_build_only == "false" &&
           $exit_code -eq $YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY ]] ||
         egrep "\
 ccache: error: Failed to open .*: No such file or directory|\
-Fatal error: can't create .*: Stale file handle|\
+: Stale file handle|\
+file not recognized: file truncated|\
 /usr/bin/env: bash: Input/output error\
 " "$stderr_path" &&
         ! grep ": syntax error " "$stderr_path"
@@ -581,6 +585,7 @@ if "$is_linking" && ! is_configure_mode_invocation && [[
 fi
 
 set_default_compiler_type
+find_thirdparty_by_url
 find_compiler_by_type "$YB_COMPILER_TYPE"
 
 case "$cc_or_cxx" in
@@ -599,22 +604,28 @@ if which ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-} ]]; 
   export CCACHE_CC="$compiler_executable"
   export CCACHE_SLOPPINESS="file_macro,pch_defines,time_macros"
   export CCACHE_BASEDIR=$YB_SRC_ROOT
-  if is_jenkins; then
-    # Enable reusing cache entries from builds in different directories, potentially with incorrect
-    # file paths in debug information. This is OK for Jenkins because we probably won't be running
-    # these builds in the debugger.
-    export CCACHE_NOHASHDIR=1
-  fi
+
   # Ensure CCACHE puts temporary files on the local disk.
   export CCACHE_TEMPDIR=${CCACHE_TEMPDIR:-/tmp/ccache_tmp_$USER}
-  jenkins_ccache_dir=/n/jenkins/ccache
-  if [[ $USER == "jenkins" && -d $jenkins_ccache_dir ]] && is_src_root_on_nfs; then
-    if [[ ${YB_DEBUG_CCACHE:-0} == "1" ]] && ! is_jenkins; then
-      log "is_jenkins (based on JOB_NAME) is false for some reason, even though" \
-          "the user is 'jenkins'. Setting CCACHE_DIR to '$jenkins_ccache_dir' anyway." \
-          "This is host $HOSTNAME, and current directory is $PWD."
+  if [[ -n ${YB_CCACHE_DIR:-} ]]; then
+    export CCACHE_DIR=$YB_CCACHE_DIR
+  else
+    jenkins_ccache_dir=/n/jenkins/ccache
+    if [[ $USER == "jenkins" && -d $jenkins_ccache_dir ]] && is_src_root_on_nfs; then
+      # Enable reusing cache entries from builds in different directories, potentially with
+      # incorrect file paths in debug information. This is OK for Jenkins because we probably won't
+      # be running these builds in the debugger.
+      export CCACHE_NOHASHDIR=1
+
+      if [[ ${YB_DEBUG_CCACHE:-0} == "1" ]] && ! is_jenkins; then
+        log "is_jenkins (based on JOB_NAME) is false for some reason, even though" \
+            "the user is 'jenkins'. Setting CCACHE_DIR to '$jenkins_ccache_dir' anyway." \
+            "This is host $HOSTNAME, and current directory is $PWD."
+      fi
+      export CCACHE_DIR=$jenkins_ccache_dir
     fi
-    export CCACHE_DIR=$jenkins_ccache_dir
+  fi
+  if [[ ${CCACHE_DIR:-} =~ $YB_NFS_PATH_RE ]]; then
     # Do not update the stats file, because that involves locking and might be problematic/slow
     # on NFS.
     export CCACHE_NOSTATS=1

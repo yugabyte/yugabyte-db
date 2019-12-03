@@ -434,6 +434,8 @@ message SysUniverseReplicationEntryPB {
 message ChangeEncryptionInfoRequestPB {
   optional bool encryption_enabled = 1;
   optional string key_path = 2;
+  optional string version_id = 3;
+  optional bool in_memory = 4;
 }
 
 message ChangeEncryptionInfoResponsePB {
@@ -450,10 +452,38 @@ message IsEncryptionEnabledResponsePB {
 }
 
 message EncryptionInfoPB {
-  optional bool encryption_enabled = 1 [default = false];
+  optional bool encryption_enabled = 1;
   optional bytes universe_key_registry_encoded = 2;
   optional string key_path = 3;
+  optional string latest_version_id = 4;
+  optional bool key_in_memory = 5;
 }
+
+message AddUniverseKeysRequestPB {
+  optional UniverseKeysPB universe_keys = 1;
+}
+
+message AddUniverseKeysResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message GetUniverseKeyRegistryRequestPB {
+}
+
+message GetUniverseKeyRegistryResponsePB {
+  optional MasterErrorPB error = 1;
+  optional UniverseKeysPB universe_keys = 2;
+}
+
+message HasUniverseKeyInMemoryRequestPB {
+  optional string version_id = 1;
+}
+
+message HasUniverseKeyInMemoryResponsePB {
+  optional bool has_key = 1;
+  optional MasterErrorPB error = 2;
+}
+
 
 // The on-disk entry in the sys.catalog table for configuration vinformation
 // that are relevant to the entire cluster. This has a version entry that is
@@ -1223,6 +1253,18 @@ message DeleteNamespaceResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message AlterNamespaceRequestPB {
+  optional NamespaceIdentifierPB namespace = 1;
+
+  // New name for the namespace in the alter operation.
+  optional string new_name = 2;
+}
+
+message AlterNamespaceResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
 message ListNamespacesRequestPB {
   optional YQLDatabase database_type = 1 [ default = YQL_DATABASE_CQL ];
 }
@@ -1607,6 +1649,7 @@ service MasterService {
 
   rpc CreateNamespace(CreateNamespaceRequestPB) returns (CreateNamespaceResponsePB);
   rpc DeleteNamespace(DeleteNamespaceRequestPB) returns (DeleteNamespaceResponsePB);
+  rpc AlterNamespace(AlterNamespaceRequestPB) returns (AlterNamespaceResponsePB);
   rpc ListNamespaces(ListNamespacesRequestPB) returns (ListNamespacesResponsePB);
 
   // For Postgres:
@@ -1690,4 +1733,9 @@ service MasterService {
       returns (SetUniverseReplicationEnabledResponsePB);
   rpc GetUniverseReplication(GetUniverseReplicationRequestPB)
       returns (GetUniverseReplicationResponsePB);
+  rpc AddUniverseKeys(AddUniverseKeysRequestPB)  returns (AddUniverseKeysResponsePB);
+  rpc GetUniverseKeyRegistry(GetUniverseKeyRegistryRequestPB)
+      returns (GetUniverseKeyRegistryResponsePB);
+  rpc HasUniverseKeyInMemory(HasUniverseKeyInMemoryRequestPB)
+      returns (HasUniverseKeyInMemoryResponsePB);
 }

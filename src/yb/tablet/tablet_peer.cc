@@ -356,8 +356,11 @@ const consensus::RaftConfigPB TabletPeer::RaftConfig() const {
 bool TabletPeer::StartShutdown() {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
 
-  if (tablet_) {
-    tablet_->SetShutdownRequestedFlag();
+  {
+    std::lock_guard<decltype(lock_)> lock(lock_);
+    if (tablet_) {
+      tablet_->SetShutdownRequestedFlag();
+    }
   }
 
   {
@@ -381,14 +384,17 @@ bool TabletPeer::StartShutdown() {
   // indirectly end up calling into the log, which we are about to shut down.
   UnregisterMaintenanceOps();
 
-  if (consensus_) {
-    consensus_->Shutdown();
+  {
+    std::lock_guard<decltype(lock_)> lock(lock_);
+    if (consensus_) {
+      consensus_->Shutdown();
+    }
   }
 
   return true;
 }
 
-void TabletPeer::CompleteShutdown() {
+void TabletPeer::CompleteShutdown(IsDropTable is_drop_table) {
   auto wait_start = CoarseMonoClock::now();
   auto last_report = wait_start;
   while (preparing_operations_.load(std::memory_order_acquire) != 0) {
@@ -418,7 +424,7 @@ void TabletPeer::CompleteShutdown() {
   VLOG_WITH_PREFIX(1) << "Shut down!";
 
   if (tablet_) {
-    tablet_->Shutdown();
+    tablet_->Shutdown(is_drop_table);
   }
 
   // Only mark the peer as SHUTDOWN when all other components have shut down.
@@ -470,9 +476,9 @@ void TabletPeer::WaitUntilShutdown() {
   }
 }
 
-void TabletPeer::Shutdown() {
+void TabletPeer::Shutdown(IsDropTable is_drop_table) {
   if (StartShutdown()) {
-    CompleteShutdown();
+    CompleteShutdown(is_drop_table);
   } else {
     WaitUntilShutdown();
   }
@@ -870,6 +876,7 @@ Status TabletPeer::StartReplicaOperation(
   // This sets the monotonic counter to at least replicate_msg.monotonic_counter() atomically.
   tablet_->UpdateMonotonicCounter(replicate_msg->monotonic_counter());
 
+  auto operation_type = operation->operation_type();
   OperationDriverPtr driver = VERIFY_RESULT(NewReplicaOperationDriver(&operation));
 
   // Unretained is required to avoid a refcount cycle.
@@ -879,6 +886,11 @@ Status TabletPeer::StartReplicaOperation(
   if (propagated_safe_time) {
     driver->SetPropagatedSafeTime(propagated_safe_time, tablet_->mvcc_manager());
   }
+
+  if (operation_type == OperationType::kWrite) {
+    tablet()->mvcc_manager()->AddPending(&ht);
+  }
+
   driver->ExecuteAsync();
   return Status::OK();
 }
@@ -1003,13 +1015,13 @@ int64_t TabletPeer::LeaderTerm() const {
   return consensus ? consensus->LeaderTerm() : yb::OpId::kUnknownTerm;
 }
 
-consensus::LeaderStatus TabletPeer::LeaderStatus() const {
+consensus::LeaderStatus TabletPeer::LeaderStatus(bool allow_stale) const {
   shared_ptr<consensus::Consensus> consensus;
   {
     std::lock_guard<simple_spinlock> lock(lock_);
     consensus = consensus_;
   }
-  return consensus ? consensus->GetLeaderStatus() : consensus::LeaderStatus::NOT_LEADER;
+  return consensus ? consensus->GetLeaderStatus(allow_stale) : consensus::LeaderStatus::NOT_LEADER;
 }
 
 HybridTime TabletPeer::HtLeaseExpiration() const {

@@ -116,6 +116,9 @@ class RpcRetrier {
       RpcCommand* rpc, const Status& why_status,
       BackoffStrategy strategy = BackoffStrategy::kLinear);
 
+  CHECKED_STATUS DelayedRetry(
+      RpcCommand* rpc, const Status& why_status, MonoDelta add_delay);
+
   RpcController* mutable_controller() { return &controller_; }
   const RpcController& controller() const { return controller_; }
 
@@ -144,11 +147,16 @@ class RpcRetrier {
   }
 
  private:
+  CHECKED_STATUS DoDelayedRetry(RpcCommand* rpc, const Status& why_status);
+
   // Called when an RPC comes up for retrying. Actually sends the RPC.
   void DoRetry(RpcCommand* rpc, const Status& status);
 
   // The next sent rpc will be the nth attempt (indexed from 1).
   int attempt_num_ = 1;
+
+  // Delay used for the last DelayedRetry. Depends on argument history of DelayedRetry calls.
+  MonoDelta retry_delay_ = MonoDelta::kZero;
 
   const CoarseTimePoint start_;
 

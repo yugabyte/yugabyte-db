@@ -17,7 +17,7 @@ menu:
     weight: 200
 ---
 
-{{< tip title="Tip" >}}You can use your [local cluster](../quick-start/) to explore all the core features of YugabyteDB.{{< /tip >}}<br>
+{{< tip title="Tip" >}}Use your [local cluster](../quick-start/) to explore all the core features of YugabyteDB.{{< /tip >}}<br>
 
 <div class="row">
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -83,6 +83,18 @@ menu:
       </div>
       <div class="body">
         Observable at every layer of the database using Prometheus.
+      </div>
+    </a>
+  </div>
+  </div>
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="two-data-centers/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
+        <div class="title">Two data center deployment</div>
+      </div>
+      <div class="body">
+        Replicate data changes between two geo-distributed data centers (2DC).
       </div>
     </a>
   </div>

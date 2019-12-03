@@ -173,11 +173,13 @@ export default class AZSelectorTable extends Component {
         newTaskParams.expectedUniverseVersion = currentUniverse.data.version;
         newTaskParams.userAZSelected = true;
         newTaskParams.resetAZConfig = false;
-        if (_.isEqual(
-          getClusterByType(newTaskParams.clusters, clusterType).placementInfo,
-          getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType).placementInfo)
-        ) {
-          newTaskParams.resetAZConfig = true;
+        if (isNonEmptyObject(getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType))) {
+          if (_.isEqual(
+            getClusterByType(newTaskParams.clusters, clusterType).placementInfo,
+            getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType).placementInfo)
+          ) {
+            newTaskParams.resetAZConfig = true;
+          }
         }
         this.props.submitConfigureUniverse(newTaskParams);
       } else {

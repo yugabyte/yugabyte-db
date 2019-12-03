@@ -53,4 +53,4 @@ For YB-Master and YB-TServer, the log rotation size is controlled by the `--max_
 
 For YSQL, we also have the additional `postgres*log` files. These logs have daily and size-based log rotation, that is a new log file will be created each day or a log reaches 10 MB size.
 
-For available configuration options, see [YB-Master logging options](../../../admin/yb-master/#logging-options) and [YB-TServer logging options](../../../admin/yb-tserver/#logging-options)
+For available configuration options, see [YB-Master logging options](../../../reference/configuration/yb-master/#logging-options) and [YB-TServer logging options](../../../reference/configuration/yb-tserver/#logging-options).

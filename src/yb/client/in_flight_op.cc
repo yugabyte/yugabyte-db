@@ -21,6 +21,10 @@ namespace yb {
 namespace client {
 namespace internal {
 
+InFlightOp::InFlightOp(std::shared_ptr<YBOperation> yb_op_)
+    : yb_op(std::move(yb_op_)) {
+}
+
 std::string InFlightOp::ToString() const {
   return strings::Substitute("op[state=$0, yb_op=$1]",
                              internal::ToString(state),

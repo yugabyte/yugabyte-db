@@ -342,8 +342,10 @@ Status QLProcessor::CheckNodePermissions(const TreeNode* tnode) {
           break;
         case OBJECT_INDEX: {
           bool cache_used = false;
-          std::shared_ptr<client::YBTable> table = ql_env_.GetTableDesc(
-              drop_stmt->yb_table_name(), &cache_used);
+          const YBTableName table_name(YQL_DATABASE_CQL,
+                                       drop_stmt->yb_table_name().namespace_name(),
+                                       drop_stmt->yb_table_name().table_name());
+          std::shared_ptr<client::YBTable> table = ql_env_.GetTableDesc(table_name, &cache_used);
 
           // If the table is not found, or if it's not an index, let the operation go through
           // so that we can return a "not found" error.s

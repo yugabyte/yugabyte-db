@@ -19,6 +19,7 @@
 
 #include "yb/client/yb_table_name.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_util.h"
 #include "yb/tools/yb-generate_partitions.h"
 #include "yb/util/flags.h"
 
@@ -39,7 +40,9 @@ int main(int argc, char** argv) {
   // Convert table_name to lowercase since we store table names in lowercase.
   string table_name_lower = boost::to_lower_copy(FLAGS_table_name);
 
-  yb::client::YBTableName yb_table_name(FLAGS_namespace_name, table_name_lower);
+  yb::client::YBTableName yb_table_name(yb::master::GetDefaultDatabaseType(FLAGS_namespace_name),
+                                        FLAGS_namespace_name,
+                                        table_name_lower);
   std::vector<string> master_addresses = { FLAGS_master_addresses };
   yb::tools::YBPartitionGenerator partition_generator(yb_table_name, master_addresses);
   yb::Status s = partition_generator.Init();

@@ -178,13 +178,15 @@ Status ReplicaState::LockForMajorityReplicatedIndexUpdate(UniqueLock* lock) cons
   return Status::OK();
 }
 
-LeaderState ReplicaState::GetLeaderState() const {
+LeaderState ReplicaState::GetLeaderState(bool allow_stale) const {
   auto cache = leader_state_cache_.load(boost::memory_order_acquire);
 
-  CoarseTimePoint now = CoarseMonoClock::Now();
-  if (now >= cache.expire_at) {
-    auto lock = LockForRead();
-    return RefreshLeaderStateCacheUnlocked(&now);
+  if (!allow_stale) {
+    CoarseTimePoint now = CoarseMonoClock::Now();
+    if (now >= cache.expire_at) {
+      auto lock = LockForRead();
+      return RefreshLeaderStateCacheUnlocked(&now);
+    }
   }
 
   LeaderState result = {cache.status()};
@@ -1263,6 +1265,8 @@ consensus::LeaderState ReplicaState::RefreshLeaderStateCacheUnlocked(CoarseTimeP
 }
 
 void ReplicaState::SetLeaderNoOpCommittedUnlocked(bool value) {
+  LOG_WITH_PREFIX(INFO) << __func__ << "(" << value << ")";
+
   leader_no_op_committed_ = value;
   CoarseTimePoint now;
   RefreshLeaderStateCacheUnlocked(&now);

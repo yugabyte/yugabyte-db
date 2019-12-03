@@ -92,6 +92,9 @@ export const FETCH_UNIVERSE_BACKUPS = 'FETCH_UNIVERSE_BACKUPS';
 export const FETCH_UNIVERSE_BACKUPS_RESPONSE = 'FETCH_UNIVERSE_BACKUPS_RESPONSE';
 export const RESET_UNIVERSE_BACKUPS = 'RESET_UNIVERSE_BACKUPS';
 
+export const CREATE_UNIVERSE_BACKUP = 'CREATE_UNIVERSE_BACKUP';
+export const CREATE_UNIVERSE_BACKUP_RESPONSE = 'CREATE_UNIVERSE_BACKUP_RESPONSE';
+
 // Health Checking for Universe
 export const GET_HEALTH_CHECK = 'GET_HEALTH_CHECK';
 export const GET_HEALTH_CHECK_RESPONSE = 'GET_HEALTH_CHECK_RESPONSE';
@@ -497,6 +500,25 @@ export function fetchUniverseBackupsResponse(response) {
 export function resetUniverseBackups() {
   return {
     type: RESET_UNIVERSE_BACKUPS
+  };
+}
+
+export function createUniverseBackup(universeUUID, formValues) {
+  const cUUID = localStorage.getItem("customerId");
+  const request = axios.put(
+    `${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/multi_table_backup`,
+    formValues
+  );
+  return {
+    type: CREATE_UNIVERSE_BACKUP,
+    payload: request
+  };
+}
+
+export function createUniverseBackupResponse(response) {
+  return {
+    type: CREATE_UNIVERSE_BACKUP_RESPONSE,
+    payload: response
   };
 }
 

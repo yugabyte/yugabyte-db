@@ -158,7 +158,6 @@ public class Universe extends Model {
     }
     universeDetailsJson.set("clusters", clustersArrayJson);
     json.set("universeDetails", universeDetailsJson);
-
     return json;
   }
 
@@ -719,5 +718,9 @@ public class Universe extends Model {
 
   public Map<String, String> getEncryptionAtRestConfig() {
     return getUniverseDetails().encryptionAtRestConfig;
+  }
+
+  public boolean universeIsLocked() {
+    return getUniverseDetails().updateInProgress;
   }
 }

@@ -6,7 +6,7 @@
 
     <i class="icon-ubuntu"></i> Ubuntu 16.04+
 
-2. Verify that you have Python 2 installed. Support for Python 3 is in the works.
+2. Verify that you have Python 2 installed. Support for Python 3 is in the works — to follow the status, see [Enhance yb-ctl and yb-docker-ctl to support Python3 #3025](https://github.com/yugabyte/yugabyte-db/issues/3025).
 
     ```sh
     $ python --version
@@ -35,13 +35,13 @@
 1. Download the YugabyteDB package using the following `wget` command.
 
     ```sh
-    $ wget https://downloads.yugabyte.com/yugabyte-2.0.3.0-linux.tar.gz
+    $ wget https://downloads.yugabyte.com/yugabyte-2.0.6.0-linux.tar.gz
     ```
 
 2. Extract the YugabyteDB package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-2.0.3.0-linux.tar.gz && cd yugabyte-2.0.3.0/
+    $ tar xvfz yugabyte-2.0.6.0-linux.tar.gz && cd yugabyte-2.0.6.0/
     ```
 
 ## Configure

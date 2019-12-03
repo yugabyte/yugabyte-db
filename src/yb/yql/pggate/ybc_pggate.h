@@ -117,6 +117,14 @@ YBCStatus YBCPgNewDropDatabase(YBCPgSession pg_session,
                                YBCPgStatement *handle);
 YBCStatus YBCPgExecDropDatabase(YBCPgStatement handle);
 
+// Alter database.
+YBCStatus YBCPgNewAlterDatabase(YBCPgSession pg_session,
+                               const char *database_name,
+                               YBCPgOid database_oid,
+                               YBCPgStatement *handle);
+YBCStatus YBCPgAlterDatabaseRenameDatabase(YBCPgStatement handle, const char *newname);
+YBCStatus YBCPgExecAlterDatabase(YBCPgStatement handle);
+
 // Reserve oids.
 YBCStatus YBCPgReserveOids(YBCPgSession pg_session,
                            YBCPgOid database_oid,
@@ -373,6 +381,12 @@ bool YBCIsInitDbModeEnvVarSet();
 
 // This is called by initdb. Used to customize some behavior.
 void YBCInitFlags();
+
+// Retrieves value of ysql_max_read_restart_attempts gflag
+int32_t YBCGetMaxReadRestartAttempts();
+
+// Retrieves value of ysql_output_buffer_size gflag
+int32_t YBCGetOutputBufferSize();
 
 #ifdef __cplusplus
 }  // extern "C"

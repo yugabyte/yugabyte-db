@@ -47,10 +47,10 @@ class NodeConnectModal extends Component {
 
     const accessKey = accessKeys.data.filter((key) => key.idKey.providerUUID === providerUUID)[0];
     if (isEmptyObject(accessKey)) {
-      return <span/>; 
+      return <span/>;
     }
     const accessKeyInfo = accessKey.keyInfo;
-    const privateSSHCommand = `sudo ssh -i ${ accessKeyInfo.privateKey } -ostricthostkeychecking=no yugabyte@${nodeIPs.privateIP} -p 54422`;
+    const privateSSHCommand = `sudo ssh -i ${ accessKeyInfo.privateKey } -ostricthostkeychecking=no -p 54422 yugabyte@${nodeIPs.privateIP}`;
     const btnId = _.uniqueId('node_action_btn_');
     return (
       <Fragment>
@@ -73,7 +73,6 @@ class NodeConnectModal extends Component {
 
 function mapStateToProps(state, ownProps) {
   return {
-    hostInfo: state.customer.hostInfo,
     accessKeys: state.cloud.accessKeys
   };
 }

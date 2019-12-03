@@ -4,6 +4,7 @@ import com.google.inject.AbstractModule;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.CallHome;
+import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.common.services.LocalYBClientService;
@@ -11,6 +12,9 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.scheduler.Scheduler;
 import play.Configuration;
 import play.Environment;
+
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
 
 /**
  * This class is a Guice module that tells Guice to bind different types
@@ -52,6 +56,8 @@ public class Module extends AbstractModule {
       bind(Scheduler.class).asEagerSingleton();
       bind(HealthChecker.class).asEagerSingleton();
       bind(EncryptionAtRestManager.class).asEagerSingleton();
+      bind(EncryptionAtRestUniverseKeyCache.class).asEagerSingleton();
+      bind(SetUniverseKey.class).asEagerSingleton();
     }
   }
 }

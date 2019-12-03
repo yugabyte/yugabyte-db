@@ -26,8 +26,7 @@ import java.util.Collections;
 import java.util.List;
 import java.time.Instant;
 
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.*;
 
 /**
  * Runs the pg_regress test suite on YB code.
@@ -58,8 +57,10 @@ public class TestPgRegressLargeTable extends BasePgSQLTest {
 
     // Check the elapsed time.
     runtimeMillis = System.currentTimeMillis() - runtimeMillis;
-    LOG.info(String.format("Complete query: %s. Elapsed time = %d msecs", stmt, runtimeMillis));
-    assertTrue(runtimeMillis < maxRuntimeMillis);
+    LOG.info(String.format(
+        "Complete query: %s. Elapsed time: %d ms. Expected upper bound: %d ms",
+        stmt, runtimeMillis, maxRuntimeMillis));
+    assertLessThan(runtimeMillis, maxRuntimeMillis);
   }
 
   @Test

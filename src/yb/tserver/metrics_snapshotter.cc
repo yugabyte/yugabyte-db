@@ -312,7 +312,8 @@ Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
   shared_ptr<YBSession> session = client_->NewSession();
   session->SetTimeout(15s);
 
-  const YBTableName kTableName(master::kSystemNamespaceName, kMetricsSnapshotsTableName);
+  const YBTableName kTableName(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kMetricsSnapshotsTableName);
 
   client::TableHandle table;
   RETURN_NOT_OK(table.Open(kTableName, client_));
@@ -327,6 +328,12 @@ Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
       RETURN_NOT_OK(DoPrometheusMetricsSnapshot(table, session, "tserver",
             server_->permanent_uuid(), kv.first, kv.second));
     }
+  }
+
+  if (tserver_metrics_whitelist_.find("node_up") != tserver_metrics_whitelist_.end()) {
+    RETURN_NOT_OK(DoPrometheusMetricsSnapshot(table, session, "tserver",
+                                              server_->permanent_uuid(), "node_up",
+                                              1));
   }
 
   if (tserver_metrics_whitelist_.find("disk_usage") != tserver_metrics_whitelist_.end()) {

@@ -18,6 +18,7 @@
 
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/monotime.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -35,6 +36,35 @@ struct TabletServerErrorTag : IntegralErrorTag<TabletServerErrorPB::Code> {
 };
 
 typedef StatusErrorCodeImpl<TabletServerErrorTag> TabletServerError;
+
+class MonoDeltaTraits {
+ public:
+  typedef MonoDelta ValueType;
+  typedef int64_t RepresentationType;
+
+  static MonoDelta FromRepresentation(RepresentationType source) {
+    return MonoDelta::FromNanoseconds(source);
+  }
+
+  static RepresentationType ToRepresentation(MonoDelta value) {
+    return value.ToNanoseconds();
+  }
+
+  static std::string ToString(MonoDelta value) {
+    return value.ToString();
+  }
+};
+
+struct TabletServerDelayTag : IntegralBackedErrorTag<MonoDeltaTraits> {
+  // This category id is part of the wire protocol and should not be changed once released.
+  static constexpr uint8_t kCategory = 8;
+
+  static std::string ToMessage(MonoDelta value) {
+    return value.ToString();
+  }
+};
+
+typedef StatusErrorCodeImpl<TabletServerDelayTag> TabletServerDelay;
 
 } // namespace tserver
 } // namespace yb

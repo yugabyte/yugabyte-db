@@ -73,6 +73,7 @@ class QLResultSet {
 
   // Append a column to the last row in the result set.
   void AppendColumn(size_t index, const QLValue& value);
+  void AppendColumn(size_t index, const QLValuePB& value);
 
   // Row count
   size_t rsrow_count() const;

@@ -334,3 +334,13 @@ update test_update_dropped set a = 3 where a = 2;
 \d test_update_dropped;
 select * from test_update_dropped;
 DROP TABLE test_update_dropped;
+
+-- Test that deleting table with a returning clause after dropping a column
+-- does not result in spurious error #2938.
+create table test_delete_dropped(a int, b int);
+insert into test_delete_dropped(a, b) values(1, 1), (2, 2);
+alter table test_delete_dropped drop column b;
+delete from test_delete_dropped where a = 1 returning *;
+\d test_delete_dropped;
+select * from test_delete_dropped;
+DROP TABLE test_delete_dropped;

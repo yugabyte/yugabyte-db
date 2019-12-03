@@ -22,6 +22,7 @@
 
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction.h"
+#include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/strings/substitute.h"
@@ -214,11 +215,17 @@ void AsyncRpc::Failed(const Status& status) {
         resp->set_status(status.IsTryAgain() ? PgsqlResponsePB::PGSQL_STATUS_RESTART_REQUIRED_ERROR
                                              : PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
         resp->set_error_message(error_message);
-        const uint8_t* pgerr = status.ErrorData(PgsqlErrorTag::kCategory);
-        if (pgerr != nullptr) {
-          resp->set_pg_error_code(static_cast<uint32_t>(PgsqlErrorTag::Decode(pgerr)));
+        const uint8_t* pg_err_ptr = status.ErrorData(PgsqlErrorTag::kCategory);
+        if (pg_err_ptr != nullptr) {
+          resp->set_pg_error_code(static_cast<uint32_t>(PgsqlErrorTag::Decode(pg_err_ptr)));
         } else {
           resp->set_pg_error_code(static_cast<uint32_t>(YBPgErrorCode::YB_PG_INTERNAL_ERROR));
+        }
+        const uint8_t* txn_err_ptr = status.ErrorData(TransactionErrorTag::kCategory);
+        if (txn_err_ptr != nullptr) {
+          resp->set_txn_error_code(static_cast<uint16_t>(TransactionErrorTag::Decode(txn_err_ptr)));
+        } else {
+          resp->set_txn_error_code(static_cast<uint16_t>(TransactionErrorCode::kNone));
         }
         break;
       }
@@ -248,7 +255,7 @@ void SetTransactionMetadata(const TransactionMetadata& metadata, tserver::ReadRe
 
 } // namespace
 
-void AsyncRpc::SendRpcToTserver() {
+void AsyncRpc::SendRpcToTserver(int attempt_num) {
   MonoTime end_time = MonoTime::Now();
   if (async_rpc_metrics_) {
     async_rpc_metrics_->time_to_send->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
@@ -285,7 +292,6 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(AsyncRpcData* data, YBConsistencyLevel con
         << "Read time should NOT be specified for serializable isolation: "
         << read_point->GetReadTime().ToString();
   }
-  req_.set_rejection_score(data->rejection_score);
 }
 
 template <class Req, class Resp>
@@ -308,14 +314,14 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
       read_point->RestartRequired(req_.tablet_id(), restart_read_time);
     }
     Failed(STATUS(TryAgain, Format("Restart read required at: $0", restart_read_time), Slice(),
-                  PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)));
+                  TransactionError(TransactionErrorCode::kReadRestartRequired)));
     return false;
   }
   return true;
 }
 
 template <class Req, class Resp>
-void AsyncRpcBase<Req, Resp>::SendRpcToTserver() {
+void AsyncRpcBase<Req, Resp>::SendRpcToTserver(int attempt_num) {
   if (!tablet_invoker_.current_ts().HasCapability(CAPABILITY_PickReadTimeAtTabletServer)) {
     ConsistentReadPoint* read_point = batcher_->read_point();
     if (read_point && !read_point->GetReadTime()) {
@@ -329,44 +335,16 @@ void AsyncRpcBase<Req, Resp>::SendRpcToTserver() {
     }
   }
 
-  AsyncRpc::SendRpcToTserver();
+  req_.set_rejection_score(batcher_->RejectionScore(attempt_num));
+  AsyncRpc::SendRpcToTserver(attempt_num);
 }
 
 WriteRpc::WriteRpc(AsyncRpcData* data)
     : AsyncRpcBase(data, YBConsistencyLevel::STRONG) {
   TRACE_TO(trace_, "WriteRpc initiated to $0", data->tablet->tablet_id());
-#ifndef NDEBUG
-  const Schema& schema = GetSchema(table()->schema());
-#endif
-
   // Add the rows
   int ctr = 0;
   for (auto& op : ops_) {
-#ifndef NDEBUG
-    const Partition& partition = op->tablet->partition();
-    const PartitionSchema& partition_schema = table()->partition_schema();
-
-    bool partition_contains_row = false;
-    std::string partition_key;
-    switch (op->yb_op->type()) {
-      case YBOperation::QL_READ: FALLTHROUGH_INTENDED;
-      case YBOperation::QL_WRITE: FALLTHROUGH_INTENDED;
-      case YBOperation::PGSQL_READ: FALLTHROUGH_INTENDED;
-      case YBOperation::PGSQL_WRITE: FALLTHROUGH_INTENDED;
-      case YBOperation::REDIS_READ: FALLTHROUGH_INTENDED;
-      case YBOperation::REDIS_WRITE: {
-        CHECK_OK(op->yb_op->GetPartitionKey(&partition_key));
-        partition_contains_row = partition.ContainsKey(partition_key);
-        break;
-      }
-    }
-
-    CHECK(partition_contains_row)
-        << "Row " << op->yb_op->ToString()
-        << " not in partition " << partition_schema.PartitionDebugString(partition, schema)
-        << " partition_key: '" << Slice(partition_key).ToDebugHexString() << "'";
-
-#endif
     // Move write request PB into tserver write request PB for performance.
     // Will restore in ProcessResponseFromTserver.
     switch (op->yb_op->type()) {

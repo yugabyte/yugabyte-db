@@ -11,12 +11,14 @@
 // under the License.
 //
 
+#ifndef ENT_SRC_YB_CDC_CDC_UTIL_H
+#define ENT_SRC_YB_CDC_CDC_UTIL_H
+
 #include <stdlib.h>
 #include <string>
 #include <boost/functional/hash.hpp>
 
-#ifndef ENT_SRC_YB_CDC_CDC_UTIL_H
-#define ENT_SRC_YB_CDC_CDC_UTIL_H
+#include "yb/util/format.h"
 
 namespace yb {
 namespace cdc {
@@ -27,17 +29,25 @@ struct ConsumerTabletInfo {
 };
 
 struct ProducerTabletInfo {
-  // TODO(Rahul): Add universe_uuid when we support 3DC.
-  std::string stream_id;
+  std::string universe_uuid; /* needed on Consumer side for uniqueness. Empty on Producer */
+  std::string stream_id; /* unique ID on Producer, but not on Consumer. */
   std::string tablet_id;
 
   bool operator==(const ProducerTabletInfo& other) const {
-    return stream_id == other.stream_id && tablet_id == other.tablet_id;
+    return universe_uuid == other.universe_uuid &&
+           stream_id == other.stream_id &&
+           tablet_id == other.tablet_id;
+  }
+
+  std::string ToString() const {
+    return Format("{ universe_uuid: $0 stream_id: $1 tablet_id: $2 }",
+                  universe_uuid, stream_id, tablet_id);
   }
 
   struct Hash {
     std::size_t operator()(const ProducerTabletInfo& p) const noexcept {
       std::size_t hash = 0;
+      boost::hash_combine(hash, p.universe_uuid);
       boost::hash_combine(hash, p.stream_id);
       boost::hash_combine(hash, p.tablet_id);
 
@@ -45,6 +55,10 @@ struct ProducerTabletInfo {
     }
   };
 };
+
+inline size_t hash_value(const ProducerTabletInfo& p) noexcept {
+  return ProducerTabletInfo::Hash()(p);
+}
 
 } // namespace cdc
 } // namespace yb

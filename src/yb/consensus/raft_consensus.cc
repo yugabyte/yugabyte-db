@@ -226,20 +226,21 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     TableType table_type,
     ThreadPool* raft_pool,
     RetryableRequests* retryable_requests) {
-  gscoped_ptr<PeerProxyFactory> rpc_factory(new RpcPeerProxyFactory(
-      messenger, proxy_cache, local_peer_pb.cloud_info()));
+  auto rpc_factory = std::make_unique<RpcPeerProxyFactory>(
+      messenger, proxy_cache, local_peer_pb.cloud_info());
 
   // The message queue that keeps track of which operations need to be replicated
   // where.
-  gscoped_ptr<PeerMessageQueue> queue(
-      new PeerMessageQueue(metric_entity,
-                           log,
-                           server_mem_tracker,
-                           local_peer_pb,
-                           options.tablet_id,
-                           clock,
-                           consensus_context,
-                           raft_pool->NewToken(ThreadPool::ExecutionMode::SERIAL)));
+  auto queue = std::make_unique<PeerMessageQueue>(
+      metric_entity,
+      log,
+      server_mem_tracker,
+      parent_mem_tracker,
+      local_peer_pb,
+      options.tablet_id,
+      clock,
+      consensus_context,
+      raft_pool->NewToken(ThreadPool::ExecutionMode::SERIAL));
 
   DCHECK(local_peer_pb.has_permanent_uuid());
   const string& peer_uuid = local_peer_pb.permanent_uuid();
@@ -253,20 +254,20 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
 
   // A manager for the set of peers that actually send the operations both remotely
   // and to the local wal.
-  gscoped_ptr<PeerManager> peer_manager(
-    new PeerManager(options.tablet_id,
-                    peer_uuid,
-                    rpc_factory.get(),
-                    queue.get(),
-                    raft_pool_token.get(),
-                    log));
+  auto peer_manager = std::make_unique<PeerManager>(
+      options.tablet_id,
+      peer_uuid,
+      rpc_factory.get(),
+      queue.get(),
+      raft_pool_token.get(),
+      log);
 
   return std::make_shared<RaftConsensus>(
       options,
       std::move(cmeta),
-      rpc_factory.Pass(),
-      queue.Pass(),
-      peer_manager.Pass(),
+      std::move(rpc_factory),
+      std::move(queue),
+      std::move(peer_manager),
       std::move(raft_pool_token),
       metric_entity,
       peer_uuid,
@@ -281,9 +282,10 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
 
 RaftConsensus::RaftConsensus(
     const ConsensusOptions& options, std::unique_ptr<ConsensusMetadata> cmeta,
-    gscoped_ptr<PeerProxyFactory> proxy_factory,
-    gscoped_ptr<PeerMessageQueue> queue, gscoped_ptr<PeerManager> peer_manager,
-    unique_ptr<ThreadPoolToken> raft_pool_token,
+    std::unique_ptr<PeerProxyFactory> proxy_factory,
+    std::unique_ptr<PeerMessageQueue> queue,
+    std::unique_ptr<PeerManager> peer_manager,
+    std::unique_ptr<ThreadPoolToken> raft_pool_token,
     const scoped_refptr<MetricEntity>& metric_entity,
     const std::string& peer_uuid, const scoped_refptr<server::Clock>& clock,
     ConsensusContext* consensus_context, const scoped_refptr<log::Log>& log,
@@ -294,9 +296,9 @@ RaftConsensus::RaftConsensus(
     : raft_pool_token_(std::move(raft_pool_token)),
       log_(log),
       clock_(clock),
-      peer_proxy_factory_(proxy_factory.Pass()),
-      peer_manager_(peer_manager.Pass()),
-      queue_(queue.Pass()),
+      peer_proxy_factory_(std::move(proxy_factory)),
+      peer_manager_(std::move(peer_manager)),
+      queue_(std::move(queue)),
       rng_(GetRandomSeed32()),
       withhold_votes_until_(MonoTime::Min()),
       mark_dirty_clbk_(std::move(mark_dirty_clbk)),
@@ -841,7 +843,6 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
   // Don't vote for anyone if we're a leader.
   withhold_votes_until_ = MonoTime::Max();
 
-  state_->SetLeaderNoOpCommittedUnlocked(false);
   queue_->RegisterObserver(this);
 
   // Refresh queue and peers before initiating NO_OP.
@@ -1039,12 +1040,13 @@ void RaftConsensus::UpdateMajorityReplicated(
   leader_lease_wait_cond_.notify_all();
 
   VLOG_WITH_PREFIX(1) << "Marking majority replicated up to "
-      << majority_replicated_data.op_id.ShortDebugString();
+      << majority_replicated_data.ToString();
   TRACE("Marking majority replicated up to $0", majority_replicated_data.op_id.ShortDebugString());
   bool committed_index_changed = false;
   s = state_->UpdateMajorityReplicatedUnlocked(
       majority_replicated_data.op_id, committed_op_id, &committed_index_changed);
-  if (state_->GetLeaderStateUnlocked().ok()) {
+  auto leader_state = state_->GetLeaderStateUnlocked();
+  if (leader_state.ok() && leader_state.status == LeaderStatus::LEADER_AND_READY) {
     state_->context()->MajorityReplicated();
   }
   if (PREDICT_FALSE(!s.ok())) {
@@ -2502,8 +2504,8 @@ RaftPeerPB::Role RaftConsensus::role() const {
   return GetRoleUnlocked();
 }
 
-LeaderState RaftConsensus::GetLeaderState() const {
-  return state_->GetLeaderState();
+LeaderState RaftConsensus::GetLeaderState(bool allow_stale) const {
+  return state_->GetLeaderState(allow_stale);
 }
 
 std::string RaftConsensus::LogPrefix() {
@@ -2774,6 +2776,7 @@ void RaftConsensus::DoElectionCallback(const LeaderElectionData& data,
   state_->UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked(
       result.old_leader_lease, result.old_leader_ht_lease);
 
+  state_->SetLeaderNoOpCommittedUnlocked(false);
   // Convert role to LEADER.
   SetLeaderUuidUnlocked(state_->GetPeerUuid());
 
@@ -2928,12 +2931,12 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
   return Status::OK();
 }
 
-Status RaftConsensus::ReadReplicatedMessagesForCDC(const OpId& from, ReplicateMsgs* msgs,
-                                                   bool* have_more_messages) {
-  return queue_->ReadReplicatedMessagesForCDC(from, msgs, have_more_messages);
+Result<ReadOpsResult> RaftConsensus::ReadReplicatedMessagesForCDC(const yb::OpId& from,
+  int64_t* last_replicated_opid_index) {
+  return queue_->ReadReplicatedMessagesForCDC(from, last_replicated_opid_index);
 }
 
-void RaftConsensus::UpdateCDCConsumerOpId(const OpIdPB& op_id) {
+void RaftConsensus::UpdateCDCConsumerOpId(const yb::OpId& op_id) {
   return queue_->UpdateCDCConsumerOpId(op_id);
 }
 

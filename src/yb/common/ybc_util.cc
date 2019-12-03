@@ -13,21 +13,30 @@
 #include "yb/common/ybc_util.h"
 
 #include <stdarg.h>
+#include <fstream>
 
 #include "yb/common/pgsql_error.h"
 #include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/transaction_error.h"
 #include "yb/common/ybc-internal.h"
 
-#include "yb/util/logging.h"
-#include "yb/util/init.h"
-#include "yb/util/version_info.h"
-#include "yb/util/status.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/debug-util.h"
+#include "yb/util/env.h"
+#include "yb/util/flag_tags.h"
+#include "yb/util/init.h"
+#include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status.h"
+#include "yb/util/version_info.h"
+
 #include "yb/gutil/stringprintf.h"
 
 using std::string;
+DEFINE_test_flag(string,
+                 process_info_dir,
+                 string(),
+                 "Directory where all postgres process will writes their PIDs and executable name");
 
 namespace yb {
 
@@ -39,6 +48,21 @@ void ChangeWorkingDir(const char* dir) {
     LOG(WARNING) << "Failed to change working directory to " << dir << ", error was "
                  << errno << " " << std::strerror(errno) << "!";
   }
+}
+
+void WriteCurrentProcessInfo(const string& destination_dir) {
+  string executable_path;
+  if (Env::Default()->GetExecutablePath(&executable_path).ok()) {
+    const auto destination_file = Format("$0/$1", destination_dir, getpid());
+    std::ofstream out(destination_file, std::ios_base::out);
+    out << executable_path;
+    if (out) {
+      LOG(INFO) << "Process info is written to " << destination_file;
+      return;
+    }
+  }
+  LOG(WARNING) << "Unable to write process info to "
+               << destination_dir << " dir: error " << errno << " " << std::strerror(errno);
 }
 
 Status InitInternal(const char* argv0) {
@@ -141,9 +165,38 @@ bool YBCStatusIsDuplicateKey(YBCStatus s) {
 }
 
 uint32_t YBCStatusPgsqlError(YBCStatus s) {
-  const uint8_t* pgerr = StatusWrapper(s)->ErrorData(PgsqlErrorTag::kCategory);
-  return static_cast<uint32>(pgerr == nullptr ? YBPgErrorCode::YB_PG_INTERNAL_ERROR
-                                              : PgsqlErrorTag::Decode(pgerr));
+  StatusWrapper wrapper(s);
+  const uint8_t* pg_err_ptr = wrapper->ErrorData(PgsqlErrorTag::kCategory);
+  // If we have PgsqlError explicitly set, we decode it
+  YBPgErrorCode result = pg_err_ptr != nullptr ? PgsqlErrorTag::Decode(pg_err_ptr)
+                                               : YBPgErrorCode::YB_PG_INTERNAL_ERROR;
+
+  // If the error is the default generic YB_PG_INTERNAL_ERROR (as we also set in AsyncRpc::Failed)
+  // then we try to deduce it from a transaction error.
+  if (result == YBPgErrorCode::YB_PG_INTERNAL_ERROR) {
+    const uint8_t* txn_err_ptr = wrapper->ErrorData(TransactionErrorTag::kCategory);
+    if (txn_err_ptr != nullptr) {
+      switch (TransactionErrorTag::Decode(txn_err_ptr)) {
+        case TransactionErrorCode::kAborted: FALLTHROUGH_INTENDED;
+        case TransactionErrorCode::kReadRestartRequired: FALLTHROUGH_INTENDED;
+        case TransactionErrorCode::kConflict:
+          result = YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE;
+          break;
+        case TransactionErrorCode::kSnapshotTooOld:
+          result = YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
+          break;
+        case TransactionErrorCode::kNone: FALLTHROUGH_INTENDED;
+        default:
+          result = YBPgErrorCode::YB_PG_INTERNAL_ERROR;
+      }
+    }
+  }
+  return static_cast<uint32_t>(result);
+}
+
+uint16_t YBCStatusTransactionError(YBCStatus s) {
+  const TransactionError txn_err(*StatusWrapper(s));
+  return static_cast<uint16_t>(txn_err.value());
 }
 
 void YBCFreeStatus(YBCStatus s) {
@@ -162,12 +215,20 @@ const char* YBCStatusCodeAsCString(YBCStatus s) {
   return StatusWrapper(s)->CodeAsCString();
 }
 
+bool YBCIsRestartReadError(uint16_t txn_errcode) {
+  return txn_errcode == static_cast<uint16_t>(TransactionErrorCode::kReadRestartRequired);
+}
+
 YBCStatus YBCInit(const char* argv0,
                   YBCPAllocFn palloc_fn,
                   YBCCStringToTextWithLenFn cstring_to_text_with_len_fn) {
   YBCSetPAllocFn(palloc_fn);
   YBCSetCStringToTextWithLenFn(cstring_to_text_with_len_fn);
-  return ToYBCStatus(yb::InitInternal(argv0));
+  auto status = yb::InitInternal(argv0);
+  if (status.ok() && !FLAGS_process_info_dir.empty()) {
+    WriteCurrentProcessInfo(FLAGS_process_info_dir);
+  }
+  return ToYBCStatus(status);
 }
 
 void YBCLogImpl(

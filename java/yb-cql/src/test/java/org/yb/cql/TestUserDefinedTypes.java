@@ -70,10 +70,6 @@ public class TestUserDefinedTypes extends BaseCQLTest {
 
     // Un-frozen collections not allowed as field types
     runInvalidStmt("CREATE TYPE test (a int, b list<int>);");
-
-    // Field types cannot refer to other user defined types
-    runInvalidStmt("CREATE TYPE test (a int, b test_all_types);");
-    runInvalidStmt("CREATE TYPE test (a int, b frozen<test_all_types>);");
   }
 
   @Test
@@ -405,4 +401,365 @@ public class TestUserDefinedTypes extends BaseCQLTest {
           "{name : 'a', ssn : 3} WHERE r = {name : 'a', ssn : 3};");
     }
   }
+
+  private void verifyUDTResult(ResultSet rs, int k, Object u1, Object u2, Object u3, Object u4) {
+    List<Row> rows = rs.all();
+    assertEquals(1, rows.size());
+    Row row = rows.get(0);
+    assertEquals(k, row.getInt("k"));
+    assertEquals(u1, row.getUDTValue("u1"));
+    assertEquals(u2, row.getUDTValue("u2"));
+    assertEquals(u3, row.getUDTValue("u3"));
+    assertEquals(u4, row.getUDTValue("u4"));
+  }
+
+  @Test
+  public void testNestedUDTs() throws Exception {
+    {
+      //--------------------------------------------------------------------------------------------
+      // Test Creating Types.
+
+      createType("udt1", "i int", "t text");
+      createType("udt2", "i int", "u1 frozen<udt1>");
+      createType("udt3", "i int", "u2 frozen<udt2>");
+      createType("udt4", "i int", "u3 frozen<udt3>");
+
+      // Non-frozen UDTs cannot be nested.
+      runInvalidStmt("CREATE TYPE invalid_udt (a udt1)");
+      runInvalidStmt("CREATE TYPE invalid_udt (a int, b udt1)");
+
+      //--------------------------------------------------------------------------------------------
+      // Setup prerequisites (table and sample type values/literals).
+
+      // Create table.
+      String tableName = "test_nested_udts";
+      String createStmt = String.format("CREATE TABLE %s (k int PRIMARY KEY, " +
+                                                "u1 udt1, u2 udt2, u3 udt3, u4 udt4)",
+                                        tableName);
+      session.execute(createStmt);
+
+      // Get the type descriptions.
+      UserType udt1 = cluster.getMetadata().getKeyspace(DEFAULT_TEST_KEYSPACE).getUserType("udt1");
+      UserType udt2 = cluster.getMetadata().getKeyspace(DEFAULT_TEST_KEYSPACE).getUserType("udt2");
+      UserType udt3 = cluster.getMetadata().getKeyspace(DEFAULT_TEST_KEYSPACE).getUserType("udt3");
+      UserType udt4 = cluster.getMetadata().getKeyspace(DEFAULT_TEST_KEYSPACE).getUserType("udt4");
+
+      // Set up sample type values and literals.
+      UDTValue u1 = udt1.newValue().set("i", 1, Integer.class).set("t", "a", String.class);
+      String u1_lit = "{ i : 1, t : 'a' }";
+      UDTValue u2 = udt2.newValue().set("i", 2, Integer.class).setUDTValue("u1", u1);
+      String u2_lit = String.format("{ i : 2, u1 : %s }", u1_lit);
+      UDTValue u3 = udt3.newValue().set("i", 3, Integer.class).setUDTValue("u2", u2);
+      String u3_lit = String.format("{ i : 3, u2 : %s }", u2_lit);
+      UDTValue u4 = udt4.newValue().set("i", 4, Integer.class).setUDTValue("u3", u3);
+      String u4_lit = String.format("{ i : 4, u3 : %s }", u3_lit);
+      UDTValue u4_new = udt4.newValue().set("i", 5, Integer.class).setUDTValue("u3", u3);
+      String u4_new_lit = String.format("{ i : 5, u3 : %s }", u3_lit);
+
+      //--------------------------------------------------------------------------------------------
+      // Test Simple DMLs.
+
+      // Insert and Select statements.
+      String insert_stmt =
+              "INSERT INTO " + tableName + " (k, u1, u2, u3, u4) VALUES (%d, %s, %s, %s, %s)";
+      session.execute(String.format(insert_stmt, 1, u1_lit, u2_lit, u3_lit, u4_lit));
+      ResultSet rs = session.execute("SELECT * FROM " + tableName + " WHERE k = 1");
+      verifyUDTResult(rs, 1, u1, u2, u3, u4);
+
+      // Update and Select statements.
+      String update_stmt = "UPDATE %s SET u4 = %s where k = 1";
+      session.execute(String.format(update_stmt, tableName, u4_new_lit));
+      rs = session.execute("SELECT * FROM " + tableName + " WHERE k = 1");
+      verifyUDTResult(rs, 1, u1, u2, u3, u4_new);
+
+      //--------------------------------------------------------------------------------------------
+      // Test DMLs with Bind Variables.
+
+      // Insert statement.
+      insert_stmt = "INSERT INTO " + tableName + "(k, u1, u2, u3, u4) VALUES (?, ?, ?, ?, ?);";
+      session.execute(insert_stmt, new Integer(2), u1, u2, u3, u4);
+      rs = session.execute("SELECT * FROM " + tableName + " WHERE k = 2");
+      verifyUDTResult(rs, 2, u1, u2, u3, u4);
+
+      // Update statement.
+      PreparedStatement pstmt =
+              session.prepare("UPDATE " + tableName + " SET u4 = :u WHERE k = :k");
+      session.execute(pstmt.bind().setInt("k", 2).setUDTValue("u", u4_new));
+      rs = session.execute("SELECT * FROM " + tableName + " WHERE k = 2");
+      verifyUDTResult(rs, 2, u1, u2, u3, u4_new);
+
+      // Test Invalid Stmts.
+      runInvalidStmt("SELECT * FROM " + tableName + " WHERE u1 = { i : 1, t : 'a' }",
+                     "Incomparable Datatypes");
+      runInvalidStmt("SELECT * FROM " + tableName + " IF u1 = { i : 1, t : 'a' }",
+                     "Incomparable Datatypes");
+
+      //--------------------------------------------------------------------------------------------
+      // Test primary keys (uniqueness/equality).
+
+      String tableName2 = tableName + "_pk";
+      session.execute("CREATE TABLE " + tableName2 + " (h int, r frozen<udt4>, v int, " +
+                              "PRIMARY KEY (h, r)) WITH transactions = { 'enabled' : true }");
+
+      session.execute("CREATE INDEX " + tableName2 + "_idx ON " + tableName2 + "(r,v)");
+
+      insert_stmt = "INSERT INTO %s (h, r, v) values (1, %s, %d)";
+
+      // Format for r-values (udt4), order/equality will be defined by the values of the primitive
+      // types in order of importance: i, u3.i, u2.i, u1.i, u1.t
+      String rval = "{i:%d,u3:{i:%d,u2:{i:%d,u1:{i:%d,t:'%s'}}}}";
+      List<String> rvals = new ArrayList<>();
+      rvals.add(String.format(rval, 1, 1, 1, 1, 'a')); // r0
+      rvals.add(String.format(rval, 1, 1, 1, 1, 'b')); // r1
+      rvals.add(String.format(rval, 1, 1, 1, 2, 'a')); // r2
+      rvals.add(String.format(rval, 1, 3, 0, 1, 'a')); // r3
+      rvals.add(String.format(rval, 2, 0, 0, 0, 'b')); // r4
+      rvals.add(String.format(rval, 2, 0, 1, 0, 'a')); // r5
+
+      // Insert some values.
+      List<String> expectedRows = new ArrayList<>();
+      String rowVal = "Row[1, %s, %d]";
+      for (int i = 0; i < rvals.size(); i++) {
+        session.execute(String.format(insert_stmt, tableName2, rvals.get(i), i));
+        expectedRows.add(String.format(rowVal, rvals.get(i), i));
+      }
+
+      assertQueryRowsOrdered("SELECT * FROM " + tableName2,
+                             expectedRows.toArray(new String[0]));
+
+      // Test alternative literals -- should update the existing rows.
+      // r0 but with spaces in the literal.
+      session.execute(String.format(insert_stmt,
+                                    tableName2,
+                                    "{i : 1 , u3 : {i:1,u2 : {i : 1,u1 : {i:1, t:'a'}}}}",
+                                    10));
+      expectedRows.set(0, String.format(rowVal, rvals.get(0), 10));
+
+      // r2 but with u2's fields reordered.
+      session.execute(String.format(insert_stmt,
+                                    tableName2,
+                                    "{i:1,u3:{i:1,u2:{u1:{i:2,t:'a'}, i:1}}}",
+                                    12));
+      expectedRows.set(2, String.format(rowVal, rvals.get(2), 12));
+
+      // r3 but all fields reordered and spaces.
+      session.execute(String.format(insert_stmt,
+                                    tableName2,
+                                    "{u3 : {u2:{u1 : {i:1 , t:'a'}, i:0}, i : 3}, i:1}",
+                                    13));
+      expectedRows.set(3, String.format(rowVal, rvals.get(3), 13));
+
+      assertQueryRowsOrdered("SELECT * FROM " + tableName2,
+                             expectedRows.toArray(new String[0]));
+
+      // Test inequality queries.
+      assertQueryRowsOrdered("SELECT * FROM " + tableName2 + " WHERE h=1 AND r<" + rvals.get(3),
+                             expectedRows.subList(0, 3).toArray(new String[0]));
+      assertQueryRowsOrdered("SELECT * FROM " + tableName2 + " WHERE h=1 AND r>=" + rvals.get(2),
+                             expectedRows.subList(2, expectedRows.size()).toArray(new String[0]));
+
+      // Test index query.
+      String select_stmt = "%s SELECT * FROM %s WHERE r = %s";
+      assertQuery(String.format(select_stmt, "", tableName2, rvals.get(1)), expectedRows.get(1));
+      rs = session.execute(String.format(select_stmt, "EXPLAIN", tableName2,
+                                                  rvals.get(1)));
+      assertTrue("Should use index scan", rs.all().toString().contains("Index Only Scan"));
+
+      session.execute("DROP TABLE " + tableName2);
+
+      //--------------------------------------------------------------------------------------------
+      // Test Dropping types.
+
+      // Types cannot be dropped while they are used in a table.
+      runInvalidStmt("DROP TYPE udt4", "is used in column u4 of table " + tableName);
+
+      // Drop the table to remove dependencies to it.
+      session.execute("DROP TABLE " + tableName);
+
+      // Types cannot be dropped while they are used in another type.
+      runInvalidStmt("DROP TYPE udt1", "is used in field u1 of type 'udt2'");
+      runInvalidStmt("DROP TYPE udt3", "is used in field u3 of type 'udt4'");
+
+      session.execute("DROP TYPE udt4");
+      session.execute("DROP TYPE udt3");
+      session.execute("DROP TYPE udt2");
+      session.execute("DROP TYPE udt1");
+    }
+  }
+
+  @Test
+  public void testNestedUDTsWithCollections() throws Exception {
+    {
+
+      //--------------------------------------------------------------------------------------------
+      // Test Creating Types.
+
+      createType("udt0", "i int", "t text");
+      createType("udt1", "i int", "t text");
+      createType("udt2", "u frozen<set<frozen<udt1>>>");
+      createType("udt3", "u frozen<map<frozen<udt1>, frozen<udt0>>>");
+      createType("udt4", "u frozen<list<frozen<udt2>>>");
+
+      // Top-level collections must be frozen.
+      runInvalidStmt("CREATE TYPE invalid_udt (u list<udt1>)");
+      runInvalidStmt("CREATE TYPE invalid_udt (u list<frozen<udt1>>)");
+      runInvalidStmt("CREATE TYPE invalid_udt (u map<frozen<udt2>, frozen<udt3>>)");
+
+      // UDTs inside collections must also be frozen (same as top-level ones).
+      runInvalidStmt("CREATE TYPE invalid_udt (u frozen<set<udt1>>)");
+      runInvalidStmt("CREATE TYPE invalid_udt (u frozen<map<frozen<udt2>, udt3>>)");
+
+      //--------------------------------------------------------------------------------------------
+      // Setup prerequisites (table and sample type values/literals).
+
+      // Create table.
+      String tableName = "test_coll_with_nested_udts";
+      session.execute("CREATE TABLE " + tableName +
+                              " (k int primary key, u1 udt1, u2 udt2, u3 udt3, u4 udt4)");
+
+      // Get type metadata.
+      UserType udt0 = cluster.getMetadata().getKeyspace(DEFAULT_TEST_KEYSPACE).getUserType("udt0");
+      UserType udt1 = cluster.getMetadata().getKeyspace(DEFAULT_TEST_KEYSPACE).getUserType("udt1");
+      UserType udt2 = cluster.getMetadata().getKeyspace(DEFAULT_TEST_KEYSPACE).getUserType("udt2");
+      UserType udt3 = cluster.getMetadata().getKeyspace(DEFAULT_TEST_KEYSPACE).getUserType("udt3");
+      UserType udt4 = cluster.getMetadata().getKeyspace(DEFAULT_TEST_KEYSPACE).getUserType("udt4");
+
+      // Set up sample values/literals.
+      UDTValue u1_1 = udt1.newValue().set("i", 1, Integer.class).set("t", "a", String.class);
+      String u1_lit1 = "{ i : 1, t : 'a' }";
+      UDTValue u1_2 = udt1.newValue().set("i", 2, Integer.class).set("t", "b", String.class);
+      String u1_lit2 = "{ i : 2, t : 'b' }";
+      UDTValue u0_1 = udt0.newValue().set("i", 3, Integer.class).set("t", "c", String.class);
+      String u0_lit1 = "{ i : 3, t : 'c' }";
+      UDTValue u0_2 = udt0.newValue().set("i", 4, Integer.class).set("t", "d", String.class);
+      String u0_lit2 = "{ i : 4, t : 'd' }";
+
+      Set<UDTValue> u2_set = new HashSet<>();
+      u2_set.add(u1_1);
+      u2_set.add(u1_2);
+      UDTValue u2 = udt2.newValue().setSet("u", u2_set);
+      String u2_lit = String.format("{ u : { %s, %s } }", u1_lit1, u1_lit2);
+
+      Map<UDTValue, UDTValue> u3_map = new HashMap<>();
+      u3_map.put(u1_1, u0_1);
+      u3_map.put(u1_2, u0_2);
+      UDTValue u3 = udt3.newValue().setMap("u", u3_map);
+      String u3_lit = String.format("{u:{%s : %s, %s : %s}}", u1_lit1, u0_lit1, u1_lit2, u0_lit2);
+
+      List<UDTValue> u4_list = new ArrayList<>();
+      u4_list.add(u2);
+      u4_list.add(u2);
+      UDTValue u4 = udt4.newValue().setList("u", u4_list);
+      String u4_lit = String.format("{ u : [ %s, %s ] }", u2_lit, u2_lit);
+
+      List<UDTValue> u4_new_list = new ArrayList<>(); // used for update.
+      u4_new_list.add(u2);
+      UDTValue u4_new = udt4.newValue().setList("u", u4_new_list);
+      String u4_new_lit = String.format("{ u : [ %s ] }", u2_lit);
+
+      //--------------------------------------------------------------------------------------------
+      // Test Simple DMLs.
+
+      // Insert stmt.
+      String insert_stmt = "INSERT INTO %s (k, u1, u2, u3, u4) VALUES (%d, %s, %s, %s, %s)";
+      session.execute(String.format(insert_stmt, tableName, 1, u1_lit1, u2_lit, u3_lit, u4_lit));
+      ResultSet rs = session.execute("SELECT * FROM " + tableName + " WHERE k = 1");
+      verifyUDTResult(rs, 1, u1_1, u2, u3, u4);
+
+      // Update stmt.
+      PreparedStatement pstmt =
+              session.prepare("UPDATE " + tableName + " SET u4 = :u WHERE k = " + ":k");
+      session.execute(pstmt.bind().setInt("k", 1).setUDTValue("u", u4_new));
+      rs = session.execute("SELECT * FROM " + tableName + " WHERE k = 1");
+      verifyUDTResult(rs, 1, u1_1, u2, u3, u4_new);
+
+
+      //--------------------------------------------------------------------------------------------
+      // Test primary keys (uniqueness/equality).
+
+      String tableName2 = tableName + "_pk";
+      session.execute("CREATE TABLE " + tableName2 + " (u4 frozen<udt4> PRIMARY KEY, v int)");
+      insert_stmt = "INSERT INTO %s (u4, v) values (%s, %d)";
+      session.execute(String.format(insert_stmt, tableName2, u4_lit, 1));
+      session.execute(String.format(insert_stmt, tableName2, u4_new_lit, 2));
+
+      // Test an alternative literal for u4_new -- should update existing row.
+      String u4_new_lit_alt = String.format("{ u : [ { u : { %s, %s, %s, %s} } ] }",
+                                             u1_lit2,
+                                             u1_lit1,
+                                             u1_lit1,
+                                             u1_lit2);
+
+      session.execute(String.format(insert_stmt, tableName2, u4_new_lit_alt, 3));
+
+      assertQueryRowsUnordered("SELECT * FROM " + tableName2,
+                               "Row[{u:[{u:{{i:1,t:'a'},{i:2,t:'b'}}}," +
+                                       "{u:{{i:1,t:'a'},{i:2,t:'b'}}}]}, 1]",
+                               "Row[{u:[{u:{{i:1,t:'a'},{i:2,t:'b'}}}]}, 3]");
+
+      session.execute("DROP TABLE " + tableName2);
+
+      //--------------------------------------------------------------------------------------------
+      // Test UDTs inside collections in table.
+
+      String tableName3 = tableName + "_coll";
+      session.execute("CREATE TABLE " + tableName3 +
+                              " (k frozen<set<frozen<udt4>>> PRIMARY KEY, v list<frozen<udt2>>)");
+
+      // Set up sample values.
+      Set<UDTValue> k = new HashSet<>();
+      k.add(u4);
+      k.add(u4_new);
+      String k_lit = "{" + u4_lit + ", " + u4_new_lit + "}";
+
+      List<UDTValue> v1 = new ArrayList<>();
+      v1.add(u2);
+      v1.add(u2);
+      String v1_lit =  "[" + u2_lit + ", " + u2_lit + "]";
+
+      List<UDTValue> v2 = new ArrayList<>();
+      v2.add(u2);
+      v2.add(u2);
+      v2.add(u2);
+
+      // Test literals.
+      session.execute(String.format("INSERT INTO " + tableName3 + "(k, v) VALUES (%s, %s)",
+                                    k_lit, v1_lit));
+      List<Row> rows = session.execute("SELECT * FROM " + tableName3).all();
+      assertEquals(1, rows.size());
+      assertEquals(k, rows.get(0).getSet("k", UDTValue.class));
+      assertEquals(v1, rows.get(0).getList("v", UDTValue.class));
+
+      // Test Bind Variables.
+      pstmt = session.prepare("UPDATE " + tableName3 + " SET v = :v where k = :k");
+      session.execute(pstmt.bind().setSet("k", k).setList("v", v2));
+      rows = session.execute("SELECT * FROM " + tableName3).all();
+      assertEquals(1, rows.size());
+      assertEquals(k, rows.get(0).getSet("k", UDTValue.class));
+      assertEquals(v2, rows.get(0).getList("v", UDTValue.class));
+
+      session.execute("DROP TABLE " + tableName3);
+
+      //--------------------------------------------------------------------------------------------
+      // Test dropping types.
+
+      // Types cannot be dropped while they are used in a table.
+      runInvalidStmt("DROP TYPE udt4", "is used in column u4 of table " + tableName);
+
+      // Drop the table to remove dependencies to it.
+      session.execute("DROP TABLE " + tableName);
+
+      // Types cannot be dropped while they are used in another type.
+      runInvalidStmt("DROP TYPE udt0", "is used in field u of type 'udt3'");
+      runInvalidStmt("DROP TYPE udt2", "is used in field u of type 'udt4'");
+
+      // Clean up.
+      session.execute("DROP TYPE udt4");
+      session.execute("DROP TYPE udt3");
+      session.execute("DROP TYPE udt2");
+      session.execute("DROP TYPE udt1");
+      session.execute("DROP TYPE udt0");
+    }
+  }
+
 }

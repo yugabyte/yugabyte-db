@@ -24,17 +24,14 @@ namespace master {
 class YQLPartitionsVTable : public YQLVirtualTable {
  public:
   explicit YQLPartitionsVTable(const Master* const master);
-  CHECKED_STATUS RetrieveData(const QLReadRequestPB& request,
-                              std::unique_ptr<QLRowBlock>* vtable) const;
+  Result<std::shared_ptr<QLRowBlock>> RetrieveData(const QLReadRequestPB& request) const;
  protected:
   Schema CreateSchema() const;
- private:
-  static constexpr const char* const kKeyspaceName = "keyspace_name";
-  static constexpr const char* const kTableName = "table_name";
-  static constexpr const char* const kStartKey = "start_key";
-  static constexpr const char* const kEndKey = "end_key";
-  static constexpr const char* const kId = "id";
-  static constexpr const char* const kReplicaAddresses = "replica_addresses";
+
+  mutable boost::shared_mutex mutex_;
+  mutable std::shared_ptr<QLRowBlock> cache_;
+  mutable int cached_tablets_version_ = -1;
+  mutable int cached_tablet_locations_version_ = -1;
 };
 
 }  // namespace master

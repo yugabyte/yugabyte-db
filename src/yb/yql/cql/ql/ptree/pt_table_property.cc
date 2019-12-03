@@ -47,7 +47,8 @@ const std::map<std::string, PTTableProperty::KVProperty> PTTableProperty::kPrope
     {"max_index_interval", KVProperty::kMaxIndexInterval},
     {"read_repair_chance", KVProperty::kReadRepairChance},
     {"speculative_retry", KVProperty::kSpeculativeRetry},
-    {"transactions", KVProperty::kTransactions}
+    {"transactions", KVProperty::kTransactions},
+    {"tablets", KVProperty::kNumTablets}
 };
 
 PTTableProperty::PTTableProperty(MemoryContext *memctx,
@@ -90,13 +91,13 @@ Status PTTableProperty::AnalyzeSpeculativeRetry(const string &val) {
   string numeric_val;
   if (StringEndsWith(val, common::kSpeculativeRetryMs, common::kSpeculativeRetryMsLen,
                      &numeric_val)) {
-    RETURN_NOT_OK(util::CheckedStold(numeric_val));
+    RETURN_NOT_OK(CheckedStold(numeric_val));
     return Status::OK();
   }
 
   if (StringEndsWith(val, common::kSpeculativeRetryPercentile,
                      common::kSpeculativeRetryPercentileLen, &numeric_val)) {
-    auto percentile = util::CheckedStold(numeric_val);
+    auto percentile = CheckedStold(numeric_val);
     RETURN_NOT_OK(percentile);
 
     if (*percentile < 0.0 || *percentile > 100.0) {
@@ -235,6 +236,13 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
                                 Substitute("Invalid value for option '$0'. Value must be a map",
                                            table_property_name).c_str(),
                                 ErrorCode::DATATYPE_MISMATCH);
+    case KVProperty::kNumTablets:
+      RETURN_SEM_CONTEXT_ERROR_NOT_OK(GetIntValueFromExpr(rhs_, table_property_name, &int_val));
+      if (int_val > FLAGS_max_num_tablets_for_table) {
+        return sem_context->Error(
+            this, "Number of tablets exceeds system limit", ErrorCode::INVALID_ARGUMENTS);
+      }
+      break;
   }
 
   PTAlterTable *alter_table = sem_context->current_alter_table();
@@ -392,6 +400,13 @@ Status PTTableProperty::SetTableProperty(yb::TableProperties *table_property) co
     case KVProperty::kCompression: FALLTHROUGH_INTENDED;
     case KVProperty::kTransactions:
       LOG(ERROR) << "Not primitive table property " << table_property_name;
+      break;
+    case KVProperty::kNumTablets:
+      int64_t val;
+      if (!GetIntValueFromExpr(rhs_, table_property_name, &val).ok()) {
+        return STATUS(InvalidArgument, Substitute("Invalid value for tablets"));
+      }
+      table_property->SetNumTablets(val);
       break;
   }
   return Status::OK();

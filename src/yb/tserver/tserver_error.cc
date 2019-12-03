@@ -23,5 +23,10 @@ static const std::string kTabletServerErrorCategoryName = "tablet server error";
 static StatusCategoryRegisterer tablet_server_error_category_registerer(
     StatusCategoryDescription::Make<TabletServerErrorTag>(&kTabletServerErrorCategoryName));
 
+static const std::string kTabletServerDelayCategoryName = "tablet server delay";
+
+static StatusCategoryRegisterer tablet_server_delay_category_registerer(
+    StatusCategoryDescription::Make<TabletServerDelayTag>(&kTabletServerDelayCategoryName));
+
 } // namespace tserver
 } // namespace yb

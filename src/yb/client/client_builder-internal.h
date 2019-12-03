@@ -57,6 +57,9 @@ class YBClientBuilder::Data {
   // can either be a single 'host:port' or a comma separated list of 'host1:port1,host2:port2,...'.
   std::vector<std::string> master_server_addrs_;
 
+  // This bool determines whether to use FLAGS_flagfile as an override of client-entered data.
+  bool skip_master_flagfile_ = false;
+
   int32_t num_reactors_;
 
   MonoDelta default_admin_operation_timeout_;

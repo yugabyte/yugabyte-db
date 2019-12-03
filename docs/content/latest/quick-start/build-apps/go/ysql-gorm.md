@@ -1,5 +1,5 @@
 ---
-title: Build a Go app
+title: Build a Go application
 linkTitle: Build a Go application
 description: Build a Go application
 menu:
@@ -34,13 +34,30 @@ showAsideToc: true
   </li>
 </ul>
 
-## Prerequisites
+The following tutorial implements an an ORM example using [GORM](https://gorm.io/), the ORM library for Golang, that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed using GORM. The e-commerce database (`ysql_gorm`) includes the following tables:
 
-This tutorial assumes that you have:
+- `users` table — the users of the e-commerce site
+- `products` table — the products being sold
+- `orders` table — the orders placed by the users
+- `orderline` table — each line item of an order
 
-- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
+The source for the above application can be found in the [repository](https://github.com/yugabyte/orm-examples/tree/master/golang/gorm). There are a number of options that can be customized in the properties file located at `src/config/config.json`.
 
-- installed Go 1.8+ as well as the following dependencies.
+## Before you begin
+
+This tutorial assumes that you have satisfied the following prerequisites.
+
+### YugabyteDB
+
+YugabyteDB is up and running. If you are new to YugabyteDB, you can have YugabyteDB up and running within five minutes by following the steps in [Quick start](../../../../quick-start/).
+
+### Go
+
+Go 1.8, or later, is installed. The latest releases are available on the [Go Downloads page](https://golang.org/dl/).
+
+### Go dependencies
+
+To install the required Go dependencies, run the following commands.
 
 ```sh
 go get github.com/jinzhu/gorm
@@ -51,42 +68,41 @@ go get github.com/lib/pq
 go get github.com/lib/pq/hstore
 ```
 
-## Clone the orm-examples repository
+## Clone the "orm-examples" repository
+
+Clone the Yugabyte [`orm-examples` repository](https://github.com/yugabyte/orm-examples) by running the following command.
 
 ```sh
 $ git clone https://github.com/yugabyte/orm-examples.git
 ```
+
+Run the following `export` command to specify the `GOPATH` environment variable.
+
 ```sh
 export GOPATH=$GOPATH:$HOME/orm-examples/golang/gorm
 ```
 
-This repository has a Go language example that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through gorm ORM. It consists of the following.
-
-- The users of the e-commerce site are stored in the users table.
-- The products table contains a list of products the e-commerce site sells.
-- The orders placed by the users are populated in the orders table. An order can consist of multiple line items, each of these are inserted in the orderline table.
-
-The source for the above application can be found in the [repository](https://github.com/yugabyte/orm-examples/tree/master/golang/gorm). There are a number of options that can be customized in the properties file located at `src/config/config.json`.
-
 ## Build and run the application
+
+Change to the `gorm` directory.
 
 ```sh
 $ cd ./golang/gorm
 ```
 
-Create the `ysql_gorm` database in YugabyteDB, following the name specified in the configuration.
+Create the `ysql_gorm` database in YugabyteDB by running the following `ysqlsh` command from the YugabyteDB home directory.
 
 ```sh
-./ysqlsh -c "CREATE DATABASE ysql_gorm"
+$ ./bin/ysqlsh -c "CREATE DATABASE ysql_gorm"
 ```
 
-Build and run using the shell script.
+Build and start the REST API server by running the following shell script.
 
 ```sh
 $ ./build-and-run.sh
 ```
 
-The REST API server will listen at `http://localhost:8080`.
+The REST API server will start and listen for requests at `http://localhost:8080`.
 
 ## Send requests to the application
 
@@ -135,7 +151,7 @@ $ curl \
 ### Using the YSQL shell
 
 ```sh
-$ ./bin/ysqlsh 
+$ ./bin/ysqlsh
 ```
 
 ```
@@ -268,4 +284,4 @@ $ curl http://localhost:8080/orders
 
 ## Explore the source
 
-As highlighted earlier, the source for the above application can be found in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/golang/gorm) repo.
+As mentioned earlier, the source for this application can be found in the Yugabyte [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/golang/gorm) repository.

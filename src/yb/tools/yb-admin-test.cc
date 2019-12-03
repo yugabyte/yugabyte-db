@@ -101,7 +101,7 @@ class BlacklistChecker {
     std::regex re(R"(.*?hosts \{\s*host:\s*\"([^\"]*)\"\s*port:\s*(\d+)[^\}]*\})");
     for (std::sregex_iterator i = std::sregex_iterator(out.cbegin(), out.cend(), re), end;
         i != end; ++i) {
-      HostPort server(i->str(1), VERIFY_RESULT(util::CheckedStoll(i->str(2))));
+      HostPort server(i->str(1), VERIFY_RESULT(CheckedStoll(i->str(2))));
       if (std::find(servers.begin(), servers.end(), server) == servers.end()) {
         return STATUS_FORMAT(
             NotFound, "Item $0 not found in list of expected hosts $1",

@@ -364,6 +364,9 @@ class KubernetesDetails():
     def __init__(self, server_fqdn, config_map):
         self.namespace = server_fqdn.split('.')[2]
         self.pod_name = server_fqdn.split('.')[0]
+        # The pod names are yb-master-n/yb-tserver-n where n is the pod number
+        # and yb-master/yb-tserver are the container names.
+        self.container = self.pod_name.rsplit('-', 1)[0]
         self.env_config = os.environ.copy()
         self.env_config["KUBECONFIG"] = config_map[self.namespace]
 
@@ -668,7 +671,9 @@ class YBBackup:
                     'cp',
                     self.s3_cfg_file_path,
                     '{}/{}:{}'.format(
-                        k8s_details.namespace, k8s_details.pod_name, self.get_tmp_dir())
+                        k8s_details.namespace, k8s_details.pod_name, self.get_tmp_dir()),
+                    '-c',
+                    k8s_details.container
                 ], env=k8s_details.env_config)
             else:
                 output += self.run_program(
@@ -717,6 +722,8 @@ class YBBackup:
                 '-n={}'.format(k8s_details.namespace),
                 # For k8s, pick the first qualified name, if given a CNAME.
                 k8s_details.pod_name,
+                '-c',
+                k8s_details.container,
                 '--',
                 'bash',
                 '-c',

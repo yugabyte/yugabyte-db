@@ -26,15 +26,17 @@
 #include "yb/gutil/bind.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog-internal.h"
 #include "yb/master/async_snapshot_tasks.h"
-#include "yb/master/universe_key_registry_service.h"
+#include "yb/master/encryption_manager.h"
 #include "yb/tserver/backup.proxy.h"
 #include "yb/util/cast.h"
 #include "yb/util/service_util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/string_util.h"
+#include "yb/util/random_util.h"
 #include "yb/cdc/cdc_consumer.pb.h"
 
 using std::string;
@@ -105,7 +107,7 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
     DCHECK(!ContainsKey(catalog_manager_->cdc_stream_map_, stream_id))
         << "CDC stream already exists: " << stream_id;
 
-    if (!ContainsKey(catalog_manager_->table_ids_map_, metadata.table_id())) {
+    if (!ContainsKey(*catalog_manager_->table_ids_map_, metadata.table_id())) {
       LOG(ERROR) << "Invalid table ID " << metadata.table_id() << " for stream " << stream_id;
       // TODO (#2059): Potentially signals a race condition that table got deleted while stream was
       // being created.
@@ -181,8 +183,8 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
 // CatalogManager
 ////////////////////////////////////////////////////////////
 
-Status CatalogManager::RunLoaders() {
-  RETURN_NOT_OK(super::RunLoaders());
+Status CatalogManager::RunLoaders(int64_t term) {
+  RETURN_NOT_OK(super::RunLoaders(term));
 
   // Clear the snapshots.
   snapshot_ids_map_.clear();
@@ -472,7 +474,7 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
     }
     case SysRowEntry::TABLE: { // Restore TABLES.
       TRACE("Looking up table");
-      scoped_refptr<TableInfo> table = FindPtrOrNull(table_ids_map_, entry.id());
+      scoped_refptr<TableInfo> table = FindPtrOrNull(*table_ids_map_, entry.id());
       if (table == nullptr) {
         // Restore Table.
         // TODO: implement
@@ -485,7 +487,7 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
     }
     case SysRowEntry::TABLET: { // Restore TABLETS.
       TRACE("Looking up tablet");
-      scoped_refptr<TabletInfo> tablet = FindPtrOrNull(tablet_map_, entry.id());
+      scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, entry.id());
       if (tablet == nullptr) {
         // Restore Tablet.
         // TODO: implement
@@ -559,7 +561,7 @@ Status CatalogManager::DeleteSnapshot(const DeleteSnapshotRequestPB* req,
   for (const SysRowEntry& entry : snapshot_pb.entries()) {
     if (entry.type() == SysRowEntry::TABLET) {
       TRACE("Looking up tablet");
-      scoped_refptr<TabletInfo> tablet = FindPtrOrNull(tablet_map_, entry.id());
+      scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, entry.id());
       if (tablet == nullptr) {
         LOG(WARNING) << "Deleting tablet not found " << entry.id();
       } else {
@@ -667,13 +669,10 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
 
 Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                             ChangeEncryptionInfoResponsePB* resp) {
-
-  LOG(INFO) << "CatalogManager: ChangeEncryptionInfo: req=[" << req->DebugString() << "]";
-
   auto l = cluster_config_->LockForWrite();
   auto encryption_info = l->mutable_data()->pb.mutable_encryption_info();
 
-  RETURN_NOT_OK(RotateUniverseKey(req, encryption_info, resp));
+  RETURN_NOT_OK(encryption_manager_->ChangeEncryptionInfo(req, encryption_info));
 
   l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
   RETURN_NOT_OK(sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_));
@@ -683,6 +682,7 @@ Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB*
   for (auto& entry : should_send_universe_key_registry_) {
     entry.second = true;
   }
+
   return Status::OK();
 }
 
@@ -690,20 +690,7 @@ Status CatalogManager::IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* r
                                            IsEncryptionEnabledResponsePB* resp) {
   auto l = cluster_config_->LockForRead();
   const auto& encryption_info = l->data().pb.encryption_info();
-  resp->set_encryption_enabled(encryption_info.encryption_enabled());
-  if (!encryption_info.encryption_enabled()) {
-    return Status::OK();
-  }
-
-  // Decrypt the universe key registry to get the latest version id.
-  auto decrypted_registry =
-      VERIFY_RESULT(DecryptUniverseKeyRegistry(
-          encryption_info.universe_key_registry_encoded(), encryption_info.key_path()));
-  auto universe_key_registry =
-      VERIFY_RESULT(pb_util::ParseFromSlice<UniverseKeyRegistryPB>(decrypted_registry));
-
-  resp->set_key_id(universe_key_registry.latest_version_id());
-  return Status::OK();
+  return encryption_manager_->IsEncryptionEnabled(encryption_info, resp);
 }
 
 Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
@@ -763,7 +750,7 @@ Status CatalogManager::ImportTableEntry(const SysRowEntry& entry,
   // Create new table if namespace was changed.
   if (new_namespace_id == table_data->old_namespace_id) {
     TRACE("Looking up table");
-    table = LockAndFindPtrOrNull(table_ids_map_, entry.id());
+    table = LockAndFindPtrOrNull(*table_ids_map_, entry.id());
 
     // Check table is active OR table name was changed.
     if (table != nullptr && (!table->is_running() || table->name() != meta.name())) {
@@ -793,7 +780,7 @@ Status CatalogManager::ImportTableEntry(const SysRowEntry& entry,
 
     TRACE("Looking up new table");
     {
-      table = LockAndFindPtrOrNull(table_ids_map_, table_data->new_table_id);
+      table = LockAndFindPtrOrNull(*table_ids_map_, table_data->new_table_id);
 
       if (table == nullptr) {
         return STATUS_SUBSTITUTE(
@@ -855,7 +842,7 @@ Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
   // Update tablets IDs map.
   if (table_data.new_table_id == table_data.old_table_id) {
     TRACE("Looking up tablet");
-    scoped_refptr<TabletInfo> tablet = LockAndFindPtrOrNull(tablet_map_, entry.id());
+    scoped_refptr<TabletInfo> tablet = LockAndFindPtrOrNull(*tablet_map_, entry.id());
 
     if (tablet != nullptr) {
       IdPairPB* const pair = table_data.tablet_id_map->Add();
@@ -1260,16 +1247,7 @@ Status CatalogManager::FillHeartbeatResponseEncryption(
   }
 
   const auto& encryption_info = cluster_config.encryption_info();
-  Slice decrypted_registry(encryption_info.universe_key_registry_encoded());
-  std::string decrypted;
-  if (encryption_info.encryption_enabled()) {
-    decrypted = VERIFY_RESULT(
-        DecryptUniverseKeyRegistry(decrypted_registry, encryption_info.key_path()));
-    decrypted_registry = Slice(decrypted);
-  }
-
-  auto registry = VERIFY_RESULT(pb_util::ParseFromSlice<UniverseKeyRegistryPB>(decrypted_registry));
-  resp->mutable_universe_key_registry()->CopyFrom(registry);
+  RETURN_NOT_OK(encryption_manager_->FillHeartbeatResponseEncryption(encryption_info, resp));
 
   return Status::OK();
 }
@@ -1961,11 +1939,11 @@ Status CatalogManager::InitCDCConsumer(
     const std::string& producer_universe_uuid) {
 
   std::unordered_set<HostPort, HostPortHash> tserver_addrs;
-
   // Get the tablets in the consumer table.
   cdc::ProducerEntryPB producer_entry;
   for (const auto& stream_info : consumer_info) {
     GetTableLocationsRequestPB consumer_table_req;
+    consumer_table_req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
     GetTableLocationsResponsePB consumer_table_resp;
     TableIdentifierPB table_identifer;
     table_identifer.set_table_id(stream_info.consumer_table_id);
@@ -1973,9 +1951,9 @@ Status CatalogManager::InitCDCConsumer(
     RETURN_NOT_OK(GetTableLocations(&consumer_table_req, &consumer_table_resp));
     cdc::StreamEntryPB stream_entry;
     // Get producer tablets and map them to the consumer tablets
-    RETURN_NOT_OK(RegisterTableSubscriber(
-        stream_info.producer_table_id, stream_info.consumer_table_id, master_addrs,
-        consumer_table_resp, &tserver_addrs, &stream_entry));
+    RETURN_NOT_OK(CreateTabletMapping(
+        stream_info.producer_table_id, stream_info.consumer_table_id, producer_universe_uuid,
+        master_addrs, consumer_table_resp, &tserver_addrs, &stream_entry));
     (*producer_entry.mutable_stream_map())[stream_info.stream_id] = std::move(stream_entry);
   }
 

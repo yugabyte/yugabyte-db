@@ -19,16 +19,18 @@
 #include "yb/master/cdc_consumer_registry_service.h"
 
 namespace yb {
+
+class UniverseKeyRegistryPB;
+
 namespace master {
 namespace enterprise {
-
 
 class CatalogManager : public yb::master::CatalogManager {
   typedef yb::master::CatalogManager super;
  public:
   explicit CatalogManager(yb::master::Master* master) : super(master) {}
 
-  CHECKED_STATUS RunLoaders() override;
+  CHECKED_STATUS RunLoaders(int64_t term) override;
 
   // API to start a snapshot creation.
   CHECKED_STATUS CreateSnapshot(const CreateSnapshotRequestPB* req,

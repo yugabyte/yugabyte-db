@@ -33,7 +33,8 @@ namespace client {
 
 namespace {
 
-const YBTableName kTransactionTableName(master::kSystemNamespaceName, kTransactionsTableName);
+const YBTableName kTransactionTableName(
+    YQL_DATABASE_CQL, master::kSystemNamespaceName, kTransactionsTableName);
 
 // Exists - table exists.
 // Updating - intermediate state, we are currently updating local cache of tablets.

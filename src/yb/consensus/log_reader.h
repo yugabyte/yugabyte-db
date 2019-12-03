@@ -48,6 +48,12 @@
 #include "yb/util/locks.h"
 
 namespace yb {
+
+namespace cdc {
+class CDCServiceTest_TestLogRetentionByOpId_MaxRentionTime_Test;
+class CDCServiceTest_TestLogRetentionByOpId_MinSpace_Test;
+}
+
 namespace log {
 class Log;
 class LogIndex;
@@ -74,8 +80,10 @@ class LogReader {
 
   // Returns the biggest prefix of segments, from the current sequence, guaranteed
   // not to include any replicate messages with indexes >= 'index'.
-  CHECKED_STATUS GetSegmentPrefixNotIncluding(int64_t index,
-                                      SegmentSequence* segments) const;
+  CHECKED_STATUS GetSegmentPrefixNotIncluding(int64_t index, SegmentSequence* segments) const;
+
+  CHECKED_STATUS GetSegmentPrefixNotIncluding(int64_t index, int64_t cdc_replicated_index,
+                                              SegmentSequence* segments) const;
 
   // Return the minimum replicate index that is retained in the currently available
   // logs. May return -1 if no replicates have been logged.
@@ -122,7 +130,7 @@ class LogReader {
 
   // Look up the OpId for the given operation index.
   // Returns a bad Status if the log index fails to load (eg. due to an IO error).
-  CHECKED_STATUS LookupOpId(int64_t op_index, consensus::OpId* op_id) const;
+  Result<yb::OpId> LookupOpId(int64_t op_index) const;
 
   // Returns the number of segments.
   const int num_segments() const;
@@ -134,6 +142,8 @@ class LogReader {
   }
 
  private:
+  FRIEND_TEST(cdc::CDCServiceTest, TestLogRetentionByOpId_MaxRentionTime);
+  FRIEND_TEST(cdc::CDCServiceTest, TestLogRetentionByOpId_MinSpace);
   FRIEND_TEST(LogTest, TestLogReader);
   FRIEND_TEST(LogTest, TestReadLogWithReplacedReplicates);
   friend class Log;
@@ -195,6 +205,15 @@ class LogReader {
   // Initializes an 'empty' reader for tests, i.e. does not scan a path looking for segments.
   CHECKED_STATUS InitEmptyReaderForTests();
 
+  // Determines if a file is older than the time specified by FLAGS_log_max_seconds_to_retain.
+  bool ViolatesMaxTimePolicy(const scoped_refptr<ReadableLogSegment>& segment) const;
+
+  // Return true if by keeping this log segment, we would violate the required minimum free space.
+  // potential_reclaimed_space is used for the calculation of free space. If NotEnoughSpace returns
+  // true, it will add the size of segment to potential_reclaimed_space.
+  bool ViolatesMinSpacePolicy(const scoped_refptr<ReadableLogSegment>& segment,
+                              int64_t *potential_reclaimed_space) const;
+
   Env *env_;
 
   const scoped_refptr<LogIndex> log_index_;
@@ -213,6 +232,10 @@ class LogReader {
   mutable simple_spinlock lock_;
 
   State state_;
+
+  // Used for test only.
+  mutable std::unique_ptr<SegmentSequence> segments_violate_max_time_policy_;
+  mutable std::unique_ptr<SegmentSequence> segments_violate_min_space_policy_;
 
   DISALLOW_COPY_AND_ASSIGN(LogReader);
 };

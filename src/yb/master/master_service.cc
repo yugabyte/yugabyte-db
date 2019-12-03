@@ -45,7 +45,9 @@
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
+#include "yb/master/encryption_manager.h"
 #include "yb/server/webserver.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
 #include "yb/util/shared_lock.h"
@@ -91,6 +93,8 @@ MasterServiceImpl::MasterServiceImpl(Master* server)
 void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
                                     TSHeartbeatResponsePB* resp,
                                     RpcContext rpc) {
+  LongOperationTracker long_operation_tracker("TSHeartbeat", 1s);
+
   // If CatalogManager is not initialized don't even know whether or not we will
   // be a leader (so we can't tell whether or not we can accept tablet reports).
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
@@ -332,6 +336,12 @@ void MasterServiceImpl::DeleteNamespace(const DeleteNamespaceRequestPB* req,
                                         DeleteNamespaceResponsePB* resp,
                                         RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::DeleteNamespace);
+}
+
+void MasterServiceImpl::AlterNamespace(const AlterNamespaceRequestPB* req,
+                                       AlterNamespaceResponsePB* resp,
+                                       RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::AlterNamespace);
 }
 
 void MasterServiceImpl::ListNamespaces(const ListNamespacesRequestPB* req,
@@ -604,11 +614,7 @@ void MasterServiceImpl::RemovedMasterUpdate(const RemovedMasterUpdateRequestPB* 
 void MasterServiceImpl::ChangeLoadBalancerState(
     const ChangeLoadBalancerStateRequestPB* req, ChangeLoadBalancerStateResponsePB* resp,
     RpcContext rpc) {
-  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
-    return;
-  }
-
+  // This should work on both followers and leaders, in order to cover leader failover!
   if (req->has_is_enabled()) {
     LOG(INFO) << "Changing balancer state to " << req->is_enabled();
     server_->catalog_manager()->SetLoadBalancerEnabled(req->is_enabled());
@@ -705,6 +711,24 @@ void MasterServiceImpl::IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* 
                                             IsEncryptionEnabledResponsePB* resp,
                                             rpc::RpcContext rpc) {
   HandleIn(req, resp, &rpc, &enterprise::CatalogManager::IsEncryptionEnabled);
+}
+
+void MasterServiceImpl::GetUniverseKeyRegistry(const GetUniverseKeyRegistryRequestPB* req,
+                                               GetUniverseKeyRegistryResponsePB* resp,
+                                               rpc::RpcContext rpc) {
+  HandleOnAllMasters(req, resp, &rpc, &EncryptionManager::GetUniverseKeyRegistry);
+}
+
+void MasterServiceImpl::AddUniverseKeys(const AddUniverseKeysRequestPB* req,
+                                        AddUniverseKeysResponsePB* resp,
+                                        rpc::RpcContext rpc) {
+  HandleOnAllMasters(req, resp, &rpc, &EncryptionManager::AddUniverseKeys);
+}
+
+void MasterServiceImpl::HasUniverseKeyInMemory(const HasUniverseKeyInMemoryRequestPB* req,
+                                               HasUniverseKeyInMemoryResponsePB* resp,
+                                               rpc::RpcContext rpc) {
+  HandleOnAllMasters(req, resp, &rpc, &EncryptionManager::HasUniverseKeyInMemory);
 }
 
 void MasterServiceImpl::SetupUniverseReplication(const SetupUniverseReplicationRequestPB* req,

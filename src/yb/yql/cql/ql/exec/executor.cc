@@ -20,6 +20,7 @@
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
+#include "yb/client/rejection_score_source.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
@@ -396,6 +397,8 @@ Status Executor::ExecPTNode(const PTCreateType *tnode) {
       error_code = ErrorCode::DUPLICATE_TYPE;
     } else if (s.IsNotFound()) {
       error_code = ErrorCode::KEYSPACE_NOT_FOUND;
+    } else if (s.IsInvalidArgument()) {
+      error_code = ErrorCode::INVALID_TYPE_DEFINITION;
     }
 
     if (tnode->create_if_not_exists() && error_code == ErrorCode::DUPLICATE_TYPE) {
@@ -504,6 +507,10 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
       .table_type(YBTableType::YQL_TABLE_TYPE)
       .creator_role_name(ql_env_->CurrentRoleName())
       .schema(&schema);
+
+  if (schema.table_properties().num_tablets() > 0) {
+    table_creator->num_tablets(schema.table_properties().num_tablets());
+  }
 
   if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
     const PTCreateIndex *index_node = static_cast<const PTCreateIndex*>(tnode);
@@ -680,6 +687,8 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       error_code = error_not_found;
     } else if (s.IsNotAuthorized()) {
       error_code = ErrorCode::UNAUTHORIZED;
+    } else if(s.IsQLError()) {
+      error_code = ErrorCode::INVALID_REQUEST;
     }
 
     return exec_context_->Error(tnode->name(), s, error_code);
@@ -1345,7 +1354,7 @@ void RightPad(const int length, string *s) {
 Status Executor::ExecPTNode(const PTExplainStmt *tnode) {
   TreeNode::SharedPtr subStmt = tnode->stmt();
   PTDmlStmt *dmlStmt = down_cast<PTDmlStmt *>(subStmt.get());
-  const YBTableName explainTable("Explain");
+  const YBTableName explainTable(YQL_DATABASE_CQL, "Explain");
   ColumnSchema explainColumn("QUERY PLAN", STRING);
   auto explainColumns = std::make_shared<std::vector<ColumnSchema>>(
       std::initializer_list<ColumnSchema>{explainColumn});
@@ -1487,11 +1496,11 @@ void Executor::FlushAsync() {
   }
   // Use the same score on each tablet. So probability of rejecting write should be related
   // to used capacity.
-  auto rejection_score = RandomUniformReal<double>(0.01, 1);
+  auto rejection_score_source = std::make_shared<client::RejectionScoreSource>();
   for (const auto& pair : flush_sessions) {
     auto session = pair.first;
     auto exec_context = pair.second;
-    session->SetRejectionScore(rejection_score);
+    session->SetRejectionScoreSource(rejection_score_source);
     TRACE("Flush Async");
     session->FlushAsync([this, exec_context](const Status& s) {
         FlushAsyncDone(s, exec_context);
@@ -2128,6 +2137,7 @@ Status Executor::ProcessStatementStatus(const ParseTree& parse_tree, const Statu
     if (errcode == ErrorCode::TABLET_NOT_FOUND         ||
         errcode == ErrorCode::WRONG_METADATA_VERSION   ||
         errcode == ErrorCode::INVALID_TABLE_DEFINITION ||
+        errcode == ErrorCode::INVALID_TYPE_DEFINITION  ||
         errcode == ErrorCode::INVALID_ARGUMENTS        ||
         errcode == ErrorCode::OBJECT_NOT_FOUND         ||
         errcode == ErrorCode::TYPE_NOT_FOUND) {

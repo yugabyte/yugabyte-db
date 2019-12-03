@@ -36,6 +36,7 @@
 
 #include <boost/tti/has_member_function.hpp>
 
+#include "yb/common/redis_constants_common.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/client/client.h"
 #include "yb/client/table_creator.h"
@@ -185,18 +186,46 @@ Status ClusterAdminClient::Init() {
 Status ClusterAdminClient::MasterLeaderStepDown(const string& leader_uuid) {
   auto master_proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache_.get(), leader_addr_);
 
-  return LeaderStepDown(leader_uuid, yb::master::kSysCatalogTabletId, &master_proxy);
+  return LeaderStepDown(leader_uuid, yb::master::kSysCatalogTabletId, std::string(), &master_proxy);
+}
+
+CHECKED_STATUS ClusterAdminClient::LeaderStepDownWithNewLeader(
+    const std::string& tablet_id,
+    const std::string& dest_ts_uuid) {
+  return LeaderStepDown(
+      /* leader_uuid */ std::string(),
+      tablet_id,
+      dest_ts_uuid,
+      /* leader_proxy */ nullptr);
 }
 
 Status ClusterAdminClient::LeaderStepDown(
     const PeerId& leader_uuid,
     const TabletId& tablet_id,
+    const PeerId& new_leader_uuid,
     std::unique_ptr<ConsensusServiceProxy>* leader_proxy) {
   LeaderStepDownRequestPB req;
-  req.set_dest_uuid(leader_uuid);
   req.set_tablet_id(tablet_id);
+  if (!new_leader_uuid.empty()) {
+    req.set_new_leader_uuid(new_leader_uuid);
+  }
+  // The API for InvokeRpcNoResponseCheck requires a raw pointer to a ConsensusServiceProxy, so
+  // cache it outside, if we are creating a new proxy to a previously unknown leader.
+  std::unique_ptr<ConsensusServiceProxy> new_proxy;
+  if (!leader_uuid.empty()) {
+    // TODO: validate leader_proxy ?
+    req.set_dest_uuid(leader_uuid);
+  } else {
+    // Look up the location of the tablet leader from the Master.
+    HostPort leader_addr;
+    string lookup_leader_uuid;
+    RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, LEADER, &lookup_leader_uuid, &leader_addr));
+    req.set_dest_uuid(lookup_leader_uuid);
+    new_proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache_.get(), leader_addr);
+  }
   const auto resp = VERIFY_RESULT(InvokeRpcNoResponseCheck(&ConsensusServiceProxy::LeaderStepDown,
-      leader_proxy->get(), req));
+      new_proxy ? new_proxy.get() : leader_proxy->get(),
+      req));
   if (resp.has_error()) {
     LOG(ERROR) << "LeaderStepDown for " << leader_uuid << "received error "
       << resp.error().ShortDebugString();
@@ -301,7 +330,8 @@ Status ClusterAdminClient::ChangeConfig(
   if (cc_type == consensus::REMOVE_SERVER &&
       leader_uuid == peer_uuid) {
     string old_leader_uuid = leader_uuid;
-    RETURN_NOT_OK(LeaderStepDown(leader_uuid, tablet_id, &consensus_proxy));
+    RETURN_NOT_OK(LeaderStepDown(
+          leader_uuid, tablet_id, /* new_leader_uuid */ std::string(), &consensus_proxy));
     sleep(5);  // TODO - election completion timing is not known accurately
     RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, LEADER, &leader_uuid, &leader_addr));
     if (leader_uuid != old_leader_uuid) {
@@ -441,7 +471,8 @@ Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
 }
 
 Status ClusterAdminClient::SetupRedisTable() {
-  const YBTableName table_name(common::kRedisKeyspaceName, common::kRedisTableName);
+  const YBTableName table_name(
+      YQL_DATABASE_REDIS, common::kRedisKeyspaceName, common::kRedisTableName);
   RETURN_NOT_OK(yb_client_->CreateNamespaceIfNotExists(common::kRedisKeyspaceName,
                                                        YQLDatabase::YQL_DATABASE_REDIS));
   // Try to create the table.
@@ -464,7 +495,8 @@ Status ClusterAdminClient::SetupRedisTable() {
 }
 
 Status ClusterAdminClient::DropRedisTable() {
-  const YBTableName table_name(common::kRedisKeyspaceName, common::kRedisTableName);
+  const YBTableName table_name(
+      YQL_DATABASE_REDIS, common::kRedisKeyspaceName, common::kRedisTableName);
   Status s = yb_client_->DeleteTable(table_name, true /* wait */);
   if (s.ok()) {
     LOG(INFO) << "Table '" << table_name.ToString() << "' deleted.";
@@ -841,14 +873,16 @@ Status ClusterAdminClient::ListTabletsForTabletServer(const PeerId& ts_uuid) {
        << "Is Leader" << kColumnSep
        << "State" << kColumnSep
        << "Num SST Files" << kColumnSep
-       << "Num Log Segments" << endl;
+       << "Num Log Segments" << kColumnSep
+       << "Num Memtables (Intents/Regular)" << endl;
   for (const auto& entry : resp.entries()) {
     cout << RightPadToWidth(entry.table_name(), kTableNameColWidth) << kColumnSep
          << RightPadToUuidWidth(entry.tablet_id()) << kColumnSep
          << entry.is_leader() << kColumnSep
          << PBEnumToString(entry.state()) << kColumnSep
          << entry.num_sst_files() << kColumnSep
-         << entry.num_log_segments() << endl;
+         << entry.num_log_segments() << kColumnSep
+         << entry.num_memtables_intents() << "/" << entry.num_memtables_regular() << endl;
   }
   return Status::OK();
 }

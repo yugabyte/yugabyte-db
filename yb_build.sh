@@ -181,6 +181,9 @@ Options:
     Disable the creation/overwriting of the "latest" symlink in the build directory.
   --static-analyzer
     Enable Clang static analyzer
+  --download-thirdparty, --dltp
+    Use prebuilt third-party dependencies, downloadable e.g. from a GitHub release. Only supported
+    on CentOS.
   --
     Pass all arguments after -- to repeat_unit_test.
 
@@ -579,7 +582,7 @@ original_args=( "$@" )
 user_mvn_opts=""
 java_only=false
 cmake_only=false
-use_shared_thirdparty=false
+use_nfs_shared_thirdparty=false
 no_shared_thirdparty=false
 run_python_tests=false
 cmake_extra_args=""
@@ -588,7 +591,6 @@ java_test_name=""
 show_report=true
 running_any_tests=false
 clean_postgres=false
-export_compile_commands=false
 make_ninja_extra_args=""
 java_lint=false
 
@@ -697,7 +699,7 @@ while [[ $# -gt 0 ]]; do
       export NO_REBUILD_THIRDPARTY=1
     ;;
     --use-shared-thirdparty|--ustp|--stp|--us3p|--s3p)
-      use_shared_thirdparty=true
+      use_nfs_shared_thirdparty=true
     ;;
     --no-shared-thirdparty|--nstp|ns3p)
       no_shared_thirdparty=true
@@ -803,7 +805,7 @@ while [[ $# -gt 0 ]]; do
       set_initdb_target
     ;;
     postgres)
-      make_targets+=( "postgres ")
+      make_targets+=( "postgres" )
     ;;
     daemons|yb-daemons)
       make_targets+=( "yb-master" "yb-tserver" "postgres" "yb-admin" )
@@ -915,9 +917,6 @@ while [[ $# -gt 0 ]]; do
     --no-postgres|--skip-postgres|--np|--sp)
       export YB_SKIP_POSTGRES_BUILD=1
     ;;
-    --gen-compilation-db|--gcdb)
-      export_compile_commands=true
-    ;;
     --run-java-test-methods-separately|--rjtms)
       export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
     ;;
@@ -942,6 +941,9 @@ while [[ $# -gt 0 ]]; do
     --static-analyzer)
       export YB_ENABLE_STATIC_ANALYZER=1
     ;;
+    --download-thirdparty|--dltp)
+      export YB_DOWNLOAD_THIRDPARTY=1
+    ;;
     *)
       if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then
         env_var_name=${BASH_REMATCH[1]}
@@ -961,6 +963,10 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+# -------------------------------------------------------------------------------------------------
+# Finished parsing command-line arguments, post-processing them.
+# -------------------------------------------------------------------------------------------------
 
 update_submodules
 
@@ -1042,25 +1048,23 @@ if [[ ${YB_SKIP_BUILD:-} == "1" ]]; then
   set_flags_to_skip_build
 fi
 
-if "$use_shared_thirdparty" && "$no_shared_thirdparty"; then
+if "$use_nfs_shared_thirdparty" && "$no_shared_thirdparty"; then
   fatal "--use-shared-thirdparty and --no-shared-thirdparty cannot be specified at the same time"
-fi
-
-if "$export_compile_commands" && ! "$force_no_run_cmake"; then
-  force_run_cmake=true
-fi
-
-if "$export_compile_commands"; then
-  log "Will export compile commands (create a compilation database JSON file)"
-  export CMAKE_EXPORT_COMPILE_COMMANDS=1
-  export YB_EXPORT_COMPILE_COMMANDS=1
 fi
 
 configure_remote_compilation
 do_not_use_local_thirdparty_flag_path=$YB_SRC_ROOT/thirdparty/.yb_thirdparty_do_not_use
 
-if [[ -f $do_not_use_local_thirdparty_flag_path ]] ||
-   "$use_shared_thirdparty" ||
+if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "1" ]]; then
+  set_prebuilt_thirdparty_url
+  download_thirdparty
+  export NO_REBUILD_THIRDPARTY=1
+  log "Using downloaded third-party directory: $YB_THIRDPARTY_DIR"
+  if using_linuxbrew; then
+    log "Using Linuxbrew directory: $YB_LINUXBREW_DIR"
+  fi
+elif [[ -f $do_not_use_local_thirdparty_flag_path ]] ||
+   "$use_nfs_shared_thirdparty" ||
    using_remote_compilation && ! "$no_shared_thirdparty"; then
   find_thirdparty_dir
 fi
@@ -1071,6 +1075,14 @@ if "$java_lint"; then
   log "--lint-java-code specified, only linting java code and then exiting."
   lint_java_code
   exit
+fi
+
+if ! is_jenkins && is_src_root_on_nfs && \
+  [[ -z ${YB_CCACHE_DIR:-} && $HOME =~ $YB_NFS_PATH_RE ]]; then
+  export YB_CCACHE_DIR=$HOME/.ccache
+  if "$build_cxx"; then
+    log "Setting YB_CCACHE_DIR=$YB_CCACHE_DIR by default for NFS-based builds"
+  fi
 fi
 
 # -------------------------------------------------------------------------------------------------
@@ -1122,7 +1134,9 @@ export YB_COMPILER_TYPE
 if "$verbose"; then
   # http://stackoverflow.com/questions/22803607/debugging-cmakelists-txt
   cmake_opts+=( -Wdev --debug-output --trace -DYB_VERBOSE=1 )
-  make_opts+=( VERBOSE=1 SH="bash -x" )
+  if ! using_ninja; then
+    make_opts+=( VERBOSE=1 SH="bash -x" )
+  fi
   export YB_SHOW_COMPILER_COMMAND_LINE=1
 fi
 
@@ -1199,8 +1213,10 @@ if "$no_tcmalloc"; then
 fi
 
 detect_num_cpus_and_set_make_parallelism
-log "Using make parallelism of $YB_MAKE_PARALLELISM" \
-    "(YB_REMOTE_COMPILATION=${YB_REMOTE_COMPILATION:-undefined})"
+if "$build_cxx"; then
+  log "Using make parallelism of $YB_MAKE_PARALLELISM" \
+      "(YB_REMOTE_COMPILATION=${YB_REMOTE_COMPILATION:-undefined})"
+fi
 
 add_brew_bin_to_path
 

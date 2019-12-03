@@ -99,6 +99,7 @@ set(COMMON_SRCS
   partial_row.cc
   partition.cc
   row_key-util.cc
+  row_mark.cc
   schema.cc
   index.cc
   jsonb.cc
@@ -107,6 +108,7 @@ set(COMMON_SRCS
   doc_hybrid_time.cc
   consistent_read_point.cc
   transaction.cc
+  transaction_error.cc
   types.cc
   wire_protocol.cc
   ql_bfunc.cc

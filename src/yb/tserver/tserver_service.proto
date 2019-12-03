@@ -66,6 +66,9 @@ service TabletServerService {
   rpc Publish(PublishRequestPB) returns (PublishResponsePB);
 
   rpc IsTabletServerReady(IsTabletServerReadyRequestPB) returns (IsTabletServerReadyResponsePB);
+
+  // Takes precreated transaction from this tserver.
+  rpc TakeTransaction(TakeTransactionRequestPB) returns (TakeTransactionResponsePB);
 }
 
 message GetLogLocationRequestPB {
@@ -105,6 +108,8 @@ message ListTabletsForTabletServerResponsePB {
     optional tablet.RaftGroupStatePB state = 4;
     optional uint64 num_sst_files = 5;
     optional uint64 num_log_segments = 6;
+    optional uint64 num_memtables_intents = 7;
+    optional uint64 num_memtables_regular = 8;
   }
 
   repeated Entry entries = 1;
@@ -166,4 +171,11 @@ message AbortTransactionResponsePB {
   optional fixed64 status_hybrid_time = 3;
 
   optional fixed64 propagated_hybrid_time = 4;
+}
+
+message TakeTransactionRequestPB {
+}
+
+message TakeTransactionResponsePB {
+  optional TransactionMetadataPB metadata = 1;
 }

@@ -219,6 +219,7 @@ message TablePropertiesPB {
   //
   // The field "use_mangled_column_name" helps indicating whether a table is using mangled_name.
   optional bool use_mangled_column_name =  6 [ default = false ];
+  optional int32 num_tablets = 7;
 }
 
 message SchemaPB {
@@ -367,12 +368,13 @@ enum IsolationLevel {
 }
 
 // This enum matches enum RowMarkType defined in src/include/nodes/plannodes.h.
+// The exception is ROW_MARK_ABSENT, which signifies the absence of a row mark.
 enum RowMarkType
 {
-  // Obtain exclusive tuple lock. Not supported yet.
+  // Obtain exclusive tuple lock.
   ROW_MARK_EXCLUSIVE = 0;
 
-  // Obtain no-key exclusive tuple lock. Not supported yet.
+  // Obtain no-key exclusive tuple lock.
   ROW_MARK_NOKEYEXCLUSIVE = 1;
 
   // Obtain shared tuple lock.
@@ -386,6 +388,10 @@ enum RowMarkType
 
   // Not supported. Used for postgres compatibility.
   ROW_MARK_COPY = 5;
+
+  // Obtain no tuple lock (this should never sent be on the wire).  The value
+  // should be high for convenient comparisons with the other row lock types.
+  ROW_MARK_ABSENT = 15;
 }
 
 enum TransactionStatus {

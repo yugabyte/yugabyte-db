@@ -66,6 +66,7 @@
 #include "yb/util/random.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/status.h"
+#include "yb/util/version_tracker.h"
 #include "yb/gutil/thread_annotations.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/scoped_leader_shared_lock.h"
@@ -144,14 +145,24 @@ typedef std::unordered_map<
 //
 // Thread-safe.
 class CatalogManager : public tserver::TabletPeerLookupIf {
+  typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
+
+  class NamespaceNameMapper {
+   public:
+    NamespaceInfoMap& operator[](YQLDatabase db_type);
+    const NamespaceInfoMap& operator[](YQLDatabase db_type) const;
+    void clear();
+
+   private:
+    std::array<NamespaceInfoMap, 4> typed_maps_;
+  };
+
  public:
   // Some code refers to ScopedLeaderSharedLock as CatalogManager::ScopedLeaderSharedLock.
   using ScopedLeaderSharedLock = ::yb::master::ScopedLeaderSharedLock;
 
   explicit CatalogManager(Master *master);
   virtual ~CatalogManager();
-
-  static YQLDatabase GetDatabaseTypeForTable(const TableType table_type);
 
   CHECKED_STATUS Init(bool is_first_run);
 
@@ -296,6 +307,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                  DeleteNamespaceResponsePB* resp,
                                  rpc::RpcContext* rpc);
 
+  // Alter the specified Namespace.
+  CHECKED_STATUS AlterNamespace(const AlterNamespaceRequestPB* req,
+                                AlterNamespaceResponsePB* resp,
+                                rpc::RpcContext* rpc);
+
   // Delete YSQL database tables.
   CHECKED_STATUS DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
                                     DeleteNamespaceResponsePB* resp,
@@ -380,7 +396,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Get Table info given namespace id and table name.
   scoped_refptr<TableInfo> GetTableInfoFromNamespaceNameAndTableName(
-      const NamespaceName& namespace_name, const TableName& table_name);
+      YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name);
 
   // Return all the available TableInfo. The flag 'includeOnlyRunningTables' determines whether
   // to retrieve all Tables irrespective of their state or just the tables with the state
@@ -545,7 +561,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // and 'tablet_map_'), loads tables metadata into memory and if successful
   // loads the tablets metadata.
   CHECKED_STATUS VisitSysCatalog(int64_t term);
-  virtual CHECKED_STATUS RunLoaders();
+  virtual CHECKED_STATUS RunLoaders(int64_t term);
 
   // Waits for the worker queue to finish processing, returns OK if worker queue is idle before
   // the provided timeout, TimedOut Status otherwise.
@@ -584,6 +600,18 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     return permissions_manager_.get();
   }
 
+  uintptr_t tablets_version() const {
+    return tablet_map_.Version() + table_ids_map_.Version();
+  }
+
+  uintptr_t tablet_locations_version() const {
+    return tablet_locations_version_.load(std::memory_order_acquire);
+  }
+
+  EncryptionManager& encryption_manager() {
+    return *encryption_manager_;
+  }
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -602,6 +630,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   FRIEND_TEST(SysCatalogTest, TestSysCatalogTablesOperations);
   FRIEND_TEST(SysCatalogTest, TestSysCatalogTabletsOperations);
   FRIEND_TEST(SysCatalogTest, TestTableInfoCommit);
+
+  FRIEND_TEST(MasterTest, TestTabletsDeletedWhenTableInDeletingState);
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.
@@ -660,7 +690,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                     int64_t term,
                                     YQLVirtualTable* vtable);
 
-  CHECKED_STATUS PrepareNamespace(const NamespaceName& name, const NamespaceId& id, int64_t term);
+  CHECKED_STATUS PrepareNamespace(YQLDatabase db_type,
+                                  const NamespaceName& name,
+                                  const NamespaceId& id,
+                                  int64_t term);
 
   CHECKED_STATUS ConsensusStateToTabletLocations(const consensus::ConsensusStatePB& cstate,
                                                  TabletLocationsPB* locs_pb);
@@ -957,6 +990,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Creates a new TableInfo object.
   scoped_refptr<TableInfo> NewTableInfo(TableId id);
 
+  template <class Loader>
+  CHECKED_STATUS Load(const std::string& title, const int64_t term);
+
   // ----------------------------------------------------------------------------------------------
   // Private member fields
   // ----------------------------------------------------------------------------------------------
@@ -973,18 +1009,18 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // are not saved in the name maps below.
 
   // Table map: table-id -> TableInfo
-  TableInfoMap table_ids_map_;
+  VersionTracker<TableInfoMap> table_ids_map_;
 
   // Table map: [namespace-id, table-name] -> TableInfo
+  // Don't have to use VersionTracker for it, since table_ids_map_ already updated at the same time.
   TableInfoByNameMap table_names_map_;
 
   // Tablet maps: tablet-id -> TabletInfo
-  TabletInfoMap tablet_map_;
+  VersionTracker<TabletInfoMap> tablet_map_;
 
   // Namespace maps: namespace-id -> NamespaceInfo and namespace-name -> NamespaceInfo
-  typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
   NamespaceInfoMap namespace_ids_map_;
-  NamespaceInfoMap namespace_names_map_;
+  NamespaceNameMapper namespace_names_mapper_;
 
   // User-Defined type maps: udtype-id -> UDTypeInfo and udtype-name -> UDTypeInfo
   UDTypeInfoMap udtype_ids_map_;
@@ -1101,8 +1137,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Tracks most recent async tasks.
   scoped_refptr<TasksTracker> tasks_tracker_;
 
+  std::unique_ptr<EncryptionManager> encryption_manager_;
+
  private:
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id);
+  void RemoveFromNamespaceMaps(const NamespaceInfo& ns, rpc::RpcContext* rpc);
+
+  // Should be bumped up when tablet locations are changed.
+  std::atomic<uintptr_t> tablet_locations_version_{0};
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

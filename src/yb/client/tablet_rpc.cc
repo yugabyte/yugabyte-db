@@ -21,6 +21,7 @@
 #include "yb/client/meta_cache.h"
 
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_error.h"
 #include "yb/util/flag_tags.h"
 
 DEFINE_test_flag(bool, assert_local_op, false,
@@ -210,7 +211,7 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
   VLOG(2) << "Tablet " << tablet_id_ << ": Writing batch to replica "
           << current_ts_->ToString();
 
-  rpc_->SendRpcToTserver();
+  rpc_->SendRpcToTserver(retrier_->attempt_num());
 }
 
 Status TabletInvoker::FailToNewReplica(const Status& reason,
@@ -261,7 +262,8 @@ bool TabletInvoker::Done(Status* status) {
   }
 
   // Prefer controller failures over response failures.
-  Status resp_error_status = ErrorStatus(rpc_->response_error());
+  auto rsp_err = rpc_->response_error();
+  Status resp_error_status = ErrorStatus(rsp_err);
   if ((status->ok() || status->IsRemoteError()) && !resp_error_status.ok()) {
     *status = resp_error_status;
   }
@@ -274,13 +276,13 @@ bool TabletInvoker::Done(Status* status) {
   // this case.
   if (status->IsIllegalState() || status->IsServiceUnavailable() || status->IsAborted() ||
       status->IsLeaderNotReadyToServe() || status->IsLeaderHasNoLease() ||
-      TabletNotFoundOnTServer(rpc_->response_error(), *status) ||
+      TabletNotFoundOnTServer(rsp_err, *status) ||
       (status->IsTimedOut() && CoarseMonoClock::Now() < retrier_->deadline())) {
     VLOG(4) << "Retryable failure: " << *status
-            << ", response: " << yb::ToString(rpc_->response_error());
+            << ", response: " << yb::ToString(rsp_err);
 
     const bool leader_is_not_ready =
-        ErrorCode(rpc_->response_error()) ==
+        ErrorCode(rsp_err) ==
             tserver::TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE ||
         status->IsLeaderNotReadyToServe();
 
@@ -302,11 +304,14 @@ bool TabletInvoker::Done(Status* status) {
       return true;
     }
 
-    if (status->IsIllegalState() || TabletNotFoundOnTServer(rpc_->response_error(), *status)) {
+    if (status->IsIllegalState() || TabletNotFoundOnTServer(rsp_err, *status)) {
       // The whole operation is completed if we can't schedule a retry.
-      return !FailToNewReplica(*status, rpc_->response_error()).ok();
+      return !FailToNewReplica(*status, rsp_err).ok();
     } else {
-      auto retry_status = retrier_->DelayedRetry(command_, *status);
+      tserver::TabletServerDelay delay(*status);
+      auto retry_status = delay.value().Initialized()
+          ? retrier_->DelayedRetry(command_, *status, delay.value())
+          : retrier_->DelayedRetry(command_, *status);
       if (!retry_status.ok()) {
         command_->Finished(retry_status);
       }

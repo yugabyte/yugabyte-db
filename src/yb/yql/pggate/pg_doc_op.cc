@@ -24,6 +24,7 @@
 #include "yb/yql/pggate/pggate_if_cxx_decl.h"
 
 #include "yb/common/pgsql_error.h"
+#include "yb/common/transaction_error.h"
 #include "yb/util/yb_pg_errcodes.h"
 
 namespace yb {
@@ -163,6 +164,11 @@ bool PgDocOp::CheckRestartUnlocked(client::YBPgsqlOp* op) {
     pg_error_code = static_cast<YBPgErrorCode>(response.pg_error_code());
   }
 
+  TransactionErrorCode txn_error_code = TransactionErrorCode::kNone;
+  if (response.has_txn_error_code()) {
+    txn_error_code = static_cast<TransactionErrorCode>(response.txn_error_code());
+  }
+
   if (response.status() == PgsqlResponsePB::PGSQL_STATUS_RESTART_REQUIRED_ERROR &&
       pg_session_->pg_txn_manager()->CanRestart()) {
     exec_status_ = pg_session_->RestartTransaction();
@@ -181,6 +187,7 @@ bool PgDocOp::CheckRestartUnlocked(client::YBPgsqlOp* op) {
         PgsqlError(pg_error_code));
   }
 
+  exec_status_ = exec_status_.CloneAndAddErrorCode(TransactionError(txn_error_code));
   return false;
 }
 
@@ -218,24 +225,21 @@ void PgDocReadOp::SetRequestPrefetchLimit() {
   req->set_limit(limit_count);
 }
 
-void PgDocReadOp::SetRowMarks() {
-  if (exec_params_.rowmark < 0) {
-    return;
-  }
-  PgsqlReadRequestPB *req = read_op_->mutable_request();
+void PgDocReadOp::SetRowMark() {
+  PgsqlReadRequestPB *const req = read_op_->mutable_request();
 
-  // We only support one type of row lock at a time.
-  if (req->row_mark_type_size() > 0) {
-    return;
+  if (exec_params_.rowmark < 0) {
+    req->clear_row_mark_type();
+  } else {
+    req->set_row_mark_type(static_cast<yb::RowMarkType>(exec_params_.rowmark));
   }
-  req->add_row_mark_type(static_cast<yb::RowMarkType>(exec_params_.rowmark));
 }
 
 Status PgDocReadOp::SendRequestUnlocked() {
   CHECK(!waiting_for_response_);
 
   SetRequestPrefetchLimit();
-  SetRowMarks();
+  SetRowMark();
   SCHECK_EQ(VERIFY_RESULT(pg_session_->PgApplyAsync(read_op_, &read_time_)), OpBuffered::kFalse,
             IllegalState, "YSQL read operation should not be buffered");
 

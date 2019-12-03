@@ -1,6 +1,6 @@
 ---
 title: Fault tolerance
-linkTitle: 2. Fault tolerance
+linkTitle: Fault tolerance
 description: Fault tolerance
 aliases:
   - /explore/fault-tolerance/

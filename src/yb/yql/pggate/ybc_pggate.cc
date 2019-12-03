@@ -145,6 +145,21 @@ YBCStatus YBCPgExecDropDatabase(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropDatabase(handle));
 }
 
+YBCStatus YBCPgNewAlterDatabase(YBCPgSession pg_session,
+                               const char *database_name,
+                               const YBCPgOid database_oid,
+                               YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewAlterDatabase(pg_session, database_name, database_oid, handle));
+}
+
+YBCStatus YBCPgAlterDatabaseRenameDatabase(YBCPgStatement handle, const char *newname) {
+  return ToYBCStatus(pgapi->AlterDatabaseRenameDatabase(handle, newname));
+}
+
+YBCStatus YBCPgExecAlterDatabase(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecAlterDatabase(handle));
+}
+
 YBCStatus YBCPgReserveOids(YBCPgSession pg_session,
                            const YBCPgOid database_oid,
                            const YBCPgOid next_oid,
@@ -610,6 +625,14 @@ YBCStatus YBCGetSharedCatalogVersion(YBCPgSession pg_session, uint64_t* catalog_
     return YBCStatusOK();
   }
   return ToYBCStatus(result.status());
+}
+
+int32_t YBCGetMaxReadRestartAttempts() {
+  return FLAGS_ysql_max_read_restart_attempts;
+}
+
+int32_t YBCGetOutputBufferSize() {
+  return FLAGS_ysql_output_buffer_size;
 }
 
 } // extern "C"

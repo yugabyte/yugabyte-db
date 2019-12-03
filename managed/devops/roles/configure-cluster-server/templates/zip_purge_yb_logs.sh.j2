@@ -19,18 +19,26 @@ Options:
   -z, --gzip_only
     only gzip files, don't purge.
   -h, --help
-    Show usage
+    Show usage.
+  -s, --postgres_max_log_size <size in mb>
+    max size of disk to use for postgres logs (default=100mb)
 EOT
 }
 
 gzip_only=false
 YB_HOME_DIR=({{ yb_home_dir }}/)
-MAX_LOG_SIZE_FLAG=max_log_size
+
 logs_disk_percent_max=10
+postgres_max_log_size_kb=$((100 * 1000))
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -p|--logs_disk_percent_max)
       logs_disk_percent_max=$2
+      shift
+    ;;
+    -s|--postgres_max_log_size)
+      postgres_max_log_size_kb=$(($2 * 1000))
       shift
     ;;
     -z|--gzip_only)
@@ -60,36 +68,61 @@ fi
 
 # half for tserver and half for master.
 logs_disk_percent_max=$(($logs_disk_percent_max / 2))
+# Get total size of disk in kb and then compute permitted usage for the log files.
+disk_size_kb=$(df -k | awk 'NR==2{print $2}')
+permitted_disk_usage_kb=$(($disk_size_kb * $logs_disk_percent_max / 100))
 
-compute_num_log_files() {
+delete_gz_files() {
   local log_dir=$1
-  local conf_file=$2
-  local logdirsize_kb=$(df --output=size $log_dir | tail -n1)
-  local per_log_size_mb=$(grep $MAX_LOG_SIZE_FLAG $conf_file | cut -d'=' -f2)
-  if [[ $per_log_size_mb -le 0 ]]; then
-    echo "--$MAX_LOG_SIZE_FLAG needs to be greater than 0, found $per_log_size_mb" >&2
-    exit 1
+  local find_regex=$2
+  local permitted_usage=$3
+  local logs_disk_usage_bytes=$(find $log_dir -type f -name $find_regex -print0 | \
+    xargs -0 -r stat -c '%s' | \
+    awk '{sum+=$1;}END{print sum;}')
+  if [ -z $logs_disk_usage_bytes ]; then
+    logs_disk_usage_bytes=0
   fi
-
-  local num_logs_to_keep=$(($logdirsize_kb / 1000 * $logs_disk_percent_max / 100 / \
-    $per_log_size_mb))
-
-  if [[ $num_logs_to_keep -lt 1 ]]; then
-    # Should be atleast 1.
-    num_logs_to_keep=1
-  fi
-  echo $num_logs_to_keep
+  local logs_disk_usage_kb=$(($logs_disk_usage_bytes / 1000 ))
+  echo "Permitted disk usage for $find_regex files in kb: $permitted_usage"
+  echo "Disk usage by $find_regex files in kb: $logs_disk_usage_kb"
+  # get all the gz files.
+  local gz_files=$(find $log_dir -type f -name $find_regex.gz -print0 | \
+    xargs -0 -r stat -c '%Y %n' | \
+    sort | awk '{print $2}')
+  for file in $gz_files; do
+    # If usage exceeds permitted, delete the old gz files.
+    if [ $logs_disk_usage_kb -gt $permitted_usage ]; then
+      local file_size=$(du -k $file | awk '{print $1}')
+      logs_disk_usage_kb=$(($logs_disk_usage_kb-$file_size))
+      echo "Delete file $file"
+      rm $file
+    else
+      break
+    fi
+  done
 }
 
+server_types="master tserver"
+daemon_types=""
+for server_type in $server_types; do
+  if [[ -d "$YB_HOME_DIR/$server_type/" ]]; then
+    daemon_types="${daemon_types} $server_type"
+  fi
+done
 log_levels="INFO ERROR WARNING FATAL"
-daemon_types="tserver master"
 for daemon_type in $daemon_types; do
   YB_LOG_DIR="$YB_HOME_DIR/$daemon_type/logs/"
-  num_logs_to_keep=$(compute_num_log_files $YB_LOG_DIR $YB_HOME_DIR/$daemon_type/conf/server.conf)
-  echo "Num logs to keep for $daemon_type: $num_logs_to_keep"
-  for log_level in $log_levels; do
+  log_regexes="postgres*log"
+
+  for level in $log_levels; do
+    log_regexes="${log_regexes} yb-$daemon_type*log.$level*"
+  done
+
+  for log_regex in $log_regexes; do
+    # Using print0 since printf is not supported on all UNIX systems.
+    # xargs -0 -r stat -c '%Y %n' outputs: [unix time in millisecs] [name of file]
     find_non_gz_files="find $YB_LOG_DIR -type f -name
-    'yb-$daemon_type*log.$log_level*' ! -name '*.gz' -printf '%T+\t%p\n' | sort | awk '{print \$2}'"
+    '$log_regex' ! -name '*.gz' -print0 | xargs -0 -r stat -c '%Y %n' | sort | awk '{print \$2}'"
     non_gz_file_count=$(eval $find_non_gz_files | wc -l)
 
     # gzip all files but the current one.
@@ -100,20 +133,12 @@ for daemon_type in $daemon_types; do
         gzip $file
       done
     fi
-
-    if [ "$gzip_only" == false ]; then
-      # now delete old gz files.
-      find_gz_files="find $YB_LOG_DIR -type f -name
-      'yb-$daemon_type*log.$log_level*gz' -printf '%T+\t%p\n' | sort | awk '{print \$2}'"
-      gz_file_count=$(eval $find_gz_files | wc -l)
-
-      if [ $gz_file_count -gt $num_logs_to_keep ]; then
-        files_to_delete=$(eval $find_gz_files | head -n$(($gz_file_count - $num_logs_to_keep)))
-        for file in $files_to_delete; do
-          echo "Delete file $file"
-          rm $file
-        done
-      fi
-    fi
   done
+
+  if [ "$gzip_only" == false ]; then
+    server_log="yb-$daemon_type*log.*"
+    postgres_log="postgres*log*"
+    delete_gz_files $YB_LOG_DIR $server_log $permitted_disk_usage_kb
+    delete_gz_files $YB_LOG_DIR $postgres_log $postgres_max_log_size_kb
+  fi
 done

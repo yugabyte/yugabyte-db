@@ -62,6 +62,72 @@ class SharedMemorySegment {
   size_t segment_size_;
 };
 
+// Utility wrapper for sharing object of specified type.
+template <class Object>
+class SharedMemoryObject {
+ public:
+  SharedMemoryObject(SharedMemoryObject&& rhs)
+      : segment_(std::move(rhs.segment_)), owned_(rhs.owned_) {
+    rhs.owned_ = false;
+  }
+
+  ~SharedMemoryObject() {
+    if (owned_) {
+      get()->~Object();
+    }
+  }
+
+  // See SharedMemorySegment::GetFd
+  int GetFd() const {
+    return segment_.GetFd();
+  }
+
+  Object* get() const {
+    return static_cast<Object*>(segment_.GetAddress());
+  }
+
+  Object* operator->() const {
+    return get();
+  }
+
+  Object& operator*() const {
+    return *get();
+  }
+
+  template <class... Args>
+  static Result<SharedMemoryObject> Create(Args&&... args) {
+    return SharedMemoryObject(
+       VERIFY_RESULT(SharedMemorySegment::Create(sizeof(Object))),
+       std::forward<Args>(args)...);
+  }
+
+  static Result<SharedMemoryObject> OpenReadOnly(int fd) {
+    return SharedMemoryObject(VERIFY_RESULT(SharedMemorySegment::Open(
+        fd, SharedMemorySegment::AccessMode::kReadOnly, sizeof(Object))), NotOwnedTag());
+  }
+
+  static Result<SharedMemoryObject> OpenReadWrite(int fd) {
+    return SharedMemoryObject(VERIFY_RESULT(SharedMemorySegment::Open(
+        fd, SharedMemorySegment::AccessMode::kReadWrite, sizeof(Object))), NotOwnedTag());
+  }
+
+ private:
+  template <class... Args>
+  explicit SharedMemoryObject(SharedMemorySegment&& segment, Args&&... args)
+      : segment_(std::move(segment)), owned_(true) {
+    new(DCHECK_NOTNULL(segment_.GetAddress())) Object(std::forward<Args>(args)...);
+  }
+
+  class NotOwnedTag {};
+
+  explicit SharedMemoryObject(SharedMemorySegment&& segment, NotOwnedTag tag)
+      : segment_(std::move(segment)), owned_(false) {
+  }
+
+  SharedMemorySegment segment_;
+  bool owned_;
+};
+
 }  // namespace yb
 
 #endif // YB_UTIL_SHARED_MEM_H

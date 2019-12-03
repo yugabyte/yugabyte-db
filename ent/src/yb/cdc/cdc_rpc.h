@@ -44,18 +44,19 @@ typedef std::function<void(const Status&, const tserver::WriteResponsePB&)> Writ
 // deadline - operation deadline, i.e. timeout.
 // tablet - tablet to write the CDC record to.
 // client - YBClient that should be used to send this request.
-// Writes CDC record.
-MUST_USE_RESULT rpc::RpcCommandPtr WriteCDCRecord(
+// Returns a handle to a CDCWriteRpc.
+MUST_USE_RESULT rpc::RpcCommandPtr CreateCDCWriteRpc(
     CoarseTimePoint deadline,
     client::internal::RemoteTablet* tablet,
     client::YBClient* client,
     tserver::WriteRequestPB* req,
-    WriteCDCRecordCallback callback);
+    WriteCDCRecordCallback callback,
+    bool use_local_tserver);
 
 
-typedef std::function<void(const Status&, const GetChangesResponsePB&)> GetChangesCDCRpcCallback;
+typedef std::function<void(Status, GetChangesResponsePB&&)> GetChangesCDCRpcCallback;
 
-MUST_USE_RESULT rpc::RpcCommandPtr GetChangesCDCRpc(
+MUST_USE_RESULT rpc::RpcCommandPtr CreateGetChangesCDCRpc(
     CoarseTimePoint deadline,
     client::internal::RemoteTablet* tablet,
     client::YBClient* client,

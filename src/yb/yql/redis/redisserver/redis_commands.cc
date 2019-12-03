@@ -176,11 +176,10 @@ BOOST_PP_SEQ_FOR_EACH(DEFINE_HISTOGRAM, ~, REDIS_COMMANDS)
 BOOST_PP_SEQ_FOR_EACH(PARSER_FORWARD, ~, REDIS_COMMANDS)
 
 YBTableName RedisServiceData::GetYBTableNameForRedisDatabase(const string& db_name) {
-  if (db_name == "0") {
-    return YBTableName(common::kRedisKeyspaceName, common::kRedisTableName);
-  } else {
-    return YBTableName(common::kRedisKeyspaceName, StrCat(common::kRedisTableName, "_", db_name));
-  }
+  return YBTableName(YQL_DATABASE_REDIS,
+                     common::kRedisKeyspaceName,
+                     db_name == "0" ? string(common::kRedisTableName)
+                                    : StrCat(common::kRedisTableName, "_", db_name));
 }
 
 namespace {
@@ -750,7 +749,7 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
           const string& second = *elements[i + 1];
           auto req_kv = write_dest_op_->mutable_request()->mutable_key_value();
           if (type == REDIS_TYPE_SORTEDSET) {
-            auto score = util::CheckedStold(second);
+            auto score = CheckedStold(second);
             if (!score.ok()) {
               LOG(DFATAL) << "Could not parse sorted set score " << second;
               RespondWithError("Could not parse sorted set score");
@@ -759,7 +758,7 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
             req_kv->add_subkey()->set_double_subkey(*score);
             req_kv->add_value(first);
           } else if (type == REDIS_TYPE_TIMESERIES) {
-            auto ts = util::CheckedStoll(first);
+            auto ts = CheckedStoll(first);
             if (!ts.ok()) {
               LOG(DFATAL) << "Could not parse sorted set ts " << first;
               RespondWithError("Could not parse timeseries ts");
@@ -1260,7 +1259,7 @@ void HandleDebugSleep(LocalCommandData data) {
     }
   };
 
-  auto time_ms = util::CheckedStoll(data.arg(1));
+  auto time_ms = CheckedStoll(data.arg(1));
   if (!time_ms.ok()) {
     RedisResponsePB resp;
     resp.set_code(RedisResponsePB::PARSING_ERROR);

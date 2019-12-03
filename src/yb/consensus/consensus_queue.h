@@ -164,6 +164,7 @@ class PeerMessageQueue {
   PeerMessageQueue(const scoped_refptr<MetricEntity>& metric_entity,
                    const scoped_refptr<log::Log>& log,
                    const std::shared_ptr<MemTracker>& server_tracker,
+                   const std::shared_ptr<MemTracker>& parent_tracker,
                    const RaftPeerPB& local_peer_pb,
                    const std::string& tablet_id,
                    const server::ClockPtr& clock,
@@ -316,19 +317,23 @@ class PeerMessageQueue {
   }
 
   // Read replicated log records starting from the OpId immediately after last_op_id.
-  CHECKED_STATUS ReadReplicatedMessagesForCDC(const OpId& last_op_id, ReplicateMsgs *msgs,
-                                              bool* have_more_messages);
+  Result<ReadOpsResult> ReadReplicatedMessagesForCDC(const yb::OpId& last_op_id,
+                                                     int64_t* last_replicated_opid_index = nullptr);
 
-  void UpdateCDCConsumerOpId(const OpId& op_id);
+  void UpdateCDCConsumerOpId(const yb::OpId& op_id);
 
   // Get the maximum op ID that can be evicted for CDC consumer from log cache.
-  OpId GetCDCConsumerOpIdToEvict();
+  yb::OpId GetCDCConsumerOpIdToEvict();
 
   size_t LogCacheSize();
   size_t EvictLogCache(size_t bytes_to_evict);
 
   // Start memory tracking of following operations in case they are still present in our caches.
   void TrackOperationsMemory(const OpIds& op_ids);
+
+  const server::ClockPtr& clock() const {
+    return clock_;
+  }
 
  private:
   FRIEND_TEST(ConsensusQueueTest, TestQueueAdvancesCommittedIndex);
@@ -398,7 +403,7 @@ class PeerMessageQueue {
   // Returns true iff given 'desired_op' is found in the local WAL.
   // If the op is not found, returns false.
   // If the log cache returns some error other than NotFound, crashes with a fatal error.
-  bool IsOpInLog(const OpId& desired_op) const;
+  bool IsOpInLog(const yb::OpId& desired_op) const;
 
   void NotifyObserversOfMajorityReplOpChange(const MajorityReplicatedData& data);
 
@@ -454,13 +459,10 @@ class PeerMessageQueue {
   OpId OpIdWatermark();
   uint64_t NumSSTFilesWatermark();
 
-  CHECKED_STATUS ReadFromLogCache(int64_t from_index,
-                                  int64_t to_index,
-                                  int max_batch_size,
-                                  const std::string& peer_uuid,
-                                  ReplicateMsgs* messages,
-                                  OpId* preceding_id,
-                                  bool* have_more_messages);
+  Result<ReadOpsResult> ReadFromLogCache(int64_t from_index,
+                                         int64_t to_index,
+                                         int max_batch_size,
+                                         const std::string& peer_uuid);
 
   std::vector<PeerMessageQueueObserver*> observers_;
 
@@ -489,6 +491,8 @@ class PeerMessageQueue {
 
   LogCache log_cache_;
 
+  std::shared_ptr<MemTracker> operations_mem_tracker_;
+
   Metrics metrics_;
 
   server::ClockPtr clock_;
@@ -497,7 +501,7 @@ class PeerMessageQueue {
 
   // Used to protect cdc_consumer_op_id_ and cdc_consumer_op_id_last_updated_.
   mutable rw_spinlock cdc_consumer_lock_;
-  OpId cdc_consumer_op_id_ = MaximumOpId();
+  yb::OpId cdc_consumer_op_id_ = yb::OpId::Max();
   CoarseTimePoint cdc_consumer_op_id_last_updated_ = ToCoarse(MonoTime::kMin);
 };
 
@@ -514,6 +518,8 @@ struct MajorityReplicatedData {
   CoarseTimePoint leader_lease_expiration;
   MicrosTime ht_lease_expiration;
   uint64_t num_sst_files;
+
+  std::string ToString() const;
 };
 
 // The interface between RaftConsensus and the PeerMessageQueue.

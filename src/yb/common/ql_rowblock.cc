@@ -60,7 +60,7 @@ string QLRow::ToString() const {
     if (col_idx > 0) {
       s+= ", ";
     }
-    s += values_.at(col_idx).ToString();
+    s += values_[col_idx].ToString();
   }
   s += " }";
   return s;

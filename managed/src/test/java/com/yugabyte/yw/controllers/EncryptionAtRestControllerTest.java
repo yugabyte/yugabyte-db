@@ -10,10 +10,11 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.yugabyte.yw.common.EncryptionAtRestManager;
-import com.yugabyte.yw.common.EncryptionAtRestService;
-import com.yugabyte.yw.common.AwsEARService;
-import com.yugabyte.yw.common.SmartKeyEARService;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
+import com.yugabyte.yw.common.kms.services.AwsEARService;
+import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
@@ -127,16 +128,6 @@ public class EncryptionAtRestControllerTest extends WithApplication {
     @Test
     public void testCreateAndListKMSConfigs() {
         ObjectNode testConfig = Json.newObject().put("some_key", "some_val");
-        when(mockUtil.maskConfigData(
-                eq(customer.uuid),
-                any(JsonNode.class),
-                eq(EncryptionAtRestManager.KeyProvider.SMARTKEY)
-        )).thenReturn(Json.newObject());
-        when(mockUtil.unmaskConfigData(
-                eq(customer.uuid),
-                any(ObjectNode.class),
-                eq(EncryptionAtRestManager.KeyProvider.SMARTKEY)
-        )).thenReturn(testConfig);
         String url = "/api/v1/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
         Result createResult = doRequestWithAuthTokenAndBody(
                 "POST",
@@ -145,21 +136,9 @@ public class EncryptionAtRestControllerTest extends WithApplication {
                 testConfig
         );
         assertOk(createResult);
-        verify(mockUtil, times(1)).maskConfigData(
-                customer.uuid,
-                (JsonNode) testConfig,
-                EncryptionAtRestManager.KeyProvider.SMARTKEY
-        );
         url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
         Result listResult = doRequestWithAuthToken("GET", url, authToken);
         assertOk(listResult);
-        for (EncryptionAtRestManager.KeyProvider p : EncryptionAtRestManager.KeyProvider.values()) {
-            verify(mockUtil, times(1)).unmaskConfigData(
-                    eq(customer.uuid),
-                    any(ObjectNode.class),
-                    eq(p)
-            );
-        }
         JsonNode json = Json.parse(contentAsString(listResult));
         assertTrue(json.isArray());
         assertEquals(json.size(), 1);
@@ -170,13 +149,6 @@ public class EncryptionAtRestControllerTest extends WithApplication {
         String url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
         Result listResult = doRequestWithAuthToken("GET", url, authToken);
         assertOk(listResult);
-        for (EncryptionAtRestManager.KeyProvider p : EncryptionAtRestManager.KeyProvider.values()) {
-            verify(mockUtil, times(1)).unmaskConfigData(
-                    eq(customer.uuid),
-                    any(ObjectNode.class),
-                    eq(p)
-            );
-        }
         JsonNode json = Json.parse(contentAsString(listResult));
         assertTrue(json.isArray());
         assertEquals(json.size(), 0);
@@ -184,22 +156,12 @@ public class EncryptionAtRestControllerTest extends WithApplication {
 
     @Test
     public void testDeleteConfig() {
-        when(mockUtil.maskConfigData(
-                eq(customer.uuid),
-                any(JsonNode.class),
-                eq(EncryptionAtRestManager.KeyProvider.SMARTKEY)
-        )).thenReturn(Json.newObject());
         String url = "/api/v1/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
         Result createResult = doRequestWithAuthTokenAndBody(
                 "POST",
                 url,
                 authToken,
                 Json.newObject()
-        );
-        verify(mockUtil, times(1)).maskConfigData(
-                eq(customer.uuid),
-                any(JsonNode.class),
-                eq(EncryptionAtRestManager.KeyProvider.SMARTKEY)
         );
         assertOk(createResult);
         Result deleteResult = doRequestWithAuthToken("DELETE", url, authToken);
@@ -246,11 +208,6 @@ public class EncryptionAtRestControllerTest extends WithApplication {
 
     @Test
     public void testRecoverKeyNotFound() {
-        when(mockUtil.maskConfigData(
-                eq(customer.uuid),
-                any(JsonNode.class),
-                eq(EncryptionAtRestManager.KeyProvider.SMARTKEY)
-        )).thenReturn(Json.newObject());
         String mockApiKey = "some_api_key";
         String url = "/api/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
         ObjectNode configPayload = Json.newObject()

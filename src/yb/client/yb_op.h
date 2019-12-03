@@ -446,6 +446,7 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
   static YBPgsqlWriteOp *NewInsert(const std::shared_ptr<YBTable>& table);
   static YBPgsqlWriteOp *NewUpdate(const std::shared_ptr<YBTable>& table);
   static YBPgsqlWriteOp *NewDelete(const std::shared_ptr<YBTable>& table);
+  static YBPgsqlWriteOp *NewUpsert(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<PgsqlWriteRequestPB> write_request_;
   // Whether this operation should be run as a single row txn.
   // Else could be distributed transaction (or non-transactional) depending on target table type.

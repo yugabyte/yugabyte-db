@@ -30,8 +30,6 @@ yb-tserver-0   0/1       ContainerCreating   0          4s
 
 Eventually all the pods will have the `Running` state.
 
-Run the following command to initialize the YSQL API. Note that this step can take a few minutes depending on the resource utilization of your Kubernetes environment.
-
 ```sh
 $ kubectl get pods
 ```
@@ -42,15 +40,7 @@ yb-master-0    1/1       Running   0          13s
 yb-tserver-0   1/1       Running   0          12s
 ```
 
-## 3. Initialize the YSQL API
-
-```sh
-$ kubectl exec -it yb-master-0 bash --  -c "YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses=yb-master-0.yb-masters.default.svc.cluster.local:7100 /home/yugabyte/postgres/bin/initdb -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres"
-```
-
-Clients can now connect to this YugabyteDB universe using YSQL and YCQL APIs on the 5433 and 9042 ports respectively.
-
-## 4. Check cluster status via Kubernetes
+## 3. Check cluster status via Kubernetes
 
 You can see the status of the 3 services by simply running the following command.
 
@@ -66,7 +56,7 @@ yb-masters     ClusterIP      None            <none>        7000/TCP,7100/TCP   
 yb-tservers    ClusterIP      None            <none>        9000/TCP,9100/TCP,9042/TCP,6379/TCP,5433/TCP   11m
 ```
 
-## 5. Check cluster status with Admin UI
+## 4. Check cluster status with Admin UI
 
 In order to do this, we would need to access the UI on port 7000 exposed by any of the pods in the `yb-master` service. In order to do so, we find the URL for the yb-master-ui LoadBalancer service.
 
@@ -78,18 +68,18 @@ $ minikube service  yb-master-ui --url
 http://192.168.99.100:31283
 ```
 
-Now, you can view the [yb-master-0 Admin UI](../../admin/yb-master/#admin-ui) is available at the above URL.
+Now, you can view the [yb-master-0 Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at the above URL.
 
-### 5.1 Overview and master status
+### 4.1 Overview and master status
 
-The yb-master-0 home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. The `Num User Tables` is 0 since there are no user tables created yet. YugabyteDB version is also shown for your reference.
+The yb-master-0 home page shows that we have a cluster (or universe) with **Replication Factor** of 1 and **Num Nodes (TServers)** as `1`. The **Num User Tables** is `0` because there are no user tables created yet. YugabyteDB version is also shown for your reference.
 
 ![master-home](/images/admin/master-home-kubernetes-rf1.png)
 
-The Masters section highlights the 1 yb-master along its corresponding cloud, region and zone placement information.
+The **Masters** section highlights the one YB-Master service along its corresponding cloud, region and zone placement information.
 
-### 5.2 TServer status
+### 4.2 TServer status
 
-Clicking on the `See all nodes` takes us to the Tablet Servers page where we can observe the 1 tserver along with the time since it last connected to this master via regular heartbeats. Additionally, we can see that the `Load (Num Tablets)` is balanced across all available tservers. These tablets are the shards of the user tables currently managed by the cluster (which in this case is the `system_redis.redis` table). As new tables get added, new tablets will get automatically created and distributed evenly across all the available tservers.
+Clicking on the **See all nodes** takes us to the Tablet Servers page where we can observe the one YB-TServer along with the time since it last connected to this YB-Master using regular heartbeats. Additionally, we can see that the **Load (Num Tablets)** is balanced across all available tservers. These tablets are the shards of the user tables currently managed by the cluster (which in this case is the `system_redis.redis` table). As new tables get added, new tablets will get automatically created and distributed evenly across all the available YB-TServer services.
 
 ![tserver-list](/images/admin/master-tservers-list-kubernetes-rf1.png)

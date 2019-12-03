@@ -17,22 +17,27 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/yql/pggate/pggate.h"
+#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pg_ddl.h"
 #include "yb/yql/pggate/pg_insert.h"
 #include "yb/yql/pggate/pg_update.h"
 #include "yb/yql/pggate/pg_delete.h"
 #include "yb/yql/pggate/pg_select.h"
+#include "yb/yql/pggate/ybc_pggate.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/client_utils.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
-#include "yb/yql/pggate/pggate_flags.h"
+
+#include "yb/tserver/tserver_shared_mem.h"
 
 DECLARE_string(rpc_bind_addresses);
 
 namespace yb {
 namespace pggate {
+
 namespace {
 
 CHECKED_STATUS AddColumn(PgCreateTable* pg_stmt, const char *attr_name, int attr_num,
@@ -61,6 +66,16 @@ Result<PgApiImpl::MessengerHolder> BuildMessenger(
   auto messenger = VERIFY_RESULT(client::CreateClientMessenger(
       client_name, num_reactors, metric_entity, parent_mem_tracker, &security_context));
   return PgApiImpl::MessengerHolder{std::move(security_context), std::move(messenger)};
+}
+
+std::unique_ptr<tserver::TServerSharedObject> InitTServerSharedObject() {
+  // Do not use shared memory in initdb or if explicity set to be ignored.
+  if (YBCIsInitDbModeEnvVarSet() || FLAGS_pggate_ignore_tserver_shm ||
+      FLAGS_pggate_tserver_shm_fd == -1) {
+    return nullptr;
+  }
+  return std::make_unique<tserver::TServerSharedObject>(CHECK_RESULT(
+      tserver::TServerSharedObject::OpenReadOnly(FLAGS_pggate_tserver_shm_fd)));
 }
 
 } // namespace
@@ -97,8 +112,7 @@ PggateOptions::PggateOptions() {
 //--------------------------------------------------------------------------------------------------
 
 PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count)
-    : pggate_options_(),
-      metric_registry_(new MetricRegistry()),
+    : metric_registry_(new MetricRegistry()),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(), "yb.pggate")),
       mem_tracker_(MemTracker::CreateTracker("PostgreSQL")),
       messenger_holder_(CHECK_RESULT(BuildMessenger("pggate_ybclient",
@@ -114,7 +128,8 @@ PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count)
                          mem_tracker_,
                          messenger_holder_.messenger.get()),
       clock_(new server::HybridClock()),
-      pg_txn_manager_(new PgTxnManager(&async_client_init_, clock_)) {
+      tserver_shared_object_(InitTServerSharedObject()),
+      pg_txn_manager_(new PgTxnManager(&async_client_init_, clock_, tserver_shared_object_.get())) {
   CHECK_OK(clock_->Init());
 
   // Setup type mapping.
@@ -155,7 +170,8 @@ Status PgApiImpl::DestroyEnv(PgEnv *pg_env) {
 Status PgApiImpl::CreateSession(const PgEnv *pg_env,
                                 const string& database_name,
                                 PgSession **pg_session) {
-  auto session = make_scoped_refptr<PgSession>(client(), database_name, pg_txn_manager_, clock_);
+  auto session = make_scoped_refptr<PgSession>(
+      client(), database_name, pg_txn_manager_, clock_, tserver_shared_object_.get());
   if (!database_name.empty()) {
     RETURN_NOT_OK(session->ConnectDatabase(database_name));
   }
@@ -286,6 +302,31 @@ Status PgApiImpl::ExecDropDatabase(PgStatement *handle) {
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   return down_cast<PgDropDatabase*>(handle)->Exec();
+}
+
+Status PgApiImpl::NewAlterDatabase(PgSession *pg_session,
+                                  const char *database_name,
+                                  PgOid database_oid,
+                                  PgStatement **handle) {
+  auto stmt = make_scoped_refptr<PgAlterDatabase>(pg_session, database_name, database_oid);
+  *handle = stmt.detach();
+  return Status::OK();
+}
+
+Status PgApiImpl::AlterDatabaseRenameDatabase(PgStatement *handle, const char *newname) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_DATABASE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  return down_cast<PgAlterDatabase*>(handle)->RenameDatabase(newname);
+}
+
+Status PgApiImpl::ExecAlterDatabase(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_DATABASE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  return down_cast<PgAlterDatabase*>(handle)->Exec();
 }
 
 Status PgApiImpl::ReserveOids(PgSession *pg_session,

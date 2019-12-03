@@ -351,6 +351,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   IndexInfo GetIndexInfo(const TableId& index_id) const;
 
   // Returns true if the table creation is in-progress.
+  bool AreAllTabletsDeleted() const;
+
+  // Returns true if the table creation is in-progress.
   bool IsCreateInProgress() const;
 
   // Returns true if an "Alter" operation is in-progress.

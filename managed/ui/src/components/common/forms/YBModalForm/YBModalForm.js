@@ -40,7 +40,7 @@ export default class YBModalForm extends Component {
               {(footerAccessory || showCancelButton || onFormSubmit) &&
                 <Modal.Footer>
                   <div className={footerButtonClass}>
-                    <YBButton btnClass="btn btn-orange pull-right" loading={props.isSubmitting}
+                    <YBButton btnClass={`btn btn-orange pull-right ${props.isSubmitting ? ' btn-is-loading' : ''}`} loading={props.isSubmitting}
                       btnText={submitLabel} btnType="submit" disabled={props.isSubmitting} />
                     {showCancelButton && <YBButton btnClass="btn" btnText={cancelLabel} onClick={onHide} />}
                     {footerAccessory && <div className="pull-left modal-accessory">{footerAccessory}</div>}

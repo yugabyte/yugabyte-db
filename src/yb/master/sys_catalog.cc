@@ -43,6 +43,7 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/ql_protocol_util.h"
 
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/consensus.h"
@@ -119,6 +120,7 @@ std::string SysCatalogTable::schema_column_metadata() { return kSysCatalogTableC
 SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
                                  ElectedLeaderCallback leader_cb)
     : metric_registry_(metrics),
+      metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_, "yb.master")),
       master_(master),
       leader_cb_(std::move(leader_cb)) {
   CHECK_OK(ThreadPoolBuilder("inform_removed_master").Build(&inform_removed_master_pool_));
@@ -126,9 +128,8 @@ SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
   CHECK_OK(ThreadPoolBuilder("prepare").set_min_threads(1).Build(&tablet_prepare_pool_));
   CHECK_OK(ThreadPoolBuilder("append").set_min_threads(1).Build(&append_pool_));
 
-  auto metric_entity = METRIC_ENTITY_server.Instantiate(metric_registry_, "yb.master");
   setup_config_dns_histogram_ = METRIC_dns_resolve_latency_during_sys_catalog_setup.Instantiate(
-      metric_entity);
+      metric_entity_);
 }
 
 SysCatalogTable::~SysCatalogTable() {
@@ -653,18 +654,52 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   auto iter = tablet->NewRowIterator(schema_, boost::none);
   RETURN_NOT_OK(iter);
 
+  auto doc_iter = dynamic_cast<yb::docdb::DocRowwiseIterator*>(iter->get());
+  CHECK(doc_iter != nullptr);
+  QLConditionPB cond;
+  cond.set_op(QL_OP_AND);
+  QLAddInt8Condition(&cond, schema_with_ids_.column_id(type_col_idx), QL_OP_EQUAL, tables_entry);
+  yb::docdb::DocQLScanSpec spec(
+      schema_with_ids_, boost::none /* hash_code */, boost::none /* max_hash_code */,
+      {} /* hashed_components */, &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
+  RETURN_NOT_OK(doc_iter->Init(spec));
+
   QLTableRow value_map;
   QLValue entry_type, entry_id, metadata;
+  uint64_t count = 0;
+  auto start = CoarseMonoClock::Now();
   while (VERIFY_RESULT((**iter).HasNext())) {
+    ++count;
     RETURN_NOT_OK((**iter).NextRow(&value_map));
     RETURN_NOT_OK(value_map.GetValue(schema_with_ids_.column_id(type_col_idx), &entry_type));
-    if (entry_type.int8_value() != tables_entry) {
-      continue;
-    }
+    CHECK_EQ(entry_type.int8_value(), tables_entry);
     RETURN_NOT_OK(value_map.GetValue(schema_with_ids_.column_id(entry_id_col_idx), &entry_id));
     RETURN_NOT_OK(value_map.GetValue(schema_with_ids_.column_id(metadata_col_idx), &metadata));
     RETURN_NOT_OK(visitor->Visit(entry_id.binary_value(), metadata.binary_value()));
   }
+  auto duration = CoarseMonoClock::Now() - start;
+  string id = Format("num_entries_with_type_$0_loaded", std::to_string(tables_entry));
+  if (visitor_duration_metrics_.find(id) == visitor_duration_metrics_.end()) {
+    string description = id + " metric for SysCatalogTable::Visit";
+    std::unique_ptr<GaugePrototype<uint64>> counter_gauge =
+        std::make_unique<OwningGaugePrototype<uint64>>(
+            "server", id, description, yb::MetricUnit::kEntries, description,
+            yb::EXPOSE_AS_COUNTER);
+    visitor_duration_metrics_[id] = metric_entity_->FindOrCreateGauge(
+        std::move(counter_gauge), static_cast<uint64>(0) /* initial_value */);
+  }
+  visitor_duration_metrics_[id]->IncrementBy(count);
+
+  id = Format("duration_ms_loading_entries_with_type_$0", std::to_string(tables_entry));
+  if (visitor_duration_metrics_.find(id) == visitor_duration_metrics_.end()) {
+    string description = id + " metric for SysCatalogTable::Visit";
+    std::unique_ptr<GaugePrototype<uint64>> duration_gauge =
+        std::make_unique<OwningGaugePrototype<uint64>>(
+            "server", id, description, yb::MetricUnit::kMilliseconds, description);
+    visitor_duration_metrics_[id] = metric_entity_->FindOrCreateGauge(
+        std::move(duration_gauge), static_cast<uint64>(0) /* initial_value */);
+  }
+  visitor_duration_metrics_[id]->IncrementBy(ToMilliseconds(duration));
   return Status::OK();
 }
 
@@ -685,15 +720,56 @@ Status SysCatalogTable::CopyPgsqlTable(const TableId& source_table_id,
   std::unique_ptr<SysCatalogWriter> writer = NewWriter(leader_term);
   while (VERIFY_RESULT(iter->HasNext())) {
     RETURN_NOT_OK(iter->NextRow(&source_row));
-    RETURN_NOT_OK(writer->InsertPgsqlTableRow(source_table_info->schema, source_row,
-                                              target_table_id, target_table_info->schema,
-                                              target_table_info->schema_version));
+    RETURN_NOT_OK(writer->InsertPgsqlTableRow(
+        source_table_info->schema, source_row, target_table_id, target_table_info->schema,
+        target_table_info->schema_version, true /* is_upsert */));
   }
 
   VLOG(1) << Format("Copied $0 rows from $1 to $2", writer->req().pgsql_write_batch_size(),
                     source_table_id, target_table_id);
 
-  return !writer->req().pgsql_write_batch().empty() ? SyncWrite(writer.get()) : Status::OK();
+  return writer->req().pgsql_write_batch().empty() ? Status::OK() : SyncWrite(writer.get());
+}
+
+Status SysCatalogTable::CopyPgsqlTables(
+    const vector<TableId>& source_table_ids, const vector<TableId>& target_table_ids,
+    const int64_t leader_term) {
+  TRACE_EVENT0("master", "CopyPgsqlTables");
+
+  std::unique_ptr<SysCatalogWriter> writer = NewWriter(leader_term);
+
+  DSCHECK_EQ(
+      source_table_ids.size(), target_table_ids.size(), InvalidArgument,
+      "size mismatch between source tables and target tables");
+
+  for (int i = 0; i < source_table_ids.size(); ++i) {
+    auto& source_table_id = source_table_ids[i];
+    auto& target_table_id = target_table_ids[i];
+
+    const auto* tablet = tablet_peer()->tablet();
+    const auto* meta = tablet->metadata();
+    const tablet::TableInfo* source_table_info = VERIFY_RESULT(meta->GetTableInfo(source_table_id));
+    const tablet::TableInfo* target_table_info = VERIFY_RESULT(meta->GetTableInfo(target_table_id));
+
+    const Schema source_projection = source_table_info->schema.CopyWithoutColumnIds();
+    std::unique_ptr<common::YQLRowwiseIteratorIf> iter =
+        VERIFY_RESULT(tablet->NewRowIterator(source_projection, boost::none, source_table_id));
+    QLTableRow source_row;
+    int count = 0;
+    while (VERIFY_RESULT(iter->HasNext())) {
+      RETURN_NOT_OK(iter->NextRow(&source_row));
+
+      RETURN_NOT_OK(writer->InsertPgsqlTableRow(
+          source_table_info->schema, source_row, target_table_id, target_table_info->schema,
+          target_table_info->schema_version, true /* is_upsert */));
+      ++count;
+    }
+    LOG(INFO) << Format("Copied $0 rows from $1 to $2", count, source_table_id, target_table_id);
+  }
+  LOG(INFO) << Format("Copied total $0 rows", writer->req().pgsql_write_batch_size());
+  LOG(INFO) << Format("Copied total $0 bytes", writer->req().SpaceUsedLong());
+
+  return writer->req().pgsql_write_batch().empty() ? Status::OK() : SyncWrite(writer.get());
 }
 
 Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id) {

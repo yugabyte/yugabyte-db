@@ -103,6 +103,7 @@ message PgsqlWriteRequestPB {
     PGSQL_INSERT = 1;
     PGSQL_UPDATE = 2;
     PGSQL_DELETE = 3;
+    PGSQL_UPSERT = 4;
   }
 
   // Client info
@@ -289,13 +290,8 @@ message PgsqlReadRequestPB {
   // The version of the ysql system catalog this query was prepared against.
   optional uint64 ysql_catalog_version = 16;
 
-  // Row mark as used by postgres for row locking. As of 10/12/19 only ROW_MARK_SHARE and
-  // ROW_MARK_KEYSHARE are supported.
-  // TODO https://github.com/yugabyte/yugabyte-db/issues/2495:
-  // As of 10/12/19 whenever a read request has an element in this list, the whole read batch is
-  // assumed to need the same row locks. This is not a problem because we are not batching
-  // read requests, but we will need to change this behavior if we start batching requests.
-  repeated RowMarkType row_mark_type = 23;
+  // Row mark as used by postgres for row locking.
+  optional RowMarkType row_mark_type = 23;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -333,7 +329,18 @@ message PgsqlResponsePB {
   // Number of rows affected by the operation. Currently only used for update and delete.
   optional int32 rows_affected_count = 7;
 
-  // External Status : PostgreSQL error code encoded as in errcodes.h or yb_pg_errcodes.h.
+  //
+  // External statuses.
+  //
+  // If you add more of those, make sure they are correctly picked up, e.g.
+  // by PgDocReadOp::ReceiveResponse and PgDocOp::CheckRestartUnlocked
+  //
+
+  // PostgreSQL error code encoded as in errcodes.h or yb_pg_errcodes.h.
   // See https://www.postgresql.org/docs/11/errcodes-appendix.html
   optional uint64 pg_error_code = 8;
+
+  // Transaction error code, obtained by static_cast of TransactionErrorTag::Decode
+  // of Status::ErrorData(TransactionErrorTag::kCategory)
+  optional uint32 txn_error_code = 9;
 }

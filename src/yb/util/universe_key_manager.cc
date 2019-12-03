@@ -29,10 +29,10 @@ void UniverseKeyManager::SetUniverseKeyRegistry(
 Result<yb::enterprise::EncryptionParamsPtr> UniverseKeyManager::GetUniverseParamsWithVersion(
     const UniverseKeyId& version_id) {
   auto l = EnsureRegistryReceived();
-  const auto it = universe_key_registry_.universe_keys().find(version_id.ToString());
+  const auto it = universe_key_registry_.universe_keys().find(version_id);
   if (it == universe_key_registry_.universe_keys().end()) {
     return STATUS_SUBSTITUTE(
-        InvalidArgument, "Key with version number $0 does not exist.", version_id.ToString());
+        InvalidArgument, "Key with version number $0 does not exist.", version_id);
   }
   return EncryptionParams::FromEncryptionParamsPB(it->second);
 }
@@ -46,7 +46,7 @@ Result<UniverseKeyParams> UniverseKeyManager::GetLatestUniverseParams() {
   }
 
   UniverseKeyParams universe_key_params;
-  universe_key_params.version_id = VERIFY_RESULT(UniverseKeyId::FromString(it->first));
+  universe_key_params.version_id = it->first;
   universe_key_params.params = VERIFY_RESULT(EncryptionParams::FromEncryptionParamsPB(it->second));
   return universe_key_params;
 }

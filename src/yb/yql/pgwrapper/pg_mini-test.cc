@@ -23,7 +23,9 @@
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 #include "yb/common/pgsql_error.h"
+#include "yb/common/row_mark.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 
 using namespace std::literals;
 
@@ -37,6 +39,7 @@ DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_int32(ysql_num_shards_per_tserver);
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 DECLARE_uint64(max_clock_skew_usec);
+DECLARE_int64(db_write_buffer_size);
 
 namespace yb {
 namespace pgwrapper {
@@ -99,6 +102,23 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
   // expected.  Otherwise, the scans are in transactions with snapshot isolation, so read restarts
   // are expected.
   void TestReadRestart(bool deferrable = true);
+
+  // Run interleaved INSERT, SELECT with specified isolation level and row mark.  Possible isolation
+  // levels are SNAPSHOT_ISOLATION and SERIALIZABLE_ISOLATION.  Possible row marks are
+  // ROW_MARK_KEYSHARE, ROW_MARK_SHARE, ROW_MARK_NOKEYEXCLUSIVE, and ROW_MARK_EXCLUSIVE.
+  void TestInsertSelectRowLock(IsolationLevel isolation, RowMarkType row_mark);
+
+  // Run interleaved DELETE, SELECT with specified isolation level and row mark.  Possible isolation
+  // levels are SNAPSHOT_ISOLATION and SERIALIZABLE_ISOLATION.  Possible row marks are
+  // ROW_MARK_KEYSHARE, ROW_MARK_SHARE, ROW_MARK_NOKEYEXCLUSIVE, and ROW_MARK_EXCLUSIVE.
+  void TestDeleteSelectRowLock(IsolationLevel isolation, RowMarkType row_mark);
+
+  // Test the row lock conflict matrix across a grid of the following parameters
+  // * 4 row marks for session A
+  // * 4 row marks for session B
+  // * 2 isolation levels
+  // This totals 4 x 4 x 2 = 32 situations.
+  void TestRowLockConflictMatrix();
 
  private:
   std::unique_ptr<PgSupervisor> pg_supervisor_;
@@ -247,6 +267,229 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestart)) {
   TestReadRestart(false /* deferrable */);
 }
 
+void PgMiniTest::TestInsertSelectRowLock(IsolationLevel isolation, RowMarkType row_mark) {
+  const std::string isolation_str = (
+      isolation == IsolationLevel::SNAPSHOT_ISOLATION ? "REPEATABLE READ" : "SERIALIZABLE");
+  const std::string row_mark_str = RowMarkTypeToPgsqlString(row_mark);
+  constexpr auto kSleepTime = 1s;
+  constexpr int kKeys = 3;
+  PGConn read_conn = ASSERT_RESULT(Connect());
+  PGConn misc_conn = ASSERT_RESULT(Connect());
+  PGConn write_conn = ASSERT_RESULT(Connect());
+
+  // Set up table
+  ASSERT_OK(misc_conn.Execute("CREATE TABLE t (i INT PRIMARY KEY, j INT)"));
+  // TODO: remove this when issue #2857 is fixed.
+  std::this_thread::sleep_for(kSleepTime);
+  for (int i = 0; i < kKeys; ++i) {
+    ASSERT_OK(misc_conn.ExecuteFormat("INSERT INTO t (i, j) VALUES ($0, $0)", i));
+  }
+
+  ASSERT_OK(read_conn.ExecuteFormat("BEGIN TRANSACTION ISOLATION LEVEL $0", isolation_str));
+  ASSERT_OK(read_conn.Fetch("SELECT '(setting read point)'"));
+  ASSERT_OK(write_conn.ExecuteFormat("INSERT INTO t (i, j) VALUES ($0, $0)", kKeys));
+  auto result = read_conn.FetchFormat("SELECT * FROM t FOR $0", row_mark_str);
+  if (isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+    // TODO: change to ASSERT_OK and expect kKeys rows when issue #2809 is fixed.
+    ASSERT_NOK(result);
+    ASSERT_TRUE(result.status().IsNetworkError()) << result.status();
+    ASSERT_EQ(PgsqlError(result.status()), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)
+        << result.status();
+    ASSERT_STR_CONTAINS(result.status().ToString(), "Value write after transaction start");
+    ASSERT_OK(read_conn.Execute("ABORT"));
+  } else {
+    ASSERT_OK(result);
+    // NOTE: vanilla PostgreSQL expects kKeys rows, but kKeys + 1 rows are expected for Yugabyte.
+    ASSERT_EQ(PQntuples(result.get().get()), kKeys + 1);
+    ASSERT_OK(read_conn.Execute("COMMIT"));
+  }
+}
+
+void PgMiniTest::TestDeleteSelectRowLock(IsolationLevel isolation, RowMarkType row_mark) {
+  const std::string isolation_str = (
+      isolation == IsolationLevel::SNAPSHOT_ISOLATION ? "REPEATABLE READ" : "SERIALIZABLE");
+  const std::string row_mark_str = RowMarkTypeToPgsqlString(row_mark);
+  constexpr auto kSleepTime = 1s;
+  constexpr int kKeys = 3;
+  PGConn read_conn = ASSERT_RESULT(Connect());
+  PGConn misc_conn = ASSERT_RESULT(Connect());
+  PGConn write_conn = ASSERT_RESULT(Connect());
+
+  // Set up table
+  ASSERT_OK(misc_conn.Execute("CREATE TABLE t (i INT PRIMARY KEY, j INT)"));
+  // TODO: remove this when issue #2857 is fixed.
+  std::this_thread::sleep_for(kSleepTime);
+  for (int i = 0; i < kKeys; ++i) {
+    ASSERT_OK(misc_conn.ExecuteFormat("INSERT INTO t (i, j) VALUES ($0, $0)", i));
+  }
+
+  ASSERT_OK(read_conn.ExecuteFormat("BEGIN TRANSACTION ISOLATION LEVEL $0", isolation_str));
+  ASSERT_OK(read_conn.Fetch("SELECT '(setting read point)'"));
+  ASSERT_OK(write_conn.ExecuteFormat("DELETE FROM t WHERE i = $0", RandomUniformInt(0, kKeys - 1)));
+  auto result = read_conn.FetchFormat("SELECT * FROM t FOR $0", row_mark_str);
+  if (isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+    ASSERT_NOK(result);
+    ASSERT_TRUE(result.status().IsNetworkError()) << result.status();
+    ASSERT_EQ(PgsqlError(result.status()), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)
+        << result.status();
+    ASSERT_STR_CONTAINS(result.status().ToString(), "Value write after transaction start");
+    ASSERT_OK(read_conn.Execute("ABORT"));
+  } else {
+    ASSERT_OK(result);
+    // NOTE: vanilla PostgreSQL expects kKeys rows, but kKeys - 1 rows are expected for Yugabyte.
+    ASSERT_EQ(PQntuples(result.get().get()), kKeys - 1);
+    ASSERT_OK(read_conn.Execute("COMMIT"));
+  }
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotInsertForUpdate)) {
+  TestInsertSelectRowLock(IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_EXCLUSIVE);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableInsertForUpdate)) {
+  TestInsertSelectRowLock(IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_EXCLUSIVE);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotInsertForNoKeyUpdate)) {
+  TestInsertSelectRowLock(IsolationLevel::SNAPSHOT_ISOLATION,
+                          RowMarkType::ROW_MARK_NOKEYEXCLUSIVE);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableInsertForNoKeyUpdate)) {
+  TestInsertSelectRowLock(IsolationLevel::SERIALIZABLE_ISOLATION,
+                          RowMarkType::ROW_MARK_NOKEYEXCLUSIVE);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotInsertForShare)) {
+  TestInsertSelectRowLock(IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_SHARE);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableInsertForShare)) {
+  TestInsertSelectRowLock(IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_SHARE);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotInsertForKeyShare)) {
+  TestInsertSelectRowLock(IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_KEYSHARE);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableInsertForKeyShare)) {
+  TestInsertSelectRowLock(IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_KEYSHARE);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotDeleteForUpdate)) {
+  TestDeleteSelectRowLock(IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_EXCLUSIVE);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableDeleteForUpdate)) {
+  TestDeleteSelectRowLock(IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_EXCLUSIVE);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotDeleteForNoKeyUpdate)) {
+  TestDeleteSelectRowLock(IsolationLevel::SNAPSHOT_ISOLATION,
+                          RowMarkType::ROW_MARK_NOKEYEXCLUSIVE);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableDeleteForNoKeyUpdate)) {
+  TestDeleteSelectRowLock(IsolationLevel::SERIALIZABLE_ISOLATION,
+                          RowMarkType::ROW_MARK_NOKEYEXCLUSIVE);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotDeleteForShare)) {
+  TestDeleteSelectRowLock(IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_SHARE);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableDeleteForShare)) {
+  TestDeleteSelectRowLock(IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_SHARE);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotDeleteForKeyShare)) {
+  TestDeleteSelectRowLock(IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_KEYSHARE);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableDeleteForKeyShare)) {
+  TestDeleteSelectRowLock(IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_KEYSHARE);
+}
+
+void PgMiniTest::TestRowLockConflictMatrix() {
+  constexpr auto kSleepTime = 1s;
+  constexpr int kKeys = 3;
+  constexpr int kNumIsolationLevels = 2;
+  constexpr int kNumRowMarkTypes = 4;
+  PGConn conn_a = ASSERT_RESULT(Connect());
+  PGConn conn_b = ASSERT_RESULT(Connect());
+  PGConn conn_misc = ASSERT_RESULT(Connect());
+
+  const std::array<RowMarkType, kNumRowMarkTypes> row_mark_types = {{
+    RowMarkType::ROW_MARK_EXCLUSIVE,
+    RowMarkType::ROW_MARK_NOKEYEXCLUSIVE,
+    RowMarkType::ROW_MARK_SHARE,
+    RowMarkType::ROW_MARK_KEYSHARE,
+  }};
+  const std::array<std::string, kNumIsolationLevels> isolation_strs = {{
+    "REPEATABLE READ",
+    "SERIALIZABLE",
+  }};
+
+  // Set up table
+  ASSERT_OK(conn_misc.Execute("CREATE TABLE t (i INT PRIMARY KEY, j INT)"));
+  // TODO: remove this sleep when issue #2857 is fixed.
+  std::this_thread::sleep_for(kSleepTime);
+  for (int i = 0; i < kKeys; ++i) {
+    ASSERT_OK(conn_misc.ExecuteFormat("INSERT INTO t (i, j) VALUES ($0, $0)", i));
+  }
+
+  for (const auto& row_mark_type_a : row_mark_types) {
+    for (const auto& row_mark_type_b : row_mark_types) {
+      for (const auto& isolation_str : isolation_strs) {
+        const std::string row_mark_str_a = RowMarkTypeToPgsqlString(row_mark_type_a);
+        const std::string row_mark_str_b = RowMarkTypeToPgsqlString(row_mark_type_b);
+        LOG(INFO) << "Testing " << row_mark_str_a << " vs " << row_mark_str_b << " with "
+                  << isolation_str << " isolation transactions.";
+
+        ASSERT_OK(conn_a.ExecuteFormat("BEGIN TRANSACTION ISOLATION LEVEL $0", isolation_str));
+        ASSERT_RESULT(conn_a.Fetch("SELECT '(setting read point)'"));
+        ASSERT_OK(conn_b.ExecuteFormat("BEGIN TRANSACTION ISOLATION LEVEL $0", isolation_str));
+        ASSERT_RESULT(conn_b.Fetch("SELECT '(setting read point)'"));
+        ASSERT_RESULT(conn_a.FetchFormat("SELECT * FROM t FOR $0", row_mark_str_a));
+        Result<PGResultPtr> result_select = conn_b.FetchFormat("SELECT * FROM t FOR $0",
+                                                               row_mark_str_b);
+        // TODO: remove this sleep when issue #2910 is fixed.
+        std::this_thread::sleep_for(kSleepTime);
+        Status status_commit = conn_a.Execute("COMMIT");
+        ASSERT_OK(conn_b.Execute("COMMIT"));
+        if (AreConflictingRowMarkTypes(row_mark_type_a, row_mark_type_b)) {
+          // There should be a conflict.
+          if (result_select.ok()) {
+            // Should conflict on COMMIT only.
+            ASSERT_NOK(status_commit);
+            ASSERT_TRUE(status_commit.IsNetworkError()) << status_commit;
+            ASSERT_EQ(PgsqlError(status_commit), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)
+                << status_commit;
+            ASSERT_STR_CONTAINS(status_commit.ToString(), "Transaction expired: 25P02");
+          } else {
+            // Should conflict on SELECT only.
+            ASSERT_OK(status_commit);
+            ASSERT_TRUE(result_select.status().IsNetworkError()) << result_select.status();
+            ASSERT_EQ(PgsqlError(result_select.status()),
+                      YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)
+                << result_select.status();
+            ASSERT_STR_CONTAINS(result_select.status().ToString(),
+                                "Conflicts with higher priority transaction");
+          }
+        } else {
+          // There should not be a conflict.
+          ASSERT_OK(result_select);
+          ASSERT_OK(status_commit);
+        }
+      }
+    }
+  }
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(RowLockConflictMatrix)) {
+  TestRowLockConflictMatrix();
+}
+
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableReadOnly)) {
   PGConn read_conn = ASSERT_RESULT(Connect());
   PGConn setup_conn = ASSERT_RESULT(Connect());
@@ -314,6 +557,90 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableReadOnly)) {
         << result.status();
     ASSERT_STR_CONTAINS(result.status().ToString(), "Conflicts with higher priority transaction");
   }
+}
+
+void AssertAborted(const Status& status) {
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "Transaction aborted");
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SelectModifySelect)) {
+  {
+    auto read_conn = ASSERT_RESULT(Connect());
+    auto write_conn = ASSERT_RESULT(Connect());
+
+    ASSERT_OK(read_conn.Execute("CREATE TABLE t (i INT)"));
+    ASSERT_OK(read_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+    ASSERT_RESULT(read_conn.FetchMatrix("SELECT * FROM t", 0, 1));
+    ASSERT_OK(write_conn.Execute("INSERT INTO t VALUES (1)"));
+    ASSERT_NO_FATALS(AssertAborted(ResultToStatus(read_conn.Fetch("SELECT * FROM t"))));
+  }
+  {
+    auto read_conn = ASSERT_RESULT(Connect());
+    auto write_conn = ASSERT_RESULT(Connect());
+
+    ASSERT_OK(read_conn.Execute("CREATE TABLE t2 (i INT PRIMARY KEY)"));
+    ASSERT_OK(read_conn.Execute("INSERT INTO t2 VALUES (1)"));
+
+    ASSERT_OK(read_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+    ASSERT_RESULT(read_conn.FetchMatrix("SELECT * FROM t2", 1, 1));
+    ASSERT_OK(write_conn.Execute("DELETE FROM t2 WHERE i = 1"));
+    ASSERT_NO_FATALS(AssertAborted(ResultToStatus(read_conn.Fetch("SELECT * FROM t2"))));
+  }
+}
+
+class PgMiniSmallWriteBufferTest : public PgMiniTest {
+ public:
+  void SetUp() override {
+    FLAGS_db_write_buffer_size = 256_KB;
+    PgMiniTest::SetUp();
+  }
+};
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallWriteBufferTest) {
+  const std::string kTableName = "key_value";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (key INTEGER NOT NULL PRIMARY KEY, value VARCHAR)",
+      kTableName));
+
+  TestThreadHolder thread_holder;
+  constexpr int kTotalBatches = RegularBuildVsSanitizers(50, 5);
+  constexpr int kBatchSize = 1000;
+
+  std::atomic<int> key(0);
+
+  thread_holder.AddThreadFunctor([this, &kTableName, &stop = thread_holder.stop_flag(), &key] {
+    constexpr int kValueSize = 128;
+
+    SetFlagOnExit set_flag(&stop);
+    auto conn = ASSERT_RESULT(Connect());
+
+    auto se = ScopeExit([&key] {
+      LOG(INFO) << "Total keys: " << key;
+    });
+
+    while (!stop.load(std::memory_order_acquire) && key < kBatchSize * kTotalBatches) {
+      ASSERT_OK(conn.CopyBegin(Format("COPY $0 FROM STDIN WITH BINARY", kTableName)));
+      for (int j = 0; j != kBatchSize; ++j) {
+        conn.CopyStartRow(2);
+        conn.CopyPutInt32(++key);
+        conn.CopyPutString(RandomHumanReadableString(kValueSize));
+      }
+
+      ASSERT_OK(conn.CopyEnd());
+    }
+  });
+
+  thread_holder.AddThread(RestartsThread(cluster_.get(), 5s, &thread_holder.stop_flag()));
+
+  thread_holder.WaitAndStop(120s); // Actually will stop when enough batches were copied
+
+  auto intents_count = CountIntents(cluster_.get());
+  LOG(INFO) << "Intents count: " << intents_count;
+
+  ASSERT_LE(intents_count, 30000);
+  ASSERT_EQ(key.load(std::memory_order_relaxed), kTotalBatches * kBatchSize);
 }
 
 } // namespace pgwrapper

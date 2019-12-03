@@ -265,6 +265,7 @@ class QLType {
     return -1;
   }
 
+  // Get the type ids of all UDTs (transitively) referenced by this UDT.
   std::vector<std::string> GetUserDefinedTypeIds() const {
     std::vector<std::string> udt_ids;
     GetUserDefinedTypeIds(&udt_ids);
@@ -277,6 +278,22 @@ class QLType {
     }
     for (auto& param : params_) {
       param->GetUserDefinedTypeIds(udt_ids);
+    }
+  }
+
+  // Get the type ids of all UDTs referenced by this UDT.
+  static void GetUserDefinedTypeIds(const QLTypePB& type_pb,
+                                    const bool transitive,
+                                    std::vector<std::string>* udt_ids) {
+    if (type_pb.main() == USER_DEFINED_TYPE) {
+      udt_ids->push_back(type_pb.udtype_info().id());
+      if (!transitive) {
+        return; // Do not check params of the UDT if only looking for direct dependencies.
+      }
+    }
+
+    for (const auto& param : type_pb.params()) {
+      GetUserDefinedTypeIds(param, transitive, udt_ids);
     }
   }
 
@@ -385,6 +402,10 @@ class QLType {
     }
 
     return false;
+  }
+
+  bool operator !=(const QLType& other) const {
+    return !(*this == other);
   }
 
   //------------------------------------------------------------------------------------------------

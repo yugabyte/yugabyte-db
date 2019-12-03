@@ -1015,7 +1015,10 @@ void TabletBootstrap::PlayWriteRequest(ReplicateMsg* replicate_msg) {
 
   WriteOperationState operation_state(nullptr, write, nullptr);
   operation_state.mutable_op_id()->CopyFrom(replicate_msg->id());
-  operation_state.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+  HybridTime hybrid_time(replicate_msg->hybrid_time());
+  operation_state.set_hybrid_time(hybrid_time);
+
+  tablet_->mvcc_manager()->AddPending(&hybrid_time);
 
   tablet_->StartOperation(&operation_state);
 
@@ -1024,7 +1027,7 @@ void TabletBootstrap::PlayWriteRequest(ReplicateMsg* replicate_msg) {
 
   WARN_NOT_OK(tablet_->ApplyRowOperations(&operation_state), "ApplyRowOperations failed: ");
 
-  tablet_->mvcc_manager()->Replicated(operation_state.hybrid_time());
+  tablet_->mvcc_manager()->Replicated(hybrid_time);
 }
 
 Status TabletBootstrap::PlayChangeMetadataRequest(ReplicateMsg* replicate_msg) {

@@ -140,12 +140,13 @@ ADD_YB_LIBRARY(tserver_service_proto
 
 set(TSERVER_UTIL_SRCS
   tserver_flags.cc
-  tserver_shared_mem.cc)
+  tserver_error.cc)
 set(TSERVER_UTIL_LIBS
   yb_util)
 ADD_YB_LIBRARY(tserver_util
   SRCS ${TSERVER_UTIL_SRCS}
   DEPS ${TSERVER_UTIL_LIBS})
+add_dependencies(tserver_util gen_proto)
 
 #########################################
 # tserver
@@ -162,7 +163,6 @@ set(TSERVER_SRCS
   tablet_server.cc
   tablet_server_options.cc
   tablet_service.cc
-  tserver_error.cc
   ts_tablet_manager.cc
   tserver-path-handlers.cc
   ${TSERVER_SRCS_EXTENSIONS})
@@ -226,7 +226,6 @@ ADD_YB_TEST(remote_bootstrap_service-test)
 ADD_YB_TEST(tablet_server-test)
 ADD_YB_TEST(tablet_server-stress-test RUN_SERIAL true)
 ADD_YB_TEST(ts_tablet_manager-test)
-ADD_YB_TEST(tserver_shared_mem-test)
 
 if(YB_ENT_CURRENT_SOURCE_DIR)
   # Set the test source file folder.

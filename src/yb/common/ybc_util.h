@@ -33,11 +33,14 @@ bool YBCStatusIsOK(YBCStatus s);
 bool YBCStatusIsNotFound(YBCStatus s);
 bool YBCStatusIsDuplicateKey(YBCStatus s);
 uint32_t YBCStatusPgsqlError(YBCStatus s);
+uint16_t YBCStatusTransactionError(YBCStatus s);
 void YBCFreeStatus(YBCStatus s);
 
 size_t YBCStatusMessageLen(YBCStatus s);
 const char* YBCStatusMessageBegin(YBCStatus s);
 const char* YBCStatusCodeAsCString(YBCStatus s);
+
+bool YBCIsRestartReadError(uint16_t txn_errcode);
 
 #define CHECKED_YBCSTATUS __attribute__ ((warn_unused_result)) YBCStatus
 

@@ -172,15 +172,15 @@ QLValuePB GetValueHelper<int32_t>::Apply(const int32_t intval, const DataType da
 
 QLValuePB GetValueHelper<InetAddress>::Apply(
     const InetAddress& inet_val, const DataType data_type) {
-  QLValue result;
-  result.set_inetaddress_value(inet_val);
-  return result.value();
+  QLValuePB result;
+  QLValue::set_inetaddress_value(inet_val, &result);
+  return result;
 }
 
 QLValuePB GetValueHelper<Uuid>::Apply(const Uuid& uuid_val, const DataType data_type) {
-  QLValue result;
-  result.set_uuid_value(uuid_val);
-  return result.value();
+  QLValuePB result;
+  QLValue::set_uuid_value(uuid_val, &result);
+  return result;
 }
 
 QLValuePB GetValueHelper<bool>::Apply(const bool bool_val, const DataType data_type) {

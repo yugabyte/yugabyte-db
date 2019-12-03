@@ -758,4 +758,20 @@ Status WaitForInitDb(MiniCluster* cluster) {
   return STATUS_FORMAT(TimedOut, "Unable to init db in $0", kTimeout);
 }
 
+size_t CountIntents(MiniCluster* cluster) {
+  size_t result = 0;
+  auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
+  for (const auto &peer : peers) {
+    auto participant = peer->tablet() ? peer->tablet()->transaction_participant() : nullptr;
+    auto intents_count = participant ? participant->TEST_CountIntents()
+                                     : std::pair<size_t, size_t>(0, 0);
+    if (intents_count.first) {
+      result += intents_count.first;
+      LOG(INFO) << Format("T $0 P $1: Intents present: $2, transactions: $3", peer->tablet_id(),
+                          peer->permanent_uuid(), intents_count.first, intents_count.second);
+    }
+  }
+  return result;
+}
+
 }  // namespace yb

@@ -234,6 +234,7 @@ void Connection::QueueOutboundCall(const OutboundCallPtr& call) {
 
 size_t Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bool batch) {
   DCHECK(reactor_->IsCurrentThread());
+  DVLOG_WITH_PREFIX(4) << "Connection::DoQueueOutboundData: " << AsString(outbound_data);
 
   if (!shutdown_status_.ok()) {
     outbound_data->Transferred(shutdown_status_, this);

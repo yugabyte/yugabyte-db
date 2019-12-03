@@ -37,8 +37,12 @@
 #include <string>
 #include <vector>
 
-#include "yb/common/schema.h"
+#include "yb/client/transaction.h"
+#include "yb/client/transaction_pool.h"
+
 #include "yb/common/ql_value.h"
+#include "yb/common/row_mark.h"
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/leader_lease.h"
 #include "yb/consensus/raft_consensus.h"
@@ -72,9 +76,11 @@
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/crc.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/faststring.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/math_util.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
@@ -133,16 +139,25 @@ DEFINE_int32(max_stale_read_bound_time_ms, 0, "If we are allowed to read from fo
 TAG_FLAG(max_stale_read_bound_time_ms, evolving);
 TAG_FLAG(max_stale_read_bound_time_ms, runtime);
 
-DEFINE_uint64(sst_files_soft_limit, 16,
+DEFINE_uint64(sst_files_soft_limit, 24,
               "When majority SST files number is greater that this limit, we will start rejecting "
-              "part of write requests. The higher number we higher, the higher probability of "
-              "reject.");
+              "part of write requests. The higher the number of SST files, the higher probability "
+              "of rejection.");
 TAG_FLAG(sst_files_soft_limit, runtime);
 
 DEFINE_uint64(sst_files_hard_limit, 48,
               "When majority SST files number is greater that this limit, we will reject all write "
               "requests.");
 TAG_FLAG(sst_files_hard_limit, runtime);
+
+DEFINE_uint64(min_rejection_delay_ms, 100, ".");
+TAG_FLAG(min_rejection_delay_ms, runtime);
+
+DEFINE_uint64(max_rejection_delay_ms, 5000, ".");
+TAG_FLAG(max_rejection_delay_ms, runtime);
+
+DEFINE_test_flag(int32, TEST_write_rejection_percentage, 0,
+                 "Reject specified percentage of writes.");
 
 DEFINE_test_flag(bool, assert_reads_from_follower_rejected_because_of_staleness, false,
                  "If set, we verify that the consistency level is CONSISTENT_PREFIX, and that "
@@ -233,6 +248,26 @@ Status GetTabletRef(const TabletPeerPtr& tablet_peer,
   return Status::OK();
 }
 
+// overlimit - we have 2 bounds, value and random score.
+// overlimit is calculated as:
+// score + (value - lower_bound) / (upper_bound - lower_bound).
+// And it will be >= 1.0 when this function is invoked.
+template<class Resp>
+bool RejectWrite(tablet::TabletPeer* tablet_peer, const std::string& message, double overlimit,
+                 Resp* resp, rpc::RpcContext* context) {
+  int64_t delay_ms = fit_bounds<int64_t>((overlimit - 1.0) * FLAGS_max_rejection_delay_ms,
+                                         FLAGS_min_rejection_delay_ms,
+                                         FLAGS_max_rejection_delay_ms);
+  auto status = STATUS(ServiceUnavailable, message, TabletServerDelay(delay_ms * 1ms));
+  YB_LOG_EVERY_N_SECS(WARNING, 1)
+      << "T " << tablet_peer->tablet_id() << " P " << tablet_peer->permanent_uuid()
+      << ": Rejecting Write request, " << status << THROTTLE_MSG;
+  SetupErrorAndRespond(resp->mutable_error(), status,
+                       TabletServerErrorPB::UNKNOWN_ERROR,
+                       context);
+  return false;
+}
+
 } // namespace
 
 template<class Resp>
@@ -259,22 +294,29 @@ bool TabletServiceImpl::CheckWriteThrottlingOrRespond(
     return false;
   }
 
-  uint64_t num_sst_files = tablet_peer->raft_consensus()->MajorityNumSSTFiles();
-  auto sst_files_soft_limit = FLAGS_sst_files_soft_limit;
-  if (num_sst_files > sst_files_soft_limit) {
-    auto sst_files_hard_limit = FLAGS_sst_files_hard_limit;
-    if ((num_sst_files + score * (sst_files_hard_limit - sst_files_soft_limit) >=
-         sst_files_hard_limit)) {
+  const uint64_t num_sst_files = tablet_peer->raft_consensus()->MajorityNumSSTFiles();
+  const auto sst_files_soft_limit = FLAGS_sst_files_soft_limit;
+  const int64_t sst_files_used_delta = num_sst_files - sst_files_soft_limit;
+  if (sst_files_used_delta > 0) {
+    const auto sst_files_hard_limit = FLAGS_sst_files_hard_limit;
+    const auto sst_files_full_delta = sst_files_hard_limit - sst_files_soft_limit;
+    if (sst_files_used_delta > sst_files_full_delta * (1 - score)) {
       tablet->metrics()->majority_sst_files_rejections->Increment();
-      auto status = STATUS_FORMAT(
-          ServiceUnavailable, "SST files limit exceeded $0 against ($1, $2), score: $3",
-          num_sst_files, sst_files_soft_limit, sst_files_hard_limit, score);
-      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Rejecting Write request, " << status << THROTTLE_MSG;
-      SetupErrorAndRespond(resp->mutable_error(), status,
-                           TabletServerErrorPB::UNKNOWN_ERROR,
-                           context);
-      return false;
+      auto message = Format("SST files limit exceeded $0 against ($1, $2), score: $3",
+                            num_sst_files, sst_files_soft_limit, sst_files_hard_limit, score);
+      auto overlimit = sst_files_full_delta > 0
+          ? score + static_cast<double>(sst_files_used_delta) / sst_files_full_delta
+          : 2.0;
+      return RejectWrite(tablet_peer, message, overlimit, resp, context);
     }
+  }
+
+  if (FLAGS_TEST_write_rejection_percentage != 0 &&
+      score >= 1.0 - FLAGS_TEST_write_rejection_percentage * 0.01) {
+    auto status = Format("TEST: Write request rejected, desired percentage: $0, score: $1",
+                         FLAGS_TEST_write_rejection_percentage, score);
+    return RejectWrite(tablet_peer, status, score + FLAGS_TEST_write_rejection_percentage * 0.01,
+                       resp, context);
   }
 
   return true;
@@ -815,7 +857,9 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
           auto key = entry.column_new_values(0).expr().value().int32_value();
           LOG(INFO) << txn_id << " UPDATE: " << key << " = "
                     << entry.column_new_values(1).expr().value().string_value();
-        } else if (entry.stmt_type() == PgsqlWriteRequestPB::PGSQL_INSERT) {
+        } else if (
+            entry.stmt_type() == PgsqlWriteRequestPB::PGSQL_INSERT ||
+            entry.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPSERT) {
           docdb::DocKey doc_key;
           CHECK_OK(doc_key.FullyDecodeFrom(entry.ybctid_column_value().value().binary_value()));
           LOG(INFO) << txn_id << " INSERT: " << doc_key.hashed_group()[0].GetInt32() << " = "
@@ -1150,6 +1194,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   // serialization anomaly tested by TestOneOrTwoAdmins
   // (https://github.com/YugaByte/yugabyte-db/issues/1572).
 
+  LongOperationTracker long_operation_tracker("Read", 1s);
+
   bool serializable_isolation = false;
   TabletPeerPtr tablet_peer;
   if (req->has_transaction()) {
@@ -1179,10 +1225,12 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
 #endif
   }
 
-  bool has_row_lock = false;
-  // For postgres requests check that the syscatalog version matches.
+  // Get the most restrictive row mark present in the batch of PostgreSQL requests.
+  // TODO: rather handle individual row marks once we start batching read requests (issue #2495)
+  RowMarkType batch_row_mark = RowMarkType::ROW_MARK_ABSENT;
   if (!req->pgsql_batch().empty()) {
     for (const auto& pg_req : req->pgsql_batch()) {
+      // For postgres requests check that the syscatalog version matches.
       if (pg_req.has_ysql_catalog_version() &&
           pg_req.ysql_catalog_version() < server_->ysql_catalog_version()) {
         SetupErrorAndRespond(resp->mutable_error(),
@@ -1191,25 +1239,24 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
             TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
         return;
       }
-      if (pg_req.row_mark_type_size() > 0 &&
-          (pg_req.row_mark_type(0) == RowMarkType::ROW_MARK_SHARE ||
-           pg_req.row_mark_type(0) == RowMarkType::ROW_MARK_KEYSHARE)) {
+      RowMarkType current_row_mark = GetRowMarkTypeFromPB(pg_req);
+      if (IsValidRowMarkType(current_row_mark)) {
         if (!req->has_transaction()) {
           SetupErrorAndRespond(resp->mutable_error(),
               STATUS(NotSupported,
                      "Read request with row mark types must be part of a transaction"),
               TabletServerErrorPB::OPERATION_NOT_SUPPORTED, &context);
         }
-        serializable_isolation = true;
-        has_row_lock = true;
+        batch_row_mark = GetStrongestRowMarkType({current_row_mark, batch_row_mark});
       }
     }
   }
+  const bool has_row_mark = IsValidRowMarkType(batch_row_mark);
 
   LeaderTabletPeer leader_peer;
   ReadContext read_context = {req, resp, &context};
 
-  if (serializable_isolation) {
+  if (serializable_isolation || has_row_mark) {
     // At this point we expect that we don't have pure read serializable transactions, and
     // always write read intents to detect conflicts with other writes.
     leader_peer = LookupLeaderTabletOrRespond(
@@ -1243,9 +1290,9 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   // safe_ht_to_read is used only for read restart, so if read_time is valid, then we would respond
   // with "restart required".
   ReadHybridTime& read_time = read_context.read_time;
-  if (!has_row_lock) {
-    read_time = ReadHybridTime::FromReadTimePB(*req);
-  }
+
+  read_time = ReadHybridTime::FromReadTimePB(*req);
+
   read_context.allow_retry = !read_time;
   read_context.require_lease = tablet::RequireLease(
       req->consistency_level() == YBConsistencyLevel::STRONG);
@@ -1278,14 +1325,12 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   host_port_pb.set_port(remote_address.port());
   read_context.host_port_pb = &host_port_pb;
 
-  if (serializable_isolation) {
+  if (serializable_isolation || has_row_mark) {
     WriteRequestPB write_req;
     *write_req.mutable_write_batch()->mutable_transaction() = req->transaction();
-    if (has_row_lock) {
-      // This will have to be modified once we support more row locks.
-      // See https://github.com/yugabyte/yugabyte-db/issues/1199 and
-      // https://github.com/yugabyte/yugabyte-db/issues/2496.
-      write_req.mutable_write_batch()->add_row_mark_type(RowMarkType::ROW_MARK_SHARE);
+    if (has_row_mark) {
+      write_req.mutable_write_batch()->set_row_mark_type(batch_row_mark);
+      read_context.read_time.ToPB(write_req.mutable_read_time());
     }
     write_req.set_tablet_id(req->tablet_id());
     write_req.mutable_write_batch()->set_deprecated_may_have_metadata(true);
@@ -1572,6 +1617,8 @@ void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
   if (tablet) {
     resp->set_num_sst_files(tablet->GetCurrentVersionNumSSTFiles());
   }
+
+  resp->set_propagated_hybrid_time(tablet_peer->clock().Now().ToUint64());
   context.RespondSuccess();
 }
 
@@ -1881,6 +1928,10 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
 
     uint64_t num_log_segments = peer->GetNumLogSegments();
     data_entry->set_num_log_segments(num_log_segments);
+
+    auto num_memtables = tablet->GetNumMemtables();
+    data_entry->set_num_memtables_intents(num_memtables.first);
+    data_entry->set_num_memtables_regular(num_memtables.second);
   }
 
   context.RespondSuccess();
@@ -1971,6 +2022,21 @@ void TabletServiceImpl::IsTabletServerReady(const IsTabletServerReadyRequestPB* 
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::TakeTransaction(const TakeTransactionRequestPB* req,
+                                        TakeTransactionResponsePB* resp,
+                                        rpc::RpcContext context) {
+  auto transaction = server_->TransactionPool()->Take();
+  auto metadata = transaction->Release();
+  if (!metadata.ok()) {
+    LOG(INFO) << "Take failed: " << metadata.status();
+    context.RespondFailure(metadata.status());
+    return;
+  }
+  metadata->ForceToPB(resp->mutable_metadata());
+  VLOG(2) << "Taken metadata: " << metadata->ToString();
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::Shutdown() {
 }
 
@@ -1984,7 +2050,6 @@ scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
   }
   return nullptr;
 }
-
 
 }  // namespace tserver
 }  // namespace yb

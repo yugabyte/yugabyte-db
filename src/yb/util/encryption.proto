@@ -23,6 +23,10 @@ message EncryptionParamsPB {
   int32 counter = 3;
 }
 
+message UniverseKeysPB {
+  map<string, bytes> map = 1;
+}
+
 message UniverseKeyRegistryPB {
   bool encryption_enabled = 1;
   map<string, EncryptionParamsPB> universe_keys = 2;

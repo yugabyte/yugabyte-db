@@ -190,8 +190,10 @@ typedef struct TransactionStateData
 	bool		didLogXid;		/* has xid been included in WAL record? */
 	int			parallelModeLevel;	/* Enter/ExitParallelMode counter */
 	struct TransactionStateData *parent;	/* back link to parent */
+	bool		ybDataSent; /* Whether some tuples have been transmitted to
+				             * frontend as part of this execution */
 	bool		isYBTxnWithPostgresRel; /* does the current transaction
-										   * operate on a postgres table? */
+				                         * operate on a postgres table? */
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;
@@ -222,7 +224,9 @@ static TransactionStateData TopTransactionStateData = {
 	false,						/* startedInRecovery */
 	false,						/* didLogXid */
 	0,							/* parallelModeLevel */
-	NULL						/* link to parent state block */
+	NULL,						/* link to parent state block */
+	false,						/* ybDataSent */
+	false						/* isYBTxnWithPostgresRel */
 };
 
 /*
@@ -989,6 +993,26 @@ ForceSyncCommit(void)
 	forceSyncCommit = true;
 }
 
+/*
+ * Mark current transaction as having sent some data back to the client.
+ * This prevents automatic transaction restart.
+ */
+void YBMarkDataSent(void)
+{
+	TransactionState s = CurrentTransactionState;
+	s->ybDataSent = true;
+}
+
+/*
+ * Whether some data has been transmitted to frontend as part of this transaction.
+ */
+bool YBIsDataSent(void)
+{
+	// Note: we don't support nested transactions (savepoints) yet,
+	// but once we do - we have to make sure this works as intended.
+	TransactionState s = CurrentTransactionState;
+	return s->ybDataSent;
+}
 
 /* ----------------------------------------------------------------
  *						StartTransaction stuff
@@ -1818,6 +1842,25 @@ AtSubCleanup_Memory(void)
  */
 
 /*
+ * Do a Yugabyte-specific initialization of transaction when it starts,
+ * called as a part of StartTransaction
+ */
+static void
+YBStartTransaction(TransactionState s)
+{
+	s->isYBTxnWithPostgresRel = !IsYugaByteEnabled();
+	s->ybDataSent             = false;
+
+	if (YBTransactionsEnabled())
+	{
+		YBCPgTxnManager_BeginTransaction(YBCGetPgTxnManager());
+		YBCPgTxnManager_SetIsolationLevel(YBCGetPgTxnManager(), XactIsoLevel);
+		YBCPgTxnManager_SetReadOnly(YBCGetPgTxnManager(), XactReadOnly);
+		YBCPgTxnManager_SetDeferrable(YBCGetPgTxnManager(), XactDeferrable);
+	}
+}
+
+/*
  *	StartTransaction
  */
 static void
@@ -1836,8 +1879,6 @@ StartTransaction(void)
 
 	/* check the current transaction state */
 	Assert(s->state == TRANS_DEFAULT);
-
-	s->isYBTxnWithPostgresRel = IsYugaByteEnabled() ? false : true;
 
 	/*
 	 * Set the current transaction state information appropriately during
@@ -1967,13 +2008,7 @@ StartTransaction(void)
 	 */
 	s->state = TRANS_INPROGRESS;
 
-	if (YBTransactionsEnabled())
-	{
-		YBCPgTxnManager_BeginTransaction(YBCGetPgTxnManager());
-		YBCPgTxnManager_SetIsolationLevel(YBCGetPgTxnManager(), XactIsoLevel);
-		YBCPgTxnManager_SetReadOnly(YBCGetPgTxnManager(), XactReadOnly);
-		YBCPgTxnManager_SetDeferrable(YBCGetPgTxnManager(), XactDeferrable);
-	}
+	YBStartTransaction(s);
 
 	ShowTransactionState("StartTransaction");
 }

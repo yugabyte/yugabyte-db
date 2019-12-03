@@ -210,7 +210,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return shutdown_requested_.load(std::memory_order::memory_order_acquire);
   }
 
-  void Shutdown();
+  void Shutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
 
   CHECKED_STATUS ImportData(const std::string& source_dir);
 
@@ -222,6 +222,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const RemoveIntentsData& data, const TransactionIdSet& transactions) override;
 
   HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) override;
+
+  HybridTime ApplierSafeTimeForFollower() override;
 
   // Finish the Prepare phase of a write transaction.
   //
@@ -472,6 +474,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   uint64_t GetCurrentVersionSstFilesSize() const;
   uint64_t GetCurrentVersionSstFilesUncompressedSize() const;
   uint64_t GetCurrentVersionNumSSTFiles() const;
+
+  // Returns the number of memtables in intents and regular db-s.
+  std::pair<int, int> GetNumMemtables() const;
 
   void SetHybridTimeLeaseProvider(HybridTimeLeaseProvider provider) {
     ht_lease_provider_ = std::move(provider);

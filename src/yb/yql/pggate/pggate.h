@@ -154,6 +154,14 @@ class PgApiImpl {
                                  PgStatement **handle);
   CHECKED_STATUS ExecDropDatabase(PgStatement *handle);
 
+  // Alter database.
+  CHECKED_STATUS NewAlterDatabase(PgSession *pg_session,
+                                 const char *database_name,
+                                 PgOid database_oid,
+                                 PgStatement **handle);
+  CHECKED_STATUS AlterDatabaseRenameDatabase(PgStatement *handle, const char *newname);
+  CHECKED_STATUS ExecAlterDatabase(PgStatement *handle);
+
   // Reserve oids.
   CHECKED_STATUS ReserveOids(PgSession *pg_session,
                              PgOid database_oid,
@@ -420,10 +428,14 @@ class PgApiImpl {
   PgEnv::SharedPtr pg_env_;
 
   scoped_refptr<server::HybridClock> clock_;
+
+  // Local tablet-server shared memory segment handle.
+  std::unique_ptr<tserver::TServerSharedObject> tserver_shared_object_;
+
   scoped_refptr<PgTxnManager> pg_txn_manager_;
 
   // Mapping table of YugaByte and PostgreSQL datatypes.
-  std::unordered_map<int, const YBCPgTypeEntity *>type_map_;
+  std::unordered_map<int, const YBCPgTypeEntity *> type_map_;
 };
 
 }  // namespace pggate

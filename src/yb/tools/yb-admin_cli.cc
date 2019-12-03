@@ -80,6 +80,17 @@ CHECKED_STATUS ChangeBlacklist(ClusterAdminClientClass* client,
   return Status::OK();
 }
 
+CHECKED_STATUS LeaderStepDown(
+    ClusterAdminClientClass* client,
+    const ClusterAdminCli::CLIArguments& args) {
+  if (args.size() < 4) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  RETURN_NOT_OK_PREPEND(client->LeaderStepDownWithNewLeader(
+        args[2], args[3]), "Unable to step down leader");
+  return Status::OK();
+}
+
 } // namespace
 
 const Status ClusterAdminCli::kInvalidArguments = STATUS(
@@ -479,6 +490,10 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       "change_leader_blacklist", Format(" <$0|$1> <ip_addr>:<port> [<ip_addr>:<port>]...",
           kBlacklistAdd, kBlacklistRemove),
       std::bind(&ChangeBlacklist, client, _1, true, "Unable to change leader blacklist"));
+
+  Register(
+      "leader_stepdown", " tablet_id dest_ts_uuid",
+      std::bind(&LeaderStepDown, client, _1));
 }
 
 Result<YBTableName> ResolveTableName(ClusterAdminClientClass* client,
@@ -487,7 +502,8 @@ Result<YBTableName> ResolveTableName(ClusterAdminClientClass* client,
   const auto typed_name = VERIFY_RESULT(ParseNamespaceName(full_namespace_name));
   const auto& namespace_info = VERIFY_RESULT_REF(client->GetNamespaceInfo(typed_name.db_type,
                                                                           typed_name.name));
-  return YBTableName(namespace_info.id(), namespace_info.name(), table_name);
+  return YBTableName(
+      namespace_info.database_type(), namespace_info.id(), namespace_info.name(), table_name);
 }
 
 }  // namespace tools

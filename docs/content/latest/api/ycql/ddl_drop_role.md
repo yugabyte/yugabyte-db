@@ -17,7 +17,7 @@ showAsideToc: true
 
 The `DROP ROLE` deletes an existing role.
 
-This statement is enabled by setting the yb-tserver gflag [`use_cassandra_authentication`](../../../admin/yb-tserver/#config-flags) to `true`.
+This statement is enabled by setting the YB-TServer configuration option [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) to `true`.
 
 ## Syntax
 

@@ -406,5 +406,58 @@ TEST_F(SharedMemoryTest, TestAccessAfterClose) {
   }, "SIGSEGV");
 }
 
+class Data {
+ public:
+  int Get() const {
+    return value_.load();
+  }
+
+  void Set(int value) {
+    value_.store(value);
+  }
+
+ private:
+  std::atomic<int> value_{0};
+};
+
+typedef SharedMemoryObject<Data> SharedData;
+
+TEST_F(SharedMemoryTest, SharedCatalogVersion) {
+  SharedData tserver = ASSERT_RESULT(SharedData::Create());
+  SharedData postgres = ASSERT_RESULT(SharedData::OpenReadOnly(tserver.GetFd()));
+
+  // Default value is zero.
+  ASSERT_EQ(0, tserver->Get());
+  ASSERT_EQ(0, postgres->Get());
+
+  // TServer can set catalog version.
+  tserver->Set(2);
+  ASSERT_EQ(2, tserver->Get());
+  ASSERT_EQ(2, postgres->Get());
+
+  // TServer can update catalog version.
+  tserver->Set(4);
+  ASSERT_EQ(4, tserver->Get());
+  ASSERT_EQ(4, postgres->Get());
+}
+
+TEST_F(SharedMemoryTest, MultipleTabletServers) {
+  SharedData tserver1 = ASSERT_RESULT(SharedData::Create());
+  SharedData postgres1 = ASSERT_RESULT(SharedData::OpenReadOnly(tserver1.GetFd()));
+
+  SharedData tserver2 = ASSERT_RESULT(SharedData::Create());
+  SharedData postgres2 = ASSERT_RESULT(SharedData::OpenReadOnly(tserver2.GetFd()));
+
+  tserver1->Set(22);
+  tserver2->Set(17);
+
+  ASSERT_EQ(22, postgres1->Get());
+  ASSERT_EQ(17, postgres2->Get());
+}
+
+TEST_F(SharedMemoryTest, BadSegment) {
+  ASSERT_NOK(SharedData::OpenReadOnly(-1));
+}
+
 }  // namespace util
 }  // namespace yb

@@ -89,7 +89,9 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
   auto iterations_left = kIterations;
 
   for (int iteration = 0; iterations_left > 0; ++iteration) {
-    SCOPED_TRACE(Format("Iteration: $0", iteration));
+    auto iteration_title = Format("Iteration: $0", iteration);
+    SCOPED_TRACE(iteration_title);
+    LOG(INFO) << iteration_title;
 
     auto status = conn.Execute("DELETE FROM t");
     if (!status.ok()) {
@@ -475,13 +477,12 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
   for (auto* tserver : cluster_->tserver_daemons()) {
     auto tablets = ASSERT_RESULT(cluster_->GetTabletIds(tserver));
     for (const auto& tablet : tablets) {
-      int64_t value;
-      auto status = tserver->GetInt64Metric(
-          &METRIC_ENTITY_tablet, tablet.c_str(), &METRIC_transaction_not_found, "value", &value);
-      if (status.ok()) {
-        total_not_found += value;
+      auto result = tserver->GetInt64Metric(
+          &METRIC_ENTITY_tablet, tablet.c_str(), &METRIC_transaction_not_found, "value");
+      if (result.ok()) {
+        total_not_found += *result;
       } else {
-        ASSERT_TRUE(status.IsNotFound()) << status;
+        ASSERT_TRUE(result.status().IsNotFound()) << result.status();
       }
     }
   }
@@ -744,6 +745,49 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(BulkCopy)) {
       ASSERT_TRUE(message.find("Snaphost too old") != std::string::npos) << result.status();
     }
   }
+}
+
+TEST_F(PgLibPqTest, CatalogManagerMapsTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test_db"));
+  {
+    auto test_conn = ASSERT_RESULT(ConnectToDB("test_db"));
+    ASSERT_OK(test_conn.Execute("CREATE TABLE foo (a int PRIMARY KEY)"));
+    ASSERT_OK(test_conn.Execute("ALTER TABLE foo RENAME TO bar"));
+    ASSERT_OK(test_conn.Execute("ALTER TABLE bar RENAME COLUMN a to b"));
+  }
+  ASSERT_OK(conn.Execute("ALTER DATABASE test_db RENAME TO test_db_renamed"));
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  Result<bool> result(false);
+  result = client->TableExists(client::YBTableName(YQL_DATABASE_PGSQL, "test_db_renamed", "bar"));
+  ASSERT_OK(result);
+  ASSERT_TRUE(result.get());
+  result = client->TableExists(client::YBTableName(YQL_DATABASE_PGSQL, "test_db_renamed", "foo"));
+  ASSERT_OK(result);
+  ASSERT_FALSE(result.get());
+  result = client->NamespaceExists("test_db_renamed", YQL_DATABASE_PGSQL);
+  ASSERT_OK(result);
+  ASSERT_TRUE(result.get());
+  result = client->NamespaceExists("test_db", YQL_DATABASE_PGSQL);
+  ASSERT_OK(result);
+  ASSERT_FALSE(result.get());
+
+  string ns_id;
+  auto list_result = client->ListNamespaces(YQL_DATABASE_PGSQL);
+  ASSERT_OK(list_result);
+  for (const auto& ns : list_result.get()) {
+    if (ns.name() == "test_db_renamed") {
+      ns_id = ns.id();
+    }
+  }
+
+  client::YBSchema schema;
+  PartitionSchema partition_schema;
+  ASSERT_OK(client->GetTableSchema(
+      {YQL_DATABASE_PGSQL, ns_id, "test_db_renamed", "bar"}, &schema, &partition_schema));
+  ASSERT_EQ(schema.num_columns(), 1);
+  ASSERT_EQ(schema.Column(0).name(), "b");
 }
 
 } // namespace pgwrapper

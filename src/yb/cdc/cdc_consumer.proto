@@ -47,6 +47,7 @@ message StreamEntryPB {
   map<string, ProducerTabletListPB> consumer_producer_tablet_map = 1;
   string consumer_table_id = 2;
   string producer_table_id = 3;
+  bool same_num_producer_consumer_tablets = 4;
 }
 
 message ProducerEntryPB {

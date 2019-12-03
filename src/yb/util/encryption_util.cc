@@ -47,7 +47,7 @@ Result<EncryptionParamsPtr> EncryptionParams::FromEncryptionParamsPB(
   return encryption_params;
 }
 
-Result<EncryptionParamsPtr> EncryptionParams::FromKeyFile(const Slice& s) {
+Result<EncryptionParamsPtr> EncryptionParams::FromSlice(const Slice& s) {
   auto params = std::make_unique<EncryptionParams>();
   Slice mutable_s(s);
   memcpy(params->nonce, s.data(), sizeof(params->nonce));

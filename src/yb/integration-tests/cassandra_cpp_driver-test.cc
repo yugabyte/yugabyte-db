@@ -15,20 +15,6 @@
 
 #include <tuple>
 
-// Include driver internal headers first.
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-local-typedefs"
-
-#include "partition_aware_policy.hpp"
-#include "statement.hpp"
-
-#pragma GCC diagnostic pop
-// Undefine conflicting macros.
-#undef HAVE_LONG_LONG
-#undef DECLARE_POD
-#undef PROPAGATE_POD_FROM_TEMPLATE_ARGUMENT
-#undef ENFORCE_POD
-
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
@@ -36,6 +22,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/random_util.h"
+#include "yb/util/size_literals.h"
 
 using namespace std::literals;
 
@@ -54,6 +41,8 @@ METRIC_DECLARE_histogram(handler_latency_yb_client_write_remote);
 METRIC_DECLARE_histogram(handler_latency_yb_client_read_remote);
 METRIC_DECLARE_histogram(handler_latency_yb_client_write_local);
 METRIC_DECLARE_histogram(handler_latency_yb_client_read_local);
+
+DECLARE_int64(external_mini_cluster_max_log_bytes);
 
 namespace yb {
 
@@ -75,19 +64,70 @@ class FuncDeleter {
   }
 };
 
+class CassandraValue {
+ public:
+  explicit CassandraValue(const CassValue* value) : value_(value) {}
+
+  template <class Out>
+  void Get(Out* out) const;
+
+  template <class Out>
+  Out As() const {
+    Out result;
+    Get(&result);
+    return result;
+  }
+
+  std::string ToString() const;
+
+ private:
+  const CassValue* value_;
+};
+
+typedef std::unique_ptr<
+    CassIterator, FuncDeleter<CassIterator, &cass_iterator_free>> CassIteratorPtr;
+
+class CassandraRowIterator {
+ public:
+  explicit CassandraRowIterator(CassIterator* iterator) : cass_iterator_(iterator) {}
+
+  bool Next() {
+    return cass_iterator_next(cass_iterator_.get()) != cass_false;
+  }
+
+  template <class Out>
+  void Get(Out* out) const {
+    Value().Get(out);
+  }
+
+  CassandraValue Value() const {
+    return CassandraValue(cass_iterator_get_column(cass_iterator_.get()));
+  }
+
+ private:
+  CassIteratorPtr cass_iterator_;
+};
+
 class CassandraRow {
  public:
   explicit CassandraRow(const CassRow* row) : cass_row_(row) {}
 
   template <class Out>
-  void Get(size_t index, Out* out) const;
+  void Get(size_t index, Out* out) const {
+    return Value(index).Get(out);
+  }
+
+  CassandraValue Value(size_t index) const {
+    return CassandraValue(cass_row_get_column(cass_row_, index));
+  }
+
+  CassandraRowIterator CreateIterator() const {
+    return CassandraRowIterator(cass_iterator_from_row(cass_row_));
+  }
 
  private:
   const CassRow* cass_row_; // owned by iterator
 };
-
-typedef std::unique_ptr<
-    CassIterator, FuncDeleter<CassIterator, &cass_iterator_free>> CassIteratorPtr;
 
 class CassandraIterator {
  public:
@@ -112,7 +152,7 @@ class CassandraResult {
  public:
   explicit CassandraResult(const CassResult* result) : cass_result_(result) {}
 
-  CassandraIterator CreateIterator() {
+  CassandraIterator CreateIterator() const {
     return CassandraIterator(cass_iterator_from_result(cass_result_.get()));
   }
 
@@ -142,17 +182,15 @@ class CassandraFuture {
 
   CHECKED_STATUS Wait() {
     cass_future_wait(future_.get());
-    const CassError rc = cass_future_error_code(future_.get());
-    VLOG(2) << "Last operation RC: " << rc;
+    return CheckErrorCode();
+  }
 
-    if (rc != CASS_OK) {
-      const char* message = nullptr;
-      size_t message_sz = 0;
-      cass_future_error_message(future_.get(), &message, &message_sz);
-      return STATUS(RuntimeError, Slice(message, message_sz));
+  CHECKED_STATUS WaitFor(MonoDelta duration) {
+    if (!cass_future_wait_timed(future_.get(), duration.ToMicroseconds())) {
+      return STATUS(TimedOut, "Future timed out");
     }
 
-    return Status::OK();
+    return CheckErrorCode();
   }
 
   CassandraResult Result() {
@@ -164,6 +202,23 @@ class CassandraFuture {
   }
 
  private:
+  CHECKED_STATUS CheckErrorCode() {
+    const CassError rc = cass_future_error_code(future_.get());
+    VLOG(2) << "Last operation RC: " << rc;
+
+    if (rc != CASS_OK) {
+      const char* message = nullptr;
+      size_t message_sz = 0;
+      cass_future_error_message(future_.get(), &message, &message_sz);
+      if (rc == CASS_ERROR_LIB_REQUEST_TIMED_OUT) {
+        return STATUS(TimedOut, Slice(message, message_sz));
+      }
+      return STATUS(RuntimeError, Slice(message, message_sz));
+    }
+
+    return Status::OK();
+  }
+
   CassFuturePtr future_;
 };
 
@@ -204,15 +259,15 @@ class CassandraStatement {
 
   void Bind(size_t index, const cass_json_t& v);
 
-  const cass::Request* request() {
-    return cass_statement_->from();
+  CassStatement* get() const {
+    return cass_statement_.get();
   }
 
  private:
   friend class CassandraBatch;
   friend class CassandraSession;
 
-  CassStatementPtr cass_statement_ = nullptr;
+  CassStatementPtr cass_statement_;
 };
 
 typedef std::unique_ptr<CassBatch, FuncDeleter<CassBatch, &cass_batch_free>> CassBatchPtr;
@@ -233,8 +288,10 @@ class CassandraBatch {
 
 struct DeleteSession {
   void operator()(CassSession* session) const {
-    CHECK_OK(CassandraFuture(cass_session_close(session)).Wait());
-    cass_session_free(session);
+    if (session != nullptr) {
+      WARN_NOT_OK(CassandraFuture(cass_session_close(session)).Wait(), "Close session");
+      cass_session_free(session);
+    }
   }
 };
 
@@ -299,6 +356,8 @@ CassandraStatement CassandraPrepared::Bind() {
   return CassandraStatement(cass_prepared_bind(prepared_.get()));
 }
 
+const MonoDelta kTimeOut = RegularBuildVsSanitizers(12s, 60s);
+
 class CppCassandraDriver {
  public:
   explicit CppCassandraDriver(
@@ -326,7 +385,7 @@ class CppCassandraDriver {
     cass_cluster_ = CHECK_NOTNULL(cass_cluster_new());
     CHECK_EQ(CASS_OK, cass_cluster_set_contact_points(cass_cluster_, hosts.c_str()));
     CHECK_EQ(CASS_OK, cass_cluster_set_port(cass_cluster_, port));
-    cass_cluster_set_request_timeout(cass_cluster_, RegularBuildVsSanitizers(12000, 60000));
+    cass_cluster_set_request_timeout(cass_cluster_, kTimeOut.ToMilliseconds());
 
     // Setup cluster configuration: partitions metadata refresh timer = 3 seconds.
     cass_cluster_set_partition_aware_routing(
@@ -367,7 +426,7 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
 
     LOG(INFO) << "Starting YB ExternalMiniCluster...";
     // Start up with 3 (default) tablet servers.
-    ASSERT_NO_FATALS(StartCluster(ExtraTServerFlags()));
+    ASSERT_NO_FATALS(StartCluster(ExtraTServerFlags(), {}, 3, NumMasters()));
 
     driver_.reset(CHECK_NOTNULL(new CppCassandraDriver(*cluster_, UsePartitionAwareRouting())));
 
@@ -394,6 +453,10 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
 
   virtual std::vector<std::string> ExtraTServerFlags() {
     return {};
+  }
+
+  virtual int NumMasters() {
+    return 1;
   }
 
   virtual bool UsePartitionAwareRouting() {
@@ -458,6 +521,13 @@ void read(const CassValue* val, string* v) {
   *v = string(s, sz);
 }
 
+void read(const CassValue* val, Slice* v) {
+  const cass_byte_t* data = nullptr;
+  size_t size = 0;
+  CHECK_EQ(CASS_OK, cass_value_get_bytes(val, &data, &size));
+  *v = Slice(data, size);
+}
+
 void read(const CassValue* val, cass_bool_t* v) {
   CHECK_EQ(CASS_OK, cass_value_get_bool(val, v));
 }
@@ -482,12 +552,58 @@ void read(const CassValue* val, cass_json_t* v) {
   read(val, &v->str_);
 }
 
+void read(const CassValue* val, CassUuid* v) {
+  CHECK_EQ(CASS_OK, cass_value_get_uuid(val, v));
+}
+
+void read(const CassValue* val, CassInet* v) {
+  CHECK_EQ(CASS_OK, cass_value_get_inet(val, v));
+}
+
 } // namespace util
 
 template <class Out>
-void CassandraRow::Get(size_t index, Out* out) const {
-  const CassValue* val = CHECK_NOTNULL(cass_row_get_column(cass_row_, index));
-  util::read(val, out);
+void CassandraValue::Get(Out* out) const {
+  util::read(value_, out);
+}
+
+std::string CassandraValue::ToString() const {
+  auto value_type = cass_value_type(value_);
+  switch (value_type) {
+    case CASS_VALUE_TYPE_BLOB:
+      return As<Slice>().ToDebugHexString();
+    case CASS_VALUE_TYPE_VARCHAR:
+      return As<std::string>();
+    case CASS_VALUE_TYPE_UUID: {
+      char buffer[CASS_UUID_STRING_LENGTH];
+      cass_uuid_string(As<CassUuid>(), buffer);
+      return buffer;
+    }
+    case CASS_VALUE_TYPE_INET: {
+      char buffer[CASS_INET_STRING_LENGTH];
+      cass_inet_string(As<CassInet>(), buffer);
+      return buffer;
+    }
+    case CASS_VALUE_TYPE_MAP: {
+      std::string result = "{";
+      CassIteratorPtr iterator(cass_iterator_from_map(value_));
+      bool first = true;
+      while (cass_iterator_next(iterator.get())) {
+        if (first) {
+          first = false;
+        } else {
+          result += ", ";
+        }
+        result += CassandraValue(cass_iterator_get_map_key(iterator.get())).ToString();
+        result += " => ";
+        result += CassandraValue(cass_iterator_get_map_value(iterator.get())).ToString();
+      }
+      result += "}";
+      return result;
+    }
+    default:
+      return "Not supported: " + std::to_string(to_underlying(value_type));
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -498,8 +614,9 @@ class TestTable {
   typedef vector<string> StringVec;
   typedef tuple<ColumnsTypes...> ColumnsTuple;
 
-  void CreateTable(CassandraSession* session, const string& table, const StringVec& columns,
-                   const StringVec& keys, bool transactional = false) {
+  CHECKED_STATUS CreateTable(
+      CassandraSession* session, const string& table, const StringVec& columns,
+      const StringVec& keys, bool transactional = false) {
     table_name_ = table;
     column_names_ = columns;
     key_names_ = keys;
@@ -509,7 +626,7 @@ class TestTable {
     }
 
     const string query = create_table_str(table, columns, keys, transactional);
-    ASSERT_OK(session->ExecuteQuery(query));
+    return session->ExecuteQuery(query);
   }
 
   void Print(const string& prefix, const ColumnsTuple& data) const {
@@ -764,14 +881,35 @@ void ExpectEqualTuples(const Tuple& t1, const Tuple& t2) {
   ExpectEqualTuplesHelper<0>(t1, t2);
 }
 
+void LogResult(const CassandraResult& result) {
+  auto iterator = result.CreateIterator();
+  int i = 0;
+  while (iterator.Next()) {
+    ++i;
+    std::string line;
+    auto row = iterator.Row();
+    auto row_iterator = row.CreateIterator();
+    bool first = true;
+    while (row_iterator.Next()) {
+      if (first) {
+        first = false;
+      } else {
+        line += ", ";
+      }
+      line += row_iterator.Value().ToString();
+    }
+    LOG(INFO) << i << ") " << line;
+  }
+}
+
 //------------------------------------------------------------------------------
 
 TEST_F(CppCassandraDriverTest, TestBasicTypes) {
   typedef TestTable<
       string, cass_bool_t, cass_float_t, cass_double_t, cass_int32_t, cass_int64_t, string> MyTable;
   MyTable table;
-  table.CreateTable(
-      &session_, "test.basic", {"key", "bln", "flt", "dbl", "i32", "i64", "str"}, {"key"});
+  ASSERT_OK(table.CreateTable(
+      &session_, "test.basic", {"key", "bln", "flt", "dbl", "i32", "i64", "str"}, {"key"}));
 
   const MyTable::ColumnsTuple input("test", cass_true, 11.01f, 22.002, 3, 4, "text");
   table.Insert(&session_, input);
@@ -787,7 +925,7 @@ TEST_F(CppCassandraDriverTest, TestBasicTypes) {
 TEST_F(CppCassandraDriverTest, TestJsonBType) {
   typedef TestTable<string, cass_json_t> MyTable;
   MyTable table;
-  table.CreateTable(&session_, "test.json", {"key", "json"}, {"key"});
+  ASSERT_OK(table.CreateTable(&session_, "test.json", {"key", "json"}, {"key"}));
 
   MyTable::ColumnsTuple input("test", "{\"a\":1}");
   table.Insert(&session_, input);
@@ -889,7 +1027,7 @@ TEST_F(CppCassandraDriverTest, TestLongJson) {
 
   typedef TestTable<string, cass_json_t> MyTable;
   MyTable table;
-  table.CreateTable(&session_, "basic", {"key", "json"}, {"key"});
+  ASSERT_OK(table.CreateTable(&session_, "basic", {"key", "json"}, {"key"}));
 
   MyTable::ColumnsTuple input("test", long_json);
   table.Insert(&session_, input);
@@ -948,8 +1086,8 @@ TEST_F(CppCassandraDriverTest, TestLongJson) {
 TEST_F(CppCassandraDriverTest, TestPrepare) {
   typedef TestTable<cass_bool_t, cass_int32_t, string, cass_int32_t, string> MyTable;
   MyTable table;
-  table.CreateTable(
-      &session_, "test.basic", {"b", "val", "key", "int_key", "str"}, {"key", "int_key"});
+  ASSERT_OK(table.CreateTable(
+      &session_, "test.basic", {"b", "val", "key", "int_key", "str"}, {"key", "int_key"}));
 
   const MyTable::ColumnsTuple input(cass_true, 0xAABBCCDD, "key1test", 0xDEADBEAF, "mystr");
   {
@@ -982,7 +1120,7 @@ void TestTokenForTypes(
   typedef typename MyTable::ColumnsTuple ColumnsTuple;
 
   MyTable table;
-  table.CreateTable(session, "test.basic", columns, keys);
+  ASSERT_OK(table.CreateTable(session, "test.basic", columns, keys));
 
   auto prepared = ASSERT_RESULT(table.PrepareInsert(session));
   auto statement = prepared.Bind();
@@ -992,11 +1130,10 @@ void TestTokenForTypes(
   table.BindInsert(&statement, input);
 
   int64_t token = 0;
-  string full_table_name;
-  bool token_available = cass::PartitionAwarePolicy::get_yb_hash_code(
-      statement.request(), &token, &full_table_name);
+  bool token_available = cass_partition_aware_policy_get_yb_hash_code(
+      statement.get(), &token);
   LOG(INFO) << "Got token: " << (token_available ? "OK" : "ERROR") << " token=" << token
-            << " (0x" << std::hex << token << ")" << " table=" << full_table_name;
+            << " (0x" << std::hex << token << ")";
   ASSERT_TRUE(token_available);
 
   if (exp_token > 0) {
@@ -1079,16 +1216,17 @@ struct IOMetrics {
       const ExternalMiniCluster& cluster, int ts_index,
       const MetricPrototype* metric_proto, int64_t* value) {
     const ExternalTabletServer& ts = *CHECK_NOTNULL(cluster.tablet_server(ts_index));
-    const Status s = ts.GetInt64CQLMetric(
+    const auto result = ts.GetInt64CQLMetric(
         &METRIC_ENTITY_server, "yb.cqlserver", CHECK_NOTNULL(metric_proto),
-        "total_count", CHECK_NOTNULL(value));
+        "total_count");
 
-    if (!s.ok()) {
+    if (!result.ok()) {
       LOG(ERROR) << "Failed to get metric " << metric_proto->name() << " from TS"
           << ts_index << ": " << ts.bind_host() << ":" << ts.cql_http_port()
-          << " with error " << s.CodeAsString();
+          << " with error " << result.status();
     }
-    ASSERT_OK(s);
+    ASSERT_OK(result);
+    *CHECK_NOTNULL(value) = *result;
   }
 
   void load(const ExternalMiniCluster& cluster) {
@@ -1145,7 +1283,7 @@ TEST_F(CppCassandraDriverTest, TestInsertLocality) {
   typedef typename MyTable::ColumnsTuple ColumnsTuple;
 
   MyTable table;
-  table.CreateTable(&session_, "test.basic", {"id", "data"}, {"(id)"});
+  ASSERT_OK(table.CreateTable(&session_, "test.basic", {"id", "data"}, {"(id)"}));
 
   LOG(INFO) << "Wait 5 sec to refresh metadata in driver by time";
   SleepFor(MonoDelta::FromMicroseconds(5*1000000));
@@ -1180,7 +1318,7 @@ class CppCassandraDriverLowSoftLimitTest : public CppCassandraDriverTest {
   }
 
   bool UsePartitionAwareRouting() override {
-    // Disable partition aware routing in this test because of TSAN issue (#1837).
+    // TODO: Disable partition aware routing in this test because of TSAN issue (#1837).
     // Should be reenabled when issue is fixed.
     return false;
   }
@@ -1188,6 +1326,8 @@ class CppCassandraDriverLowSoftLimitTest : public CppCassandraDriverTest {
 
 TEST_F_EX(CppCassandraDriverTest, BatchWriteDuringSoftMemoryLimit,
           CppCassandraDriverLowSoftLimitTest) {
+  FLAGS_external_mini_cluster_max_log_bytes = 512_MB;
+
   constexpr int kBatchSize = 500;
   constexpr int kWriters = 4;
   constexpr int kNumMetrics = 5;
@@ -1195,8 +1335,9 @@ TEST_F_EX(CppCassandraDriverTest, BatchWriteDuringSoftMemoryLimit,
   typedef TestTable<std::string, int64_t, std::string> MyTable;
   typedef MyTable::ColumnsTuple ColumnsType;
   MyTable table;
-  table.CreateTable(&session_, "test.batch_ts_metrics_raw", {"metric_id", "ts", "value"},
-                    {"(metric_id, ts)"});
+  ASSERT_OK(table.CreateTable(
+      &session_, "test.batch_ts_metrics_raw", {"metric_id", "ts", "value"},
+      {"(metric_id, ts)"}));
 
   TestThreadHolder thread_holder;
   std::array<std::atomic<int>, kNumMetrics> metric_ts;
@@ -1238,7 +1379,7 @@ TEST_F_EX(CppCassandraDriverTest, BatchWriteDuringSoftMemoryLimit,
   thread_holder.WaitAndStop(30s);
   auto total_writes_value = total_writes.load();
   LOG(INFO) << "Total writes: " << total_writes_value;
-  ASSERT_GE(total_writes_value, RegularBuildVsSanitizers(1500, 100));
+  ASSERT_GE(total_writes_value, RegularBuildVsSanitizers(1500, 50));
 }
 
 class CppCassandraDriverBackpressureTest : public CppCassandraDriverTest {
@@ -1248,7 +1389,7 @@ class CppCassandraDriverBackpressureTest : public CppCassandraDriverTest {
   }
 
   bool UsePartitionAwareRouting() override {
-    // Disable partition aware routing in this test because of TSAN issue (#1837).
+    // TODO: Disable partition aware routing in this test because of TSAN issue (#1837).
     // Should be reenabled when issue is fixed.
     return false;
   }
@@ -1261,7 +1402,7 @@ TEST_F_EX(CppCassandraDriverTest, LocalCallBackpressure, CppCassandraDriverBackp
   typedef TestTable<int64_t, int64_t> MyTable;
   typedef MyTable::ColumnsTuple ColumnsType;
   MyTable table;
-  table.CreateTable(&session_, "test.key_value", {"key", "value"}, {"(key)"});
+  ASSERT_OK(table.CreateTable(&session_, "test.key_value", {"key", "value"}, {"(key)"}));
 
   std::vector<CassandraFuture> futures;
 
@@ -1294,7 +1435,7 @@ class CppCassandraDriverTransactionalWriteTest : public CppCassandraDriverTest {
   }
 
   bool UsePartitionAwareRouting() override {
-    // Disable partition aware routing in this test because of TSAN issue (#1837).
+    // TODO: Disable partition aware routing in this test because of TSAN issue (#1837).
     // Should be reenabled when issue is fixed.
     return false;
   }
@@ -1304,9 +1445,8 @@ TEST_F_EX(CppCassandraDriverTest, TransactionalWrite, CppCassandraDriverTransact
   const std::string kTableName = "test.key_value";
   typedef TestTable<int32_t, int32_t> MyTable;
   MyTable table;
-  table.CreateTable(&session_, kTableName, {"key", "value"}, {"(key)"}, true /* transactional */);
-
-  TestThreadHolder thread_holder;
+  ASSERT_OK(table.CreateTable(
+      &session_, kTableName, {"key", "value"}, {"(key)"}, true /* transactional */));
 
   constexpr int kIterations = 20;
   auto prepared = ASSERT_RESULT(session_.Prepare(Format(
@@ -1322,6 +1462,163 @@ TEST_F_EX(CppCassandraDriverTest, TransactionalWrite, CppCassandraDriverTransact
     statement.Bind(3, i * -4);
     ASSERT_OK(session_.Execute(statement));
   }
+}
+
+class CppCassandraDriverTestThreeMasters : public CppCassandraDriverTest {
+ private:
+  int NumMasters() override {
+    return 3;
+  }
+
+  bool UsePartitionAwareRouting() override {
+    // TODO: Disable partition aware routing in this test because of TSAN issue (#1837).
+    // Should be reenabled when issue is fixed.
+    return false;
+  }
+};
+
+TEST_F_EX(CppCassandraDriverTest, ManyTables, CppCassandraDriverTestThreeMasters) {
+  FLAGS_external_mini_cluster_max_log_bytes = 512_MB;
+
+  constexpr int kThreads = RegularBuildVsSanitizers(5, 2);
+  constexpr int kTables = RegularBuildVsSanitizers(15, 5);
+  constexpr int kReads = 20;
+
+  const std::string kTableNameFormat = "test.key_value_$0_$1";
+  typedef TestTable<int32_t, int32_t> MyTable;
+
+  TestThreadHolder thread_holder;
+  std::atomic<int> tables(0);
+
+  for (int i = 0; i != kThreads; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &stop = thread_holder.stop_flag(), thread = i, &kTableNameFormat, &tables] {
+          SetFlagOnExit set_flag_on_exit(&stop);
+          auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+          int idx = 0;
+          while (!stop.load(std::memory_order_acquire)) {
+            MyTable table;
+            auto status = table.CreateTable(
+                &session, Format(kTableNameFormat, thread, idx), {"key", "value"}, {"(key)"});
+            if (status.ok()) {
+              LOG(INFO) << "Created table " << thread << ", " << idx;
+              // We need at least kTables tables.
+              if (tables.fetch_add(1, std::memory_order_acq_rel) >= kTables) {
+                break;
+              }
+            } else {
+              LOG(INFO) << "Failed to create table " << thread << ", " << idx << ": " << status;
+            }
+            ++idx;
+          }
+        });
+  }
+
+  thread_holder.WaitAndStop(180s);
+
+  ASSERT_GE(tables.load(std::memory_order_acquire), kTables);
+
+  CassandraStatement statement("SELECT * FROM system.partitions");
+  std::vector<MonoDelta> read_times;
+  read_times.reserve(kReads);
+  int i = 0;
+  for (;;) {
+    auto start = MonoTime::Now();
+    auto result = session_.ExecuteWithResult(statement);
+    auto finish = MonoTime::Now();
+    if (!result.ok()) {
+      LOG(INFO) << "Read failed: " << result.status();
+      continue;
+    }
+    read_times.push_back(finish - start);
+    ++i;
+    if (i == kReads) {
+      LogResult(*result);
+      break;
+    }
+  }
+
+  LOG(INFO) << "Read times: " << AsString(read_times);
+  std::sort(read_times.begin(), read_times.end());
+
+  if (!IsSanitizer()) {
+    ASSERT_LE(read_times.front() * 2, read_times.back()); // Check that cache works
+  }
+}
+
+class CppCassandraDriverRejectionTest : public CppCassandraDriverTest {
+ public:
+  std::vector<std::string> ExtraTServerFlags() override {
+    return {"--TEST_write_rejection_percentage=15"s,
+            "--linear_backoff_ms=10"};
+  }
+
+  bool UsePartitionAwareRouting() override {
+    // Disable partition aware routing in this test because of TSAN issue (#1837).
+    // Should be reenabled when issue is fixed.
+    return false;
+  }
+};
+
+TEST_F_EX(CppCassandraDriverTest, Rejection, CppCassandraDriverRejectionTest) {
+  constexpr int kBatchSize = 50;
+  constexpr int kWriters = 21;
+
+  typedef TestTable<int64_t, int64_t> MyTable;
+  typedef MyTable::ColumnsTuple ColumnsType;
+  MyTable table;
+  ASSERT_OK(table.CreateTable(&session_, "test.key_value", {"key", "value"}, {"(key)"}));
+
+  TestThreadHolder thread_holder;
+  std::atomic<int64_t> key(0);
+  std::atomic<int> pending_writes(0);
+  std::atomic<int> max_pending_writes(0);
+
+  for (int i = 0; i != kWriters; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &stop = thread_holder.stop_flag(), &table, &key, &pending_writes,
+         &max_pending_writes] {
+      SetFlagOnExit set_flag_on_exit(&stop);
+      auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+      while (!stop.load()) {
+        CassandraBatch batch(CassBatchType::CASS_BATCH_TYPE_LOGGED);
+        auto prepared = table.PrepareInsert(&session);
+        if (!prepared.ok()) {
+          // Prepare could be failed because cluster has heavy load.
+          // It is ok to just retry in this case, because we expect total number of writes.
+          continue;
+        }
+        for (int i = 0; i != kBatchSize; ++i) {
+          auto current_key = key++;
+          ColumnsType tuple(current_key, -current_key);
+          auto statement = prepared->Bind();
+          table.BindInsert(&statement, tuple);
+          batch.Add(&statement);
+        }
+        auto future = session.SubmitBatch(batch);
+        auto status = future.WaitFor(kTimeOut / 2);
+        if (status.IsTimedOut()) {
+          auto pw = ++pending_writes;
+          auto mpw = max_pending_writes.load();
+          while (pw > mpw) {
+            if (max_pending_writes.compare_exchange_weak(mpw, pw)) {
+              // Assert that we don't have too many pending writers.
+              ASSERT_LE(pw, kWriters / 3);
+              break;
+            }
+          }
+          auto wait_status = future.Wait();
+          ASSERT_TRUE(wait_status.ok() || wait_status.IsTimedOut()) << wait_status;
+          --pending_writes;
+        } else {
+          ASSERT_OK(status);
+        }
+      }
+    });
+  }
+
+  thread_holder.WaitAndStop(30s);
+  LOG(INFO) << "Max pending writes: " << max_pending_writes.load();
 }
 
 }  // namespace yb

@@ -31,6 +31,7 @@
 
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_protocol_util.h"
+#include "yb/common/row_mark.h"
 
 #include "yb/tserver/tserver_shared_mem.h"
 
@@ -61,7 +62,7 @@ using yb::master::IsInitDbDoneRequestPB;
 using yb::master::IsInitDbDoneResponsePB;
 using yb::master::MasterServiceProxy;
 
-using yb::tserver::TServerSharedMemory;
+using yb::tserver::TServerSharedObject;
 
 #if defined(__APPLE__) && !defined(NDEBUG)
 // We are experiencing more slowness in tests on macOS in debug mode.
@@ -92,20 +93,6 @@ static constexpr const size_t kPgSequenceLastValueColIdx = 2;
 static constexpr const char* const kPgSequenceIsCalledColName = "is_called";
 static constexpr const size_t kPgSequenceIsCalledColIdx = 3;
 
-namespace {
-
-std::unique_ptr<TServerSharedMemory> InitTServerSharedMemory() {
-  // Do not use shared memory in initdb or if explicity set to be ignored.
-  if (YBCIsInitDbModeEnvVarSet() || FLAGS_pggate_ignore_tserver_shm) {
-    return nullptr;
-  }
-  return std::make_unique<TServerSharedMemory>(
-      FLAGS_pggate_tserver_shm_fd,
-      SharedMemorySegment::AccessMode::kReadOnly);
-}
-
-}  // namespace
-
 //--------------------------------------------------------------------------------------------------
 // Class PgSession
 //--------------------------------------------------------------------------------------------------
@@ -114,12 +101,13 @@ PgSession::PgSession(
     client::YBClient* client,
     const string& database_name,
     scoped_refptr<PgTxnManager> pg_txn_manager,
-    scoped_refptr<server::HybridClock> clock)
+    scoped_refptr<server::HybridClock> clock,
+    const tserver::TServerSharedObject* tserver_shared_object)
     : client_(client),
       session_(client_->NewSession()),
       pg_txn_manager_(std::move(pg_txn_manager)),
       clock_(std::move(clock)),
-      tserver_shared_memory_(InitTServerSharedMemory()) {
+      tserver_shared_object_(tserver_shared_object) {
   session_->SetTimeout(MonoDelta::FromMilliseconds(FLAGS_pg_yb_session_timeout_ms));
   session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
 }
@@ -162,6 +150,11 @@ Status PgSession::DropDatabase(const string& database_name, PgOid database_oid) 
   return Status::OK();
 }
 
+client::YBNamespaceAlterer* PgSession::NewNamespaceAlterer(
+    const std::string& namespace_name, PgOid database_oid) {
+  return client_->NewNamespaceAlterer(namespace_name, GetPgsqlNamespaceId(database_oid));
+}
+
 Status PgSession::ReserveOids(const PgOid database_oid,
                               const PgOid next_oid,
                               const uint32_t count,
@@ -176,7 +169,8 @@ Status PgSession::GetCatalogMasterVersion(uint64_t *version) {
 }
 
 Status PgSession::CreateSequencesDataTable() {
-  const YBTableName table_name(kPgSequencesDataNamespaceId,
+  const YBTableName table_name(YQL_DATABASE_PGSQL,
+                               kPgSequencesDataNamespaceId,
                                kPgSequencesNamespaceName,
                                kPgSequencesDataTableName);
   RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kPgSequencesNamespaceName,
@@ -527,16 +521,7 @@ Result<OpBuffered> PgSession::PgApplyAsync(const std::shared_ptr<client::YBPgsql
 
   if (op->type() == YBOperation::Type::PGSQL_READ) {
     const PgsqlReadRequestPB& read_req = down_cast<client::YBPgsqlReadOp*>(op.get())->request();
-    if (read_req.row_mark_type_size() > 0) {
-      if (read_req.row_mark_type(0) == RowMarkType::ROW_MARK_SHARE ||
-          read_req.row_mark_type(0) == RowMarkType::ROW_MARK_KEYSHARE) {
-        has_for_share_lock_ = true;
-      } else {
-        // We shouldn't get here because other row lock types are disabled at the postgres level.
-        LOG(WARNING) << "Unsupported row lock of type "
-            << RowMarkType_Name(read_req.row_mark_type(0));
-      }
-    }
+    has_row_mark_ = IsValidRowMarkType(GetRowMarkTypeFromPB(read_req));
   }
 
   // If the operation is a write op and we are in buffered write mode, save the op and return false
@@ -583,7 +568,7 @@ Status PgSession::PgFlushAsync(StatusFunctor callback) {
           << ": has_txn_ops_=" << has_txn_ops_ << ", has_non_txn_ops_=" << has_non_txn_ops_;
   has_txn_ops_ = false;
   has_non_txn_ops_ = false;
-  has_for_share_lock_ = false;
+  has_row_mark_ = false;
 
   // We specify read_only_op true here because we never start a new write transaction at this point.
   client::YBSessionPtr session =
@@ -600,7 +585,7 @@ Status PgSession::RestartTransaction() {
 
 Result<client::YBSession*> PgSession::GetSessionForOp(
     const std::shared_ptr<client::YBPgsqlOp>& op) {
-  return GetSession(op->IsTransactional(), op->read_only() && !has_for_share_lock_);
+  return GetSession(op->IsTransactional(), op->read_only() && !has_row_mark_);
 }
 
 namespace {
@@ -645,7 +630,7 @@ Status PgSession::CombineStatuses(Status first_status, Status second_status) {
 Result<YBSession*> PgSession::GetSession(bool transactional, bool read_only_op) {
   if (transactional) {
     YBSession* txn_session = VERIFY_RESULT(pg_txn_manager_->GetTransactionalSession());
-    pg_txn_manager_->BeginWriteTransactionIfNecessary(read_only_op);
+    RETURN_NOT_OK(pg_txn_manager_->BeginWriteTransactionIfNecessary(read_only_op));
     VLOG(2) << __PRETTY_FUNCTION__
             << ": read_only_op=" << read_only_op << ", returning transactional session";
     return txn_session;
@@ -689,8 +674,8 @@ Status PgSession::IsInitDbDone(bool* initdb_done) {
 }
 
 Result<uint64_t> PgSession::GetSharedCatalogVersion() {
-  if (tserver_shared_memory_) {
-    return tserver_shared_memory_->GetYSQLCatalogVersion();
+  if (tserver_shared_object_) {
+    return (**tserver_shared_object_).ysql_catalog_version();
   } else {
     return STATUS(NotSupported, "Tablet server shared memory has not been opened");
   }

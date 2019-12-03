@@ -62,6 +62,7 @@ DECLARE_string(callhome_url);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(simulate_slow_table_create_secs);
 DECLARE_bool(return_error_if_namespace_not_found);
+DECLARE_bool(simulate_crash_after_table_marked_deleting);
 
 namespace yb {
 namespace master {
@@ -477,6 +478,38 @@ TEST_F(MasterTest, TestCreateTableInvalidSchema) {
   ASSERT_TRUE(resp.has_error());
   ASSERT_EQ(AppStatusPB::INVALID_ARGUMENT, resp.error().status().code());
   ASSERT_EQ("Duplicate column name: col", resp.error().status().message());
+}
+
+TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
+  FLAGS_simulate_crash_after_table_marked_deleting = true;
+  const char *kTableName = "testtb";
+  const Schema kTableSchema({ ColumnSchema("key", INT32)},
+                            1);
+
+  ASSERT_OK(CreateTable(kTableName, kTableSchema));
+  vector<TabletId> tablet_ids;
+  for (auto elem : *mini_master_->master()->catalog_manager()->tablet_map_) {
+    auto tablet = elem.second;
+    if (tablet->table()->name() == kTableName) {
+      tablet_ids.push_back(elem.first);
+    }
+  }
+
+  // Delete the table
+  TableId id;
+  ASSERT_OK(DeleteTable(default_namespace_name, kTableName, &id));
+
+  // Restart the master to force a reload of the tablets.
+  ASSERT_OK(mini_master_->Restart());
+  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  // Verify that the test table's tablets are in the DELETED state.
+  for (const auto& tablet_id : tablet_ids) {
+    auto iter = mini_master_->master()->catalog_manager()->tablet_map_->find(tablet_id);
+    ASSERT_NE(iter, mini_master_->master()->catalog_manager()->tablet_map_->end());
+    auto l = iter->second->LockForRead();
+    ASSERT_EQ(l->data().pb.state(), SysTabletsEntryPB::DELETED);
+  }
 }
 
 // Regression test for KUDU-253/KUDU-592: crash if the GetTableLocations RPC call is
@@ -1470,6 +1503,67 @@ TEST_F(MasterTest, TestGetTableSchemaIsAtomicWithCreateTable) {
   done.Store(true);
   t->Join();
 }
+
+class NamespaceTest : public MasterTest, public testing::WithParamInterface<YQLDatabase> {};
+
+TEST_P(NamespaceTest, RenameNamespace) {
+  ListNamespacesResponsePB namespaces;
+
+  // Check default namespace.
+  {
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
+    // Including system namespace.
+    ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
+    CheckNamespaces(
+        {
+            EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES
+        }, namespaces);
+  }
+
+  // Create a new namespace.
+  const NamespaceName other_ns_name = "testns";
+  NamespaceId other_ns_id;
+  {
+    CreateNamespaceResponsePB resp;
+    ASSERT_OK(CreateNamespace(other_ns_name, GetParam() /* database_type */, &resp));
+    other_ns_id = resp.id();
+  }
+  {
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
+    // Including system namespace.
+    ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
+    CheckNamespaces(
+        {
+            EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES,
+            std::make_tuple(other_ns_name, other_ns_id),
+        }, namespaces);
+  }
+
+  // Rename the namespace
+  const NamespaceName other_ns_new_name = "testns_newname";
+  {
+    AlterNamespaceResponsePB resp;
+    ASSERT_OK(AlterNamespace(other_ns_name,
+                             other_ns_id,
+                             boost::none /* database_type */,
+                             other_ns_new_name,
+                             &resp));
+  }
+  {
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
+    // Including system namespace.
+    ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
+    CheckNamespaces(
+        {
+            EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES,
+            std::make_tuple(other_ns_new_name, other_ns_id),
+        }, namespaces);
+  }
+}
+
+INSTANTIATE_TEST_CASE_P(
+    DatabaseType, NamespaceTest,
+    ::testing::Values(YQLDatabase::YQL_DATABASE_CQL, YQLDatabase::YQL_DATABASE_PGSQL));
 
 } // namespace master
 } // namespace yb

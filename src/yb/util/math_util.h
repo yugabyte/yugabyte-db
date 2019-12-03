@@ -46,6 +46,17 @@ T max_if_negative(T value) {
   return value;
 }
 
+template <class T>
+T fit_bounds(const T& value, const T& min, const T& max) {
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
+  return value;
+}
+
 }  // namespace yb
 
 #endif // YB_UTIL_MATH_UTIL_H_

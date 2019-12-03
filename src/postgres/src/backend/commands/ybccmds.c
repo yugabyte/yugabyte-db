@@ -725,13 +725,17 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 			case AT_DisableTrigUser:
 			case AT_ChangeOwner:
 			case AT_ColumnDefault:
-      case AT_DropNotNull:
-      case AT_SetNotNull:
-      case AT_AddIdentity:
-      case AT_SetIdentity:
-      case AT_DropIdentity:
-        /* For these cases a YugaByte alter isn't required, so we do nothing. */
-        break;
+			case AT_DropNotNull:
+			case AT_SetNotNull:
+			case AT_AddIdentity:
+			case AT_SetIdentity:
+			case AT_DropIdentity:
+			case AT_EnableRowSecurity:
+			case AT_DisableRowSecurity:
+			case AT_ForceRowSecurity:
+			case AT_NoForceRowSecurity:
+				/* For these cases a YugaByte alter isn't required, so we do nothing. */
+				break;
 
 			default:
 				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -791,6 +795,10 @@ YBCRename(RenameStmt *stmt, Oid relationId)
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					errmsg("Renaming this object is not yet supported.")));
 
+	}
+
+	if (IsYBRelationById(relationId)) {
+		YBCExecAlterTable(handle);
 	}
 }
 

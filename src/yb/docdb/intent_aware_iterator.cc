@@ -166,7 +166,8 @@ std::ostream& operator<<(std::ostream& out, const DecodeStrongWriteIntentResult&
 }
 
 // Decodes intent based on intent_iterator and its transaction commit time if intent is a strong
-// write intent and transaction is already committed at specified time or it is current transaction.
+// write intent, intent is not for row locking, and transaction is already committed at specified
+// time or is current transaction.
 // Returns HybridTime::kMin as value_time otherwise.
 // For current transaction returns intent record hybrid time as value_time.
 // Consumes intent from value_slice leaving only value itself.
@@ -189,7 +190,9 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
     result.intent_value.consume_byte();
     IntraTxnWriteId in_txn_write_id = BigEndian::Load32(result.intent_value.data());
     result.intent_value.remove_prefix(sizeof(IntraTxnWriteId));
-    if (result.same_transaction) {
+    if (result.intent_value.starts_with(ValueTypeAsChar::kRowLock)) {
+      result.value_time = DocHybridTime::kMin;
+    } else if (result.same_transaction) {
       result.value_time = decoded_intent_key.doc_ht;
     } else {
       auto commit_ht = VERIFY_RESULT(transaction_status_cache->GetCommitTime(txn_id));

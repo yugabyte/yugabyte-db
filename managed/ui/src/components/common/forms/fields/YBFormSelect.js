@@ -8,12 +8,15 @@ import Select from 'react-select';
 
 export default class YBFormSelect extends Component {
   handleChange = option => {
-    const { form, field } = this.props;
+    const { form, field, onChange } = this.props;
     if (isDefinedNotNull(option)) {
       form.setFieldValue(field.name, option);
     } else {
       form.setFieldValue(field.name, "");
     }
+    if (isDefinedNotNull(onChange)
+      && typeof(onChange) === "function")
+      onChange(this.props, option);
   };
 
   handleBlur = () => {
@@ -22,10 +25,13 @@ export default class YBFormSelect extends Component {
   };
 
   render() {
+    const { field, options } = this.props;
     const customStyles = {
       option: (provided, state) => ({
         ...provided,
         padding: 10,
+        backgroundColor: state.isFocused || state.isSelected ? '#e5e5e9' : 'white',
+        color: "#333"
       }),
       control: (provided) => ({
         // none of react-select's styles are passed to <Control />
@@ -36,7 +42,7 @@ export default class YBFormSelect extends Component {
         borderRadius: 7,
         boxShadow: "inset 0 1px 1px rgba(0, 0, 0, .075)",
         fontSize: "14px",
-        height: 42
+        minHeight: 42
       }),
       placeholder: (provided) => ({
         ...provided,
@@ -62,7 +68,15 @@ export default class YBFormSelect extends Component {
         const transition = 'opacity 300ms';
     
         return { ...provided, opacity, transition };
-      }
+      },
+      multiValueRemove: (provided) => ({
+        ...provided,
+        borderRadius: "0 3px 3px 0"
+      }),
+      input: (provided) => ({
+        ...provided,
+        margin: "0"
+      }),
     };
     
     return (
@@ -74,6 +88,7 @@ export default class YBFormSelect extends Component {
           {...this.props}
           onChange={this.handleChange}
           onBlur={this.handleBlur}
+          value={options ? options.find(option => option.value === field.value) : ''}
           isOptionDisabled={(option) => !!option.disabled}
         />
       </YBLabel>

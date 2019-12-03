@@ -14,7 +14,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import org.junit.Test;
 import play.libs.Json;
 import java.util.UUID;
-import com.yugabyte.yw.common.EncryptionAtRestManager.KeyProvider;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import static org.junit.Assert.assertEquals;
 
 public class KmsConfigTest extends FakeDBApplication {

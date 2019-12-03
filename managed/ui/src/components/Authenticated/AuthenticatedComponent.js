@@ -16,7 +16,6 @@ class AuthenticatedComponent extends Component {
   }
 
   componentWillMount() {
-    this.props.fetchHostInfo();
     this.props.fetchSoftwareVersions();
     this.props.fetchTableColumnTypes();
     this.props.getEBSListItems();
@@ -40,7 +39,7 @@ class AuthenticatedComponent extends Component {
   };
 
   componentWillReceiveProps(nextProps) {
-    const {tasks} = nextProps;
+    const { tasks } = nextProps;
     if (this.props.fetchMetadata !== nextProps.fetchMetadata && nextProps.fetchMetadata) {
       this.props.getProviderListItems();
       this.props.fetchUniverseList();

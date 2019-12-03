@@ -20,6 +20,7 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/redis_protocol.pb.h"
+#include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/conflict_resolution.h"
@@ -140,8 +141,9 @@ struct DetermineKeysToLockResult {
 Result<DetermineKeysToLockResult> DetermineKeysToLock(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const google::protobuf::RepeatedPtrField<KeyValuePairPB>& read_pairs,
-    IsolationLevel isolation_level,
-    OperationKind operation_kind,
+    const IsolationLevel isolation_level,
+    const OperationKind operation_kind,
+    const RowMarkType row_mark_type,
     bool transactional_table,
     PartialRangeKeyIntents partial_range_key_intents) {
   DetermineKeysToLockResult result;
@@ -155,7 +157,8 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
     if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
       level = isolation_level;
     }
-    IntentTypeSet strong_intent_types = GetStrongIntentTypeSet(level, operation_kind);
+    IntentTypeSet strong_intent_types = GetStrongIntentTypeSet(level, operation_kind,
+                                                               row_mark_type);
     if (isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION &&
         operation_kind == OperationKind::kWrite &&
         doc_op->RequireReadSnapshot()) {
@@ -249,8 +252,9 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const google::protobuf::RepeatedPtrField<KeyValuePairPB>& read_pairs,
     const scoped_refptr<Histogram>& write_lock_latency,
-    IsolationLevel isolation_level,
-    OperationKind operation_kind,
+    const IsolationLevel isolation_level,
+    const OperationKind operation_kind,
+    const RowMarkType row_mark_type,
     bool transactional_table,
     CoarseTimePoint deadline,
     PartialRangeKeyIntents partial_range_key_intents,
@@ -258,8 +262,8 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   PrepareDocWriteOperationResult result;
 
   auto determine_keys_to_lock_result = VERIFY_RESULT(DetermineKeysToLock(
-      doc_write_ops, read_pairs, isolation_level, operation_kind, transactional_table,
-      partial_range_key_intents));
+      doc_write_ops, read_pairs, isolation_level, operation_kind, row_mark_type,
+      transactional_table, partial_range_key_intents));
   if (determine_keys_to_lock_result.lock_batch.empty()) {
     LOG(ERROR) << "Empty lock batch, doc_write_ops: " << yb::ToString(doc_write_ops)
                << ", read pairs: " << yb::ToString(read_pairs);
@@ -362,6 +366,8 @@ void PrepareNonTransactionWriteBatch(
     // same key (row/column) within a transaction. We set it based on the position of the write
     // operation in its write batch.
 
+    hybrid_time = kv_pair.has_external_hybrid_time() ?
+        HybridTime(kv_pair.external_hybrid_time()) : hybrid_time;
     std::array<Slice, 2> key_parts = {{
         Slice(kv_pair.key()),
         doc_ht_buffer.EncodeWithValueType(hybrid_time, write_id),
@@ -541,8 +547,12 @@ class PrepareTransactionWriteBatchHelper {
         intra_txn_write_id_(intra_txn_write_id) {
   }
 
-  void Setup(IsolationLevel isolation_level, OperationKind kind) {
-    strong_intent_types_ = GetStrongIntentTypeSet(isolation_level, kind);
+  void Setup(
+      IsolationLevel isolation_level,
+      OperationKind kind,
+      RowMarkType row_mark) {
+    row_mark_ = row_mark;
+    strong_intent_types_ = GetStrongIntentTypeSet(isolation_level, kind, row_mark);
   }
 
   // Using operator() to pass this object conveniently to EnumerateIntents.
@@ -554,14 +564,19 @@ class PrepareTransactionWriteBatchHelper {
 
     const auto transaction_value_type = ValueTypeAsChar::kTransactionId;
     const auto write_id_value_type = ValueTypeAsChar::kWriteId;
+    const auto row_lock_value_type = ValueTypeAsChar::kRowLock;
     IntraTxnWriteId big_endian_write_id = BigEndian::FromHost32(*intra_txn_write_id_);
     std::array<Slice, 5> value = {{
         Slice(&transaction_value_type, 1),
         Slice(transaction_id_.data, transaction_id_.size()),
         Slice(&write_id_value_type, 1),
         Slice(pointer_cast<char*>(&big_endian_write_id), sizeof(big_endian_write_id)),
-        value_slice
+        value_slice,
     }};
+    // Store a row lock indicator rather than data (in value_slice) for row lock intents.
+    if (IsValidRowMarkType(row_mark_)) {
+      value.back() = Slice(&row_lock_value_type, 1);
+    }
 
     ++*intra_txn_write_id_;
 
@@ -623,6 +638,7 @@ class PrepareTransactionWriteBatchHelper {
 
   // TODO(dtxn) weak & strong intent in one batch.
   // TODO(dtxn) extract part of code knowning about intents structure to lower level.
+  RowMarkType row_mark_;
   HybridTime hybrid_time_;
   rocksdb::WriteBatch* rocksdb_write_batch_;
   const TransactionId& transaction_id_;
@@ -652,11 +668,18 @@ void PrepareTransactionWriteBatch(
     IntraTxnWriteId* write_id) {
   VLOG(4) << "PrepareTransactionWriteBatch(), write_id = " << *write_id;
 
+  RowMarkType row_mark = GetRowMarkTypeFromPB(put_batch);
+
   PrepareTransactionWriteBatchHelper helper(
       hybrid_time, rocksdb_write_batch, transaction_id, write_id);
 
   if (!put_batch.write_pairs().empty()) {
-    helper.Setup(isolation_level, OperationKind::kWrite);
+    if (IsValidRowMarkType(row_mark)) {
+      LOG(WARNING) << "Performing a write with row lock "
+                   << RowMarkType_Name(row_mark)
+                   << " when only reads are expected";
+    }
+    helper.Setup(isolation_level, OperationKind::kWrite, row_mark);
 
     // We cannot recover from failures here, because it means that we cannot apply replicated
     // operation.
@@ -665,7 +688,7 @@ void PrepareTransactionWriteBatch(
   }
 
   if (!put_batch.read_pairs().empty()) {
-    helper.Setup(isolation_level, OperationKind::kRead);
+    helper.Setup(isolation_level, OperationKind::kRead, row_mark);
     CHECK_OK(EnumerateIntents(put_batch.read_pairs(), std::ref(helper), partial_range_key_intents));
   }
 
@@ -1308,6 +1331,11 @@ CHECKED_STATUS IntentToWriteRequest(
       << "Value: " << intent_iter->value().ToDebugHexString();
     *write_id = stored_write_id;
 
+    // Intents for row locks should be ignored (i.e. should not be written as regular records).
+    if (intent_value.starts_with(ValueTypeAsChar::kRowLock)) {
+      return Status::OK();
+    }
+
     // After strip of prefix and suffix intent_key contains just SubDocKey w/o a hybrid time.
     // Time will be added when writing batch to RocksDB.
     std::array<Slice, 2> key_parts = {{
@@ -1344,13 +1372,20 @@ CHECKED_STATUS IntentToWriteRequest(
 }
 
 Status PrepareApplyIntentsBatch(
-    const TransactionId &transaction_id, HybridTime commit_ht, const KeyBounds* key_bounds,
+    const TransactionId& transaction_id, HybridTime commit_ht, const KeyBounds* key_bounds,
     rocksdb::WriteBatch* regular_batch,
     rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_batch) {
   // regular_batch or intents_batch could be null. In this case we don't fill apply batch for
   // appropriate DB.
 
-  Slice reverse_index_upperbound;
+  KeyBytes txn_reverse_index_prefix;
+  Slice transaction_id_slice(transaction_id.data, TransactionId::static_size());
+  AppendTransactionKeyPrefix(transaction_id, &txn_reverse_index_prefix);
+  txn_reverse_index_prefix.AppendValueType(ValueType::kMaxByte);
+  Slice key_prefix = txn_reverse_index_prefix.AsSlice();
+  key_prefix.remove_suffix(1);
+  Slice reverse_index_upperbound = txn_reverse_index_prefix.AsSlice();
+
   auto reverse_index_iter = CreateRocksDBIterator(
       intents_db, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
       rocksdb::kDefaultQueryId, nullptr /* read_filter */, &reverse_index_upperbound);
@@ -1364,28 +1399,23 @@ Status PrepareApplyIntentsBatch(
         rocksdb::kDefaultQueryId);
   }
 
-  KeyBytes txn_reverse_index_prefix;
-  Slice transaction_id_slice(transaction_id.data, TransactionId::static_size());
-  AppendTransactionKeyPrefix(transaction_id, &txn_reverse_index_prefix);
-
-  KeyBytes txn_reverse_index_upperbound = txn_reverse_index_prefix;
-  txn_reverse_index_upperbound.AppendValueType(ValueType::kMaxByte);
-  reverse_index_upperbound = txn_reverse_index_upperbound.AsSlice();
-
-  reverse_index_iter.Seek(txn_reverse_index_prefix.data());
+  reverse_index_iter.Seek(key_prefix);
 
   DocHybridTimeBuffer doc_ht_buffer;
+
+  const auto& log_prefix = intents_db->GetOptions().log_prefix;
 
   IntraTxnWriteId write_id = 0;
   while (reverse_index_iter.Valid()) {
     rocksdb::Slice key_slice(reverse_index_iter.key());
 
-    if (!key_slice.starts_with(txn_reverse_index_prefix.data())) {
+    if (!key_slice.starts_with(key_prefix)) {
       break;
     }
 
-    VLOG(4) << "Apply reverse index record: "
-            << EntryToString(reverse_index_iter, StorageDbType::kIntents);
+    VLOG(4) << log_prefix << "Apply reverse index record to ["
+            << (regular_batch ? "R" : "") << (intents_batch ? "I" : "")
+            << "]: " << EntryToString(reverse_index_iter, StorageDbType::kIntents);
 
     // If the key ends at the transaction id then it is transaction metadata (status tablet,
     // isolation level etc.).

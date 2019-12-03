@@ -232,7 +232,7 @@ TEST_F(TestQLDropStmt, TestQLDropType) {
   const string drop_table = "DROP TABLE test";
   const string drop_type_cond = "DROP TYPE IF EXISTS employee";
   const string not_found_drop_error = "Type Not Found";
-  const string type_in_use_error = "Server Error";
+  const string type_in_use_error = "Invalid Request";
 
   //------------------------------------------------------------------------------------------------
   // Test basic DROP TYPE.

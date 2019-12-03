@@ -296,9 +296,10 @@ void TSTabletManager::MaybeFlushTablet() {
     // we will schedule a second flush, which will unnecessarily stall writes for a short time. This
     // will not happen often, but should be fixed.
     if (tablet_to_flush) {
-      LOG(INFO) << Format(
-          "Flushing tablet $0 with oldest memstore write at $1", tablet_to_flush->tablet_id(),
-          tablet_to_flush->tablet()->OldestMutableMemtableWriteHybridTime());
+      LOG(INFO)
+          << TabletLogPrefix(tablet_to_flush->tablet_id())
+          << "Flushing tablet with oldest memstore write at "
+          << tablet_to_flush->tablet()->OldestMutableMemtableWriteHybridTime();
       WARN_NOT_OK(
           tablet_to_flush->tablet()->Flush(
               tablet::FlushMode::kAsync, tablet::FlushFlags::kAll, flush_tick),
@@ -505,7 +506,7 @@ Status TSTabletManager::Init() {
     } else {
       max_bootstrap_threads = min(num_cpus - 1, fs_manager_->GetDataRootDirs().size() * 8);
     }
-    LOG(INFO) <<  "max_bootstrap_threads=" << max_bootstrap_threads;
+    LOG_WITH_PREFIX(INFO) <<  "max_bootstrap_threads=" << max_bootstrap_threads;
   }
   ThreadPoolMetrics metrics = {
           NULL,
@@ -580,21 +581,23 @@ void TSTabletManager::CleanupCheckpoints() {
     auto tables_dir = JoinPathSegments(data_root, FsManager::kRocksDBDirName);
     auto tables = fs_manager_->env()->GetChildren(tables_dir, ExcludeDots::kTrue);
     if (!tables.ok()) {
-      LOG(WARNING) << "Failed to get tables in " << tables_dir << ": " << tables.status();
+      LOG_WITH_PREFIX(WARNING)
+          << "Failed to get tables in " << tables_dir << ": " << tables.status();
       continue;
     }
     for (const auto& table : *tables) {
       auto table_dir = JoinPathSegments(tables_dir, table);
       auto tablets = fs_manager_->env()->GetChildren(table_dir, ExcludeDots::kTrue);
       if (!tablets.ok()) {
-        LOG(WARNING) << "Failed to get tablets in " << table_dir << ": " << tables.status();
+        LOG_WITH_PREFIX(WARNING)
+            << "Failed to get tablets in " << table_dir << ": " << tables.status();
         continue;
       }
       for (const auto& tablet : *tablets) {
         auto checkpoints_dir = JoinPathSegments(
             table_dir, tablet, RemoteBootstrapSession::kCheckpointsDir);
         if (fs_manager_->env()->FileExists(checkpoints_dir)) {
-          LOG(INFO) << "Cleaning up checkpoints dir: " << yb::ToString(checkpoints_dir);
+          LOG_WITH_PREFIX(INFO) << "Cleaning up checkpoints dir: " << yb::ToString(checkpoints_dir);
           auto status = fs_manager_->env()->DeleteRecursively(checkpoints_dir);
           WARN_NOT_OK(status, Format("Cleanup of checkpoints dir $0 failed", checkpoints_dir));
         }
@@ -695,7 +698,8 @@ Status TSTabletManager::CreateNewTablet(
     UnregisterDataWalDir(table_id, tablet_id, table_type, data_root_dir, wal_root_dir);
   }
   RETURN_NOT_OK_PREPEND(create_status, "Couldn't create tablet metadata")
-  LOG(INFO) << "Created tablet metadata for table: " << table_id << ", tablet: " << tablet_id;
+  LOG(INFO) << TabletLogPrefix(tablet_id)
+            << "Created tablet metadata for table: " << table_id;
 
   // We must persist the consensus metadata to disk before starting a new
   // tablet's TabletPeer and Consensus implementation.
@@ -729,7 +733,7 @@ Status CheckLeaderTermNotLower(
         Substitute("Leader has replica of tablet $0 with term $1 lower than last "
                    "logged term $2 on local replica. Rejecting remote bootstrap request",
                    tablet_id, leader_term, last_logged_term));
-    LOG(WARNING) << LogPrefix(tablet_id, uuid) << "Remote bootstrap: " << s.ToString();
+    LOG(WARNING) << LogPrefix(tablet_id, uuid) << "Remote bootstrap: " << s;
     return s;
   }
   return Status::OK();
@@ -792,7 +796,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
       server_->MakeCloudInfoPB()));
   int64_t leader_term = req.caller_term();
 
-  const string kLogPrefix = tserver::LogPrefix(tablet_id, fs_manager_->uuid());
+  const string kLogPrefix = TabletLogPrefix(tablet_id);
 
   TabletPeerPtr old_tablet_peer;
   RaftGroupMetadataPtr meta;
@@ -804,7 +808,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
       auto result = STATUS_FORMAT(
           IllegalState, "StartRemoteBootstrap in wrong state: $0",
           TSTabletManagerStatePB_Name(state_));
-      LOG(WARNING) << result;
+      LOG(WARNING) << kLogPrefix << result;
       return result;
     }
 
@@ -890,6 +894,10 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   // to check what happens when this server receives raft consensus requests since at this point,
   // this tablet server could be a voter (if the ChangeRole request in Finish succeeded and its
   // initial role was PRE_VOTER).
+  //
+  // TODO(bogdan): This leads to a bunch of startup / shutdown race conditions, as this call is not
+  // executed on the thread pool, like the other OpenTablet calls, so on shutdown, it could be
+  // running initialization code for TabletPeer, Raft, Log, etc, which exposes some of these races.
   OpenTablet(meta, nullptr);
 
   // If OpenTablet fails, tablet_peer->error() will be set.
@@ -987,7 +995,9 @@ Status TSTabletManager::DeleteTablet(
   }
 
   RaftGroupMetadataPtr meta = tablet_peer->tablet_metadata();
-  tablet_peer->Shutdown();
+  // TODO(raju): should tablet being tombstoned not avoid flushing memtable as well ?
+  tablet_peer->Shutdown((delete_type == TABLET_DATA_DELETED) ?
+      tablet::IsDropTable::kTrue : tablet::IsDropTable::kFalse);
 
   yb::OpId last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
 
@@ -1075,7 +1085,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
 
   shared_ptr<TabletClass> tablet;
   scoped_refptr<Log> log;
-  const string kLogPrefix = tserver::LogPrefix(tablet_id, fs_manager_->uuid());
+  const string kLogPrefix = TabletLogPrefix(tablet_id);
 
   LOG(INFO) << kLogPrefix << "Bootstrapping tablet";
   TRACE("Bootstrapping tablet");
@@ -1110,8 +1120,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         &retryable_requests};
     s = BootstrapTablet(data, &tablet, &log, &bootstrap_info);
     if (!s.ok()) {
-      LOG(ERROR) << kLogPrefix << "Tablet failed to bootstrap: "
-                 << s.ToString();
+      LOG(ERROR) << kLogPrefix << "Tablet failed to bootstrap: " << s;
       tablet_peer->SetFailed(s);
       return;
     }
@@ -1235,6 +1244,10 @@ std::string TSTabletManager::LogPrefix() const {
   return "P " + fs_manager_->uuid() + ": ";
 }
 
+std::string TSTabletManager::TabletLogPrefix(const std::string& tablet_id) const {
+  return tserver::LogPrefix(tablet_id, fs_manager_->uuid());
+}
+
 bool TSTabletManager::ClosingUnlocked() const {
   return state_ == MANAGER_QUIESCING || state_ == MANAGER_SHUTDOWN;
 }
@@ -1260,12 +1273,11 @@ Status TSTabletManager::RegisterTablet(const std::string& tablet_id,
   if (!InsertIfNotPresent(&tablet_map_, tablet_id, tablet_peer)) {
     auto result = STATUS_FORMAT(
         AlreadyPresent, "Unable to register tablet peer $0: already registered", tablet_id);
-    RaftGroupMetadataPtr meta = tablet_peer->tablet_metadata();
     LOG(WARNING) << result;
     return result;
   }
 
-  LOG(INFO) << "Registered tablet " << tablet_id;
+  LOG_WITH_PREFIX(INFO) << "Registered tablet " << tablet_id;
 
   return Status::OK();
 }
@@ -1452,7 +1464,7 @@ void TSTabletManager::MarkDirtyUnlocked(const std::string& tablet_id,
     state.change_seq = next_report_seq_;
     InsertOrDie(&dirty_tablets_, tablet_id, state);
   }
-  VLOG(2) << tserver::LogPrefix(tablet_id, fs_manager_->uuid())
+  VLOG(2) << TabletLogPrefix(tablet_id)
           << "Marking dirty. Reason: " << context->ToString()
           << ". Will report this tablet to the Master in the next heartbeat "
           << "as part of report #" << next_report_seq_;
@@ -1584,7 +1596,7 @@ Status TSTabletManager::HandleNonReadyTabletOnStartup(
     data_state = TABLET_DATA_TOMBSTONED;
   }
 
-  const string kLogPrefix = tserver::LogPrefix(tablet_id, fs_manager_->uuid());
+  const string kLogPrefix = TabletLogPrefix(tablet_id);
 
   // Roll forward deletions, as needed.
   LOG(INFO) << kLogPrefix << "Tablet Manager startup: Rolling forward tablet deletion "
@@ -1767,6 +1779,10 @@ void TSTabletManager::UnregisterDataWalDir(const string& table_id,
                    << wal_root_dir << "for table " << table_id;
     }
   }
+}
+
+client::YBClient& TSTabletManager::client() {
+  return *async_client_init_->client();
 }
 
 size_t GetLogCacheSize(TabletPeer* peer) {

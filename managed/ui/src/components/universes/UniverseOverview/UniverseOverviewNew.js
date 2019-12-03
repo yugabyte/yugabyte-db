@@ -360,11 +360,11 @@ export default class UniverseOverviewNew extends Component {
                 >
                   <div>1. Create a sample retail database:</div>
                   <YBCodeBlock>
-                    yugabyte-db demo create retail
+                    yugabyted demo create retail
                   </YBCodeBlock>
                   <div>2. Connect to the database:</div>
                   <YBCodeBlock>
-                    yugabyte-db demo run retail
+                    yugabyted demo run retail
                   </YBCodeBlock>
                   <div>3. Explore more YSQL <a href="https://docs.yugabyte.com/latest/quick-start/explore-ysql/">here</a>.</div>
                 </YBModal>
@@ -412,10 +412,7 @@ export default class UniverseOverviewNew extends Component {
         }
         headerRight={
           isNonEmptyObject(universeInfo)
-          ? <Link onClick={(e) => {
-            e.preventDefault();
-            window.location.pathname = `/universes/${universeInfo.universeUUID}/tables`;
-          }}>Details</Link>
+          ? <Link to={`/universes/${universeInfo.universeUUID}/tables`}>Details</Link>
           : null
         }
         body={
@@ -448,10 +445,19 @@ export default class UniverseOverviewNew extends Component {
 
   getDiskUsageWidget = (universeInfo) => {
     // For kubernetes the disk usage would be in container tab, rest it would be server tab.
-    const subTab = isKubernetesUniverse(universeInfo) ? "container" : "server";
-    const metricKey = isKubernetesUniverse(universeInfo) ? "container_memory_usage" : "disk_usage";
+    const isKubernetes = isKubernetesUniverse(universeInfo);
+    const subTab = isKubernetes ? "container" : "server";
+    const metricKey = isKubernetes ? "container_volume_stats" : "disk_usage";
+    const secondaryMetric = isKubernetes ? [{
+      metric: "container_volume_max_usage",
+      name: "size",
+    }] : null;
     return (
-      <StandaloneMetricsPanelContainer metricKey={metricKey} type="overview">
+      <StandaloneMetricsPanelContainer
+        metricKey={metricKey}
+        additionalMetricKeys={secondaryMetric}
+        type="overview"
+      >
         { props => {
           return (<YBWidget
             noMargin
@@ -465,7 +471,6 @@ export default class UniverseOverviewNew extends Component {
               <DiskUsagePanel
                 metric={props.metric}
                 className={"disk-usage-container"}
-                isKubernetes={isKubernetesUniverse(universeInfo)}
               />
             }
           />);
@@ -491,7 +496,7 @@ export default class UniverseOverviewNew extends Component {
                         </Link>}
             body={
               <CpuUsagePanel
-                 metric={props.metric}
+                metric={props.metric}
                 className={"disk-usage-container"}
                 isKubernetes={isItKubernetesUniverse}
               />
@@ -590,6 +595,7 @@ export default class UniverseOverviewNew extends Component {
 
     const universeInfo = currentUniverse.data;
     const nodePrefixes = [universeInfo.universeDetails.nodePrefix];
+    const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
     return (
       <Fragment>
         <Row>
@@ -604,8 +610,14 @@ export default class UniverseOverviewNew extends Component {
           {this.getRegionMapWidget(universeInfo)}
 
           <Col lg={4} xs={12} md={6} sm={6}>
-            <OverviewMetricsContainer universeUuid={universeInfo.universeUUID} type={"overview"} origin={"universe"}
-              width={width} nodePrefixes={nodePrefixes} />
+            <OverviewMetricsContainer
+              universeUuid={universeInfo.universeUUID}
+              type={"overview"}
+              origin={"universe"}
+              width={width}
+              nodePrefixes={nodePrefixes}
+              isKubernetesUniverse={isItKubernetesUniverse}
+            />
           </Col>
           <Col lg={4} md={6} sm={6} xs={12}>
             {this.getDiskUsageWidget(universeInfo)}

@@ -55,8 +55,8 @@ CHECKED_STATUS PTTypeField::Analyze(SemContext *sem_context) {
                               ErrorCode::INVALID_TYPE_DEFINITION);
   }
 
-  if (!datatype_->ql_type()->GetUserDefinedTypeIds().empty()) {
-    return sem_context->Error(this, "UDT field types cannot refer to other user-defined types",
+  if (!datatype_->ql_type()->GetUserDefinedTypeIds().empty() && !datatype_->ql_type()->IsFrozen()) {
+    return sem_context->Error(this, "A user-defined type cannot contain non-frozen UDTs",
                               ErrorCode::FEATURE_NOT_SUPPORTED);
   }
 

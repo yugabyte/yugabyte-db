@@ -15,7 +15,7 @@ a) You must have the Docker runtime installed on your localhost. Follow the link
 
 <i class="fab fa-windows" aria-hidden="true"></i> [Docker for Windows](https://store.docker.com/editions/community/docker-ce-desktop-windows)
 
-b) Verify that you have python2 installed. Support for python3 is in the works.
+b) Verify that you have python2 installed. Support for Python 3 is in the works — to follow the status, see [Enhance yb-ctl and yb-docker-ctl to support Python3 #3025](https://github.com/yugabyte/yugabyte-db/issues/3025).
 
 ```sh
 $ python --version

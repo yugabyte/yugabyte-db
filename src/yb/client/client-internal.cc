@@ -60,6 +60,7 @@
 #include "yb/gutil/sysinfo.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_rpc.h"
+#include "yb/master/master_util.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
@@ -257,6 +258,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(GetTabletLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListMasters);
 YB_CLIENT_SPECIALIZE_SIMPLE(CreateNamespace);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteNamespace);
+YB_CLIENT_SPECIALIZE_SIMPLE(AlterNamespace);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListNamespaces);
 YB_CLIENT_SPECIALIZE_SIMPLE(ReservePgsqlOids);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetYsqlCatalogConfig);
@@ -325,7 +327,12 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
     }
     case CLOSEST_REPLICA:
     case FIRST_REPLICA: {
-      rt->GetRemoteTabletServers(candidates);
+      if (PREDICT_TRUE(FLAGS_assert_tablet_server_select_is_in_zone.empty())) {
+        rt->GetRemoteTabletServers(candidates);
+      } else {
+        rt->GetRemoteTabletServers(candidates, internal::IncludeFailedReplicas::kTrue);
+      }
+
       // Filter out all the blacklisted candidates.
       vector<RemoteTabletServer*> filtered;
       for (RemoteTabletServer* rts : *candidates) {
@@ -390,6 +397,7 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
                  << " instead of the expected zone "
                  << FLAGS_assert_tablet_server_select_is_in_zone
                  << " Cloud info: " << cloud_info_pb_.ShortDebugString()
+                 << " for selection policy " << selection
                  << msg;
     }
   }
@@ -446,10 +454,13 @@ Status YBClient::Data::CreateTable(YBClient* client,
       // response could be sent back, or due to a I/O pause or a
       // network blip leading to a timeout, etc...)
       YBTableInfo info;
-      string keyspace = req.has_namespace_() ? req.namespace_().name() :
-                        (req.name() == common::kRedisTableName ? common::kRedisKeyspaceName : "");
-      const YBTableName table_name(!keyspace.empty()
-          ? YBTableName(keyspace, req.name()) : YBTableName(req.name()));
+      const string keyspace = req.has_namespace_()
+          ? req.namespace_().name()
+          : (req.name() == common::kRedisTableName ? common::kRedisKeyspaceName : "");
+      const YQLDatabase db_type = req.has_namespace_() && req.namespace_().has_database_type()
+          ? req.namespace_().database_type()
+          : (keyspace.empty() ? YQL_DATABASE_CQL : master::GetDefaultDatabaseType(keyspace));
+      const YBTableName table_name(db_type, req.name());
 
       // A fix for https://yugabyte.atlassian.net/browse/ENG-529:
       // If we've been retrying table creation, and the table is now in the process is being
@@ -686,6 +697,26 @@ Status YBClient::Data::WaitForTruncateTableToFinish(YBClient* client,
       deadline, "Waiting on Truncate Table to be completed",
       "Timed out waiting for Table Truncation",
       std::bind(&YBClient::Data::IsTruncateTableInProgress, this, client, table_id, _1, _2));
+}
+
+Status YBClient::Data::AlterNamespace(YBClient* client,
+                                      const AlterNamespaceRequestPB& req,
+                                      CoarseTimePoint deadline) {
+  AlterNamespaceResponsePB resp;
+  Status s =
+      SyncLeaderMasterRpc<AlterNamespaceRequestPB, AlterNamespaceResponsePB>(
+          deadline,
+          client,
+          req,
+          &resp,
+          nullptr /* num_attempts */,
+          "AlterNamespace",
+          &MasterServiceProxy::AlterNamespace);
+  RETURN_NOT_OK(s);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
 }
 
 Status YBClient::Data::AlterTable(YBClient* client,
@@ -1514,7 +1545,7 @@ Status YBClient::Data::ReinitializeMasterAddresses() {
     master_server_addrs_.push_back(master_addrs);
     LOG(INFO) << "Got master addresses = " << master_addrs
               << " from REST endpoint: " << master_server_endpoint_;
-  } else if (!FLAGS_flagfile.empty()) {
+  } else if (!FLAGS_flagfile.empty() && !skip_master_flagfile_) {
     LOG(INFO) << "Reinitialize master addresses from file: " << FLAGS_flagfile;
     string master_addrs = VERIFY_RESULT(ReadMasterAddressesFromFlagFile(FLAGS_flagfile));
 

@@ -44,6 +44,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
+#include "yb/master/master_util.h"
 #include "yb/util/metrics.h"
 
 using std::multimap;
@@ -60,21 +61,25 @@ METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_Del
 
 namespace yb {
 
-static const YBTableName kTableName("my_keyspace", "test-table");
+static const YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "test-table");
 
 class CreateTableITest : public ExternalMiniClusterITestBase {
  public:
   Status CreateTableWithPlacement(
       const master::ReplicationInfoPB& replication_info, const string& table_suffix,
       const YBTableType table_type = YBTableType::YQL_TABLE_TYPE) {
-    RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
+    auto db_type = master::GetDatabaseTypeForTable(
+        client::YBTable::ClientToPBTableType(table_type));
+    RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(), db_type));
     gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
     client::YBSchema client_schema(client::YBSchemaFromSchema(yb::GetSimpleTestSchema()));
     if (table_type != YBTableType::REDIS_TABLE_TYPE) {
       table_creator->schema(&client_schema);
     }
-    return table_creator->table_name(YBTableName(kTableName.namespace_name(),
-            Substitute("$0:$1", kTableName.table_name(), table_suffix)))
+    return table_creator->table_name(
+        YBTableName(db_type,
+                    kTableName.namespace_name(),
+                    Substitute("$0:$1", kTableName.table_name(), table_suffix)))
         .replication_info(replication_info)
         .table_type(table_type)
         .wait(true)
@@ -178,7 +183,8 @@ TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
   // Try to create a single-tablet table.
   // This won't succeed because we can't create enough replicas to get
   // a quorum.
-  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
+                                                kTableName.namespace_type()));
   gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
   client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
   ASSERT_OK(table_creator->table_name(kTableName)
@@ -191,12 +197,11 @@ TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
   int64_t num_create_attempts = 0;
   while (num_create_attempts < 3) {
     SleepFor(MonoDelta::FromMilliseconds(100));
-    ASSERT_OK(cluster_->tablet_server(0)->GetInt64Metric(
+    num_create_attempts = ASSERT_RESULT(cluster_->tablet_server(0)->GetInt64Metric(
         &METRIC_ENTITY_server,
         "yb.tabletserver",
         &METRIC_handler_latency_yb_tserver_TabletServerAdminService_CreateTablet,
-        "total_count",
-        &num_create_attempts));
+        "total_count"));
     LOG(INFO) << "Waiting for the master to retry creating the tablet 3 times... "
               << num_create_attempts << " RPCs seen so far";
 
@@ -246,7 +251,8 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
   master_flags.push_back("--enable_load_balancing=false");  // disable load balancing moves
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumServers));
 
-  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
+                                                kTableName.namespace_type()));
   gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
   client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
   ASSERT_OK(table_creator->table_name(kTableName)
@@ -326,7 +332,8 @@ TEST_F(CreateTableITest, TestNoAllocBlacklist) {
   // add TServer to blacklist
   ASSERT_OK(cluster_->AddTServerToBlacklist(cluster_->master(), cluster_->tablet_server(1)));
   // create table
-  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
+                                                kTableName.namespace_type()));
   gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
   client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
   ASSERT_OK(table_creator->table_name(kTableName)

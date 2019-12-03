@@ -23,9 +23,9 @@ YQLTablesVTable::YQLTablesVTable(const Master* const master)
     : YQLVirtualTable(master::kSystemSchemaTablesTableName, master, CreateSchema()) {
 }
 
-Status YQLTablesVTable::RetrieveData(const QLReadRequestPB& request,
-                                     std::unique_ptr<QLRowBlock>* vtable) const {
-  vtable->reset(new QLRowBlock(schema_));
+Result<std::shared_ptr<QLRowBlock>> YQLTablesVTable::RetrieveData(
+    const QLReadRequestPB& request) const {
+  auto vtable = std::make_shared<QLRowBlock>(schema_);
   std::vector<scoped_refptr<TableInfo> > tables;
   master_->catalog_manager()->GetAllTables(&tables, true);
   for (scoped_refptr<TableInfo> table : tables) {
@@ -47,7 +47,7 @@ Status YQLTablesVTable::RetrieveData(const QLReadRequestPB& request,
     RETURN_NOT_OK(master_->catalog_manager()->FindNamespace(nsId, &nsInfo));
 
     // Create appropriate row for the table;
-    QLRow& row = (*vtable)->Extend();
+    QLRow& row = vtable->Extend();
     RETURN_NOT_OK(SetColumnValue(kKeyspaceName, nsInfo->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kTableName, table->name(), &row));
 
@@ -84,7 +84,7 @@ Status YQLTablesVTable::RetrieveData(const QLReadRequestPB& request,
     RETURN_NOT_OK(SetColumnValue(kTransactions, txn.value(), &row));
   }
 
-  return Status::OK();
+  return vtable;
 }
 
 Schema YQLTablesVTable::CreateSchema() const {

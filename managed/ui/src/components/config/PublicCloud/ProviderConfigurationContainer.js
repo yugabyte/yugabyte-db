@@ -10,6 +10,7 @@ import { createProvider, createProviderResponse, createRegion, createRegionRespo
 import { openDialog, closeDialog } from '../../../actions/modal';
 import {fetchTaskProgress, fetchTaskProgressResponse,fetchCustomerTasks , fetchCustomerTasksFailure, fetchCustomerTasksSuccess }
   from '../../../actions/tasks';
+import { fetchHostInfo, fetchHostInfoSuccess, fetchHostInfoFailure } from '../../../actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -121,6 +122,15 @@ const mapDispatchToProps = (dispatch) => {
     },
     closeModal: () => {
       dispatch(closeDialog());
+    },
+    fetchHostInfo: () => {
+      dispatch(fetchHostInfo()).then((response)=>{
+        if (response.payload.status !== 200) {
+          dispatch(fetchHostInfoFailure(response.payload));
+        } else {
+          dispatch(fetchHostInfoSuccess(response.payload));
+        }
+      });
     },
   };
 };

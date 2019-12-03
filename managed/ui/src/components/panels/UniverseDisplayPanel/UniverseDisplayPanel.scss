@@ -4,7 +4,7 @@
 @import "_style/mixins.scss";
 
 
-.universe-display-item-container {
+.universe-display-item-container, .schedule-display-item-container {
   height: 178px;
   margin-bottom: 24px;
   padding: 12px 14px;
@@ -25,7 +25,7 @@
     box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
   }
 
-  * {
+  & > *:not(.dropdown-menu) {
     position: relative;
     z-index: 1;
   }
@@ -92,8 +92,7 @@
   }
 }
 
-
-a:hover >  .universe-display-item-container, .create-universe-button:hover {
+a:hover > .universe-display-item-container, a:hover > .schedule-display-item-container, .create-universe-button:hover {
   &:before {
     @include transition(0.3s);
     transform: scale(1.03, 1.03);

@@ -11,7 +11,7 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.yugabyte.yw.common.EncryptionAtRestManager.KeyProvider;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.FakeDBApplication;
 import org.junit.Test;
 import play.libs.Json;
@@ -48,7 +48,7 @@ public class KmsHistoryTest extends FakeDBApplication {
         UUID universeUUID = UUID.randomUUID();
         KmsHistory.createKmsHistory(configUUID, universeUUID, TargetType.UNIVERSE_KEY, "a");
         List<KmsHistory> targetHistory = KmsHistory
-                .getAllTargetKeyRefs(configUUID, universeUUID, TargetType.UNIVERSE_KEY);
+                .getAllConfigTargetKeyRefs(configUUID, universeUUID, TargetType.UNIVERSE_KEY);
         assertEquals(targetHistory.size(), 1);
     }
 
@@ -57,9 +57,9 @@ public class KmsHistoryTest extends FakeDBApplication {
         UUID configUUID = UUID.randomUUID();
         UUID universeUUID = UUID.randomUUID();
         KmsHistory.createKmsHistory(configUUID, universeUUID, TargetType.UNIVERSE_KEY, "a");
-        KmsHistory.deleteAllTargetKeyRefs(configUUID, universeUUID, TargetType.UNIVERSE_KEY);
+        KmsHistory.deleteAllConfigTargetKeyRefs(configUUID, universeUUID, TargetType.UNIVERSE_KEY);
         List<KmsHistory> targetHistory = KmsHistory
-                .getAllTargetKeyRefs(configUUID, universeUUID, TargetType.UNIVERSE_KEY);
+                .getAllConfigTargetKeyRefs(configUUID, universeUUID, TargetType.UNIVERSE_KEY);
         assertEquals(targetHistory.size(), 0);
     }
 }

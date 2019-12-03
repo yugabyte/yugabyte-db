@@ -8,7 +8,8 @@ import { getUniversePerNodeStatus, getUniversePerNodeStatusResponse,
 
 function mapStateToProps(state) {
   return {
-    universe: state.universe
+    universe: state.universe,
+    customer: state.customer
   };
 }
 

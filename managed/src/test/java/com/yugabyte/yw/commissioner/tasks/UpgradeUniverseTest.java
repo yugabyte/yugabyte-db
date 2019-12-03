@@ -139,6 +139,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       TaskType.AnsibleClusterServerCtl,
       TaskType.WaitForServer,
       TaskType.WaitForServerReady,
+      TaskType.WaitForEncryptionKeyInMemory,
       TaskType.SetNodeState
   );
 
@@ -158,6 +159,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       TaskType.AnsibleClusterServerCtl,
       TaskType.WaitForServer,
       TaskType.WaitForServerReady,
+      TaskType.WaitForEncryptionKeyInMemory,
       TaskType.SetNodeState
   );
 
@@ -425,7 +427,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     position = assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false);
     position = assertSoftwareUpgradeSequence(subTasksByPosition, TSERVER, position, true);
     assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
-    assertEquals(44, position);
+    assertEquals(50, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }
@@ -532,7 +534,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     position = assertGFlagsUpgradeSequence(subTasksByPosition, MASTER, position, true);
     position = assertGFlagsCommonTasks(subTasksByPosition, position,
                                        UpgradeType.ROLLING_UPGRADE_MASTER_ONLY, true);
-    assertEquals(23, position);
+    assertEquals(26, position);
   }
 
   @Test
@@ -555,7 +557,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     position = assertGFlagsUpgradeSequence(subTasksByPosition, TSERVER, position, true);
     position = assertGFlagsCommonTasks(subTasksByPosition, position,
                                        UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, true);
-    assertEquals(25, position);
+    assertEquals(28, position);
   }
 
   @Test
@@ -576,7 +578,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     position = assertGFlagsUpgradeSequence(subTasksByPosition, TSERVER, position, true);
     position = assertGFlagsCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE,
                                        true);
-    assertEquals(46, position);
+    assertEquals(52, position);
   }
 
   @Test
@@ -625,7 +627,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     position = assertGFlagsUpgradeSequence(subTasksByPosition, TSERVER, position, true, true);
     position = assertGFlagsCommonTasks(subTasksByPosition, position,
                    UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, true);
-    assertEquals(25, position);
+    assertEquals(28, position);
   }
 
   @Test
@@ -657,6 +659,6 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     position = assertGFlagsUpgradeSequence(subTasksByPosition, MASTER, position, true, true);
     position = assertGFlagsCommonTasks(subTasksByPosition, position,
                    UpgradeType.ROLLING_UPGRADE_MASTER_ONLY, true);
-    assertEquals(23, position);
+    assertEquals(26, position);
   }
 }

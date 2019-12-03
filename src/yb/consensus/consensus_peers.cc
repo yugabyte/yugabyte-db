@@ -66,6 +66,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -74,7 +75,8 @@ DEFINE_int32(consensus_rpc_timeout_ms, 3000,
              "Timeout used for all consensus internal RPC communications.");
 TAG_FLAG(consensus_rpc_timeout_ms, advanced);
 
-DEFINE_int32(max_wait_for_processresponse_before_closing_ms, 5000,
+DEFINE_int32(max_wait_for_processresponse_before_closing_ms,
+             yb::RegularBuildVsSanitizers(5000, 60000),
              "Maximum amount of time we will wait in Peer::Close() for Peer::ProcessResponse() to "
              "finish before returning proceding to close the Peer and return");
 TAG_FLAG(max_wait_for_processresponse_before_closing_ms, advanced);
@@ -104,21 +106,6 @@ using rpc::Messenger;
 using rpc::PeriodicTimer;
 using rpc::RpcController;
 using strings::Substitute;
-
-Result<PeerPtr> Peer::NewRemotePeer(const RaftPeerPB& peer_pb,
-                                    const string& tablet_id,
-                                    const string& leader_uuid,
-                                    PeerMessageQueue* queue,
-                                    ThreadPoolToken* raft_pool_token,
-                                    PeerProxyPtr proxy,
-                                    Consensus* consensus,
-                                    rpc::Messenger* messenger) {
-  auto new_peer = std::make_shared<Peer>(
-      peer_pb, tablet_id, leader_uuid, std::move(proxy), queue, raft_pool_token, consensus,
-      messenger);
-  RETURN_NOT_OK(new_peer->Init());
-  return Result<PeerPtr>(std::move(new_peer));
-}
 
 Peer::Peer(
     const RaftPeerPB& peer_pb, string tablet_id, string leader_uuid, PeerProxyPtr proxy,
@@ -355,6 +342,10 @@ void Peer::ProcessResponse() {
     return;
   }
 
+  if (response_.has_propagated_hybrid_time()) {
+    queue_->clock()->Update(HybridTime(response_.propagated_hybrid_time()));
+  }
+
   // We should try to evict a follower which returns a WRONG UUID error.
   if (response_.has_error() &&
       response_.error().code() == tserver::TabletServerErrorPB::WRONG_SERVER_UUID) {
@@ -451,7 +442,7 @@ void Peer::Close() {
     std::lock_guard<simple_spinlock> processing_lock(peer_lock_);
     if (using_thread_pool_.load(std::memory_order_acquire) > 0) {
       auto deadline = std::chrono::steady_clock::now() +
-          std::chrono::milliseconds(FLAGS_max_wait_for_processresponse_before_closing_ms * 1ms);
+                      FLAGS_max_wait_for_processresponse_before_closing_ms * 1ms;
       BackoffWaiter waiter(deadline, 100ms);
       while (using_thread_pool_.load(std::memory_order_acquire) > 0) {
         if (!waiter.Wait()) {

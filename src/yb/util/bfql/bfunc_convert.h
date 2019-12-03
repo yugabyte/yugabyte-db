@@ -1216,7 +1216,7 @@ CHECKED_STATUS ConvertVarintToFloat(PTypePtr source, RTypePtr target) {
     target->SetNull();
   } else {
     // This may lose precision, it should return the closest float value to the input number.
-    target->set_float_value(static_cast<float>(VERIFY_RESULT(util::CheckedStold(
+    target->set_float_value(static_cast<float>(VERIFY_RESULT(CheckedStold(
         source->varint_value().ToString()))));
   }
   return Status::OK();
@@ -1228,7 +1228,7 @@ CHECKED_STATUS ConvertVarintToDouble(PTypePtr source, RTypePtr target) {
     target->SetNull();
   } else {
     // This may lose precision, it should return the closest double value to the input number.
-    target->set_double_value(VERIFY_RESULT(util::CheckedStold(
+    target->set_double_value(VERIFY_RESULT(CheckedStold(
         source->varint_value().ToString())));
   }
   return Status::OK();
@@ -1320,31 +1320,31 @@ CHECKED_STATUS ConvertToNumeric(PTypePtr source, RTypePtr target, const DataType
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertToI32(PTypePtr source, RTypePtr target) {
-  return ConvertToNumeric(source, target, DataType::INT32, util::CheckedStoi,
+  return ConvertToNumeric(source, target, DataType::INT32, CheckedStoi,
                           ToInt32<RTypePtr>);
 }
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertToI16(PTypePtr source, RTypePtr target) {
-  return ConvertToNumeric(source, target, DataType::INT16, util::CheckedStoi,
+  return ConvertToNumeric(source, target, DataType::INT16, CheckedStoi,
                           ToInt16<RTypePtr>);
 }
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertToI64(PTypePtr source, RTypePtr target) {
-  return ConvertToNumeric(source, target, DataType::INT64, util::CheckedStoll,
+  return ConvertToNumeric(source, target, DataType::INT64, CheckedStoll,
                           ToInt64<RTypePtr>);
 }
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertToDouble(PTypePtr source, RTypePtr target) {
-  return ConvertToNumeric(source, target, DataType::DOUBLE, util::CheckedStold,
+  return ConvertToNumeric(source, target, DataType::DOUBLE, CheckedStold,
                           ToDouble<RTypePtr>);
 }
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertToFloat(PTypePtr source, RTypePtr target) {
-  return ConvertToNumeric(source, target, DataType::FLOAT, util::CheckedStold,
+  return ConvertToNumeric(source, target, DataType::FLOAT, CheckedStold,
                           ToFloat<RTypePtr>);
 }
 

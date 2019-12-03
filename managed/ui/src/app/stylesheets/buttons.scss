@@ -75,8 +75,12 @@
 
   &[disabled], &[disabled]:focus, &[disabled]:active {
     background-color: $YB_ORANGE;
-    opacity: 1;
+    opacity: 0.65;
     cursor: not-allowed;
+  }
+
+  &.btn-is-loading[disabled], &.btn-is-loading[disabled]:focus, &.btn-is-loading[disabled]:active {
+    opacity: 1;
   }
 }
 

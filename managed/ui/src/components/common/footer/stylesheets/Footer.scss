@@ -59,6 +59,18 @@ footer {
 
   span.social-media-cta {
     margin-right: 5%;
+    border: 1px solid #cbcdd0;
+    color: #202951;
+    text-decoration: none;
+    padding: 6px 12px 6px 15px;
+    border-radius: 7px;
+    margin-right: 15px;
+    font-size: 13px;
+  }
+
+  span.social-media-cta:hover {
+    background-color: #cbcbcb78;
+    color: #000;
   }
 
   a {

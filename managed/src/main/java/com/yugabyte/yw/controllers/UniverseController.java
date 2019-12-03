@@ -15,6 +15,7 @@ import java.util.Random;
 
 import java.nio.charset.Charset;
 
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -43,8 +44,8 @@ import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.EncryptionAtRestService;
-import com.yugabyte.yw.common.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Customer;
@@ -138,8 +139,9 @@ public class UniverseController extends AuthenticatedController {
           UniverseDefinitionTaskParams.ClusterOperationType.valueOf(clustOp.asText());
       UniverseDefinitionTaskParams taskParams = bindFormDataToTaskParams(formData);
 
+      taskParams.currentClusterType = currentClusterType;
       // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster uuid.
-      Cluster c = currentClusterType.equals(ClusterType.PRIMARY) ?
+      Cluster c = taskParams.currentClusterType .equals(ClusterType.PRIMARY) ?
           taskParams.getPrimaryCluster() : taskParams.getReadOnlyClusters().get(0);
       if (checkIfNodeParamsValid(taskParams, c)) {
         PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid, clusterOpType);
@@ -236,7 +238,6 @@ public class UniverseController extends AuthenticatedController {
       if (primaryCluster != null) {
         if (primaryCluster.userIntent.providerType.equals(CloudType.kubernetes)) {
           taskType = TaskType.CreateKubernetesUniverse;
-          taskParams.isKubernetesUniverse = true;
         }
 
         if (primaryCluster.userIntent.enableNodeToNodeEncrypt ||
@@ -250,7 +251,7 @@ public class UniverseController extends AuthenticatedController {
           taskParams.allowInsecure = false;
         }
 
-        // Setup encryption at rest
+        // Setup encryption for the universe
         if (primaryCluster.userIntent.enableEncryptionAtRest) {
           // Generate encryption master key
           byte[] data = keyManager.generateUniverseKey(
@@ -265,18 +266,22 @@ public class UniverseController extends AuthenticatedController {
             LOG.warn(errMsg);
             primaryCluster.userIntent.enableEncryptionAtRest = false;
           } else {
-            int numRotations = keyManager.getNumKeyRotations(
-                    customerUUID,
-                    universe.universeUUID,
-                    taskParams.encryptionAtRestConfig
-            );
-            taskParams.encryptionKeyFilePath = CertificateHelper.createEncryptionKeyFile(
-                    customerUUID,
-                    universe.universeUUID,
-                    data,
-                    appConfig.getString("yb.storage.path"),
-                    numRotations
-            );
+            taskParams.enableEncryptionAtRest = true;
+          }
+        } else if (
+                primaryCluster.userIntent.enableVolumeEncryption
+                        && primaryCluster.userIntent.providerType.equals(CloudType.aws)
+        ) {
+          byte[] cmkArnBytes = keyManager.generateUniverseKey(
+                  customerUUID,
+                  universe.universeUUID,
+                  taskParams.encryptionAtRestConfig,
+                  true
+          );
+          if (cmkArnBytes.length == 0) {
+            primaryCluster.userIntent.enableVolumeEncryption = false;
+          } else {
+            taskParams.cmkArn = new String(cmkArnBytes);
           }
         }
       }
@@ -342,20 +347,10 @@ public class UniverseController extends AuthenticatedController {
             String errMsg = "Was not able to retrieve a universe key from desired KMS provider";
             throw new RuntimeException(errMsg);
           }
-          int numRotations = keyManager.getNumKeyRotations(
-                  customerUUID,
-                  universeUUID,
-                  taskParams.encryptionAtRestConfig
-          );
-          taskParams.encryptionKeyFilePath = CertificateHelper.createEncryptionKeyFile(
-                  customerUUID,
-                  universe.universeUUID,
-                  data,
-                  appConfig.getString("yb.storage.path"),
-                  numRotations
-          );
+          taskParams.enableEncryptionAtRest = true;
           break;
         case DISABLE:
+          taskParams.disableEncryptionAtRest = true;
           break;
         default:
           throw new IllegalArgumentException(
@@ -366,7 +361,6 @@ public class UniverseController extends AuthenticatedController {
       Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
       if (primaryCluster != null) {
         if (primaryCluster.userIntent.providerType.equals(CloudType.kubernetes)) {
-          taskParams.isKubernetesUniverse = true;
           taskType = TaskType.SetKubernetesUniverseKey;
         }
       }
@@ -464,21 +458,9 @@ public class UniverseController extends AuthenticatedController {
 
         if (primaryCluster.userIntent.providerType.equals(CloudType.kubernetes)) {
           taskType = TaskType.EditKubernetesUniverse;
-          taskParams.isKubernetesUniverse = true;
         }
-        Map<String, String> encryptionAtRestConfig = universe.getEncryptionAtRestConfig();
-        int numRotations = keyManager.getNumKeyRotations(
-                customerUUID,
-                universeUUID,
-                encryptionAtRestConfig
-        );
         if (universe.isEncryptedAtRest()) {
-          taskParams.encryptionKeyFilePath = CertificateHelper.getEncryptionFile(
-                  customerUUID,
-                  universe.universeUUID,
-                  appConfig.getString("yb.storage.path"),
-                  numRotations
-          );
+          taskParams.enableEncryptionAtRest = true;
         }
       }
 
@@ -638,10 +620,8 @@ public class UniverseController extends AuthenticatedController {
     // If the universe was created with universe encryption at rest key created through an
     // integration, then we should remove the key history from local storage to enable safe
     // deletion of the KMS configuration only when all associated universes have been deleted
-    if (universe.isEncryptedAtRest() || keyManager.getNumKeyRotations(
-            customerUUID,
-            universeUUID,
-            universe.getEncryptionAtRestConfig()) > 0) {
+    if (universe.isEncryptedAtRest() ||
+            keyManager.getNumKeyRotations(customerUUID, universeUUID) > 0) {
       keyManager.clearUniverseKeyHistory(customerUUID, universeUUID);
     }
 
@@ -955,6 +935,10 @@ public class UniverseController extends AuthenticatedController {
       TaskType taskType = TaskType.UpgradeUniverse;
       if (taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes)) {
         taskType = TaskType.UpgradeKubernetesUniverse;
+      }
+
+      if (universe.isEncryptedAtRest()) {
+        taskParams.enableEncryptionAtRest = true;
       }
 
       UUID taskUUID = commissioner.submit(taskType, taskParams);

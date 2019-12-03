@@ -277,9 +277,12 @@ class Consensus {
 
   // Returns the leader status (see LeaderStatus type description for details).
   // If leader is ready, then also returns term, otherwise OpId::kUnknownTerm is returned.
-  virtual LeaderState GetLeaderState() const = 0;
+  //
+  // allow_stale could be used to avoid refreshing cache, when we are OK to read slightly outdated
+  // value.
+  virtual LeaderState GetLeaderState(bool allow_stale = false) const = 0;
 
-  LeaderStatus GetLeaderStatus() const;
+  LeaderStatus GetLeaderStatus(bool allow_stale = false) const;
   int64_t LeaderTerm() const;
 
   // Returns the uuid of this peer.
@@ -342,10 +345,10 @@ class Consensus {
   virtual MonoTime TimeSinceLastMessageFromLeader() = 0;
 
   // Read majority replicated messages for CDC producer.
-  virtual CHECKED_STATUS ReadReplicatedMessagesForCDC(const OpId& from, ReplicateMsgs* msgs,
-                                                      bool* have_more_messages) = 0;
+  virtual Result<ReadOpsResult> ReadReplicatedMessagesForCDC(const yb::OpId& from,
+                                                             int64_t* repl_index) = 0;
 
-  virtual void UpdateCDCConsumerOpId(const OpIdPB& op_id) = 0;
+  virtual void UpdateCDCConsumerOpId(const yb::OpId& op_id) = 0;
 
  protected:
   friend class RefCountedThreadSafe<Consensus>;

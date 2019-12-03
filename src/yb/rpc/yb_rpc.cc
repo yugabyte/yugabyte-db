@@ -192,7 +192,7 @@ void YBInboundConnectionContext::Connected(const ConnectionPtr& connection) {
 void YBInboundConnectionContext::UpdateLastWrite(const ConnectionPtr& connection) {
   last_write_time_ = connection->reactor()->cur_time();
   VLOG(4) << connection->ToString() << ": " << "Updated last_write_time_="
-          << yb::ToString(last_write_time_);
+          << AsString(last_write_time_);
 }
 
 void YBInboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
@@ -205,13 +205,24 @@ void YBInboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents) 
 
     const auto now = connection->reactor()->cur_time();
 
-    const auto deadline = last_write_time_ + HeartbeatPeriod();
-    if (now > deadline) {
-      VLOG(4) << connection->ToString() << ": " << "Sending heartbeat";
-      connection->QueueOutboundData(HeartbeatOutboundData::Instance());
+    const auto deadline =
+        std::max(last_heartbeat_sending_time_, last_write_time_) + HeartbeatPeriod();
+    if (now >= deadline) {
+      if (last_write_time_ >= last_heartbeat_sending_time_) {
+        // last_write_time_ < last_heartbeat_sending_time_ means that last heartbeat we've queued
+        // for sending is still in queue due to RPC/networking issues, so no need to queue
+        // another one.
+        VLOG(4) << connection->ToString() << ": " << "Sending heartbeat, now: " << AsString(now)
+                << ", deadline: " << AsString(deadline)
+                << ", last_write_time_: " << AsString(last_write_time_)
+                << ", last_heartbeat_sending_time_: " << AsString(last_heartbeat_sending_time_);
+        connection->QueueOutboundData(HeartbeatOutboundData::Instance());
+        last_heartbeat_sending_time_ = now;
+      }
+      timer_.Start(HeartbeatPeriod());
+    } else {
+      timer_.Start(deadline - now);
     }
-
-    timer_.Start(deadline - now);
   }
 }
 
@@ -331,8 +342,8 @@ Status YBInboundCall::SerializeResponseBuffer(const google::protobuf::MessageLit
 string YBInboundCall::ToString() const {
   return strings::Substitute("Call $0 $1 => $2 (request call id $3)",
       remote_method_.ToString(),
-      yb::ToString(remote_address()),
-      yb::ToString(local_address()),
+      AsString(remote_address()),
+      AsString(local_address()),
       header_.call_id());
 }
 
@@ -342,8 +353,8 @@ bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
   }
-  resp->set_micros_elapsed(MonoTime::Now().GetDeltaSince(timing_.time_received)
-      .ToMicroseconds());
+  resp->set_elapsed_millis(MonoTime::Now().GetDeltaSince(timing_.time_received)
+      .ToMilliseconds());
   return true;
 }
 
@@ -487,7 +498,7 @@ Result<ProcessDataResult> YBOutboundConnectionContext::ProcessCalls(
 void YBOutboundConnectionContext::UpdateLastRead(const ConnectionPtr& connection) {
   last_read_time_ = connection->reactor()->cur_time();
   VLOG(4) << connection->ToString() << ": " << "Updated last_read_time_="
-          << yb::ToString(last_read_time_);
+          << AsString(last_read_time_);
 }
 
 void YBOutboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
@@ -506,7 +517,7 @@ void YBOutboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents)
       auto passed = now - last_read_time_;
       const auto status = STATUS_FORMAT(
           NetworkError, "Read timeout, passed: $0, timeout: $1", passed, timeout);
-      VLOG(3) << connection->ToString() << ": " << status;
+      LOG(WARNING) << connection->ToString() << ": " << status;
       connection->reactor()->DestroyConnection(connection.get(), status);
       return;
     }

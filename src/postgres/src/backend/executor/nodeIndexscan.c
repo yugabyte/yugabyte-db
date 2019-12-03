@@ -138,7 +138,10 @@ IndexNext(IndexScanState *node)
 		ListCell   *l;
 		foreach(l, estate->es_rowMarks) {
 			ExecRowMark *erm = (ExecRowMark *) lfirst(l);
-			scandesc->yb_exec_params->rowmark = erm->markType;
+			// Do not propogate non-row-locking row marks.
+			if (erm->markType != ROW_MARK_REFERENCE &&
+				erm->markType != ROW_MARK_COPY)
+				scandesc->yb_exec_params->rowmark = erm->markType;
 			break;
 		}
 	}

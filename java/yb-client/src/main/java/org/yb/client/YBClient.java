@@ -53,6 +53,7 @@ import org.yb.tserver.Tserver;
 
 import com.google.common.net.HostAndPort;
 import com.stumbleupon.async.Deferred;
+import org.yb.util.Pair;
 
 /**
  * A synchronous and thread-safe client for YB.
@@ -681,6 +682,25 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Enable encryption at rest using the key file specified
+   */
+  public boolean enableEncryptionAtRestInMemory(final String versionId) throws Exception {
+    Deferred<ChangeEncryptionInfoInMemoryResponse> d;
+    d = asyncClient.enableEncryptionAtRestInMemory(versionId);
+    d.join(getDefaultAdminOperationTimeoutMs());
+    return d.join(getDefaultAdminOperationTimeoutMs()).hasError();
+  }
+
+  /**
+   * Disable encryption at rest
+   */
+  public boolean disableEncryptionAtRestInMemory() throws Exception {
+    Deferred<ChangeEncryptionInfoInMemoryResponse> d;
+    d = asyncClient.disableEncryptionAtRestInMemory();
+    return !d.join(getDefaultAdminOperationTimeoutMs()).hasError();
+  }
+
+  /**
   * Enable encryption at rest using the key file specified
   */
   public boolean enableEncryptionAtRest(final String file) throws Exception {
@@ -696,6 +716,42 @@ public class YBClient implements AutoCloseable {
     Deferred<ChangeEncryptionInfoResponse> d;
     d = asyncClient.disableEncryptionAtRest();
     return !d.join(getDefaultAdminOperationTimeoutMs()).hasError();
+  }
+
+  public Pair<Boolean, String> isEncryptionEnabled() throws Exception {
+    Deferred<IsEncryptionEnabledResponse> d = asyncClient.isEncryptionEnabled();
+    IsEncryptionEnabledResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
+    if (resp.getServerError() != null) {
+      throw new RuntimeException("Could not check isEnabledEncryption with error: " +
+                                 resp.getServerError().getStatus().getMessage());
+    }
+    return new Pair(resp.getIsEnabled(), resp.getUniverseKeyId());
+  }
+
+  /**
+  * Add universe keys in memory to a master at hp, with universe keys in format <id -> key>
+  */
+  public void addUniverseKeys(Map<String, byte[]> universeKeys, HostAndPort hp) throws Exception {
+    Deferred<AddUniverseKeysResponse> d = asyncClient.addUniverseKeys(universeKeys, hp);
+    AddUniverseKeysResponse resp = d.join();
+    if (resp.getServerError() != null) {
+      throw new RuntimeException("Could not add universe keys to " + hp.toString() +
+                                 " with error: " + resp.getServerError().getStatus().getMessage());
+    }
+  }
+
+  /**
+   * Check if a master at hp has universe key universeKeyId. Returns true if it does.
+   */
+  public boolean hasUniverseKeyInMemory(String universeKeyId, HostAndPort hp) throws Exception {
+    Deferred<HasUniverseKeyInMemoryResponse> d =
+            asyncClient.hasUniverseKeyInMemory(universeKeyId, hp);
+    HasUniverseKeyInMemoryResponse resp = d.join();
+    if (resp.getServerError() != null) {
+      throw new RuntimeException("Could not add universe keys to " + hp.toString() +
+                                 " with error: " + resp.getServerError().getStatus().getMessage());
+    }
+    return resp.hasKey();
   }
 
   /**
@@ -818,6 +874,20 @@ public class YBClient implements AutoCloseable {
       Map<String, List<List<Integer>>> replicaMap =
           table.getMemberTypeCountsForEachTSType(deadline);
       return replicaMap.equals(replicaMapExpected);
+    }
+  }
+
+  private class MasterHasUniverseKeyInMemoryCondition implements Condition {
+    private String universeKeyId;
+    private HostAndPort hp;
+    public MasterHasUniverseKeyInMemoryCondition(String universeKeyId, HostAndPort hp) {
+      this.universeKeyId = universeKeyId;
+      this.hp = hp;
+    }
+
+    @Override
+    public boolean get() throws Exception {
+      return hasUniverseKeyInMemory(universeKeyId, hp);
     }
   }
 
@@ -949,6 +1019,12 @@ public class YBClient implements AutoCloseable {
                                             Map<String, List<List<Integer>>> replicaMapExpected) {
     Condition replicaMapCondition = new ReplicaMapCondition(table, replicaMapExpected, timeoutMs);
     return waitForCondition(replicaMapCondition, timeoutMs);
+  }
+
+  public boolean waitForMasterHasUniverseKeyInMemory(
+          final long timeoutMs, String universeKeyId, HostAndPort hp) {
+    Condition universeKeyCondition = new MasterHasUniverseKeyInMemoryCondition(universeKeyId, hp);
+    return waitForCondition(universeKeyCondition, timeoutMs);
   }
 
   /**

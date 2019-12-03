@@ -17,6 +17,7 @@
 
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/namespace_alterer.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/entity_ids.h"
@@ -75,6 +76,26 @@ Status PgDropDatabase::Exec() {
   return pg_session_->DropDatabase(database_name_, database_oid_);
 }
 
+PgAlterDatabase::PgAlterDatabase(PgSession::ScopedRefPtr pg_session,
+                               const char *database_name,
+                               PgOid database_oid)
+    : PgDdl(pg_session),
+      namespace_alterer_(pg_session_->NewNamespaceAlterer(database_name, database_oid)) {
+}
+
+PgAlterDatabase::~PgAlterDatabase() {
+  delete namespace_alterer_;
+}
+
+Status PgAlterDatabase::Exec() {
+  return namespace_alterer_->SetDatabaseType(YQL_DATABASE_PGSQL)->Alter();
+}
+
+Status PgAlterDatabase::RenameDatabase(const char *newname) {
+  namespace_alterer_->RenameTo(newname);
+  return Status::OK();
+}
+
 //--------------------------------------------------------------------------------------------------
 // PgCreateTable
 //--------------------------------------------------------------------------------------------------
@@ -88,7 +109,10 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              bool if_not_exist,
                              bool add_primary_key)
     : PgDdl(pg_session),
-      table_name_(GetPgsqlNamespaceId(table_id.database_oid), database_name, table_name),
+      table_name_(YQL_DATABASE_PGSQL,
+                  GetPgsqlNamespaceId(table_id.database_oid),
+                  database_name,
+                  table_name),
       table_id_(table_id),
       num_tablets_(-1),
       is_pg_catalog_table_(strcmp(schema_name, "pg_catalog") == 0 ||
@@ -135,8 +159,7 @@ Status PgCreateTable::AddColumnImpl(const char *attr_name,
 }
 
 Status PgCreateTable::SetNumTablets(int32_t num_tablets) {
-  // TODO: make gflag
-  if (num_tablets > 50) {
+  if (num_tablets > FLAGS_max_num_tablets_for_table) {
     return STATUS(InvalidArgument, "num_tablets exceeds system limit");
   }
   num_tablets_ = num_tablets;
@@ -368,7 +391,7 @@ Status PgAlterTable::DropColumn(const char *name) {
 }
 
 Status PgAlterTable::RenameTable(const char *db_name, const char *newname) {
-  client::YBTableName new_table_name(db_name, newname);
+  client::YBTableName new_table_name(YQL_DATABASE_PGSQL, db_name, newname);
   table_alterer->RenameTo(new_table_name);
   return Status::OK();
 }

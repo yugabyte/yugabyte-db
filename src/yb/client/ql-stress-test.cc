@@ -13,6 +13,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/rejection_score_source.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_handle.h"
@@ -213,7 +214,8 @@ TEST_F(QLStressTest, LargeNumberOfTables) {
     InitSchemaBuilder(&b);
     CompleteSchemaBuilder(&b);
     TableHandle table;
-    client::YBTableName table_name("my_keyspace", "ql_client_test_table_" + std::to_string(i));
+    client::YBTableName table_name(
+        YQL_DATABASE_CQL, "my_keyspace", "ql_client_test_table_" + std::to_string(i));
     ASSERT_OK(table.Create(table_name, num_tablets_per_table, client_.get(), &b));
 
     int num_rows = num_tablets_per_table * 5;
@@ -742,7 +744,7 @@ void QLStressTest::AddWriter(
     auto session = NewSession();
     while (!stop.load(std::memory_order_acquire)) {
       auto new_key = *key + 1;
-      session->SetRejectionScore(RandomUniformReal<double>(0.01, 1));
+      session->SetRejectionScoreSource(std::make_shared<RejectionScoreSource>());
       auto write_status = WriteRow(session, new_key, value_prefix + std::to_string(new_key));
       if (!allow_failures) {
         ASSERT_OK(write_status);
@@ -930,7 +932,9 @@ TEST_F_EX(QLStressTest, DynamicCompactionPriority, QLStressDynamicCompactionPrio
   CompleteSchemaBuilder(&b);
 
   TableHandle table2;
-  ASSERT_OK(table2.Create(YBTableName(kTableName.namespace_name(), kTableName.table_name() + "_2"),
+  ASSERT_OK(table2.Create(YBTableName(kTableName.namespace_type(),
+                                      kTableName.namespace_name(),
+                                      kTableName.table_name() + "_2"),
                           NumTablets(), client_.get(), &b));
 
   TestThreadHolder thread_holder;

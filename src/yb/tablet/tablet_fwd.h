@@ -41,6 +41,7 @@ typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
 
 class TabletStatusPB;
 class TabletStatusListener;
+class TransactionParticipant;
 class WriteOperationState;
 
 using TabletClass = enterprise::Tablet;

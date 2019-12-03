@@ -46,8 +46,8 @@ PeersVTable::PeersVTable(const Master* const master)
       resolver_(new Resolver(master->messenger()->io_service())) {
 }
 
-Status PeersVTable::RetrieveData(const QLReadRequestPB& request,
-                                 unique_ptr<QLRowBlock>* vtable) const {
+Result<std::shared_ptr<QLRowBlock>> PeersVTable::RetrieveData(
+    const QLReadRequestPB& request) const {
   // Retrieve all lives nodes known by the master.
   // TODO: Ideally we would like to populate this table with all valid nodes of the cluster, but
   // currently the master just has a list of all nodes it has heard from and which one of those
@@ -64,7 +64,7 @@ Status PeersVTable::RetrieveData(const QLReadRequestPB& request,
   const auto& proxy_uuid = request.proxy_uuid();
 
   // Populate the YQL rows.
-  vtable->reset(new QLRowBlock(schema_));
+  auto vtable = std::make_shared<QLRowBlock>(schema_);
 
   struct Entry {
     size_t index;
@@ -119,7 +119,7 @@ Status PeersVTable::RetrieveData(const QLReadRequestPB& request,
 
     // Need to use only 1 rpc address per node since system.peers has only 1 entry for each host,
     // so pick the first one.
-    QLRow &row = (*vtable)->Extend();
+    QLRow &row = vtable->Extend();
     RETURN_NOT_OK(SetColumnValue(kPeer, *public_ip, &row));
     RETURN_NOT_OK(SetColumnValue(kRPCAddress, *public_ip, &row));
     RETURN_NOT_OK(SetColumnValue(kPreferredIp, *private_ip, &row));
@@ -144,7 +144,7 @@ Status PeersVTable::RetrieveData(const QLReadRequestPB& request,
         kTokens, util::GetTokensValue(entry.index, descs.size()), &row));
   }
 
-  return Status::OK();
+  return vtable;
 }
 
 Schema PeersVTable::CreateSchema() const {

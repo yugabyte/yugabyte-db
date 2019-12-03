@@ -114,9 +114,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   RaftConsensus(
     const ConsensusOptions& options,
     std::unique_ptr<ConsensusMetadata> cmeta,
-    gscoped_ptr<PeerProxyFactory> peer_proxy_factory,
-    gscoped_ptr<PeerMessageQueue> queue,
-    gscoped_ptr<PeerManager> peer_manager,
+    std::unique_ptr<PeerProxyFactory> peer_proxy_factory,
+    std::unique_ptr<PeerMessageQueue> queue,
+    std::unique_ptr<PeerManager> peer_manager,
     std::unique_ptr<ThreadPoolToken> raft_pool_token,
     const scoped_refptr<MetricEntity>& metric_entity,
     const std::string& peer_uuid,
@@ -167,7 +167,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   RaftPeerPB::Role role() const override;
 
-  LeaderState GetLeaderState() const override;
+  LeaderState GetLeaderState(bool allow_stale = false) const override;
 
   std::string peer_uuid() const override;
 
@@ -244,10 +244,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     TEST_delay_update_.store(duration, std::memory_order_release);
   }
 
-  CHECKED_STATUS ReadReplicatedMessagesForCDC(const OpId& from, ReplicateMsgs* msgs,
-                                              bool* have_more_messages) override;
+  Result<ReadOpsResult> ReadReplicatedMessagesForCDC(const yb::OpId& from,
+    int64_t* last_replicated_opid_index) override;
 
-  void UpdateCDCConsumerOpId(const OpIdPB& op_id) override;
+  void UpdateCDCConsumerOpId(const yb::OpId& op_id) override;
 
   // Start memory tracking of following operation in case it is still present in our caches.
   void TrackOperationMemory(const yb::OpId& op_id);
@@ -607,12 +607,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   scoped_refptr<log::Log> log_;
   scoped_refptr<server::Clock> clock_;
-  gscoped_ptr<PeerProxyFactory> peer_proxy_factory_;
+  std::unique_ptr<PeerProxyFactory> peer_proxy_factory_;
 
-  gscoped_ptr<PeerManager> peer_manager_;
+  std::unique_ptr<PeerManager> peer_manager_;
 
   // The queue of messages that must be sent to peers.
-  gscoped_ptr<PeerMessageQueue> queue_;
+  std::unique_ptr<PeerMessageQueue> queue_;
 
   std::unique_ptr<ReplicaState> state_;
 

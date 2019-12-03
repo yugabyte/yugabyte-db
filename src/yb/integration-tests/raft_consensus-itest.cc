@@ -1607,13 +1607,12 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
 
   // Check that the 'term' metric is correctly exposed.
   {
-    int64_t term_from_metric = -1;
-    ASSERT_OK(cluster_->tablet_server_by_uuid(replica_ts->uuid())->GetInt64Metric(
-                  &METRIC_ENTITY_tablet,
-                  nullptr,
-                  &METRIC_raft_term,
-                  "value",
-                  &term_from_metric));
+    int64_t term_from_metric = ASSERT_RESULT(
+        cluster_->tablet_server_by_uuid(replica_ts->uuid())->GetInt64Metric(
+            &METRIC_ENTITY_tablet,
+            nullptr,
+            &METRIC_raft_term,
+            "value"));
     ASSERT_EQ(term_from_metric, 1);
   }
 
@@ -1659,7 +1658,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   ASSERT_TRUE(resp.has_error()) << resp.DebugString();
   ASSERT_EQ(resp.error().status().message(),
             "New operation's index does not follow the previous op's index. "
-            "Current: { term: 2 index: 6 }. Previous: { term: 2 index: 4 }");
+            "Current: 2.6. Previous: 2.4");
 
   resp.Clear();
   req.clear_ops();
@@ -1673,7 +1672,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   ASSERT_TRUE(resp.has_error()) << resp.DebugString();
   ASSERT_EQ(resp.error().status().message(),
             "New operation's term is not >= than the previous op's term. "
-            "Current: { term: 2 index: 6 }. Previous: { term: 3 index: 5 }");
+            "Current: 2.6. Previous: 3.5");
 
   LOG(INFO) << "Regression test for KUDU-639";
   // If we send a valid request, but the
@@ -2562,13 +2561,11 @@ TEST_F(RaftConsensusITest, TestMemoryRemainsConstantDespiteTwoDeadFollowers) {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(kMaxWaitTime);
   while (true) {
-    int64_t num_rejections = 0;
-    ASSERT_OK(cluster_->tablet_server(leader_ts_idx)->GetInt64Metric(
+    int64_t num_rejections = ASSERT_RESULT(cluster_->tablet_server(leader_ts_idx)->GetInt64Metric(
         &METRIC_ENTITY_tablet,
         nullptr,
         &METRIC_not_leader_rejections,
-        "value",
-        &num_rejections));
+        "value"));
     if (num_rejections >= kMinRejections) {
       break;
     } else if (deadline.ComesBefore(MonoTime::Now())) {
