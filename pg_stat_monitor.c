@@ -3429,18 +3429,17 @@ array_get_datum(double arr[])
 	char    tmp[10];
 	bool    first = true;
 
+	memset(str, 0, 1024);
 	/* Need to calculate the actual size, and avoid unnessary memory usage */
 	for (j = 0; j < 24; j++)
 	{
 		if (first)
 		{
-			snprintf(str, 1024, "%s %04.1f", str, arr[j]);
 			snprintf(tmp, 10, "%04.1f", arr[j]);
 			strcat(str,tmp);
 			first = false;
 			continue;
 		}
-		sprintf(str, "%s, %04.1f", str, arr[j]);
 		snprintf(tmp, 10, ", %04.1f", arr[j]);
 		strcat(str,tmp);
 	}
