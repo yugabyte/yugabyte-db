@@ -1,3 +1,3 @@
 ---
-title: "YSQL"
+title: "Sample Apps"
 ---
