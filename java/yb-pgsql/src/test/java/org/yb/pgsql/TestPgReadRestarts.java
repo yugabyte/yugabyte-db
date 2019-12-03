@@ -142,11 +142,8 @@ public class TestPgReadRestarts extends BasePgSQLTest {
    */
   @Test
   public void selectStarShort() throws Exception {
-    // NOTE: Right now this greatly depends on #ops and length of the string.
-    // Ideally we'd want to use LIMIT clause, but we can't because of
-    // https://github.com/yugabyte/yugabyte-db/issues/2812
     new RegularStatementTester(
-        "SELECT * FROM test_rr",
+        "SELECT * FROM test_rr LIMIT 10",
         getShortString(),
         false /* expectNonTxnRestartErrors */,
         false /* expectSnapshotRestartErrors */
@@ -158,11 +155,8 @@ public class TestPgReadRestarts extends BasePgSQLTest {
    */
   @Test
   public void selectStarShortPrepared() throws Exception {
-    // NOTE: Right now this greatly depends on #ops and length of the string.
-    // Ideally we'd want to use LIMIT clause, but we can't because of
-    // https://github.com/yugabyte/yugabyte-db/issues/2812
     new PreparedStatementTester(
-        "SELECT * FROM test_rr",
+        "SELECT * FROM test_rr LIMIT 10",
         getShortString(),
         false /* expectNonTxnRestartErrors */,
         false /* expectSnapshotRestartErrors */
@@ -174,11 +168,8 @@ public class TestPgReadRestarts extends BasePgSQLTest {
    */
   @Test
   public void selectStarShortPreparedParameterized() throws Exception {
-    // NOTE: Right now this greatly depends on #ops and length of the string.
-    // Ideally we'd want to use LIMIT clause, but we can't because of
-    // https://github.com/yugabyte/yugabyte-db/issues/2812
     new PreparedStatementTester(
-        "SELECT * FROM test_rr WHERE i > ?",
+        "SELECT * FROM test_rr WHERE i > ? LIMIT 10",
         getShortString(),
         false /* expectNonTxnRestartErrors */,
         false /* expectSnapshotRestartErrors */) {
@@ -200,11 +191,8 @@ public class TestPgReadRestarts extends BasePgSQLTest {
    */
   @Test
   public void selectStarLong() throws Exception {
-    // NOTE: Right now this greatly depends on #ops and length of the string.
-    // Ideally there should be a LIMIT clause, but we can't use it because of
-    // https://github.com/yugabyte/yugabyte-db/issues/2812
     new RegularStatementTester(
-        "SELECT * FROM test_rr",
+        "SELECT * FROM test_rr LIMIT 10",
         getLongString(),
         true /* expectNonTxnRestartErrors */,
         true /* expectSnapshotRestartErrors */
@@ -216,11 +204,8 @@ public class TestPgReadRestarts extends BasePgSQLTest {
    */
   @Test
   public void selectStarLongPrepared() throws Exception {
-    // NOTE: Right now this greatly depends on #ops and length of the string.
-    // Ideally there should be a LIMIT clause, but we can't use it because of
-    // https://github.com/yugabyte/yugabyte-db/issues/2812
     new PreparedStatementTester(
-        "SELECT * FROM test_rr",
+        "SELECT * FROM test_rr LIMIT 10",
         getLongString(),
         true /* expectNonTxnRestartErrors */,
         true /* expectSnapshotRestartErrors */
@@ -232,11 +217,8 @@ public class TestPgReadRestarts extends BasePgSQLTest {
    */
   @Test
   public void selectStarLongPreparedParameterized() throws Exception {
-    // NOTE: Right now this greatly depends on #ops and length of the string.
-    // Ideally there should be a LIMIT clause, but we can't use it because of
-    // https://github.com/yugabyte/yugabyte-db/issues/2812
     new PreparedStatementTester(
-        "SELECT * FROM test_rr WHERE i > ?",
+        "SELECT * FROM test_rr WHERE i > ? LIMIT 10",
         getLongString(),
         true /* expectNonTxnRestartErrors */,
         true /* expectSnapshotRestartErrors */) {
