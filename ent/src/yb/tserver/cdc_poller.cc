@@ -63,11 +63,12 @@ CDCPoller::CDCPoller(const cdc::ProducerTabletInfo& producer_tablet_info,
     thread_pool_(thread_pool),
     cdc_consumer_(cdc_consumer) {}
 
-std::string CDCPoller::ToString() const {
-  std::ostringstream os;
-  os << "P " << producer_tablet_info_.stream_id << ":" << producer_tablet_info_.tablet_id
-     << " C " << consumer_tablet_info_.table_id << ":" << consumer_tablet_info_.tablet_id;
-  return os.str();
+std::string CDCPoller::LogPrefixUnlocked() const {
+  return strings::Substitute("P [$0:$1] C [$2:$3]: ",
+                             producer_tablet_info_.stream_id,
+                             producer_tablet_info_.tablet_id,
+                             consumer_tablet_info_.table_id,
+                             consumer_tablet_info_.tablet_id);
 }
 
 bool CDCPoller::CheckOnline() {
@@ -76,7 +77,7 @@ bool CDCPoller::CheckOnline() {
 
 #define RETURN_WHEN_OFFLINE() \
   if (!CheckOnline()) { \
-    LOG(WARNING) << "CDC Poller went offline: " << ToString(); \
+    LOG_WITH_PREFIX_UNLOCKED(WARNING) << "CDC Poller went offline"; \
     return; \
   }
 
@@ -130,7 +131,7 @@ void CDCPoller::DoPoll() {
     (**read_rpc_handle).SendRpc();
   } else {
     // Handle the Poll as a failure so repeated invocations will incur backoff.
-    HandlePoll(STATUS(Aborted, "InvalidHandle for GetChangesCDCRpc: " + ToString()), resp_);
+    HandlePoll(STATUS(Aborted, LogPrefixUnlocked() + "InvalidHandle for GetChangesCDCRpc"), resp_);
   }
 }
 
@@ -147,14 +148,15 @@ void CDCPoller::HandlePoll(yb::Status status,
 
   bool failed = false;
   if (!status_.ok()) {
-    LOG(INFO) << "CDCPoller failure: " << status_.ToString();
+    LOG_WITH_PREFIX_UNLOCKED(INFO) << "CDCPoller failure: " << status_.ToString();
     failed = true;
   } else if (resp_->has_error()) {
-    LOG(WARNING) << "CDCPoller failure response: code=" << resp_->error().code()
-                 << ", status=" << resp->error().status().DebugString();
+    LOG_WITH_PREFIX_UNLOCKED(WARNING) << "CDCPoller failure response: code="
+                                      << resp_->error().code()
+                                      << ", status=" << resp->error().status().DebugString();
     failed = true;
   } else if (!resp_->has_checkpoint()) {
-    LOG(ERROR) << "CDCPoller failure: no checkpoint";
+    LOG_WITH_PREFIX_UNLOCKED(ERROR) << "CDCPoller failure: no checkpoint";
     failed = true;
   }
   if (failed) {
@@ -182,7 +184,7 @@ void CDCPoller::DoHandleApplyChanges(cdc::OutputClientResponse response) {
     return remove_self_from_pollers_map_();
   }
   if (!response.status.ok()) {
-    LOG(WARNING) << "ApplyChanges failure: " << response.status;
+    LOG_WITH_PREFIX_UNLOCKED(WARNING) << "ApplyChanges failure: " << response.status;
     // Repeat the ApplyChanges step, with exponential backoff
     apply_failures_ = min(apply_failures_ + 1, FLAGS_replication_failure_delay_exponent);
     int64_t delay = (1 << apply_failures_) -1;
