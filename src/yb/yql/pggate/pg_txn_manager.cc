@@ -137,6 +137,7 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op) {
 
 Status PgTxnManager::RestartTransaction() {
   if (!txn_in_progress_ || !txn_) {
+    CHECK_NOTNULL(session_);
     if (!session_->IsRestartRequired()) {
       return STATUS(IllegalState, "Attempted to restart when session does not require restart");
     }
@@ -214,10 +215,6 @@ void PgTxnManager::ResetTxnAndSession() {
   session_ = nullptr;
   txn_ = nullptr;
   can_restart_.store(true, std::memory_order_release);
-}
-
-void PgTxnManager::PreventRestart() {
-  can_restart_.store(false, std::memory_order_release);
 }
 
 }  // namespace pggate

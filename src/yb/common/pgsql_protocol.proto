@@ -333,7 +333,7 @@ message PgsqlResponsePB {
   // External statuses.
   //
   // If you add more of those, make sure they are correctly picked up, e.g.
-  // by PgDocReadOp::ReceiveResponse and PgDocOp::CheckRestartUnlocked
+  // by PgDocReadOp::ReceiveResponse and PgDocOp::HandleResponseStatus
   //
 
   // PostgreSQL error code encoded as in errcodes.h or yb_pg_errcodes.h.

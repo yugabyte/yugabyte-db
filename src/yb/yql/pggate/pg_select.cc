@@ -43,7 +43,7 @@ Status PgSelect::LoadIndex() {
   return Status::OK();
 }
 
-Status PgSelect::Prepare(PreventRestart prevent_restart) {
+Status PgSelect::Prepare() {
   RETURN_NOT_OK(LoadTable());
   if (index_id_.IsValid()) {
     RETURN_NOT_OK(LoadIndex());
@@ -51,7 +51,7 @@ Status PgSelect::Prepare(PreventRestart prevent_restart) {
 
   // Allocate READ/SELECT operation.
   auto doc_op = make_shared<PgDocReadOp>(
-      pg_session_, prevent_restart, table_desc_->NewPgsqlSelect());
+      pg_session_, table_desc_->NewPgsqlSelect());
   read_req_ = doc_op->read_op()->mutable_request();
   if (index_id_.IsValid()) {
     index_req_ = read_req_->mutable_index_request();

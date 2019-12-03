@@ -63,7 +63,6 @@ YBC_STATUS_METHOD(SetDeferrable, ((bool, deferrable)));
   CHECKED_STATUS BeginWriteTransactionIfNecessary(bool read_only_op);
 
   bool CanRestart() { return can_restart_.load(std::memory_order_acquire); }
-  void PreventRestart();
 
  private:
 
