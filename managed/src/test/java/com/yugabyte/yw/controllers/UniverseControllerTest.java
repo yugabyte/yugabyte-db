@@ -42,8 +42,10 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.QueryExecutor;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.RollingRestartParams;
@@ -115,6 +117,7 @@ public class UniverseControllerTest extends WithApplication {
   private CallHome mockCallHome;
   private HealthChecker mockHealthChecker;
   private EncryptionAtRestManager mockEARManager;
+  private QueryExecutor mockQueryExecutor;
 
   @Override
   protected Application provideApplication() {
@@ -125,6 +128,7 @@ public class UniverseControllerTest extends WithApplication {
     mockApiHelper = mock(ApiHelper.class);
     mockCallHome = mock(CallHome.class);
     mockEARManager = mock(EncryptionAtRestManager.class);
+    mockQueryExecutor = mock(QueryExecutor.class);
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
@@ -133,6 +137,7 @@ public class UniverseControllerTest extends WithApplication {
         .overrides(bind(CallHome.class).toInstance(mockCallHome))
         .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
         .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
+        .overrides(bind(QueryExecutor.class).toInstance(mockQueryExecutor))
         .build();
   }
 
@@ -728,7 +733,8 @@ public class UniverseControllerTest extends WithApplication {
     // Save the updates to the universe.
     Universe.saveDetails(u.universeUUID, updater);
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "?isForceDelete=true"; 
+    String url = "/api/customers/" + customer.uuid + "/universes/"
+        + u.universeUUID + "?isForceDelete=true";
     Result result = doRequestWithAuthToken("DELETE", url, authToken);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
@@ -1794,5 +1800,55 @@ public class UniverseControllerTest extends WithApplication {
             eq(UUID.fromString(testUniUUID)),
             any(Map.class)
     );
+  }
+
+  @Test
+  public void testRunQueryWithInvalidUniverse() {
+    Customer c2 = ModelFactory.testCustomer("tc2", "tc2@demo.com");
+    Universe u = createUniverse(c2.getCustomerId());
+    ObjectNode bodyJson = Json.newObject();
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
+        "/run_query";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertBadRequest(result, String.format("Universe UUID: %s doesn't belong to Customer UUID: %s",
+        u.universeUUID, customer.uuid));
+  }
+
+  @Test
+  public void testRunQueryWithoutInsecureMode() {
+    Universe u = createUniverse(customer.getCustomerId());
+    customer.addUniverseUUID(u.universeUUID);
+    customer.save();
+    ObjectNode bodyJson = Json.newObject()
+        .put("query", "select * from product limit 1")
+        .put("db_name", "demo");
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
+        "/run_query";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertBadRequest(result, "run_query not supported for this application");
+  }
+
+  @Test
+  public void testRunQueryWithInsecureMode() {
+    Universe u = createUniverse(customer.getCustomerId());
+    customer.addUniverseUUID(u.universeUUID);
+    customer.save();
+
+    ConfigHelper configHelper = new ConfigHelper();
+    configHelper.loadConfigToDB(ConfigHelper.ConfigType.Security,
+        ImmutableMap.of("level", "insecure"));
+
+    ObjectNode bodyJson = Json.newObject()
+        .put("query", "select * from product limit 1")
+        .put("db_name", "demo");
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
+        "/run_query";
+
+    when(mockQueryExecutor.executeQuery(any(), any()))
+        .thenReturn(Json.newObject().put("foo", "bar"));
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertOk(result);
+    assertEquals("bar", json.get("foo").asText());
   }
 }
