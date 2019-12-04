@@ -11,16 +11,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import java.util.Random;
 
-import java.nio.charset.Charset;
-
-import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.QueryExecutor;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
-import com.yugabyte.yw.forms.EncryptionAtRestKeyParams.OpType.*;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -28,6 +26,7 @@ import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,16 +34,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
-import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
@@ -56,6 +52,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.yb.client.YBClient;
+import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
@@ -81,10 +78,13 @@ public class UniverseController extends AuthenticatedController {
   play.Configuration appConfig;
 
   @Inject
-  ApiHelper apiHelper;
+  ConfigHelper configHelper;
 
   @Inject
   EncryptionAtRestManager keyManager;
+
+  @Inject
+  QueryExecutor queryExecutor;
 
   // The YB client to use.
   public YBClientService ybService;
@@ -110,6 +110,43 @@ public class UniverseController extends AuthenticatedController {
     } else {
       return ApiResponse.success("Universe does not Exist");
     }
+  }
+
+  public Result runQuery(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+
+    if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+      return ApiResponse.error(BAD_REQUEST,
+          String.format("Universe UUID: %s doesn't belong " +
+              "to Customer UUID: %s", universeUUID, customerUUID));
+    }
+
+    Universe universe;
+    try {
+      universe = Universe.get(universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
+    }
+
+
+    String securityLevel = (String)
+        configHelper.getConfig(ConfigHelper.ConfigType.Security).get("level");
+    if (securityLevel == null || !securityLevel.equals("insecure")) {
+      return ApiResponse.error(BAD_REQUEST, "run_query not supported for this application");
+    }
+
+    Form<RunQueryFormData> formData = formFactory.form(RunQueryFormData.class).bindFromRequest();
+
+    if (formData.hasErrors()) {
+      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+    }
+
+    return ApiResponse.success(
+        queryExecutor.executeQuery(universe, formData.get())
+    );
   }
 
   /**
