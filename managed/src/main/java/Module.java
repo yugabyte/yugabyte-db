@@ -38,6 +38,7 @@ public class Module extends AbstractModule {
     bind(ConfigHelper.class).asEagerSingleton();
     // Set LocalClientService as the implementation for YBClientService
     bind(YBClientService.class).to(LocalYBClientService.class);
+    bind(QueryExecutor.class).asEagerSingleton();
 
     // We only needed to bind below ones for Platform mode.
     if (config.getString("yb.mode", "PLATFORM").equals("PLATFORM")) {
