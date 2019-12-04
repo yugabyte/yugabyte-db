@@ -53,6 +53,71 @@ SELECT * FROM cypher($$RETURN [['str'], [1, [1.0], [[true]]], null]$$) AS r(c ag
 (1 row)
 
 --
+-- parameter
+--
+PREPARE cypher_parameter(agtype) AS
+SELECT * FROM cypher($$
+RETURN $var
+$$, $1) AS t(i agtype);
+EXECUTE cypher_parameter('{"var": 1}');
+ i 
+---
+ 1
+(1 row)
+
+PREPARE cypher_parameter_object(agtype) AS
+SELECT * FROM cypher($$
+RETURN $var.innervar
+$$, $1) AS t(i agtype);
+EXECUTE cypher_parameter_object('{"var": {"innervar": 1}}');
+ i 
+---
+ 1
+(1 row)
+
+PREPARE cypher_parameter_array(agtype) AS
+SELECT * FROM cypher($$
+RETURN $var[$indexvar]
+$$, $1) AS t(i agtype);
+EXECUTE cypher_parameter_array('{"var": [1, 2, 3], "indexvar": 1}');
+ i 
+---
+ 2
+(1 row)
+
+-- missing parameter
+PREPARE cypher_parameter_missing_argument(agtype) AS
+SELECT * FROM cypher($$
+RETURN $var, $missingvar
+$$, $1) AS t(i agtype, j agtype);
+EXECUTE cypher_parameter_missing_argument('{"var": 1}');
+ i | j 
+---+---
+ 1 | 
+(1 row)
+
+-- invalid parameter
+PREPARE cypher_parameter_invalid_argument(agtype) AS
+SELECT * FROM cypher($$
+RETURN $var
+$$, $1) AS t(i agtype);
+EXECUTE cypher_parameter_invalid_argument('[1]');
+ERROR:  array index must resolve to an integer value
+-- missing parameters argument
+PREPARE cypher_missing_params_argument(int) AS
+SELECT $1, * FROM cypher($$
+RETURN $var
+$$) AS t(i agtype);
+ERROR:  parameters argument is missing from cypher function call
+LINE 3: RETURN $var
+               ^
+SELECT * FROM cypher($$
+RETURN $var
+$$) AS t(i agtype);
+ERROR:  parameters argument is missing from cypher function call
+LINE 2: RETURN $var
+               ^
+--
 -- String operators
 --
 -- String LHS + String RHS

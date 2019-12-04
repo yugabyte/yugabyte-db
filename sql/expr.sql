@@ -32,6 +32,53 @@ SELECT * FROM cypher($$RETURN ['str', 1, 1.0, true, null]$$) AS r(c agtype);
 SELECT * FROM cypher($$RETURN [['str'], [1, [1.0], [[true]]], null]$$) AS r(c agtype);
 
 --
+-- parameter
+--
+
+PREPARE cypher_parameter(agtype) AS
+SELECT * FROM cypher($$
+RETURN $var
+$$, $1) AS t(i agtype);
+EXECUTE cypher_parameter('{"var": 1}');
+
+PREPARE cypher_parameter_object(agtype) AS
+SELECT * FROM cypher($$
+RETURN $var.innervar
+$$, $1) AS t(i agtype);
+EXECUTE cypher_parameter_object('{"var": {"innervar": 1}}');
+
+PREPARE cypher_parameter_array(agtype) AS
+SELECT * FROM cypher($$
+RETURN $var[$indexvar]
+$$, $1) AS t(i agtype);
+EXECUTE cypher_parameter_array('{"var": [1, 2, 3], "indexvar": 1}');
+
+-- missing parameter
+PREPARE cypher_parameter_missing_argument(agtype) AS
+SELECT * FROM cypher($$
+RETURN $var, $missingvar
+$$, $1) AS t(i agtype, j agtype);
+EXECUTE cypher_parameter_missing_argument('{"var": 1}');
+
+-- invalid parameter
+PREPARE cypher_parameter_invalid_argument(agtype) AS
+SELECT * FROM cypher($$
+RETURN $var
+$$, $1) AS t(i agtype);
+EXECUTE cypher_parameter_invalid_argument('[1]');
+
+-- missing parameters argument
+
+PREPARE cypher_missing_params_argument(int) AS
+SELECT $1, * FROM cypher($$
+RETURN $var
+$$) AS t(i agtype);
+
+SELECT * FROM cypher($$
+RETURN $var
+$$) AS t(i agtype);
+
+--
 -- String operators
 --
 

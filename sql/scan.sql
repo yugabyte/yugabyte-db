@@ -308,12 +308,6 @@ $$) AS t(a text);
 -- parameter
 --
 
--- This fails for now because there is no logic in parser implementation
--- to handle parameters.
-SELECT * FROM cypher($$
-RETURN $_$09A_z, $A, $z
-$$) AS t(a text, b text, c text);
-
 -- invalid parameter names
 
 SELECT * FROM cypher($cypher$

@@ -154,6 +154,14 @@ void out_cypher_bool_const(StringInfo str, const ExtensibleNode *node)
     write_location_field(location);
 }
 
+void out_cypher_param(StringInfo str, const ExtensibleNode *node)
+{
+    DEFINE_AG_NODE(cypher_param);
+
+    write_string_field(name);
+    write_location_field(location);
+}
+
 void out_cypher_map(StringInfo str, const ExtensibleNode *node)
 {
     DEFINE_AG_NODE(cypher_map);

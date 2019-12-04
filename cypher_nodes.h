@@ -116,6 +116,13 @@ typedef struct cypher_bool_const
     int location;
 } cypher_bool_const;
 
+typedef struct cypher_param
+{
+    ExtensibleNode extensible;
+    char *name;
+    int location;
+} cypher_param;
+
 typedef struct cypher_map
 {
     ExtensibleNode extensible;
@@ -162,6 +169,7 @@ void out_cypher_relationship(StringInfo str, const ExtensibleNode *node);
 
 /* expression */
 void out_cypher_bool_const(StringInfo str, const ExtensibleNode *node);
+void out_cypher_param(StringInfo str, const ExtensibleNode *node);
 void out_cypher_map(StringInfo str, const ExtensibleNode *node);
 void out_cypher_list(StringInfo str, const ExtensibleNode *node);
 

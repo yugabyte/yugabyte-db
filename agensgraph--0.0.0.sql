@@ -31,26 +31,6 @@ LANGUAGE c
 AS 'MODULE_PATHNAME';
 
 --
--- query functions
---
-
-CREATE FUNCTION cypher(query_string cstring)
-RETURNS SETOF record
-LANGUAGE c
-AS 'MODULE_PATHNAME';
-
-CREATE FUNCTION get_cypher_keywords(OUT word text, OUT catcode "char",
-                                    OUT catdesc text)
-RETURNS SETOF record
-LANGUAGE c
-STABLE
-RETURNS NULL ON NULL INPUT
-PARALLEL SAFE
-COST 10
-ROWS 60
-AS 'MODULE_PATHNAME';
-
---
 -- agtype type and support functions
 --
 
@@ -358,6 +338,26 @@ LANGUAGE C
 STABLE
 STRICT
 PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+--
+-- query functions
+--
+
+CREATE FUNCTION cypher(query_string cstring, params agtype = NULL)
+RETURNS SETOF record
+LANGUAGE c
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION get_cypher_keywords(OUT word text, OUT catcode "char",
+                                    OUT catdesc text)
+RETURNS SETOF record
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+COST 10
+ROWS 60
 AS 'MODULE_PATHNAME';
 
 --

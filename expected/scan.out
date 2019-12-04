@@ -440,14 +440,6 @@ LINE 2: RETURN `unterminated quoted identifier
 --
 -- parameter
 --
--- This fails for now because there is no logic in parser implementation
--- to handle parameters.
-SELECT * FROM cypher($$
-RETURN $_$09A_z, $A, $z
-$$) AS t(a text, b text, c text);
-ERROR:  syntax error at or near "$_$09A_z"
-LINE 2: RETURN $_$09A_z, $A, $z
-               ^
 -- invalid parameter names
 SELECT * FROM cypher($cypher$
 RETURN $$

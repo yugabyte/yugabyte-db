@@ -27,6 +27,7 @@ static Node *transform_AEXPR_OP(ParseState *pstate, A_Expr *a);
 static Node *transform_BoolExpr(ParseState *pstate, BoolExpr *expr);
 static Node *transform_cypher_bool_const(ParseState *pstate,
                                          cypher_bool_const *bc);
+static Node *transform_cypher_param(ParseState *pstate, cypher_param *cp);
 static Node *transform_cypher_map(ParseState *pstate, cypher_map *cm);
 static Node *transform_cypher_list(ParseState *pstate, cypher_list *cl);
 static Node *transform_cypher_indirection(ParseState *pstate,
@@ -94,6 +95,10 @@ static Node *transform_cypher_expr_recurse(ParseState *pstate, Node *expr)
         {
             return transform_cypher_bool_const(pstate,
                                                (cypher_bool_const *)expr);
+        }
+        else if (is_ag_node(expr, cypher_param))
+        {
+            return transform_cypher_param(pstate, (cypher_param *)expr);
         }
         else if (is_ag_node(expr, cypher_map))
         {
@@ -230,6 +235,51 @@ static Node *transform_cypher_bool_const(ParseState *pstate,
     c->location = bc->location;
 
     return (Node *)c;
+}
+
+static Node *transform_cypher_param(ParseState *pstate, cypher_param *cp)
+{
+    Const *const_str;
+    FuncExpr *func_expr;
+    Oid func_access_oid;
+    Oid func_arg_type;
+    oidvector *parameter_types;
+    List *args = NIL;
+
+    if (!pstate->p_ref_hook_state)
+    {
+        ereport(
+            ERROR,
+            (errcode(ERRCODE_UNDEFINED_PARAMETER),
+             errmsg(
+                "parameters argument is missing from cypher function call"),
+             parser_errposition(pstate, cp->location)));
+    }
+
+    /* we need the Oid for _agtype */
+    func_arg_type =
+        GetSysCacheOid2(TYPENAMENSP, CStringGetDatum("_agtype"),
+                        ObjectIdGetDatum(ag_catalog_namespace_id()));
+    parameter_types = buildoidvector(&func_arg_type, 1);
+
+    /* get the agtype_access_operator function */
+    func_access_oid = GetSysCacheOid3(
+        PROCNAMEARGSNSP, PointerGetDatum("agtype_access_operator"),
+        PointerGetDatum(parameter_types),
+        ObjectIdGetDatum(ag_catalog_namespace_id()));
+
+    args = lappend(args, copyObject(pstate->p_ref_hook_state));
+
+    const_str = makeConst(AGTYPEOID, -1, InvalidOid, -1,
+                          string_to_agtype(cp->name), false, false);
+
+    args = lappend(args, const_str);
+
+    func_expr = makeFuncExpr(func_access_oid, AGTYPEOID, args, InvalidOid,
+                             InvalidOid, COERCE_EXPLICIT_CALL);
+    func_expr->location = cp->location;
+
+    return (Node *)func_expr;
 }
 
 static Node *transform_cypher_map(ParseState *pstate, cypher_map *cm)
@@ -394,7 +444,6 @@ static Node *transform_cypher_indirection(ParseState *pstate,
     func_expr = makeFuncExpr(func_access_oid, AGTYPEOID, args, InvalidOid,
                              InvalidOid, COERCE_EXPLICIT_CALL);
     func_expr->location = location;
-
     return (Node *)func_expr;
 }
 
