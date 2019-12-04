@@ -30,7 +30,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/thread_restrictions.h"
 
-DEFINE_int32(unresponsive_ts_rpc_timeout_ms, 60 * 60 * 1000,  // 1 hour
+DEFINE_int32(unresponsive_ts_rpc_timeout_ms, 15 * 60 * 1000,  // 15 minutes
              "After this amount of time (or after we have retried unresponsive_ts_rpc_retry_limit "
              "times, whichever happens first), the master will stop attempting to contact a tablet "
              "server in order to perform operations such as deleting a tablet.");
