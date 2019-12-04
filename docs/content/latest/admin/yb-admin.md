@@ -521,7 +521,8 @@ Sets the preferred availability zones (AZs) and regions.
 
 {{< note title="Note" >}}
 
-When nodes in the the "preferred" availability zones and regions are alive and healthy, the tablet leaders are placed on nodes in those zones and regions. 
+When nodes in the the "preferred" availability zones and regions are alive and healthy, 
+the tablet leaders are placed on nodes in those zones and regions. 
 By default, all nodes are eligible to have tablet leaders.
 Having all tablet leaders reside in 1 region will 
 reduce the number of network hops that the db must do to write transactions and thus increase performance and lowering latency.
@@ -536,6 +537,102 @@ yb-admin -master_addresses <master-addresses> set_preferred_zones <cloud.region.
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - *cloud.region.zone*: Specifies the cloud, region, and zone. Default value is `cloud1.datacenter1.rack1`.
+
+
+Suppose we have a deployment with regions: `gcp.us-east4.us-east4-b`, `gcp.asia-northeast1.asia-northeast1-c`,
+ `gcp.us-west1.us-west1-c`. Looking at the cluster config:
+
+```sh
+$ curl -s http://<any-master-ip>:7000/cluster-config
+```
+
+We have a sample config:
+
+```
+replication_info {
+  live_replicas {
+    num_replicas: 3
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "gcp"
+        placement_region: "us-west1"
+        placement_zone: "us-west1-c"
+      }
+      min_num_replicas: 1
+    }
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "gcp"
+        placement_region: "us-east4"
+        placement_zone: "us-east4-b"
+      }
+      min_num_replicas: 1
+    }
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "gcp"
+        placement_region: "us-asia-northeast1"
+        placement_zone: "us-asia-northeast1-c"
+      }
+      min_num_replicas: 1
+    }
+  }
+}
+```
+
+The following command sets the preferred zone to `gcp.us-west1.us-west1-c`:
+
+```sh
+ssh -i $PEM $ADMIN_USER@$MASTER1 \
+   ~/master/bin/yb-admin --master_addresses $MASTER_RPC_ADDRS \
+    set_preferred_zones  \
+    gcp.us-west1.us-west1-c
+```
+
+Verify by running the following.
+
+```sh
+$ curl -s http://<any-master-ip>:7000/cluster-config
+```
+
+Looking again at the cluster config you should see `affinitized_leaders` added:
+
+```
+replication_info {
+  live_replicas {
+    num_replicas: 3
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "gcp"
+        placement_region: "us-west1"
+        placement_zone: "us-west1-c"
+      }
+      min_num_replicas: 1
+    }
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "gcp"
+        placement_region: "us-east4"
+        placement_zone: "us-east4-b"
+      }
+      min_num_replicas: 1
+    }
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "gcp"
+        placement_region: "us-asia-northeast1"
+        placement_zone: "us-asia-northeast1-c"
+      }
+      min_num_replicas: 1
+    }
+  }
+  affinitized_leaders {
+    placement_cloud: "gcp"
+    placement_region: "us-west1"
+    placement_zone: "us-west1-c"
+  }
+}
+```
 
 #### Master-follower commands
 
