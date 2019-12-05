@@ -108,11 +108,11 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     fetchCustomerTasks: () => {
-      dispatch(fetchCustomerTasks()).then((response) => {
+      return dispatch(fetchCustomerTasks()).then((response) => {
         if (!response.error) {
-          dispatch(fetchCustomerTasksSuccess(response.payload));
+          return dispatch(fetchCustomerTasksSuccess(response.payload));
         } else {
-          dispatch(fetchCustomerTasksFailure(response.payload));
+          return dispatch(fetchCustomerTasksFailure(response.payload));
         }
       });
     },
