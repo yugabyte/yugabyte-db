@@ -735,13 +735,14 @@ class ControlScript(object):
             (Output.make_yellow("Log Dir"), self.configs.saved_data.get("log_dir")),
             (Output.make_yellow("Universe UUID"), self.get_universe_uuid())
         ]
-        status = "\n" + "-" * 100 + "\n"
+        div_line = "+" + "-" * 98 + "+" + "\n"
+        status = "\n" + div_line
         status += ("| {:^" + str(96 + extra_len) + "} |\n").format(title)
-        status += "-" * 100 + "\n"
+        status += div_line
         for k, v in status_info:
             extra_len = len(Output.make_yellow(""))
             status += ("| {:" + str(20 + extra_len) + "}: {:<74} |\n").format(k, v)
-        status += "-" * 100 + "\n"
+        status += div_line
         return status
 
     # Callhome loop. Sends data every minute for the first hour, then every hour after.
@@ -852,7 +853,7 @@ class ControlScript(object):
         # Parent subparser for common args
         common_parser = argparse.ArgumentParser(add_help=False)
         common_parser.add_argument(
-            "--config", default=DEFAULT_CONF, help="YugabyteDB configuration file")
+            "--config", default=DEFAULT_CONF, help="YugabyteDB configuration file.")
         # TODO: Refactor data_dir to be a list for multi-node. How should the config file and
         # data dir be set for local mulit-node setups? Note: daemon mode may be affected.
         common_parser.add_argument(
@@ -909,7 +910,7 @@ class ControlScript(object):
             cur_parser.add_argument(
                 "--daemon", choices=BOOL_CHOICES, default="true", metavar="BOOL",
                 help="Runs {} in the background as a daemon. Does not persist on restart. "
-                     "Default true".format(SCRIPT_NAME))
+                     "Default true.".format(SCRIPT_NAME))
             cur_parser.add_argument(
                 "--callhome", choices=BOOL_CHOICES, default="true", metavar="BOOL",
                 help="Enable or disable callhome feature that sends analytics data to Yugabyte. "

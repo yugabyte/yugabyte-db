@@ -168,7 +168,11 @@ public class CustomerController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid JSON");
     }
 
-    customer.upsertFeatures(formData.features);
+    try {
+      customer.upsertFeatures(formData.features);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, "Failed to update features: " + e.getMessage());
+    }
     return ok(customer.getFeatures());
   }
 
