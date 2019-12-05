@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.models;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -177,10 +178,18 @@ public class CustomerTest extends FakeDBApplication {
 
     assertNotNull(c.uuid);
 
-    String features = "{\"TLS\": true, \"backups\": false";
-    c.upsertFeatures(Json.toJson(features));
+    JsonNode features = Json.parse(
+      "{\"TLS\": true, \"universe\": {\"foo\": \"bar\", \"backups\": false}}");
+    c.upsertFeatures(features);
 
-    assertEquals(Json.toJson(features), c.getFeatures());
+    assertEquals(features, c.getFeatures());
+
+    JsonNode newFeatures = Json.parse("{\"universe\": {\"foo\": \"foo\"}}");
+    c.upsertFeatures(newFeatures);
+
+    JsonNode expectedFeatures = Json.parse(
+      "{\"TLS\": true, \"universe\": {\"foo\": \"foo\", \"backups\": false}}");
+    assertEquals(expectedFeatures, c.getFeatures());
   }
 
   @Test

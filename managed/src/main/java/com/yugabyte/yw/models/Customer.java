@@ -35,6 +35,7 @@ import com.google.common.base.Joiner;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.deepMerge;
 
 @Entity
 public class Customer extends Model {
@@ -302,10 +303,12 @@ public class Customer extends Model {
    * be updated.
    */
   public void upsertFeatures(JsonNode input) {
-    if (features == null) {
+    if (!input.isObject()) {
+      throw new RuntimeException("Features must be Jsons.");
+    } else if (features == null || features.isNull() || features.size() == 0) {
       features = input;
     } else {
-      ((ObjectNode) features).setAll((ObjectNode) input);
+      deepMerge(features, input);
     }
     save();
   }
