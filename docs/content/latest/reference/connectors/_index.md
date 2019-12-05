@@ -16,7 +16,7 @@ menu:
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="postgresql-jdbc-driver/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/reference/configuration/yb-tserver.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/reference/connectors/postgresql.png" aria-hidden="true" />
         <div class="title">PostgreSQL JDBC driver</div>
       </div>
       <div class="body">
@@ -28,7 +28,7 @@ menu:
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="yugabytedb-jdbc-driver/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/reference/configuration/yb-tserver.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/reference/connectors/yb.png" aria-hidden="true" />
         <div class="title">YugabyteDB JDBC driver</div>
       </div>
       <div class="body">
@@ -37,28 +37,28 @@ menu:
     </a>
   </div>
 
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="spring-data-yugabytedb/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/reference/configuration/yb-tserver.png" aria-hidden="true" />
-        <div class="title">Spring Data YugabyteDB</div>
-      </div>
-      <div class="body">
-        Build your Spring applications using Spring Data YugabyteDB driver based on Spring Data JPA.
-      </div>
-    </a>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+   <a class="section-link icon-offset" href="kafka-connect-yugabytedb/">
+     <div class="head">
+       <img class="icon" src="/images/section_icons/reference/connectors/apache-kafka.png"aria-hidden="true" />
+       <div class="title">Kafka Connect YugabyteDB</div>
+     </div>
+     <div class="body">
+       Use Kafka Connect YugabyteDB to connect to YugabyteDB to Apache Kafka sinks and sources.
+     </div>
+   </a>
   </div>
 
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="kafka-connect-yugabytedb/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/reference/configuration/yb-tserver.png" aria-hidden="true" />
-        <div class="title">Kafka Connect YugabyteDB</div>
-      </div>
-      <div class="body">
-        Use Kafka Connect YugabyteDB to connect to YugabyteDB to Apache Kafka sinks and sources.
-      </div>
-    </a>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+   <a class="section-link icon-offset" href="spring-data-yugabytedb/">
+     <div class="head">
+       <img class="icon" src="/images/section_icons/reference/connectors/yb.png"aria-hidden="true" />
+       <div class="title">Spring Data YugabyteDB</div>
+     </div>
+     <div class="body">
+       Build your Spring applications using Spring Data YugabyteDB driver based on Spring DataJPA.
+     </div>
+   </a>
   </div>
 
 </div>
