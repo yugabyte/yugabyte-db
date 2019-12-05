@@ -20,7 +20,7 @@ To get the latest PostgreSQL JDBC Driver, go the the [PostgreSQL JDBC Driver dow
 
 Because YugabyteDB is PostgreSQL-compatible, you can use the PostgreSQL JDBC Driver with popular third party tools that support PostgreSQL. When using the PostgreSQL JDBC Driver with YugabyteDB databases, remember to use YugabyteDB's default port of `5433` (instead of PostgreSQL's default of `5432`) and use the default YugabyteDB user `yugabyte` instead of the PostgreSQL default user (`postgres`).
 
-You can get started by using our tutorials on popular [third party tools](../tools/) that use the PostgreSQL JDBC Driver to develop and manage YugabyteDB databases.
+You can get started by using our tutorials on popular [third party tools](../../../tools/) that use the PostgreSQL JDBC Driver to develop and manage YugabyteDB databases.
 
 - [DBeaver](../tools/dbeaver/)
 - [pgAdmin](../tools/pgadmin/)
