@@ -49,7 +49,7 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 | [UnixTimestampOf](../function_datetime/#unixtimestampof) | [`BIGINT`](../type_int) | ([`TIMEUUID`](../type_uuid)) | Conversion |
 | [UUID](../function_datetime/#uuid) | [`UUID`](../type_uuid) | () | Returns a version 4 UUID |
 | [WriteTime](#writetime-function) | [`BIGINT`](../type_int) | (\<AnyType>) | Returns the timestamp when the column was written |
-| [partition_hash](#partition-hash-function) | [`BIGINT`](../type_int) | () | Returns an `uint16` hash of partition key's values |
+| [partition_hash](#partition-hash-function) | [`BIGINT`](../type_int) | () | Computes the partition hash value (uint16) for the partition key columns of a row |
 
 ## Aggregate Functions
 
@@ -89,7 +89,35 @@ CAST function converts the value returned from a table column to the specified d
 | `TIMEUUID` | `DATE`, `TIMESTAMP` |
 
 
-## Partition_hash function
+## Semantics
+
+<li>The argument data types must be convertible to the expected type for that argument that was specified by the function definition.</li>
+<li>Function execution will return a value of the specified type by the function definition.</li>
+<li>YugabyteDB allows function calls to be used any where that expression is allowed.</li>
+
+## Cast function
+
+```
+cast_call ::= CAST '(' column AS type ')'
+```
+
+CAST function converts the value returned from a table column to the specified data type.
+
+| Source Column Type | Target Data Type |
+|--------------------|------------------|
+| `BIGINT` | `SMALLINT`, `INT`, `TEXT` |
+| `BOOLEAN` | `TEXT` |
+| `DATE` | `TEXT`, `TIMESTAMP` |
+| `DOUBLE` | `BIGINT`, `INT`, `SMALLINT`, `TEXT` |
+| `FLOAT` | `BIGINT`, `INT`, `SMALLINT`, `TEXT` |
+| `INT` | `BIGINT`, `SMALLINT`, `TEXT` |
+| `SMALLINT` | `BIGINT`, `INT`, `TEXT` |
+| `TIME` | `TEXT` |
+| `TIMESTAMP` | `DATE`, `TEXT` |
+| `TIMEUUID` | `DATE`, `TIMESTAMP` |
+
+
+## partition_hash function
 `partition_hash` is a function that takes as arguments the partition key columns of the primary key of a row and 
 returns a `uint16` hash value representing the hash value for the row used for partitioning the table.
 The hash values used for partitioning fall in the `0-65535` (uint16) range. 
@@ -100,8 +128,9 @@ The `partition_hash` of the row is used to decide which tablet the row will resi
 full-table operations into smaller sub-tasks that can be parallelized.
 
 ### Querying a subset of the data
-One use of partition_hash can be used to query a subset of the data and get approximate count of rows in the table.
-Assuming we have a table:
+One use of `partition_hash` can be used to query a subset of the data and get approximate count of rows in the table.
+For example, suppose we have a table `t` with a partitioning columns `(h1,h2)`:
+
 ```sql
 create table t (h1 int, h2 int, r1 int, r2 int, v int, 
                          primary key ((h1, h2), r1, r2));
