@@ -16,7 +16,7 @@ menu:
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="postgresql-jdbc-driver/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/reference/connectors/postgresql.png" aria-hidden="true" />
+        <img class="icon-postgres" aria-hidden="true" />
         <div class="title">PostgreSQL JDBC driver</div>
       </div>
       <div class="body">
@@ -52,7 +52,7 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
    <a class="section-link icon-offset" href="spring-data-yugabytedb/">
      <div class="head">
-       <img class="icon" src="/images/section_icons/reference/connectors/yb.png"aria-hidden="true" />
+       <img class="icon-spring" style="color:green" aria-hidden="true" />
        <div class="title">Spring Data YugabyteDB</div>
      </div>
      <div class="body">
