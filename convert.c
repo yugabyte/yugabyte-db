@@ -1,3 +1,5 @@
+#include <float.h>
+
 #include "postgres.h"
 #include "fmgr.h"
 #include "lib/stringinfo.h"
@@ -47,35 +49,33 @@ orafce_to_char_int8(PG_FUNCTION_ARGS)
 Datum
 orafce_to_char_float4(PG_FUNCTION_ARGS)
 {
-	float4		arg0 = PG_GETARG_FLOAT4(0);
-	StringInfo	buf = makeStringInfo();
-	struct lconv *lconv = PGLC_localeconv();
 	char	   *p;
+	char	   *result;
+	struct lconv *lconv = PGLC_localeconv();
 
-	appendStringInfo(buf, "%f", arg0);
+	result = DatumGetCString(DirectFunctionCall1(float4out, PG_GETARG_DATUM(0)));
 
-	for (p = buf->data; *p; p++)
+	for (p = result; *p; p++)
 		if (*p == '.')
 			*p = lconv->decimal_point[0];
 
-	PG_RETURN_TEXT_P(cstring_to_text(buf->data));
+	PG_RETURN_TEXT_P(cstring_to_text(result));
 }
 
 Datum
 orafce_to_char_float8(PG_FUNCTION_ARGS)
 {
-	float8		arg0 = PG_GETARG_FLOAT8(0);
-	StringInfo	buf = makeStringInfo();
-	struct lconv *lconv = PGLC_localeconv();
 	char	   *p;
+	char	   *result;
+	struct lconv *lconv = PGLC_localeconv();
 
-	appendStringInfo(buf, "%f", arg0);
+	result = DatumGetCString(DirectFunctionCall1(float8out, PG_GETARG_DATUM(0)));
 
-	for (p = buf->data; *p; p++)
+	for (p = result; *p; p++)
 		if (*p == '.')
 			*p = lconv->decimal_point[0];
 
-	PG_RETURN_TEXT_P(cstring_to_text(buf->data));
+	PG_RETURN_TEXT_P(cstring_to_text(result));
 }
 
 Datum

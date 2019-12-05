@@ -2402,15 +2402,15 @@ select to_char(1234567890123456::bigint);
 (1 row)
 
 select to_char(123.456::real);
-  to_char   
-------------
- 123.456001
+ to_char 
+---------
+ 123.456
 (1 row)
 
 select to_char(1234.5678::double precision);
-   to_char   
--------------
- 1234.567800
+  to_char  
+-----------
+ 1234.5678
 (1 row)
 
 select to_char(12345678901234567890::numeric);
