@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from __future__ import unicode_literals
 
 import argparse
 import atexit
@@ -1622,30 +1623,38 @@ class YugaWareProxy(object):
 class Output(object):
     supports_color = (sys.platform != 'win32' or 'ANSICON' in os.environ) and \
         hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
-    END = u"\u001b[0m"
-    BOLD = u"\u001b[1m"
-    UNDERLINE = u"\u001b[4m"
-    RED = u"\u001b[31m"
-    GREEN = u"\u001b[32m"
-    YELLOW = u"\u001b[33m"
-    BLUE = u"\u001b[34m"
-    MAGENTA = u"\u001b[35m"
-    CYAN = u"\u001b[36m"
-    CHECK = u"\u2705"
+    END = "\u001b[0m"
+    BOLD = "\u001b[1m"
+    UNDERLINE = "\u001b[4m"
+    RED = "\u001b[31m"
+    GREEN = "\u001b[32m"
+    YELLOW = "\u001b[33m"
+    BLUE = "\u001b[34m"
+    MAGENTA = "\u001b[35m"
+    CYAN = "\u001b[36m"
+    CHECK = "\u2705"
     log_dir = None
     start_time_sec = time.time()
     last_replace_msg = None
 
     @staticmethod
     def print_out(msg):
-        print(msg)
+        try:
+            print(msg)
+        except UnicodeEncodeError:
+            print(msg.encode('ascii', 'ignore'))
         Output.last_replace_msg = None
 
     # Writes one line that may be replaced with the print_replace method.
     # Note - ONLY one line can be replaced. E.g. only characters after a newline can be replaced.
     @staticmethod
     def begin_replace_line(msg):
-        sys.stdout.write(msg)
+        try:
+            sys.stdout.write(msg)
+        except UnicodeEncodeError:
+            msg = msg.encode('ascii', 'ignore')
+            sys.stdout.write(msg)
+
         Output.last_replace_msg = msg
         sys.stdout.flush()
 
@@ -1655,7 +1664,11 @@ class Output(object):
     @staticmethod
     def print_replace(msg, last_replacement=True):
         if Output.last_replace_msg is not None:
-            sys.stdout.write(u"\r{:<{}}".format(msg, len(Output.last_replace_msg)))
+            try:
+                sys.stdout.write("\r{:<{}}".format(msg, len(Output.last_replace_msg)))
+            except UnicodeEncodeError:
+                sys.stdout.write(msg.encode('ascii', 'ignore'))
+
             if last_replacement:
                 sys.stdout.write("\n")
             sys.stdout.flush()
