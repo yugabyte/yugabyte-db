@@ -82,8 +82,7 @@ Node 172.151.24.58:7100 has universe key in memory: 1
 Run the `yb-admin` [`rotate_universe_key_in_memory`](../../admin/yb-admin/#rotate-universe-key-in-memory) command to tell the cluster about the new universe key and enable the cluster-wide encryption.
 
 ```sh
-$ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 rotate_universe_key_in_memory
-/mnt/d0/yb-data/master/universe_key
+$ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 rotate_universe_key_in_memory universe_key_1
 ```
 
 {{< note title="Note" >}}
@@ -136,8 +135,7 @@ $ scp -i <ssh_key> -P 54422 universe_key ip1:/mnt/d0/yb-data/master/
 To tell the cluster to rotate from the existing universe key to the new key, run the `yb-admin` [`rotate_universe_key_in_memory`](../../admin/yb-admin/#rotate-universe-key-in-memory) command.
 
 ```sh
-$ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 rotate_universe_key_in_memory
-/mnt/d0/yb-data/master/universe_key_2
+$ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 rotate_universe_key_in_memory universe_key_2
 ```
 
 ### Step 4. Verify that the new key is being used
