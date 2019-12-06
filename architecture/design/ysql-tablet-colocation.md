@@ -1,9 +1,9 @@
 # YSQL Tablet Colocation
 
-> **Note:** This is new feature that is still in design phase.
+> **Note:** This is a new feature that is still in a design phase.
 
 ## Motivation
-A lot of applications using relational databases have a high number of tables and indexes (1000+). These tables are typically small and single database size is less than 500 GB. These applications still want to be able to use distributed SQL database like YugabyteDB to leverage high availability and data resilience.
+A lot of applications using relational databases have a high number of tables and indexes (1000+). These tables are typically small, and single database size is less than 500 GB. These applications still want to be able to use distributed SQL database like YugabyteDB to leverage high availability and data resilience.
 
 Some of these applications also create multiple databases - for example, 1 DB per customer. In such cases, using the current architecture will result in a huge number of tablets. For example, creating 1000 such DBs will result in 8 million tablets (assuming that each DB has 1000 tables and each table has 8 tablets).
 
@@ -43,7 +43,7 @@ CREATE SCHEMA name WITH colocated = true | false
 ```
 
 In some situations, it may be useful for applications to create multiple schemas (instead of multiple DBs) and use 1 tablet per schema.
-Using this configuration:
+Using this configuration
 
 * Enables applications to use PG connection pooling. Typically, connection pools are created per database.
   So, if applications have a large number of databases, they cannot use connection pooling effectively.
@@ -89,7 +89,7 @@ It'll need to invoke `ChangeMetadataRequest` to replicate the table addition.
 If the table is created with `colocated=false`, then it should go through the current table creation process and create tablets for the table.
 
 #### Drop Table
-When a colocated table is dropped, catalog manager should simply mark the table as deleted (and not remove any tablets). It'll then need to invoke `ChangeMetadataRequest` to replicate the table removal. Note that currently `ChangeMetadata` operation does not support table removal and we'll need to add this capability.
+When a colocated table is dropped, catalog manager should simply mark the table as deleted (and not remove any tablets). It'll then need to invoke a `ChangeMetadataRequest` to replicate the table removal. Note that, currently, `ChangeMetadata` operation does not support table removal, and we'll need to add this capability.
 
 It can then run a background task to delete all rows corresponding to that table from RocksDB.
 
@@ -113,7 +113,7 @@ We can reuse `tablespace` field of these tables for storing this information. Th
 * Modify `RaftGroupMetadata::CreateNew` to take `is_colocated` parameter. If the table is colocated, use `data/rocksdb/tablet-<id>` as the `rocksdb_dir` and `wal/tablet-<id>` as the `wal_dir`.
 
 ### Load balancing
-Today, load balancing is looks at all tables and then balances all tablets for each table. We need to make load balancer aware of tablet colocation in order to avoid balancing the same tablet.
+Today, load balancing looks at all tables and then balances all tablets for each table. We need to make the load balancer aware of tablet colocation in order to avoid balancing the same tablet.
 
 ### Local and Remote Bootstrap
 This does not require any changes.
@@ -146,13 +146,13 @@ When table(s) grows large, it'll be useful to have the ability to pull the table
 ### CDC / 2DC
 Today, CDC and 2DC create change capture streams per table.
 Each stream will cause CDC producers and CDC consumers to start up for each tablet of the stream.
-With colocated tables, we need to provide an ability to create CDC stream per database.
+With colocated tables, we need to provide an ability to create a CDC stream per database.
 We'll also need an ability to filter out rows for tables that the user is not interested in consuming.
 Similarly, generating producer-consumer maps is done per table today. That will need to change to account for colocated tables.
 
 ### Yugax Platform
-Today, YW provides ability to backup tables. This will need to change since we cannot backup individual tables anymore.
-We need to provide back up option for a DB. However, this also depends on supporting backups for YSQL tables.
+Today, YW provides the ability to backup tables. This will need to change since we cannot backup individual tables anymore.
+We need to provide a back up option for a DB. However, this also depends on supporting backups for YSQL tables.
 
 ### Dynamic tablet splitting
 Current design for tablet splitting won't work as is for colocated tablets.
