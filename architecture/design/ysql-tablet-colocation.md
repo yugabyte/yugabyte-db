@@ -71,7 +71,7 @@ Today, tablet's `RaftGroupReplicaSuperBlockPB` has a `primary_table_id`. For sys
 Rows of primary table ID are not prefixed with table ID while writing to RocksDB. All other table rows are prefixed with cotable ID.
 Remote bootstrap client checks that tablet being bootstrapped has a primary table. (It's not clear why it needs this).
 
-Since there is no “primary table” in a colocated DB, we have two options:
+Since there is no "primary table" in a colocated DB, we have two options:
 Make this field optional. We'll need to check some dependencies like remote bootstrap to see if this is possible.
 Create a dummy table for the database and make that the primary table.
 
@@ -153,7 +153,7 @@ We need to provide back up option for a DB. However, this also depends on suppor
 ### Dynamic tablet splitting
 Current design for tablet splitting won't work as is for colocated tablets.
 The design finds a split key (approximate mid-key) for the tablet and splits the tablet range into two partitions.
-Since colocated tablets have multiple tables with different schemas, we cannot find the “mid point” of the tablet.
+Since colocated tablets have multiple tables with different schemas, we cannot find the "mid point" of the tablet.
 We could potentially split the tablet such that some tables are in one tablet and other tables are in the second tablet, but this will require some changes to the design.
 
 
