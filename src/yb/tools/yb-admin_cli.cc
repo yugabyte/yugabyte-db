@@ -291,6 +291,29 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "delete_namespace", " <keyspace>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 3) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        auto namespace_name = VERIFY_RESULT(ParseNamespaceName(args[2]));
+        RETURN_NOT_OK_PREPEND(client->DeleteNamespace(namespace_name),
+                              Substitute("Unable to delete namespace $0", namespace_name.name));
+        return Status::OK();
+      });
+
+  Register(
+      "delete_namespace_by_id", " <keyspace_id>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 3) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        RETURN_NOT_OK_PREPEND(client->DeleteNamespaceById(args[2]),
+                              Substitute("Unable to delete namespace $0", args[2]));
+        return Status::OK();
+      });
+
+  Register(
       "delete_table", " <keyspace> <table_name>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 4) {
@@ -300,6 +323,41 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
         RETURN_NOT_OK_PREPEND(client->DeleteTable(table_name),
                               Substitute("Unable to delete table $0", table_name.ToString()));
+        return Status::OK();
+      });
+
+  Register(
+      "delete_table_by_id", " <table_id>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 3) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        RETURN_NOT_OK_PREPEND(client->DeleteTableById(args[2]),
+                              Substitute("Unable to delete table $0", args[2]));
+        return Status::OK();
+      });
+
+  Register(
+      "delete_index", " <keyspace> <index_name>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 4) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        const auto table_name = VERIFY_RESULT(ResolveTableName(client, args[2], args[3]));
+
+        RETURN_NOT_OK_PREPEND(client->DeleteIndex(table_name),
+                              Substitute("Unable to delete index $0", table_name.ToString()));
+        return Status::OK();
+      });
+
+  Register(
+      "delete_index_by_id", " <index_id>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 3) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        RETURN_NOT_OK_PREPEND(client->DeleteIndexById(args[2]),
+                              Substitute("Unable to delete index $0", args[2]));
         return Status::OK();
       });
 
