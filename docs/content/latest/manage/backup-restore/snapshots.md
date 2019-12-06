@@ -15,7 +15,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This page covers backups for YugaByte DB using snapshots. Here are some points to keep in mind.
+This page covers backups for YugabyteDB using snapshots. Here are some points to keep in mind.
 
 - Distributed backups using snapshots
   - Massively parallel, efficient for very large data sets
