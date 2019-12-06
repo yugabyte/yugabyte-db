@@ -158,4 +158,3 @@ We could potentially split the tablet such that some tables are in one tablet an
 
 
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/ysql-tablet-colocation.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
-
