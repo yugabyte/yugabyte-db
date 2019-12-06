@@ -156,7 +156,7 @@ yb-admin -master_addresses <master-addresses> list_all_tablet_servers
 
 #### list_all_masters
 
-Displays a list of all YB-Master services in a table listing the master UUID, RPC host and port, state, and role.
+Displays a list of all YB-Master services in a table listing the master UUID, RPC host and port, state (`ALIVE` or ``), and role (`LEADER` or `FOLLOWER`).
 
 **Syntax**
 
@@ -219,7 +219,7 @@ yb-admin -master_addresses <master-addresses> list_tablet_server_log_locations
 
 #### list_tablets_for_tablet_server
 
-Lists all tablets for the specified tablet server.
+Lists all tablets for the specified tablet server (YB-TServer).
 
 **Syntax**
 
@@ -228,7 +228,7 @@ yb-admin -master_addresses <master-addresses> list_tablets_for_tablet_server <ts
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-- *ts_uuid*: The UUID of the tablet server.
+- *ts_uuid*: The UUID of the tablet server (YB-TServer).
 
 ---
 
@@ -639,74 +639,61 @@ yb-admin -master_addresses <master-addresses> delete_read_replica_placement_info
 
 #### Encryption at rest commands
 
-For details on enabling encryption at rest, see [Encryption at rest](../../secure/encryption-at-rest).
+For details on using encryption at rest, see [Encryption at rest](../../secure/encryption-at-rest).
 
-#### add_universe_keys
+#### add_universe_keys_to_all_masters
 
-#### has_universe_key_in_memory
+Sets the contents of `key_path` in-memory on each YB-Master node.
 
-#### rotate_universe_key_in_memory
+**Syntax**
 
-Rotates the in-memory universe key.
+```sh
+yb-admin -master_addresses <master-addresses> add_universe_keys_to_all_masters <key_id> <key_path>
+```
 
-#### disable_encryption_in_memory
-
-Disables the in-memory encryption.
-
-##### rotate_universe_key
-
-Rotates the universe key.
+- *key_id*: Universe-unique identifier (can be any string, such as a string of a UUID) that will be associated to the universe key contained in the contents of `key_path` as a byte[].
+- *key_path*:  The path to the file containing the universe key.
 
 {{< note title="Note" >}}
 
-Only new data is encrypted because data is encrypted in the background as part of flushes to disk and compactions.
+After adding the universe keys to all YB-Master nodes, you can verify the keys exist using the `yb-admin` [`all_masters_have_universe_key_in_memory`](#all-masters-have-universe-key-in-memory) command and enable encryption using the [`rotate_universe_key_in_memory`](#rotate-universe-key-in-memory) command.
 
 {{< /note >}}
 
+#### all_masters_have_universe_key_in_memory
+
+Checks whether the universe key associated with the provided *key_id* exists in-memory on each YB-Master node.
+
+```sh
+yb-admin -master_addresses <master-addresses> all_masters_have_universe_key_in_memory <key_id>
+```
+
+- *key_id*: Universe-unique identifier (can be any string, such as a string of a UUID) that will be associated to the universe key contained in the contents of `key_path` as a byte[].
+
+#### rotate_universe_key_in_memory
+
+Rotates the in-memory universe key to start encrypting newly-written data files with the universe key associated with the provided `key_id`.
+
+{{< note title="Note" >}}
+
+The [`all_masters_have_universe_key_in_memory`](#all-masters-have-universe-key-in-memory) value must be true for the universe key to be successfully rotated and enabled).
+
+{{< /note >}}
+
+```sh
+yb-admin -master_addresses <master-addresses> rotate_universe_key_in_memory <key_id>
+```
+
+- *key_id*: Universe-unique identifier (can be any string, such as a string of a UUID) that will be associated to the universe key contained in the contents of `key_path` as a byte[].
+
+#### disable_encryption_in_memory
+
+Disables the in-memory encryption at rest for newly-written data files.
+
 **Syntax**
 
 ```sh
-yb-admin -master_addresses <master-addresses> rotate_universe_key <key_path>
-```
-
-- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-- *key_path*: The path of the universe key.
-
-**Example**
-
-```sh
-$ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 rotate_universe_key
-/mnt/d0/yb-data/master/universe_key_2
-```
-
-To verify that encryption is enabled, you can run the [`is_encryption_enabled`](#is-encryption-enabled) command.
-
-##### disable_encryption
-
-Disables cluster-wide encryption.
-
-**Syntax**
-
-```sh
-yb-admin -master_addresses <master-addresses> disable_encryption
-```
-
-- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-
-Returns the message:
-
-```
-Encryption status: DISABLED
-```
-
-**Example**
-
-```sh
-$ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 disable_encryption
-```
-
-```
-Encryption status: DISABLED
+yb-admin -master_addresses <master-addresses> disable_encryption_in_memory
 ```
 
 ##### is_encryption_enabled
