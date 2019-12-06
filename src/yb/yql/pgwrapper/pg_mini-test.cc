@@ -636,11 +636,17 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallW
 
   thread_holder.WaitAndStop(120s); // Actually will stop when enough batches were copied
 
-  auto intents_count = CountIntents(cluster_.get());
-  LOG(INFO) << "Intents count: " << intents_count;
-
-  ASSERT_LE(intents_count, 30000);
   ASSERT_EQ(key.load(std::memory_order_relaxed), kTotalBatches * kBatchSize);
+
+  LOG(INFO) << "Restarting cluster";
+  ASSERT_OK(cluster_->RestartSync());
+
+  ASSERT_OK(WaitFor([this] {
+    auto intents_count = CountIntents(cluster_.get());
+    LOG(INFO) << "Intents count: " << intents_count;
+
+    return intents_count <= 5000;
+  }, 5s, "Intents cleanup"));
 }
 
 } // namespace pgwrapper

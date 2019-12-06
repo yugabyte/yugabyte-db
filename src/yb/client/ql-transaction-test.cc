@@ -1080,28 +1080,31 @@ struct TransactionState {
     auto resp = status_future.get();
     ASSERT_OK(resp);
 
-    if (resp->status() == TransactionStatus::ABORTED) {
+    ASSERT_EQ(1, resp->status().size());
+    ASSERT_EQ(1, resp->status_hybrid_time().size());
+
+    if (resp->status(0) == TransactionStatus::ABORTED) {
       ASSERT_TRUE(commit_future.valid());
       transaction = nullptr;
       return;
     }
 
-    auto new_time = HybridTime(resp->status_hybrid_time());
+    auto new_time = HybridTime(resp->status_hybrid_time()[0]);
     if (last_status == TransactionStatus::PENDING) {
-      if (resp->status() == TransactionStatus::PENDING) {
+      if (resp->status(0) == TransactionStatus::PENDING) {
         ASSERT_GE(new_time, status_time);
       } else {
-        ASSERT_EQ(TransactionStatus::COMMITTED, resp->status());
+        ASSERT_EQ(TransactionStatus::COMMITTED, resp->status(0));
         ASSERT_GT(new_time, status_time);
       }
     } else {
       ASSERT_EQ(last_status, TransactionStatus::COMMITTED);
-      ASSERT_EQ(resp->status(), TransactionStatus::COMMITTED)
-          << "Bad transaction status: " << TransactionStatus_Name(resp->status());
+      ASSERT_EQ(resp->status(0), TransactionStatus::COMMITTED)
+          << "Bad transaction status: " << TransactionStatus_Name(resp->status(0));
       ASSERT_EQ(status_time, new_time);
     }
     status_time = new_time;
-    last_status = resp->status();
+    last_status = resp->status(0);
   }
 };
 
@@ -1163,8 +1166,9 @@ TEST_F(QLTransactionTest, StatusEvolution) {
       }
       tserver::GetTransactionStatusRequestPB req;
       req.set_tablet_id(state.metadata.status_tablet);
-      req.set_transaction_id(state.metadata.transaction_id.data,
-                             state.metadata.transaction_id.size());
+      req.add_transaction_id()->assign(
+          pointer_cast<const char*>(state.metadata.transaction_id.data),
+          state.metadata.transaction_id.size());
       state.status_future = rpc::WrapRpcFuture<tserver::GetTransactionStatusResponsePB>(
           GetTransactionStatus, &rpcs)(
               TransactionRpcDeadline(), nullptr /* tablet */, client_.get(), &req);

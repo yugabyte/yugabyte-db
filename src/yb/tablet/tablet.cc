@@ -1498,11 +1498,6 @@ HybridTime Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadl
   return SafeTime(RequireLease::kFalse, min_allowed, deadline);
 }
 
-HybridTime Tablet::ApplierSafeTimeForFollower() {
-  return mvcc_.SafeTimeForFollower(
-      /* min_allowed= */ HybridTime::kMin, /* deadline= */ CoarseTimePoint::min());
-}
-
 Status Tablet::CreatePreparedChangeMetadata(ChangeMetadataOperationState *operation_state,
                                             const Schema* schema) {
   if (schema) {
