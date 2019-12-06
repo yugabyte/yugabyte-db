@@ -107,7 +107,7 @@ We can reuse `tablespace` field of these tables for storing this information. Th
 * Add `is_colocated` in `SysTabletEntryPB` to indicate if a tablet is a colocated tablet.
 * Add `is_colocated` in `CreateTabletRequestPB`.
 * For `SysCatalogTable`, `Tablet::AddTable` is called when creating a new table. There is no corresponding way to do that when the tablet is in a tserver. Hence we need to add an RPC `AddTableToTablet` in the `TabletServerAdminService`, and add `AsyncAddTableToTablet` task to call that RPC.
-* Modify `RaftGroupMetadata::CreateNew` to take `is_colocated` parameter. If the table is colocated, use `Rocksdb/tablet-<id>` as the `Rocksdb_dir` and `wal/tablet-<id>` as the `wal_dir`.
+* Modify `RaftGroupMetadata::CreateNew` to take `is_colocated` parameter. If the table is colocated, use `data/rocksdb/tablet-<id>` as the `rocksdb_dir` and `wal/tablet-<id>` as the `wal_dir`.
 
 ### Load balancing
 Today, load balancing is looks at all tables and then balances all tablets for each table. We need to make load balancer aware of tablet colocation in order to avoid balancing the same tablet.
