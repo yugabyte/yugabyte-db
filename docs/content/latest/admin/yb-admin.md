@@ -156,7 +156,7 @@ yb-admin -master_addresses <master-addresses> list_all_tablet_servers
 
 #### list_all_masters
 
-Displays a list of all YB-Master services in a table listing the master UUID, RPC host and port, state (`ALIVE` or ``), and role (`LEADER` or `FOLLOWER`).
+Displays a list of all YB-Master services in a table listing the master UUID, RPC host and port, state (`ALIVE` or `DEAD`), and role (`LEADER`, `FOLLOWER`, or `UNKNOWN_ROLE`).
 
 **Syntax**
 
