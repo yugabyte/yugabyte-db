@@ -44,21 +44,24 @@ CREATE SCHEMA name WITH colocated = true | false
 
 In some situations, it may be useful for applications to create multiple schemas (instead of multiple DBs) and use 1 tablet per schema.
 Using this configuration:
+
 * Enables applications to use PG connection pooling. Typically, connection pools are created per database.
-So, if applications have a large number of databases, they cannot use connection pooling effectively.
-Connection pools become important for scaling applications since we have a limit of the maximum number of connections that each tserver can accept (300).
+  So, if applications have a large number of databases, they cannot use connection pooling effectively.
+  Connection pools become important for scaling applications since we have a limit of the maximum number of connections that each tserver can accept (300).
 * Reduces master overhead. Creating multiple databases adds more overhead on the master since postgres creates 200+ system tables per database.
 
 ## Design
 
 ### Single vs multiple RocksDB
 Today, there is one RocksDB created per tablet. This RocksDB only has data for a single tablet. With multiple tables in a single tablet, we have two options:
+
 * Use single RocksDB for the entire tablet (i.e. for all tables).
 * Use multiple RocksDBs with one RocksDB per table.
 
 More analysis on this can be found here.
 
 We decided to use single RocksDB for entire tablet. This is because:
+
 * It enables us to leverage code that was written for postgres system tables. Today, all postgres system tables are colocated on a single tablet in master and uses a single RocksDB. We can leverage a lot of that code.
 * We may hit other scaling limits with multiple Rocksdb. For example, it's possible that having 1 million RocksDBs (1000 DBs, with 1000 tables per DB) will cause other side effects.
 
@@ -134,6 +137,7 @@ TODO
 
 ### Pulling out tables from colocated tablet
 When table(s) grows large, it'll be useful to have the ability to pull the table out of colocated tablet in order to scale. We won't provide an automated way to do this in 2.1. This can be done manually using the following steps:
+
 * Create a table with the same schema as the table to be pulled out.
 * Dump contents of original table using `ysql_dump` or `COPY` command and importing that into the new table.
 * Drop original table.
