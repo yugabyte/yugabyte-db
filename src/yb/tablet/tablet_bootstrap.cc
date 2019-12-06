@@ -48,6 +48,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/opid.h"
 #include "yb/util/logging.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/env_util.h"
 #include "yb/consensus/log_index.h"
@@ -1111,7 +1112,13 @@ Status TabletBootstrap::PlayUpdateTransactionRequest(
   UpdateTxnOperationState operation_state(
       nullptr, replicate_msg->mutable_transaction_state());
   operation_state.mutable_op_id()->CopyFrom(replicate_msg->id());
-  operation_state.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+  HybridTime hybrid_time(replicate_msg->hybrid_time());
+  operation_state.set_hybrid_time(hybrid_time);
+
+  tablet_->mvcc_manager()->AddPending(&hybrid_time);
+  auto scope_exit = ScopeExit([this, hybrid_time] {
+    tablet_->mvcc_manager()->Replicated(hybrid_time);
+  });
 
   if (operation_state.request()->status() == TransactionStatus::APPLYING) {
     auto transaction_participant = tablet_->transaction_participant();

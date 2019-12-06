@@ -275,6 +275,10 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
     tablet_->transaction_coordinator()->Start();
   }
 
+  if (tablet_->transaction_participant()) {
+    tablet_->transaction_participant()->Start();
+  }
+
   TRACE("TabletPeer::Init() finished");
   VLOG_WITH_PREFIX(2) << "Peer Initted";
 
@@ -586,6 +590,10 @@ void TabletPeer::SubmitUpdateTransaction(
   Submit(std::move(operation), term);
 }
 
+HybridTime TabletPeer::SafeTimeForTransactionParticipant() {
+  return tablet_->mvcc_manager()->LastReplicatedHybridTime();
+}
+
 void TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
   consensus_->GetLastCommittedOpId().ToPB(&data->op_id);
   data->log_ht = tablet_->mvcc_manager()->LastReplicatedHybridTime();
@@ -887,7 +895,8 @@ Status TabletPeer::StartReplicaOperation(
     driver->SetPropagatedSafeTime(propagated_safe_time, tablet_->mvcc_manager());
   }
 
-  if (operation_type == OperationType::kWrite) {
+  if (operation_type == OperationType::kWrite ||
+      operation_type == OperationType::kUpdateTransaction) {
     tablet()->mvcc_manager()->AddPending(&ht);
   }
 

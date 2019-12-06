@@ -130,7 +130,7 @@ class TransactionCoordinator {
   // And like most of other Shutdowns in our codebase it wait until shutdown completes.
   void Shutdown();
 
-  CHECKED_STATUS GetStatus(const std::string& transaction_id,
+  CHECKED_STATUS GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
                            tserver::GetTransactionStatusResponsePB* response);
 
   void Abort(const std::string& transaction_id, int64_t term, TransactionAbortCallback callback);

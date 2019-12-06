@@ -166,6 +166,8 @@ class TabletPeer : public consensus::ConsensusContext,
   void SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperationState> state, int64_t term) override;
 
+  HybridTime SafeTimeForTransactionParticipant() override;
+
   void GetLastReplicatedData(RemoveIntentsData* data) override;
 
   void GetTabletStatusPB(TabletStatusPB* status_pb_out) const;

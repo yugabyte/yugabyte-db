@@ -250,31 +250,30 @@ class TransactionState {
     NotifyAbortWaiters(status);
   }
 
-  CHECKED_STATUS GetStatus(tserver::GetTransactionStatusResponsePB* response) const {
+  TransactionStatusResult GetStatus() const {
     if (status_ == TransactionStatus::COMMITTED ||
         status_ == TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS) {
-      response->set_status(TransactionStatus::COMMITTED);
-      response->set_status_hybrid_time(commit_time_.ToUint64());
-    } else if (status_ == TransactionStatus::ABORTED) {
-      response->set_status(TransactionStatus::ABORTED);
-    } else {
-      CHECK_EQ(TransactionStatus::PENDING, status_);
-      response->set_status(TransactionStatus::PENDING);
-      HybridTime status_ht = context_.coordinator_context().clock().Now();
-      if (replicating_) {
-        auto replicating_status = replicating_->request()->status();
-        if (replicating_status == TransactionStatus::COMMITTED ||
-            replicating_status == TransactionStatus::ABORTED) {
-          auto replicating_ht = replicating_->hybrid_time_even_if_unset();
-          if (replicating_ht.is_valid()) {
-            status_ht = replicating_ht;
-          }
+      return {TransactionStatus::COMMITTED, commit_time_};
+    }
+
+    if (status_ == TransactionStatus::ABORTED) {
+      return {TransactionStatus::ABORTED, HybridTime::kMax};
+    }
+
+    CHECK_EQ(TransactionStatus::PENDING, status_);
+    HybridTime status_ht = context_.coordinator_context().clock().Now();
+    if (replicating_) {
+      auto replicating_status = replicating_->request()->status();
+      if (replicating_status == TransactionStatus::COMMITTED ||
+          replicating_status == TransactionStatus::ABORTED) {
+        auto replicating_ht = replicating_->hybrid_time_even_if_unset();
+        if (replicating_ht.is_valid()) {
+          status_ht = replicating_ht;
         }
       }
-      status_ht = std::min(status_ht, context_.coordinator_context().HtLeaseExpiration());
-      response->set_status_hybrid_time(status_ht.Decremented().ToUint64());
     }
-    return Status::OK();
+    status_ht = std::min(status_ht, context_.coordinator_context().HtLeaseExpiration());
+    return {TransactionStatus::PENDING, status_ht.Decremented()};
   }
 
   TransactionStatusResult Abort(TransactionAbortCallback* callback) {
@@ -663,20 +662,19 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     rpcs_.Shutdown();
   }
 
-  CHECKED_STATUS GetStatus(const std::string& transaction_id,
+  CHECKED_STATUS GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
                            tserver::GetTransactionStatusResponsePB* response) {
-    auto id = FullyDecodeTransactionId(transaction_id);
-    if (!id.ok()) {
-      return std::move(id.status());
-    }
-
     std::lock_guard<std::mutex> lock(managed_mutex_);
-    auto it = managed_transactions_.find(*id);
-    if (it == managed_transactions_.end()) {
-      response->set_status(TransactionStatus::ABORTED);
-      return Status::OK();
+    for (const auto& transaction_id : transaction_ids) {
+      auto id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_id));
+      auto it = managed_transactions_.find(id);
+      auto txn_status_with_ht = it != managed_transactions_.end()
+          ? it->GetStatus()
+          : TransactionStatusResult(TransactionStatus::ABORTED, HybridTime::kMax);
+      response->add_status(txn_status_with_ht.status);
+      response->add_status_hybrid_time(txn_status_with_ht.status_time.ToUint64());
     }
-    return it->GetStatus(response);
+    return Status::OK();
   }
 
   void Abort(const std::string& transaction_id, int64_t term, TransactionAbortCallback callback) {
@@ -1068,9 +1066,10 @@ void TransactionCoordinator::Shutdown() {
   impl_->Shutdown();
 }
 
-Status TransactionCoordinator::GetStatus(const std::string& transaction_id,
-                                         tserver::GetTransactionStatusResponsePB* response) {
-  return impl_->GetStatus(transaction_id, response);
+Status TransactionCoordinator::GetStatus(
+    const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
+    tserver::GetTransactionStatusResponsePB* response) {
+  return impl_->GetStatus(transaction_ids, response);
 }
 
 void TransactionCoordinator::Abort(const std::string& transaction_id,
