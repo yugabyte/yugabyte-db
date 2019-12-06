@@ -243,5 +243,5 @@ For more information, see the following in the Architecture section:
 
 For detailed design documents, see the following GitHub repository pages:
 
-- [Two Data Center Deployment Support with YugaByte DB](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-2DC-deployment.md)
+- [Two Data Center Deployment Support with YugabyteDB](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-2DC-deployment.md)
 - [Change Data Capture in YugabyteDB](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-change-data-capture.md)

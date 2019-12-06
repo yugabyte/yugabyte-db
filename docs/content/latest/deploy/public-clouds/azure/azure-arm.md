@@ -14,7 +14,7 @@
     ```
     $ az group deployment show -g <Your-Azure-Resource-Group> -n <YOur-Deployment-Name> --query properties.outputs
     ```
-    In the output, you will get the YugaByte DB admin URL, JDBC URL, YSQL, YCQL and YEDIS connection string. You can use YugaByte admin URL to access admin portal.
+    In the output, you will get the YugabyteDB admin URL, JDBC URL, YSQL, YCQL and YEDIS connection string. You can use YugaByte admin URL to access admin portal.
 
 ## Deploying From Azure Portal
 - Clone this repo locally.
@@ -29,4 +29,4 @@
 -  Click on the `Save` button at the bottom of the window.
 -  Now provide the required details.
 -  Once details are provided, then check the Terms and Condition checkbox and click on the `Purchase` button. 
--  Once deployments get compleated, you can access the YugaByte DB admin from URL you get in the deployment output section.
+-  Once deployments get compleated, you can access the YugabyteDB admin from URL you get in the deployment output section.
