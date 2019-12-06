@@ -78,7 +78,7 @@ Since there is no "primary table" in a colocated DB, we have two options:
 Make this field optional. We'll need to check some dependencies like remote bootstrap to see if this is possible.
 Create a dummy table for the database and make that the primary table.
 
-Tablet creation requires a Schema and partition range to be specified. In this case, Schema will empty and partition range will be [-infinity, infinity).
+Tablet creation requires a Schema and partition range to be specified. In this case, Schema will empty and partition range will be _[-infinity, infinity)_.
 
 Currently, RocksDB files are created in the folder `tserver/data/rocksdb/table-id/tablet-id/`. Since this tablet will have multiple tables, the directory structure will change to `tserver/data/rocksdb/tablet-id/`.
 
