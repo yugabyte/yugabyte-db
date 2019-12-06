@@ -77,7 +77,7 @@ Create a dummy table for the database and make that the primary table.
 
 Tablet creation requires a Schema and partition range to be specified. In this case, Schema will empty and partition range will be [-infinity, infinity).
 
-Currently, RocksDB files are created in the folder `tserver/data/table-id/tablet-id/`. Since this tablet will have multiple tables, the directory structure will change to `tserver/data/tablet-id/`.
+Currently, RocksDB files are created in the folder `tserver/data/rocksdb/table-id/tablet-id/`. Since this tablet will have multiple tables, the directory structure will change to `tserver/data/rocksdb/tablet-id/`.
 
 #### Create Table
 When a table is created in a colocated database, catalog manager should add that table to the tablet that was created for the database and not create new tablets.
