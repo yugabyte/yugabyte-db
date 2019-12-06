@@ -15,4 +15,4 @@
     ```
     $ gcloud deployment-manager deployments describe <your-deployment-name>
     ```
-    In the output, you will get the YugaByte DB admin URL, JDBC URL, YSQL, YCQL and YEDIS connection string. You can use YugaByte admin URL to access admin portal. 
+    In the output, you will get the YugabyteDB admin URL, JDBC URL, YSQL, YCQL and YEDIS connection string. You can use YugaByte admin URL to access admin portal. 
