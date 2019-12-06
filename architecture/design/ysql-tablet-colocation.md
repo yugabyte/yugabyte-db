@@ -65,7 +65,7 @@ We decided to use single RocksDB for entire tablet. This is because:
 ### Create and Drop DB / Table
 
 #### Create Database
-When a DB is created with `colocated=true`, catalog manager will need to create a tablet for this database. Catalog manager's NamespaceInfo and TableInfo objects will need to maintain colocated property.
+When a DB is created with `colocated=true`, catalog manager will need to create a tablet for this database. Catalog manager's `NamespaceInfo` and `TableInfo` objects will need to maintain colocated property.
 
 Today, tablet's `RaftGroupReplicaSuperBlockPB` has a `primary_table_id`. For system tables, this is the table ID of sys catalog table. Primary table ID seems to be used in two ways:
 Rows of primary table ID are not prefixed with table ID while writing to RocksDB. All other table rows are prefixed with cotable ID.
@@ -90,7 +90,7 @@ When a colocated table is dropped, catalog manager should simply mark the table 
 
 It can then run a background task to delete all rows corresponding to that table from RocksDB.
 
-If the table being dropped has colocated=false, then it should go through the current drop table process and delete the tablets.
+If the table being dropped has `colocated=false`, then it should go through the current drop table process and delete the tablets.
 
 #### Drop Database
 This should delete the database from sys catalog and also remove the tablets created.
