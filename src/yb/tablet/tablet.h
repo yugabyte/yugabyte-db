@@ -223,8 +223,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) override;
 
-  HybridTime ApplierSafeTimeForFollower() override;
-
   // Finish the Prepare phase of a write transaction.
   //
   // Starts an MVCC transaction and assigns a timestamp for the transaction.

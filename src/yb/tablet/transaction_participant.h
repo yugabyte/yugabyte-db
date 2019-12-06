@@ -90,9 +90,6 @@ class TransactionIntentApplier {
 
   virtual HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) = 0;
 
-  // See MvccManager::SafeTimeForFollower
-  virtual HybridTime ApplierSafeTimeForFollower() = 0;
-
  protected:
   ~TransactionIntentApplier() {}
 };
@@ -114,6 +111,9 @@ class TransactionParticipantContext {
   virtual void SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperationState> state, int64_t term) = 0;
 
+  // Returns hybrid time that lower than any future transaction apply record.
+  virtual HybridTime SafeTimeForTransactionParticipant() = 0;
+
  protected:
   ~TransactionParticipantContext() {}
 };
@@ -127,6 +127,9 @@ class TransactionParticipant : public TransactionStatusManager {
       TransactionParticipantContext* context, TransactionIntentApplier* applier,
       const scoped_refptr<MetricEntity>& entity);
   virtual ~TransactionParticipant();
+
+  // Notify participant that this context is ready and it could start performing its requests.
+  void Start();
 
   // Adds new running transaction.
   MUST_USE_RESULT bool Add(
@@ -148,8 +151,6 @@ class TransactionParticipant : public TransactionStatusManager {
   void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term);
 
   void Cleanup(TransactionIdSet&& set) override;
-
-  CHECKED_STATUS ProcessApply(const TransactionApplyData& data);
 
   // Used to pass arguments to ProcessReplicated.
   struct ReplicatedData {

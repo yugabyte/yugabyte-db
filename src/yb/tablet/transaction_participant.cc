@@ -55,14 +55,17 @@ DECLARE_uint64(aborted_intent_cleanup_ms);
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_uint64(transaction_delay_status_reply_usec_in_tests, 0,
-              "For tests only. Delay handling status reply by specified amount of usec.");
-DEFINE_double(transaction_ignore_applying_probability_in_tests, 0,
-              "Probability to ignore APPLYING update in tests.");
+DEFINE_test_flag(uint64, transaction_delay_status_reply_usec_in_tests, 0,
+                 "For tests only. Delay handling status reply by specified amount of usec.");
+DEFINE_test_flag(double, transaction_ignore_applying_probability_in_tests, 0,
+                 "Probability to ignore APPLYING update in tests.");
 DEFINE_test_flag(bool, fail_in_apply_if_no_metadata, false,
                  "Fail when applying intents if metadata is not found.");
 DEFINE_test_flag(int32, inject_load_transaction_delay_ms, 0,
                  "Inject delay before loading each transaction at startup.");
+
+DEFINE_uint64(max_transactions_in_status_request, 128,
+              "Request status for at most specified number of transactions at once.");
 
 METRIC_DEFINE_simple_counter(
     tablet, transaction_load_attempts,
@@ -577,7 +580,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
       client::YBClient* client, int64_t serial_no, const RunningTransactionPtr& shared_self) {
     tserver::GetTransactionStatusRequestPB req;
     req.set_tablet_id(metadata_.status_tablet);
-    req.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
+    req.add_transaction_id()->assign(
+        pointer_cast<const char*>(metadata_.transaction_id.data), metadata_.transaction_id.size());
     req.set_propagated_hybrid_time(context_.participant_context_.Now().ToUint64());
     context_.rpcs_.RegisterAndStart(
         client::GetTransactionStatus(
@@ -632,18 +636,32 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
         return;
       }
 
-      DCHECK(response.has_status_hybrid_time() ||
-             response.status() == TransactionStatus::ABORTED);
-      time_of_status = response.has_status_hybrid_time()
-          ? HybridTime(response.status_hybrid_time())
-          : HybridTime::kMax;
-      if (last_known_status_hybrid_time_ <= time_of_status) {
-        last_known_status_hybrid_time_ = time_of_status;
-        last_known_status_ = response.status();
-        if (response.status() == TransactionStatus::ABORTED) {
-          context_.EnqueueRemoveUnlocked(id());
-        }
+      if (response.status_hybrid_time().size() == 1) {
+        time_of_status = HybridTime(response.status_hybrid_time()[0]);
+      } else {
+        LOG(DFATAL) << "Wrong number of status hybrid time entries, exactly one entry expected: "
+                    << response.ShortDebugString();
+        time_of_status = HybridTime::kMin;
       }
+
+      // Check for local_commit_time_ is not required for correctness, but useful for optimization.
+      // So we could avoid unnecessary actions.
+      if (local_commit_time_.is_valid()) {
+        last_known_status_hybrid_time_ = local_commit_time_;
+        last_known_status_ = TransactionStatus::COMMITTED;
+      } else if (response.status().size() == 1) {
+        if (last_known_status_hybrid_time_ <= time_of_status) {
+          last_known_status_hybrid_time_ = time_of_status;
+          last_known_status_ = response.status(0);
+          if (response.status(0) == TransactionStatus::ABORTED) {
+            context_.EnqueueRemoveUnlocked(id());
+          }
+        }
+      } else {
+        LOG(DFATAL) << "Wrong number of status entries, exactly one entry expected: "
+                    << response.ShortDebugString();
+      }
+
       time_of_status = last_known_status_hybrid_time_;
       transaction_status = last_known_status_;
 
@@ -787,8 +805,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   Impl(TransactionParticipantContext* context, TransactionIntentApplier* applier,
        const scoped_refptr<MetricEntity>& entity)
       : RunningTransactionContext(context, applier),
-        log_prefix_(Format("T $0 P $1: ", context->tablet_id(), context->permanent_uuid())) {
-    LOG_WITH_PREFIX(INFO) << "Start";
+        log_prefix_(Format("T $0 P $1: ", context->tablet_id(), context->permanent_uuid())),
+        check_status_handle_(rpcs_.InvalidHandle()) {
+    LOG_WITH_PREFIX(INFO) << "Create";
     metric_transactions_running_ = METRIC_transactions_running.Instantiate(entity, 0);
     metric_transaction_load_attempts_ = METRIC_transaction_load_attempts.Instantiate(entity);
     metric_transaction_not_found_ = METRIC_transaction_not_found.Instantiate(entity);
@@ -797,12 +816,21 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
   ~Impl() {
     LOG_WITH_PREFIX(INFO) << "Stop";
+    closing_.store(true, std::memory_order_release);
     transactions_.clear();
     TransactionsModifiedUnlocked();
     rpcs_.Shutdown();
     if (load_thread_.joinable()) {
       load_thread_.join();
     }
+    while (checking_status_.load(std::memory_order_acquire)) {
+      std::this_thread::sleep_for(10ms);
+    }
+  }
+
+  void Start() {
+    LOG_WITH_PREFIX(INFO) << "Start";
+    TryStartCheckLoadedTransactionsStatus(&all_loaded_, &started_);
   }
 
   // Adds new running transaction.
@@ -849,6 +877,11 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   std::pair<size_t, size_t> TEST_CountIntents() {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      ProcessRemoveQueueUnlocked();
+    }
+
     std::pair<size_t, size_t> result(0, 0);
     auto iter = docdb::CreateRocksDBIterator(db_,
                                              key_bounds_,
@@ -860,6 +893,10 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       // Count number of transaction, by counting metadata records.
       if (iter.key().size() == TransactionId::static_size() + 1) {
         ++result.second;
+        auto key = iter.key();
+        key.remove_prefix(1);
+        auto id = CHECK_RESULT(FullyDecodeTransactionId(key));
+        LOG_WITH_PREFIX(INFO) << "Stored txn meta: " << id;
       }
     }
 
@@ -1097,6 +1134,10 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       }
 
       lock_and_iterator.transaction().SetLocalCommitTime(data.commit_ht);
+
+      LOG_IF_WITH_PREFIX(DFATAL, data.log_ht < last_safe_time_)
+          << "Apply transaction before last safe time " << data.transaction_id
+          << ": " << data.log_ht << " vs " << last_safe_time_;
     }
 
     CHECK_OK(applier_.ApplyIntents(data));
@@ -1203,7 +1244,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   void EnqueueRemoveUnlocked(const TransactionId& id) override {
-    remove_queue_.emplace_back(RemoveQueueEntry{id, participant_context_.Now()});
+    auto now = participant_context_.Now();
+    VLOG_WITH_PREFIX(4) << "EnqueueRemoveUnlocked: " << id << " at " << now;
+    remove_queue_.emplace_back(RemoveQueueEntry{id, now});
     ProcessRemoveQueueUnlocked();
   }
 
@@ -1225,8 +1268,32 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       // transaction was deleted from the coordinator, then we have already
       // applied this transaction's provisional records if the transaction was
       // committed.
-      auto safe_time = applier_.ApplierSafeTimeForFollower();
-      while (!remove_queue_.empty() && safe_time >= remove_queue_.front().time) {
+      auto safe_time = participant_context_.SafeTimeForTransactionParticipant();
+      if (!safe_time.is_valid()) {
+        VLOG_WITH_PREFIX(3) << "Unable to obtain safe time to check remove queue";
+        return;
+      }
+      VLOG_WITH_PREFIX(3) << "Checking remove queue: " << safe_time << ", "
+                          << remove_queue_.front().time << ", " << remove_queue_.front().id;
+      LOG_IF_WITH_PREFIX(DFATAL, safe_time < last_safe_time_)
+          << "Safe time decreased: " << safe_time << " vs " << last_safe_time_;
+      last_safe_time_ = safe_time;
+      while (!remove_queue_.empty()) {
+        auto it = transactions_.find(remove_queue_.front().id);
+        if (it == transactions_.end() && (**it).local_commit_time().is_valid()) {
+          // It is regular case, since the coordinator returns ABORTED for already applied
+          // transaction. But this particular tablet could not yet apply it, so
+          // it would add such transaction to remove queue.
+          // And it is the main reason why we are waiting for safe time, before removing intents.
+          VLOG_WITH_PREFIX(4) << "Evicting txn from remove queue, w/o removing intents: "
+                              << remove_queue_.front().id;
+          remove_queue_.pop_front();
+          continue;
+        }
+        if (safe_time <= remove_queue_.front().time) {
+          break;
+        }
+        VLOG_WITH_PREFIX(4) << "Removing from remove queue: " << remove_queue_.front().id;
         static const std::string kRemoveFromQueue = "remove_queue"s;
         RemoveUnlocked(remove_queue_.front().id, kRemoveFromQueue);
         remove_queue_.pop_front();
@@ -1364,10 +1431,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       iterator->Seek(key_bytes.AsSlice());
     }
 
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      all_loaded_.store(true, std::memory_order_release);
-    }
+    TryStartCheckLoadedTransactionsStatus(&started_, &all_loaded_);
     load_cond_.notify_all();
   }
 
@@ -1418,7 +1482,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
         // but intent record could not be found.
         if (iterator->Valid() && iterator->key().starts_with(rev_key)) {
           VLOG_WITH_PREFIX(1)
-              << "Found latest record: " << docdb::SubDocKey::DebugSliceToString(iterator->key())
+              << "Found latest record for " << id
+              << ": " << docdb::SubDocKey::DebugSliceToString(iterator->key())
               << " => " << iterator->value().ToDebugHexString();
           auto status = docdb::DecodeIntentValue(
               iterator->value(), Slice(id.data, id.size()), &next_write_id, nullptr /* body */);
@@ -1436,6 +1501,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     {
       std::lock_guard<std::mutex> lock(mutex_);
       last_loaded_ = metadata->transaction_id;
+      if (FLAGS_max_transactions_in_status_request > 0) {
+        check_status_queues_[metadata->status_tablet].push_back(metadata->transaction_id);
+      }
       transactions_.insert(std::make_shared<RunningTransaction>(
           std::move(*metadata), next_write_id, this));
       TransactionsModifiedUnlocked();
@@ -1476,6 +1544,106 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return recently_removed_transactions_.count(id) != 0;
   }
 
+  template <class F1, class F2>
+  void TryStartCheckLoadedTransactionsStatus(const F1* flag_to_check, F2* flag_to_set) {
+    bool check_loaded_transactions_status;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      *flag_to_set = true;
+      check_loaded_transactions_status = *flag_to_check;
+      if (check_loaded_transactions_status) {
+        checking_status_.store(true, std::memory_order_release);
+      }
+    }
+    if (check_loaded_transactions_status) {
+      CheckLoadedTransactionsStatus();
+    }
+  }
+
+  // Picks status tablet from checking_status_ map and request status of transactions
+  // related to it.
+  void CheckLoadedTransactionsStatus() {
+    DCHECK(checking_status_.load(std::memory_order_acquire));
+    auto max_transactions_in_status_request = FLAGS_max_transactions_in_status_request;
+    if (closing_.load(std::memory_order_acquire) || check_status_queues_.empty() ||
+        max_transactions_in_status_request <= 0) {
+      checking_status_.store(false, std::memory_order_release);
+      return;
+    }
+
+    // We access check_status_queues_ only during load and after that while resolving
+    // transaction statuses, which is NOT concurrent.
+    // So we could avoid doing synchronization here.
+    auto& tablet_id_and_queue = *check_status_queues_.begin();
+    tserver::GetTransactionStatusRequestPB req;
+    req.set_tablet_id(tablet_id_and_queue.first);
+    req.set_propagated_hybrid_time(participant_context_.Now().ToUint64());
+    const auto& tablet_queue = tablet_id_and_queue.second;
+    auto request_size = std::min<size_t>(max_transactions_in_status_request, tablet_queue.size());
+    for (size_t i = 0; i != request_size; ++i) {
+      const auto& txn_id = tablet_queue[i];
+      VLOG_WITH_PREFIX(4) << "Checking txn status: " << txn_id;
+      req.add_transaction_id()->assign(pointer_cast<const char*>(txn_id.begin()), txn_id.size());
+    }
+    rpcs_.RegisterAndStart(
+        client::GetTransactionStatus(
+            TransactionRpcDeadline(),
+            nullptr /* tablet */,
+            client(),
+            &req,
+            std::bind(&Impl::StatusReceived, this, _1, _2, request_size)),
+        &check_status_handle_);
+  }
+
+  void StatusReceived(const Status& status,
+                      const tserver::GetTransactionStatusResponsePB& response,
+                      size_t request_size) {
+    VLOG_WITH_PREFIX(2) << "Received statuses: " << status << ", " << response.ShortDebugString();
+
+    rpcs_.Unregister(&check_status_handle_);
+
+    if (!status.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "Failed to request transaction statuses: " << status;
+      if (status.IsAborted()) {
+        check_status_queues_.clear();
+      }
+      CheckLoadedTransactionsStatus();
+      return;
+    }
+
+    if (response.has_propagated_hybrid_time()) {
+      participant_context_.UpdateClock(HybridTime(response.propagated_hybrid_time()));
+    }
+
+    if (response.status().size() != 1 && response.status().size() != request_size) {
+      // Node with old software version would always return 1 status.
+      LOG_WITH_PREFIX(DFATAL)
+          << "Bad response size, expected " << request_size << " entries, but found: "
+          << response.ShortDebugString();
+      CheckLoadedTransactionsStatus();
+      return;
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto it = check_status_queues_.begin();
+      auto& queue = it->second;
+      for (size_t i = 0; i != response.status().size(); ++i) {
+        VLOG_WITH_PREFIX(4) << "Status of " << queue.front() << ": "
+                            << TransactionStatus_Name(response.status(i));
+        if (response.status(i) == TransactionStatus::ABORTED) {
+          EnqueueRemoveUnlocked(queue.front());
+        }
+        queue.pop_front();
+      }
+      if (queue.empty()) {
+        check_status_queues_.erase(it);
+      }
+    }
+
+    CheckLoadedTransactionsStatus();
+  }
+
   struct CleanupQueueEntry {
     int64_t request_id;
     TransactionId transaction_id;
@@ -1510,12 +1678,18 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   // Guarded by RunningTransactionContext::mutex_
   std::deque<RemoveQueueEntry> remove_queue_;
 
+  // Guarded by RunningTransactionContext::mutex_
+  HybridTime last_safe_time_ = HybridTime::kMin;
+
   std::unordered_set<TransactionId, TransactionIdHash> recently_removed_transactions_;
   struct RecentlyRemovedTransaction {
     TransactionId id;
     CoarseTimePoint time;
   };
   std::deque<RecentlyRemovedTransaction> recently_removed_transactions_cleanup_queue_;
+
+  std::unordered_map<TabletId, std::deque<TransactionId>> check_status_queues_;
+  rpc::Rpcs::Handle check_status_handle_;
 
   scoped_refptr<AtomicGauge<uint64_t>> metric_transactions_running_;
   scoped_refptr<Counter> metric_transaction_load_attempts_;
@@ -1525,6 +1699,10 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   std::condition_variable load_cond_;
   TransactionId last_loaded_;
   std::atomic<bool> all_loaded_{false};
+  std::atomic<bool> closing_{false};
+  // True while status check for loaded transactions is in progress.
+  std::atomic<bool> checking_status_{false};
+  bool started_ = false;
 };
 
 TransactionParticipant::TransactionParticipant(
@@ -1534,6 +1712,10 @@ TransactionParticipant::TransactionParticipant(
 }
 
 TransactionParticipant::~TransactionParticipant() {
+}
+
+void TransactionParticipant::Start() {
+  impl_->Start();
 }
 
 bool TransactionParticipant::Add(
@@ -1588,10 +1770,6 @@ void TransactionParticipant::Handle(
 
 void TransactionParticipant::Cleanup(TransactionIdSet&& set) {
   return impl_->Cleanup(std::move(set), this);
-}
-
-Status TransactionParticipant::ProcessApply(const TransactionApplyData& data) {
-  return impl_->ProcessApply(data);
 }
 
 Status TransactionParticipant::ProcessReplicated(const ReplicatedData& data) {
