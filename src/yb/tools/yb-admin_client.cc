@@ -186,18 +186,46 @@ Status ClusterAdminClient::Init() {
 Status ClusterAdminClient::MasterLeaderStepDown(const string& leader_uuid) {
   auto master_proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache_.get(), leader_addr_);
 
-  return LeaderStepDown(leader_uuid, yb::master::kSysCatalogTabletId, &master_proxy);
+  return LeaderStepDown(leader_uuid, yb::master::kSysCatalogTabletId, std::string(), &master_proxy);
+}
+
+CHECKED_STATUS ClusterAdminClient::LeaderStepDownWithNewLeader(
+    const std::string& tablet_id,
+    const std::string& dest_ts_uuid) {
+  return LeaderStepDown(
+      /* leader_uuid */ std::string(),
+      tablet_id,
+      dest_ts_uuid,
+      /* leader_proxy */ nullptr);
 }
 
 Status ClusterAdminClient::LeaderStepDown(
     const PeerId& leader_uuid,
     const TabletId& tablet_id,
+    const PeerId& new_leader_uuid,
     std::unique_ptr<ConsensusServiceProxy>* leader_proxy) {
   LeaderStepDownRequestPB req;
-  req.set_dest_uuid(leader_uuid);
   req.set_tablet_id(tablet_id);
+  if (!new_leader_uuid.empty()) {
+    req.set_new_leader_uuid(new_leader_uuid);
+  }
+  // The API for InvokeRpcNoResponseCheck requires a raw pointer to a ConsensusServiceProxy, so
+  // cache it outside, if we are creating a new proxy to a previously unknown leader.
+  std::unique_ptr<ConsensusServiceProxy> new_proxy;
+  if (!leader_uuid.empty()) {
+    // TODO: validate leader_proxy ?
+    req.set_dest_uuid(leader_uuid);
+  } else {
+    // Look up the location of the tablet leader from the Master.
+    HostPort leader_addr;
+    string lookup_leader_uuid;
+    RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, LEADER, &lookup_leader_uuid, &leader_addr));
+    req.set_dest_uuid(lookup_leader_uuid);
+    new_proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache_.get(), leader_addr);
+  }
   const auto resp = VERIFY_RESULT(InvokeRpcNoResponseCheck(&ConsensusServiceProxy::LeaderStepDown,
-      leader_proxy->get(), req));
+      new_proxy ? new_proxy.get() : leader_proxy->get(),
+      req));
   if (resp.has_error()) {
     LOG(ERROR) << "LeaderStepDown for " << leader_uuid << "received error "
       << resp.error().ShortDebugString();
@@ -302,7 +330,8 @@ Status ClusterAdminClient::ChangeConfig(
   if (cc_type == consensus::REMOVE_SERVER &&
       leader_uuid == peer_uuid) {
     string old_leader_uuid = leader_uuid;
-    RETURN_NOT_OK(LeaderStepDown(leader_uuid, tablet_id, &consensus_proxy));
+    RETURN_NOT_OK(LeaderStepDown(
+          leader_uuid, tablet_id, /* new_leader_uuid */ std::string(), &consensus_proxy));
     sleep(5);  // TODO - election completion timing is not known accurately
     RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, LEADER, &leader_uuid, &leader_addr));
     if (leader_uuid != old_leader_uuid) {

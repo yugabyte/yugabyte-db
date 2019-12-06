@@ -33,17 +33,25 @@ namespace server {
 
 YB_DEFINE_ENUM(SecureContextType, (kServerToServer)(kClientToServer));
 
+string DefaultCertsDir(const FsManager& fs_manager);
+
 // Creates secure context and sets up messenger builder to use it.
 Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
-    const std::string& hosts, FsManager* fs_manager, SecureContextType type,
+    const std::string& hosts, const FsManager& fs_manager, SecureContextType type,
     rpc::MessengerBuilder* builder);
 
 Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
     const std::string& root_dir, const std::string& name, SecureContextType type,
     rpc::MessengerBuilder* builder);
 
-Result<std::unique_ptr<rpc::SecureContext>> SetupClientSecureContext(
-    rpc::MessengerBuilder* builder);
+Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
+    const std::string& cert_dir, const std::string& root_dir, const std::string& name,
+    SecureContextType type, rpc::MessengerBuilder* builder);
+
+Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContext(
+    const std::string& certs_dir, const std::string& name = std::string());
+
+void ApplySecureContext(rpc::SecureContext* context, rpc::MessengerBuilder* builder);
 
 } // namespace server
 } // namespace yb

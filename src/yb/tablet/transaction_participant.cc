@@ -162,6 +162,7 @@ class RunningTransactionContext {
   virtual ~RunningTransactionContext() {}
 
   virtual bool RemoveUnlocked(const TransactionId& id, const std::string& reason) = 0;
+  virtual void EnqueueRemoveUnlocked(const TransactionId& id) = 0;
 
   int64_t NextRequestIdUnlocked() {
     return ++request_serial_;
@@ -188,9 +189,13 @@ class RunningTransactionContext {
 
 class RemoveIntentsTask : public rpc::ThreadPoolTask {
  public:
-  RemoveIntentsTask(TransactionIntentApplier* applier, TransactionParticipantContext* context,
+  RemoveIntentsTask(TransactionIntentApplier* applier,
+                    TransactionParticipantContext* participant_context,
+                    RunningTransactionContext* running_transaction_context,
                     const TransactionId& id)
-      : applier_(*applier), context_(*context), id_(id) {}
+      : applier_(*applier), participant_context_(*participant_context),
+        running_transaction_context_(*running_transaction_context), id_(id)
+  {}
 
   bool Prepare(RunningTransactionPtr transaction) {
     bool expected = false;
@@ -204,10 +209,11 @@ class RemoveIntentsTask : public rpc::ThreadPoolTask {
 
   void Run() override {
     RemoveIntentsData data;
-    context_.GetLastReplicatedData(&data);
+    participant_context_.GetLastReplicatedData(&data);
     auto status = applier_.RemoveIntents(data, id_);
-    LOG_IF(WARNING, !status.ok()) << "Failed to remove intents of aborted transaction " << id_
-                                  << ": " << status;
+    LOG_IF_WITH_PREFIX(WARNING, !status.ok())
+        << "Failed to remove intents of aborted transaction " << id_ << ": " << status;
+    VLOG_WITH_PREFIX(2) << "Removed intents for: " << id_;
   }
 
   void Done(const Status& status) override {
@@ -217,8 +223,13 @@ class RemoveIntentsTask : public rpc::ThreadPoolTask {
   virtual ~RemoveIntentsTask() {}
 
  private:
+  const std::string& LogPrefix() const {
+    return running_transaction_context_.LogPrefix();
+  }
+
   TransactionIntentApplier& applier_;
-  TransactionParticipantContext& context_;
+  TransactionParticipantContext& participant_context_;
+  RunningTransactionContext& running_transaction_context_;
   TransactionId id_;
   std::atomic<bool> used_{false};
   RunningTransactionPtr transaction_;
@@ -387,6 +398,7 @@ class CleanupIntentsTask : public rpc::ThreadPoolTask {
     participant_context_.GetLastReplicatedData(&data);
     WARN_NOT_OK(applier_.RemoveIntents(data, id_),
                 Format("Failed to remove intents of possible completed transaction $0", id_));
+    VLOG(2) << "Cleaned intents for: " << id_;
   }
 
   void Done(const Status& status) override {
@@ -415,7 +427,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
       : metadata_(std::move(metadata)),
         last_write_id_(last_write_id),
         context_(*context),
-        remove_intents_task_(&context->applier_, &context->participant_context_,
+        remove_intents_task_(&context->applier_, &context->participant_context_, context,
                              metadata_.transaction_id),
         get_status_handle_(context->rpcs_.InvalidHandle()),
         abort_handle_(context->rpcs_.InvalidHandle()) {
@@ -628,10 +640,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
       if (last_known_status_hybrid_time_ <= time_of_status) {
         last_known_status_hybrid_time_ = time_of_status;
         last_known_status_ = response.status();
-        if (response.status() == TransactionStatus::ABORTED &&
-            ThreadRestrictions::IsWaitAllowed() && // Required by IsLeader
-            context_.participant_context_.IsLeader()) {
-          context_.RemoveUnlocked(id(), "aborted"s);
+        if (response.status() == TransactionStatus::ABORTED) {
+          context_.EnqueueRemoveUnlocked(id());
         }
       }
       time_of_status = last_known_status_hybrid_time_;
@@ -786,6 +796,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   ~Impl() {
+    LOG_WITH_PREFIX(INFO) << "Stop";
     transactions_.clear();
     TransactionsModifiedUnlocked();
     rpcs_.Shutdown();
@@ -807,6 +818,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       std::lock_guard<std::mutex> lock(mutex_);
       auto it = transactions_.find(metadata->transaction_id);
       if (it == transactions_.end()) {
+        if (WasTransactionRecentlyRemoved(metadata->transaction_id)) {
+          return false;
+        }
         VLOG_WITH_PREFIX(4) << "Create new transaction: " << metadata->transaction_id;
         transactions_.insert(std::make_shared<RunningTransaction>(*metadata, 0, this));
         TransactionsModifiedUnlocked();
@@ -834,18 +848,22 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return (**it).local_commit_time();
   }
 
-  size_t TEST_CountIntents() {
-    size_t count = 0;
+  std::pair<size_t, size_t> TEST_CountIntents() {
+    std::pair<size_t, size_t> result(0, 0);
     auto iter = docdb::CreateRocksDBIterator(db_,
                                              key_bounds_,
                                              docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
                                              boost::none,
                                              rocksdb::kDefaultQueryId);
     for (iter.SeekToFirst(); iter.Valid(); iter.Next()) {
-      count++;
+      ++result.first;
+      // Count number of transaction, by counting metadata records.
+      if (iter.key().size() == TransactionId::static_size() + 1) {
+        ++result.second;
+      }
     }
 
-    return count;
+    return result;
   }
 
   Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) {
@@ -938,6 +956,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   // Cleans transactions that are requested and now is safe to clean.
   // See RemoveUnlocked for details.
   void CleanTransactionsUnlocked() {
+    ProcessRemoveQueueUnlocked();
+
     int64_t min_request = running_requests_.empty() ? std::numeric_limits<int64_t>::max()
                                                     : running_requests_.front();
     while (!cleanup_queue_.empty() && cleanup_queue_.front().request_id < min_request) {
@@ -1057,6 +1077,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data) {
+    VLOG_WITH_PREFIX(2) << "Apply: " << data.ToString();
+
     {
       // It is our last chance to load transaction metadata, if missing.
       // Because it will be deleted when intents are applied.
@@ -1137,11 +1159,6 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       }
     }
 
-    RemoveIntentsData remove_intents_data{data.op_id, data.log_ht};
-    auto status = applier_.RemoveIntents(remove_intents_data, data.transaction_id);
-    LOG_IF_WITH_PREFIX(DFATAL, !status.ok()) << "Failed to remove intents for "
-                                             << data.transaction_id << ": " << status;
-
     return Status::OK();
   }
 
@@ -1183,6 +1200,38 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
   void TransactionsModifiedUnlocked() {
     metric_transactions_running_->set_value(transactions_.size());
+  }
+
+  void EnqueueRemoveUnlocked(const TransactionId& id) override {
+    remove_queue_.emplace_back(RemoveQueueEntry{id, participant_context_.Now()});
+    ProcessRemoveQueueUnlocked();
+  }
+
+  void ProcessRemoveQueueUnlocked() {
+    if (!remove_queue_.empty()) {
+      // When a transaction participant receives an "aborted" response from the coordinator,
+      // it puts this transaction into a "remove queue", also storing the current hybrid
+      // time. Then queue entries where time is less than current safe time are removed.
+      //
+      // This is correct because, from a transaction participant's point of view:
+      //
+      // (1) After we receive a response for a transaction status request, and
+      // learn that the transaction is unknown to the coordinator, our local
+      // hybrid time is at least as high as the local hybrid time on the
+      // transaction status coordinator at the time the transaction was deleted
+      // from the coordinator, due to hybrid time propagation on RPC response.
+      //
+      // (2) If our safe time is greater than the hybrid time when the
+      // transaction was deleted from the coordinator, then we have already
+      // applied this transaction's provisional records if the transaction was
+      // committed.
+      auto safe_time = applier_.ApplierSafeTimeForFollower();
+      while (!remove_queue_.empty() && safe_time >= remove_queue_.front().time) {
+        static const std::string kRemoveFromQueue = "remove_queue"s;
+        RemoveUnlocked(remove_queue_.front().id, kRemoveFromQueue);
+        remove_queue_.pop_front();
+      }
+    }
   }
 
   // Tries to remove transaction with specified id.
@@ -1272,6 +1321,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       LOG_WITH_PREFIX(INFO) << "Transaction not found: " << id << ", for: " << reason;
     }
     if (flags.Test(TransactionLoadFlag::kCleanup)) {
+      VLOG_WITH_PREFIX(2) << "Schedule cleanup for: " << id;
       auto cleanup_task = std::make_shared<CleanupIntentsTask>(
           &participant_context_, &applier_, id);
       cleanup_task->Prepare(cleanup_task);
@@ -1357,8 +1407,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     while (iterator->Valid() && iterator->key().starts_with(*key_bytes)) {
       auto decoded_key = docdb::DecodeIntentKey(iterator->value());
       LOG_IF_WITH_PREFIX(DFATAL, !decoded_key.ok())
-          << "Failed to decode intent " << iterator->value().ToDebugHexString() << ": "
-          << decoded_key.status();
+          << "Failed to decode intent while loading transaction " << id << ", "
+          << iterator->key().ToDebugHexString() << " => "
+          << iterator->value().ToDebugHexString() << ": " << decoded_key.status();
       if (decoded_key.ok() && docdb::HasStrong(decoded_key->intent_types)) {
         std::string rev_key = iterator->value().ToString();
         iterator->Seek(rev_key);
@@ -1407,6 +1458,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     recently_removed_transactions_cleanup_queue_.push_back({transaction.id(), now + 15s});
     LOG_IF_WITH_PREFIX(DFATAL, !recently_removed_transactions_.insert(transaction.id()).second)
         << "Transaction removed twice: " << transaction.id();
+    VLOG_WITH_PREFIX(4) << "Remove transaction: " << transaction.id();
     transactions_.erase(it);
     TransactionsModifiedUnlocked();
   }
@@ -1441,9 +1493,22 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   // Contains only ids greater than first running request id, otherwise entry is removed
   // from both collections.
   std::priority_queue<int64_t, std::vector<int64_t>, std::greater<void>> complete_requests_;
+
   // Queue of transaction ids that should be cleaned, paired with request that should be completed
   // in order to be able to do clean.
+  // Guarded by RunningTransactionContext::mutex_
   std::deque<CleanupQueueEntry> cleanup_queue_;
+
+  // Remove queue maintains transactions that could be cleaned when safe time for follower reaches
+  // appropriate time for an entry.
+  // Since we add entries with increasing time, this queue is ordered by time.
+  struct RemoveQueueEntry {
+    TransactionId id;
+    HybridTime time;
+  };
+
+  // Guarded by RunningTransactionContext::mutex_
+  std::deque<RemoveQueueEntry> remove_queue_;
 
   std::unordered_set<TransactionId, TransactionIdHash> recently_removed_transactions_;
   struct RecentlyRemovedTransaction {
@@ -1495,7 +1560,7 @@ HybridTime TransactionParticipant::LocalCommitTime(const TransactionId& id) {
   return impl_->LocalCommitTime(id);
 }
 
-size_t TransactionParticipant::TEST_CountIntents() const {
+std::pair<size_t, size_t> TransactionParticipant::TEST_CountIntents() const {
   return impl_->TEST_CountIntents();
 }
 

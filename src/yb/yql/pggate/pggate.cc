@@ -30,10 +30,13 @@
 #include "yb/client/client_utils.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
+#include "yb/server/secure.h"
 
 #include "yb/tserver/tserver_shared_mem.h"
 
 DECLARE_string(rpc_bind_addresses);
+DECLARE_bool(use_node_to_node_encryption);
+DECLARE_string(certs_dir);
 
 namespace yb {
 namespace pggate {
@@ -62,10 +65,13 @@ Result<PgApiImpl::MessengerHolder> BuildMessenger(
     int32_t num_reactors,
     const scoped_refptr<MetricEntity>& metric_entity,
     const std::shared_ptr<MemTracker>& parent_mem_tracker) {
-  std::unique_ptr<rpc::SecureContext> security_context;
+  std::unique_ptr<rpc::SecureContext> secure_context;
+  if (FLAGS_use_node_to_node_encryption) {
+    secure_context = VERIFY_RESULT(server::CreateSecureContext(FLAGS_certs_dir));
+  }
   auto messenger = VERIFY_RESULT(client::CreateClientMessenger(
-      client_name, num_reactors, metric_entity, parent_mem_tracker, &security_context));
-  return PgApiImpl::MessengerHolder{std::move(security_context), std::move(messenger)};
+      client_name, num_reactors, metric_entity, parent_mem_tracker, secure_context.get()));
+  return PgApiImpl::MessengerHolder{std::move(secure_context), std::move(messenger)};
 }
 
 std::unique_ptr<tserver::TServerSharedObject> InitTServerSharedObject() {
@@ -769,7 +775,6 @@ Status PgApiImpl::ExecDelete(PgStatement *handle) {
 Status PgApiImpl::NewSelect(PgSession *pg_session,
                             const PgObjectId& table_id,
                             const PgObjectId& index_id,
-                            PreventRestart prevent_restart,
                             PgStatement **handle) {
   DCHECK(pg_session) << "Invalid session handle";
   *handle = nullptr;
@@ -777,7 +782,7 @@ Status PgApiImpl::NewSelect(PgSession *pg_session,
   if (index_id.IsValid()) {
     stmt->UseIndex(index_id);
   }
-  RETURN_NOT_OK(stmt->Prepare(prevent_restart));
+  RETURN_NOT_OK(stmt->Prepare());
   *handle = stmt.detach();
   return Status::OK();
 }

@@ -8,7 +8,10 @@ const PropTypes = require('prop-types');
 class AuthenticatedComponent extends Component {
   constructor(props) {
     super(props);
-    this.state = {prevPath: ""};
+    this.state = {
+      prevPath: "",
+      fetchScheduled: false,
+    };
   }
 
   getChildContext() {
@@ -16,7 +19,6 @@ class AuthenticatedComponent extends Component {
   }
 
   componentWillMount() {
-    this.props.fetchHostInfo();
     this.props.fetchSoftwareVersions();
     this.props.fetchTableColumnTypes();
     this.props.getEBSListItems();
@@ -52,25 +54,29 @@ class AuthenticatedComponent extends Component {
     if (this.props.location !== nextProps.location) {
       this.setState({prevPath: this.props.location.pathname});
     }
-    // If there is a pending customer task, we start schedule fetch
-    if (this.hasPendingCustomerTasks(tasks.customerTaskList)) {
-      if (typeof (this.timeout) === "undefined") {
-        this.scheduleFetch();
-      }
-    } else if (isNonEmptyArray(tasks.customerTaskList)) {
-      // If there is no pending task, we clear the timer
-      if (typeof (this.timeout) !== "undefined") {
-        clearTimeout(this.timeout);
-        delete(this.timeout);
-      }
+    // Check if there are pending customer tasks and no existing recursive fetch calls
+    if (this.hasPendingCustomerTasks(tasks.customerTaskList) && !this.state.fetchScheduled) {
+      this.scheduleFetch();
     }
   }
 
   scheduleFetch = () => {
     const self = this;
-    this.timeout = setInterval(function(){
-      self.props.fetchCustomerTasks();
-    }, 6000);
+
+    function queryTasks() {
+      const taskList = self.props.tasks.customerTaskList;
+
+      // Check if there are still customer tasks in progress or if list is empty
+      if (!self.hasPendingCustomerTasks(taskList) && isNonEmptyArray(taskList)) {
+        self.setState({fetchScheduled: false});
+      } else {
+        self.props.fetchCustomerTasks().then(() => {
+          setTimeout(queryTasks, 6000);
+        });
+      }
+    }
+    queryTasks();
+    this.setState({fetchScheduled: true});
   };
 
   render() {

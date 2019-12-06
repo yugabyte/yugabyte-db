@@ -87,7 +87,11 @@ class TransactionIntentApplier {
       const RemoveIntentsData& data, const TransactionId& transaction_id) = 0;
   virtual CHECKED_STATUS RemoveIntents(
       const RemoveIntentsData& data, const TransactionIdSet& transactions) = 0;
+
   virtual HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) = 0;
+
+  // See MvccManager::SafeTimeForFollower
+  virtual HybridTime ApplierSafeTimeForFollower() = 0;
 
  protected:
   ~TransactionIntentApplier() {}
@@ -169,7 +173,8 @@ class TransactionParticipant : public TransactionStatusManager {
 
   size_t TEST_GetNumRunningTransactions() const;
 
-  size_t TEST_CountIntents() const;
+  // Returns pair of number of intents and number of transactions.
+  std::pair<size_t, size_t> TEST_CountIntents() const;
 
  private:
   int64_t RegisterRequest() override;

@@ -93,7 +93,7 @@ WHERE order_id BETWEEN 10985 AND 11000;
 
 _This query should return 16 rows._
 
-## WHERE clause with a not equal <> operator
+## WHERE clause with a not equal &lt;&gt; operator
 
 In this exercise we'll query the _employees_ table and return just the rows where the _employee\_id_ is not eqal to "1".
 
@@ -104,7 +104,7 @@ SELECT first_name,
        address,
        employee_id
 FROM employees
-WHERE employee_id <> 1;
+WHERE employee_id &lt;&gt; 1;
 ```
 
 _This query should return 8 rows._

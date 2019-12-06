@@ -356,8 +356,11 @@ const consensus::RaftConfigPB TabletPeer::RaftConfig() const {
 bool TabletPeer::StartShutdown() {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
 
-  if (tablet_) {
-    tablet_->SetShutdownRequestedFlag();
+  {
+    std::lock_guard<decltype(lock_)> lock(lock_);
+    if (tablet_) {
+      tablet_->SetShutdownRequestedFlag();
+    }
   }
 
   {
@@ -381,8 +384,11 @@ bool TabletPeer::StartShutdown() {
   // indirectly end up calling into the log, which we are about to shut down.
   UnregisterMaintenanceOps();
 
-  if (consensus_) {
-    consensus_->Shutdown();
+  {
+    std::lock_guard<decltype(lock_)> lock(lock_);
+    if (consensus_) {
+      consensus_->Shutdown();
+    }
   }
 
   return true;

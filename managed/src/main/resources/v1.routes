@@ -19,6 +19,8 @@ GET     /app_version                              com.yugabyte.yw.controllers.Se
 GET     /logs/:maxLines                           com.yugabyte.yw.controllers.SessionController.getLogs(maxLines: java.lang.Integer)
 GET     /ui_theme                                 com.yugabyte.yw.controllers.SessionController.getUITheme()
 
+GET     /prometheus_metrics                       com.yugabyte.yw.controllers.MetricsController.index()
+
 # Initialize cloud information.
 GET     /customers/:cUUID/regions                 com.yugabyte.yw.controllers.RegionController.listAllRegions(cUUID: java.util.UUID)
 
@@ -111,6 +113,7 @@ GET     /customers/:cUUID/universes/find/:universeName  com.yugabyte.yw.controll
 GET     /customers/:cUUID/cost                        com.yugabyte.yw.controllers.UniverseController.universeListCost(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/universes/:uniUUID/update_backup_state  com.yugabyte.yw.controllers.UniverseController.setBackupFlag(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/set_key    com.yugabyte.yw.controllers.UniverseController.setUniverseKey(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/run_query  com.yugabyte.yw.controllers.UniverseController.runQuery(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Cluster under universe
 POST    /customers/:cUUID/universes/:uniUUID/cluster              com.yugabyte.yw.controllers.UniverseController.clusterCreate(cUUID: java.util.UUID, uniUUID: java.util.UUID)
@@ -152,3 +155,5 @@ GET    /customers/:cUUID/schedules                com.yugabyte.yw.controllers.Sc
 DELETE /customers/:cUUID/schedules/:sUUID         com.yugabyte.yw.controllers.ScheduleController.delete(cUUID: java.util.UUID, sUUID: java.util.UUID)
 
 GET    /customers/:cUUID/universes/:uniUUID/tablet-servers com.yugabyte.yw.controllers.TabletServerController.listTabletServers(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+
+

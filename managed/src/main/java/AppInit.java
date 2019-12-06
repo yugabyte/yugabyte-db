@@ -24,6 +24,8 @@ import play.Environment;
 import play.Logger;
 import play.libs.Yaml;
 
+import io.prometheus.client.hotspot.DefaultExports;
+
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.SoftwareVersion;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.YugawareMetadata;
 
@@ -110,7 +112,10 @@ public class AppInit {
       // Import new local releases into release metadata
       releaseManager.importLocalReleases();
 
+      // initialize prometheus exports
+      DefaultExports.initialize();
+
       Logger.info("AppInit completed");
-    }
+   }
   }
 }

@@ -412,10 +412,7 @@ export default class UniverseOverviewNew extends Component {
         }
         headerRight={
           isNonEmptyObject(universeInfo)
-          ? <Link onClick={(e) => {
-            e.preventDefault();
-            window.location.pathname = `/universes/${universeInfo.universeUUID}/tables`;
-          }}>Details</Link>
+          ? <Link to={`/universes/${universeInfo.universeUUID}/tables`}>Details</Link>
           : null
         }
         body={

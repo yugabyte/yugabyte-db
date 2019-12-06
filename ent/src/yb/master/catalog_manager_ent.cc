@@ -1939,7 +1939,6 @@ Status CatalogManager::InitCDCConsumer(
     const std::string& producer_universe_uuid) {
 
   std::unordered_set<HostPort, HostPortHash> tserver_addrs;
-
   // Get the tablets in the consumer table.
   cdc::ProducerEntryPB producer_entry;
   for (const auto& stream_info : consumer_info) {
@@ -1953,8 +1952,8 @@ Status CatalogManager::InitCDCConsumer(
     cdc::StreamEntryPB stream_entry;
     // Get producer tablets and map them to the consumer tablets
     RETURN_NOT_OK(CreateTabletMapping(
-        stream_info.producer_table_id, stream_info.consumer_table_id, master_addrs,
-        consumer_table_resp, &tserver_addrs, &stream_entry));
+        stream_info.producer_table_id, stream_info.consumer_table_id, producer_universe_uuid,
+        master_addrs, consumer_table_resp, &tserver_addrs, &stream_entry));
     (*producer_entry.mutable_stream_map())[stream_info.stream_id] = std::move(stream_entry);
   }
 

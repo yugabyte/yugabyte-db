@@ -7,6 +7,15 @@ import { Nav, NavItem, Tab } from 'react-bootstrap';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 
 class YBTabsWithLinksPanel extends Component {
+  static propTypes = {
+    id: PropTypes.string.isRequired,
+    activeTab: PropTypes.string,
+    defaultTab: PropTypes.string.isRequired,
+    children: PropTypes.oneOfType([PropTypes.object, PropTypes.array]),
+    className: PropTypes.string,
+    routePrefix: PropTypes.string,
+  }
+
   tabSelect = selectedKey => {
     const currentLocation = this.props.location;
     if (this.props.routePrefix) {
@@ -29,15 +38,6 @@ class YBTabsWithLinksPanel extends Component {
     return false;
   }
 
-  static propTypes = {
-    id: PropTypes.string.isRequired,
-    activeTab: PropTypes.string,
-    defaultTab: PropTypes.string.isRequired,
-    children: PropTypes.oneOfType([PropTypes.object, PropTypes.array]),
-    className: PropTypes.string,
-    routePrefix: PropTypes.string,
-  }
-
   render() {
     const { activeTab, defaultTab } = this.props;
     const activeTabKey = activeTab || this.queryTabHandler() || defaultTab;
@@ -45,7 +45,13 @@ class YBTabsWithLinksPanel extends Component {
       return <NavItem key={item.props.eventKey} eventKey={item.props.eventKey} href={item.props.eventKey} onClick={(e) => {e.preventDefault();this.tabSelect(item.props.eventKey);}}>{item.props.title}</NavItem>;
     });
     return (
-      <Tab.Container defaultActiveKey={activeTabKey} id={this.props.id} onSelect={this.tabSelect} className={this.props.className}>
+      <Tab.Container
+        defaultActiveKey={defaultTab}
+        activeKey={activeTabKey}
+        id={this.props.id}
+        onSelect={this.tabSelect}
+        className={this.props.className}
+      >
         <div>
           <Nav bsStyle="tabs" className="nav nav-tabs">
             {links}

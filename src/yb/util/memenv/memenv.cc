@@ -405,6 +405,10 @@ class InMemoryEnv : public EnvWrapper {
     LOG(FATAL) << "Not implemented";
   }
 
+  Result<uint64_t> GetFreeSpaceBytes(const std::string& path) override {
+    LOG(FATAL) << "Not implemented";
+  }
+
  private:
   void DeleteFileInternal(const std::string& fname) {
     if (!ContainsKey(file_map_, fname)) {

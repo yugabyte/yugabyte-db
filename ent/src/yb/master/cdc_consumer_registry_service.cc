@@ -37,12 +37,14 @@ std::map<std::string, std::string> GetPartitionStartKeyConsumerTabletMapping(
 Status CreateTabletMapping(
     const std::string& producer_table_id,
     const std::string& consumer_table_id,
+    const std::string& producer_id,
     const std::string& producer_master_addrs,
     const GetTableLocationsResponsePB& consumer_tablets_resp,
     std::unordered_set<HostPort, HostPortHash>* tserver_addrs,
     cdc::StreamEntryPB* stream_entry) {
   // Get the tablets in the producer table.
-  auto cdc_rpc_tasks = VERIFY_RESULT(CDCRpcTasks::CreateWithMasterAddrs(producer_master_addrs));
+  auto cdc_rpc_tasks = VERIFY_RESULT(CDCRpcTasks::CreateWithMasterAddrs(
+      producer_id, producer_master_addrs));
   auto producer_table_locations =
       VERIFY_RESULT(cdc_rpc_tasks->GetTableLocations(producer_table_id));
 
@@ -106,7 +108,8 @@ Result<std::vector<CDCConsumerStreamInfo>> TEST_GetConsumerProducerTableMap(
     const std::string& producer_master_addrs,
     const ListTablesResponsePB& resp) {
 
-  auto cdc_rpc_tasks = VERIFY_RESULT(CDCRpcTasks::CreateWithMasterAddrs(producer_master_addrs));
+  auto cdc_rpc_tasks = VERIFY_RESULT(CDCRpcTasks::CreateWithMasterAddrs(
+      "" /* producer_id */, producer_master_addrs));
   auto producer_tables = VERIFY_RESULT(cdc_rpc_tasks->ListTables());
 
   std::unordered_map<std::string, std::string> consumer_tables_map;

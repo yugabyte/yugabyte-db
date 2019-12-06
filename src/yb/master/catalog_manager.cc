@@ -5145,11 +5145,6 @@ void CatalogManager::SendAddServerRequest(
   Status status = task->Run();
   WARN_NOT_OK(status, Substitute("Failed to send AddServer of tserver $0 to tablet $1",
                                  change_config_ts_uuid, tablet.get()->ToString()));
-
-  // Need to print this after Run() because that's where it picks the TS which description()
-  // needs.
-  if (status.ok())
-    LOG(INFO) << "Started AddServer task: " << task->description();
 }
 
 void CatalogManager::GetPendingServerTasksUnlocked(const TableId &table_uuid,

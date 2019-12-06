@@ -54,9 +54,16 @@ import play.Environment;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.Duration;
 
+import io.prometheus.client.Gauge;
+import io.prometheus.client.CollectorRegistry;
+
+
 @Singleton
 public class HealthChecker {
   public static final Logger LOG = LoggerFactory.getLogger(HealthChecker.class);
+
+  public static final String kUnivMetricName = "yb_univ_health_status";
+  public static final String kUnivMetricLabel = "univ_uuid";
 
   play.Configuration config;
 
@@ -73,6 +80,8 @@ public class HealthChecker {
   // What will run the health checking script.
   HealthManager healthManager;
 
+  private Gauge healthMetric = null;
+
   private AtomicBoolean running = new AtomicBoolean(false);
 
   private final ActorSystem actorSystem;
@@ -81,6 +90,26 @@ public class HealthChecker {
 
   private final Environment environment;
 
+  private CollectorRegistry promRegistry;
+
+  public HealthChecker(
+      ActorSystem actorSystem,
+      Configuration config,
+      Environment environment,
+      ExecutionContext executionContext,
+      HealthManager healthManager,
+      CollectorRegistry promRegistry) {
+    this.actorSystem = actorSystem;
+    this.config = config;
+    this.environment = environment;
+    this.executionContext = executionContext;
+    this.healthManager = healthManager;
+    this.promRegistry = promRegistry;
+
+    this.initialize();
+  }
+
+
   @Inject
   public HealthChecker(
       ActorSystem actorSystem,
@@ -88,13 +117,8 @@ public class HealthChecker {
       Environment environment,
       ExecutionContext executionContext,
       HealthManager healthManager) {
-    this.actorSystem = actorSystem;
-    this.config = config;
-    this.environment = environment;
-    this.executionContext = executionContext;
-    this.healthManager = healthManager;
-
-    this.initialize();
+        this(actorSystem, config, environment, executionContext,
+             healthManager, CollectorRegistry.defaultRegistry);
   }
 
   private void initialize() {
@@ -104,6 +128,15 @@ public class HealthChecker {
       () -> scheduleRunner(),
       this.executionContext
     );
+
+    try {
+      healthMetric = Gauge.build(kUnivMetricName, "Boolean result of health checks").
+                           labelNames(kUnivMetricLabel).
+                           register(this.promRegistry);
+    } catch (IllegalArgumentException e) {
+      LOG.warn("Failed to build prometheus gauge for name: " + kUnivMetricName);
+    }
+
   }
 
   // The interval at which the checker will run.
@@ -314,9 +347,20 @@ public class HealthChecker {
         (destinations.size() == 0 ? null : String.join(",", destinations)),
         potentialStartTime,
         (shouldSendStatusUpdate || lastCheckHadErrors));
+
+    Gauge.Child prometheusVal = null;
+    if (healthMetric != null) {
+      prometheusVal = healthMetric.labels(u.universeUUID.toString());
+    }
     if (response.code == 0) {
+      if (prometheusVal != null) {
+        prometheusVal.set(1);
+      }
       HealthCheck.addAndPrune(u.universeUUID, u.customerId, response.message);
     } else {
+      if (prometheusVal != null) {
+        prometheusVal.set(0);
+      }
       LOG.error(String.format(
           "Health check script got error: code (%s), msg: ", response.code, response.message));
     }

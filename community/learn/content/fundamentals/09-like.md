@@ -16,7 +16,7 @@ WHERE product_name LIKE '%C%'
 
 _This query should return 17 rows_
 
-## SELECT with a LIKE operator using % and \_
+## SELECT with a LIKE operator using % and _
 
 In this exercise we will query the _products_ table and find all the products whose names have a single character before the letter E appears in them.
 

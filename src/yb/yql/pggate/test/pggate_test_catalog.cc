@@ -106,7 +106,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
   CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid,
-                                  true /* prevent_restart */, &pg_stmt));
+                                  &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
@@ -175,7 +175,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
   CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid,
-                                  true /* prevent_restart */, &pg_stmt));
+                                  &pg_stmt));
 
   // Specify the selected expressions.
   YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref);
@@ -283,7 +283,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table";
   CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid,
-                                  true /* prevent_restart */, &pg_stmt));
+                                  &pg_stmt));
 
   // Specify the selected expressions.
   YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref);
@@ -416,7 +416,7 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Select from from test table in the new database";
   CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, copy_db_oid, tab_oid, kInvalidOid,
-                                  true /* prevent_restart */, &pg_stmt));
+                                  &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;

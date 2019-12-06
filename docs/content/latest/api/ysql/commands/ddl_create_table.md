@@ -83,11 +83,12 @@ This clause is used to specify a default value for the column. If an `INSERT` st
 
 Using this qualifier will create a temporary table. Temporary tables are only visible in the current client session or transaction in which they are created and are automatically dropped at the end of the session or transaction. Any indexes created on temporary tables are temporary as well.
 
+### Split Into
+
+The `SPLIT INTO` clause specifies the number of tablets that will be created for the table. This is useful for two data center (2DC) deployments. See example below: [Create CDC table specifying number of tablets](#create-cdc-table-specifying-number-of-tablets).
+
 ### Storage parameters
-
-The `tablets` property specifies the number of tablets to be used. This is useful for two data center (2DC) deployments. See example below: [Create CDC table specifying number of tablets](#create-cdc-table-specifying-number-of-tablets). Use the `AND` operator to use multiple table properties.
-
-Other storage parameters [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS) are ignored and only present for compatibility with PostgreSQL.
+Storage parameters [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS) are ignored and only present for compatibility with PostgreSQL.
 
 ## Examples
 
@@ -208,20 +209,13 @@ yugabyte=# CREATE TABLE translations(message_id int UNIQUE,
                                      message_txt text);
 ```
 
-### Create CDC table specifying number of tablets
+### Create table specifying number of tablets
 
-For two data center (2DC) deployments that require the identical number of tablets on both clusters, you can use the `CREATE TABLE` statement with the `WITH` clause to specify the number of tablets.
-
-```postgresql
-yugabyte=# CREATE TABLE tracking (id int PRIMARY KEY) WITH tablets = 10;
-```
-
-If you create an index for these tables, you can also specify the number of tablets for the index.
-
-You can also use `AND` to add other table properties, like in this example.
+You can use the `CREATE TABLE` statement with the `SPLIT INTO` clause to specify the number of tablets for the table.
+This is useful for two data center (2DC) deployments that require identical number of tablets on both clusters.
 
 ```postgresql
-yugabyte=# CREATE TABLE tracking (id int PRIMARY KEY) WITH tablets = 10 AND transactions = { 'enabled' : true };
+yugabyte=# CREATE TABLE tracking (id int PRIMARY KEY) SPLIT (INTO 10 TABLETS);
 ```
 
 ## See also

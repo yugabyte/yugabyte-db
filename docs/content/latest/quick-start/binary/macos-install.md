@@ -2,7 +2,7 @@
 
 1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
 
-2. Verify that you have Python 2 installed. Support for Python 3 is in the works.
+2. Verify that you have Python 2 installed. Support for Python 3 is in the works — to follow the status, see [Enhance yb-ctl and yb-docker-ctl to support Python3 #3025](https://github.com/yugabyte/yugabyte-db/issues/3025).
 
     ```sh
     $ python --version
@@ -77,13 +77,13 @@
 Download the YugabyteDB `tar.gz` file using the following `wget` command.
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugabyte-2.0.6.0-darwin.tar.gz
+$ wget https://downloads.yugabyte.com/yugabyte-2.0.7.0-darwin.tar.gz
 ```
 
 To unpack the archive file and change to the YugabyteDB home directory, run the following command.
 
 ```sh
-$ tar xvfz yugabyte-2.0.6.0-darwin.tar.gz && cd yugabyte-2.0.6.0/
+$ tar xvfz yugabyte-2.0.7.0-darwin.tar.gz && cd yugabyte-2.0.7.0/
 ```
 
 ## Configure
