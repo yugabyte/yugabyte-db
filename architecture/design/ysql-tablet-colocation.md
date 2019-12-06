@@ -21,7 +21,7 @@ __Syntax:__
 CREATE DATABASE name WITH colocated = true | false
 ```
 
-We’ll also provide a gflag --ysql_colocation which if enabled will create colocated tablet whenever a new YSQL DB is created.
+We’ll also provide a gflag `--ysql_colocation` which if enabled will create colocated tablet whenever a new YSQL DB is created.
 
 ### Ability for table to opt out of colocation
 This is useful if the DB has 1-2 large tables and several small tables. In this case, the small tables can be colocated in a single tablet while the large tables have their own tablets.
@@ -65,9 +65,9 @@ We decided to use single RocksDB for entire tablet. This is because:
 ### Create and Drop DB / Table
 
 #### Create Database
-When a DB is created with colocated=true, catalog manager will need to create a tablet for this database. Catalog manager’s NamespaceInfo and TableInfo objects will need to maintain colocated property.
+When a DB is created with `colocated=true`, catalog manager will need to create a tablet for this database. Catalog manager’s NamespaceInfo and TableInfo objects will need to maintain colocated property.
 
-Today, tablet’s RaftGroupReplicaSuperBlockPB has a primary_table_id. For system tables, this is the table ID of sys catalog table. Primary table ID seems to be used in two ways:
+Today, tablet’s `RaftGroupReplicaSuperBlockPB` has a `primary_table_id`. For system tables, this is the table ID of sys catalog table. Primary table ID seems to be used in two ways:
 Rows of primary table ID are not prefixed with table ID while writing to RocksDB. All other table rows are prefixed with cotable ID.
 Remote bootstrap client checks that tablet being bootstrapped has a primary table. (It’s not clear why it needs this).
 
@@ -77,16 +77,16 @@ Create a dummy table for the database and make that the primary table.
 
 Tablet creation requires a Schema and partition range to be specified. In this case, Schema will empty and partition range will be [-infinity, infinity).
 
-Currently, RocksDB files are created in the folder tserver/data/table-id/tablet-id/. Since this tablet will have multiple tables, the directory structure will change to tserver/data/tablet-id/.
+Currently, RocksDB files are created in the folder `tserver/data/table-id/tablet-id/`. Since this tablet will have multiple tables, the directory structure will change to `tserver/data/tablet-id/`.
 
 #### Create Table
 When a table is created in a colocated database, catalog manager should add that table to the tablet that was created for the database and not create new tablets.
-It’ll need to invoke ChangeMetadataRequest to replicate the table addition.
+It’ll need to invoke `ChangeMetadataRequest` to replicate the table addition.
 
-If the table is created with colocated=false, then it should go through the current table creation process and create tablets for the table.
+If the table is created with `colocated=false`, then it should go through the current table creation process and create tablets for the table.
 
 #### Drop Table
-When a colocated table is dropped, catalog manager should simply mark the table as deleted (and not remove any tablets). It’ll then need to invoke ChangeMetadataRequest to replicate the table removal. Note that currently ChangeMetadata operation does not support table removal and we’ll need to add this capability.
+When a colocated table is dropped, catalog manager should simply mark the table as deleted (and not remove any tablets). It’ll then need to invoke `ChangeMetadataRequest` to replicate the table removal. Note that currently `ChangeMetadata` operation does not support table removal and we’ll need to add this capability.
 
 It can then run a background task to delete all rows corresponding to that table from RocksDB.
 
@@ -96,18 +96,18 @@ If the table being dropped has colocated=false, then it should go through the cu
 This should delete the database from sys catalog and also remove the tablets created.
 
 #### Postgres Metadata
-It’ll be useful to store colocated property in postgres system tables (pg_database for database and pg_class for table) for two reasons:
+It’ll be useful to store colocated property in postgres system tables (`pg_database` for database and `pg_class` for table) for two reasons:
 YSQL dump and restore can use to generate the same YB schema.
 Postgres cost optimizer can use it during query planning and optimization.
 
-We can reuse “tablespace” field of these tables for storing this information. This field in vanilla postgres dictates the directory / on disk location of the table / database. In YB, we can repurpose it to indicate tablet location.
+We can reuse `tablespace` field of these tables for storing this information. This field in vanilla postgres dictates the directory / on disk location of the table / database. In YB, we can repurpose it to indicate tablet location.
 
 ### Client Changes
 
-* Add is_colocated in SysTabletEntryPB to indicate if a tablet is a colocated tablet.
-* Add is_colocated in CreateTabletRequestPB
-* For SysCatalogTable, Tablet::AddTable is called when creating a new table. There is no corresponding way to do that when the tablet is in a tserver. Hence we need to add an RPC AddTableToTablet in the TabletServerAdminService, and add AsyncAddTableToTablet task to call that RPC.
-* Modify RaftGroupMetadata::CreateNew to take is_colocated parameter. If the table is colocated, use Rocksdb/tablet-<id> as the Rocksdb_dir and wal/tablet-<id> as the wal_dir.
+* Add `is_colocated` in `SysTabletEntryPB` to indicate if a tablet is a colocated tablet.
+* Add `is_colocated` in `CreateTabletRequestPB`
+* For `SysCatalogTable`, `Tablet::AddTable` is called when creating a new table. There is no corresponding way to do that when the tablet is in a tserver. Hence we need to add an RPC `AddTableToTablet` in the `TabletServerAdminService`, and add `AsyncAddTableToTablet` task to call that RPC.
+* Modify `RaftGroupMetadata::CreateNew` to take `is_colocated` parameter. If the table is colocated, use `Rocksdb/tablet-<id>` as the `Rocksdb_dir` and `wal/tablet-<id>` as the `wal_dir`.
 
 ### Load balancing
 Today, load balancing is looks at all tables and then balances all tablets for each table. We need to make load balancer aware of tablet colocation in order to avoid balancing the same tablet.
@@ -135,7 +135,7 @@ TODO
 ### Pulling out tables from colocated tablet
 When table(s) grows large, it’ll be useful to have the ability to pull the table out of colocated tablet in order to scale. We won’t provide an automated way to do this in 2.1. This can be done manually using the following steps:
 * Create a table with the same schema as the table to be pulled out.
-* Dump contents of original table using ysql_dump or `COPY` command and importing that into the new table.
+* Dump contents of original table using `ysql_dump` or `COPY` command and importing that into the new table.
 * Drop original table.
 * Rename new table to the same name as the original table.
 
