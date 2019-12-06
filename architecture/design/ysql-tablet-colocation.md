@@ -7,9 +7,9 @@ A lot of applications using relational databases have a high number of tables an
 
 Some of these applications also create multiple databases - for example, 1 DB per customer. In such cases, using the current architecture will result in a huge number of tablets. For example, creating 1000 such DBs will result in 8 million tablets (assuming that each DB has 1000 tables and each table has 8 tablets).
 
-We’ve seen practical limitations to the number of tablets that YugabyteDB can handle per node. Typically, we recommend that we have 3000 tablets / node at max. Also, creating 8 tablets for small tables which have few GB of data is wasteful.
+We've seen practical limitations to the number of tablets that YugabyteDB can handle per node. Typically, we recommend that we have 3000 tablets / node at max. Also, creating 8 tablets for small tables which have few GB of data is wasteful.
 
-For such use cases, we want to provide an ability to do tablet colocation. With this feature, we’ll create 1 tablet for a database and all tables in the DB will be colocated on the same tablet. This will reduce the overhead from creating multiple tablets for small tables and help us scale such use cases.
+For such use cases, we want to provide an ability to do tablet colocation. With this feature, we'll create 1 tablet for a database and all tables in the DB will be colocated on the same tablet. This will reduce the overhead from creating multiple tablets for small tables and help us scale such use cases.
 
 ## Requirements
 
@@ -21,7 +21,7 @@ __Syntax:__
 CREATE DATABASE name WITH colocated = true | false
 ```
 
-We’ll also provide a gflag `--ysql_colocation` which if enabled will create colocated tablet whenever a new YSQL DB is created.
+We'll also provide a gflag `--ysql_colocation` which if enabled will create colocated tablet whenever a new YSQL DB is created.
 
 ### Ability for table to opt out of colocation
 This is useful if the DB has 1-2 large tables and several small tables. In this case, the small tables can be colocated in a single tablet while the large tables have their own tablets.
@@ -60,19 +60,19 @@ More analysis on this can be found here.
 
 We decided to use single RocksDB for entire tablet. This is because:
 * It enables us to leverage code that was written for postgres system tables. Today, all postgres system tables are colocated on a single tablet in master and uses a single RocksDB. We can leverage a lot of that code.
-* We may hit other scaling limits with multiple Rocksdb. For example, it’s possible that having 1 million RocksDBs (1000 DBs, with 1000 tables per DB) will cause other side effects.
+* We may hit other scaling limits with multiple Rocksdb. For example, it's possible that having 1 million RocksDBs (1000 DBs, with 1000 tables per DB) will cause other side effects.
 
 ### Create and Drop DB / Table
 
 #### Create Database
-When a DB is created with `colocated=true`, catalog manager will need to create a tablet for this database. Catalog manager’s NamespaceInfo and TableInfo objects will need to maintain colocated property.
+When a DB is created with `colocated=true`, catalog manager will need to create a tablet for this database. Catalog manager's NamespaceInfo and TableInfo objects will need to maintain colocated property.
 
-Today, tablet’s `RaftGroupReplicaSuperBlockPB` has a `primary_table_id`. For system tables, this is the table ID of sys catalog table. Primary table ID seems to be used in two ways:
+Today, tablet's `RaftGroupReplicaSuperBlockPB` has a `primary_table_id`. For system tables, this is the table ID of sys catalog table. Primary table ID seems to be used in two ways:
 Rows of primary table ID are not prefixed with table ID while writing to RocksDB. All other table rows are prefixed with cotable ID.
-Remote bootstrap client checks that tablet being bootstrapped has a primary table. (It’s not clear why it needs this).
+Remote bootstrap client checks that tablet being bootstrapped has a primary table. (It's not clear why it needs this).
 
 Since there is no “primary table” in a colocated DB, we have two options:
-Make this field optional. We’ll need to check some dependencies like remote bootstrap to see if this is possible.
+Make this field optional. We'll need to check some dependencies like remote bootstrap to see if this is possible.
 Create a dummy table for the database and make that the primary table.
 
 Tablet creation requires a Schema and partition range to be specified. In this case, Schema will empty and partition range will be [-infinity, infinity).
@@ -81,12 +81,12 @@ Currently, RocksDB files are created in the folder `tserver/data/table-id/tablet
 
 #### Create Table
 When a table is created in a colocated database, catalog manager should add that table to the tablet that was created for the database and not create new tablets.
-It’ll need to invoke `ChangeMetadataRequest` to replicate the table addition.
+It'll need to invoke `ChangeMetadataRequest` to replicate the table addition.
 
 If the table is created with `colocated=false`, then it should go through the current table creation process and create tablets for the table.
 
 #### Drop Table
-When a colocated table is dropped, catalog manager should simply mark the table as deleted (and not remove any tablets). It’ll then need to invoke `ChangeMetadataRequest` to replicate the table removal. Note that currently `ChangeMetadata` operation does not support table removal and we’ll need to add this capability.
+When a colocated table is dropped, catalog manager should simply mark the table as deleted (and not remove any tablets). It'll then need to invoke `ChangeMetadataRequest` to replicate the table removal. Note that currently `ChangeMetadata` operation does not support table removal and we'll need to add this capability.
 
 It can then run a background task to delete all rows corresponding to that table from RocksDB.
 
@@ -96,7 +96,7 @@ If the table being dropped has colocated=false, then it should go through the cu
 This should delete the database from sys catalog and also remove the tablets created.
 
 #### Postgres Metadata
-It’ll be useful to store colocated property in postgres system tables (`pg_database` for database and `pg_class` for table) for two reasons:
+It'll be useful to store colocated property in postgres system tables (`pg_database` for database and `pg_class` for table) for two reasons:
 YSQL dump and restore can use to generate the same YB schema.
 Postgres cost optimizer can use it during query planning and optimization.
 
@@ -117,7 +117,7 @@ This does not require any changes.
 
 ### Backup and Restore
 Since backup and restore is done at the tablet level, for colocated tables, we cannot backup individual tables.
-We’ll need to make the backup / restore scripts work for the entire DB instead of per table.
+We'll need to make the backup / restore scripts work for the entire DB instead of per table.
 
 ### Postgres system tables bloat
 Having a huge number of databases can result in high load on the master since each database will create 200+ postgres system tables.
@@ -126,14 +126,14 @@ We need to test the limit for number of databases that we can create without imp
 ### Master / Tserver UI
 No impact on master UI since all views are per table or per tserver.
 
-Tserver UI tables view uses tablet peers to get the table information. Today, it’ll only display data for the primary table. We’ll need to change this to show all tables in colocated tablet.
-Additionally, the /tables view shows on disk size for every table. This per table size is going to be inaccurate for colocated tablets. We’ll need to change this view to reflect data for colocated tablets accurately.
+Tserver UI tables view uses tablet peers to get the table information. Today, it'll only display data for the primary table. We'll need to change this to show all tables in colocated tablet.
+Additionally, the /tables view shows on disk size for every table. This per table size is going to be inaccurate for colocated tablets. We'll need to change this view to reflect data for colocated tablets accurately.
 
 ### Metrics
 TODO
 
 ### Pulling out tables from colocated tablet
-When table(s) grows large, it’ll be useful to have the ability to pull the table out of colocated tablet in order to scale. We won’t provide an automated way to do this in 2.1. This can be done manually using the following steps:
+When table(s) grows large, it'll be useful to have the ability to pull the table out of colocated tablet in order to scale. We won't provide an automated way to do this in 2.1. This can be done manually using the following steps:
 * Create a table with the same schema as the table to be pulled out.
 * Dump contents of original table using `ysql_dump` or `COPY` command and importing that into the new table.
 * Drop original table.
@@ -143,7 +143,7 @@ When table(s) grows large, it’ll be useful to have the ability to pull the tab
 Today, CDC and 2DC create change capture streams per table.
 Each stream will cause CDC producers and CDC consumers to start up for each tablet of the stream.
 With colocated tables, we need to provide an ability to create CDC stream per database.
-We’ll also need an ability to filter out rows for tables that the user is not interested in consuming.
+We'll also need an ability to filter out rows for tables that the user is not interested in consuming.
 Similarly, generating producer-consumer maps is done per table today. That will need to change to account for colocated tables.
 
 ### Yugax Platform
@@ -151,7 +151,7 @@ Today, YW provides ability to backup tables. This will need to change since we c
 We need to provide back up option for a DB. However, this also depends on supporting backups for YSQL tables.
 
 ### Dynamic tablet splitting
-Current design for tablet splitting won’t work as is for colocated tablets.
+Current design for tablet splitting won't work as is for colocated tablets.
 The design finds a split key (approximate mid-key) for the tablet and splits the tablet range into two partitions.
 Since colocated tablets have multiple tables with different schemas, we cannot find the “mid point” of the tablet.
 We could potentially split the tablet such that some tables are in one tablet and other tables are in the second tablet, but this will require some changes to the design.
