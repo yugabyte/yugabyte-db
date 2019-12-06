@@ -1280,7 +1280,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       last_safe_time_ = safe_time;
       while (!remove_queue_.empty()) {
         auto it = transactions_.find(remove_queue_.front().id);
-        if (it == transactions_.end() && (**it).local_commit_time().is_valid()) {
+        if (it == transactions_.end() || (**it).local_commit_time().is_valid()) {
           // It is regular case, since the coordinator returns ABORTED for already applied
           // transaction. But this particular tablet could not yet apply it, so
           // it would add such transaction to remove queue.
