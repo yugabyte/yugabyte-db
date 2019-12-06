@@ -33,7 +33,7 @@ export default class DiskUsagePanel extends Component {
         space.size = reducer(diskSizeObj.y);
         space.free = space.size - space.used;
       } else if (!!diskFreeObj && !!diskSizeObj) {
-        space.free = reducer(diskSizeObj.y);
+        space.free = reducer(diskFreeObj.y);
         space.size = reducer(diskSizeObj.y);
         space.used = space.size - space.free;
       } else {
