@@ -17,7 +17,9 @@ For such use cases, we want to provide an ability to do tablet colocation. With 
 
 __Syntax:__
 
+```sql
 CREATE DATABASE name WITH colocated = true | false
+```
 
 We’ll also provide a gflag --ysql_colocation which if enabled will create colocated tablet whenever a new YSQL DB is created.
 
@@ -25,17 +27,21 @@ We’ll also provide a gflag --ysql_colocation which if enabled will create colo
 This is useful if the DB has 1-2 large tables and several small tables. In this case, the small tables can be colocated in a single tablet while the large tables have their own tablets.
 
 __Syntax:__
-```
+
+```sql
 CREATE TABLE name (columns) WITH colocated = true | false
 ```
+
 Note that this property is only used when the parent DB is colocated. It has no effect otherwise.
 
 ### Ability to specify that schema is colocated (P1)
 
 __Syntax:__
-```
+
+```sql
 CREATE SCHEMA name WITH colocated = true | false
 ```
+
 In some situations, it may be useful for applications to create multiple schemas (instead of multiple DBs) and use 1 tablet per schema.
 Using this configuration:
 * Enables applications to use PG connection pooling. Typically, connection pools are created per database.
