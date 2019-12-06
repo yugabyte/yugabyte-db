@@ -60,6 +60,11 @@ class YBClient;
 
 namespace tools {
 
+struct TypedNamespaceName {
+  YQLDatabase db_type;
+  std::string name;
+};
+
 class ClusterAdminClient {
  public:
   enum PeerMode {
@@ -109,6 +114,21 @@ class ClusterAdminClient {
 
   // Delete a single table by name.
   CHECKED_STATUS DeleteTable(const client::YBTableName& table_name);
+
+  // Delete a single table by ID.
+  CHECKED_STATUS DeleteTableById(const TableId& table_id);
+
+  // Delete a single index by name.
+  CHECKED_STATUS DeleteIndex(const client::YBTableName& table_name);
+
+  // Delete a single index by ID.
+  CHECKED_STATUS DeleteIndexById(const TableId& table_id);
+
+  // Delete a single namespace by name.
+  CHECKED_STATUS DeleteNamespace(const TypedNamespaceName& name);
+
+  // Delete a single namespace by ID.
+  CHECKED_STATUS DeleteNamespaceById(const NamespaceId& namespace_id);
 
   // List all tablet servers known to master
   CHECKED_STATUS ListAllTabletServers();
@@ -253,11 +273,6 @@ class ClusterAdminClient {
 static constexpr const char* kColumnSep = " \t";
 
 std::string RightPadToUuidWidth(const std::string &s);
-
-struct TypedNamespaceName {
-  YQLDatabase db_type;
-  std::string name;
-};
 
 Result<TypedNamespaceName> ParseNamespaceName(const std::string& full_namespace_name);
 

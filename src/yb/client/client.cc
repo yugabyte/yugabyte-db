@@ -576,6 +576,7 @@ Status YBClient::DeleteNamespace(const std::string& namespace_name,
   }
   if (database_type) {
     req.set_database_type(*database_type);
+    req.mutable_namespace_()->set_database_type(*database_type);
   }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteNamespace);
   return Status::OK();

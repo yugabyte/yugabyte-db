@@ -860,6 +860,37 @@ Status ClusterAdminClient::DeleteTable(const YBTableName& table_name) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::DeleteTableById(const TableId& table_id) {
+  RETURN_NOT_OK(yb_client_->DeleteTable(table_id));
+  cout << "Deleted table " << table_id << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::DeleteIndex(const YBTableName& table_name) {
+  RETURN_NOT_OK(yb_client_->DeleteIndexTable(table_name));
+  cout << "Deleted index " << table_name.ToString() << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::DeleteIndexById(const TableId& table_id) {
+  RETURN_NOT_OK(yb_client_->DeleteIndexTable(table_id));
+  cout << "Deleted index " << table_id << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::DeleteNamespace(const TypedNamespaceName& namespace_name) {
+  RETURN_NOT_OK(yb_client_->DeleteNamespace(namespace_name.name, namespace_name.db_type));
+  cout << "Deleted namespace " << namespace_name.name << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::DeleteNamespaceById(const NamespaceId& namespace_id) {
+  RETURN_NOT_OK(yb_client_->DeleteNamespace(
+      std::string() /* name */, boost::none /* database type */, namespace_id));
+  cout << "Deleted namespace " << namespace_id << endl;
+  return Status::OK();
+}
+
 Status ClusterAdminClient::ListTabletsForTabletServer(const PeerId& ts_uuid) {
   auto ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS(ts_uuid));
 

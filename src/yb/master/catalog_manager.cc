@@ -4043,20 +4043,20 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
 
   RETURN_NOT_OK(CheckOnline());
 
-  if (req->has_database_type() && req->database_type() == YQL_DATABASE_PGSQL) {
-    return DeleteYsqlDatabase(req, resp, rpc);
-  }
-
   scoped_refptr<NamespaceInfo> ns;
 
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
   RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
 
-  if (ns->database_type() == YQL_DATABASE_PGSQL) {
-    // A YSQL database is found, but this rpc requests to delete a non-PostgreSQL keyspace.
+  if (req->has_database_type() && req->database_type() != ns->database_type()) {
+    // Could not find the right database to delete.
     Status s = STATUS(NotFound, "Namespace not found", ns->name());
     return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+  }
+
+  if (ns->database_type() == YQL_DATABASE_PGSQL) {
+    return DeleteYsqlDatabase(req, resp, rpc);
   }
 
   TRACE("Locking namespace");
