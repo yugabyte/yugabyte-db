@@ -92,7 +92,7 @@ Only newly-written data is encrypted because encryption occurs in the background
 
 {{< /note >}}
 
-### Step 4. Verify encryption enabled
+### Step 6. Verify encryption enabled
 
 To check the encryption status of the cluster, run the `yb-admin` [`is_encryption_enabled`](../../admin/yb-admin/#is-encryption-enabled) command.
 
