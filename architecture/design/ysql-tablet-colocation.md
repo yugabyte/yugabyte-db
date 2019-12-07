@@ -21,10 +21,10 @@ __Syntax:__
 CREATE DATABASE name WITH colocated = true | false
 ```
 
-We'll also provide a gflag `--ysql_colocation` which if enabled will create colocated tablet whenever a new YSQL DB is created.
+We'll also provide a gflag `--ysql_colocation`, which, if enabled, will create a colocated tablet whenever a new YSQL DB is created.
 
 ### Ability for table to opt out of colocation
-This is useful if the DB has 1-2 large tables and several small tables. In this case, the small tables can be colocated in a single tablet while the large tables have their own tablets.
+This is useful if the DB has 1-2 large tables and several small tables. In this case, the small tables can be colocated in a single tablet while the large tables can have their own tablets.
 
 __Syntax:__
 
@@ -73,7 +73,7 @@ When a DB is created with `colocated=true`, catalog manager will need to create 
 Today, tablet's `RaftGroupReplicaSuperBlockPB` has a `primary_table_id`. For system tables, this is the table ID of sys catalog table. Primary table ID seems to be used in two ways:
 
 1. Rows of primary table ID are not prefixed with table ID while writing to RocksDB. All other table rows are prefixed with cotable ID.
-1. Remote bootstrap client checks that tablet being bootstrapped has a primary table. (It's not clear why it needs this).
+1. Remote bootstrap client checks that tablet being bootstrapped has a primary table. (It's not clear why it needs this.)
 
 Since there is no "primary table" in a colocated DB, we have two options:
 
