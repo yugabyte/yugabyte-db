@@ -203,6 +203,12 @@ void PgDocReadOp::SetRequestPrefetchLimit() {
     predicted_limit = predicted_limit * FLAGS_ysql_backward_prefetch_scale_factor;
   }
 
+  // System setting has to be at least 1 while user setting (LIMIT clause) can be anything that
+  // is allowed by SQL semantics.
+  if (predicted_limit < 1) {
+    predicted_limit = 1;
+  }
+
   // Use statement LIMIT(count + offset) if it is smaller than the predicted limit.
   int64_t limit_count = exec_params_.limit_count + exec_params_.limit_offset;
   if (exec_params_.limit_use_default || limit_count > predicted_limit) {

@@ -89,6 +89,7 @@ ExecLimit(PlanState *pstate)
 			/* FALL THRU */
 
 		case LIMIT_RESCAN:
+			pstate->state->yb_exec_params.limit_use_default = false;
 
 			/*
 			 * If backwards scan, just return NULL without changing state.
@@ -108,7 +109,6 @@ ExecLimit(PlanState *pstate)
 			/*
 			 * Fetch rows from subplan until we reach position > offset.
 			 */
-			pstate->state->yb_exec_params.limit_use_default = false;
 			for (;;)
 			{
 				slot = ExecProcNode(outerPlan);
