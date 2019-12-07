@@ -55,8 +55,8 @@ Using this configuration...
 ### Single vs multiple RocksDB
 Today, there is one RocksDB created per tablet. This RocksDB only has data for a single tablet. With multiple tables in a single tablet, we have two options:
 
-* Use single RocksDB for the entire tablet (i.e. for all tables).
-* Use multiple RocksDBs with one RocksDB per table.
+1. Use single RocksDB for the entire tablet (i.e. for all tables).
+1. Use multiple RocksDBs with one RocksDB per table.
 
 More analysis on this can be found here.
 
@@ -141,10 +141,10 @@ TODO
 ### Pulling out tables from colocated tablet
 When table(s) grows large, it'll be useful to have the ability to pull the table out of colocated tablet in order to scale. We won't provide an automated way to do this in 2.1. This can be done manually using the following steps:
 
-* Create a table with the same schema as the table to be pulled out.
-* Dump contents of original table using `ysql_dump` or `COPY` command and importing that into the new table.
-* Drop original table.
-* Rename new table to the same name as the original table.
+1. Create a table with the same schema as the table to be pulled out.
+1. Dump contents of original table using `ysql_dump` or `COPY` command and importing that into the new table.
+1. Drop original table.
+1. Rename new table to the same name as the original table.
 
 ### CDC / 2DC
 Today, CDC and 2DC create change capture streams per table.
