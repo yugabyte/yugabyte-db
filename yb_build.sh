@@ -182,8 +182,9 @@ Options:
   --static-analyzer
     Enable Clang static analyzer
   --download-thirdparty, --dltp
-    Use prebuilt third-party dependencies, downloadable e.g. from a GitHub release. Only supported
-    on CentOS.
+    Use prebuilt third-party dependencies, downloadable e.g. from a GitHub release. Also records the
+    third-party URL in the build root so that further invocations of yb_build.sh don't reqiure
+    this option (this could be reset by --clean). Only supported on CentOS.
   --
     Pass all arguments after -- to repeat_unit_test.
 
@@ -1055,22 +1056,6 @@ fi
 configure_remote_compilation
 do_not_use_local_thirdparty_flag_path=$YB_SRC_ROOT/thirdparty/.yb_thirdparty_do_not_use
 
-if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "1" ]]; then
-  set_prebuilt_thirdparty_url
-  download_thirdparty
-  export NO_REBUILD_THIRDPARTY=1
-  log "Using downloaded third-party directory: $YB_THIRDPARTY_DIR"
-  if using_linuxbrew; then
-    log "Using Linuxbrew directory: $YB_LINUXBREW_DIR"
-  fi
-elif [[ -f $do_not_use_local_thirdparty_flag_path ]] ||
-   "$use_nfs_shared_thirdparty" ||
-   using_remote_compilation && ! "$no_shared_thirdparty"; then
-  find_thirdparty_dir
-fi
-
-echo "Using third-party directory (YB_THIRDPARTY_DIR): $YB_THIRDPARTY_DIR"
-
 if "$java_lint"; then
   log "--lint-java-code specified, only linting java code and then exiting."
   lint_java_code
@@ -1126,6 +1111,22 @@ if "$verbose"; then
 fi
 
 set_build_root
+
+set_prebuilt_thirdparty_url
+if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "1" ]]; then
+  download_thirdparty
+  export NO_REBUILD_THIRDPARTY=1
+  log "Using downloaded third-party directory: $YB_THIRDPARTY_DIR"
+  if using_linuxbrew; then
+    log "Using Linuxbrew directory: $YB_LINUXBREW_DIR"
+  fi
+elif [[ -f $do_not_use_local_thirdparty_flag_path ]] ||
+   "$use_nfs_shared_thirdparty" ||
+   using_remote_compilation && ! "$no_shared_thirdparty"; then
+  find_thirdparty_dir
+fi
+
+echo "Using third-party directory (YB_THIRDPARTY_DIR): $YB_THIRDPARTY_DIR"
 
 validate_cmake_build_type "$cmake_build_type"
 

@@ -210,17 +210,17 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   // Return true if the batch has been aborted, and any in-flight ops should stop
   // processing wherever they are.
-  bool IsAbortedUnlocked() const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  bool IsAbortedUnlocked() const REQUIRES(mutex_);
 
   // Combines new error to existing ones. I.e. updates combined error with new status.
   void CombineErrorUnlocked(const InFlightOpPtr& in_flight_op, const Status& status)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+      REQUIRES(mutex_);
 
   // Remove an op from the in-flight op list, and delete the op itself.
   // The operation is reported to the ErrorReporter as having failed with the
   // given status.
   void MarkInFlightOpFailedUnlocked(const InFlightOpPtr& in_flight_op, const Status& s)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+      REQUIRES(mutex_);
 
   void CheckForFinishedFlush();
   void FlushBuffersIfReady();

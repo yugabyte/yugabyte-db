@@ -669,7 +669,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS PrepareDefaultSysConfig(int64_t term);
 
   // Starts an asynchronous run of initdb. Errors are handled in the callback.
-  CHECKED_STATUS StartRunningInitDbIfNeeded(int64_t term) SHARED_LOCKS_REQUIRED(lock_);
+  CHECKED_STATUS StartRunningInitDbIfNeeded(int64_t term) REQUIRES_SHARED(lock_);
 
   CHECKED_STATUS PrepareDefaultNamespaces(int64_t term);
 

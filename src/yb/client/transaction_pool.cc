@@ -143,7 +143,7 @@ class TransactionPool::Impl {
     }
   }
 
-  void ScheduleCleanup() EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+  void ScheduleCleanup() REQUIRES(mutex_) {
     scheduled_task_ = manager_.client()->messenger()->scheduler().Schedule(
         std::bind(&Impl::Cleanup, this, _1), FLAGS_transaction_pool_cleanup_interval_ms * 1ms);
   }
@@ -198,7 +198,7 @@ class TransactionPool::Impl {
     }
   }
 
-  YBTransactionPtr Pop() EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+  YBTransactionPtr Pop() REQUIRES(mutex_) {
     DecrementGauge(gauge_prepared_);
     YBTransactionPtr result = std::move(transactions_.front().transaction);
     taken_during_preparation_sum_ -= transactions_.front().taken_during_preparation;
@@ -206,7 +206,7 @@ class TransactionPool::Impl {
     return result;
   }
 
-  bool CheckClosing() EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+  bool CheckClosing() REQUIRES(mutex_) {
     if (!closing_) {
       return false;
     }
@@ -216,7 +216,7 @@ class TransactionPool::Impl {
     return true;
   }
 
-  bool Idle() const EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+  bool Idle() const REQUIRES(mutex_) {
     LOG(INFO) << "preparing_transactions: " << preparing_transactions_
               << ", scheduled_task: " << scheduled_task_;
     return preparing_transactions_ == 0 && scheduled_task_ == rpc::kUninitializedScheduledTaskId;

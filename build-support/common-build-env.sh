@@ -266,7 +266,6 @@ ensure_build_root_is_set() {
   fi
 }
 
-# TODO: rename to ensure_build_root_exists
 ensure_build_root_exists() {
   ensure_build_root_is_set
   if [[ ! -d $BUILD_ROOT ]]; then
@@ -2049,7 +2048,16 @@ update_submodules() {
 }
 
 set_prebuilt_thirdparty_url() {
+  local build_thirdparty_url_file=$BUILD_ROOT/thirdparty_url.txt
+  if [[ -f $build_thirdparty_url_file ]]; then
+    export YB_THIRDPARTY_URL=$(<"$build_thirdparty_url_file")
+    export YB_DOWNLOAD_THIRDPARTY=1
+    log "Reusing previously used third-party URL from the build dir: $YB_THIRDPARTY_URL"
+    return
+  fi
+
   if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "1" ]]; then
+
     local auto_thirdparty_url=""
     local thirdparty_url_file=$YB_BUILD_SUPPORT_DIR/thirdparty_url_${short_os_name}.txt
     if [[ -f $thirdparty_url_file ]]; then
@@ -2073,6 +2081,8 @@ set_prebuilt_thirdparty_url() {
     else
       fatal "YB_THIRDPARTY_URL is not set, and could not determine the default value."
     fi
+
+    echo "$YB_THIRDPARTY_URL" >"$build_thirdparty_url_file"
   fi
 }
 

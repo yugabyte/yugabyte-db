@@ -39,11 +39,11 @@ class CAPABILITY("mutex") TransactionDBMutexImpl : public TransactionDBMutex {
   TransactionDBMutexImpl() {}
   ~TransactionDBMutexImpl() {}
 
-  Status Lock() EXCLUSIVE_LOCK_FUNCTION() override;
+  Status Lock() ACQUIRE() override;
 
   Status TryLockFor(int64_t timeout_time) override;
 
-  void UnLock() UNLOCK_FUNCTION() override { mutex_.unlock(); }
+  void UnLock() RELEASE() override { mutex_.unlock(); }
 
   friend class TransactionDBCondVarImpl;
 
