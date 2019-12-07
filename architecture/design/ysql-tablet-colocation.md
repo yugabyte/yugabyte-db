@@ -71,12 +71,14 @@ We decided to use single RocksDB for entire tablet. This is because:
 When a DB is created with `colocated=true`, catalog manager will need to create a tablet for this database. Catalog manager's `NamespaceInfo` and `TableInfo` objects will need to maintain colocated property.
 
 Today, tablet's `RaftGroupReplicaSuperBlockPB` has a `primary_table_id`. For system tables, this is the table ID of sys catalog table. Primary table ID seems to be used in two ways:
-Rows of primary table ID are not prefixed with table ID while writing to RocksDB. All other table rows are prefixed with cotable ID.
-Remote bootstrap client checks that tablet being bootstrapped has a primary table. (It's not clear why it needs this).
+
+1. Rows of primary table ID are not prefixed with table ID while writing to RocksDB. All other table rows are prefixed with cotable ID.
+1. Remote bootstrap client checks that tablet being bootstrapped has a primary table. (It's not clear why it needs this).
 
 Since there is no "primary table" in a colocated DB, we have two options:
-Make this field optional. We'll need to check some dependencies like remote bootstrap to see if this is possible.
-Create a dummy table for the database and make that the primary table.
+
+1. Make this field optional. We'll need to check some dependencies like remote bootstrap to see if this is possible.
+1. Create a dummy table for the database and make that the primary table.
 
 Tablet creation requires a Schema and partition range to be specified. In this case, Schema will empty and partition range will be _[-infinity, infinity)_.
 
@@ -100,8 +102,9 @@ This should delete the database from sys catalog and also remove the tablets cre
 
 #### Postgres Metadata
 It'll be useful to store colocated property in postgres system tables (`pg_database` for database and `pg_class` for table) for two reasons:
-YSQL dump and restore can use to generate the same YB schema.
-Postgres cost optimizer can use it during query planning and optimization.
+
+1. YSQL dump and restore can use to generate the same YB schema.
+1. Postgres cost optimizer can use it during query planning and optimization.
 
 We can reuse `tablespace` field of these tables for storing this information. This field in vanilla postgres dictates the directory / on disk location of the table / database. In YB, we can repurpose it to indicate tablet location.
 
