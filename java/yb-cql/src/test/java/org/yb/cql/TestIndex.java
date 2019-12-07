@@ -269,6 +269,40 @@ public class TestIndex extends BaseCQLTest {
                                DEFAULT_TEST_KEYSPACE, "test_drop_cascade", "i2").one());
   }
 
+  @Test
+  public void testRecreateTable() throws Exception {
+    LOG.info("Start test: " + getCurrentTestMethodName());
+    session.execute("create keyspace test_ks;");
+    session.execute("use test_ks;");
+
+    // By default the driver will execute commands on different TSes.
+    // Each CQL Server in TS has local Table info cache.
+    // The following test simulates a 'cache miss', when a TS cache has invalid info about
+    // a recreated table - with old-deleted table ID. In such case TS tryes to attach
+    // the index 'i3' to the deleted table - it must fail and the cache must be refreshed.
+
+    // Create test table.
+    session.execute("create table test_drop (h1 int primary key, " + // TS-1
+                    "c1 int, c2 int, c3 int, c4 int, c5 int) " +
+                    "with transactions = {'enabled' : true};");
+    // Create test indexes.
+    session.execute("create index i1 on test_drop (c1);");           // TS-2
+    session.execute("create index i2 on test_drop (c2);");           // TS-3
+    session.execute("select * from test_drop;");                     // TS-1
+    // Drop test table.
+    session.execute("drop table test_drop;");                        // TS-2
+    // Create test table again.
+    session.execute("create table test_drop (h1 int primary key, " + // TS-3
+                    "c1 int, a2 int, a3 int, a4 int, a5 int) " +
+                    "with transactions = {'enabled' : true};");
+    // Create index.
+    session.execute("create index i3 on test_drop (c1);");           // TS-1
+    session.execute("drop table test_drop;");                        // TS-2
+    session.execute("drop keyspace test_ks;");                       // TS-3
+
+    LOG.info("End test: " + getCurrentTestMethodName());
+  }
+
   private void assertIndexOptions(String table, String index, String target, String include)
       throws Exception {
     Row row = session.execute("select options, transactions, is_unique " +
