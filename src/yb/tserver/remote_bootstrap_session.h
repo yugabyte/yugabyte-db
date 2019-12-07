@@ -147,7 +147,7 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   // Snapshot the log segment's length and put it into segment map.
   CHECKED_STATUS OpenLogSegment(uint64_t segment_seqno, RemoteBootstrapErrorPB::Code* error_code)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+      REQUIRES(mutex_);
 
   // Unregister log anchor, if it's registered.
   CHECKED_STATUS UnregisterAnchorIfNeededUnlocked();

@@ -117,9 +117,9 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
   CHECKED_STATUS DoEndRemoteBootstrapSession(
       const std::string& session_id,
       bool session_suceeded,
-      RemoteBootstrapErrorPB::Code* app_error)  EXCLUSIVE_LOCKS_REQUIRED(sessions_mutex_);
+      RemoteBootstrapErrorPB::Code* app_error)  REQUIRES(sessions_mutex_);
 
-  void RemoveSession(const std::string& session_id) EXCLUSIVE_LOCKS_REQUIRED(sessions_mutex_);
+  void RemoveSession(const std::string& session_id) REQUIRES(sessions_mutex_);
 
   // The timeout thread periodically checks whether sessions are expired and
   // removes them from the map.

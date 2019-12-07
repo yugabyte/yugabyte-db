@@ -22,7 +22,7 @@ namespace yb {
 
 // A wrapper around Boost shared lock that supports thread annotations.
 template<typename Mutex>
-class SCOPED_LOCKABLE SharedLock {
+class SCOPED_CAPABILITY SharedLock {
  public:
   explicit SharedLock(Mutex &mutex) ACQUIRE_SHARED(mutex) : m_lock(mutex) {}
   ~SharedLock() RELEASE() = default;

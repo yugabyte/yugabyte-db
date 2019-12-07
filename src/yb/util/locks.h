@@ -55,19 +55,19 @@ using base::subtle::Release_Store;
 
 // Wrapper around the Google SpinLock class to adapt it to the method names
 // expected by Boost.
-class LOCKABLE simple_spinlock {
+class CAPABILITY("mutex") simple_spinlock {
  public:
   simple_spinlock() {}
 
-  void lock() EXCLUSIVE_LOCK_FUNCTION() {
+  void lock() ACQUIRE() {
     l_.Lock();
   }
 
-  void unlock() UNLOCK_FUNCTION() {
+  void unlock() RELEASE() {
     l_.Unlock();
   }
 
-  bool try_lock() EXCLUSIVE_TRYLOCK_FUNCTION(true) {
+  bool try_lock() TRY_ACQUIRE(true) {
     return l_.TryLock();
   }
 
@@ -101,7 +101,7 @@ struct padded_spinlock : public simple_spinlock {
 // annotations also assume that the same thread the takes the lock will unlock it.
 //
 // See rw_semaphore.h for documentation on the individual methods where unclear.
-class LOCKABLE rw_spinlock  {
+class CAPABILITY("mutex") rw_spinlock  {
  public:
   rw_spinlock() {
     ANNOTATE_RWLOCK_CREATE(this);
