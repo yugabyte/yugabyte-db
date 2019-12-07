@@ -983,11 +983,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         }
       }
     }
-    assertEquals(rowCount, expectedRowCount);
+    if (expectedRowCount >= 0) {
+      // Caller wants to assert row-count.
+      assertEquals(rowCount, expectedRowCount);
+    } else {
+      LOG.info(String.format("Exec query: row count = %d", rowCount));
+    }
   }
 
   // Time execution time of a statement.
-  protected void timeQueryWithRowCount(String stmt, int expectedRowCount, long maxRuntimeMillis,
+  protected long timeQueryWithRowCount(String stmt, int expectedRowCount, long maxRuntimeMillis,
                                        int numberOfRuns)
       throws Exception {
     LOG.info(String.format("Exec query: %s", stmt));
@@ -1005,7 +1010,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     long elapsedTimeMillis = System.currentTimeMillis() - startTimeMillis;
     LOG.info(String.format("Ran query %d times. Total elapsed time = %d msecs",
                            numberOfRuns, elapsedTimeMillis));
-    assertTrue(elapsedTimeMillis < numberOfRuns * maxRuntimeMillis);
+    if (maxRuntimeMillis > 0) {
+      // Caller want to assert if runtime takes longer than expectation.
+      assertTrue(elapsedTimeMillis < numberOfRuns * maxRuntimeMillis);
+    }
+
+    return elapsedTimeMillis;
   }
 
   public static class ConnectionBuilder {
