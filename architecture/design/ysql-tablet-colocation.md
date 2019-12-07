@@ -43,12 +43,12 @@ CREATE SCHEMA name WITH colocated = true | false
 ```
 
 In some situations, it may be useful for applications to create multiple schemas (instead of multiple DBs) and use 1 tablet per schema.
-Using this configuration
+Using this configuration...
 
-* Enables applications to use PG connection pooling. Typically, connection pools are created per database.
+* ...enables applications to use PG connection pooling. Typically, connection pools are created per database.
   So, if applications have a large number of databases, they cannot use connection pooling effectively.
   Connection pools become important for scaling applications since we have a limit of the maximum number of connections that each tserver can accept (300).
-* Reduces master overhead. Creating multiple databases adds more overhead on the master since postgres creates 200+ system tables per database.
+* ...reduces master overhead. Creating multiple databases adds more overhead on the master since postgres creates 200+ system tables per database.
 
 ## Design
 
