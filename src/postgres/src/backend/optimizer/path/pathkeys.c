@@ -177,7 +177,8 @@ make_pathkey_from_sortinfo(PlannerInfo *root,
 						   bool nulls_first,
 						   Index sortref,
 						   Relids rel,
-						   bool create_it)
+						   bool create_it,
+						   bool is_hash_index)
 {
 	int16		strategy;
 	Oid			equality_op;
@@ -212,6 +213,13 @@ make_pathkey_from_sortinfo(PlannerInfo *root,
 	/* Fail if no EC and !create_it */
 	if (!eclass)
 		return NULL;
+
+	/* This "eclass" is either a "=" or "sort" operator, and for hash_columns, we allow equality
+   * condition but not ASC or DESC sorting.
+   */
+  if (is_hash_index && eclass->ec_sortref != 0) {
+    return NULL;
+  }
 
 	/* And finally we can find or create a PathKey node */
 	return make_canonical_pathkey(root, eclass, opfamily,
@@ -258,7 +266,8 @@ make_pathkey_from_sortop(PlannerInfo *root,
 									  nulls_first,
 									  sortref,
 									  NULL,
-									  create_it);
+									  create_it,
+									  false);
 }
 
 
@@ -514,7 +523,8 @@ build_index_pathkeys(PlannerInfo *root,
 											  nulls_first,
 											  0,
 											  index->rel->relids,
-											  false);
+											  false,
+											  i < index->nhashcolumns);
 
 		if (cpathkey)
 		{
@@ -537,13 +547,17 @@ build_index_pathkeys(PlannerInfo *root,
 			 * should stop considering index columns; any lower-order sort
 			 * keys won't be useful either.
 			 */
-			if (!indexcol_is_bool_constant_for_query(index, i))
+			if (!indexcol_is_bool_constant_for_query(index, i) ||	i < index->nhashcolumns)
 				break;
 		}
 
 		i++;
 	}
 
+  if (i < index->nhashcolumns) {
+    /* All hash columns must have EQ pathkeys. Otherwise, we cannot use the index */
+    return NULL;
+	}
 	return retval;
 }
 
@@ -588,7 +602,8 @@ build_expression_pathkey(PlannerInfo *root,
 										  (strategy == BTGreaterStrategyNumber),
 										  0,
 										  rel,
-										  create_it);
+										  create_it,
+										  false);
 
 	if (cpathkey)
 		pathkeys = list_make1(cpathkey);
