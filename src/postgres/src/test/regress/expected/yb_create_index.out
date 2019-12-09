@@ -192,13 +192,11 @@ SELECT * FROM t1 ORDER BY h, r;
 (5 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE h = 1 ORDER BY r;
-              QUERY PLAN
---------------------------------------
- Sort
-   Sort Key: r
-   ->  Index Scan using t1_pkey on t1
-         Index Cond: (h = 1)
-(4 rows)
+           QUERY PLAN
+--------------------------------
+ Index Scan using t1_pkey on t1
+   Index Cond: (h = 1)
+(2 rows)
 
 SELECT * FROM t1 WHERE h = 1 ORDER BY r;
  h | r | v1 | v2
@@ -460,21 +458,21 @@ INSERT INTO test_truncate VALUES (1, 2);
 INSERT INTO test_truncate VALUES (2, 2);
 ERROR:  duplicate key value violates unique constraint "test_truncate_index"
 EXPLAIN SELECT b FROM test_truncate WHERE b = 2;
-                                          QUERY PLAN                                          
+                                          QUERY PLAN
 ----------------------------------------------------------------------------------------------
  Index Only Scan using test_truncate_index on test_truncate  (cost=0.00..4.11 rows=1 width=4)
    Index Cond: (b = 2)
 (2 rows)
 
 SELECT b FROM test_truncate WHERE b = 2;
- b 
+ b
 ---
  2
 (1 row)
 
 TRUNCATE test_truncate;
 SELECT b FROM test_truncate WHERE b = 2;
- b 
+ b
 ---
 (0 rows)
 
@@ -657,13 +655,11 @@ SELECT * FROM test_method ORDER BY h1, h2;
 (10 rows)
 
 EXPLAIN SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2;
-                                         QUERY PLAN
---------------------------------------------------------------------------------------------
- Sort  (cost=5.23..5.25 rows=10 width=24)
-   Sort Key: r1, r2
-   ->  Index Scan using test_method_pkey on test_method  (cost=0.00..5.06 rows=10 width=24)
-         Index Cond: ((h1 = 1) AND (h2 = 1))
-(4 rows)
+                                      QUERY PLAN
+--------------------------------------------------------------------------------------
+ Index Scan using test_method_pkey on test_method  (cost=0.00..5.06 rows=10 width=24)
+   Index Cond: ((h1 = 1) AND (h2 = 1))
+(2 rows)
 
 SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2;
  h1 | h2 | r1 | r2 | v1 | v2
