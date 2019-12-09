@@ -1181,7 +1181,7 @@ TEST_F_EX(CDCServiceTest, TestNewLeaderUpdatesLogCDCAppliedIndex, CDCServiceTest
   // Wait until GetChanges doesn't return any errors. This means that we are able to write to
   // the cdc_state table.
   ASSERT_OK(WaitFor([&](){
-    bool has_error;
+    bool has_error = false;
     GetChanges(tablet_id, stream_id, /* term */ 0, /* index */ 5, &has_error);
     return !has_error;
   }, MonoDelta::FromSeconds(180), "Wait until cdc state table can take writes."));
