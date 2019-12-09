@@ -1,7 +1,7 @@
 ---
-title: YB-TServer service
-linkTitle: YB-TServer service
-description: YB-TServer service
+title: YB-TServer 
+linkTitle: YB-TServer 
+description: YB-TServer 
 menu:
   latest:
     identifier: yb-tserver
@@ -13,7 +13,7 @@ isTocNested: 3
 showAsideToc: true
 ---
 
-The [YB-TServer](../../../architecture/concepts/yb-tserver/) binary (`yb-tserver`) is located in the `bin` directory of YugabyteDB home.
+The [YB-TServer](../../../architecture/concepts/yb-tserver/) service stores and manages data for client applications. Its binary `yb-tserver` is located in the `bin` directory of YugabyteDB home. 
 
 ## Syntax
 

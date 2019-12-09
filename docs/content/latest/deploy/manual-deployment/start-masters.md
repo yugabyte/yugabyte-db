@@ -15,7 +15,7 @@ showAsideToc: true
 
 {{< note title="Note" >}}
 
-- For any cluster, the number of nodes on which the YB-Master services need to be started **must** equal the replication factor.
+- The number of nodes of a cluster on which the YB-Master server need to be started **must** equal the replication factor.
 - The number of comma-separated addresses present in `master_addresses` should also equal the replication factor.
 
 {{< /note >}}
