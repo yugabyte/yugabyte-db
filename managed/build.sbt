@@ -30,7 +30,8 @@ libraryDependencies ++= Seq(
   "com.cronutils" % "cron-utils" % "9.0.1",
   "io.prometheus" % "simpleclient" % "0.8.0",
   "io.prometheus" % "simpleclient_hotspot" % "0.8.0",
-  "io.prometheus" % "simpleclient_servlet" % "0.8.0"
+  "io.prometheus" % "simpleclient_servlet" % "0.8.0",
+  "org.glassfish.jaxb" % "jaxb-runtime" % "2.3.2"
 )
 // Default to true if nothing passed on the env, so we can pick up YB jars from local java itest.
 lazy val mavenLocal = Option(System.getenv("USE_MAVEN_LOCAL")).getOrElse("false")
