@@ -15,7 +15,7 @@ showAsideToc: true
 
 {{< note title="Note" >}}
 
-For any cluster, the number of nodes on which the YB-TServer services need to be started **must** equal, or exceed, the replication factor in order for any table to get created successfully.
+The number of nodes of a cluster on which the YB-TServer server needs to be started **must** equal or exceed the replication factor in order for any table to get created successfully.
 
 {{< /note >}}
 

@@ -17,11 +17,13 @@ In this tutorial, we will show how to install the [Apache Cassandra Workbench](h
 
 ## Install the VS Code extension
 
-Open Visual Studio Code (you can download it in https://code.visualstudio.com for Windows, Mac or Linux) and press `Control + P`.
+In this tutorial, we will show how to install the [Apache Cassandra Workbench](https://marketplace.visualstudio.com/items?itemName=kdcro101.vscode-cassandra#quick-start) extension in Visual Studio Code and configure a connection.
+
+Open Visual Studio Code (you can download it from https://code.visualstudio.com for Windows, Mac or Linux) and press `Control + P`.
 
 ![VSCode Quick Open](/images/develop/tools/vscodeworkbench/vscode_control_p.png)
 
-Paste the following command and press enter:
+Paste the following command and press enter.
 
 ```
 ext install kdcro101.vscode-cassandra
@@ -31,7 +33,7 @@ This will install the extension, but you will need to configure the connection d
 
 ## Create a configuration
 
-Click in cloud icon in the left bar in VSCode to show Cassandra Workbench:
+Click in cloud icon in the left bar in VSCode to show Cassandra Workbench.
 
 ![Open Cassandra Workbench](/images/develop/tools/vscodeworkbench/cloudicon.png)
 
