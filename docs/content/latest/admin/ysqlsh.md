@@ -50,3 +50,4 @@ Starting with v2.0.1, the default password for the default user `yugabyte` is `y
 For v2.0.0 users, the default user `yugabyte` has no password. If you do not want any password to be prompted, then you should not enable YSQL authentication. If you want to enable YSQL authentication, then you must first set a password for the `yugabyte`  user (in a cluster with YSQL authentication turned off).
 
 {{< /note >}}
+

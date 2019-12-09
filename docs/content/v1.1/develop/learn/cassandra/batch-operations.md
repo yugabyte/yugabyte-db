@@ -66,7 +66,7 @@ An `IN` operator allows specifying multiple keys to the `WHERE` clause and does 
 
 Consider a table which has a hash column `h` and a clustering column `r`.
 
-- Query a set of values of `h` - this operation will perform the lookups for the various hash keys and return the response. The read queries are batched at a tablet level and executed in parallel. This query will be more efficient that performing each lookup from the application.
+- Query a set of values of `h` - this operation will perform the lookups for the various hash keys and return the response. The read queries are batched at a tablet level and executed in parallel. This query will be more efficient than performing each lookup from the application.
 
 ```sql
 > SELECT * FROM table WHERE h IN ('<value1>', '<value2>', ...);
