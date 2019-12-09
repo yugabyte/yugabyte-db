@@ -2082,6 +2082,7 @@ set_prebuilt_thirdparty_url() {
       fatal "YB_THIRDPARTY_URL is not set, and could not determine the default value."
     fi
 
+    mkdir -p "$BUILD_ROOT"
     echo "$YB_THIRDPARTY_URL" >"$build_thirdparty_url_file"
   fi
 }
