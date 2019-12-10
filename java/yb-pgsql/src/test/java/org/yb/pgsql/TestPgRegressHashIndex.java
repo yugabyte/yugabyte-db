@@ -74,10 +74,13 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                                -1 /* expectedRowCount */,
                                                0 /* maxRuntimeMillis */,
                                                execCount);
+    LOG.info(String.format("Full scan: %d ms", fullscan_time));
 
     //----------------------------------------------------------------------------------------------
     // Check elapsed time for various statements that use PRIMARY INDEX.
     //   PRIMARY KEY (iso_region HASH, ident ASC)
+    LOG.info("-----------------------------------------------------------------------------------");
+    LOG.info("PRIMARY-KEY-SCAN Test Start - PRIMARY KEY (iso_region HASH, ident ASC)");
     scan_time = timeQueryWithRowCount("SELECT count(*) FROM airports" +
                                       "  WHERE iso_region = 'US-CA'",
                                       -1 /* expectedRowCount */,
@@ -143,6 +146,8 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
     //----------------------------------------------------------------------------------------------
     // Check elapsed time for various statements that use the following INDEX.
     //   CREATE INDEX airports_idx1 ON airports(iso_region hash, name DESC);
+    LOG.info("-----------------------------------------------------------------------------------");
+    LOG.info("SECONDARY-INDEX-SCAN Start - airports_idx1 (iso_region hash, name DESC)");
     scan_time = timeQueryWithRowCount("SELECT gps_code FROM airports" +
                                       "  WHERE iso_region = 'US-CA' ORDER BY name DESC LIMIT 1",
                                       1,
@@ -160,6 +165,8 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
     //----------------------------------------------------------------------------------------------
     // Check elapsed time for various statements that use the following INDEX.
     //   CREATE INDEX airports_idx2 ON airports(iso_region ASC, gps_code ASC);
+    LOG.info("-----------------------------------------------------------------------------------");
+    LOG.info("SECONDARY-INDEX-SCAN Start - airports_idx2 (iso_region ASC, gps_code ASC)");
     scan_time = timeQueryWithRowCount("SELECT gps_code FROM airports" +
                                       "  WHERE iso_region = 'US-CA' ORDER BY gps_code ASC LIMIT 1",
                                       1,
@@ -207,8 +214,10 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
     //----------------------------------------------------------------------------------------------
     // Check elapsed time for various statements that use the following INDEX.
     //   CREATE INDEX airports_idx3 ON airports((iso_region, type) HASH,
-    //                                          ident, name, coordinates) INCLUDE (gps_code);
-
+    //                                          coordinates, ident, name) INCLUDE (gps_code);
+    LOG.info("-----------------------------------------------------------------------------------");
+    LOG.info("SECONDARY-INDEX-SCAN (Has LIMIT, Fully covered) Start - airports_idx3" +
+             " ((iso_region, type) HASH, coordinates, ident, name) INCLUDE (gps_code)");
     // This ORDER BY should be HASH + RANGE optimized.
     scan_time = timeQueryWithRowCount("SELECT gps_code FROM airports" +
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
@@ -297,10 +306,111 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
     assertLessThan(scan_time, fullscan_time);
 
     //----------------------------------------------------------------------------------------------
+    // The following test cases are also for airports_idx3 but they use "SELECT *", so the selected
+    // fields are not fully covered by the index.
+    // Check elapsed time for various statements that use the following INDEX.
+    //   CREATE INDEX airports_idx3 ON airports((iso_region, type) HASH,
+    //                                          coordinates, ident, name) INCLUDE (gps_code);
+
+    LOG.info("-----------------------------------------------------------------------------------");
+    LOG.info("SECONDARY-INDEX-SCAN (Has LIMIT, Not Fully covered) Start - airports_idx3" +
+             " ((iso_region, type) HASH, coordinates, ident, name) INCLUDE (gps_code)");
+    // This ORDER BY should be HASH + RANGE optimized.
+    scan_time = timeQueryWithRowCount("SELECT * FROM airports" +
+                                      "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
+                                      "  ORDER BY coordinates, ident, name LIMIT 1",
+                                      1,
+                                      0,
+                                      execCount);
+    assertLessThan(scan_time * 15, fullscan_time);
+
+    scan_time = timeQueryWithRowCount("SELECT * FROM airports" +
+                                      "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
+                                      "  ORDER BY coordinates ASC, ident, name LIMIT 1",
+                                      1,
+                                      0,
+                                      execCount);
+    assertLessThan(scan_time * 15, fullscan_time);
+
+    scan_time = timeQueryWithRowCount("SELECT * FROM airports" +
+                                      "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
+                                      "  ORDER BY coordinates DESC, ident DESC, name DESC LIMIT 1",
+                                      1,
+                                      0,
+                                      execCount);
+    assertLessThan(scan_time * 15, fullscan_time);
+
+    scan_time = timeQueryWithRowCount("SELECT * FROM airports" +
+                                      "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
+                                      "  ORDER BY coordinates, ident, name ASC LIMIT 1",
+                                      1,
+                                      0,
+                                      execCount);
+    assertLessThan(scan_time * 15, fullscan_time);
+
+    // This ORDER BY should be HASH + RANGE optimized.
+    scan_time = timeQueryWithRowCount("SELECT * FROM airports" +
+                                      "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
+                                      "  ORDER BY coordinates, ident LIMIT 1",
+                                      1,
+                                      0,
+                                      execCount);
+    assertLessThan(scan_time * 15, fullscan_time);
+
+    // This ORDER BY should be HASH + RANGE optimized.
+    scan_time = timeQueryWithRowCount("SELECT * FROM airports" +
+                                      "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
+                                      "  ORDER BY coordinates LIMIT 1",
+                                      1,
+                                      0,
+                                      execCount);
+    assertLessThan(scan_time * 15, fullscan_time);
+
+    // Wrong order direction for name (Must be all ASC or all DESC).
+    scan_time = timeQueryWithRowCount("SELECT * FROM airports" +
+                                      "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
+                                      "  ORDER BY coordinates, ident, name DESC LIMIT 1",
+                                      1,
+                                      0,
+                                      execCount);
+    assertLessThan(scan_time, fullscan_time);
+
+    // Wrong order direction for ident and name (Must be all ASC or all DESC).
+    scan_time = timeQueryWithRowCount("SELECT * FROM airports" +
+                                      "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
+                                      "  ORDER BY coordinates DESC, ident, name LIMIT 1",
+                                      1,
+                                      0,
+                                      execCount);
+    assertLessThan(scan_time, fullscan_time);
+
+    // This ORDER BY should not be optimized. Missing hash column.
+    scan_time = timeQueryWithRowCount("SELECT * FROM airports" +
+                                      "  WHERE iso_region = 'US-CA'" +
+                                      "  ORDER BY type, coordinates LIMIT 1",
+                                      1,
+                                      0,
+                                      execCount);
+
+    // This ORDER BY statement behavior is dependent on the cost estimator. It might choose the
+    // PRIMARY INDEX over this index.
+    scan_time = timeQueryWithRowCount("SELECT * FROM airports" +
+                                      "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
+                                      "  ORDER BY ident LIMIT 1",
+                                      1,
+                                      0,
+                                      execCount);
+    assertLessThan(scan_time, fullscan_time);
+
+    //----------------------------------------------------------------------------------------------
     // The following test cases are also for airports_idx3 but wihtout LIMIT clause.
     // Check elapsed time for various statements that use the following INDEX.
     //   CREATE INDEX airports_idx3 ON airports((iso_region, type) HASH,
     //                                          coordinates, ident, name) INCLUDE (gps_code);
+    // Without LIMIT, the queries should be a bit slower.
+    LOG.info("-----------------------------------------------------------------------------------");
+    LOG.info("SECONDARY-INDEX-SCAN (No LIMIT, Fully covered) Start - airports_idx3" +
+             " ((iso_region, type) HASH, coordinates, ident, name) INCLUDE (gps_code)");
     scan_time = timeQueryWithRowCount("SELECT gps_code FROM airports" +
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates, ident, name",
@@ -338,6 +448,59 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
     // This ORDER BY statement behavior is dependent on the cost estimator. It might choose the
     // PRIMARY INDEX over this index.
     scan_time = timeQueryWithRowCount("SELECT gps_code FROM airports" +
+                                      "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
+                                      "  ORDER BY ident",
+                                      -1,
+                                      0,
+                                      execCount);
+    assertLessThan(scan_time, fullscan_time);
+
+    //----------------------------------------------------------------------------------------------
+    // The following test cases are also for airports_idx3 but not fully covered and no LIMIT.
+    // Check elapsed time for various statements that use the following INDEX.
+    //   CREATE INDEX airports_idx3 ON airports((iso_region, type) HASH,
+    //                                          coordinates, ident, name) INCLUDE (gps_code);
+    // Without LIMIT and not-fully-covered by the index, the queries should be slow.
+    LOG.info("-----------------------------------------------------------------------------------");
+    LOG.info("SECONDARY-INDEX-SCAN (No LIMIT, Not Fully covered) Start - airports_idx3" +
+             " ((iso_region, type) HASH, coordinates, ident, name) INCLUDE (gps_code)");
+    scan_time = timeQueryWithRowCount("SELECT * FROM airports" +
+                                      "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
+                                      "  ORDER BY coordinates, ident, name",
+                                      -1,
+                                      0,
+                                      execCount);
+    assertLessThan(scan_time, fullscan_time);
+
+    // This ORDER BY should be HASH + RANGE optimized.
+    scan_time = timeQueryWithRowCount("SELECT * FROM airports" +
+                                      "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
+                                      "  ORDER BY coordinates, ident",
+                                      -1,
+                                      0,
+                                      execCount);
+    assertLessThan(scan_time, fullscan_time);
+
+    // This ORDER BY should be HASH + RANGE optimized.
+    scan_time = timeQueryWithRowCount("SELECT * FROM airports" +
+                                      "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
+                                      "  ORDER BY coordinates",
+                                      -1,
+                                      0,
+                                      execCount);
+    assertLessThan(scan_time, fullscan_time);
+
+    // This ORDER BY should not be optimized. Missing hash column.
+    scan_time = timeQueryWithRowCount("SELECT * FROM airports" +
+                                      "  WHERE iso_region = 'US-CA'" +
+                                      "  ORDER BY type, coordinates",
+                                      -1,
+                                      0,
+                                      execCount);
+
+    // This ORDER BY statement behavior is dependent on the cost estimator. It might choose the
+    // PRIMARY INDEX over this index.
+    scan_time = timeQueryWithRowCount("SELECT * FROM airports" +
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY ident",
                                       -1,

@@ -49,6 +49,21 @@ EXPLAIN SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'sma
 EXPLAIN SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates LIMIT 1;
 --
+-- The following query also use "airports_idx3" index but not fully-covered.
+--
+EXPLAIN SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates, ident, name LIMIT 1;
+EXPLAIN SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates ASC, ident, name LIMIT 1;
+EXPLAIN SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates DESC, ident DESC, name DESC LIMIT 1;
+EXPLAIN SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates, ident, name ASC LIMIT 1;
+EXPLAIN SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates, ident LIMIT 1;
+EXPLAIN SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates LIMIT 1;
+--
 -- The following query should use "airports_idx3" index without LIMIT.
 --
 EXPLAIN SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
@@ -56,6 +71,15 @@ EXPLAIN SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'sma
 EXPLAIN SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates, ident;
 EXPLAIN SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates;
+--
+-- The following query should use "airports_idx3" index but not fully-covered and no LIMIT.
+--
+EXPLAIN SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates, ident, name;
+EXPLAIN SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates, ident;
+EXPLAIN SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates;
 --
 -- The following queries cannot be optimized. Either WHERE clause is missing or its given filter
