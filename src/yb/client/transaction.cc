@@ -264,7 +264,7 @@ class YBTransaction::Impl final {
       }
       const std::string* prev_tablet_id = nullptr;
       for (const auto& op : ops) {
-        if (op->yb_op->wrote_data(metadata_.isolation)) {
+        if (op->yb_op->succeeded() && op->yb_op->wrote_data(metadata_.isolation)) {
           const std::string& tablet_id = op->tablet->tablet_id();
           if (prev_tablet_id == nullptr || tablet_id != *prev_tablet_id) {
             prev_tablet_id = &tablet_id;

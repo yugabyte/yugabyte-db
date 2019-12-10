@@ -18,6 +18,8 @@
 
 #include <memory>
 
+#include "yb/common/common.pb.h"
+
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 
@@ -92,6 +94,10 @@ class PGConn {
     auto res = VERIFY_RESULT(FetchMatrix(command, 1, 1));
     return GetValue<T>(res.get(), 0, 0);
   }
+
+  CHECKED_STATUS StartTransaction(IsolationLevel isolation_level);
+  CHECKED_STATUS CommitTransaction();
+  CHECKED_STATUS RollbackTransaction();
 
   CHECKED_STATUS CopyBegin(const std::string& command);
   Result<PGResultPtr> CopyEnd();
