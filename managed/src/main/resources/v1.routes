@@ -113,6 +113,7 @@ GET     /customers/:cUUID/cost                        com.yugabyte.yw.controller
 PUT     /customers/:cUUID/universes/:uniUUID/update_backup_state  com.yugabyte.yw.controllers.UniverseController.setBackupFlag(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/set_key    com.yugabyte.yw.controllers.UniverseController.setUniverseKey(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/run_query  com.yugabyte.yw.controllers.UniverseController.runQuery(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/run_in_shell      com.yugabyte.yw.controllers.UniverseController.runInShell(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Cluster under universe
 POST    /customers/:cUUID/universes/:uniUUID/cluster              com.yugabyte.yw.controllers.UniverseController.clusterCreate(cUUID: java.util.UUID, uniUUID: java.util.UUID)

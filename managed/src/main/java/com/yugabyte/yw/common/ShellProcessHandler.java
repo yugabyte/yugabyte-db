@@ -53,8 +53,11 @@ public class ShellProcessHandler {
         if (!extraEnvVars.isEmpty()) {
             envVars.putAll(extraEnvVars);
         }
+        String devopsHome = appConfig.getString("yb.devops.home");
+        if (devopsHome != null) {
+            pb.directory(new File(devopsHome));
+        }
 
-        pb.directory(new File(appConfig.getString("yb.devops.home")));
         ShellResponse response = new ShellResponse();
         response.code = -1;
 
