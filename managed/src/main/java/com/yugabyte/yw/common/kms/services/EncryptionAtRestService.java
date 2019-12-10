@@ -72,7 +72,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
             UUID configUUID,
             EncryptionAtRestConfig config
     ) {
-        byte[] key = null;
+        byte[] result = null;
         try {
             final byte[] existingEncryptionKey = retrieveKey(universeUUID, configUUID, config);
             if (existingEncryptionKey != null && existingEncryptionKey.length > 0) {
@@ -91,11 +91,11 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
                 LOG.error(errMsg);
                 throw new RuntimeException(errMsg);
             }
-            key = retrieveKey(universeUUID, configUUID, ref, config);
+            result = ref;
         } catch (Exception e) {
             LOG.error("Error occured attempting to create encryption key", e);
         }
-        return key;
+        return result;
     }
 
     protected abstract byte[] rotateKeyWithService(
@@ -109,14 +109,20 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
             UUID configUUID,
             EncryptionAtRestConfig config
     ) {
-        final byte[] ref = rotateKeyWithService(universeUUID, configUUID, config);
-        if (ref == null || ref.length == 0) {
-            final String errMsg = "rotateKeyWithService returned empty key ref";
-            LOG.error(errMsg);
-            throw new RuntimeException(errMsg);
+        byte[] result = null;
+        try {
+            final byte[] ref = rotateKeyWithService(universeUUID, configUUID, config);
+            if (ref == null || ref.length == 0) {
+                final String errMsg = "rotateKeyWithService returned empty key ref";
+                LOG.error(errMsg);
+                throw new RuntimeException(errMsg);
+            }
+            result = ref;
+        } catch (Exception e) {
+            LOG.error("Error occured attempting to rotate encryption key", e);
         }
-        addKeyRef(configUUID, universeUUID, ref);
-        return retrieveKey(universeUUID, configUUID, config);
+
+        return result;
     }
 
     protected abstract byte[] retrieveKeyWithService(
@@ -152,11 +158,12 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
     }
 
     public byte[] retrieveKey(UUID universeUUID, UUID configUUID, byte[] keyRef) {
+        Universe u = Universe.get(universeUUID);
         return retrieveKey(
                 universeUUID,
                 configUUID,
                 keyRef,
-                Universe.get(universeUUID).getEncryptionAtRestConfig()
+                u.getUniverseDetails().encryptionAtRestConfig
         );
     }
 
@@ -165,14 +172,24 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
             UUID configUUID,
             EncryptionAtRestConfig config
     ) {
-        byte[] keyRef = getKeyRef(configUUID, universeUUID);
-        return retrieveKey(universeUUID, configUUID, keyRef, config);
+        byte[] key = null;
+        KmsHistory activeKey = EncryptionAtRestUtil.getLatestConfigKey(universeUUID, configUUID);
+        if (activeKey != null) {
+            key = retrieveKey(
+                    universeUUID,
+                    configUUID,
+                    Base64.getDecoder().decode(activeKey.uuid.keyRef),
+                    config
+            );
+        }
 
+        return key;
     }
 
     protected void cleanupWithService(UUID universeUUID, UUID configUUID) {}
 
     public void cleanup(UUID universeUUID, UUID configUUID) {
+        EncryptionAtRestUtil.removeKeyRotationHistory(universeUUID, configUUID);
         cleanupWithService(universeUUID, configUUID);
     }
 
@@ -260,58 +277,8 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
         return rotationHistory;
     }
 
-    public void removeKeyRotationHistory(UUID configUUID, UUID universeUUID) {
-        // Remove key ref history for the universe
-        KmsHistory.deleteAllConfigTargetKeyRefs(
-                configUUID,
-                universeUUID,
-                KmsHistoryId.TargetType.UNIVERSE_KEY
-        );
-        // Remove in-memory key ref -> key val cache entry, if it exists
-        EncryptionAtRestUtil.removeUniverseKeyCacheEntry(universeUUID);
-    }
-
-    public void removeKeyRef(UUID configUUID, UUID universeUUID) {
-        try {
-            KmsHistory currentRef = KmsHistory.getCurrentConfigKeyRef(
-                    configUUID,
-                    universeUUID,
-                    KmsHistoryId.TargetType.UNIVERSE_KEY
-            );
-            if (currentRef != null) KmsHistory.deleteKeyRef(currentRef);
-        } catch (Exception e) {
-            String errMsg = "Could not remove key ref";
-            LOG.error(errMsg);
-        }
-    }
-
-    public byte[] getKeyRef(UUID configUUID, UUID universeUUID) {
-        byte[] keyRef = null;
-        try {
-            KmsHistory currentRef = KmsHistory.getCurrentConfigKeyRef(
-                    configUUID,
-                    universeUUID,
-                    KmsHistoryId.TargetType.UNIVERSE_KEY
-            );
-            if (currentRef != null) keyRef = Base64.getDecoder().decode(currentRef.keyRef);
-        } catch (Exception e) {
-            final String errMsg = "Could not get key ref";
-            LOG.error(errMsg, e);
-        }
-        return keyRef;
-    }
-
-    public void addKeyRef(UUID configUUID, UUID universeUUID, byte[] ref) {
-        KmsHistory.createKmsHistory(
-                configUUID,
-                universeUUID,
-                KmsHistoryId.TargetType.UNIVERSE_KEY,
-                Base64.getEncoder().encodeToString(ref)
-        );
-    }
-
     public void deleteKMSConfig(UUID configUUID) {
-        if (!EncryptionAtRestService.configInUse(configUUID)) {
+        if (!EncryptionAtRestUtil.configInUse(configUUID)) {
             final KmsConfig config = getKMSConfig(configUUID);
             if (config != null) config.delete();
         } else throw new IllegalArgumentException(String.format(
@@ -324,9 +291,5 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
 
     public KmsConfig getKMSConfig(UUID configUUID) {
         return KmsConfig.getKMSConfig(configUUID);
-    }
-
-    public static boolean configInUse(UUID configUUID) {
-        return KmsHistory.configHasHistory(configUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
     }
 }

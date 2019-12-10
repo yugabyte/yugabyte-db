@@ -56,6 +56,10 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
+      // Cleanup the kms_history table
+      createDestroyEncryptionAtRestTask()
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
+
       // Try to unify this with the edit remove pods/deployments flow. Currently delete is
       // tied down to a different base class which makes params porting not straight-forward.
       SubTaskGroup helmDeletes = new SubTaskGroup(

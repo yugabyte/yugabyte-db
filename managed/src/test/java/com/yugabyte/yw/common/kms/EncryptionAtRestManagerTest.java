@@ -89,39 +89,4 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
         );
         assertNotNull(universeKeyData);
     }
-
-    @Test
-    public void testGetNumKeyRotationsNoHistory() {
-        int numRotations = testManager.getNumKeyRotations(testUniverse.universeUUID);
-        assertEquals(numRotations, 0);
-    }
-
-    @Test
-    public void testGetNumKeyRotations() {
-        EncryptionAtRestService keyService = testManager.getServiceInstance(keyProvider);
-        UUID configUUID = UUID.randomUUID();
-        keyService.addKeyRef(
-                configUUID,
-                testUniverse.universeUUID,
-                new String("some_key_ref").getBytes()
-        );
-        int numRotations = testManager.getNumKeyRotations(testUniverse.universeUUID, configUUID);
-        assertEquals(numRotations, 1);
-    }
-
-    @Test
-    public void testClearUniverseKeyHistory() {
-        EncryptionAtRestService keyService = testManager.getServiceInstance(keyProvider);
-        UUID configUUID = UUID.randomUUID();
-        keyService.addKeyRef(
-                configUUID,
-                testUniverse.universeUUID,
-                new String("some_key_ref").getBytes()
-        );
-        int numRotations = testManager.getNumKeyRotations(testUniverse.universeUUID, configUUID);
-        assertEquals(numRotations, 1);
-        testManager.clearUniverseKeyHistory(testUniverse.universeUUID);
-        numRotations = testManager.getNumKeyRotations(testUniverse.universeUUID);
-        assertEquals(numRotations, 0);
-    }
 }

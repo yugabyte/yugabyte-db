@@ -6,6 +6,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
 import java.util.Base64;
 import java.util.UUID;
 import org.junit.Before;
@@ -18,13 +19,15 @@ import play.libs.Json;
 
 public class EncryptionAtRestUtilTest extends FakeDBApplication {
     Customer testCustomer;
+    Universe testUniverse;
 
-    @InjectMocks
     EncryptionAtRestUtil encryptionUtil;
 
     @Before
     public void setup() {
+        encryptionUtil = new EncryptionAtRestUtil();
         testCustomer = ModelFactory.testCustomer();
+        testUniverse = ModelFactory.createUniverse();
     }
 
     @Test
@@ -108,5 +111,38 @@ public class EncryptionAtRestUtilTest extends FakeDBApplication {
         );
         encryptionUtil.removeUniverseKeyCacheEntry(universeUUID);
         assertNull(encryptionUtil.getUniverseKeyCacheEntry(universeUUID, keyRef));
+    }
+
+    @Test
+    public void testGetNumKeyRotationsNoHistory() {
+        int numRotations = encryptionUtil.getNumKeyRotations(testUniverse.universeUUID);
+        assertEquals(numRotations, 0);
+    }
+
+    @Test
+    public void testGetNumKeyRotations() {
+        UUID configUUID = UUID.randomUUID();
+        encryptionUtil.addKeyRef(
+                testUniverse.universeUUID,
+                configUUID,
+                new String("some_key_ref").getBytes()
+        );
+        int numRotations = encryptionUtil.getNumKeyRotations(testUniverse.universeUUID, configUUID);
+        assertEquals(1, numRotations);
+    }
+
+    @Test
+    public void testClearUniverseKeyHistory() {
+        UUID configUUID = UUID.randomUUID();
+        encryptionUtil.addKeyRef(
+                testUniverse.universeUUID,
+                configUUID,
+                new String("some_key_ref").getBytes()
+        );
+        int numRotations = encryptionUtil.getNumKeyRotations(testUniverse.universeUUID, configUUID);
+        assertEquals(numRotations, 1);
+        encryptionUtil.removeKeyRotationHistory(testUniverse.universeUUID, configUUID);
+        numRotations = encryptionUtil.getNumKeyRotations(testUniverse.universeUUID);
+        assertEquals(0, numRotations);
     }
 }

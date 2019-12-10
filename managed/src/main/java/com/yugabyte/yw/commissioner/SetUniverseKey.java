@@ -17,8 +17,10 @@ import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.Universe;
 import java.util.Arrays;
 import java.util.Base64;
@@ -95,16 +97,28 @@ public class SetUniverseKey {
     private void setUniverseKey(Universe u) {
         Customer c = Customer.get(u.customerId);
         try {
-            if (!u.universeIsLocked() && keyManager.getNumKeyRotations(u.universeUUID) > 0) {
+            if (!u.universeIsLocked() &&
+                    EncryptionAtRestUtil.getNumKeyRotations(u.universeUUID) > 0) {
                 LOG.debug(String.format(
                         "Setting universe encryption key for universe %s",
                         u.universeUUID.toString()
                 ));
-                UUID configUUID = keyManager.getCurrentKMSConfigUUID(u.universeUUID);
-                byte[] keyRef = keyManager.getCurrentUniverseKeyRef(u.universeUUID, configUUID);
-                byte[] keyVal = keyManager.getCurrentUniverseKey(
+
+                KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(u.universeUUID);
+                if (activeKey == null ||
+                        activeKey.uuid.keyRef == null || activeKey.uuid.keyRef.length() == 0) {
+                    final String errMsg = String.format(
+                            "No active key found for universe %s",
+                            u.universeUUID.toString()
+                    );
+                    LOG.debug(errMsg);
+                    return;
+                }
+
+                byte[] keyRef = Base64.getDecoder().decode(activeKey.uuid.keyRef);
+                byte[] keyVal = keyManager.getUniverseKey(
                         u.universeUUID,
-                        configUUID,
+                        activeKey.configUuid,
                         keyRef
                 );
                 Arrays.stream(u.getMasterAddresses().split(","))
