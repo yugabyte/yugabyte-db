@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`CREATE SCHEMA` creates a new schema in the current database.
+Use the `CREATE SCHEMA` statement to create a new schema in the current database.
 A schema is essentially a namespace: it contains named objects (tables, data types, functions, and operators) whose names can duplicate those of other objects existing in other schemas.
 Named objects in a schema can be accessed by using the schema name as prefix or by setting the schema name in the search path.
 

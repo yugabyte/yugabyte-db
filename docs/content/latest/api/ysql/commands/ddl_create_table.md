@@ -88,6 +88,7 @@ Using this qualifier will create a temporary table. Temporary tables are only vi
 The `SPLIT INTO` clause specifies the number of tablets that will be created for the table. This is useful for two data center (2DC) deployments. See example below: [Create CDC table specifying number of tablets](#create-cdc-table-specifying-number-of-tablets).
 
 ### Storage parameters
+
 Storage parameters [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS) are ignored and only present for compatibility with PostgreSQL.
 
 ## Examples

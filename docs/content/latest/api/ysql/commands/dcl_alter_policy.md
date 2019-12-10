@@ -1,5 +1,6 @@
 ---
 title: ALTER POLICY
+linkTitle: ALTER POLICY
 description: ALTER POLICY
 summary: Alter row level security policy
 menu:
@@ -14,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`ALTER POLICY` changes the definition of an existing row level security policy. It can be used to
+Use  the `ALTER POLICY` statement to change the definition of an existing row level security policy. It can be used to
 change the roles that the policy applies to and the `USING` and `CHECK` expressions of the policy.
 
 ## Syntax

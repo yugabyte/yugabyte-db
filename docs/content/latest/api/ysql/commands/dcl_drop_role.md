@@ -1,5 +1,6 @@
 ---
 title: DROP ROLE
+linkTitle: DROP ROLE
 description: DROP ROLE
 summary: Roles (users and groups)
 menu:
@@ -14,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`DROP ROLE` removes the specified role(s).
+Use the `DROP ROLE` statement to remove the specified roles.
 
 ## Syntax
 

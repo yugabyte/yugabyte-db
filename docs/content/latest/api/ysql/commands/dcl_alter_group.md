@@ -1,6 +1,7 @@
 ---
 title: ALTER GROUP
-description: Groups and roles
+linkTitle: ALTER GROUP
+description: ALTER GROUP
 summary: Groups and roles
 menu:
   latest:

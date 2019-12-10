@@ -1,5 +1,6 @@
 ---
 title: SET SESSION AUTHORIZATION
+linkTitle: SET SESSION AUTHORIZATION
 description: SET SESSION AUTHORIZATION
 summary: Roles (users and groups)
 menu:
@@ -14,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`SET SESSION AUTHORIZATION` sets the current user and session user of the current session to be the specified user.
+Use the `SET SESSION AUTHORIZATION` statement to set the current user and session user of the current session to be the specified user.
 
 ## Syntax
 

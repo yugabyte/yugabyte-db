@@ -1,5 +1,6 @@
 ---
 title: ALTER DEFAULT PRIVILEGES
+linkTitle: ALTER DEFAULT PRIVILEGES
 description: ALTER DEFAULT PRIVILEGES
 summary: Roles (users and groups)
 menu:
@@ -14,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`ALTER DEFAULT PRIVILEGES` defines the default access privileges.
+Use the `ALTER DEFAULT PRIVILEGES` statement to define the default access privileges.
 
 ## Syntax
 
