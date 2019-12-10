@@ -120,6 +120,8 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
   // This totals 4 x 4 x 2 = 32 situations.
   void TestRowLockConflictMatrix();
 
+  void TestForeignKey(IsolationLevel isolation);
+
  private:
   std::unique_ptr<PgSupervisor> pg_supervisor_;
   HostPort pg_host_port_;
@@ -647,6 +649,47 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallW
 
     return intents_count <= 5000;
   }, 5s, "Intents cleanup"));
+}
+
+void PgMiniTest::TestForeignKey(IsolationLevel isolation_level) {
+  const std::string kDataTable = "data";
+  const std::string kReferenceTable = "reference";
+  constexpr int kRows = 10;
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (id int NOT NULL, name VARCHAR, PRIMARY KEY (id))",
+      kReferenceTable));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (ref_id INTEGER, data_id INTEGER, name VARCHAR, "
+          "PRIMARY KEY (ref_id, data_id))",
+      kDataTable));
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0 ADD CONSTRAINT fk FOREIGN KEY(ref_id) REFERENCES $1(id) "
+          "ON DELETE CASCADE",
+      kDataTable, kReferenceTable));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES ($1, 'reference_$1')", kReferenceTable, 1));
+
+  for (int i = 1; i <= kRows; ++i) {
+    ASSERT_OK(conn.StartTransaction(isolation_level));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES ($1, $2, 'data_$2')", kDataTable, 1, i));
+    ASSERT_OK(conn.CommitTransaction());
+  }
+
+  ASSERT_OK(WaitFor([this] {
+    return CountIntents(cluster_.get()) == 0;
+  }, 15s, "Intents cleanup"));
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ForeignKeySerializable)) {
+  TestForeignKey(IsolationLevel::SERIALIZABLE_ISOLATION);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ForeignKeySnapshot)) {
+  TestForeignKey(IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
 } // namespace pgwrapper
