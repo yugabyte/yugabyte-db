@@ -1,5 +1,6 @@
 ---
 title: ALTER ROLE
+linkTitle: ALTER ROLE
 description: ALTER ROLE
 summary: Roles (users and groups)
 menu:
