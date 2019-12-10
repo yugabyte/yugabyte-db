@@ -101,8 +101,7 @@ class YBOperation {
   virtual bool returns_sidecar() = 0;
 
   virtual bool wrote_data(IsolationLevel isolation_level) {
-    return succeeded() &&
-           (!read_only() || isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION);
+    return !read_only() || isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION;
   }
 
   virtual void SetHashCode(uint16_t hash_code) = 0;
@@ -494,6 +493,8 @@ class YBPgsqlReadOp : public YBPgsqlOp {
 
   static std::vector<ColumnSchema> MakeColumnSchemasFromColDesc(
       const google::protobuf::RepeatedPtrField<PgsqlRSColDescPB>& rscol_descs);
+
+  bool wrote_data(IsolationLevel isolation_level) override;
 
  protected:
   virtual Type type() const override {

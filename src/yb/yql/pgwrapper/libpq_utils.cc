@@ -17,6 +17,7 @@
 
 #include "yb/gutil/endian.h"
 
+#include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 
 using namespace std::literals;
@@ -173,6 +174,27 @@ Result<PGResultPtr> PGConn::FetchMatrix(const std::string& command, int rows, in
   }
 
   return res;
+}
+
+CHECKED_STATUS PGConn::StartTransaction(IsolationLevel isolation_level) {
+  switch (isolation_level) {
+    case IsolationLevel::NON_TRANSACTIONAL:
+      return Status::OK();
+    case IsolationLevel::SNAPSHOT_ISOLATION:
+      return Execute("START TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+    case IsolationLevel::SERIALIZABLE_ISOLATION:
+      return Execute("START TRANSACTION ISOLATION LEVEL SERIALIZABLE");
+  }
+
+  FATAL_INVALID_ENUM_VALUE(IsolationLevel, isolation_level);
+}
+
+CHECKED_STATUS PGConn::CommitTransaction() {
+  return Execute("COMMIT");
+}
+
+CHECKED_STATUS PGConn::RollbackTransaction() {
+  return Execute("ROLLBACK");
 }
 
 Status PGConn::CopyBegin(const std::string& command) {

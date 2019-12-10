@@ -38,6 +38,7 @@
 #include "yb/client/table.h"
 
 #include "yb/common/row.h"
+#include "yb/common/row_mark.h"
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/redis_protocol.pb.h"
@@ -748,6 +749,11 @@ Status YBNoOp::Execute(const YBPartialRow& key) {
   }
 
   return Status::OK();
+}
+
+bool YBPgsqlReadOp::wrote_data(IsolationLevel isolation_level) {
+  return isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION ||
+         IsValidRowMarkType(GetRowMarkTypeFromPB(*read_request_));
 }
 
 }  // namespace client
