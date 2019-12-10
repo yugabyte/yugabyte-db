@@ -19,6 +19,7 @@ import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
@@ -166,12 +167,9 @@ public class EncryptionAtRestControllerTest extends WithApplication {
         url = "/api/v1/customers/" + customer.uuid + "/kms_configs/" + kmsConfigUUID.toString();
         Result deleteResult = doRequestWithAuthToken("DELETE", url, authToken);
         assertOk(deleteResult);
-        url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
-        listResult = doRequestWithAuthToken("GET", url, authToken);
-        assertOk(listResult);
-        json = Json.parse(contentAsString(listResult));
-        assertTrue(json.isArray());
-        assertEquals(json.size(), 0);
+        json = Json.parse(contentAsString(deleteResult));
+        UUID taskUUID = UUID.fromString(json.get("taskUUID").asText());
+        assertNotNull(taskUUID);
     }
 
     @Ignore("This test passes locally but fails on Jenkins due to Guice not injecting mocked ApiHelper for an unknown reason")
@@ -208,11 +206,16 @@ public class EncryptionAtRestControllerTest extends WithApplication {
 
     @Test
     public void testRecoverKeyNotFound() {
-        ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", Json.newObject());
+        UUID configUUID = ModelFactory.createKMSConfig(
+                customer.uuid,
+                "SMARTKEY",
+                Json.newObject()
+        ).configUUID;
         String url = "/api/customers/" + customer.uuid + "/universes/" +
                 universe.universeUUID + "/kms";
         ObjectNode body = Json.newObject()
-                .put("reference", "NzNiYmY5M2UtNWYyNy00NzE3LTgyYTktMTVjYzUzMDIzZWRm");
+                .put("reference", "NzNiYmY5M2UtNWYyNy00NzE3LTgyYTktMTVjYzUzMDIzZWRm")
+                .put("configUUID", configUUID.toString());
         Result recoverKeyResult = doRequestWithAuthTokenAndBody("POST", url, authToken, body);
         JsonNode json = Json.parse(contentAsString(recoverKeyResult));
         String expectedErrorMsg = String.format(

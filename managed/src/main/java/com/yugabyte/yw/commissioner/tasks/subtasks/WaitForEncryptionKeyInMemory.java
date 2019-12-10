@@ -14,8 +14,9 @@ import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.services.YBClientService;
-import java.util.Base64;
+import com.yugabyte.yw.models.KmsHistory;
 import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -51,21 +52,17 @@ public class WaitForEncryptionKeyInMemory extends NodeTaskBase {
     @Override
     public void run() {
         Universe universe = Universe.get(taskParams().universeUUID);
-        if (universe != null && keyManager.getNumKeyRotations(universe.universeUUID) > 0) {
+        if (universe != null &&
+                EncryptionAtRestUtil.getNumKeyRotations(universe.universeUUID) > 0) {
             YBClient client = null;
             String hostPorts = universe.getMasterAddresses();
             String certificate = universe.getCertificate();
             try {
                 client = ybService.getClient(hostPorts, certificate);
-                UUID configUUID = keyManager.getCurrentKMSConfigUUID(universe.universeUUID);
-                byte[] currentKeyRef = keyManager.getCurrentUniverseKeyRef(
-                        universe.universeUUID,
-                        configUUID
-                );
-                final String encodedKeyRef = Base64.getEncoder().encodeToString(currentKeyRef);
+                KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universe.universeUUID);
                 if (!client.waitForMasterHasUniverseKeyInMemory(
                         KEY_IN_MEMORY_TIMEOUT,
-                        encodedKeyRef,
+                        activeKey.uuid.keyRef,
                         taskParams().nodeAddress
                 )) {
                     throw new RuntimeException(

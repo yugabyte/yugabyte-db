@@ -1646,7 +1646,7 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
-  public void testCreateUniverseEncryptionAtRestWithEncryptionAtRestKMSConfigExists() {
+  public void testCreateUniverseEncryptionAtRestWithKMSConfigExists() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(Matchers.any(TaskType.class),
             Matchers.any(UniverseDefinitionTaskParams.class)))
@@ -1700,12 +1700,6 @@ public class UniverseControllerTest extends WithApplication {
     JsonNode userIntent = json.get("universeDetails").get("clusters").get(0).get("userIntent");
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
     verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), argCaptor.capture());
-    // Verify that the KMS provider service started to run for the correct provider
-    verify(mockEARManager, times(1)).generateUniverseKey(
-            eq(kmsConfig.configUUID),
-            any(UUID.class),
-            any(EncryptionAtRestConfig.class)
-    );
   }
 
   @Test
@@ -1787,11 +1781,6 @@ public class UniverseControllerTest extends WithApplication {
     ArgumentCaptor<UniverseTaskParams> argCaptor = ArgumentCaptor
             .forClass(UniverseTaskParams.class);
     verify(mockCommissioner).submit(eq(TaskType.SetUniverseKey), argCaptor.capture());
-    verify(mockEARManager, times(1)).generateUniverseKey(
-            eq(kmsConfig.configUUID),
-            eq(UUID.fromString(testUniUUID)),
-            any(EncryptionAtRestConfig.class)
-    );
   }
 
   @Test

@@ -50,7 +50,7 @@ public class SmartKeyEARServiceTest extends FakeDBApplication {
 
     String mockEncodedEncryptionKey =
             "RjZiNzVGekljNFh5Zmh0NC9FQ1dpM0FaZTlMVGFTbW1Wa1dnaHRzdDhRVT0=";
-    byte[] mockKid = new String("9ffd3e51-19e5-41db-ab30-e78910ec743d").getBytes();
+    String mockKid = "9ffd3e51-19e5-41db-ab30-e78910ec743d";
     byte[] mockEncryptionKey = Base64.getDecoder().decode(mockEncodedEncryptionKey);
 
     String getKeyMockResponse = String.format(
@@ -211,7 +211,7 @@ public class SmartKeyEARServiceTest extends FakeDBApplication {
         );
         byte[] encryptionKey = encryptionService.createKey(testUniUUID, testCustomerUUID, config);
         assertNotNull(encryptionKey);
-        assertEquals(new String(encryptionKey), new String(mockEncryptionKey));
+        assertEquals(new String(encryptionKey), mockKid);
     }
 
     @Test

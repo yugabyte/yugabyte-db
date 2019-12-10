@@ -9,29 +9,31 @@
  */
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import java.io.File;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.YBClient;
 import play.api.Play;
 
-public class DisableEncryptionAtRest extends AbstractTaskBase {
+public class DestroyEncryptionAtRest extends AbstractTaskBase {
 
-    public static final Logger LOG = LoggerFactory.getLogger(DisableEncryptionAtRest.class);
+    public static final Logger LOG = LoggerFactory.getLogger(DestroyEncryptionAtRest.class);
 
-    // The YB client.
-    public YBClientService ybService = null;
+    public EncryptionAtRestManager keyManager = null;
 
     // Timeout for failing to respond to pings.
     private static final long TIMEOUT_SERVER_WAIT_MS = 120000;
 
-    public static class Params extends EncryptionAtRestKeyParams {}
+    public static class Params extends EncryptionAtRestKeyParams {
+        public UUID customerUUID = null;
+    }
 
     @Override
     protected Params taskParams() {
@@ -41,24 +43,23 @@ public class DisableEncryptionAtRest extends AbstractTaskBase {
     @Override
     public void initialize(ITaskParams params) {
         super.initialize(params);
-        ybService = Play.current().injector().instanceOf(YBClientService.class);
+        keyManager = Play.current().injector().instanceOf(EncryptionAtRestManager.class);
     }
 
     @Override
     public void run() {
-        Universe universe = Universe.get(taskParams().universeUUID);
-        String hostPorts = universe.getMasterAddresses();
-        String certificate = universe.getCertificate();
-        YBClient client = null;
         try {
-            LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
-            client = ybService.getClient(hostPorts, certificate);
-            client.disableEncryptionAtRestInMemory();
+            Universe u = Universe.get(taskParams().universeUUID);
+            Customer c = Customer.get(u.customerId);
+            if (EncryptionAtRestUtil.getNumKeyRotations(taskParams().universeUUID) > 0) {
+                keyManager.cleanupEncryptionAtRest(c.uuid, taskParams().universeUUID);
+            }
         } catch (Exception e) {
-            LOG.error("{} hit error : {}", getName(), e.getMessage());
-            throw new RuntimeException(e);
-        } finally {
-            ybService.closeClient(client, hostPorts);
+            final String errMsg = String.format(
+                    "Error caught cleaning up encryption at rest for universe %s",
+                    taskParams().universeUUID
+            );
+            LOG.error(errMsg, e);
         }
     }
 }

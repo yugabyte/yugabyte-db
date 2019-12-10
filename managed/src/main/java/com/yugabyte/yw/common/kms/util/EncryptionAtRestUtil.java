@@ -14,8 +14,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.KmsHistory;
+import com.yugabyte.yw.models.KmsHistoryId;
+import com.yugabyte.yw.models.Universe;
 import java.lang.reflect.Constructor;
 import java.util.Base64;
+import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -131,5 +135,104 @@ public class EncryptionAtRestUtil {
         ));
         Play.current().injector().instanceOf(EncryptionAtRestUniverseKeyCache.class)
                 .removeCacheEntry(universeUUID);
+    }
+
+    public static void addKeyRef(UUID universeUUID, UUID configUUID, byte[] ref) {
+        KmsHistory.createKmsHistory(
+                configUUID,
+                universeUUID,
+                KmsHistoryId.TargetType.UNIVERSE_KEY,
+                Base64.getEncoder().encodeToString(ref)
+        );
+    }
+
+    public static KmsHistory getActiveKey(UUID universeUUID) {
+        KmsHistory activeHistory = null;
+        try {
+            activeHistory = KmsHistory.getActiveHistory(
+                    universeUUID,
+                    KmsHistoryId.TargetType.UNIVERSE_KEY
+            );
+        } catch (Exception e) {
+            final String errMsg = "Could not get key ref";
+            LOG.error(errMsg, e);
+        }
+        return activeHistory;
+    }
+
+    public static KmsHistory getLatestConfigKey(UUID universeUUID, UUID configUUID) {
+        KmsHistory latestHistory = null;
+        try {
+            latestHistory = KmsHistory.getLatestConfigHistory(
+                    universeUUID,
+                    configUUID,
+                    KmsHistoryId.TargetType.UNIVERSE_KEY
+            );
+        } catch (Exception e) {
+            final String errMsg = "Could not get key ref";
+            LOG.error(errMsg, e);
+        }
+        return latestHistory;
+    }
+
+    public static void removeKeyRotationHistory(UUID universeUUID, UUID configUUID) {
+        // Remove key ref history for the universe
+        KmsHistory.deleteAllConfigTargetKeyRefs(
+                configUUID,
+                universeUUID,
+                KmsHistoryId.TargetType.UNIVERSE_KEY
+        );
+        // Remove in-memory key ref -> key val cache entry, if it exists
+        EncryptionAtRestUtil.removeUniverseKeyCacheEntry(universeUUID);
+    }
+
+    public static boolean configInUse(UUID configUUID) {
+        return KmsHistory.configHasHistory(configUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
+    }
+
+    public static int getNumKeyRotations(UUID universeUUID) {
+        return getNumKeyRotations(universeUUID, null);
+    }
+
+    public static int getNumKeyRotations(UUID universeUUID, UUID configUUID) {
+        int numRotations = 0;
+        Universe universe = Universe.get(universeUUID);
+        if (universe == null) {
+            String errMsg = String.format("Invalid Universe UUID: %s", universeUUID.toString());
+            LOG.error(errMsg);
+            throw new IllegalArgumentException(errMsg);
+        }
+        try {
+            List<KmsHistory> keyRotations = configUUID == null ?
+                    KmsHistory.getAllTargetKeyRefs(
+                            universeUUID,
+                            KmsHistoryId.TargetType.UNIVERSE_KEY
+                    ) :
+                    KmsHistory.getAllConfigTargetKeyRefs(
+                            configUUID,
+                            universeUUID,
+                            KmsHistoryId.TargetType.UNIVERSE_KEY
+                    );
+            if (keyRotations != null) {
+                numRotations = keyRotations.size();
+            }
+        } catch (Exception e) {
+            String errMsg = String.format(
+                    "Error attempting to retrieve the number of key rotations " +
+                            "universe %s",
+                    universeUUID.toString()
+            );
+            LOG.error(errMsg, e);
+        }
+        return numRotations;
+    }
+
+    public static void activateKeyRef(UUID universeUUID, UUID configUUID, byte[] keyRef) {
+        KmsHistory.activateKeyRef(
+                universeUUID,
+                configUUID,
+                KmsHistoryId.TargetType.UNIVERSE_KEY,
+                Base64.getEncoder().encodeToString(keyRef)
+        );
     }
 }

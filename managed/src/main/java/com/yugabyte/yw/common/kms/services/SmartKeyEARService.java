@@ -125,9 +125,7 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
         final JsonNode errors = response.get("error");
         if (errors != null) throw new RuntimeException(errors.toString());
         final String kId = response.get("kid").asText();
-        byte[] ref = kId.getBytes();
-        if (ref != null && ref.length > 0) addKeyRef(configUUID, universeUUID, ref);
-        return ref;
+        return kId.getBytes();
     }
 
     @Override

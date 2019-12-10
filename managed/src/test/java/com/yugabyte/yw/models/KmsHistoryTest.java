@@ -37,9 +37,25 @@ public class KmsHistoryTest extends FakeDBApplication {
         UUID configUUID = UUID.randomUUID();
         UUID universeUUID = UUID.randomUUID();
         KmsHistory.createKmsHistory(configUUID, universeUUID, TargetType.UNIVERSE_KEY, "a");
-        KmsHistory keyRef = KmsHistory
-                .getCurrentConfigKeyRef(configUUID, universeUUID, TargetType.UNIVERSE_KEY);
-        assertEquals(keyRef.keyRef, "a");
+        KmsHistory.createKmsHistory(configUUID, universeUUID, TargetType.UNIVERSE_KEY, "b");
+
+        // Nothing should be returned because the key ref has not been set to active yet
+        KmsHistory keyRef = KmsHistory.getActiveHistory(universeUUID, TargetType.UNIVERSE_KEY);
+        assertEquals(null, keyRef);
+
+        // Activate key ref
+        KmsHistory.activateKeyRef(universeUUID, configUUID, TargetType.UNIVERSE_KEY, "a");
+
+        // Ensure that now a result (the active history row) is returned
+        keyRef = KmsHistory.getActiveHistory(universeUUID, TargetType.UNIVERSE_KEY);
+        assertEquals("a", keyRef.uuid.keyRef);
+
+        // Activate key ref
+        KmsHistory.activateKeyRef(universeUUID, configUUID, TargetType.UNIVERSE_KEY, "b");
+
+        // Ensure that now the appropriate result (the active history row) is returned
+        keyRef = KmsHistory.getActiveHistory(universeUUID, TargetType.UNIVERSE_KEY);
+        assertEquals("b", keyRef.uuid.keyRef);
     }
 
     @Test

@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -127,7 +128,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
                         metadata.put("provider", configModel.keyProvider.name());
                         metadata.put(
                                 "in_use",
-                                EncryptionAtRestService.configInUse(configModel.configUUID)
+                                EncryptionAtRestUtil.configInUse(configModel.configUUID)
                         );
                         metadata.put("name", configModel.name);
                         result.put("credentials", CommonUtils.maskConfig(credentials));
@@ -187,8 +188,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
         try {
             ObjectNode formData = (ObjectNode) request().body().asJson();
             keyRef = Base64.getDecoder().decode(formData.get("reference").asText());
-            UUID configUUID = keyManager.getKeyRefKMSConfigUUID(universeUUID, keyRef);
-            recoveredKey = keyManager.getCurrentUniverseKey(universeUUID, configUUID, keyRef);
+            UUID configUUID = UUID.fromString(formData.get("configUUID").asText());
+            recoveredKey = keyManager.getUniverseKey(universeUUID, configUUID, keyRef);
             if (recoveredKey == null || recoveredKey.length == 0) {
                 final String errMsg = String.format(
                         "No universe key found for universe %s",
@@ -224,8 +225,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
                     .stream()
                     .map(history -> {
                         return Json.newObject()
-                                .put("reference", history.keyRef)
-                                .put("configUUID", history.uuid.configUUID.toString())
+                                .put("reference", history.uuid.keyRef)
+                                .put("configUUID", history.configUuid.toString())
                                 .put("timestamp", history.timestamp.toString());
                     })
                     .collect(Collectors.toList()));
@@ -255,9 +256,9 @@ public class EncryptionAtRestController extends AuthenticatedController {
                 universeUUID.toString()
         ));
         try {
-            UUID configUUID = keyManager.getCurrentKMSConfigUUID(universeUUID);
-            byte[] keyRef = keyManager.getCurrentUniverseKeyRef(universeUUID, configUUID);
-            if (keyRef == null || keyRef.length == 0) {
+            KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universeUUID);
+            String keyRef = activeKey.uuid.keyRef;
+            if (keyRef == null || keyRef.length() == 0) {
                 return ApiResponse.error(BAD_REQUEST, String.format(
                         "Could not retrieve key service for customer %s and universe %s",
                         customerUUID.toString(),
@@ -265,7 +266,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
                 ));
             }
             return ApiResponse.success(Json.newObject().put(
-                    "reference", Base64.getEncoder().encodeToString(keyRef)
+                    "reference", keyRef
             ));
         } catch (Exception e) {
             return ApiResponse.error(BAD_REQUEST, e.getMessage());
