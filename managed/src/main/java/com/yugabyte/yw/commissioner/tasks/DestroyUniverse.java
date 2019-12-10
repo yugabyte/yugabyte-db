@@ -50,6 +50,10 @@ public class DestroyUniverse extends UniverseTaskBase {
         universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
       }
 
+      // Cleanup the kms_history table
+      createDestroyEncryptionAtRestTask()
+              .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+
       if (!universe.getUniverseDetails().isImportedUniverse()) {
         // Update the DNS entry for primary cluster to mirror creation.
         Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();

@@ -98,6 +98,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
 
 
   List<TaskType> KUBERNETES_DESTROY_UNIVERSE_TASKS = ImmutableList.of(
+      TaskType.DestroyEncryptionAtRest,
       TaskType.KubernetesCommandExecutor,
       TaskType.KubernetesCommandExecutor,
       TaskType.KubernetesCommandExecutor,
@@ -106,6 +107,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
 
 
   List<JsonNode> KUBERNETES_DESTROY_UNIVERSE_EXPECTED_RESULTS = ImmutableList.of(
+      Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of("commandType", HELM_DELETE.name())),
       Json.toJson(ImmutableMap.of("commandType", VOLUME_DELETE.name())),
       Json.toJson(ImmutableMap.of("commandType", NAMESPACE_DELETE.name())),
@@ -118,7 +120,8 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     for (TaskType taskType: KUBERNETES_DESTROY_UNIVERSE_TASKS) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       if (taskType != TaskType.RemoveUniverseEntry &&
-          taskType != TaskType.SwamperTargetsFileUpdate) {
+          taskType != TaskType.SwamperTargetsFileUpdate &&
+          taskType != TaskType.DestroyEncryptionAtRest) {
         assertEquals(numTasks, tasks.size());
       } else {
         assertEquals(1, tasks.size());
@@ -179,7 +182,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testForceDestoryKubernetesUniverseWithUpdateInProgress() {
+  public void testForceDestroyKubernetesUniverseWithUpdateInProgress() {
     setupUniverse(true);
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.isForceDelete = true;

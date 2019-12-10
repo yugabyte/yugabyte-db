@@ -705,29 +705,6 @@ public class Universe extends Model {
     return masterLeader.getHostText();
   }
 
-    /**
-     * Checks whether the universe is encryptedAtRest
-     *
-     * @return true if the universe is encrypted at rest, false otherwise
-     */
-  public boolean isEncryptedAtRest() {
-    boolean result = false;
-    EncryptionAtRestConfig config = getUniverseDetails().encryptionAtRestConfig;
-    if (config != null) result = config.encryptionAtRestEnabled;
-    return result;
-  }
-
-  public EncryptionAtRestConfig getEncryptionAtRestConfig() {
-    return getUniverseDetails().encryptionAtRestConfig;
-  }
-
-  public UUID getKMSConfigUUID() {
-    UUID result = null;
-    EncryptionAtRestConfig config = getUniverseDetails().encryptionAtRestConfig;
-    if (config != null) result = config.kmsConfigUUID;
-    return result;
-  }
-
   public boolean universeIsLocked() {
     return getUniverseDetails().updateInProgress;
   }

@@ -14,7 +14,10 @@ import com.avaje.ebean.annotation.EnumValue;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.Serializable;
 import java.util.UUID;
+import javax.persistence.Column;
 import javax.persistence.Embeddable;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
 import play.libs.Json;
 
 @Embeddable
@@ -24,41 +27,45 @@ public class KmsHistoryId implements Serializable {
         UNIVERSE_KEY;
     }
 
-    public UUID configUUID;
+    @Column(name = "key_ref")
+    public String keyRef;
 
-    public UUID targetUUID;
+    @Column(name = "target_uuid")
+    public UUID targetUuid;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type")
     public TargetType type;
 
-    public KmsHistoryId(UUID configUUID, UUID targetUUID, TargetType type) {
-        this.configUUID = configUUID;
-        this.targetUUID = targetUUID;
+    public KmsHistoryId(String keyRef, UUID targetUuid, TargetType type) {
+        this.keyRef = keyRef;
+        this.targetUuid = targetUuid;
         this.type = type;
     }
 
     @Override
     public String toString() {
-        JsonNode instance = Json.newObject()
-                .put("configUUID", configUUID.toString())
-                .put("targetUUID", targetUUID.toString())
-                .put("type", type.name());
-        return Json.newObject().set("KmsHistoryId", instance).toString();
+        return Json.newObject()
+                .put("key_ref", keyRef)
+                .put("target_uuid", targetUuid.toString())
+                .put("type", type.name())
+                .toString();
     }
 
     @Override
     public boolean equals(Object o) {
         if (!(o instanceof KmsHistoryId)) return false;
         KmsHistoryId oCast = (KmsHistoryId) o;
-        return oCast.configUUID.equals(this.configUUID) &&
-                oCast.targetUUID.equals(this.targetUUID) &&
+        return oCast.keyRef.equals(this.keyRef) &&
+                oCast.targetUuid.equals(this.targetUuid) &&
                 oCast.type.equals(this.type);
     }
 
     @Override
     public int hashCode() {
         int result = 11;
-        result = 31 * result + configUUID.hashCode();
-        result = 31 * result + targetUUID.hashCode();
+        result = 31 * result + keyRef.hashCode();
+        result = 31 * result + targetUuid.hashCode();
         result = 31 * result + type.hashCode();
         return result;
     }

@@ -379,25 +379,9 @@ public class UniverseController extends AuthenticatedController {
           taskParams.allowInsecure = false;
         }
 
-        // Setup encryption at rest for the universe
-        if (taskParams.encryptionAtRestConfig.opType.equals(OpType.ENABLE)) {
-          // TODO: (Daniel) - Move this out to an async task
-          byte[] data = keyManager.generateUniverseKey(
-                  taskParams.encryptionAtRestConfig.kmsConfigUUID,
-                  universe.universeUUID,
-                  taskParams.encryptionAtRestConfig
-          );
-          if (data == null || data.length == 0) {
-            String errMsg = "Was not able to retrieve a universe key from desired KMS provider. " +
-                    "Reverting to unencrypted universe";
-            LOG.warn(errMsg);
-            taskParams.encryptionAtRestConfig.opType = OpType.DISABLE;
-          }
-        } else if (
-                primaryCluster.userIntent.enableVolumeEncryption
-                        && primaryCluster.userIntent.providerType.equals(CloudType.aws)
-        ) {
-          // TODO: (Daniel) - Move this out to an async task
+        // TODO: (Daniel) - Move this out to an async task
+        if (primaryCluster.userIntent.enableVolumeEncryption
+                && primaryCluster.userIntent.providerType.equals(CloudType.aws)) {
           byte[] cmkArnBytes = keyManager.generateUniverseKey(
                   taskParams.encryptionAtRestConfig.kmsConfigUUID,
                   universe.universeUUID,
@@ -406,7 +390,7 @@ public class UniverseController extends AuthenticatedController {
           if (cmkArnBytes == null || cmkArnBytes.length == 0) {
             primaryCluster.userIntent.enableVolumeEncryption = false;
           } else {
-            // TODO: (Daniel) - Update this
+            // TODO: (Daniel) - Update this to be inside of encryptionAtRestConfig
             taskParams.cmkArn = new String(cmkArnBytes);
           }
         }
@@ -461,27 +445,6 @@ public class UniverseController extends AuthenticatedController {
 
     try {
       TaskType taskType = TaskType.SetUniverseKey;
-      switch (taskParams.encryptionAtRestConfig.opType) {
-        case ENABLE:
-          byte[] data = keyManager.generateUniverseKey(
-                  taskParams.encryptionAtRestConfig.kmsConfigUUID,
-                  universeUUID,
-                  taskParams.encryptionAtRestConfig
-          );
-          if (data == null || data.length == 0) {
-            String errMsg = "Was not able to retrieve a universe key from desired KMS provider";
-            throw new RuntimeException(errMsg);
-          }
-          break;
-        case DISABLE:
-          // TODO: (Daniel) - Should change the customer task task type depending
-          //  on if it is enable/rotate/disable
-          break;
-        default:
-        case UNDEFINED:
-          break;
-      }
-
       taskParams.expectedUniverseVersion = universe.version;
       UUID taskUUID = commissioner.submit(taskType, taskParams);
       LOG.info("Submitted set universe key for {}:{}, task uuid = {}.",
@@ -731,12 +694,6 @@ public class UniverseController extends AuthenticatedController {
       CustomerTask.TargetType.Universe,
       CustomerTask.TaskType.Delete,
       universe.name);
-
-    // TODO: (Daniel) - Move this out to an async task
-    if (universe.isEncryptedAtRest() ||
-            keyManager.getNumKeyRotations(universeUUID) > 0) {
-      keyManager.cleanupEncryptionAtRest(customerUUID, universeUUID);
-    }
 
     LOG.info("Destroyed universe " + universeUUID + " for customer [" + customer.name + "]");
 

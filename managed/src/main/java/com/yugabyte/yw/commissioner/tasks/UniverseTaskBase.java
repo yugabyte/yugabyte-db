@@ -74,6 +74,7 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 
+import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
 
@@ -163,6 +164,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         task = new EnableEncryptionAtRest();
         EnableEncryptionAtRest.Params enableParams = new EnableEncryptionAtRest.Params();
         enableParams.universeUUID = taskParams().universeUUID;
+        enableParams.encryptionAtRestConfig = taskParams().encryptionAtRestConfig;
         task.initialize(enableParams);
         subTaskGroup.addTask(task);
         subTaskGroupQueue.add(subTaskGroup);
@@ -211,6 +213,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     Universe universe = Universe.saveDetails(taskParams().universeUUID, updater);
     LOG.debug("Wrote user intent for universe {}.", taskParams().universeUUID);
 
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createDestroyEncryptionAtRestTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("DestroyEncryptionAtRest", executor);
+    DestroyEncryptionAtRest task = new DestroyEncryptionAtRest();
+    DestroyEncryptionAtRest.Params params = new DestroyEncryptionAtRest.Params();
+    params.universeUUID = taskParams().universeUUID;
+    task.initialize(params);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
   }
 

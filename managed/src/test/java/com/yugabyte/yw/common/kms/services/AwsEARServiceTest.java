@@ -54,7 +54,7 @@ import play.test.Helpers;
 @RunWith(MockitoJUnitRunner.class)
 public class AwsEARServiceTest extends FakeDBApplication {
     ApiHelper mockApiHelper;
-    TestEncryptionAtRestService encryptionService;
+    AwsEARService encryptionService;
 
     KeyProvider testKeyProvider = KeyProvider.AWS;
 
@@ -77,16 +77,6 @@ public class AwsEARServiceTest extends FakeDBApplication {
             new String("tcIQ6E6HJu4m3C4NbVf/1yNe/6jYi/0LAYDsIouwcnU=").getBytes();
 
     ByteBuffer decryptedKeyBuffer = ByteBuffer.wrap(mockEncryptionKey);
-
-    private class TestEncryptionAtRestService extends AwsEARService {
-        public boolean flipKeyRefResult = false;
-
-        @Override
-        public byte[] getKeyRef(UUID customerUUID, UUID universeUUID) {
-            this.flipKeyRefResult = !this.flipKeyRefResult;
-            return this.flipKeyRefResult ? null : new String("some_key_ref").getBytes();
-        }
-    }
 
     @Before
     public void setUp() {
@@ -117,7 +107,7 @@ public class AwsEARServiceTest extends FakeDBApplication {
                 );
         when(mockClient.decrypt(any(DecryptRequest.class))).thenReturn(mockDecryptResult);
         when(mockDecryptResult.getPlaintext()).thenReturn(decryptedKeyBuffer);
-        encryptionService = new TestEncryptionAtRestService();
+        encryptionService = new AwsEARService();
         config = new EncryptionAtRestConfig();
         // TODO: (Daniel) - Create KMS Config and link to here
         config.kmsConfigUUID = null;

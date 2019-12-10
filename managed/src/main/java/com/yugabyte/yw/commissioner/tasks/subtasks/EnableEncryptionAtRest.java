@@ -21,6 +21,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -41,6 +42,8 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
   // The YB client.
   public YBClientService ybService = null;
 
+  public EncryptionAtRestManager keyManager = null;
+
   // Timeout for failing to respond to pings.
   private static final long TIMEOUT_SERVER_WAIT_MS = 120000;
 
@@ -55,6 +58,7 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
   public void initialize(ITaskParams params) {
     super.initialize(params);
     ybService = Play.current().injector().instanceOf(YBClientService.class);
+    keyManager = Play.current().injector().instanceOf(EncryptionAtRestManager.class);
   }
 
   @Override
@@ -66,21 +70,34 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
     try {
       LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
       client = ybService.getClient(hostPorts, certificate);
-      EncryptionAtRestManager manager = Play.current()
-              .injector()
-              .instanceOf(EncryptionAtRestManager.class);
-      byte[] currentKeyRef = manager.getCurrentUniverseKeyRef(universe.universeUUID);
-      final byte[] currentKeyVal = manager.getCurrentUniverseKey(
-              universe.universeUUID,
-              currentKeyRef
+      final byte[] universeKeyRef = keyManager.generateUniverseKey(
+              taskParams().encryptionAtRestConfig.kmsConfigUUID,
+              taskParams().universeUUID,
+              taskParams().encryptionAtRestConfig
       );
-      final String encodedKeyRef = Base64.getEncoder().encodeToString(currentKeyRef);
+
+      if (universeKeyRef == null || universeKeyRef.length == 0) {
+        throw new RuntimeException("Error occured creating universe key");
+      }
+
+      final byte[] universeKeyVal = keyManager.getUniverseKey(
+              taskParams().universeUUID,
+              taskParams().encryptionAtRestConfig.kmsConfigUUID,
+              universeKeyRef,
+              taskParams().encryptionAtRestConfig
+      );
+
+      if (universeKeyVal == null || universeKeyVal.length == 0) {
+        throw new RuntimeException("Error occured creating universe key");
+      }
+
+      final String encodedKeyRef = Base64.getEncoder().encodeToString(universeKeyRef);
       List<HostAndPort> masterAddrs = Arrays
               .stream(hostPorts.split(","))
               .map(addr -> HostAndPort.fromString(addr))
               .collect(Collectors.toList());
       for (HostAndPort hp : masterAddrs) {
-        client.addUniverseKeys(ImmutableMap.of(encodedKeyRef, currentKeyVal), hp);
+        client.addUniverseKeys(ImmutableMap.of(encodedKeyRef, universeKeyVal), hp);
       }
       for (HostAndPort hp : masterAddrs) {
         if (!client
@@ -96,8 +113,14 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
               !isEncryptionEnabled.getSecond().equals(encodedKeyRef)) {
         throw new RuntimeException("Error occured enabling encryption at rest");
       }
+      // TODO: (Daniel) - Set key ref as active based on master node connectivity (#2982)
+      EncryptionAtRestUtil.activateKeyRef(
+              taskParams().universeUUID,
+              taskParams().encryptionAtRestConfig.kmsConfigUUID,
+              universeKeyRef
+      );
     } catch (Exception e) {
-      LOG.error("{} hit error : {}", getName(), e.getMessage());
+      LOG.error("{} hit error : {}", getName(), e.getMessage(), e);
       throw new RuntimeException(e);
     } finally {
       ybService.closeClient(client, hostPorts);

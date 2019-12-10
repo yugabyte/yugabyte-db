@@ -138,22 +138,6 @@ public class EncryptionAtRestServiceTest extends WithApplication {
     }
 
     @Test
-    public void testCreateAndRetrieveEncryptionKeyDuplicate() {
-        EncryptionAtRestService service = new TestEncryptionAtRestService(
-                null,
-                KeyProvider.SMARTKEY,
-                mockUtil,
-                false
-        );
-        EncryptionAtRestConfig testConfig = config.clone();
-        assertNull(service.createKey(
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                testConfig
-        ));
-    }
-
-    @Test
     public void testCreateKey() {
         EncryptionAtRestService service = new TestEncryptionAtRestService(
                 null,
@@ -171,6 +155,6 @@ public class EncryptionAtRestServiceTest extends WithApplication {
         EncryptionAtRestConfig testConfig = config.clone();
         byte[] key = service.createKey(universeUUID, customerUUID, testConfig);
         assertNotNull(key);
-        assertEquals("some_key_value", new String(key));
+        assertEquals("some_key_id", new String(key));
     }
 }

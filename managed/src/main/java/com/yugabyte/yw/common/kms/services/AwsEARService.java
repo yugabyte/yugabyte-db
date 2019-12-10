@@ -142,9 +142,6 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
                             keySize,
                             cmkId
                     );
-                    if (result != null && result.length > 0) {
-                        addKeyRef(configUUID, universeUUID, result);
-                    }
                     break;
             }
         }
@@ -192,7 +189,7 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
                 case DATA_KEY:
                     keyVal = AwsEARServiceUtil.decryptUniverseKey(configUUID, keyRef);
                     if (keyVal == null) {
-                        LOG.warn("Could not retrieve key from key ref");
+                        LOG.warn("Could not retrieve key from key ref through AWS KMS");
                     } else {
                         EncryptionAtRestUtil
                                 .setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
