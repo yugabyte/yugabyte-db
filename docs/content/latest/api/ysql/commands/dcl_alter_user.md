@@ -1,5 +1,6 @@
 ---
 title: ALTER USER
+linkTitle: ALTER USER
 description: Users and roles
 summary: Users and roles
 menu:
@@ -14,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`ALTER USER` is an alias for [`ALTER ROLE`](../dcl_alter_role) and is used to alter a role.
+Use the `ALTER USER` statementto alter a role. `ALTER USER` is an alias for [`ALTER ROLE`](../dcl_alter_role) and is used to alter a role.
 
 ## Syntax
 

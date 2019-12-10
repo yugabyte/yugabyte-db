@@ -1,7 +1,7 @@
 ---
 title: DROP GROUP
 linkTitle: DROP GROUP
-description: Groups and roles
+description: DROP GROUP
 summary: DROP GROUP
 menu:
   latest:
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`DROP GROUP` is an alias for [`DROP ROLE`](../dcl_drop_role) and is used to drop a role.
+Use the `DROP GROUP` to drop a role. `DROP GROUP` is an alias for [`DROP ROLE`](../dcl_drop_role) and is used to drop a role.
 
 ## Syntax
 

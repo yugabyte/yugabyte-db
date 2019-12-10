@@ -1,5 +1,6 @@
 ---
 title: CREATE POLICY
+linkTitle: CREATE POLICY
 description: CREATE POLICY
 summary: Create row level security policy
 menu:
@@ -14,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`CREATE POLICY` creates a new row level security policy for a table.
+Use the `CREATE POLICY` statement to create a new row level security policy for a table.
 A policy grants the permission to select, insert, update, or delete rows that match the relevant policy expression.
 Row level security must be enabled on the table using [ALTER TABLE](../ddl_alter_table) for the
 policies to take effect.
