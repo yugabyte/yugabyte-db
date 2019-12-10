@@ -1,6 +1,7 @@
 ---
 title: CREATE GROUP
-description: Groups and roles
+linkTitle: CREATE GROUP
+description: CREATE GROUP
 summary: Groups and roles
 menu:
   latest:
@@ -14,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`CREATE GROUP` is an alias for [`CREATE ROLE`](../dcl_create_role) and is used to create a group role.
+Use the `CREATE GROUP` statement to create a group role. `CREATE GROUP` is an alias for [`CREATE ROLE`](../dcl_create_role) and is used to create a group role.
 
 ## Syntax
 

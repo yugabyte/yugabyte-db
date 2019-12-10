@@ -1,7 +1,7 @@
 ---
 title: DROP USER
 linkTitle: DROP USER
-description: Users and roles
+description: DROP USER
 summary: DROP USER
 menu:
   latest:
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`DROP USER` is an alias for [`DROP ROLE`](../dcl_drop_role) and is used to drop a role.
+Use the `DROP USER` statement to drop a user or role. `DROP USER` is an alias for [`DROP ROLE`](../dcl_drop_role) and is used to drop a role.
 
 ## Syntax
 

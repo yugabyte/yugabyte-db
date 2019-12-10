@@ -1,5 +1,6 @@
 ---
 title: REASSIGN OWNED
+linkTitle: REASSIGN OWNED
 description: REASSIGN OWNED
 summary: Roles (users and groups)
 menu:
@@ -14,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`REASSIGN OWNED` changes the ownership of database objects owned by any of the old_roles to new_role.
+Use the `REASSIGN OWNED` statement to change the ownership of database objects owned by any of the `old_roles` to `new_role`.
 
 ## Syntax
 
@@ -44,7 +45,7 @@ showAsideToc: true
 
 ## Semantics
 
-`REASSIGN OWNED` is typically used to prepare for the removal of a role. It requires membership on both the source role(s) and target role.
+`REASSIGN OWNED` is typically used to prepare for the removal of a role. It requires membership on both the source roles and target role.
 
 ## Examples
 

@@ -1,5 +1,6 @@
 ---
 title: CREATE ROLE
+linkTitle: CREATE ROLE
 description: CREATE ROLE
 summary: Roles (users and groups)
 menu:

@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `GRANT` statement is used to grant access privileges on database objects as well as to assign membership in roles.
+Use the `GRANT` statement to grant access privileges on database objects as well as to assign membership in roles.
 
 ## Syntax
 

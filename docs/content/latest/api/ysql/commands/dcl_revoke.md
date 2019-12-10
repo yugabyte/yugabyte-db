@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `REVOKE` statement is used to remove access privileges from one or more roles.
+Use the `REVOKE` statement to remove access privileges from one or more roles.
 
 ## Syntax
 
