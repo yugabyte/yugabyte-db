@@ -81,15 +81,15 @@ The following SQL statements are supported by the Yugabyte Structured Query Lang
 | [`INSERT`](dml_insert) | Insert rows into a table |
 | [`LOCK`](txn_lock) | Locks a table |
 | [`PREPARE`](perf_prepare) | Prepare a statement |
-| [`REASSIGN OWNED`](reassign_owned) | Reassign owned objects |
+| [`REASSIGN OWNED`](dcl_reassign_owned) | Reassign owned objects |
 | [`RESET`](cmd_reset) | Reset a parameter to factory settings |
 | [`REVOKE`](dcl_revoke) | Remove access privileges |
 | [`ROLLBACK`](txn_rollback) | Rollback a transaction |
 | [`SELECT`](dml_select) | Select rows from a table |
 | [`SET`](cmd_set) | Set a system, session, or transactional parameter |
 | [`SET CONSTRAINTS`](txn_set_constraints) | Set constraints on current transaction |
-| [`SET ROLE`](set_role) | Set a role |
-| [`SET SESSION AUTHORIZATION`](set_session_authorization) | Set session authorization |
+| [`SET ROLE`](dcl_set_role) | Set a role |
+| [`SET SESSION AUTHORIZATION`](dcl_set_session_authorization) | Set session authorization |
 | [`SET TRANSACTION`](txn_set) | Set transaction behaviors |
 | [`SHOW`](cmd_show) | Show value of a system, session, or transactional parameter |
 | [`SHOW TRANSACTION`](txn_show) | Show properties of a transaction |
