@@ -821,7 +821,8 @@ TEST_P(TwoDCTest, TestDeleteUniverse) {
 TEST_P(TwoDCTest, TestWalRetentionSet) {
   FLAGS_cdc_wal_retention_time_secs = 8 * 3600;
 
-  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4, 4, 12}, {8, 4, 12, 8}, 3));
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4, 4, 12}, {8, 4, 12, 8}, replication_factor));
 
   std::vector<std::shared_ptr<client::YBTable>> producer_tables;
   // tables contains both producer and consumer universe tables (alternately).
