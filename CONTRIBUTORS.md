@@ -82,5 +82,5 @@ This is a list of people who have contributed code to the [YugaByte DB](https://
 * [dashaun](https://github.com/dashaun)
 * [aegershman](https://github.com/aegershman)
 * [hasheddan](https://github.com/hasheddan)
-
+* [ameyb](https://github.com/ameyb)
 
