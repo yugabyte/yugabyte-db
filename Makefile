@@ -15,6 +15,7 @@ OBJS = ag_catalog.o \
        cypher_gram.o \
        cypher_keywords.o \
        cypher_parser.o \
+       cypher_path.o \
        nodes.o \
        outfuncs.o \
        scan.o

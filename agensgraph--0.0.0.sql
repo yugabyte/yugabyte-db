@@ -341,6 +341,20 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 --
+-- functions for updating clauses
+--
+
+CREATE FUNCTION cypher_create_clause(internal)
+RETURNS agtype
+LANGUAGE c
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION cypher_dummy_clause()
+RETURNS SETOF agtype
+LANGUAGE c
+AS 'MODULE_PATHNAME';
+
+--
 -- query functions
 --
 

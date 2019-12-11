@@ -81,3 +81,6 @@ SELECT * FROM cypher($$RETURN 0$$) AS (c oid);
 ERROR:  cannot cast type agtype to oid for column "c"
 LINE 1: SELECT * FROM cypher($$RETURN 0$$) AS (c oid);
                       ^
+-- CREATE clause should throw an error
+SELECT * FROM cypher($$CREATE ()$$) AS (a agtype);
+ERROR:  CREATE clause is not implemented

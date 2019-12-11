@@ -467,10 +467,6 @@ create:
             n->pattern = $2;
 
             $$ = (Node *)n;
-
-            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                            errmsg("CREATE clause not implemented"),
-                            ag_scanner_errposition(@1, scanner)));
         }
     ;
 
