@@ -63,7 +63,9 @@ cd ~/code/yugabyte-db
 The above command will build the release configuration, put the C++ binaries in `build/release-gcc-dynamic-community`, and will also create the `build/latest` symlink to that directory.
 
 {{< tip title="Tip" >}}
+
 You can find the binaries you just built in `build/latest` directory.
+
 {{< /tip >}}
 
 For Linux, it will first make sure our custom Linuxbrew distribution is installed into `~/.linuxbrew-yb-build/linuxbrew-<version>`.
