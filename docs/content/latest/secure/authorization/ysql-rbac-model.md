@@ -43,7 +43,7 @@ Privilege  | Objects                      | Operations                          
 
 {{< note title="Note" >}}
 
-The `ALTER TABLE` privilege on the base table is required in order to `CREATE` or `DROP` indexes on it.
+The ALTER TABLE privilege on the base table is required in order to CREATE or DROP indexes on it.
 
 {{< /note >}}
 

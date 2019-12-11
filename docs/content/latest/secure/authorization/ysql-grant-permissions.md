@@ -96,7 +96,7 @@ The above shows the various privileges the `yugabyte` role has. Since `yugabyte`
 
 {{< note title="Note" >}}
 
-For the sake of brevity, we will drop the `yugabyte` role-related entries in the remainder of this tutorial.
+For the sake of brevity, we will drop the "yugabyte" role-related entries in the remainder of this tutorial.
 
 {{< /note >}}
 

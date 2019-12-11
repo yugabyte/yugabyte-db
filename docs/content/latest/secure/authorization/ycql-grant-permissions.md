@@ -96,7 +96,7 @@ The above shows the various permissions the `cassandra` role has. Since `cassand
 
 {{< note title="Note" >}}
 
-For the sake of brevity, we will drop the `cassandra` role related entries in the remainder of this article.
+For the sake of brevity, we will drop the "cassandra" role related entries in the remainder of this article.
 
 {{< /note >}}
 
