@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`DROP OWNED` drops all the objects within the current database that are owned by one of the specified roles.
+Use the `DROP OWNED` statement to drop all database objects within the current database that are owned by one of the specified roles.
 Any privileges granted to the given roles on objects in the current database or on shared objects will also be revoked.
 
 ## Syntax

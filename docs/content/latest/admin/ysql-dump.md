@@ -138,7 +138,7 @@ Dump object identifiers (OIDs) as part of the data for every table. Use this opt
 
 ### --no-owner | -O
 
-Do not output commands to set ownership of objects to match the original database. By default, `ysql_dump` issues `ALTER OWNER` or `SET SESSION AUTHORIZATION` statements to set ownership of created database objects. These statements will fail when the script is run unless it is started by a superuser (or the same user that owns all of the objects in the script). To make a script that can be restored by any user, but will give that user ownership of all the objects, specify `-O`.
+Do not output statements to set ownership of objects to match the original database. By default, `ysql_dump` issues `ALTER OWNER` or `SET SESSION AUTHORIZATION` statements to set ownership of created database objects. These statements will fail when the script is run unless it is started by a superuser (or the same user that owns all of the objects in the script). To make a script that can be restored by any user, but will give that user ownership of all the objects, specify `-O`.
 
 ### --schema-only | -s
 
@@ -258,19 +258,13 @@ The data section contains actual table data, large-object contents, and sequence
 
 ### --serializable-deferrable
 
-Use a serializable transaction for the dump, to ensure that the snapshot used is consistent with later database states; but do this by waiting for a point in the transaction stream at which no anomalies can be present, so that there isn't a risk of the dump failing or causing other transactions to roll back with a `serialization_failure`.
+Use a serializable transaction for the dump to ensure that the snapshot used is consistent with later database states by waiting for a point in the transaction stream at which no anomalies can be present, so that there is no risk of the dump failing or causing other transactions to roll back with a `serialization_failure`.
 
-For dumps intended for disaster recovery, this option is not beneficial. It could be useful for a dump used to load a copy of the database for reporting or other read-only load sharing while the original database continues to be updated. Without it, the dump may reflect a state which is not consistent with any serial execution of the transactions eventually committed. For example, if batch processing techniques are used, a batch may show as closed in the dump without all of the items which are in the batch appearing.
+If there are active read-write transactions, the maximum wait time until the start of the dump will be `50ms` (based on the default [`--max_clock_skew_usec`](../../../admin/yb-tserver.md) for YB-TServer and YB-Master services.) If there are no active read-write transactions when `ysql_dump` is started, this option will not make any difference. Once running, performance with or without the switch is the same.
 
-This option will make no difference if there are no read-write transactions active when `ysql_dump` is started. If read-write transactions are active, the start of the dump may be delayed for an indeterminate length of time. Once running, performance with or without the switch is the same.
+### --snapshot
 
-### --snapshot=*snapshotname*
-
-Use the specified synchronized snapshot when making a dump of the database.
-
-This option is useful when needing to synchronize the dump with a logical replication slot or with a concurrent session.
-
-In the case of a parallel dump, the snapshot name defined by this option is used rather than taking a new snapshot.
+Use the specified synchronized snapshot when making a dump of the database. This option is useful when needing to synchronize the dump with a logical replication slot or with a concurrent session. In the case of a parallel dump, the snapshot name defined by this option is used rather than taking a new snapshot.
 
 ### --strict-names
 
@@ -281,6 +275,10 @@ This option has no effect on [`--exclude-schema`](#exclude-schema), `-T` | `--ex
 ### --use-set-session-authorization
 
 Output SQL-standard `SET SESSION AUTHORIZATION` statements instead of `ALTER OWNER` statements to determine object ownership. This makes the dump more standards-compatible, but depending on the history of the objects in the dump, might not restore properly. Also, a dump using `SET SESSION AUTHORIZATION` statements will certainly require superuser privileges to restore correctly, whereas `ALTER OWNER` statements requires lesser privileges.
+
+**Syntax**
+
+
 
 ### -? | --help
 
