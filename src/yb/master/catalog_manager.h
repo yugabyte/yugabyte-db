@@ -71,7 +71,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/permissions_manager.h"
-#include "yb/master/initial_sys_catalog_snapshot.h"
+#include "yb/master/sys_catalog_initialization.h"
 
 namespace yb {
 
@@ -124,18 +124,6 @@ class BlacklistState {
   // In-memory tracker for initial blacklist load.
   int64_t initial_load_;
 };
-
-// Convenience typedefs.
-typedef std::unordered_map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
-typedef std::unordered_map<TableId, scoped_refptr<TableInfo>> TableInfoMap;
-typedef std::pair<NamespaceId, TableName> TableNameKey;
-typedef std::unordered_map<
-    TableNameKey, scoped_refptr<TableInfo>, boost::hash<TableNameKey>> TableInfoByNameMap;
-
-typedef std::unordered_map<UDTypeId, scoped_refptr<UDTypeInfo>> UDTypeInfoMap;
-typedef std::pair<NamespaceId, UDTypeName> UDTypeNameKey;
-typedef std::unordered_map<
-    UDTypeNameKey, scoped_refptr<UDTypeInfo>, boost::hash<UDTypeNameKey>> UDTypeInfoByNameMap;
 
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
@@ -668,8 +656,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Sets up various system configs.
   CHECKED_STATUS PrepareDefaultSysConfig(int64_t term);
 
-  // Starts an asynchronous run of initdb. Errors are handled in the callback.
-  CHECKED_STATUS StartRunningInitDbIfNeeded(int64_t term) REQUIRES_SHARED(lock_);
+  // Starts an asynchronous run of initdb. Errors are handled in the callback. Returns true
+  // if started running initdb, false if decided that it is not needed.
+  bool StartRunningInitDbIfNeeded(int64_t term) REQUIRES_SHARED(lock_);
 
   CHECKED_STATUS PrepareDefaultNamespaces(int64_t term);
 

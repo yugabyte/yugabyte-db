@@ -157,12 +157,6 @@ struct KvStoreInfo {
   std::vector<std::unique_ptr<TableInfo>> old_tables;
 };
 
-// Manages the "blocks tracking" for the specified Raft group.
-//
-// RaftGroupMetadata is owned by the Raft group. As new blocks are written to store
-// the Raft group's data, the Tablet calls Flush() to persist the block list
-// on disk.
-//
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
 // super block found in the tablets/ directory, and then instantiate
 // Raft groups from this data.

@@ -34,6 +34,7 @@
 #include <iostream>
 
 #include <boost/optional/optional.hpp>
+#include "yb/tserver/tserver_error.h"
 #include <glog/logging.h>
 
 #ifdef TCMALLOC_ENABLED

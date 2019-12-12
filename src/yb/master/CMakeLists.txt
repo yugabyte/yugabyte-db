@@ -79,7 +79,7 @@ set(MASTER_SRCS
   master-path-handlers.cc
   mini_master.cc
   sys_catalog.cc
-  initial_sys_catalog_snapshot.cc
+  sys_catalog_initialization.cc
   system_tablet.cc
   tasks_tracker.cc
   ts_descriptor.cc

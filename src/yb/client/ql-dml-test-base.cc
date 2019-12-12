@@ -27,6 +27,8 @@
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+DECLARE_bool(enable_ysql);
+
 using namespace std::literals;
 
 namespace yb {
@@ -53,6 +55,7 @@ QLWriteRequestPB::QLStmtType GetQlStatementType(const WriteOpType op_type) {
 } // namespace
 
 void QLDmlTestBase::SetUp() {
+  SetAtomicFlag(false, &FLAGS_enable_ysql);
   HybridTime::TEST_SetPrettyToString(true);
 
   YBMiniClusterTestBase::SetUp();

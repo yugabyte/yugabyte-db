@@ -16,6 +16,7 @@
 #ifndef YB_UTIL_RESULT_H
 #define YB_UTIL_RESULT_H
 
+#include <string>
 #include <type_traits>
 
 #include "yb/util/status.h"

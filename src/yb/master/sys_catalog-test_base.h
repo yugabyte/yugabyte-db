@@ -88,16 +88,37 @@ class SysCatalogTest : public YBTest {
 
 const int64_t kLeaderTerm = 1;
 
-static bool PbEquals(const google::protobuf::Message& a, const google::protobuf::Message& b) {
+inline bool PbEquals(const google::protobuf::Message& a, const google::protobuf::Message& b) {
   return a.DebugString() == b.DebugString();
 }
 
 template<class C>
-static bool MetadatasEqual(C* ti_a, C* ti_b) {
+std::pair<std::string, std::string> AssertMetadataEqualsHelper(C* ti_a, C* ti_b) {
   auto l_a = ti_a->LockForRead();
   auto l_b = ti_b->LockForRead();
-  return PbEquals(l_a->data().pb, l_b->data().pb);
+  return std::make_pair(l_a->data().pb.DebugString(), l_b->data().pb.DebugString());
 }
+
+// Similar to ASSERT_EQ but compares string representations of protobufs stored in two system
+// catalog metadata objects.
+//
+// This uses a gtest internal macro for user-friendly output, as it shows the expressions passed to
+// ASSERT_METADATA_EQ the same way ASSERT_EQ would show them. If the internal macro stops working
+// the way it does now with a future version of gtest, it could be replaced with:
+//
+// ASSERT_EQ(string_reps.first, string_reps.second)
+//     << "Expecting string representations of metadata protobufs to be the same for "
+//     << #a << " and " << #b;
+
+#define ASSERT_METADATA_EQ(a, b) do { \
+    auto string_reps = AssertMetadataEqualsHelper((a), (b)); \
+    GTEST_ASSERT_( \
+      ::testing::internal::EqHelper<GTEST_IS_NULL_LITERAL_(a)>::Compare \
+          (#a, #b, string_reps.first, string_reps.second), \
+          GTEST_FATAL_FAILURE_); \
+  } while (false)
+
+
 
 } // namespace master
 } // namespace yb

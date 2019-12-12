@@ -256,7 +256,14 @@ Status PgWrapper::Start() {
     "-k", ""
   };
 
-  if (!FLAGS_logtostderr && !FLAGS_log_dir.empty()) {
+  bool log_to_file = !FLAGS_logtostderr && !FLAGS_log_dir.empty() && !conf_.force_disable_log_file;
+  VLOG(1) << "Deciding whether the child postgres process should to file: "
+          << EXPR_VALUE_FOR_LOG(FLAGS_logtostderr) << ", "
+          << EXPR_VALUE_FOR_LOG(FLAGS_log_dir.empty()) << ", "
+          << EXPR_VALUE_FOR_LOG(conf_.force_disable_log_file) << ": "
+          << EXPR_VALUE_FOR_LOG(log_to_file);
+
+  if (log_to_file) {
     argv.push_back("-c");
     argv.push_back("logging_collector=on");
     // FLAGS_log_dir should already be set by tserver during startup.

@@ -90,7 +90,7 @@ TEST_F(SysCatalogTest, TestSysCatalogCDCStreamOperations) {
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
   ASSERT_EQ(1, loader->streams.size());
-  ASSERT_TRUE(MetadatasEqual(stream.get(), loader->streams[0]));
+  ASSERT_METADATA_EQ(stream.get(), loader->streams[0]);
 
   // 2. CHECK DELETE_CDCSTREAM.
   ASSERT_OK(sys_catalog->DeleteItem(stream.get(), kLeaderTerm));
@@ -122,7 +122,7 @@ TEST_F(SysCatalogTest, TestSysCatalogUniverseReplicationOperations) {
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
   ASSERT_EQ(1, loader->universes.size());
-  ASSERT_TRUE(MetadatasEqual(universe.get(), loader->universes[0]));
+  ASSERT_METADATA_EQ(universe.get(), loader->universes[0]);
 
   // 2. CHECK DELETE_UNIVERSE_REPLICATION.
   ASSERT_OK(sys_catalog->DeleteItem(universe.get(), kLeaderTerm));

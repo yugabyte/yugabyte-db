@@ -1439,8 +1439,10 @@ SELECT attname, most_common_vals FROM pg_stats
 
 --
 -- Collation support
+-- Running in serializable mode to pick up rows created within the separate DDL transaction.
 --
 BEGIN;
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 CREATE TABLE coll_t (c) AS VALUES ('bar'::text);
 CREATE POLICY coll_p ON coll_t USING (c < ('foo'::text COLLATE "C"));
 ALTER TABLE coll_t ENABLE ROW LEVEL SECURITY;

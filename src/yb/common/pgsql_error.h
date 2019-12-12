@@ -28,6 +28,11 @@ struct PgsqlErrorTag : IntegralErrorTag<YBPgErrorCode> {
   static std::string ToMessage(Value value) {
     return ToString(value);
   }
+
+  static std::string DecodeToString(const uint8_t* source) {
+    return ToMessage(Decode(source));
+  }
+
 };
 
 typedef StatusErrorCodeImpl<PgsqlErrorTag> PgsqlError;

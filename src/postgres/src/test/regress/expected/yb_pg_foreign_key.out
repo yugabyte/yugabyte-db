@@ -752,14 +752,29 @@ CREATE TABLE FKTABLE_FAIL1 ( ftest1 int, CONSTRAINT fkfail1 FOREIGN KEY (ftest2)
 ERROR:  column "ftest2" referenced in foreign key constraint does not exist
 CREATE TABLE FKTABLE_FAIL2 ( ftest1 int, CONSTRAINT fkfail1 FOREIGN KEY (ftest1) REFERENCES PKTABLE(ptest2));
 ERROR:  column "ptest2" referenced in foreign key constraint does not exist
-DROP TABLE FKTABLE_FAIL1;
-DROP TABLE FKTABLE_FAIL2;
+SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL1';
+ count
+-------
+     0
+(1 row)
+
+SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL2';
+ count
+-------
+     0
+(1 row)
+
 DROP TABLE PKTABLE;
 -- Test for referencing column number smaller than referenced constraint
 CREATE TABLE PKTABLE (ptest1 int, ptest2 int, UNIQUE(ptest1, ptest2));
 CREATE TABLE FKTABLE_FAIL1 (ftest1 int REFERENCES pktable(ptest1));
 ERROR:  there is no unique constraint matching given keys for referenced table "pktable"
-DROP TABLE FKTABLE_FAIL1;
+SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL1';
+ count
+-------
+     0
+(1 row)
+
 DROP TABLE PKTABLE;
 --
 -- Tests for mismatched types
@@ -771,15 +786,11 @@ INSERT INTO PKTABLE VALUES(42);
 CREATE TABLE FKTABLE (ftest1 inet REFERENCES pktable);
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
 DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and integer.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- This should also fail for the same reason, but here we
 -- give the column name
 CREATE TABLE FKTABLE (ftest1 inet REFERENCES pktable(ptest1));
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
 DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and integer.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- This should succeed, even though they are different types,
 -- because int=int8 exists and is a member of the integer opfamily
 CREATE TABLE FKTABLE (ftest1 int8 REFERENCES pktable);
@@ -799,8 +810,6 @@ DROP TABLE FKTABLE;
 CREATE TABLE FKTABLE (ftest1 numeric REFERENCES pktable);
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
 DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: numeric and integer.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
 -- On the other hand, this should work because int implicitly promotes to
 -- numeric, and we allow promotion on the FK side
@@ -825,32 +834,22 @@ CREATE TABLE PKTABLE (ptest1 int, ptest2 text, PRIMARY KEY(ptest1, ptest2));
 CREATE TABLE FKTABLE (ftest1 cidr, ftest2 timestamp, FOREIGN KEY(ftest1, ftest2) REFERENCES pktable);
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
 DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and integer.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- Again, so should this...
 CREATE TABLE FKTABLE (ftest1 cidr, ftest2 timestamp, FOREIGN KEY(ftest1, ftest2) REFERENCES pktable(ptest1, ptest2));
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
 DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and integer.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- This fails because we mixed up the column ordering
 CREATE TABLE FKTABLE (ftest1 int, ftest2 text, FOREIGN KEY(ftest2, ftest1) REFERENCES pktable);
 ERROR:  foreign key constraint "fktable_ftest2_fkey" cannot be implemented
 DETAIL:  Key columns "ftest2" and "ptest1" are of incompatible types: text and integer.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- As does this...
 CREATE TABLE FKTABLE (ftest1 int, ftest2 text, FOREIGN KEY(ftest2, ftest1) REFERENCES pktable(ptest1, ptest2));
 ERROR:  foreign key constraint "fktable_ftest2_fkey" cannot be implemented
 DETAIL:  Key columns "ftest2" and "ptest1" are of incompatible types: text and integer.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- And again..
 CREATE TABLE FKTABLE (ftest1 int, ftest2 text, FOREIGN KEY(ftest1, ftest2) REFERENCES pktable(ptest2, ptest1));
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
 DETAIL:  Key columns "ftest1" and "ptest2" are of incompatible types: integer and text.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- This works...
 CREATE TABLE FKTABLE (ftest1 int, ftest2 text, FOREIGN KEY(ftest2, ftest1) REFERENCES pktable(ptest2, ptest1));
 DROP TABLE FKTABLE;
@@ -872,22 +871,16 @@ CREATE TABLE PKTABLE (ptest1 int, ptest2 text, ptest3 int, ptest4 text, PRIMARY 
 ptest4) REFERENCES pktable(ptest2, ptest1));
 ERROR:  foreign key constraint "pktable_ptest3_fkey" cannot be implemented
 DETAIL:  Key columns "ptest3" and "ptest2" are of incompatible types: integer and text.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE PKTABLE;
 -- Nor should this... (same reason, we have 4,3 referencing 1,2 which mismatches types
 CREATE TABLE PKTABLE (ptest1 int, ptest2 text, ptest3 int, ptest4 text, PRIMARY KEY(ptest1, ptest2), FOREIGN KEY(ptest4,
 ptest3) REFERENCES pktable(ptest1, ptest2));
 ERROR:  foreign key constraint "pktable_ptest4_fkey" cannot be implemented
 DETAIL:  Key columns "ptest4" and "ptest1" are of incompatible types: text and integer.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE PKTABLE;
 -- Not this one either... Same as the last one except we didn't defined the columns being referenced.
 CREATE TABLE PKTABLE (ptest1 int, ptest2 text, ptest3 int, ptest4 text, PRIMARY KEY(ptest1, ptest2), FOREIGN KEY(ptest4,
 ptest3) REFERENCES pktable);
 ERROR:  foreign key constraint "pktable_ptest4_fkey" cannot be implemented
 DETAIL:  Key columns "ptest4" and "ptest1" are of incompatible types: text and integer.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE PKTABLE;
 -- TODO: YugaByte does not yet support table inheritance.
 -- Leaving the first failing statement uncommented so that this test
 -- will fail when the feature is implemented (the full test should

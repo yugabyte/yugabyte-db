@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <boost/preprocessor/seq/for_each.hpp>
+
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 #include "yb/common/pgsql_error.h"
@@ -18,6 +20,7 @@
 #include "yb/gutil/endian.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 
 using namespace std::literals;
@@ -27,15 +30,47 @@ namespace pgwrapper {
 
 namespace {
 
+// Converts the given element of the ExecStatusType enum to a string.
+std::string ExecStatusTypeToStr(ExecStatusType exec_status_type) {
+#define EXEC_STATUS_SWITCH_CASE(r, data, item) case item: return #item;
+#define EXEC_STATUS_TYPE_ENUM_ELEMENTS \
+    (PGRES_EMPTY_QUERY) \
+    (PGRES_COMMAND_OK) \
+    (PGRES_TUPLES_OK) \
+    (PGRES_COPY_OUT) \
+    (PGRES_COPY_IN) \
+    (PGRES_BAD_RESPONSE) \
+    (PGRES_NONFATAL_ERROR) \
+    (PGRES_FATAL_ERROR) \
+    (PGRES_COPY_BOTH) \
+    (PGRES_SINGLE_TUPLE)
+  switch (exec_status_type) {
+    BOOST_PP_SEQ_FOR_EACH(EXEC_STATUS_SWITCH_CASE, ~, EXEC_STATUS_TYPE_ENUM_ELEMENTS)
+  }
+#undef EXEC_STATUS_SWITCH_CASE
+#undef EXEC_STATUS_TYPE_ENUM_ELEMENTS
+  return Format("Unknown ExecStatusType ($0)", exec_status_type);
+}
+
 YBPgErrorCode GetSqlState(PGresult* result) {
-  auto status = PQresultStatus(result);
-  if (status == ExecStatusType::PGRES_COMMAND_OK) {
+  auto exec_status_type = PQresultStatus(result);
+  if (exec_status_type == ExecStatusType::PGRES_COMMAND_OK) {
     return YBPgErrorCode::YB_PG_SUCCESSFUL_COMPLETION;
   }
 
   const char* sqlstate_str = PQresultErrorField(result, PG_DIAG_SQLSTATE);
-  CHECK_NOTNULL(sqlstate_str);
-  CHECK_EQ(5, strlen(sqlstate_str));
+  if (sqlstate_str == nullptr) {
+    auto err_msg = PQresultErrorMessage(result);
+    YB_LOG_EVERY_N_SECS(WARNING, 5)
+        << "SQLSTATE is not defined for result with "
+        << "error message: " << (err_msg ? err_msg : "N/A") << ", "
+        << "PQresultStatus: " << ExecStatusTypeToStr(exec_status_type);
+    return YBPgErrorCode::YB_PG_INTERNAL_ERROR;
+  }
+
+  CHECK_EQ(5, strlen(sqlstate_str))
+      << "sqlstate_str: " << sqlstate_str
+      << ", PQresultStatus: " << ExecStatusTypeToStr(exec_status_type);
 
   uint32_t sqlstate = 0;
 

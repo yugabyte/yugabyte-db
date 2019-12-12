@@ -149,6 +149,9 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
     RETURN_NOT_OK(env_->CreateDir(fs_root_));
   }
 
+  // TODO: properly handle setting these variables in case of multiple MiniClusters in the same
+  // process.
+
   // Use conservative number of threads for the mini cluster for unit test env
   // where several unit tests tend to run in parallel.
   // To get default number of threads - try to find SERVICE_POOL_OPTIONS macro usage.
@@ -166,11 +169,7 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
   FLAGS_use_private_ip = "cloud";
 
   // This dictates the RF of newly created tables.
-  if (num_ts_initial_ >= 3) {
-    FLAGS_replication_factor = 3;
-  } else {
-    FLAGS_replication_factor = 1;
-  }
+  SetAtomicFlag(num_ts_initial_ >= 3 ? 3 : 1, &FLAGS_replication_factor);
   FLAGS_memstore_size_mb = 16;
 
   // start the masters

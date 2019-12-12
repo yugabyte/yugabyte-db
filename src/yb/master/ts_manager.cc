@@ -107,47 +107,63 @@ Status TSManager::RegisterTS(const NodeInstancePB& instance,
                              const TSRegistrationPB& registration,
                              CloudInfoPB local_cloud_info,
                              rpc::ProxyCache* proxy_cache) {
-  std::lock_guard<decltype(lock_)> l(lock_);
-  const string& uuid = instance.permanent_uuid();
+  TSCountCallback callback_to_call;
 
-  auto it = servers_by_id_.find(uuid);
-  if (it == servers_by_id_.end()) {
-    // Check if a server with the same host and port already exists.
-    for (const auto& map_entry : servers_by_id_) {
-      const auto ts_info = map_entry.second->GetTSInformationPB();
+  {
+    std::lock_guard<decltype(lock_)> l(lock_);
+    const string& uuid = instance.permanent_uuid();
 
-      if (HasSameHostPort(ts_info->registration().common().private_rpc_addresses(),
-                          registration.common().private_rpc_addresses()) ||
-          HasSameHostPort(ts_info->registration().common().broadcast_addresses(),
-                          registration.common().broadcast_addresses())) {
-        if (ts_info->tserver_instance().instance_seqno() >= instance.instance_seqno()) {
-          // Skip adding the node since we already have a node with the same rpc address and
-          // a higher sequence number.
-          LOG(WARNING) << "Skipping registration for TS " << instance.ShortDebugString()
-              << " since an entry with same host/port but a higher sequence number exists "
-              << ts_info->ShortDebugString();
-          return Status::OK();
-        } else {
-          LOG(WARNING) << "Removing entry: " << ts_info->ShortDebugString()
-              << " since we received registration for a tserver with a higher sequence number: "
-              << instance.ShortDebugString();
-          // Mark the old node to be removed, since we have a newer sequence number.
-          map_entry.second->SetRemoved();
+    auto it = servers_by_id_.find(uuid);
+    if (it == servers_by_id_.end()) {
+      // Check if a server with the same host and port already exists.
+      for (const auto& map_entry : servers_by_id_) {
+        const auto ts_info = map_entry.second->GetTSInformationPB();
+
+        if (HasSameHostPort(ts_info->registration().common().private_rpc_addresses(),
+                            registration.common().private_rpc_addresses()) ||
+            HasSameHostPort(ts_info->registration().common().broadcast_addresses(),
+                            registration.common().broadcast_addresses())) {
+          if (ts_info->tserver_instance().instance_seqno() >= instance.instance_seqno()) {
+            // Skip adding the node since we already have a node with the same rpc address and
+            // a higher sequence number.
+            LOG(WARNING) << "Skipping registration for TS " << instance.ShortDebugString()
+                << " since an entry with same host/port but a higher sequence number exists "
+                << ts_info->ShortDebugString();
+            return Status::OK();
+          } else {
+            LOG(WARNING) << "Removing entry: " << ts_info->ShortDebugString()
+                << " since we received registration for a tserver with a higher sequence number: "
+                << instance.ShortDebugString();
+            // Mark the old node to be removed, since we have a newer sequence number.
+            map_entry.second->SetRemoved();
+          }
         }
       }
+
+      auto new_desc = VERIFY_RESULT(TSDescriptor::RegisterNew(
+          instance, registration, std::move(local_cloud_info), proxy_cache));
+      InsertOrDie(&servers_by_id_, uuid, std::move(new_desc));
+      LOG(INFO) << "Registered new tablet server { " << instance.ShortDebugString()
+                << " } with Master, full list: " << yb::ToString(servers_by_id_);
+
+    } else {
+      RETURN_NOT_OK(it->second->Register(
+          instance, registration, std::move(local_cloud_info), proxy_cache));
+      LOG(INFO) << "Re-registered known tablet server { " << instance.ShortDebugString()
+                << " }: " << registration.ShortDebugString();
     }
 
-    auto new_desc = VERIFY_RESULT(TSDescriptor::RegisterNew(
-        instance, registration, std::move(local_cloud_info), proxy_cache));
-    InsertOrDie(&servers_by_id_, uuid, std::move(new_desc));
-    LOG(INFO) << "Registered new tablet server { " << instance.ShortDebugString()
-              << " } with Master, full list: " << yb::ToString(servers_by_id_);
+    if (!ts_count_callback_.empty()) {
+      int new_count = GetCountUnlocked();
+      if (new_count >= ts_count_callback_min_count_) {
+        callback_to_call = std::move(ts_count_callback_);
+        ts_count_callback_min_count_ = 0;
+      }
+    }
+  }
 
-  } else {
-    RETURN_NOT_OK(it->second->Register(
-        instance, registration, std::move(local_cloud_info), proxy_cache));
-    LOG(INFO) << "Re-registered known tablet server { " << instance.ShortDebugString()
-              << " }: " << registration.ShortDebugString();
+  if (!callback_to_call.empty()) {
+    callback_to_call();
   }
 
   return Status::OK();
@@ -253,6 +269,13 @@ int TSManager::GetCountUnlocked() const {
     }
   }
   return count;
+}
+
+// Register a callback to be called when the number of tablet servers reaches a certain number.
+void TSManager::SetTSCountCallback(int min_count, TSCountCallback callback) {
+  std::lock_guard<rw_spinlock> l(lock_);
+  ts_count_callback_ = std::move(callback);
+  ts_count_callback_min_count_ = min_count;
 }
 
 } // namespace master

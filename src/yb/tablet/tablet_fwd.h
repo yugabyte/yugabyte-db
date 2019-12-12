@@ -47,6 +47,8 @@ class WriteOperationState;
 using TabletClass = enterprise::Tablet;
 
 YB_STRONGLY_TYPED_BOOL(RequireLease);
+YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);
+YB_STRONGLY_TYPED_BOOL(TransactionsEnabled);
 
 }  // namespace tablet
 }  // namespace yb

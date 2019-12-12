@@ -60,6 +60,7 @@ DECLARE_int32(rpc_max_message_size);
 DECLARE_int32(consensus_max_batch_size_bytes);
 DECLARE_int32(consensus_rpc_timeout_ms);
 DECLARE_int64(max_time_in_queue_ms);
+DECLARE_int64(enable_ysql);
 
 DEFINE_uint64(test_redis_max_concurrent_commands, 20,
     "Value of redis_max_concurrent_commands for pipeline test");
