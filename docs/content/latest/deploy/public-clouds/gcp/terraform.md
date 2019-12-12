@@ -1,6 +1,5 @@
-# Prerequisites
-1. Download and install [terraform](https://www.terraform.io/downloads.html). 
-
+## Prerequisites
+1. Download and install [terraform](https://www.terraform.io/downloads.html).
 
 2. Verify by the `terraform` command, it should print a help message that looks similar to that shown below.
 
@@ -21,20 +20,20 @@ Common commands:
 
 
 ## 1. Create a terraform config file
-* First create a terraform file with provider details 
+* First create a terraform file with provider details
   ```
-  provider "google" 
-  { 
-    # Provide your Creadentilals 
+  provider "google"
+  {
+    # Provide your Creadentilals
     credentials = "${file("yugabyte-pcf-bc8114281026.json")}"
 
-    # The name of your GCP project 
+    # The name of your GCP project
     project = "<Your-GCP-Project-Name>"
   }
   ```
-  **NOTE:** :- You can get credentials file by following steps given [here](https://cloud.google.com/docs/authentication/getting-started) 
+  **NOTE:** :- You can get credentials file by following steps given [here](https://cloud.google.com/docs/authentication/getting-started)
 
-* Now add the yugabyte terraform module to your file 
+* Now add the yugabyte terraform module to your file
   ```
   module "yugabyte-db-cluster" {
   source = "github.com/Yugabyte/terraform-gcp-yugabyte.git"
@@ -67,7 +66,7 @@ Init terraform first if you have not already done so.
 $ terraform init
 ```
 
-To check what changes are going to happen in environment run the following 
+To check what changes are going to happen in environment run the following
 
 ```sh
 $ terraform plan
