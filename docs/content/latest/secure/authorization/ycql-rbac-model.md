@@ -44,7 +44,7 @@ Permission  | Objects                      | Operations                         
 
 {{< note title="Note" >}}
 
-The `ALTER` permission on the base table is required in order to `CREATE` or `DROP` indexes on it.
+The ALTER permission on the base table is required in order to CREATE or DROP indexes on it.
 
 {{< /note >}}
 
