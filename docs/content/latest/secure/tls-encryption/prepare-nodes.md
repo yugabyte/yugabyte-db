@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: prepare-nodes
     parent: tls-encryption
-    weight: 10
+    weight: 741
 isTocNested: true
 showAsideToc: true
 ---

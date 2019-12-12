@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: tls-encryption
     parent: secure
-    weight: 720
+    weight: 740
 ---
 
 YugabyteDB supports encryption in transit using Transport Layer Security (TLS), which supercedes Secure Socket Layers (SSL). You can configure YugabyteDB to encrypt network communication, including:
