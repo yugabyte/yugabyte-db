@@ -9,7 +9,7 @@ menu:
     name: Authentication
     identifier: ycql-authentication
     parent: authentication
-    weight: 721
+    weight: 723
 type: page
 isTocNested: true
 showAsideToc: true
@@ -35,8 +35,6 @@ showAsideToc: true
     </a>
   </li>
 </ul>
-
-## Overview
 
 YCQL authentication is based on roles. Roles can be created with superuser, non-superuser and login privileges. New roles can be created, and existing ones altered or dropped by administrators using CQL commands.
 
