@@ -16,7 +16,7 @@ Connect to the cluster using a superuser role. Read more about [enabling authent
 $ cqlsh -u cassandra -p cassandra
 ```
 
-Create a keyspace `eng_keyspace`.
+Create a keyspace `dev_keyspace`.
 
 ```sql
 cassandra@cqlsh> CREATE KEYSPACE IF NOT EXISTS dev_keyspace;
@@ -134,7 +134,7 @@ The output should look similar to below, where we see that the `engineering` rol
 
 {{< note title="Note" >}}
 
-The resource `data` represents *all keyspaces and tables*.
+The resource "data" represents *all keyspaces and tables*.
 
 {{< /note >}}
 
@@ -167,7 +167,9 @@ We should see that the `developer` and `qa` roles have `MODIFY` permissions on t
 ```
 
 {{< note title="Note" >}}
-In the resource hierarchy, `data` represents all keyspaces and `data/dev_keyspace` represents one keyspace in it.
+
+In the resource hierarchy, "data" represents all keyspaces and "data/dev_keyspace" represents one keyspace in it.
+
 {{< /note >}}
 
 ### Grant alter table access
@@ -197,9 +199,9 @@ We should see a new row added, which grants the `ALTER` permission on the resour
 
 {{< note title="Note" >}}
 
-The resource `data/dev_keyspace/integration_tests` denotes the hierarchy:
+The resource "data/dev_keyspace/integration_tests" denotes the hierarchy:
 
-All Keyspaces (`data`) > keyspace (`dev_keyspace`) > table (`integration_tests`)
+All Keyspaces (data) > keyspace (dev_keyspace) > table (integration_tests)
 
 {{< /note >}}
 
@@ -209,7 +211,7 @@ DB admins should be able to perform all operations on any keyspace. There are tw
 
 1. The DB admins can be granted the superuser permission. Read more about [granting the superuser permission to roles](../authentication/#ycql). Note that doing this will give the DB admin all the permissions over all the roles as well.
 
-2. Grant `ALL` permissions to the `db_admin` role. This can be achieved as follows.
+2. Grant ALL permissions to the "db_admin" role. This can be achieved as follows.
 
 ```sql
 cassandra@cqlsh> GRANT ALL ON ALL KEYSPACES TO db_admin;
