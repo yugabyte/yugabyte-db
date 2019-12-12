@@ -62,6 +62,7 @@ DECLARE_bool(catalog_manager_wait_for_new_tablets_to_elect_leader);
 DEFINE_int32(num_election_test_loops, 3,
              "Number of random EmulateElection() loops to execute in "
              "TestReportNewLeaderOnLeaderChange");
+DECLARE_bool(enable_ysql);
 
 namespace yb {
 namespace tserver {
@@ -104,6 +105,8 @@ class TsTabletManagerITest : public YBTest {
 };
 
 void TsTabletManagerITest::SetUp() {
+  // We don't need the transaction status table to be created.
+  SetAtomicFlag(false, &FLAGS_enable_ysql);
   YBTest::SetUp();
 
   MessengerBuilder bld("client");

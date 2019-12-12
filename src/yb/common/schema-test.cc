@@ -97,7 +97,8 @@ TEST(TestSchema, TestSchema) {
             "\tint32val[int32 NOT NULL NOT A PARTITION KEY]\n"
             "]\nproperties: contain_counters: false is_transactional: false "
             "consistency_level: STRONG "
-            "use_mangled_column_name: false",
+            "use_mangled_column_name: false "
+            "is_ysql_catalog_table: false",
             schema.ToString());
   EXPECT_EQ("key[string NOT NULL NOT A PARTITION KEY]", schema.column(0).ToString());
   EXPECT_EQ("uint32 NULLABLE NOT A PARTITION KEY", schema.column(1).TypeToString());
@@ -369,7 +370,8 @@ TEST(TestSchema, TestCreateProjection) {
             "\tcol4[string NOT NULL NOT A PARTITION KEY]\n"
             "]\nproperties: contain_counters: false is_transactional: false "
             "consistency_level: STRONG "
-            "use_mangled_column_name: false",
+            "use_mangled_column_name: false "
+            "is_ysql_catalog_table: false",
             partial_schema.ToString());
 
   // By names, with IDS
@@ -380,7 +382,8 @@ TEST(TestSchema, TestCreateProjection) {
                        "\t$2:col4[string NOT NULL NOT A PARTITION KEY]\n"
                        "]\nproperties: contain_counters: false is_transactional: false "
                        "consistency_level: STRONG "
-                       "use_mangled_column_name: false",
+                       "use_mangled_column_name: false "
+                       "is_ysql_catalog_table: false",
                        schema_with_ids.column_id(0),
                        schema_with_ids.column_id(1),
                        schema_with_ids.column_id(3)),
@@ -402,7 +405,8 @@ TEST(TestSchema, TestCreateProjection) {
                        "\t$2:col4[string NOT NULL NOT A PARTITION KEY]\n"
                        "]\nproperties: contain_counters: false is_transactional: false "
                        "consistency_level: STRONG "
-                       "use_mangled_column_name: false",
+                       "use_mangled_column_name: false "
+                       "is_ysql_catalog_table: false",
                        schema_with_ids.column_id(0),
                        schema_with_ids.column_id(1),
                        schema_with_ids.column_id(3)),

@@ -790,5 +790,14 @@ TEST_F(PgLibPqTest, CatalogManagerMapsTest) {
   ASSERT_EQ(schema.Column(0).name(), "b");
 }
 
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestSystemTableRollback)) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE pktable (ptest1 int PRIMARY KEY);"));
+  Status s = conn1.Execute("CREATE TABLE fktable (ftest1 inet REFERENCES pktable);");
+  LOG(INFO) << "Status of second table creation: " << s;
+  auto res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM pg_class WHERE relname='fktable'"));
+  ASSERT_EQ(0, PQntuples(res.get()));
+}
+
 } // namespace pgwrapper
 } // namespace yb

@@ -55,6 +55,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/status.h"
+#include "yb/master/sys_catalog_constants.h"
 
 namespace yb {
 namespace tools {
@@ -265,10 +266,19 @@ Status FsTool::DumpTabletData(const std::string& tablet_id) {
 
   scoped_refptr<log::LogAnchorRegistry> reg(new log::LogAnchorRegistry());
   tablet::TabletOptions tablet_options;
-  Tablet t(meta, std::shared_future<client::YBClient*>(), scoped_refptr<server::Clock>(),
-           shared_ptr<MemTracker>(), shared_ptr<MemTracker>(), nullptr, reg.get(), tablet_options,
-           std::string() /* log_prefix_suffix */, nullptr,
-           client::LocalTabletFilter(), nullptr);
+  Tablet t(meta,
+           std::shared_future<client::YBClient*>(),
+           scoped_refptr<server::Clock>(),
+           shared_ptr<MemTracker>(), shared_ptr<MemTracker>(),
+           nullptr,  // block_based_table_mem_tracker
+           reg.get(),
+           tablet_options,
+           std::string() /* log_prefix_suffix */,
+           nullptr,  // transaction_participant_context
+           client::LocalTabletFilter(),
+           nullptr,  // transaction_coordinator_context
+           tablet::IsSysCatalogTablet(tablet_id == master::kSysCatalogTabletId),
+           tablet::TransactionsEnabled::kTrue);
   RETURN_NOT_OK_PREPEND(t.Open(), "Couldn't open tablet");
   vector<string> lines;
   RETURN_NOT_OK_PREPEND(t.DebugDump(&lines), "Couldn't dump tablet");

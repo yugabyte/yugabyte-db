@@ -174,7 +174,7 @@ Options:
     Clean and rebuild PostgeSQL code
   --sanitizers-enable-coredump
     When running tests with LLVM sanitizers (ASAN/TSAN/etc.), enable core dump.
-  --extra-daemon-flags <extra_daemon_flags>
+  --extra-daemon-flags, --extra-daemon-args <extra_daemon_flags>
     Extra flags to pass to mini-cluster daemons (master/tserver). Note that bash-style quoting won't
     work here -- they are naively split on spaces.
   --no-latest-symlink
@@ -550,6 +550,10 @@ cleanup() {
   exit "$YB_BUILD_EXIT_CODE"
 }
 
+print_saved_log_path() {
+  heading "To view log:"$'\n\n'"less '$log_path'"$'\n\n'\
+"Or using symlink:"$'\n\n'"less '$latest_log_symlink_path'"$'\n'
+}
 # -------------------------------------------------------------------------------------------------
 # Command line parsing
 # -------------------------------------------------------------------------------------------------
@@ -928,8 +932,9 @@ while [[ $# -gt 0 ]]; do
     --sanitizers-enable-coredump)
       export YB_SANITIZERS_ENABLE_COREDUMP=1
     ;;
-    --extra-daemon-flags)
+    --extra-daemon-flags|--extra-daemon-args)
       ensure_option_has_arg "$@"
+      log "Setting YB_EXTRA_DAEMON_FLAGS to: $2"
       export YB_EXTRA_DAEMON_FLAGS=$2
       shift
     ;;
@@ -1083,7 +1088,7 @@ if "$save_log"; then
   rm -f "$latest_log_symlink_path"
   ln -s "$log_path" "$latest_log_symlink_path"
 
-  heading "Logging to $log_path (also symlinked to $latest_log_symlink_path)"
+  print_saved_log_path
 
   filtered_args=()
   for arg in "${original_args[@]}"; do
@@ -1096,7 +1101,7 @@ if "$save_log"; then
   ( set -x; "$0" "${filtered_args[@]}" ) 2>&1 | tee "$log_path"
   exit_code=$?
 
-  heading "Log saved to $log_path (also symlinked to $latest_log_symlink_path)"
+  print_saved_log_path
 
   # No need to print a report here, because the recursive script invocation should have done so.
   exit "$exit_code"

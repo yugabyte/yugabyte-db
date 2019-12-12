@@ -120,20 +120,24 @@ class BootstrapTest : public LogTestBase {
     // Now attempt to recover the log
     TabletOptions tablet_options;
     BootstrapTabletData data = {
-        meta,
-        std::shared_future<client::YBClient*>(),
-        scoped_refptr<Clock>(LogicalClock::CreateStartingAt(HybridTime::kInitial)),
-        shared_ptr<MemTracker>() /* mem_tracker */,
-        shared_ptr<MemTracker>() /* block_based_table_mem_tracker */,
-        nullptr /* metric_registry */,
-        listener.get(),
-        log_anchor_registry,
-        tablet_options,
-        std::string(), // log_prefix_suffix
-        nullptr, // transaction_participant_context
-        client::LocalTabletFilter(),
-        nullptr, // transaction_coordinator_context
-        append_pool_.get()};
+        .meta = meta,
+        .client_future = std::shared_future<client::YBClient*>(),
+        .clock = scoped_refptr<Clock>(LogicalClock::CreateStartingAt(HybridTime::kInitial)),
+        .mem_tracker = shared_ptr<MemTracker>(),
+        .block_based_table_mem_tracker = shared_ptr<MemTracker>(),
+        .metric_registry = nullptr,
+        .listener = listener.get(),
+        .log_anchor_registry = log_anchor_registry,
+        .tablet_options = tablet_options,
+        .log_prefix_suffix = std::string(),
+        .transaction_participant_context = nullptr,
+        .local_tablet_filter = client::LocalTabletFilter(),
+        .transaction_coordinator_context = nullptr,
+        .append_pool = append_pool_.get(),
+        .retryable_requests = nullptr,
+        .txns_enabled = TransactionsEnabled::kTrue,
+        .is_sys_catalog = IsSysCatalogTablet::kFalse
+    };
     RETURN_NOT_OK(BootstrapTablet(data, tablet, &log_, boot_info));
     return Status::OK();
   }

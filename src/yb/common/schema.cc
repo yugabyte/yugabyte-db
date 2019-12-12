@@ -49,6 +49,10 @@ using std::set;
 using std::unordered_map;
 using std::unordered_set;
 
+// ------------------------------------------------------------------------------------------------
+// ColumnSchema
+// ------------------------------------------------------------------------------------------------
+
 // TODO: include attributes_.ToString() -- need to fix unit tests
 // first
 string ColumnSchema::ToString() const {
@@ -73,6 +77,10 @@ size_t ColumnSchema::memory_footprint_including_this() const {
   return malloc_usable_size(this) + memory_footprint_excluding_this();
 }
 
+// ------------------------------------------------------------------------------------------------
+// TableProperties
+// ------------------------------------------------------------------------------------------------
+
 void TableProperties::ToTablePropertiesPB(TablePropertiesPB *pb) const {
   if (HasDefaultTimeToLive()) {
     pb->set_default_time_to_live(default_time_to_live_);
@@ -87,6 +95,7 @@ void TableProperties::ToTablePropertiesPB(TablePropertiesPB *pb) const {
   if (HasNumTablets()) {
     pb->set_num_tablets(num_tablets_);
   }
+  pb->set_is_ysql_catalog_table(is_ysql_catalog_table_);
 }
 
 TableProperties TableProperties::FromTablePropertiesPB(const TablePropertiesPB& pb) {
@@ -112,6 +121,9 @@ TableProperties TableProperties::FromTablePropertiesPB(const TablePropertiesPB& 
   if (pb.has_num_tablets()) {
     table_properties.SetNumTablets(pb.num_tablets());
   }
+  if (pb.has_is_ysql_catalog_table()) {
+    table_properties.set_is_ysql_catalog_table(pb.is_ysql_catalog_table());
+  }
   return table_properties;
 }
 
@@ -134,6 +146,9 @@ void TableProperties::AlterFromTablePropertiesPB(const TablePropertiesPB& pb) {
   if (pb.has_num_tablets()) {
     SetNumTablets(pb.num_tablets());
   }
+  if (pb.has_is_ysql_catalog_table()) {
+    set_is_ysql_catalog_table(pb.is_ysql_catalog_table());
+  }
 }
 
 void TableProperties::Reset() {
@@ -144,7 +159,28 @@ void TableProperties::Reset() {
   copartition_table_id_ = kNoCopartitionTableId;
   use_mangled_column_name_ = false;
   num_tablets_ = 0;
+  is_ysql_catalog_table_ = false;
 }
+
+string TableProperties::ToString() const {
+  std::string result("{ ");
+  if (HasDefaultTimeToLive()) {
+    result += Format("default_time_to_live: $0 ", default_time_to_live_);
+  }
+  result += Format("contain_counters: $0 is_transactional: $1 ",
+                   contain_counters_, is_transactional_);
+  if (HasCopartitionTableId()) {
+    result += Format("copartition_table_id: $0 ", copartition_table_id_);
+  }
+  return result + Format(
+      "consistency_level: $0 is_ysql_catalog_table: $1 }",
+      consistency_level_,
+      is_ysql_catalog_table_);
+}
+
+// ------------------------------------------------------------------------------------------------
+// Schema
+// ------------------------------------------------------------------------------------------------
 
 Schema::Schema(const Schema& other)
   : name_to_index_bytes_(0),

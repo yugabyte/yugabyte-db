@@ -44,6 +44,7 @@ using namespace std::literals;
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_bool(tablet_verify_flushed_frontier_after_modifying);
+DECLARE_bool(enable_ysql);
 
 namespace yb {
 
@@ -100,10 +101,9 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
   void SetUp() override {
     YBMiniClusterTestBase::SetUp();
 
-    flag_saver_.emplace();
-
     FLAGS_log_min_seconds_to_retain = 5;
     FLAGS_tablet_verify_flushed_frontier_after_modifying = true;
+    FLAGS_enable_ysql = false;
 
     MiniClusterOptions opts;
     opts.num_tablet_servers = 3;
@@ -138,8 +138,6 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
       cluster_->Shutdown();
       cluster_.reset();
     }
-
-    flag_saver_.reset();
 
     YBMiniClusterTestBase::DoTearDown();
   }
@@ -348,7 +346,6 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
   unique_ptr<MasterBackupServiceProxy> proxy_backup_;
   RpcController controller_;
   std::unique_ptr<client::YBClient> client_;
-  boost::optional<google::FlagSaver> flag_saver_;
 };
 
 TEST_F(SnapshotTest, CreateSnapshot) {

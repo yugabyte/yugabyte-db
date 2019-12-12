@@ -83,6 +83,7 @@
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/tablet/operations/snapshot_operation.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace rocksdb {
 class DB;
@@ -189,7 +190,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       std::string log_prefix_suffix,
       TransactionParticipantContext* transaction_participant_context,
       client::LocalTabletFilter local_tablet_filter,
-      TransactionCoordinatorContext* transaction_coordinator_context);
+      TransactionCoordinatorContext* transaction_coordinator_context,
+      IsSysCatalogTablet is_sys_catalog,
+      TransactionsEnabled txns_enabled = TransactionsEnabled::kTrue);
 
   ~Tablet();
 
@@ -545,6 +548,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Flushed intents db if necessary.
   void FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id);
 
+  bool is_sys_catalog() const { return is_sys_catalog_; }
+  bool IsTransactionalRequest(bool is_ysql_request) const override;
+
   // ==============================================================================================
  protected:
 
@@ -571,10 +577,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       rocksdb::WriteBatch* rocksdb_write_batch);
 
   Result<TransactionOperationContextOpt> CreateTransactionOperationContext(
-      const TransactionMetadataPB& transaction_metadata) const;
+      const TransactionMetadataPB& transaction_metadata,
+      bool is_ysql_catalog_table) const;
 
   TransactionOperationContextOpt CreateTransactionOperationContext(
-      const boost::optional<TransactionId>& transaction_id) const;
+      const boost::optional<TransactionId>& transaction_id,
+      bool is_ysql_catalog_table) const;
 
   // Pause any new read/write operations and wait for all pending read/write operations to finish.
   util::ScopedPendingOperationPause PauseReadWriteOperations();
@@ -734,6 +742,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   client::LocalTabletFilter local_tablet_filter_;
 
   std::string log_prefix_suffix_;
+
+  IsSysCatalogTablet is_sys_catalog_;
+  TransactionsEnabled txns_enabled_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

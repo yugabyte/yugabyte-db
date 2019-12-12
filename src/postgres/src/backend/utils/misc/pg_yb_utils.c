@@ -41,6 +41,7 @@
 #include "pg_yb_utils.h"
 #include "catalog/ybctype.h"
 
+#include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "common/pg_yb_common.h"
 
@@ -51,6 +52,8 @@
 #include "access/htup_details.h"
 #include "access/tupdesc.h"
 
+#include "tcop/utility.h"
+
 YBCPgSession ybc_pg_session = NULL;
 
 uint64 yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
@@ -60,6 +63,9 @@ int ybc_pg_double_write = -1;
 int ybc_disable_pg_locking = -1;
 
 YBCStatus ybc_commit_status = NULL;
+
+/* Forward declarations */
+static void YBCInstallTxnDdlHook();
 
 bool
 IsYugaByteEnabled()
@@ -111,7 +117,7 @@ IsYBRelationById(Oid relid)
 }
 
 bool
-IsYBBackedRelation(Relation relation) 
+IsYBBackedRelation(Relation relation)
 {
 	return IsYBRelation(relation) ||
 		(relation->rd_rel->relkind == RELKIND_VIEW &&
@@ -148,7 +154,7 @@ extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 			(trigdesc->trig_update_after_row ||
 			trigdesc->trig_update_before_row)) ||
 		(operation == CMD_DELETE &&
-			(trigdesc->trig_delete_after_row || 
+			(trigdesc->trig_delete_after_row ||
 			trigdesc->trig_delete_before_row))));
 }
 
@@ -309,6 +315,7 @@ YBInitPostgresBackend(
 		int count;
 		YBCGetTypeTable(&type_table, &count);
 		YBCInitPgGate(type_table, count);
+		YBCInstallTxnDdlHook();
 
 		if (ybc_pg_session != NULL) {
 			YBC_LOG_FATAL("Double initialization of ybc_pg_session");
@@ -704,7 +711,7 @@ YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc)
 	appendStringInfoChar(&buf, '(');
 	for (int attnum = 1; attnum <= natts; ++attnum) {
 		attr = heap_getattr(tuple, attnum, tupleDesc, &isnull);
-		if (isnull) 
+		if (isnull)
 		{
 			appendStringInfoString(&buf, "null");
 		}
@@ -728,3 +735,161 @@ YBIsInitDbAlreadyDone()
 	HandleYBStatus(YBCPgIsInitDbDone(ybc_pg_session, &done));
 	return done;
 }
+
+/*---------------------------------------------------------------------------*/
+/* Transactional DDL support                                                 */
+/*---------------------------------------------------------------------------*/
+
+static ProcessUtility_hook_type prev_ProcessUtility = NULL;
+static int ddl_nesting_level = 0;
+
+static void YBIncrementDdlNestingLevel() {
+	if (ddl_nesting_level == 0) {
+		YBCPgTxnManager_EnterSeparateDdlTxnMode(YBCGetPgTxnManager());
+	}
+	ddl_nesting_level++;
+}
+
+static void YBDecrementDdlNestingLevel(bool success) {
+	ddl_nesting_level--;
+	if (ddl_nesting_level == 0) {
+		YBCPgTxnManager_ExitSeparateDdlTxnMode(YBCGetPgTxnManager(), success);
+	}
+}
+
+static bool IsTransactionalDdlStatement(NodeTag node_tag) {
+	switch (node_tag) {
+		// The lists of tags here have been generated using e.g.:
+		// cat $( find src/postgres -name "nodes.h" ) | grep "T_Create" | sort | uniq |
+		//   sed 's/,//g' | while read s; do echo -e "\t\tcase $s:"; done
+		// All T_Create... tags from nodes.h:
+		case T_CreateAmStmt:
+		case T_CreateCastStmt:
+		case T_CreateConversionStmt:
+		case T_CreateDomainStmt:
+		case T_CreateEnumStmt:
+		case T_CreateEventTrigStmt:
+		case T_CreateExtensionStmt:
+		case T_CreateFdwStmt:
+		case T_CreateForeignServerStmt:
+		case T_CreateForeignTableStmt:
+		case T_CreateFunctionStmt:
+		case T_CreateOpClassItem:
+		case T_CreateOpClassStmt:
+		case T_CreateOpFamilyStmt:
+		case T_CreatePLangStmt:
+		case T_CreatePolicyStmt:
+		case T_CreatePublicationStmt:
+		case T_CreateRangeStmt:
+		case T_CreateReplicationSlotCmd:
+		case T_CreateRoleStmt:
+		case T_CreateSchemaStmt:
+		case T_CreateSeqStmt:
+		case T_CreateStatsStmt:
+		case T_CreateStmt:
+		case T_CreateSubscriptionStmt:
+		case T_CreateTableAsStmt:
+		case T_CreateTableSpaceStmt:
+		case T_CreateTransformStmt:
+		case T_CreateTrigStmt:
+		case T_CreateUserMappingStmt:
+		case T_CreatedbStmt:
+		// All T_Drop... tags from nodes.h:
+		case T_DropOwnedStmt:
+		case T_DropReplicationSlotCmd:
+		case T_DropRoleStmt:
+		case T_DropStmt:
+		case T_DropSubscriptionStmt:
+		case T_DropTableSpaceStmt:
+		case T_DropUserMappingStmt:
+		case T_DropdbStmt:
+		// All T_Alter... tags from nodes.h:
+		case T_AlterCollationStmt:
+		case T_AlterDatabaseSetStmt:
+		case T_AlterDatabaseStmt:
+		case T_AlterDefaultPrivilegesStmt:
+		case T_AlterDomainStmt:
+		case T_AlterEnumStmt:
+		case T_AlterEventTrigStmt:
+		case T_AlterExtensionContentsStmt:
+		case T_AlterExtensionStmt:
+		case T_AlterFdwStmt:
+		case T_AlterForeignServerStmt:
+		case T_AlterFunctionStmt:
+		case T_AlterObjectDependsStmt:
+		case T_AlterObjectSchemaStmt:
+		case T_AlterOpFamilyStmt:
+		case T_AlterOperatorStmt:
+		case T_AlterOwnerStmt:
+		case T_AlterPolicyStmt:
+		case T_AlterPublicationStmt:
+		case T_AlterRoleSetStmt:
+		case T_AlterRoleStmt:
+		case T_AlterSeqStmt:
+		case T_AlterSubscriptionStmt:
+		case T_AlterSystemStmt:
+		case T_AlterTSConfigurationStmt:
+		case T_AlterTSDictionaryStmt:
+		case T_AlterTableCmd:
+		case T_AlterTableMoveAllStmt:
+		case T_AlterTableSpaceOptionsStmt:
+		case T_AlterTableStmt:
+		case T_AlterUserMappingStmt:
+		case T_AlternativeSubPlan:
+		case T_AlternativeSubPlanState:
+		// T_Grant...
+		case T_GrantStmt:
+		case T_GrantRoleStmt:
+			return true;
+		default:
+			return false;
+	}
+}
+
+static void YBTxnDdlProcessUtility(
+		PlannedStmt *pstmt,
+		const char *queryString,
+		ProcessUtilityContext context,
+		ParamListInfo params,
+		QueryEnvironment *queryEnv,
+		DestReceiver *dest,
+		char *completionTag) {
+	Node	   *parsetree = pstmt->utilityStmt;
+	NodeTag node_tag = nodeTag(parsetree);
+
+	bool is_txn_ddl = IsTransactionalDdlStatement(node_tag);
+
+	if (is_txn_ddl) {
+		YBIncrementDdlNestingLevel();
+	}
+	PG_TRY();
+	{
+		if (prev_ProcessUtility)
+			prev_ProcessUtility(pstmt, queryString,
+								context, params, queryEnv,
+								dest, completionTag);
+		else
+			standard_ProcessUtility(pstmt, queryString,
+									context, params, queryEnv,
+									dest, completionTag);
+	}
+	PG_CATCH();
+	{
+		if (is_txn_ddl) {
+			YBDecrementDdlNestingLevel(/* success */ false);
+		}
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+	if (is_txn_ddl) {
+		YBDecrementDdlNestingLevel(/* success */ true);
+	}
+}
+
+
+static void YBCInstallTxnDdlHook() {
+	if (!YBCIsInitDbModeEnvVarSet()) {
+		prev_ProcessUtility = ProcessUtility_hook;
+		ProcessUtility_hook = YBTxnDdlProcessUtility;
+	}
+};

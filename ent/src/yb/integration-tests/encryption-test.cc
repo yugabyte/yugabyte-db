@@ -48,6 +48,8 @@ class EncryptionTest : public YBTableTestBase {
 
   bool use_external_mini_cluster() override { return false; }
 
+  bool enable_ysql() override { return false; }
+
   int num_tablet_servers() override {
     return 3;
   }

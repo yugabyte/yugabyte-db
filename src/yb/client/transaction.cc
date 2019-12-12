@@ -257,7 +257,18 @@ class YBTransaction::Impl final {
 
     if (status.ok()) {
       if (used_read_time && metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
-        LOG_IF_WITH_PREFIX(DFATAL, read_point_.GetReadTime())
+        const bool read_point_already_set = static_cast<bool>(read_point_.GetReadTime());
+#ifndef NDEBUG
+        if (read_point_already_set) {
+          // Display details of operations before crashing in debug mode.
+          int op_idx = 1;
+          for (const auto& op : ops) {
+            LOG(ERROR) << "Operation " << op_idx << ": " << op->ToString();
+            op_idx++;
+          }
+        }
+#endif
+        LOG_IF_WITH_PREFIX(DFATAL, read_point_already_set)
             << "Read time already picked (" << read_point_.GetReadTime()
             << ", but server replied with used read time: " << used_read_time;
         read_point_.SetReadTime(used_read_time, ConsistentReadPoint::HybridTimeMap());
@@ -291,6 +302,16 @@ class YBTransaction::Impl final {
       state_.store(TransactionState::kCommitted, std::memory_order_release);
       commit_callback_ = std::move(callback);
       if (!ready_) {
+        // If we have not written any intents and do not even have a transaction status tablet,
+        // just report the transaction as committed.
+        //
+        // See https://github.com/yugabyte/yugabyte-db/issues/3105 for details -- we might be able
+        // to remove this special case if it turns out there is a bug elsewhere.
+        if (tablets_with_metadata_.empty()) {
+          commit_callback_(Status::OK());
+          return;
+        }
+
         waiters_.emplace_back(std::bind(&Impl::DoCommit, this, deadline, _1, transaction));
         lock.unlock();
         RequestStatusTablet(deadline);

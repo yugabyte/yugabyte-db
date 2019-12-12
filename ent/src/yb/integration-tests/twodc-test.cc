@@ -100,6 +100,7 @@ class TwoDCTest : public YBTest, public testing::WithParamInterface<int> {
       SetUpWithParams(std::vector<uint32_t> num_consumer_tablets,
                       std::vector<uint32_t> num_producer_tablets,
                       uint32_t replication_factor) {
+    FLAGS_enable_ysql = false;
     // Allow for one-off network instability by ensuring a single CDC RPC timeout << test timeout.
     FLAGS_cdc_read_rpc_timeout_ms = (kRpcTimeout / 6) * 1000;
     FLAGS_cdc_write_rpc_timeout_ms = (kRpcTimeout / 6) * 1000;

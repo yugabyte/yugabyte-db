@@ -205,10 +205,13 @@ message TablePropertiesPB {
   optional uint64 default_time_to_live = 1;
   optional bool contain_counters = 2;
   optional bool is_transactional = 3 [default = false];
+
   // The table id of the table that this table is co-partitioned with.
   optional bytes copartition_table_id = 4;
+
   // For index table only: consistency with respect to the indexed table.
   optional YBConsistencyLevel consistency_level = 5 [ default = STRONG ];
+
   // For CREATE INDEX, we use mangled name for its column, but it hasn't been that way.
   // Due to coding history for INDEX support, we'll have the following scenarios.
   // - UserTable: User-defined names are used for its columns.
@@ -218,8 +221,10 @@ message TablePropertiesPB {
   //   remains the same during upgrade.
   //
   // The field "use_mangled_column_name" helps indicating whether a table is using mangled_name.
+
   optional bool use_mangled_column_name =  6 [ default = false ];
   optional int32 num_tablets = 7;
+  optional bool is_ysql_catalog_table = 8 [ default = false ];
 }
 
 message SchemaPB {

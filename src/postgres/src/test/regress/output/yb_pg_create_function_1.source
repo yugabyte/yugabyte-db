@@ -66,47 +66,30 @@ CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
 ERROR:  return type mismatch in function declared to return integer
 DETAIL:  Actual return type is text.
 CONTEXT:  SQL function "test1"
--- TODO In YB dropping function explicitly due to issue #1383.
-DROP FUNCTION IF EXISTS test1;
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
     AS 'not even SQL';
 ERROR:  syntax error at or near "not"
 LINE 2:     AS 'not even SQL';
                 ^
--- TODO In YB dropping function explicitly due to issue #1383.
-DROP FUNCTION IF EXISTS test1;
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
     AS 'SELECT 1, 2, 3;';
 ERROR:  return type mismatch in function declared to return integer
 DETAIL:  Final statement must return exactly one column.
 CONTEXT:  SQL function "test1"
--- TODO In YB dropping function explicitly due to issue #1383.
-DROP FUNCTION IF EXISTS test1;
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
     AS 'SELECT $2;';
 ERROR:  there is no parameter $2
 LINE 2:     AS 'SELECT $2;';
                        ^
--- TODO In YB dropping function explicitly due to issue #1383.
-DROP FUNCTION IF EXISTS test1;
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
     AS 'a', 'b';
 ERROR:  only one AS item needed for language "sql"
--- TODO In YB dropping function explicitly due to issue #1383.
-DROP FUNCTION IF EXISTS test1;
-NOTICE:  function test1() does not exist, skipping
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE C
     AS 'nosuchfile';
 ERROR:  could not access file "nosuchfile": No such file or directory
--- TODO In YB dropping function explicitly due to issue #1383.
-DROP FUNCTION IF EXISTS test1;
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE C
     AS '@libdir@/regress@DLSUFFIX@', 'nosuchsymbol';
 ERROR:  could not find function "nosuchsymbol" in file "@libdir@/regress@DLSUFFIX@"
--- TODO In YB dropping function explicitly due to issue #1383.
-DROP FUNCTION IF EXISTS test1;
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE internal
     AS 'nosuch';
 ERROR:  there is no built-in function named "nosuch"
--- TODO In YB dropping function explicitly due to issue #1383.
-DROP FUNCTION IF EXISTS test1;

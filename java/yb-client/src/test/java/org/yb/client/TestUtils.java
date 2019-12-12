@@ -66,6 +66,8 @@ public class TestUtils {
       "/tmp/ybtest-" + System.getProperty("user.name") + "-" + startTimeMillis + "-" +
           new Random().nextInt(Integer.MAX_VALUE);
 
+  private static boolean isJenkins = System.getProperty("user.name").equals("jenkins");
+
   private static final AtomicBoolean defaultTestTmpDirCleanupHookRegistered = new AtomicBoolean();
 
   // The amount of time to wait for in addition to the ttl specified.
@@ -512,6 +514,10 @@ public class TestUtils {
       joinedList.addAll(b);
     }
     return joinedList;
+  }
+
+  public static boolean isJenkins() {
+    return isJenkins;
   }
 
 }

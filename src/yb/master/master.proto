@@ -525,6 +525,11 @@ message SysYSQLCatalogConfigEntryPB {
 
   // If this is set, initdb has failed.
   optional string initdb_error = 5;
+
+  // true if transactional system catalogs have been enabled on this cluster. This means all
+  // YSQL system catalog tables have been made transactional, both in their schema and in the tablet
+  // metadata.
+  optional bool transactional_sys_catalog_enabled = 6;
 }
 
 // Various cluster configuration.

@@ -57,6 +57,7 @@
 
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(yb_num_shards_per_tserver);
+DECLARE_bool(enable_ysql);
 
 METRIC_DECLARE_counter(rows_inserted);
 
@@ -81,6 +82,9 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
   void SetUp() override {
     // Make heartbeats faster to speed test runtime.
     FLAGS_heartbeat_interval_ms = 10;
+
+    // To prevent automatic creation of the transaction status table.
+    FLAGS_enable_ysql = false;
 
     YBMiniClusterTestBase::SetUp();
 
@@ -252,7 +256,7 @@ TEST_F(RegistrationTest, TestTabletReports) {
 }
 
 TEST_F(RegistrationTest, TestCopartitionedTables) {
-  CheckTabletReports(true);
+  CheckTabletReports(/* co_partition */ true);
 }
 
 } // namespace yb

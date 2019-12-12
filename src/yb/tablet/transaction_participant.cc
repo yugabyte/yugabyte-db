@@ -550,7 +550,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   void ScheduleRemoveIntents(const RunningTransactionPtr& shared_self) {
     if (remove_intents_task_.Prepare(shared_self)) {
       context_.participant_context_.Enqueue(&remove_intents_task_);
-      VLOG_WITH_PREFIX(1) << "Intents should be removed";
+      VLOG_WITH_PREFIX(1) << "Intents should be removed asynchronously";
     }
   }
 
@@ -965,7 +965,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     lock_and_iterator.transaction().RequestStatusAt(client(), request, &lock_and_iterator.lock);
   }
 
-  // Registers request, giving him newly allocated id and returning this id.
+  // Registers a request, giving it a newly allocated id and returning this id.
   int64_t RegisterRequest() {
     std::lock_guard<std::mutex> lock(mutex_);
     auto result = NextRequestIdUnlocked();
@@ -973,7 +973,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return result;
   }
 
-  // Unregisters previously registered request.
+  // Unregisters a previously registered request.
   void UnregisterRequest(int64_t request) {
     std::lock_guard<std::mutex> lock(mutex_);
     DCHECK(!running_requests_.empty());
@@ -1302,8 +1302,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   // Tries to remove transaction with specified id.
-  // Returns true if transaction is not exists after call to this method, otherwise returns false.
-  // Which means that transaction will be removed later.
+  // Returns true if transaction does not exist after call to this method, otherwise returns false,
+  // which means that the transaction will be removed later.
   bool RemoveUnlocked(const TransactionId& id, const std::string& reason) override {
     auto it = transactions_.find(id);
     if (it == transactions_.end()) {
@@ -1322,12 +1322,12 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       return true;
     }
 
-    // We cannot remove transaction at this point, because there are running requests,
-    // that reads provisional DB and could request status of this transaction.
-    // So we store transaction in queue and wait when all requests that we launched before our try
-    // to remove this transaction are completed.
-    // Since we try to remove transaction after all its records is removed from provisional DB
-    // it is safe to complete removal at this point, because it means that there will be no more
+    // We cannot remove the transaction at this point, because there are running requests
+    // that are reading the provisional DB and could request status of this transaction.
+    // So we store transaction in a queue and wait when all requests that we launched before our
+    // attempt to remove this transaction are completed.
+    // Since we try to remove the transaction after all its records are removed from the provisional
+    // DB, it is safe to complete removal at this point, because it means that there will be no more
     // queries to status of this transactions.
     cleanup_queue_.push_back({request_serial_, (**it).id()});
     VLOG_WITH_PREFIX(2) << "Queued for cleanup: " << (**it).id() << ", reason: " << reason;

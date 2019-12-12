@@ -80,6 +80,8 @@ using rocksdb::UserFrontierPtr;
 using yb::tablet::TabletOptions;
 using yb::docdb::InitRocksDBOptions;
 
+DECLARE_bool(enable_ysql);
+
 namespace yb {
 namespace client {
 
@@ -95,6 +97,9 @@ class QLStressTest : public QLDmlTestBase {
   }
 
   void SetUp() override {
+    // To prevent automatic creation of the transaction status table.
+    SetAtomicFlag(false, &FLAGS_enable_ysql);
+
     ASSERT_NO_FATALS(QLDmlTestBase::SetUp());
 
     YBSchemaBuilder b;

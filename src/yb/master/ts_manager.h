@@ -38,6 +38,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include <boost/function.hpp>
+
 #include "yb/gutil/thread_annotations.h"
 #include "yb/gutil/macros.h"
 
@@ -61,6 +63,9 @@ namespace master {
 
 typedef std::string TabletServerId;
 typedef std::unordered_set<HostPort, HostPortHash> BlacklistSet;
+
+// A callback that is called when the number of tablet servers reaches a certain number.
+typedef boost::function<void()> TSCountCallback;
 
 // Tracks the servers that the master has heard from, along with their
 // last heartbeat, etc.
@@ -133,6 +138,10 @@ class TSManager {
   static bool IsTsBlacklisted(const TSDescriptorPtr& ts,
                               const BlacklistSet blacklist);
 
+  // Register a callback to be called when the number of tablet servers reaches a certain number.
+  // The callback is removed after it is called once.
+  void SetTSCountCallback(int min_count, TSCountCallback callback);
+
  private:
 
   void GetDescriptors(std::function<bool(const TSDescriptorPtr&)> condition,
@@ -144,6 +153,10 @@ class TSManager {
 
   typedef std::unordered_map<std::string, TSDescriptorPtr> TSDescriptorMap;
   TSDescriptorMap servers_by_id_ GUARDED_BY(lock_);
+
+  // This callback will be called when the number of tablet servers reaches the given number.
+  TSCountCallback ts_count_callback_ GUARDED_BY(lock_);
+  int ts_count_callback_min_count_ GUARDED_BY(lock_) = 0;
 
   DISALLOW_COPY_AND_ASSIGN(TSManager);
 };

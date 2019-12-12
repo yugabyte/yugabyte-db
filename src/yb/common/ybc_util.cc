@@ -109,16 +109,16 @@ Status InitInternal(const char* argv0) {
   // own signal handling.
   yb::InitGoogleLoggingSafeBasic(argv0);
 
-#ifndef NDEBUG
-  for (auto& flag_info : flag_infos) {
-    string env_var_name = "FLAGS_" + flag_info.name;
-    const char* env_var_value = getenv(env_var_name.c_str());
-    if (env_var_value) {
-      LOG(INFO) << "Setting flag " << flag_info.name << " to the value of the env var "
+  if (VLOG_IS_ON(1)) {
+    for (auto& flag_info : flag_infos) {
+      string env_var_name = "FLAGS_" + flag_info.name;
+      const char* env_var_value = getenv(env_var_name.c_str());
+      if (env_var_value) {
+        VLOG(1) << "Setting flag " << flag_info.name << " to the value of the env var "
                 << env_var_name << ": " << env_var_value;
+      }
     }
   }
-#endif
 
   return Status::OK();
 }
