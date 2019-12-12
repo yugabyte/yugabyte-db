@@ -1,3 +1,32 @@
+---
+title: Grant privileges
+linkTitle: Grant privileges
+description: Grant privileges
+menu:
+  latest:
+    name: Grant privileges
+    identifier: ysql-grant-permissions
+    parent: authorization
+    weight: 735  
+type: page
+isTocNested: true
+showAsideToc: true
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/secure/authorization/ysql-grant-permissions" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+  <li >
+    <a href="/latest/secure/authorization/ycql-grant-permissions" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+</ul>
 
 In this tutorial, we shall run through a scenario. Assume a company has an engineering organization, with three sub-teams - developers, qa and DB admins. We are going to create a role for each of these entities.
 
@@ -13,7 +42,7 @@ Here is what we want to achieve from a role-based access control (RBAC) perspect
 Connect to the cluster using a superuser role. Read more about [enabling authentication and connecting using a superuser role](../../ysql-authentication/) in YugabyteDB clusters for YSQL. For this tutorial, we are using the default `yugabyte` user and connect to the cluster using `ysqlsh` as follows:
 
 ```sh
-$ ysqlsh -U yugabyte
+$ ysqlsh
 ```
 
 Create a database `dev_database`.
@@ -21,12 +50,12 @@ Create a database `dev_database`.
 ```postgresql
 yugabyte=# CREATE database dev_database;
 ```
+
 Switch to the `dev_database`.
 
-...
+```
 yugabyte=# \c dev_database
 ```
-
 
 Create the `integration_tests` table:
 
@@ -58,7 +87,7 @@ dev_database=# GRANT engineering TO developer;
 
 List all the roles amd their memberships.
 
-```postgresql
+```
 yugabyte=# \du
 ```
 
@@ -80,7 +109,7 @@ You should see the following output:
 
 You can list all privileges granted to the various roles with the following command:
 
-```postgresql
+```
 yugabyte=# \du
 ```
 
@@ -100,12 +129,6 @@ You should see something like the following output.
 
 The above shows the various role attributes the `yugabyte` role has. Since `yugabyte` is a superuser, it has all privileges on all databases, including `ALTER`, `Create role` and `DROP` on the roles we created (`engineering`, `developer`, `qa` and `db_admin`).
 
-{{< note title="Note" >}}
-
-For the sake of brevity, we will drop the "yugabyte" role-related entries in the remainder of this tutorial.
-
-{{< /note >}}
-
 ## 3. Grant privileges to roles
 
 In this section, we will grant privileges to achieve the following as mentioned in the beginning of this tutorial:
@@ -124,8 +147,7 @@ dev_database=# GRANT SELECT ON ALL TABLE integration_tests to engineering;
 dev_database=# GRANT USAGE ON SCHEMA public TO engineering;
 ```
 
-You
- can now verify that the `engineering` role has `SELECT` privilege as follows:
+You can now verify that the `engineering` role has `SELECT` privilege as follows:
 
 ```
 dev_database=# \z
@@ -134,11 +156,10 @@ dev_database=# \z
 The output should look similar to below, where we see that the `engineering` role has `SELECT` privilege on the `data` resource.
 
 ```
-  Schema |       Name        | Type  |     Access privileges     | Column privileges | Policies
+ Schema |       Name        | Type  |     Access privileges     | Column privileges | Policies
 --------+-------------------+-------+---------------------------+-------------------+----------
  public | integration_tests | table | yugabyte=arwdDxt/yugabyte+|                   |
         |                   |       | engineering=r/yugabyte   +|                   |
-(1 row)
 ```
 
 The access privileges "arwdDxt" include all privileges for the user `yugabyte` (superuser), while the role `engineering` has only "r" (read) privileges. For details on the `GRANT` statement and access privileges, see [GRANT](../../../admin/commands/dcl_grant).
@@ -198,7 +219,6 @@ We should see that owner has changed from `yugabyte` to `qa` and `qa` has all ac
         |                   |       | test=r/qa        +|                   |
         |                   |       | eng=r/qa         +|                   |
         |                   |       | developer=awdD/qa |                   |
-(1 row)
 ```
 
 ### Grant all privileges

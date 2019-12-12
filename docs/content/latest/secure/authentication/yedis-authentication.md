@@ -9,7 +9,7 @@ menu:
     name: Authentication
     identifier: yedis-authentication
     parent: authentication
-    weight: 721
+    weight: 723
 type: page
 isTocNested: true
 showAsideToc: true
@@ -35,8 +35,6 @@ showAsideToc: true
     </a>
   </li>
 </ul>
-
-## Overview
 
 YEDIS authentication is based on passwords. Each client connecting using the YEDIS API should provide a valid password in order to execute any command successfully.
 

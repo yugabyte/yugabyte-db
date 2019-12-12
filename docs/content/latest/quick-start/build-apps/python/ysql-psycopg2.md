@@ -21,19 +21,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/quick-start/build-apps/python/ysql-psycopg2" class="nav-link active">
+    <a href="ysql-psycopg2" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - psycopg2
     </a>
   </li>
   <li >
-    <a href="/latest/quick-start/build-apps/python/ysql-sqlalchemy" class="nav-link">
+    <a href="ysql-sqlalchemy" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - SQL Alchemy
     </a>
   </li>
   <li>
-    <a href="/latest/quick-start/build-apps/python/ycql" class="nav-link">
+    <a href="ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
