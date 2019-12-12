@@ -17,7 +17,6 @@ showAsideToc: true
 
 Encryption at rest ensures that data stored on disk is protected. You can configure your YugabyteDB cluster with a *universe key* (a user-generated symmetric key), to perform cluster-wide encryption. Follow the steps below to enable or disable encryption at rest in a YugabyteDB cluster.
 
-
 ## Enabling encryption at rest
 
 To enable encryption at rest, perform the following steps.
