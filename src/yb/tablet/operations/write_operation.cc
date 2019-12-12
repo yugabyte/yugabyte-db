@@ -116,11 +116,11 @@ Status WriteOperation::DoReplicated(int64_t leader_term, Status* complete_status
   TRACE_EVENT0("txn", "WriteOperation::Complete");
   TRACE("APPLY: Starting");
 
-  if (PREDICT_FALSE(
-          ANNOTATE_UNPROTECTED_READ(FLAGS_tablet_inject_latency_on_apply_write_txn_ms) > 0)) {
+  auto injected_latency = GetAtomicFlag(&FLAGS_tablet_inject_latency_on_apply_write_txn_ms);
+  if (PREDICT_FALSE(injected_latency) > 0) {
       TRACE("Injecting $0ms of latency due to --tablet_inject_latency_on_apply_write_txn_ms",
-            FLAGS_tablet_inject_latency_on_apply_write_txn_ms);
-      SleepFor(MonoDelta::FromMilliseconds(FLAGS_tablet_inject_latency_on_apply_write_txn_ms));
+            injected_latency);
+      SleepFor(MonoDelta::FromMilliseconds(injected_latency));
   } else {
     TEST_PAUSE_IF_FLAG(tablet_pause_apply_write_ops);
   }
