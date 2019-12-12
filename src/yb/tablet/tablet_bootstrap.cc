@@ -420,7 +420,7 @@ Result<bool> TabletBootstrap::OpenTablet() {
       meta_, data_.client_future, data_.clock, mem_tracker_, block_based_table_mem_tracker_,
       metric_registry_, log_anchor_registry_, tablet_options_, data_.log_prefix_suffix,
       data_.transaction_participant_context, data_.local_tablet_filter,
-      data_.transaction_coordinator_context);
+      data_.transaction_coordinator_context, data_.is_sys_catalog, data_.txns_enabled);
   // Doing nothing for now except opening a tablet locally.
   LOG_TIMING_PREFIX(INFO, LogPrefix(), "opening tablet") {
     RETURN_NOT_OK(tablet->Open());

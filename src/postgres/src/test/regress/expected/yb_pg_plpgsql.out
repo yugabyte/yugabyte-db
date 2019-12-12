@@ -1775,25 +1775,18 @@ begin
   j := i+1;
   return;
 end$$ language plpgsql;
-ERROR:  function "f1" already exists with same argument types
 select f1(42);
-ERROR:  RETURN cannot have a parameter in function with OUT parameters
-LINE 3:   return i+1;
-                 ^
-QUERY:
-begin
-  return i+1;
-end
-CONTEXT:  compilation of PL/pgSQL function "f1" near line 3
+ f1
+----
+ 43
+(1 row)
+
 select * from f1(42);
-ERROR:  RETURN cannot have a parameter in function with OUT parameters
-LINE 3:   return i+1;
-                 ^
-QUERY:
-begin
-  return i+1;
-end
-CONTEXT:  compilation of PL/pgSQL function "f1" near line 3
+ j
+----
+ 43
+(1 row)
+
 create or replace function f1(inout i int) as $$
 begin
   i := i+1;
@@ -2511,31 +2504,20 @@ create function void_return_expr() returns void as $$
 begin
     perform 2+2;
 end;$$ language plpgsql;
-ERROR:  function "void_return_expr" already exists with same argument types
 select void_return_expr();
-ERROR:  RETURN cannot have a parameter in function returning void
-LINE 3:     return 5;
-                   ^
-QUERY:
-begin
-    return 5;
-end;
-CONTEXT:  compilation of PL/pgSQL function "void_return_expr" near line 3
+ void_return_expr
+------------------
+
+(1 row)
+
 -- but ordinary functions are not
 create function missing_return_expr() returns int as $$
 begin
     perform 2+2;
 end;$$ language plpgsql;
-ERROR:  function "missing_return_expr" already exists with same argument types
 select missing_return_expr();
-ERROR:  missing expression at or near ";"
-LINE 3:     return ;
-                   ^
-QUERY:
-begin
-    return ;
-end;
-CONTEXT:  compilation of PL/pgSQL function "missing_return_expr" near line 3
+ERROR:  control reached end of function without RETURN
+CONTEXT:  PL/pgSQL function missing_return_expr()
 drop function void_return_expr();
 drop function missing_return_expr();
 --
@@ -3033,11 +3015,10 @@ ERROR:  variable "f1" shadows a previously defined variable
 LINE 3: declare f1 int; begin return 1; end $$ language plpgsql;
                 ^
 select shadowtest(1);
- shadowtest
-------------
- t
-(1 row)
-
+ERROR:  function shadowtest(integer) does not exist
+LINE 1: select shadowtest(1);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 reset plpgsql.extra_errors;
 reset plpgsql.extra_warnings;
 create or replace function shadowtest(f1 int)
@@ -3405,13 +3386,28 @@ LINE 7:     update forc_test set i = i * 100, j = r.j * 2 where curr...
                                                           ^
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
 select forc01();
-NOTICE:  1, 1
-ERROR:  WHERE CURRENT OF not supported yet
-LINE 1: update forc_test set i = i * 100, j = r.j * 2 where current ...
-                                                      ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
-QUERY:  update forc_test set i = i * 100, j = r.j * 2 where current of c
-CONTEXT:  PL/pgSQL function forc01() line 7 at SQL statement
+NOTICE:  5 from c
+NOTICE:  6 from c
+NOTICE:  7 from c
+NOTICE:  9 from c
+NOTICE:  10 from c
+NOTICE:  41 from c2
+NOTICE:  42 from c2
+NOTICE:  43 from c2
+NOTICE:  after loop, c2 = c2
+NOTICE:  41 from special_name
+NOTICE:  42 from special_name
+NOTICE:  43 from special_name
+NOTICE:  after loop, c2 = special_name
+NOTICE:  41
+NOTICE:  42
+NOTICE:  43
+NOTICE:  after loop, c2 = <NULL>
+ forc01
+--------
+
+(1 row)
+
 select * from forc_test order by i;
  i  | j
 ----+----
@@ -3447,13 +3443,28 @@ LINE 11:     update forc_test set i = i * 100, j = r.j * 2 where curr...
                                                            ^
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
 select forc01();
-NOTICE:  1, 1
-ERROR:  WHERE CURRENT OF not supported yet
-LINE 1: update forc_test set i = i * 100, j = r.j * 2 where current ...
-                                                      ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
-QUERY:  update forc_test set i = i * 100, j = r.j * 2 where current of c
-CONTEXT:  PL/pgSQL function forc01() line 11 at SQL statement
+NOTICE:  5 from c
+NOTICE:  6 from c
+NOTICE:  7 from c
+NOTICE:  9 from c
+NOTICE:  10 from c
+NOTICE:  41 from c2
+NOTICE:  42 from c2
+NOTICE:  43 from c2
+NOTICE:  after loop, c2 = c2
+NOTICE:  41 from special_name
+NOTICE:  42 from special_name
+NOTICE:  43 from special_name
+NOTICE:  after loop, c2 = special_name
+NOTICE:  41
+NOTICE:  42
+NOTICE:  43
+NOTICE:  after loop, c2 = <NULL>
+ forc01
+--------
+
+(1 row)
+
 select * from forc_test order by i;
  i  | j
 ----+----

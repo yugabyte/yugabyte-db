@@ -80,11 +80,14 @@ class PickStatusTabletTask {
     std::vector<TabletId> tablets;
     auto status = client_->GetTablets(kTransactionTableName, 0, &tablets, /* ranges */ nullptr);
     if (!status.ok()) {
+      VLOG(1) << "Failed to get tablets of txn status table: " << status;
       callback_(status);
       return;
     }
     if (tablets.empty()) {
-      callback_(STATUS_FORMAT(IllegalState, "No tablets in table $0", kTransactionTableName));
+      Status s = STATUS_FORMAT(IllegalState, "No tablets in table $0", kTransactionTableName);
+      VLOG(1) << s;
+      callback_(s);
       return;
     }
     auto expected = TransactionTableStatus::kExists;

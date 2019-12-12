@@ -446,6 +446,14 @@ class TableProperties {
     return num_tablets_;
   }
 
+  void set_is_ysql_catalog_table(bool is_ysql_catalog_table) {
+    is_ysql_catalog_table_ = is_ysql_catalog_table;
+  }
+
+  bool is_ysql_catalog_table() const {
+    return is_ysql_catalog_table_;
+  }
+
   void ToTablePropertiesPB(TablePropertiesPB *pb) const;
 
   static TableProperties FromTablePropertiesPB(const TablePropertiesPB& pb);
@@ -453,6 +461,8 @@ class TableProperties {
   void AlterFromTablePropertiesPB(const TablePropertiesPB& pb);
 
   void Reset();
+
+  std::string ToString() const;
 
  private:
   static const int kNoDefaultTtl = -1;
@@ -464,6 +474,7 @@ class TableProperties {
   boost::optional<uint32_t> wal_retention_secs_;
   bool use_mangled_column_name_ = false;
   int num_tablets_ = 0;
+  bool is_ysql_catalog_table_ = false;
 };
 
 // The schema for a set of rows.
@@ -647,6 +658,10 @@ class Schema {
     return table_properties_;
   }
 
+  TableProperties* mutable_table_properties() {
+    return &table_properties_;
+  }
+
   void SetDefaultTimeToLive(const uint64_t& ttl_msec) {
     table_properties_.SetDefaultTimeToLive(ttl_msec);
   }
@@ -739,8 +754,9 @@ class Schema {
   const Uuid& cotable_id() const {
     return cotable_id_;
   }
+
   void set_cotable_id(const Uuid& cotable_id) {
-    cotable_id_ = cotable_id;;
+    cotable_id_ = cotable_id;
   }
 
   // Extract a given column from a row where the type is

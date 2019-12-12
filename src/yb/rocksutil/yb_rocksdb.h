@@ -28,9 +28,6 @@ namespace yb {
 
 void InitRocksDBWriteOptions(rocksdb::WriteOptions* write_options);
 
-std::string FormatRocksDBSliceAsStr(const rocksdb::Slice& rocksdb_slice,
-                                    size_t max_length = std::numeric_limits<size_t>::max());
-
 }  // namespace yb
 
 #endif // YB_ROCKSUTIL_YB_ROCKSDB_H

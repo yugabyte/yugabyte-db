@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_INITIAL_SYS_CATALOG_SNAPSHOT_H
-#define YB_MASTER_INITIAL_SYS_CATALOG_SNAPSHOT_H
+#ifndef YB_MASTER_SYS_CATALOG_INITIALIZATION_H
+#define YB_MASTER_SYS_CATALOG_INITIALIZATION_H
 
 #include <vector>
 #include <string>
@@ -23,6 +23,8 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tserver_admin.pb.h"
 
+#include "yb/master/catalog_entity_info.h"
+
 DECLARE_string(initial_sys_catalog_snapshot_path);
 DECLARE_bool(use_initial_sys_catalog_snapshot);
 DECLARE_bool(enable_ysql);
@@ -30,6 +32,8 @@ DECLARE_bool(create_initial_sys_catalog_snapshot);
 
 namespace yb {
 namespace master {
+
+class SysCatalogTable;
 
 // Used by the catalog manager to prepare an initial sys catalog snapshot.
 class InitialSysCatalogSnapshotWriter {
@@ -55,7 +59,18 @@ CHECKED_STATUS RestoreInitialSysCatalogSnapshot(
 
 void SetDefaultInitialSysCatalogSnapshotFlags();
 
+// A one-time migration procedure for existing clusters to set is_ysql_catalog_table and
+// is_transactional flags to true on YSQL system catalog tables.
+CHECKED_STATUS MakeYsqlSysCatalogTablesTransactional(
+    TableInfoMap* table_ids_map,
+    SysCatalogTable* sys_catalog,
+    SysConfigInfo* ysql_catalog_config,
+    int64_t term);
+
+// Master's logic to decide whether to auto-run initdb on leader initialization.
+bool ShouldAutoRunInitDb(SysConfigInfo* ysql_catalog_config, bool pg_proc_exists);
+
 }  // namespace master
 }  // namespace yb
 
-#endif  // YB_MASTER_INITIAL_SYS_CATALOG_SNAPSHOT_H
+#endif  // YB_MASTER_SYS_CATALOG_INITIALIZATION_H

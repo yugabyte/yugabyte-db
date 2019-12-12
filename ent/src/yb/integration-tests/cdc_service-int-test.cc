@@ -49,6 +49,7 @@ DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(follower_unavailable_considered_failed_sec);
+DECLARE_bool(enable_ysql);
 
 METRIC_DECLARE_entity(cdc);
 METRIC_DECLARE_gauge_int64(last_read_opid_index);
@@ -77,6 +78,7 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
     YBMiniClusterTestBase::SetUp();
 
     MiniClusterOptions opts;
+    SetAtomicFlag(false, &FLAGS_enable_ysql);
     opts.num_tablet_servers = server_count();
     opts.num_masters = 1;
     cluster_.reset(new MiniCluster(env_.get(), opts));

@@ -119,6 +119,9 @@ class YBOperation {
   // are enabled.
   virtual bool IsTransactional() const;
 
+  // Whether this is an operation on one of the YSQL system catalog tables.
+  bool IsYsqlCatalogOp() const;
+
  protected:
   explicit YBOperation(const std::shared_ptr<YBTable>& table);
 

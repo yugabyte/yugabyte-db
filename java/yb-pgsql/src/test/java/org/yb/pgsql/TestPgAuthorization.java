@@ -2157,8 +2157,6 @@ public class TestPgAuthorization extends BasePgSQLTest {
             "CREATE TABLE test_table(id int PRIMARY KEY, cid int REFERENCES table1(id1))",
             PERMISSION_DENIED
         );
-        // TODO remove this DROP once #1383 is implemented.
-        statement.execute("DROP TABLE test_table");
         runInvalidQuery(
             statement,
             "CREATE TABLE test_table(id int PRIMARY KEY," +
@@ -2166,8 +2164,6 @@ public class TestPgAuthorization extends BasePgSQLTest {
                 " did int REFERENCES table1(id2))",
             PERMISSION_DENIED
         );
-        // TODO remove this DROP once #1383 is implemented.
-        statement.execute("DROP TABLE test_table");
         runInvalidQuery(
             statement,
             "CREATE TABLE test_table(id int PRIMARY KEY," +
@@ -2175,8 +2171,6 @@ public class TestPgAuthorization extends BasePgSQLTest {
                 " did int REFERENCES table2(id2))",
             PERMISSION_DENIED
         );
-        // TODO remove this DROP once #1383 is implemented.
-        statement.execute("DROP TABLE test_table");
       });
 
       withRole(statement, "no_references", () -> {
@@ -2186,8 +2180,6 @@ public class TestPgAuthorization extends BasePgSQLTest {
             "CREATE TABLE test_table(id int PRIMARY KEY, cid int REFERENCES table1(id2))",
             PERMISSION_DENIED
         );
-        // TODO remove this DROP once #1383 is implemented.
-        statement.execute("DROP TABLE test_table");
         runInvalidQuery(
             statement,
             "CREATE TABLE test_table(id int PRIMARY KEY, cid int REFERENCES table2(id3))",

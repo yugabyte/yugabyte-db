@@ -1727,8 +1727,6 @@ insert into parent values ('AAA', 42);
 insert into parent values ('BBB', 42);
 insert into parent values ('CCC', 42);
 
--- set yb_debug_mode=true;
-
 -- delete from children sees respective child-format tuples
 delete from child1;
 delete from child2;

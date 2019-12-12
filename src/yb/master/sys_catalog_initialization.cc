@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/master/initial_sys_catalog_snapshot.h"
+#include "yb/master/sys_catalog_initialization.h"
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/pb_util.h"
@@ -20,6 +20,8 @@
 #include "yb/util/flag_tags.h"
 
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/sys_catalog.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
@@ -45,6 +47,13 @@ DEFINE_bool(enable_ysql, true,
 
 DEFINE_bool(create_initial_sys_catalog_snapshot, false,
     "Run initdb and create an initial sys catalog data snapshot");
+
+DEFINE_bool(
+    // TODO: switch the default to true after updating all external callers (yb-ctl, YugaWare)
+    // and unit tests.
+    master_auto_run_initdb, false,
+    "Automatically run initdb on master leader initialization");
+
 TAG_FLAG(create_initial_sys_catalog_snapshot, advanced);
 TAG_FLAG(create_initial_sys_catalog_snapshot, hidden);
 
@@ -204,6 +213,116 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
         << "FLAGS_enable_ysql="
         << FLAGS_enable_ysql;
   }
+}
+
+bool ShouldAutoRunInitDb(SysConfigInfo* ysql_catalog_config, bool pg_proc_exists) {
+  if (pg_proc_exists) {
+    LOG(INFO) << "Table pg_proc exists, assuming initdb has already been run";
+    return false;
+  }
+
+  if (!FLAGS_master_auto_run_initdb) {
+    LOG(INFO) << "--master_auto_run_initdb is set to false, not running initdb";
+    return false;
+  }
+
+  {
+    auto l = ysql_catalog_config->LockForRead();
+    if (l->data().pb.ysql_catalog_config().initdb_done()) {
+      LOG(INFO) << "Cluster configuration indicates that initdb has already completed";
+      return false;
+    }
+  }
+
+  LOG(INFO) << "initdb has never been run on this cluster, running it";
+  return true;
+}
+
+Status MakeYsqlSysCatalogTablesTransactional(
+    TableInfoMap* table_ids_map,
+    SysCatalogTable* sys_catalog,
+    SysConfigInfo* ysql_catalog_config,
+    int64_t term) {
+  {
+    auto ysql_catalog_config_lock = ysql_catalog_config->LockForRead();
+    const auto& ysql_catalog_config_pb = ysql_catalog_config_lock->data().pb.ysql_catalog_config();
+    if (ysql_catalog_config_pb.transactional_sys_catalog_enabled()) {
+      LOG(INFO) << "YSQL catalog tables are already transactional";
+      return Status::OK();
+    }
+  }
+
+  int num_updated_tables = 0;
+  for (const auto& iter : *table_ids_map) {
+    const auto& table_id = iter.first;
+    auto& table_info = *iter.second;
+
+    if (!IsPgsqlId(table_id)) {
+      continue;
+    }
+
+    {
+      TabletInfos tablet_infos;
+      table_info.GetAllTablets(&tablet_infos);
+      if (tablet_infos.size() != 1 || tablet_infos.front()->tablet_id() != kSysCatalogTabletId) {
+        continue;
+      }
+     }
+
+    auto table_lock = table_info.LockForWrite();
+    auto& schema = *table_lock->mutable_data()->mutable_schema();
+    auto& table_properties = *schema.mutable_table_properties();
+
+    bool should_modify = false;
+    if (!table_properties.is_ysql_catalog_table()) {
+      table_properties.set_is_ysql_catalog_table(true);
+      should_modify = true;
+    }
+    if (!table_properties.is_transactional()) {
+      table_properties.set_is_transactional(true);
+      should_modify = true;
+    }
+    if (!should_modify) {
+      continue;
+    }
+
+    num_updated_tables++;
+    LOG(INFO) << "Making YSQL system catalog table transactional: " << table_info.ToString();
+
+    // Change table properties in tablet metadata.
+    tserver::ChangeMetadataRequestPB change_req;
+    change_req.set_tablet_id(kSysCatalogTabletId);
+    auto& add_table = *change_req.mutable_add_table();
+    VERIFY_RESULT(sys_catalog->tablet_peer()->tablet_metadata()->GetTableInfo(table_id))->ToPB(
+        &add_table);
+    auto& metadata_table_properties = *add_table.mutable_schema()->mutable_table_properties();
+    metadata_table_properties.set_is_ysql_catalog_table(true);
+    metadata_table_properties.set_is_transactional(true);
+
+    RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
+        &change_req, sys_catalog->tablet_peer().get(), term));
+
+    // Change table properties in the sys catalog. We do this after updating tablet metadata, so
+    // that if a restart happens before this step succeeds, we'll retry updating both next time.
+    RETURN_NOT_OK(sys_catalog->UpdateItem(&table_info, term));
+    table_lock->Commit();
+  }
+
+  if (num_updated_tables > 0) {
+    LOG(INFO) << "Made " << num_updated_tables << " YSQL sys catalog tables transactional";
+  }
+
+  LOG(INFO) << "Marking YSQL system catalog as transactional in YSQL catalog config";
+  {
+    auto ysql_catalog_lock = ysql_catalog_config->LockForWrite();
+    auto* ysql_catalog_config_pb =
+        ysql_catalog_lock->mutable_data()->pb.mutable_ysql_catalog_config();
+    ysql_catalog_config_pb->set_transactional_sys_catalog_enabled(true);
+    RETURN_NOT_OK(sys_catalog->UpdateItem(ysql_catalog_config, term));
+    ysql_catalog_lock->Commit();
+  }
+
+  return Status::OK();
 }
 
 }  // namespace master

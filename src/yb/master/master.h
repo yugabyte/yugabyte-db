@@ -146,6 +146,10 @@ class Master : public server::RpcAndWebServerBase {
   // Called currently by cluster master leader which is removing this master from the quorum.
   CHECKED_STATUS GoIntoShellMode();
 
+  yb::client::AsyncClientInitialiser& async_client_initializer() {
+    return *async_client_init_;
+  }
+
  protected:
   virtual CHECKED_STATUS RegisterServices();
 
@@ -195,6 +199,8 @@ class Master : public server::RpcAndWebServerBase {
 
   // Master's tablet server implementation used to host virtual tables like system.peers.
   std::unique_ptr<MasterTabletServer> master_tablet_server_;
+
+  std::unique_ptr<yb::client::AsyncClientInitialiser> async_client_init_;
 
   DISALLOW_COPY_AND_ASSIGN(Master);
 };

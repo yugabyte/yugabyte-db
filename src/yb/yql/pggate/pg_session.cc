@@ -15,6 +15,7 @@
 
 #include <memory>
 
+#include "yb/util/logging.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pggate_flags.h"
@@ -454,13 +455,23 @@ Status PgSession::StartBufferingWriteOperations() {
 Status PgSession::FlushBufferedWriteOperations(PgsqlOpBuffer* write_ops, bool transactional) {
   Status final_status;
   if (!write_ops->empty()) {
+    if (transactional) {
+      DCHECK(!YBCIsInitDbModeEnvVarSet());
+    }
+
     client::YBSessionPtr session =
-      VERIFY_RESULT(GetSession(transactional,
-                               false /* read_only_op */))->shared_from_this();
+      VERIFY_RESULT(GetSession(
+          transactional,
+          false /* read_only_op */,
+          write_ops->at(0)->IsYsqlCatalogOp()))->shared_from_this();
 
     int num_writes = 0;
     for (auto it = write_ops->begin(); it != write_ops->end(); ++it) {
-      DCHECK_EQ((*it)->IsTransactional(), transactional);
+      DCHECK_EQ(ShouldBufferTransactionally(it->get()), transactional)
+          << "Table name: " << it->get()->table()->name().ToString()
+          << ", table is transactional: "
+          << it->get()->table()->schema().table_properties().is_transactional()
+          << ", initdb mode: " << YBCIsInitDbModeEnvVarSet();
       RETURN_NOT_OK(session->Apply(*it));
       num_writes++;
 
@@ -511,13 +522,23 @@ Status PgSession::FlushBufferedWriteOperations() {
   Status s;
   s = FlushBufferedWriteOperations(&buffered_write_ops_, false /* transactional */);
   final_status = CombineStatuses(final_status, s);
-  s = FlushBufferedWriteOperations(&buffered_txn_write_ops_, true /* transactional */);
-  final_status = CombineStatuses(final_status, s);
+  if (YBCIsInitDbModeEnvVarSet()) {
+    // No transactional operations are expected in the initdb mode.
+    DCHECK_EQ(buffered_txn_write_ops_.size(), 0);
+  } else {
+    s = FlushBufferedWriteOperations(&buffered_txn_write_ops_, true /* transactional */);
+    final_status = CombineStatuses(final_status, s);
+  }
   return final_status;
 }
 
-Result<OpBuffered> PgSession::PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op,
-                                           uint64_t* read_time) {
+bool PgSession::ShouldBufferTransactionally(client::YBPgsqlOp* op) {
+  return op->IsTransactional() && !YBCIsInitDbModeEnvVarSet();
+}
+
+Result<PgApplyOutcome> PgSession::PgApplyAsync(
+    const std::shared_ptr<client::YBPgsqlOp>& op,
+    uint64_t* read_time) {
 
   if (op->type() == YBOperation::Type::PGSQL_READ) {
     const PgsqlReadRequestPB& read_req = down_cast<client::YBPgsqlReadOp*>(op.get())->request();
@@ -531,22 +552,18 @@ Result<OpBuffered> PgSession::PgApplyAsync(const std::shared_ptr<client::YBPgsql
   // catalog tables during initdb. Continuing read ops to scan the table can be issued while
   // writes to its index are being buffered.
   if (buffer_write_ops_ > 0 && op->type() == YBOperation::Type::PGSQL_WRITE) {
-    if (op->IsTransactional()) {
+    bool use_txn = ShouldBufferTransactionally(op.get());
+    if (use_txn) {
       buffered_txn_write_ops_.push_back(op);
     } else {
       buffered_write_ops_.push_back(op);
     }
-    return OpBuffered::kTrue;
+    return PgApplyOutcome{OpBuffered::kTrue, /* yb_session */ nullptr};
   }
 
-  if (op->IsTransactional()) {
-    has_txn_ops_ = true;
-  } else {
-    has_non_txn_ops_ = true;
-  }
 
   auto session = VERIFY_RESULT(GetSessionForOp(op));
-  if (read_time && has_txn_ops_) {
+  if (read_time && session != session_.get()) {
     if (!*read_time) {
       *read_time = clock_->Now().ToUint64();
     }
@@ -554,27 +571,16 @@ Result<OpBuffered> PgSession::PgApplyAsync(const std::shared_ptr<client::YBPgsql
   }
   RETURN_NOT_OK(session->Apply(op));
 
-  return OpBuffered::kFalse;
+  return PgApplyOutcome{OpBuffered::kFalse, session->shared_from_this()};
 }
 
-Status PgSession::PgFlushAsync(StatusFunctor callback) {
-  VLOG(2) << __PRETTY_FUNCTION__ << " called";
-  if (has_txn_ops_ && has_non_txn_ops_) {
-    return STATUS(IllegalState,
-        "Cannot flush transactional and non-transactional operations together");
-  }
-  bool transactional = has_txn_ops_;
-  VLOG(2) << __PRETTY_FUNCTION__
-          << ": has_txn_ops_=" << has_txn_ops_ << ", has_non_txn_ops_=" << has_non_txn_ops_;
-  has_txn_ops_ = false;
-  has_non_txn_ops_ = false;
+Status PgSession::PgFlushAsync(StatusFunctor callback, const client::YBSessionPtr& yb_session) {
+  VLOG(2) << __PRETTY_FUNCTION__ << " called, yb_session=" << yb_session.get();
+
   has_row_mark_ = false;
 
-  // We specify read_only_op true here because we never start a new write transaction at this point.
-  client::YBSessionPtr session =
-      VERIFY_RESULT(GetSession(transactional, /* read_only_op */ true))->shared_from_this();
-  session->FlushAsync([this, session, callback] (const Status& status) {
-    callback(CombineErrorsToStatus(session->GetPendingErrors(), status));
+  yb_session->FlushAsync([this, yb_session, callback] (const Status& status) {
+    callback(CombineErrorsToStatus(yb_session->GetPendingErrors(), status));
   });
   return Status::OK();
 }
@@ -585,7 +591,10 @@ Status PgSession::RestartTransaction() {
 
 Result<client::YBSession*> PgSession::GetSessionForOp(
     const std::shared_ptr<client::YBPgsqlOp>& op) {
-  return GetSession(op->IsTransactional(), op->read_only() && !has_row_mark_);
+  return GetSession(
+      op->IsTransactional(),
+      op->read_only() && !has_row_mark_,
+      op->IsYsqlCatalogOp());
 }
 
 namespace {
@@ -627,16 +636,25 @@ Status PgSession::CombineStatuses(Status first_status, Status second_status) {
   }
 }
 
-Result<YBSession*> PgSession::GetSession(bool transactional, bool read_only_op) {
-  if (transactional) {
+Result<YBSession*> PgSession::GetSession(
+    bool transactional, bool read_only_op, bool is_ysql_catalog_op) {
+  if (transactional && !YBCIsInitDbModeEnvVarSet() &&
+      (!is_ysql_catalog_op ||
+       pg_txn_manager_->IsDdlMode() ||
+       // In this mode, used for some tests, we will execute direct statements on YSQL system
+       // catalog tables in the user-controlled transaction, as opposed to executing them
+       // non-transactionally.
+       FLAGS_ysql_enable_manual_sys_table_txn_ctl)) {
     YBSession* txn_session = VERIFY_RESULT(pg_txn_manager_->GetTransactionalSession());
     RETURN_NOT_OK(pg_txn_manager_->BeginWriteTransactionIfNecessary(read_only_op));
     VLOG(2) << __PRETTY_FUNCTION__
-            << ": read_only_op=" << read_only_op << ", returning transactional session";
+            << ": read_only_op=" << read_only_op << ", returning transactional session: "
+            << txn_session;
     return txn_session;
   }
   VLOG(2) << __PRETTY_FUNCTION__
-          << ": read_only_op=" << read_only_op << ", returning non-transactional session";
+          << ": read_only_op=" << read_only_op << ", returning non-transactional session "
+          << session_.get();
   return session_.get();
 }
 

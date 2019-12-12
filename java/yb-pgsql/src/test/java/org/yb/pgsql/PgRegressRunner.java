@@ -88,6 +88,7 @@ public class PgRegressRunner {
       throw new RuntimeException(ex);
     }
 
+
     this.pgSchedule = schedule;
     this.pgHost = pgHost;
     this.pgPort = pgPort;
@@ -230,29 +231,18 @@ public class PgRegressRunner {
       ).forEach(pathToCopy -> {
         String fileName = pathToCopy.toFile().getName();
         String relPathStr = pgRegressOutputPath.relativize(pathToCopy).toString();
-        String fileNameNoExt = FilenameUtils.removeExtension(fileName);
-        File srcFile = pathToCopy.toFile();
-        File destFile = new File(getPgRegressDir(), relPathStr);
-        if ((resultFileNames.contains(fileNameNoExt) || fileName.endsWith(".diffs")) &&
-            !fileName.endsWith(".source")) {
+        if ((fileName.endsWith(".out") || fileName.endsWith(".diffs")) &&
+            !relPathStr.startsWith("expected/")) {
+          File srcFile = pathToCopy.toFile();
+          File destFile = new File(getPgRegressDir(), relPathStr);
+          LOG.info("Copying file " + srcFile + " to " + destFile);
           try {
             FileUtils.copyFile(srcFile, destFile);
-            copiedFiles.add(relPathStr);
           } catch (IOException ex) {
             LOG.warn("Failed copying file " + srcFile + " to " + destFile, ex);
-            failedFiles.add(relPathStr);
           }
-        } else {
-          skippedFiles.add(relPathStr);
         }
       });
-
-      String fromWhereToWhere = "from " + pgRegressOutputPath + " to " + getPgRegressDir() + ": ";
-      LOG.info("Copied files " + fromWhereToWhere + copiedFiles);
-      LOG.info("Skipped copying files " + fromWhereToWhere + skippedFiles);
-      if (!failedFiles.isEmpty()) {
-        LOG.info("Failed copying files " + fromWhereToWhere + failedFiles);
-      }
     }
 
     if (EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_PG_REGRESS_IGNORE_RESULT")) {

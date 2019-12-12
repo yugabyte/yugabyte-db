@@ -172,9 +172,12 @@ void YBSession::set_allow_local_calls_in_curr_thread(bool flag) {
 }
 
 void YBSession::SetInTxnLimit(HybridTime value) {
-  auto *rp = DCHECK_NOTNULL(read_point());
+  auto* rp = read_point();
+  LOG_IF(DFATAL, rp == nullptr)
+      << __FUNCTION__ << "(" << value << ") called on YBSession " << this
+      << " but read point is null";
   if (rp) {
-    read_point()->SetInTxnLimit(value);
+    rp->SetInTxnLimit(value);
   }
 }
 

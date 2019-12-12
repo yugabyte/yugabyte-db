@@ -49,7 +49,7 @@
 namespace yb {
 namespace integration_tests {
 
-// This is a common base class from which SQLTableTest and RedisTableTest will inherit from.
+// This is a common base class that SQLTableTest and RedisTableTest inherit from.
 // In future some of the functionality may be migrated to sub-base classes when it becomes bigger.
 // i.e. scan related functions may be moved down because it is only supported for SQL tables.
 class YBTableTestBase : public YBTest {
@@ -67,6 +67,7 @@ class YBTableTestBase : public YBTest {
   virtual int client_rpc_timeout_ms();
   virtual client::YBTableName table_name();
   virtual bool need_redis_table();
+  virtual bool enable_ysql();
 
   void CreateRedisTable(const client::YBTableName& table_name);
   virtual void CreateTable();
@@ -115,6 +116,7 @@ class YBTableTestBase : public YBTest {
   static constexpr int kDefaultSessionTimeoutMs = 60000;
   static constexpr int kDefaultClientRpcTimeoutMs = 30000;
   static constexpr bool kDefaultUsingExternalMiniCluster = false;
+  static constexpr bool kDefaultEnableYSQL = true;
   static const client::YBTableName kDefaultTableName;
 
   vector<uint16_t> master_rpc_ports();

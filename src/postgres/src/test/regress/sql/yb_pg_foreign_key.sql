@@ -432,16 +432,14 @@ DROP TABLE PKTABLE;
 CREATE TABLE PKTABLE (ptest1 int PRIMARY KEY);
 CREATE TABLE FKTABLE_FAIL1 ( ftest1 int, CONSTRAINT fkfail1 FOREIGN KEY (ftest2) REFERENCES PKTABLE);
 CREATE TABLE FKTABLE_FAIL2 ( ftest1 int, CONSTRAINT fkfail1 FOREIGN KEY (ftest1) REFERENCES PKTABLE(ptest2));
-
-DROP TABLE FKTABLE_FAIL1;
-DROP TABLE FKTABLE_FAIL2;
+SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL1';
+SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL2';
 DROP TABLE PKTABLE;
 
 -- Test for referencing column number smaller than referenced constraint
 CREATE TABLE PKTABLE (ptest1 int, ptest2 int, UNIQUE(ptest1, ptest2));
 CREATE TABLE FKTABLE_FAIL1 (ftest1 int REFERENCES pktable(ptest1));
-
-DROP TABLE FKTABLE_FAIL1;
+SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL1';
 DROP TABLE PKTABLE;
 
 --
@@ -452,13 +450,9 @@ CREATE TABLE PKTABLE (ptest1 int PRIMARY KEY);
 INSERT INTO PKTABLE VALUES(42);
 -- This next should fail, because int=inet does not exist
 CREATE TABLE FKTABLE (ftest1 inet REFERENCES pktable);
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- This should also fail for the same reason, but here we
 -- give the column name
 CREATE TABLE FKTABLE (ftest1 inet REFERENCES pktable(ptest1));
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- This should succeed, even though they are different types,
 -- because int=int8 exists and is a member of the integer opfamily
 CREATE TABLE FKTABLE (ftest1 int8 REFERENCES pktable);
@@ -472,8 +466,6 @@ DROP TABLE FKTABLE;
 -- not an implicit coercion (or use numeric=numeric, but that's not part
 -- of the integer opfamily)
 CREATE TABLE FKTABLE (ftest1 numeric REFERENCES pktable);
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
 -- On the other hand, this should work because int implicitly promotes to
 -- numeric, and we allow promotion on the FK side
@@ -493,24 +485,14 @@ DROP TABLE PKTABLE;
 CREATE TABLE PKTABLE (ptest1 int, ptest2 text, PRIMARY KEY(ptest1, ptest2));
 -- This should fail, because we just chose really odd types
 CREATE TABLE FKTABLE (ftest1 cidr, ftest2 timestamp, FOREIGN KEY(ftest1, ftest2) REFERENCES pktable);
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- Again, so should this...
 CREATE TABLE FKTABLE (ftest1 cidr, ftest2 timestamp, FOREIGN KEY(ftest1, ftest2) REFERENCES pktable(ptest1, ptest2));
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- This fails because we mixed up the column ordering
 CREATE TABLE FKTABLE (ftest1 int, ftest2 text, FOREIGN KEY(ftest2, ftest1) REFERENCES pktable);
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- As does this...
 CREATE TABLE FKTABLE (ftest1 int, ftest2 text, FOREIGN KEY(ftest2, ftest1) REFERENCES pktable(ptest1, ptest2));
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- And again..
 CREATE TABLE FKTABLE (ftest1 int, ftest2 text, FOREIGN KEY(ftest1, ftest2) REFERENCES pktable(ptest2, ptest1));
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- This works...
 CREATE TABLE FKTABLE (ftest1 int, ftest2 text, FOREIGN KEY(ftest2, ftest1) REFERENCES pktable(ptest2, ptest1));
 DROP TABLE FKTABLE;
@@ -531,18 +513,12 @@ DROP TABLE PKTABLE;
 -- This shouldn't (mixed up columns)
 CREATE TABLE PKTABLE (ptest1 int, ptest2 text, ptest3 int, ptest4 text, PRIMARY KEY(ptest1, ptest2), FOREIGN KEY(ptest3,
 ptest4) REFERENCES pktable(ptest2, ptest1));
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE PKTABLE;
 -- Nor should this... (same reason, we have 4,3 referencing 1,2 which mismatches types
 CREATE TABLE PKTABLE (ptest1 int, ptest2 text, ptest3 int, ptest4 text, PRIMARY KEY(ptest1, ptest2), FOREIGN KEY(ptest4,
 ptest3) REFERENCES pktable(ptest1, ptest2));
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE PKTABLE;
 -- Not this one either... Same as the last one except we didn't defined the columns being referenced.
 CREATE TABLE PKTABLE (ptest1 int, ptest2 text, ptest3 int, ptest4 text, PRIMARY KEY(ptest1, ptest2), FOREIGN KEY(ptest4,
 ptest3) REFERENCES pktable);
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE PKTABLE;
 
 -- TODO: YugaByte does not yet support table inheritance.
 -- Leaving the first failing statement uncommented so that this test

@@ -293,6 +293,7 @@ class Messenger : public ProxyContext {
   // Use specified IP address as base address for outbound connections from messenger.
   void TEST_SetOutboundIpBase(const IpAddress& value) {
     test_outbound_ip_base_ = value;
+    has_outbound_ip_base_.store(true, std::memory_order_release);
   }
 
   bool TEST_ShouldArtificiallyRejectIncomingCallsFrom(const IpAddress &remote);
@@ -374,6 +375,7 @@ class Messenger : public ProxyContext {
 
   // Use this IP address as base address for outbound connections from messenger.
   IpAddress test_outbound_ip_base_;
+  std::atomic<bool> has_outbound_ip_base_{false};
 
   // Number of outbound connections to create per each destination server address.
   int num_connections_to_server_;

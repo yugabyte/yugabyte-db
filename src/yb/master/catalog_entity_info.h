@@ -289,6 +289,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntry::TA
     return pb.schema();
   }
 
+  SchemaPB* mutable_schema() {
+    return pb.mutable_schema();
+  }
+
   // Helper to set the state of the tablet with a custom message.
   void set_state(SysTablesEntryPB::State state, const std::string& msg);
 };
@@ -619,6 +623,18 @@ class SysConfigInfo : public RefCountedThreadSafe<SysConfigInfo>,
 
   DISALLOW_COPY_AND_ASSIGN(SysConfigInfo);
 };
+
+// Convenience typedefs.
+typedef std::unordered_map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
+typedef std::unordered_map<TableId, scoped_refptr<TableInfo>> TableInfoMap;
+typedef std::pair<NamespaceId, TableName> TableNameKey;
+typedef std::unordered_map<
+    TableNameKey, scoped_refptr<TableInfo>, boost::hash<TableNameKey>> TableInfoByNameMap;
+
+typedef std::unordered_map<UDTypeId, scoped_refptr<UDTypeInfo>> UDTypeInfoMap;
+typedef std::pair<NamespaceId, UDTypeName> UDTypeNameKey;
+typedef std::unordered_map<
+    UDTypeNameKey, scoped_refptr<UDTypeInfo>, boost::hash<UDTypeNameKey>> UDTypeInfoByNameMap;
 
 }  // namespace master
 }  // namespace yb

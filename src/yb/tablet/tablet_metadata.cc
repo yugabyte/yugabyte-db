@@ -666,8 +666,19 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
   }
   std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
+  auto existing_table_iter = tables.find(table_id);
+  if (existing_table_iter != tables.end()) {
+    const auto& existing_table = *existing_table_iter->second.get();
+    if (!existing_table.schema.table_properties().is_ysql_catalog_table() &&
+        schema.table_properties().is_ysql_catalog_table()) {
+      // This must be the one-time migration with transactional DDL being turned on for the first
+      // time on this cluster.
+    } else {
+      LOG(DFATAL) << "Table " << table_id << " already exists. New table info: "
+          << new_table_info->ToString() << ", old table info: " << existing_table.ToString();
+    }
+  }
   tables[table_id].swap(new_table_info);
-  DCHECK(!new_table_info) << "table " << table_id << " already exists";
 }
 
 void RaftGroupMetadata::RemoveTable(const std::string& table_id) {

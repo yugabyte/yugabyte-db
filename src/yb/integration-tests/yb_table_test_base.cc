@@ -24,6 +24,8 @@
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/util/curl_util.h"
 
+DECLARE_bool(enable_ysql);
+
 using std::unique_ptr;
 using std::shared_ptr;
 
@@ -76,6 +78,10 @@ bool YBTableTestBase::use_external_mini_cluster() {
   return kDefaultUsingExternalMiniCluster;
 }
 
+bool YBTableTestBase::enable_ysql() {
+  return kDefaultEnableYSQL;
+}
+
 YBTableTestBase::YBTableTestBase() {
 }
 
@@ -91,12 +97,14 @@ void YBTableTestBase::SetUp() {
     opts.num_masters = num_masters();
     opts.master_rpc_ports = master_rpc_ports();
     opts.num_tablet_servers = num_tablet_servers();
+    opts.enable_ysql = enable_ysql();
     CustomizeExternalMiniCluster(&opts);
 
     external_mini_cluster_.reset(new ExternalMiniCluster(opts));
     mini_cluster_status = external_mini_cluster_->Start();
   } else {
     auto opts = MiniClusterOptions();
+    SetAtomicFlag(enable_ysql(), &FLAGS_enable_ysql);
     opts.num_masters = num_masters();
     opts.num_tablet_servers = num_tablet_servers();
 

@@ -266,8 +266,6 @@ class ClientStressTest_LowMemory : public ClientStressTest {
 
 // Stress test where, due to absurdly low memory limits, many client requests
 // are rejected, forcing the client to retry repeatedly.
-// TODO(mbautin): switch this test to QL (RocksDB-backed) after we implement proper memory
-// tracking for RocksDB (https://yugabyte.atlassian.net/browse/ENG-442).
 TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
   // Sanitized tests run much slower, so we don't want to wait for as many
   // rejections before declaring the test to be passed.

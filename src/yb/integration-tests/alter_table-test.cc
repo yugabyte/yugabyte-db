@@ -123,6 +123,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
     FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
     FLAGS_use_hybrid_clock = false;
     FLAGS_ht_lease_duration_ms = 0;
+    FLAGS_enable_ysql = false;
     ANNOTATE_BENIGN_RACE(&FLAGS_enable_maintenance_manager,
                          "safe to change at runtime");
   }

@@ -52,6 +52,9 @@ struct PgProcessConf {
 
   // File descriptor of the local tserver's shared memory.
   int tserver_shm_fd = -1;
+
+  // If this is true, we will not log to the file, even if the log file is specified.
+  bool force_disable_log_file = false;
 };
 
 // Invokes a PostgreSQL child process once. Also allows invoking initdb. Not thread-safe.

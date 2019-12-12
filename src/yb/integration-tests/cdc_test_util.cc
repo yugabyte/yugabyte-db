@@ -88,16 +88,16 @@ void VerifyWalRetentionTime(MiniCluster* cluster,
       const std::string& table_name = peer->tablet_metadata()->table_name();
       if (table_name.substr(0, table_name_start.length()) == table_name_start) {
         auto table_id = peer->tablet_metadata()->table_id();
-        CHECK_OK(WaitUntilWalRetentionSecs([&peer]() { return peer->log()->wal_retention_secs(); },
+        ASSERT_OK(WaitUntilWalRetentionSecs([&peer]() { return peer->log()->wal_retention_secs(); },
             expected_wal_retention_secs, table_name));
-        CHECK_OK(WaitUntilWalRetentionSecs(
+        ASSERT_OK(WaitUntilWalRetentionSecs(
             [&peer]() { return peer->tablet_metadata()->wal_retention_secs(); },
             expected_wal_retention_secs, table_name));
         ntablets_checked++;
       }
     }
   }
-  CHECK_GT(ntablets_checked, 0);
+  ASSERT_GT(ntablets_checked, 0);
 }
 
 } // namespace cdc

@@ -35,5 +35,7 @@ DECLARE_bool(ysql_beta_feature_function);
 DECLARE_bool(ysql_beta_feature_trigger);
 DECLARE_bool(ysql_beta_feature_roles);
 DECLARE_bool(ysql_beta_feature_extension);
+DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
+DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 
 #endif  // YB_YQL_PGGATE_PGGATE_FLAGS_H

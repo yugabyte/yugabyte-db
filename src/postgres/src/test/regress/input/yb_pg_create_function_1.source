@@ -73,47 +73,23 @@ CREATE FUNCTION test_fdw_handler()
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
     AS 'SELECT ''not an integer'';';
 
--- TODO In YB dropping function explicitly due to issue #1383.
-DROP FUNCTION IF EXISTS test1;
-
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
     AS 'not even SQL';
-
--- TODO In YB dropping function explicitly due to issue #1383.
-DROP FUNCTION IF EXISTS test1;
 
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
     AS 'SELECT 1, 2, 3;';
 
--- TODO In YB dropping function explicitly due to issue #1383.
-DROP FUNCTION IF EXISTS test1;
-
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
     AS 'SELECT $2;';
-
--- TODO In YB dropping function explicitly due to issue #1383.
-DROP FUNCTION IF EXISTS test1;
 
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
     AS 'a', 'b';
 
--- TODO In YB dropping function explicitly due to issue #1383.
-DROP FUNCTION IF EXISTS test1;
-
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE C
     AS 'nosuchfile';
-
--- TODO In YB dropping function explicitly due to issue #1383.
-DROP FUNCTION IF EXISTS test1;
 
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE C
     AS '@libdir@/regress@DLSUFFIX@', 'nosuchsymbol';
 
--- TODO In YB dropping function explicitly due to issue #1383.
-DROP FUNCTION IF EXISTS test1;
-
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE internal
     AS 'nosuch';
-
--- TODO In YB dropping function explicitly due to issue #1383.
-DROP FUNCTION IF EXISTS test1;

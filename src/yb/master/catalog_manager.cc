@@ -92,6 +92,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_util.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/system_tablet.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
@@ -116,7 +117,7 @@
 #include "yb/master/yql_size_estimates_vtable.h"
 #include "yb/master/catalog_manager_bg_tasks.h"
 #include "yb/master/catalog_loaders.h"
-#include "yb/master/initial_sys_catalog_snapshot.h"
+#include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/tasks_tracker.h"
 #include "yb/master/encryption_manager.h"
 
@@ -244,12 +245,6 @@ TAG_FLAG(hide_pg_catalog_table_creation_logs, hidden);
 
 DEFINE_test_flag(int32, simulate_slow_table_create_secs, 0,
     "Simulates a slow table creation by sleeping after the table has been added to memory.");
-
-DEFINE_bool(
-    // TODO: switch the default to true after updating all external callers (yb-ctl, YugaWare)
-    // and unit tests.
-    master_auto_run_initdb, false,
-    "Automatically run initdb on master leader initialization");
 
 DEFINE_test_flag(int32, simulate_slow_system_tablet_bootstrap_secs, 0,
     "Simulates a slow tablet bootstrap by adding a sleep before system tablet init.");
@@ -720,9 +715,25 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
 
   permissions_manager_->BuildRecursiveRolesUnlocked();
 
-  // The error handling here is not for the initdb result -- that handling is done asynchronously.
-  // This just starts initdb in the background and returns.
-  return StartRunningInitDbIfNeeded(term);
+  if (FLAGS_enable_ysql) {
+    LOG(INFO) << "YSQL is enabled, will create the transaction status table when "
+              << FLAGS_replication_factor << " tablet servers are online";
+    master_->ts_manager()->SetTSCountCallback(FLAGS_replication_factor, [this]{
+      LOG(INFO) << FLAGS_replication_factor
+                << " tablet servers registered, creating the transaction status table";
+      CHECK_OK(CreateTransactionsStatusTableIfNeeded(/* rpc */ nullptr));
+      LOG(INFO) << "Finished creating transaction status table asynchronously";
+    });
+  }
+
+  if (!StartRunningInitDbIfNeeded(term)) {
+    // If we are not running initdb, this is an existing cluster, and we need to check whether we
+    // need to do a one-time migration to make YSQL system catalog tables transactional.
+    RETURN_NOT_OK(MakeYsqlSysCatalogTablesTransactional(
+        table_ids_map_.CheckOut().get_ptr(), sys_catalog_.get(), ysql_catalog_config_.get(), term));
+  }
+
+  return Status::OK();
 }
 
 template <class Loader>
@@ -792,7 +803,7 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
   }
 
   if (cluster_config_) {
-    LOG(INFO) << "Cluster configuration already setup, skipping re-initialization.";
+    LOG(INFO) << "Cluster configuration has already been set up, skipping re-initialization.";
     return Status::OK();
   }
 
@@ -853,26 +864,12 @@ Status CatalogManager::PrepareDefaultSysConfig(int64_t term) {
   return Status::OK();
 }
 
-Status CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
+bool CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
   CHECK(lock_.is_locked());
-  if (!FLAGS_master_auto_run_initdb) {
-    return Status::OK();
+  if (!ShouldAutoRunInitDb(ysql_catalog_config_.get(), pg_proc_exists_)) {
+    return false;
   }
 
-  {
-    auto l = ysql_catalog_config_->LockForRead();
-    if (l->data().pb.ysql_catalog_config().initdb_done()) {
-      LOG(INFO) << "Cluster configuration indicates that initdb has already completed";
-      return Status::OK();
-    }
-  }
-
-  if (pg_proc_exists_) {
-    LOG(INFO) << "Table pg_proc exists, assuming initdb has already been run";
-    return Status::OK();
-  }
-
-  LOG(INFO) << "initdb has never been run on this cluster, running it";
   string master_addresses_str = MasterAddressesToString(
       *master_->opts().GetMasterAddresses());
 
@@ -900,7 +897,7 @@ Status CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
     }
     return status;
   });
-  return Status::OK();
+  return true;
 }
 
 Status CatalogManager::PrepareDefaultNamespaces(int64_t term) {
@@ -961,7 +958,9 @@ Status CatalogManager::PrepareSystemTables(int64_t term) {
       kSystemAuthNamespaceId, term)));
 
   // Ensure kNumSystemTables is in-sync with the system tables created.
-  DCHECK_EQ(system_tablets_.size(), kNumSystemTables);
+  LOG_IF(DFATAL, system_tablets_.size() != kNumSystemTables)
+      << "kNumSystemTables is " << kNumSystemTables << " but " << system_tablets_.size()
+      << " tables were created";
 
   return Status::OK();
 }
@@ -1433,7 +1432,7 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB req,
   parent_table_info = FindPtrOrNull(*table_ids_map_,
                                     schema.table_properties().CopartitionTableId());
   if (parent_table_info == nullptr) {
-    s = STATUS(NotFound, "The object does not exist",
+    s = STATUS(NotFound, "The object does not exist: copartitioned table with id",
                schema.table_properties().CopartitionTableId());
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
@@ -1547,6 +1546,7 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
     RETURN_NOT_OK(ValidateCreateTableSchema(client_schema, resp));
     schema = client_schema.CopyWithColumnIds();
   }
+  schema.mutable_table_properties()->set_is_ysql_catalog_table(true);
 
   // Verify no hash partition schema is specified.
   if (req->partition_schema().has_hash_schema()) {
@@ -1742,7 +1742,7 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
         table_req.mutable_index_info()->set_indexed_table_id(indexed_table_id);
       }
 
-      // Set depricated field for index_info.
+      // Set deprecated field for index_info.
       table_req.set_indexed_table_id(indexed_table_id);
       table_req.set_is_local_index(PROTO_GET_IS_LOCAL(l->data().pb));
       table_req.set_is_unique_index(PROTO_GET_IS_UNIQUE(l->data().pb));
@@ -1775,6 +1775,22 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
                 << ":\n" << orig_req->DebugString();
   } else {
     LOG(INFO) << "CreateTable from " << RequestorString(rpc) << ": " << orig_req->name();
+  }
+
+  const bool is_transactional = orig_req->schema().table_properties().is_transactional();
+  // If this is a transactional table, we need to create the transaction status table (if it does
+  // not exist already).
+  if (is_transactional && (!is_pg_catalog_table || !FLAGS_create_initial_sys_catalog_snapshot)) {
+    Status s = CreateTransactionsStatusTableIfNeeded(rpc);
+    if (!s.ok()) {
+      return s.CloneAndPrepend("Error while creating transaction status table");
+    }
+  } else {
+    VLOG(1)
+        << "Not attempting to create a transaction status table:\n"
+        << "  " << EXPR_VALUE_FOR_LOG(is_transactional) << "\n "
+        << "  " << EXPR_VALUE_FOR_LOG(is_pg_catalog_table) << "\n "
+        << "  " << EXPR_VALUE_FOR_LOG(FLAGS_create_initial_sys_catalog_snapshot);
   }
 
   if (is_pg_catalog_table) {
@@ -2036,15 +2052,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
             << " per request from " << RequestorString(rpc);
   background_tasks_->Wake();
 
-  // If this is a transactional table, we need to create the transaction status table (if it does
-  // not exist already).
-  if (req.schema().table_properties().is_transactional()) {
-    Status s = CreateTransactionsStatusTableIfNeeded(rpc);
-    if (!s.ok()) {
-      return s.CloneAndPrepend("Error while creating transaction status table");
-    }
-  }
-
   if (FLAGS_master_enable_metrics_snapshotter &&
       !(req.table_type() == TableType::YQL_TABLE_TYPE &&
         namespace_id == kSystemNamespaceId &&
@@ -2115,7 +2122,9 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
       num_replicas > num_live_tservers) {
     msg = Substitute("Not enough live tablet servers to create table with replication factor $0. "
                      "$1 tablet servers are alive.", num_replicas, num_live_tservers);
-    LOG(WARNING) << msg;
+    LOG(WARNING) << msg
+                 << ". Placement info: " << placement_info.ShortDebugString()
+                 << ", replication factor flag: " << FLAGS_replication_factor;
     s = STATUS(InvalidArgument, msg);
     return SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
   }
@@ -2194,34 +2203,39 @@ Status CatalogManager::CreateTransactionsStatusTableIfNeeded(rpc::RpcContext *rp
     return STATUS(NotFound, "Namespace does not exist", kSystemNamespaceName);
   }
 
-  // If status table exists do nothing, otherwise create it.
+  // If status table exists, do nothing, otherwise create it.
   scoped_refptr<TableInfo> table_info;
   RETURN_NOT_OK(FindTable(table_indentifier, &table_info));
 
-  if (!table_info) {
-    // Set up a CreateTable request internally.
-    CreateTableRequestPB req;
-    CreateTableResponsePB resp;
-    req.set_name(kTransactionsTableName);
-    req.mutable_namespace_()->set_name(kSystemNamespaceName);
-    req.set_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
-
-    // Explicitly set the number tablets if the corresponding flag is set, otherwise CreateTable
-    // will use the same defaults as for regular tables.
-    if (FLAGS_transaction_table_num_tablets > 0) {
-      req.set_num_tablets(FLAGS_transaction_table_num_tablets);
-    }
-
-    ColumnSchema hash(kRedisKeyColumnName, BINARY, /* is_nullable */ false, /* is_hash_key */ true);
-    ColumnSchemaToPB(hash, req.mutable_schema()->mutable_columns()->Add());
-
-    Status s = CreateTable(&req, &resp, rpc);
-    // We do not lock here so it is technically possible that the table was already created.
-    // If so, there is nothing to do so we just ignore the "AlreadyPresent" error.
-    if (!s.ok() && !s.IsAlreadyPresent()) {
-      return s;
-    }
+  if (table_info) {
+    VLOG(1) << "Transaction status table already exists, not creating.";
+    return Status::OK();
   }
+
+  LOG(INFO) << "Creating the transaction status table";
+  // Set up a CreateTable request internally.
+  CreateTableRequestPB req;
+  CreateTableResponsePB resp;
+  req.set_name(kTransactionsTableName);
+  req.mutable_namespace_()->set_name(kSystemNamespaceName);
+  req.set_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
+
+  // Explicitly set the number tablets if the corresponding flag is set, otherwise CreateTable
+  // will use the same defaults as for regular tables.
+  if (FLAGS_transaction_table_num_tablets > 0) {
+    req.set_num_tablets(FLAGS_transaction_table_num_tablets);
+  }
+
+  ColumnSchema hash(kRedisKeyColumnName, BINARY, /* is_nullable */ false, /* is_hash_key */ true);
+  ColumnSchemaToPB(hash, req.mutable_schema()->mutable_columns()->Add());
+
+  Status s = CreateTable(&req, &resp, rpc);
+  // We do not lock here so it is technically possible that the table was already created.
+  // If so, there is nothing to do so we just ignore the "AlreadyPresent" error.
+  if (!s.ok() && !s.IsAlreadyPresent()) {
+    return s;
+  }
+
   return Status::OK();
 }
 
@@ -2296,7 +2310,7 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   TRACE("Looking up table");
   RETURN_NOT_OK(FindTable(req->table(), &table));
   if (table == nullptr) {
-    Status s = STATUS(NotFound, "The object does not exist", req->table().DebugString());
+    Status s = STATUS(NotFound, "The object does not exist", req->table().ShortDebugString());
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
 
@@ -2327,7 +2341,10 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   }
 
   // If this is a transactional table we are not done until the transaction status table is created.
-  if (resp->done() && l->data().pb.schema().table_properties().is_transactional()) {
+  // However, if we are currently initializing the system catalog snapshot, we don't create the
+  // transactions table.
+  if (!FLAGS_create_initial_sys_catalog_snapshot &&
+      resp->done() && l->data().pb.schema().table_properties().is_transactional()) {
     RETURN_NOT_OK(IsTransactionStatusTableCreated(resp));
   }
 
@@ -2423,7 +2440,7 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   if (req.has_index_info()) {
     metadata->mutable_index_info()->CopyFrom(req.index_info());
 
-    // Set the depricated fields also for compatibility reasons.
+    // Set the deprecated fields also for compatibility reasons.
     metadata->set_indexed_table_id(req.index_info().indexed_table_id());
     metadata->set_is_local_index(req.index_info().is_local());
     metadata->set_is_unique_index(req.index_info().is_unique());
@@ -2434,12 +2451,12 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
       metadata->mutable_index_info()->CopyFrom(*index_info);
     }
   } else if (req.has_indexed_table_id()) {
-    // Read data from the depricated field and update the new fields.
+    // Read data from the deprecated field and update the new fields.
     metadata->mutable_index_info()->set_indexed_table_id(req.indexed_table_id());
     metadata->mutable_index_info()->set_is_local(req.is_local_index());
     metadata->mutable_index_info()->set_is_unique(req.is_unique_index());
 
-    // Set the depricated fields also for compatibility reasons.
+    // Set the deprecated fields also for compatibility reasons.
     metadata->set_indexed_table_id(req.indexed_table_id());
     metadata->set_is_local_index(req.is_local_index());
     metadata->set_is_unique_index(req.is_unique_index());
@@ -2552,7 +2569,7 @@ Result<TabletInfos> CatalogManager::GetTabletsOrSetupError(
   RETURN_NOT_OK(FindTable(table_identifier, &table_obj));
   if (table_obj == nullptr) {
     *error = MasterErrorPB::OBJECT_NOT_FOUND;
-    return STATUS(NotFound, "Object does not exist", table_identifier.DebugString());
+    return STATUS(NotFound, "Object does not exist", table_identifier.ShortDebugString());
   }
 
   TRACE("Locking table");
@@ -2657,7 +2674,7 @@ Status CatalogManager::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* r
   scoped_refptr<TableInfo> table = FindPtrOrNull(*table_ids_map_, req->table_id());
 
   if (table == nullptr) {
-    Status s = STATUS(NotFound, "The object does not exist");
+    Status s = STATUS(NotFound, "The object does not exist: table with id", req->table_id());
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
 
@@ -2794,7 +2811,7 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
       LOG(WARNING) << "Index " << table_identifier.DebugString() << " not found";
       return Status::OK();
     } else {
-      Status s = STATUS(NotFound, "The object does not exist", table_identifier.DebugString());
+      Status s = STATUS(NotFound, "The object does not exist", table_identifier.ShortDebugString());
       return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
     }
   }
@@ -3107,7 +3124,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   TRACE("Looking up table");
   RETURN_NOT_OK(FindTable(req->table(), &table));
   if (table == nullptr) {
-    Status s = STATUS(NotFound, "The object does not exist", req->table().DebugString());
+    Status s = STATUS(NotFound, "The object does not exist", req->table().ShortDebugString());
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
 
@@ -3269,7 +3286,7 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
   TRACE("Looking up table");
   RETURN_NOT_OK(FindTable(req->table(), &table));
   if (table == nullptr) {
-    Status s = STATUS(NotFound, "The object does not exist", req->table().DebugString());
+    Status s = STATUS(NotFound, "The object does not exist", req->table().ShortDebugString());
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
 
@@ -3297,7 +3314,7 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
   TRACE("Looking up table");
   RETURN_NOT_OK(FindTable(req->table(), &table));
   if (table == nullptr) {
-    Status s = STATUS(NotFound, "The object does not exist", req->table().DebugString());
+    Status s = STATUS(NotFound, "The object does not exist", req->table().ShortDebugString());
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
 
@@ -5877,7 +5894,7 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
   RETURN_NOT_OK(FindTable(req->table(), &table));
 
   if (table == nullptr) {
-    Status s = STATUS(NotFound, "The object does not exist");
+    Status s = STATUS(NotFound, "The object does not exist", req->table().ShortDebugString());
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
 

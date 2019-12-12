@@ -157,6 +157,14 @@ class WriteOperationState : public OperationState {
     return kind_;
   }
 
+  void set_force_txn_path() {
+    force_txn_path_ = true;
+  }
+
+  bool force_txn_path() const {
+    return force_txn_path_;
+  }
+
  private:
   // Reset the response, and row_ops_ (which refers to data
   // from the request). Request is owned by WriteOperation using a unique_ptr.
@@ -183,6 +191,10 @@ class WriteOperationState : public OperationState {
   LockBatch docdb_locks_;
 
   docdb::OperationKind kind_;
+
+  // True if we know that this operation is on a transactional table so make sure we go through the
+  // transactional codepath.
+  bool force_txn_path_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(WriteOperationState);
 };
@@ -255,6 +267,10 @@ class WriteOperation : public Operation {
       std::unique_ptr<WriteOperation> operation, const Status& status) {
     // We release here, because DoStartSynchronization takes ownership on this.
     operation.release()->DoStartSynchronization(status);
+  }
+
+  bool force_txn_path() const {
+    return state()->force_txn_path();
   }
 
  private:

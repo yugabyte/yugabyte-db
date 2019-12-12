@@ -122,4 +122,5 @@ void WriteBatchFormatter::FinishOutputLine() {
   out_ << endl;
 }
 
+
 }  // namespace yb

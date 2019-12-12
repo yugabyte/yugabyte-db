@@ -52,6 +52,9 @@ YBC_STATUS_METHOD(SetIsolationLevel, ((int, isolation)));
 YBC_STATUS_METHOD(SetReadOnly, ((bool, read_only)));
 YBC_STATUS_METHOD(SetDeferrable, ((bool, deferrable)));
 
+YBC_STATUS_METHOD_NO_ARGS(EnterSeparateDdlTxnMode)
+YBC_STATUS_METHOD(ExitSeparateDdlTxnMode, ((bool, success)))
+
 #ifdef YBC_CXX_DECLARATION_MODE
   PgTxnManager(client::AsyncClientInitialiser* async_client_init,
                scoped_refptr<ClockBase> clock,
@@ -63,6 +66,8 @@ YBC_STATUS_METHOD(SetDeferrable, ((bool, deferrable)));
   CHECKED_STATUS BeginWriteTransactionIfNecessary(bool read_only_op);
 
   bool CanRestart() { return can_restart_.load(std::memory_order_acquire); }
+
+  bool IsDdlMode() const { return ddl_session_.get() != nullptr; }
 
  private:
 
@@ -86,6 +91,9 @@ YBC_STATUS_METHOD(SetDeferrable, ((bool, deferrable)));
   PgIsolationLevel isolation_level_ = PgIsolationLevel::REPEATABLE_READ;
   bool read_only_ = false;
   bool deferrable_ = false;
+
+  client::YBTransactionPtr ddl_txn_;
+  client::YBSessionPtr ddl_session_;
 
   std::atomic<bool> can_restart_{true};
 

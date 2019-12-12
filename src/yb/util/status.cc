@@ -25,7 +25,6 @@
 #include <stdint.h>
 
 #include <regex>
-#include <shared_mutex>
 #include <unordered_map>
 
 #include <boost/optional.hpp>
@@ -56,8 +55,34 @@ struct StatusCategories {
   // Category is stored as uint8_t, so there could be only 256 categories.
   std::array<StatusCategoryDescription, 0x100> categories;
 
+  std::string KnownCategoriesStr() {
+    std::ostringstream ss;
+    bool first = true;
+    for (size_t i = 0; i < categories.size(); ++i) {
+      const auto& category = categories[i];
+      if (category.name != nullptr) {
+        if (!first) {
+          ss << ", ";
+        }
+        first = false;
+        ss << i << "=" << *category.name;
+      }
+    }
+    return ss.str();
+  }
+
+  void ReportMissingCategory(uint8_t category_id, const char* function_name) {
+#ifndef NDEBUG
+    LOG(WARNING) << "Known categories: " << KnownCategoriesStr();
+#endif
+    LOG(DFATAL) << "In " << function_name
+                << ": unknown category description for " << static_cast<int>(category_id);
+  }
+
   void Register(const StatusCategoryDescription& description) {
     CHECK(!categories[description.id].name);
+    VLOG(1) << "Registering status category: " << static_cast<int>(description.id)
+            << " (" << *description.name << ")";
     categories[description.id] = description;
   }
 
@@ -72,20 +97,22 @@ struct StatusCategories {
 
   // Returns data slice w/o category for error code starting with start.
   Slice GetSlice(const uint8_t* start) {
-    const auto& description = categories[*start];
+    const uint8_t category_id = *start;
+    const auto& description = categories[category_id];
     if (description.name == nullptr) {
-      LOG_IF(DFATAL, *start)
-          << "Unknown category description for " << static_cast<int>(*start);
+      if (category_id > 0)
+        ReportMissingCategory(category_id, __func__);
       return Slice();
     }
     return Slice(start, 1 + description.decode_size(start + 1));
   }
 
   std::string ToString(Slice encoded_err_code) {
-    const auto& description = categories[*encoded_err_code.data()];
+    const uint8_t category_id = *encoded_err_code.data();
+    const auto& description = categories[category_id];
     if (description.name == nullptr) {
-      LOG_IF(DFATAL, *encoded_err_code.data())
-          << "Unknown category name for " << static_cast<int>(*encoded_err_code.data());
+      if (category_id > 0)
+        ReportMissingCategory(category_id, __func__);
       return std::string();
     }
     return description.to_string(encoded_err_code.data() + 1);

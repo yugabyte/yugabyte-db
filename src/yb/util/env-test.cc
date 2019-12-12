@@ -809,14 +809,20 @@ TEST_F(TestEnv, TestGetFreeSpace) {
   char* ret = getcwd(cwd, sizeof(cwd));
   ASSERT_NE(ret, nullptr);
 
-  auto free_space = ASSERT_RESULT(env_->GetFreeSpaceBytes(cwd));
+  const int64_t free_space = static_cast<int64_t>(ASSERT_RESULT(env_->GetFreeSpaceBytes(cwd)));
 
   string cmd = strings::Substitute("df $0 -B1 | tail -1 | awk '{print $$4}' | tr -d '\\n'", cwd);
   string df_free_space_str;
   ASSERT_TRUE(RunShellProcess(cmd, &df_free_space_str));
-  auto df_free_space = ASSERT_RESULT(CheckedStoll(df_free_space_str));
+  const int64_t df_free_space = ASSERT_RESULT(CheckedStoll(df_free_space_str));
 
-  ASSERT_EQ(df_free_space, free_space);
+  // We might not get the exact same answer because disk space is being consumed and freed.
+  const int64_t delta_bytes = abs(df_free_space - free_space);
+  const int64_t kMaxAllowedDeltaBytes = 65536;
+
+  ASSERT_LE(delta_bytes, kMaxAllowedDeltaBytes)
+      << "df returned: " << df_free_space
+      << ", GetFreeSpaceBytes returned: " << free_space;
 }
 
 // Test that CopyFile() copies all the bytes properly.

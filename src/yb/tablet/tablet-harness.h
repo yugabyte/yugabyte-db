@@ -138,7 +138,9 @@ class TabletHarness {
                                   std::string() /* log_pefix_suffix */,
                                   nullptr /* transaction_participant_context */,
                                   client::LocalTabletFilter(),
-                                  nullptr /* transaction_coordinator_context */));
+                                  nullptr /* transaction_coordinator_context */,
+                                  IsSysCatalogTablet::kFalse,
+                                  TransactionsEnabled::kFalse));
     return Status::OK();
   }
 
@@ -164,7 +166,9 @@ class TabletHarness {
         std::string() /* log_pefix_suffix */,
         nullptr /* transaction_participant_context */,
         client::LocalTabletFilter(),
-        nullptr /* transaction_coordinator_context */);
+        nullptr /* transaction_coordinator_context */,
+        IsSysCatalogTablet::kFalse,
+        TransactionsEnabled::kFalse);
     RETURN_NOT_OK(tablet->Open());
     tablet->MarkFinishedBootstrapping();
     RETURN_NOT_OK(tablet->EnableCompactions());

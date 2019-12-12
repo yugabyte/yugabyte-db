@@ -13,8 +13,12 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <chrono>
+
 #include "yb/yql/pggate/test/pggate_test.h"
 #include "yb/common/ybc-internal.h"
+
+using namespace std::chrono_literals;
 
 namespace yb {
 namespace pggate {
@@ -83,8 +87,8 @@ TEST_F(PggateTestCatalog, TestDml) {
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_job));
   CHECK_EQ(attr_num, col_count);
 
-  const int insert_row_count = 7;
-  for (int i = 0; i < insert_row_count; i++) {
+  const int kInsertRowCount = 7;
+  for (int i = 0; i < kInsertRowCount; i++) {
     // Insert the row with the original seed.
     CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
     CommitTransaction();
@@ -197,10 +201,11 @@ TEST_F(PggateTestCatalog, TestDml) {
   // Fetching rows and check their contents.
   values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
   isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
-  for (int i = 0; i < insert_row_count; i++) {
+  for (int i = 0; i < kInsertRowCount; i++) {
     bool has_data = false;
     YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data);
-    CHECK(has_data) << "Not all inserted rows are fetch";
+    CHECK(has_data) << "Not all inserted rows have been fetched: only "
+                    << i << " rows fetched out of " << kInsertRowCount;
 
     // Print result
     LOG(INFO) << "ROW " << i << ": "
@@ -260,8 +265,10 @@ TEST_F(PggateTestCatalog, TestDml) {
   CHECK_EQ(attr_num, col_count);
 
   // UPDATE all of odd rows.
-  const int update_row_count = (insert_row_count + 1)/ 2;
-  for (int i = 0; i < update_row_count; i++) {
+  const int kOddEmpIdRowCount = (kInsertRowCount + 1) / 2;
+  LOG(INFO) << "Updating " << kOddEmpIdRowCount << " rows with odd empid values";
+  for (int i = 0; i < kOddEmpIdRowCount; i++) {
+    LOG(INFO) << "Updating row with empid=" << seed;
     // Update the row with the original seed.
     CHECK_YBC_STATUS(YBCPgExecUpdate(pg_stmt));
     CommitTransaction();
@@ -302,9 +309,9 @@ TEST_F(PggateTestCatalog, TestDml) {
   // Execute select statement.
   CHECK_YBC_STATUS(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */));
 
-  // Fetching rows and check their contents.
+  // Fetching rows and checking their contents.
   select_row_count = 0;
-  for (int i = 0; i < insert_row_count; i++) {
+  for (int i = 0; i < kInsertRowCount; i++) {
     bool has_data = false;
     YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data);
     if (!has_data) {
@@ -355,7 +362,7 @@ TEST_F(PggateTestCatalog, TestDml) {
       CHECK_EQ(selected_job_name, expected_job_name);
     }
   }
-  CHECK_EQ(select_row_count, insert_row_count) << "Unexpected row count";
+  CHECK_EQ(select_row_count, kInsertRowCount) << "Unexpected row count";
 
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
@@ -392,8 +399,8 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 1, expr_key));
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 2, expr_value));
 
-  const int insert_row_count = 7;
-  for (int i = 0; i < insert_row_count; i++) {
+  const int kInsertRowCount = 7;
+  for (int i = 0; i < kInsertRowCount; i++) {
     // Insert the row with the original seed.
     CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
     CommitTransaction();
@@ -431,10 +438,10 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   // Fetching rows and check their contents.
   uint64_t *values = static_cast<uint64_t*>(YBCPAlloc(2 * sizeof(uint64_t)));
   bool *isnulls = static_cast<bool*>(YBCPAlloc(2 * sizeof(bool)));
-  for (int i = 0; i < insert_row_count; i++) {
+  for (int i = 0; i < kInsertRowCount; i++) {
     bool has_data = false;
     YBCPgDmlFetch(pg_stmt, 2, values, isnulls, nullptr, &has_data);
-    CHECK(has_data) << "Not all inserted rows are fetch";
+    CHECK(has_data) << "Not all inserted rows have been fetched";
 
     // Print result
     LOG(INFO) << "ROW " << i << ": key = " << values[0] << ", value = " << values[1];
