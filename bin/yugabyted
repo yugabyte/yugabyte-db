@@ -429,7 +429,7 @@ class ControlScript(object):
 
             # Start or initialize yb-master and yb-tserver.
             if is_first_run:
-                Output.begin_replace_line("Running system checks...")
+                Output.init_animation("Running system checks...")
             for name in ("master", "tserver"):
                 process = self.processes.get(name)
                 process.remove_error_logs()
@@ -443,7 +443,7 @@ class ControlScript(object):
 
             if self.wait_yb_master():
                 if is_first_run:
-                    Output.print_replace("System checks " + Output.CHECK)
+                    Output.update_animation("System checks")
 
                 yw_logged_in = False
                 # Start or initialize yugaware after setting YSQL default isolation level.
@@ -455,17 +455,16 @@ class ControlScript(object):
                         self.configs.saved_data.get("webserver_port"))
                     if not self.is_yw_initialized():
                         Output.log("Setting up admin console schema...")
-                        Output.begin_replace_line("Installing database...")
+                        Output.init_animation("Installing database...")
                         if not self.init_yw():
                             Output.log_error_and_exit("Failed to set up admin console schema...")
-                        Output.print_replace("Database installed " + Output.CHECK)
+                        Output.update_animation("Database installed")
 
                         yw_process.start()
-                        Output.begin_replace_line("Bringing up UI...")
+                        Output.init_animation("Bringing up UI...")
                         err = self.wait_yw_login(yw_proxy)
                         if err:
                             Output.log_error_and_exit(err)
-                        Output.print_replace("UI ready " + Output.CHECK)
                         yw_logged_in = True
 
                         yw_proxy.set_security("insecure")
@@ -480,6 +479,7 @@ class ControlScript(object):
 
                         err = yw_proxy.set_landing_page(self.get_universe_uuid())
                         should_callhome = True
+                        Output.update_animation("UI ready")
                     else:
                         if not yw_process.is_running():
                             if not yw_first_run:
@@ -489,9 +489,9 @@ class ControlScript(object):
                             yw_first_run = True
                             # TODO: If insecure login fails here, we should assume importing
                             # universe and setting security level failed and retry initializing YW.
-                            Output.begin_replace_line("Bringing up UI...")
+                            Output.init_animation("Bringing up UI...")
                             yw_logged_in = not self.wait_yw_login(yw_proxy, insecure=True)
-                            Output.print_replace("UI ready " + Output.CHECK)
+                            Output.update_animation("UI ready")
                             should_callhome = True
                         else:
                             yw_logged_in = False
@@ -1633,10 +1633,11 @@ class Output(object):
     BLUE = "\u001b[34m"
     MAGENTA = "\u001b[35m"
     CYAN = "\u001b[36m"
-    CHECK = "\u2705"
     log_dir = None
     start_time_sec = time.time()
-    last_replace_msg = None
+    # Tuple of (animation_enabled, animation_message)
+    animation_status = (False, "")
+    animation_thread = None
 
     @staticmethod
     def print_out(msg):
@@ -1644,37 +1645,50 @@ class Output(object):
             print(msg)
         except UnicodeEncodeError:
             print(msg.encode('ascii', 'ignore'))
-        Output.last_replace_msg = None
 
-    # Writes one line that may be replaced with the print_replace method.
+    # Writes one line that may be replaced with the update_animation method.
     # Note - ONLY one line can be replaced. E.g. only characters after a newline can be replaced.
     @staticmethod
-    def begin_replace_line(msg):
-        try:
-            sys.stdout.write(msg)
-        except UnicodeEncodeError:
-            msg = msg.encode('ascii', 'ignore')
-            sys.stdout.write(msg)
+    def init_animation(msg):
+        def animate():
+            loading_symbols = ['/', '-', '\\', '|']
+            check = '\u2705'
+            line_len = 0
+            i = 0
+            while True:
+                enabled, msg = Output.animation_status
+                symbol = loading_symbols[i] if enabled else check
+                line = "\r{} {}".format(symbol, msg)
+                line_len = max(len(line), line_len)
+                line_to_write = "{:<{}}".format(line, line_len)
+                if not enabled:
+                    line_to_write += "\n"
+                line_to_write = line_to_write.encode('utf-8')
 
-        Output.last_replace_msg = msg
-        sys.stdout.flush()
+                try:
+                    sys.stdout.write(line_to_write)
+                except UnicodeEncodeError:
+                    sys.stdout.write(line_to_write.encode('ascii', 'ignore'))
+                sys.stdout.flush()
 
-    # Replaces last line printed (if any) with new message. If begin_replace_line wasn't called,
-    # then print normally,
-    # Note - ONLY one line can be replaced. E.g. only characters after a newline can be replaced.
+                if not enabled:
+                    break
+                i = (i + 1) % len(loading_symbols)
+                time.sleep(.05)
+
+        Output.animation_status = (True, msg)
+        Output.animation_thread = Thread(target=animate)
+        Output.animation_thread.start()
+
     @staticmethod
-    def print_replace(msg, last_replacement=True):
-        if Output.last_replace_msg is not None:
-            try:
-                sys.stdout.write("\r{:<{}}".format(msg, len(Output.last_replace_msg)))
-            except UnicodeEncodeError:
-                sys.stdout.write(msg.encode('ascii', 'ignore'))
-
-            if last_replacement:
-                sys.stdout.write("\n")
-            sys.stdout.flush()
-        else:
+    def update_animation(msg, keep_running=False):
+        if not Output.animation_thread:
             Output.print_out(msg)
+        time.sleep(5)
+        Output.animation_status = (keep_running, msg)
+        if not keep_running and Output.animation_thread:
+            Output.animation_thread.join()
+            Output.animation_thread = None
 
     @staticmethod
     def log(msg, level=logging.INFO):
