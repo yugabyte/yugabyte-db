@@ -71,6 +71,13 @@
   }
 }
 
+.intro-message-container {
+  display: flex;
+  justify-content: center;
+  text-align: center;
+  margin-bottom: 4px;
+}
+
 .modal-accessory {
   position: relative;
   float: left;

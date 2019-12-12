@@ -63,6 +63,7 @@ TRUE_CHOICES = ["true", "True", "t", "T", "yes", "Yes", "y", "Y", "1"]
 FALSE_CHOICES = ["false", "False", "f", "F", "no", "No", "n", "N", "0"]
 BOOL_CHOICES = TRUE_CHOICES + FALSE_CHOICES
 SLACK_LINK = "https://www.yugabyte.com/slack"
+COMMUNITY_REWARDS_LINK = "https://www.yugabyte.com/community-rewards/"
 HELP_LINK = "https://docs.yugabyte.com/latest/faq/"
 DEFAULT_DEMO_DATABASE = "retail"
 SAMPLE_DATA_LINKS = {
@@ -511,12 +512,13 @@ class ControlScript(object):
                 if first_run_success and self.is_yb_initialized() \
                         and (not self.configs.temp_data.get("ui") or self.is_yw_initialized()):
                     status = self.get_status_string() + \
-                        Output.make_green(
-                            "YugabyteDB started successfully! To load a sample dataset, "
-                            "try 'yugabyted demo'.\n") + \
-                        Output.make_magenta(
-                                "Join us on Slack at {}".format(
-                                    Output.make_underline("{}\n".format(SLACK_LINK))))
+                        "{} YugabyteDB started successfully! To load a sample dataset, " \
+                        "try '{} demo'.\n" \
+                        "{} Join us on Slack at {}\n" \
+                        "{} Claim your free t-shirt at {}\n".format(
+                            Output.ROCKET, SCRIPT_NAME, Output.PARTY,
+                            Output.make_underline(SLACK_LINK), Output.SHIRT,
+                            Output.make_underline(COMMUNITY_REWARDS_LINK))
                     Output.print_out(status)
                     if self.configs.temp_data.get("daemon"):
                         # Let original process know daemon was successful so it can exit.
@@ -1633,6 +1635,10 @@ class Output(object):
     BLUE = "\u001b[34m"
     MAGENTA = "\u001b[35m"
     CYAN = "\u001b[36m"
+    # Transform to an "extended ASCII" library to parse the string then print it as unicode
+    ROCKET = "\xf0\x9f\x9a\x80".encode('latin1').decode('utf8')
+    PARTY = "\xf0\x9f\x8e\x89".encode('latin1').decode('utf8')
+    SHIRT = "\xf0\x9f\x91\x95".encode('latin1').decode('utf8')
     log_dir = None
     start_time_sec = time.time()
     # Tuple of (animation_enabled, animation_message)
@@ -1642,7 +1648,7 @@ class Output(object):
     @staticmethod
     def print_out(msg):
         try:
-            print(msg)
+            print(msg.encode('utf8'))
         except UnicodeEncodeError:
             print(msg.encode('ascii', 'ignore'))
 
