@@ -11,6 +11,7 @@ import { Table } from 'react-bootstrap';
 
 import slackLogo from '../components/common/footer/images/slack-logo-full.svg';
 import githubLogo from '../components/common/footer/images/github-light-small.png';
+import ybLogo from '../components/common/YBLogo/images/yb_ybsymbol_dark.png';
 
 class AuthenticatedComponent extends Component {
   constructor(props) {
@@ -74,7 +75,7 @@ class AuthenticatedComponent extends Component {
   render() {
     const { showKeyboardShortcuts, showIntroModal } = this.state;
 
-    const socialMediaLinks = (
+    const introMessageStatus = (
       <div className="footer-accessory-wrapper">
         <YBCheckBox
           label={'Do not show this message in the future'}
@@ -110,20 +111,14 @@ class AuthenticatedComponent extends Component {
                  onHide={this.closeIntroModal}
                  showCancelButton={true}
                  cancelLabel={"Close"}
-                 footerAccessory={socialMediaLinks}
+                 footerAccessory={introMessageStatus}
           >
-            <p>Documentation can be found <a
-              href="https://docs.yugabyte.com/latest/manage/enterprise-edition/"
-              target="_blank" rel="noopener noreferrer">
-                here.
-              </a>
-            </p>
-
-          <div style={{ display: 'flex'}}>
+          <div className="intro-message-container">
             <a className="social-media-btn"
               href="https://www.yugabyte.com/slack"
               target="_blank"
-              rel="noopener noreferrer"
+              rel="noopener"
+              style={{ flexBasis: '45%' }}
             >
               <span>Join us on</span>
               <img alt="YugaByte DB Slack" src={slackLogo} width="65"/>
@@ -131,12 +126,37 @@ class AuthenticatedComponent extends Component {
             <a className="social-media-btn"
               href="https://github.com/yugabyte/yugabyte-db"
               target="_blank"
-              rel="noopener noreferrer"
+              rel="noopener"
+              style={{ flexBasis: '45%' }}
             >
               <span>Star us on</span>
               <img alt="YugaByte DB GitHub"
                 className="social-media-logo"
                 src={githubLogo} width="18"/> <b>GitHub</b>
+            </a>
+          </div>
+          <div className="intro-message-container">
+            <a className="social-media-btn"
+              href="https://www.yugabyte.com/community-rewards"
+              target="_blank"
+              rel="noopener"
+              style={{ flexBasis: '45%' }}
+            >
+              <span>Free t-shirt at</span>
+              <img alt="YugaByte DB Community Rewards"
+                className="social-media-logo"
+                src={ybLogo} width="125"/>
+            </a>
+            <a className="social-media-btn"
+              href="https://docs.yugabyte.com"
+              target="_blank"
+              rel="noopener"
+              style={{ flexBasis: '45%' }}
+            >
+              <span>Read docs at</span>
+              <img alt="YugaByte DB Docs"
+                className="social-media-logo"
+                src={ybLogo} width="125"/>
             </a>
           </div>
           </YBModal>
