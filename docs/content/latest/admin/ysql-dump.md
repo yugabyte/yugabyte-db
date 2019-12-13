@@ -32,39 +32,39 @@ ysql_dump [ <connection-option>... ] [ <content-output-format-option> ... ] [ <d
 - *content-output-format-option*: See [Content and output format options](#content-and-output-format-options)
 - *dbname*: The name of the database.
 
-## Database connection options
+## Connection options
 
-The following command-line options control the database connection parameters.
+The following command line options control the database connection parameters.
 
-### -d | --dbname
+#### -d *dbname* | --dbname *dbname*
 
 Specifies the name of the database to connect to. This is equivalent to specifying `dbname` as the first non-option argument on the command line.
 
 If this parameter contains an equal sign (`=`) or starts with a valid URI prefix (`yugabytedb://`), it is treated as a `conninfo` string.
 
-### -h | --host
+#### -h *host* | --host *host*
 
 Specifies the host name of the machine on which the server is running. If the value begins with a slash (`/`), it is used as the directory for the Unix domain socket. Defaults to the compiled-in host of `127.0.0.1` else a Unix domain socket connection is attempted.
 
-### -p | --port
+#### -p *port* | --port=*port*
 
 Specifies the TCP port or local Unix domain socket file extension on which the server is listening for connections. Defaults to the compiled-in default port of `5433`.
 
-### -U | --username
+#### -U *username* | --username=*username*
 
 The username to connect as.
 
-### -w | --no-password
+#### -w | --no-password
 
 Never issue a password prompt. If the server requires password authentication and a password is not available by other means such as a `.pgpass` file, the connection attempt will fail. This option can be useful in batch jobs and scripts where no user is present to enter a password.
 
-### -W | --password
+#### -W | --password
 
 Force `ysql_dump` to prompt for a password before connecting to a database.
 
 This option is never essential, since `ysql_dump` will automatically prompt for a password if the server demands password authentication. However, `ysql_dump` will waste a connection attempt finding out that the server wants a password. In some cases it is worth typing `-W` to avoid the extra connection attempt.
 
-### --role
+#### --role=*rolename*
 
 Specifies a role name to be used to create the dump. This option causes `ysql_dump` to issue a `SET ROLE <rolename>` statement after connecting to the database. It is useful when the authenticated user (specified by [`-U`](#u-username-username-username)) lacks privileges needed by `ysql_dump`, but can switch to a role with the required rights. Some installations have a policy against logging in directly as a superuser, and use of this option allows dumps to be made without violating the policy.
 
@@ -72,49 +72,45 @@ Specifies a role name to be used to create the dump. This option causes `ysql_du
 
 The following command-line options control the content and format of the output.
 
-### dbname
+#### *dbname*
 
 Specifies the name of the database to be dumped. If this is not specified, the environment variable `PGDATABASE` is used. If that is not set, the user name specified for the connection is used.
 
-### -a | --data-only
+#### -a | --data-only
 
 Dump only the data, not the schema (data definitions). Table data, large objects, and sequence values are dumped.
 
 This option is similar to, but for historical reasons not identical to, specifying `--section=data`.
 
-### -b | --blobs
+#### -b | --blobs
 
 Include large objects in the dump. This is the default behavior except when [`--schema`](#schema), [`--table`](#), or [`--schema-only`](#schema-only) is specified. The `-b` switch is therefore only useful to add large objects to dumps where a specific schema or table has been requested. Note that blobs are considered data and therefore will be included when [`--data-only`](#a-data-only) is used, but not when --schema-only is.
 
-### -B | --no-blobs
+#### -B | --no-blobs
 
 Exclude large objects in the dump.
 
 When both `-b` and `-B` are given, the behavior is to output large objects, when data is being dumped, see [`-b`](#b-blobs) option.
 
-### -c | --clean
+#### -c | --clean
 
 Output commands to clean (drop) database objects prior to outputting the commands for creating them. (Unless [`--if-exists`](#if-exists) is also specified, restore might generate some harmless error messages, if any objects were not present in the destination database.)
 
-This option is only meaningful for the plain-text format.
-
-### -C | --create
+#### -C | --create
 
 Begin the output with a command to create the database itself and reconnect to the created database. (With a script of this form, it doesn't matter which database in the destination installation you connect to before running the script.) If [`--clean`](#clean) is also specified, the script drops and recreates the target database before reconnecting to it.
 
-This option is only meaningful for the plain-text format.
-
-### -E | --encoding
+#### -E *encoding* | --encoding=*encoding
 
 Create the dump in the specified character set encoding. By default, the dump is created in the database encoding. (Another way to get the same result is to set the `PGCLIENTENCODING` environment variable to the desired dump encoding.)
 
-### -f | --file
+### -f *file* | --file=*file*
 
 Send output to the specified file. This parameter can be omitted for file-based output formats, in which case the standard output is used.
 
-### --schema | -n
+### -n *schema* | --schema=*schema*
 
-Dump only schemas matching schema; this selects both the schema itself, and all its contained objects. When this option is not specified, all non-system schemas in the target database will be dumped. Multiple schemas can be selected by writing multiple `-n` switches. Also, the schema parameter is interpreted as a pattern according to the same rules used by the `psql \d` commands (see Patterns), so multiple schemas can also be selected by writing wildcard characters in the pattern. When using wildcards, be careful to quote the pattern if needed to prevent the shell from expanding the wildcards; see Examples.
+Dump only schemas matching *schema*; this selects both the schema itself, and all its contained objects. When this option is not specified, all non-system schemas in the target database will be dumped. Multiple schemas can be selected by writing multiple `-n` switches. Also, the *schema* parameter is interpreted as a pattern according to the same rules used by the `psql \d` commands, so multiple schemas can also be selected by writing wildcard characters in the pattern. When using wildcards, be careful to quote the pattern if needed to prevent the shell from expanding the wildcards.
 
 {{< note title="Note" >}}
 
@@ -126,21 +122,21 @@ Non-schema objects such as blobs are not dumped when `-n` is specified. You can 
 
 {{< note title="Note" >}}
 
-### --exclude-schema | -N
+### -N *schema* | --exclude-schema=*schema*
 
-Do not dump any schemas matching the schema pattern. The pattern is interpreted according to the same rules as for [`--schema`](#schema-s) option. `-N` can be given more than once to exclude schemas matching any of several patterns.
+Do not dump any schemas matching the schema pattern. The pattern is interpreted according to the same rules as for [`--schema`](#s-schema) option. `-N` can be given more than once to exclude schemas matching any of several patterns.
 
 When both `-n` and `-N` are given, the behavior is to dump just the schemas that match at least one `-n` switch but no `-N` switches. If `-N` appears without `-n`, then schemas matching `-N` are excluded from what is otherwise a normal dump.
 
-### --oids | -o
+### -o | --oids
 
 Dump object identifiers (OIDs) as part of the data for every table. Use this option if your application references the OID columns in some way (for example, in a foreign key constraint). Otherwise, this option should not be used.
 
-### --no-owner | -O
+### -O | --no-owner
 
 Do not output statements to set ownership of objects to match the original database. By default, `ysql_dump` issues `ALTER OWNER` or `SET SESSION AUTHORIZATION` statements to set ownership of created database objects. These statements will fail when the script is run unless it is started by a superuser (or the same user that owns all of the objects in the script). To make a script that can be restored by any user, but will give that user ownership of all the objects, specify `-O`.
 
-### --schema-only | -s
+### -s | --schema-only
 
 Dump only the object definitions (schema), not data.
 
@@ -150,13 +146,13 @@ This option is the inverse of `--data-only`.
 
 To exclude table data for only a subset of tables in the database, see `--exclude-table-data`.
 
-### --superuser | -S
+### -S *username* --superuser *username*
 
-Specify the superuser user name to use when disabling triggers. This is relevant only if [`--disable-triggers`](#disable-triggers) is used. (Usually, it's better to leave this out, and instead start the resulting script as superuser.)
+Specify the superuser username to use when disabling triggers. This is relevant only if `--disable-triggers` is used. (Usually, it's better to leave this out, and instead start the resulting script as superuser.)
 
-### --table | -t
+### -t *table* | --table *table*
 
-Dump only tables with names matching table. For this purpose, `table` includes views, materialized views, sequences, and foreign tables. Multiple tables can be selected by writing multiple `-t` switches. Also, the table parameter is interpreted as a pattern according to the same rules used by `psql \d` commands (see Patterns), so multiple tables can also be selected by writing wildcard characters in the pattern. When using wildcards, be careful to quote the pattern if needed to prevent the shell from expanding the wildcards; see [Examples](#examples).
+Dump only tables with names matching *table*. For this purpose, "table" includes views, materialized views, sequences, and foreign tables. Multiple tables can be selected by writing multiple `-t` switches. Also, the table parameter is interpreted as a pattern according to the same rules used by `psql \d` commands (see Patterns), so multiple tables can also be selected by writing wildcard characters in the pattern. When using wildcards, be careful to quote the pattern if needed to prevent the shell from expanding the wildcards.
 
 The `-n` and `-N` switches have no effect when `-t` is used, because tables selected by `-t` will be dumped regardless of those switches, and non-table objects will not be dumped.
 
@@ -166,17 +162,17 @@ When `-t` is specified, `ysql_dump` makes no attempt to dump any other database 
 
 {{< /note >}}
 
-### --exclude-table | -T
+### -t *table* | --exclude-table *table*
 
 Do not dump any tables matching the table pattern. The pattern is interpreted according to the same rules as for [`-t`](#t-table). `-T` can be given more than once to exclude tables matching any of several patterns.
 
 When both `-t` and `-T` are given, the behavior is to dump just the tables that match at least one `-t` switch but no `-T` switches. If `-T` appears without `-t`, then tables matching `-T` are excluded from what is otherwise a normal dump.
 
-### --verbose | -v
+### -v | --verbose
 
 Specifies verbose mode. This will cause `ysql_dump` to output detailed object comments and start and stop times to the dump file, and progress messages to standard error.
 
-### --version | -V
+### -V | --version
 
 Print the `ysql_dump` version and exit.
 
@@ -184,7 +180,7 @@ Print the `ysql_dump` version and exit.
 
 Prevent dumping of access privileges (GRANT and REVOKE statements).
 
-### --compress | -Z
+### -Z *0..9* | --compress=*0..9*
 
 Specify the compression level to use. Zero (`0`) means no compression. For plain text output, setting a nonzero compression level causes the entire output file to be compressed, as though it had been fed through `gzip`; but the default is not to compress.
 
@@ -200,7 +196,7 @@ This option disables the use of dollar quoting for function bodies, and forces t
 
 This option is relevant only when creating a data-only dump. It instructs `ysql_dump` to include commands to temporarily disable triggers on the target tables while the data is reloaded. Use this if you have referential integrity checks or other triggers on the tables that you do not want to invoke during data reload.
 
-Presently, the commands emitted for `--disable-triggers` must be done as superuser. So, you should also specify a superuser name with [`-S`](#superuser-S), or preferably be careful to start the resulting script as a superuser.
+Presently, the commands emitted for `--disable-triggers` must be done as superuser. So, you should also specify a superuser name with `-S`, or preferably be careful to start the resulting script as a superuser.
 
 ### --enable-row-security
 
@@ -212,11 +208,11 @@ Note that if you use this option currently, you probably also want the dump be i
 
 Do not dump data for any tables matching the table pattern. The pattern is interpreted according to the same rules as for [`-t`](#t). The `--exclude-table-data` option can be given more than once to exclude tables matching any of several patterns. This option is useful when you need the definition of a particular table even though you do not need the data in it.
 
-To exclude data for all tables in the database, see [`--schema-only`](#schema-only).
+To exclude data for all tables in the database, see `--schema-only`.
 
 ### --if-exists
 
-Use conditional commands (that is, add an `IF EXISTS` clause) when cleaning database objects. This option is not valid unless [`--clean`](#clean) is also specified.
+Use conditional commands (that is, add an `IF EXISTS` clause) when cleaning database objects. This option is not valid unless the `--clean` option is also specified.
 
 ### --inserts
 
@@ -248,7 +244,7 @@ Do not dump the contents of unlogged tables. This option has no effect on whethe
 
 ### --quote-all-identifiers
 
-Force quoting of all identifiers. This option is recommended when dumping a database from a server whose YugabyteDB major version is different from `ysql_dump`, or when the output is intended to be loaded into a server of a different major version. By default, `ysql_dump` quotes only identifiers that are reserved words in its own major version. This sometimes results in compatibility issues when dealing with servers of other versions that may have slightly different sets of reserved words. Using [`--quote-all-identifiers`](#quote-all-identifiers) prevents such issues, at the price of a harder-to-read dump script.
+Force quoting of all identifiers. This option is recommended when dumping a database from a server whose YugabyteDB major version is different from `ysql_dump`, or when the output is intended to be loaded into a server of a different major version. By default, `ysql_dump` quotes only identifiers that are reserved words in its own major version. This sometimes results in compatibility issues when dealing with servers of other versions that may have slightly different sets of reserved words. Using `--quote-all-identifiers` prevents such issues, at the price of a harder-to-read dump script.
 
 ### --section=*sectionname*
 
