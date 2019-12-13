@@ -4,13 +4,13 @@
 
 ## Motivation
 
-A lot of applications using relational databases have a high number of tables and indexes (1000+). These tables are typically small, and single database size is less than 500 GB. These applications still want to be able to use distributed SQL database like YugabyteDB to leverage high availability and data resilience.
+A lot of applications using relational databases have a high number of tables and indexes (1000+). These tables are typically small, and single database size is less than 500 GB. These applications still want to be able to use a distributed SQL database like YugabyteDB to leverage high availability and data resilience.
 
 Some of these applications also create multiple databases - for example, 1 DB per customer. In such cases, using the current architecture will result in a huge number of tablets. For example, creating 1000 such DBs will result in 8 million tablets (assuming that each DB has 1000 tables and each table has 8 tablets).
 
-We've seen practical limitations to the number of tablets that YugabyteDB can handle per node. Typically, we recommend that we have 3000 tablets / node at max. Also, creating 8 tablets for small tables which have few GB of data is wasteful.
+We've seen practical limitations to the number of tablets that YugabyteDB can handle per node. Typically, we recommend 3000 tablets / node at max. Also, creating 8 tablets for small tables, which have few GB of data, is wasteful.
 
-For such use cases, we want to provide an ability to do tablet colocation. With this feature, we'll create 1 tablet for a database and all tables in the DB will be colocated on the same tablet. This will reduce the overhead from creating multiple tablets for small tables and help us scale such use cases.
+For such use cases, we want to provide an ability to do tablet colocation. With this feature, we'll create 1 tablet for a database, and all tables in the database will be colocated on the same tablet. This will reduce the overhead from creating multiple tablets for small tables and help us scale such use cases.
 
 ## Requirements
 
@@ -66,13 +66,13 @@ More analysis on this can be found here.
 We decided to use single RocksDB for entire tablet. This is because:
 
 * It enables us to leverage code that was written for postgres system tables. Today, all postgres system tables are colocated on a single tablet in master and uses a single RocksDB. We can leverage a lot of that code.
-* We may hit other scaling limits with multiple Rocksdb. For example, it's possible that having 1 million RocksDBs (1000 DBs, with 1000 tables per DB) will cause other side effects.
+* We may hit other scaling limits with multiple RocksDBs. For example, it's possible that having 1 million RocksDBs (1000 DBs, with 1000 tables per DB) will cause other side effects.
 
 ### Create and Drop DB / Table
 
 #### Create Database
 
-When a DB is created with `colocated=true`, catalog manager will need to create a tablet for this database. Catalog manager's `NamespaceInfo` and `TableInfo` objects will need to maintain colocated property.
+When a database is created with `colocated=true`, catalog manager will need to create a tablet for this database. Catalog manager's `NamespaceInfo` and `TableInfo` objects will need to maintain colocated property.
 
 Today, tablet's `RaftGroupReplicaSuperBlockPB` has a `primary_table_id`. For system tables, this is the table ID of sys catalog table. Primary table ID seems to be used in two ways:
 
