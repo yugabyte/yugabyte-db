@@ -196,7 +196,7 @@ This option disables the use of dollar quoting for function bodies, and forces t
 
 This option is relevant only when creating a data-only dump. It instructs `ysql_dump` to include commands to temporarily disable triggers on the target tables while the data is reloaded. Use this if you have referential integrity checks or other triggers on the tables that you do not want to invoke during data reload.
 
-Presently, the commands emitted for `--disable-triggers` must be done as superuser. So, you should also specify a superuser name with `-S`, or preferably be careful to start the resulting script as a superuser.
+Presently, the commands emitted for `--disable-triggers` must be done as superuser. So, you should also specify a superuser name with [`-S`](#s-superuser), or preferably be careful to start the resulting script as a superuser.
 
 ### --enable-row-security
 
@@ -208,11 +208,11 @@ Note that if you use this option currently, you probably also want the dump be i
 
 Do not dump data for any tables matching the table pattern. The pattern is interpreted according to the same rules as for [`-t`](#t). The `--exclude-table-data` option can be given more than once to exclude tables matching any of several patterns. This option is useful when you need the definition of a particular table even though you do not need the data in it.
 
-To exclude data for all tables in the database, see `--schema-only`.
+To exclude data for all tables in the database, see [`--schema-only`](#schema-only).
 
 ### --if-exists
 
-Use conditional commands (that is, add an `IF EXISTS` clause) when cleaning database objects. This option is not valid unless the `--clean` option is also specified.
+Use conditional commands (that is, add an `IF EXISTS` clause) when cleaning database objects. This option is not valid unless [`--clean`](#clean) is also specified.
 
 ### --inserts
 
@@ -244,7 +244,7 @@ Do not dump the contents of unlogged tables. This option has no effect on whethe
 
 ### --quote-all-identifiers
 
-Force quoting of all identifiers. This option is recommended when dumping a database from a server whose YugabyteDB major version is different from `ysql_dump`, or when the output is intended to be loaded into a server of a different major version. By default, `ysql_dump` quotes only identifiers that are reserved words in its own major version. This sometimes results in compatibility issues when dealing with servers of other versions that may have slightly different sets of reserved words. Using `--quote-all-identifiers` prevents such issues, at the price of a harder-to-read dump script.
+Force quoting of all identifiers. This option is recommended when dumping a database from a server whose YugabyteDB major version is different from `ysql_dump`, or when the output is intended to be loaded into a server of a different major version. By default, `ysql_dump` quotes only identifiers that are reserved words in its own major version. This sometimes results in compatibility issues when dealing with servers of other versions that may have slightly different sets of reserved words. Using [`--quote-all-identifiers`](#quote-all-identifiers) prevents such issues, at the price of a harder-to-read dump script.
 
 ### --section=*sectionname*
 
@@ -254,27 +254,23 @@ The data section contains actual table data, large-object contents, and sequence
 
 ### --serializable-deferrable
 
-Use a serializable transaction for the dump to ensure that the snapshot used is consistent with later database states by waiting for a point in the transaction stream at which no anomalies can be present, so that there is no risk of the dump failing or causing other transactions to roll back with a `serialization_failure`.
+Use a `serializable` transaction for the dump to ensure that the snapshot used is consistent with later database states by waiting for a point in the transaction stream at which no anomalies can be present, so that there is no risk of the dump failing or causing other transactions to roll back with a `serialization_failure`.
 
 If there are active read-write transactions, the maximum wait time until the start of the dump will be `50ms` (based on the default [`--max_clock_skew_usec`](../../../admin/yb-tserver.md) for YB-TServer and YB-Master services.) If there are no active read-write transactions when `ysql_dump` is started, this option will not make any difference. Once running, performance with or without the switch is the same.
 
-### --snapshot
+### --snapshot=*snapshotname*
 
 Use the specified synchronized snapshot when making a dump of the database. This option is useful when needing to synchronize the dump with a logical replication slot or with a concurrent session. In the case of a parallel dump, the snapshot name defined by this option is used rather than taking a new snapshot.
 
 ### --strict-names
 
-Require that each schema ([`--schema`](#schema-n)) and table ([`--table`](#table-t)) qualifier match at least one schema or table in the database to be dumped. Note that if none of the schema or table qualifiers find matches, `ysql_dump` will generate an error even without `--strict-names`.
+Require that each schema (`--schema` and table (`--table`) qualifier match at least one schema or table in the database to be dumped. Note that if none of the schema or table qualifiers find matches, `ysql_dump` will generate an error even without `--strict-names`.
 
-This option has no effect on [`--exclude-schema`](#exclude-schema), `-T` | `--exclude-table`, or `--exclude-table-data`. An exclude pattern failing to match any objects is not considered an error.
+This option has no effect on `--exclude-schema`, `--exclude-table`, or `--exclude-table-data`. An exclude pattern failing to match any objects is not considered an error.
 
 ### --use-set-session-authorization
 
 Output SQL-standard `SET SESSION AUTHORIZATION` statements instead of `ALTER OWNER` statements to determine object ownership. This makes the dump more standards-compatible, but depending on the history of the objects in the dump, might not restore properly. Also, a dump using `SET SESSION AUTHORIZATION` statements will certainly require superuser privileges to restore correctly, whereas `ALTER OWNER` statements requires lesser privileges.
-
-**Syntax**
-
-
 
 ### -? | --help
 
