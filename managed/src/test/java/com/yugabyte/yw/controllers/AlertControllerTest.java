@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Users;
 
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Universe;
@@ -54,12 +55,14 @@ import static play.test.Helpers.fakeRequest;
 
 public class AlertControllerTest extends FakeDBApplication {
   private Customer customer;
+  private Users user;
   private String authToken;
 
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
-    authToken = customer.createAuthToken();
+    user = ModelFactory.testUser(customer);
+    authToken = user.createAuthToken();
   }
 
   @Test

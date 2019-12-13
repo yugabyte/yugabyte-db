@@ -1454,7 +1454,8 @@ class LogAnalyzer(object):
 class YugaWareProxy(object):
     def __init__(self, ip, webserver_port, univ_name="local-universe"):
         self.univ_name = univ_name
-        self.api_token = ""
+        self.api_token_secure = ""
+        self.api_token_insecure = ""
         self.cust_uuid = ""
         self.url = "http://{}:{}/api/v1".format(ip, webserver_port)
 
@@ -1480,7 +1481,7 @@ class YugaWareProxy(object):
             req.get_method = lambda: "PUT"
             resp = urlopen(req)
             api_data = json.loads(resp.read())
-            self.api_token = api_data["apiToken"]
+            self.api_token_secure = api_data["apiToken"]
             return None
         except (ValueError, HTTPError, URLError, KeyError) as e:
             return "Failed to log into webserver. {}".format(e)
@@ -1492,7 +1493,7 @@ class YugaWareProxy(object):
             req = Request(target)
             resp = urlopen(req)
             session_data = json.loads(resp.read())
-            self.api_token = session_data["apiToken"]
+            self.api_token_insecure = session_data["apiToken"]
             self.cust_uuid = session_data["customerUUID"]
             return None
         except (ValueError, HTTPError, URLError, KeyError) as e:
@@ -1502,7 +1503,7 @@ class YugaWareProxy(object):
     def import_universe(self, master_address, master_rpc_port, universeUUID):
         target = "{}/customers/{}/universes/import".format(self.url, self.cust_uuid)
         headers = {
-            "X-AUTH-YW-API-TOKEN": self.api_token,
+            "X-AUTH-YW-API-TOKEN": self.api_token_secure,
             "Content-Type": "application/json",
         }
         data = {
@@ -1558,7 +1559,7 @@ class YugaWareProxy(object):
     def set_landing_page(self, universe_uuid):
         target = "{}/customers/{}/features".format(self.url, self.cust_uuid)
         headers = {
-            "X-AUTH-YW-API-TOKEN": self.api_token,
+            "X-AUTH-YW-API-TOKEN": self.api_token_secure,
             "Content-Type": "application/json",
         }
         data = {
@@ -1591,7 +1592,7 @@ class YugaWareProxy(object):
     def set_security(self, level):
         target = "{}/customers/{}/security".format(self.url, self.cust_uuid)
         headers = {
-            "X-AUTH-YW-API-TOKEN": self.api_token,
+            "X-AUTH-YW-API-TOKEN": self.api_token_secure,
             "Content-Type": "application/json",
         }
         data = {"level": level}
@@ -1616,7 +1617,7 @@ class YugaWareProxy(object):
     def send_alerts(self, alerts):
         target = "{}/customers/{}/alerts".format(self.url, self.cust_uuid)
         headers = {
-            "X-AUTH-YW-API-TOKEN": self.api_token,
+            "X-AUTH-YW-API-TOKEN": self.api_token_secure,
             "Content-Type": "application/json",
         }
         Output.log("Adding alerts: {}".format(alerts))

@@ -26,6 +26,7 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.YugawareProperty;
 import org.hamcrest.CoreMatchers;
 import org.junit.Before;
@@ -48,6 +49,7 @@ import play.test.Helpers;
 public class RegionControllerTest extends FakeDBApplication {
   Provider provider;
   Customer customer;
+  Users user;
 
   NetworkManager networkManager;
 
@@ -63,6 +65,7 @@ public class RegionControllerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
+    user = ModelFactory.testUser(customer);
     provider = ModelFactory.awsProvider(customer);
   }
 
@@ -209,7 +212,7 @@ public class RegionControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateRegionsWithValidGCPRegion() {
-  	ObjectNode regionJson = Json.newObject();
+    ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "us-west1");
     regionJson.put("name", "Gcp US West 1");
     Provider gcpProvider = ModelFactory.gcpProvider(customer);

@@ -35,6 +35,7 @@ import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Users;
 import org.hamcrest.CoreMatchers;
 import org.junit.Before;
 import org.junit.Test;
@@ -56,6 +57,7 @@ import play.test.Helpers;
 
 public class InstanceTypeControllerTest extends FakeDBApplication {
   Customer customer;
+  Users user;
   Provider awsProvider;
   Provider onPremProvider;
   CloudQueryHelper mockCloudQueryHelper;
@@ -73,6 +75,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
+    user = ModelFactory.testUser(customer);
     awsProvider = ModelFactory.awsProvider(customer);
     onPremProvider = ModelFactory.newProvider(customer, Common.CloudType.onprem);
   }
