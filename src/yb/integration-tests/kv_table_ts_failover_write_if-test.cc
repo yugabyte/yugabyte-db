@@ -66,6 +66,8 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
 
   int num_tablets() override { return 1; }
 
+  bool enable_ysql() override { return false; }
+
   void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
     opts->extra_tserver_flags.push_back("--raft_heartbeat_interval_ms=" +
         yb::ToString(ToMilliseconds(kHeartBeatInterval)));
