@@ -14,7 +14,7 @@ For such use cases, we want to provide an ability to do tablet colocation. With 
 
 ## Requirements
 
-### Ability to specify that a database is colocated.
+### Ability to specify that a database is colocated
 
 __Syntax:__
 
