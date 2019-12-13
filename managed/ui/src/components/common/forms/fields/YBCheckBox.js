@@ -10,7 +10,9 @@ export default class YBCheckBox extends Component {
     const { input, label, checkState,
             onClick } = this.props;
     const onCheckClick = function(event) {
-      input.onChange(event);
+      if (input && input.onChange) {
+        input.onChange(event);
+      }
       if (isValidObject(onClick)) {
         onClick(event);
       }

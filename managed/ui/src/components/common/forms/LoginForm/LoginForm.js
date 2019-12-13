@@ -24,6 +24,9 @@ class LoginForm extends Component {
         this.props.resetCustomerError();
         browserHistory.goBack();
       } else {
+        if (localStorage.getItem('__yb_intro_dialog__') !== 'hidden') {
+          localStorage.setItem('__yb_intro_dialog__', 'new');
+        }
         browserHistory.push('/');
       }
     }
