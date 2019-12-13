@@ -450,12 +450,29 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Submitted set universe key for {}:{}, task uuid = {}.",
               universe.universeUUID, universe.name, taskUUID);
 
+      CustomerTask.TaskType customerTaskType = null;
+      switch (taskParams.encryptionAtRestConfig.opType) {
+        case ENABLE:
+          if (universe.getUniverseDetails().encryptionAtRestConfig.encryptionAtRestEnabled) {
+            customerTaskType = CustomerTask.TaskType.RotateEncryptionKey;
+          } else {
+            customerTaskType = CustomerTask.TaskType.EnableEncryptionAtRest;
+          }
+          break;
+        case DISABLE:
+          customerTaskType = CustomerTask.TaskType.DisableEncryptionAtRest;
+          break;
+        default:
+        case UNDEFINED:
+          break;
+      }
+
       // Add this task uuid to the user universe.
       CustomerTask.create(customer,
               universe.universeUUID,
               taskUUID,
               CustomerTask.TargetType.Universe,
-              CustomerTask.TaskType.SetEncryptionKey,
+              customerTaskType,
               universe.name);
       LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for universe " +
               universe.universeUUID + ":" + universe.name);
