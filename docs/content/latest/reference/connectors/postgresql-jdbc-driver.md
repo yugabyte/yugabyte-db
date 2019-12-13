@@ -22,7 +22,7 @@ Because YugabyteDB is PostgreSQL-compatible, you can use the PostgreSQL JDBC Dri
 
 You can get started by using our tutorials on popular [third party tools](../../../tools/) that use the PostgreSQL JDBC Driver to develop and manage YugabyteDB databases.
 
-- [DBeaver](../tools/dbeaver/)
-- [pgAdmin](../tools/pgadmin/)
-- [SQL Workbench/J](../tools/sql-workbench/)
-- [Table Plus](../tools/tableplus/)
+- [DBeaver](../../../tools/dbeaver/)
+- [pgAdmin](../../../tools/pgadmin/)
+- [SQL Workbench/J](../../../tools/sql-workbench/)
+- [Table Plus](../../../tools/tableplus/)

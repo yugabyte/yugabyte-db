@@ -25,12 +25,6 @@ If YugabyteDB is installed, run the following `yb-ctl create` command to start a
 ./bin/yb-ctl create --tserver_flags=ysql_pg_conf="default_transaction_isolation=serializable"
 ```
 
-{{< note title="Note" >}}
-
-Setting the transaction isolation level to `serializable` is a temporary limitation due to a YugabyteDB issue involving the locking of foreign keys ([GitHub issue #1199](https://github.com/yugabyte/yugabyte-db/issues/1199))
-
-{{< /note >}}
-
 If you are new to YugabyteDB, you can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/). After installing YugabyteDB, make sure to follow the step mentioned above.
 
 ### Prisma
