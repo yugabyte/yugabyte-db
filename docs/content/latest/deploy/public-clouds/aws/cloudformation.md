@@ -1,6 +1,8 @@
 ## Prerequisites
-
-Download the template file 
+1. You need to have an IAM user who has `AWSCloudFormationFullAccess` privilege.
+2. Create an SSH key pair that you want to attach to the nodes.
+3. In the region you want to bring up the stack, make sure you can launch new VPCs.  
+4. Download the template file.
 ```sh
 $ wget https://raw.githubusercontent.com/yugabyte/aws-cloudformation/master/yugabyte_cloudformation.yaml
 ```
@@ -10,18 +12,21 @@ $ wget https://raw.githubusercontent.com/yugabyte/aws-cloudformation/master/yuga
 Create CloudFormation template:
 
 ```sh
-$ aws cloudformation create-stack --stack-name <stack-name> --template-body yugabyte_cloudformation.yaml --parameters DBVersion=1.2.8.0, KeyName=<ssh-key-name>
+$ aws --region <aws-region> cloudformation create-stack --stack-name <stack-name> --template-body file://yugabyte_cloudformation.yaml --parameters  ParameterKey=DBVersion,ParameterValue=2.0.6.0,ParameterKey=KeyName,ParameterValue=<ssh-key-name>
 ```
 Once resource creation completes, check that stack was created:
 
 ```sh
-$ aws cloudformation describe-stacks --stack-name <stack-name>
+$ aws --region <aws-region> cloudformation describe-stacks --stack-name <stack-name>
 ```
 From this output, you will be able to get the VPC id and YugabyteDB admin URL.
 
+Because the stack creates a security group that restricts access to the database, you might need to update the security group inbound rules if you have trouble connecting to it. 
+if you have trouble connecting to the DB.
+
 ## AWS Console
 
-1. Navigate to your AWS console and open the CloudFormation dashboard. Click `Create Stack`
+1. Navigate to your AWS console and open the CloudFormation dashboard. Click **Create Stack**.
 <img title="Cloud Formation dashboard" class="expandable-image" src="/images/deploy/aws/aws-cf-initial-dashboard.png" />
 <br>
 2. Prepare template using the downloaded template
