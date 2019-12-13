@@ -69,7 +69,7 @@ public class CustomerTaskTest extends FakeDBApplication {
   public void testFriendlyDescriptions() {
     UUID targetUUID = UUID.randomUUID();
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
-      for (CustomerTask.TaskType taskType: CustomerTask.TaskType.values()) {
+      for (CustomerTask.TaskType taskType: CustomerTask.TaskType.filteredValues()) {
         CustomerTask th = createTask(targetType, targetUUID, taskType);
         assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(),
             equalTo(taskType.toString(false) +  targetType + " : Foo"))));
