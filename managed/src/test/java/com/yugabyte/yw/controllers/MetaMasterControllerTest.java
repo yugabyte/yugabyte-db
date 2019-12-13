@@ -33,6 +33,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -58,6 +59,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   KubernetesManager mockKubernetesManager;
 
   Customer defaultCustomer;
+  Users defaultUser;
 
   @Override
   protected Application provideApplication() {
@@ -75,6 +77,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
+    defaultUser = ModelFactory.testUser(defaultCustomer);
   }
 
   // TODO: move this to ModelFactory!

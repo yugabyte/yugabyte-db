@@ -14,6 +14,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
 import org.junit.Test;
@@ -39,12 +40,14 @@ import static play.test.Helpers.contentAsString;
 public class BackupsControllerTest extends FakeDBApplication {
 
   private Universe defaultUniverse;
+  private Users defaultUser;
   private Customer defaultCustomer;
   private Backup defaultBackup;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
+    defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
 
     BackupTableParams backupTableParams = new BackupTableParams();
@@ -55,7 +58,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   private JsonNode listBackups(UUID universeUUID) {
-    String authToken = defaultCustomer.createAuthToken();
+    String authToken = defaultUser.createAuthToken();
     String method = "GET";
     String url = "/api/customers/" + defaultCustomer.uuid + "/universes/" + universeUUID + "/backups";
 
@@ -78,7 +81,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   private Result restoreBackup(UUID universeUUID, JsonNode bodyJson) {
-    String authToken = defaultCustomer.createAuthToken();
+    String authToken = defaultUser.createAuthToken();
     String method = "POST";
     String url = "/api/customers/" + defaultCustomer.uuid +
         "/universes/" + universeUUID + "/backups/restore";

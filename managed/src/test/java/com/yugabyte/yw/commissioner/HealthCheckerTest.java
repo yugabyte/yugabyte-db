@@ -166,7 +166,7 @@ public class HealthCheckerTest extends FakeDBApplication {
         eq(defaultProvider),
         any(),
         eq(u.name),
-        eq(String.format("[%s][%s]", defaultCustomer.email, defaultCustomer.code)),
+        eq(String.format("[%s][%s]", defaultCustomer.name, defaultCustomer.code)),
         eq(expectedEmail),
         eq(0L),
         eq(true));
@@ -178,7 +178,7 @@ public class HealthCheckerTest extends FakeDBApplication {
         eq(kubernetesProvider),
         expectedClusters.capture(),
         eq(u.name),
-        eq(String.format("[%s][%s]", defaultCustomer.email, defaultCustomer.code)),
+        eq(String.format("[%s][%s]", defaultCustomer.name, defaultCustomer.code)),
         eq(expectedEmail),
         eq(0L),
         eq(true));

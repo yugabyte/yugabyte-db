@@ -34,6 +34,7 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -62,6 +63,7 @@ public class EncryptionAtRestControllerTest extends WithApplication {
     @Mock
     play.Configuration mockAppConfig;
     private Customer customer;
+    private Users user;
     private Universe universe;
     private String authToken;
     private ApiHelper mockApiHelper;
@@ -87,8 +89,9 @@ public class EncryptionAtRestControllerTest extends WithApplication {
     @Before
     public void setUp() {
         customer = ModelFactory.testCustomer();
+        user = ModelFactory.testUser(customer);
         universe = ModelFactory.createUniverse();
-        authToken = customer.createAuthToken();
+        authToken = user.createAuthToken();
         String mockApiKey = "some_api_key";
         Map<String, String> authorizationHeaders = ImmutableMap.of(
                 "Authorization", String.format("Basic %s", mockApiKey)

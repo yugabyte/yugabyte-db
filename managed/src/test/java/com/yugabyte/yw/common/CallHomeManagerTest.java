@@ -9,6 +9,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 
 import org.asynchttpclient.util.Base64;
@@ -49,11 +50,13 @@ public class CallHomeManagerTest extends FakeDBApplication {
   Clock clock;
 
   Customer defaultCustomer;
+  Users defaultUser;
   Provider defaultProvider;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
+    defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
   }
 
@@ -61,7 +64,7 @@ public class CallHomeManagerTest extends FakeDBApplication {
     ObjectNode expectedPayload = Json.newObject();
     expectedPayload.put("customer_uuid", defaultCustomer.uuid.toString());
     expectedPayload.put("code", defaultCustomer.code);
-    expectedPayload.put("email", defaultCustomer.email);
+    expectedPayload.put("email", defaultUser.email);
     expectedPayload.put("creation_date", defaultCustomer.creationDate.toString());
     ArrayNode universes = Json.newArray();
     if (universe != null) {

@@ -363,8 +363,8 @@ public class HealthChecker {
     // email about it.
     HealthCheck lastCheck = HealthCheck.getLatest(u.universeUUID);
     boolean lastCheckHadErrors = lastCheck != null && lastCheck.hasError();
-    // Setup customer tag including email and code, for ease of email parsing.
-    String customerTag = String.format("[%s][%s]", c.email, c.code);
+    // Setup customer tag including name and code, for ease of email parsing.
+    String customerTag = String.format("[%s][%s]", c.name, c.code);
     Provider mainProvider = Provider.get(UUID.fromString(
           details.getPrimaryCluster().userIntent.provider));
     // Call devops and process response.

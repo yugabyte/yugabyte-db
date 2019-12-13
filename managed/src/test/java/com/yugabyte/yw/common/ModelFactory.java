@@ -13,12 +13,15 @@ import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import play.libs.Json;
 
 import java.util.HashSet;
 import java.util.Map;
 import java.util.UUID;
+
+import static com.yugabyte.yw.models.Users.Role;
 
 public class ModelFactory {
 
@@ -29,11 +32,25 @@ public class ModelFactory {
   public static Customer testCustomer() {
     return testCustomer("test@customer.com");
   }
-  public static Customer testCustomer(String email) {
-    return testCustomer("tc", email);
+  public static Customer testCustomer(String name) {
+    return testCustomer("tc", name);
   }
-  public static Customer testCustomer(String code, String email) {
-    return Customer.create(code, "Test customer", email, "password");
+  public static Customer testCustomer(String code, String name) {
+    return Customer.create(code, name);
+  }
+
+
+  /*
+   * Users creation helpers.
+   */
+  public static Users testUser(Customer customer) {
+    return testUser(customer, "test@customer.com");
+  }
+  public static Users testUser(Customer customer, String email) {
+    return testUser(customer, email, Role.Admin);
+  }
+  public static Users testUser(Customer customer, String email, Role role) {
+    return Users.create(email, "password", role, customer.uuid);
   }
 
   /*

@@ -41,6 +41,7 @@ import play.mvc.Result;
 public class NodeInstanceControllerTest extends FakeDBApplication {
   private final String FAKE_IP = "fake_ip";
   private Customer customer;
+  private Users user;
   private Provider provider;
   private Region region;
   private AvailabilityZone zone;
@@ -52,7 +53,8 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    customer = ModelFactory.testCustomer("tc", "demo@customer.com");
+    customer = ModelFactory.testCustomer("tc", "Test Customer 1");
+    user = ModelFactory.testUser(customer);
     provider = ModelFactory.awsProvider(customer);
     region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
     zone = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
@@ -259,7 +261,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     assertEquals(FORBIDDEN, r.status());
 
     String resultString = contentAsString(r);
-    assertEquals(resultString, "Unable To Authenticate Customer");
+    assertEquals(resultString, "Unable To Authenticate User");
   }
 
   @Test

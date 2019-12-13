@@ -81,7 +81,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       cloudType = cloud;
       String customerCode = String.valueOf(customerIdx.nextInt(99999));
       customer = ModelFactory.testCustomer(customerCode,
-              String.format("%s@customer.com", customerCode));
+              String.format("Test Customer %s", customerCode));
       provider = ModelFactory.newProvider(customer, cloud);
 
       // Set up base Universe
@@ -561,7 +561,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     int numTservers = 3;
     String newType = "m4.medium";
     TestData t = new TestData(Common.CloudType.aws, numMasters, numTservers);
-    t.customer = ModelFactory.testCustomer("b@c.com");
+    t.customer = ModelFactory.testCustomer("Test Customer 1");
     UniverseDefinitionTaskParams ud = t.universe.getUniverseDetails();
     t.setAzUUIDs(ud);
     Cluster primaryCluster = ud.getPrimaryCluster();
@@ -1044,7 +1044,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   public void testK8sGetDomainPerAZ() {
     String customerCode = String.valueOf(customerIdx.nextInt(99999));
     Customer k8sCustomer = ModelFactory.testCustomer(customerCode,
-            String.format("%s@customer.com", customerCode));
+            String.format("Test Customer %s", customerCode));
     Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
     Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
     Region r2 = Region.create(k8sProvider, "region-2", "Region 2", "yb-image-1");
@@ -1071,7 +1071,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   public void testK8sSelectMastersSingleZone() {
     String customerCode = String.valueOf(customerIdx.nextInt(99999));
     Customer k8sCustomer = ModelFactory.testCustomer(customerCode,
-            String.format("%s@customer.com", customerCode));
+            String.format("Test Customer %s", customerCode));
     Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
     Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
     AvailabilityZone az1 = AvailabilityZone.create(r1, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
@@ -1086,7 +1086,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   public void testK8sSelectMastersMultiRegion() {
     String customerCode = String.valueOf(customerIdx.nextInt(99999));
     Customer k8sCustomer = ModelFactory.testCustomer(customerCode,
-            String.format("%s@customer.com", customerCode));
+            String.format("Test Customer %s", customerCode));
     Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
     Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
     Region r2 = Region.create(k8sProvider, "region-2", "Region 2", "yb-image-1");
@@ -1106,7 +1106,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   public void testK8sSelectMastersMultiZone() {
     String customerCode = String.valueOf(customerIdx.nextInt(99999));
     Customer k8sCustomer = ModelFactory.testCustomer(customerCode,
-            String.format("%s@customer.com", customerCode));
+            String.format("Test Customer %s", customerCode));
     Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
     Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
     AvailabilityZone az1 = AvailabilityZone.create(r1, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
@@ -1125,7 +1125,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   public void testK8sGetMastersPerAZ() {
     String customerCode = String.valueOf(customerIdx.nextInt(99999));
     Customer k8sCustomer = ModelFactory.testCustomer(customerCode,
-            String.format("%s@customer.com", customerCode));
+            String.format("Test Customer %s", customerCode));
     Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
     Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
     AvailabilityZone az1 = AvailabilityZone.create(r1, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
@@ -1147,7 +1147,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   public void testK8sGetTServersPerAZ() {
     String customerCode = String.valueOf(customerIdx.nextInt(99999));
     Customer k8sCustomer = ModelFactory.testCustomer(customerCode,
-            String.format("%s@customer.com", customerCode));
+            String.format("Test Customer %s", customerCode));
     Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
     Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
     AvailabilityZone az1 = AvailabilityZone.create(r1, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
@@ -1169,7 +1169,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   public void testK8sGetConfigPerAZ() {
     String customerCode = String.valueOf(customerIdx.nextInt(99999));
     Customer k8sCustomer = ModelFactory.testCustomer(customerCode,
-            String.format("%s@customer.com", customerCode));
+            String.format("Test Customer %s", customerCode));
     Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
     Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
     Region r2 = Region.create(k8sProvider, "region-2", "Region 2", "yb-image-1");
@@ -1201,7 +1201,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   public void testIsMultiAz() {
     String customerCode = String.valueOf(customerIdx.nextInt(99999));
     Customer k8sCustomer = ModelFactory.testCustomer(customerCode,
-            String.format("%s@customer.com", customerCode));
+            String.format("Test Customer %s", customerCode));
     Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
     Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
     Region r2 = Region.create(k8sProvider, "region-2", "Region 2", "yb-image-1");

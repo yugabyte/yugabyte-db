@@ -10,6 +10,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import org.asynchttpclient.util.Base64;
 
 import com.yugabyte.yw.models.CustomerConfig;
@@ -83,7 +84,7 @@ public class CallHomeManager {
     // Build customer details json
     payload.put("customer_uuid", c.uuid.toString());
     payload.put("code", c.code);
-    payload.put("email", c.email);
+    payload.put("email", Users.getAllEmailsForCustomer(c.uuid));
     payload.put("creation_date", c.creationDate.toString());
     ArrayNode errors = Json.newArray();
 

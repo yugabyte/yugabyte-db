@@ -25,6 +25,8 @@ import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.scheduler.Scheduler;
 import org.junit.After;
 import org.junit.Test;
@@ -39,6 +41,8 @@ import play.mvc.Result;
 import play.test.Helpers;
 
 import java.util.Map;
+
+import static com.yugabyte.yw.models.Users.Role;
 
 public class SessionControllerTest {
 
@@ -70,9 +74,10 @@ public class SessionControllerTest {
   @Test
   public void testValidLogin() {
     startApp(false);
-    ModelFactory.testCustomer("foo@bar.com");
+    Customer customer = ModelFactory.testCustomer();
+    Users user = ModelFactory.testUser(customer);
     ObjectNode loginJson = Json.newObject();
-    loginJson.put("email", "Foo@bar.com");
+    loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
     Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
@@ -85,21 +90,21 @@ public class SessionControllerTest {
   public void testLoginWithInvalidPassword() {
     startApp(false);
     ObjectNode loginJson = Json.newObject();
-    loginJson.put("email", "foo@bar.com");
+    loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password1");
     Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(UNAUTHORIZED, result.status());
     assertThat(json.get("error").toString(),
-               allOf(notNullValue(), containsString("Invalid Customer Credentials")));
+               allOf(notNullValue(), containsString("Invalid User Credentials")));
   }
 
   @Test
   public void testLoginWithNullPassword() {
     startApp(false);
     ObjectNode loginJson = Json.newObject();
-    loginJson.put("email", "foo@bar.com");
+    loginJson.put("email", "test@customer.com");
     Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
 
@@ -111,7 +116,8 @@ public class SessionControllerTest {
   @Test
   public void testInsecureLoginValid() {
     startApp(false);
-    ModelFactory.testCustomer("foo@bar.com");
+    Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users user = ModelFactory.testUser(customer, "tc1@test.com", Role.ReadOnly);
     ConfigHelper configHelper = new ConfigHelper();
     configHelper.loadConfigToDB(ConfigHelper.ConfigType.Security,
         ImmutableMap.of("level", "insecure"));
@@ -125,9 +131,25 @@ public class SessionControllerTest {
   }
 
   @Test
+  public void testInsecureLoginWithoutReadOnlyUser() {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users user = ModelFactory.testUser(customer, "tc1@test.com", Role.Admin);
+    ConfigHelper configHelper = new ConfigHelper();
+    configHelper.loadConfigToDB(ConfigHelper.ConfigType.Security,
+        ImmutableMap.of("level", "insecure"));
+
+    Result result = route(fakeRequest("GET", "/api/insecure_login"));
+    JsonNode json = Json.parse(contentAsString(result));
+
+    assertUnauthorized(result, "No read only customer exists.");
+  }
+
+  @Test
   public void testInsecureLoginInvalid() {
     startApp(false);
-    ModelFactory.testCustomer("foo@bar.com");
+    Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users user = ModelFactory.testUser(customer);
     ConfigHelper configHelper = new ConfigHelper();
 
     Result result = route(fakeRequest("GET", "/api/insecure_login"));
@@ -181,7 +203,7 @@ public class SessionControllerTest {
   @Test
   public void testRegisterCustomerExceedingLimit() {
     startApp(false);
-    ModelFactory.testCustomer("foo@bar.com");
+    ModelFactory.testCustomer("Test Customer 1");
     ObjectNode registerJson = Json.newObject();
     registerJson.put("code", "fb");
     registerJson.put("email", "foo2@bar.com");
@@ -195,7 +217,7 @@ public class SessionControllerTest {
   public void testRegisterCustomerWithoutEmail() {
     startApp(false);
     ObjectNode registerJson = Json.newObject();
-    registerJson.put("email", "foo@bar.com");
+    registerJson.put("email", "test@customer.com");
     Result result = route(fakeRequest("POST", "/api/login").bodyJson(registerJson));
 
     JsonNode json = Json.parse(contentAsString(result));
@@ -209,9 +231,10 @@ public class SessionControllerTest {
   @Test
   public void testLogout() {
     startApp(false);
-    ModelFactory.testCustomer("foo@bar.com");
+    Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users user = ModelFactory.testUser(customer);
     ObjectNode loginJson = Json.newObject();
-    loginJson.put("email", "Foo@bar.com");
+    loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
     Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
@@ -225,14 +248,15 @@ public class SessionControllerTest {
   @Test
   public void testAuthTokenExpiry() {
     startApp(false);
-    ModelFactory.testCustomer("foo@bar.com");
+    Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users user = ModelFactory.testUser(customer);
     ObjectNode loginJson = Json.newObject();
-    loginJson.put("email", "Foo@bar.com");
+    loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
     Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
     String authToken1 = json.get("authToken").asText();
-    loginJson.put("email", "Foo@bar.com");
+    loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
     result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     json = Json.parse(contentAsString(result));
@@ -243,9 +267,10 @@ public class SessionControllerTest {
   @Test
   public void testApiTokenUpsert() {
     startApp(false);
-    ModelFactory.testCustomer("foo@bar.com");
+    Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users user = ModelFactory.testUser(customer);
     ObjectNode loginJson = Json.newObject();
-    loginJson.put("email", "Foo@bar.com");
+    loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
     Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
@@ -263,9 +288,10 @@ public class SessionControllerTest {
   @Test
   public void testApiTokenUpdate() {
     startApp(false);
-    ModelFactory.testCustomer("foo@bar.com");
+    Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users user = ModelFactory.testUser(customer);
     ObjectNode loginJson = Json.newObject();
-    loginJson.put("email", "Foo@bar.com");
+    loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
     Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
@@ -290,7 +316,7 @@ public class SessionControllerTest {
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertValue(json, "count", "0");
-    ModelFactory.testCustomer("foo@bar.com");
+    ModelFactory.testCustomer("Test Customer 1");
     result = route(fakeRequest("GET", "/api/customer_count"));
     json = Json.parse(contentAsString(result));
     assertOk(result);
