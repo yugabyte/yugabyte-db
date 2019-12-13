@@ -6,7 +6,7 @@ import { Footer } from '../components/common/footer';
 import AuthenticatedComponentContainer from '../components/Authenticated/AuthenticatedComponentContainer';
 import { mouseTrap } from 'react-mousetrap';
 import { browserHistory } from 'react-router';
-import { YBModal } from '../components/common/forms/fields';
+import { YBModal, YBCheckBox } from '../components/common/forms/fields';
 import { Table } from 'react-bootstrap';
 
 import slackLogo from '../components/common/footer/images/slack-logo-full.svg';
@@ -21,13 +21,14 @@ class AuthenticatedComponent extends Component {
     props.bindShortcut('?', this._toggleShortcutsHelp);
     this.state = {
       showKeyboardShortcuts: false,
-      showIntroModal: false
+      showIntroModal: false,
+      hideDialogChecked: false,
     };
   }
 
   componentDidMount() {
-    if (localStorage.getItem('__yb_new_user__') === 'true') {
-      localStorage.setItem('__yb_new_user__', false);
+    const introState = localStorage.getItem('__yb_intro_dialog__');
+    if (introState !== 'hidden' && introState !== 'existing') {
       this.setState({ showIntroModal: true });
     }
   }
@@ -62,6 +63,11 @@ class AuthenticatedComponent extends Component {
   };
 
   closeIntroModal = () => {
+    if (this.state.hideDialogChecked) {
+      localStorage.setItem('__yb_intro_dialog__', 'hidden');
+    } else {
+      localStorage.setItem('__yb_intro_dialog__', 'existing');
+    }
     this.setState({ showIntroModal: false });
   }
 
@@ -70,28 +76,10 @@ class AuthenticatedComponent extends Component {
 
     const socialMediaLinks = (
       <div className="footer-accessory-wrapper">
-        <div>
-          <a className="social-media-btn"
-            href="https://www.yugabyte.com/slack"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <span>Join us on</span>
-            <img alt="YugaByte DB Slack" src={slackLogo} width="65"/>
-          </a>
-        </div>
-        <div>
-          <a className="social-media-btn"
-            href="https://github.com/yugabyte/yugabyte-db"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <span>Star us on</span>
-            <img alt="YugaByte DB GitHub"
-              className="social-media-logo"
-              src={githubLogo} width="18"/> <b>GitHub</b>
-          </a>
-        </div>
+        <YBCheckBox
+          label={'Do not show this message in the future'}
+          onClick={() => this.setState({ hideDialogChecked: true})}>
+        </YBCheckBox>
       </div>
     );
     return (
@@ -124,13 +112,33 @@ class AuthenticatedComponent extends Component {
                  cancelLabel={"Close"}
                  footerAccessory={socialMediaLinks}
           >
-            <p>Thank you for downloading Yugabyte DB.</p>
             <p>Documentation can be found <a
               href="https://docs.yugabyte.com/latest/manage/enterprise-edition/"
               target="_blank" rel="noopener noreferrer">
                 here.
               </a>
             </p>
+
+          <div style={{ display: 'flex'}}>
+            <a className="social-media-btn"
+              href="https://www.yugabyte.com/slack"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span>Join us on</span>
+              <img alt="YugaByte DB Slack" src={slackLogo} width="65"/>
+            </a>
+            <a className="social-media-btn"
+              href="https://github.com/yugabyte/yugabyte-db"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span>Star us on</span>
+              <img alt="YugaByte DB GitHub"
+                className="social-media-logo"
+                src={githubLogo} width="18"/> <b>GitHub</b>
+            </a>
+          </div>
           </YBModal>
         </div>
         <Footer />
