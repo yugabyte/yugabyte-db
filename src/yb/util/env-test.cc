@@ -809,20 +809,39 @@ TEST_F(TestEnv, TestGetFreeSpace) {
   char* ret = getcwd(cwd, sizeof(cwd));
   ASSERT_NE(ret, nullptr);
 
-  const int64_t free_space = static_cast<int64_t>(ASSERT_RESULT(env_->GetFreeSpaceBytes(cwd)));
+  constexpr int64_t kMaxAllowedDeltaBytes = 65536;
 
-  string cmd = strings::Substitute("df $0 -B1 | tail -1 | awk '{print $$4}' | tr -d '\\n'", cwd);
-  string df_free_space_str;
-  ASSERT_TRUE(RunShellProcess(cmd, &df_free_space_str));
-  const int64_t df_free_space = ASSERT_RESULT(CheckedStoll(df_free_space_str));
+  // Number of times the difference between the return value from GetFreeSpaceBytes and
+  // the output from command 'df' should be less than kMaxAllowedDeltaBytes before we consider
+  // this test has passed.
+  constexpr int kCountRequired = 10;
 
-  // We might not get the exact same answer because disk space is being consumed and freed.
-  const int64_t delta_bytes = abs(df_free_space - free_space);
-  const int64_t kMaxAllowedDeltaBytes = 65536;
+  // Minimum block size for MacOS is 512.
+  constexpr int block_size = 512;
+  const string cmd = strings::Substitute(
+      "(export BLOCKSIZE=$0; df $1 | tail -1 | awk '{print $$4}' | tr -d '\\n')", block_size, cwd);
 
-  ASSERT_LE(delta_bytes, kMaxAllowedDeltaBytes)
-      << "df returned: " << df_free_space
-      << ", GetFreeSpaceBytes returned: " << free_space;
+  int success_count = 0;
+  for (int i = 0; i < kCountRequired * 10; i++) {
+    const int64_t free_space = static_cast<int64_t>(ASSERT_RESULT(env_->GetFreeSpaceBytes(cwd)));
+
+    string df_free_space_str;
+    ASSERT_TRUE(RunShellProcess(cmd, &df_free_space_str));
+    const int64_t df_free_space = block_size * ASSERT_RESULT(CheckedStoll(df_free_space_str));
+
+     // We might not get the exact same answer because disk space is being consumed and freed.
+    const int64_t delta_bytes = abs(df_free_space - free_space);
+    if (delta_bytes > kMaxAllowedDeltaBytes) {
+      LOG(INFO) << "df returned: " << df_free_space
+                << ", GetFreeSpaceBytes returned: " << free_space;
+    } else {
+      success_count++;
+      if (success_count >= kCountRequired) {
+        break;
+      }
+    }
+  }
+  ASSERT_GE(success_count, kCountRequired);
 }
 
 // Test that CopyFile() copies all the bytes properly.

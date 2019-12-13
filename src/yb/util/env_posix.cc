@@ -1392,7 +1392,8 @@ class PosixEnv : public Env {
             ErrnoToString(errno));
       }
     }
-    uint64_t block_size = static_cast<uint64_t>(stat.f_bsize);
+    uint64_t block_size = stat.f_frsize > 0 ? static_cast<uint64_t>(stat.f_frsize) :
+                                              static_cast<uint64_t>(stat.f_bsize);
     uint64_t available_blocks = static_cast<uint64_t>(stat.f_bavail);
 
     return available_blocks * block_size;
