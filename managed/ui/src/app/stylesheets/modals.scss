@@ -35,6 +35,26 @@
   }
 }
 
+.social-media-btn {
+  border: 1px solid #cbcdd0;
+  color: #202951;
+  text-decoration: none;
+  padding: 10px 15px;
+  height: 42px;
+  border-radius: 7px;
+  margin-right: 15px;
+  font-size: 14px;
+  background: #ffffff;
+
+  img {
+    margin-left: 6px;
+  }
+}
+.social-media-btn:hover {
+  background-color: #e5e5e9;
+  color: #000;
+}
+
 .modal-footer {
   background-color: #f5f4f0;
 
@@ -48,25 +68,6 @@
   .footer-accessory-wrapper > div {
     display: inline-block;
     margin-right: 10px;
-  }
-  .social-media-btn {
-    border: 1px solid #cbcdd0;
-    color: #202951;
-    text-decoration: none;
-    padding: 10px 15px;
-    height: 42px;
-    border-radius: 7px;
-    margin-right: 15px;
-    font-size: 14px;
-    background: #fff;
-
-    img {
-      margin-left: 6px;
-    }
-  }
-  .social-media-btn:hover {
-    background-color: #e5e5e9;
-    color: #000;
   }
 }
 
