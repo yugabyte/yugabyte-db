@@ -61,7 +61,7 @@ public class CallHomeTest  extends FakeDBApplication {
 
   @Test
   public void scheduleRunnerMultiTenant() {
-    Customer newCustomer = ModelFactory.testCustomer("test", "test-2@customer.com");
+    Customer newCustomer = ModelFactory.testCustomer("tc2", "Test Customer 2");
     callHome = new CallHome(mockActorSystem, mockExecutionContext,
         mockCallHomeManager, mockEnvironment);
     callHome.scheduleRunner();

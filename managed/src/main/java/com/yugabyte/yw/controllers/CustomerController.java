@@ -27,6 +27,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -88,31 +89,6 @@ public class CustomerController extends AuthenticatedController {
       return badRequest(responseJson);
     }
 
-    boolean hasPassword = formData.get().password != null && !formData.get().password.isEmpty();
-    boolean hasConfirmPassword = formData.get().confirmPassword != null &&
-            !formData.get().confirmPassword.isEmpty();
-    if (hasPassword && hasConfirmPassword) {
-      if (!formData.get().password.equals(formData.get().confirmPassword)) {
-        String errorMsg = "Both passwords must match!";
-        errorJson.put("password", errorMsg);
-        errorJson.put("confirmPassword", errorMsg);
-        responseJson.set("error", errorJson);
-        return badRequest(responseJson);
-      }
-      // Had password info that matched, should update user password!
-      customer.setPassword(formData.get().password);
-    } else if (hasPassword && !hasConfirmPassword) {
-      String errorMsg = "Please re-enter password";
-      errorJson.put("confirmPassword", errorMsg);
-      responseJson.set("error", errorJson);
-      return badRequest(responseJson);
-    } else if (!hasPassword && hasConfirmPassword) {
-      String errorMsg = "Please enter password";
-      errorJson.put("password", errorMsg);
-      responseJson.set("error", errorJson);
-      return badRequest(responseJson);
-    }
-
     CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
     if (config == null && formData.get().alertingData != null) {
       config = CustomerConfig.createAlertConfig(
@@ -131,7 +107,6 @@ public class CustomerController extends AuthenticatedController {
     CustomerConfig.upsertCallhomeConfig(customerUUID, formData.get().callhomeLevel);
 
     customer.name = formData.get().name;
-    customer.email = formData.get().email;
     customer.update();
 
     return ok(Json.toJson(customer));
@@ -142,6 +117,10 @@ public class CustomerController extends AuthenticatedController {
 
     if (customer == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID:" + customerUUID);
+    }
+    List<Users> users = Users.getAll(customerUUID);
+    for (Users user : users) {
+      user.delete();
     }
 
     if (customer.delete()) {

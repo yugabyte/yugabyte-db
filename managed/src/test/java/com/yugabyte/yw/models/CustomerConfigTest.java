@@ -42,7 +42,7 @@ public class CustomerConfigTest extends FakeDBApplication {
   @Test
   public void testGetAll() {
     createData(defaultCustomer);
-    Customer newCustomer = ModelFactory.testCustomer("nc", "new@customer.com");
+    Customer newCustomer = ModelFactory.testCustomer("nc", "new customer");
     assertEquals(0, CustomerConfig.getAll(newCustomer.uuid).size());
     assertEquals(1, CustomerConfig.getAll(defaultCustomer.uuid).size());
   }

@@ -15,6 +15,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
 import org.junit.Test;
@@ -43,11 +44,13 @@ public class ScheduleControllerTest extends FakeDBApplication {
 
   private Universe defaultUniverse;
   private Customer defaultCustomer;
+  private Users defaultUser;
   private Schedule defaultSchedule;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
+    defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
 
     BackupTableParams backupTableParams = new BackupTableParams();
@@ -58,7 +61,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
   }
 
   private Result listSchedules(UUID customerUUID) {
-    String authToken = defaultCustomer.createAuthToken();
+    String authToken = defaultUser.createAuthToken();
     String method = "GET";
     String url = "/api/customers/" + customerUUID + "/schedules";
 
@@ -66,7 +69,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
   }
 
   private Result deleteSchedule(UUID scheduleUUID, UUID customerUUID) {
-    String authToken = defaultCustomer.createAuthToken();
+    String authToken = defaultUser.createAuthToken();
     String method = "DELETE";
     String url = "/api/customers/" + customerUUID + "/schedules/" + scheduleUUID;
 
@@ -88,7 +91,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
     Result r = listSchedules(invalidCustomerUUID);
     assertEquals(FORBIDDEN, r.status());
     String resultString = contentAsString(r);
-    assertEquals(resultString, "Unable To Authenticate Customer");
+    assertEquals(resultString, "Unable To Authenticate User");
   }
 
   @Test 
@@ -109,7 +112,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
     Result r = deleteSchedule(defaultSchedule.scheduleUUID, invalidCustomerUUID);
     assertEquals(FORBIDDEN, r.status());
     String resultString = contentAsString(r);
-    assertEquals(resultString, "Unable To Authenticate Customer");
+    assertEquals(resultString, "Unable To Authenticate User");
     resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
     assertEquals(1, resultJson.size());
   }

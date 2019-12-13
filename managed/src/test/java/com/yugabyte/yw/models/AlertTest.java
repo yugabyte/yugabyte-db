@@ -23,8 +23,8 @@ public class AlertTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    cust1 = ModelFactory.testCustomer("cust1@test.com");
-    cust2 = ModelFactory.testCustomer("cust2@test.com");
+    cust1 = ModelFactory.testCustomer("Customer 1");
+    cust2 = ModelFactory.testCustomer("Customer 2");
   }
 
   @Test

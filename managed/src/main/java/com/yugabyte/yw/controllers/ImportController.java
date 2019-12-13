@@ -74,7 +74,7 @@ import play.mvc.*;
 
 import javax.persistence.PersistenceException;
 
-public class ImportController extends Controller {
+public class ImportController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ImportController.class);
 
   // Threadpool to run user submitted tasks.

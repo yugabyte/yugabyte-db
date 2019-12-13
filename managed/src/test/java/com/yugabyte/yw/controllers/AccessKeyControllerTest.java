@@ -17,6 +17,7 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Users;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -67,6 +68,7 @@ import static play.test.Helpers.contentAsString;
 public class AccessKeyControllerTest extends WithApplication {
   Provider defaultProvider;
   Customer defaultCustomer;
+  Users defaultUser;
   Region defaultRegion;
   AccessManager mockAccessManager;
   TemplateManager mockTemplateManager;
@@ -85,6 +87,7 @@ public class AccessKeyControllerTest extends WithApplication {
   @Before
   public void before() {
     defaultCustomer = ModelFactory.testCustomer();
+    defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     defaultRegion = Region.create(defaultProvider, "us-west-2", "us-west-2", "yb-image");
     new File(TestHelper.TMP_PATH).mkdirs();
@@ -99,13 +102,13 @@ public class AccessKeyControllerTest extends WithApplication {
     String uri = "/api/customers/" + defaultCustomer.uuid +
         "/providers/" + providerUUID + "/access_keys/" + keyCode;
     return FakeApiHelper.doRequestWithAuthToken("GET", uri,
-        defaultCustomer.createAuthToken());
+        defaultUser.createAuthToken());
   }
 
   private Result listAccessKey(UUID providerUUID) {
     String uri = "/api/customers/" + defaultCustomer.uuid +
         "/providers/" + providerUUID + "/access_keys";
-    return FakeApiHelper.doRequestWithAuthToken("GET", uri, defaultCustomer.createAuthToken());
+    return FakeApiHelper.doRequestWithAuthToken("GET", uri, defaultUser.createAuthToken());
   }
 
   private Result createAccessKey(UUID providerUUID, String keyCode, boolean uploadFile,
@@ -131,7 +134,7 @@ public class AccessKeyControllerTest extends WithApplication {
       }
 
       return FakeApiHelper.doRequestWithAuthTokenAndMultipartData("POST", uri,
-          defaultCustomer.createAuthToken(),
+          defaultUser.createAuthToken(),
           bodyData,
           mat);
     } else {
@@ -146,14 +149,15 @@ public class AccessKeyControllerTest extends WithApplication {
       }
       bodyJson.put("airGapInstall", airGapInstall);
       bodyJson.put("passwordlessSudoAccess", passwordlessSudoAccess);
-      return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, defaultCustomer.createAuthToken(), bodyJson);
+      return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri,
+          defaultUser.createAuthToken(), bodyJson);
     }
   }
 
   private Result deleteAccessKey(UUID providerUUID, String keyCode) {
     String uri = "/api/customers/" + defaultCustomer.uuid + "/providers/" +
                 providerUUID + "/access_keys/" + keyCode;
-    return FakeApiHelper.doRequestWithAuthToken("DELETE", uri, defaultCustomer.createAuthToken());
+    return FakeApiHelper.doRequestWithAuthToken("DELETE", uri, defaultUser.createAuthToken());
   }
 
   @Test

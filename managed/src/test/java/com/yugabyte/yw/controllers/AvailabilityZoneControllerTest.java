@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Users;
 import org.hamcrest.CoreMatchers;
 import org.junit.Assert;
 import org.junit.Before;
@@ -35,12 +36,14 @@ import play.mvc.Result;
 
 public class AvailabilityZoneControllerTest extends FakeDBApplication {
   Customer defaultCustomer;
+  Users defaultUser;
   Provider defaultProvider;
   Region defaultRegion;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
+    defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     defaultRegion = Region.create(defaultProvider,
                                   "default-region",

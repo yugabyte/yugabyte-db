@@ -60,17 +60,11 @@ create table customer (
   id                            bigint not null,
   uuid                          uuid not null,
   code                          varchar(15) not null,
-  email                         varchar(256) not null,
-  password_hash                 varchar(256) not null,
   name                          varchar(256) not null,
   creation_date                 timestamp not null,
-  auth_token                    varchar(255),
-  auth_token_issue_date         timestamp,
-  api_token                     varchar(255),
   features                      TEXT,
   universe_uuids                TEXT not null,
   constraint uq_customer_uuid unique (uuid),
-  constraint uq_customer_email unique (email),
   constraint pk_customer primary key (id)
 );
 create sequence customer_id_seq increment by 1;
@@ -91,12 +85,12 @@ create table customer_task (
   task_uuid                     uuid not null,
   target_type                   varchar(17) not null,
   target_name                   varchar(255) not null,
-  type                          varchar(16) not null,
+  type                          varchar(23) not null,
   target_uuid                   uuid not null,
   create_time                   timestamp not null,
   completion_time               timestamp,
   constraint ck_customer_task_target_type check (target_type in ('KMS Configuration','Table','Node','Backup','Universe','Cluster','Provider')),
-  constraint ck_customer_task_type check (type in ('Delete','Add','Stop','Start','Backup','UpgradeSoftware','Remove','SetEncryptionKey','Update','Restore','BulkImportData','Create','Release','UpgradeGflags')),
+  constraint ck_customer_task_type check (type in ('Delete','Add','DisableEncryptionAtRest','Stop','Start','Backup','UpgradeSoftware','Remove','SetEncryptionKey','Update','Restore','BulkImportData','EnableEncryptionAtRest','RotateEncryptionKey','Create','Release','UpgradeGflags')),
   constraint pk_customer_task primary key (id)
 );
 create sequence customer_task_id_seq increment by 1;
@@ -242,6 +236,23 @@ create table universe (
   constraint pk_universe primary key (universe_uuid)
 );
 
+create table users (
+  uuid                          uuid not null,
+  customer_uuid                 uuid not null,
+  email                         varchar(256) not null,
+  password_hash                 varchar(256) not null,
+  creation_date                 timestamp not null,
+  auth_token                    varchar(255),
+  auth_token_issue_date         timestamp,
+  api_token                     varchar(255),
+  features                      TEXT,
+  role                          varchar(8) not null,
+  is_primary                    boolean not null,
+  constraint ck_users_role check (role in ('ReadOnly','Admin')),
+  constraint uq_users_email unique (email),
+  constraint pk_users primary key (uuid)
+);
+
 create table yugaware_property (
   name                          varchar(255) not null,
   type                          varchar(6) not null,
@@ -260,55 +271,57 @@ create index ix_region_provider_uuid on region (provider_uuid);
 
 # --- !Downs
 
-alter table availability_zone drop constraint if exists fk_availability_zone_region_uuid;
+alter table if exists availability_zone drop constraint if exists fk_availability_zone_region_uuid;
 drop index if exists ix_availability_zone_region_uuid;
 
-alter table region drop constraint if exists fk_region_provider_uuid;
+alter table if exists region drop constraint if exists fk_region_provider_uuid;
 drop index if exists ix_region_provider_uuid;
 
-drop table if exists access_key;
+drop table if exists access_key cascade;
 
-drop table if exists alert;
+drop table if exists alert cascade;
 
-drop table if exists availability_zone;
+drop table if exists availability_zone cascade;
 
-drop table if exists backup;
+drop table if exists backup cascade;
 
-drop table if exists certificate_info;
+drop table if exists certificate_info cascade;
 
-drop table if exists customer;
+drop table if exists customer cascade;
 drop sequence if exists customer_id_seq;
 
-drop table if exists customer_config;
+drop table if exists customer_config cascade;
 
-drop table if exists customer_task;
+drop table if exists customer_task cascade;
 drop sequence if exists customer_task_id_seq;
 
-drop table if exists health_check;
+drop table if exists health_check cascade;
 
-drop table if exists instance_type;
+drop table if exists instance_type cascade;
 
-drop table if exists kms_config;
+drop table if exists kms_config cascade;
 
-drop table if exists kms_history;
+drop table if exists kms_history cascade;
 
-drop table if exists metric_config;
+drop table if exists metric_config cascade;
 
-drop table if exists node_instance;
+drop table if exists node_instance cascade;
 
-drop table if exists price_component;
+drop table if exists price_component cascade;
 
-drop table if exists provider;
+drop table if exists provider cascade;
 
-drop table if exists region;
+drop table if exists region cascade;
 
-drop table if exists schedule;
+drop table if exists schedule cascade;
 
-drop table if exists schedule_task;
+drop table if exists schedule_task cascade;
 
-drop table if exists task_info;
+drop table if exists task_info cascade;
 
-drop table if exists universe;
+drop table if exists universe cascade;
 
-drop table if exists yugaware_property;
+drop table if exists users cascade;
+
+drop table if exists yugaware_property cascade;
 

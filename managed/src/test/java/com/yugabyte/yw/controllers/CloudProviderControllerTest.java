@@ -60,6 +60,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Users;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,6 +84,7 @@ import java.util.UUID;
 public class CloudProviderControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderControllerTest.class);
   Customer customer;
+  Users user;
 
   AccessManager mockAccessManager;
   CloudQueryHelper mockQueryHelper;
@@ -112,6 +114,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
+    user = ModelFactory.testUser(customer);
     new File(TestHelper.TMP_PATH).mkdirs();
     try{
       String kubeFile = createTempFile("test2.conf", "test5678");
@@ -128,33 +131,35 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
   private Result listProviders() {
     return FakeApiHelper.doRequestWithAuthToken("GET",
-        "/api/customers/" + customer.uuid  + "/providers", customer.createAuthToken());
+        "/api/customers/" + customer.uuid  + "/providers", user.createAuthToken());
   }
 
   private Result createProvider(JsonNode bodyJson) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody("POST",
-        "/api/customers/" + customer.uuid + "/providers", customer.createAuthToken(), bodyJson);
+        "/api/customers/" + customer.uuid + "/providers", user.createAuthToken(), bodyJson);
   }
 
   private Result createKubernetesProvider(JsonNode bodyJson) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody("POST",
-        "/api/customers/" + customer.uuid + "/providers/kubernetes", customer.createAuthToken(), bodyJson);
+        "/api/customers/" + customer.uuid + "/providers/kubernetes",
+        user.createAuthToken(), bodyJson);
   }
 
   private Result deleteProvider(UUID providerUUID) {
     return FakeApiHelper.doRequestWithAuthToken("DELETE",
-        "/api/customers/" + customer.uuid + "/providers/" + providerUUID, customer.createAuthToken());
+        "/api/customers/" + customer.uuid + "/providers/" + providerUUID, user.createAuthToken());
   }
 
   private Result editProvider(JsonNode bodyJson, UUID providerUUID) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody("PUT",
-            "/api/customers/" + customer.uuid + "/providers/"+ providerUUID + "/edit", customer.createAuthToken(), bodyJson);
+            "/api/customers/" + customer.uuid + "/providers/"+ providerUUID + "/edit",
+            user.createAuthToken(), bodyJson);
   }
 
   private Result bootstrapProvider(JsonNode bodyJson, Provider provider) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody("POST",
         "/api/customers/" + customer.uuid + "/providers/" + provider.uuid + "/bootstrap",
-        customer.createAuthToken(),
+        user.createAuthToken(),
         bodyJson);
   }
 
