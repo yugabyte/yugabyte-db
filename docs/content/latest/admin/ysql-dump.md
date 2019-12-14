@@ -228,7 +228,7 @@ Use the specified synchronized snapshot when making a dump of the database. This
 
 #### --strict-names
 
-Require that each schema ([`-n|--schema`](#n-schema-schema-schema)`) and table ([`-t|--table`](#t-table-table-table)`) qualifier match at least one schema or table in the database to be dumped. Note that if none of the schema or table qualifiers find matches, `ysql_dump` will generate an error even without `--strict-names`.
+Require that each schema ([`-n|--schema`](#n-schema-schema-schema)) and table ([`-t|--table`](#t-table-table-table)) qualifier match at least one schema or table in the database to be dumped. Note that if none of the schema or table qualifiers find matches, `ysql_dump` will generate an error even without `--strict-names`.
 
 This option has no effect on [`-N|--exclude-schema`](#n-schema-exclude-schema-schema), [`-T|--exclude-table`](#t-table-exclude-table-table), or [`--exclude-table-data`](#exclude-table-data-table). An exclude pattern failing to match any objects is not considered an error.
 
@@ -343,5 +343,5 @@ $ ysql_dump -T 'ts_*' mydb > objects_mydb.sql
 
 ## See also
 
-- [ysql_dumpall](../ysql_dumpall)
+- [ysql_dumpall](../ysql-dumpall)
 - [ysqlsh](../ysqlsh)
