@@ -38,6 +38,7 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.common.Util;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,13 +58,17 @@ import scala.concurrent.duration.Duration;
 import io.prometheus.client.Gauge;
 import io.prometheus.client.CollectorRegistry;
 
+import com.fasterxml.jackson.databind.JsonNode;
 
 @Singleton
 public class HealthChecker {
   public static final Logger LOG = LoggerFactory.getLogger(HealthChecker.class);
 
   public static final String kUnivMetricName = "yb_univ_health_status";
-  public static final String kUnivMetricLabel = "univ_uuid";
+  public static final String kUnivUUIDLabel = "univ_uuid";
+  public static final String kUnivNameLabel = "univ_name";
+  public static final String kCheckLabel = "check_name";
+  public static final String kNodeLabel = "node";
 
   play.Configuration config;
 
@@ -131,7 +136,7 @@ public class HealthChecker {
 
     try {
       healthMetric = Gauge.build(kUnivMetricName, "Boolean result of health checks").
-                           labelNames(kUnivMetricLabel).
+                           labelNames(kUnivUUIDLabel, kUnivNameLabel, kNodeLabel, kCheckLabel).
                            register(this.promRegistry);
     } catch (IllegalArgumentException e) {
       LOG.warn("Failed to build prometheus gauge for name: " + kUnivMetricName);
@@ -155,6 +160,30 @@ public class HealthChecker {
 
   private String ybAlertEmail() {
     return config.getString("yb.health.default_email");
+  }
+
+  private void addPromMetrics(Universe u, String response) {
+    if (healthMetric == null) {
+      return;
+    }
+
+    try {
+      JsonNode healthJSON = Util.convertStringToJson(response);
+      for (JsonNode entry : healthJSON.path("data")) {
+        String nodeName = entry.path("node").asText();
+        String checkName = entry.path("message").asText();
+        Boolean checkResult = entry.path("has_error").asBoolean();
+        Gauge.Child prometheusVal = healthMetric.labels(
+          u.universeUUID.toString(),
+          u.name,
+          nodeName,
+          checkName
+        );
+        prometheusVal.set(checkResult ? 1 : 0);
+      }
+     } catch (Exception e) {
+      LOG.warn("Failed to convert health check response to prometheus metrics " + e.getMessage());
+    }
   }
 
   @VisibleForTesting
@@ -348,19 +377,10 @@ public class HealthChecker {
         potentialStartTime,
         (shouldSendStatusUpdate || lastCheckHadErrors));
 
-    Gauge.Child prometheusVal = null;
-    if (healthMetric != null) {
-      prometheusVal = healthMetric.labels(u.universeUUID.toString());
-    }
     if (response.code == 0) {
-      if (prometheusVal != null) {
-        prometheusVal.set(1);
-      }
+      addPromMetrics(u, response.message);
       HealthCheck.addAndPrune(u.universeUUID, u.customerId, response.message);
     } else {
-      if (prometheusVal != null) {
-        prometheusVal.set(0);
-      }
       LOG.error(String.format(
           "Health check script got error: code (%s), msg: ", response.code, response.message));
     }
