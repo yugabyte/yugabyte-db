@@ -197,6 +197,8 @@ class Log : public RefCountedThreadSafe<Log> {
   // returns (0, 0)
   yb::OpId GetLatestEntryOpId() const;
 
+  int64_t GetMinReplicateIndex() const;
+
   // Runs the garbage collector on the set of previous segments. Segments that only refer to in-mem
   // state that has been flushed are candidates for garbage collection.
   //
@@ -495,6 +497,10 @@ class Log : public RefCountedThreadSafe<Log> {
 
   std::atomic<uint32_t> wal_retention_secs_{0};
 
+  // Minimum replicate index for the current log being written. Used for CDC read initialization.
+  std::atomic<int64_t> min_replicate_index_{-1};
+
+  // The current replicated index that CDC has read.  Used for CDC read cache optimization.
   std::atomic<int64_t> cdc_min_replicated_index_{std::numeric_limits<int64_t>::max()};
 
   DISALLOW_COPY_AND_ASSIGN(Log);

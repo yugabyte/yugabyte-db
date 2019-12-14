@@ -903,7 +903,7 @@ class CDCServiceTestMinSpace : public CDCServiceTest {
     FLAGS_TEST_record_segments_violate_min_space_policy = true;
 
     // This will rollover log segments a lot faster.
-    FLAGS_log_segment_size_bytes = 100;
+    FLAGS_log_segment_size_bytes = 500;
     CDCServiceTest::SetUp();
   }
 };
@@ -951,6 +951,13 @@ TEST_F_EX(CDCServiceTest, TestLogRetentionByOpId_MinSpace, CDCServiceTestMinSpac
               (*tablet_peer->log()->reader_->segments_violate_min_space_policy_)[i]->path());
     LOG(INFO) << "Segment " << segment_sequence[i]->path() << " to be GCed";
   }
+
+  int32_t num_gced(0);
+  ASSERT_OK(tablet_peer->log()->GC(std::numeric_limits<int64_t>::max(), &num_gced));
+  ASSERT_EQ(num_gced, segment_sequence.size());
+
+  // Read from 0.0.  This should start reading from the beginning of the logs.
+  GetChanges(tablet_id, stream_id, /* term */ 0, /* index */ 0);
 }
 
 TEST_F(CDCServiceTest, TestLogCdcIndex) {

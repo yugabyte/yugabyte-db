@@ -652,6 +652,7 @@ void Log::UpdateFooterForBatch(LogEntryBatch* batch) {
     if (!footer_builder_.has_min_replicate_index() ||
         index < footer_builder_.min_replicate_index()) {
       footer_builder_.set_min_replicate_index(index);
+      min_replicate_index_.store(index, std::memory_order_release);
     }
     if (!footer_builder_.has_max_replicate_index() ||
         index > footer_builder_.max_replicate_index()) {
@@ -813,6 +814,10 @@ uint32_t Log::wal_retention_secs() const {
 
 yb::OpId Log::GetLatestEntryOpId() const {
   return last_synced_entry_op_id_.load(boost::memory_order_acquire);
+}
+
+int64_t Log::GetMinReplicateIndex() const {
+  return min_replicate_index_.load(std::memory_order_acquire);
 }
 
 yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed, MonoDelta duration) {
