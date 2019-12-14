@@ -8,14 +8,15 @@ section: RELEASES
 menu:
   latest:
     identifier: releases
-    weight: 2604
+    weight: 2602
 ---
 
 Download YugabyteDB using the table below and then follow the [Quick Start](../quick-start/) instructions to get started.
 
 Release | Date | Binary | Docker Image Tag
 --------|------|-------------------------------|-----------------
-[v2.0.7](./v2.0.7) | November 23, 2019 | <a href="https://downloads.yugabyte.com/yugabyte-2.0.7.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.0.7.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.0.7.0-b9
+[v2.0.8](./v2.0.8) | December 13, 2019 | <a href="https://downloads.yugabyte.com/yugabyte-2.0.8.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.0.8.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.0.8.0-b5
+[v2.0.7](./v2.0.7) | December 04, 2019 | <a href="https://downloads.yugabyte.com/yugabyte-2.0.7.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.0.7.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.0.7.0-b9
 [v2.0.6](./v2.0.6) | November 23, 2019 | <a href="https://downloads.yugabyte.com/yugabyte-2.0.6.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.0.6.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.0.6.0-b5
 [v2.0.5](./v2.0.5) | November 15, 2019 | <a href="https://downloads.yugabyte.com/yugabyte-2.0.5.2-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.0.5.2-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.0.5.2-b3
 [v2.0.3](./v2.0.3) | October 28, 2019 | <a href="https://downloads.yugabyte.com/yugabyte-2.0.3.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.0.3.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.0.3.0-b7
