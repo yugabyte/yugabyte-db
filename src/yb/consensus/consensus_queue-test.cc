@@ -857,11 +857,12 @@ TEST_F(ConsensusQueueTest, TestTriggerRemoteBootstrapIfTabletNotFound) {
 // Tests that ReadReplicatedMessagesForCDC() only reads messages until the last known
 // committed index.
 TEST_F(ConsensusQueueTest, TestReadReplicatedMessagesForCDC) {
-  queue_->Init(MinimumOpId());
-  queue_->SetLeaderMode(MinimumOpId(), MinimumOpId().term(), BuildRaftConfigPBForTests(2));
+  auto startOpId = MakeOpIdForIndex(3); // Starting after the normal first index.
+  queue_->Init(startOpId);
+  queue_->SetLeaderMode(startOpId, startOpId.term(), BuildRaftConfigPBForTests(2));
   queue_->TrackPeer(kPeerUuid);
 
-  AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, kNumMessages);
+  AppendReplicateMessagesToQueue(queue_.get(), clock_, startOpId.index(), kNumMessages);
 
   // Wait for the local peer to append all messages.
   WaitForLocalPeerToAckIndex(kNumMessages);
@@ -869,7 +870,7 @@ TEST_F(ConsensusQueueTest, TestReadReplicatedMessagesForCDC) {
   // Since only the local log might have ACKed at this point,
   // the committed_index should be MinimumOpId().
   queue_->raft_pool_observers_token_->Wait();
-  ASSERT_OPID_EQ(queue_->GetCommittedIndexForTests(), MinimumOpId());
+  ASSERT_OPID_EQ(queue_->GetCommittedIndexForTests(), startOpId);
 
   ConsensusResponsePB response;
   response.set_responder_uuid(kPeerUuid);
@@ -881,9 +882,15 @@ TEST_F(ConsensusQueueTest, TestReadReplicatedMessagesForCDC) {
   queue_->ResponseFromPeer(response.responder_uuid(), response, &more_pending);
   ASSERT_TRUE(more_pending);
 
+  // Read from the startOpId
   auto read_result = ASSERT_RESULT(queue_->ReadReplicatedMessagesForCDC(
+      yb::OpId::FromPB(MakeOpIdForIndex(3))));
+  ASSERT_EQ(last_committed_index - startOpId.index(), read_result.messages.size());
+
+  // Start reading from 0.0 and ensure that we get the first known OpID.
+  read_result = ASSERT_RESULT(queue_->ReadReplicatedMessagesForCDC(
       yb::OpId::FromPB(MakeOpIdForIndex(0))));
-  ASSERT_EQ(last_committed_index, read_result.messages.size());
+  ASSERT_EQ(last_committed_index - startOpId.index(), read_result.messages.size());
 
   // Read from some index > 0
   int start = 10;

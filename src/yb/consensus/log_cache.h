@@ -145,6 +145,8 @@ class LogCache {
     return metrics_.num_ops->value();
   }
 
+  int64_t earliest_op_index() const;
+
   // Dump the current contents of the cache to the log.
   void DumpToLog() const;
 
