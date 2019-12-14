@@ -223,6 +223,14 @@ void LogCache::LogCallback(int64_t last_idx_in_batch,
   user_callback.Run(log_status);
 }
 
+int64_t LogCache::earliest_op_index() const {
+  auto ret = log_->GetLogReader()->GetMinReplicateIndex();
+  if (ret == -1) { // No finalized log files yet.  Query the active log.
+    ret = log_->GetMinReplicateIndex();
+  }
+  return ret;
+}
+
 bool LogCache::HasOpBeenWritten(int64_t index) const {
   std::lock_guard<simple_spinlock> l(lock_);
   return index < next_sequential_op_index_;

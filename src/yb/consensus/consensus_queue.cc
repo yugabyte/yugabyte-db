@@ -563,12 +563,17 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(const yb::O
     return ReadOpsResult();
   }
 
+  // If an empty OpID is only sent on the first read request, start at the earliest known entry.
+  int64_t after_op_index = last_op_id.empty() ?
+                             max(log_cache_.earliest_op_index(), last_op_id.index) :
+                             last_op_id.index;
+
   auto result = ReadFromLogCache(
-      last_op_id.index, to_index, FLAGS_consensus_max_batch_size_bytes, local_peer_uuid_);
+      after_op_index, to_index, FLAGS_consensus_max_batch_size_bytes, local_peer_uuid_);
   if (PREDICT_FALSE(!result.ok()) && PREDICT_TRUE(result.status().IsNotFound())) {
     LOG_WITH_PREFIX_UNLOCKED(INFO) << Format(
         "The logs from index $0 have been garbage collected and cannot be read ($1)",
-        last_op_id.index, result.status());
+        after_op_index, result.status());
   }
 
   return result;
