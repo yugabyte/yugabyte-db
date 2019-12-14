@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: ysql-dumpall
     parent: admin
-    weight: 2422
+    weight: 2467
 isTocNested: 3
 showAsideToc: true
 ---
@@ -222,7 +222,7 @@ This utility also uses the environment variables supported by `libpq`.
 
 ## Examples
 
-### Dump all databases
+#### Dump all databases
 
 ```sh
 $ ./postgres/bin/ysql_dumpall > db.out

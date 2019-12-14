@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: ysql-dump
     parent: admin
-    weight: 2421
+    weight: 2466
 isTocNested: 3
 showAsideToc: true
 ---
@@ -311,19 +311,21 @@ Because `ysql_dump` is used to transfer data to newer versions of YugabyteDB, th
 
 ## Examples
 
-### Dump a database called `mydb` into a SQL script file
+#### Dump a database into a SQL script file
 
 ```sh
 $ ysql_dump mydb > mydb.sql
 ```
 
-### Dump a single table named `mytable`
+#### Dump a single table named `mytable`
 
 ```sh
 $ ysql_dump -t mytable mydb > mytable_mydb.sql
 ```
 
-### Dump all schemas whose names start with `east` or `west` and end in `gsm`, excluding any schema whose names contain the word `test`
+#### Dump schemas based on filters
+
+This example command dumps all schemas whose names start with `east` or `west` and end in `gsm`, excluding any schema whose names contain the word `test`
 
 ```sh
 $ ysql_dump -n 'east*gsm' -n 'west*gsm' -N '*test*' mydb > myschemas_mydb.sql
@@ -335,7 +337,9 @@ Here's the same example, using regular expression notation to consolidate the op
 $ ysql_dump -n '(east|west)*gsm' -N '*test*' mydb > myschemas_mydb.sql
 ```
 
-### Dump all database objects except for tables whose names begin with `ts_`
+#### Dump all database objects based on a filter
+
+This example command dumps all database objects except for tables whose names begin with `ts_`.
 
 ```sh
 $ ysql_dump -T 'ts_*' mydb > objects_mydb.sql
