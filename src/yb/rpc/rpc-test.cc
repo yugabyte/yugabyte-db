@@ -42,6 +42,10 @@
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <gtest/gtest.h>
 
+#if defined(TCMALLOC_ENABLED)
+#include <gperftools/heap-profiler.h>
+#endif
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
 
@@ -53,6 +57,8 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/env.h"
 #include "yb/util/test_util.h"
+
+#include "yb/util/memory/memory_usage_test_util.h"
 
 METRIC_DECLARE_histogram(handler_latency_yb_rpc_test_CalculatorService_Sleep);
 METRIC_DECLARE_histogram(rpc_incoming_queue_time);
@@ -834,6 +840,51 @@ TEST_F(TestRpc, DumpTimedOutCall) {
   stop.store(true, std::memory_order_release);
   thread.join();
 }
+
+#if defined(TCMALLOC_ENABLED)
+
+namespace {
+
+const char kEmptyMsgLengthPrefix[kMsgLengthPrefixLength] = {0};
+
+}
+
+// Test that even with small packets we track memory usage in sending queue with acceptable
+// accuracy.
+TEST_F(TestRpc, SendingQueueMemoryUsage) {
+  std::deque<TcpStreamSendingData> sending;
+
+  auto tracker = MemTracker::CreateTracker("t");
+
+  MemoryUsage current, latest_before_realloc;
+
+  const auto allocated_bytes_initial = GetCurrentAllocatedBytes();
+  while (current.allocated_bytes < 1_MB) {
+    auto data_ptr = std::make_shared<StringOutboundData>(
+        kEmptyMsgLengthPrefix, kMsgLengthPrefixLength, "Empty message");
+    sending.emplace_back(data_ptr, tracker);
+
+    const auto allocated_bytes = GetCurrentAllocatedBytes() - allocated_bytes_initial;
+    if (allocated_bytes != current.allocated_bytes) {
+      latest_before_realloc = current;
+    }
+    current.allocated_bytes = allocated_bytes;
+    current.tracked_consumption += sending.back().consumption.consumption();
+    // Account data_ptr as well.
+    current.tracked_consumption += sizeof(data_ptr);
+    current.entities_count = sending.size();
+  }
+
+  LOG(INFO) << DumpMemoryUsage(latest_before_realloc);
+
+  // Amount of memory really allocated from tcmalloc could be higher due to round up.
+  ASSERT_GT(
+      latest_before_realloc.tracked_consumption,
+      size_t(latest_before_realloc.allocated_bytes / kHighMemoryAllocationAccuracyLimit));
+  ASSERT_LE(latest_before_realloc.tracked_consumption, latest_before_realloc.allocated_bytes);
+}
+
+#endif
 
 class TestRpcSecure : public RpcTestBase {
  public:

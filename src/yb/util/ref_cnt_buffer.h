@@ -58,6 +58,8 @@ class RefCntBuffer {
     return size_reference();
   }
 
+  size_t DynamicMemoryUsage() const { return data_ ? GetInternalBufSize(size()) : 0; }
+
   bool empty() const {
     return size() == 0;
   }
@@ -106,6 +108,8 @@ class RefCntBuffer {
 
  private:
   void DoReset(char* data);
+
+  static size_t GetInternalBufSize(size_t data_size);
 
   // Using ptrdiff_t since it matches register size and is signed.
   typedef std::atomic<std::ptrdiff_t> CounterType;
