@@ -36,6 +36,8 @@
 
 #include <boost/functional/hash.hpp>
 
+#include "yb/util/memory/memory_usage.h"
+
 namespace yb {
 namespace rpc {
 
@@ -62,6 +64,8 @@ class RemoteMethod {
   void ToPB(RemoteMethodPB* pb) const;
 
   std::string ToString() const;
+
+  size_t DynamicMemoryUsage() const { return DynamicMemoryUsageOf(service_name_, method_name_); }
 
  private:
   std::string service_name_;

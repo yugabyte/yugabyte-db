@@ -233,6 +233,8 @@ class Slice {
     }
   }
 
+  size_t DynamicMemoryUsage() const { return 0; }
+
  private:
   friend bool operator==(const Slice& x, const Slice& y);
 

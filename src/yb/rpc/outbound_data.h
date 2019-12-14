@@ -18,6 +18,7 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include "yb/util/memory/memory_usage.h"
 #include "yb/util/ref_cnt_buffer.h"
 
 namespace yb {
@@ -26,6 +27,7 @@ class Status;
 
 namespace rpc {
 
+class Connection;
 class DumpRunningRpcsRequestPB;
 class RpcCallInProgressPB;
 
@@ -49,6 +51,10 @@ class OutboundData : public std::enable_shared_from_this<OutboundData> {
 
   virtual bool IsHeartbeat() const { return false; }
 
+  virtual size_t ObjectSize() const = 0;
+
+  virtual size_t DynamicMemoryUsage() const = 0;
+
   virtual ~OutboundData() {}
 };
 
@@ -56,8 +62,9 @@ typedef std::shared_ptr<OutboundData> OutboundDataPtr;
 
 class StringOutboundData : public OutboundData {
  public:
-  StringOutboundData(const string& data, const string& name) : buffer_(data), name_(name) {}
-  StringOutboundData(const char* data, size_t len, const string& name)
+  StringOutboundData(const std::string& data, const std::string& name)
+      : buffer_(data), name_(name) {}
+  StringOutboundData(const char* data, size_t len, const std::string& name)
       : buffer_(data, len), name_(name) {}
   void Transferred(const Status& status, Connection* conn) override {}
 
@@ -72,9 +79,13 @@ class StringOutboundData : public OutboundData {
     return false;
   }
 
+  size_t ObjectSize() const override { return sizeof(*this); }
+
+  size_t DynamicMemoryUsage() const override { return DynamicMemoryUsageOf(name_, buffer_); }
+
  private:
   RefCntBuffer buffer_;
-  string name_;
+  std::string name_;
 };
 
 }  // namespace rpc

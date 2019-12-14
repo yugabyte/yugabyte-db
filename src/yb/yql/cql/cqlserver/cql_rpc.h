@@ -139,6 +139,13 @@ class CQLInboundCall : public rpc::InboundCall {
 #endif
   }
 
+  size_t ObjectSize() const override { return sizeof(*this); }
+
+  size_t DynamicMemoryUsage() const override {
+    // TODO - who is tracking request_ memory usage ?
+    return DynamicMemoryUsageOf(response_msg_buf_);
+  }
+
  private:
   RefCntBuffer response_msg_buf_;
   const ql::QLSession::SharedPtr ql_session_;

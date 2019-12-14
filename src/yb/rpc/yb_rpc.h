@@ -180,6 +180,13 @@ class YBInboundCall : public InboundCall {
 
   void RespondBadMethod();
 
+  size_t ObjectSize() const override { return sizeof(*this); }
+
+  size_t DynamicMemoryUsage() const override {
+    return InboundCall::DynamicMemoryUsage() +
+           DynamicMemoryUsageOf(header_, response_buf_, remote_method_);
+  }
+
  protected:
   // Vector of additional sidecars that are tacked on to the call's response
   // after serialization of the protobuf. See rpc/rpc_sidecar.h for more info.

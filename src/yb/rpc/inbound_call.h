@@ -192,6 +192,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
     return result;
   }
 
+  size_t DynamicMemoryUsage() const override;
+
  protected:
   void NotifyTransferred(const Status& status, Connection* conn) override;
 
@@ -206,7 +208,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   void QueueResponse(bool is_success);
 
   // The serialized bytes of the request param protobuf. Set by ParseFrom().
-  // This references memory held by 'transfer_'.
+  // This references memory held by 'request_data_'.
   Slice serialized_request_;
 
   // Data source of this call.

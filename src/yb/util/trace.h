@@ -142,7 +142,8 @@ class Trace : public RefCountedThreadSafe<Trace> {
                           const strings::internal::SubstituteArg& arg9 =
                             strings::internal::SubstituteArg::NoArg);
 
-  void SubstituteAndTrace(const char* file_path, int line_number, MonoTime now, GStringPiece format);
+  void SubstituteAndTrace(
+      const char* file_path, int line_number, MonoTime now, GStringPiece format);
 
   // Dump the trace buffer to the given output stream.
   //
@@ -165,6 +166,9 @@ class Trace : public RefCountedThreadSafe<Trace> {
   // available. This is meant for usage when debugging in gdb via
   // 'call yb::Trace::DumpCurrentTrace();'.
   static void DumpCurrentTrace();
+
+  size_t ObjectSize() const { return sizeof(*this); }
+  size_t DynamicMemoryUsage() const;
 
  private:
   friend class ScopedAdoptTrace;

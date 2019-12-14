@@ -193,14 +193,19 @@ bool InboundCall::RespondTimedOutIfPending(const char* message) {
     return false;
   }
 
-  RespondFailure(ErrorStatusPB::ERROR_SERVER_TOO_BUSY, STATUS(TimedOut, message));
   Clear();
+  RespondFailure(ErrorStatusPB::ERROR_SERVER_TOO_BUSY, STATUS(TimedOut, message));
 
   return true;
 }
 
 void InboundCall::Clear() {
+  serialized_request_.clear();
   request_data_.Reset();
+}
+
+size_t InboundCall::DynamicMemoryUsage() const {
+  return DynamicMemoryUsageOf(request_data_, trace_);
 }
 
 void InboundCall::InboundCallTask::Run() {

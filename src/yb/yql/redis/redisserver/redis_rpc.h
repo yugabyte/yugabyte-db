@@ -139,6 +139,13 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
                       RedisResponsePB* resp);
   void MarkForClose() { quit_.store(true, std::memory_order_release); }
 
+  size_t ObjectSize() const override { return sizeof(*this); }
+
+  size_t DynamicMemoryUsage() const override {
+    return QueueableInboundCall::DynamicMemoryUsage() +
+           DynamicMemoryUsageOf(responses_, ready_, client_batch_);
+  }
+
  private:
 
   // The connection on which this inbound call arrived.

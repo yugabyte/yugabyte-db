@@ -78,6 +78,10 @@ class SecureOutboundData : public OutboundData {
     return Format("Secure[$0]", lower_data_);
   }
 
+  size_t ObjectSize() const override { return sizeof(*this); }
+
+  size_t DynamicMemoryUsage() const override { return DynamicMemoryUsageOf(buffer_, lower_data_); }
+
  private:
   RefCntBuffer buffer_;
   OutboundDataPtr lower_data_;
