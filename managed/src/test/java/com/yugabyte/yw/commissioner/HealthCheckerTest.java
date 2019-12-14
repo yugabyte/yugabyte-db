@@ -59,6 +59,8 @@ public class HealthCheckerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(HealthCheckerTest.class);
 
   private static final String YB_ALERT_TEST_EMAIL = "test@yugabyte.com";
+  private static final String dummyNode = "n";
+  private static final String dummyCheck = "c";
 
   HealthChecker healthChecker;
 
@@ -95,7 +97,11 @@ public class HealthCheckerTest extends FakeDBApplication {
 
     when(mockConfig.getString("yb.health.default_email")).thenReturn(YB_ALERT_TEST_EMAIL);
     ShellProcessHandler.ShellResponse dummyShellResponse =
-      ShellProcessHandler.ShellResponse.create(0, "{\"error\": false}");
+      ShellProcessHandler.ShellResponse.create(
+        0,
+        ("{''error'': false, ''data'': [ {''node'':''" + dummyNode +
+         "'', ''has_error'': true, ''message'':''" + dummyCheck +
+         "'' } ] }").replace("''", "\"") );
 
     when(mockHealthManager.runCommand(
         any(), any(), any(), any(), any(), any(), any())
@@ -186,8 +192,9 @@ public class HealthCheckerTest extends FakeDBApplication {
     healthChecker.checkSingleUniverse(u, defaultCustomer, customerConfig, true);
     verifyHealthManager(u, expectedEmail);
 
-    String[] labels = { HealthChecker.kUnivMetricLabel };
-    String [] labelValues = { u.universeUUID.toString() };
+    String[] labels = { HealthChecker.kUnivUUIDLabel, HealthChecker.kUnivNameLabel,
+                        HealthChecker.kNodeLabel, HealthChecker.kCheckLabel };
+    String [] labelValues = { u.universeUUID.toString(), u.name, dummyNode, dummyCheck };
     Double val = testRegistry.getSampleValue(HealthChecker.kUnivMetricName, labels, labelValues);
     assertEquals(val.intValue(), 1);
 
