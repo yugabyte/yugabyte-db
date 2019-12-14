@@ -162,6 +162,11 @@ class CallResponse {
 
   Result<Slice> GetSidecar(int idx) const;
 
+  size_t DynamicMemoryUsage() const {
+    return DynamicMemoryUsageOf(header_, response_data_) +
+           GetFlatDynamicMemoryUsageOf(sidecar_bounds_);
+  }
+
  private:
   // True once ParseFrom() is called.
   bool parsed_;
@@ -303,6 +308,13 @@ class OutboundCall : public RpcCall {
 
   RpcMetrics& rpc_metrics() {
     return *rpc_metrics_;
+  }
+
+  size_t ObjectSize() const override { return sizeof(*this); }
+
+  size_t DynamicMemoryUsage() const override {
+    return DynamicMemoryUsageAllowSizeOf(error_pb_) +
+           DynamicMemoryUsageOf(buffer_, call_response_, trace_);
   }
 
  protected:

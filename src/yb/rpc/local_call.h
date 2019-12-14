@@ -37,6 +37,8 @@ class LocalOutboundCall : public OutboundCall {
 
   const std::shared_ptr<LocalYBInboundCall>& CreateLocalInboundCall();
 
+  size_t ObjectSize() const override { return sizeof(*this); }
+
  protected:
   void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
 
@@ -67,6 +69,8 @@ class LocalYBInboundCall : public YBInboundCall {
 
   const google::protobuf::Message* request() const { return outbound_call()->req_; }
   google::protobuf::Message* response() const { return outbound_call()->response(); }
+
+  size_t ObjectSize() const override { return sizeof(*this); }
 
  protected:
   void Respond(const google::protobuf::MessageLite& response, bool is_success) override;

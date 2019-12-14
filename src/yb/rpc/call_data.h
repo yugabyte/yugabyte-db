@@ -63,6 +63,8 @@ struct CallData {
     return size_;
   }
 
+  size_t DynamicMemoryUsage() const { return size_; }
+
  private:
   char* data_;
   size_t size_;

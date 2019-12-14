@@ -29,6 +29,8 @@
 #include "yb/rpc/server_event.h"
 #include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
+
+#include "yb/util/memory/memory_usage.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/net/sockaddr.h"
@@ -827,6 +829,9 @@ class EventResponse : public CQLResponse {
  public:
   virtual std::string ToString() const;
   virtual ~EventResponse() override;
+  virtual size_t ObjectSize() const = 0;
+  virtual size_t DynamicMemoryUsage() const = 0;
+
  protected:
   explicit EventResponse(const std::string& event_type);
   virtual void SerializeBody(faststring* mesg) const override;
@@ -843,6 +848,8 @@ class TopologyChangeEventResponse : public EventResponse {
   static constexpr const char* const kNewNode = "NEW_NODE";
   virtual ~TopologyChangeEventResponse() override;
   TopologyChangeEventResponse(const std::string& topology_change_type, const Endpoint& node);
+  size_t ObjectSize() const override { return sizeof(*this); }
+  size_t DynamicMemoryUsage() const override { return DynamicMemoryUsageOf(topology_change_type_); }
 
  protected:
   virtual void SerializeEventBody(faststring* mesg) const override;
@@ -857,6 +864,8 @@ class TopologyChangeEventResponse : public EventResponse {
 class StatusChangeEventResponse : public EventResponse {
  public:
   virtual ~StatusChangeEventResponse() override;
+  size_t ObjectSize() const override { return sizeof(*this); }
+  size_t DynamicMemoryUsage() const override { return DynamicMemoryUsageOf(status_change_type_); }
 
  protected:
   virtual void SerializeEventBody(faststring* mesg) const override;
@@ -877,6 +886,10 @@ class SchemaChangeEventResponse : public EventResponse {
       const std::string& keyspace, const std::string& object = "",
       const std::vector<std::string>& argument_types = kEmptyArgumentTypes);
   virtual ~SchemaChangeEventResponse() override;
+  size_t ObjectSize() const override { return sizeof(*this); }
+  size_t DynamicMemoryUsage() const override {
+    return DynamicMemoryUsageOf(change_type_, target_, keyspace_, object_, argument_types_);
+  }
 
  protected:
   virtual void SerializeEventBody(faststring* mesg) const override;
@@ -925,6 +938,11 @@ class CQLServerEvent : public rpc::ServerEvent {
   explicit CQLServerEvent(std::unique_ptr<EventResponse> event_response);
   void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const override;
   std::string ToString() const override;
+  size_t ObjectSize() const { return sizeof(*this); }
+  size_t DynamicMemoryUsage() const {
+    return DynamicMemoryUsageOf(event_response_) + DynamicMemoryUsageOf(serialized_response_);
+  }
+
  private:
 
   std::unique_ptr<EventResponse> event_response_;
@@ -940,6 +958,11 @@ class CQLServerEventList : public rpc::ServerEventList {
   void AddEvent(std::unique_ptr<CQLServerEvent> event);
   void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
   std::string ToString() const override;
+
+  size_t ObjectSize() const override { return sizeof(CQLServerEventList); }
+
+  size_t DynamicMemoryUsage() const override { return DynamicMemoryUsageOf(cql_server_events_); }
+
  private:
   void Transferred(const Status& status, rpc::Connection*) override;
   std::vector<std::unique_ptr<CQLServerEvent>> cql_server_events_;

@@ -18,6 +18,7 @@
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
+#include "yb/util/memory/memory_usage.h"
 #include "yb/util/string_util.h"
 
 using namespace std::literals;
@@ -417,7 +418,8 @@ size_t TcpStream::Send(OutboundDataPtr data) {
   // Serialize the actual bytes to be put on the wire.
   sending_.emplace_back(std::move(data), mem_tracker_);
   queued_bytes_to_send_ += sending_.back().bytes_size();
-  DVLOG_WITH_PREFIX(4) << "Queued data, queued_bytes_to_send_: " << queued_bytes_to_send_;
+  DVLOG_WITH_PREFIX(4) << "Queued data, sending_.size(): " << sending_.size()
+                       << ", queued_bytes_to_send_: " << queued_bytes_to_send_;
 
   return result;
 }
@@ -473,14 +475,18 @@ StreamFactoryPtr TcpStream::Factory() {
   return std::make_shared<TcpStreamFactory>();
 }
 
-TcpStream::SendingData::SendingData(OutboundDataPtr data_, const MemTrackerPtr& mem_tracker)
+TcpStreamSendingData::TcpStreamSendingData(OutboundDataPtr data_, const MemTrackerPtr& mem_tracker)
     : data(std::move(data_)) {
   data->Serialize(&bytes);
   if (mem_tracker) {
-    consumption = ScopedTrackedConsumption(mem_tracker, bytes_size());
+    size_t memory_used = sizeof(*this);
+    memory_used += DynamicMemoryUsageOf(data);
+    // We don't need to account `bytes` dynamic memory usage, because it stores RefCntBuffer
+    // instance in internal memory and RefCntBuffer instance is referring to the same dynamic memory
+    // as `data`.
+    consumption = ScopedTrackedConsumption(mem_tracker, memory_used);
   }
 }
-
 
 } // namespace rpc
 } // namespace yb
