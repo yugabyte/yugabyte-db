@@ -46,7 +46,7 @@ Dump only the data, not the schema (data definitions). Table data, large objects
 
 #### -b | --blobs
 
-Include large objects in the dump. This is the default behavior except when `-n|--schema`, `-t|--table`, or `-s|--schema-only` is specified. The `-b|--blobs` switch is therefore only useful to add large objects to dumps where a specific schema or table has been requested. Note that blobs are considered data and therefore will be included when `-a|--data-only` is used, but not when `-s|--schema-only` is.
+Include large objects in the dump. This is the default behavior except when `-n|--schema`, `-t|--table`, or `-s|--schema-only` is specified. The `-b|--blobs` option is therefore only useful to add large objects to dumps where a specific schema or table has been requested. Note that blobs are considered data and therefore will be included when `-a|--data-only` is used, but not when `-s|--schema-only` is used.
 
 #### -B | --no-blobs
 
@@ -88,7 +88,7 @@ Non-schema objects, such as blobs, are not dumped when `-n|--schema` is specifie
 
 Do not dump any schemas matching the schema pattern. The pattern is interpreted according to the same rules as for `-n|--schema` option. `-N|--exclude-schema` can be given more than once to exclude schemas matching any of several patterns.
 
-When both `-n|--schema` and `-N|--exclude-schema` are given, the behavior is to dump just the schemas that match at least one `-n|--schema` switch but no `-N|--exclude-schema` switches. If `-N|--exclude-schema` appears without `-n|--schema`, then schemas matching `-N|--exclude-schema` are excluded from what is otherwise a normal dump.
+When both `-n|--schema` and `-N|--exclude-schema` are given, the behavior is to dump just the schemas that match at least one `-n|--schema` option but no `-N|--exclude-schema` options. If `-N|--exclude-schema` appears without `-n|--schema`, then schemas matching `-N|--exclude-schema` are excluded from what is otherwise a normal dump.
 
 #### -o | --oids
 
@@ -114,9 +114,9 @@ Specify the superuser username to use when disabling triggers. This is relevant 
 
 #### -t *table* | --table=*table*
 
-Dump only tables with names matching *table*. For this purpose, "table" includes views, materialized views, sequences, and foreign tables. Multiple tables can be selected by writing multiple `-t|--table` switches. Also, the table parameter is interpreted as a pattern according to the same rules used by `ysqlsh \d` commands, so multiple tables can also be selected by writing wildcard characters in the pattern. When using wildcards, be careful to quote the pattern if needed to prevent the shell from expanding the wildcards.
+Dump only tables with names matching *table*. For this purpose, "table" includes views, materialized views, sequences, and foreign tables. Multiple tables can be selected by writing multiple `-t|--table` options. Also, the table parameter is interpreted as a pattern according to the same rules used by `ysqlsh \d` commands, so multiple tables can also be selected by writing wildcard characters in the pattern. When using wildcards, be careful to quote the pattern if needed to prevent the shell from expanding the wildcards.
 
-The `-n|--schema` and `-N|--exclude-schema` switches have no effect when `-t|--table` is used, because tables selected by `-t|--table` will be dumped regardless of those switches, and non-table objects will not be dumped.
+The `-n|--schema` and `-N|--exclude-schema` options have no effect when `-t|--table` is used, because tables selected by `-t|--table` will be dumped regardless of those options, and non-table objects will not be dumped.
 
 {{< note title="Note" >}}
 
@@ -218,7 +218,7 @@ The data section contains actual table data, large-object contents, and sequence
 
 Use a `serializable` transaction for the dump to ensure that the snapshot used is consistent with later database states by waiting for a point in the transaction stream at which no anomalies can be present, so that there is no risk of the dump failing or causing other transactions to roll back with a `serialization_failure`.
 
-If there are active read-write transactions, the maximum wait time until the start of the dump will be `50ms` (based on the default [`--max_clock_skew_usec`](../../../admin/yb-tserver.md) for YB-TServer and YB-Master services.) If there are no active read-write transactions when `ysql_dump` is started, this option will not make any difference. Once running, performance with or without the switch is the same.
+If there are active read-write transactions, the maximum wait time until the start of the dump will be `50ms` (based on the default [`--max_clock_skew_usec`](../../../admin/yb-tserver.md) for YB-TServer and YB-Master services.) If there are no active read-write transactions when `ysql_dump` is started, this option will not make any difference. Once running, performance with or without the option is the same.
 
 #### --snapshot=*snapshotname*
 
@@ -287,6 +287,26 @@ The following PostgreSQL environment variables, referenced in some `ysql_dump` o
 
 This utility also uses the environment variables supported by `libpq`.
 
+## Diagnostics
+
+`ysql_dump` internally executes `SELECT` statements. If you have problems running `ysql_dump`, make sure you are able to select information from the database using, for example, `ysqlsh`. Also, any default connection settings and environment variables used by the `libpq` front-end library will apply.
+
+The database activity of `ysql_dump` is normally collected by the statistics collector. If this is undesirable, you can set parameter `track_counts` to `false` using `PGOPTIONS` or the `ALTER USER` statement.
+
+## Notes
+
+If your YugabyteDB cluster has any local additions to the `template1` database, be careful to restore the output of `ysql_dump` into a truly empty database; otherwise you are likely to get errors due to duplicate definitions of the added objects. To make an empty database without any local additions, copy from `template0` not `template1`, for example:
+
+```postgresql
+CREATE DATABASE foo WITH TEMPLATE template0;
+```
+
+When a data-only dump is chosen and the option `--disable-triggers` is used, `ysql_dump` emits statements to disable triggers on user tables before inserting the data, and then statements to re-enable them after the data has been inserted. If the restore is stopped in the middle, the system catalogs might be left in the wrong state.
+
+The dump file produced by `ysql_dump` does not contain the statistics used by the optimizer to make query planning decisions. Therefore, running `ANALYZE` after restoring from a dump file can ensure optimal performance.
+
+Because `ysql_dump` is used to transfer data to newer versions of YugabyteDB, the output of `ysql_dump` can be expected to load into YugabyteDB versions newer than the `ysql_dump` version. `ysql_dump` can also dump from YugabyteDB servers older than its own version. However, `ysql_dump` cannot dump from YugabyteDB servers newer than its own major version; it will refuse to even try, rather than risk making an invalid dump. Also, it is not guaranteed that the `ysql_dump` output can be loaded into a server of an older major version — not even if the dump was taken from a server of that version. Loading a dump file into an older server may require manual editing of the dump file to remove syntax not understood by the older server. Use of the `--quote-all-identifiers` option is recommended in cross-version cases, as it can prevent problems arising from varying reserved-word lists in different YugabyteDB versions.
+
 ## Examples
 
 ### Dump a database called `mydb` into a SQL script file
@@ -307,7 +327,7 @@ $ ysql_dump -t mytable mydb > mytable_mydb.sql
 $ ysql_dump -n 'east*gsm' -n 'west*gsm' -N '*test*' mydb > myschemas_mydb.sql
 ```
 
-Here's the same example, using regular expression notation to consolidate the switches:
+Here's the same example, using regular expression notation to consolidate the options:
 
 ```sh
 $ ysql_dump -n '(east|west)*gsm' -N '*test*' mydb > myschemas_mydb.sql
@@ -318,3 +338,8 @@ $ ysql_dump -n '(east|west)*gsm' -N '*test*' mydb > myschemas_mydb.sql
 ```sh
 $ ysql_dump -T 'ts_*' mydb > objects_mydb.sql
 ```
+
+## See also
+
+- [ysql_dumpall](./ysql_dumpall)
+- [ysqlsh](../ysqlsh)
