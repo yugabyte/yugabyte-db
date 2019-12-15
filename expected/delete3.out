@@ -83,7 +83,7 @@ ALTER TABLE table_without_pk REPLICA IDENTITY DEFAULT;
 ALTER TABLE table_with_unique REPLICA IDENTITY FULL;
 DELETE FROM table_with_unique WHERE b = 1;
 ALTER TABLE table_with_unique REPLICA IDENTITY DEFAULT;
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1', 'include-typmod', '0');
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1', 'pretty-print', '1', 'include-typmod', '0');
                                                                                                                data                                                                                                               
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  {                                                                                                                                                                                                                               +
@@ -167,6 +167,35 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pre
          ]                                                                                                                                                                                                                       +
  }
 (10 rows)
+
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                               data                                                                                                                                                                                                                                                                                                                                                                                                                                                               
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"D","schema":"public","table":"table_with_pk","identity":[{"name":"a","type":"smallint","value":1},{"name":"b","type":"smallint","value":1},{"name":"c","type":"integer","value":2},{"name":"d","type":"bigint","value":3},{"name":"e","type":"numeric(5,3)","value":3.540},{"name":"f","type":"real","value":876.563},{"name":"g","type":"double precision","value":1.23},{"name":"h","type":"character(10)","value":"teste     "},{"name":"i","type":"character varying(30)","value":"testando"},{"name":"j","type":"text","value":"um texto longo"},{"name":"k","type":"bit varying(20)","value":"001110010101010"},{"name":"l","type":"timestamp without time zone","value":"Sat Nov 02 17:30:52 2013"},{"name":"m","type":"date","value":"02-04-2013"},{"name":"n","type":"boolean","value":true},{"name":"o","type":"json","value":"{ \"a\": 123 }"},{"name":"p","type":"tsvector","value":"'Old' 'Parr'"}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"D","schema":"public","table":"table_with_pk","identity":[{"name":"a","type":"smallint","value":2},{"name":"b","type":"smallint","value":4},{"name":"c","type":"integer","value":5},{"name":"d","type":"bigint","value":6},{"name":"e","type":"numeric(5,3)","value":3.540},{"name":"f","type":"real","value":876.563},{"name":"g","type":"double precision","value":1.23},{"name":"h","type":"character(10)","value":"teste     "},{"name":"i","type":"character varying(30)","value":"testando"},{"name":"j","type":"text","value":"um texto longo"},{"name":"k","type":"bit varying(20)","value":"001110010101010"},{"name":"l","type":"timestamp without time zone","value":"Sat Nov 02 17:30:52 2013"},{"name":"m","type":"date","value":"02-04-2013"},{"name":"n","type":"boolean","value":true},{"name":"o","type":"json","value":"{ \"a\": 123 }"},{"name":"p","type":"tsvector","value":"'Old' 'Parr'"}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"D","schema":"public","table":"table_without_pk","identity":[{"name":"a","type":"smallint","value":1},{"name":"b","type":"smallint","value":1},{"name":"c","type":"integer","value":2},{"name":"d","type":"bigint","value":3},{"name":"e","type":"numeric(5,3)","value":3.540},{"name":"f","type":"real","value":876.563},{"name":"g","type":"double precision","value":1.23},{"name":"h","type":"character(10)","value":"teste     "},{"name":"i","type":"character varying(30)","value":"testando"},{"name":"j","type":"text","value":"um texto longo"},{"name":"k","type":"bit varying(20)","value":"001110010101010"},{"name":"l","type":"timestamp without time zone","value":"Sat Nov 02 17:30:52 2013"},{"name":"m","type":"date","value":"02-04-2013"},{"name":"n","type":"boolean","value":true},{"name":"o","type":"json","value":"{ \"a\": 123 }"},{"name":"p","type":"tsvector","value":"'Old' 'Parr'"}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"D","schema":"public","table":"table_with_unique","identity":[{"name":"a","type":"smallint","value":1},{"name":"b","type":"smallint","value":1},{"name":"c","type":"integer","value":2},{"name":"d","type":"bigint","value":3},{"name":"e","type":"numeric(5,3)","value":3.540},{"name":"f","type":"real","value":876.563},{"name":"g","type":"double precision","value":1.23},{"name":"h","type":"character(10)","value":"teste     "},{"name":"i","type":"character varying(30)","value":"testando"},{"name":"j","type":"text","value":"um texto longo"},{"name":"k","type":"bit varying(20)","value":"001110010101010"},{"name":"l","type":"timestamp without time zone","value":"Sat Nov 02 17:30:52 2013"},{"name":"m","type":"date","value":"02-04-2013"},{"name":"n","type":"boolean","value":true},{"name":"o","type":"json","value":"{ \"a\": 123 }"},{"name":"p","type":"tsvector","value":"'Old' 'Parr'"}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+(24 rows)
 
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
  ?column? 

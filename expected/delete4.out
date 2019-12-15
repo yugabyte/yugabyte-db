@@ -35,7 +35,7 @@ ALTER TABLE table_with_unique REPLICA IDENTITY USING INDEX table_with_unique_g_n
 DELETE FROM table_with_unique WHERE b = 1;
 DELETE FROM table_with_unique WHERE n = true;
 ALTER TABLE table_with_unique REPLICA IDENTITY DEFAULT;
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1', 'include-typmod', '0');
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1', 'pretty-print', '1', 'include-typmod', '0');
                               data                               
 -----------------------------------------------------------------
  {                                                              +
@@ -75,6 +75,21 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pre
          ]                                                      +
  }
 (4 rows)
+
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2');
+                                                                                   data                                                                                    
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"D","schema":"public","table":"table_with_unique","identity":[{"name":"g","type":"double precision","value":1.23},{"name":"n","type":"boolean","value":false}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"D","schema":"public","table":"table_with_unique","identity":[{"name":"g","type":"double precision","value":4.56},{"name":"n","type":"boolean","value":true}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+(10 rows)
 
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
  ?column? 

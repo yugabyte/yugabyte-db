@@ -60,5 +60,6 @@ INSERT INTO " filter_table_10" (a, b) VALUES(1, 'public. filter_table_10');
 INSERT INTO "*" (a, b) VALUES(1, 'public.*');
 INSERT INTO "*".filter_table_0 (a, b) VALUES(1, '*.filter_table_0');
 
-SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'pretty-print', '1', 'filter-tables', '   foo.bar,*.filter_table_1  ,filter_schema_2.* , public.filter_table_3 , public.Filter_table_5, public.filter\ table_6, public.filter\.table_7 , public.filter\,table_8 , public.filter"table_9, *.\ filter_table_10 , public.\* , \*.filter_table_0  ');
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1', 'pretty-print', '1', 'filter-tables', '   foo.bar,*.filter_table_1  ,filter_schema_2.* , public.filter_table_3 , public.Filter_table_5, public.filter\ table_6, public.filter\.table_7 , public.filter\,table_8 , public.filter"table_9, *.\ filter_table_10 , public.\* , \*.filter_table_0  ');
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2', 'filter-tables', '   foo.bar,*.filter_table_1  ,filter_schema_2.* , public.filter_table_3 , public.Filter_table_5, public.filter\ table_6, public.filter\.table_7 , public.filter\,table_8 , public.filter"table_9, *.\ filter_table_10 , public.\* , \*.filter_table_0  ');
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');

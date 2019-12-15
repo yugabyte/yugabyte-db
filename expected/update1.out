@@ -79,7 +79,7 @@ UPDATE table_with_pk SET f = -f WHERE b = 1;
 UPDATE table_with_pk SET b = -b WHERE b = 1;
 -- UPDATE: unique
 UPDATE table_with_unique SET n = false WHERE b = 1;
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1', 'include-typmod', '0');
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1', 'pretty-print', '1', 'include-typmod', '0');
 WARNING:  table "table_without_pk" without primary key or replica identity is nothing
 WARNING:  table "table_with_unique" without primary key or replica identity is nothing
                                                                                                               data                                                                                                              
@@ -127,6 +127,23 @@ WARNING:  table "table_with_unique" without primary key or replica identity is n
          ]                                                                                                                                                                                                                     +
  }
 (4 rows)
+
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2');
+WARNING:  no tuple identifier for UPDATE in table "public"."table_without_pk"
+WARNING:  no tuple identifier for UPDATE in table "public"."table_with_unique"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                data                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"U","schema":"public","table":"table_with_pk","columns":[{"name":"a","type":"smallint","value":1},{"name":"b","type":"smallint","value":1},{"name":"c","type":"integer","value":2},{"name":"d","type":"bigint","value":3},{"name":"e","type":"numeric(5,3)","value":3.540},{"name":"f","type":"real","value":-876.563},{"name":"g","type":"double precision","value":1.23},{"name":"h","type":"character(10)","value":"teste     "},{"name":"i","type":"character varying(30)","value":"testando"},{"name":"j","type":"text","value":"um texto longo"},{"name":"k","type":"bit varying(20)","value":"001110010101010"},{"name":"l","type":"timestamp without time zone","value":"Sat Nov 02 17:30:52 2013"},{"name":"m","type":"date","value":"02-04-2013"},{"name":"n","type":"boolean","value":true},{"name":"o","type":"json","value":"{ \"a\": 123 }"},{"name":"p","type":"tsvector","value":"'Old' 'Parr'"}],"identity":[{"name":"b","type":"smallint","value":1},{"name":"c","type":"integer","value":2},{"name":"d","type":"bigint","value":3}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"U","schema":"public","table":"table_with_pk","columns":[{"name":"a","type":"smallint","value":1},{"name":"b","type":"smallint","value":-1},{"name":"c","type":"integer","value":2},{"name":"d","type":"bigint","value":3},{"name":"e","type":"numeric(5,3)","value":3.540},{"name":"f","type":"real","value":-876.563},{"name":"g","type":"double precision","value":1.23},{"name":"h","type":"character(10)","value":"teste     "},{"name":"i","type":"character varying(30)","value":"testando"},{"name":"j","type":"text","value":"um texto longo"},{"name":"k","type":"bit varying(20)","value":"001110010101010"},{"name":"l","type":"timestamp without time zone","value":"Sat Nov 02 17:30:52 2013"},{"name":"m","type":"date","value":"02-04-2013"},{"name":"n","type":"boolean","value":true},{"name":"o","type":"json","value":"{ \"a\": 123 }"},{"name":"p","type":"tsvector","value":"'Old' 'Parr'"}],"identity":[{"name":"b","type":"smallint","value":1},{"name":"c","type":"integer","value":2},{"name":"d","type":"bigint","value":3}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+(10 rows)
 
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
  ?column? 

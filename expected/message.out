@@ -89,7 +89,7 @@ SELECT 'msg13' FROM pg_logical_emit_message(true, 'added2', 'this message will b
  msg13
 (1 row)
 
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1', 'filter-msg-prefixes', 'foo, filtered, bar', 'add-msg-prefixes', 'added1, added3, wal2json');
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1', 'pretty-print', '1', 'filter-msg-prefixes', 'foo, filtered, bar', 'add-msg-prefixes', 'added1, added3, wal2json');
                                                   data                                                   
 ---------------------------------------------------------------------------------------------------------
  {                                                                                                      +
@@ -197,6 +197,31 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pre
          ]                                                                                              +
  }
 (11 rows)
+
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2', 'filter-msg-prefixes', 'foo, filtered, bar', 'add-msg-prefixes', 'added1, added3, wal2json');
+                                                                  data                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------
+ {"action":"B"}
+ {"action":"M","transactional":true,"prefix":"wal2json","content":"this is a\\ message"}
+ {"action":"C"}
+ {"action":"M","transactional":false,"prefix":"wal2json","content":"this is \"another\" message"}
+ {"action":"M","transactional":false,"prefix":"wal2json","content":"Tapirus terrestris"}
+ {"action":"M","transactional":false,"prefix":"wal2json","content":"Priodontes maximus"}
+ {"action":"M","transactional":false,"prefix":"wal2json","content":"Caryocar brasiliense"}
+ {"action":"M","transactional":false,"prefix":"wal2json","content":"this message will be printed even if the transaction is rollbacked"}
+ {"action":"M","transactional":false,"prefix":"wal2json","content":"this message will be printed before message #1"}
+ {"action":"B"}
+ {"action":"M","transactional":true,"prefix":"wal2json","content":"this is message #1"}
+ {"action":"M","transactional":true,"prefix":"wal2json","content":"this is message #2"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"M","transactional":true,"prefix":"added1","content":"this message will be printed"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+(20 rows)
 
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
  ?column? 

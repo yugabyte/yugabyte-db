@@ -80,7 +80,7 @@ ALTER TABLE table_without_pk REPLICA IDENTITY DEFAULT;
 ALTER TABLE table_with_unique REPLICA IDENTITY NOTHING;
 DELETE FROM table_with_unique WHERE b = 1;
 ALTER TABLE table_with_unique REPLICA IDENTITY DEFAULT;
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1', 'include-typmod', '0');
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1', 'pretty-print', '1', 'include-typmod', '0');
 WARNING:  table "table_with_pk" without primary key or replica identity is nothing
 WARNING:  table "table_without_pk" without primary key or replica identity is nothing
 WARNING:  table "table_with_unique" without primary key or replica identity is nothing
@@ -123,6 +123,32 @@ WARNING:  table "table_with_unique" without primary key or replica identity is n
          ]          +
  }
 (9 rows)
+
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2');
+WARNING:  no tuple identifier for DELETE in table "public"."table_with_pk"
+WARNING:  no tuple identifier for DELETE in table "public"."table_without_pk"
+WARNING:  no tuple identifier for DELETE in table "public"."table_with_unique"
+      data      
+----------------
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+(18 rows)
 
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
  ?column? 

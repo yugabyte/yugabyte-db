@@ -32,6 +32,7 @@ INSERT INTO select_schema_2.select_table_3 (a, b) VALUES(1, 'select_schema_2.sel
 INSERT INTO select_table_2 (a, b) VALUES(1, 'public.select_table_2');
 INSERT INTO select_table_3 (a, b) VALUES(1, 'public.select_table_3');
 
-SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'pretty-print', '1', 'add-tables', '   foo.bar,*.select_table_1  ,select_schema_2.* , public.select_table_3  ');
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1', 'pretty-print', '1', 'add-tables', '   foo.bar,*.select_table_1  ,select_schema_2.* , public.select_table_3  ');
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2', 'add-tables', '   foo.bar,*.select_table_1  ,select_schema_2.* , public.select_table_3  ');
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
    

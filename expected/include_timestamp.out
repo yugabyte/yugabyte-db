@@ -12,7 +12,7 @@ SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'wal2js
 
 -- One row should have one record and one timestmap
 INSERT INTO tbl VALUES (1);
-SELECT count(*) = 1, count(distinct ((data::json)->'timestamp')::text) = 1 FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-timestamp', '1');
+SELECT count(*) = 1, count(distinct ((data::json)->'timestamp')::text) = 1 FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'format-version', '1', 'include-timestamp', '1');
  ?column? | ?column? 
 ----------+----------
  t        | t
@@ -21,7 +21,7 @@ SELECT count(*) = 1, count(distinct ((data::json)->'timestamp')::text) = 1 FROM 
 -- Two rows should have two records and two timestamps
 INSERT INTO tbl VALUES (2);
 INSERT INTO tbl VALUES (3);
-SELECT count(*) = 2, count(distinct ((data::json)->'timestamp')::text) = 2 FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-timestamp', '1');
+SELECT count(*) = 2, count(distinct ((data::json)->'timestamp')::text) = 2 FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'format-version', '1', 'include-timestamp', '1');
  ?column? | ?column? 
 ----------+----------
  t        | t
@@ -29,7 +29,7 @@ SELECT count(*) = 2, count(distinct ((data::json)->'timestamp')::text) = 2 FROM 
 
 -- Two rows in one transaction should have one record and one timestamp
 INSERT INTO tbl VALUES (4), (5);
-SELECT count(*) = 1, count(distinct ((data::json)->'timestamp')::text) = 1 FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-timestamp', '1');
+SELECT count(*) = 1, count(distinct ((data::json)->'timestamp')::text) = 1 FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'format-version', '1', 'include-timestamp', '1');
  ?column? | ?column? 
 ----------+----------
  t        | t
