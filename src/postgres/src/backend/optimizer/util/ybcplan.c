@@ -23,18 +23,24 @@
 
 #include "postgres.h"
 
+#include "access/htup_details.h"
+#include "catalog/pg_proc.h"
 #include "nodes/nodes.h"
 #include "nodes/plannodes.h"
 #include "nodes/print.h"
 #include "nodes/relation.h"
 #include "utils/rel.h"
+#include "utils/syscache.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
 /*
- * Theoretically, any expression without side-effects.
- * Currently restrict this to only constants or bind markers.
+ * Theoretically, any expression that evaluates to a constant before YB
+ * execution.
+ * Currently restrict this to a subset of expressions.
+ * Note: As enhance pushdown support in DocDB (e.g. expr evaluation) this
+ * can be expanded.
  */
 bool YBCIsSupportedSingleRowModifyWriteExpr(Expr *expr)
 {
@@ -44,6 +50,7 @@ bool YBCIsSupportedSingleRowModifyWriteExpr(Expr *expr)
 			return true;
 		case T_Param:
 		{
+			/* Bind variables. */
 			Param *param = (Param *) expr;
 			return param->paramkind == PARAM_EXTERN;
 		}
@@ -55,6 +62,49 @@ bool YBCIsSupportedSingleRowModifyWriteExpr(Expr *expr)
 			 */
 			RelabelType *rt = (RelabelType *) expr;
 			return YBCIsSupportedSingleRowModifyWriteExpr(rt->arg);
+		}
+		case T_FuncExpr:
+		case T_OpExpr:
+		{
+			List         *args = NULL;
+			ListCell     *lc = NULL;
+			Oid          funcid = InvalidOid;
+			HeapTuple    tuple = NULL;
+
+			/* Get the function info. */
+			if (IsA(expr, FuncExpr))
+			{
+				args = ((FuncExpr *) expr)->args;
+				funcid = ((FuncExpr *) expr)->funcid;
+			}
+			else if (IsA(expr, OpExpr))
+			{
+				args = ((OpExpr *) expr)->args;
+				funcid = ((OpExpr *) expr)->opfuncid;
+			}
+
+			/*
+			 * Only allow immutable functions as they cannot modify the
+			 * database or do lookups.
+			 */
+			tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
+			if (!HeapTupleIsValid(tuple))
+				elog(ERROR, "cache lookup failed for function %u", funcid);
+			char provolatile = ((Form_pg_proc) GETSTRUCT(tuple))->provolatile;
+			ReleaseSysCache(tuple);
+			if (provolatile != PROVOLATILE_IMMUTABLE)
+			{
+				return false;
+			}
+
+			/* Checking all arguments are valid (stable). */
+			foreach (lc, args) {
+				Expr* expr = (Expr *) lfirst(lc);
+				if (!YBCIsSupportedSingleRowModifyWriteExpr(expr)) {
+				    return false;
+				}
+			}
+			return true;
 		}
 		default:
 			break;
@@ -81,6 +131,7 @@ bool YBCIsSupportedSingleRowModifyWriteExpr(Expr *expr)
  */
 static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 {
+
 	/* Support INSERT, UPDATE, and DELETE. */
 	if (modifyTable->operation != CMD_INSERT &&
 		modifyTable->operation != CMD_UPDATE &&
