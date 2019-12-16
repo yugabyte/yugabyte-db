@@ -174,9 +174,7 @@ std::string CreateMetricName(const MemTracker& mem_tracker) {
     return "mem_tracker";
   }
   std::string id = mem_tracker.id();
-  std::replace(id.begin(), id.end(), ' ', '_');
-  std::replace(id.begin(), id.end(), '.', '_');
-  std::replace(id.begin(), id.end(), '-', '_');
+  EscapeMetricNameForPrometheus(&id);
   if (mem_tracker.parent()) {
     return CreateMetricName(*mem_tracker.parent()) + "_" + id;
   } else {

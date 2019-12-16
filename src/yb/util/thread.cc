@@ -167,9 +167,7 @@ scoped_refptr<AtomicGauge<uint64>> ThreadCategoryTracker::FindOrCreateGauge(
     const string& category) {
   if (gauges_.find(category) == gauges_.end()) {
     string id = name_ + "_" + category;
-    std::replace(id.begin(), id.end(), ' ', '_');
-    std::replace(id.begin(), id.end(), '.', '_');
-    std::replace(id.begin(), id.end(), '-', '_');
+    EscapeMetricNameForPrometheus(&id);
     const string description = id + " metric in ThreadCategoryTracker";
     std::unique_ptr<GaugePrototype<uint64>> gauge = std::make_unique<OwningGaugePrototype<uint64>>(
         "server", id, description, yb::MetricUnit::kThreads, description, yb::EXPOSE_AS_COUNTER);

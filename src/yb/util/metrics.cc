@@ -899,4 +899,11 @@ void ScopedLatencyMetric::Finish() {
   }
 }
 
+// Replace specific chars with underscore to pass PrometheusNameRegex().
+void EscapeMetricNameForPrometheus(std::string *id) {
+  std::replace(id->begin(), id->end(), ' ', '_');
+  std::replace(id->begin(), id->end(), '.', '_');
+  std::replace(id->begin(), id->end(), '-', '_');
+}
+
 } // namespace yb
