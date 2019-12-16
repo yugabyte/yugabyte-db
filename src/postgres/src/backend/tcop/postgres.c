@@ -4657,7 +4657,6 @@ PostgresMain(int argc, char *argv[],
 
 				query_string = pq_getmsgstring(&input_message);
 				pq_getmsgend(&input_message);
-
 				MemoryContext oldcontext = CurrentMemoryContext;
 
 				PG_TRY();

@@ -82,8 +82,11 @@ static List *matchLocks(CmdType event, RuleLock *rulelocks,
 		   int varno, Query *parsetree, bool *hasUpdate);
 static Query *fireRIRrules(Query *parsetree, List *activeRIRs);
 static bool view_has_instead_trigger(Relation view, CmdType event);
-static Bitmapset *adjust_view_column_set(Bitmapset *cols, List *targetlist);
 
+static Bitmapset *adjust_view_column_set(Bitmapset *cols,
+                                         List *targetlist,
+                                         Relation view_rel,
+                                         Oid base_relid);
 
 /*
  * AcquireRewriteLocks -
@@ -2669,13 +2672,14 @@ relation_is_updatable(Oid reloid,
 			rtr = (RangeTblRef *) linitial(viewquery->jointree->fromlist);
 			base_rte = rt_fetch(rtr->rtindex, viewquery->rtable);
 			Assert(base_rte->rtekind == RTE_RELATION);
-
 			if (base_rte->relkind != RELKIND_RELATION &&
 				base_rte->relkind != RELKIND_PARTITIONED_TABLE)
 			{
 				baseoid = base_rte->relid;
 				include_cols = adjust_view_column_set(updatable_cols,
-													  viewquery->targetList);
+				                                      viewquery->targetList,
+				                                      rel,
+				                                      base_rte->relid);
 				auto_events &= relation_is_updatable(baseoid,
 													 include_triggers,
 													 include_cols);
@@ -2699,16 +2703,21 @@ relation_is_updatable(Oid reloid,
  * relation (as per the checks above in view_query_is_auto_updatable).
  */
 static Bitmapset *
-adjust_view_column_set(Bitmapset *cols, List *targetlist)
+adjust_view_column_set(Bitmapset *cols,
+                       List *targetlist,
+                       Relation view_rel,
+                       Oid base_relid)
 {
 	Bitmapset  *result = NULL;
 	int			col;
+	AttrNumber view_lowattrno = YBGetFirstLowInvalidAttributeNumber(view_rel);
+	AttrNumber base_lowattrno = YBGetFirstLowInvalidAttributeNumberFromOid(base_relid);
 
 	col = -1;
 	while ((col = bms_next_member(cols, col)) >= 0)
 	{
 		/* bit numbers are offset by FirstLowInvalidHeapAttributeNumber */
-		AttrNumber	attno = col + FirstLowInvalidHeapAttributeNumber;
+		AttrNumber	attno = col + view_lowattrno;
 
 		if (attno == InvalidAttrNumber)
 		{
@@ -2730,7 +2739,7 @@ adjust_view_column_set(Bitmapset *cols, List *targetlist)
 					continue;
 				var = castNode(Var, tle->expr);
 				result = bms_add_member(result,
-										var->varattno - FirstLowInvalidHeapAttributeNumber);
+				                        var->varattno - base_lowattrno);
 			}
 		}
 		else
@@ -2747,7 +2756,7 @@ adjust_view_column_set(Bitmapset *cols, List *targetlist)
 				Var		   *var = (Var *) tle->expr;
 
 				result = bms_add_member(result,
-										var->varattno - FirstLowInvalidHeapAttributeNumber);
+				                        var->varattno - base_lowattrno);
 			}
 			else
 				elog(ERROR, "attribute number %d not found in view targetlist",
@@ -3021,10 +3030,14 @@ rewriteTargetView(Query *parsetree, Relation view)
 		   bms_is_empty(new_rte->updatedCols));
 
 	new_rte->insertedCols = adjust_view_column_set(view_rte->insertedCols,
-												   view_targetlist);
+	                                               view_targetlist,
+	                                               view,
+	                                               new_rte->relid);
 
 	new_rte->updatedCols = adjust_view_column_set(view_rte->updatedCols,
-												  view_targetlist);
+	                                              view_targetlist,
+	                                              view,
+	                                              new_rte->relid);
 
 	/*
 	 * Move any security barrier quals from the view RTE onto the new target

@@ -682,14 +682,14 @@ bool YBCExecuteUpdate(Relation rel,
 					  TupleTableSlot *slot,
 					  HeapTuple tuple,
 					  EState *estate,
-					  ModifyTableState *mtstate)
+					  ModifyTableState *mtstate,
+					  Bitmapset *updatedCols)
 {
 	TupleDesc      tupleDesc      = slot->tts_tupleDescriptor;
 	Oid            dboid          = YBCGetDatabaseOid(rel);
 	Oid            relid          = RelationGetRelid(rel);
 	YBCPgStatement update_stmt    = NULL;
 	bool           isSingleRow    = mtstate->yb_mt_is_single_row_update_or_delete;
-	Bitmapset     *update_attrs   = mtstate->yb_mt_update_attrs;
 	Datum          ybctid         = 0;
 
 	/* Create update statement. */
@@ -731,23 +731,27 @@ bool YBCExecuteUpdate(Relation rel,
 	                                      YBTupleIdAttributeNumber,
 	                                      ybctid_expr), update_stmt);
 
-	/* Assign new values to columns for updating the current row. */
+	/* Assign new values to the updated columns for the current row. */
 	tupleDesc = RelationGetDescr(rel);
+	bool whole_row = bms_is_member(InvalidAttrNumber, updatedCols);
 	for (int idx = 0; idx < tupleDesc->natts; idx++)
 	{
 		AttrNumber attnum = TupleDescAttr(tupleDesc, idx)->attnum;
-
+		bool has_default = TupleDescAttr(tupleDesc, idx)->atthasdef;
 		/* Skip virtual (system) and dropped columns */
 		if (!IsRealYBColumn(rel, attnum))
 			continue;
 
-		if (update_attrs && !bms_is_member(attnum, update_attrs))
+		/* Skip unmodified columns */
+		int bms_idx = attnum - YBGetFirstLowInvalidAttributeNumber(rel);
+		if (!whole_row && !bms_is_member(bms_idx, updatedCols) && !has_default)
 			continue;
 
 		bool is_null = false;
 		Datum d = heap_getattr(tuple, attnum, tupleDesc, &is_null);
 		YBCPgExpr ybc_expr = YBCNewConstant(update_stmt, TupleDescAttr(tupleDesc, idx)->atttypid,
 		                                    d, is_null);
+
 		HandleYBStmtStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr), update_stmt);
 	}
 
@@ -840,7 +844,7 @@ void YBCUpdateSysCatalogTuple(Relation rel, HeapTuple oldtuple, HeapTuple tuple)
 	/* Bind the ybctid to the statement. */
 	YBCBindTupleId(update_stmt, tuple->t_ybctid);
 
-	/* Assign new values to columns for updating the current row. */
+	/* Assign values to the non-primary-key columns to update the current row. */
 	for (int idx = 0; idx < natts; idx++)
 	{
 		AttrNumber attnum = TupleDescAttr(tupleDesc, idx)->attnum;

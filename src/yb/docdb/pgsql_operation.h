@@ -79,8 +79,9 @@ class PgsqlWriteOperation :
   CHECKED_STATUS PopulateResultSet(const QLTableRow::SharedPtr& table_row);
 
   // Reading path to operate on.
-  CHECKED_STATUS GetDocPaths(
-      GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const override;
+  CHECKED_STATUS GetDocPaths(GetDocPathsMode mode,
+                             DocPathsToLock *paths,
+                             IsolationLevel *level) const override;
 
   //------------------------------------------------------------------------------------------------
   // Context.

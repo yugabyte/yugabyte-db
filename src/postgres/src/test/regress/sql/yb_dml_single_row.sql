@@ -25,6 +25,9 @@ EXPLAIN UPDATE single_row SET v1 = 1, v2 = 1 + 2 WHERE k = 1;
 EXPLAIN UPDATE single_row SET v1 = 1, v2 = 2 WHERE k = 1 RETURNING k, v1, v2;
 EXPLAIN UPDATE single_row SET v1 = 1, v2 = 2 WHERE k = 1 RETURNING *;
 EXPLAIN UPDATE single_row SET v1 = 1 WHERE k IN (1);
+EXPLAIN UPDATE single_row SET v1 = 3 + 2 WHERE k = 1;
+EXPLAIN UPDATE single_row SET v1 = power(2, 3 - 1) WHERE k = 1;
+
 -- Below statements should all NOT USE single-row.
 EXPLAIN UPDATE single_row SET v1 = 1;
 EXPLAIN UPDATE single_row SET v1 = v1 + 1 WHERE k = 1;
@@ -34,6 +37,8 @@ EXPLAIN UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING *;
 EXPLAIN UPDATE single_row SET v1 = 1 WHERE k > 1;
 EXPLAIN UPDATE single_row SET v1 = 1 WHERE k != 1;
 EXPLAIN UPDATE single_row SET v1 = 1 WHERE k IN (1, 2);
+EXPLAIN UPDATE single_row SET v1 = v1 + 3 WHERE k = 1;
+EXPLAIN UPDATE single_row SET v1 = power(2, 3 - k) WHERE k = 1;
 
 --
 -- Test single-row UPDATE/DELETE execution.
@@ -159,26 +164,36 @@ DROP TRIGGER single_row_update_trigger ON single_row;
 --
 -- Test table with composite primary key.
 --
-CREATE TABLE single_row_comp_key (v int, k1 int, k2 int, PRIMARY KEY (k1, k2));
+CREATE TABLE single_row_comp_key (v int, k1 int, k2 int, PRIMARY KEY (k1 HASH, k2 ASC));
 
 -- Below statements should all USE single-row.
 EXPLAIN DELETE FROM single_row_comp_key WHERE k1 = 1 and k2 = 1;
 EXPLAIN DELETE FROM single_row_comp_key WHERE k1 = 1 and k2 = 1 RETURNING k1, k2;
+
 -- Below statements should all NOT USE single-row.
 EXPLAIN DELETE FROM single_row_comp_key;
 EXPLAIN DELETE FROM single_row_comp_key WHERE k1 = 1;
 EXPLAIN DELETE FROM single_row_comp_key WHERE k2 = 1;
 EXPLAIN DELETE FROM single_row_comp_key WHERE v = 1 and k1 = 1 and k2 = 1;
 EXPLAIN DELETE FROM single_row_comp_key WHERE k1 = 1 and k2 = 1 RETURNING v;
+EXPLAIN DELETE FROM single_row_comp_key WHERE k1 = 1 AND k2 < 1;
+EXPLAIN DELETE FROM single_row_comp_key WHERE k1 = 1 AND k2 != 1;
 
 -- Below statements should all USE single-row.
 EXPLAIN UPDATE single_row_comp_key SET v = 1 WHERE k1 = 1 and k2 = 1;
 EXPLAIN UPDATE single_row_comp_key SET v = 1 WHERE k1 = 1 and k2 = 1 RETURNING k1, k2, v;
 EXPLAIN UPDATE single_row_comp_key SET v = 1 + 2 WHERE k1 = 1 and k2 = 1;
+EXPLAIN UPDATE single_row SET v1 = 3 - 2 WHERE k = 1;
+EXPLAIN UPDATE single_row SET v1 = ceil(3 - 2.5) WHERE k = 1;
+
 -- Below statements should all NOT USE single-row.
 EXPLAIN UPDATE single_row_comp_key SET v = 1;
 EXPLAIN UPDATE single_row_comp_key SET v = v + 1 WHERE k1 = 1 and k2 = 1;
 EXPLAIN UPDATE single_row_comp_key SET v = 1 WHERE k1 = 1 and k2 = 1 and v = 1;
+EXPLAIN UPDATE single_row SET v1 = 3 - v1 WHERE k = 1;
+-- Random is not a stable function so it should NOT USE single-row.
+-- TODO However it technically does not read/write data so later on it could be allowed.
+EXPLAIN UPDATE single_row SET v1 = ceil(random()) WHERE k = 1;
 
 -- Test execution.
 INSERT INTO single_row_comp_key VALUES (1, 2, 3);
@@ -261,3 +276,69 @@ EXPLAIN DELETE FROM single_row_no_primary_key WHERE a = 1 and b = 1;
 EXPLAIN UPDATE single_row_no_primary_key SET a = 1;
 EXPLAIN UPDATE single_row_no_primary_key SET b = 1 WHERE a = 1;
 EXPLAIN UPDATE single_row_no_primary_key SET b = 1 WHERE b = 1;
+
+--
+-- Test table with range primary key (ASC).
+--
+CREATE TABLE single_row_range_asc_primary_key (k int, v int, primary key (k ASC));
+
+-- Below statements should all USE single-row.
+EXPLAIN DELETE FROM single_row_range_asc_primary_key WHERE k = 1;
+EXPLAIN UPDATE single_row_range_asc_primary_key SET v = 1 WHERE k = 1;
+EXPLAIN UPDATE single_row_range_asc_primary_key SET v = 1 + 2 WHERE k = 1;
+EXPLAIN UPDATE single_row_range_asc_primary_key SET v = ceil(2.5 + power(2,2)) WHERE k = 4;
+
+-- Below statements should all NOT USE single-row.
+EXPLAIN UPDATE single_row_range_asc_primary_key SET v = 1 WHERE k > 1;
+EXPLAIN UPDATE single_row_range_asc_primary_key SET v = 1 WHERE k != 1;
+EXPLAIN UPDATE single_row_range_asc_primary_key SET v = v + 1 WHERE k = 1;
+EXPLAIN UPDATE single_row_range_asc_primary_key SET v = abs(5 - k) WHERE k = 1;
+
+-- Test execution
+INSERT INTO single_row_range_asc_primary_key(k,v) values (1,1), (2,2), (3,3), (4,4);
+
+UPDATE single_row_range_asc_primary_key SET v = 10 WHERE k = 1;
+SELECT * FROM single_row_range_asc_primary_key;
+UPDATE single_row_range_asc_primary_key SET v = v + 1 WHERE k = 2;
+SELECT * FROM single_row_range_asc_primary_key;
+UPDATE single_row_range_asc_primary_key SET v = -3 WHERE k < 4 AND k >= 3;
+SELECT * FROM single_row_range_asc_primary_key;
+UPDATE single_row_range_asc_primary_key SET v = ceil(2.5 + power(2,2)) WHERE k = 4;
+SELECT * FROM single_row_range_asc_primary_key;
+DELETE FROM single_row_range_asc_primary_key WHERE k < 3;
+SELECT * FROM single_row_range_asc_primary_key;
+DELETE FROM single_row_range_asc_primary_key WHERE k = 4;
+SELECT * FROM single_row_range_asc_primary_key;
+
+--
+-- Test table with range primary key (DESC)
+--
+CREATE TABLE single_row_range_desc_primary_key (k int, v int, primary key (k DESC));
+
+-- Below statements should all USE single-row.
+EXPLAIN DELETE FROM single_row_range_desc_primary_key WHERE k = 1;
+EXPLAIN UPDATE single_row_range_desc_primary_key SET v = 1 WHERE k = 1;
+EXPLAIN UPDATE single_row_range_desc_primary_key SET v = 1 + 2 WHERE k = 1;
+EXPLAIN UPDATE single_row_range_desc_primary_key SET v = ceil(2.5 + power(2,2)) WHERE k = 4;
+
+-- Below statements should all NOT USE single-row.
+EXPLAIN UPDATE single_row_range_desc_primary_key SET v = 1 WHERE k > 1;
+EXPLAIN UPDATE single_row_range_desc_primary_key SET v = 1 WHERE k != 1;
+EXPLAIN UPDATE single_row_range_desc_primary_key SET v = v + 1 WHERE k = 1;
+EXPLAIN UPDATE single_row_range_desc_primary_key SET v = abs(5 - k) WHERE k = 1;
+
+-- Test execution
+INSERT INTO single_row_range_desc_primary_key(k,v) values (1,1), (2,2), (3,3), (4,4);
+
+UPDATE single_row_range_desc_primary_key SET v = 10 WHERE k = 1;
+SELECT * FROM single_row_range_desc_primary_key;
+UPDATE single_row_range_desc_primary_key SET v = v + 1 WHERE k = 2;
+SELECT * FROM single_row_range_desc_primary_key;
+UPDATE single_row_range_desc_primary_key SET v = -3 WHERE k < 4 AND k >= 3;
+SELECT * FROM single_row_range_desc_primary_key;
+UPDATE single_row_range_desc_primary_key SET v = ceil(2.5 + power(2,2)) WHERE k = 4;
+SELECT * FROM single_row_range_desc_primary_key;
+DELETE FROM single_row_range_desc_primary_key WHERE k < 3;
+SELECT * FROM single_row_range_desc_primary_key;
+DELETE FROM single_row_range_desc_primary_key WHERE k = 4;
+SELECT * FROM single_row_range_desc_primary_key;

@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import static java.lang.Math.toIntExact;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -28,6 +29,8 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.fail;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgUpdate extends BasePgSQLTest {
@@ -222,5 +225,62 @@ public class TestPgUpdate extends BasePgSQLTest {
       returning = stmt.getResultSet();
       assertEquals(expectedRows, getSortedRowList(returning));
     }
+  }
+
+  @Test
+  public void testConcurrentUpdate() throws Exception {
+
+    connection.createStatement().execute("create table test_concurrent_update (k int primary key," +
+                                         " v1 int, v2 int, v3 int, v4 int)");
+    connection.createStatement().execute("insert into test_concurrent_update values"+
+                                         " (0, 0, 0, 0, 0)");
+
+    final List<Throwable> errors = new ArrayList<Throwable>();
+
+    // Test concurrent update to individual columns from 1 to 100. They should not block one
+    // another.
+    List<Thread> threads = new ArrayList<Thread>();
+    for (int i = 1; i <= 4; i++) {
+      final int index = i;
+      Thread thread = new Thread(() -> {
+          try {
+            PreparedStatement updateStmt = connection.prepareStatement(
+                String.format("update test_concurrent_update set v%d = ? where k = 0", index));
+            PreparedStatement selectStmt = connection.prepareStatement(
+                String.format("select v%d from test_concurrent_update where k = 0", index));
+
+            for (int j = 1; j <= 100; j++) {
+              // Update column.
+              updateStmt.setInt(1, j);
+              updateStmt.execute();
+
+              // Verify update.
+              ResultSet rs = selectStmt.executeQuery();
+              assertNextRow(rs, j);
+            }
+
+          } catch (Throwable e) {
+            synchronized (errors) {
+              errors.add(e);
+            }
+          }
+      });
+      thread.start();
+      threads.add(thread);
+    }
+
+    for (Thread thread : threads) {
+      thread.join();
+    }
+
+    // Verify final result of all columns.
+    assertOneRow("select v1, v2, v3, v4 from test_concurrent_update where k = 0",
+                 100, 100, 100, 100);
+
+    // Log the actual errors that occurred.
+    for (Throwable e : errors) {
+      LOG.error("Errors occurred", e);
+    }
+    assertTrue(errors.isEmpty());
   }
 }

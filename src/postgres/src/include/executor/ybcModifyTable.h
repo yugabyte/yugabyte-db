@@ -90,7 +90,8 @@ extern bool YBCExecuteUpdate(Relation rel,
 							 TupleTableSlot *slot,
 							 HeapTuple tuple,
 							 EState *estate,
-							 ModifyTableState *mtstate);
+							 ModifyTableState *mtstate,
+							 Bitmapset *updatedCols);
 
 //------------------------------------------------------------------------------
 // System tables modify-table API.
