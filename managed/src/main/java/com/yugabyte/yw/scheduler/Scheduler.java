@@ -69,6 +69,7 @@ public class Scheduler {
   // Minimum number of scheduled threads.
   private static final int SCHEDULE_THREADS = 1;
   private final int YB_SCHEDULER_INTERVAL = 2;
+  private final int MIN_TO_SEC = 60;
 
   private final ActorSystem actorSystem;
   private final ExecutionContext executionContext;
@@ -156,7 +157,7 @@ public class Scheduler {
           ZonedDateTime now = ZonedDateTime.now();
           ExecutionTime executionTime = ExecutionTime.forCron(parsedUnixCronExpression);
           long timeFromLastExecution = executionTime.timeFromLastExecution(now).get().getSeconds();
-          if (timeFromLastExecution < YB_SCHEDULER_INTERVAL) {
+          if (timeFromLastExecution < YB_SCHEDULER_INTERVAL * MIN_TO_SEC) {
             // In case the last task was completed, or the last task was never even scheduled,
             // we run the task. If the task was scheduled, but didn't complete, we skip this
             // iteration completely.

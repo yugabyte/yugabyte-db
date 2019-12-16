@@ -363,12 +363,12 @@ public class TablesController extends AuthenticatedController {
 
     taskParams.universeUUID = universeUUID;
     taskParams.tableUUID = tableUUID;
-    // taskParams.schedulingFrequency = 600000;
 
     ObjectNode resultNode = Json.newObject();
-    if (taskParams.schedulingFrequency != 0L) {
+    if (taskParams.schedulingFrequency != 0L || taskParams.cronExpression != null) {
       Schedule schedule = Schedule.create(customerUUID, taskParams,
-          TaskType.BackupUniverse, taskParams.schedulingFrequency);
+          TaskType.BackupUniverse, taskParams.schedulingFrequency,
+          taskParams.cronExpression);
       UUID scheduleUUID = schedule.getScheduleUUID();
       LOG.info("Submitted backup to be scheduled {}:{}, schedule uuid = {}.",
           tableUUID, taskParams.tableName, scheduleUUID);
