@@ -43,6 +43,7 @@
 
 #include <boost/optional/optional_fwd.hpp>
 #include <boost/functional/hash.hpp>
+#include <gtest/internal/gtest-internal.h>
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
@@ -66,6 +67,7 @@
 #include "yb/util/random.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/version_tracker.h"
 #include "yb/gutil/thread_annotations.h"
 #include "yb/master/catalog_entity_info.h"
@@ -80,6 +82,16 @@ class ThreadPool;
 
 template<class T>
 class AtomicGauge;
+
+namespace pgwrapper {
+
+#define CALL_GTEST_TEST_CLASS_NAME_(...) GTEST_TEST_CLASS_NAME_(__VA_ARGS__)
+class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted));
+class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet));
+class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables));
+#undef CALL_GTEST_TEST_CLASS_NAME_
+
+}
 
 namespace tablet {
 
@@ -305,7 +317,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                     DeleteNamespaceResponsePB* resp,
                                     rpc::RpcContext* rpc);
 
-  // Delete all user tables in YSQL database.
+  // Delete all tables in YSQL database.
   CHECKED_STATUS DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database,
                                     DeleteNamespaceResponsePB* resp,
                                     rpc::RpcContext* rpc);
@@ -613,6 +625,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   friend class ::yb::master::ScopedLeaderSharedLock;
   friend class PermissionsManager;
 
+#define CALL_FRIEND_TEST(...) FRIEND_TEST(__VA_ARGS__)
+  CALL_FRIEND_TEST(pgwrapper::PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted));
+  CALL_FRIEND_TEST(pgwrapper::PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet));
+  CALL_FRIEND_TEST(pgwrapper::PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables));
+#undef CALL_FRIEND_TEST
   FRIEND_TEST(SysCatalogTest, TestCatalogManagerTasksTracker);
   FRIEND_TEST(SysCatalogTest, TestPrepareDefaultClusterConfig);
   FRIEND_TEST(SysCatalogTest, TestSysCatalogTablesOperations);
@@ -739,6 +756,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   TabletInfo *CreateTabletInfo(TableInfo* table,
                                const PartitionPB& partition);
 
+  // Remove the specified entries from the protobuf field table_ids of a TabletInfo.
+  Status RemoveTableIdsFromTabletInfo(
+      TabletInfoPtr tablet_info, unordered_set<TableId> tables_to_remove);
+
   // Add index info to the indexed table.
   CHECKED_STATUS AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
                                      const IndexInfoPB& index_info);
@@ -789,6 +810,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // that must be processed because not running yet.
   void ExtractTabletsToProcess(TabletInfos *tablets_to_delete,
                                TabletInfos *tablets_to_process);
+
+  // Determine whether any tables are in the DELETING state.
+  bool AreTablesDeleting();
 
   // Task that takes care of the tablet assignments/creations.
   // Loops through the "not created" tablets and sends a CreateTablet() request.
