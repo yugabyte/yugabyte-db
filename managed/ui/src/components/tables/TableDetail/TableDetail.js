@@ -28,7 +28,7 @@ export default class TableDetail extends Component {
     tableUUID: PropTypes.string.isRequired
   };
 
-  componentWillMount() {
+  componentDidMount() {
     const universeUUID = this.props.universeUUID;
     const tableUUID = this.props.tableUUID;
     this.props.fetchUniverseDetail(universeUUID);

@@ -214,7 +214,7 @@ export default class AZSelectorTable extends Component {
   };
 
   getGroupWithCounts = universeConfigTemplate => {
-    const {cloud: {regions}, clusterType} = this.props;
+    const { cloud: { regions }, clusterType } = this.props;
     const uniConfigArray = [];
     let cluster = null;
     if (isNonEmptyObject(universeConfigTemplate)) {
@@ -234,7 +234,7 @@ export default class AZSelectorTable extends Component {
     }
 
     if (isNonEmptyObject(universeConfigTemplate) && isNonEmptyArray(currentClusterNodes)) {
-      currentClusterNodes.forEach(function (nodeItem) {
+      currentClusterNodes.forEach((nodeItem) => {
         if (nodeStates.activeStates.indexOf(nodeItem.state) !== -1) {
           let nodeFound = false;
           for (let idx = 0; idx < uniConfigArray.length; idx++) {
@@ -256,9 +256,9 @@ export default class AZSelectorTable extends Component {
         isNonEmptyObject(cluster.placementInfo) &&
         isNonEmptyArray(cluster.placementInfo.cloudList) &&
         isNonEmptyArray(cluster.placementInfo.cloudList[0].regionList)) {
-      cluster.placementInfo.cloudList[0].regionList.forEach(function(regionItem) {
-        regionItem.azList.forEach(function(azItem) {
-          uniConfigArray.forEach(function(configArrayItem) {
+      cluster.placementInfo.cloudList[0].regionList.forEach((regionItem) => {
+        regionItem.azList.forEach((azItem) => {
+          uniConfigArray.forEach((configArrayItem) => {
             if (configArrayItem.value === azItem.uuid) {
               groupsArray.push({value: azItem.uuid, count: configArrayItem.count,
                 isAffinitized: azItem.isAffinitized === undefined ? true : azItem.isAffinitized});
@@ -280,10 +280,10 @@ export default class AZSelectorTable extends Component {
         isNonEmptyArray(currentCluster.userIntent.regionList) && isNonEmptyArray(regions.data)) {
         azListForSelectedRegions = this.getZonesWithCounts(currentCluster);
       }
-      const sortedAZListForSelectedRegions = azListForSelectedRegions.sort(function(a, b){
+      const sortedAZListForSelectedRegions = azListForSelectedRegions.sort((a, b) => {
         return a.code > b.code ? 1 : -1 ;
       });
-      sortedAZListForSelectedRegions.forEach(function(azListRegionItem){
+      sortedAZListForSelectedRegions.forEach((azListRegionItem) => {
         const currentazItem = groupsArray.find((a)=>(a.value  === azListRegionItem.uuid));
         if (isNonEmptyObject(currentazItem)) {
           sortedGroupArray.push(currentazItem);
@@ -299,7 +299,7 @@ export default class AZSelectorTable extends Component {
       uniqueAzs: [...new Set(groupsArray.map(item => item.value))].length});
   };
 
-  componentWillMount() {
+  componentDidMount() {
     const {universe: {currentUniverse, universeConfigTemplate}, type, clusterType} = this.props;
     const currentCluster = getPromiseState(universeConfigTemplate).isSuccess() ?
       getClusterByType(universeConfigTemplate.data.clusters, clusterType) :
@@ -315,7 +315,7 @@ export default class AZSelectorTable extends Component {
     }
   }
 
-  componentWillReceiveProps(nextProps) {
+  UNSAFE_componentWillReceiveProps(nextProps) {
     const {universe: {universeConfigTemplate, currentUniverse}, clusterType, type } = nextProps;
     if ((getPromiseState(universeConfigTemplate).isSuccess())) {
       const placementInfo = this.getGroupWithCounts(universeConfigTemplate.data);

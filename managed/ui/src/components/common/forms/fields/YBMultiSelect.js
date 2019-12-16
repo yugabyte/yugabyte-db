@@ -10,18 +10,18 @@ import { isNonEmptyArray } from 'utils/ObjectUtils';
 // TODO: Rename to YBMultiSelect after changing prior YBMultiSelect references.
 // TODO: Make default export after checking all corresponding imports.
 export class YBNewMultiSelect extends Component {
-  componentWillReceiveProps(props) {
+  componentDidUpdate(prevProps) {
     let newSelection = null;
 
     // If AZ is changed from multi to single, take only last selection.
-    if (this.props.isMulti !== props.isMulti && props.isMulti === false) {
-      const currentSelection = this.props.input.value;
+    if (this.props.isMulti !== prevProps.isMulti && this.props.isMulti === false) {
+      const currentSelection = prevProps.input.value;
       if (isNonEmptyArray(currentSelection)) {
         newSelection = currentSelection.splice(-1, 1);
       }
     }
     // If provider has been changed, reset region selection.
-    if (this.props.providerSelected !== props.providerSelected) {
+    if (this.props.providerSelected !== prevProps.providerSelected) {
       newSelection = [];
     }
 

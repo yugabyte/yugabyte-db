@@ -19,7 +19,7 @@ export default class ReleaseList extends Component {
     title : "Releases"
   }
 
-  componentWillMount() {
+  componentDidMount() {
     this.props.getYugaByteReleases();
   }
 

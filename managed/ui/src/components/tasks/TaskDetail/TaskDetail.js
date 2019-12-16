@@ -29,7 +29,7 @@ class TaskDetail extends Component {
     this.setState({errorStringDisplay: !this.state.errorStringDisplay});
   };
 
-  componentWillMount() {
+  componentDidMount() {
     const { params } = this.props;
     const currentTaskUUID = params.taskUUID;
     if (isNonEmptyString(currentTaskUUID)) {

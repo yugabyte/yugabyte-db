@@ -15,14 +15,14 @@ export default class UniverseStatus extends Component {
     }) : false;
   };
 
-  componentWillReceiveProps(nextProps) {
+  componentDidUpdate(prevProps) {
     const {
       currentUniverse: { universeDetails },
-      tasks: { customerTaskList},
+      tasks: { customerTaskList },
       refreshUniverseData
-    } = nextProps;
+    } = this.props;
 
-    if (!universeDetails.updateInProgress && !this.hasPendingTasksForUniverse(customerTaskList) && this.hasPendingTasksForUniverse(this.props.tasks.customerTaskList)) {
+    if (!universeDetails.updateInProgress && !this.hasPendingTasksForUniverse(customerTaskList) && this.hasPendingTasksForUniverse(prevProps.tasks.customerTaskList)) {
       refreshUniverseData();
     }
   }

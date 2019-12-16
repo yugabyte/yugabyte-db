@@ -109,7 +109,7 @@ class OnPremNodesList extends Component {
     this.props.reset();
   };
 
-  componentWillMount() {
+  componentDidMount() {
     // Get OnPrem provider if provider list is already loaded during component load
     const onPremProvider = this.props.cloud.providers.data.find((provider)=>provider.code === "onprem");
     this.props.getRegionListItems(onPremProvider.uuid);

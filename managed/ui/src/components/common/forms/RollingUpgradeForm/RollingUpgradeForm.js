@@ -31,7 +31,7 @@ class FlagInput extends Component {
 }
 
 class FlagItems extends Component {
-  componentWillMount() {
+  componentDidMount() {
     if (this.props.fields.length === 0) {
       this.props.fields.push({});
     }
@@ -90,9 +90,9 @@ export default class RollingUpgradeForm extends Component {
     };
   }
 
-  componentWillReceiveProps(nextProps) {
-    const { universe, universe: { rollingUpgrade, currentUniverse: { data: { universeUUID }}}} = nextProps;
-    if (getPromiseState(rollingUpgrade).isSuccess() && getPromiseState(this.props.universe.rollingUpgrade).isLoading()) {
+  componentDidUpdate(prevProps) {
+    const { universe, universe: { rollingUpgrade, currentUniverse: { data: { universeUUID }}}} = this.props;
+    if (getPromiseState(rollingUpgrade).isSuccess() && getPromiseState(prevProps.universe.rollingUpgrade).isLoading()) {
       this.props.fetchCurrentUniverse(universeUUID);
       this.props.fetchUniverseMetadata();
       this.props.fetchCustomerTasks();

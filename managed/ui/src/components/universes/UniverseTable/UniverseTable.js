@@ -19,7 +19,7 @@ import moment from 'moment';
 
 export default class UniverseTable extends Component {
 
-  componentWillMount() {
+  componentDidMount() {
     this.props.fetchUniverseMetadata();
     this.props.fetchUniverseTasks();
   }
