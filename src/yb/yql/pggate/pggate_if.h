@@ -14,4 +14,3 @@
 // No include guards here because this file is expected to be included multiple times.
 
 #include "yb/yql/pggate/pg_api_example_if.h"
-#include "yb/yql/pggate/pg_txn_manager_if.h"

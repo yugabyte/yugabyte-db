@@ -30,7 +30,7 @@
 // This file comes from this directory:
 // postgres_build/src/include/catalog
 // We add a special include path to CMakeLists.txt.
-#include "pg_type_d.h"
+#include "pg_type_d.h" // NOLINT
 
 namespace yb {
 namespace pggate {
@@ -76,9 +76,6 @@ class PggateTest : public YBTest {
   //------------------------------------------------------------------------------------------------
   // Simulated cluster.
   std::shared_ptr<ExternalMiniCluster> cluster_;
-
-  // Session.
-  YBCPgSession pg_session_;
 };
 
 //--------------------------------------------------------------------------------------------------

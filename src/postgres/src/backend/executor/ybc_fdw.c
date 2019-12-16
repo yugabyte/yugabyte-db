@@ -260,8 +260,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	ybc_state = (YbFdwExecState *) palloc0(sizeof(YbFdwExecState));
 
 	node->fdw_state = (void *) ybc_state;
-	HandleYBStatus(YBCPgNewSelect(ybc_pg_session,
-	                              YBCGetDatabaseOid(relation),
+	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
 	                              RelationGetRelid(relation),
 	                              InvalidOid /* index_oid */,
 	                              &ybc_state->handle));

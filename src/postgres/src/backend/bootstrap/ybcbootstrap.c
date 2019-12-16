@@ -130,8 +130,7 @@ void YBCCreateSysCatalogTable(const char *table_name,
 	char           *schema_name = "pg_catalog";
 	YBCPgStatement yb_stmt      = NULL;
 
-	HandleYBStatus(YBCPgNewCreateTable(ybc_pg_session,
-	                                   db_name,
+	HandleYBStatus(YBCPgNewCreateTable(db_name,
 	                                   schema_name,
 	                                   table_name,
 	                                   TemplateDbOid,

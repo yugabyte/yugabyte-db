@@ -85,8 +85,7 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid)
 {
 	YBCPgStatement handle;
 
-	HandleYBStatus(YBCPgNewCreateDatabase(ybc_pg_session,
-										  dbname,
+	HandleYBStatus(YBCPgNewCreateDatabase(dbname,
 										  dboid,
 										  src_dboid,
 										  next_oid,
@@ -100,9 +99,8 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 {
 	YBCPgStatement handle;
 
-	HandleYBStatus(YBCPgNewDropDatabase(ybc_pg_session,
-										dbname,
-																			dboid,
+	HandleYBStatus(YBCPgNewDropDatabase(dbname,
+										dboid,
 										&handle));
 	HandleYBStmtStatus(YBCPgExecDropDatabase(handle), handle);
 	HandleYBStatus(YBCPgDeleteStatement(handle));
@@ -111,8 +109,7 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 void
 YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_oid)
 {
-	HandleYBStatus(YBCPgReserveOids(ybc_pg_session,
-									dboid,
+	HandleYBStatus(YBCPgReserveOids(dboid,
 									next_oid,
 									count,
 									begin_oid,
@@ -485,8 +482,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId, O
 		}
 	}
 
-	HandleYBStatus(YBCPgNewCreateTable(ybc_pg_session,
-									   db_name,
+	HandleYBStatus(YBCPgNewCreateTable(db_name,
 									   schema_name,
 									   stmt->relation->relname,
 									   MyDatabaseId,
@@ -522,8 +518,7 @@ YBCDropTable(Oid relationId)
 {
 	YBCPgStatement handle;
 
-	HandleYBStatus(YBCPgNewDropTable(ybc_pg_session,
-									 MyDatabaseId,
+	HandleYBStatus(YBCPgNewDropTable(MyDatabaseId,
 									 relationId,
 									 false,    /* if_exists */
 									 &handle));
@@ -537,7 +532,7 @@ YBCTruncateTable(Relation rel) {
 	Oid relationId = RelationGetRelid(rel);
 
 	/* Truncate the base table */
-	HandleYBStatus(YBCPgNewTruncateTable(ybc_pg_session, MyDatabaseId, relationId, &handle));
+	HandleYBStatus(YBCPgNewTruncateTable(MyDatabaseId, relationId, &handle));
 	HandleYBStmtStatus(YBCPgExecTruncateTable(handle), handle);
 	HandleYBStatus(YBCPgDeleteStatement(handle));
 
@@ -555,7 +550,7 @@ YBCTruncateTable(Relation rel) {
 		if (indexId == rel->rd_pkindex)
 			continue;
 
-		HandleYBStatus(YBCPgNewTruncateTable(ybc_pg_session, MyDatabaseId, indexId, &handle));
+		HandleYBStatus(YBCPgNewTruncateTable(MyDatabaseId, indexId, &handle));
 		HandleYBStmtStatus(YBCPgExecTruncateTable(handle), handle);
 		HandleYBStatus(YBCPgDeleteStatement(handle));
 	}
@@ -582,8 +577,7 @@ YBCCreateIndex(const char *indexName,
 
 	YBCPgStatement handle = NULL;
 
-	HandleYBStatus(YBCPgNewCreateIndex(ybc_pg_session,
-									   db_name,
+	HandleYBStatus(YBCPgNewCreateIndex(db_name,
 									   schema_name,
 									   indexName,
 									   MyDatabaseId,
@@ -636,8 +630,7 @@ YBCPgStatement
 YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 {
 	YBCPgStatement handle = NULL;
-	HandleYBStatus(YBCPgNewAlterTable(ybc_pg_session,
-									  MyDatabaseId,
+	HandleYBStatus(YBCPgNewAlterTable(MyDatabaseId,
 									  relationId,
 									  &handle));
 
@@ -772,8 +765,7 @@ YBCRename(RenameStmt *stmt, Oid relationId)
 	switch (stmt->renameType)
 	{
 		case OBJECT_TABLE:
-			HandleYBStatus(YBCPgNewAlterTable(ybc_pg_session,
-											  MyDatabaseId,
+			HandleYBStatus(YBCPgNewAlterTable(MyDatabaseId,
 											  relationId,
 											  &handle));
 			HandleYBStmtStatus(YBCPgAlterTableRenameTable(handle, db_name, stmt->newname), handle);
@@ -782,8 +774,7 @@ YBCRename(RenameStmt *stmt, Oid relationId)
 		case OBJECT_COLUMN:
 		case OBJECT_ATTRIBUTE:
 
-			HandleYBStatus(YBCPgNewAlterTable(ybc_pg_session,
-											  MyDatabaseId,
+			HandleYBStatus(YBCPgNewAlterTable(MyDatabaseId,
 											  relationId,
 											  &handle));
 
@@ -807,8 +798,7 @@ YBCDropIndex(Oid relationId)
 {
 	YBCPgStatement handle;
 
-	HandleYBStatus(YBCPgNewDropIndex(ybc_pg_session,
-									 MyDatabaseId,
+	HandleYBStatus(YBCPgNewDropIndex(MyDatabaseId,
 									 relationId,
 									 false,	   /* if_exists */
 									 &handle));

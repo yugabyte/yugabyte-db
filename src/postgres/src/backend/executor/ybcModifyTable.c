@@ -135,7 +135,7 @@ static Bitmapset *GetTablePrimaryKey(Relation rel,
 	YBCPgTableDesc ybc_tabledesc = NULL;
 
 	/* Get the primary key columns 'pkey' from YugaByte. */
-	HandleYBStatus(YBCPgGetTableDesc(ybc_pg_session, dboid, relid, &ybc_tabledesc));
+	HandleYBStatus(YBCPgGetTableDesc(dboid, relid, &ybc_tabledesc));
 	for (AttrNumber attnum = minattr; attnum <= natts; attnum++)
 	{
 		if ((!includeYBSystemColumns && !IsRealYBColumn(rel, attnum)) ||
@@ -390,8 +390,7 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 	}
 
 	/* Create the INSERT request and add the values from the tuple. */
-	HandleYBStatus(YBCPgNewInsert(ybc_pg_session,
-	                              dboid,
+	HandleYBStatus(YBCPgNewInsert(dboid,
 	                              relid,
 	                              is_single_row_txn,
 	                              &insert_stmt));
@@ -571,8 +570,7 @@ void YBCExecuteInsertIndex(Relation index, Datum *values, bool *isnull, Datum yb
 	YBCPgStatement insert_stmt = NULL;
 
 	/* Create the INSERT request and add the values from the tuple. */
-	HandleYBStatus(YBCPgNewInsert(ybc_pg_session,
-	                              dboid,
+	HandleYBStatus(YBCPgNewInsert(dboid,
 	                              relid,
 	                              false /* is_single_row_txn */,
 	                              &insert_stmt));
@@ -596,8 +594,7 @@ bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate, Modify
 	Datum          ybctid         = 0;
 
 	/* Create DELETE request. */
-	HandleYBStatus(YBCPgNewDelete(ybc_pg_session,
-								  dboid,
+	HandleYBStatus(YBCPgNewDelete(dboid,
 								  relid,
 								  estate->es_yb_is_single_row_modify_txn,
 								  &delete_stmt));
@@ -663,8 +660,7 @@ void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum yb
 	YBCPgStatement delete_stmt = NULL;
 
 	/* Create the DELETE request and add the values from the tuple. */
-	HandleYBStatus(YBCPgNewDelete(ybc_pg_session,
-								  dboid,
+	HandleYBStatus(YBCPgNewDelete(dboid,
 								  relid,
 								  false /* is_single_row_txn */,
 								  &delete_stmt));
@@ -693,8 +689,7 @@ bool YBCExecuteUpdate(Relation rel,
 	Datum          ybctid         = 0;
 
 	/* Create update statement. */
-	HandleYBStatus(YBCPgNewUpdate(ybc_pg_session,
-								  dboid,
+	HandleYBStatus(YBCPgNewUpdate(dboid,
 								  relid,
 								  estate->es_yb_is_single_row_modify_txn,
 								  &update_stmt));
@@ -794,8 +789,7 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 				        "Missing column ybctid in DELETE request to YugaByte database")));
 
 	/* Prepare DELETE statement. */
-	HandleYBStatus(YBCPgNewDelete(ybc_pg_session,
-								  dboid,
+	HandleYBStatus(YBCPgNewDelete(dboid,
 								  relid,
 								  false /* is_single_row_txn */,
 								  &delete_stmt));
@@ -832,8 +826,7 @@ void YBCUpdateSysCatalogTuple(Relation rel, HeapTuple oldtuple, HeapTuple tuple)
 	YBCPgStatement update_stmt = NULL;
 
 	/* Create update statement. */
-	HandleYBStatus(YBCPgNewUpdate(ybc_pg_session,
-								  dboid,
+	HandleYBStatus(YBCPgNewUpdate(dboid,
 								  relid,
 								  false /* is_single_row_txn */,
 								  &update_stmt));
@@ -884,12 +877,12 @@ void YBCUpdateSysCatalogTuple(Relation rel, HeapTuple oldtuple, HeapTuple tuple)
 
 void YBCStartBufferingWriteOperations()
 {
-	HandleYBStatus(YBCPgStartBufferingWriteOperations(ybc_pg_session));
+	HandleYBStatus(YBCPgStartBufferingWriteOperations());
 }
 
 void YBCFlushBufferedWriteOperations()
 {
-	HandleYBStatus(YBCPgFlushBufferedWriteOperations(ybc_pg_session));
+	HandleYBStatus(YBCPgFlushBufferedWriteOperations());
 }
 
 bool
