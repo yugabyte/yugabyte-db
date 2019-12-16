@@ -86,7 +86,7 @@ Since there is no "primary table" in a colocated DB, we have two options:
 
 Tablet creation requires a Schema and partition range to be specified. In this case, Schema will empty and partition range will be _[-infinity, infinity)_.
 
-Currently, RocksDB files are created in the folder `tserver/data/rocksdb/table-id/tablet-id/`. Since this tablet will have multiple tables, the directory structure will change to `tserver/data/rocksdb/tablet-id/`.
+Currently, RocksDB files are created in the folder `tserver/data/rocksdb/table-<id>/tablet-<id>/`. Since this tablet will have multiple tables, the directory structure will change to `tserver/data/rocksdb/tablet-<id>/`.
 
 #### Create Table
 
