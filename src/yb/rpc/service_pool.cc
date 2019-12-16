@@ -134,6 +134,18 @@ class ServicePoolImpl final : public InboundCallHandler {
         rpcs_queue_overflow_(METRIC_rpcs_queue_overflow.Instantiate(entity)),
         check_timeout_strand_(scheduler->io_service()),
         log_prefix_(Format("$0: ", service_->service_name())) {
+
+          // Create per service counter for rpcs_in_queue_.
+          auto id = Format("rpcs_in_queue_$0", service_->service_name());
+          EscapeMetricNameForPrometheus(&id);
+          string description = id + " metric for ServicePoolImpl";
+          rpcs_in_queue_ = entity->FindOrCreateGauge(
+              std::unique_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
+                  entity->prototype().name(), std::move(id),
+                  description, MetricUnit::kRequests, description)),
+              static_cast<int64>(0) /* initial_value */);
+
+          LOG_WITH_PREFIX(INFO) << "yb::rpc::ServicePoolImpl created at " << this;
   }
 
   ~ServicePoolImpl() {
@@ -378,11 +390,13 @@ class ServicePoolImpl final : public InboundCallHandler {
       return false;
     }
 
+    rpcs_in_queue_->Increment();
     return true;
   }
 
   void CallDequeued() override {
     queued_calls_.fetch_sub(1, std::memory_order_relaxed);
+    rpcs_in_queue_->Decrement();
   }
 
   const size_t max_queued_calls_;
@@ -393,6 +407,7 @@ class ServicePoolImpl final : public InboundCallHandler {
   scoped_refptr<Counter> rpcs_timed_out_in_queue_;
   scoped_refptr<Counter> rpcs_timed_out_early_in_queue_;
   scoped_refptr<Counter> rpcs_queue_overflow_;
+  scoped_refptr<AtomicGauge<int64_t>> rpcs_in_queue_;
   // Have to use CoarseDuration here, since CoarseTimePoint does not work with clang + libstdc++
   std::atomic<CoarseDuration> last_backpressure_at_{CoarseTimePoint().time_since_epoch()};
   std::atomic<int64_t> queued_calls_{0};

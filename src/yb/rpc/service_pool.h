@@ -48,6 +48,9 @@
 
 namespace yb {
 
+template<class T>
+class AtomicGauge;
+
 class Counter;
 class Histogram;
 class MetricEntity;

@@ -283,16 +283,19 @@ void TabletServer::AutoInitServiceFlags() {
 
 Status TabletServer::RegisterServices() {
   tablet_server_service_ = new TabletServiceImpl(this);
+  LOG(INFO) << "yb::tserver::TabletServiceImpl created at " << tablet_server_service_;
   std::unique_ptr<ServiceIf> ts_service(tablet_server_service_);
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_tablet_server_svc_queue_length,
                                                      std::move(ts_service)));
 
   std::unique_ptr<ServiceIf> admin_service(new TabletServiceAdminImpl(this));
+  LOG(INFO) << "yb::tserver::TabletServiceAdminImpl created at " << admin_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_admin_svc_queue_length,
                                                      std::move(admin_service)));
 
   std::unique_ptr<ServiceIf> consensus_service(new ConsensusServiceImpl(metric_entity(),
                                                                         tablet_manager_.get()));
+  LOG(INFO) << "yb::tserver::ConsensusServiceImpl created at " << consensus_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_consensus_svc_queue_length,
                                                      std::move(consensus_service),
                                                      rpc::ServicePriority::kHigh));
@@ -301,6 +304,8 @@ Status TabletServer::RegisterServices() {
       std::make_unique<enterprise::RemoteBootstrapServiceImpl>(fs_manager_.get(),
                                                                         tablet_manager_.get(),
                                                                         metric_entity());
+  LOG(INFO) << "yb::tserver::RemoteBootstrapServiceImpl created at " <<
+    remote_bootstrap_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,
                                                      std::move(remote_bootstrap_service)));
   return Status::OK();
