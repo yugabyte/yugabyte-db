@@ -138,6 +138,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/rw_mutex.h"
+#include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
 #include "yb/util/thread_restrictions.h"
@@ -1371,7 +1372,7 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
   CHECK_EQ(table_names_map_.erase({table_namespace_id, table_name}), 1)
       << "Unable to erase table named " << table_name << " from table names map.";
   CHECK_EQ(table_ids_map_checkout->erase(table_id), 1)
-      << "Unable to erase tablet with id " << table_id << " from tablet ids map.";
+      << "Unable to erase table with id " << table_id << " from table ids map.";
 
   return CheckIfNoLongerLeaderAndSetupError(s, resp);
 }
@@ -2489,6 +2490,24 @@ TabletInfo* CatalogManager::CreateTabletInfo(TableInfo* table,
   return tablet;
 }
 
+Status CatalogManager::RemoveTableIdsFromTabletInfo(
+    TabletInfoPtr tablet_info,
+    unordered_set<TableId> tables_to_remove) {
+  auto tablet_lock = tablet_info->LockForWrite();
+
+  google::protobuf::RepeatedPtrField<std::string> new_table_ids;
+  for (const auto& table_id : tablet_lock->data().pb.table_ids()) {
+    if (tables_to_remove.find(table_id) == tables_to_remove.end()) {
+      *new_table_ids.Add() = std::move(table_id);
+    }
+  }
+  tablet_lock->mutable_data()->pb.mutable_table_ids()->Swap(&new_table_ids);
+
+  RETURN_NOT_OK(sys_catalog_->UpdateItem(tablet_info.get(), leader_ready_term_));
+  tablet_lock->Commit();
+  return Status::OK();
+}
+
 Status CatalogManager::FindTable(const TableIdentifierPB& table_identifier,
                                  scoped_refptr<TableInfo> *table_info) {
   SharedLock<LockType> l(lock_);
@@ -2923,7 +2942,7 @@ void CatalogManager::CleanUpDeletedTables() {
         // memory even in DELETED state, for safely loading the respective tablets for them
         //
         // Eventually, for these DELETED tables, we'll want to also remove them from memory.
-        if (l->data().started_deleting() && !l->data().is_deleted()) {
+        if (l->data().is_deleting()) {
           // The current relevant order of operations during a DeleteTable is:
           // 1) Mark the table as DELETING
           // 2) Abort the current table tasks
@@ -2933,7 +2952,7 @@ void CatalogManager::CleanUpDeletedTables() {
           // gotten to point 3, which would add further tasks for the deletes.
           //
           // However, HasTasks is cheaper than AreAllTabletsDeleted...
-          if (table->AreAllTabletsDeleted()) {
+          if (table->AreAllTabletsDeleted() || IsSystemTableUnlocked(*table)) {
             tables_to_delete.push_back(table);
             // TODO(bogdan): uncomment this once we also untangle catalog loader logic.
             // Since we have lock_, this table cannot be in the map AND be DELETED.
@@ -4158,7 +4177,7 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
   TRACE("Locking database");
   auto l = database->LockForWrite();
 
-  // Delete all user tables in the database.
+  // Delete all tables in the database.
   TRACE("Delete all tables in YSQL database");
   RETURN_NOT_OK(DeleteYsqlDBTables(database, resp, rpc));
 
@@ -4186,50 +4205,62 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
   return Status::OK();
 }
 
+// IMPORTANT: If modifying, consider updating DeleteTable(), the singular deletion API.
 Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database,
                                           DeleteNamespaceResponsePB* resp,
                                           rpc::RpcContext* rpc) {
-  vector<pair<scoped_refptr<TableInfo>, unique_ptr<TableInfo::lock_type>>> user_tables;
-  vector<scoped_refptr<TableInfo>> sys_tables;
+  TabletInfoPtr sys_tablet_info;
+  vector<pair<scoped_refptr<TableInfo>, unique_ptr<TableInfo::lock_type>>> tables;
+  unordered_set<TableId> sys_table_ids;
   {
     // Lock the catalog to iterate over table_ids_map_.
     SharedLock<LockType> catalog_lock(lock_);
 
-    // Delete tablets for each of user tables.
+    sys_tablet_info = tablet_map_->find(kSysCatalogTabletId)->second;
+
+    // Populate tables and sys_table_ids.
     for (const TableInfoMap::value_type& entry : *table_ids_map_) {
       scoped_refptr<TableInfo> table = entry.second;
       auto l = table->LockForWrite();
       if (l->data().namespace_id() != database->id() || l->data().started_deleting()) {
         continue;
       }
+      DSCHECK(!l->data().pb.is_pg_shared_table(), Corruption, "Shared table found in database");
 
       if (IsSystemTableUnlocked(*table)) {
-        sys_tables.push_back(table);
+        sys_table_ids.insert(table->id());
+      }
+
+      // For regular (indexed) table, insert table info and lock in the front of the list. Else for
+      // index table, append them to the end. We do so so that we will commit and delete the indexed
+      // table first before its indexes.
+      if (PROTO_IS_TABLE(l->data().pb)) {
+        tables.insert(tables.begin(), {table, std::move(l)});
       } else {
-        // For regular (indexed) table, insert table info and lock in the front of the list. Else
-        // for index table, append them to the end. We do so so that we will commit and delete the
-        // indexed table first before its indexes.
-        if (PROTO_IS_TABLE(l->data().pb)) {
-          user_tables.insert(user_tables.begin(), {table, std::move(l)});
-        } else {
-          user_tables.push_back({table, std::move(l)});
-        }
+        tables.push_back({table, std::move(l)});
       }
     }
   }
   // Remove the system tables from RAFT.
   TRACE("Sending system table delete RPCs");
-  for (auto &table : sys_tables) {
-    RETURN_NOT_OK(sys_catalog_->DeleteYsqlSystemTable(table->id()));
+  for (auto &table_id : sys_table_ids) {
+    RETURN_NOT_OK(sys_catalog_->DeleteYsqlSystemTable(table_id));
   }
-  // Delete all tablets of user tables in the database as 1 batch RPC call.
+  // Remove the system tables from the system catalog TabletInfo.
+  RETURN_NOT_OK(RemoveTableIdsFromTabletInfo(sys_tablet_info, sys_table_ids));
+  // Set all table states to DELETING as one batch RPC call.
   TRACE("Sending delete table batch RPC to sys catalog");
-  vector<TableInfo *> user_tables_rpc;
-  user_tables_rpc.reserve(user_tables.size());
-  for (auto &tbl : user_tables) {
-    user_tables_rpc.push_back(tbl.first.get());
+  vector<TableInfo *> tables_rpc;
+  tables_rpc.reserve(tables.size());
+  for (auto &table_and_lock : tables) {
+    tables_rpc.push_back(table_and_lock.first.get());
+    auto &l = table_and_lock.second;
+    // Mark the table state as DELETING tablets.
+    l->mutable_data()->set_state(SysTablesEntryPB::DELETING,
+        Substitute("Started deleting at $0", LocalTimeAsString()));
   }
-  Status s = sys_catalog_->UpdateItems(user_tables_rpc, leader_ready_term_);
+  // Update all the table states in raft in bulk.
+  Status s = sys_catalog_->UpdateItems(tables_rpc, leader_ready_term_);
   if (!s.ok()) {
     // The mutation will be aborted when 'l' exits the scope on early return.
     s = s.CloneAndPrepend(Substitute("An error occurred while updating sys tables: $0",
@@ -4237,12 +4268,10 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
     LOG(WARNING) << s.ToString();
     return CheckIfNoLongerLeaderAndSetupError(s, resp);
   }
-  for (auto &table_and_lock : user_tables) {
+  for (auto &table_and_lock : tables) {
     auto &table = table_and_lock.first;
     auto &l = table_and_lock.second;
-    // cancel all table busywork and mark the table state as DELETING tablets.
-    l->mutable_data()->set_state(SysTablesEntryPB::DELETING,
-        Substitute("Started deleting at $0", LocalTimeAsString()));
+    // Cancel all table busywork and commit the DELETING change.
     l->Commit();
     table->AbortTasks();
   }
@@ -4250,14 +4279,14 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
   // Batch remove all CDC streams subscribed to the newly DELETING tables.
   TRACE("Deleting CDC streams on table");
   vector<TableId> id_list;
-  id_list.reserve(user_tables.size());
-  for (auto &table_and_lock : user_tables) {
+  id_list.reserve(tables.size());
+  for (auto &table_and_lock : tables) {
     id_list.push_back(table_and_lock.first->id());
   }
   RETURN_NOT_OK(DeleteCDCStreamsForTables(id_list));
 
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
-  for (auto &table_and_lock : user_tables) {
+  for (auto &table_and_lock : tables) {
     auto &table = table_and_lock.first;
     DeleteTabletsAndSendRequests(table);
   }
@@ -5088,6 +5117,14 @@ void CatalogManager::DeleteTabletReplicas(
 }
 
 void CatalogManager::DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>& table) {
+  // Do not delete the system catalog tablet.
+  {
+    SharedLock<LockType> catalog_lock(lock_);
+    if (IsSystemTableUnlocked(*table)) {
+      return;
+    }
+  }
+
   vector<scoped_refptr<TabletInfo>> tablets;
   table->GetAllTablets(&tablets);
 
@@ -5226,6 +5263,21 @@ void CatalogManager::ExtractTabletsToProcess(
     // Tablets not yet assigned or with a report just received.
     tablets_to_process->push_back(tablet);
   }
+}
+
+bool CatalogManager::AreTablesDeleting() {
+  SharedLock<LockType> catalog_lock(lock_);
+
+  for (const TableInfoMap::value_type& entry : *table_ids_map_) {
+    scoped_refptr<TableInfo> table(entry.second);
+    auto table_lock = table->LockForRead();
+    // TODO(jason): possibly change this to started_deleting when we begin removing DELETED tables
+    // from table_ids_map_ (see CleanUpDeletedTables).
+    if (table_lock->data().is_deleting()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 struct DeferredAssignmentActions {

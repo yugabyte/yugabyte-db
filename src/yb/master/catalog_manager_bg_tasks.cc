@@ -142,7 +142,7 @@ void CatalogManagerBgTasks::Run() {
         catalog_manager_->load_balance_policy_->RunLoadBalancer();
       }
 
-      if (!to_delete.empty()) {
+      if (!to_delete.empty() || catalog_manager_->AreTablesDeleting()) {
         catalog_manager_->CleanUpDeletedTables();
       }
     }
