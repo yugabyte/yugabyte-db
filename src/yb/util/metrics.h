@@ -1403,6 +1403,9 @@ class OwningGaugePrototype : public OwningMetricCtorArgs, public GaugePrototype<
             flags)) {}
 };
 
+// Replace specific chars with underscore to pass PrometheusNameRegex().
+void EscapeMetricNameForPrometheus(std::string *id);
+
 } // namespace yb
 
 #endif // YB_UTIL_METRICS_H
