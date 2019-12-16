@@ -17,9 +17,9 @@ export default class EditProviderForm extends Component {
     this.props.switchToResultView();
   }
 
-  componentWillReceiveProps(nextProps) {
-    const {editProvider} = nextProps;
-    if (isNonEmptyObject(editProvider) && getPromiseState(editProvider).isSuccess() && getPromiseState(this.props.editProvider).isLoading()) {
+  componentDidUpdate(prevProps) {
+    const { editProvider } = this.props;
+    if (isNonEmptyObject(editProvider) && getPromiseState(editProvider).isSuccess() && getPromiseState(prevProps.editProvider).isLoading()) {
       this.props.reloadCloudMetadata();
       this.props.switchToResultView();
     }

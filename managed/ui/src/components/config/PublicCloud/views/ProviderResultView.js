@@ -37,8 +37,8 @@ class ProviderResultView extends Component {
     }
   };
 
-  componentWillReceiveProps(nextProps) {
-    if (nextProps.refreshSucceeded === true && this.props.refreshSucceeded === false) {
+  componentDidUpdate(prevProps) {
+    if (this.props.refreshSucceeded === true && prevProps.refreshSucceeded === false) {
       this.setState({refreshing: false});
     }
   };

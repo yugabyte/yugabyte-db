@@ -51,7 +51,7 @@ export default class Importer extends Component {
     }
   }
 
-  componentWillMount() {
+  componentDidMount() {
     const { universeImport } = this.props;
     // repopulate form if it was not finished
     if (isNonEmptyObject(universeImport.data)) {
@@ -66,8 +66,8 @@ export default class Importer extends Component {
     }
   }
 
-  componentWillReceiveProps(nextProps) {
-    const { universeImport } = nextProps;
+  componentDidUpdate(prevProps) {
+    const { universeImport } = this.props;
 
     const importChecksSource  = getPromiseState(universeImport).isError() || (universeImport.data.state !== this.state.currentState && getPromiseState(universeImport).isSuccess())
       ? getPromiseState(universeImport).isSuccess() ? universeImport.data : universeImport.error

@@ -17,10 +17,10 @@ export default class UniverseRegionLocationPanel extends Component {
     this.setState({selectedProviders: selectedProviders.map(provider => provider.code)});
   };
 
-  componentWillReceiveProps(nextProps) {
-    if (isNonEmptyArray(nextProps.cloud.providers.data) && (nextProps.cloud.providers !== this.props.cloud.providers
+  componentDidUpdate(prevProps) {
+    if (isNonEmptyArray(this.props.cloud.providers.data) && (prevProps.cloud.providers !== this.props.cloud.providers
         || isEmptyArray(this.state.selectedProviders))) {
-      this.setState({selectedProviders: nextProps.cloud.providers.data.map(provider => provider.code)});
+      this.setState({selectedProviders: this.props.cloud.providers.data.map(provider => provider.code)});
     }
   }
 

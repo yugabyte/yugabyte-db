@@ -37,12 +37,11 @@ export default class TaskProgress extends Component {
     this.props.resetTaskProgress();
   }
 
-  componentWillReceiveProps(nextProps) {
-    if (this.props.taskProgressData !== nextProps.taskProgressData &&
-          !getPromiseState(nextProps.taskProgressData).isLoading()) {
+  componentDidUpdate(prevProps) {
+    if (this.props.taskProgressData !== prevProps.taskProgressData && !getPromiseState(this.props.taskProgressData).isLoading()) {
       clearTimeout(this.timeout);
-      const { taskProgressData: { data }} = nextProps;
-      if (data.status === "Success" && this.props.onTaskSuccess) {
+      const { taskProgressData: { data }, onTaskSuccess} = this.props;
+      if (data.status === "Success" && onTaskSuccess) {
         this.props.onTaskSuccess();
       }
         // Check to make sure if the current state is running

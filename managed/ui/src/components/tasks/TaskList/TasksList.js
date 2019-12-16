@@ -6,7 +6,7 @@ import { showOrRedirect } from 'utils/LayoutUtils';
 
 export default class TasksList extends Component {
 
-  componentWillMount() {
+  componentDidMount() {
     this.props.fetchCustomerTasks();
   }
 

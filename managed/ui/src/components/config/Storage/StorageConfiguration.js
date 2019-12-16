@@ -92,12 +92,12 @@ class StorageConfiguration extends Component {
     this.props.showDeleteStorageConfig(configName);
   }
 
-  componentWillMount() {
+  componentDidMount() {
     this.props.fetchCustomerConfigs();
   }
 
-  componentWillReceiveProps(nextProps) {
-    const { addConfig, deleteConfig } = nextProps;
+  componentDidUpdate(prevProps) {
+    const { addConfig, deleteConfig } = this.props;
     if (getPromiseState(addConfig).isLoading()) {
       this.props.fetchCustomerConfigs();
     } else if (getPromiseState(deleteConfig).isLoading()) {

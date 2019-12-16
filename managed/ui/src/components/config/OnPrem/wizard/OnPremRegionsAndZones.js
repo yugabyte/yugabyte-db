@@ -7,7 +7,7 @@ import { YBInputField, YBButton, YBSelect } from '../../../common/forms/fields';
 import { isDefinedNotNull } from 'utils/ObjectUtils';
 
 class OnPremListRegionsAndZones extends Component {
-  componentWillMount() {
+  componentDidMount() {
     const {fields} = this.props;
     if (fields.length === 0) {
       this.props.fields.push({});

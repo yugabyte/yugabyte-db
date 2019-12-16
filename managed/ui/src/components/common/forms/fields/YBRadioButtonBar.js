@@ -12,7 +12,7 @@ export default class YBRadioButtonBar extends Component {
     super(props);
     this.state = {fieldValue: 0};
   }
-  componentWillMount() {
+  componentDidMount() {
     this.setState({fieldValue: this.props.initialValue});
   }
 
@@ -61,7 +61,7 @@ export class YBRadioButtonBarDefault extends Component {
     super(props);
     this.state = {fieldValue: 0};
   }
-  componentWillMount() {
+  componentDidMount() {
     this.setState({fieldValue: this.props.initialValue});
   }
 

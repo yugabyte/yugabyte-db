@@ -12,7 +12,7 @@ export class YBTextInput extends Component {
     isReadOnly: false
   };
 
-  componentWillMount() {
+  componentDidMount() {
     const { initValue } = this.props;
     if (isDefinedNotNull(initValue)) this.props.input.onChange(initValue);
   }

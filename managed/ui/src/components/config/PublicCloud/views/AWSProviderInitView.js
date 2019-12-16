@@ -48,14 +48,14 @@ class AZInput extends Component {
 
 class renderAZMappingForm extends Component {
 
-  componentWillMount() {
+  componentDidMount() {
     if (this.props.fields.length === 0) {
       this.props.fields.push({});
     }
   }
-  componentWillReceiveProps(nextProps) {
+  componentDidUpdate(prevProps) {
     const { zones } = this.props;
-    if (!_.isEqual(zones, nextProps.zones)) {
+    if (!_.isEqual(zones, prevProps.zones)) {
       this.props.fields.removeAll();
       this.props.fields.push({});
     }
