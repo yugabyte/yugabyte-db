@@ -35,8 +35,6 @@
 
 #include "utils/resowner.h"
 
-extern YBCPgSession ybc_pg_session;
-
 /*
  * Version of the catalog entries in the relcache and catcache.
  * We (only) rely on a following invariant: If the catalog cache version here is
@@ -55,13 +53,13 @@ extern YBCPgSession ybc_pg_session;
  * TODO: Improve cache versioning and refresh logic to be more fine-grained to
  * reduce frequency and/or duration of cache refreshes.
  */
-extern uint64 yb_catalog_cache_version;
+extern uint64_t yb_catalog_cache_version;
 
 #define YB_CATCACHE_VERSION_UNINITIALIZED (0)
 
 /*
  * Checks whether YugaByte functionality is enabled within PostgreSQL.
- * This relies on ybc_pg_session being non-NULL, so probably should not be used
+ * This relies on pgapi being non-NULL, so probably should not be used
  * in postmaster (which does not need to talk to YB backend) or early
  * in backend process initialization. In those cases the
  * YBIsEnabledInPostgresEnvVar function might be more appropriate.

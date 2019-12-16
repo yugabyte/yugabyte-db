@@ -110,7 +110,7 @@ static void ybcLoadTableInfo(Relation relation, YbScanPlan scan_plan)
 	Oid            relid          = RelationGetRelid(relation);
 	YBCPgTableDesc ybc_table_desc = NULL;
 
-	HandleYBStatus(YBCPgGetTableDesc(ybc_pg_session, dboid, relid, &ybc_table_desc));
+	HandleYBStatus(YBCPgGetTableDesc(dboid, relid, &ybc_table_desc));
 
 	for (AttrNumber attnum = 1; attnum <= relation->rd_att->natts; attnum++)
 	{
@@ -595,8 +595,7 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
 	bool	useIndex = (index && !index->rd_index->indisprimary);
 	Oid		index_id = useIndex ? RelationGetRelid(index) : InvalidOid;
 
-	HandleYBStatus(YBCPgNewSelect(ybc_pg_session, dboid, relid, index_id,
-	                              &ybScan->handle));
+	HandleYBStatus(YBCPgNewSelect(dboid, relid, index_id, &ybScan->handle));
 	ResourceOwnerEnlargeYugaByteStmts(CurrentResourceOwner);
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybScan->handle);
 	ybScan->stmt_owner = CurrentResourceOwner;
@@ -1362,8 +1361,7 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	YBCPgStatement ybc_stmt;
 	TupleDesc      tupdesc = RelationGetDescr(relation);
 
-	HandleYBStatus(YBCPgNewSelect(ybc_pg_session,
-								  YBCGetDatabaseOid(relation),
+	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
 								  RelationGetRelid(relation),
 								  InvalidOid,
 								  &ybc_stmt));

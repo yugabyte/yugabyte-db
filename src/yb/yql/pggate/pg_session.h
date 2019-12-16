@@ -147,8 +147,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                                       uint64_t* read_time);
 
   CHECKED_STATUS PgFlushAsync(StatusFunctor callback, const client::YBSessionPtr& yb_session);
-  CHECKED_STATUS RestartTransaction();
-  bool HasAppliedOperations() const;
 
   // Return the number of errors which are pending.
   int CountPendingErrors() const;
@@ -194,13 +192,11 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   }
 
   // Check if initdb has already been run before. Needed to make initdb idempotent.
-  CHECKED_STATUS IsInitDbDone(bool* initdb_done);
+  Result<bool> IsInitDbDone();
 
   // Returns the local tserver's catalog version stored in shared memory, or an error if
   // the shared memory has not been initialized (e.g. in initdb).
   Result<uint64_t> GetSharedCatalogVersion();
-
-  PgTxnManager* pg_txn_manager() { return pg_txn_manager_.get(); }
 
  private:
   // Returns the appropriate session to use, in most cases the one used by the current transaction.

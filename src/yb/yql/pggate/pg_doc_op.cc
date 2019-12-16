@@ -13,6 +13,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pg_doc_op.h"
+#include "yb/yql/pggate/pg_txn_manager.h"
 
 #include <boost/algorithm/string.hpp>
 

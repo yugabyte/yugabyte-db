@@ -1853,10 +1853,10 @@ YBStartTransaction(TransactionState s)
 
 	if (YBTransactionsEnabled())
 	{
-		YBCPgTxnManager_BeginTransaction(YBCGetPgTxnManager());
-		YBCPgTxnManager_SetIsolationLevel(YBCGetPgTxnManager(), XactIsoLevel);
-		YBCPgTxnManager_SetReadOnly(YBCGetPgTxnManager(), XactReadOnly);
-		YBCPgTxnManager_SetDeferrable(YBCGetPgTxnManager(), XactDeferrable);
+		YBCPgBeginTransaction();
+		YBCPgSetTransactionIsolationLevel(XactIsoLevel);
+		YBCPgSetTransactionReadOnly(XactReadOnly);
+		YBCPgSetTransactionDeferrable(XactDeferrable);
 	}
 }
 
@@ -2722,7 +2722,7 @@ AbortTransaction(void)
 	}
 
 	if (YBTransactionsEnabled()) {
-		YBCPgTxnManager_AbortTransaction(YBCGetPgTxnManager());
+		YBCPgAbortTransaction();
 	}
 
 	/*

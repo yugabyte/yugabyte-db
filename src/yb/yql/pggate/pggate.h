@@ -74,32 +74,25 @@ class PgApiImpl {
 
   // Initialize a session to process statements that come from the same client connection.
   // If database_name is empty, a session is created without connecting to any database.
-  CHECKED_STATUS CreateSession(const PgEnv *pg_env,
-                               const string& database_name,
-                               PgSession **pg_session);
-  CHECKED_STATUS DestroySession(PgSession *pg_session);
+  CHECKED_STATUS InitSession(const PgEnv *pg_env, const string& database_name);
 
   // Invalidate the sessions table cache.
-  CHECKED_STATUS InvalidateCache(PgSession *pg_session);
+  CHECKED_STATUS InvalidateCache();
 
-  // Read session.
-  PgSession::ScopedRefPtr GetSession(PgSession *handle);
+  Result<bool> IsInitDbDone();
 
-  // Read statement.
-  PgStatement::ScopedRefPtr GetStatement(PgStatement *handle);
+  Result<uint64_t> GetSharedCatalogVersion();
 
   // Setup the table to store sequences data.
-  CHECKED_STATUS CreateSequencesDataTable(PgSession *pg_session);
+  CHECKED_STATUS CreateSequencesDataTable();
 
-  CHECKED_STATUS InsertSequenceTuple(PgSession *pg_session,
-                                     int64_t db_oid,
+  CHECKED_STATUS InsertSequenceTuple(int64_t db_oid,
                                      int64_t seq_oid,
                                      uint64_t ysql_catalog_version,
                                      int64_t last_val,
                                      bool is_called);
 
-  CHECKED_STATUS UpdateSequenceTupleConditionally(PgSession *pg_session,
-                                                  int64_t db_oid,
+  CHECKED_STATUS UpdateSequenceTupleConditionally(int64_t db_oid,
                                                   int64_t seq_oid,
                                                   uint64_t ysql_catalog_version,
                                                   int64_t last_val,
@@ -108,22 +101,20 @@ class PgApiImpl {
                                                   bool expected_is_called,
                                                   bool *skipped);
 
-  CHECKED_STATUS UpdateSequenceTuple(PgSession *pg_session,
-                                     int64_t db_oid,
+  CHECKED_STATUS UpdateSequenceTuple(int64_t db_oid,
                                      int64_t seq_oid,
                                      uint64_t ysql_catalog_version,
                                      int64_t last_val,
                                      bool is_called,
                                      bool* skipped);
 
-  CHECKED_STATUS ReadSequenceTuple(PgSession *pg_session,
-                                   int64_t db_oid,
+  CHECKED_STATUS ReadSequenceTuple(int64_t db_oid,
                                    int64_t seq_oid,
                                    uint64_t ysql_catalog_version,
                                    int64_t *last_val,
                                    bool *is_called);
 
-  CHECKED_STATUS DeleteSequenceTuple(PgSession *pg_session, int64_t db_oid, int64_t seq_oid);
+  CHECKED_STATUS DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
 
   // Delete statement.
   CHECKED_STATUS DeleteStatement(PgStatement *handle);
@@ -136,11 +127,10 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Connect database. Switch the connected database to the given "database_name".
-  CHECKED_STATUS ConnectDatabase(PgSession *pg_session, const char *database_name);
+  CHECKED_STATUS ConnectDatabase(const char *database_name);
 
   // Create database.
-  CHECKED_STATUS NewCreateDatabase(PgSession *pg_session,
-                                   const char *database_name,
+  CHECKED_STATUS NewCreateDatabase(const char *database_name,
                                    PgOid database_oid,
                                    PgOid source_database_oid,
                                    PgOid next_oid,
@@ -148,34 +138,30 @@ class PgApiImpl {
   CHECKED_STATUS ExecCreateDatabase(PgStatement *handle);
 
   // Drop database.
-  CHECKED_STATUS NewDropDatabase(PgSession *pg_session,
-                                 const char *database_name,
+  CHECKED_STATUS NewDropDatabase(const char *database_name,
                                  PgOid database_oid,
                                  PgStatement **handle);
   CHECKED_STATUS ExecDropDatabase(PgStatement *handle);
 
   // Alter database.
-  CHECKED_STATUS NewAlterDatabase(PgSession *pg_session,
-                                 const char *database_name,
+  CHECKED_STATUS NewAlterDatabase(const char *database_name,
                                  PgOid database_oid,
                                  PgStatement **handle);
   CHECKED_STATUS AlterDatabaseRenameDatabase(PgStatement *handle, const char *newname);
   CHECKED_STATUS ExecAlterDatabase(PgStatement *handle);
 
   // Reserve oids.
-  CHECKED_STATUS ReserveOids(PgSession *pg_session,
-                             PgOid database_oid,
+  CHECKED_STATUS ReserveOids(PgOid database_oid,
                              PgOid next_oid,
                              uint32_t count,
                              PgOid *begin_oid,
                              PgOid *end_oid);
 
-  CHECKED_STATUS GetCatalogMasterVersion(PgSession *pg_session, uint64_t *version);
+  CHECKED_STATUS GetCatalogMasterVersion(uint64_t *version);
 
   //------------------------------------------------------------------------------------------------
   // Create, alter and drop table.
-  CHECKED_STATUS NewCreateTable(PgSession *pg_session,
-                                const char *database_name,
+  CHECKED_STATUS NewCreateTable(const char *database_name,
                                 const char *schema_name,
                                 const char *table_name,
                                 const PgObjectId& table_id,
@@ -192,8 +178,7 @@ class PgApiImpl {
 
   CHECKED_STATUS ExecCreateTable(PgStatement *handle);
 
-  CHECKED_STATUS NewAlterTable(PgSession *pg_session,
-                               const PgObjectId& table_id,
+  CHECKED_STATUS NewAlterTable(const PgObjectId& table_id,
                                PgStatement **handle);
 
   CHECKED_STATUS AlterTableAddColumn(PgStatement *handle, const char *name,
@@ -209,21 +194,18 @@ class PgApiImpl {
 
   CHECKED_STATUS ExecAlterTable(PgStatement *handle);
 
-  CHECKED_STATUS NewDropTable(PgSession *pg_session,
-                              const PgObjectId& table_id,
+  CHECKED_STATUS NewDropTable(const PgObjectId& table_id,
                               bool if_exist,
                               PgStatement **handle);
 
   CHECKED_STATUS ExecDropTable(PgStatement *handle);
 
-  CHECKED_STATUS NewTruncateTable(PgSession *pg_session,
-                                  const PgObjectId& table_id,
+  CHECKED_STATUS NewTruncateTable(const PgObjectId& table_id,
                                   PgStatement **handle);
 
   CHECKED_STATUS ExecTruncateTable(PgStatement *handle);
 
-  CHECKED_STATUS GetTableDesc(PgSession *pg_session,
-                              const PgObjectId& table_id,
+  CHECKED_STATUS GetTableDesc(const PgObjectId& table_id,
                               PgTableDesc **handle);
 
   CHECKED_STATUS DeleteTableDesc(PgTableDesc *handle);
@@ -241,8 +223,7 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Create and drop index.
-  CHECKED_STATUS NewCreateIndex(PgSession *pg_session,
-                                const char *database_name,
+  CHECKED_STATUS NewCreateIndex(const char *database_name,
                                 const char *schema_name,
                                 const char *index_name,
                                 const PgObjectId& index_id,
@@ -258,8 +239,7 @@ class PgApiImpl {
 
   CHECKED_STATUS ExecCreateIndex(PgStatement *handle);
 
-  CHECKED_STATUS NewDropIndex(PgSession *pg_session,
-                              const PgObjectId& index_id,
+  CHECKED_STATUS NewDropIndex(const PgObjectId& index_id,
                               bool if_exist,
                               PgStatement **handle);
 
@@ -325,13 +305,12 @@ class PgApiImpl {
   //   - API for "group_by_expr"
 
   // Buffer write operations.
-  CHECKED_STATUS StartBufferingWriteOperations(PgSession *pg_session);
-  CHECKED_STATUS FlushBufferedWriteOperations(PgSession *pg_session);
+  CHECKED_STATUS StartBufferingWriteOperations();
+  CHECKED_STATUS FlushBufferedWriteOperations();
 
   //------------------------------------------------------------------------------------------------
   // Insert.
-  CHECKED_STATUS NewInsert(PgSession *pg_session,
-                           const PgObjectId &table_id,
+  CHECKED_STATUS NewInsert(const PgObjectId& table_id,
                            bool is_single_row_txn,
                            PgStatement **handle);
 
@@ -339,8 +318,7 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Update.
-  CHECKED_STATUS NewUpdate(PgSession *pg_session,
-                           const PgObjectId& table_id,
+  CHECKED_STATUS NewUpdate(const PgObjectId& table_id,
                            bool is_single_row_txn,
                            PgStatement **handle);
 
@@ -348,8 +326,7 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Delete.
-  CHECKED_STATUS NewDelete(PgSession *pg_session,
-                           const PgObjectId& table_id,
+  CHECKED_STATUS NewDelete(const PgObjectId& table_id,
                            bool is_single_row_txn,
                            PgStatement **handle);
 
@@ -357,11 +334,9 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Select.
-  CHECKED_STATUS NewSelect(
-      PgSession *pg_session,
-      const PgObjectId& table_id,
-      const PgObjectId& index_id,
-      PgStatement **handle);
+  CHECKED_STATUS NewSelect(const PgObjectId& table_id,
+                           const PgObjectId& index_id,
+                           PgStatement **handle);
 
   CHECKED_STATUS SetForwardScan(PgStatement *handle, bool is_forward_scan);
 
@@ -438,6 +413,8 @@ class PgApiImpl {
 
   // Mapping table of YugaByte and PostgreSQL datatypes.
   std::unordered_map<int, const YBCPgTypeEntity *> type_map_;
+
+  scoped_refptr<PgSession> pg_session_;
 };
 
 }  // namespace pggate

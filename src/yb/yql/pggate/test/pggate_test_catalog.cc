@@ -35,7 +35,7 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // Create table in the connected database.
   int col_count = 0;
-  CHECK_YBC_STATUS(YBCPgNewCreateTable(pg_session_, kDefaultDatabase, "pg_catalog", tabname,
+  CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, "pg_catalog", tabname,
                                        kDefaultDatabaseOid, tab_oid,
                                        false /* is_shared_table */, true /* if_not_exist */,
                                        false /* add_primary_key */, &pg_stmt));
@@ -57,7 +57,7 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
-  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, kDefaultDatabaseOid, tab_oid,
+  CHECK_YBC_STATUS(YBCPgNewInsert(kDefaultDatabaseOid, tab_oid,
                                   false /* is_single_row_txn */, &pg_stmt));
 
   // Allocate constant expressions.
@@ -109,8 +109,7 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid,
-                                  &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, kInvalidOid, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
@@ -178,8 +177,7 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid,
-                                  &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, kInvalidOid, &pg_stmt));
 
   // Specify the selected expressions.
   YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref);
@@ -237,7 +235,7 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // UPDATE ----------------------------------------------------------------------------------------
   // Allocate new update.
-  CHECK_YBC_STATUS(YBCPgNewUpdate(pg_session_, kDefaultDatabaseOid, tab_oid,
+  CHECK_YBC_STATUS(YBCPgNewUpdate(kDefaultDatabaseOid, tab_oid,
                                   false /* is_single_row_txn */, &pg_stmt));
 
   // Allocate constant expressions.
@@ -289,8 +287,7 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid,
-                                  &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, kInvalidOid, &pg_stmt));
 
   // Specify the selected expressions.
   YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref);
@@ -379,7 +376,7 @@ TEST_F(PggateTestCatalog, TestCopydb) {
 
   // Create sys catalog table in default database.
   LOG(INFO) << "Create database with source database";
-  CHECK_YBC_STATUS(YBCPgNewCreateTable(pg_session_, kDefaultDatabase, "pg_catalog", tabname,
+  CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, "pg_catalog", tabname,
                                        kDefaultDatabaseOid, tab_oid,
                                        false /* is_shared_table */, true /* if_not_exist */,
                                        false /* add_primary_key */, &pg_stmt));
@@ -389,7 +386,7 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
 
-  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, kDefaultDatabaseOid, tab_oid,
+  CHECK_YBC_STATUS(YBCPgNewInsert(kDefaultDatabaseOid, tab_oid,
                                   false /* is_single_row_txn */, &pg_stmt));
 
   YBCPgExpr expr_key;
@@ -413,7 +410,7 @@ TEST_F(PggateTestCatalog, TestCopydb) {
 
   // COPYDB ----------------------------------------------------------------------------------------
   LOG(INFO) << "Create another database from default database";
-  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(pg_session_, copy_db_name, copy_db_oid,
+  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(copy_db_name, copy_db_oid,
                                           kDefaultDatabaseOid, kInvalidOid /* next_oid */,
                                           &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
@@ -422,8 +419,7 @@ TEST_F(PggateTestCatalog, TestCopydb) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Select from from test table in the new database";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, copy_db_oid, tab_oid, kInvalidOid,
-                                  &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(copy_db_oid, tab_oid, kInvalidOid, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
@@ -464,7 +460,7 @@ TEST_F(PggateTestCatalog, TestReserveOids) {
   const YBCPgOid db_oid = 101;
   YBCPgStatement pg_stmt;
 
-  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(pg_session_, db_name, db_oid,
+  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(db_name, db_oid,
                                           kInvalidOid /* source_database_oid */,
                                           100 /* next_oid */, &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
@@ -477,7 +473,7 @@ TEST_F(PggateTestCatalog, TestReserveOids) {
   LOG(INFO) << "Reserve oids";
   YBCPgOid begin_oid = 0;
   YBCPgOid end_oid = 0;
-  CHECK_YBC_STATUS(YBCPgReserveOids(pg_session_, db_oid, 50 /* next_oid */, 100 /* count */,
+  CHECK_YBC_STATUS(YBCPgReserveOids(db_oid, 50 /* next_oid */, 100 /* count */,
                                     &begin_oid, &end_oid));
   EXPECT_EQ(begin_oid, 100);
   EXPECT_EQ(end_oid, 200);
