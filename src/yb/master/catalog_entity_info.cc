@@ -474,7 +474,7 @@ std::unordered_set<std::shared_ptr<MonitoredTask>> TableInfo::GetTasks() {
   return pending_tasks_;
 }
 
-void TableInfo::GetAllTablets(vector<scoped_refptr<TabletInfo>> *ret) const {
+void TableInfo::GetAllTablets(TabletInfos *ret) const {
   ret->clear();
   shared_lock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {

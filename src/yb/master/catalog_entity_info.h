@@ -267,6 +267,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntry::TA
     return pb.state() == SysTablesEntryPB::DELETED;
   }
 
+  bool is_deleting() const {
+    return pb.state() == SysTablesEntryPB::DELETING;
+  }
+
   bool is_running() const {
     return pb.state() == SysTablesEntryPB::RUNNING ||
            pb.state() == SysTablesEntryPB::ALTERING;
