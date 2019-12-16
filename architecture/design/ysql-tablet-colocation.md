@@ -139,14 +139,14 @@ We'll need to make the backup / restore scripts work for the entire DB instead o
 ### Postgres system tables bloat
 
 Having a huge number of databases can result in high load on the master since each database will create 200+ postgres system tables.
-We need to test the limit for number of databases that we can create without impacting master and cluster performance.
+We need to test the limit on the number of databases that we can create without impacting master and cluster performance.
 
 ### Master / Tserver UI
 
 No impact on master UI since all views are per table or per tserver.
 
 Tserver UI tables view uses tablet peers to get the table information. Today, it'll only display data for the primary table. We'll need to change this to show all tables in colocated tablet.
-Additionally, the /tables view shows on disk size for every table. This per table size is going to be inaccurate for colocated tablets. We'll need to change this view to reflect data for colocated tablets accurately.
+Additionally, the tables view shows the on disk size for every table. This per table size is going to be inaccurate for colocated tablets. We'll need to change this view to reflect data for colocated tablets accurately.
 
 ### Metrics
 
@@ -154,7 +154,7 @@ TODO
 
 ### Pulling out tables from a colocated tablet
 
-When table(s) grows large, it'll be useful to have the ability to pull the table out of colocated tablet in order to scale. We won't provide an automated way to do this in 2.1. This can be done manually using the following steps:
+When a table grows large, it'll be useful to have the ability to pull the table out of its colocated tablet in order to scale. We won't provide an automated way to do this in 2.1. This can be done manually using the following steps:
 
 1. Create a table with the same schema as the table to be pulled out.
 1. Dump contents of original table using `ysql_dump` or `COPY` command and importing that into the new table.
