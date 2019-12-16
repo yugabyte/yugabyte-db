@@ -74,6 +74,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Schedule;
 
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -516,6 +517,30 @@ public class TablesControllerTest extends WithApplication {
   }
 
   @Test
+  public void testCreateBackupCronExpression() {
+    Customer customer = ModelFactory.testCustomer();
+    Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
+    UUID tableUUID = UUID.randomUUID();
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID +
+        "/tables/" + tableUUID + "/create_backup";
+    ObjectNode bodyJson = Json.newObject();
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(customer);
+    bodyJson.put("keyspace", "foo");
+    bodyJson.put("tableName", "bar");
+    bodyJson.put("actionType", "CREATE");
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("cronExpression", "5 * * * *");
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
+        customer.createAuthToken(), bodyJson);
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    UUID scheduleUUID = UUID.fromString(resultJson.path("scheduleUUID").asText());
+    Schedule schedule = Schedule.get(scheduleUUID);
+    assertNotNull(schedule);
+    assertEquals(schedule.getCronExpression(), "5 * * * *");
+  }
+
+  @Test
   public void testCreateMultiBackup() {
     Customer customer = ModelFactory.testCustomer();
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
@@ -540,6 +565,50 @@ public class TablesControllerTest extends WithApplication {
     assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
     CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertNotNull(ct);
+  }
+
+  @Test
+  public void testCreateMultiBackupScheduleCron() {
+    Customer customer = ModelFactory.testCustomer();
+    Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
+    UUID tableUUID = UUID.randomUUID();
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID +
+        "/multi_table_backup";
+    ObjectNode bodyJson = Json.newObject();
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(customer);
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("cronExpression", "5 * * * *");
+
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
+        customer.createAuthToken(), bodyJson);
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    UUID scheduleUUID = UUID.fromString(resultJson.path("scheduleUUID").asText());
+    Schedule schedule = Schedule.get(scheduleUUID);
+    assertNotNull(schedule);
+    assertEquals(schedule.getCronExpression(), "5 * * * *");
+  }
+
+  @Test
+  public void testCreateMultiBackupScheduleFrequency() {
+    Customer customer = ModelFactory.testCustomer();
+    Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
+    UUID tableUUID = UUID.randomUUID();
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID +
+        "/multi_table_backup";
+    ObjectNode bodyJson = Json.newObject();
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(customer);
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("schedulingFrequency", "6000");
+
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
+        customer.createAuthToken(), bodyJson);
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    UUID scheduleUUID = UUID.fromString(resultJson.path("scheduleUUID").asText());
+    Schedule schedule = Schedule.get(scheduleUUID);
+    assertNotNull(schedule);
+    assertEquals(schedule.getFrequency(), 6000);
   }
 
   @Test
