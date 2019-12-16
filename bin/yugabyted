@@ -15,6 +15,8 @@ import sys
 import time
 import traceback
 import uuid
+import tempfile
+import tarfile
 from datetime import datetime
 from signal import SIGABRT, SIGINT, SIGKILL, SIGTERM, SIG_DFL, SIG_IGN, signal
 from threading import Thread
@@ -281,6 +283,17 @@ class ControlScript(object):
         msg = "Deleted demo database {}.".format(demo_db)
         Output.print_and_log(msg)
 
+    def collect_logs(self):
+        logpath = self.configs.saved_data.get("log_dir")
+        if not os.path.exists(logpath):
+            Output.print_and_log("No logs directory at {}".format(logpath))
+            return
+        tmpprefix = "yugabyted-" + str(datetime.now()).replace(" ", "-")
+        tmppath = tempfile.mkstemp(suffix=".tar.gz", prefix=tmpprefix)[1]
+        with tarfile.open(name=tmppath, mode='w:gz', dereference=True) as archive:
+            archive.add(logpath)
+        Output.print_and_log("Logs are packaged into {}".format(tmppath))
+
     # Checks yb-master and yb-tserver are running. Returns failed processes.
     # TODO: Check postmaster.pid.
     def get_failed_node_processes(self):
@@ -398,7 +411,8 @@ class ControlScript(object):
         if self.configs.temp_data.get("ui"):
             self.processes["yugaware"] = ProcessManager(
                 "yugaware", yw_cmd, self.configs.saved_data.get("log_dir"),
-                self.configs.saved_data.get("data_dir"))
+                self.configs.saved_data.get("data_dir"),
+                os.path.join(YUGABYTE_DIR, "ui", "logs"))
 
         for p in self.processes.values():
             pid = p.get_pid()
@@ -619,6 +633,7 @@ class ControlScript(object):
         Output.log("Initializing play tables...")
         run_process(create_play_table)
         Output.log("Done initializing play tables.")
+
         return True
 
     # Returns if yb-master and yb-tserver were properly initialized before.
@@ -873,7 +888,8 @@ class ControlScript(object):
                 ("stop", "Stop running {}.".format(SCRIPT_NAME)),
                 ("status", "Print status of {}.".format(SCRIPT_NAME)),
                 ("version", "Version of {}.".format(SCRIPT_NAME)),
-                ("demo", "Load and interact with preset demo data.")):
+                ("demo", "Load and interact with preset demo data."),
+                ("collect_logs", "Collect and package logs for troubleshooting.")):
             subparser = subparsers.add_parser(cmd, help=description, parents=[common_parser])
             func = getattr(self, cmd, None)
             subparser.set_defaults(func=func)
@@ -1051,7 +1067,7 @@ class Configs(object):
 
 
 class ProcessManager(object):
-    def __init__(self, name, cmd, log_dir, data_dir):
+    def __init__(self, name, cmd, log_dir, data_dir, process_log_dir=""):
         self.name = name
         self.cmd = cmd
         self.log_dir = log_dir
@@ -1059,6 +1075,7 @@ class ProcessManager(object):
         self.pidfile = os.path.join(self.data_dir, "{}.pid".format(name))
         self.process = None
         self.start_time = None
+        self.process_log_dir = process_log_dir
 
     # Start process. Creates pidfile and corresponding output logs.
     def start(self):
@@ -1070,6 +1087,16 @@ class ProcessManager(object):
                 self.cmd, stdout=out_log, stderr=err_log, preexec_fn=self.set_rlimits)
             self.start_time = time.time()
         self.write_pid(self.process.pid)
+
+        # Add symlink to the logs from log directory.
+        log_path = os.path.join(self.log_dir, self.name)
+        if self.process_log_dir and not os.path.exists(log_path):
+            try:
+                os.symlink(self.process_log_dir, log_path)
+            except OSError as e:
+                Output.log(
+                    "Failed to create symlink from {} to {}".format(self.process_log_dir, log_path),
+                    logging.ERROR)
 
     # Records given pid in pidfile.
     # TODO: Redirect YW logs to yugabyte-logs
@@ -1216,9 +1243,9 @@ class ScriptProcessManager(ProcessManager):
 
 class YBProcessManager(ProcessManager):
     def __init__(self, name, cmd, log_dir, data_dir):
-        super(YBProcessManager, self).__init__(name, cmd, log_dir, data_dir)
-        self.data_log_path = "{}/yb-data/{}/logs".format(data_dir, self.name)
-        self.error_log = "{}/yb-{}.ERROR".format(self.data_log_path, self.name)
+        data_log_path = "{}/yb-data/{}/logs".format(data_dir, name)
+        super(YBProcessManager, self).__init__(name, cmd, log_dir, data_dir, data_log_path)
+        self.error_log = "{}/yb-{}.ERROR".format(data_log_path, name)
 
 
     def start(self):
@@ -1226,16 +1253,6 @@ class YBProcessManager(ProcessManager):
         self.remove_error_logs()
 
         super(YBProcessManager, self).start()
-
-        # Add symlink to the logs from log directory.
-        log_path = os.path.join(self.log_dir, self.name)
-        if not os.path.islink(log_path):
-            try:
-                os.symlink(self.data_log_path, log_path)
-            except OSError as e:
-                Output.log(
-                    "Failed to create symlink from {} to {}".format(self.data_log_path, log_path),
-                    logging.ERROR)
 
     def remove_error_logs(self):
         if os.path.isfile(self.error_log):
