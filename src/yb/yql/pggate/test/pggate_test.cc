@@ -65,12 +65,6 @@ void PggateTest::SetUp() {
 }
 
 void PggateTest::TearDown() {
-  LOG(INFO) << "pg_session_->HasOneRef()=" << pg_session_->HasOneRef();
-  while (!pg_session_->HasOneRef()) {
-    pg_session_->Release();
-  }
-  YBCPgDestroySession(pg_session_);
-
   // Destroy the client before shutting down servers.
   YBCDestroyPgGate();
 
@@ -98,7 +92,7 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   FLAGS_pggate_ignore_tserver_shm = true;
 
   // Setup session.
-  CHECK_YBC_STATUS(YBCPgCreateSession(nullptr, "", &pg_session_));
+  CHECK_YBC_STATUS(YBCPgInitSession(nullptr /* pg_env */, nullptr /* database_name */));
 
   // Setup database
   SetupDB();
@@ -130,18 +124,18 @@ void PggateTest::SetupDB(const string& db_name, const YBCPgOid db_oid) {
 
 void PggateTest::CreateDB(const string& db_name, const YBCPgOid db_oid) {
   YBCPgStatement pg_stmt;
-  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(pg_session_, db_name.c_str(), db_oid,
+  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(db_name.c_str(), db_oid,
                                           0 /* source_database_oid */, 0 /* next_oid */, &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
 }
 
 void PggateTest::ConnectDB(const string& db_name) {
-  CHECK_YBC_STATUS(YBCPgConnectDatabase(pg_session_, db_name.c_str()));
+  CHECK_YBC_STATUS(YBCPgConnectDatabase(db_name.c_str()));
 }
 
 void PggateTest::CommitTransaction() {
-  CHECK_YBC_STATUS(YBCPgTxnManager_CommitTransaction_Status(YBCGetPgTxnManager()));
+  CHECK_YBC_STATUS(YBCPgCommitTransaction());
 }
 
 // ------------------------------------------------------------------------------------------------

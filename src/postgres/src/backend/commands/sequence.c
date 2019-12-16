@@ -222,8 +222,7 @@ DefineSequence(ParseState *pstate, CreateSeqStmt *seq)
 
 	if (IsYugaByteEnabled())
 	{
-		HandleYBStatus(YBCInsertSequenceTuple(ybc_pg_session,
-											  MyDatabaseId,
+		HandleYBStatus(YBCInsertSequenceTuple(MyDatabaseId,
 											  seqoid,
 											  yb_catalog_cache_version,
 											  seqdataform.last_value,
@@ -472,8 +471,7 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 
 	if (IsYugaByteEnabled())
 	{
-		HandleYBStatus(YBCReadSequenceTuple(ybc_pg_session,
-											MyDatabaseId,
+		HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
 											relid,
 											yb_catalog_cache_version,
 											&last_val,
@@ -513,8 +511,7 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 			if (last_val != newdataform->last_value || is_called != newdataform->is_called)
 			{
 				bool skipped = false;
-				HandleYBStatus(YBCUpdateSequenceTuple(ybc_pg_session,
-													  MyDatabaseId,
+				HandleYBStatus(YBCUpdateSequenceTuple(MyDatabaseId,
 													  ObjectIdGetDatum(relid),
 													  yb_catalog_cache_version,
 													  newdataform->last_value /* last_val */,
@@ -587,7 +584,7 @@ DeleteSequenceTuple(Oid relid)
 
 	if (IsYugaByteEnabled())
 	{
-		HandleYBStatus(YBCDeleteSequenceTuple(ybc_pg_session, MyDatabaseId, relid));
+		HandleYBStatus(YBCDeleteSequenceTuple(MyDatabaseId, relid));
 	}
 
 	CatalogTupleDelete(rel, tuple);
@@ -608,8 +605,7 @@ YBReadSequenceTuple(Relation seqrel)
   {
     int64_t last_val;
     bool is_called;
-    HandleYBStatus(YBCReadSequenceTuple(ybc_pg_session,
-                                        MyDatabaseId,
+    HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
                                         relid,
                                         yb_catalog_cache_version,
                                         &last_val,
@@ -760,8 +756,7 @@ retry:
 	{
 		int64_t last_val;
 		bool is_called;
-		HandleYBStatus(YBCReadSequenceTuple(ybc_pg_session,
-											MyDatabaseId,
+		HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
 											relid,
 											yb_catalog_cache_version,
 											&last_val,
@@ -913,8 +908,7 @@ check_bounds:
 		 * update fails, we retry again by reading the last_val and is_called values and going
 		 * through the whole process again.
 		 */
-		HandleYBStatus(YBCUpdateSequenceTupleConditionally(ybc_pg_session,
-														   MyDatabaseId,
+		HandleYBStatus(YBCUpdateSequenceTupleConditionally(MyDatabaseId,
 														   relid,
 														   yb_catalog_cache_version,
 														   last /* last_val */,
@@ -1160,8 +1154,7 @@ do_setval(Oid relid, int64 next, bool iscalled)
 	 */
 	if (IsYugaByteEnabled())
 	{
-    HandleYBStatus(YBCUpdateSequenceTuple(ybc_pg_session,
-                                          MyDatabaseId,
+    HandleYBStatus(YBCUpdateSequenceTuple(MyDatabaseId,
                                           relid,
                                           yb_catalog_cache_version,
                                           next,

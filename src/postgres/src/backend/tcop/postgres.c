@@ -3699,9 +3699,8 @@ static void YBRefreshCache()
 	}
 
 	/* Get the latest syscatalog version from the master */
-	uint64 catalog_master_version = 0;
-	YBCPgGetCatalogMasterVersion(ybc_pg_session,
-	                             (uint64_t *) &catalog_master_version);
+	uint64_t catalog_master_version = 0;
+	YBCPgGetCatalogMasterVersion(&catalog_master_version);
 
 	/* Need to execute some (read) queries internally so start a local txn. */
 	start_xact_command();
@@ -3712,7 +3711,7 @@ static void YBRefreshCache()
 	YBPreloadRelCache();
 
 	/* Also invalidate the pggate cache. */
-	YBCPgInvalidateCache(ybc_pg_session);
+	YBCPgInvalidateCache();
 
 	/* Set the new ysql cache version. */
 	yb_catalog_cache_version = catalog_master_version;
@@ -3744,9 +3743,8 @@ static void YBPrepareCacheRefreshIfNeeded(MemoryContext oldcontext,
 	 * Get the latest syscatalog version from the master to check if we need
 	 * to refresh the cache.
 	 */
-	uint64 catalog_master_version = 0;
-	YBCPgGetCatalogMasterVersion(ybc_pg_session,
-	                             (uint64_t *) &catalog_master_version);
+	uint64_t catalog_master_version = 0;
+	YBCPgGetCatalogMasterVersion(&catalog_master_version);
 	need_cache_refresh = yb_catalog_cache_version != catalog_master_version;
 	if (!need_cache_refresh)
 		return;
@@ -3849,7 +3847,7 @@ static void YBCheckSharedCatalogCacheVersion() {
 		return;
 
 	uint64_t shared_catalog_version;
-	HandleYBStatus(YBCGetSharedCatalogVersion(ybc_pg_session, &shared_catalog_version));
+	HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
 
 	if (yb_catalog_cache_version < shared_catalog_version) {
 		YBRefreshCache();

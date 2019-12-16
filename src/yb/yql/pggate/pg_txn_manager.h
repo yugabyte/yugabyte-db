@@ -13,19 +13,26 @@
 
 // No include guards here because this file is expected to be included multiple times.
 
-#ifdef YBC_CXX_DECLARATION_MODE
+#ifndef YB_YQL_PGGATE_PG_TXN_MANAGER_H_
+#define YB_YQL_PGGATE_PG_TXN_MANAGER_H_
+
 #include <mutex>
 
-#include "yb/gutil/macros.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/transaction_manager.h"
+#include "yb/client/async_initializer.h"
 #include "yb/common/clock.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/tserver/tserver_util_fwd.h"
 #include "yb/util/result.h"
-#endif  // YBC_CXX_DECLARATION_MODE
 
-#ifdef YBC_CXX_DECLARATION_MODE
 namespace yb {
+namespace tserver {
+
+class TabletServerServiceProxy;
+
+} // namespace tserver
+
 namespace pggate {
 
 // These should match XACT_READ_UNCOMMITED, XACT_READ_COMMITED, XACT_REPEATABLE_READ,
@@ -36,29 +43,24 @@ enum class PgIsolationLevel {
   REPEATABLE_READ = 2,
   SERIALIZABLE = 3,
 };
-#endif  // YBC_CXX_DECLARATION_MODE
 
-#define YBC_CURRENT_CLASS PgTxnManager
-
-YBC_CLASS_START_REF_COUNTED_THREAD_SAFE
-
-YBC_VIRTUAL_DESTRUCTOR
-
-YBC_STATUS_METHOD_NO_ARGS(BeginTransaction)
-YBC_STATUS_METHOD_NO_ARGS(RestartTransaction)
-YBC_STATUS_METHOD_NO_ARGS(CommitTransaction)
-YBC_STATUS_METHOD_NO_ARGS(AbortTransaction)
-YBC_STATUS_METHOD(SetIsolationLevel, ((int, isolation)));
-YBC_STATUS_METHOD(SetReadOnly, ((bool, read_only)));
-YBC_STATUS_METHOD(SetDeferrable, ((bool, deferrable)));
-
-YBC_STATUS_METHOD_NO_ARGS(EnterSeparateDdlTxnMode)
-YBC_STATUS_METHOD(ExitSeparateDdlTxnMode, ((bool, success)))
-
-#ifdef YBC_CXX_DECLARATION_MODE
+class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
+ public:
   PgTxnManager(client::AsyncClientInitialiser* async_client_init,
                scoped_refptr<ClockBase> clock,
                const tserver::TServerSharedObject* tserver_shared_object);
+
+  virtual ~PgTxnManager();
+
+  CHECKED_STATUS BeginTransaction();
+  CHECKED_STATUS RestartTransaction();
+  CHECKED_STATUS CommitTransaction();
+  CHECKED_STATUS AbortTransaction();
+  CHECKED_STATUS SetIsolationLevel(int isolation);
+  CHECKED_STATUS SetReadOnly(bool read_only);
+  CHECKED_STATUS SetDeferrable(bool deferrable);
+  CHECKED_STATUS EnterSeparateDdlTxnMode();
+  CHECKED_STATUS ExitSeparateDdlTxnMode(bool success);
 
   // Returns the transactional session, starting a new transaction if necessary.
   yb::Result<client::YBSession*> GetTransactionalSession();
@@ -100,13 +102,8 @@ YBC_STATUS_METHOD(ExitSeparateDdlTxnMode, ((bool, success)))
   std::unique_ptr<tserver::TabletServerServiceProxy> tablet_server_proxy_;
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);
-#endif  // YBC_CXX_DECLARATION_MODE
+};
 
-YBC_CLASS_END
-
-#undef YBC_CURRENT_CLASS
-
-#ifdef YBC_CXX_DECLARATION_MODE
 }  // namespace pggate
 }  // namespace yb
-#endif  // YBC_CXX_DECLARATION_MODE
+#endif // YB_YQL_PGGATE_PG_TXN_MANAGER_H_

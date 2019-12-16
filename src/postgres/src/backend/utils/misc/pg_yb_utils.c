@@ -54,9 +54,7 @@
 
 #include "tcop/utility.h"
 
-YBCPgSession ybc_pg_session = NULL;
-
-uint64 yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
 /** These values are lazily initialized based on corresponding environment variables. */
 int ybc_pg_double_write = -1;
@@ -71,7 +69,7 @@ bool
 IsYugaByteEnabled()
 {
 	/* We do not support Init/Bootstrap processing modes yet. */
-	return ybc_pg_session != NULL;
+	return YBCPgIsYugaByteEnabled();
 }
 
 void
@@ -317,25 +315,13 @@ YBInitPostgresBackend(
 		YBCInitPgGate(type_table, count);
 		YBCInstallTxnDdlHook();
 
-		if (ybc_pg_session != NULL) {
-			YBC_LOG_FATAL("Double initialization of ybc_pg_session");
-		}
 		/*
 		 * For each process, we create one YBC session for PostgreSQL to use
 		 * when accessing YugaByte storage.
 		 *
 		 * TODO: do we really need to DB name / username here?
 		 */
-		if (db_name != NULL)
-		{
-			HandleYBStatus(YBCPgCreateSession(
-				/* pg_env */ NULL, db_name, &ybc_pg_session));
-		}
-		else if (user_name != NULL)
-		{
-			HandleYBStatus(YBCPgCreateSession(
-				/* pg_env */ NULL, user_name, &ybc_pg_session));
-		}
+    HandleYBStatus(YBCPgInitSession(/* pg_env */ NULL, db_name ? db_name : user_name));
 	}
 }
 
@@ -348,11 +334,6 @@ YBOnPostgresBackendShutdown()
 	{
 		return;
 	}
-	if (ybc_pg_session)
-	{
-		YBCPgDestroySession(ybc_pg_session);
-		ybc_pg_session = NULL;
-	}
 	YBCDestroyPgGate();
 	shutdown_done = true;
 }
@@ -362,7 +343,7 @@ YBCRestartTransaction()
 {
 	if (!IsYugaByteEnabled())
 		return;
-	HandleYBStatus(YBCPgTxnManager_RestartTransaction_Status(YBCGetPgTxnManager()));
+	HandleYBStatus(YBCPgRestartTransaction());
 }
 
 static void
@@ -381,8 +362,7 @@ YBCCommitTransaction()
 	if (!IsYugaByteEnabled())
 		return true;
 
-	YBCStatus status =
-		YBCPgTxnManager_CommitTransaction_Status(YBCGetPgTxnManager());
+	YBCStatus status = YBCPgCommitTransaction();
 	if (status != NULL) {
 		YBCResetCommitStatus();
 		ybc_commit_status = status;
@@ -732,7 +712,7 @@ bool
 YBIsInitDbAlreadyDone()
 {
 	bool done = false;
-	HandleYBStatus(YBCPgIsInitDbDone(ybc_pg_session, &done));
+	HandleYBStatus(YBCPgIsInitDbDone(&done));
 	return done;
 }
 
@@ -745,7 +725,7 @@ static int ddl_nesting_level = 0;
 
 static void YBIncrementDdlNestingLevel() {
 	if (ddl_nesting_level == 0) {
-		YBCPgTxnManager_EnterSeparateDdlTxnMode(YBCGetPgTxnManager());
+		YBCPgEnterSeparateDdlTxnMode();
 	}
 	ddl_nesting_level++;
 }
@@ -753,7 +733,7 @@ static void YBIncrementDdlNestingLevel() {
 static void YBDecrementDdlNestingLevel(bool success) {
 	ddl_nesting_level--;
 	if (ddl_nesting_level == 0) {
-		YBCPgTxnManager_ExitSeparateDdlTxnMode(YBCGetPgTxnManager(), success);
+		YBCPgExitSeparateDdlTxnMode(success);
 	}
 }
 

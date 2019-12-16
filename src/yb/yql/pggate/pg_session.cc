@@ -20,6 +20,7 @@
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pggate_if_cxx_decl.h"
+#include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 #include "yb/client/batcher.h"
@@ -585,10 +586,6 @@ Status PgSession::PgFlushAsync(StatusFunctor callback, const client::YBSessionPt
   return Status::OK();
 }
 
-Status PgSession::RestartTransaction() {
-  return pg_txn_manager_->RestartTransaction();
-}
-
 Result<client::YBSession*> PgSession::GetSessionForOp(
     const std::shared_ptr<client::YBPgsqlOp>& op) {
   return GetSession(
@@ -666,11 +663,10 @@ std::vector<std::unique_ptr<client::YBError>> PgSession::GetPendingErrors() {
   return session_->GetPendingErrors();
 }
 
-Status PgSession::IsInitDbDone(bool* initdb_done) {
+Result<bool> PgSession::IsInitDbDone() {
   HostPort master_leader_host_port = client_->GetMasterLeaderAddress();
   auto proxy  = std::make_shared<MasterServiceProxy>(
       &client_->proxy_cache(), master_leader_host_port);
-  *initdb_done = false;
   rpc::RpcController rpc;
   IsInitDbDoneRequestPB req;
   IsInitDbDoneResponsePB resp;
@@ -687,8 +683,7 @@ Status PgSession::IsInitDbDone(bool* initdb_done) {
   VLOG(1) << "IsInitDbDone response: " << resp.ShortDebugString();
   // We return true if initdb finished running, as well as if we know that it created the first
   // table (pg_proc) to make initdb idempotent on upgrades.
-  *initdb_done = resp.done() || resp.pg_proc_exists();
-  return Status::OK();
+  return resp.done() || resp.pg_proc_exists();
 }
 
 Result<uint64_t> PgSession::GetSharedCatalogVersion() {

@@ -2370,8 +2370,7 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 			YBCPgTableDesc ybc_tabledesc = NULL;
 			bool is_primary = false;
 			bool is_hash = false;
-			HandleYBStatus(YBCPgGetTableDesc(ybc_pg_session,
-											 YBCGetDatabaseOid(pstate->p_target_relation),
+			HandleYBStatus(YBCPgGetTableDesc(YBCGetDatabaseOid(pstate->p_target_relation),
 											 RelationGetRelid(pstate->p_target_relation),
 											 &ybc_tabledesc));
 			HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_tabledesc,

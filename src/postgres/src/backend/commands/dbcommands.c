@@ -1128,7 +1128,7 @@ RenameDatabase(const char *oldname, const char *newname)
 
 	if (IsYugaByteEnabled()) {
 		YBCPgStatement handle = NULL;
-		HandleYBStatus(YBCPgNewAlterDatabase(ybc_pg_session, oldname, db_id, &handle));
+		HandleYBStatus(YBCPgNewAlterDatabase(oldname, db_id, &handle));
 		HandleYBStmtStatus(YBCPgAlterDatabaseRenameDatabase(handle, newname), handle);
 		HandleYBStmtStatus(YBCPgExecAlterDatabase(handle), handle);
 		HandleYBStatus(YBCPgDeleteStatement(handle));
