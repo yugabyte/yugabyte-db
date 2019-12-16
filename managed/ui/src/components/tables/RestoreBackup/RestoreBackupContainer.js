@@ -31,7 +31,13 @@ function mapStateToProps(state, ownProps) {
     const { backupInfo : {
       storageConfigUUID, storageLocation, universeUUID, keyspace, tableName }
     } = ownProps;
+
+    /* AC: Careful! This sets the default of the Select but the return value
+     * is a string while the other options, when selected, return an object
+     * with the format { label: <display>, value: <internal> }
+     */
     initialFormValues.restoreToUniverseUUID = universeUUID;
+
     initialFormValues.restoreToTableName = tableName;
     initialFormValues.restoreToKeyspace = keyspace;
     initialFormValues.storageConfigUUID = storageConfigUUID;

@@ -91,10 +91,16 @@ export default class RestoreBackup extends Component {
                 showCancelButton={true}
                 cancelLabel={"Cancel"}
                 onFormSubmit={(values) => {
+                  let restoreToUniverseUUID = values.restoreToUniverseUUID;
+
+                  // Check if not default value
+                  if (typeof restoreToUniverseUUID !== 'string') {
+                    restoreToUniverseUUID = values.restoreToUniverseUUID.value;
+                  }
                   const payload = {
                     ...values,
+                    restoreToUniverseUUID,
                     storageLocation: values.storageLocation.trim(),
-                    restoreToUniverseUUID: values.restoreToUniverseUUID.value,
                     storageConfigUUID: values.storageConfigUUID.value,
                   };
                   this.restoreBackup(payload);
