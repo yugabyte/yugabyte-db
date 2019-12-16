@@ -122,9 +122,9 @@ class ControlScript(object):
     # Starts YugabyteDB node.
     def start(self):
         if self.script.is_running():
-            Output.print_out("YugabyteDB is already running!")
+            Output.print_out("{} is already running!".format(SCRIPT_NAME))
             sys.exit(1)
-        Output.print_and_log("Starting YugabyteDB...")
+        Output.print_and_log("Starting {}...".format(SCRIPT_NAME))
         self.set_env_vars()
         self.install_yb()
 
@@ -149,7 +149,7 @@ class ControlScript(object):
                     SCRIPT_NAME, err, self.script.pidfile))
             sys.exit(1)
         else:
-            Output.print_out("Shudown complete.")
+            Output.print_out("{} stopped.".format(SCRIPT_NAME))
         sys.exit(0)
 
     # Prints status of YugabyteDB.
@@ -157,14 +157,13 @@ class ControlScript(object):
         if os.path.isdir(self.configs.saved_data.get("data_dir")):
             Output.print_out(self.get_status_string())
         else:
-            Output.print_out("YugabyteDB is not running.")
+            Output.print_out("{} is not running.".format(SCRIPT_NAME))
 
     # Prints YugabyteDB version.
     def version(self):
-        title = "YugabyteDB Information"
         with open(VERSION_METADATA_PATH) as metadata:
             data = json.load(metadata)
-            title = "YugabyteDB Version"
+            title = "Version".format(SCRIPT_NAME)
             output = "\n" + "-" * 70 + "\n"
             output += ("| {:^66} |\n").format(title)
             output += "-" * 70 + "\n"
@@ -186,14 +185,16 @@ class ControlScript(object):
     # Starts an interactive YSQL shell.
     def connect_ysql(self):
         if self.get_failed_node_processes():
-            Output.log_error_and_exit("YugabyteDB is not running. Cannot connect to YSQL.")
+            Output.log_error_and_exit(
+                "{} is not running. Cannot connect to YSQL.".format(SCRIPT_NAME))
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
         ysql_proxy.connect()
 
     # Starts an interactive YCQL shell.
     def connect_ycql(self):
         if self.get_failed_node_processes():
-            Output.log_error_and_exit("YugabyteDB is not running. Cannot connect to YCQL.")
+            Output.log_error_and_exit(
+                "{} is not running. Cannot connect to YCQL.".format(SCRIPT_NAME))
         path = os.path.join(BIN_DIR, YUGABYTE_API_CLIENT_PROGRAMS["ycql"])
         cmd = [
             path, self.configs.saved_data.get("bind_ip"),
@@ -206,7 +207,8 @@ class ControlScript(object):
     def demo(self):
         if self.get_failed_node_processes():
             Output.log_error_and_exit(
-                "YugabyteDB is not running. Please run `yugabyted start` before starting a demo.")
+                "{0} is not running. Please run `{0} start` before starting a demo.".format(
+                    SCRIPT_NAME))
 
         db_name = DEMO_DB_PREFIX + self.configs.temp_data.get("demo_db")
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
@@ -299,7 +301,7 @@ class ControlScript(object):
         pgid = os.getpgid(cur_pid)
         if not pgid:
             Output.log_error_and_exit(
-                "PGID could not be found for PID {}. Is YugabyteDB running?".format(cur_pid))
+                "PGID could not be found for PID {}. Is {} running?".format(cur_pid, SCRIPT_NAME))
 
         self.set_signals(SIG_DFL)
 
@@ -313,11 +315,11 @@ class ControlScript(object):
             # requires KILL signal to terminate and nodes currently do not gracefully terminate.
             os.killpg(pgid, SIGKILL)
             Output.log_error_and_exit(
-                "YugabyteDB may not have terminated properly... "
-                "Please check PGID {}.".format(pgid))
+                "{} may not have terminated properly... "
+                "Please check PGID {}.".format(SCRIPT_NAME, pgid))
         except OSError as err:
             Output.log_error_and_exit(
-                "Failed to kill PGID {}... Is YugabyteDB running?\n{}".format(pgid, str(err)))
+                "Failed to kill PGID {}... Is {} running?\n{}".format(pgid, SCRIPT_NAME, str(err)))
 
     # Starts yb-master, yb-tserver, and yugaware processes.
     # After initializing, creates a callhome thread.
@@ -402,8 +404,8 @@ class ControlScript(object):
             pid = p.get_pid()
             if pid:
                 Output.print_out(
-                    "{} is already running... Is there an existing YugabyteDB process?".format(
-                        p.name))
+                    "{} is already running... Is there an existing {} process?".format(
+                        p.name, SCRIPT_NAME))
                 # Clear self.processes so kill_children() doesn't kill existing processes.
                 self.processes = {}
                 return
@@ -512,11 +514,11 @@ class ControlScript(object):
                 if first_run_success and self.is_yb_initialized() \
                         and (not self.configs.temp_data.get("ui") or self.is_yw_initialized()):
                     status = self.get_status_string() + \
-                        "{} YugabyteDB started successfully! To load a sample dataset, " \
+                        "{} {} started successfully! To load a sample dataset, " \
                         "try '{} demo'.\n" \
                         "{} Join us on Slack at {}\n" \
                         "{} Claim your free t-shirt at {}\n".format(
-                            Output.ROCKET, SCRIPT_NAME, Output.PARTY,
+                            Output.ROCKET, SCRIPT_NAME, SCRIPT_NAME, Output.PARTY,
                             Output.make_underline(SLACK_LINK), Output.SHIRT,
                             Output.make_underline(COMMUNITY_REWARDS_LINK))
                     Output.print_out(status)
@@ -707,11 +709,11 @@ class ControlScript(object):
 
         # Make sure ascii escape characters for color encoding do not count towards char limit.
         if self.get_failed_node_processes():
-            title = Output.make_bold(Output.make_red("YugabyteDB"))
+            title = Output.make_bold(Output.make_red(SCRIPT_NAME))
             extra_len = len(Output.make_bold(Output.make_red("")))
             status = "Stopped"
         else:
-            title = Output.make_bold(Output.make_green("YugabyteDB"))
+            title = Output.make_bold(Output.make_green(SCRIPT_NAME))
             extra_len = len(Output.make_bold(Output.make_green("")))
             status = "Running"
 
@@ -855,22 +857,22 @@ class ControlScript(object):
         # Parent subparser for common args
         common_parser = argparse.ArgumentParser(add_help=False)
         common_parser.add_argument(
-            "--config", default=DEFAULT_CONF, help="YugabyteDB configuration file.")
+            "--config", default=DEFAULT_CONF, help="{} configuration file.".format(SCRIPT_NAME))
         # TODO: Refactor data_dir to be a list for multi-node. How should the config file and
         # data dir be set for local mulit-node setups? Note: daemon mode may be affected.
         common_parser.add_argument(
-            "--data_dir", help="Directory where YugabyteDB will store data.")
+            "--data_dir", help="Directory where {} will store data.".format(SCRIPT_NAME))
 
-        start_msg = "To start YugabyteDB, run '{}'.\n\n".format(
-            Output.make_green("{} start".format(SCRIPT_NAME)))
+        start_msg = "To start {}, run '{}'.\n\n".format(
+            SCRIPT_NAME, Output.make_green("{} start".format(SCRIPT_NAME)))
         parser = PrettyArgParser(description=start_msg)
         all_parsers = {"default": parser}
         subparsers = parser.add_subparsers(dest="parser")
         for cmd, description in (
-                ("start", "Start YugabyteDB."),
-                ("stop", "Stop running YugabyteDB."),
-                ("status", "Print status of YugabyteDB."),
-                ("version", "Version of YugabyteDB."),
+                ("start", "Start {}.".format(SCRIPT_NAME)),
+                ("stop", "Stop running {}.".format(SCRIPT_NAME)),
+                ("status", "Print status of {}.".format(SCRIPT_NAME)),
+                ("version", "Version of {}.".format(SCRIPT_NAME)),
                 ("demo", "Load and interact with preset demo data.")):
             subparser = subparsers.add_parser(cmd, help=description, parents=[common_parser])
             func = getattr(self, cmd, None)
@@ -892,7 +894,7 @@ class ControlScript(object):
         for cmd in ("start",):
             cur_parser = all_parsers[cmd]
             cur_parser.add_argument(
-                "--log_dir", help="Directory to store YugabyteDB logs.")
+                "--log_dir", help="Directory to store {} logs.".format(SCRIPT_NAME))
             cur_parser.add_argument(
                 "--ycql_port", help="Port on which YCQL will run.")
             cur_parser.add_argument(
@@ -1171,14 +1173,13 @@ class ProcessManager(object):
                             logging.ERROR)
 
         if failed and print_info:
+            config_link = "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config"
             msg = "Failed to meet recommended settings. Ulimits too low - {}.\n".format(
                 ", ".join(list(zip(*failed))[0]))
-            yw_alert = msg + "Note YugabyteDB will still run, although it may fail for larger " \
-                "workloads. For more info, see " \
-                "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config/"
-            msg += "Note YugabyteDB will still run, although it may fail for larger workloads. " \
-                "For more info, see " + Output.make_underline(
-                "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config/\n")
+            yw_alert = msg + "Note {} will still run, although it may fail for larger " \
+                "workloads. For more info, see {}".format(SCRIPT_NAME, config_link)
+            msg += "Note {} will still run, although it may fail for larger workloads. " \
+                "For more info, see {}\n".format(SCRIPT_NAME, Output.make_underline(config_link))
             msg = Output.make_yellow("WARNING: ") + msg
             Output.print_and_log(msg, logging.WARNING)
             return yw_alert
