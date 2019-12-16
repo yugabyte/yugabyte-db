@@ -22,14 +22,14 @@ class DockerProviderConfiguration extends Component {
     this.props.deleteProviderConfig(dockerProvider.uuid);
   };
 
-  componentWillReceiveProps(nextProps) {
-    const { dockerBootstrap, cloudBootstrap } = nextProps;
+  componentDidUpdate(prevProps) {
+    const { dockerBootstrap, cloudBootstrap } = this.props;
     // Reload Metadata for Provider Create
-    if (getPromiseState(dockerBootstrap).isSuccess() && getPromiseState(this.props.dockerBootstrap).isLoading()) {
+    if (getPromiseState(dockerBootstrap).isSuccess() && getPromiseState(prevProps.dockerBootstrap).isLoading()) {
       this.props.reloadCloudMetadata();
     }
     // Reload Metadata For Provider Delete
-    if (cloudBootstrap.promiseState !== this.props.cloudBootstrap.promiseState && cloudBootstrap.data.type === "cleanup") {
+    if (cloudBootstrap.promiseState !== prevProps.cloudBootstrap.promiseState && cloudBootstrap.data.type === "cleanup") {
       this.props.reloadCloudMetadata();
     }
   }

@@ -52,8 +52,8 @@ export default class DeleteUniverse extends Component {
     }
   };
 
-  componentWillReceiveProps(nextProps) {
-    if (getPromiseState(this.props.universe.deleteUniverse).isLoading() && getPromiseState(nextProps.universe.deleteUniverse).isSuccess()) {
+  componentDidUpdate(prevProps) {
+    if (getPromiseState(prevProps.universe.deleteUniverse).isLoading() && getPromiseState(this.props.universe.deleteUniverse).isSuccess()) {
       this.props.fetchUniverseMetadata();
       browserHistory.push('/universes');
     }

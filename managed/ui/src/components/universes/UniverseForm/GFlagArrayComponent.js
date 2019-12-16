@@ -14,7 +14,7 @@ export default class GFlagArrayComponent extends Component {
     operationType: PropTypes.oneOf(['Create', 'Edit']).isRequired
   };
 
-  componentWillMount() {
+  componentDidMount() {
     if (this.props.fields.length === 0) {
       this.props.fields.push({});
     }

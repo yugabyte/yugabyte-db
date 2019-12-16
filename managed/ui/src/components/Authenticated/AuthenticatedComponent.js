@@ -1,8 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import {withRouter} from 'react-router';
-import {isNonEmptyArray} from 'utils/ObjectUtils';
+import { withRouter } from 'react-router';
+import { isNonEmptyArray } from 'utils/ObjectUtils';
 const PropTypes = require('prop-types');
 
 class AuthenticatedComponent extends Component {
@@ -18,7 +18,8 @@ class AuthenticatedComponent extends Component {
     return {prevPath: this.state.prevPath};
   }
 
-  componentWillMount() {
+
+  componentDidMount() {
     this.props.fetchSoftwareVersions();
     this.props.fetchTableColumnTypes();
     this.props.getEBSListItems();
@@ -41,18 +42,18 @@ class AuthenticatedComponent extends Component {
     task.status === "Initializing") && (Number(task.percentComplete) !== 100))) : false;
   };
 
-  componentWillReceiveProps(nextProps) {
-    const { tasks } = nextProps;
-    if (this.props.fetchMetadata !== nextProps.fetchMetadata && nextProps.fetchMetadata) {
+  componentDidUpdate(prevProps) {
+    const { tasks } = this.props;
+    if (prevProps.fetchMetadata !== this.props.fetchMetadata && this.props.fetchMetadata) {
       this.props.getProviderListItems();
       this.props.fetchUniverseList();
       this.props.getSupportedRegionList();
     }
-    if (this.props.fetchUniverseMetadata !== nextProps.fetchUniverseMetadata && nextProps.fetchUniverseMetadata) {
+    if (prevProps.fetchUniverseMetadata !== this.props.fetchUniverseMetadata && this.props.fetchUniverseMetadata) {
       this.props.fetchUniverseList();
     }
-    if (this.props.location !== nextProps.location) {
-      this.setState({prevPath: this.props.location.pathname});
+    if (prevProps.location !== this.props.location) {
+      this.setState({prevPath: prevProps.location.pathname});
     }
     // Check if there are pending customer tasks and no existing recursive fetch calls
     if (this.hasPendingCustomerTasks(tasks.customerTaskList) && !this.state.fetchScheduled) {

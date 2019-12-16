@@ -5,7 +5,7 @@ import { isDefinedNotNull, isNonEmptyObject } from 'utils/ObjectUtils';
 import { showOrRedirect } from 'utils/LayoutUtils';
 
 export default class YugawareLogs extends Component {
-  componentWillMount() {
+  componentDidMount() {
     this.props.getLogs();
   }
 

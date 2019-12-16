@@ -149,17 +149,6 @@ class GraphPanel extends Component {
     }
   }
 
-  componentWillReceiveProps(nextProps) {
-    // Perform metric query only if the graph filter has changed.
-    // TODO: add the nodePrefixes to the queryParam
-    if(nextProps.graph.graphFilter !== this.props.graph.graphFilter) {
-      this.props.resetMetrics();
-      if(this.state.isOpen) {
-        this.queryMetricsType(nextProps.graph.graphFilter);
-      }
-    }
-  }
-
   queryMetricsType = graphFilter => {
     const {startMoment, endMoment, nodeName, nodePrefix} = graphFilter;
     const {type} = this.props;
@@ -189,6 +178,15 @@ class GraphPanel extends Component {
   }
 
   componentDidUpdate(prevProps, prevState) {
+    // Perform metric query only if the graph filter has changed.
+    // TODO: add the nodePrefixes to the queryParam
+    if(prevProps.graph.graphFilter !== this.props.graph.graphFilter) {
+      this.props.resetMetrics();
+      if(this.state.isOpen) {
+        this.queryMetricsType(this.props.graph.graphFilter);
+      }
+    }
+
     const { type, graph: { metrics }} = this.props;
     if(!prevState.isOpen && this.state.isOpen && (Object.keys(metrics).length === 0 || isEmptyObject(metrics[type]))) {
       this.queryMetricsType(this.props.graph.graphFilter);

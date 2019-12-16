@@ -27,7 +27,7 @@ export default class CustomerProfile extends Component {
     };
   }
 
-  componentWillMount() {
+  componentDidMount() {
     const { customer } = this.props;
     if (isNonAvailable(customer.features, "main.profile")) browserHistory.push('/');
   }

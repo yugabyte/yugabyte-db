@@ -12,8 +12,8 @@ import * as Yup from "yup";
 import './RegisterForm.scss';
 
 class RegisterForm extends Component {
-  componentWillReceiveProps(nextProps) {
-    const { customer: { authToken }} =  nextProps;
+  componentDidUpdate(prevProps) {
+    const { customer: { authToken }} =  this.props;
     const location = Object.assign({}, browserHistory.getCurrentLocation());
     if (getPromiseState(authToken).isSuccess() && location.pathname !== '/') {
       browserHistory.push('/');

@@ -6,8 +6,8 @@ import {isValidObject} from '../../../utils/ObjectUtils';
 const Plotly = require('plotly.js/lib/core');
 
 export default class UniverseReadWriteMetrics extends Component {
-  componentWillReceiveProps(nextProps) {
-    const {readData, writeData, graphIndex} = nextProps;
+  componentDidUpdate(prevProps) {
+    const { readData, writeData, graphIndex } = this.props;
     const data = this.preparePlotlyData([
       {
         data: readData,
