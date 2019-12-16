@@ -24,7 +24,7 @@ CREATE DATABASE name WITH colocated = true | false
 
 We'll also provide a gflag `--ysql_colocation`, which, if enabled, will create a colocated tablet whenever a new YSQL DB is created.
 
-### Ability for table to opt out of colocation
+### Ability for a table to opt out of colocation
 
 This is useful if the DB has 1-2 large tables and several small tables. In this case, the small tables can be colocated in a single tablet while the large tables can have their own tablets.
 
@@ -36,7 +36,7 @@ CREATE TABLE name (columns) WITH colocated = true | false
 
 Note that this property is only used when the parent DB is colocated. It has no effect otherwise.
 
-### Ability to specify that schema is colocated (P1)
+### Ability to specify that a schema is colocated (P1)
 
 __Syntax:__
 
@@ -54,7 +54,7 @@ Using this configuration...
 
 ## Design
 
-### Single vs multiple RocksDB
+### Single vs Multiple RocksDB
 
 Today, there is one RocksDB created per tablet. This RocksDB only has data for a single tablet. With multiple tables in a single tablet, we have two options:
 
@@ -123,7 +123,7 @@ We can reuse `tablespace` field of these tables for storing this information. Th
 * For `SysCatalogTable`, `Tablet::AddTable` is called when creating a new table. There is no corresponding way to do that when the tablet is in a tserver. Hence we need to add an RPC `AddTableToTablet` in the `TabletServerAdminService`, and add `AsyncAddTableToTablet` task to call that RPC.
 * Modify `RaftGroupMetadata::CreateNew` to take `is_colocated` parameter. If the table is colocated, use `data/rocksdb/tablet-<id>` as the `rocksdb_dir` and `wal/tablet-<id>` as the `wal_dir`.
 
-### Load balancing
+### Load Balancing
 
 Today, load balancing looks at all tables and then balances all tablets for each table. We need to make the load balancer aware of tablet colocation in order to avoid balancing the same tablet.
 
@@ -152,7 +152,7 @@ Additionally, the /tables view shows on disk size for every table. This per tabl
 
 TODO
 
-### Pulling out tables from colocated tablet
+### Pulling out tables from a colocated tablet
 
 When table(s) grows large, it'll be useful to have the ability to pull the table out of colocated tablet in order to scale. We won't provide an automated way to do this in 2.1. This can be done manually using the following steps:
 
@@ -174,7 +174,7 @@ Similarly, generating producer-consumer maps is done per table today. That will 
 Today, YW provides the ability to backup tables. This will need to change since we cannot backup individual tables anymore.
 We need to provide a back up option for a DB. However, this also depends on supporting backups for YSQL tables.
 
-### Dynamic tablet splitting
+### Dynamic Tablet Splitting
 
 Current design for tablet splitting won't work as is for colocated tablets.
 The design finds a split key (approximate mid-key) for the tablet and splits the tablet range into two partitions.
