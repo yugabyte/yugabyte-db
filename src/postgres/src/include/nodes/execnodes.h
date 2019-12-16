@@ -1085,7 +1085,6 @@ typedef struct ModifyTableState
 
 	/* YB specific attributes. */
 	bool yb_mt_is_single_row_update_or_delete;
-	Bitmapset *yb_mt_update_attrs;
 } ModifyTableState;
 
 /* ----------------

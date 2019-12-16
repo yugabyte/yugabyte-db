@@ -125,6 +125,20 @@ EXPLAIN UPDATE single_row SET v1 = 1 WHERE k IN (1);
    ->  Result  (cost=0.00..4.11 rows=1 width=44)
 (2 rows)
 
+EXPLAIN UPDATE single_row SET v1 = 3 + 2 WHERE k = 1;
+                       QUERY PLAN
+---------------------------------------------------------
+ Update on single_row  (cost=0.00..4.11 rows=1 width=44)
+   ->  Result  (cost=0.00..4.11 rows=1 width=44)
+(2 rows)
+
+EXPLAIN UPDATE single_row SET v1 = power(2, 3 - 1) WHERE k = 1;
+                       QUERY PLAN
+---------------------------------------------------------
+ Update on single_row  (cost=0.00..4.11 rows=1 width=44)
+   ->  Result  (cost=0.00..4.11 rows=1 width=44)
+(2 rows)
+
 -- Below statements should all NOT USE single-row.
 EXPLAIN UPDATE single_row SET v1 = 1;
                                 QUERY PLAN
@@ -188,6 +202,22 @@ EXPLAIN UPDATE single_row SET v1 = 1 WHERE k IN (1, 2);
  Update on single_row  (cost=0.00..102.50 rows=1000 width=44)
    ->  Foreign Scan on single_row  (cost=0.00..102.50 rows=1000 width=44)
          Filter: (k = ANY ('{1,2}'::integer[]))
+(3 rows)
+
+EXPLAIN UPDATE single_row SET v1 = v1 + 3 WHERE k = 1;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Update on single_row  (cost=0.00..4.12 rows=1 width=44)
+   ->  Index Scan using single_row_pkey on single_row  (cost=0.00..4.12 rows=1 width=44)
+         Index Cond: (k = 1)
+(3 rows)
+
+EXPLAIN UPDATE single_row SET v1 = power(2, 3 - k) WHERE k = 1;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Update on single_row  (cost=0.00..4.12 rows=1 width=44)
+   ->  Index Scan using single_row_pkey on single_row  (cost=0.00..4.12 rows=1 width=44)
+         Index Cond: (k = 1)
 (3 rows)
 
 --
@@ -454,7 +484,7 @@ DROP TRIGGER single_row_update_trigger ON single_row;
 --
 -- Test table with composite primary key.
 --
-CREATE TABLE single_row_comp_key (v int, k1 int, k2 int, PRIMARY KEY (k1, k2));
+CREATE TABLE single_row_comp_key (v int, k1 int, k2 int, PRIMARY KEY (k1 HASH, k2 ASC));
 -- Below statements should all USE single-row.
 EXPLAIN DELETE FROM single_row_comp_key WHERE k1 = 1 and k2 = 1;
                             QUERY PLAN
@@ -511,6 +541,23 @@ EXPLAIN DELETE FROM single_row_comp_key WHERE k1 = 1 and k2 = 1 RETURNING v;
          Index Cond: ((k1 = 1) AND (k2 = 1))
 (3 rows)
 
+EXPLAIN DELETE FROM single_row_comp_key WHERE k1 = 1 AND k2 < 1;
+                                                QUERY PLAN
+-----------------------------------------------------------------------------------------------------------
+ Delete on single_row_comp_key  (cost=0.00..4.12 rows=1 width=32)
+   ->  Index Scan using single_row_comp_key_pkey on single_row_comp_key  (cost=0.00..4.12 rows=1 width=32)
+         Index Cond: ((k1 = 1) AND (k2 < 1))
+(3 rows)
+
+EXPLAIN DELETE FROM single_row_comp_key WHERE k1 = 1 AND k2 != 1;
+                                                 QUERY PLAN
+------------------------------------------------------------------------------------------------------------
+ Delete on single_row_comp_key  (cost=0.00..5.06 rows=10 width=32)
+   ->  Index Scan using single_row_comp_key_pkey on single_row_comp_key  (cost=0.00..5.06 rows=10 width=32)
+         Index Cond: (k1 = 1)
+         Filter: (k2 <> 1)
+(4 rows)
+
 -- Below statements should all USE single-row.
 EXPLAIN UPDATE single_row_comp_key SET v = 1 WHERE k1 = 1 and k2 = 1;
                             QUERY PLAN
@@ -531,6 +578,20 @@ EXPLAIN UPDATE single_row_comp_key SET v = 1 + 2 WHERE k1 = 1 and k2 = 1;
 ------------------------------------------------------------------
  Update on single_row_comp_key  (cost=0.00..4.12 rows=1 width=44)
    ->  Result  (cost=0.00..4.12 rows=1 width=44)
+(2 rows)
+
+EXPLAIN UPDATE single_row SET v1 = 3 - 2 WHERE k = 1;
+                       QUERY PLAN
+---------------------------------------------------------
+ Update on single_row  (cost=0.00..4.11 rows=1 width=44)
+   ->  Result  (cost=0.00..4.11 rows=1 width=44)
+(2 rows)
+
+EXPLAIN UPDATE single_row SET v1 = ceil(3 - 2.5) WHERE k = 1;
+                       QUERY PLAN
+---------------------------------------------------------
+ Update on single_row  (cost=0.00..4.11 rows=1 width=44)
+   ->  Result  (cost=0.00..4.11 rows=1 width=44)
 (2 rows)
 
 -- Below statements should all NOT USE single-row.
@@ -557,6 +618,24 @@ EXPLAIN UPDATE single_row_comp_key SET v = 1 WHERE k1 = 1 and k2 = 1 and v = 1;
          Index Cond: ((k1 = 1) AND (k2 = 1))
          Filter: (v = 1)
 (4 rows)
+
+EXPLAIN UPDATE single_row SET v1 = 3 - v1 WHERE k = 1;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Update on single_row  (cost=0.00..4.12 rows=1 width=44)
+   ->  Index Scan using single_row_pkey on single_row  (cost=0.00..4.12 rows=1 width=44)
+         Index Cond: (k = 1)
+(3 rows)
+
+-- Random is not a stable function so it should NOT USE single-row.
+-- TODO However it technically does not read/write data so later on it could be allowed.
+EXPLAIN UPDATE single_row SET v1 = ceil(random()) WHERE k = 1;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Update on single_row  (cost=0.00..4.12 rows=1 width=44)
+   ->  Index Scan using single_row_pkey on single_row  (cost=0.00..4.12 rows=1 width=44)
+         Index Cond: (k = 1)
+(3 rows)
 
 -- Test execution.
 INSERT INTO single_row_comp_key VALUES (1, 2, 3);
@@ -815,3 +894,249 @@ EXPLAIN UPDATE single_row_no_primary_key SET b = 1 WHERE b = 1;
    ->  Foreign Scan on single_row_no_primary_key  (cost=0.00..102.50 rows=1000 width=40)
          Filter: (b = 1)
 (3 rows)
+
+--
+-- Test table with range primary key (ASC).
+--
+CREATE TABLE single_row_range_asc_primary_key (k int, v int, primary key (k ASC));
+-- Below statements should all USE single-row.
+EXPLAIN DELETE FROM single_row_range_asc_primary_key WHERE k = 1;
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Delete on single_row_range_asc_primary_key  (cost=0.00..4.11 rows=1 width=32)
+   ->  Result  (cost=0.00..4.11 rows=1 width=32)
+(2 rows)
+
+EXPLAIN UPDATE single_row_range_asc_primary_key SET v = 1 WHERE k = 1;
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Update on single_row_range_asc_primary_key  (cost=0.00..4.11 rows=1 width=40)
+   ->  Result  (cost=0.00..4.11 rows=1 width=40)
+(2 rows)
+
+EXPLAIN UPDATE single_row_range_asc_primary_key SET v = 1 + 2 WHERE k = 1;
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Update on single_row_range_asc_primary_key  (cost=0.00..4.11 rows=1 width=40)
+   ->  Result  (cost=0.00..4.11 rows=1 width=40)
+(2 rows)
+
+EXPLAIN UPDATE single_row_range_asc_primary_key SET v = ceil(2.5 + power(2,2)) WHERE k = 4;
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Update on single_row_range_asc_primary_key  (cost=0.00..4.11 rows=1 width=40)
+   ->  Result  (cost=0.00..4.11 rows=1 width=40)
+(2 rows)
+
+-- Below statements should all NOT USE single-row.
+EXPLAIN UPDATE single_row_range_asc_primary_key SET v = 1 WHERE k > 1;
+                                                             QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------------------
+ Update on single_row_range_asc_primary_key  (cost=0.00..4.11 rows=1 width=40)
+   ->  Index Scan using single_row_range_asc_primary_key_pkey on single_row_range_asc_primary_key  (cost=0.00..4.11 rows=1 width=40)
+         Index Cond: (k > 1)
+(3 rows)
+
+EXPLAIN UPDATE single_row_range_asc_primary_key SET v = 1 WHERE k != 1;
+                                           QUERY PLAN
+------------------------------------------------------------------------------------------------
+ Update on single_row_range_asc_primary_key  (cost=0.00..102.50 rows=1000 width=40)
+   ->  Foreign Scan on single_row_range_asc_primary_key  (cost=0.00..102.50 rows=1000 width=40)
+         Filter: (k <> 1)
+(3 rows)
+
+EXPLAIN UPDATE single_row_range_asc_primary_key SET v = v + 1 WHERE k = 1;
+                                                             QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------------------
+ Update on single_row_range_asc_primary_key  (cost=0.00..4.12 rows=1 width=40)
+   ->  Index Scan using single_row_range_asc_primary_key_pkey on single_row_range_asc_primary_key  (cost=0.00..4.12 rows=1 width=40)
+         Index Cond: (k = 1)
+(3 rows)
+
+EXPLAIN UPDATE single_row_range_asc_primary_key SET v = abs(5 - k) WHERE k = 1;
+                                                             QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------------------
+ Update on single_row_range_asc_primary_key  (cost=0.00..4.12 rows=1 width=40)
+   ->  Index Scan using single_row_range_asc_primary_key_pkey on single_row_range_asc_primary_key  (cost=0.00..4.12 rows=1 width=40)
+         Index Cond: (k = 1)
+(3 rows)
+
+-- Test execution
+INSERT INTO single_row_range_asc_primary_key(k,v) values (1,1), (2,2), (3,3), (4,4);
+UPDATE single_row_range_asc_primary_key SET v = 10 WHERE k = 1;
+SELECT * FROM single_row_range_asc_primary_key;
+ k | v
+---+----
+ 1 | 10
+ 2 |  2
+ 3 |  3
+ 4 |  4
+(4 rows)
+
+UPDATE single_row_range_asc_primary_key SET v = v + 1 WHERE k = 2;
+SELECT * FROM single_row_range_asc_primary_key;
+ k | v
+---+----
+ 1 | 10
+ 2 |  3
+ 3 |  3
+ 4 |  4
+(4 rows)
+
+UPDATE single_row_range_asc_primary_key SET v = -3 WHERE k < 4 AND k >= 3;
+SELECT * FROM single_row_range_asc_primary_key;
+ k | v
+---+----
+ 1 | 10
+ 2 |  3
+ 3 | -3
+ 4 |  4
+(4 rows)
+
+UPDATE single_row_range_asc_primary_key SET v = ceil(2.5 + power(2,2)) WHERE k = 4;
+SELECT * FROM single_row_range_asc_primary_key;
+ k | v
+---+----
+ 1 | 10
+ 2 |  3
+ 3 | -3
+ 4 |  7
+(4 rows)
+
+DELETE FROM single_row_range_asc_primary_key WHERE k < 3;
+SELECT * FROM single_row_range_asc_primary_key;
+ k | v
+---+----
+ 3 | -3
+ 4 |  7
+(2 rows)
+
+DELETE FROM single_row_range_asc_primary_key WHERE k = 4;
+SELECT * FROM single_row_range_asc_primary_key;
+ k | v
+---+----
+ 3 | -3
+(1 row)
+
+--
+-- Test table with range primary key (DESC)
+--
+CREATE TABLE single_row_range_desc_primary_key (k int, v int, primary key (k DESC));
+-- Below statements should all USE single-row.
+EXPLAIN DELETE FROM single_row_range_desc_primary_key WHERE k = 1;
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ Delete on single_row_range_desc_primary_key  (cost=0.00..4.11 rows=1 width=32)
+   ->  Result  (cost=0.00..4.11 rows=1 width=32)
+(2 rows)
+
+EXPLAIN UPDATE single_row_range_desc_primary_key SET v = 1 WHERE k = 1;
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ Update on single_row_range_desc_primary_key  (cost=0.00..4.11 rows=1 width=40)
+   ->  Result  (cost=0.00..4.11 rows=1 width=40)
+(2 rows)
+
+EXPLAIN UPDATE single_row_range_desc_primary_key SET v = 1 + 2 WHERE k = 1;
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ Update on single_row_range_desc_primary_key  (cost=0.00..4.11 rows=1 width=40)
+   ->  Result  (cost=0.00..4.11 rows=1 width=40)
+(2 rows)
+
+EXPLAIN UPDATE single_row_range_desc_primary_key SET v = ceil(2.5 + power(2,2)) WHERE k = 4;
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ Update on single_row_range_desc_primary_key  (cost=0.00..4.11 rows=1 width=40)
+   ->  Result  (cost=0.00..4.11 rows=1 width=40)
+(2 rows)
+
+-- Below statements should all NOT USE single-row.
+EXPLAIN UPDATE single_row_range_desc_primary_key SET v = 1 WHERE k > 1;
+                                                              QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------
+ Update on single_row_range_desc_primary_key  (cost=0.00..4.11 rows=1 width=40)
+   ->  Index Scan using single_row_range_desc_primary_key_pkey on single_row_range_desc_primary_key  (cost=0.00..4.11 rows=1 width=40)
+         Index Cond: (k > 1)
+(3 rows)
+
+EXPLAIN UPDATE single_row_range_desc_primary_key SET v = 1 WHERE k != 1;
+                                           QUERY PLAN
+-------------------------------------------------------------------------------------------------
+ Update on single_row_range_desc_primary_key  (cost=0.00..102.50 rows=1000 width=40)
+   ->  Foreign Scan on single_row_range_desc_primary_key  (cost=0.00..102.50 rows=1000 width=40)
+         Filter: (k <> 1)
+(3 rows)
+
+EXPLAIN UPDATE single_row_range_desc_primary_key SET v = v + 1 WHERE k = 1;
+                                                              QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------
+ Update on single_row_range_desc_primary_key  (cost=0.00..4.12 rows=1 width=40)
+   ->  Index Scan using single_row_range_desc_primary_key_pkey on single_row_range_desc_primary_key  (cost=0.00..4.12 rows=1 width=40)
+         Index Cond: (k = 1)
+(3 rows)
+
+EXPLAIN UPDATE single_row_range_desc_primary_key SET v = abs(5 - k) WHERE k = 1;
+                                                              QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------
+ Update on single_row_range_desc_primary_key  (cost=0.00..4.12 rows=1 width=40)
+   ->  Index Scan using single_row_range_desc_primary_key_pkey on single_row_range_desc_primary_key  (cost=0.00..4.12 rows=1 width=40)
+         Index Cond: (k = 1)
+(3 rows)
+
+-- Test execution
+INSERT INTO single_row_range_desc_primary_key(k,v) values (1,1), (2,2), (3,3), (4,4);
+UPDATE single_row_range_desc_primary_key SET v = 10 WHERE k = 1;
+SELECT * FROM single_row_range_desc_primary_key;
+ k | v
+---+----
+ 4 |  4
+ 3 |  3
+ 2 |  2
+ 1 | 10
+(4 rows)
+
+UPDATE single_row_range_desc_primary_key SET v = v + 1 WHERE k = 2;
+SELECT * FROM single_row_range_desc_primary_key;
+ k | v
+---+----
+ 4 |  4
+ 3 |  3
+ 2 |  3
+ 1 | 10
+(4 rows)
+
+UPDATE single_row_range_desc_primary_key SET v = -3 WHERE k < 4 AND k >= 3;
+SELECT * FROM single_row_range_desc_primary_key;
+ k | v
+---+----
+ 4 |  4
+ 3 | -3
+ 2 |  3
+ 1 | 10
+(4 rows)
+
+UPDATE single_row_range_desc_primary_key SET v = ceil(2.5 + power(2,2)) WHERE k = 4;
+SELECT * FROM single_row_range_desc_primary_key;
+ k | v
+---+----
+ 4 |  7
+ 3 | -3
+ 2 |  3
+ 1 | 10
+(4 rows)
+
+DELETE FROM single_row_range_desc_primary_key WHERE k < 3;
+SELECT * FROM single_row_range_desc_primary_key;
+ k | v
+---+----
+ 4 |  7
+ 3 | -3
+(2 rows)
+
+DELETE FROM single_row_range_desc_primary_key WHERE k = 4;
+SELECT * FROM single_row_range_desc_primary_key;
+ k | v
+---+----
+ 3 | -3
+(1 row)

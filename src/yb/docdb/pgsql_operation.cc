@@ -121,27 +121,22 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     }
   }
 
-  const MonoDelta ttl = Value::kMaxTtl;
-  const UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp;
+  // Add the liveness column.
+  static const PrimitiveValue kLivenessColumnId =
+      PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn);
 
-  // Add the appropriate liveness column.
-  if (encoded_doc_key_) {
-    const DocPath sub_path(encoded_doc_key_.as_slice(),
-                           PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
-    const auto value = Value(PrimitiveValue(), ttl, user_timestamp);
-    RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
-        sub_path, value, data.read_time, data.deadline, request_.stmt_id()));
-  }
+  RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
+      DocPath(encoded_doc_key_.as_slice(), kLivenessColumnId),
+      Value(PrimitiveValue()),
+      data.read_time, data.deadline, request_.stmt_id()));
 
   for (const auto& column_value : request_.column_values()) {
     // Get the column.
     if (!column_value.has_column_id()) {
-      return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
-                           column_value.DebugString());
+      return STATUS(InternalError, "column id missing", column_value.DebugString());
     }
     const ColumnId column_id(column_value.column_id());
-    auto column = schema_.column_by_id(column_id);
-    RETURN_NOT_OK(column);
+    const ColumnSchema& column = VERIFY_RESULT(schema_.column_by_id(column_id));
 
     // Check column-write operator.
     CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
@@ -151,12 +146,12 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     QLValue expr_result;
     RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
     const SubDocument sub_doc =
-        SubDocument::FromQLValuePB(expr_result.value(), column->sorting_type());
+        SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type());
 
     // Inserting into specified column.
     DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
     RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-        sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id(), ttl, user_timestamp));
+        sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
   }
 
   RETURN_NOT_OK(PopulateResultSet(table_row));
@@ -181,12 +176,10 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
     for (const auto& column_value : request_.column_new_values()) {
       // Get the column.
       if (!column_value.has_column_id()) {
-        return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
-                             column_value.DebugString());
+        return STATUS(InternalError, "column id missing", column_value.DebugString());
       }
       const ColumnId column_id(column_value.column_id());
-      auto column = schema_.column_by_id(column_id);
-      RETURN_NOT_OK(column);
+      const ColumnSchema& column = VERIFY_RESULT(schema_.column_by_id(column_id));
 
       // Check column-write operator.
       CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
@@ -196,19 +189,14 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
       QLValue expr_result;
       RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
 
-      // Compare with existing value.
-      QLValue old_value;
-      RETURN_NOT_OK(EvalColumnRef(column_value.column_id(), table_row, &old_value));
-
       // Inserting into specified column.
-      if (expr_result != old_value) {
-        const SubDocument sub_doc =
-          SubDocument::FromQLValuePB(expr_result.value(), column->sorting_type());
-        DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
-        RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-            sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
-        skipped = false;
-      }
+      const SubDocument sub_doc =
+          SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type());
+
+      DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
+      RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+          sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
+      skipped = false;
     }
   } else {
     // This UPDATE is calling PGGATE directly without going thru PosgreSQL layer.
@@ -227,12 +215,10 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
       for (const auto &column_value : request_.column_new_values()) {
         // Get the column.
         if (!column_value.has_column_id()) {
-          return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
-                               column_value.DebugString());
+          return STATUS(InternalError, "column id missing", column_value.DebugString());
         }
         const ColumnId column_id(column_value.column_id());
-        auto column = schema_.column_by_id(column_id);
-        RETURN_NOT_OK(column);
+        const ColumnSchema& column = VERIFY_RESULT(schema_.column_by_id(column_id));
 
         // Check column-write operator.
         CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
@@ -243,7 +229,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
         RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
 
         const SubDocument sub_doc =
-            SubDocument::FromQLValuePB(expr_result.value(), column->sorting_type());
+            SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type());
 
         // Inserting into specified column.
         DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
@@ -334,8 +320,11 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow::SharedPtr& table
   return Status::OK();
 }
 
-Status PgsqlWriteOperation::GetDocPaths(
-    GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const {
+Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
+                                        DocPathsToLock *paths,
+                                        IsolationLevel *level) const {
+  paths->push_back(encoded_doc_key_);
+
   // When this write operation requires a read, it requires a read snapshot so paths will be locked
   // in snapshot isolation for consistency. Otherwise, pure writes will happen in serializable
   // isolation so that they will serialize but do not conflict with one another.
@@ -353,6 +342,8 @@ Status PgsqlWriteOperation::GetDocPaths(
     } else if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE) {
       column_values = &request_.column_new_values();
     }
+
+    column_values = &request_.column_values();
     if (column_values != nullptr && !column_values->empty()) {
       KeyBytes buffer;
       for (const auto& column_value : *column_values) {

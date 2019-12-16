@@ -42,7 +42,9 @@
 #include "parser/parse_clause.h"
 #include "parser/parsetree.h"
 #include "partitioning/partprune.h"
+#include "utils/selfuncs.h"
 #include "utils/lsyscache.h"
+#include "utils/rel.h"
 
 #include "pg_yb_utils.h"
 #include "optimizer/ybcplan.h"
@@ -112,7 +114,7 @@ static RecursiveUnion *create_recursiveunion_plan(PlannerInfo *root, RecursiveUn
 static LockRows *create_lockrows_plan(PlannerInfo *root, LockRowsPath *best_path,
 					 int flags);
 static bool yb_single_row_update_or_delete_path(PlannerInfo *root, ModifyTablePath *path,
-												List **tlist, Bitmapset **update_attrs);
+												List **tlist);
 static ModifyTable *create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path);
 static Limit *create_limit_plan(PlannerInfo *root, LimitPath *best_path,
 				  int flags);
@@ -286,8 +288,7 @@ static ModifyTable *make_modifytable(PlannerInfo *root,
 				 bool partColsUpdated,
 				 List *resultRelations, List *subplans, List *subroots,
 				 List *withCheckOptionLists, List *returningLists,
-				 List *rowMarks, OnConflictExpr *onconflict, int epqParam,
-				 Bitmapset *yb_update_attrs);
+				 List *rowMarks, OnConflictExpr *onconflict, int epqParam);
 static GatherMerge *create_gather_merge_plan(PlannerInfo *root,
 						 GatherMergePath *best_path);
 
@@ -2382,8 +2383,7 @@ create_lockrows_plan(PlannerInfo *root, LockRowsPath *best_path,
 static bool
 yb_single_row_update_or_delete_path(PlannerInfo *root,
 									ModifyTablePath *path,
-									List **tlist,
-									Bitmapset **update_attrs)
+									List **tlist)
 {
 	RelOptInfo *relInfo;
 	Oid relid;
@@ -2400,7 +2400,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	int attr_num;
 
 	*tlist = NIL;
-	*update_attrs = NULL;
+	Bitmapset *update_attrs = NULL;
 
 	/* Verify YB is enabled. */
 	if (!IsYugaByteEnabled())
@@ -2500,15 +2500,25 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			tle = lfirst_node(TargetEntry, values);
 
 			/* Ignore unspecified columns. */
-			if (IsA(tle->expr, Var) && castNode(Var, tle->expr)->vartypmod == -1)
-				continue;
+			if (IsA(tle->expr, Var)) {
+				Var *var = castNode(Var, tle->expr);
+				/*
+				 * Column set to itself (unset) or ybctid pseudo-column
+				 * (added for YB scan in rewrite handler).
+				 */
+				if (var->varattno == tle->resno ||
+				    (var->varattno == YBTupleIdAttributeNumber &&
+				        var->varcollid == InvalidOid)) {
+					continue;
+				}
+			}
 
 			/* Verify expression is supported. */
 			if (!YBCIsSupportedSingleRowModifyWriteExpr(tle->expr))
 				return false;
 
 			subpath_tlist = lappend(subpath_tlist, tle);
-			*update_attrs = bms_add_member(*update_attrs, tle->resno);
+			update_attrs = bms_add_member(update_attrs, tle->resno);
 		}
 	}
 
@@ -2525,7 +2535,39 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			return false;
 	}
 
-	/* Add WHERE clauses from index scan quals to list, verify they are supported write exprs. */
+	/* Check that all WHERE clause conditions use equality operator. */
+	List	   *qinfos;
+	ListCell   *lc;
+	qinfos = deconstruct_indexquals(index_path);
+	foreach(lc, qinfos)
+	{
+		IndexQualInfo *qinfo = (IndexQualInfo *) lfirst(lc);
+		RestrictInfo *rinfo = qinfo->rinfo;
+		Expr	   *clause = rinfo->clause;
+		Oid			clause_op;
+		int			op_strategy;
+
+		if (!IsA(clause, OpExpr))
+			return false;
+
+		clause_op = qinfo->clause_op;
+		if (!OidIsValid(clause_op))
+			return false;
+
+		op_strategy = get_op_opfamily_strategy(clause_op, index_path->indexinfo->opfamily[qinfo->indexcol]);
+		Assert(op_strategy != 0);  /* not a member of opfamily?? */
+		/* Only pushdown equal operators. */
+		if (op_strategy != BTEqualStrategyNumber) {
+			return false;
+		}
+	}
+
+	/*
+	 * Add WHERE clauses from index scan quals to list, verify they are supported write exprs.
+	 * i.e. after fix_indexqual_references:
+	 * - LHS must be a (key) column
+	 * - RHS must be a "stable" expression (evaluate to constant)
+	 */
 	foreach(values, fix_indexqual_references(subroot, index_path))
 	{
 		Expr *clause;
@@ -2580,7 +2622,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			TargetEntry *tle;
 
 			tle = lfirst_node(TargetEntry, values);
-			if (!bms_is_member(tle->resorigcol, *update_attrs) &&
+			if (!bms_is_member(tle->resorigcol, update_attrs) &&
 				!bms_is_member(tle->resorigcol, primary_key_attrs))
 				return false;
 		}
@@ -2659,8 +2701,6 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	ListCell   *subpaths,
 			   *subroots;
 	List       *tlist = NIL;
-	Bitmapset  *yb_update_attrs_param = NULL;
-	Bitmapset  *yb_update_attrs = NULL;
 
 	/*
 	 * If we are a single row UPDATE/DELETE in a YB relation, add Result subplan
@@ -2668,13 +2708,12 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	 * running outside of a transaction and thus cannot rely on the results from a
 	 * seperately executed operation.
 	 */
-	if (yb_single_row_update_or_delete_path(root, best_path, &tlist, &yb_update_attrs_param))
+	if (yb_single_row_update_or_delete_path(root, best_path, &tlist))
 	{
 		Plan *subplan = (Plan *) make_result(tlist, NULL, NULL);
 		copy_generic_path_info(subplan, linitial(best_path->subpaths));
 
 		subplans = lappend(subplans, subplan);
-		yb_update_attrs = yb_update_attrs_param;
 	}
 	else
 	{
@@ -2719,8 +2758,7 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 							best_path->returningLists,
 							best_path->rowMarks,
 							best_path->onconflict,
-							best_path->epqParam,
-							yb_update_attrs);
+							best_path->epqParam);
 
 	copy_generic_path_info(&plan->plan, &best_path->path);
 
@@ -6654,8 +6692,7 @@ make_modifytable(PlannerInfo *root,
 				 bool partColsUpdated,
 				 List *resultRelations, List *subplans, List *subroots,
 				 List *withCheckOptionLists, List *returningLists,
-				 List *rowMarks, OnConflictExpr *onconflict, int epqParam,
-				 Bitmapset *yb_update_attrs)
+				 List *rowMarks, OnConflictExpr *onconflict, int epqParam)
 {
 	ModifyTable *node = makeNode(ModifyTable);
 	List	   *fdw_private_list;
@@ -6786,9 +6823,6 @@ make_modifytable(PlannerInfo *root,
 	}
 	node->fdwPrivLists = fdw_private_list;
 	node->fdwDirectModifyPlans = direct_modify_plans;
-
-	node->ybUpdateAttrs = yb_update_attrs;
-
 	return node;
 }
 
