@@ -358,15 +358,11 @@ export default class UniverseOverviewNew extends Component {
                   cancelLabel={"Close"}
                   showCancelButton={true}
                 >
-                  <div>1. Create a sample retail database:</div>
+                  <div>Create a sample retail database:</div>
                   <YBCodeBlock>
-                    yugabyted demo create retail
+                    yugabyted demo
                   </YBCodeBlock>
-                  <div>2. Connect to the database:</div>
-                  <YBCodeBlock>
-                    yugabyted demo run retail
-                  </YBCodeBlock>
-                  <div>3. Explore more YSQL <a href="https://docs.yugabyte.com/latest/quick-start/explore-ysql/">here</a>.</div>
+                  <div>Explore YSQL at <a href="https://docs.yugabyte.com/latest/quick-start/explore-ysql/">here</a>.</div>
                 </YBModal>
               </Fragment>
             </FlexShrink>
