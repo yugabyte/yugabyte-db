@@ -150,7 +150,7 @@ public class TestReturnsClause extends BaseCQLTest {
                           "VALUES (2, 2, ['a'], 2.0) IF NOT EXISTS ELSE ERROR",
                       columns,
                       false /* applied */,
-                      "Condition was not satisfied.",
+                      "Condition on table test_returns_status was not satisfied.",
                       "NULL", "NULL", "NULL", "NULL");
 
     //----------------------------------------------------------------------------------------------
@@ -231,7 +231,7 @@ public class TestReturnsClause extends BaseCQLTest {
                           "WHERE h = 2 and r = 2 IF EXISTS ELSE ERROR",
                       columns,
                       false /* applied */,
-                      "Condition was not satisfied.",
+                      "Condition on table test_rs_trans was not satisfied.",
                       "NULL", "NULL", "NULL", "NULL");
 
     //----------------------------------------------------------------------------------------------
@@ -283,7 +283,7 @@ public class TestReturnsClause extends BaseCQLTest {
                                       "VALUES (1, 1, 1 ,'a') IF NOT EXISTS ELSE ERROR " +
                                       "RETURNS STATUS AS ROW"));
     expectedRows.add(getExpectedResultRow(false /* applied */,
-                                          "Condition was not satisfied.",
+                                          "Condition on table test_rs_batch was not satisfied.",
                                           "NULL", "NULL", "NULL", "NULL"));
 
     batch.add(new SimpleStatement("INSERT INTO test_rs_batch(h, r, v1, v2) VALUES " +
@@ -401,7 +401,8 @@ public class TestReturnsClause extends BaseCQLTest {
     batch.add(new SimpleStatement("INSERT INTO test_rs_batch_trans (h, r, v1, v2) VALUES " +
                                   "(1, 1, 1 ,'a') IF NOT EXISTS ELSE ERROR " +
                                   "RETURNS STATUS AS ROW"));
-    expectedResults += "Row[false, Condition was not satisfied., NULL, NULL, NULL, NULL]";
+    expectedResults += "Row[false, Condition on table test_rs_batch_trans was not satisfied., " +
+                       "NULL, NULL, NULL, NULL]";
 
     batch.add(new SimpleStatement("INSERT INTO test_rs_batch_trans (h, r, v1, v2) VALUES " +
                                   "(3, 2, 1 ,'f') IF NOT EXISTS RETURNS STATUS AS ROW"));

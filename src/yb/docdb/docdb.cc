@@ -55,6 +55,8 @@
 #include "yb/util/metrics.h"
 #include "yb/util/flag_tags.h"
 
+#include "yb/yql/cql/ql/util/errcodes.h"
+
 using std::endl;
 using std::list;
 using std::string;
@@ -285,7 +287,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   return result;
 }
 
-Status SetDocOpQLErrorResponse(DocOperation* doc_op, std::string err_msg) {
+Status SetDocOpQLErrorResponse(DocOperation* doc_op, string err_msg) {
   switch (doc_op->OpType()) {
     case DocOperation::Type::QL_WRITE_OPERATION: {
       const auto &resp = down_cast<QLWriteOperation *>(doc_op)->response();
@@ -314,17 +316,28 @@ Status ExecuteDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_writ
                                 KeyValueWriteBatchPB* write_batch,
                                 InitMarkerBehavior init_marker_behavior,
                                 std::atomic<int64_t>* monotonic_counter,
-                                HybridTime* restart_read_ht) {
+                                HybridTime* restart_read_ht,
+                                const string& table_name) {
   DCHECK_ONLY_NOTNULL(restart_read_ht);
   DocWriteBatch doc_write_batch(doc_db, init_marker_behavior, monotonic_counter);
   DocOperationApplyData data = {&doc_write_batch, deadline, read_time, restart_read_ht};
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     Status s = doc_op->Apply(data);
     if (s.IsQLError()) {
+      string error_msg;
+      if (ql::GetErrorCode(s) == ql::ErrorCode::CONDITION_NOT_SATISFIED) {
+        // Generating the error message here because 'table_name'
+        // is not available on the lower level - in doc_op->Apply().
+        error_msg = Format("Condition on table $0 was not satisfied.", table_name);
+      } else {
+        error_msg =  s.message().ToBuffer();
+      }
+
       // Ensure we set appropriate error in the response object for QL errors.
-      SetDocOpQLErrorResponse(doc_op.get(), s.message().ToBuffer());
+      SetDocOpQLErrorResponse(doc_op.get(), error_msg);
       continue;
     }
+
     RETURN_NOT_OK(s);
   }
   doc_write_batch.MoveToWriteBatchPB(write_batch);

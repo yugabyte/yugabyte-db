@@ -86,7 +86,9 @@ set(DOCDB_DEPS
         docdb_proto
         server_common
         rpc_introspection_proto
-        yb_pggate_util)
+        yb_pggate_util
+        ql_util
+        )
 
 ADD_YB_LIBRARY(yb_docdb
         SRCS ${DOCDB_SRCS}
