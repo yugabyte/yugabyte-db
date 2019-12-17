@@ -52,5 +52,19 @@ DROP TABLE foo;
 DROP TABLE bar;
 DROP FUNCTION stricttest1(), stricttest2(), stricttest3(), stricttest4();
 
+-- Fail because collate and cursor are not supported.
+create or replace function unsupported1() returns void as $$
+declare a text collate "en_US";
+begin
+end$$ language plpgsql;
+create or replace function unsupported5() returns void as $$
+declare a refcursor;
+begin
+end$$ language plpgsql;
+create or replace function unsupported3() returns void as $$
+declare a cursor;
+begin
+end$$ language plpgsql;
+
 -- TODO(jason): remove when issue #1721 is closed or closing.
 DISCARD TEMP;

@@ -6,7 +6,7 @@
 create temp table foo (f1 int, f2 int);
 insert into foo values (1, 2), (3, 4), (5, 6), (5, 6), (7, 8), (9, 10);
 select * from foo order by f1;
- f1 | f2
+ f1 | f2 
 ----+----
   1 |  2
   3 |  4
@@ -19,7 +19,7 @@ select * from foo order by f1;
 create table bar (f1 int, f2 int);
 insert into bar values (1, 2), (3, 4), (5, 6), (5, 6), (7, 8), (9, 10);
 select * from bar order by f1;
- f1 | f2
+ f1 | f2 
 ----+----
   1 |  2
   3 |  4
@@ -59,16 +59,16 @@ begin
 end$$ language plpgsql;
 select stricttest1();
 NOTICE:  x.f1 = 3, x.f2 = 4
- stricttest1
+ stricttest1 
 -------------
-
+ 
 (1 row)
 
 select stricttest2();
 NOTICE:  x.f1 = 3, x.f2 = 4
- stricttest2
+ stricttest2 
 -------------
-
+ 
 (1 row)
 
 select stricttest3();
@@ -83,5 +83,30 @@ CONTEXT:  PL/pgSQL function stricttest4() line 5 at SQL statement
 DROP TABLE foo;
 DROP TABLE bar;
 DROP FUNCTION stricttest1(), stricttest2(), stricttest3(), stricttest4();
+-- Fail because collate and cursor are not supported.
+create or replace function unsupported1() returns void as $$
+declare a text collate "en_US";
+begin
+end$$ language plpgsql;
+ERROR:  COLLATE not supported yet
+LINE 2: declare a text collate "en_US";
+                       ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1127. Click '+' on the description to raise its priority
+create or replace function unsupported5() returns void as $$
+declare a refcursor;
+begin
+end$$ language plpgsql;
+ERROR:  Declare Cursor Variable not supported yet
+LINE 2: declare a refcursor;
+                ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+create or replace function unsupported3() returns void as $$
+declare a cursor;
+begin
+end$$ language plpgsql;
+ERROR:  Declare Cursor Variable not supported yet
+LINE 2: declare a cursor;
+                ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 -- TODO(jason): remove when issue #1721 is closed or closing.
 DISCARD TEMP;
