@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-[Change data capture (CDC)](https://docs.yugabyte.com/latest/architecture/cdc-architecture/) in YugabyteDB applications can be used to asynchronously replicate data changes from a YugabyteDB cluster to the `stdout` stream. The data changes in YugabyteDB are detected, captured, and then output to a specified target. In the steps below, you can use a local YugabyteDB cluster to use the Change Data Capture (CDC) API to send data changes to `stdout`. To learn about the change data capture (CDC) architecture, see [Change data capture (CDC)](https://docs.yugabyte.com/latest/architecture/cdc-architecture/).
+[Change data capture (CDC)](../../architecture/cdc-architecture) in YugabyteDB applications can be used to asynchronously replicate data changes from a YugabyteDB cluster to the `stdout` stream. The data changes in YugabyteDB are detected, captured, and then output to a specified target. In the steps below, you can use a local YugabyteDB cluster to use the Change Data Capture (CDC) API to send data changes to `stdout`. To learn about the change data capture (CDC) architecture, see [Change data capture (CDC)](../../architecture/cdc-architecture).
 
 ## Prerequisites
 
