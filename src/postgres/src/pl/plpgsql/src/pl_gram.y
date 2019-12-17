@@ -25,7 +25,9 @@
 #include "utils/builtins.h"
 
 #include "plpgsql.h"
+#include "pg_yb_utils.h"
 
+static void ybc_not_support(int pos, const char *feature, int issue);
 
 /* Location tracking support --- simpler than bison's default */
 #define YYLLOC_DEFAULT(Current, Rhs, N) \
@@ -508,6 +510,10 @@ decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull
 							$3->collation = $4;
 						}
 
+						if ($3->typoid == REFCURSOROID) {
+							ybc_not_support(@1, "Declare Cursor Variable", -1);
+						}
+
 						var = plpgsql_build_variable($1.name, $1.lineno,
 													 $3, true);
 						var->isconst = $2;
@@ -531,7 +537,10 @@ decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull
 										   $4->itemno, $1.name);
 					}
 				| decl_varname opt_scrollable K_CURSOR
-					{ plpgsql_ns_push($1.name, PLPGSQL_LABEL_OTHER); }
+					{
+						ybc_not_support(@1, "Declare Cursor Variable", -1);
+						plpgsql_ns_push($1.name, PLPGSQL_LABEL_OTHER);
+					}
 				  decl_cursor_args decl_is_for decl_cursor_query
 					{
 						PLpgSQL_var *new;
@@ -794,16 +803,19 @@ decl_collate	:
 					{ $$ = InvalidOid; }
 				| K_COLLATE T_WORD
 					{
+						ybc_not_support(@1, "COLLATE", 1127);
 						$$ = get_collation_oid(list_make1(makeString($2.ident)),
 											   false);
 					}
 				| K_COLLATE unreserved_keyword
 					{
+						ybc_not_support(@1, "COLLATE", 1127);
 						$$ = get_collation_oid(list_make1(makeString(pstrdup($2))),
 											   false);
 					}
 				| K_COLLATE T_CWORD
 					{
+						ybc_not_support(@1, "COLLATE", 1127);
 						$$ = get_collation_oid($2.idents, false);
 					}
 				;
@@ -2039,6 +2051,7 @@ stmt_dynexecute : K_EXECUTE
 
 stmt_open		: K_OPEN cursor_variable
 					{
+						ybc_not_support(@1, "OPEN cursor", -1);
 						PLpgSQL_stmt_open *new;
 						int				  tok;
 
@@ -2116,6 +2129,7 @@ stmt_open		: K_OPEN cursor_variable
 
 stmt_fetch		: K_FETCH opt_fetch_direction cursor_variable K_INTO
 					{
+						ybc_not_support(@1, "FETCH", -1);
 						PLpgSQL_stmt_fetch *fetch = $2;
 						PLpgSQL_variable *target;
 
@@ -2146,6 +2160,7 @@ stmt_fetch		: K_FETCH opt_fetch_direction cursor_variable K_INTO
 
 stmt_move		: K_MOVE opt_fetch_direction cursor_variable ';'
 					{
+						ybc_not_support(@1, "MOVE", -1);
 						PLpgSQL_stmt_fetch *fetch = $2;
 
 						fetch->lineno = plpgsql_location_to_lineno(@1);
@@ -2164,6 +2179,7 @@ opt_fetch_direction	:
 
 stmt_close		: K_CLOSE cursor_variable ';'
 					{
+						ybc_not_support(@1, "CLOSE cursor", -1);
 						PLpgSQL_stmt_close *new;
 
 						new = palloc(sizeof(PLpgSQL_stmt_close));
@@ -4068,4 +4084,38 @@ make_case(int location, PLpgSQL_expr *t_expr,
 	}
 
 	return (PLpgSQL_stmt *) new;
+}
+
+static void
+ybc_not_support(int pos, const char *feature, int issue) {
+	static int restricted = -1;
+	if (restricted == -1)
+	{
+		restricted = YBIsUsingYBParser();
+	}
+
+	if (!restricted)
+	{
+		return;
+	}
+
+	int signal_level = YBUnsupportedFeatureSignalLevel();
+	if (issue > 0)
+	{
+		ereport(signal_level,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("%s not supported yet", feature),
+				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
+						 "Click '+' on the description to raise its priority", issue),
+				 parser_errposition(pos)));
+	}
+	else
+	{
+		ereport(signal_level,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("%s not supported yet", feature),
+				 errhint("Please report the issue on "
+						 "https://github.com/YugaByte/yugabyte-db/issues"),
+				 parser_errposition(pos)));
+	}
 }
