@@ -139,7 +139,8 @@ CHECKED_STATUS ExecuteDocWriteOperation(
     KeyValueWriteBatchPB* write_batch,
     InitMarkerBehavior init_marker_behavior,
     std::atomic<int64_t>* monotonic_counter,
-    HybridTime* restart_read_ht);
+    HybridTime* restart_read_ht,
+    const std::string& table_name);
 
 void PrepareNonTransactionWriteBatch(
     const docdb::KeyValueWriteBatchPB& put_batch,

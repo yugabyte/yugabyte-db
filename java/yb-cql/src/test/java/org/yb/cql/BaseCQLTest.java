@@ -586,10 +586,14 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   }
 
   /** Checks that the query yields an error containing the given (case-insensitive) substring */
-  protected void assertQueryError(String stmt, String expectedErrorSubstring) {
+  protected void assertQueryError(Statement stmt, String expectedErrorSubstring) {
     String result = runInvalidStmt(stmt);
     assertTrue("Query error '" + result + "' did not contain '" + expectedErrorSubstring + "'",
         result.toLowerCase().contains(expectedErrorSubstring.toLowerCase()));
+  }
+
+  protected void assertQueryError(String stmt, String expectedErrorSubstring) {
+    assertQueryError(new SimpleStatement(stmt), expectedErrorSubstring);
   }
 
   // blob type utils

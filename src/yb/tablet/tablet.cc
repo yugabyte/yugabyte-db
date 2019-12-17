@@ -2013,7 +2013,7 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
         table_type_ == TableType::REDIS_TABLE_TYPE
             ? InitMarkerBehavior::kRequired
             : InitMarkerBehavior::kOptional,
-        &monotonic_counter_, &restart_read_ht));
+        &monotonic_counter_, &restart_read_ht, metadata_->table_name()));
 
     // For serializable isolation we don't fix read time, so could do read restart locally,
     // instead of failing whole transaction.

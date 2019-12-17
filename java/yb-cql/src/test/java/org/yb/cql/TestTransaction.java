@@ -509,4 +509,209 @@ public class TestTransaction extends BaseCQLTest {
       destroyMiniCluster();
     }
   }
+
+  @Test
+  public void testTransactionConditionalDMLWithElseError() throws Exception {
+    LOG.info("Start test: " + getCurrentTestMethodName());
+
+    createTable("t", "h int, r int, v int, primary key ((h), r)", true);
+    session.execute("begin transaction" +
+                    "  insert into t (h, r, v) values (1, 1, 11) if not exists else error;" +
+                    "  insert into t (h, r, v) values (1, 2, 12) if not exists else error;" +
+                    "end transaction;");
+
+    assertQueryRowsUnordered("select * from t",
+        "Row[1, 1, 11]",
+        "Row[1, 2, 12]");
+
+    runInvalidStmt("begin transaction" +
+                    "  insert into t (h, r, v) values (2, 2, 22) if not exists else error;" +
+                    "  insert into t (h, r, v) values (1, 2, 120) if not exists else error;" +
+                   "end transaction;",
+                   "Execution Error. Condition on table t was not satisfied.");
+
+    // Check that the table was not changed.
+    assertQueryRowsUnordered("select * from t",
+        "Row[1, 1, 11]",
+        "Row[1, 2, 12]");
+
+    session.execute("begin transaction" +
+                    "  insert into t (h, r, v) values (1, 3, 13)" +
+                    "    if not exists or v != 0 else error;" +
+                    "end transaction;");
+
+    assertQueryRowsUnordered("select * from t",
+        "Row[1, 1, 11]",
+        "Row[1, 2, 12]",
+        "Row[1, 3, 13]");
+
+    session.execute("begin transaction" +
+                    "  update t set v = 130 where h = 1 and r = 3" +
+                    "    if not exists or v = 13 else error;" +
+                    "end transaction;");
+
+    assertQueryRowsUnordered("select * from t",
+        "Row[1, 1, 11]",
+        "Row[1, 2, 12]",
+        "Row[1, 3, 130]");
+
+    session.execute("begin transaction" +
+                    "  update t set v = 1300 where h = 1 and r = 3" +
+                    "    if v = 130 else error;" +
+                    "end transaction;");
+
+    assertQueryRowsUnordered("select * from t",
+        "Row[1, 1, 11]",
+        "Row[1, 2, 12]",
+        "Row[1, 3, 1300]");
+
+    runInvalidStmt("begin transaction" +
+                   "  update t set v = 777 where h = 1 and r = 3" +
+                   "    if v = 999 else error;" +
+                   "end transaction;",
+                   "Execution Error. Condition on table t was not satisfied.");
+
+    // Check that the table was not changed.
+    assertQueryRowsUnordered("select * from t",
+        "Row[1, 1, 11]",
+        "Row[1, 2, 12]",
+        "Row[1, 3, 1300]");
+
+    // Test 2 tables in one transaction.
+    createTable("t2", "h int, r int, primary key ((h), r)", true);
+    session.execute("begin transaction" +
+                    "  insert into t (h, r, v) values (1, 4, 14) if not exists else error;" +
+                    "  insert into t2 (h, r) values (100, 100) if not exists else error;" +
+                    "end transaction;");
+
+    assertQueryRowsUnordered("select * from t",
+        "Row[1, 1, 11]",
+        "Row[1, 2, 12]",
+        "Row[1, 3, 1300]",
+        "Row[1, 4, 14]");
+
+    assertQueryRowsUnordered("select * from t2",
+        "Row[100, 100]");
+
+    runInvalidStmt("begin transaction" +
+                   "  insert into t (h, r, v) values (9, 9, 9) if not exists else error;" +
+                   "  insert into t2 (h, r) values (100, 100) if not exists else error;" +
+                   "end transaction;",
+                   "Execution Error. Condition on table t2 was not satisfied.");
+
+    runInvalidStmt("begin transaction" +
+                   "  insert into t (h, r, v) values (1, 4, 140) if not exists else error;" +
+                   "  insert into t2 (h, r) values (9, 9) if not exists else error;" +
+                   "end transaction;",
+                   "Execution Error. Condition on table t was not satisfied.");
+
+    // Check that both tables were not changed.
+    assertQueryRowsUnordered("select * from t",
+        "Row[1, 1, 11]",
+        "Row[1, 2, 12]",
+        "Row[1, 3, 1300]",
+        "Row[1, 4, 14]");
+
+    assertQueryRowsUnordered("select * from t2",
+        "Row[100, 100]");
+
+    // Test unique index together with the conditional DMLs.
+    session.execute("create unique index test_unique_by_v on t (v);");
+    session.execute("begin transaction" +
+                    "  insert into t (h, r, v) values (1, 5, 15) if not exists else error;" +
+                    "end transaction;");
+
+    assertQueryRowsUnordered("select * from t",
+        "Row[1, 1, 11]",
+        "Row[1, 2, 12]",
+        "Row[1, 3, 1300]",
+        "Row[1, 4, 14]",
+        "Row[1, 5, 15]");
+
+    runInvalidStmt("begin transaction" +
+                   "  insert into t (h, r, v) values (9, 9, 9) if not exists else error;" +
+                   "  insert into t2 (h, r) values (100, 100) if not exists else error;" +
+                   "end transaction;",
+                   "Execution Error. Condition on table t2 was not satisfied.");
+
+    runInvalidStmt("begin transaction" +
+                   "  insert into t (h, r, v) values (1, 4, 140) if not exists else error;" +
+                   "  insert into t2 (h, r) values (9, 9) if not exists else error;" +
+                   "end transaction;",
+                   "Execution Error. Condition on table t was not satisfied.");
+
+    // Breaking the index uniqueness.
+    runInvalidStmt("begin transaction" +
+                   "  insert into t (h, r, v) values (9, 9, 15) if not exists else error;" +
+                   "  insert into t2 (h, r) values (9, 9) if not exists else error;" +
+                   "end transaction;",
+                   "Execution Error. Duplicate value disallowed by unique index test_unique_by_v");
+    runInvalidStmt("begin transaction" +
+                   "  insert into t (h, r, v) values (9, 9, 15) if not exists else error;" +
+                   "end transaction;",
+                   "Execution Error. Duplicate value disallowed by unique index test_unique_by_v");
+
+    // Check that both tables were not changed.
+    assertQueryRowsUnordered("select * from t",
+        "Row[1, 1, 11]",
+        "Row[1, 2, 12]",
+        "Row[1, 3, 1300]",
+        "Row[1, 4, 14]",
+        "Row[1, 5, 15]");
+
+    assertQueryRowsUnordered("select * from t2",
+        "Row[100, 100]");
+
+    LOG.info("End test: " + getCurrentTestMethodName());
+  }
+
+  @Test
+  public void testTransactionConditionalDMLWithoutElseError() throws Exception {
+    LOG.info("Start test: " + getCurrentTestMethodName());
+
+    createTable("t", "h int, r int, v int, primary key ((h), r)", true);
+
+    // Not supported yet.
+    runInvalidStmt("begin transaction" +
+                    "  insert into t (h, r, v) values (9, 9, 99) if not exists;" +
+                   "end transaction;",
+                   "Invalid CQL Statement. Execution of conditional DML statement in " +
+                   "transaction block without ELSE ERROR is not supported yet");
+
+    runInvalidStmt("begin transaction" +
+                    "  insert into t (h, r, v) values (9, 9, 99) if v = 99;" +
+                   "end transaction;",
+                   "Invalid CQL Statement. Execution of conditional DML statement in " +
+                   "transaction block without ELSE ERROR is not supported yet");
+
+    assertNoRow("select * from t");
+
+    LOG.info("End test: " + getCurrentTestMethodName());
+  }
+
+
+  @Test
+  public void testTransactionWithReturnsStatus() throws Exception {
+    LOG.info("Start test: " + getCurrentTestMethodName());
+
+    createTable("t", "h int, r int, v int, primary key ((h), r)", true);
+
+    // Not supported yet.
+    runInvalidStmt("begin transaction" +
+                    "  insert into t (h, r, v) values (9, 9,99)" +
+                    "    if not exists else error RETURNS STATUS AS ROW;" +
+                   "end transaction;",
+                   "Invalid CQL Statement. Execution of statement in transaction block " +
+                   "with RETURNS STATUS AS ROW is not supported yet");
+
+    runInvalidStmt("begin transaction" +
+                    "  insert into t (h, r, v) values (9, 9,99) RETURNS STATUS AS ROW;" +
+                   "end transaction;",
+                   "Invalid CQL Statement. Execution of statement in transaction block " +
+                   "with RETURNS STATUS AS ROW is not supported yet");
+
+    assertNoRow("select * from t");
+
+    LOG.info("End test: " + getCurrentTestMethodName());
+  }
 }

@@ -29,6 +29,8 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/trace.h"
 
+#include "yb/yql/cql/ql/util/errcodes.h"
+
 DEFINE_test_flag(bool, pause_write_apply_after_if, false,
                  "Pause application of QLWriteOperation after evaluating if condition.");
 
@@ -694,7 +696,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
     // Set the response accordingly.
     response_->set_applied(should_apply);
     if (!should_apply && request_.else_error()) {
-      return STATUS(QLError, "Condition was not satisfied.");
+      return ql::ErrorStatus(ql::ErrorCode::CONDITION_NOT_SATISFIED); // QLError
     } else if (request_.returns_status()) {
       RETURN_NOT_OK(PopulateStatusRow(data, should_apply, existing_row, &rowblock_));
     } else {
