@@ -7,13 +7,14 @@ Data at rest within a YugaByte DB cluster should be protected from unauthorized 
 Users will be able to perform the following operations:
 
 * Enable and disable encryption on existing clusters with data.
-* Backup data in an unencrypted format efficiently. This should not involve a rewrite of the entire dataset.
+* Backup encrypted data in efficiently. This should not involve a rewrite of the entire dataset.
 * Periodically rotate encryption keys. This operation should be efficient without a rewrite of the entire dataset. Rotation of keys is done to limit the window that an attacker can use the key to access the data.
 * Integrate key management with an external KMS system.
 
 ## Assumptions
 
 This feature makes the following assumptions:
+
 * Encryption will only be enabled for tablet server data files and WAL files. Other auxillary data such as metadata files (for example, files that store the internal uuid of a tablet server) and logs from various processes are not encrypted. These do not constitute user data.
 * Attackers do not have privileged access on a running system, so they cannot read in-memory state.
 * Attackers do not have write access to the encrypted raw files. Thus, there is no scheme to verify the integrity of the data in the case that an attacker corrupts it.
@@ -28,13 +29,11 @@ There are two types of keys to encrypt data in YugaByte DB:
 
 For each universe (or cluster), there is a top level universe key which encrypts a group of data keys. The data keys are responsible for encrypting the actual data. Universe keys are controlled by the user, while data keys are internal to the database.
 
-Data Keys
-
-Data keys are symmetric keys used to encrypt and decrypt the data and are internal to the database. A new data key is created for every new file, and once a file is created, the same data key is used for all reads and writes on that file. By default data keys are 16 bytes, so will use CTR-128. 
-
 ## Data Key Management 
 
-We have a fundamental question to answer: who manages data keys? We have 3 possible solutions, each with pros and cons.
+Data keys are symmetric keys used to encrypt and decrypt the data and are internal to the database. A new data key is created for every new file, and once a file is created, the same data key is used for all reads and writes on that file. By default data keys are 16 bytes. 
+
+We have a fundamental question to answer: where are data keys stored? We have 3 possible solutions, each with pros and cons.
 
 #### Option 1: Store keys in an external registry.
 
