@@ -113,6 +113,7 @@ const std::unordered_map<ErrorCode, const char*, EnumHash> kQLErrorMessage {
   { ErrorCode::RESOURCE_NOT_FOUND, "Resource Not Found"},
   { ErrorCode::INVALID_REQUEST, "Invalid Request"},
   { ErrorCode::PERMISSION_NOT_FOUND, "Permission Not Found"},
+  { ErrorCode::CONDITION_NOT_SATISFIED, "Condition Not Satisfied"},
 };
 
 ErrorCode GetErrorCode(const Status& s) {
