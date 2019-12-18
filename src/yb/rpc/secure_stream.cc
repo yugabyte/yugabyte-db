@@ -261,6 +261,21 @@ detail::SSLPtr SecureContext::Create() const {
   return detail::SSLPtr(SSL_new(context_.get()));
 }
 
+Status SecureContext::AddCertificateAuthorityFile(const std::string& file) {
+  X509_STORE* store = SSL_CTX_get_cert_store(context_.get());
+  if (!store) {
+    return SSL_STATUS(IllegalState, "Failed to get store: $0");
+  }
+
+  auto bytes = pointer_cast<const char*>(file.c_str());
+  auto res = X509_STORE_load_locations(store, bytes, nullptr);
+  if (res != 1) {
+    return SSL_STATUS(InvalidArgument, "Failed to add certificate file: $0");
+  }
+
+  return Status::OK();
+}
+
 Status SecureContext::AddCertificateAuthority(const Slice& data) {
   return AddCertificateAuthority(VERIFY_RESULT(X509FromSlice(data)).get());
 }
