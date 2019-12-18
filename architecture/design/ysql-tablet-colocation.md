@@ -82,7 +82,7 @@ Today, tablet's `RaftGroupReplicaSuperBlockPB` has a `primary_table_id`. For sys
 Since there is no "primary table" in a colocated DB, we have two options:
 
 1. Make this field optional. We'll need to check some dependencies like remote bootstrap to see if this is possible.
-1. Create a dummy table for the database, and make that the primary table.
+1. Create a parent table for the database, and make that the primary table.
 
 Tablet creation requires a schema and partition range to be specified. In this case, schema will empty and partition range will be _[-infinity, infinity)_.
 
