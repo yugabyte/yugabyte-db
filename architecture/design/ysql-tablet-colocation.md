@@ -72,7 +72,7 @@ We decided to use single RocksDB for entire tablet. This is because:
 
 #### Create Database
 
-When a database is created with `colocated=true`, catalog manager will need to create a tablet for this database. Catalog manager's `NamespaceInfo` and `TableInfo` objects will need to maintain colocated property.
+When a database is created with `colocated=true`, catalog manager will need to create a tablet for this database. Catalog manager's `NamespaceInfo` and `TableInfo` objects will need to maintain a colocated property.
 
 Today, tablet's `RaftGroupReplicaSuperBlockPB` has a `primary_table_id`. For system tables, this is the table ID of sys catalog table. Primary table ID seems to be used in two ways:
 
@@ -82,9 +82,9 @@ Today, tablet's `RaftGroupReplicaSuperBlockPB` has a `primary_table_id`. For sys
 Since there is no "primary table" in a colocated DB, we have two options:
 
 1. Make this field optional. We'll need to check some dependencies like remote bootstrap to see if this is possible.
-1. Create a dummy table for the database and make that the primary table.
+1. Create a dummy table for the database, and make that the primary table.
 
-Tablet creation requires a Schema and partition range to be specified. In this case, Schema will empty and partition range will be _[-infinity, infinity)_.
+Tablet creation requires a schema and partition range to be specified. In this case, schema will empty and partition range will be _[-infinity, infinity)_.
 
 Currently, RocksDB files are created in the directory `tserver/data/rocksdb/table-<id>/tablet-<id>/`. Since this tablet will have multiple tables, the directory structure will change to `tserver/data/rocksdb/tablet-<id>/`.
 
