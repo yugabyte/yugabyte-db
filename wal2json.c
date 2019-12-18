@@ -39,6 +39,7 @@ typedef struct
 	bool		include_transaction;	/* BEGIN and COMMIT objects (v2) */
 	bool		include_xids;		/* include transaction ids */
 	bool		include_timestamp;	/* include transaction timestamp */
+	bool		include_origin;		/* replication origin */
 	bool		include_schemas;	/* qualify tables */
 	bool		include_types;		/* include data types */
 	bool		include_type_oids;	/* include data type oids */
@@ -181,6 +182,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data->include_transaction = true;
 	data->include_xids = false;
 	data->include_timestamp = false;
+	data->include_origin = false;
 	data->include_schemas = true;
 	data->include_types = true;
 	data->include_type_oids = false;
@@ -251,6 +253,19 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 				data->include_timestamp = true;
 			}
 			else if (!parse_bool(strVal(elem->arg), &data->include_timestamp))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
+							 strVal(elem->arg), elem->defname)));
+		}
+		else if (strcmp(elem->defname, "include-origin") == 0)
+		{
+			if (elem->arg == NULL)
+			{
+				elog(DEBUG1, "include-origin argument is null");
+				data->include_origin = true;
+			}
+			else if (!parse_bool(strVal(elem->arg), &data->include_origin))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
@@ -561,6 +576,11 @@ pg_decode_begin_txn_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 	if (data->include_timestamp)
 		appendStringInfo(ctx->out, "%s\"timestamp\":%s\"%s\",%s", data->ht, data->sp, timestamptz_to_str(txn->commit_time), data->nl);
 
+#if PG_VERSION_NUM >= 90500
+	if (data->include_origin)
+		appendStringInfo(ctx->out, "%s\"origin\":%s%u,%s", data->ht, data->sp, txn->origin_id, data->nl);
+#endif
+
 	appendStringInfo(ctx->out, "%s\"change\":%s[", data->ht, data->sp);
 
 	if (data->write_in_chunks)
@@ -582,6 +602,11 @@ pg_decode_begin_txn_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 		appendStringInfo(ctx->out, ",\"xid\":%u", txn->xid);
 	if (data->include_timestamp)
 			appendStringInfo(ctx->out, ",\"timestamp\":\"%s\"", timestamptz_to_str(txn->commit_time));
+
+#if PG_VERSION_NUM >= 90500
+	if (data->include_origin)
+		appendStringInfo(ctx->out, ",\"origin\":%u", txn->origin_id);
+#endif
 
 	if (data->include_lsn)
 	{
@@ -651,6 +676,11 @@ pg_decode_commit_txn_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 		appendStringInfo(ctx->out, ",\"xid\":%u", txn->xid);
 	if (data->include_timestamp)
 			appendStringInfo(ctx->out, ",\"timestamp\":\"%s\"", timestamptz_to_str(txn->commit_time));
+
+#if PG_VERSION_NUM >= 90500
+	if (data->include_origin)
+		appendStringInfo(ctx->out, ",\"origin\":%u", txn->origin_id);
+#endif
 
 	if (data->include_lsn)
 	{
@@ -1518,6 +1548,11 @@ pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relat
 	if (data->include_timestamp)
 		appendStringInfo(ctx->out, ",\"timestamp\":\"%s\"", timestamptz_to_str(txn->commit_time));
 
+#if PG_VERSION_NUM >= 90500
+	if (data->include_origin)
+		appendStringInfo(ctx->out, ",\"origin\":%u", txn->origin_id);
+#endif
+
 	if (data->include_lsn)
 	{
 		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, change->lsn));
@@ -1839,6 +1874,14 @@ pg_decode_message_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 			appendStringInfo(ctx->out, ",\"timestamp\":\"%s\"", timestamptz_to_str(txn->commit_time));
 		else
 			appendStringInfoString(ctx->out, ",\"timestamp\":null");
+	}
+
+	if (data->include_origin)
+	{
+		if (transactional)
+			appendStringInfo(ctx->out, ",\"origin\":%u", txn->origin_id);
+		else
+			appendStringInfo(ctx->out, ",\"origin\":null");
 	}
 
 	if (data->include_lsn)
