@@ -58,6 +58,7 @@ class SecureContext {
   void operator=(const SecureContext&) = delete;
 
   CHECKED_STATUS AddCertificateAuthority(const Slice& data);
+  CHECKED_STATUS AddCertificateAuthorityFile(const std::string& file);
 
   CHECKED_STATUS UsePrivateKey(const Slice& data);
   CHECKED_STATUS UseCertificate(const Slice& data);

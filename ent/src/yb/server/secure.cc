@@ -103,8 +103,7 @@ Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContext(
 
   auto result = std::make_unique<rpc::SecureContext>();
   faststring data;
-  RETURN_NOT_OK(ReadFileToString(Env::Default(), JoinPathSegments(certs_dir, "ca.crt"), &data));
-  RETURN_NOT_OK(result->AddCertificateAuthority(data));
+  RETURN_NOT_OK(result->AddCertificateAuthorityFile(JoinPathSegments(certs_dir, "ca.crt")));
 
   if (!name.empty()) {
     RETURN_NOT_OK(ReadFileToString(
