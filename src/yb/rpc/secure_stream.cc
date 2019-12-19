@@ -20,8 +20,10 @@
 #include <openssl/x509v3.h>
 
 #include "yb/rpc/outbound_data.h"
+#include "yb/rpc/rpc_util.h"
 
 #include "yb/util/errno.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
@@ -376,6 +378,7 @@ class SecureStream : public Stream, public StreamContext {
   bool Verify(bool preverified, X509_STORE_CTX* store_context);
   void WriteEncrypted(OutboundDataPtr data);
   CHECKED_STATUS ReadDecrypted();
+  Result<size_t> SslRead(void* buf, int num);
 
   std::string ToString() override;
 
@@ -383,6 +386,7 @@ class SecureStream : public Stream, public StreamContext {
   std::unique_ptr<Stream> lower_stream_;
   const std::string remote_hostname_;
   StreamContext* context_;
+  size_t decrypted_bytes_to_skip_ = 0;
   SecureState state_ = SecureState::kInitial;
   bool need_connect_ = false;
   std::vector<OutboundDataPtr> pending_data_;
@@ -566,24 +570,50 @@ Result<ProcessDataResult> SecureStream::ProcessReceived(
   return STATUS_FORMAT(IllegalState, "Unexpected state: $0", to_underlying(state_));
 }
 
+// Tries to do SSL_read up to num bytes from buf. Possible results:
+// > 0 - number of bytes actually read.
+// = 0 - in case of SSL_ERROR_WANT_READ.
+// Status with network error - in case of other errors.
+Result<size_t> SecureStream::SslRead(void* buf, int num) {
+  auto len = SSL_read(ssl_.get(), buf, num);
+  if (len <= 0) {
+    auto error = SSL_get_error(ssl_.get(), len);
+    if (error == SSL_ERROR_WANT_READ) {
+      return 0;
+    } else {
+      LOG_WITH_PREFIX(INFO) << "SSL read error: " << error;
+      return STATUS_FORMAT(NetworkError, "SSL read failed: $0", error);
+    }
+  }
+  return len;
+}
+
 Status SecureStream::ReadDecrypted() {
   // TODO handle IsBusy
   auto& decrypted_read_buffer = context_->ReadBuffer();
   bool done = false;
   while (!done) {
+    if (decrypted_bytes_to_skip_ > 0) {
+      auto global_skip_buffer = GetGlobalSkipBuffer();
+      do {
+        auto len = VERIFY_RESULT(SslRead(
+            global_skip_buffer.mutable_data(),
+            std::min(global_skip_buffer.size(), decrypted_bytes_to_skip_)));
+        if (len == 0) {
+          done = true;
+          break;
+        }
+        VLOG_WITH_PREFIX(4) << "Skip decrypted: " << len;
+        decrypted_bytes_to_skip_ -= len;
+      } while (decrypted_bytes_to_skip_ > 0);
+    }
     auto out = VERIFY_RESULT(decrypted_read_buffer.PrepareAppend());
     size_t appended = 0;
     for (auto iov = out.begin(); iov != out.end();) {
-      auto len = SSL_read(ssl_.get(), iov->iov_base, iov->iov_len);
-      if (len <= 0) {
-        auto error = SSL_get_error(ssl_.get(), len);
-        if (error == SSL_ERROR_WANT_READ) {
-          done = true;
-          break;
-        } else {
-          LOG_WITH_PREFIX(INFO) << "SSL read error: " << error;
-          return STATUS_FORMAT(NetworkError, "SSL read failed: $0", error);
-        }
+      auto len = VERIFY_RESULT(SslRead(iov->iov_base, iov->iov_len));
+      if (len == 0) {
+        done = true;
+        break;
       }
       VLOG_WITH_PREFIX(4) << "Read decrypted: " << len;
       appended += len;
@@ -598,7 +628,8 @@ Status SecureStream::ReadDecrypted() {
       auto temp = VERIFY_RESULT(context_->ProcessReceived(
           decrypted_read_buffer.AppendedVecs(), ReadBufferFull(decrypted_read_buffer.Full())));
       decrypted_read_buffer.Consume(temp.consumed, temp.buffer);
-      DCHECK(decrypted_read_buffer.Empty());
+      DCHECK_EQ(decrypted_bytes_to_skip_, 0);
+      decrypted_bytes_to_skip_ = temp.bytes_to_skip;
     }
   }
 

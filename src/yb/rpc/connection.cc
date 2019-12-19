@@ -49,8 +49,9 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_metrics.h"
 
-#include "yb/util/trace.h"
 #include "yb/util/string_util.h"
+#include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -58,7 +59,8 @@ using std::shared_ptr;
 using std::vector;
 using strings::Substitute;
 
-DEFINE_uint64(rpc_connection_timeout_ms, 15000, "Timeout for RPC connection operations");
+DEFINE_uint64(rpc_connection_timeout_ms, yb::NonTsanVsTsan(15000, 30000),
+    "Timeout for RPC connection operations");
 
 METRIC_DEFINE_histogram(
     server, handler_latency_outbound_transfer, "Time taken to transfer the response ",
@@ -274,6 +276,7 @@ void Connection::ParseReceived() {
 Result<ProcessDataResult> Connection::ProcessReceived(
     const IoVecs& data, ReadBufferFull read_buffer_full) {
   auto result = context_->ProcessCalls(shared_from_this(), data, read_buffer_full);
+  VLOG_WITH_PREFIX(4) << "context_->ProcessCalls result: " << AsString(result);
   if (PREDICT_FALSE(!result.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Command sequence failure: " << result.status();
     return result;

@@ -78,6 +78,7 @@ set(YRPC_SRCS
     rpc_metrics.cc
     rpc_with_call_id.cc
     rpc_with_queue.cc
+    rpc_util.cc
     scheduler.cc
     secure_stream.cc
     serialization.cc

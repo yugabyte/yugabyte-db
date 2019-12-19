@@ -491,7 +491,7 @@ Status Socket::BlockingWrite(const uint8_t *buf, size_t buflen, size_t *nwritten
   return Status::OK();
 }
 
-Status Socket::Recv(uint8_t *buf, int32_t amt, int32_t *nread) {
+Result<int32_t> Socket::Recv(uint8_t* buf, int32_t amt) {
   if (amt <= 0) {
     return STATUS(
         NetworkError, StringPrintf("invalid recv of %d bytes", amt), Slice(), Errno(EINVAL));
@@ -514,8 +514,7 @@ Status Socket::Recv(uint8_t *buf, int32_t amt, int32_t *nread) {
     }
     return STATUS(NetworkError, "Recv error", Errno(errno));
   }
-  *nread = res;
-  return Status::OK();
+  return res;
 }
 
 Result<int32_t> Socket::Recvv(IoVecs* vecs) {
@@ -565,30 +564,29 @@ Status Socket::BlockingRecv(uint8_t *buf, size_t amt, size_t *nread, const MonoT
       return STATUS(TimedOut, "");
     }
     RETURN_NOT_OK(SetRecvTimeout(timeout));
-    int32_t inc_num_read = 0;
-    Status s = Recv(buf, num_to_read, &inc_num_read);
-    if (inc_num_read > 0) {
-      tot_read += inc_num_read;
-      buf += inc_num_read;
-      *nread = tot_read;
-    }
-
-    if (PREDICT_FALSE(!s.ok())) {
+    auto recv_res = Recv(buf, num_to_read);
+    if (PREDICT_TRUE(recv_res.ok())) {
+      auto inc_num_read = *recv_res;
+      if (PREDICT_FALSE(inc_num_read == 0)) {
+        // EOF.
+        break;
+      } else {
+        tot_read += inc_num_read;
+        buf += inc_num_read;
+        *nread = tot_read;
+      }
+    } else {
       // Continue silently when the syscall is interrupted.
       //
       // We used to treat EAGAIN as a timeout, and the reason for that is not entirely clear
       // to me (mbautin). http://man7.org/linux/man-pages/man2/recv.2.html says that EAGAIN and
       // EWOULDBLOCK could be used interchangeably, and these could happen on a nonblocking socket
       // that no data is available on. I think we should just retry in that case.
-      Errno err(s);
+      Errno err(recv_res.status());
       if (err == EINTR || err == EAGAIN) {
         continue;
       }
-      return s.CloneAndPrepend("BlockingRecv error");
-    }
-    if (PREDICT_FALSE(inc_num_read == 0)) {
-      // EOF.
-      break;
+      return recv_res.status().CloneAndPrepend("BlockingRecv error");
     }
   }
 
