@@ -94,4 +94,17 @@ Information about configuring the [YB-Master (`yb-master`)](../reference/configu
     </a>
   </div>
 
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="yugabyted/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/api/ysql.png" aria-hidden="true" />
+        <div class="title">yugabyted</div>
+      </div>
+      <div class="body">
+        Command line tool for managing YugabyteDB clusters.
+      </div>
+    </a>
+  </div>
+
+
 </div>
