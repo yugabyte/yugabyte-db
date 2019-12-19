@@ -136,7 +136,7 @@ We decided to use single RocksDB for entire tablet. This is because:
 * It enables us to leverage code that was written for postgres system tables. Today, all postgres system tables are colocated on a single tablet in master and uses a single RocksDB. We can leverage a lot of that code.
 * We may hit other scaling limits with multiple RocksDBs. For example, it's possible that having 1 million RocksDBs (1000 DBs, with 1000 tables per DB) will cause other side effects.
 
-### Create and Drop DB / Table
+### Create, Drop, Truncate
 
 #### Create Database
 
@@ -168,12 +168,19 @@ If the table is created with `colocated=false`, then it should go through the cu
 When a colocated table is dropped, catalog manager should simply mark the table as deleted (and not remove any tablets). It'll then need to invoke a `ChangeMetadataRequest` to replicate the table removal. Note that, currently, `ChangeMetadata` operation does not support table removal, and we'll need to add this capability.
 
 It can then run a background task to delete all rows corresponding to that table from RocksDB.
+See the [data deletion design doc][1].
 
 If the table being dropped has `colocated=false`, then it should go through the current drop table process and delete the tablets.
 
 #### Drop Database
 
 This should delete the database from sys catalog and also remove the tablets created.
+
+#### Truncate Table
+
+This should be similar to `DROP TABLE`.
+The data should be deleted by background tasks, but catalog manager should not mark the table as deleted.
+See the [data deletion design doc][1].
 
 #### Postgres Metadata
 
@@ -251,3 +258,5 @@ We could potentially split the tablet such that some tables are in one tablet an
 
 
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/ysql-colocated-tables.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
+
+[1]: ./ysql-tablet-colocation-data-deletion.md
