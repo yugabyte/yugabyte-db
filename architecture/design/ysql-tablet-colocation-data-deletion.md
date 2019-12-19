@@ -186,13 +186,13 @@ transactions.
 The idea with this is to put extra information in the `DocKey` like so:
 
 ```
-W1218 18:06:30.099133 15532 docdb.cc:1343] IntentToWriteRequest
+W1218 xx:xx:xx.xxxxxx 15532 docdb.cc:1343] IntentToWriteRequest
 KEY  : SubDocKey(DocKey(CoTableId=07400000-0000-0080-0030-000001400000, IncarnationNumber=0, [], [1]), [SystemColumnId(0)])
 VALUE: null
-W1218 18:06:30.099189 15532 docdb.cc:1343] IntentToWriteRequest
+W1218 xx:xx:xx.xxxxxx 15532 docdb.cc:1343] IntentToWriteRequest
 KEY  : SubDocKey(DocKey(CoTableId=07400000-0000-0080-0030-000001400000, IncarnationNumber=0, [], [1]), [ColumnId(11)])
 VALUE: 2
-W1218 18:06:30.099215 15532 docdb.cc:1343] IntentToWriteRequest
+W1218 xx:xx:xx.xxxxxx 15532 docdb.cc:1343] IntentToWriteRequest
 KEY  : SubDocKey(DocKey(CoTableId=07400000-0000-0080-0030-000001400000, IncarnationNumber=0, [], [1]), [ColumnId(12)])
 VALUE: 3
 ```
