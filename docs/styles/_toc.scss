@@ -16,11 +16,11 @@ h1 {
 }
 #TableOfContents:before {
   content: 'On this page';
-  font-family: Montserrat, sans-serif;
+  font-family: 'Rubik', sans-serif;
   margin-bottom: 7px;
   display: block;
   font-size: 20px;
-  font-weight: 600;
+  font-weight: 500;
   color: $YB_DARK_BLUE;
 }
 #TableOfContents > ul {
@@ -70,7 +70,7 @@ pre code.copy + textarea + button.copy, .copy pre code + textarea + button.copy,
   width: auto;
   font-size: 12px;
   line-height: inherit;
-  font-weight: 600;
+  font-weight: 500;
   text-align: center;
   padding: 3px 8px;
   border-radius: 3px;

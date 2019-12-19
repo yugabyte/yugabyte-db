@@ -49,9 +49,9 @@
     }
 
     h1 {
-      font-family: Montserrat, sans-serif;
+      font-family: 'Rubik', sans-serif;
       font-size: 48px;
-      font-weight: 600;
+      font-weight: 500;
       color: $YB_DARK_MILD;
       margin-bottom: 10px;
       
@@ -145,8 +145,8 @@
 
   .contents-title {
     margin: 10px 0 10px;
-    font-family: Montserrat, sans-serif;
-    font-weight: 600;
+    font-family: 'Rubik', sans-serif;
+    font-weight: 500;
     color: #C0C3D3;
     font-size: 16px;
     letter-spacing: -.02em;
@@ -251,8 +251,8 @@
 
           .title {
             margin-left: 78px;
-            font-family: Montserrat, "Open Sans", sans-serif;
-            font-weight: 600;
+            font-family: 'Rubik', sans-serif;
+            font-weight: 500;
             font-size: 24px;
             line-height: 1.5;
             letter-spacing: -.02em;
@@ -309,6 +309,11 @@
       }
     }
   }
+}
+
+dd {
+  margin-inline-start: 40px;
+  margin-bottom: .5em;
 }
 
 .video-wrapper {
