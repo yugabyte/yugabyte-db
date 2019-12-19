@@ -88,6 +88,7 @@ ADD_YB_TEST(tablet_server-itest)
 
 # Not sure if we really need RUN_SERIAL here as this might not be a resource-intensive test.
 ADD_YB_TEST(compaction-test)
+ADD_YB_TEST(logging-test)
 ADD_YB_TEST(master_replication-itest)
 ADD_YB_TEST(master_sysnamespace-itest)
 ADD_YB_TEST(master_path_handlers-itest)

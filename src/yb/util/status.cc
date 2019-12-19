@@ -81,8 +81,6 @@ struct StatusCategories {
 
   void Register(const StatusCategoryDescription& description) {
     CHECK(!categories[description.id].name);
-    VLOG(1) << "Registering status category: " << static_cast<int>(description.id)
-            << " (" << *description.name << ")";
     categories[description.id] = description;
   }
 
