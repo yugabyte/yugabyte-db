@@ -96,9 +96,10 @@ The behavior of this option is a bit confusing, so it is outlined below.
 | `CREATE INDEX ... WITH (colocated = true)` | colocated table; colocated index | non-colocated table; non-colocated index |
 | `CREATE INDEX ... WITH (colocated = false)` | colocated table; non-colocated index | non-colocated table; non-colocated index |
 
-> **Note:** It is not possible to have a colocated index on a non-colocated table.
-
+Observe that it is not possible to have a colocated index on a non-colocated table.
 The default here is `colocated = true`.
+
+> **Note:** This property should be only used when the parent DB is colocated. It has no effect otherwise.
 
 ### 4. Specify colocation at schema level
 
