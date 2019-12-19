@@ -114,7 +114,7 @@ The syntax for achieving this is shown below.
 __Syntax:__
 
 ```sql
-CREATE SCHEMA name WITH colocated = true | false
+CREATE SCHEMA name WITH colocated = <true|false>
 ```
 
 ## Design
