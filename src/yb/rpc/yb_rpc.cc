@@ -249,6 +249,7 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
 
   Slice source(call_data->data(), call_data->size());
   RETURN_NOT_OK(serialization::ParseYBMessage(source, &header_, &serialized_request_));
+  DVLOG(4) << "Parsed YBInboundCall header: " << AsString(header_);
 
   consumption_ = ScopedTrackedConsumption(mem_tracker, call_data->size());
   request_data_ = std::move(*call_data);
@@ -516,7 +517,8 @@ void YBOutboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents)
     if (now > deadline) {
       auto passed = now - last_read_time_;
       const auto status = STATUS_FORMAT(
-          NetworkError, "Read timeout, passed: $0, timeout: $1", passed, timeout);
+          NetworkError, "Read timeout, passed: $0, timeout: $1, now: $2, last_read_time_: $3",
+          passed, timeout, now, last_read_time_);
       LOG(WARNING) << connection->ToString() << ": " << status;
       connection->reactor()->DestroyConnection(connection.get(), status);
       return;

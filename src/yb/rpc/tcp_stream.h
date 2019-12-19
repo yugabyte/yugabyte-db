@@ -145,6 +145,7 @@ class TcpStream : public Stream {
   size_t data_blocks_sent_ = 0;
   size_t send_position_ = 0;
   size_t queued_bytes_to_send_ = 0;
+  size_t inbound_bytes_to_skip_ = 0;
   bool waiting_write_ready_ = false;
   MemTrackerPtr mem_tracker_;
 };

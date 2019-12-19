@@ -38,8 +38,9 @@
 #include <boost/container/small_vector.hpp>
 
 #include "yb/gutil/macros.h"
-#include "yb/util/status.h"
+
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -153,7 +154,7 @@ class Socket {
   CHECKED_STATUS BlockingWrite(const uint8_t *buf, size_t buflen, size_t *num_written,
       const MonoTime& deadline);
 
-  CHECKED_STATUS Recv(uint8_t *buf, int32_t amt, int32_t *nread);
+  Result<int32_t> Recv(uint8_t* buf, int32_t amt);
 
   // Receives into multiple buffers, returns number of bytes received.
   Result<int32_t> Recvv(IoVecs* vecs);
