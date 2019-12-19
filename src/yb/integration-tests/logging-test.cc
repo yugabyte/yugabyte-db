@@ -30,17 +30,25 @@
 // under the License.
 //
 
-#include <glog/logging.h>
-#include <gmock/gmock.h>
 #include <string>
 #include <vector>
+
+#include <glog/logging.h>
+#include <gmock/gmock.h>
 
 #include "yb/util/logging_test_util.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 
+DECLARE_string(vmodule);
+
 using std::string;
 using std::vector;
+
+// LoggingTest is not actually an integration test, but we put it here, so it will be linked with
+// all libraries used for YB cluster processes, because static object initialization in thse
+// libraries could cause logging issues.
+// For example: https://github.com/yugabyte/yugabyte-db/issues/3176
 
 namespace yb {
 
@@ -61,6 +69,26 @@ TEST(LoggingTest, TestThrottledLogging) {
   EXPECT_THAT(msgs[0], testing::ContainsRegex("test$"));
   // The second one should have suppressed at least three digits worth of log messages.
   EXPECT_THAT(msgs[1], testing::ContainsRegex("\\[suppressed [0-9]{3,} similar messages\\]"));
+}
+
+TEST(LoggingTest, VModule) {
+  google::FlagSaver flag_saver;
+
+  FLAGS_vmodule = "logging-test=1";
+
+  ASSERT_TRUE(VLOG_IS_ON(1));
+
+  constexpr auto kPattern = "vmodule-test";
+  StringVectorSink sink;
+  ScopedRegisterSink srs(&sink);
+
+  VLOG(1) << kPattern;
+
+  const vector<string>& msgs = sink.logged_msgs();
+
+  ASSERT_GE(msgs.size(), 1);
+
+  EXPECT_THAT(msgs[0], testing::HasSubstr(kPattern));
 }
 
 } // namespace yb
