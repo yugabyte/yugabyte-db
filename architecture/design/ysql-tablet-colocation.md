@@ -4,7 +4,7 @@
 
 ## Motivation
 
-A lot of applications using relational databases have a high number of tables and indexes (1000+). These tables are typically small, and single database size is less than 500 GB. These applications still want to be able to use a distributed SQL database like YugabyteDB to leverage high availability and data resilience.
+A lot of applications using relational databases have a high number of tables and indexes (1000+). These tables are typically small, and single database size is less than 500 GB. These applications still want to be able to use a distributed SQL database like YugabyteDB to leverage high availability, data resilience, and geographic data distribution.
 
 Some of these applications also create multiple databases - for example, 1 DB per customer. In such cases, using the current architecture will result in a huge number of tablets. For example, creating 1000 such DBs will result in 8 million tablets (assuming that each DB has 1000 tables and each table has 8 tablets).
 
