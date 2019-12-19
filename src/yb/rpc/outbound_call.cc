@@ -503,11 +503,13 @@ void OutboundCall::SetTimedOut() {
   TRACE_TO(trace_, "Call TimedOut.");
   bool invoke_callback;
   {
-    auto status = STATUS_FORMAT(TimedOut,
-                                "$0 RPC to $1 timed out after $2",
-                                remote_method_->method_name(),
-                                conn_id_.remote(),
-                                controller_->timeout());
+    auto status = STATUS_FORMAT(
+        TimedOut,
+        "$0 RPC (request call id $3) to $1 timed out after $2",
+        remote_method_->method_name(),
+        conn_id_.remote(),
+        controller_->timeout(),
+        call_id_);
     std::lock_guard<simple_spinlock> l(lock_);
     status_ = std::move(status);
     invoke_callback = SetState(TIMED_OUT);

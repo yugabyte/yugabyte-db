@@ -49,7 +49,7 @@ class BinaryCallParser {
  private:
   MemTrackerPtr mandatory_tracker_;
   MemTrackerPtr buffer_tracker_;
-  std::vector<char> buffer_;
+  std::vector<char> call_header_buffer_;
   ScopedTrackedConsumption call_data_consumption_;
   CallData call_data_;
   const size_t size_offset_;

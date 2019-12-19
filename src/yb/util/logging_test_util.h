@@ -33,11 +33,18 @@
 #ifndef YB_UTIL_LOGGING_TEST_UTIL_H
 #define YB_UTIL_LOGGING_TEST_UTIL_H
 
-#include <glog/logging.h>
+#include <chrono>
 #include <string>
 #include <vector>
 
+#include <glog/logging.h>
+
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+
 namespace yb {
+
+using namespace std::literals;
 
 // GLog sink that keeps an internal buffer of messages that have been logged.
 class StringVectorSink : public google::LogSink {
@@ -56,6 +63,31 @@ class StringVectorSink : public google::LogSink {
 
  private:
   std::vector<std::string> logged_msgs_;
+};
+
+// GLog sink that waits for specified string to appear in log.
+class StringWaiterLogSink : public google::LogSink {
+ public:
+  explicit StringWaiterLogSink(const std::string& string_to_wait)
+      : string_to_wait_(string_to_wait) {
+    google::AddLogSink(this);
+  }
+
+  // Wait for string_to_wait to occur in log.
+  CHECKED_STATUS WaitFor(MonoDelta timeout);
+
+  void send(
+      google::LogSeverity severity, const char* full_filename, const char* base_filename, int line,
+      const struct ::tm* tm_time, const char* message, size_t message_len) override;
+
+  bool IsEventOccurred() { return event_occurred_; }
+
+  ~StringWaiterLogSink() { google::RemoveLogSink(this); }
+
+ private:
+  static const char* kWaitingMessage;
+  std::string string_to_wait_;
+  std::atomic<bool> event_occurred_{false};
 };
 
 // RAII wrapper around registering a LogSink with GLog.

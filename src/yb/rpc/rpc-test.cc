@@ -47,6 +47,7 @@
 #endif
 
 #include "yb/gutil/map-util.h"
+#include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/join.h"
 
 #include "yb/rpc/secure_stream.h"
@@ -56,6 +57,7 @@
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/env.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/test_util.h"
 
 #include "yb/util/memory/memory_usage_test_util.h"
@@ -69,6 +71,9 @@ DEFINE_int32(rpc_test_connection_keepalive_num_iterations, 1,
 DECLARE_uint64(rpc_connection_timeout_ms);
 DECLARE_int32(num_connections_to_server);
 DECLARE_bool(enable_rpc_keepalive);
+DECLARE_int64(memory_limit_hard_bytes);
+DECLARE_bool(TEST_pause_calculator_echo_request);
+DECLARE_bool(binary_call_parser_reject_on_mem_tracker_hard_limit);
 
 using namespace std::chrono_literals;
 using std::string;
@@ -108,7 +113,7 @@ void CheckParseEndpoint(const std::string& input, std::string expected = std::st
   }
   auto endpoint = ParseEndpoint(input, kDefaultPort);
   ASSERT_TRUE(endpoint.ok()) << "input: " << input << ", status: " << endpoint.status().ToString();
-  ASSERT_EQ(expected, yb::ToString(*endpoint));
+  ASSERT_EQ(expected, AsString(*endpoint));
 }
 
 } // namespace
@@ -121,10 +126,10 @@ TEST_F(TestRpc, Endpoint) {
   ASSERT_FALSE(addr2 < addr1);
   ASSERT_EQ(1000, addr1.port());
   ASSERT_EQ(2000, addr2.port());
-  ASSERT_EQ(string("0.0.0.0:1000"), yb::ToString(addr1));
-  ASSERT_EQ(string("0.0.0.0:2000"), yb::ToString(addr2));
+  ASSERT_EQ(string("0.0.0.0:1000"), AsString(addr1));
+  ASSERT_EQ(string("0.0.0.0:2000"), AsString(addr2));
   Endpoint addr3(addr1);
-  ASSERT_EQ(string("0.0.0.0:1000"), yb::ToString(addr3));
+  ASSERT_EQ(string("0.0.0.0:1000"), AsString(addr3));
 
   CheckParseEndpoint("127.0.0.1", "127.0.0.1:80");
   CheckParseEndpoint("192.168.0.1:123");
@@ -886,27 +891,156 @@ TEST_F(TestRpc, SendingQueueMemoryUsage) {
 
 #endif
 
+namespace {
+
+constexpr auto kMemoryLimitHardBytes = 100_MB;
+
+TestServerOptions SetupServerForTestCantAllocateReadBuffer() {
+  FLAGS_binary_call_parser_reject_on_mem_tracker_hard_limit = true;
+  FLAGS_memory_limit_hard_bytes = kMemoryLimitHardBytes;
+  TestServerOptions options;
+  options.messenger_options.n_reactors = 1;
+  options.messenger_options.num_connections_to_server = 1;
+  options.messenger_options.keep_alive_timeout = 60s;
+  return options;
+}
+
+std::string DumpMemoryUsage() {
+  std::ostringstream out;
+#if defined(TCMALLOC_ENABLED)
+  char tcmalloc_stats_buf[20_KB];
+  MallocExtension::instance()->GetStats(tcmalloc_stats_buf, sizeof(tcmalloc_stats_buf));
+  out << "TCMalloc stats: \n" << tcmalloc_stats_buf;
+#endif
+  out << "Memory usage: \n" << DumpMemTrackers();
+  return out.str();
+}
+
+void TestCantAllocateReadBuffer(Messenger* client_messenger, const HostPort& server_addr) {
+  const MonoDelta kTimeToWaitForOom = 20s;
+  const MonoDelta kCallsTimeout = NonTsanVsTsan(3s, 10s);
+
+  Proxy p(client_messenger, server_addr);
+
+  rpc_test::EchoRequestPB req;
+  rpc_test::EchoResponsePB resp;
+
+  std::vector<std::unique_ptr<RpcController>> controllers;
+
+  auto n_calls = 50;
+
+  SetAtomicFlag(true, &FLAGS_TEST_pause_calculator_echo_request);
+  StringWaiterLogSink log_waiter("Unable to allocate read buffer because of limit");
+
+  LOG(INFO) << "Start sending calls...";
+  CountDownLatch latch(n_calls);
+  for (int i = 0; i < n_calls; i++) {
+    req.set_data(std::string(10_MB + i, 'X'));
+    auto controller = new RpcController();
+    controllers.push_back(std::unique_ptr<RpcController>(controller));
+    controller->set_timeout(kCallsTimeout);
+    p.AsyncRequest(CalculatorServiceMethods::EchoMethod(), req, &resp, controller, [&latch]() {
+      latch.CountDown();
+    });
+    if ((i + 1) % 10 == 0) {
+      LOG(INFO) << "Sent " << i + 1 << " calls.";
+      LOG(INFO) << DumpMemoryUsage();
+    }
+  }
+  LOG(INFO) << n_calls << " calls sent.";
+
+  ASSERT_OK(log_waiter.WaitFor(kTimeToWaitForOom));
+
+  SetAtomicFlag(false, &FLAGS_TEST_pause_calculator_echo_request);
+  LOG(INFO) << "Resumed call function.";
+
+  LOG(INFO) << "Waiting for the calls to be marked finished...";
+  latch.Wait();
+
+  LOG(INFO) << n_calls << " calls marked as finished.";
+
+  for (int i = 0; i < controllers.size(); ++i) {
+    auto& controller = controllers[i];
+    ASSERT_TRUE(controller->finished());
+    auto s = controller->status();
+    ASSERT_TRUE(s.ok() || s.IsTimedOut())
+        << "Unexpected error for call #" << i + 1 << ": " << AsString(s);
+  }
+  controllers.clear();
+  req.clear_data();
+
+  LOG(INFO) << DumpMemoryUsage();
+  {
+    constexpr auto target_memory_consumption = kMemoryLimitHardBytes / 2;
+    const auto wait_status = LoggedWaitFor(
+        [] {
+#if defined(TCMALLOC_ENABLED)
+          // Don't rely on root mem tracker consumption, since it includes memory released by
+          // the application, but not yet released by TCMalloc.
+          const auto consumption = MemTracker::GetTCMallocCurrentAllocatedBytes();
+#else
+          // For TSAN/ASAN we don't have TCMalloc and rely on root mem tracker consumption.
+          const auto consumption = MemTracker::GetRootTracker()->consumption();
+#endif
+          LOG(INFO) << "Memory consumption: " << HumanReadableNumBytes::ToString(consumption);
+          return consumption < target_memory_consumption;
+        }, 10s,
+        Format("Waiting until memory consumption is less than $0 ...", target_memory_consumption));
+    LOG(INFO) << DumpMemoryUsage();
+    ASSERT_OK(wait_status);
+  }
+
+  // Further calls should be processed successfully since memory consumption is now under limit.
+  n_calls = 20;
+  LOG(INFO) << "Start sending more calls...";
+  latch.Reset(n_calls);
+  for (int i = 0; i < n_calls; i++) {
+    req.set_data(std::string(i + 1, 'Y'));
+    auto controller = new RpcController();
+    controllers.push_back(std::unique_ptr<RpcController>(controller));
+    controller->set_timeout(kCallsTimeout);
+    p.AsyncRequest(CalculatorServiceMethods::EchoMethod(), req, &resp, controller, [&latch]() {
+      latch.CountDown();
+    });
+  }
+  LOG(INFO) << n_calls << " calls sent.";
+  latch.Wait();
+  LOG(INFO) << n_calls << " calls marked as finished.";
+
+  for (int i = 0; i < controllers.size(); ++i) {
+    auto& controller = controllers[i];
+    ASSERT_TRUE(controller->finished());
+    auto s = controller->status();
+    ASSERT_TRUE(s.ok()) << "Unexpected error for call #" << i + 1 << ": " << AsString(s);
+  }
+}
+
+}  // namespace
+
+TEST_F(TestRpc, CantAllocateReadBuffer) {
+  // Set up server.
+  TestServerOptions options = SetupServerForTestCantAllocateReadBuffer();
+  HostPort server_addr;
+  StartTestServerWithGeneratedCode(&server_addr, options);
+
+  // Set up client.
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
+
+  TestCantAllocateReadBuffer(client_messenger.get(), server_addr);
+}
+
 class TestRpcSecure : public RpcTestBase {
  public:
   void SetUp() override {
     RpcTestBase::SetUp();
     secure_context_ = std::make_unique<SecureContext>();
     EXPECT_OK(secure_context_->TEST_GenerateKeys(512, "127.0.0.1"));
-    TestServerOptions options;
-    StartTestServerWithGeneratedCode(
-        CreateSecureMessenger("TestServer"), &server_hostport_, options);
-    client_messenger_ = CreateSecureMessenger("Client");
-    proxy_cache_ = std::make_unique<ProxyCache>(client_messenger_.get());
-  }
-
-  void TearDown() override {
-    client_messenger_->Shutdown();
-    RpcTestBase::TearDown();
   }
 
  protected:
-  std::unique_ptr<Messenger> CreateSecureMessenger(const std::string& name) {
-    auto builder = CreateMessengerBuilder(name);
+  std::unique_ptr<Messenger> CreateSecureMessenger(
+      const std::string& name, const MessengerOptions& options = kDefaultClientMessengerOptions) {
+    auto builder = CreateMessengerBuilder(name, options);
     builder.SetListenProtocol(SecureStreamProtocol());
     builder.AddStreamFactory(
         SecureStreamProtocol(),
@@ -915,15 +1049,20 @@ class TestRpcSecure : public RpcTestBase {
     return EXPECT_RESULT(builder.Build());
   }
 
-  HostPort server_hostport_;
   std::unique_ptr<SecureContext> secure_context_;
-  std::unique_ptr<Messenger> client_messenger_;
-  std::unique_ptr<ProxyCache> proxy_cache_;
 };
 
 TEST_F(TestRpcSecure, TLS) {
-  rpc_test::CalculatorServiceProxy p(
-      proxy_cache_.get(), server_hostport_, SecureStreamProtocol());
+  auto client_messenger = rpc::CreateAutoShutdownMessengerHolder(CreateSecureMessenger("Client"));
+  auto proxy_cache = std::make_unique<ProxyCache>(client_messenger.get());
+
+  TestServerOptions options;
+  HostPort server_hostport;
+  StartTestServerWithGeneratedCode(
+      CreateSecureMessenger("TestServer", kDefaultServerMessengerOptions), &server_hostport,
+      options);
+
+  rpc_test::CalculatorServiceProxy p(proxy_cache.get(), server_hostport, SecureStreamProtocol());
 
   RpcController controller;
   controller.set_timeout(5s);
@@ -933,6 +1072,19 @@ TEST_F(TestRpcSecure, TLS) {
   rpc_test::AddResponsePB resp;
   ASSERT_OK(p.Add(req, &resp, &controller));
   ASSERT_EQ(30, resp.result());
+}
+
+TEST_F(TestRpcSecure, CantAllocateReadBuffer) {
+  // Set up server.
+  TestServerOptions options = SetupServerForTestCantAllocateReadBuffer();
+  HostPort server_addr;
+  StartTestServerWithGeneratedCode(
+      CreateSecureMessenger("TestServer", options.messenger_options), &server_addr, options);
+
+  // Set up client.
+  auto client_messenger = rpc::CreateAutoShutdownMessengerHolder(CreateSecureMessenger("Client"));
+
+  TestCantAllocateReadBuffer(client_messenger.get(), server_addr);
 }
 
 } // namespace rpc

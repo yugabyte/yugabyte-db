@@ -58,6 +58,7 @@
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/rpc_service.h"
+#include "yb/rpc/rpc_util.h"
 #include "yb/rpc/tcp_stream.h"
 #include "yb/rpc/yb_rpc.h"
 
@@ -567,6 +568,8 @@ Messenger::Messenger(const MessengerBuilder &bld)
   for (int i = 0; i < bld.num_reactors_; i++) {
     reactors_.emplace_back(std::make_unique<Reactor>(this, i, bld));
   }
+  // Make sure skip buffer is allocated before we hit memory limit and try to use it.
+  GetGlobalSkipBuffer();
 }
 
 Messenger::~Messenger() {
