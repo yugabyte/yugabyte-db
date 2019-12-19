@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <memory>
 
+#include <boost/algorithm/string/join.hpp>
 #include <boost/thread/locks.hpp>
 
 #include "yb/consensus/quorum_util.h"
@@ -502,8 +503,10 @@ Result<bool> ClusterLoadBalancer::HandleAddReplicas(
   if (state_->options_->kAllowLimitOverReplicatedTablets &&
       get_total_over_replication() >= state_->options_->kMaxOverReplicatedTablets) {
     return STATUS_SUBSTITUTE(TryAgain,
-        "Cannot add replicas. Currently have a total overreplication of $0, when max allowed is $1",
-        get_total_over_replication(), state_->options_->kMaxOverReplicatedTablets);
+        "Cannot add replicas. Currently have a total overreplication of $0, when max allowed is $1"
+        ", overreplicated tablets: $2",
+        get_total_over_replication(), state_->options_->kMaxOverReplicatedTablets,
+        boost::algorithm::join(state_->tablets_over_replicated_, ", "));
   }
 
   // Handle missing placements with highest priority, as it means we're potentially
