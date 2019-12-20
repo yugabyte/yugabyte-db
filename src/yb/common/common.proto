@@ -421,8 +421,7 @@ message TransactionMetadataPB {
   optional string status_tablet = 3;
   optional fixed64 priority = 4;
 
-  // Used for backward compatibility during rolling update.
-  optional fixed64 DEPRECATED_start_hybrid_time = 5;
+  optional fixed64 start_hybrid_time = 5;
 
   // Stores time when metadata was written to provisional records RocksDB on a
   // participating tablet. So it could be used for cleanup.
