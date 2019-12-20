@@ -121,6 +121,10 @@ class YBTransaction::Impl final {
     LOG_IF_WITH_PREFIX(DFATAL, !waiters_.empty()) << "Non empty waiters";
   }
 
+  void SetPriority(uint64_t priority) {
+    metadata_.priority = priority;
+  }
+
   YBTransactionPtr CreateSimilarTransaction() {
     return std::make_shared<YBTransaction>(manager_);
   }
@@ -949,6 +953,10 @@ YBTransaction::YBTransaction(TransactionManager* manager, ChildTransactionData d
 }
 
 YBTransaction::~YBTransaction() {
+}
+
+void YBTransaction::SetPriority(uint64_t priority) {
+  impl_->SetPriority(priority);
 }
 
 Status YBTransaction::Init(IsolationLevel isolation, const ReadHybridTime& read_time) {

@@ -128,6 +128,9 @@ extern bool trace_syncscan;
 extern bool optimize_bounded_sort;
 #endif
 
+static double yb_transaction_priority_lower_bound = 0.0;
+static double yb_transaction_priority_upper_bound = 1.0;
+
 static int	GUC_check_errcode_value;
 
 /* global variables for check hook support */
@@ -196,6 +199,9 @@ static bool check_cluster_name(char **newval, void **extra, GucSource source);
 static const char *show_unix_socket_permissions(void);
 static const char *show_log_file_mode(void);
 static const char *show_data_directory_mode(void);
+
+extern void YBCAssignTransactionPriorityLowerBound(double newval, void* extra);
+extern void YBCAssignTransactionPriorityUpperBound(double newval, void* extra);
 
 /* Private functions in guc-file.l that need to be called from guc.c */
 static ConfigVariable *ProcessConfigFileInternal(GucContext context,
@@ -3278,6 +3284,24 @@ static struct config_real ConfigureNamesReal[] =
 		&vacuum_cleanup_index_scale_factor,
 		0.1, 0.0, 1e10,
 		NULL, NULL, NULL
+	},
+	{
+		{"yb_transaction_priority_lower_bound", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets lower bound for priority used by transactions of this session"),
+			NULL
+		},
+		&yb_transaction_priority_lower_bound,
+		0.0, 0.0, 1.0,
+		NULL, YBCAssignTransactionPriorityLowerBound, NULL
+	},
+	{
+		{"yb_transaction_priority_upper_bound", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets upper bound for priority used by transactions of this session"),
+			NULL
+		},
+		&yb_transaction_priority_upper_bound,
+		1.0, 0.0, 1.0,
+		NULL, YBCAssignTransactionPriorityUpperBound, NULL
 	},
 
 	/* End-of-list marker */

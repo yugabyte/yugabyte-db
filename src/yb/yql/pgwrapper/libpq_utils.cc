@@ -54,7 +54,8 @@ std::string ExecStatusTypeToStr(ExecStatusType exec_status_type) {
 
 YBPgErrorCode GetSqlState(PGresult* result) {
   auto exec_status_type = PQresultStatus(result);
-  if (exec_status_type == ExecStatusType::PGRES_COMMAND_OK) {
+  if (exec_status_type == ExecStatusType::PGRES_COMMAND_OK ||
+      exec_status_type == ExecStatusType::PGRES_TUPLES_OK) {
     return YBPgErrorCode::YB_PG_SUCCESSFUL_COMPLETION;
   }
 
@@ -359,6 +360,12 @@ Result<int64_t> GetInt64(PGresult* result, int row, int column) {
   return BigEndian::Load64(VERIFY_RESULT(GetValueWithLength(result, row, column, sizeof(int64_t))));
 }
 
+Result<double> GetDouble(PGresult* result, int row, int column) {
+  auto temp =
+      BigEndian::Load64(VERIFY_RESULT(GetValueWithLength(result, row, column, sizeof(int64_t))));
+  return *reinterpret_cast<double*>(&temp);
+}
+
 Result<std::string> GetString(PGresult* result, int row, int column) {
   auto len = PQgetlength(result, row, column);
   auto value = PQgetvalue(result, row, column);
@@ -369,6 +376,7 @@ Result<std::string> AsString(PGresult* result, int row, int column) {
   constexpr Oid INT8OID = 20;
   constexpr Oid INT4OID = 23;
   constexpr Oid TEXTOID = 25;
+  constexpr Oid FLOAT8OID = 701;
   constexpr Oid BPCHAROID = 1042;
   constexpr Oid VARCHAROID = 1043;
 
@@ -378,6 +386,8 @@ Result<std::string> AsString(PGresult* result, int row, int column) {
       return std::to_string(VERIFY_RESULT(GetInt64(result, row, column)));
     case INT4OID:
       return std::to_string(VERIFY_RESULT(GetInt32(result, row, column)));
+    case FLOAT8OID:
+      return std::to_string(VERIFY_RESULT(GetDouble(result, row, column)));
     case TEXTOID: FALLTHROUGH_INTENDED;
     case BPCHAROID: FALLTHROUGH_INTENDED;
     case VARCHAROID:

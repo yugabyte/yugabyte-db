@@ -218,6 +218,8 @@ struct TransactionMetadata {
   TransactionId transaction_id = boost::uuids::nil_uuid();
   IsolationLevel isolation = IsolationLevel::NON_TRANSACTIONAL;
   TabletId status_tablet;
+
+  // By default random value is picked for newly created transaction.
   uint64_t priority;
 
   // Used for snapshot isolation (as read time and for conflict resolution).
