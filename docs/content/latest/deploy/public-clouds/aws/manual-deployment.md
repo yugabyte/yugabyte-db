@@ -574,8 +574,8 @@ replication_info {
 }
 ```
 
-But suppose you are using these instructions to setup a multi-region deployment, 
-one option to consider is to set a preferred location for all the tablet leaders 
+Suppose your deployment is multi-region rather than multi-zone, one additional 
+option to consider is to set a preferred location for all the tablet leaders 
 using the [set_preferred_zones yb-admin command](../../../admin/yb-admin). 
 For multi-row/multi-table transactional operations, colocating the leaders to be in a single zone/region can help reduce the number of 
 cross-region network hops involved in executing the transaction and as a result improve performance.
