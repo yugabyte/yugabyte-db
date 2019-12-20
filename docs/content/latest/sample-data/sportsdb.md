@@ -62,15 +62,13 @@ CREATE DATABASE sportsdb;
 
 Confirm that you have the `sportsdb` database by listing out the databases on your cluster.
 
-```
+```postgresql
 yugabyte=# \l
 ```
 
-[Add screenshot.]
-
 Connect to the `sportsdb` database.
 
-```
+```postgresql
 yugabyte=# \c sportsdb
 You are now connected to database "sportsdb" as user "yugabyte".
 sportsdb=#
@@ -80,13 +78,13 @@ sportsdb=#
 
 To build the tables and database objects, run the following command.
 
-```
+```postgresql
 sportsdb=# \i share/sportsdb_tables.sql
 ```
 
 You can verify that all 203 tables and sequences have been created by running the `\d` command.
 
-```
+```postgresql
 sportsdb=# \d
 ```
 
@@ -94,13 +92,13 @@ sportsdb=# \d
 
 To load the `sportsdb` database with sample data (~80k rows), run the following command to execute commands in the file.
 
-```
+```postgresql
 sportsdb=# \i share/sportsdb_inserts.sql
 ```
 
 To verify that you have some data to work with, you can run the following simple SELECT statement to pull data from the  basketball_defensive_stats` table.
 
-```
+```postgresql
 sportsdb=# SELECT * FROM basketball_defensive_stats WHERE steals_total = '5';
 ```
 
@@ -108,13 +106,13 @@ sportsdb=# SELECT * FROM basketball_defensive_stats WHERE steals_total = '5';
 
 To create the unique constraints and foreign keys, run the following commands.
 
-```
+```postgresql
 sportsdb=# \i share/sportsdb_constraints.sql
 ```
 
 and
 
-```
+```postgresql
 sportsdb=# \i share/sportsdb_fks.sql
 ```
 
@@ -122,7 +120,7 @@ sportsdb=# \i share/sportsdb_fks.sql
 
 To create the indexes, run the following command.
 
-```
+```postgresql
 sportsdb=# \i share/sportsdb_indexes.sql
 ```
 
