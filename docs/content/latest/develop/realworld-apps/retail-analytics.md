@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## 1. Start local cluster with YSQL API enabled
+## 1. Start local cluster
 
 Follow [Quick Start](../../../quick-start/) instructions to run a local YugabyteDB cluster. Test the YSQL API as [documented](../../../quick-start/explore-ysql/) so that you can confirm that you have the YSQL service running on `localhost:5433`. 
 

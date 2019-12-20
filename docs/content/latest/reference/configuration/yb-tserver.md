@@ -1,7 +1,7 @@
 ---
-title: YB-TServer service
-linkTitle: YB-TServer service
-description: YB-TServer service
+title: yb-tserver
+linkTitle: yb-tserver
+description: yb-tserver
 menu:
   latest:
     identifier: yb-tserver
@@ -13,7 +13,7 @@ isTocNested: 3
 showAsideToc: true
 ---
 
-The [YB-TServer](../../../architecture/concepts/yb-tserver/) binary (`yb-tserver`) is located in the `bin` directory of YugabyteDB home.
+Use the `yb-tserver` binary and its options to configure [YB-TServer](../../../architecture/concepts/yb-tserver/) services. The `yb-tserver` executable file is located in the `bin` directory of YugabyteDB home.
 
 ## Syntax
 

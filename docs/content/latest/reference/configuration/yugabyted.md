@@ -6,19 +6,19 @@ beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
     identifier: yugabyted
-    parent: admin
-    weight: 2459
+    parent: configuration
+    weight: 2451
 isTocNested: true
 showAsideToc: true
 ---
 
+Use the `yugabyted` binary and its options to configure a one-node YugabyteDB cluster. The `yugabyted` executable file is located in the `bin` directory of YugabyteDB home.
+
 {{< note title="Note" >}}
 
-`yugabyted` is under active development as we incrementally add new features and functionality and strive to continually simplify your experience. To learn and develop YugabyteDB applications, use `yugabyted` and `yb-ctl` to simplify basic operations and tasks. For production deployments, use `yb-tserver` and `yb-master`.
+`yugabyted` is under active development with new features and functionality. You can use `yugabyted` along with the [`yb-ctl`](../../../admin/yb-ctl) utility to quickly develop and test YugabyteDB on your local environment. For production deployments, configure your YugabyteDB clusters using [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master).
 
 {{< /note >}}
-
-Use `yugabyted` to 
 
 ## Syntax
 
@@ -29,21 +29,33 @@ yugabyted [-h] [ <command> ] [ <options> ]
 - *command*: command to run
 - *options*: one or more options separated by spaces.
 
-## Commands
-
-- [start]("#start") —  Start YugabyteDB.
-- [stop](#stop) — Stop running YugabyteDB.
-- [status](#status) — Print status of YugabyteDB.
-- [version](#version) — Print the version of YugabyteDB and exit.
-- [demo](#demo) — Load and interact with preset demo data.
-
 ### Command-line help
 
--h, --help
+You can access the overview command line help for `yugabyted` by running one of the following examples from the YugabyteDB home:
 
-Print the help message and exit.
+```sh
+$ ./bin/yugabyted -h
+```
 
-For help with specific commands, run 'yugabyted [command] -h'.
+```sh
+$ ./bin/yugabyted -help
+```
+
+For help with specific `yugabyted` commands, run 'yugabyted [ command ] -h'. For example, you can print the command line help for the `yugabyted start` command by running the following:
+
+```sh
+$ ./bin/yugabyted start -h
+```
+
+## Commands
+
+The following commands are available:
+
+- [start](#start)
+- [stop](#stop)
+- [status](#status)
+- [version](#version)
+- [demo](#demo)
 
 -----
 
@@ -67,14 +79,13 @@ Use the `yugabyted start` command to start YugabyteDB.
    [ --tserver_webserver_port <tserver-webserver-port> ]
    [ --webserver_port <webserver-port> ]
    [ --bind_ip BIND_IP ] 
-   [ --daemon t | f ]
-   [ --callhome t | f ] 
-   [ --ui t | f ]
+   [ --daemon <bool> ]
+   [ --callhome <bool> ] 
+   [ --ui <bool> ]
 ```
 
 ### Options
 
-These are the options.
 
 [-h | --help]({{< relref "#h-help" >}})
 : Print the commmand-line help and exit.
@@ -124,23 +135,23 @@ These are the options.
 -----
 ## stop
 
-Use the `yugabted stop` command to stop a YugabyteDB.
+Use the `yugabted stop` command to stop a YugabyteDB cluster.
 
 ### Syntax
 
 ```sh
-yugabyted stop [-h] [--config CONFIG] [--data_dir DATA_DIR]
+yugabyted stop [ -h ] [ --config <config-file> ] [ --data_dir <data-directory> ]
 ```
 
 ## Options
 
-[-h, --help]({{< relref "#h-help" >}})
+[-h, --help]({{< relref "#h-help-1" >}})
 : Print the command line help and exit.
   
-[--config *config-file*]({{< relref "#config-config-file" >}})
+[--config *config-file*]({{< relref "#config-config-file-1" >}})
 : The path to the YugabyteDB configuration file.
   
-[--data_dir *data-directory*]({{< relref "#data-dir-data-directory" >}})
+[--data_dir *data-directory*]({{< relref "#data-dir-data-directory-1" >}})
 : The directory where YugabyteDB will store data.
 
 -----
@@ -152,18 +163,18 @@ Use the `yugabyted status` command to check the status.
 ## Syntax
 
 ```
-yugabyted status [ -h ] [ --config <config-file> ] [ --data_dir <data-directory> ]
+yugabyted status [ -h | --help ] [ --config <config-file> ] [ --data_dir <data-directory> ]
 ```
 
 ## Options
 
-[-h, --help]({{< relref "#h-help" >}})
+[-h, --help]({{< relref "#h-help-2" >}})
 : Print the command line help and exit.
 
-[--config *config-file*]({{< relref "#config-config-file" >}})
+[--config *config-file*]({{< relref "#config-config-file-2" >}})
 : The path to the YugabyteDB configuration file.
 
-[--data_dir *data-directory*]({{< relref "#data-dir-data-directory" >}})  
+[--data_dir *data-directory*]({{< relref "#data-dir-data-directory-2" >}})  
 : The directory where YugabyteDB stores data.
 
 -----
@@ -175,18 +186,18 @@ Use the `yugabyted version` command to check the version number.
 ### Syntax
 
 ```
-yugabyted version [ -h ] [ --config CONFIG ] [ --data_dir DATA_DIR ]
+yugabyted version [ -h | --help ] [ --config <config-file> ] [ --data_dir <data-directory> ]
 ```
 
 ### Options
 
-[-h | --help]({{< relref "#h-help" >}})
+[-h | --help]({{< relref "#h-help-3" >}})
 : Print the help message and exit.
 
-[--config *config-file*]({{< relref "#config-config-file" >}})
+[--config *config-file*]({{< relref "#config-config-file-3" >}})
 : The path to the YugabyteDB configuration file.
 
-[--data_dir *data-directory*]({{< relref "#data-dir-data-dictionary" >}})
+[--data_dir *data-directory*]({{< relref "#data-dir-data-dictionary-3" >}})
 : The directory where YugabyteDB stores data.
 
 -----
@@ -198,16 +209,16 @@ Use the `yugabyted start` command to start a demo instance of YugabyteDB.
 ### Syntax
 
 ```
-yugabyted demo [ -h ] [ --config CONFIG ] [ --data_dir DATA_DIR ]
+yugabyted demo [ -h | -help ] [ --config <config-file> ] [ --data_dir <data-directory> ]
 ```
 
 ### Options
 
-[-h | --help]({{< relref "#h-help" >}})
+[-h | --help]({{< relref "#h-help-4" >}})
 : Print the help message and exit.
 
-[--config *config-file*]({{< relref "#config-config-file" >}})
+[--config *config-file*]({{< relref "#config-config-file-4" >}})
 : The path to the YugabyteDB configuration file.
 
-[--data_dir *data_directory*]({{< relref "#data-dir-data-directory" >}})
+[--data_dir *data_directory*]({{< relref "#data-dir-data-directory-4" >}})
 : The directory where YugabyteDB stores data.
