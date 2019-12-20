@@ -115,7 +115,7 @@ Status MasterTestBase::CreatePgsqlTable(const NamespaceId& namespace_id,
     request->mutable_namespace_()->set_id(namespace_id);
   }
   request->mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::PGSQL_HASH_SCHEMA);
-  request->set_num_tablets(8);
+  request->mutable_schema()->mutable_table_properties()->set_num_tablets(8);
 
   // Dereferencing as the RPCs require const ref for request. Keeping request param as pointer
   // though, as that helps with readability and standardization.
@@ -140,7 +140,7 @@ Status MasterTestBase::DoCreateTable(const NamespaceName& namespace_name,
     request->mutable_namespace_()->set_name(namespace_name);
   }
   request->mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
-  request->set_num_tablets(8);
+  request->mutable_schema()->mutable_table_properties()->set_num_tablets(8);
 
   // Dereferencing as the RPCs require const ref for request. Keeping request param as pointer
   // though, as that helps with readability and standardization.

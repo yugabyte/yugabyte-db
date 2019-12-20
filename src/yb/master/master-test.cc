@@ -292,7 +292,7 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
     SchemaToPB(kTableSchema, req.mutable_schema());
     req.mutable_namespace_()->set_name(kNamespaceName);
     req.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
-    req.set_num_tablets(8);
+    req.mutable_schema()->mutable_table_properties()->set_num_tablets(8);
     ASSERT_OK(this->proxy_->CreateTable(req, &resp, controller.get()));
     ASSERT_FALSE(resp.has_error());
     LOG(INFO) << "Done creating table";
