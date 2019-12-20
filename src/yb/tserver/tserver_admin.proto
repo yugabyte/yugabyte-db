@@ -111,6 +111,9 @@ message CreateTabletRequestPB {
 
   // For index table: information about this index.
   optional IndexInfoPB index_info = 12;
+
+  // True if the tablet is colocated.
+  optional bool colocated = 13 [ default = false ];
 }
 
 message CreateTabletResponsePB {
@@ -197,6 +200,16 @@ message CountIntentsResponsePB {
   optional int64 num_intents = 2;
 }
 
+message AddTableToTabletRequestPB {
+  required bytes tablet_id = 1;
+  required tablet.TableInfoPB add_table = 2;
+}
+
+message AddTableToTabletResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
 service TabletServerAdminService {
   // Create a new, empty tablet with the specified parameters. Only used for
   // brand-new tablets, not for "moves".
@@ -214,4 +227,6 @@ service TabletServerAdminService {
   rpc FlushTablets(FlushTabletsRequestPB) returns (FlushTabletsResponsePB);
 
   rpc CountIntents(CountIntentsRequestPB) returns (CountIntentsResponsePB);
+
+  rpc AddTableToTablet(AddTableToTabletRequestPB) returns (AddTableToTabletResponsePB);
 }

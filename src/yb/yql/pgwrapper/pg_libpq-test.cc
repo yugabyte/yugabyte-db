@@ -17,6 +17,7 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
+#include "yb/master/catalog_manager.h"
 #include "yb/common/common.pb.h"
 
 using namespace std::literals;
@@ -800,6 +801,94 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestSystemTableRollback)) {
   LOG(INFO) << "Status of second table creation: " << s;
   auto res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM pg_class WHERE relname='fktable'"));
   ASSERT_EQ(0, PQntuples(res.get()));
+}
+
+namespace {
+Result<string> GetTableIdByTableName(
+    client::YBClient* client, const string& namespace_name, const string& table_name) {
+  std::vector<yb::client::YBTableName> tables;
+  RETURN_NOT_OK(client->ListTables(&tables));
+  for (const auto& t : tables) {
+    if (t.namespace_name() == namespace_name && t.table_name() == table_name) {
+      return t.table_id();
+    }
+  }
+  return STATUS(NotFound, "The table does not exist");
+}
+} // namespace
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TabletColocation)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test_db WITH colocated = true"));
+  conn = ASSERT_RESULT(ConnectToDB("test_db"));
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  string ns_id;
+  auto list_result = client->ListNamespaces(YQL_DATABASE_PGSQL);
+  ASSERT_OK(list_result);
+  for (const auto& ns : list_result.get()) {
+    if (ns.name() == "test_db") {
+      ns_id = ns.id();
+      break;
+    }
+  }
+  ASSERT_FALSE(ns_id.empty());
+
+  // A parent table with one tablet should be created when the database is created.
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(WaitFor(
+      [&] {
+        EXPECT_OK(client->GetTabletsFromTableId(
+            ns_id + master::kColocatedParentTableIdSuffix, 0, &tablets));
+        return tablets.size() == 1;
+      },
+      30s, "Create colocated database"));
+  auto colocated_tablet_id = tablets[0].tablet_id();
+
+  // Create a range partition table, the table should share the tablet with the parent table.
+  ASSERT_OK(conn.Execute("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC))"));
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "test_db", "foo"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
+
+  // Create a colocated index table.
+  ASSERT_OK(conn.Execute("CREATE INDEX foo_index1 ON foo (a)"));
+  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "test_db", "foo_index1"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
+
+  // Create a non-colocated index table (by opting-out).
+  ASSERT_OK(conn.Execute("CREATE INDEX foo_index2 ON foo (a) WITH (colocated = false)"));
+  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "test_db", "foo_index2"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  for (auto& tablet : tablets) {
+    ASSERT_NE(tablet.tablet_id(), colocated_tablet_id);
+  }
+
+  // Create a hash partition table and opt out of using the colocated tablet.
+  ASSERT_OK(conn.Execute("CREATE TABLE bar (a INT) WITH (colocated = false)"));
+  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "test_db", "bar"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  for (auto& tablet : tablets) {
+    ASSERT_NE(tablet.tablet_id(), colocated_tablet_id);
+  }
+
+  // Create an index on the non-colocated table. The index should follow the table and opt out of
+  // colocation.
+  ASSERT_OK(conn.Execute("CREATE INDEX bar_index ON bar (a)"));
+  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "test_db", "bar_index"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  for (auto& tablet : tablets) {
+    ASSERT_NE(tablet.tablet_id(), colocated_tablet_id);
+  }
+
+  // Fail when creating a hash partition table without opt-out.
+  const auto status = conn.Execute("CREATE TABLE baz (a INT)");
+  ASSERT_FALSE(status.ok());
+  ASSERT_STR_CONTAINS(
+      status.ToString(), "Cannot create hash partitioned table in colocated database");
 }
 
 } // namespace pgwrapper

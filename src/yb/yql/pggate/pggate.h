@@ -134,6 +134,7 @@ class PgApiImpl {
                                    PgOid database_oid,
                                    PgOid source_database_oid,
                                    PgOid next_oid,
+                                   const bool colocated,
                                    PgStatement **handle);
   CHECKED_STATUS ExecCreateDatabase(PgStatement *handle);
 
@@ -175,6 +176,8 @@ class PgApiImpl {
                                       bool is_range, bool is_desc, bool is_nulls_first);
 
   CHECKED_STATUS CreateTableSetNumTablets(PgStatement *handle, int32_t num_tablets);
+
+  CHECKED_STATUS CreateTableSetColocated(PgStatement *handle, bool colocated);
 
   CHECKED_STATUS ExecCreateTable(PgStatement *handle);
 
@@ -231,6 +234,7 @@ class PgApiImpl {
                                 bool is_shared_index,
                                 bool is_unique_index,
                                 bool if_not_exist,
+                                bool colocated,
                                 PgStatement **handle);
 
   CHECKED_STATUS CreateIndexAddColumn(PgStatement *handle, const char *attr_name, int attr_num,

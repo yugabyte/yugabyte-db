@@ -182,6 +182,11 @@ uint32_t TabletInfo::reported_schema_version() const {
   return reported_schema_version_;
 }
 
+bool TabletInfo::colocated() const {
+  auto l = LockForRead();
+  return l->data().pb.colocated();
+}
+
 std::string TabletInfo::ToString() const {
   return Substitute("$0 (table $1)", tablet_id_,
                     (table_ != nullptr ? table_->ToString() : "MISSING"));
@@ -247,6 +252,11 @@ const NamespaceId TableInfo::namespace_id() const {
 const Status TableInfo::GetSchema(Schema* schema) const {
   auto l = LockForRead();
   return SchemaFromPB(l->data().schema(), schema);
+}
+
+bool TableInfo::colocated() const {
+  auto l = LockForRead();
+  return l->data().pb.colocated();
 }
 
 const std::string TableInfo::indexed_table_id() const {
@@ -553,6 +563,11 @@ const NamespaceName& NamespaceInfo::name() const {
 YQLDatabase NamespaceInfo::database_type() const {
   auto l = LockForRead();
   return l->data().pb.database_type();
+}
+
+bool NamespaceInfo::colocated() const {
+  auto l = LockForRead();
+  return l->data().pb.colocated();
 }
 
 std::string NamespaceInfo::ToString() const {

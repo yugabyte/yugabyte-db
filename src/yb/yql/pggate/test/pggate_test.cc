@@ -124,8 +124,9 @@ void PggateTest::SetupDB(const string& db_name, const YBCPgOid db_oid) {
 
 void PggateTest::CreateDB(const string& db_name, const YBCPgOid db_oid) {
   YBCPgStatement pg_stmt;
-  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(db_name.c_str(), db_oid,
-                                          0 /* source_database_oid */, 0 /* next_oid */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(
+      db_name.c_str(), db_oid, 0 /* source_database_oid */, 0 /* next_oid */, false /* colocated */,
+      &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
 }

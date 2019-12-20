@@ -85,6 +85,11 @@ YBTableCreator& YBTableCreator::num_tablets(int32_t count) {
   return *this;
 }
 
+YBTableCreator& YBTableCreator::colocated(const bool colocated) {
+  colocated_ = colocated;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::schema(const YBSchema* schema) {
   schema_ = schema;
   return *this;
@@ -183,6 +188,7 @@ Status YBTableCreator::Create() {
   req.set_name(table_name_.table_name());
   table_name_.SetIntoNamespaceIdentifierPB(req.mutable_namespace_());
   req.set_table_type(table_type_);
+  req.set_colocated(colocated_);
 
   if (!creator_role_name_.empty()) {
     req.set_creator_role_name(creator_role_name_);

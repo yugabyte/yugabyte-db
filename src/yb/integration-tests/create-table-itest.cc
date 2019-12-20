@@ -44,8 +44,10 @@
 #include "yb/client/table_creator.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master_util.h"
 #include "yb/util/metrics.h"
+#include "yb/util/path_util.h"
 
 using std::multimap;
 using std::set;
@@ -342,5 +344,64 @@ TEST_F(CreateTableITest, TestNoAllocBlacklist) {
                 .Create());
   // check that no tablets have been allocated to blacklisted TServer
   ASSERT_EQ(inspect_->ListTabletsOnTS(1).size(), 0);
+}
+
+TEST_F(CreateTableITest, TabletColocationRemoteBootstrapTest) {
+  const int kNumReplicas = 3;
+  vector<string> ts_flags;
+  vector<string> master_flags;
+  ts_flags.push_back("--follower_unavailable_considered_failed_sec=3");
+
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas));
+  ASSERT_OK(
+      client_->CreateNamespace("colocation_test", boost::none, "", "", "", boost::none, true));
+
+  string ns_id;
+  auto namespaces = ASSERT_RESULT(client_->ListNamespaces(boost::none));
+  for (const auto& ns : namespaces) {
+    if (ns.name() == "colocation_test") {
+      ns_id = ns.id();
+      break;
+    }
   }
+  ASSERT_FALSE(ns_id.empty());
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(WaitFor(
+      [&]() -> bool {
+        EXPECT_OK(client_->GetTabletsFromTableId(
+            ns_id + master::kColocatedParentTableIdSuffix, 0, &tablets));
+        return tablets.size() == 1;
+      },
+      MonoDelta::FromSeconds(30), "Wait until tablet is created."));
+  string tablet_id = tablets[0].tablet_id();
+
+  auto rocksdb_dir = JoinPathSegments(
+      cluster_->data_root(), "ts-0", "yb-data", "tserver", "data", "rocksdb",
+      "tablet-" + tablet_id);
+  auto wal_dir = JoinPathSegments(
+      cluster_->data_root(), "ts-0", "yb-data", "tserver", "wals", "tablet-" + tablet_id);
+  std::function<Result<bool>()> dirs_exist = [&] {
+    return Env::Default()->FileExists(rocksdb_dir) && Env::Default()->FileExists(wal_dir);
+  };
+
+  ASSERT_OK(
+      WaitFor(dirs_exist, MonoDelta::FromSeconds(30), "Wait until data directory is created"));
+
+  // Stop a tablet server and create a new tablet server. This will trigger a remote bootstrap on
+  // the new tablet server.
+  cluster_->tablet_server(2)->Shutdown();
+  ASSERT_OK(cluster_->AddTabletServer());
+  ASSERT_OK(cluster_->WaitForTabletServerCount(4, MonoDelta::FromSeconds(20)));
+
+  // Remote bootstrap should create the correct tablet directory for the new tablet server.
+  rocksdb_dir = JoinPathSegments(
+      cluster_->data_root(), "ts-3", "yb-data", "tserver", "data", "rocksdb",
+      "tablet-" + tablet_id);
+  wal_dir = JoinPathSegments(
+      cluster_->data_root(), "ts-3", "yb-data", "tserver", "wals", "tablet-" + tablet_id);
+  ASSERT_OK(
+      WaitFor(dirs_exist, MonoDelta::FromSeconds(30), "Wait until data directory is created"));
+}
+
 }  // namespace yb

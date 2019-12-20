@@ -163,6 +163,12 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
 
   l->Commit();
 
+  // Add the tablet to colocated_tablet_ids_map_ if the tablet is colocated.
+  if (catalog_manager_->IsColocatedParentTable(*first_table)) {
+    catalog_manager_->colocated_tablet_ids_map_[first_table->namespace_id()] =
+        catalog_manager_->tablet_map_->find(tablet_id)->second;
+  }
+
   LOG(INFO) << "Loaded metadata for " << (tablet_deleted ? "deleted " : "")
             << "tablet " << tablet_id
             << " (first table " << first_table->ToString() << ")";

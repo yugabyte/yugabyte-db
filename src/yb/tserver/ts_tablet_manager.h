@@ -165,7 +165,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
     const PartitionSchema &partition_schema,
     const boost::optional<IndexInfo>& index_info,
     consensus::RaftConfigPB config,
-    std::shared_ptr<tablet::TabletPeer> *tablet_peer);
+    std::shared_ptr<tablet::TabletPeer> *tablet_peer,
+    const bool colocated = false);
 
   // Delete the specified tablet.
   // 'delete_type' must be one of TABLET_DATA_DELETED or TABLET_DATA_TOMBSTONED

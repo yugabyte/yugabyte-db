@@ -134,14 +134,16 @@ Status PgSession::ConnectDatabase(const string& database_name) {
 Status PgSession::CreateDatabase(const string& database_name,
                                  const PgOid database_oid,
                                  const PgOid source_database_oid,
-                                 const PgOid next_oid) {
+                                 const PgOid next_oid,
+                                 const bool colocated) {
   return client_->CreateNamespace(database_name,
                                   YQL_DATABASE_PGSQL,
                                   "" /* creator_role_name */,
                                   GetPgsqlNamespaceId(database_oid),
                                   source_database_oid != kPgInvalidOid
                                   ? GetPgsqlNamespaceId(source_database_oid) : "",
-                                  next_oid);
+                                  next_oid,
+                                  colocated);
 }
 
 Status PgSession::DropDatabase(const string& database_name, PgOid database_oid) {

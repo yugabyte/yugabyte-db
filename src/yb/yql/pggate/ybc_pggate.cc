@@ -129,9 +129,10 @@ YBCStatus YBCPgNewCreateDatabase(const char *database_name,
                                  const YBCPgOid database_oid,
                                  const YBCPgOid source_database_oid,
                                  const YBCPgOid next_oid,
+                                 const bool colocated,
                                  YBCPgStatement *handle) {
-  return ToYBCStatus(pgapi->NewCreateDatabase(database_name, database_oid,
-                                              source_database_oid, next_oid, handle));
+  return ToYBCStatus(pgapi->NewCreateDatabase(
+      database_name, database_oid, source_database_oid, next_oid, colocated, handle));
 }
 
 YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle) {
@@ -260,6 +261,10 @@ YBCStatus YBCPgCreateTableSetNumTablets(YBCPgStatement handle, int32_t num_table
   return ToYBCStatus(pgapi->CreateTableSetNumTablets(handle, num_tablets));
 }
 
+YBCStatus YBCPgCreateTableSetColocated(YBCPgStatement handle, bool colocated) {
+  return ToYBCStatus(pgapi->CreateTableSetColocated(handle, colocated));
+}
+
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecCreateTable(handle));
 }
@@ -359,12 +364,13 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               bool is_shared_index,
                               bool is_unique_index,
                               bool if_not_exist,
+                              bool colocated,
                               YBCPgStatement *handle) {
   const PgObjectId index_id(database_oid, index_oid);
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewCreateIndex(
-      database_name, schema_name, index_name, index_id, table_id,
-      is_shared_index, is_unique_index, if_not_exist, handle));
+  return ToYBCStatus(pgapi->NewCreateIndex(database_name, schema_name, index_name,
+                                           index_id, table_id, is_shared_index, is_unique_index,
+                                           if_not_exist, colocated, handle));
 }
 
 YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,

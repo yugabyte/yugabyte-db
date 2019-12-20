@@ -35,7 +35,8 @@
 
 /*  Database Functions -------------------------------------------------------------------------- */
 
-extern void YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid);
+extern void YBCCreateDatabase(
+	Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated);
 
 extern void YBCDropDatabase(Oid dboid, const char *dbname);
 
@@ -58,7 +59,8 @@ extern void YBCCreateIndex(const char *indexName,
 						   TupleDesc indexTupleDesc,
 						   int16 *coloptions,
 						   Oid indexId,
-						   Relation rel);
+						   Relation rel,
+						   List *index_options);
 
 extern void YBCDropIndex(Oid relationId);
 

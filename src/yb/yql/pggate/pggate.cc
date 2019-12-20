@@ -267,9 +267,10 @@ Status PgApiImpl::NewCreateDatabase(const char *database_name,
                                     const PgOid database_oid,
                                     const PgOid source_database_oid,
                                     const PgOid next_oid,
+                                    const bool colocated,
                                     PgStatement **handle) {
   auto stmt = make_scoped_refptr<PgCreateDatabase>(pg_session_, database_name, database_oid,
-                                                   source_database_oid, next_oid);
+                                                   source_database_oid, next_oid, colocated);
   *handle = stmt.detach();
   return Status::OK();
 }
@@ -370,6 +371,15 @@ Status PgApiImpl::CreateTableSetNumTablets(PgStatement *handle, int32_t num_tabl
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   return down_cast<PgCreateTable*>(handle)->SetNumTablets(num_tablets);
+}
+
+Status PgApiImpl::CreateTableSetColocated(PgStatement *handle, bool colocated) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  down_cast<PgCreateTable*>(handle)->SetColocated(colocated);
+  return Status::OK();
 }
 
 Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
@@ -560,10 +570,11 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
                                  bool is_shared_index,
                                  bool is_unique_index,
                                  bool if_not_exist,
+                                 bool colocated,
                                  PgStatement **handle) {
   auto stmt = make_scoped_refptr<PgCreateIndex>(
       pg_session_, database_name, schema_name, index_name, index_id, base_table_id,
-      is_shared_index, is_unique_index, if_not_exist);
+      is_shared_index, is_unique_index, if_not_exist, colocated);
   *handle = stmt.detach();
   return Status::OK();
 }
