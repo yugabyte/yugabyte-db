@@ -52,6 +52,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/mutex.h"
 #include "yb/util/random_util.h"
@@ -830,6 +831,16 @@ std::string DumpMemTrackers() {
     }
     out << std::endl;
   }
+  return out.str();
+}
+
+std::string DumpMemoryUsage() {
+  std::ostringstream out;
+  auto tcmalloc_stats = TcMallocStats();
+  if (!tcmalloc_stats.empty()) {
+    out << "TCMalloc stats: \n" << tcmalloc_stats << "\n";
+  }
+  out << "Memory usage: \n" << DumpMemTrackers();
   return out.str();
 }
 

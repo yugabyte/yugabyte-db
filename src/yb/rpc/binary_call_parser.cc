@@ -102,7 +102,7 @@ Result<ProcessDataResult> BinaryCallParser::Parse(
               << "Unable to allocate read buffer because of limit, required: " << call_data_size
               << ", blocked by: " << AsString(blocking_mem_tracker)
               << ", consumption: " << consumption << " of " << limit << ". Call will be ignored.\n"
-              << DumpMemTrackers();
+              << DumpMemoryUsage();
           call_data_ = CallData(call_data_size, ShouldReject::kTrue);
           return ProcessDataResult{full_input_size, Slice(), call_data_size - call_received_size};
         } else {
@@ -111,7 +111,7 @@ Result<ProcessDataResult> BinaryCallParser::Parse(
           LOG(WARNING) << "Unable to allocate read buffer because of limit, required: "
                        << call_data_size << ", blocked by: " << AsString(blocking_mem_tracker)
                        << ", consumption: " << consumption << " of " << limit << "\n"
-                       << DumpMemTrackers();
+                       << DumpMemoryUsage();
         }
       }
       break;
