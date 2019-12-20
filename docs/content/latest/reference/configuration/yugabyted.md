@@ -27,7 +27,7 @@ yugabyted [-h] [ <command> ] [ <options> ]
 ```
 
 - *command*: command to run
-- *options*: one or more options separated by spaces.
+- *options*: one or more options, separated by spaces.
 
 ### Command-line help
 
