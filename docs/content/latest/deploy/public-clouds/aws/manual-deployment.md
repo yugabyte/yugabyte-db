@@ -580,6 +580,12 @@ using the [set_preferred_zones yb-admin command](../../../admin/yb-admin).
 For multi-row/multi-table transactional operations, colocating the leaders to be in a single zone/region can help reduce the number of 
 cross-region network hops involved in executing the transaction and as a result improve performance.
 
+By default, all nodes are eligible to have tablet leaders. 
+To get better transactional performance and lower latency, it's better that all tablet-leaders reside in the same region if possible.
+This will reduce the number of cross-region hops when writing transactions.
+For the current deployment, we want to explicitly prioritise the region/zone where leaders reside.
+When the "preferred zone" nodes are alive/healthy - the leaders of tablets are placed on nodes in those regions. 
+
 The following command sets the preferred zone to `aws.us-west.us-west-2c`:
 
 ```sh
