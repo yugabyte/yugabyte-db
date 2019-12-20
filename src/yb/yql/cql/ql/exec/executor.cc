@@ -508,10 +508,6 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
       .creator_role_name(ql_env_->CurrentRoleName())
       .schema(&schema);
 
-  if (schema.table_properties().num_tablets() > 0) {
-    table_creator->num_tablets(schema.table_properties().num_tablets());
-  }
-
   if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
     const PTCreateIndex *index_node = static_cast<const PTCreateIndex*>(tnode);
     table_creator->indexed_table_id(index_node->indexed_table_id());

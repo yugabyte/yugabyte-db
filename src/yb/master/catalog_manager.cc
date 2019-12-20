@@ -1859,7 +1859,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     replication_info = l->data().pb.replication_info();
   }
   // Calculate number of tablets to be used.
-  int num_tablets = req.num_tablets();
+  int num_tablets = req.schema().table_properties().num_tablets();
+  if (num_tablets <= 0) {
+    num_tablets = req.num_tablets();
+  }
+
   if (num_tablets <= 0) {
     // Use default as client could have gotten the value before any tserver had heartbeated
     // to (a new) master leader.
@@ -1871,6 +1875,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     LOG(INFO) << "Setting default tablets to " << num_tablets << " with "
               << ts_descs.size() << " primary servers";
   }
+  schema.mutable_table_properties()->SetNumTablets(num_tablets);
 
   // Create partitions.
   PartitionSchema partition_schema;
@@ -2224,6 +2229,8 @@ Status CatalogManager::CreateTransactionsStatusTableIfNeeded(rpc::RpcContext *rp
   // Explicitly set the number tablets if the corresponding flag is set, otherwise CreateTable
   // will use the same defaults as for regular tables.
   if (FLAGS_transaction_table_num_tablets > 0) {
+    req.mutable_schema()->mutable_table_properties()->set_num_tablets(
+        FLAGS_transaction_table_num_tablets);
     req.set_num_tablets(FLAGS_transaction_table_num_tablets);
   }
 
@@ -2267,6 +2274,8 @@ Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc)
     // Explicitly set the number tablets if the corresponding flag is set, otherwise CreateTable
     // will use the same defaults as for regular tables.
     if (FLAGS_metrics_snapshots_table_num_tablets > 0) {
+      req.mutable_schema()->mutable_table_properties()->set_num_tablets(
+          FLAGS_metrics_snapshots_table_num_tablets);
       req.set_num_tablets(FLAGS_metrics_snapshots_table_num_tablets);
     }
 
