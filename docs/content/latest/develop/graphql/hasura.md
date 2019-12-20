@@ -11,7 +11,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The [Hasura GraphQL engine](https://hasura.io) is an [open source](https://github.com/hasura/graphql-engine) GraphQL server that can be integrated with YugabyteDB to provide GraphQL on your YugabyteDB databases and applications.
+Integrate the [Hasura GraphQL engine](https://hasura.io) with YugabyteDB to use GraphQL on your YugabyteDB databases and applications.
 
 Follow the steps below to learn how easily you can begin using the Hasura GraphQL engine with YugabyteDB. For details on using the Hasura GraphQL engine, see the [Hasura GraphQL engine documentation](https://docs.hasura.io).
 
