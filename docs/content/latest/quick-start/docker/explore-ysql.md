@@ -1,29 +1,8 @@
 
-First copy the schema and data files into one of the containers.
+To use the retail demo database, run the following command:
 
 ```sh
-$ docker cp ./schema.sql yb-tserver-n1:/home/yugabyte/.
-```
-
-To copy the data files, create a `data` directory.
-
-```sh
-$ docker exec -it yb-tserver-n1 bash
-```
-
-```sh
-$ mkdir data
-```
-
-Exit out of the container after the above command.
-
-Now, copy the data files.
-
-```sh
-$ docker cp ./data/orders.sql yb-tserver-n1:/home/yugabyte/data/.
-docker cp ./data/products.sql yb-tserver-n1:/home/yugabyte/data/.
-docker cp ./data/reviews.sql yb-tserver-n1:/home/yugabyte/data/.
-docker cp ./data/users.sql yb-tserver-n1:/home/yugabyte/data/.
+$ ./bin/yugabyted demo
 ```
 
 To connect to the service, run `ysqlsh`.
