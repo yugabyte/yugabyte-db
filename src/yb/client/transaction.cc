@@ -138,19 +138,13 @@ class YBTransaction::Impl final {
     if (read_time.read.is_valid()) {
       read_point_.SetReadTime(read_time, ConsistentReadPoint::HybridTimeMap());
     }
-    metadata_.isolation = isolation;
-    if (read_point_.GetReadTime()) {
-      metadata_.DEPRECATED_start_time = read_point_.GetReadTime().read;
-    } else {
-      metadata_.DEPRECATED_start_time = read_point_.Now();
-    }
-
+    CompleteInit(isolation);
     return Status::OK();
   }
 
   void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPoint&& read_point) {
-    metadata_.isolation = isolation;
     read_point_ = std::move(read_point);
+    CompleteInit(isolation);
   }
 
   const IsolationLevel isolation() const {
@@ -178,9 +172,9 @@ class YBTransaction::Impl final {
       other->read_point_.Restart();
       other->metadata_.isolation = metadata_.isolation;
       if (metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
-        other->metadata_.DEPRECATED_start_time = other->read_point_.GetReadTime().read;
+        other->metadata_.start_time = other->read_point_.GetReadTime().read;
       } else {
-        other->metadata_.DEPRECATED_start_time = other->read_point_.Now();
+        other->metadata_.start_time = other->read_point_.Now();
       }
       state_.store(TransactionState::kAborted, std::memory_order_release);
     }
@@ -491,6 +485,15 @@ class YBTransaction::Impl final {
     heartbeat_handle_ = manager_->rpcs().InvalidHandle();
     commit_handle_ = manager_->rpcs().InvalidHandle();
     abort_handle_ = manager_->rpcs().InvalidHandle();
+  }
+
+  void CompleteInit(IsolationLevel isolation) {
+    metadata_.isolation = isolation;
+    if (read_point_.GetReadTime()) {
+      metadata_.start_time = read_point_.GetReadTime().read;
+    } else {
+      metadata_.start_time = read_point_.Now();
+    }
   }
 
   void SetReadTimeIfNeeded(bool do_it) {

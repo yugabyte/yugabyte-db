@@ -82,6 +82,8 @@ struct FileDescriptor {
   }
   uint64_t GetTotalFileSize() const { return total_file_size; }
   uint64_t GetBaseFileSize() const { return base_file_size; }
+
+  std::string ToString() const;
 };
 
 YB_DEFINE_ENUM(UpdateBoundariesType, (kAll)(kSmallest)(kLargest));

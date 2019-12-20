@@ -223,6 +223,8 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
       };
     });
 
+    tablet_->SetCleanupPool(raft_pool);
+
     ConsensusOptions options;
     options.tablet_id = meta_->raft_group_id();
 

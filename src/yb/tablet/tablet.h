@@ -224,8 +224,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS RemoveIntents(
       const RemoveIntentsData& data, const TransactionIdSet& transactions) override;
 
-  HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) override;
-
   // Finish the Prepare phase of a write transaction.
   //
   // Starts an MVCC transaction and assigns a timestamp for the transaction.
@@ -551,6 +549,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   bool is_sys_catalog() const { return is_sys_catalog_; }
   bool IsTransactionalRequest(bool is_ysql_request) const override;
 
+  void SetCleanupPool(ThreadPool* thread_pool);
+
   // ==============================================================================================
  protected:
 
@@ -737,6 +737,16 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   template <class Ids>
   CHECKED_STATUS RemoveIntentsImpl(const RemoveIntentsData& data, const Ids& ids);
 
+  // Tries to find intent .SST files that could be deleted and remove them.
+  void CleanupIntentFiles();
+  void DoCleanupIntentFiles();
+
+  HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) override;
+
+  void MinRunningHybridTimeSatisfied() override {
+    CleanupIntentFiles();
+  }
+
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
 
   client::LocalTabletFilter local_tablet_filter_;
@@ -745,6 +755,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   IsSysCatalogTablet is_sys_catalog_;
   TransactionsEnabled txns_enabled_;
+
+  std::unique_ptr<ThreadPoolToken> cleanup_intent_files_token_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };
