@@ -115,6 +115,8 @@ struct DeferredAssignmentActions;
 
 static const char* const kSecurityConfigType = "security-configuration";
 static const char* const kYsqlCatalogConfigType = "ysql-catalog-configuration";
+static const char* const kColocatedParentTableIdSuffix = ".colocated.parent.uuid";
+static const char* const kColocatedParentTableNameSuffix = ".colocated.parent.tablename";
 
 using PlacementId = std::string;
 
@@ -432,6 +434,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Is the table a special sequences system table?
   bool IsSequencesSystemTable(const TableInfo& table) const;
+
+  // Is the table a table created for colocated database?
+  bool IsColocatedParentTable(const TableInfo& table) const;
 
   // Is the table created by user?
   // Note that table can be regular table or index in this case.
@@ -1137,6 +1142,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Tablets of system tables on the master indexed by the tablet id.
   std::unordered_map<std::string, std::shared_ptr<tablet::AbstractTablet>> system_tablets_;
+
+  // Tablet of colocated namespaces indexed by the namespace id.
+  std::unordered_map<NamespaceId, scoped_refptr<TabletInfo>> colocated_tablet_ids_map_;
 
   boost::optional<std::future<Status>> initdb_future_;
   boost::optional<InitialSysCatalogSnapshotWriter> initial_snapshot_writer_;

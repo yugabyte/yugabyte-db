@@ -318,38 +318,34 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 										  (Node *) makeInteger(true), -1),
 							  stmt->options);
 
-  /* Validate the storage options from the WITH clause */
-  ListCell *cell;
-  foreach(cell, stmt->options)
-  {
-    DefElem *def = (DefElem*) lfirst(cell);
-    if (strcmp(def->defname, "oids") == 0)
-    {
-      bool oids_val = defGetBoolean(def);
-      if (oids_val)
-      {
-        ereport(ERROR,
-                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                    errmsg("OIDs are not supported for user tables.")));
-      }
-    }
-    else if (strcmp(def->defname, "user_catalog_table") == 0)
-    {
-      bool user_cat_val = defGetBoolean(def);
-      if (user_cat_val)
-      {
-        ereport(ERROR,
-                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                    errmsg("Users cannot create system catalog tables.")));
-      }
-    }
-    else
-    {
-      ereport(WARNING,
-              (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                  errmsg("Storage parameter %s is unsupported, ignoring", def->defname)));
-    }
-  }
+	/* Validate the storage options from the WITH clause */
+	ListCell *cell;
+	foreach(cell, stmt->options)
+	{
+		DefElem *def = (DefElem*) lfirst(cell);
+		if (strcmp(def->defname, "oids") == 0)
+		{
+			bool oids_val = defGetBoolean(def);
+			if (oids_val)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg("OIDs are not supported for user tables.")));
+		}
+		else if (strcmp(def->defname, "user_catalog_table") == 0)
+		{
+			bool user_cat_val = defGetBoolean(def);
+			if (user_cat_val)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg("Users cannot create system catalog tables.")));
+		}
+		else if (strcmp(def->defname, "colocated") == 0)
+			(void) defGetBoolean(def);
+		else
+			ereport(WARNING,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("Storage parameter %s is unsupported, ignoring", def->defname)));
+	}
 
 	/*
 	 * transformIndexConstraints wants cxt.alist to contain only index

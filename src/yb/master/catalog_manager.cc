@@ -65,9 +65,10 @@
 #include <unordered_map>
 #include <vector>
 
-#include <glog/logging.h>
 #include <boost/optional.hpp>
 #include <boost/thread/shared_mutex.hpp>
+#include <glog/logging.h>
+#include <google/protobuf/text_format.h>
 #include "yb/common/common_flags.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
@@ -1824,8 +1825,40 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
   NamespaceId namespace_id = ns->id();
 
+  // For index table, find the table info
+  scoped_refptr<TableInfo> indexed_table;
+  if (PROTO_IS_INDEX(req)) {
+    TRACE("Looking up indexed table");
+    indexed_table = GetTableInfo(req.indexed_table_id());
+    if (indexed_table == nullptr) {
+      return STATUS(NotFound, "The indexed table does not exist");
+    }
+  }
+
+  // Determine if this table should be colocated. If not specified, the table should be colocated if
+  // and only if the namespace is colocated.
+  bool colocated = ns->colocated();
+  if (!req.colocated()) {
+    // Opt out of colocation if the request says so.
+    colocated = false;
+  } else if (indexed_table && !indexed_table->colocated()) {
+    // Opt out of colocation if the indexed table opted out of colocation.
+    colocated = false;
+  }
+
   // Validate schema.
   Schema client_schema;
+
+  // TODO: If this is a colocated index table in a colocated database, convert any hash partition
+  // columns into range partition columns. This is because postgres does not know that this index
+  // table is in a colocated database. When we get to the "tablespaces" step where we store this
+  // into PG metadata, then PG will know if db/table is colocated and do the work there.
+  if (colocated && PROTO_IS_INDEX(req)) {
+    for (auto& col_pb : *req.mutable_schema()->mutable_columns()) {
+      col_pb.set_is_hash_key(false);
+    }
+  }
+
   RETURN_NOT_OK(SchemaFromPB(req.schema(), &client_schema));
   RETURN_NOT_OK(ValidateCreateTableSchema(client_schema, resp));
 
@@ -1848,10 +1881,18 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     return CreateCopartitionedTable(req, resp, rpc, schema, namespace_id);
   }
 
-  // If neither hash nor range schema have been specified by the protobuf request, we assume the
-  // table uses a hash schema, and we use the table_type and hash_key to determine the hashing
-  // scheme (redis or multi-column) that should be used.
-  if (!req.partition_schema().has_hash_schema() && !req.partition_schema().has_range_schema()) {
+  if (colocated) {
+    // If the table is colocated, then there should be no hash partition columns.
+    if (schema.num_hash_key_columns() > 0) {
+      Status s =
+          STATUS(InvalidArgument, "Cannot create hash partitioned table in colocated database");
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+    }
+  } else if (
+      !req.partition_schema().has_hash_schema() && !req.partition_schema().has_range_schema()) {
+    // If neither hash nor range schema have been specified by the protobuf request, we assume the
+    // table uses a hash schema, and we use the table_type and hash_key to determine the hashing
+    // scheme (redis or multi-column) that should be used.
     if (req.table_type() == REDIS_TABLE_TYPE) {
       req.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::REDIS_HASH_SCHEMA);
     } else if (schema.num_hash_key_columns() > 0) {
@@ -1890,31 +1931,37 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Create partitions.
   PartitionSchema partition_schema;
   vector<Partition> partitions;
-  s = PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema);
-  if (req.partition_schema().has_hash_schema()) {
-    switch (partition_schema.hash_schema()) {
-      case YBHashSchema::kPgsqlHash:
-        // TODO(neil) After a discussion, PGSQL hash should be done appropriately.
-        // For now, let's not doing anything. Just borrow the multi column hash.
-        FALLTHROUGH_INTENDED;
-      case YBHashSchema::kMultiColumnHash: {
-        // Use the given number of tablets to create partitions and ignore the other schema options
-        // in the request.
-        RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
-        break;
-      }
-      case YBHashSchema::kRedisHash: {
-        RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions,
-                                                        kRedisClusterSlots));
-        break;
-      }
-    }
-  } else if (req.partition_schema().has_range_schema()) {
-    vector<YBPartialRow> split_rows;
-    RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
-    DCHECK_EQ(1, partitions.size());
+  if (colocated) {
+    RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
+    req.clear_partition_schema();
+    req.set_num_tablets(1);
   } else {
-    DFATAL_OR_RETURN_NOT_OK(STATUS(InvalidArgument, "Invalid partition method"));
+    s = PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema);
+    if (req.partition_schema().has_hash_schema()) {
+      switch (partition_schema.hash_schema()) {
+        case YBHashSchema::kPgsqlHash:
+          // TODO(neil) After a discussion, PGSQL hash should be done appropriately.
+          // For now, let's not doing anything. Just borrow the multi column hash.
+          FALLTHROUGH_INTENDED;
+        case YBHashSchema::kMultiColumnHash: {
+          // Use the given number of tablets to create partitions and ignore the other schema
+          // options in the request.
+          RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
+          break;
+        }
+        case YBHashSchema::kRedisHash: {
+          RETURN_NOT_OK(
+              partition_schema.CreatePartitions(num_tablets, &partitions, kRedisClusterSlots));
+          break;
+        }
+      }
+    } else if (req.partition_schema().has_range_schema()) {
+      vector<YBPartialRow> split_rows;
+      RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
+      DCHECK_EQ(1, partitions.size());
+    } else {
+      DFATAL_OR_RETURN_NOT_OK(STATUS(InvalidArgument, "Invalid partition method"));
+    }
   }
 
   // Validate the table placement rules are a subset of the cluster ones.
@@ -1924,17 +1971,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   // For index table, populate the index info.
-  scoped_refptr<TableInfo> indexed_table;
   IndexInfoPB index_info;
 
   if (req.has_index_info()) {
     // Current message format.
-    TRACE("Looking up indexed table");
     index_info.CopyFrom(req.index_info());
-    indexed_table = GetTableInfo(index_info.indexed_table_id());
-    if (indexed_table == nullptr) {
-      return STATUS(NotFound, "The indexed table does not exist");
-    }
 
     // Assign column-ids that have just been computed and assigned to "index_info".
     if (!is_pg_table) {
@@ -1947,11 +1988,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   } else if (req.has_indexed_table_id()) {
     // Old client message format when rolling upgrade (Not having "index_info").
-    TRACE("Looking up indexed table");
-    indexed_table = GetTableInfo(req.indexed_table_id());
-    if (indexed_table == nullptr) {
-      return STATUS(NotFound, "The indexed table does not exist");
-    }
     IndexInfoBuilder index_info_builder(&index_info);
     index_info_builder.ApplyProperties(req.indexed_table_id(),
         req.is_local_index(), req.is_unique_index());
@@ -1971,10 +2007,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   scoped_refptr<TableInfo> table;
   vector<TabletInfo*> tablets;
+  bool tablets_exist;
+
   {
     std::lock_guard<LockType> l(lock_);
     TRACE("Acquired catalog manager lock");
 
+    tablets_exist =
+        colocated && colocated_tablet_ids_map_.find(ns->id()) != colocated_tablet_ids_map_.end();
     // Verify that the table does not exist.
     table = FindPtrOrNull(table_names_map_, {namespace_id, req.name()});
 
@@ -1989,28 +2029,58 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
     }
 
-    RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, true /* create_tablets */,
-                                      namespace_id, partitions, &index_info,
-                                      &tablets, resp, &table));
+    RETURN_NOT_OK(CreateTableInMemory(
+        req, schema, partition_schema, !tablets_exist /* create_tablets */, namespace_id,
+        partitions, &index_info, &tablets, resp, &table));
+
+    if (colocated) {
+      table->mutable_metadata()->mutable_dirty()->pb.set_colocated(true);
+      // if the tablet already exists, add the tablet to tablets
+      if (tablets_exist) {
+        scoped_refptr<TabletInfo> tablet = colocated_tablet_ids_map_[ns->id()];
+        DSCHECK(
+            tablet->colocated(), InternalError,
+            "The tablet for colocated database should be colocated.");
+        tablets.push_back(tablet.get());
+        auto tablet_lock = tablet->LockForWrite();
+        tablet_lock->mutable_data()->pb.add_table_ids(table->id());
+        RETURN_NOT_OK(sys_catalog_->UpdateItem(tablet.get(), leader_ready_term_));
+        tablet_lock->Commit();
+
+        tablet->mutable_metadata()->StartMutation();
+        table->AddTablets(tablets);
+      } else {  // Record the tablet
+        DSCHECK_EQ(
+            tablets.size(), 1, InternalError,
+            "Only one tablet should be created for each colocated database");
+        tablets[0]->mutable_metadata()->mutable_dirty()->pb.set_colocated(true);
+        colocated_tablet_ids_map_[ns->id()] = tablet_map_->find(tablets[0]->id())->second;
+      }
+    }
   }
 
   if (PREDICT_FALSE(FLAGS_simulate_slow_table_create_secs > 0)) {
     LOG(INFO) << "Simulating slow table creation";
     SleepFor(MonoDelta::FromSeconds(FLAGS_simulate_slow_table_create_secs));
   }
-  TRACE("Inserted new table and tablet info into CatalogManager maps");
 
   // NOTE: the table and tablets are already locked for write at this point,
   // since the CreateTableInfo/CreateTabletInfo functions leave them in that state.
   // They will get committed at the end of this function.
   // Sanity check: the tables and tablets should all be in "preparing" state.
   CHECK_EQ(SysTablesEntryPB::PREPARING, table->metadata().dirty().pb.state());
-  for (const TabletInfo *tablet : tablets) {
-    CHECK_EQ(SysTabletsEntryPB::PREPARING, tablet->metadata().dirty().pb.state());
+  if (tablets_exist) {
+    TRACE("Inserted new table and updating tablet info into CatalogManager maps");
+    s = sys_catalog_->UpdateItems(tablets, leader_ready_term_);
+  } else {
+    TRACE("Inserted new table and tablet info into CatalogManager maps");
+    for (const TabletInfo *tablet : tablets) {
+      CHECK_EQ(SysTabletsEntryPB::PREPARING, tablet->metadata().dirty().pb.state());
+    }
+    // Write Tablets to sys-tablets (in "preparing" state).
+    s = sys_catalog_->AddItems(tablets, leader_ready_term_);
   }
 
-  // Write Tablets to sys-tablets (in "preparing" state).
-  s = sys_catalog_->AddItems(tablets, leader_ready_term_);
   if (PREDICT_FALSE(!s.ok())) {
     return AbortTableCreation(table.get(), tablets,
                               s.CloneAndPrepend(
@@ -2049,6 +2119,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   for (TabletInfo *tablet : tablets) {
     tablet->mutable_metadata()->CommitMutation();
+  }
+
+  if (colocated) {
+    auto call =
+        std::make_shared<AsyncAddTableToTablet>(master_, worker_pool_.get(), tablets[0], table);
+    table->AddTask(call);
+    WARN_NOT_OK(call->Run(), "Failed to send AddTableToTablet request");
   }
 
   if (req.has_creator_role_name()) {
@@ -2374,6 +2451,11 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
         table->namespace_id() == kSystemNamespaceId &&
         table->name() == kMetricsSnapshotsTableName)) {
     RETURN_NOT_OK(IsMetricsSnapshotsTableCreated(resp));
+  }
+
+  // If this is a colocated table and there is a pending AddTableToTablet task then we are not done.
+  if (resp->done() && l->data().pb.colocated()) {
+    resp->set_done(!table->HasTasks(MonitoredTask::Type::ASYNC_ADD_TABLE_TO_TABLET));
   }
 
   return Status::OK();
@@ -3615,6 +3697,10 @@ bool CatalogManager::IsUserIndexUnlocked(const TableInfo& table) const {
   return IsUserCreatedTableUnlocked(table) && !table.indexed_table_id().empty();
 }
 
+bool CatalogManager::IsColocatedParentTable(const TableInfo& table) const {
+  return table.id().find(kColocatedParentTableIdSuffix) != std::string::npos;
+}
+
 bool CatalogManager::IsSequencesSystemTable(const TableInfo& table) const {
   if (table.GetTableType() == PGSQL_TABLE_TYPE) {
     // This case commonly occurs during unit testing. Avoid unnecessary assert within Get().
@@ -4014,6 +4100,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     SysNamespaceEntryPB *metadata = &ns->mutable_metadata()->mutable_dirty()->pb;
     metadata->set_name(req->name());
     metadata->set_database_type(db_type);
+    metadata->set_colocated(req->colocated());
 
     // For namespace created for a Postgres database, save the list of tables and indexes for
     // for the database that need to be copied.
@@ -4084,6 +4171,36 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 
   if (db_type == YQL_DATABASE_PGSQL && !pgsql_tables.empty()) {
     RETURN_NOT_OK(CopyPgsqlSysTables(ns->id(), pgsql_tables, resp, rpc));
+  }
+
+  // Create a tablet if it is a colocated database.
+  if (req->colocated()) {
+    CreateTableRequestPB req;
+    CreateTableResponsePB resp;
+    const auto parent_table_id = ns->id() + kColocatedParentTableIdSuffix;
+    const auto parent_table_name = ns->id() + kColocatedParentTableNameSuffix;
+    req.set_name(parent_table_name);
+    req.set_table_id(parent_table_id);
+    req.mutable_namespace_()->set_name(ns->name());
+    req.mutable_namespace_()->set_id(ns->id());
+    req.set_table_type(GetTableTypeForDatabase(ns->database_type()));
+    req.set_colocated(true);
+
+    YBSchemaBuilder schemaBuilder;
+    schemaBuilder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey()->NotNull();
+    YBSchema ybschema;
+    CHECK_OK(schemaBuilder.Build(&ybschema));
+    auto schema = yb::client::internal::GetSchema(ybschema);
+    SchemaToPB(schema, req.mutable_schema());
+    req.mutable_schema()->mutable_table_properties()->set_is_transactional(true);
+
+    // create a parent table, which will create the tablet.
+    Status s = CreateTable(&req, &resp, rpc);
+    // We do not lock here so it is technically possible that the table was already created.
+    // If so, there is nothing to do so we just ignore the "AlreadyPresent" error.
+    if (!s.ok() && !s.IsAlreadyPresent()) {
+      return s;
+    }
   }
 
   return Status::OK();

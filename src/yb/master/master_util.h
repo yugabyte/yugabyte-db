@@ -61,6 +61,7 @@ YQLDatabase GetDatabaseType(const PB& ns) {
 }
 
 YQLDatabase GetDatabaseTypeForTable(const TableType table_type);
+TableType GetTableTypeForDatabase(const YQLDatabase database_type);
 
 } // namespace master
 } // namespace yb

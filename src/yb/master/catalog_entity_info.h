@@ -149,6 +149,10 @@ struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntry::
            pb.state() == SysTabletsEntryPB::DELETED;
   }
 
+  bool is_colocated() const {
+    return pb.colocated();
+  }
+
   // Helper to set the state of the tablet with a custom message.
   // Requires that the caller has prepared this object for write.
   // The change will only be visible after Commit().
@@ -204,6 +208,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Accessors for the last reported schema version.
   bool set_reported_schema_version(uint32_t version);
   uint32_t reported_schema_version() const;
+
+  bool colocated() const;
 
   // No synchronization needed.
   std::string ToString() const override;
@@ -322,6 +328,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   const NamespaceId namespace_id() const;
 
   const CHECKED_STATUS GetSchema(Schema* schema) const;
+
+  bool colocated() const;
 
   // Return the table's ID. Does not require synchronization.
   virtual const std::string& id() const override { return table_id_; }
@@ -457,6 +465,10 @@ struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB, SysRowEn
   YQLDatabase database_type() const {
     return pb.database_type();
   }
+
+  bool colocated() const {
+    return pb.colocated();
+  }
 };
 
 // The information about a namespace.
@@ -473,6 +485,8 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
   const NamespaceName& name() const;
 
   YQLDatabase database_type() const;
+
+  bool colocated() const;
 
   std::string ToString() const override;
 

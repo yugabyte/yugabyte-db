@@ -526,7 +526,8 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
                                  const std::string& creator_role_name,
                                  const std::string& namespace_id,
                                  const std::string& source_namespace_id,
-                                 const boost::optional<uint32_t>& next_pg_oid) {
+                                 const boost::optional<uint32_t>& next_pg_oid,
+                                 bool colocated) {
   CreateNamespaceRequestPB req;
   CreateNamespaceResponsePB resp;
   req.set_name(namespace_name);
@@ -545,6 +546,7 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
   if (next_pg_oid) {
     req.set_next_pg_oid(*next_pg_oid);
   }
+  req.set_colocated(colocated);
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateNamespace);
   return Status::OK();
 }

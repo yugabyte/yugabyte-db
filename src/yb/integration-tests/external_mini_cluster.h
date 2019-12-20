@@ -394,6 +394,8 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   bool running() const { return running_; }
 
+  string data_root() const { return data_root_; }
+
  protected:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
 
