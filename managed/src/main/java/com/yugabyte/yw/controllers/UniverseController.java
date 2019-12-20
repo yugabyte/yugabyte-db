@@ -164,7 +164,7 @@ public class UniverseController extends AuthenticatedController {
 
     if (data.shell_location == null) {
       Application application = Play.current().injector().instanceOf(Application.class);
-      data.shell_location = application.path().getAbsolutePath() + "/bin";
+      data.shell_location = application.path().getAbsolutePath() + "/../bin";
     }
 
     List<String> shellArguments = new ArrayList<>();
