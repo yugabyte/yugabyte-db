@@ -207,16 +207,6 @@ void CompactionTest::TestCompactionAfterTruncate() {
 
   auto dbs = GetAllRocksDbs(cluster_.get());
   AssertLoggedWaitFor(
-      [this, &dbs] {
-        for (auto* db : dbs) {
-          if (rocksdb_listener_->GetNumCompactionsCompleted(db) == 0) {
-            return false;
-          }
-        }
-        return true;
-      },
-      60s, "Waiting for first compaction to complete in all tablets ...", kWaitDelay);
-  AssertLoggedWaitFor(
       [&dbs] {
         for (auto* db : dbs) {
           if (db->GetLiveFilesMetaData().size() >

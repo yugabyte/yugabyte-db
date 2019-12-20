@@ -20,6 +20,7 @@
 
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 
 #include <boost/optional/optional.hpp>
@@ -54,6 +55,18 @@ DECLARE_uint64(aborted_intent_cleanup_ms);
 
 using namespace std::literals;
 using namespace std::placeholders;
+
+DEFINE_uint64(transaction_min_running_check_delay_ms, 50,
+              "When transaction with minimal start hybrid time is updated at transaction "
+              "participant, we wait at least this number of milliseconds before checking its "
+              "status at transaction coordinator. Used for the optimization that deletes "
+              "provisional records RocksDB SSTable files.");
+
+DEFINE_uint64(transaction_min_running_check_interval_ms, 250,
+              "While transaction with minimal start hybrid time remains the same, we will try "
+              "to check its status at transaction coordinator at regular intervals this "
+              "long (ms). Used for the optimization that deletes "
+              "provisional records RocksDB SSTable files.");
 
 DEFINE_test_flag(uint64, transaction_delay_status_reply_usec_in_tests, 0,
                  "For tests only. Delay handling status reply by specified amount of usec.");
@@ -151,6 +164,24 @@ class Delayer {
   std::deque<std::pair<MonoTime, std::function<void()>>> queue_;
 };
 
+class MinRunningNotifier {
+ public:
+  explicit MinRunningNotifier(TransactionIntentApplier* applier) : applier_(applier) {}
+
+  void Satisfied() {
+    satisfied_ = true;
+  }
+
+  ~MinRunningNotifier() {
+    if (satisfied_ && applier_) {
+      applier_->MinRunningHybridTimeSatisfied();
+    }
+  }
+ private:
+  bool satisfied_ = false;
+  TransactionIntentApplier* applier_;
+};
+
 class RunningTransaction;
 
 typedef std::shared_ptr<RunningTransaction> RunningTransactionPtr;
@@ -164,8 +195,12 @@ class RunningTransactionContext {
 
   virtual ~RunningTransactionContext() {}
 
-  virtual bool RemoveUnlocked(const TransactionId& id, const std::string& reason) = 0;
-  virtual void EnqueueRemoveUnlocked(const TransactionId& id) = 0;
+  virtual bool RemoveUnlocked(
+      const TransactionId& id, const std::string& reason,
+      MinRunningNotifier* min_running_notifier) = 0;
+
+  virtual void EnqueueRemoveUnlocked(
+      const TransactionId& id, MinRunningNotifier* min_running_notifier) = 0;
 
   int64_t NextRequestIdUnlocked() {
     return ++request_serial_;
@@ -444,6 +479,10 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
     return metadata_.transaction_id;
   }
 
+  HybridTime start_ht() const {
+    return metadata_.start_time;
+  }
+
   const TransactionMetadata& metadata() const {
     return metadata_;
   }
@@ -464,8 +503,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
     local_commit_time_ = time;
   }
 
-  void RequestStatusAt(client::YBClient* client,
-                       const StatusRequest& request,
+  void RequestStatusAt(const StatusRequest& request,
                        std::unique_lock<std::mutex>* lock) {
     DCHECK_LT(request.global_limit_ht, HybridTime::kMax);
     DCHECK_LE(request.read_ht, request.global_limit_ht);
@@ -496,7 +534,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
         request_id);
 
     lock->unlock();
-    SendStatusRequest(client, request_id, shared_self);
+    SendStatusRequest(request_id, shared_self);
   }
 
   bool WasAborted() const {
@@ -576,8 +614,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
     }
   }
 
-  void SendStatusRequest(
-      client::YBClient* client, int64_t serial_no, const RunningTransactionPtr& shared_self) {
+  void SendStatusRequest(int64_t serial_no, const RunningTransactionPtr& shared_self) {
     tserver::GetTransactionStatusRequestPB req;
     req.set_tablet_id(metadata_.status_tablet);
     req.add_transaction_id()->assign(
@@ -587,15 +624,13 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
         client::GetTransactionStatus(
             TransactionRpcDeadline(),
             nullptr /* tablet */,
-            client,
+            context_.participant_context_.client_future().get(),
             &req,
-            std::bind(&RunningTransaction::StatusReceived, this, client, _1, _2, serial_no,
-                      shared_self)),
+            std::bind(&RunningTransaction::StatusReceived, this, _1, _2, serial_no, shared_self)),
         &get_status_handle_);
   }
 
-  void StatusReceived(client::YBClient* client,
-                      const Status& status,
+  void StatusReceived(const Status& status,
                       const tserver::GetTransactionStatusResponsePB& response,
                       int64_t serial_no,
                       const RunningTransactionPtr& shared_self) {
@@ -603,15 +638,14 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
     if (delay_usec > 0) {
       context_.delayer().Delay(
           MonoTime::Now() + MonoDelta::FromMicroseconds(delay_usec),
-          std::bind(&RunningTransaction::DoStatusReceived, this, client, status, response,
+          std::bind(&RunningTransaction::DoStatusReceived, this, status, response,
                     serial_no, shared_self));
     } else {
-      DoStatusReceived(client, status, response, serial_no, shared_self);
+      DoStatusReceived(status, response, serial_no, shared_self);
     }
   }
 
-  void DoStatusReceived(client::YBClient* client,
-                        const Status& status,
+  void DoStatusReceived(const Status& status,
                         const tserver::GetTransactionStatusResponsePB& response,
                         int64_t serial_no,
                         const RunningTransactionPtr& shared_self) {
@@ -626,6 +660,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
     const bool ok = status.ok();
     int64_t new_request_id = -1;
     {
+      MinRunningNotifier min_running_notifier(&context_.applier_);
       std::unique_lock<std::mutex> lock(context_.mutex_);
       if (!ok) {
         status_waiters_.swap(status_waiters);
@@ -654,7 +689,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
           last_known_status_hybrid_time_ = time_of_status;
           last_known_status_ = response.status(0);
           if (response.status(0) == TransactionStatus::ABORTED) {
-            context_.EnqueueRemoveUnlocked(id());
+            context_.EnqueueRemoveUnlocked(id(), &min_running_notifier);
           }
         }
       } else {
@@ -673,7 +708,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
       }
     }
     if (new_request_id >= 0) {
-      SendStatusRequest(client, new_request_id, shared_self);
+      SendStatusRequest(new_request_id, shared_self);
     }
     NotifyWaiters(serial_no, time_of_status, transaction_status, status_waiters);
   }
@@ -818,7 +853,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     LOG_WITH_PREFIX(INFO) << "Stop";
     closing_.store(true, std::memory_order_release);
     transactions_.clear();
-    TransactionsModifiedUnlocked();
+    MinRunningNotifier min_running_notifier(nullptr /* applier */);
+    TransactionsModifiedUnlocked(&min_running_notifier);
+
     rpcs_.Shutdown();
     if (load_thread_.joinable()) {
       load_thread_.join();
@@ -843,6 +880,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     WaitLoaded(metadata->transaction_id);
     bool store = false;
     {
+      MinRunningNotifier min_running_notifier(&applier_);
       std::lock_guard<std::mutex> lock(mutex_);
       auto it = transactions_.find(metadata->transaction_id);
       if (it == transactions_.end()) {
@@ -851,7 +889,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
         }
         VLOG_WITH_PREFIX(4) << "Create new transaction: " << metadata->transaction_id;
         transactions_.insert(std::make_shared<RunningTransaction>(*metadata, 0, this));
-        TransactionsModifiedUnlocked();
+        TransactionsModifiedUnlocked(&min_running_notifier);
         store = true;
       }
     }
@@ -878,8 +916,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
   std::pair<size_t, size_t> TEST_CountIntents() {
     {
+      MinRunningNotifier min_running_notifier(&applier_);
       std::lock_guard<std::mutex> lock(mutex_);
-      ProcessRemoveQueueUnlocked();
+      ProcessRemoveQueueUnlocked(&min_running_notifier);
     }
 
     std::pair<size_t, size_t> result(0, 0);
@@ -962,7 +1001,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
           STATUS_FORMAT(NotFound, "Request status of unknown transaction: $0", *request.id));
       return;
     }
-    lock_and_iterator.transaction().RequestStatusAt(client(), request, &lock_and_iterator.lock);
+    lock_and_iterator.transaction().RequestStatusAt(request, &lock_and_iterator.lock);
   }
 
   // Registers a request, giving it a newly allocated id and returning this id.
@@ -975,25 +1014,28 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
   // Unregisters a previously registered request.
   void UnregisterRequest(int64_t request) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    DCHECK(!running_requests_.empty());
-    if (running_requests_.front() != request) {
-      complete_requests_.push(request);
-      return;
-    }
-    running_requests_.pop_front();
-    while (!complete_requests_.empty() && complete_requests_.top() == running_requests_.front()) {
-      complete_requests_.pop();
+    MinRunningNotifier min_running_notifier(&applier_);
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      DCHECK(!running_requests_.empty());
+      if (running_requests_.front() != request) {
+        complete_requests_.push(request);
+        return;
+      }
       running_requests_.pop_front();
-    }
+      while (!complete_requests_.empty() && complete_requests_.top() == running_requests_.front()) {
+        complete_requests_.pop();
+        running_requests_.pop_front();
+      }
 
-    CleanTransactionsUnlocked();
+      CleanTransactionsUnlocked(&min_running_notifier);
+    }
   }
 
   // Cleans transactions that are requested and now is safe to clean.
   // See RemoveUnlocked for details.
-  void CleanTransactionsUnlocked() {
-    ProcessRemoveQueueUnlocked();
+  void CleanTransactionsUnlocked(MinRunningNotifier* min_running_notifier) {
+    ProcessRemoveQueueUnlocked(min_running_notifier);
 
     int64_t min_request = running_requests_.empty() ? std::numeric_limits<int64_t>::max()
                                                     : running_requests_.front();
@@ -1002,7 +1044,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       auto it = transactions_.find(id);
       if (it != transactions_.end()) {
         (**it).ScheduleRemoveIntents(*it);
-        RemoveTransaction(it);
+        RemoveTransaction(it, min_running_notifier);
       }
       VLOG_WITH_PREFIX(2) << "Cleaned from queue: " << id;
       cleanup_queue_.pop_front();
@@ -1143,12 +1185,13 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     CHECK_OK(applier_.ApplyIntents(data));
 
     {
+      MinRunningNotifier min_running_notifier(&applier_);
       // We are not trying to cleanup intents here because we don't know whether this transaction
       // has intents or not.
       auto lock_and_iterator = LockAndFind(
           data.transaction_id, "apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
       if (lock_and_iterator.found()) {
-        RemoveUnlocked(lock_and_iterator.iterator, "applied"s);
+        RemoveUnlocked(lock_and_iterator.iterator, "applied"s, &min_running_notifier);
       }
     }
 
@@ -1186,6 +1229,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
   CHECKED_STATUS ProcessCleanup(const TransactionApplyData& data, bool force_remove) {
     {
+      MinRunningNotifier min_running_notifier(&applier_);
       std::lock_guard<std::mutex> lock(mutex_);
       auto it = transactions_.find(data.transaction_id);
       if (it == transactions_.end()) {
@@ -1193,7 +1237,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
           return Status::OK();
         }
       } else {
-        if (!RemoveUnlocked(it, "cleanup"s)) {
+        if (!RemoveUnlocked(it, "cleanup"s, &min_running_notifier)) {
           VLOG_WITH_PREFIX(2) << "Have added aborted txn to cleanup queue : "
                               << data.transaction_id;
         }
@@ -1223,6 +1267,55 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return &participant_context_;
   }
 
+  HybridTime MinRunningHybridTime() {
+    auto result = min_running_ht_.load(std::memory_order_acquire);
+    if (result == HybridTime::kMax) {
+      return result;
+    }
+    auto now = CoarseMonoClock::now();
+    auto current_next_check_min_running = next_check_min_running_.load(std::memory_order_relaxed);
+    if (now >= current_next_check_min_running) {
+      if (next_check_min_running_.compare_exchange_strong(
+              current_next_check_min_running,
+              now + 1ms * FLAGS_transaction_min_running_check_interval_ms,
+              std::memory_order_acq_rel)) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        if (transactions_.empty()) {
+          return HybridTime::kMax;
+        }
+        auto& first_txn = **transactions_.get<StartTimeTag>().begin();
+        VLOG_WITH_PREFIX(1) << "Checking status of long running min txn " << first_txn.id()
+                            << ": " << first_txn.WasAborted();
+        static const std::string kRequestReason = "min running check"s;
+        // Get transaction status
+        auto now_ht = participant_context_.Now();
+        StatusRequest status_request = {
+            .id = &first_txn.id(),
+            .read_ht = now_ht,
+            .global_limit_ht = now_ht,
+            // Could use 0 here, because read_ht == global_limit_ht.
+            // So we cannot accept status with time >= read_ht and < global_limit_ht.
+            .serial_no = 0,
+            .reason = &kRequestReason,
+            .flags = TransactionLoadFlags{},
+            .callback = [this, id = first_txn.id()](Result<TransactionStatusResult> result) {
+              // Aborted status will result in cleanup of intents.
+              VLOG_WITH_PREFIX(1) << "Min running status " << id << ": " << result;
+            }
+        };
+        first_txn.RequestStatusAt(status_request, &lock);
+      }
+    }
+    return result;
+  }
+
+  void WaitMinRunningHybridTime(HybridTime ht) {
+    MinRunningNotifier min_running_notifier(&applier_);
+    std::unique_lock<std::mutex> lock(mutex_);
+    waiting_for_min_running_ht_ = ht;
+    CheckMinRunningHybridTimeSatisfiedUnlocked(&min_running_notifier);
+  }
+
   size_t TEST_GetNumRunningTransactions() {
     std::lock_guard<std::mutex> lock(mutex_);
     VLOG_WITH_PREFIX(4) << "Transactions: " << yb::ToString(transactions_);
@@ -1230,27 +1323,54 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
  private:
+  class StartTimeTag;
+
   typedef boost::multi_index_container<RunningTransactionPtr,
       boost::multi_index::indexed_by <
           boost::multi_index::hashed_unique <
-              boost::multi_index::const_mem_fun<
+              boost::multi_index::const_mem_fun <
                   RunningTransaction, const TransactionId&, &RunningTransaction::id>
+          >,
+          boost::multi_index::ordered_non_unique <
+              boost::multi_index::tag<StartTimeTag>,
+              boost::multi_index::const_mem_fun <
+                  RunningTransaction, HybridTime, &RunningTransaction::start_ht>
           >
       >
   > Transactions;
 
-  void TransactionsModifiedUnlocked() {
+  void TransactionsModifiedUnlocked(MinRunningNotifier* min_running_notifier) {
     metric_transactions_running_->set_value(transactions_.size());
+    if (!all_loaded_.load(std::memory_order_acquire)) {
+      return;
+    }
+
+    if (transactions_.empty()) {
+      min_running_ht_.store(HybridTime::kMax, std::memory_order_release);
+      CheckMinRunningHybridTimeSatisfiedUnlocked(min_running_notifier);
+      return;
+    }
+
+    auto& first_txn = **transactions_.get<StartTimeTag>().begin();
+    if (first_txn.start_ht() != min_running_ht_.load(std::memory_order_relaxed)) {
+      min_running_ht_.store(first_txn.start_ht(), std::memory_order_release);
+      next_check_min_running_.store(
+          CoarseMonoClock::now() + 1ms * FLAGS_transaction_min_running_check_delay_ms,
+          std::memory_order_release);
+      CheckMinRunningHybridTimeSatisfiedUnlocked(min_running_notifier);
+      return;
+    }
   }
 
-  void EnqueueRemoveUnlocked(const TransactionId& id) override {
+  void EnqueueRemoveUnlocked(
+      const TransactionId& id, MinRunningNotifier* min_running_notifier) override {
     auto now = participant_context_.Now();
     VLOG_WITH_PREFIX(4) << "EnqueueRemoveUnlocked: " << id << " at " << now;
     remove_queue_.emplace_back(RemoveQueueEntry{id, now});
-    ProcessRemoveQueueUnlocked();
+    ProcessRemoveQueueUnlocked(min_running_notifier);
   }
 
-  void ProcessRemoveQueueUnlocked() {
+  void ProcessRemoveQueueUnlocked(MinRunningNotifier* min_running_notifier) {
     if (!remove_queue_.empty()) {
       // When a transaction participant receives an "aborted" response from the coordinator,
       // it puts this transaction into a "remove queue", also storing the current hybrid
@@ -1295,28 +1415,32 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
         }
         VLOG_WITH_PREFIX(4) << "Removing from remove queue: " << remove_queue_.front().id;
         static const std::string kRemoveFromQueue = "remove_queue"s;
-        RemoveUnlocked(remove_queue_.front().id, kRemoveFromQueue);
+        RemoveUnlocked(remove_queue_.front().id, kRemoveFromQueue, min_running_notifier);
         remove_queue_.pop_front();
       }
     }
   }
 
   // Tries to remove transaction with specified id.
-  // Returns true if transaction does not exist after call to this method, otherwise returns false,
-  // which means that the transaction will be removed later.
-  bool RemoveUnlocked(const TransactionId& id, const std::string& reason) override {
+  // Returns true if transaction is not exists after call to this method, otherwise returns false.
+  // Which means that transaction will be removed later.
+  bool RemoveUnlocked(
+      const TransactionId& id, const std::string& reason,
+      MinRunningNotifier* min_running_notifier) override {
     auto it = transactions_.find(id);
     if (it == transactions_.end()) {
       return true;
     }
-    return RemoveUnlocked(it, reason);
+    return RemoveUnlocked(it, reason, min_running_notifier);
   }
 
-  bool RemoveUnlocked(const Transactions::iterator& it, const std::string& reason) {
+  bool RemoveUnlocked(
+      const Transactions::iterator& it, const std::string& reason,
+      MinRunningNotifier* min_running_notifier) {
     if (running_requests_.empty()) {
       (**it).ScheduleRemoveIntents(*it);
       TransactionId txn_id = (**it).id();
-      RemoveTransaction(it);
+      RemoveTransaction(it, min_running_notifier);
       VLOG_WITH_PREFIX(2) << "Cleaned transaction: " << txn_id << ", reason: " << reason
                           << ", left: " << transactions_.size();
       return true;
@@ -1459,6 +1583,12 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       return;
     }
 
+    if (!metadata->start_time.is_valid()) {
+      metadata->start_time = HybridTime::kMin;
+      LOG_WITH_PREFIX(INFO) << "Patched start time " << metadata->transaction_id << ": "
+                            << metadata->start_time;
+    }
+
     key_bytes->AppendValueType(docdb::ValueType::kMaxByte);
     iterator->Seek(key_bytes->AsSlice());
     if (iterator->Valid()) {
@@ -1499,6 +1629,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     }
 
     {
+      MinRunningNotifier min_running_notifier(&applier_);
       std::lock_guard<std::mutex> lock(mutex_);
       last_loaded_ = metadata->transaction_id;
       if (FLAGS_max_transactions_in_status_request > 0) {
@@ -1506,7 +1637,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       }
       transactions_.insert(std::make_shared<RunningTransaction>(
           std::move(*metadata), next_write_id, this));
-      TransactionsModifiedUnlocked();
+      TransactionsModifiedUnlocked(&min_running_notifier);
     }
     load_cond_.notify_all();
   }
@@ -1519,7 +1650,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return log_prefix_;
   }
 
-  void RemoveTransaction(Transactions::iterator it) {
+  void RemoveTransaction(Transactions::iterator it, MinRunningNotifier* min_running_notifier) {
     auto now = CoarseMonoClock::now();
     CleanupRecentlyRemovedTransactions(now);
     auto& transaction = **it;
@@ -1528,7 +1659,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
         << "Transaction removed twice: " << transaction.id();
     VLOG_WITH_PREFIX(4) << "Remove transaction: " << transaction.id();
     transactions_.erase(it);
-    TransactionsModifiedUnlocked();
+    TransactionsModifiedUnlocked(min_running_notifier);
   }
 
   void CleanupRecentlyRemovedTransactions(CoarseTimePoint now) {
@@ -1542,6 +1673,15 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   bool WasTransactionRecentlyRemoved(const TransactionId& id) {
     CleanupRecentlyRemovedTransactions(CoarseMonoClock::now());
     return recently_removed_transactions_.count(id) != 0;
+  }
+
+  void CheckMinRunningHybridTimeSatisfiedUnlocked(
+      MinRunningNotifier* min_running_notifier) {
+    if (min_running_ht_.load(std::memory_order_acquire) <= waiting_for_min_running_ht_) {
+      return;
+    }
+    waiting_for_min_running_ht_ = HybridTime::kMax;
+    min_running_notifier->Satisfied();
   }
 
   template <class F1, class F2>
@@ -1625,6 +1765,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     }
 
     {
+      MinRunningNotifier min_running_notifier(&applier_);
       std::lock_guard<std::mutex> lock(mutex_);
       auto it = check_status_queues_.begin();
       auto& queue = it->second;
@@ -1632,7 +1773,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
         VLOG_WITH_PREFIX(4) << "Status of " << queue.front() << ": "
                             << TransactionStatus_Name(response.status(i));
         if (response.status(i) == TransactionStatus::ABORTED) {
-          EnqueueRemoveUnlocked(queue.front());
+          EnqueueRemoveUnlocked(queue.front(), &min_running_notifier);
         }
         queue.pop_front();
       }
@@ -1703,6 +1844,10 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   // True while status check for loaded transactions is in progress.
   std::atomic<bool> checking_status_{false};
   bool started_ = false;
+
+  std::atomic<HybridTime> min_running_ht_{HybridTime::kMax};
+  std::atomic<CoarseTimePoint> next_check_min_running_{CoarseTimePoint()};
+  HybridTime waiting_for_min_running_ht_ = HybridTime::kMax;
 };
 
 TransactionParticipant::TransactionParticipant(
@@ -1791,6 +1936,14 @@ void TransactionParticipant::SetDB(rocksdb::DB* db, const docdb::KeyBounds* key_
 
 TransactionParticipantContext* TransactionParticipant::context() const {
   return impl_->participant_context();
+}
+
+HybridTime TransactionParticipant::MinRunningHybridTime() const {
+  return impl_->MinRunningHybridTime();
+}
+
+void TransactionParticipant::WaitMinRunningHybridTime(HybridTime ht) {
+  impl_->WaitMinRunningHybridTime(ht);
 }
 
 size_t TransactionParticipant::TEST_GetNumRunningTransactions() const {
