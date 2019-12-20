@@ -310,7 +310,8 @@ class YBClient {
                                  const std::string& creator_role_name = "",
                                  const std::string& namespace_id = "",
                                  const std::string& source_namespace_id = "",
-                                 const boost::optional<uint32_t>& next_pg_oid = boost::none);
+                                 const boost::optional<uint32_t>& next_pg_oid = boost::none,
+                                 bool colocated = false);
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
   // created. So, it prevents error 'namespace already exists'.

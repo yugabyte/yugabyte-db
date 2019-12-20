@@ -142,6 +142,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	DefElem    *dtemplate = NULL;
 	DefElem    *dencoding = NULL;
 	DefElem    *dcollate = NULL;
+	DefElem    *dcolocated = NULL;
 	DefElem    *dctype = NULL;
 	DefElem    *distemplate = NULL;
 	DefElem    *dallowconnections = NULL;
@@ -156,6 +157,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	int			encoding = -1;
 	bool		dbistemplate = false;
 	bool		dballowconnections = true;
+	bool		dbcolocated = false;
 	int			dbconnlimit = -1;
 	int			notherbackends;
 	int			npreparedxacts;
@@ -259,6 +261,15 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 					 errhint("Consider using tablespaces instead."),
 					 parser_errposition(pstate, defel->location)));
 		}
+		else if (strcmp(defel->defname, "colocated") == 0)
+		{
+			if (dcolocated)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options"),
+						 parser_errposition(pstate, defel->location)));
+			dcolocated = defel;
+		}
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -314,6 +325,8 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("invalid connection limit: %d", dbconnlimit)));
 	}
+	if (dcolocated && dcolocated->arg)
+		dbcolocated = defGetBoolean(dcolocated);
 
 	/* obtain OID of proposed owner */
 	if (dbowner)
@@ -591,7 +604,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	new_record[Anum_pg_database_dattablespace - 1] = ObjectIdGetDatum(dst_deftablespace);
 
 	if (IsYugaByteEnabled())
-		YBCCreateDatabase(dboid, dbname, src_dboid, InvalidOid);
+		YBCCreateDatabase(dboid, dbname, src_dboid, InvalidOid, dbcolocated);
 
 	/*
 	 * We deliberately set datacl to default (NULL), rather than copying it

@@ -183,6 +183,9 @@ message RaftGroupReplicaSuperBlockPB {
 
   // Tables co-located in this tablet.
   repeated TableInfoPB OBSOLETE_tables = 23;
+
+  // True if the raft group is for a colocated tablet.
+  optional bool colocated = 25 [ default = false ];
 }
 
 message FilePB {

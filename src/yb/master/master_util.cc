@@ -140,5 +140,19 @@ YQLDatabase GetDatabaseTypeForTable(const TableType table_type) {
   return YQL_DATABASE_UNKNOWN;
 }
 
+TableType GetTableTypeForDatabase(const YQLDatabase database_type) {
+  switch (database_type) {
+    case YQLDatabase::YQL_DATABASE_CQL:
+      return TableType::YQL_TABLE_TYPE;
+    case YQLDatabase::YQL_DATABASE_REDIS:
+      return TableType::REDIS_TABLE_TYPE;
+    case YQLDatabase::YQL_DATABASE_PGSQL:
+      return TableType::PGSQL_TABLE_TYPE;
+    default:
+      DCHECK_EQ(database_type, YQLDatabase::YQL_DATABASE_UNKNOWN);
+      return TableType::DEFAULT_TABLE_TYPE;
+  }
+}
+
 } // namespace master
 } // namespace yb

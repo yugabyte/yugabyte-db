@@ -47,6 +47,10 @@ class YBTableCreator {
   // will calculate this value (num_shards_per_tserver * num_of_tservers).
   YBTableCreator& num_tablets(int32_t count);
 
+  // Whether this table should be colocated. Will be ignored by catalog manager if the database is
+  // not colocated.
+  YBTableCreator& colocated(const bool colocated);
+
   // Sets the schema with which to create the table. Must remain valid for
   // the lifetime of the builder. Required.
   YBTableCreator& schema(const YBSchema* schema);
@@ -159,6 +163,8 @@ class YBTableCreator {
 
   MonoDelta timeout_;
   bool wait_ = true;
+
+  bool colocated_ = true;
 
   DISALLOW_COPY_AND_ASSIGN(YBTableCreator);
 };

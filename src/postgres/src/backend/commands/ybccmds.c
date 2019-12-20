@@ -81,7 +81,7 @@ ColumnSortingOptions(SortByDir dir, SortByNulls nulls, bool* is_desc, bool* is_n
 /*  Database Functions. */
 
 void
-YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid)
+YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated)
 {
 	YBCPgStatement handle;
 
@@ -89,6 +89,7 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid)
 										  dboid,
 										  src_dboid,
 										  next_oid,
+										  colocated,
 										  &handle));
 	HandleYBStmtStatus(YBCPgExecCreateDatabase(handle), handle);
 	HandleYBStatus(YBCPgDeleteStatement(handle));
@@ -482,6 +483,21 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId, O
 		}
 	}
 
+	ListCell	*opt_cell;
+	// Set the default option to true so that tables created in a colocated database will be
+	// colocated by default. For regular database, this argument will be ignored.
+	bool		colocated = true;
+	/* Scan list to see if colocated was included */
+	foreach(opt_cell, stmt->options)
+	{
+		DefElem *def = (DefElem *) lfirst(opt_cell);
+
+		if (strcmp(def->defname, "colocated") == 0)
+		{
+			colocated = defGetBoolean(def);
+		}
+	}
+
 	HandleYBStatus(YBCPgNewCreateTable(db_name,
 									   schema_name,
 									   stmt->relation->relname,
@@ -493,6 +509,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId, O
 									   &handle));
 
 	CreateTableAddColumns(handle, desc, primary_key);
+	HandleYBStmtStatus(YBCPgCreateTableSetColocated(handle, colocated), handle);
 
 	/* Handle SPLIT statement, if present */
 	OptSplit *split_options = stmt->split_options;
@@ -564,7 +581,8 @@ YBCCreateIndex(const char *indexName,
 			   TupleDesc indexTupleDesc,
 			   int16 *coloptions,
 			   Oid indexId,
-			   Relation rel)
+			   Relation rel,
+			   List *index_options)
 {
 	char *db_name	  = get_database_name(MyDatabaseId);
 	char *schema_name = get_namespace_name(RelationGetNamespace(rel));
@@ -574,6 +592,21 @@ YBCCreateIndex(const char *indexName,
 					 db_name,
 					 schema_name,
 					 indexName);
+
+	ListCell	*opt_cell;
+	// Set the default option to true so that tables created in a colocated database will be
+	// colocated by default. For regular database, this argument will be ignored.
+	bool		colocated = true;
+	/* Scan list to see if colocated was included */
+	foreach(opt_cell, index_options)
+	{
+		DefElem *def = (DefElem *) lfirst(opt_cell);
+
+		if (strcmp(def->defname, "colocated") == 0)
+		{
+			colocated = defGetBoolean(def);
+		}
+	}
 
 	YBCPgStatement handle = NULL;
 
@@ -586,6 +619,7 @@ YBCCreateIndex(const char *indexName,
 									   rel->rd_rel->relisshared,
 									   indexInfo->ii_Unique,
 									   false, /* if_not_exists */
+									   colocated,
 									   &handle));
 
 	for (int i = 0; i < indexTupleDesc->natts; i++)

@@ -232,7 +232,8 @@ Status RaftGroupMetadata::CreateNew(FsManager* fs_manager,
                                  const TabletDataState& initial_tablet_data_state,
                                  RaftGroupMetadataPtr* metadata,
                                  const string& data_root_dir,
-                                 const string& wal_root_dir) {
+                                 const string& wal_root_dir,
+                                 const bool colocated) {
 
   // Verify that no existing Raft group exists with the same ID.
   if (fs_manager->env()->FileExists(fs_manager->GetRaftGroupMetadataPath(raft_group_id))) {
@@ -257,12 +258,17 @@ Status RaftGroupMetadata::CreateNew(FsManager* fs_manager,
 
   auto table_dir = Substitute("table-$0", table_id);
   auto tablet_dir = Substitute("tablet-$0", raft_group_id);
+  string wal_dir;
+  string rocksdb_dir;
 
-  auto wal_table_top_dir = JoinPathSegments(wal_top_dir, table_dir);
-  auto wal_dir = JoinPathSegments(wal_table_top_dir, tablet_dir);
-
-  auto rocksdb_dir = JoinPathSegments(
-      data_top_dir, FsManager::kRocksDBDirName, table_dir, tablet_dir);
+  if (colocated) {
+    wal_dir = JoinPathSegments(wal_top_dir, tablet_dir);
+    rocksdb_dir = JoinPathSegments(data_top_dir, FsManager::kRocksDBDirName, tablet_dir);
+  } else {
+    auto wal_table_top_dir = JoinPathSegments(wal_top_dir, table_dir);
+    wal_dir = JoinPathSegments(wal_table_top_dir, tablet_dir);
+    rocksdb_dir = JoinPathSegments(data_top_dir, FsManager::kRocksDBDirName, table_dir, tablet_dir);
+  }
 
   RaftGroupMetadataPtr ret(new RaftGroupMetadata(fs_manager,
                                                        table_id,
@@ -277,7 +283,8 @@ Status RaftGroupMetadata::CreateNew(FsManager* fs_manager,
                                                        partition,
                                                        index_info,
                                                        schema_version,
-                                                       initial_tablet_data_state));
+                                                       initial_tablet_data_state,
+                                                       colocated));
   RETURN_NOT_OK(ret->Flush());
   metadata->swap(ret);
   return Status::OK();
@@ -444,7 +451,8 @@ RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager,
                                Partition partition,
                                const boost::optional<IndexInfo>& index_info,
                                const uint32_t schema_version,
-                               const TabletDataState& tablet_data_state)
+                               const TabletDataState& tablet_data_state,
+                               const bool colocated)
     : state_(kNotWrittenYet),
       raft_group_id_(std::move(raft_group_id)),
       partition_(std::move(partition)),
@@ -452,7 +460,8 @@ RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager,
       kv_store_(KvStoreId(raft_group_id), rocksdb_dir),
       fs_manager_(fs_manager),
       wal_dir_(wal_dir),
-      tablet_data_state_(tablet_data_state) {
+      tablet_data_state_(tablet_data_state),
+      colocated_(colocated) {
   CHECK(schema.has_column_ids());
   CHECK_GT(schema.num_key_columns(), 0);
   kv_store_.tables.emplace(
@@ -515,6 +524,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     }
     Partition::FromPB(superblock.partition(), &partition_);
     primary_table_id_ = superblock.primary_table_id();
+    colocated_ = superblock.colocated();
 
     RETURN_NOT_OK(kv_store_.LoadFromPB(superblock.kv_store(), primary_table_id_));
 
@@ -607,6 +617,7 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   }
 
   pb.set_primary_table_id(primary_table_id_);
+  pb.set_colocated(colocated_);
 
   superblock->Swap(&pb);
 }

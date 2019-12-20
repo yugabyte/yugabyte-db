@@ -650,7 +650,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
-	CLUSTER COALESCE COLLATE COLLATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
+	CLUSTER COALESCE COLLATE COLLATION COLOCATED COLUMN COLUMNS COMMENT COMMENTS COMMIT
 	COMMITTED CONCURRENTLY CONFIGURATION CONFLICT CONNECTION CONSTRAINT
 	CONSTRAINTS CONTENT_P CONTINUE_P CONVERSION_P COPY COST CREATE
 	CROSS CSV CUBE CURRENT_P
@@ -2764,8 +2764,20 @@ opt_reloptions:		WITH reloptions					{ $$ = $2; }
 		;
 
 reloption_list:
-			reloption_elem							{ $$ = list_make1($1); }
-			| reloption_list ',' reloption_elem		{ $$ = lappend($1, $3); }
+			reloption_elem
+				{
+					if (strcmp($1->defname, "colocated") == 0) {
+						parser_ybc_beta_feature(@1, "colocated table");
+					}
+					$$ = list_make1($1);
+				}
+			| reloption_list ',' reloption_elem
+				{
+					if (strcmp($3->defname, "colocated") == 0) {
+						parser_ybc_beta_feature(@1, "colocated table");
+					}
+					$$ = lappend($1, $3);
+				}
 		;
 
 /* This should match def_elem and also allow qualified names */
@@ -10856,6 +10868,11 @@ createdb_opt_name:
 			| OWNER							{ $$ = pstrdup($1); }
 			| TABLESPACE					{ $$ = pstrdup($1); }
 			| TEMPLATE						{ $$ = pstrdup($1); }
+			| COLOCATED
+				{
+					parser_ybc_beta_feature(@1, "colocated database");
+					$$ = pstrdup($1);
+				}
 		;
 
 /*
@@ -15802,6 +15819,7 @@ unreserved_keyword:
 			| CLASS
 			| CLOSE
 			| CLUSTER
+			| COLOCATED
 			| COLUMNS
 			| COMMENT
 			| COMMENTS
