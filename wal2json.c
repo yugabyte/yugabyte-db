@@ -223,7 +223,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data->filter_msg_prefixes = NIL;
 	data->add_msg_prefixes = NIL;
 
-	data->format_version = WAL2JSON_FORMAT_VERSION;
+	data->format_version = 1;
 
 	/* default actions */
 	if (WAL2JSON_FORMAT_VERSION == 1)
