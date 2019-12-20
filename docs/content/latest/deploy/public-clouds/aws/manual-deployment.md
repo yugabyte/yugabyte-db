@@ -523,17 +523,62 @@ done
 
 Note: This example is a multi-AZ (single region deployment). 
 
-But suppose you are using these instructions to setup a multi-region deployment, 
-one option to consider is to set a preferred location for all the tablet leaders 
+The default replica placement policy when the cluster is first created is to treat all nodes as equal irrespective of the placement_* configuration flags. 
+However, for the current deployment, we want to explicitly place 1 replica in each AZ. 
+The following command sets replication factor of 3 across `us-west-2a`, `us-west-2b` and `us-west-2c` leading to the placement of 1 replica in each AZ.
+
+```sh
+ssh -i $PEM $ADMIN_USER@$MASTER1 \
+   ~/master/bin/yb-admin --master_addresses $MASTER_RPC_ADDRS \
+    modify_placement_info  \
+    aws.us-west.us-west-2a,aws.us-west.us-west-2b,aws.us-west.us-west-2c 3
+```
+
+Verify by running the following.
+
+```sh
+$ curl -s http://<any-master-ip>:7000/cluster-config
+```
+
+And confirm that the output looks similar to what is shown below with `min_num_replicas` set to 1 for each AZ.
+
+```
+replication_info {
+  live_replicas {
+    num_replicas: 3
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "aws"
+        placement_region: "us-west"
+        placement_zone: "us-west-2a"
+      }
+      min_num_replicas: 1
+    }
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "aws"
+        placement_region: "us-west"
+        placement_zone: "us-west-2b"
+      }
+      min_num_replicas: 1
+    }
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "aws"
+        placement_region: "us-west"
+        placement_zone: "us-west-2c"
+      }
+      min_num_replicas: 1
+    }
+  }
+}
+```
+
+Suppose your deployment is multi-region rather than multi-zone, one additional 
+option to consider is to set a preferred location for all the tablet leaders 
 using the [set_preferred_zones yb-admin command](../../../admin/yb-admin). 
 For multi-row/multi-table transactional operations, colocating the leaders to be in a single zone/region can help reduce the number of 
 cross-region network hops involved in executing the transaction and as a result improve performance.
-
-By default, all nodes are eligible to have tablet leaders. 
-To get better transactional performance and lower latency, it's better that all tablet-leaders reside in the same region if possible.
-This will reduce the number of cross-region hops when writing transactions.
-For the current deployment, we want to explicitly prioritise the region/zone where leaders reside.
-When the "preferred zone" nodes are alive/healthy - the leaders of tablets are placed on nodes in those regions. 
 
 The following command sets the preferred zone to `aws.us-west.us-west-2c`:
 
