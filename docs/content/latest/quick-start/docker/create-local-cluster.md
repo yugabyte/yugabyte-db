@@ -1,6 +1,6 @@
 ## 1. Create a local cluster
 
-You can use the [`yugabyted`](../../admin/yb-docker-ctl/) binary, including commands and options, to create and administer a containerized local YugabyteDB cluster.
+You can use the [`yugabyted`](../../admin/yb-docker-ctl/) daemon, with its commands and options, to create and administer a containerized local YugabyteDB cluster.
 
 To quickly create a 1-node local cluster using Docker, run the following command.
 
@@ -32,7 +32,6 @@ Join us on Slack at https://www.yugabyte.com/slack
 ```
 
 Clients can now connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively.
-
 
 ## 2. Check cluster status with YugabyteDB Admin Console
 
