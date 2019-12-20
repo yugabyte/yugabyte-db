@@ -21,6 +21,7 @@
 #include "yb/server/total_mem_watcher.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 
@@ -164,9 +165,7 @@ class LinuxTotalMemWatcher : public TotalMemWatcher {
   std::string GetMemoryUsageDetails() override {
     std::string result;
 #ifdef TCMALLOC_ENABLED
-    char tcmalloc_stats_buf[2048];
-    MallocExtension::instance()->GetStats(tcmalloc_stats_buf, 2048);
-    result += tcmalloc_stats_buf;
+    result += TcMallocStats();
     result += "\n";
 #endif
     result += Format(

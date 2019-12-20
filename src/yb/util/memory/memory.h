@@ -990,6 +990,9 @@ std::shared_ptr<U> shared_from(U* u) {
   return std::static_pointer_cast<U>(u->shared_from_this());
 }
 
+// Returns empty string if TCMalloc is not enabled.
+std::string TcMallocStats();
+
 }  // namespace yb
 
 #endif // YB_UTIL_MEMORY_MEMORY_H_

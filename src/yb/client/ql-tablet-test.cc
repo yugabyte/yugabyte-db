@@ -1001,7 +1001,7 @@ TEST_F(QLTabletTest, OperationMemTracking) {
     // We have overhead in both log cache and tablets.
     // So if value is double tracked then sum consumption will be higher than double value size.
     ASSERT_LE(operation_tracker_consumption + log_cache_consumption, kValueSize * 2)
-        << DumpMemTrackers();
+        << DumpMemoryUsage();
     if (std::chrono::steady_clock::time_point() == deadline) { // operation did not finish yet
       if (future.wait_for(kWaitInterval) == std::future_status::ready) {
         LOG(INFO) << "Value written";
