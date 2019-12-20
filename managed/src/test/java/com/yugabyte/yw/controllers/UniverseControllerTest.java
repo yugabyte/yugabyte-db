@@ -123,7 +123,6 @@ public class UniverseControllerTest extends WithApplication {
   private YBClient mockClient;
   private ApiHelper mockApiHelper;
   private CallHome mockCallHome;
-  private HealthChecker mockHealthChecker;
   private EncryptionAtRestManager mockEARManager;
   private QueryExecutor mockQueryExecutor;
   private ShellProcessHandler mockShellProcessHandler;
@@ -1881,7 +1880,7 @@ public class UniverseControllerTest extends WithApplication {
       bodyJson.put("shell_location", scriptLocation);
     } else {
       Application application = Play.current().injector().instanceOf(Application.class);
-      scriptLocation = application.path().getAbsolutePath() + "/bin";
+      scriptLocation = application.path().getAbsolutePath() + "/../bin";
     }
 
     ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
