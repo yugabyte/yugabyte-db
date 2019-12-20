@@ -29,4 +29,3 @@ This page covers how to restore data from a backup. In order to create a backup,
     {{% includeMarkdown "ycql/restoring-data.md" /%}}
   </div>
 </div>
-

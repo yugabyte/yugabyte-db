@@ -1,7 +1,7 @@
 ---
-title: Backup and restore
-linkTitle: Backup and restore
-description: Backup and restore
+title: Back up and restore
+linkTitle: Back up and restore
+description: Back up and restore
 image: /images/section_icons/manage/enterprise.png
 headcontent: Back up and restore your data in YugabyteDB.
 aliases:
@@ -22,7 +22,7 @@ This section goes into details of backing up data and restoring it from Yugabyte
     <a class="section-link icon-offset" href="backing-up-data/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Backing up data</div>
+        <div class="title">Back up data</div>
       </div>
       <div class="body">
         This section describes how to create a backup of the data in YugabyteDB.
@@ -33,7 +33,7 @@ This section goes into details of backing up data and restoring it from Yugabyte
     <a class="section-link icon-offset" href="restoring-data/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/create_universe.png" aria-hidden="true" />
-        <div class="title">Restoring data</div>
+        <div class="title">Restore data</div>
       </div>
       <div class="body">
         This section describes how to restore data into YugabyteDB from a backup.

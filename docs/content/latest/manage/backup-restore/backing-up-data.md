@@ -15,12 +15,12 @@ menu:
 
 This page covers backups for YugabyteDB. Here are some points to keep in mind.
 
-- Export-based backups 
+- Export-based backups
   - Single row ACID backups
   - Backup the schema and data separately
   - Multi-threaded parallelism
 
-- Distributed backups 
+- Distributed backups
   - Single table ACID backups
   - Integrated backup solution, integrated with object stores such as AWS S3
   - Massively parallel, efficient for very large data sets
