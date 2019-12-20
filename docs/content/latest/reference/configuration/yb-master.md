@@ -1,7 +1,7 @@
 ---
-title: YB-Master 
-linkTitle: YB-Master 
-description: YB-Master
+title: yb-master
+linkTitle: yb-master
+description: yb-master
 menu:
   latest:
     identifier: yb-master
@@ -13,7 +13,7 @@ isTocNested: 3
 showAsideToc: true
 ---
 
-The [YB-Master](../../../architecture/concepts/yb-master) service manages cluster metadata, tablets and coordinate cluster-wide operations. Its binary `yb-master` is located in the `bin` directory of YugabyteDB home. 
+Use the `yb-master` binary and its options to configure your [YB-Master](../../../architecture/concepts/yb-master) services. The `yb-master` executable file is located in the `bin` directory of YugabyteDB home.
 
 ## Syntax
 
