@@ -32,7 +32,7 @@ namespace pgwrapper {
 
 class PgLibPqTest : public LibPqTestBase {
  protected:
-  void TestMultiBankAccount(const std::string& isolation_level);
+  void TestMultiBankAccount(IsolationLevel isolation);
 
   void DoIncrement(int key, int num_increments, IsolationLevel isolation);
 
@@ -193,6 +193,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableReadWriteConflict)) {
   auto tries = 1;
   for (; tries <= kNumTries; ++tries) {
     auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("DROP TABLE IF EXISTS t"));
     ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
 
     size_t reads_won = 0, writes_won = 0;
@@ -349,9 +350,9 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentIndexInsert)) {
 }
 
 Result<int64_t> ReadSumBalance(
-    PGConn* conn, int accounts, const std::string& begin_transaction_statement,
+    PGConn* conn, int accounts, IsolationLevel isolation,
     std::atomic<int>* counter) {
-  RETURN_NOT_OK(conn->Execute(begin_transaction_statement));
+  RETURN_NOT_OK(conn->StartTransaction(isolation));
   bool failed = true;
   auto se = ScopeExit([conn, &failed] {
     if (failed) {
@@ -371,7 +372,7 @@ Result<int64_t> ReadSumBalance(
   return sum;
 }
 
-void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
+void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
   constexpr int kAccounts = RegularBuildVsSanitizers(20, 10);
   constexpr int64_t kInitialBalance = 100;
 
@@ -384,9 +385,6 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
 #endif
 
   PGConn conn = ASSERT_RESULT(Connect());
-
-  const std::string begin_transaction_statement =
-      "START TRANSACTION ISOLATION LEVEL " + isolation_level;
 
   for (int i = 1; i <= kAccounts; ++i) {
     ASSERT_OK(conn.ExecuteFormat(
@@ -402,7 +400,7 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
   TestThreadHolder thread_holder;
   for (int i = 1; i <= kThreads; ++i) {
     thread_holder.AddThreadFunctor(
-        [this, &writes, &begin_transaction_statement,
+        [this, &writes, &isolation,
          &stop_flag = thread_holder.stop_flag()]() {
       auto conn = ASSERT_RESULT(Connect());
       while (!stop_flag.load(std::memory_order_acquire)) {
@@ -412,7 +410,7 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
           ++to;
         }
         int64_t amount = RandomUniformInt(1, 10);
-        ASSERT_OK(conn.Execute(begin_transaction_statement));
+        ASSERT_OK(conn.StartTransaction(isolation));
         auto status = conn.ExecuteFormat(
               "UPDATE account_$0 SET balance = balance - $1 WHERE id = $0", from, amount);
         if (status.ok()) {
@@ -435,14 +433,21 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
   }
 
   thread_holder.AddThreadFunctor(
-      [this, &counter, &reads, &begin_transaction_statement,
-       &stop_flag = thread_holder.stop_flag()]() {
+      [this, &counter, &reads, isolation, &stop_flag = thread_holder.stop_flag()]() {
+    SetFlagOnExit set_flag_on_exit(&stop_flag);
     auto conn = ASSERT_RESULT(Connect());
+    auto failures_in_row = 0;
     while (!stop_flag.load(std::memory_order_acquire)) {
-      auto sum = ReadSumBalance(&conn, kAccounts, begin_transaction_statement, &counter);
+      if (isolation == IsolationLevel::SERIALIZABLE_ISOLATION) {
+        ASSERT_OK(conn.ExecuteFormat("SET yb_transaction_priority_lower_bound = $0",
+                                    1.0 - 1.0 / (1ULL << failures_in_row)));
+      }
+      auto sum = ReadSumBalance(&conn, kAccounts, isolation, &counter);
       if (!sum.ok()) {
+        ++failures_in_row;
         ASSERT_TRUE(TransactionalFailure(sum.status())) << sum.status();
       } else {
+        failures_in_row = 0;
         ASSERT_EQ(*sum, kAccounts * kInitialBalance);
         ++reads;
       }
@@ -461,8 +466,8 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
 
   thread_holder.Stop();
 
-  ASSERT_OK(WaitFor([&conn, &begin_transaction_statement, &counter]() -> Result<bool> {
-    auto sum = ReadSumBalance(&conn, kAccounts, begin_transaction_statement, &counter);
+  ASSERT_OK(WaitFor([&conn, isolation, &counter]() -> Result<bool> {
+    auto sum = ReadSumBalance(&conn, kAccounts, isolation, &counter);
     if (!sum.ok()) {
       if (!TransactionalFailure(sum.status())) {
         return sum.status();
@@ -493,11 +498,11 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSnapshot)) {
-  TestMultiBankAccount("REPEATABLE READ");
+  TestMultiBankAccount(IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSerializable)) {
-  TestMultiBankAccount("SERIALIZABLE");
+  TestMultiBankAccount(IsolationLevel::SERIALIZABLE_ISOLATION);
 }
 
 void PgLibPqTest::DoIncrement(int key, int num_increments, IsolationLevel isolation) {
@@ -506,9 +511,7 @@ void PgLibPqTest::DoIncrement(int key, int num_increments, IsolationLevel isolat
   // Perform increments
   int succeeded_incs = 0;
   while (succeeded_incs < num_increments) {
-    ASSERT_OK(conn.Execute(isolation == IsolationLevel::SERIALIZABLE_ISOLATION ?
-        "START TRANSACTION ISOLATION LEVEL SERIALIZABLE" :
-        "START TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+    ASSERT_OK(conn.StartTransaction(isolation));
     bool committed = false;
     auto exec_status = conn.ExecuteFormat("UPDATE t SET value = value + 1 WHERE key = $0", key);
     if (exec_status.ok()) {

@@ -73,6 +73,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   ~YBTransaction();
 
+  void SetPriority(uint64_t priority);
+
   // Should be invoked to complete transaction creation.
   // Transaction is unusable before Init is called.
   CHECKED_STATUS Init(

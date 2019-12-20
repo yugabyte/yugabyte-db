@@ -483,7 +483,7 @@ static void int64_to_numericvar(int64 val, NumericVar *var);
 static bool numericvar_to_int128(const NumericVar *var, int128 *result);
 static void int128_to_numericvar(int128 val, NumericVar *var);
 #endif
-static double numeric_to_double_no_overflow(Numeric num);
+double numeric_to_double_no_overflow(Numeric num);
 static double numericvar_to_double_no_overflow(const NumericVar *var);
 
 static Datum numeric_abbrev_convert(Datum original_datum, SortSupport ssup);
@@ -6496,7 +6496,7 @@ int128_to_numericvar(int128 val, NumericVar *var)
 /*
  * Convert numeric to float8; if out of range, return +/- HUGE_VAL
  */
-static double
+double
 numeric_to_double_no_overflow(Numeric num)
 {
 	char	   *tmp;
