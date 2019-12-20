@@ -12,11 +12,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Use the `yugabyted` binary and its options to configure a one-node YugabyteDB cluster. The `yugabyted` executable file is located in the `bin` directory of YugabyteDB home.
+Use the `yugabyted` binary, with its commands and options, to start a one-node YugabyteDB cluster, explore a demo instance of YugabyteDB. and use the YugabyteDB Admin Console. The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory. 
 
 {{< note title="Note" >}}
 
-`yugabyted` is under active development with new features and functionality. You can use `yugabyted` along with the [`yb-ctl`](../../../admin/yb-ctl) utility to quickly develop and test YugabyteDB on your local environment. For production deployments, configure your YugabyteDB clusters using [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master).
+`yugabyted` is under active development with new features and functionality being added incrementally. Until development is completed, use `yugabyted` along with the [`yb-ctl`](../../../admin/yb-ctl) utility to quickly develop and test YugabyteDB in your local environment. For production deployments, configure your YugabyteDB clusters using [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master).
 
 {{< /note >}}
 
@@ -61,7 +61,7 @@ The following commands are available:
 
 ### start
 
-Use the `yugabyted start` command to start YugabyteDB.
+Use the `yugabyted start` command to start a one-node YugabyteDB cluster in your local environment. This one-node cluster includes [`yb-tserver`](../yb-tserver) and [`yb-master`](yb-master) services.
 
 ### Syntax
 
@@ -86,51 +86,65 @@ Use the `yugabyted start` command to start YugabyteDB.
 
 ### Options
 
+##### -h | --help
 
-[-h | --help]({{< relref "#h-help" >}})
-: Print the commmand-line help and exit.
+Print the commmand line help and exit.
 
-[--config *config-file*]({{< relref "#config-config-file" >}})
-: The path to the configuration file.
+##### --config *config-file*
 
-[--data_dir *data-directory*]({{< relref "#data-dir-data-dictionary" >}})
-: The directory where YugabyteDB stores data.
+The path to the configuration file.
 
-[--log_dir *log-directory*]({{< relref "#log-dir-log-directory" >}})
-: The directory to store YugabyteDB logs.
+##### --data_dir *data-directory*
 
-[--ycql_port *ycql-port*]({{< relref "#ycql-port-ycql-port" >}})
-: The port on which YCQL will run.
+The directory where YugabyteDB stores data.
 
-[--ysql_port *ysql-port*]({{< relref "#ysql-port-ysql-port" >}})
-: The port on which YSQL will run.
+##### --log_dir *log-directory*
 
-[--master_rpc_port *master-rpc-port*]({{< relref "#master-rpc-port-master-rpc-port" >}})
-: The port on which yb-master will listen for RPC calls.
+The directory to store YugabyteDB logs.
 
-[--tserver_rpc_port *tserver-rpc-port*]({{< relref "#tserver-rpc-port-tserver-rpc-port" >}})
-: The port on which YB-TServer will listen for RPC calls.
+##### --ycql_port *ycql-port*
 
-[--master_webserver_port *master-webserver-port*]({{< relref "#master-webserver-port-master-webserver-port" >}})
-: The port on which YB-Master webserver will run.
+The port on which YCQL will run.
 
-[--tserver_webserver_port *tserver-webserver-port*]({{< relref "#tserver-webserver-port-tserver-webserver-port" >}})
-: The port on which YB-TServer webserver will run.
+##### --ysql_port *ysql-port*
 
-[--webserver_port *webserver-port*]({{< relref "#webserver-port-webserver-port" >}})
-: The port on which main webserver will run.
+The port on which YSQL will run.
 
-[--bind_ip *bind-ip*]({{< relref "#bind-ip-bind-ip" >}})
-: The IP address to which `yugabyted` processes will bind.
+##### --master_rpc_port *master-rpc-port*
 
-[--daemon *bool* ]({{< relref "#daemon-bool" >}})
-: Enable or disable running `yugabyted` in the background as a daemon. Does not persist on restart. Default is `true`.
+The port on which yb-master will listen for RPC calls.
 
-[--callhome *bool*]({{< relref "#callhome-bool" >}})
-: Enable or disable the "call home" feature that sends analytics data to Yugabyte. Default is `true`.
+##### --tserver_rpc_port *tserver-rpc-port*
 
-[--ui *bool*]({{< relref "#ui-bool" >}})
-: Enable or disable the webserver UI. Default is `true`.
+The port on which YB-TServer will listen for RPC calls.
+
+##### --master_webserver_port *master-webserver-port*
+
+The port on which YB-Master webserver will run.
+
+##### --tserver_webserver_port *tserver-webserver-port*
+
+The port on which YB-TServer webserver will run.
+
+##### --webserver_port *webserver-port*
+
+The port on which main webserver will run.
+
+##### --bind_ip *bind-ip*
+
+The IP address to which `yugabyted` processes will bind.
+
+##### --daemon *bool*
+
+Enable or disable running `yugabyted` in the background as a daemon. Does not persist on restart. Default is `true`.
+
+##### --callhome *bool*
+
+Enable or disable the "call home" feature that sends analytics data to Yugabyte. Default is `true`.
+
+##### --ui *bool*
+
+Enable or disable the webserver UI. Default is `true`.
 
 -----
 ## stop
@@ -145,14 +159,17 @@ yugabyted stop [ -h ] [ --config <config-file> ] [ --data_dir <data-directory> ]
 
 ## Options
 
-[-h, --help]({{< relref "#h-help-1" >}})
-: Print the command line help and exit.
+##### -h | --help
+
+Print the command line help and exit.
   
-[--config *config-file*]({{< relref "#config-config-file-1" >}})
-: The path to the YugabyteDB configuration file.
+##### --config *config-file*
+
+The path to the YugabyteDB configuration file.
   
-[--data_dir *data-directory*]({{< relref "#data-dir-data-directory-1" >}})
-: The directory where YugabyteDB will store data.
+##### --data_dir *data-directory*
+
+The directory where YugabyteDB will store data.
 
 -----
 
@@ -168,14 +185,17 @@ yugabyted status [ -h | --help ] [ --config <config-file> ] [ --data_dir <data-d
 
 ## Options
 
-[-h, --help]({{< relref "#h-help-2" >}})
-: Print the command line help and exit.
+##### -h --help
 
-[--config *config-file*]({{< relref "#config-config-file-2" >}})
-: The path to the YugabyteDB configuration file.
+Print the command line help and exit.
 
-[--data_dir *data-directory*]({{< relref "#data-dir-data-directory-2" >}})  
-: The directory where YugabyteDB stores data.
+##### --config *config-file*
+
+The path to the YugabyteDB configuration file.
+
+##### --data_dir *data-directory*
+
+The directory where YugabyteDB stores data.
 
 -----
 
@@ -191,20 +211,29 @@ yugabyted version [ -h | --help ] [ --config <config-file> ] [ --data_dir <data-
 
 ### Options
 
-[-h | --help]({{< relref "#h-help-3" >}})
-: Print the help message and exit.
+##### -h | --help
 
-[--config *config-file*]({{< relref "#config-config-file-3" >}})
-: The path to the YugabyteDB configuration file.
+Print the help message and exit.
 
-[--data_dir *data-directory*]({{< relref "#data-dir-data-dictionary-3" >}})
-: The directory where YugabyteDB stores data.
+##### --config *config-file*
+
+The path to the YugabyteDB configuration file.
+
+##### --data_dir *data-directory*
+
+The directory where YugabyteDB stores data.
 
 -----
 
 ## demo
 
-Use the `yugabyted start` command to start a demo instance of YugabyteDB.
+Use the `yugabyted demo` command to start YugabyteDB with a retail demo database. Get started with YSQL by using the [Explore YSQL](../../../quick-start/explore-ysql) tutorial in the [Quick start](../../../quick-start/) guide.
+
+{{< note title="Note" >}}
+
+When you quit the demo instance, the retail demo database is deleted and any changes you've made are lost.
+
+{{< /note >}}
 
 ### Syntax
 
@@ -214,11 +243,14 @@ yugabyted demo [ -h | -help ] [ --config <config-file> ] [ --data_dir <data-dire
 
 ### Options
 
-[-h | --help]({{< relref "#h-help-4" >}})
-: Print the help message and exit.
+##### -h | --help
 
-[--config *config-file*]({{< relref "#config-config-file-4" >}})
-: The path to the YugabyteDB configuration file.
+Print the help message and exit.
 
-[--data_dir *data_directory*]({{< relref "#data-dir-data-directory-4" >}})
-: The directory where YugabyteDB stores data.
+##### --config *config-file*
+
+The path to the YugabyteDB configuration file.
+
+##### --data_dir *data_directory*
+
+The directory where YugabyteDB stores data.
