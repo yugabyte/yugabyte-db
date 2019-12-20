@@ -770,6 +770,7 @@ Status CatalogManager::ImportTableEntry(const SysRowEntry& entry,
 
     // Clear column IDs.
     SchemaPB* const schema = req.mutable_schema();
+    schema->mutable_table_properties()->set_num_tablets(table_data->num_tablets);
     *schema = meta.schema();
     for (int i = 0; i < schema->columns_size(); ++i) {
       schema->mutable_columns(i)->clear_id();
@@ -1287,12 +1288,6 @@ Status CatalogManager::CreateCdcStateTableIfNeeded(rpc::RpcContext *rpc) {
     req.mutable_namespace_()->CopyFrom(table_identifier.namespace_());
     req.set_table_type(TableType::YQL_TABLE_TYPE);
 
-    // Explicitly set the number tablets if the corresponding flag is set, otherwise CreateTable
-    // will use the same defaults as for regular tables.
-    if (FLAGS_cdc_state_table_num_tablets > 0) {
-      req.set_num_tablets(FLAGS_cdc_state_table_num_tablets);
-    }
-
     client::YBSchemaBuilder schema_builder;
     schema_builder.AddColumn(master::kCdcStreamId)->HashPrimaryKey()->Type(DataType::STRING);
     schema_builder.AddColumn(master::kCdcTabletId)->HashPrimaryKey()->Type(DataType::STRING);
@@ -1305,6 +1300,12 @@ Status CatalogManager::CreateCdcStateTableIfNeeded(rpc::RpcContext *rpc) {
 
     auto schema = yb::client::internal::GetSchema(yb_schema);
     SchemaToPB(schema, req.mutable_schema());
+    // Explicitly set the number tablets if the corresponding flag is set, otherwise CreateTable
+    // will use the same defaults as for regular tables.
+    if (FLAGS_cdc_state_table_num_tablets > 0) {
+      req.mutable_schema()->mutable_table_properties()->set_num_tablets(
+          FLAGS_cdc_state_table_num_tablets);
+    }
 
     Status s = CreateTable(&req, &resp, rpc);
     // We do not lock here so it is technically possible that the table was already created.

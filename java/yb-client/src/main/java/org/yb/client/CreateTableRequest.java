@@ -71,7 +71,7 @@ class CreateTableRequest extends YRpc<CreateTableResponse> {
     this.builder.setName(this.name);
     Master.NamespaceIdentifierPB.Builder nsBuilder = Master.NamespaceIdentifierPB.newBuilder();
     this.builder.setNamespace(nsBuilder.setName(this.keyspace).build());
-    this.builder.setSchema(ProtobufHelper.schemaToPb(this.schema));
+    this.builder.getSchemaBuilder().mergeFrom(ProtobufHelper.schemaToPb(this.schema));
     this.builder.setTableType(this.tableType);
     return toChannelBuffer(header, this.builder.build());
   }
