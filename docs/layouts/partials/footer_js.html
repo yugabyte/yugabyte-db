@@ -90,18 +90,18 @@
         });
 
         const initAnchorsAndFeedback = () => {
-          let queryHeaders = '';
-            if (typeof pageConfig.isTocNested == 'number') {
+          let queryHeaders = [];
+            if (pageConfig && typeof pageConfig.isTocNested == 'number') {
               for (let i = 2; i < pageConfig.isTocNested+1; i++) {
-                queryHeaders += "h"+i+",";
+                queryHeaders.push(`h${i}`);
               }
-              queryHeaders = queryHeaders.slice(0, -1);
             } else {
-              queryHeaders = "h2,h3";
+              queryHeaders = ['h2', 'h3'];
             }
 
           {{ "/* Add permanent link next to the headers */" | safeJS }}
-          const $headers = $('.article:not(#feedback) ' + queryHeaders).filter(function () {
+          const selector = queryHeaders.map(h => `.article:not(#feedback) ${h}`).join(', ');
+          const $headers = $(selector).filter(function () {
             return $(this).closest('ul.nav-tabs + .tab-content').length === 0;
           });
 
@@ -274,7 +274,7 @@
         if (urlParams.has('q')) {
           // Get previous page version
           let prevUrl = document.referrer;
-          const versionRegex = /https:\/\/docs\.yugabyte\.com\/(.*?)\//i;
+          const versionRegex = /https:\/\/docs\.yugabyte\.com\/(v\d+\.\d+|latest)\//i;
           const m = versionRegex.exec(prevUrl);
           // If no match or version not found or no previous page,
           // use 'latest' to filter version
