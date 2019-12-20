@@ -101,6 +101,11 @@ static void pg_decode_message(LogicalDecodingContext *ctx,
 					bool transactional, const char *prefix,
 					Size content_size, const char *content);
 #endif
+#if	PG_VERSION_NUM >= 110000
+static void pg_decode_truncate(LogicalDecodingContext *ctx,
+					ReorderBufferTXN *txn, int n, Relation relations[],
+					ReorderBufferChange *change);
+#endif
 
 static bool parse_table_identifier(List *qualified_tables, char separator, List **select_tables);
 static bool string_to_SelectTable(char *rawstring, char separator, List **select_tables);
@@ -120,6 +125,11 @@ static void pg_decode_message_v1(LogicalDecodingContext *ctx,
 					bool transactional, const char *prefix,
 					Size content_size, const char *content);
 #endif
+#if	PG_VERSION_NUM >= 110000
+static void pg_decode_truncate_v1(LogicalDecodingContext *ctx,
+					ReorderBufferTXN *txn, int n, Relation relations[],
+					ReorderBufferChange *change);
+#endif
 
 /* version 2 */
 static void pg_decode_begin_txn_v2(LogicalDecodingContext *ctx,
@@ -137,6 +147,11 @@ static void pg_decode_message_v2(LogicalDecodingContext *ctx,
 					ReorderBufferTXN *txn, XLogRecPtr lsn,
 					bool transactional, const char *prefix,
 					Size content_size, const char *content);
+#endif
+#if	PG_VERSION_NUM >= 110000
+static void pg_decode_truncate_v2(LogicalDecodingContext *ctx,
+					ReorderBufferTXN *txn, int n, Relation relations[],
+					ReorderBufferChange *change);
 #endif
 
 void
@@ -157,6 +172,9 @@ _PG_output_plugin_init(OutputPluginCallbacks *cb)
 	cb->shutdown_cb = pg_decode_shutdown;
 #if	PG_VERSION_NUM >= 90600
 	cb->message_cb = pg_decode_message;
+#endif
+#if	PG_VERSION_NUM >= 110000
+	cb->truncate_cb = pg_decode_truncate;
 #endif
 }
 
@@ -1907,6 +1925,203 @@ pg_decode_message_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 
 	appendStringInfoChar(ctx->out, '}');
 	OutputPluginWrite(ctx, true);
+
+	MemoryContextSwitchTo(old);
+	MemoryContextReset(data->context);
+}
+#endif
+
+#if	PG_VERSION_NUM >= 110000
+/* Callback for TRUNCATE command */
+static void pg_decode_truncate(LogicalDecodingContext *ctx,
+					ReorderBufferTXN *txn, int n, Relation relations[],
+					ReorderBufferChange *change)
+{
+	JsonDecodingData *data = ctx->output_plugin_private;
+
+	if (data->format_version == 2)
+		pg_decode_truncate_v2(ctx, txn, n, relations, change);
+	else if (data->format_version == 1)
+		pg_decode_truncate_v1(ctx, txn, n, relations, change);
+	else
+		elog(ERROR, "format version %d is not supported", data->format_version);
+}
+
+static void pg_decode_truncate_v1(LogicalDecodingContext *ctx,
+					ReorderBufferTXN *txn, int n, Relation relations[],
+					ReorderBufferChange *change)
+{
+#ifdef	_NOT_USED
+	JsonDecodingData *data;
+	MemoryContext old;
+	int		i;
+
+	data = ctx->output_plugin_private;
+
+	/* Avoid leaking memory by using and resetting our own context */
+	old = MemoryContextSwitchTo(data->context);
+
+	if (data->write_in_chunks)
+		OutputPluginPrepareWrite(ctx, true);
+
+	/*
+	 * increment counter only for transactional messages because
+	 * non-transactional message has only one object.
+	 */
+	data->nr_changes++;
+
+	/* if we don't write in chunks, we need a newline here */
+	if (!data->write_in_chunks)
+			appendStringInfo(ctx->out, "%s", data->nl);
+
+	appendStringInfo(ctx->out, "%s%s", data->ht, data->ht);
+
+	if (data->nr_changes > 1)
+		appendStringInfoChar(ctx->out, ',');
+
+	appendStringInfo(ctx->out, "{%s%s%s%s\"kind\":%s\"truncate\",%s", data->nl, data->ht, data->ht, data->ht, data->sp, data->nl);
+
+	if (data->include_xids)
+		appendStringInfo(ctx->out, "%s%s%s\"xid\":%s%u,%s", data->ht, data->ht, data->ht, data->sp, txn->xid, data->nl);
+
+	if (data->include_timestamp)
+		appendStringInfo(ctx->out, "%s%s%s\"timestamp\":%s\"%s\",%s", data->ht, data->ht, data->ht, data->sp, timestamptz_to_str(txn->commit_time), data->nl);
+
+	if (data->include_origin)
+		appendStringInfo(ctx->out, "%s%s%s\"origin\":%s%u,%s", data->ht, data->ht, data->ht, data->sp, txn->origin_id, data->nl);
+
+	if (data->include_lsn)
+	{
+		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, change->lsn));
+		appendStringInfo(ctx->out, "%s%s%s\"lsn\":%s\"%s\",%s", data->ht, data->ht, data->ht, data->sp, lsn_str, data->nl);
+		pfree(lsn_str);
+	}
+
+	for (i = 0; i < n; i++)
+	{
+		if (data->include_schemas)
+		{
+			appendStringInfo(ctx->out, "%s%s%s\"schema\":%s", data->ht, data->ht, data->ht, data->sp);
+			escape_json(ctx->out, get_namespace_name(RelationGetNamespace(relations[i])));
+			appendStringInfo(ctx->out, ",%s", data->nl);
+		}
+
+		appendStringInfo(ctx->out, "%s%s%s\"table\":%s", data->ht, data->ht, data->ht, data->sp);
+		escape_json(ctx->out, RelationGetRelationName(relations[i]));
+	}
+
+	appendStringInfo(ctx->out, "%s%s%s}", data->nl, data->ht, data->ht);
+
+	MemoryContextSwitchTo(old);
+	MemoryContextReset(data->context);
+
+	if (data->write_in_chunks)
+		OutputPluginWrite(ctx, true);
+#endif
+}
+
+static void pg_decode_truncate_v2(LogicalDecodingContext *ctx,
+					ReorderBufferTXN *txn, int n, Relation relations[],
+					ReorderBufferChange *change)
+{
+	JsonDecodingData *data = ctx->output_plugin_private;
+	MemoryContext old;
+	int		i;
+
+	/* avoid leaking memory by using and resetting our own context */
+	old = MemoryContextSwitchTo(data->context);
+
+	for (i = 0; i < n; i++)
+	{
+		char	*schemaname;
+		char	*tablename;
+
+		/* schema and table names are used for chosen tables */
+		schemaname = get_namespace_name(RelationGetNamespace(relations[i]));
+		tablename = RelationGetRelationName(relations[i]);
+
+		/* Exclude tables, if available */
+		if (list_length(data->filter_tables) > 0)
+		{
+			ListCell	*lc;
+
+			foreach(lc, data->filter_tables)
+			{
+				SelectTable	*t = lfirst(lc);
+
+				if (t->allschemas || strcmp(t->schemaname, schemaname) == 0)
+				{
+					if (t->alltables || strcmp(t->tablename, tablename) == 0)
+					{
+						elog(DEBUG2, "\"%s\".\"%s\" was filtered out",
+									((t->allschemas) ? "*" : t->schemaname),
+									((t->alltables) ? "*" : t->tablename));
+						continue;
+					}
+				}
+			}
+		}
+
+		/* Add tables */
+		if (list_length(data->add_tables) > 0)
+		{
+			ListCell	*lc;
+			bool		skip = true;
+
+			/* all tables in all schemas are added by default */
+			foreach(lc, data->add_tables)
+			{
+				SelectTable	*t = lfirst(lc);
+
+				if (t->allschemas || strcmp(t->schemaname, schemaname) == 0)
+				{
+					if (t->alltables || strcmp(t->tablename, tablename) == 0)
+					{
+						elog(DEBUG2, "\"%s\".\"%s\" was added",
+									((t->allschemas) ? "*" : t->schemaname),
+									((t->alltables) ? "*" : t->tablename));
+						skip = false;
+					}
+				}
+			}
+
+			/* table was not found */
+			if (skip)
+				continue;
+		}
+
+		OutputPluginPrepareWrite(ctx, true);
+		appendStringInfoChar(ctx->out, '{');
+		appendStringInfoString(ctx->out, "\"action\":\"T\"");
+
+		if (data->include_xids)
+			appendStringInfo(ctx->out, ",\"xid\":%u", txn->xid);
+
+		if (data->include_timestamp)
+			appendStringInfo(ctx->out, ",\"timestamp\":\"%s\"", timestamptz_to_str(txn->commit_time));
+
+		if (data->include_origin)
+			appendStringInfo(ctx->out, ",\"origin\":%u", txn->origin_id);
+
+		if (data->include_lsn)
+		{
+			char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, change->lsn));
+			appendStringInfo(ctx->out, ",\"lsn\":\"%s\"", lsn_str);
+			pfree(lsn_str);
+		}
+
+		if (data->include_schemas)
+		{
+			appendStringInfo(ctx->out, ",\"schema\":");
+			escape_json(ctx->out, schemaname);
+		}
+
+		appendStringInfo(ctx->out, ",\"table\":");
+		escape_json(ctx->out, tablename);
+
+		appendStringInfoChar(ctx->out, '}');
+		OutputPluginWrite(ctx, true);
+	}
 
 	MemoryContextSwitchTo(old);
 	MemoryContextReset(data->context);
