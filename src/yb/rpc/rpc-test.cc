@@ -905,17 +905,6 @@ TestServerOptions SetupServerForTestCantAllocateReadBuffer() {
   return options;
 }
 
-std::string DumpMemoryUsage() {
-  std::ostringstream out;
-#if defined(TCMALLOC_ENABLED)
-  char tcmalloc_stats_buf[20_KB];
-  MallocExtension::instance()->GetStats(tcmalloc_stats_buf, sizeof(tcmalloc_stats_buf));
-  out << "TCMalloc stats: \n" << tcmalloc_stats_buf;
-#endif
-  out << "Memory usage: \n" << DumpMemTrackers();
-  return out.str();
-}
-
 void TestCantAllocateReadBuffer(Messenger* client_messenger, const HostPort& server_addr) {
   const MonoDelta kTimeToWaitForOom = 20s;
   const MonoDelta kCallsTimeout = NonTsanVsTsan(3s, 10s);
