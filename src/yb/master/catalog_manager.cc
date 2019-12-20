@@ -722,7 +722,17 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
     master_->ts_manager()->SetTSCountCallback(FLAGS_replication_factor, [this]{
       LOG(INFO) << FLAGS_replication_factor
                 << " tablet servers registered, creating the transaction status table";
-      CHECK_OK(CreateTransactionsStatusTableIfNeeded(/* rpc */ nullptr));
+      // Retry table creation until it succeedes. It might fail initially because placement UUID
+      // of live replicas is set through an RPC from YugaWare, and we won't be able to calculate
+      // the number of primary (non-read-replica) tablet servers until that happens.
+      while (true) {
+        Status s = CreateTransactionsStatusTableIfNeeded(/* rpc */ nullptr);
+        if (s.ok() || s.IsAlreadyPresent()) {
+          break;
+        }
+        LOG(WARNING) << "Failed creating transaction status table, waiting: " << s;
+        SleepFor(MonoDelta::FromSeconds(1));
+      }
       LOG(INFO) << "Finished creating transaction status table asynchronously";
     });
   }
