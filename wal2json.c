@@ -35,6 +35,14 @@ extern void	PGDLLEXPORT	_PG_output_plugin_init(OutputPluginCallbacks *cb);
 
 typedef struct
 {
+	bool	insert;
+	bool	update;
+	bool	delete;
+	bool	truncate;
+} JsonAction;
+
+typedef struct
+{
 	MemoryContext context;
 	bool		include_transaction;	/* BEGIN and COMMIT objects (v2) */
 	bool		include_xids;		/* include transaction ids */
@@ -48,6 +56,8 @@ typedef struct
 
 	bool		pretty_print;		/* pretty-print JSON? */
 	bool		write_in_chunks;	/* write in chunks? */
+
+	JsonAction	actions;			/* output only these actions */
 
 	List		*filter_tables;		/* filter out tables */
 	List		*add_tables;		/* add only these tables */
@@ -214,6 +224,22 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data->add_msg_prefixes = NIL;
 
 	data->format_version = WAL2JSON_FORMAT_VERSION;
+
+	/* default actions */
+	if (WAL2JSON_FORMAT_VERSION == 1)
+	{
+		data->actions.insert = true;
+		data->actions.update = true;
+		data->actions.delete = true;
+		data->actions.truncate = false;		/* backward compatibility */
+	}
+	else
+	{
+		data->actions.insert = true;
+		data->actions.update = true;
+		data->actions.delete = true;
+		data->actions.truncate = true;
+	}
 
 	/* pretty print */
 	strcpy(data->ht, "");
@@ -405,6 +431,58 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_NAME),
 					 errmsg("parameter \"%s\" was deprecated", elem->defname)));
+		}
+		else if (strcmp(elem->defname, "actions") == 0)
+		{
+			char	*rawstr;
+
+			if (elem->arg == NULL)
+			{
+				elog(DEBUG1, "actions argument is null");
+				/* argument null means default; nothing to do here */
+			}
+			else
+			{
+				List		*selected_actions = NIL;
+				ListCell	*lc;
+
+				rawstr = pstrdup(strVal(elem->arg));
+				if (!split_string_to_list(rawstr, ',', &selected_actions))
+				{
+					pfree(rawstr);
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_NAME),
+							 errmsg("could not parse value \"%s\" for parameter \"%s\"",
+								 strVal(elem->arg), elem->defname)));
+				}
+
+				data->actions.insert = false;
+				data->actions.update = false;
+				data->actions.delete = false;
+				data->actions.truncate = false;
+
+				foreach(lc, selected_actions)
+				{
+					char *p = lfirst(lc);
+
+					if (strcmp(p, "insert") == 0)
+						data->actions.insert = true;
+					else if (strcmp(p, "update") == 0)
+						data->actions.update = true;
+					else if (strcmp(p, "delete") == 0)
+						data->actions.delete = true;
+					else if (strcmp(p, "truncate") == 0)
+						data->actions.truncate = true;
+					else
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								 errmsg("could not parse value \"%s\" for parameter \"%s\"",
+									 p, elem->defname)));
+				}
+
+				pfree(rawstr);
+				list_free(selected_actions);
+			}
 		}
 		else if (strcmp(elem->defname, "filter-tables") == 0)
 		{
@@ -1042,6 +1120,23 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	AssertVariableIsOfType(&pg_decode_change, LogicalDecodeChangeCB);
 
 	data = ctx->output_plugin_private;
+
+	if (!data->actions.insert)
+	{
+		elog(DEBUG3, "ignore INSERT");
+		return;
+	}
+	if (!data->actions.update)
+	{
+		elog(DEBUG3, "ignore UPDATE");
+		return;
+	}
+	if (!data->actions.delete)
+	{
+		elog(DEBUG3, "ignore DELETE");
+		return;
+	}
+
 	class_form = RelationGetForm(relation);
 	tupdesc = RelationGetDescr(relation);
 
@@ -1668,6 +1763,22 @@ pg_decode_change_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	char	*schemaname;
 	char	*tablename;
 
+	if (change->action == REORDER_BUFFER_CHANGE_INSERT && !data->actions.insert)
+	{
+		elog(DEBUG3, "ignore INSERT");
+		return;
+	}
+	if (change->action == REORDER_BUFFER_CHANGE_UPDATE && !data->actions.update)
+	{
+		elog(DEBUG3, "ignore UPDATE");
+		return;
+	}
+	if (change->action == REORDER_BUFFER_CHANGE_DELETE && !data->actions.delete)
+	{
+		elog(DEBUG3, "ignore DELETE");
+		return;
+	}
+
 	/* avoid leaking memory by using and resetting our own context */
 	old = MemoryContextSwitchTo(data->context);
 
@@ -1958,6 +2069,12 @@ static void pg_decode_truncate_v1(LogicalDecodingContext *ctx,
 
 	data = ctx->output_plugin_private;
 
+	if (!data->actions.truncate)
+	{
+		elog(DEBUG3, "ignore TRUNCATE");
+		return;
+	}
+
 	/* Avoid leaking memory by using and resetting our own context */
 	old = MemoryContextSwitchTo(data->context);
 
@@ -2027,6 +2144,12 @@ static void pg_decode_truncate_v2(LogicalDecodingContext *ctx,
 	JsonDecodingData *data = ctx->output_plugin_private;
 	MemoryContext old;
 	int		i;
+
+	if (!data->actions.truncate)
+	{
+		elog(DEBUG3, "ignore TRUNCATE");
+		return;
+	}
 
 	/* avoid leaking memory by using and resetting our own context */
 	old = MemoryContextSwitchTo(data->context);
