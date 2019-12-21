@@ -6,7 +6,7 @@
 
     <i class="icon-ubuntu"></i> Ubuntu 16.04+
 
-2. Verify that you have Python 2 or Python 3 installed.
+2. Verify that you have Python 2 installed. 
 
     ```sh
     $ python --version

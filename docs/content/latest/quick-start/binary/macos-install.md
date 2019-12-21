@@ -2,11 +2,17 @@
 
 1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
 
-2. Verify that you have Python 2 or 3 installed.
+2. Verify that you have Python 2 installed.
 
-3. Verify Java 8 or later is installed. Java is required for running the YugabyteDB Admin Console.
+    ```sh
+    $ python --version
+    ```
 
-4. `wget` or `curl` is available.
+    ```
+    Python 2.7.10
+    ```
+
+3. `wget` or `curl` is available.
 
     The instructions use the `wget` command to download files. If you prefer to use `curl` (included in macOS), you can replace `wget` with `curl -O`.
 
@@ -16,7 +22,7 @@
     $ brew install wget
     ```     
 
-5. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure that this command shows a big enough value.
+4. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure that this command shows a big enough value.
 
     ```sh
     $ launchctl limit maxfiles
