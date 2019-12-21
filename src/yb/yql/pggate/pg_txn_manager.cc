@@ -49,10 +49,11 @@ extern "C" {
 
 void YBCAssignTransactionPriorityLowerBound(double newval, void* extra) {
   txn_priority_lower_bound = ConvertBound(newval);
+  txn_priority_upper_bound = std::max(txn_priority_lower_bound, txn_priority_upper_bound)
 }
 
 void YBCAssignTransactionPriorityUpperBound(double newval, void* extra) {
-  txn_priority_upper_bound = ConvertBound(newval);
+  txn_priority_upper_bound = std::max(txn_priority_lower_bound, ConvertBound(newval));
 }
 
 }
@@ -166,7 +167,7 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op) {
       txn_ = std::make_shared<YBTransaction>(GetOrCreateTransactionManager());
     }
     auto priority = RandomUniformInt(
-        txn_priority_lower_bound, std::max(txn_priority_lower_bound, txn_priority_upper_bound));
+        txn_priority_lower_bound, txn_priority_upper_bound);
     txn_->SetPriority(priority);
     if (isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
       txn_->InitWithReadPoint(isolation, std::move(*session_->read_point()));
