@@ -49,11 +49,16 @@ extern "C" {
 
 void YBCAssignTransactionPriorityLowerBound(double newval, void* extra) {
   txn_priority_lower_bound = ConvertBound(newval);
-  txn_priority_upper_bound = std::max(txn_priority_lower_bound, txn_priority_upper_bound)
+  txn_priority_upper_bound = std::max(txn_priority_lower_bound, txn_priority_upper_bound);
 }
 
 void YBCAssignTransactionPriorityUpperBound(double newval, void* extra) {
   txn_priority_upper_bound = std::max(txn_priority_lower_bound, ConvertBound(newval));
+}
+
+void YBCAssignTransactionPriorityLowerAndUpperBound(double newlowerbound, double newupperbound, void* extra) {
+  txn_priority_lower_bound = ConvertBound(newlowerbound);
+  txn_priority_upper_bound = std::max(txn_priority_lower_bound, ConvertBound(newupperbound));
 }
 
 }
