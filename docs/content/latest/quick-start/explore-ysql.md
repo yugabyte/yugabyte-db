@@ -21,55 +21,39 @@ showAsideToc: true
 
 After [creating a local cluster](../create-local-cluster/), follow the steps here to explore YugabyteDB's PostgreSQL-compatible [YSQL](../../api/ysql/) API.
 
-## 1. Initialize the retail demo database
+## 1. Load sample data
 
-Run the following command to initialize the retail demo database and load the data.
+Follow the steps to create a database and load sample data.
 
-```sh
-./bin/yugabyted demo
-```
+1. Download the sample schema using the following `curl` command.
 
-You should see a display similar to the following example:
+    ```sh
+    $ wget https://raw.githubusercontent.com/yugabyte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
+    ```
 
-```
-Initializing retail demo database. This may take up to a minute...
-Successfully loaded sample database!
-# JOINS (find user details of orders):
-    SELECT users.id, users.name, users.email, orders.id, orders.total
-        FROM orders INNER JOIN users ON orders.user_id=users.id
-        LIMIT 10;
+2. Download the sample data archive by running the following `curl` command.
 
+    ```sh
+    $ wget https://github.com/yugabyte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
+    ```
 
-For more, go to https://docs.yugabyte.com/latest/quick-start/explore-ysql/
+3. Unpack the `sample-data.tgz` file running the following `tar` command.
 
-ysqlsh (11.2-YB-2.0.7.0-b0)
-Type "help" for help.
+    ```sh
+    $ tar zxvf sample-data.tgz
+    ```
 
-yb_demo_retail=#
-```
+    Four SQL script files are added to the `data` directory that is created. You can verify the files are available by entering the following `ls` command.
 
-The retail demo database includes four tables: `orders`, `products`, `reviews`, and `users`.
+    ```sh
+    $ ls data/
+    ```
 
-To see a description of the tables, run the `ysqlsh` `\d` command:
+    You should see the following filenames displayed.
 
-```sh
-yb_demo_retail=# \d
-```
-
-```
-               List of relations
- Schema |      Name       |   Type   |  Owner
---------+-----------------+----------+----------
- public | orders          | table    | yugabyte
- public | orders_id_seq   | sequence | yugabyte
- public | products        | table    | yugabyte
- public | products_id_seq | sequence | yugabyte
- public | reviews         | table    | yugabyte
- public | reviews_id_seq  | sequence | yugabyte
- public | users           | table    | yugabyte
- public | users_id_seq    | sequence | yugabyte
-(8 rows)
-```
+    ```
+    orders.sql  products.sql  reviews.sql users.sql
+    ```
 
 4. Open the YSQL command line by using the following `ysqlsh` command.
 
