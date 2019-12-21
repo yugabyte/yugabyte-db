@@ -5,7 +5,7 @@ You can use the [`yugabyted`](../../admin/yb-docker-ctl/) daemon, with its comma
 To quickly create a 1-node local cluster using Docker, run the following command.
 
 ```sh
-$ docker run -it --name yugabyte -p7000:7000 -p9000:9000 -p7200:7200 -p5433:5433 -p9042:9042 yugabytedb/yugabyte bin/yugabyted start --bind_ip=0.0.0.0 --daemon=false
+$ docker run -it  -p7000:7000 -p9000:9000 -p7200:7200 -p5433:5433 -p9042:9042 yugabytedb/yugabyte bin/yugabyted start --bind_ip=0.0.0.0 --daemon=false
 ```
 
 You should see output similar to the following.

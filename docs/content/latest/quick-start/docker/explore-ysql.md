@@ -1,14 +1,14 @@
 
-To use the retail demo database, run the following `yugabyted demo` command:
+To use the retail demo database, run the following command:
 
 ```sh
-$ docker exec -it yugabyte bin/yugabyted demo
+$ ./bin/yugabyted demo
 ```
 
 To connect to the service, run `ysqlsh`.
 
 ```sh
-$ docker exec -it yugabyte bin/ysqlsh
+$ docker exec -it yb-tserver-n1 /home/yugabyte/bin/ysqlsh -h yb-tserver-n1  --echo-queries
 ```
 
 ```
