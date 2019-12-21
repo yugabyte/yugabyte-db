@@ -239,3 +239,22 @@ sessions/transactions.
   should be thrown.  This is because `TRUNCATE` takes an `ACCESS EXCLUSIVE`
   lock.  This enforces that only one `TRUNCATE` should ever be pending at a
   time.
+
+### Special document
+
+To mark a table as truncated, we could write a special document to DocDB
+indicating the truncate.
+
+In the case of a transactional truncate, the special document could be written
+to the intents DB.  Conflict detection would then need to make sure that this
+special document conflicts with any other documents that are of the same table
+except for those that are of the same transaction.  This means that the
+transaction ID should probably be encoded into the special document.  Conflict
+detection may be difficult if there is no document iterator that works on
+prefixes of `DocKey`s.
+
+When a transactional truncate commits, the special document should not be
+written to the regular DB.  Furthermore, the data before truncate must be
+discarded: this can be done by hybrid time or perhaps a better method that
+requires more work before this step.  The discarding will likely be individual
+key deletes, so it would be as expensive as an unconditional `DELETE`.
