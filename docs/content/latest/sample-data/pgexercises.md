@@ -66,13 +66,13 @@ CREATE DATABASE exercises;
 
 Confirm that you have the `exercises` database by listing the databases on your cluster using the `\l` command.
 
-```postgresql
+```
 yugabyte=# \l
 ```
 
 Connect to the `exercises` database.
 
-```postgresql
+```
 yugabyte=# \c exercises
 You are now connected to database "exercises" as user "postgres".
 exercises=#
@@ -82,13 +82,13 @@ exercises=#
 
 To build the tables and database objects, run the `\i` command.
 
-```postgresql
+```
 exercises=# \i share/clubdata_ddl.sql
 ```
 
 You can verify that all three tables have been created by running the `\d` command.
 
-```postgresql
+```
 exercises=# \d
 ```
 
@@ -96,13 +96,13 @@ exercises=# \d
 
 To load the `exercises` database with sample data, run the following command to execute commands in the file.
 
-```postgresql
+```
 exercises=# \i share/clubdata_data.sql
 ```
 
 You can verify that you have data to work with by running the following `SELECT` statement to pull data from the `bookings` table.
 
-```postgresql
+```
 exercises=# SELECT * FROM bookings LIMIT 5;
 ```
 
