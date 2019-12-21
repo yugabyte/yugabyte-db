@@ -232,13 +232,14 @@ sessions/transactions.
   performing `TRUNCATE`?  The tablet metadata is global to the raft group for
   the colocated tablet.  To isolate different sessions, we can indicate the
   corresponding transaction ID alongside the incarnation number in the
-  metadata.  The problem is that each request would need to send
-  transaction ID information to use the correct incarnation number.  Regarding
-  conflict detection, if a request sees that there's an intermediate
-  incarnation with different transaction id on the same table, a conflict
-  should be thrown.  This is because `TRUNCATE` takes an `ACCESS EXCLUSIVE`
-  lock.  This enforces that only one `TRUNCATE` should ever be pending at a
-  time.
+  metadata.  The problem is that requests for `DROP TABLE` and `TRUNCATE` would
+  not only have to hit master (for metadata changes through `CatalogManager`)
+  but also have to hit tserver (for transactional data deletion through
+  `TabletServiceImpl::Write`).  Regarding conflict detection, if a request sees
+  that there's an intermediate incarnation with different transaction id on the
+  same table, a conflict should be thrown.  This is because `TRUNCATE` takes an
+  `ACCESS EXCLUSIVE` lock.  This enforces that only one `TRUNCATE` should ever
+  be pending at a time.
 
 ### Special document
 
