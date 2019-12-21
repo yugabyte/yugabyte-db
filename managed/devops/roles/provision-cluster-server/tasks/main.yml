@@ -48,26 +48,12 @@
       name: ntp
       state: absent
 
-  - name: Install chrony
-    become: yes
-    become_method: sudo
-    package:
-      name: chrony
-      state: latest
-
-  - name: Provision | Enable chronyd and restart service.
-    service:
-      enabled: yes
-      name: chronyd
-      state: restarted
-    when: ansible_distribution != "Ubuntu"
-
-  - name: Provision | Enable chrony and restart service.
-    service:
-      enabled: yes
-      name: chrony
-      state: restarted
-    when: ansible_distribution == "Ubuntu"
+  - name: Install and Configure chrony
+    include_role:
+      name: ansible-chrony
+    vars:
+      #  per AWS Time Sync docs: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/set-time.html
+      chrony_server: "169.254.169.123 prefer iburst minpoll 4 maxpoll 4"
   when: should_setup_chrony
 
 - name: Provision | Set swappiness off

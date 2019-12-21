@@ -17,3 +17,8 @@
   scm: git
   src: https://github.com/YugaByte/ansible-prometheus.git
   version: master-yb
+
+- name: ansible-chrony
+  scm: git
+  src: https://github.com/yugabyte/ansible-chrony.git
+  version: master
