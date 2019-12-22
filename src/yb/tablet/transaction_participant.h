@@ -90,6 +90,9 @@ class TransactionIntentApplier {
 
   virtual HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) = 0;
 
+  // See TransactionParticipant::WaitMinRunningHybridTime below
+  virtual void MinRunningHybridTimeSatisfied() = 0;
+
  protected:
   ~TransactionIntentApplier() {}
 };
@@ -171,6 +174,12 @@ class TransactionParticipant : public TransactionStatusManager {
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override;
 
   TransactionParticipantContext* context() const;
+
+  HybridTime MinRunningHybridTime() const;
+
+  // When minimal start hybrid time of running transaction will be at least `ht` applier
+  // method `MinRunningHybridTimeSatisfied` will be invoked.
+  void WaitMinRunningHybridTime(HybridTime ht);
 
   size_t TEST_GetNumRunningTransactions() const;
 

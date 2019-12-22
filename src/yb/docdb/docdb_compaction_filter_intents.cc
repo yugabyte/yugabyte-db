@@ -112,7 +112,7 @@ rocksdb::FilterDecision DocDBIntentsCompactionFilter::Filter(
     }
     uint64_t write_time = metadata_pb.metadata_write_time();
     if (!write_time) {
-      write_time = HybridTime(metadata_pb.deprecated_start_hybrid_time()).GetPhysicalValueMicros();
+      write_time = HybridTime(metadata_pb.start_hybrid_time()).GetPhysicalValueMicros();
     }
     if (compaction_start_time_ < write_time + FLAGS_aborted_intent_cleanup_ms * 1000) {
       return rocksdb::FilterDecision::kKeep;
