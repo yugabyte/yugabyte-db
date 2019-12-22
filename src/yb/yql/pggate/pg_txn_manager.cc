@@ -56,11 +56,6 @@ void YBCAssignTransactionPriorityUpperBound(double newval, void* extra) {
   txn_priority_upper_bound = std::max(txn_priority_lower_bound, ConvertBound(newval));
 }
 
-void YBCAssignTransactionPriorityLowerAndUpperBound(double newlowerbound, double newupperbound, void* extra) {
-  txn_priority_lower_bound = ConvertBound(newlowerbound);
-  txn_priority_upper_bound = std::max(txn_priority_lower_bound, ConvertBound(newupperbound));
-}
-
 }
 
 using namespace std::literals;
