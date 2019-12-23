@@ -205,41 +205,47 @@ number.
 
 How much space should the incarnation number take?
 
-* One byte should be sufficient as it allows for 256 possible incarnation
-  numbers.
+* **One byte**: This should be sufficient as it allows for 256 possible
+  incarnation numbers.
 
 How should the next incarnation number be selected?
 
-* Increment: This could get confusing with multiple sessions/transactions, but
-  as long as conflicts are detected, I imagine that we should be able to avoid
-  weird states.
-* Random number: Given the sample space of 256 numbers, it is dangerously easy
-  to choose an old incarnation number and possibly resurface old values that
-  haven't been compacted.  However, if we could guarantee that unique numbers
-  are chosen, this could make multiple session/transaction handling easier.  So
-  far, it seems like multiple concurrent `TRUNCATE`s is not possible.
+* **Increment:** This makes it difficult to resurface old values that haven't
+  been compacted because the incarnation number must cycle 256 times in a short
+  period of time for that to happen.  It also simplifies the logic for multiple
+  `TRUNCATE`s within a single transaction (see below).
 
 The main challenge with the incarnation number design is handling multiple
 sessions/transactions.
 
-* How do we handle `ROLLBACK` on a transaction with `TRUNCATE`?  If we update
-  the incarnation number for the table in the tablet metadata, compactions may
-  remove the data of the table before `ROLLBACK`.  We could create an
-  intermediate state such that compactions know a transaction is in progress.
-  So there would ever be at most two incarnation numbers: the current
-  incarnation number and an optional intermediate incarnation number.
-* How do we handle multiple sessions/transactions with any number of them
-  performing `TRUNCATE`?  The tablet metadata is global to the raft group for
-  the colocated tablet.  To isolate different sessions, we can indicate the
-  corresponding transaction ID alongside the incarnation number in the
-  metadata.  The problem is that requests for `DROP TABLE` and `TRUNCATE` would
-  not only have to hit master (for metadata changes through `CatalogManager`)
-  but also have to hit tserver (for transactional data deletion through
-  `TabletServiceImpl::Write`).  Regarding conflict detection, if a request sees
-  that there's an intermediate incarnation with different transaction id on the
-  same table, a conflict should be thrown.  This is because `TRUNCATE` takes an
-  `ACCESS EXCLUSIVE` lock.  This enforces that only one `TRUNCATE` should ever
-  be pending at a time.
+How do we handle `ROLLBACK` on a transaction with `TRUNCATE`?
+
+* **Keep track of stable and pending incarnation numbers:** The stable
+  incarnation represents the table outside of transactions, and the pending
+  incarnation represents the table inside of a transaction.  Any documents with
+  an incarnation number between the stable and pending ones (inclusive) are not
+  to be compacted.  Therefore, if more than one `TRUNCATE` occurs in a
+  transaction, data of old, intermediate tables in the transaction will be
+  retained (this may be needed for deferred triggers).  Upon rollback, the
+  pending incarnation number may simply be erased such that the effective
+  incarnation becomes the stable one, and the intents containing pending and
+  intermediate incarnation numbers should be automatically dropped.
+
+How do we handle multiple sessions/transactions with any number of them
+performing `TRUNCATE`?
+
+* **Keep track of stable and pending incarnation numbers:** Given that only one
+  transaction at a time may do a `TRUNCATE`, it is sufficient to have a single
+  pending incarnation number.  This is because `TRUNCATE` should take an
+  `ACCESS EXCLUSIVE` lock.  If the locking logic is hooked up properly (it is
+  currently not), there is no need to worry about multiple pending `TRUNCATE`s
+  or outside accesses to the truncated table.
+
+Another possible problem is that requests for `DROP TABLE` and `TRUNCATE` would
+not only have to hit master (for metadata changes through `CatalogManager`) but
+also have to hit tserver (for transactional conflict checking through
+`TabletServiceImpl::Read` or `TabletServiceImpl::Write`).  This may best be
+solved through transactional DDL support which is not yet ready.
 
 ### Special document
 
