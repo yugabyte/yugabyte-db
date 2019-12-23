@@ -30,12 +30,17 @@
 // under the License.
 //
 
+#include <bitset>
+#include <random>
 #include <vector>
 
 #include <gtest/gtest.h>
 
 #include "yb/gutil/strings/join.h"
+
 #include "yb/util/bitmap.h"
+#include "yb/util/random_util.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 
@@ -238,6 +243,105 @@ TEST(TestBitMap, TestBitmapIteration) {
     i++;
   }
   ASSERT_EQ(expected_sizes[i], size);
+}
+
+TEST(TestBitMap, OneWayBitmapSimple) {
+  OneWayBitmap bitmap;
+  ASSERT_FALSE(bitmap.Test(0));
+
+  bitmap.Set(0);
+  ASSERT_TRUE(bitmap.Test(0));
+  ASSERT_FALSE(bitmap.Test(1));
+  ASSERT_EQ(bitmap.CountSet(), 1);
+  ASSERT_EQ(bitmap.EncodeToHexString(), "020001");
+  ASSERT_EQ(bitmap.ToString(), "[0]");
+
+  bitmap.Set(2);
+  ASSERT_TRUE(bitmap.Test(0));
+  ASSERT_TRUE(bitmap.Test(2));
+  ASSERT_FALSE(bitmap.Test(1));
+  ASSERT_EQ(bitmap.CountSet(), 2);
+  ASSERT_EQ(bitmap.EncodeToHexString(), "020005");
+  ASSERT_EQ(bitmap.ToString(), "[0, 2]");
+}
+
+template<size_t N>
+void CheckSame(const OneWayBitmap& bitmap, const std::bitset<N>& bitset) {
+  EXPECT_EQ(bitmap.CountSet(), bitset.count());
+  for (size_t bit = 0; bit != N; ++bit) {
+    EXPECT_EQ(bitmap.Test(bit), bitset.test(bit)) << "Bit: " << bit;
+  }
+  for (size_t bit = N; bit != N + sizeof(size_t) * 8; ++bit) {
+    EXPECT_FALSE(bitmap.Test(N));
+  }
+}
+
+template<size_t N>
+void CheckBitmap(const OneWayBitmap& bitmap, const std::bitset<N>& bitset) {
+  ASSERT_NO_FATALS(CheckSame(bitmap, bitset));
+  boost::container::small_vector<uint8_t, 8> buffer;
+  bitmap.EncodeTo(&buffer);
+  Slice slice(buffer.data(), buffer.size());
+
+  auto decoded_bitmap = ASSERT_RESULT_FAST(OneWayBitmap::Decode(&slice));
+  ASSERT_TRUE(slice.empty());
+  ASSERT_NO_FATALS(CheckSame(decoded_bitmap, bitset));
+
+  slice = Slice(buffer.data(), buffer.size());
+  ASSERT_OK_FAST(OneWayBitmap::Skip(&slice));
+  ASSERT_TRUE(slice.empty());
+}
+
+template<size_t N>
+void CheckBitSequence(const std::vector<size_t>& bits_to_set) {
+  std::bitset<N> bitset;
+  OneWayBitmap bitmap;
+
+  ASSERT_NO_FATALS(CheckBitmap(bitmap, bitset));
+
+  for (auto i : bits_to_set) {
+    bitmap.Set(i);
+    bitset.set(i, true);
+
+    ASSERT_NO_FATALS(CheckBitmap(bitmap, bitset));
+  }
+}
+
+// Test OneWayBitmap when bits are set randomly.
+TEST(TestBitMap, OneWayBitmapRandom) {
+  std::mt19937_64 rng(123456);
+
+  constexpr size_t kTotalBits = 1024;
+  std::vector<size_t> bits_to_set;
+  bits_to_set.reserve(kTotalBits * 2);
+  for (size_t i = 0; i != kTotalBits; ++i) {
+    bits_to_set.push_back(i);
+    if (RandomUniformBool(&rng)) {
+      bits_to_set.push_back(i);
+    }
+  }
+
+  std::shuffle(bits_to_set.begin(), bits_to_set.end(), rng);
+
+  ASSERT_NO_FATALS(CheckBitSequence<kTotalBits>(bits_to_set));
+}
+
+// Test OneWayBitmap when bits are set in nearly increasing order.
+TEST(TestBitMap, OneWayBitmapMetaIncreasing) {
+  std::mt19937_64 rng(123456);
+
+  constexpr size_t kTotalBits = 1024;
+  std::vector<size_t> bits_to_set;
+  bits_to_set.reserve(kTotalBits * 2);
+  for (size_t i = 0; i != kTotalBits; ++i) {
+    size_t extra_index = i + RandomUniformInt(10, 20, &rng) - 10;
+    if (extra_index > i && extra_index < kTotalBits) {
+      bits_to_set.push_back(extra_index);
+    }
+    bits_to_set.push_back(i);
+  }
+
+  ASSERT_NO_FATALS(CheckBitSequence<kTotalBits>(bits_to_set));
 }
 
 } // namespace yb

@@ -52,6 +52,11 @@ void PutVarint64(faststring *dst, uint64_t v) {
   dst->append(buf, ptr - buf);
 }
 
+void PutVarint64(boost::container::small_vector_base<uint8_t>* dst, uint64_t value) {
+  uint8_t buf[16];
+  dst->insert(dst->end(), buf, EncodeVarint64(buf, value));
+}
+
 void PutLengthPrefixedSlice(faststring* dst, const Slice& value) {
   PutVarint32(dst, value.size());
   dst->append(value.data(), value.size());
