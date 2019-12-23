@@ -49,7 +49,7 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 | [UnixTimestampOf](../function_datetime/#unixtimestampof) | [`BIGINT`](../type_int) | ([`TIMEUUID`](../type_uuid)) | Conversion |
 | [UUID](../function_datetime/#uuid) | [`UUID`](../type_uuid) | () | Returns a version 4 UUID |
 | [WriteTime](#writetime-function) | [`BIGINT`](../type_int) | (\<AnyType>) | Returns the timestamp when the column was written |
-| [partition_hash](#partitionhash-function) | [`BIGINT`](../type_int) | () | Returns a version 4 UUID |
+| [partition_hash](#partition-hash-function) | [`BIGINT`](../type_int) | () | Returns a `uint16` of partition keys |
 
 ## Aggregate Functions
 
@@ -68,7 +68,7 @@ YugabyteDB uses `partition_hash` function that returns an `uint16` hash of `part
 The full hash partition value spans from `0 - 65535`. 
 We can use this function to query a subset of the data and get approximate results or do a parallel full table scan.
 
-### querying a subset of the data
+### Querying a subset of the data
 Assuming we have a table:
 ```sql
 create table t (h1 int, h2 int, r1 int, r2 int, v int, 
