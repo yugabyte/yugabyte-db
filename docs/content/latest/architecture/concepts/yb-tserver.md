@@ -40,16 +40,39 @@ often than others. For example, one table may have a read-heavy usage pattern co
 others. The block cache will automatically favor blocks of this table as the block cache is global
 across all tablet-peers.
 
+## Space amplification
+YugabyteDB's compactions are size tiered. 
+Size tier compactions have the advantage of lower disk write (IO) amplification when compared to level compactions. 
+There's sometimes concern that size-tiered compactions have higher space amplification (that it needs 50% space head room). 
+
+This is not true in YugabyteDB because each table is broken into several tablets and concurrent compactions across 
+tablets are throttled to a certain maximum. Therefore the typical space amplification in YugabyteDB tends to be in the 10-20% range.
+
 ## Throttled compactions
 
 The compactions are throttled across tablets in a given YB-TServer to
 prevent compaction storms. This prevents the often dreaded high foreground latencies during a
 compaction storm.
 
+The default policy makes sure that doing a compaction is worthwhile.
+The algorithm tries to make sure that the files being compacted are somewhat in the similar size ballpark. 
+For example, it does not make sense to compact a 100GB file with a 1GB file to produce a 101GB file, 
+that would be a lot of unnecessary IO for less gain. 
+
 ## Small and large compaction queues
 
 Compactions are prioritized into large and small compactions with
 some prioritization to keep the system functional even in extreme IO patterns.
+
+In addition to throttling controls for compactions, YugabyteDB does a variety 
+of internal optimizations to minimize impact of compactions on foreground latencies. 
+One such is a prioritizated queue to give priority to small compactions over large compactions 
+to make sure the number of SSTable files for any tablet stays as low as possible.
+
+### Manual compactions
+YugabyteDB allows compactions to be externally triggered on a table with `yb-admin` cli. 
+This can be useful for cases when new data is not coming into the system for a table anymore, 
+users want to reclaim disk space due to overwrites/deletes that have already happened or due to TTL expiry.
 
 ### Server-global memstore limit
 
