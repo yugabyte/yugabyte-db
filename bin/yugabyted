@@ -804,7 +804,8 @@ class ControlScript(object):
             cmd = ["java", "-version"]
             java_info = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
             return java_info is not None
-        except (OSError) as e:
+        except (OSError, subprocess.CalledProcessError) as e:
+            Output.log("Failed to find java: {}".format(e), logging.ERROR)
             return False
 
     # Parse config file and input args. Validate them and save any new configs.
