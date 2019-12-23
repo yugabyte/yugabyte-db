@@ -51,7 +51,8 @@
   ],
   "third-party/roles": [
     "third-party/roles/ansible-prometheus",
-    "third-party/roles/ansible-sshd"
+    "third-party/roles/ansible-sshd",
+    "third-party/roles/ansible-chrony"
   ],
   "vars": [
     "vars/placeholder.yml"
