@@ -36,7 +36,7 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 | [CurrentTime](../function_datetime/#currentdate-currenttime-and-currenttimestamp) | [`TIME`](../type_datetime) | () | Return the system current time of day |
 | [CurrentTimestamp](../function_datetime/#currentdate-currenttime-and-currenttimestamp) | [`TIMESTAMP`](../type_datetime) | () | Return the system current timestamp |
 | [Now](../function_datetime/#now) | [`TIMEUUID`](../type_uuid) | () | Returns the UUID of the current timestamp |
-| TTL | [`BIGINT`](../type_int) | (<AnyType>) | Seek time-to-live of a column |
+| [TTL](#ttl-function) | [`BIGINT`](../type_int) | (\<AnyType>) | Seek time-to-live of a column |
 | [ToDate](../function_datetime/#todate) | [`DATE`](../type_datetime) | ([`TIMESTAMP`](../type_datetime)) | Conversion |
 | [ToDate](../function_datetime/#todate) | [`DATE`](../type_datetime) | ([`TIMEUUID`](../type_uuid)) | Conversion |
 | ToTime | [`TIME`](../type_datetime) | ([`TIMESTAMP`](../type_datetime))  | Conversion |
@@ -48,7 +48,8 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 | [ToUnixTimestamp](../function_datetime/#tounixtimestamp) | [`BIGINT`](../type_int) | ([`TIMEUUID`](../type_uuid)) | Conversion |
 | [UnixTimestampOf](../function_datetime/#unixtimestampof) | [`BIGINT`](../type_int) | ([`TIMEUUID`](../type_uuid)) | Conversion |
 | [UUID](../function_datetime/#uuid) | [`UUID`](../type_uuid) | () | Returns a version 4 UUID |
-| WriteTime | [`BIGINT`](../type_int) | (<AnyType>) | Returns the time when the column was written |
+| [WriteTime](#writetime-function) | [`BIGINT`](../type_int) | (\<AnyType>) | Returns the timestamp when the column was written |
+
 
 ## Aggregate Functions
 
@@ -87,7 +88,34 @@ CAST function converts the value returned from a table column to the specified d
 | `TIMESTAMP` | `DATE`, `TEXT` |
 | `TIMEUUID` | `DATE`, `TIMESTAMP` |
 
-### Examples
+## WriteTime function
+We can get the timestamp when the column/row was writen.
+Assuming we have a table `page_views` and a column named `views`:
+```
+ SELECT writetime(views) FROM page_views;
+
+ writetime(views)
+------------------
+ 1572882871160113
+
+(1 rows)
+```
+
+## TTL function
+We can get the number of seconds when the column or row expires. 
+Assuming we have a table `page_views` and a column named `views`:
+```
+SELECT TTL(views) FROM page_views;
+
+ ttl(views)
+------------
+      86367
+
+(1 rows)
+```
+
+
+## Examples
 
 ```sql
 cqlsh:example> CREATE TABLE test_cast (k INT PRIMARY KEY, ts TIMESTAMP);
