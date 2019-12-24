@@ -205,15 +205,13 @@ number.
 
 How much space should the incarnation number take?
 
-* **One byte**: This should be sufficient as it allows for 256 possible
-  incarnation numbers.
+* **Variable encoding**: Use `VarInt` to encode a variable length number.
 
 How should the next incarnation number be selected?
 
-* **Increment:** This makes it difficult to resurface old values that haven't
-  been compacted because the incarnation number must cycle 256 times in a short
-  period of time for that to happen.  It also simplifies the logic for multiple
-  `TRUNCATE`s within a single transaction (see below).
+* **Increment:** This makes it impossible to resurface old values that haven't
+  been compacted.  It also simplifies the logic for compaction: all documents
+  with incarnation number below the current one can be discarded.
 
 The main challenge with the incarnation number design is handling multiple
 sessions/transactions.
@@ -230,6 +228,14 @@ How do we handle `ROLLBACK` on a transaction with `TRUNCATE`?
   pending incarnation number may simply be erased such that the effective
   incarnation becomes the stable one, and the intents containing pending and
   intermediate incarnation numbers should be automatically dropped.
+* **Table-level document:** Instead of keeping track of incarnation numbers in
+  the tablet metadata, they can be tracked in a table-level document with key
+  containing just the cotable ID and value containing the incarnation number.
+  Any transaction that performs a `TRUNCATE` can write a table-level intent
+  with the incremented incarnation number.  The number can continue to be
+  incremented as more `TRUNCATE`s on the same table happen within the
+  transaction.  A commit should write the intent to regular DB; a rollback
+  should drop the intents.
 
 How do we handle multiple sessions/transactions with any number of them
 performing `TRUNCATE`?
@@ -240,28 +246,28 @@ performing `TRUNCATE`?
   `ACCESS EXCLUSIVE` lock.  If the locking logic is hooked up properly (it is
   currently not), there is no need to worry about multiple pending `TRUNCATE`s
   or outside accesses to the truncated table.
+* **Table-level document:** The table-level intent should conflict with any
+  other attempts to act upon the table outside of the transaction.  This
+  intent behaves like an `ACCESS EXCLUSIVE` lock, as desired.  One issue is
+  with this scenario:
+
+  | SESSION A | SESSION B |
+  | --- | --- |
+  | `CREATE TABLE t (i int);` | |
+  | `BEGIN ISOLATION LEVEL REPEATABLE READ;` | |
+  | `TRUNCATE t;` | |
+  | `INSERT INTO t VALUES (1);` | |
+  | | `BEGIN ISOLATION LEVEL REPEATABLE READ;` |
+  | | `SELECT 123;` |
+  | `COMMIT;` | |
+  | | `TRUNCATE t;` |
+  | | `COMMIT;` |
+
+  With this design, the second truncate would conflict on trying to update the
+  table-level document.
 
 Another possible problem is that requests for `DROP TABLE` and `TRUNCATE` would
 not only have to hit master (for metadata changes through `CatalogManager`) but
 also have to hit tserver (for transactional conflict checking through
 `TabletServiceImpl::Read` or `TabletServiceImpl::Write`).  This may best be
 solved through transactional DDL support which is not yet ready.
-
-### Special document
-
-To mark a table as truncated, we could write a special document to DocDB
-indicating the truncate.
-
-In the case of a transactional truncate, the special document could be written
-to the intents DB.  Conflict detection would then need to make sure that this
-special document conflicts with any other documents that are of the same table
-except for those that are of the same transaction.  This means that the
-transaction ID should probably be encoded into the special document.  Conflict
-detection may be difficult if there is no document iterator that works on
-prefixes of `DocKey`s.
-
-When a transactional truncate commits, the special document should not be
-written to the regular DB.  Furthermore, the data before truncate must be
-discarded: this can be done by hybrid time or perhaps a better method that
-requires more work before this step.  The discarding will likely be individual
-key deletes, so it would be as expensive as an unconditional `DELETE`.
