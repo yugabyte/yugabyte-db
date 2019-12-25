@@ -2,9 +2,7 @@
 
 > **Note:** This is a new feature that is still in a design phase.
 
-Colocating various SQL tables puts all of their data into a single tablet, called the *colocation tablet*. As per the current design, the colocation tablet will not split automatically. However, one or more of these colocated tables can be pulled out of the colocation tablet and allowed to split (pre-split, manually split or automatically split) to enable them to scale out across nodes.
-
-> Note that all the data in the colocation tablet is still replicated across 3 nodes (or whatever the replication factor is).
+Colocating various SQL tables puts all of their data into a single tablet, called the *colocation tablet*. As per the current design, the colocation tablet will not split automatically. However, one or more of these colocated tables can be pulled out of the colocation tablet and allowed to split (pre-split, manually split or automatically split) to enable them to scale out across nodes. Note that all the data in the colocation tablet is still replicated across 3 nodes (or whatever the replication factor is).
 
 ## Motivation
 
