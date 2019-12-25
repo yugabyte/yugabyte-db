@@ -326,6 +326,10 @@ message TransactionStatePB {
 
   // Relevant only in APPLYING state.
   optional fixed64 commit_hybrid_time = 4;
+
+  // Relevant only in CLEANUP status, true when we cleanup intents of applied transaction,
+  // that was previously sealed.
+  optional bool sealed = 6;
 }
 
 // Truncate tablet request.
