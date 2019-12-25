@@ -53,6 +53,7 @@ set(CLIENT_SRCS
   table_handle.cc
   tablet_rpc.cc
   transaction.cc
+  transaction_cleanup.cc
   transaction_manager.cc
   transaction_pool.cc
   transaction_rpc.cc
