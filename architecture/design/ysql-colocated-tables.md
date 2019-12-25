@@ -2,17 +2,15 @@
 
 > **Note:** This is a new feature that is still in a design phase.
 
-Colocating various SQL tables puts all of their data into a single tablet, called the *colocation tablet*. As per the current design, the colocation tablet will not split automatically. However, one or more of these colocated tables can be pulled out of the colocation tablet and allowed to split (pre-split, manually split or automatically split) to enable them to scale out across nodes. Note that all the data in the colocation tablet is still replicated across 3 nodes (or whatever the replication factor is).
+Colocating tables can dramitacally increase the number of relations (tables, indexes, etc) that can be supported per node while keeping the number of tablets per node low. 
+
+In workloads that do very little IOPS and have a small data set, the bottleneck shifts from CPU/disk/network to the number of tablets one can host per node. There are practical limitations to the number of tablets that YugabyteDB can handle per node, even though this number could be very high, depending on the workload pattern. Although the number of tablets a node can handle keeps improving with software optimizations, as a general rule we currently recommend no more than 5000 tablets / node. Since each table by default requires at least one tablet without colocation, this implies that a YugabyteDB cluster cannot handle much more than 5000 relations (tables, indexes, etc) per node. With the default replication factor of 3, this limit is even lower in practice.
 
 ## Motivation
 
-There are practical limitations to the number of tablets that YugabyteDB can handle per node, though this varies a lot depending on the workload pattern. Although the number of tablets a node can handle keeps improving with software optimizations, as a general rule we recommend a maximum of 3000 tablets / node. Additionally, creating multiple tablets for small tables with have few GB of data is wasteful.
-
-For such use cases, we want to provide an ability to do tablet colocation. With this feature, we'll create 1 tablet for a database, and all tables in the database will be colocated on the same tablet. This will reduce the overhead from creating multiple tablets for small tables and help us scale such use cases.
-
 This feature is desirable in a number of scenarios, some of which are described below.
 
-### Small datasets needing HA or geo-distribution
+### 1. Small datasets needing HA or geo-distribution
 Applications that have a smaller dataset may fall into the following pattern:
 * They require large number of tables, indexes and other relations created in a single database.
 * The size of the entire dataset is small. Typically, this entire database is less than 500GB in size.
@@ -21,9 +19,9 @@ Applications that have a smaller dataset may fall into the following pattern:
 
 In this scenario, it is undesirable to have the small dataset spread across multiple nodes because this might affect performance of certain queries due to more network hops (for example, joins).
 
-Example: a user identity service for a global application. The user dataset size may not be too large, but is accessed in a relational manner, requires high availability and might need to be geo-distributed for low latency access.
+**Example:** a user identity service for a global application. The user dataset size may not be too large, but is accessed in a relational manner, requires high availability and might need to be geo-distributed for low latency access.
 
-### Large datasets - a few large tables with many small tables
+### 2. Large datasets - a few large tables with many small tables
 Applications that have a large dataset may fall into the pattern where:
 * They need a large number of tables and indexes.
 * A handful of tables are expected to grow large, needing to be scaled out.
@@ -31,21 +29,22 @@ Applications that have a large dataset may fall into the pattern where:
 
 In this scenario, only the few large tables would need to be sharded and scaled out. All other tables would benefit from colocation, because queries involving all tables except the larger ones would not need network hops.
 
-Example: An IoT use case, where one table records the data from the IoT devices while there are a number of other tables that store data pertaining to user identity, device profiles, privacy, etc.
+**Example:** An IoT use case, where one table records the data from the IoT devices while there are a number of other tables that store data pertaining to user identity, device profiles, privacy, etc.
 
-### Scaling the number of databases, each database with a small dataset
+### 3. Scaling the number of databases, each database with a small dataset
 There may be scenarios where the number of databases grows rapidly, while the dataset of each dataset is small. This is characteristic of a microservices-oriented architecture, where each microservice needs its own database. These microservices are hosted in dev, test, staging, production and other environments. The net result is a lot of small databases, and the need to be able to scale the number of databases hosted. Colocated tables allow for the entire dataset in each database to be hosted in one tablet, enabling scalability of the number of databases in a cluster by simply adding more nodes.
 
-Example: Multi-tenant SaaS services where one database is created per customer. As new customers are rapidly on-boarded, it becomes necessary to add more databases quickly while maintaining high-availability and fault-tolerance of each database.
+**Example:** Multi-tenant SaaS services where one database is created per customer. As new customers are rapidly on-boarded, it becomes necessary to add more databases quickly while maintaining high-availability and fault-tolerance of each database.
 
 ## Tradeoffs
 
 Fundamentally, colocated tables have the following tradeoffs:
 * **Higher performance - no network reads for joins**. All of the data across the various colocated tables is local, which means joins no longer have to read data over the network. This improves the speed of joins.
+* **Support higher number of tables - using fewer tablets**. Because multiple tables and indexes can share one underlying tablet, a much higher number of tables can be supported using colocated tables.
 * **Lower scalability - until removal from colocation tablet**. The assumptions behind tables that are colocated is that their data need not be automatically sharded and distributed across nodes. If it is known apriori that a table will get large, it can be opted out of the colocation tablet at creation time. If a table already present in the colocation tablet gets too large, it can dynamically be removed from the colocation tablet to enable splitting it into multiple tablets, allowing it to scale across nodes.
 
 
-# Usage
+## Usage
 
 This section describes the intended usage of this feature. There are three aspects to using this feature:
 
@@ -61,7 +60,7 @@ CREATE DATABASE name WITH colocated = true | false
 
 We'll also provide a gflag `--ysql_colocation`, which, if enabled, will create a colocated tablet whenever a new YSQL DB is created.
 
-### 2. Create a table that is opted out of colocation
+### 2. Create tables opted out of colocation
 
 In some databases, there may be many small tables and a few large tables. In this case, the database should be created with colocation enabled as shown above, so that the small tables can be colocated in a single tablet. The large tables opt out of colocation by overriding the `colocated` property at the table level to `false`. This is shown below.
 
@@ -73,7 +72,7 @@ CREATE TABLE name (columns) WITH colocated = true | false
 
 > **Note:** This property should be only used when the parent DB is colocated. It has no effect otherwise.
 
-### 3. Ability to specify that a schema is colocated
+### 3. Specify colocation at schema level
 
 In some situations, it may be useful for applications to create multiple schemas (instead of multiple DBs) and use 1 tablet per schema. Using this configuration has the following advantages:
 
@@ -91,6 +90,8 @@ CREATE SCHEMA name WITH colocated = true | false
 ```
 
 ## Design
+
+Colocating various SQL tables puts all of their data into a single tablet, called the *colocation tablet*. As per the current design, the colocation tablet will not split automatically. However, one or more of these colocated tables can be pulled out of the colocation tablet and allowed to split (pre-split, manually split or automatically split) to enable them to scale out across nodes. Note that all the data in the colocation tablet is still replicated across 3 nodes (or whatever the replication factor is).
 
 ### Single vs Multiple RocksDB
 
