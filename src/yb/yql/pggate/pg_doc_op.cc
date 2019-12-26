@@ -40,9 +40,12 @@ PgDocOp::PgDocOp(PgSession::ScopedRefPtr pg_session)
 }
 
 PgDocOp::~PgDocOp() {
-  std::unique_lock<std::mutex> lock(mtx_);
+}
+
+void PgDocOp::AbortAndWait() {
   // Hold on to this object just in case there are requests in the queue while PostgreSQL client
   // cancels the operation.
+  std::unique_lock<std::mutex> lock(mtx_);
   is_canceled_ = true;
   cv_.notify_all();
 
@@ -241,8 +244,8 @@ Status PgDocReadOp::SendRequestUnlocked() {
             IllegalState, "YSQL read operation should not be buffered");
 
   waiting_for_response_ = true;
-  Status s = pg_session_->PgFlushAsync([this](const Status& s) {
-                                         PgDocReadOp::ReceiveResponse(s);
+  Status s = pg_session_->PgFlushAsync([self = shared_from(this)](const Status& s) {
+                                         self->ReceiveResponse(s);
                                        }, apply_outcome.yb_session);
   if (!s.ok()) {
     waiting_for_response_ = false;
@@ -318,8 +321,8 @@ Status PgDocWriteOp::SendRequestUnlocked() {
   }
 
   waiting_for_response_ = true;
-  Status s = pg_session_->PgFlushAsync([this](const Status& s) {
-                                         PgDocWriteOp::ReceiveResponse(s);
+  Status s = pg_session_->PgFlushAsync([self = shared_from(this)](const Status& s) {
+                                         self->ReceiveResponse(s);
                                        }, apply_outcome.yb_session);
   if (!s.ok()) {
     waiting_for_response_ = false;
