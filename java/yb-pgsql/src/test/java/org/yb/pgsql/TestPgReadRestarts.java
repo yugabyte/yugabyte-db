@@ -56,10 +56,10 @@ public class TestPgReadRestarts extends BasePgSQLTest {
    * Size (in bytes) of PG output buffer, longer stuff is flushed immediately.
    * This is controlled by ysql_output_buffer_size gflag, but we're testing the default value.
    */
-  private static int PG_OUTPUT_BUFFER_SIZE = 262144; // 256 KiB
+  private static final int PG_OUTPUT_BUFFER_SIZE = 262144; // 256 KiB
 
   /** How many inserts we attempt to do? */
-  private static final int NUM_INSERTS = 1000;
+  private static final int NUM_INSERTS = 2000;
 
   /** Maximum value to insert in a table column {@code i} (minimum is 0) */
   private static final int MAX_INT_TO_INSERT = 5;
@@ -67,10 +67,10 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   /**
    * How long do we wait until NUM_INSERTS inserts finish?
    * <p>
-   * This should be about way more than average local execution time of a single test, to account
+   * This should be way more than average local execution time of a single test, to account
    * for slow CI machines.
    */
-  private static final int INSERTS_AWAIT_TIME_SEC = 150;
+  private static final int INSERTS_AWAIT_TIME_SEC = 300;
 
   @Before
   public void setUp() throws Exception {
@@ -373,6 +373,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
       futures.add(es.submit(() -> {
         int selectsAttempted = 0;
         int selectsRestartRequired = 0;
+        int selectsSucceeded = 0;
         boolean onlyEmptyResults = true;
         for (/* No setup */; !insertFuture.isDone(); ++selectsAttempted) {
           if (Thread.interrupted()) return; // Skips all post-loop checks
@@ -381,6 +382,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
             if (!rows.isEmpty()) {
               onlyEmptyResults = false;
             }
+            ++selectsSucceeded;
           } catch (Exception ex) {
             if (isRestartReadError(ex)) {
               ++selectsRestartRequired;
@@ -395,7 +397,8 @@ public class TestPgReadRestarts extends BasePgSQLTest {
         }
         if (expectNonTxnRestartErrors) {
           assertTrue(
-              "No SELECTs resulted in 'restart read required' - but we expected them to!",
+              "No SELECTs resulted in 'restart read required' - but we expected them to!"
+                  + " " + selectsAttempted + " attempted, " + selectsSucceeded + " succeeded",
               selectsRestartRequired > 0);
         } else {
           assertTrue(
@@ -464,7 +467,8 @@ public class TestPgReadRestarts extends BasePgSQLTest {
             assertTrue(
                 "No SELECTs in " + isolation
                     + " resulted in 'restart read required' on first operation"
-                    + " - but we expected them to!",
+                    + " - but we expected them to!"
+                    + " " + selectsAttempted +" attempted, " + selectsSucceeded + " succeeded",
                 selectsFirstOpRestartRequired > 0);
           } else {
             assertTrue(
