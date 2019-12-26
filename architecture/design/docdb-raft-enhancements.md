@@ -1,7 +1,7 @@
-## NOTE: This document is still a work in progress.
-
-
 # Raft Enhancements in DocDB
+
+> **NOTE:** This design doc is still a work in progress.
+
 
 Recall that the storage layer of YugaByte DB is a distributed document store called DocDB. The architecture of DocDB is inspired by Google Spanner. This design doc outlines the various Raft enhancements in DocDB.
 
