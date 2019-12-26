@@ -397,6 +397,9 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
   std::atomic<int> writes(0);
   std::atomic<int> reads(0);
 
+  constexpr auto kRequiredReads = RegularBuildVsSanitizers(5, 2);
+  constexpr auto kRequiredWrites = RegularBuildVsSanitizers(1000, 500);
+
   std::atomic<int> counter(100000);
   TestThreadHolder thread_holder;
   for (int i = 1; i <= kThreads; ++i) {
@@ -434,14 +437,15 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
   }
 
   thread_holder.AddThreadFunctor(
-      [this, &counter, &reads, isolation, &stop_flag = thread_holder.stop_flag()]() {
+      [this, &counter, &reads, &writes, isolation, &stop_flag = thread_holder.stop_flag()]() {
     SetFlagOnExit set_flag_on_exit(&stop_flag);
     auto conn = ASSERT_RESULT(Connect());
     auto failures_in_row = 0;
     while (!stop_flag.load(std::memory_order_acquire)) {
       if (isolation == IsolationLevel::SERIALIZABLE_ISOLATION) {
-        ASSERT_OK(conn.ExecuteFormat("SET yb_transaction_priority_lower_bound = $0",
-                                    1.0 - 1.0 / (1ULL << failures_in_row)));
+        auto lower_bound = reads.load() * kRequiredWrites < writes.load() * kRequiredReads
+            ? 1.0 - 1.0 / (1 << failures_in_row) : 0.0;
+        ASSERT_OK(conn.ExecuteFormat("SET yb_transaction_priority_lower_bound = $0", lower_bound));
       }
       auto sum = ReadSumBalance(&conn, kAccounts, isolation, &counter);
       if (!sum.ok()) {
@@ -455,8 +459,6 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
     }
   });
 
-  constexpr auto kRequiredReads = RegularBuildVsSanitizers(5, 2);
-  constexpr auto kRequiredWrites = RegularBuildVsSanitizers(1000, 500);
   auto wait_status = WaitFor([&reads, &writes, &stop = thread_holder.stop_flag()] {
     return stop.load() || (writes.load() >= kRequiredWrites && reads.load() >= kRequiredReads);
   }, kTimeout, Format("At least $0 reads and $1 writes", kRequiredReads, kRequiredWrites));
