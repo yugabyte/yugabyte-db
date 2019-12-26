@@ -291,7 +291,9 @@ Status ReadBlock(RandomAccessFileReader* file, const Footer& footer,
     return s;
   }
   if (contents->size() != n + kBlockTrailerSize) {
-    return STATUS(Corruption, "truncated block read");
+    return STATUS_FORMAT(
+        Corruption, "truncated block read in file: $0, block handle: $1",
+        file->file()->filename(), handle.ToDebugString());
   }
 
   // Check the crc of the type and the block contents
@@ -309,10 +311,14 @@ Status ReadBlock(RandomAccessFileReader* file, const Footer& footer,
         actual = XXH32(data, static_cast<int>(n) + 1, 0);
         break;
       default:
-        s = STATUS(Corruption, "unknown checksum type");
+        s = STATUS_FORMAT(
+            Corruption, "unknown checksum type in file: $0, block handle: $1",
+            file->file()->filename(), handle.ToDebugString());
     }
     if (s.ok() && actual != value) {
-      s = STATUS(Corruption, "block checksum mismatch");
+      s = STATUS_FORMAT(
+          Corruption, "block checksum mismatch in file: $0, block handle: $1",
+          file->file()->filename(), handle.ToDebugString());
     }
     if (!s.ok()) {
       return s;
@@ -387,6 +393,7 @@ Status ReadBlockContents(RandomAccessFileReader* file, const Footer& footer,
   status = ReadBlock(file, footer, options, handle, &slice, used_buf);
 
   if (!status.ok()) {
+    LOG(ERROR) << __func__ << ": " << status << "\n" << yb::GetStackTrace();
     return status;
   }
 
