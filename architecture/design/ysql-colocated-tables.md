@@ -6,6 +6,8 @@ Colocating tables can dramitacally increase the number of relations (tables, ind
 
 In workloads that do very little IOPS and have a small data set, the bottleneck shifts from CPU/disk/network to the number of tablets one can host per node. There are practical limitations to the number of tablets that YugabyteDB can handle per node, even though this number could be very high, depending on the workload pattern. Although the number of tablets a node can handle keeps improving with software optimizations, as a general rule we currently recommend no more than 5000 tablets / node. Since each table by default requires at least one tablet without colocation, this implies that a YugabyteDB cluster cannot handle much more than 5000 relations (tables, indexes, etc) per node. With the default replication factor of 3, this limit is even lower in practice.
 
+Colocating various SQL tables puts all of their data into a single tablet, called the *colocation tablet*. Note that all the data in the colocation tablet is still replicated across 3 nodes (or whatever the replication factor is).
+
 ## Motivation
 
 This feature is desirable in a number of scenarios, some of which are described below.
@@ -91,7 +93,7 @@ CREATE SCHEMA name WITH colocated = true | false
 
 ## Design
 
-Colocating various SQL tables puts all of their data into a single tablet, called the *colocation tablet*. As per the current design, the colocation tablet will not split automatically. However, one or more of these colocated tables can be pulled out of the colocation tablet and allowed to split (pre-split, manually split or automatically split) to enable them to scale out across nodes. Note that all the data in the colocation tablet is still replicated across 3 nodes (or whatever the replication factor is).
+As per the current design, the colocation tablet will not split automatically. However, one or more of these colocated tables can be pulled out of the colocation tablet and allowed to split (pre-split, manually split or automatically split) to enable them to scale out across nodes.
 
 ### Single vs Multiple RocksDB
 
