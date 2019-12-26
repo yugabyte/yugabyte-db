@@ -39,6 +39,7 @@ PgDml::PgDml(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id)
 }
 
 PgDml::~PgDml() {
+  doc_op_->AbortAndWait();
 }
 
 Status PgDml::LoadTable() {

@@ -27,7 +27,7 @@ namespace pggate {
 
 YB_STRONGLY_TYPED_BOOL(RequestSent);
 
-class PgDocOp {
+class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
  public:
   // Public types.
   typedef std::shared_ptr<PgDocOp> SharedPtr;
@@ -41,6 +41,9 @@ class PgDocOp {
   // Constructors & Destructors.
   explicit PgDocOp(PgSession::ScopedRefPtr pg_session);
   virtual ~PgDocOp();
+
+  // Mark this operation as aborted and wait for it to finish.
+  void AbortAndWait();
 
   // Set execution control parameters.
   // When "exec_params" is null, the default setup in PgExecParameters are used.
