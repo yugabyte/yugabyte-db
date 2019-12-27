@@ -187,7 +187,7 @@ bool TabletInfo::colocated() const {
   return l->data().pb.colocated();
 }
 
-std::string TabletInfo::ToString() const {
+string TabletInfo::ToString() const {
   return Substitute("$0 (table $1)", tablet_id_,
                     (table_ != nullptr ? table_->ToString() : "MISSING"));
 }
@@ -239,9 +239,15 @@ bool TableInfo::is_running() const {
   return l->data().is_running();
 }
 
-std::string TableInfo::ToString() const {
+string TableInfo::ToString() const {
   auto l = LockForRead();
   return Substitute("$0 [id=$1]", l->data().pb.name(), table_id_);
+}
+
+string TableInfo::ToStringWithState() const {
+  auto l = LockForRead();
+  return Substitute("$0 [id=$1, state=$2]",
+      l->data().pb.name(), table_id_, SysTablesEntryPB::State_Name(l->data().pb.state()));
 }
 
 const NamespaceId TableInfo::namespace_id() const {
@@ -259,7 +265,7 @@ bool TableInfo::colocated() const {
   return l->data().pb.colocated();
 }
 
-const std::string TableInfo::indexed_table_id() const {
+const string TableInfo::indexed_table_id() const {
   auto l = LockForRead();
   return l->data().pb.has_index_info()
              ? l->data().pb.index_info().indexed_table_id()
@@ -283,7 +289,7 @@ TableType TableInfo::GetTableType() const {
   return l->data().pb.table_type();
 }
 
-bool TableInfo::RemoveTablet(const std::string& partition_key_start) {
+bool TableInfo::RemoveTablet(const string& partition_key_start) {
   std::lock_guard<decltype(lock_)> l(lock_);
   return EraseKeyReturnValuePtr(&tablet_map_, partition_key_start) != NULL;
 }
@@ -580,7 +586,7 @@ bool NamespaceInfo::colocated() const {
   return l->data().pb.colocated();
 }
 
-std::string NamespaceInfo::ToString() const {
+string NamespaceInfo::ToString() const {
   return Substitute("$0 [id=$1]", name(), namespace_id_);
 }
 
@@ -620,7 +626,7 @@ const QLTypePB& UDTypeInfo::field_types(int index) const {
   return l->data().pb.field_types(index);
 }
 
-std::string UDTypeInfo::ToString() const {
+string UDTypeInfo::ToString() const {
   auto l = LockForRead();
   return Substitute("$0 [id=$1] {metadata=$2} ", name(), udtype_id_, l->data().pb.DebugString());
 }

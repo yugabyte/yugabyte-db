@@ -734,7 +734,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                         std::vector<TabletInfo*>* tablets);
 
   // Helper for creating copartitioned table.
-  CHECKED_STATUS CreateCopartitionedTable(const CreateTableRequestPB req,
+  CHECKED_STATUS CreateCopartitionedTable(const CreateTableRequestPB& req,
                                           CreateTableResponsePB* resp,
                                           rpc::RpcContext* rpc,
                                           Schema schema,
