@@ -19,25 +19,27 @@ import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
-public class TestWithMasterLatency extends BaseCQLTest {
+public class TestMasterLatency extends BaseCQLTest {
 
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
     // Set latency in yb::master::CatalogManager::DeleteTable().
     builder.addMasterArgs("--catalog_manager_inject_latency_in_delete_table_ms=6000");
+
+    // Set latency in yb::master::CatalogManager::CreateTable().
+    builder.addMasterArgs("--simulate_slow_table_create_secs=6");
   }
 
   @Test
-  public void testDropTableTimeout() throws Exception {
+  public void testCreateDropTableTimeout() throws Exception {
     LOG.info("Start test: " + getCurrentTestMethodName());
 
     // Create test table.
-    session.execute("create table test_drop (h1 int primary key, " +
-                    "c1 int, c2 int, c3 int, c4 int, c5 int) " +
+    session.execute("create table test_table (h1 int primary key, c1 int) " +
                     "with transactions = {'enabled' : true};");
     // Drop test table.
-    session.execute("drop table test_drop;");
+    session.execute("drop table test_table;");
 
     LOG.info("End test: " + getCurrentTestMethodName());
   }

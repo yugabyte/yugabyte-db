@@ -444,8 +444,12 @@ Status YBClient::Data::CreateTable(YBClient* client,
   // Set the table id even if there was an error. This is useful when the error is IsAlreadyPresent
   // so that we can wait for the existing table to be available to receive requests.
   *table_id = resp.table_id();
-  RETURN_NOT_OK(s);
+
+  // Handle special cases based on resp.error().
   if (resp.has_error()) {
+    LOG_IF(DFATAL, s.ok()) << "Expecting error status if response has error: " <<
+        resp.error().code() << " Status: " << resp.error().status().ShortDebugString();
+
     if (resp.error().code() == MasterErrorPB::OBJECT_ALREADY_PRESENT && attempts > 1) {
       // If the table already exists and the number of attempts is >
       // 1, then it means we may have succeeded in creating the
@@ -460,7 +464,10 @@ Status YBClient::Data::CreateTable(YBClient* client,
       const YQLDatabase db_type = req.has_namespace_() && req.namespace_().has_database_type()
           ? req.namespace_().database_type()
           : (keyspace.empty() ? YQL_DATABASE_CQL : master::GetDefaultDatabaseType(keyspace));
-      const YBTableName table_name(db_type, req.name());
+
+      // Identify the table by name.
+      LOG_IF(DFATAL, keyspace.empty()) << "No keyspace. Request:\n" << req.DebugString();
+      const YBTableName table_name(db_type, keyspace, req.name());
 
       // A fix for https://yugabyte.atlassian.net/browse/ENG-529:
       // If we've been retrying table creation, and the table is now in the process is being
@@ -481,7 +488,11 @@ Status YBClient::Data::CreateTable(YBClient* client,
                              internal::GetSchema(info.schema));
         LOG(ERROR) << msg;
         return STATUS(AlreadyPresent, msg);
-      } else {
+      }
+
+      // The partition schema in the request can be empty.
+      // If there are user partition schema in the request - compare it with the received one.
+      if (req.partition_schema().hash_bucket_schemas_size() > 0) {
         PartitionSchema partition_schema;
         // We need to use the schema received from the server, because the user-constructed
         // schema might not have column ids.
@@ -496,14 +507,17 @@ Status YBClient::Data::CreateTable(YBClient* client,
               info.partition_schema.DebugString(internal::GetSchema(info.schema)));
           LOG(ERROR) << msg;
           return STATUS(AlreadyPresent, msg);
-        } else {
-          return Status::OK();
         }
       }
+
+      return Status::OK();
     }
+
     return StatusFromPB(resp.error().status());
   }
-  return Status::OK();
+
+  // Use the status only if the response has no error.
+  return s;
 }
 
 Status YBClient::Data::IsCreateTableInProgress(YBClient* client,

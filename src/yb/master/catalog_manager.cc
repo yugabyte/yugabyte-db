@@ -710,8 +710,8 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
         }
       } else {
         LOG(WARNING) << "Initial sys catalog snapshot directory does not exist: "
-                    << FLAGS_initial_sys_catalog_snapshot_path
-                    << (dir_exists.ok() ? "" : ", status: " + dir_exists.status().ToString());
+                     << FLAGS_initial_sys_catalog_snapshot_path
+                     << (dir_exists.ok() ? "" : ", status: " + dir_exists.status().ToString());
       }
     }
   }
@@ -1201,7 +1201,7 @@ Status CatalogManager::PrepareNamespace(
   RETURN_NOT_OK(sys_catalog_->AddItem(ns.get(), term));
   l->Commit();
 
-  LOG(INFO) << "Created default namespace: " << ns->ToString();
+  LOG(INFO) << "Created default keyspace: " << ns->ToString();
   return Status::OK();
 }
 
@@ -1447,7 +1447,7 @@ Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& index
   return Status::OK();
 }
 
-Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB req,
+Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
                                                 CreateTableResponsePB* resp,
                                                 rpc::RpcContext* rpc,
                                                 Schema schema,
@@ -1477,6 +1477,9 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB req,
     s = STATUS_SUBSTITUTE(AlreadyPresent,
         "Object '$0.$1' already exists",
         GetNamespaceNameUnlocked(this_table_info), this_table_info->name());
+    LOG(WARNING) << "Found table: " << this_table_info->ToStringWithState()
+                 << ". Failed creating copartitioned table with error: "
+                 << s.ToString() << " Request:\n" << req.DebugString();
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
   }
 
@@ -1610,9 +1613,12 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
     // Verify that the table does not exist.
     table = FindPtrOrNull(table_names_map_, {namespace_id, req->name()});
     if (table != nullptr) {
-      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT,
-                        STATUS_SUBSTITUTE(AlreadyPresent,
-                            "Object '$0.$1' already exists", ns->name(), table->name()));
+      Status s = STATUS_SUBSTITUTE(AlreadyPresent,
+          "Object '$0.$1' already exists", ns->name(), table->name());
+      LOG(WARNING) << "Found table: " << table->ToStringWithState()
+                   << ". Failed creating PostgreSQL system table with error: "
+                   << s.ToString() << " Request:\n" << req->DebugString();
+      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
     }
 
     RETURN_NOT_OK(CreateTableInMemory(*req, schema, partition_schema, false /* create_tablets */,
@@ -2055,6 +2061,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     if (table != nullptr) {
       s = STATUS_SUBSTITUTE(AlreadyPresent,
               "Object '$0.$1' already exists", ns->name(), table->name());
+      LOG(WARNING) << "Found table: " << table->ToStringWithState()
+                   << ". Failed creating table with error: "
+                   << s.ToString() << " Request:\n" << orig_req->DebugString();
       // If the table already exists, we set the response table_id field to the id of the table that
       // already exists. This is necessary because before we return the error to the client (or
       // success in case of a "CREATE TABLE IF NOT EXISTS" request) we want to wait for the existing
@@ -3367,6 +3376,9 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
       Status s = STATUS_SUBSTITUTE(AlreadyPresent,
           "Object '$0.$1' already exists",
           GetNamespaceNameUnlocked(new_namespace_id), other_table->name());
+      LOG(WARNING) << "Found table: " << other_table->ToStringWithState()
+                   << ". Failed alterring table with error: "
+                   << s.ToString() << " Request:\n" << req->DebugString();
       return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
     }
 
@@ -4177,6 +4189,8 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     if (ns != nullptr) {
       resp->set_id(ns->id());
       s = STATUS_SUBSTITUTE(AlreadyPresent, "Keyspace '$0' already exists", req->name());
+      LOG(WARNING) << "Found keyspace: " << ns->id() << ". Failed creating keyspace with error: "
+                   << s.ToString() << " Request:\n" << req->DebugString();
       return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_ALREADY_PRESENT, s);
     }
 
@@ -4217,7 +4231,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                                                                req->source_namespace_id());
         if (!source_ns) {
           return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND,
-                            STATUS(NotFound, "Source namespace not found",
+                            STATUS(NotFound, "Source keyspace not found",
                                    req->source_namespace_id()));
         }
         auto source_ns_lock = source_ns->LockForRead();
@@ -4231,22 +4245,22 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 
     resp->set_id(ns->id());
   }
-  TRACE("Inserted new namespace info into CatalogManager maps");
+  TRACE("Inserted new keyspace info into CatalogManager maps");
 
   // Update the on-disk system catalog.
   s = sys_catalog_->AddItem(ns.get(), leader_ready_term_);
   if (!s.ok()) {
     s = s.CloneAndPrepend(Substitute(
-        "An error occurred while inserting namespace to sys-catalog: $0", s.ToString()));
+        "An error occurred while inserting keyspace to sys-catalog: $0", s.ToString()));
     LOG(WARNING) << s.ToString();
     return CheckIfNoLongerLeaderAndSetupError(s, resp);
   }
-  TRACE("Wrote namespace to sys-catalog");
+  TRACE("Wrote keyspace to sys-catalog");
 
   // Commit the namespace in-memory state.
   ns->mutable_metadata()->CommitMutation();
 
-  LOG(INFO) << "Created namespace " << ns->ToString();
+  LOG(INFO) << "Created keyspace " << ns->ToString();
 
   if (req->has_creator_role_name()) {
     RETURN_NOT_OK(permissions_manager_->GrantPermissions(
@@ -4307,12 +4321,12 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   scoped_refptr<NamespaceInfo> ns;
 
   // Lookup the namespace and verify if it exists.
-  TRACE("Looking up namespace");
+  TRACE("Looking up keyspace");
   RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
 
   if (req->has_database_type() && req->database_type() != ns->database_type()) {
     // Could not find the right database to delete.
-    Status s = STATUS(NotFound, "Namespace not found", ns->name());
+    Status s = STATUS(NotFound, "Keyspace not found", ns->name());
     return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
   }
 
@@ -4320,11 +4334,11 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
     return DeleteYsqlDatabase(req, resp, rpc);
   }
 
-  TRACE("Locking namespace");
+  TRACE("Locking keyspace");
   auto l = ns->LockForWrite();
 
   // Only empty namespace can be deleted.
-  TRACE("Looking for tables in the namespace");
+  TRACE("Looking for tables in the keyspace");
   {
     SharedLock<LockType> catalog_lock(lock_);
     VLOG(3) << __func__ << ": Acquired the catalog manager lock_";
@@ -4334,7 +4348,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
 
       if (!ltm->data().started_deleting() && ltm->data().namespace_id() == ns->id()) {
         Status s = STATUS(InvalidArgument,
-                          Substitute("Cannot delete namespace which has $0: $1 [id=$2]",
+                          Substitute("Cannot delete keyspace which has $0: $1 [id=$2]",
                                      PROTO_IS_TABLE(ltm->data().pb) ? "table" : "index",
                                      ltm->data().name(), entry.second->id()), req->DebugString());
         return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_IS_NOT_EMPTY, s);
@@ -4343,7 +4357,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   }
 
   // Only empty namespace can be deleted.
-  TRACE("Looking for types in the namespace");
+  TRACE("Looking for types in the keyspace");
   {
     SharedLock<LockType> catalog_lock(lock_);
     VLOG(3) << __func__ << ": Acquired the catalog manager lock_";
@@ -4353,7 +4367,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
 
       if (ltm->data().namespace_id() == ns->id()) {
         Status s = STATUS(InvalidArgument,
-            Substitute("Cannot delete namespace which has type: $0 [id=$1]",
+            Substitute("Cannot delete keyspace which has type: $0 [id=$1]",
                 ltm->data().name(), entry.second->id()), req->DebugString());
         return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_IS_NOT_EMPTY, s);
       }
@@ -4382,7 +4396,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   string canonical_resource = get_canonical_keyspace(req->namespace_().name());
   RETURN_NOT_OK(permissions_manager_->RemoveAllPermissionsForResource(canonical_resource, resp));
 
-  LOG(INFO) << "Successfully deleted namespace " << ns->ToString()
+  LOG(INFO) << "Successfully deleted keyspace " << ns->ToString()
             << " per request from " << RequestorString(rpc);
   return Status::OK();
 }
@@ -4428,7 +4442,7 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
   l->Commit();
 
   // DROP completed. Return status.
-  LOG(INFO) << "Successfully deleted namespace " << database->ToString()
+  LOG(INFO) << "Successfully deleted YSQL database " << database->ToString()
             << " per request from " << RequestorString(rpc);
   return Status::OK();
 }
@@ -4564,7 +4578,9 @@ Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
     if (ns != nullptr && req->namespace_().has_database_type() &&
         ns->database_type() == req->namespace_().database_type()) {
       Status s = STATUS_SUBSTITUTE(AlreadyPresent,
-          "Namespace '$0' already exists", ns->name());
+          "Keyspace '$0' already exists", ns->name());
+      LOG(WARNING) << "Found keyspace: " << ns->id() << ". Failed alterring keyspace with error: "
+                   << s.ToString() << " Request:\n" << req->DebugString();
       return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
     }
 
@@ -4579,7 +4595,7 @@ Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
   TRACE("Committing in-memory state");
   l->Commit();
 
-  LOG(INFO) << "Successfully altered namespace " << req->namespace_().name()
+  LOG(INFO) << "Successfully altered keyspace " << req->namespace_().name()
             << " per request from " << RequestorString(rpc);
   return Status::OK();
 }
@@ -4689,6 +4705,8 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
     if (tp != nullptr) {
       s = STATUS_SUBSTITUTE(AlreadyPresent,
           "Type '$0.$1' already exists", ns->name(), req->name());
+      LOG(WARNING) << "Found type: " << tp->id() << ". Failed creating type with error: "
+                   << s.ToString() << " Request:\n" << req->DebugString();
       return SetupError(resp->mutable_error(), MasterErrorPB::TYPE_ALREADY_PRESENT, s);
     }
 
