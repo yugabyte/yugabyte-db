@@ -324,6 +324,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool is_running() const;
 
   std::string ToString() const override;
+  std::string ToStringWithState() const;
 
   const NamespaceId namespace_id() const;
 
