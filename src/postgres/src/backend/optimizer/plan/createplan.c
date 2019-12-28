@@ -2444,8 +2444,9 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	relation = RelationIdGetRelation(relid);
 
 	/*
-	 * Cannot support secondary indices, as we will need to retrieve the row to get the old
-	 * secondary index values to update/delete from the index, requiring the scan.
+	 * Cannot allw secondary indices for single-row update/delete, as we will
+	 * need to retrieve the row to get the old secondary index values to
+	 * update/delete from the index, requiring the scan.
 	 */
 	if (YBRelHasSecondaryIndices(relation))
 	{
@@ -2454,8 +2455,21 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	}
 
 	/*
-	 * Cannot support before row triggers, as the old row will need to be passed to the trigger,
-	 * requiring the scan.
+	 * Cannot allow check constraints for single-row update as we will need
+	 * to ensure we read all columns they reference to check them correctly.
+	 */
+	TupleDesc tupDesc = RelationGetDescr(relation);
+	if (path->operation == CMD_UPDATE &&
+	    tupDesc->constr &&
+	    tupDesc->constr->num_check > 0)
+	{
+		RelationClose(relation);
+		return false;
+	}
+
+	/*
+	 * Cannot support before row triggers for single-row update/delete, as the
+	 * old row will need to be passed to the trigger, requiring the scan.
 	 */
 	if (YBRelHasOldRowTriggers(relation, path->operation))
 	{
