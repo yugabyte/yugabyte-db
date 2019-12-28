@@ -1975,7 +1975,9 @@ ExecPartitionCheckEmitError(ResultRelInfo *resultRelInfo,
  */
 void
 ExecConstraints(ResultRelInfo *resultRelInfo,
-				TupleTableSlot *slot, EState *estate)
+				TupleTableSlot *slot,
+				EState *estate,
+				ModifyTableState *mtstate)
 {
 	Relation	rel = resultRelInfo->ri_RelationDesc;
 	TupleDesc	tupdesc = RelationGetDescr(rel);
@@ -1986,6 +1988,10 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 
 	Assert(constr || resultRelInfo->ri_PartitionCheck);
 
+	insertedCols = GetInsertedColumns(resultRelInfo, estate);
+	updatedCols = GetUpdatedColumns(resultRelInfo, estate);
+	modifiedCols = bms_union(insertedCols, updatedCols);
+
 	if (constr && constr->has_not_null)
 	{
 		int			natts = tupdesc->natts;
@@ -1994,6 +2000,17 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 		for (attrChk = 1; attrChk <= natts; attrChk++)
 		{
 			Form_pg_attribute att = TupleDescAttr(tupdesc, attrChk - 1);
+
+			if (mtstate && mtstate->yb_mt_is_single_row_update_or_delete &&
+			    !bms_is_member(att->attnum - YBGetFirstLowInvalidAttributeNumber(rel), modifiedCols))
+			{
+				/*
+				 * For single-row-updates, we only know the values of the
+				 * modified columns. But in this case it is safe to skip the
+				 * unmodified columns anyway.
+				 */
+				continue;
+			}
 
 			if (att->attnotnull && slot_attisnull(slot, attrChk))
 			{
@@ -2026,9 +2043,6 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 					}
 				}
 
-				insertedCols = GetInsertedColumns(resultRelInfo, estate);
-				updatedCols = GetUpdatedColumns(resultRelInfo, estate);
-				modifiedCols = bms_union(insertedCols, updatedCols);
 				val_desc = ExecBuildSlotValueDescription(rel,
 														 slot,
 														 tupdesc,
