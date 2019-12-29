@@ -329,6 +329,57 @@ psql:/tmp/example2.sql:17: WARNING:  table "table2_without_pk" without primary k
 stop
 ```
 
+Let's repeat the same example with `format-version` 2:
+
+```
+$ cat /tmp/example3.sql
+CREATE TABLE table2_with_pk (a SERIAL, b VARCHAR(30), c TIMESTAMP NOT NULL, PRIMARY KEY(a, c));
+CREATE TABLE table2_without_pk (a SERIAL, b NUMERIC(5,2), c TEXT);
+
+SELECT 'init' FROM pg_create_logical_replication_slot('test_slot', 'wal2json');
+
+BEGIN;
+INSERT INTO table2_with_pk (b, c) VALUES('Backup and Restore', now());
+INSERT INTO table2_with_pk (b, c) VALUES('Tuning', now());
+INSERT INTO table2_with_pk (b, c) VALUES('Replication', now());
+DELETE FROM table2_with_pk WHERE a < 3;
+
+INSERT INTO table2_without_pk (b, c) VALUES(2.34, 'Tapir');
+-- it is not added to stream because there isn't a pk or a replica identity
+UPDATE table2_without_pk SET c = 'Anta' WHERE c = 'Tapir';
+COMMIT;
+
+SELECT data FROM pg_logical_slot_get_changes('test_slot', NULL, NULL, 'format-version', '2');
+SELECT 'stop' FROM pg_drop_replication_slot('test_slot');
+```
+
+The script above produces the output below:
+
+```
+$ psql -At -f /tmp/example3.sql postgres
+CREATE TABLE
+CREATE TABLE
+init
+BEGIN
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+DELETE 2
+INSERT 0 1
+UPDATE 1
+COMMIT
+psql:/tmp/example3.sql:17: WARNING:  no tuple identifier for UPDATE in table "public"."table2_without_pk"
+{"action":"B"}
+{"action":"I","schema":"public","table":"table2_with_pk","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"character varying(30)","value":"Backup and Restore"},{"name":"c","type":"timestamp without time zone","value":"2019-12-29 04:58:34.806671"}]}
+{"action":"I","schema":"public","table":"table2_with_pk","columns":[{"name":"a","type":"integer","value":2},{"name":"b","type":"character varying(30)","value":"Tuning"},{"name":"c","type":"timestamp without time zone","value":"2019-12-29 04:58:34.806671"}]}
+{"action":"I","schema":"public","table":"table2_with_pk","columns":[{"name":"a","type":"integer","value":3},{"name":"b","type":"character varying(30)","value":"Replication"},{"name":"c","type":"timestamp without time zone","value":"2019-12-29 04:58:34.806671"}]}
+{"action":"D","schema":"public","table":"table2_with_pk","identity":[{"name":"a","type":"integer","value":1},{"name":"c","type":"timestamp without time zone","value":"2019-12-29 04:58:34.806671"}]}
+{"action":"D","schema":"public","table":"table2_with_pk","identity":[{"name":"a","type":"integer","value":2},{"name":"c","type":"timestamp without time zone","value":"2019-12-29 04:58:34.806671"}]}
+{"action":"I","schema":"public","table":"table2_without_pk","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"numeric(5,2)","value":2.34},{"name":"c","type":"text","value":"Tapir"}]}
+{"action":"C"}
+stop
+```
+
 License
 =======
 
