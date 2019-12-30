@@ -31,6 +31,9 @@ add_library(
     libpq_test_base.cc
     libpq_utils.cc)
 
+# PostgresSQL needs to be fully built before we can use libpq.
+add_dependencies(pg_wrapper_test_base postgres)
+
 target_link_libraries(pg_wrapper_test_base pq gutil integration-tests yb_pggate_flags)
 
 set(YB_TEST_LINK_LIBS yb_pgwrapper yb_client ql-dml-test-base pg_wrapper_test_base

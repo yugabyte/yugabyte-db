@@ -170,6 +170,9 @@ class PostgresBuilder:
         parser.add_argument('--compiler_type', help='Compiler type, e.g. gcc or clang')
         parser.add_argument('--openssl_include_dir', help='OpenSSL include dir')
         parser.add_argument('--openssl_lib_dir', help='OpenSSL lib dir')
+        parser.add_argument(
+            '--step', choices=['configure', 'make'],
+            help='Run a specific step of the build process (configure or make)')
 
         self.args = parser.parse_args()
         if not self.args.build_root:
@@ -194,11 +197,8 @@ class PostgresBuilder:
                 "Compiler type not specified using either --compiler_type or YB_COMPILER_TYPE")
 
         self.export_compile_commands = os.environ.get('YB_EXPORT_COMPILE_COMMANDS') == '1'
-
-        # This allows to skip the time-consuming compile commands file generation if it already
-        # exists during debugging of this script.
-        self.export_compile_commands_lazily = \
-            os.environ.get('YB_EXPORT_COMPILE_COMMANDS_LAZILY') == '1'
+        self.should_configure = self.args.step is None or self.args.step == 'configure'
+        self.should_make = self.args.step is None or self.args.step == 'make'
 
     def adjust_cflags_in_makefile(self):
         makefile_global_path = os.path.join(self.pg_build_root, 'src/Makefile.global')
@@ -339,10 +339,6 @@ class PostgresBuilder:
         self.set_env_var('YB_DISABLE_RELATIVE_RPATH', '1' if step == 'configure' else '0')
         if self.build_type == 'compilecmds':
             os.environ['YB_SKIP_LINKING'] = '1'
-
-        # This could be set to False to skip build and just perform additional tasks such as
-        # exporting the compilation database.
-        self.should_build = True
 
     def sync_postgres_source(self):
         logging.info("Syncing postgres source code")
@@ -515,33 +511,33 @@ class PostgresBuilder:
         for work_dir in work_dirs:
             with WorkDirContext(work_dir):
                 # Create a script to run Make easily with the right environment.
-                if self.should_build:
-                    make_script_path = 'make.sh'
-                    with open(make_script_path, 'w') as out_f:
-                        out_f.write(
-                            '#!/usr/bin/env bash\n'
-                            '. "${BASH_SOURCE%/*}"/env.sh\n'
-                            'make "$@"\n')
-                    with open('env.sh', 'w') as out_f:
-                        out_f.write(env_script_content)
+                make_script_path = 'make.sh'
+                with open(make_script_path, 'w') as out_f:
+                    out_f.write(
+                        '#!/usr/bin/env bash\n'
+                        '. "${BASH_SOURCE%/*}"/env.sh\n'
+                        'make "$@"\n')
+                with open('env.sh', 'w') as out_f:
+                    out_f.write(env_script_content)
 
-                    run_program(['chmod', 'u+x', make_script_path])
+                run_program(['chmod', 'u+x', make_script_path])
 
-                    # Actually run Make.
-                    if is_verbose_mode():
-                        logging.info("Running make in the %s directory", work_dir)
-                    run_program(
-                        make_cmd, stdout_stderr_prefix='make', cwd=work_dir, shell=True,
-                        error_ok=True).print_output_and_raise_error_if_failed()
+                # Actually run Make.
+                if is_verbose_mode():
+                    logging.info("Running make in the %s directory", work_dir)
+                run_program(
+                    make_cmd, stdout_stderr_prefix='make', cwd=work_dir, shell=True,
+                    error_ok=True
+                ).print_output_and_raise_error_if_failed()
                 if self.build_type == 'compilecmds':
                     logging.info(
                             "Not running make install in the %s directory since we are only "
                             "generating the compilation database", work_dir)
                 else:
                     run_program(
-                            'make install', stdout_stderr_prefix='make_install',
-                            cwd=work_dir, shell=True, error_ok=True
-                        ).print_output_and_raise_error_if_failed()
+                        'make install', stdout_stderr_prefix='make_install',
+                        cwd=work_dir, shell=True, error_ok=True
+                    ).print_output_and_raise_error_if_failed()
                     logging.info("Successfully ran make in the %s directory", work_dir)
 
                 if self.export_compile_commands:
@@ -549,8 +545,7 @@ class PostgresBuilder:
 
                     compile_commands_path = os.path.join(work_dir, 'compile_commands.json')
                     self.set_env_var('YB_PG_SKIP_CONFIG_STATUS', '1')
-                    if (not os.path.exists(compile_commands_path) or
-                            not self.export_compile_commands_lazily):
+                    if not os.path.exists(compile_commands_path):
                         run_program(['compiledb', 'make', '-n'], capture_output=False)
                     del os.environ['YB_PG_SKIP_CONFIG_STATUS']
 
@@ -718,6 +713,11 @@ class PostgresBuilder:
         self.parse_args()
         self.build_postgres()
 
+    def steps_description(self):
+        if self.args.step is None:
+            return "both 'configure' and 'make' steps"
+        return "the '%s' step" % (self.args.step)
+
     def build_postgres(self):
         start_time_sec = time.time()
         if self.args.clean:
@@ -730,36 +730,45 @@ class PostgresBuilder:
         initial_build_stamp = self.get_build_stamp(include_env_vars=True)
         initial_build_stamp_no_env = self.get_build_stamp(include_env_vars=False)
         logging.info("PostgreSQL build stamp:\n%s", initial_build_stamp)
+
         if initial_build_stamp == saved_build_stamp:
-            logging.info(
-                "PostgreSQL is already up-to-date in directory %s, not rebuilding.",
-                self.pg_build_root)
             if self.export_compile_commands:
-                self.should_build = False
-                logging.info("Still need to create compile_commands.json, proceeding.")
+                logging.info(
+                    "Even though PostgreSQL is already up-to-date in directory %s, we still need "
+                    "to create compile_commands.json, so proceeding with %s" %
+                    (self.pg_build_root, self.steps_description()))
             else:
+                logging.info(
+                    "PostgreSQL is already up-to-date in directory %s, skipping %s.",
+                    (self.pg_build_root, self.steps_description()))
                 return
 
         with WorkDirContext(self.pg_build_root):
-            if self.should_build:
+            if self.should_configure:
                 self.sync_postgres_source()
-                if os.environ.get('YB_PG_SKIP_CONFIGURE', '0') != '1':
-                    configure_start_time_sec = time.time()
-                    self.configure_postgres()
-                    logging.info("The configure step of building PostgreSQL took %.1f sec",
-                                 time.time() - configure_start_time_sec)
-            make_start_time_sec = time.time()
-            self.make_postgres()
-            logging.info("The make step of building PostgreSQL took %.1f sec",
-                         time.time() - make_start_time_sec)
-        final_build_stamp_no_env = self.get_build_stamp(include_env_vars=False)
-        if final_build_stamp_no_env == initial_build_stamp_no_env:
-            logging.info("Updating build stamp file at %s", self.build_stamp_path)
-            with open(self.build_stamp_path, 'w') as build_stamp_file:
-                build_stamp_file.write(initial_build_stamp)
-        else:
-            logging.warning("PostgreSQL build stamp changed during the build! Not updating.")
-        logging.info("PostgreSQL build took %.1f sec", time.time() - start_time_sec)
+                configure_start_time_sec = time.time()
+                self.configure_postgres()
+                logging.info("The configure step of building PostgreSQL took %.1f sec",
+                             time.time() - configure_start_time_sec)
+            if self.should_make:
+                make_start_time_sec = time.time()
+                self.make_postgres()
+                logging.info("The make step of building PostgreSQL took %.1f sec",
+                             time.time() - make_start_time_sec)
+
+        if self.should_make:
+            # Guard against the code having changed while we were building it.
+            final_build_stamp_no_env = self.get_build_stamp(include_env_vars=False)
+            if final_build_stamp_no_env == initial_build_stamp_no_env:
+                logging.info("Updating build stamp file at %s", self.build_stamp_path)
+                with open(self.build_stamp_path, 'w') as build_stamp_file:
+                    build_stamp_file.write(initial_build_stamp)
+            else:
+                logging.warning("PostgreSQL build stamp changed during the build! Not updating.")
+
+        logging.info(
+            "PostgreSQL build (%s) took %.1f sec",
+            self.steps_description(), time.time() - start_time_sec)
 
 
 if __name__ == '__main__':
