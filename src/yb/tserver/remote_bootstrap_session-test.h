@@ -203,8 +203,7 @@ class RemoteBootstrapTest : public YBTabletTest {
       CountDownLatch latch(1);
 
       auto state = std::make_unique<WriteOperationState>(tablet_peer_->tablet(), &req, &resp);
-      typedef tablet::LatchOperationCompletionCallback<WriteResponsePB> LatchWriteCallback;
-      state->set_completion_callback(std::make_unique<LatchWriteCallback>(&latch, &resp));
+      state->set_completion_callback(tablet::MakeLatchOperationCompletionCallback(&latch, &resp));
       tablet_peer_->WriteAsync(
           std::move(state), kLeaderTerm, CoarseTimePoint::max() /* deadline */);
       latch.Wait();

@@ -85,7 +85,6 @@ using yb::consensus::RaftConfigPB;
 using yb::consensus::RaftPeerPB;
 using yb::log::Log;
 using yb::log::LogAnchorRegistry;
-using yb::tablet::LatchOperationCompletionCallback;
 using yb::tablet::TabletClass;
 using yb::tserver::WriteRequestPB;
 using yb::tserver::WriteResponsePB;
@@ -569,7 +568,7 @@ Status SysCatalogTable::WaitUntilRunning() {
 }
 
 CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
-  tserver::WriteResponsePB resp;
+  auto resp = std::make_shared<tserver::WriteResponsePB>();
   // If this is a PG write, them the pgsql write batch is not empty.
   //
   // If this is a QL write, then it is a normal sys_catalog write, so ignore writes that might
@@ -579,21 +578,20 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
     return Status::OK();
   }
 
-  CountDownLatch latch(1);
-  auto txn_callback = std::make_unique<LatchOperationCompletionCallback<WriteResponsePB>>(
-      &latch, &resp);
+  auto latch = std::make_shared<CountDownLatch>(1);
   auto operation_state = std::make_unique<tablet::WriteOperationState>(
-      tablet_peer()->tablet(), &writer->req(), &resp);
-  operation_state->set_completion_callback(std::move(txn_callback));
+      tablet_peer()->tablet(), &writer->req(), resp.get());
+  operation_state->set_completion_callback(
+      tablet::MakeLatchOperationCompletionCallback(latch, resp));
 
   tablet_peer()->WriteAsync(
       std::move(operation_state), writer->leader_term(), CoarseTimePoint::max() /* deadline */);
 
   {
     int num_iterations = 0;
-    static constexpr auto kWarningInterval = 10s;
-    static constexpr int kMaxNumIterations = 6;
-    while (!latch.WaitFor(kWarningInterval)) {
+    static constexpr auto kWarningInterval = 5s;
+    static constexpr int kMaxNumIterations = 12;
+    while (!latch->WaitFor(kWarningInterval)) {
       ++num_iterations;
       const auto waited_so_far = num_iterations * kWarningInterval;
       LOG(WARNING) << "Waited for "
@@ -607,11 +605,11 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
     }
   }
 
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
+  if (resp->has_error()) {
+    return StatusFromPB(resp->error().status());
   }
-  if (resp.per_row_errors_size() > 0) {
-    for (const WriteResponsePB::PerRowErrorPB& error : resp.per_row_errors()) {
+  if (resp->per_row_errors_size() > 0) {
+    for (const WriteResponsePB::PerRowErrorPB& error : resp->per_row_errors()) {
       LOG(WARNING) << "row " << error.row_index() << ": " << StatusFromPB(error.error()).ToString();
     }
     return STATUS(Corruption, "One or more rows failed to write");
