@@ -634,7 +634,9 @@ void Tablet::SetCleanupPool(ThreadPool* thread_pool) {
 }
 
 void Tablet::CleanupIntentFiles() {
-  if (state_ != State::kOpen || !FLAGS_delete_intents_sst_files || !cleanup_intent_files_token_) {
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  if (!scoped_read_operation.ok() || state_ != State::kOpen || !FLAGS_delete_intents_sst_files ||
+      !cleanup_intent_files_token_) {
     return;
   }
 
@@ -648,16 +650,15 @@ void Tablet::DoCleanupIntentFiles() {
   std::vector<rocksdb::LiveFileMetaData> files;
   // Stops when there are no more files to delete.
   for (;;) {
+    ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+    if (!scoped_read_operation.ok()) {
+      break;
+    }
+
     best_file_max_ht = HybridTime::kMax;
     const rocksdb::LiveFileMetaData* best_file = nullptr;
-    {
-      ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
-      if (!scoped_read_operation.ok()) {
-        break;
-      }
-      files.clear();
-      intents_db_->GetLiveFilesMetaData(&files);
-    }
+    files.clear();
+    intents_db_->GetLiveFilesMetaData(&files);
     for (const auto& file : files) {
       auto& frontier = down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier);
       auto file_max_ht = frontier.hybrid_time();
@@ -737,6 +738,8 @@ void Tablet::Shutdown(IsDropTable is_drop_table) {
     return;
   }
 
+  cleanup_intent_files_token_.reset();
+
   if (transaction_coordinator_) {
     transaction_coordinator_->Shutdown();
   }
@@ -756,8 +759,6 @@ void Tablet::Shutdown(IsDropTable is_drop_table) {
   regular_db_.reset();
   key_bounds_ = docdb::KeyBounds();
   state_ = kShutdown;
-
-  cleanup_intent_files_token_.reset();
 
   // Release the mutex that prevents snapshot restore / truncate operations from running. Such
   // operations are no longer possible because the tablet has shut down. When we start the
