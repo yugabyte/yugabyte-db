@@ -15,9 +15,9 @@ package org.yb.cql;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.util.YBTestRunnerNonTsanAsan;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunnerNonTsanAsan.class)
 public class TestBigNumShards extends BaseCQLTest {
 
   @Override
