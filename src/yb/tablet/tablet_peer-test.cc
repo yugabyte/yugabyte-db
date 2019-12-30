@@ -96,8 +96,6 @@ static Schema GetTestSchema() {
   return Schema({ ColumnSchema("key", INT32) }, 1);
 }
 
-typedef LatchOperationCompletionCallback<WriteResponsePB> LatchWriteCallback;
-
 class TabletPeerTest : public YBTabletTest,
                        public ::testing::WithParamInterface<TableType> {
  public:
@@ -226,7 +224,7 @@ class TabletPeerTest : public YBTabletTest,
 
     CountDownLatch rpc_latch(1);
     operation_state->set_completion_callback(
-        std::make_unique<LatchWriteCallback>(&rpc_latch, resp.get()));
+        MakeLatchOperationCompletionCallback(&rpc_latch, resp.get()));
 
     tablet_peer->WriteAsync(std::move(operation_state), 1, CoarseTimePoint::max() /* deadline */);
     rpc_latch.Wait();

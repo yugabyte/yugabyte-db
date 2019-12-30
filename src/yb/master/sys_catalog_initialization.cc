@@ -61,7 +61,6 @@ using yb::CountDownLatch;
 using yb::tserver::TabletSnapshotOpRequestPB;
 using yb::tserver::TabletSnapshotOpResponsePB;
 using yb::tablet::SnapshotOperationState;
-using yb::tablet::LatchOperationCompletionCallback;
 using yb::pb_util::ReadPBContainerFromPath;
 
 namespace yb {
@@ -135,8 +134,7 @@ Status RestoreInitialSysCatalogSnapshot(
 
   CountDownLatch latch(1);
   tx_state->set_completion_callback(
-      std::make_unique<LatchOperationCompletionCallback<TabletSnapshotOpResponsePB>>(
-          &latch, &tablet_snapshot_resp));
+      tablet::MakeLatchOperationCompletionCallback(&latch, &tablet_snapshot_resp));
 
   sys_catalog_tablet_peer->Submit(
       std::make_unique<tablet::SnapshotOperation>(std::move(tx_state)),
