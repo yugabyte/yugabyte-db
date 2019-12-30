@@ -622,12 +622,11 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallW
   TestThreadHolder thread_holder;
   constexpr int kTotalBatches = RegularBuildVsSanitizers(50, 5);
   constexpr int kBatchSize = 1000;
+  constexpr int kValueSize = 128;
 
   std::atomic<int> key(0);
 
   thread_holder.AddThreadFunctor([this, &kTableName, &stop = thread_holder.stop_flag(), &key] {
-    constexpr int kValueSize = 128;
-
     SetFlagOnExit set_flag(&stop);
     auto conn = ASSERT_RESULT(Connect());
 
@@ -656,12 +655,24 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallW
   LOG(INFO) << "Restarting cluster";
   ASSERT_OK(cluster_->RestartSync());
 
-  ASSERT_OK(WaitFor([this] {
+  ASSERT_OK(WaitFor([this, &conn, &key, &kTableName] {
     auto intents_count = CountIntents(cluster_.get());
     LOG(INFO) << "Intents count: " << intents_count;
 
-    return intents_count <= 5000;
-  }, 5s, "Intents cleanup"));
+    if (intents_count <= 5000) {
+      return true;
+    }
+
+    // We cleanup only transactions that were completely aborted/applied before last replication
+    // happens.
+    // So we could get into situation when intents of the last transactions are not cleaned.
+    // To avoid such scenario in this test we write one more row to allow cleanup.
+    EXPECT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES ($1, '$2')", kTableName, ++key,
+        RandomHumanReadableString(kValueSize)));
+
+    return false;
+  }, 5s, "Intents cleanup", 200ms));
 }
 
 void PgMiniTest::TestForeignKey(IsolationLevel isolation_level) {
