@@ -10,6 +10,8 @@ menu:
     weight: 2740
 aliases:
   - reference/default-ports
+isTocNested: 3
+showAsideToc: true
 ---
 
 ## Client APIs

@@ -13,7 +13,7 @@ isTocNested: 3
 showAsideToc: true
 ---
 
-Use the `yb-tserver` binary and its options to configure [YB-TServer](../../../architecture/concepts/yb-tserver/) services. The `yb-tserver` executable file is located in the `bin` directory of YugabyteDB home.
+Use the `yb-tserver` binary and its options to configure the [YB-TServer](../../../architecture/concepts/yb-tserver/) service. The `yb-tserver` executable file is located in the `bin` directory of YugabyteDB home.
 
 ## Syntax
 

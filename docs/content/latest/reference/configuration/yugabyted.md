@@ -12,11 +12,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Use the `yugabyted` daemon, with its commands and options, to start a local YugabyteDB, explore a retail demo database. and use the YugabyteDB Admin Console. The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory. 
+Use the `yugabyted` daemon, with its commands and options, to start a local cluster and explore a retail demo database. You can also use the YugabyteDB Admin Console. The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory. 
 
 {{< note title="Note" >}}
 
-`yugabyted` is under active development with new features and functionality being added incrementally. Until development is completed, use `yugabyted` to create a local YugabyteDB database or [`yb-ctl`](../../../admin/yb-ctl) utility to quickly develop and test YugabyteDB clusters in your local environment. For production deployments, configure your YugabyteDB clusters using [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master).
+`yugabyted` is under active development with new features and functionality being added incrementally. If you find missing features, use [`yb-ctl`](../../../admin/yb-ctl) utility to develop and test local clusters. For production deployments, configure your clusters using [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master).
 
 {{< /note >}}
 
@@ -31,7 +31,7 @@ yugabyted [-h] [ <command> ] [ <options> ]
 
 ### Command-line help
 
-You can access the overview command line help for `yugabyted` by running one of the following examples from the YugabyteDB home:
+You can access the overview command line help for `yugabyted` by running one of the following examples from the YugabyteDB home.
 
 ```sh
 $ ./bin/yugabyted -h

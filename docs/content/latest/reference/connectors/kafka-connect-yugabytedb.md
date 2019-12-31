@@ -8,6 +8,8 @@ menu:
     identifier: kafka-connect-yugabytedb
     parent: connectors
     weight: 2930
+isTocNested: 3
+showAsideToc: true
 ---
 
 There are two approaches of integrating [YugabyteDB](https://github.com/yugabyte/yugabyte-db) with Apache Kafka. Kafka provides [Kafka Connect](https://docs.confluent.io/3.0.0/connect/intro.html), a connector SDK for building such integrations.
@@ -30,7 +32,7 @@ For building and using this project, the following tools must be installed on yo
 - Maven - 3.3+
 - Clone this repo into `~/yb-kafka/yb-kafka-connector/` directory.
 
-### Steps to set up and run the Kafka Connect YugabyteDB Sink Connector
+### Setup and use
 
 1. Set up and start Kafka
 
@@ -139,13 +141,3 @@ Any latest version can be used — this is an example.
    ```
 
    Note that the timestamp value gets printed as a human-readable date format automatically.
-
-## Future work
-
-- Add more data types.
-- Add more tests.
-- Add restartability.
-
-## License
-
-This software is distributed under an Apache 2.0 license. See the [LICENSE.txt](https://github.com/YugaByte/yb-kafka-connector/LICENSE) file for details.

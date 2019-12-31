@@ -13,17 +13,15 @@ isTocNested: true
 showAsideToc: true
 ---
 
-YugabyteDB provides synchronous replication of data in clusters dispersed across multiple (three or more) data centers, leveraging the Raft consensus algorithm to achieve enhanced high availability and performance. But many use cases and smaller enterprise applications do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. For these needs, YugabyteDB supports two data center (2DC) deployments, which use asynchronous replication built on top of [change data capture (CDC)](../../architecture/cdc-architecture) in DocDB.
+YugabyteDB provides synchronous replication of data in clusters dispersed across multiple (three or more) data centers by leveraging the Raft consensus algorithm to achieve enhanced high availability and performance. However, many use cases and smaller enterprise applications do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. For these needs, YugabyteDB also supports two data center (2DC) deployments, which use asynchronous replication built on top of [change data capture (CDC)](../../architecture/cdc-architecture) in DocDB.
 
-For details about deploying a 2DC deployment, see [Replicate between two data centers](../../deploy/replicate-2dc).
+For details about configuring a 2DC deployment, see [Replicate between two data centers](../../deploy/replicate-2dc).
 
 {{< note title="Note" >}}
 
 In the following sections, the terms "cluster" and "universe" will be used interchangeably, assuming that each YugabyteDB universe is deployed in a single data center.
 
 {{< /note >}}
-
-## YugabyteDB support for two data center (2DC) deployments
 
 Two data center (2DC) deployments with YugabyteDB include support for the following features:
 
@@ -67,7 +65,7 @@ The multi-master architecture is shown here:
 
 ## Life cycle of a replication
 
-A one-way replication for two data center deployments with YugabyteDB follows these four life cycle phases:
+A unidirectional replication for two data center deployments with YugabyteDB follows these four life cycle phases:
 
 1. Initialize the producer and the consumer.
 2. Set up a distributed CDC.

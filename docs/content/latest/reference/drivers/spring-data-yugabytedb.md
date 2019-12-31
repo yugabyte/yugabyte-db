@@ -7,12 +7,16 @@ section: REFERENCE
 menu:
   latest:
     identifier: spring-data-yugabytedb
-    parent: connectors
+    parent: drivers
     weight: 2940
+aliases:
+  - /latest/reference/connectors/spring-data-yugabytedb
+isTocNested: 3
+showAsideToc: true
 ---
 
 
-The Spring Data YugabyteDB driver brings the power of distributed SQL to Spring developers by using an enhanced underlying https://github.com/yugabyte/jdbc-yugabytedb[JDBC driver] - which brings most features of PostgreSQL (as of v11.2) into a distributed database that is scalable and fault-tolerant. Spring Data YugabyteDB is based on https://github.com/spring-projects/spring-data-jpa[Spring Data JPA].
+The Spring Data YugabyteDB driver brings the power of distributed SQL to Spring developers by using the [YugabyteDB JDBC Driver](https://github.com/yugabyte/jdbc-yugabytedb). The end result is that most features of PostgreSQL v11.2 are now available as a massively-scalable, fault-tolerant distributed database. Spring Data YugabyteDB is based on [Spring Data JPA](https://github.com/spring-projects/spring-data-jpa).
 
 ## Unique Features
 
@@ -22,7 +26,7 @@ In addition to providing most PostgreSQL features on top of a scalable and resil
 * Develop geo-distributed Apps (topology-awareness)
 * Row level geo-partitioning support (partition-awareness)
 
-Go to the [Spring Data YugabyteDB GitHub project](https://github.com/yugabyte/spring-data-yugabytedb/blob/master/readme.adoc) to watch, star, file issues, and contribute.
+Go to the [Spring Data YugabyteDB GitHub project](https://github.com/yugabyte/spring-data-yugabytedb/) to watch, star, file issues, and contribute.
 
 ## Getting Started
 
