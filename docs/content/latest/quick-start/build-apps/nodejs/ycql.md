@@ -36,7 +36,7 @@ showAsideToc: true
 
 ## Installation
 
-Install the Yugabyte Cassandra NodeJS driver using the following command. You can find the source for the driver [here](https://github.com/YugaByte/cassandra-nodejs-driver).
+Install the YugabyteDB NodeJS driver for YCQL using the following command. You can find the source for the driver [here](https://github.com/yugabyte/cassandra-nodejs-driver).
 
 ```sh
 $ npm install yb-ycql-driver

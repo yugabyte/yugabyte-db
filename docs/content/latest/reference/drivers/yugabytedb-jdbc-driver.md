@@ -7,15 +7,17 @@ section: REFERENCE
 menu:
   latest:
     identifier: yugabytedb-jdbc-driver
-    parent: connectors
+    parent: drivers
     weight: 2920
+aliases:
+  - /latest/reference/connectors/yugabytedb-jdbc-driver
+isTocNested: 3
+showAsideToc: true
 ---
 
 The YugabyteDB JDBC Driver is based on the [PostgreSQL JDBC Driver](https://github.com/pgjdbc/pgjdbc). The YugabyteDB implementation adds a `YBClusterAwareDataSource` that requires only an initial _contact point_ for the YugabyteDB cluster. Then it discovers the rest of the nodes and automatically responds to nodes being started, stopped, added, or removed. Internally, the driver maintains a connection pool for each node and chooses a live node to get a connection. Whenever the connection is closed, the connection will be returned to the respective pool.
 
-## Get the YugabyteDB JDBC Driver
-
-### From Maven
+## Download
 
 Add the following lines to your Apache Maven project.
 
