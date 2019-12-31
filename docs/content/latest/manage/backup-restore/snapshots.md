@@ -20,9 +20,9 @@ This page covers backups for YugabyteDB using snapshots. Here are some points to
 - Distributed backups using snapshots
   - Massively parallel, efficient for very large data sets
   - Snapshot does a rocksdb flush and hardlinks the files in a `.snapshots` directory on each tablet
-  - Snapshots are not transactional across the whole table but only on each tablet [#2086](https://github.com/YugaByte/yugabyte-db/issues/2086)
-  - Multi table transactional snapshot is in the roadmap [#2084](https://github.com/YugaByte/yugabyte-db/issues/2084) 
-  - Snapshoting is broken in YSQL [#2083](https://github.com/YugaByte/yugabyte-db/issues/2083)
+  - Snapshots are not transactional across the whole table but only on each tablet [#2086](https://github.com/yugabyte/yugabyte-db/issues/2086)
+  - Multi table transactional snapshot is in the roadmap [#2084](https://github.com/yugabyte/yugabyte-db/issues/2084) 
+  - Snapshoting is broken in YSQL [#2083](https://github.com/yugabyte/yugabyte-db/issues/2083)
   - The platform edition (enterprise) automates all this for you
 
 

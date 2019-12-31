@@ -1,7 +1,7 @@
 ---
-title: Auto-sharding
-linkTitle: Auto-sharding
-description: Auto-sharding
+title: Auto sharding
+linkTitle: Auto sharding
+description: Auto sharding
 aliases:
   - /explore/auto-sharding/
   - /latest/explore/auto-sharding/

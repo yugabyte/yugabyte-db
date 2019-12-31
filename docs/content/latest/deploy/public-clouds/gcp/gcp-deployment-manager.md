@@ -4,7 +4,7 @@
 
 ## Deploying using Cloud Shell
 
-<a href="https://console.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FYugaByte%2Fgcp-deployment-manager.git" target="_blank">
+<a href="https://console.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fyugabyte%2Fgcp-deployment-manager.git" target="_blank">
     <img src="https://gstatic.com/cloudssh/images/open-btn.svg"/>
 </a>
 
@@ -18,4 +18,4 @@
     ```
     $ gcloud deployment-manager deployments describe <your-deployment-name>
     ```
-    In the output, you will get the YugabyteDB admin URL, JDBC URL, YSQL, YCQL and YEDIS connection string. You can use YugaByte admin URL to access admin portal.
+    In the output, you will get the YugabyteDB admin URL, JDBC URL, YSQL, YCQL and YEDIS connection string. You can use YugabyteDB admin URL to access admin portal.
