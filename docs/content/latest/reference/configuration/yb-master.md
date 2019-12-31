@@ -13,7 +13,7 @@ isTocNested: 3
 showAsideToc: true
 ---
 
-Use the `yb-master` binary and its options to configure your [YB-Master](../../../architecture/concepts/yb-master) services. The `yb-master` executable file is located in the `bin` directory of YugabyteDB home.
+Use the `yb-master` binary and its options to configure the [YB-Master](../../../architecture/concepts/yb-master) service. The `yb-master` executable file is located in the `bin` directory of YugabyteDB home.
 
 ## Syntax
 
