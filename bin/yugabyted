@@ -79,7 +79,7 @@ EXIT_SIGNALS = (SIGABRT, SIGINT, SIGTERM)
 # YugabyteDB configs.
 IP_ANY = "0.0.0.0"
 IP_LOCALHOST = "127.0.0.1"
-DEFAULT_BIND_IP = IP_LOCALHOST
+DEFAULT_BIND_IP = IP_ANY
 DEFAULT_MASTER_RPC_PORT = 7100
 DEFAULT_TSERVER_RPC_PORT = 9100
 DEFAULT_MASTER_WEBSERVER_PORT = 7000
@@ -200,7 +200,7 @@ class ControlScript(object):
                 "{} is not running. Cannot connect to YCQL.".format(SCRIPT_NAME))
         path = os.path.join(BIN_DIR, YUGABYTE_API_CLIENT_PROGRAMS["ycql"])
         cmd = [
-            path, self.configs.saved_data.get("bind_ip"),
+            path, self.advertise_ip(),
             str(self.configs.saved_data.get("ycql_port"))
         ]
         os.execv(path, cmd)
@@ -453,11 +453,11 @@ class ControlScript(object):
                 process = self.processes.get(name)
                 process.remove_error_logs()
                 if not process.is_running():
-                    process.start()
                     if not is_first_run:
                         Output.print_and_log(
                             "{} died unexpectedly. Restarting...".format(process.name),
                             logging.ERROR)
+                    process.start()
                     should_callhome = True
             if self.wait_yb_master():
                 if is_first_run:
@@ -652,14 +652,10 @@ class ControlScript(object):
         Output.log("Checking play_evolutions table")
         list_tables_cmd = [os.path.join(BIN_DIR, "ysqlsh"), "-d", WEBSERVER_DB, "-c", "\d"]
         out, err, ret_code = run_process(list_tables_cmd)
-        Output.log("Finished play evolutions table")
+        Output.log("Finished checking play evolutions table")
         return not err and not ret_code and "play_evolutions" in out
 
     def wait_yb_master(self, timeout=180):
-        if (not self.processes.get("master").is_running()
-                or not self.processes.get("tserver").is_running()):
-            return False
-
         Output.log("Waiting for yb master via ybadmin...")
         num_tservers = 1
         master_addr = "{}:{}".format(self.advertise_ip(),
@@ -669,6 +665,10 @@ class ControlScript(object):
         cur_num_tservers = None
         universe_uuid = self.configs.saved_data.get("universe_uuid")
         while time.time() - start_time < timeout:
+            if (not self.processes.get("master").is_running()
+                    or not self.processes.get("tserver").is_running()):
+                Output.log("Failed waiting for yb-master... process died.", logging.ERROR)
+                return False
             cur_num_tservers = YBAdminProxy.get_num_tservers(master_addr)
             if cur_num_tservers is not None:
                 cluster_uuid = YBAdminProxy.get_cluster_uuid(master_addr)
@@ -682,7 +682,7 @@ class ControlScript(object):
                     return True
             time.sleep(2)
 
-        Output.log("Failed waiting for yb master, current num tservers={}, expected {}.".format(
+        Output.log("Failed waiting for yb-master, current num tservers={}, expected {}.".format(
                    cur_num_tservers, num_tservers))
         return False
 
@@ -1337,9 +1337,9 @@ class YBAdminProxy(object):
 
     # Returns number of tservers reported by yb-master.
     @staticmethod
-    def get_num_tservers(master_addrs):
+    def get_num_tservers(master_addrs, timeout=10):
         cmd = [YBAdminProxy.path, "--master_addresses", master_addrs, "list_all_tablet_servers"]
-        out, err, ret_code = run_process(cmd)
+        out, err, ret_code = run_process(cmd, timeout=timeout)
         return len(out.splitlines()) - 1 if not ret_code else None
 
     # Returns the cluster_uuid for this universe
@@ -1801,9 +1801,15 @@ def get_kv(map):
     else:
         return map.items()
 
-def run_process(cmd):
+def run_process(cmd, timeout=None):
     proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-    out, err = proc.communicate()
+    if PY_VERSION >= 3:
+        try:
+            out, err = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired as e:
+            return None, str(e), -1
+    else:
+        out, err = proc.communicate()
     return out.decode('utf-8'), err.decode('utf-8'), proc.returncode
 
 if __name__ == '__main__':

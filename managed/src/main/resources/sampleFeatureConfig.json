@@ -34,6 +34,7 @@
         "demo": "enabled",
         "editGFlags": "disabled",
         "readReplica": "disabled",
+        "manageEncryption": "disabled",
         "metricsInterval": 15000,
         "deleteUniverse": "disabled"
       }
