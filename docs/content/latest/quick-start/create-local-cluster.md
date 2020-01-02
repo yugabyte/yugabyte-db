@@ -15,7 +15,7 @@ After [installing YugabyteDB](../install/), follow the steps below to create a l
 
 {{< note title="Note" >}}
 
-The local cluster setup on a single host is intended for development and learning. For production deployment or performance benchmarking, deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../deploy).
+The local YugabyteDB cluster created here is intended for development and learning. To deploy a true multi-node cluster in a multi-host environment, see [Deploy YugabyteDB](../../deploy).
 
 {{< /note >}}
 

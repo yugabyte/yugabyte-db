@@ -1,7 +1,7 @@
 ---
 title: Explore sample applications
 linkTitle: Explore sample applications
-description: Explore sample applications built on top of YugabyteDB
+description: Explore sample applications
 headcontent: 
 image: /images/section_icons/index/develop.png
 aliases:
@@ -13,9 +13,9 @@ menu:
     weight: 581
 ---
 
-After [creating a local cluster](../../quick-start/create-local-cluster/), follow the instructions below to run the Yugastore app.
+After [creating a local cluster](../../quick-start/create-local-cluster/), follow the instructions below to run the Yugastore application.
 
-After running Yugastore, we recommend running the [IoT Fleet Management](../realworld-apps/iot-spark-kafka-ksql/) app. This app is built on top of YugabyteDB as the database (using the YCQL API), Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.
+After running Yugastore, we recommend running the [IoT Fleet Management](../realworld-apps/iot-spark-kafka-ksql/) application. This app is built on top of YugabyteDB as the database (using the YCQL API), Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
