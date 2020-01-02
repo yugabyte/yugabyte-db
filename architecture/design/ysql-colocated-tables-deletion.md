@@ -197,11 +197,11 @@ KEY  : SubDocKey(DocKey(CoTableId=07400000-0000-0080-0030-000001400000, Incarnat
 VALUE: 3
 ```
 
-Upon a `TRUNCATE`, the incarnation number can be bumped.  Any `DocKey`s with
+Upon a `TRUNCATE`, the incarnation number can be bumped.  Any documents with
 unequal incarnation number shall be ignored.  The current incarnation number
-for a table should be kept track of in the tablet metadata.  Compactions
-should be tweaked to identify and remove the `DocKey`s with invalid incarnation
-number.
+for a table should be kept track of in a special incarnation document.
+Compactions should be tweaked to identify and remove the documents with invalid
+incarnation number.
 
 How much space should the incarnation number take?
 
@@ -218,38 +218,19 @@ sessions/transactions.
 
 How do we handle `ROLLBACK` on a transaction with `TRUNCATE`?
 
-* **Keep track of stable and pending incarnation numbers:** The stable
-  incarnation represents the table outside of transactions, and the pending
-  incarnation represents the table inside of a transaction.  Any documents with
-  an incarnation number between the stable and pending ones (inclusive) are not
-  to be compacted.  Therefore, if more than one `TRUNCATE` occurs in a
-  transaction, data of old, intermediate tables in the transaction will be
-  retained (this may be needed for deferred triggers).  Upon rollback, the
-  pending incarnation number may simply be erased such that the effective
-  incarnation becomes the stable one, and the intents containing pending and
-  intermediate incarnation numbers should be automatically dropped.
-* **Table-level document:** Instead of keeping track of incarnation numbers in
-  the tablet metadata, they can be tracked in a table-level document with key
-  containing just the cotable ID and value containing the incarnation number.
-  Any transaction that performs a `TRUNCATE` can write a table-level intent
-  with the incremented incarnation number.  The number can continue to be
-  incremented as more `TRUNCATE`s on the same table happen within the
-  transaction.  A commit should write the intent to regular DB; a rollback
-  should drop the intents.
+* **Incarnation document:** Any transaction that performs a `TRUNCATE` can
+  update the number in the incarnation document.  Since the update is written
+  as an intent, a commit should write the intent to regular DB, and a rollback
+  should drop the intent.
 
 How do we handle multiple sessions/transactions with any number of them
 performing `TRUNCATE`?
 
-* **Keep track of stable and pending incarnation numbers:** Given that only one
-  transaction at a time may do a `TRUNCATE`, it is sufficient to have a single
-  pending incarnation number.  This is because `TRUNCATE` should take an
-  `ACCESS EXCLUSIVE` lock.  If the locking logic is hooked up properly (it is
-  currently not), there is no need to worry about multiple pending `TRUNCATE`s
-  or outside accesses to the truncated table.
-* **Table-level document:** The table-level intent should conflict with any
-  other attempts to act upon the table outside of the transaction.  This
-  intent behaves like an `ACCESS EXCLUSIVE` lock, as desired.  One issue is
-  with this scenario:
+* **Incarnation document:** The incarnation intent should conflict with any
+  other attempts to act upon the table outside of the transaction because any
+  operations on the table should read the incarnation number from the
+  incarnation document.  Therefore, this intent behaves like an `ACCESS
+  EXCLUSIVE` lock, as desired.  One issue is with this scenario:
 
   | SESSION A | SESSION B |
   | --- | --- |
@@ -264,7 +245,8 @@ performing `TRUNCATE`?
   | | `COMMIT;` |
 
   With this design, the second truncate would conflict on trying to update the
-  table-level document.
+  incarnation document.  However, this is a trivial issue and likely won't show
+  up often in a production environment.
 
 Another possible problem is that requests for `DROP TABLE` and `TRUNCATE` would
 not only have to hit master (for metadata changes through `CatalogManager`) but
