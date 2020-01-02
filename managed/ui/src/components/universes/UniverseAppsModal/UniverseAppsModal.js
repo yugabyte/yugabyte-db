@@ -22,8 +22,8 @@ const appTypes = [
   { code: "CassandraKeyValue", type: "cassandra", title: "YCQL",
     description: "This app writes out 1M unique string keys " +
     "each with a string value. There are multiple readers and writers that update these " +
-		"keys and read them indefinitely. Note that the number of reads and writes to " +
-		"perform can be specified as a parameter.",
+    "keys and read them indefinitely. Note that the number of reads and writes to " +
+    "perform can be specified as a parameter.",
     options: [{"num_unique_keys": "1000000"}, {"num_reads": "-1"}, {"num_writes": "-1"},
     {"num_threads_read": "24"}, {"num_threads_write": "2"}, {"table_ttl_seconds": "-1"}]
   }
@@ -43,21 +43,25 @@ export default class UniverseAppsModal extends Component {
     const nodeDetails = universeDetails.nodeDetailsSet ?
       universeDetails.nodeDetailsSet.filter((nodeDetails) => nodeDetails.isTserver) :
       [];
+
+    var getHost = function(host) {
+      return host != "127.0.0.1" ? host : "host.docker.internal";
+    }
     const cassandraHosts = nodeDetails.map(function(nodeDetail) {
       if (nodeDetail.state === "Live" && nodeDetail.cloudInfo && isValidObject(nodeDetail.cloudInfo.private_ip))
-        return nodeDetail.cloudInfo.private_ip + ":" + nodeDetail.yqlServerRpcPort;
+        return getHost(nodeDetail.cloudInfo.private_ip) + ":" + nodeDetail.yqlServerRpcPort;
       else
         return null;
     }).filter(Boolean).join(",");
     const redisHosts = nodeDetails.map(function(nodeDetail) {
       if (nodeDetail.state === "Live" && nodeDetail.cloudInfo && isValidObject(nodeDetail.cloudInfo.private_ip))
-        return nodeDetail.cloudInfo.private_ip + ":" + nodeDetail.redisServerRpcPort;
+        return getHost(nodeDetail.cloudInfo.private_ip) + ":" + nodeDetail.redisServerRpcPort;
       else
         return null;
     }).filter(Boolean).join(",");
     const ysqlHosts = nodeDetails.map(function(nodeDetail) {
       if (nodeDetail.state === "Live" && nodeDetail.cloudInfo && isValidObject(nodeDetail.cloudInfo.private_ip))
-        return nodeDetail.cloudInfo.private_ip + ":" + nodeDetail.ysqlServerRpcPort;
+        return getHost(nodeDetail.cloudInfo.private_ip) + ":" + nodeDetail.ysqlServerRpcPort;
       else
         return null;
     }).filter(Boolean).join(",");
@@ -87,7 +91,7 @@ export default class UniverseAppsModal extends Component {
         const option_data = Array.shift(Object.entries(option));
         return <p key={idx}>--{ option_data[0] + " " + option_data[1]}</p>;
       });
-      
+
       const commandSyntax = isItKubernetesUniverse ?
         'kubectl run --image=yugabytedb/yb-sample-apps yb-sample-apps --':
         'docker run -d yugabytedb/yb-sample-apps';
