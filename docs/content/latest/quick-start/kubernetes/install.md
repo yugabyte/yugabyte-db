@@ -1,6 +1,6 @@
 ## Prerequisites
 
-[Minikube](https://github.com/kubernetes/minikube) should be installed on your localhost machine. 
+You need to have [Minikube](https://github.com/kubernetes/minikube) installed on your localhost machine.
 
 - The Kubernetes version used by Minikube should be v1.13.0 or later. The default Kubernetes version being used by Minikube displays when you run the `minikube start` command.
 - To install Minikube, see [Install Minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/) in the Kubernetes documentation.
