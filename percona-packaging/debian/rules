@@ -1,0 +1,29 @@
+#!/usr/bin/make -f
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+# Using pg_buildext
+include /usr/share/postgresql-common/pgxs_debian_control.mk
+
+export USE_PGXS=1
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	+pg_buildext build build-%v
+
+override_dh_auto_test:
+	# nothing to do here
+
+override_dh_auto_install:
+	+pg_buildext install build-%v percona-pg-stat-monitor
+
+override_dh_installdocs:
+	dh_installdocs --all README.*
+
+override_dh_auto_clean:
+	+pg_buildext clean build-%v
+	rm -rf results regression.*
+	mkdir results
