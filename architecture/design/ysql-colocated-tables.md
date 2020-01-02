@@ -57,24 +57,51 @@ When creating a database, you can specify that every table created in the databa
 __Syntax:__
 
 ```sql
-CREATE DATABASE name WITH colocated = true | false
+CREATE DATABASE name WITH colocated = <true|false>
 ```
 
-We'll also provide a gflag `--ysql_colocation`, which, if enabled, will create a colocated tablet whenever a new YSQL DB is created.
+With `colocated = true`, create a colocation tablet whenever a new YSQL database is created.
+The default is `colocated = false`.
+We'll provide a gflag `--ysql_colocation`, which, if enabled, will set the default to `colocated = true`.
 
 ### 2. Create tables opted out of colocation
 
-In some databases, there may be many small tables and a few large tables. In this case, the database should be created with colocation enabled as shown above, so that the small tables can be colocated in a single tablet. The large tables opt out of colocation by overriding the `colocated` property at the table level to `false`. This is shown below.
+In some databases, there may be many small tables and a few large tables. In this case, the database should be created with colocation enabled as shown above so that the small tables can be colocated in a single tablet. The large tables opt out of colocation by overriding the `colocated` property at the table level to `false`.
 
 __Syntax:__
 
 ```sql
-CREATE TABLE name (columns) WITH colocated = true | false
+CREATE TABLE name (columns) WITH (colocated = <true|false>)
 ```
+
+With `colocated = false`, create separate tablets for the table instead of creating the table in the colocation tablet.
+The default here is `colocated = true`.
 
 > **Note:** This property should be only used when the parent DB is colocated. It has no effect otherwise.
 
-### 3. Specify colocation at schema level
+### 3. Create indexes opted out of colocation
+
+The only use for this option is the ability to have a non-colocated index on a colocated table.
+
+__Syntax:__
+
+```sql
+CREATE INDEX ON name (columns) WITH (colocated = <true|false>)
+```
+
+The behavior of this option is a bit confusing, so it is outlined below.
+
+| | `CREATE TABLE ... WITH (colocated = true)` | `CREATE TABLE ... WITH (colocated = false)` |
+| --- | --- | --- |
+| `CREATE INDEX ... WITH (colocated = true)` | colocated table; colocated index | non-colocated table; non-colocated index |
+| `CREATE INDEX ... WITH (colocated = false)` | colocated table; non-colocated index | non-colocated table; non-colocated index |
+
+Observe that it is not possible to have a colocated index on a non-colocated table.
+The default here is `colocated = true`.
+
+> **Note:** This property should be only used when the parent DB is colocated. It has no effect otherwise.
+
+### 4. Specify colocation at schema level
 
 In some situations, it may be useful for applications to create multiple schemas (instead of multiple DBs) and use 1 tablet per schema. Using this configuration has the following advantages:
 
@@ -88,7 +115,7 @@ The syntax for achieving this is shown below.
 __Syntax:__
 
 ```sql
-CREATE SCHEMA name WITH colocated = true | false
+CREATE SCHEMA name WITH colocated = <true|false>
 ```
 
 ## Design
