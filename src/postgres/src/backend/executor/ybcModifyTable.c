@@ -426,8 +426,8 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 	}
 
 	/*
-	 * For system tables, mark tuple for invalidation from system caches 
-	 * at next command boundary. Do this now so if there is an error with insert 
+	 * For system tables, mark tuple for invalidation from system caches
+	 * at next command boundary. Do this now so if there is an error with insert
 	 * we will re-query to get the correct state from the master.
 	 */
 	if (IsCatalogRelation(rel))

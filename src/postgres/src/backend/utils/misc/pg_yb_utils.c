@@ -84,7 +84,9 @@ CheckIsYBSupportedRelationByKind(char relkind)
 {
 	if (!(relkind == RELKIND_RELATION || relkind == RELKIND_INDEX ||
 		  relkind == RELKIND_VIEW || relkind == RELKIND_SEQUENCE ||
-		  relkind == RELKIND_COMPOSITE_TYPE))
+		  relkind == RELKIND_COMPOSITE_TYPE || relkind == RELKIND_PARTITIONED_TABLE ||
+		  relkind == RELKIND_PARTITIONED_INDEX))
+                
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								errmsg("This feature is not supported in YugaByte.")));
@@ -101,7 +103,8 @@ IsYBRelation(Relation relation)
 
 	/* Currently only support regular tables and indexes.
 	 * Temp tables and views are supported, but they are not YB relations. */
-	return (relkind == RELKIND_RELATION || relkind == RELKIND_INDEX)
+	return (relkind == RELKIND_RELATION || relkind == RELKIND_INDEX || relkind == RELKIND_PARTITIONED_TABLE ||
+		relkind == RELKIND_PARTITIONED_INDEX)
 				 && relation->rd_rel->relpersistence != RELPERSISTENCE_TEMP;
 }
 

@@ -1027,7 +1027,7 @@ YBSysTablePrimaryKey(Oid relid)
 		case PublicationRelationId:
 		case RelationRelationId:
 		case RewriteRelationId:
-		case StatisticExtRelationId:				
+		case StatisticExtRelationId:
 		case SubscriptionRelationId:
 		case TSConfigRelationId:
 		case TSDictionaryRelationId:
