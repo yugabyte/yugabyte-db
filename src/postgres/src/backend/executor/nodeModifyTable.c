@@ -431,17 +431,11 @@ ExecInsert(ModifyTableState *mtstate,
 		 * one; except that if we got here via tuple-routing, we don't need to
 		 * if there's no BR trigger defined on the partition.
 		 */
-		if (!IsYBRelation(resultRelationDesc))
-		{
-			/*
-			 * TODO(Hector) When partitioning is supported in YugaByte, this check must be enabled.
-			 */
-			if (resultRelInfo->ri_PartitionCheck &&
-					(resultRelInfo->ri_PartitionRoot == NULL ||
-					 (resultRelInfo->ri_TrigDesc &&
-						resultRelInfo->ri_TrigDesc->trig_insert_before_row)))
-				ExecPartitionCheck(resultRelInfo, slot, estate, true);
-		}
+		if (resultRelInfo->ri_PartitionCheck &&
+				(resultRelInfo->ri_PartitionRoot == NULL ||
+				 (resultRelInfo->ri_TrigDesc &&
+					resultRelInfo->ri_TrigDesc->trig_insert_before_row)))
+			ExecPartitionCheck(resultRelInfo, slot, estate, true);
 
 		if (onconflict != ONCONFLICT_NONE && resultRelInfo->ri_NumIndices > 0)
 		{

@@ -1916,7 +1916,6 @@ AlterTableStmt:
 				}
 		|	ALTER TABLE relation_expr partition_cmd
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE WITH PARTITION COMMAND", 1124);
 					AlterTableStmt *n = makeNode(AlterTableStmt);
 					n->relation = $3;
 					n->cmds = list_make1($4);
@@ -1926,7 +1925,6 @@ AlterTableStmt:
 				}
 		|	ALTER TABLE IF_P EXISTS relation_expr partition_cmd
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE WITH PARTITION COMMAND", 1124);
 					AlterTableStmt *n = makeNode(AlterTableStmt);
 					n->relation = $5;
 					n->cmds = list_make1($6);
@@ -2107,7 +2105,6 @@ partition_cmd:
 			/* ALTER TABLE <name> ATTACH PARTITION <table_name> FOR VALUES */
 			ATTACH PARTITION qualified_name PartitionBoundSpec
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ATTACH PARTITION", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					PartitionCmd *cmd = makeNode(PartitionCmd);
 
@@ -2121,7 +2118,6 @@ partition_cmd:
 			/* ALTER TABLE <name> DETACH PARTITION <partition_name> */
 			| DETACH PARTITION qualified_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE DETACH PARTITION", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					PartitionCmd *cmd = makeNode(PartitionCmd);
 
@@ -2882,7 +2878,6 @@ PartitionBoundSpec:
 			/* a LIST partition */
 			| FOR VALUES IN_P '(' partbound_datum_list ')'
 				{
-					parser_ybc_signal_unsupported(@1, "LIST PARTITION", 1126);
 					PartitionBoundSpec *n = makeNode(PartitionBoundSpec);
 
 					n->strategy = PARTITION_STRATEGY_LIST;
@@ -2896,7 +2891,6 @@ PartitionBoundSpec:
 			/* a RANGE partition */
 			| FOR VALUES FROM '(' range_datum_list ')' TO '(' range_datum_list ')'
 				{
-					parser_ybc_signal_unsupported(@1, "RANGE PARTITION", 1126);
 					PartitionBoundSpec *n = makeNode(PartitionBoundSpec);
 
 					n->strategy = PARTITION_STRATEGY_RANGE;
@@ -4132,7 +4126,6 @@ OptPartitionSpec: PartitionSpec	{ $$ = $1; }
 
 PartitionSpec: PARTITION BY part_strategy '(' part_params ')'
 				{
-					parser_ybc_signal_unsupported(@1, "PARTITION BY", 1126);
  					PartitionSpec *n = makeNode(PartitionSpec);
 
 					n->strategy = $3;
