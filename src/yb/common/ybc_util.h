@@ -42,6 +42,8 @@ const char* YBCStatusCodeAsCString(YBCStatus s);
 
 bool YBCIsRestartReadError(uint16_t txn_errcode);
 
+void YBCResolveHostname();
+
 #define CHECKED_YBCSTATUS __attribute__ ((warn_unused_result)) YBCStatus
 
 typedef void* (*YBCPAllocFn)(size_t size);
