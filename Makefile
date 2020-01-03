@@ -31,6 +31,6 @@ endif
 # postgresql.conf:
 #
 # wal_level = logical
-# max_replication_slots = 4
+# max_replication_slots = 10
 #
 # Also, you should start the server before executing it.

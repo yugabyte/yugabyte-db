@@ -54,7 +54,7 @@ You need to set up at least two parameters at postgresql.conf:
 
 ```
 wal_level = logical
-max_replication_slots = 1
+max_replication_slots = 10
 ```
 
 After changing these parameters, a restart is needed.
