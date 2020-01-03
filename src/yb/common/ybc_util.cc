@@ -30,6 +30,8 @@
 #include "yb/util/status.h"
 #include "yb/util/version_info.h"
 
+#include "yb/util/net/net_util.h"
+
 #include "yb/gutil/stringprintf.h"
 
 using std::string;
@@ -256,6 +258,15 @@ const char* YBCFormatBytesAsStr(const char* data, size_t size) {
 
 const char* YBCGetStackTrace() {
   return YBCPAllocStdString(yb::GetStackTrace());
+}
+
+void YBCResolveHostname() {
+  string fqdn;
+  auto status = GetFQDN(&fqdn);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to get fully qualified domain name of the local hostname: "
+                 << status;
+  }
 }
 
 } // extern "C"
