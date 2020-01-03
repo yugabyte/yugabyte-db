@@ -9,8 +9,6 @@ Introduction
 
 **format version 2** produces a JSON object per tuple. Optional JSON object for beginning and end of transaction. Also, there are a variety of options to include properties.
 
-**wal2json** is released under PostgreSQL license.
-
 Requirements
 ============
 
