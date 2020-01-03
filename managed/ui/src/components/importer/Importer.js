@@ -66,10 +66,10 @@ export default class Importer extends Component {
     }
   }
 
-  componentDidUpdate(prevProps) {
-    const { universeImport } = this.props;
+  static getDerivedStateFromProps(props, state) {
+    const { universeImport } = props;
 
-    const importChecksSource  = getPromiseState(universeImport).isError() || (universeImport.data.state !== this.state.currentState && getPromiseState(universeImport).isSuccess())
+    const importChecksSource  = getPromiseState(universeImport).isError() || (universeImport.data.state !== state.currentState && getPromiseState(universeImport).isSuccess())
       ? getPromiseState(universeImport).isSuccess() ? universeImport.data : universeImport.error
       : {};
     const importChecks = isNonEmptyObject(importChecksSource) && ({
@@ -77,23 +77,23 @@ export default class Importer extends Component {
     });
 
     if (getPromiseState(universeImport).isSuccess()) {
-      this.setState({
+      return {
         currentState: universeImport.data.state,
-        universeUUID: this.state.universeUUID || universeImport.data.universeUUID,
-        universeName: this.state.universeName || universeImport.data.universeName,
-        masterAddresses: this.state.masterAddresses || universeImport.data.masterAddresses,
+        universeUUID: state.universeUUID || universeImport.data.universeUUID,
+        universeName: state.universeName || universeImport.data.universeName,
+        masterAddresses: state.masterAddresses || universeImport.data.masterAddresses,
         checks: {
-          ...this.state.checks,
+          ...state.checks,
           ...importChecks
         }
-      });
+      };
     } else {
-      this.setState({
+      return {
         checks: {
-          ...this.state.checks,
+          ...state.checks,
           ...importChecks
         }
-      });
+      };
     }
   }
 
