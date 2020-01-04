@@ -34,7 +34,7 @@
 4.1.0
 -- For PostgreSQL 10+ and native partitioning, privilege inheritance is now optional and turned off by default. This now allows pg_partman to run fully as a non-superuser when using native partitioning. (Github Issue #231)
     -- This means that all interaction with these partition sets must be done through the parent table.
-    -- A new column in the part_config table, inherit_privileges, is available if you require direct access to the child tables. Note that this will then require superuser at some level (superuser ownershipt of pg_partman functions for SECURITY DEFINER or running maintenance as a superuser). Just set this option to true and run the reapply_privileges() function to set all child privileges to match the parent. From then on, all new child tables will inherit the parent's privileges.
+    -- A new column in the part_config table, inherit_privileges, is available if you require direct access to the child tables. Note that this will then require superuser at some level (superuser ownership of pg_partman functions for SECURITY DEFINER or running maintenance as a superuser). Just set this option to true and run the reapply_privileges() function to set all child privileges to match the parent. From then on, all new child tables will inherit the parent's privileges.
     -- Note that for non-native partitioning on all versions, privileges will continue to be inherited to avoid backward compatability issues and will therefore require a superuser as the above bullet notes.
     -- All existing partition sets have had their configuration values set to true so they will continue to act as they did before this update.
     -- Updated GRANTS that are required for a non-superuser are in the INSTALLATION section of the readme.
