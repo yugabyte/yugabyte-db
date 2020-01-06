@@ -87,6 +87,10 @@ export const IMPORT_RELEASE_RESPONSE = 'IMPORT_RELEASE_RESPONSE';
 export const UPDATE_RELEASE = 'UPDATE_RELEASE';
 export const UPDATE_RELEASE_RESPONSE = 'UPDATE_RELEASE_RESPONSE';
 
+export const GET_CUSTOMER_USERS = 'GET_CUSTOMER_USERS';
+export const GET_CUSTOMER_USERS_SUCCESS = 'GET_CUSTOMER_USERS_SUCCESS';
+export const GET_CUSTOMER_USERS_FAILURE = 'GET_CUSTOMER_USERS_FAILURE';
+
 export const GET_SCHEDULES = 'GET_SCHEDULES';
 export const GET_SCHEDULES_RESPONSE = 'GET_SCHEDULES_RESPONSE';
 export const DELETE_SCHEDULE = 'DELETE_SCHEDULE';
@@ -359,6 +363,29 @@ export function getAlertsSuccess(response) {
 export function getAlertsFailure(error) {
   return {
     type: GET_ALERTS_FAILURE,
+    payload: error
+  };
+}
+
+export function getCustomerUsers() {
+  const cUUID = localStorage.getItem("customerId");
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/users`);
+  return {
+    type: GET_CUSTOMER_USERS,
+    payload: request
+  };
+}
+
+export function getCustomerUsersSuccess(response) {
+  return {
+    type: GET_CUSTOMER_USERS_SUCCESS,
+    payload: response
+  };
+}
+
+export function getCustomerUsersFailure(error) {
+  return {
+    type: GET_CUSTOMER_USERS_FAILURE,
     payload: error
   };
 }

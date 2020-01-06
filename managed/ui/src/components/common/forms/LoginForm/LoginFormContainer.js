@@ -10,8 +10,10 @@ const mapDispatchToProps = (dispatch) => {
     loginCustomer: (formValues) => {
       dispatch(login(formValues)).then((response) => {
         if (response.payload.status === 200) {
-          localStorage.setItem('authToken', response.payload.data.authToken);
-          localStorage.setItem('customerId',response.payload.data.customerUUID);
+          const { authToken, customerUUID, userUUID } = response.payload.data;
+          localStorage.setItem('authToken', authToken);
+          localStorage.setItem('customerId', customerUUID);
+          localStorage.setItem('userId', userUUID);
         }
         dispatch(loginResponse(response.payload));
       });

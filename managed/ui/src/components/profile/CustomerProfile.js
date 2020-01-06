@@ -14,6 +14,7 @@ import _ from 'lodash';
 import * as Yup from 'yup';
 import { isDefinedNotNull, isNonEmptyObject } from 'utils/ObjectUtils';
 import { getPromiseState } from '../../utils/PromiseUtils';
+import { isNonEmptyArray } from '../../utils/ObjectUtils';
 
 // TODO set predefined defaults another way not to share defaults this way
 const CHECK_INTERVAL_MS = 300000;
@@ -29,6 +30,7 @@ export default class CustomerProfile extends Component {
 
   componentDidMount() {
     const { customer } = this.props;
+    this.props.getCustomerUsers();
     if (isNonAvailable(customer.features, "main.profile")) browserHistory.push('/');
   }
 
@@ -43,13 +45,14 @@ export default class CustomerProfile extends Component {
   render() {
     const {
       customer = {},
+      users = [],
       apiToken,
       customerProfile,
       updateCustomerDetails,
       params
     } = this.props;
 
-    showOrRedirect(customer.features, "main.profile");
+    showOrRedirect(customer.data.features, "main.profile");
 
     let profileUpdateStatus = <span/>;
     if (customerProfile.data === "updated-success" && this.state.statusUpdated) {
@@ -106,26 +109,29 @@ export default class CustomerProfile extends Component {
 
     const alertingDataProps = ['alertingEmail', 'checkIntervalMs', 'statusUpdateIntervalMs', 'sendAlertsToYb'];
     
+    // Filter users for userUUID set during login
+    const loginUserId = localStorage.getItem('userId');
+    const getCurrentUser = isNonEmptyArray(users) ? users.filter(u => u.uuid === loginUserId) : [];
     const initialValues = {
-      name: customer.name || '',
-      email: customer.email || '',
-      code: customer.code || '',
+      name: customer.data.name || '',
+      email: (getCurrentUser.length && getCurrentUser[0].email) || '',
+      code: customer.data.code || '',
       alertingData: {
-        // alertingData properties
-        alertingEmail: customer.alertingData ?
-          customer.alertingData.alertingEmail || '':
+        alertingEmail: customer.data.alertingData ?
+          customer.data.alertingData.alertingEmail || '' :
           '',
-        checkIntervalMs: isNonEmptyObject(customer.alertingData) ?
-          customer.alertingData.checkIntervalMs :
-          CHECK_INTERVAL_MS,
-        statusUpdateIntervalMs: isNonEmptyObject(customer.alertingData) ?
-          customer.alertingData.statusUpdateIntervalMs :
-          STATUS_UPDATE_INTERVAL_MS,
-        sendAlertsToYb: customer.alertingData && customer.alertingData.sendAlertsToYb,
+        checkIntervalMs: getPromiseState(customer).isSuccess() ? (
+          isNonEmptyObject(customer.data.alertingData) ?
+          customer.data.alertingData.checkIntervalMs :
+          CHECK_INTERVAL_MS) : '',
+        statusUpdateIntervalMs: getPromiseState(customer).isSuccess() ? (
+          isNonEmptyObject(customer.data.alertingData) ?
+          customer.data.alertingData.statusUpdateIntervalMs :
+          STATUS_UPDATE_INTERVAL_MS) : '',
+        sendAlertsToYb: customer.data.alertingData && customer.data.alertingData.sendAlertsToYb,
       },
-      
       password: '',
-      callhomeLevel: customer.callhomeLevel || 'NONE',
+      callhomeLevel: customer.data.callhomeLevel || 'NONE',
       confirmPassword: '',
     };
 
@@ -136,7 +142,7 @@ export default class CustomerProfile extends Component {
       <option value="HIGH" key={3}>High</option>
     ];
 
-    const defaultTab = isNotHidden(customer.features, "main.profile") ? "general" : "general";
+    const defaultTab = isNotHidden(customer.data.features, "main.profile") ? "general" : "general";
     const activeTab = isDefinedNotNull(params) ? params.tab : defaultTab;
 
     return (
@@ -185,14 +191,14 @@ export default class CustomerProfile extends Component {
                     key="general-tab"
                     mountOnEnter={true}
                     unmountOnExit={true}
-                    disabled={isDisabled(customer.features, "main.profile")}>
+                    disabled={isDisabled(customer.data.features, "main.profile")}>
                     <Row>
                       <Col md={6} sm={12}>
                         <Row>
                           <Col sm={12}>
                             <h3>Profile Info</h3>
                             <Field name="name" type="text" component={YBFormInput} placeholder="Full Name" label="Full Name"/>
-                            <Field name="email" readOnly={false} type="text" label="Email" component={YBFormInput} placeholder="Email Address" />
+                            <Field name="email" readOnly={true} type="text" label="Email" component={YBFormInput} placeholder="Email Address" />
                             <Field name="code" readOnly={true} type="text" label="Environment" component={YBFormInput} placeholder="Customer Code" />
                           </Col>
                         </Row>
@@ -210,14 +216,14 @@ export default class CustomerProfile extends Component {
                         <FlexContainer>
                           <FlexGrow className="api-token-component">
                             <Field
-                              field={{value: apiToken.data || customer.apiToken || ""}}
+                              field={{value: apiToken.data || customer.data.apiToken || ""}}
                               type="text"
                               readOnly={true}
                               component={YBFormInput}
                               label="API Token"
                               placeholder="Press Generate Key"
                             />
-                            <YBCopyButton text={apiToken.data || customer.apiToken || ""}/>
+                            <YBCopyButton text={apiToken.data || customer.data.apiToken || ""}/>
                           </FlexGrow>
                           <FlexShrink>
                             <YBButton
@@ -248,7 +254,7 @@ export default class CustomerProfile extends Component {
                     key="health-alerting-tab"
                     mountOnEnter={true}
                     unmountOnExit={true}
-                    disabled={isDisabled(customer.features, "main.profile")}>
+                    disabled={isDisabled(customer.data.features, "main.profile")}>
                     <Row>
                       <Col md={6} sm={12}>
                         <h3>Alerting controls</h3>
