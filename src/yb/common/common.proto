@@ -168,6 +168,8 @@ enum IndexPermissions {
   INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING = 8;
   INDEX_PERM_DELETE_ONLY_WHILE_REMOVING = 10;
   INDEX_PERM_INDEX_UNUSED = 12;
+  // Used as a sentinel value.
+  INDEX_PERM_NOT_USED = 14;
 }
 
 // The type used in column schemas, which may have type parameters (i.e. for collections)

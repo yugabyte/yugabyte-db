@@ -598,7 +598,15 @@ void TabletServiceAdminImpl::GetSafeTime(
   }
 
   HybridTime safe_time = tablet.peer->tablet()->SafeTime(
-      tablet::RequireLease::kTrue, min_hybrid_time);
+      tablet::RequireLease::kTrue, min_hybrid_time, deadline);
+  if (!safe_time.is_valid()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(TimedOut, "Timed out waiting for safe time."),
+        TabletServerErrorPB::UNKNOWN_ERROR, &context);
+    return;
+  }
+
   resp->set_safe_time(safe_time.ToUint64());
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
   VLOG(1) << "Tablet " << tablet.peer->tablet_id()
@@ -620,26 +628,6 @@ void TabletServiceAdminImpl::BackfillIndex(
   auto tablet =
       LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
   if (!tablet) {
-    return;
-  }
-
-  uint32_t schema_version = tablet.peer->tablet_metadata()->schema_version();
-  // If the current schema is newer than the one in the request reject the request.
-  if (schema_version != req->schema_version()) {
-    if (schema_version == 1 + req->schema_version()) {
-      LOG(WARNING) << "Received BackfillIndex RPC: " << req->DebugString()
-                   << " after we have moved to schema_version = " << schema_version;
-      // This is possible if this tablet completed the backfill. But the master failed over before
-      // other tablets could complete.
-      // The new master is redoing the backfill. We are safe to ignore this request.
-      context.RespondSuccess();
-    } else {
-      SetupErrorAndRespond(
-          resp->mutable_error(), STATUS_SUBSTITUTE(
-                                     InvalidArgument, "Tablet has a different schema $0 vs $1",
-                                     schema_version, req->schema_version()),
-          TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
-    }
     return;
   }
 
@@ -697,12 +685,45 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
+  bool all_past_backfill = true;
+  bool all_at_backfill = true;
   const shared_ptr<IndexMap> index_map = tablet.peer->tablet_metadata()->index_map();
   std::vector<IndexInfo> indexes_to_backfill;
   std::vector<TableId> index_ids;
   for (const auto& idx : req->indexes()) {
-    indexes_to_backfill.push_back(index_map->at(idx.table_id()));
+    const IndexInfo& idx_info = index_map->at(idx.table_id());
+    indexes_to_backfill.push_back(idx_info);
     index_ids.push_back(index_map->at(idx.table_id()).table_id());
+
+    IndexInfoPB idx_info_pb;
+    idx_info.ToPB(&idx_info_pb);
+    all_at_backfill &= idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL;
+    all_past_backfill &= idx_info_pb.index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL;
+  }
+
+  if (!all_at_backfill) {
+    if (all_past_backfill) {
+      // Change this to see if for all indexes: IndexPermission > DO_BACKFILL.
+      LOG(WARNING) << "Received BackfillIndex RPC: " << req->DebugString()
+                   << " after all indexes moved past DO_BACKFILL. IndexMap is "
+                   << ToString(index_map);
+      // This is possible if this tablet completed the backfill. But the master failed over before
+      // other tablets could complete.
+      // The new master is redoing the backfill. We are safe to ignore this request.
+      context.RespondSuccess();
+      return;
+    }
+
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS_SUBSTITUTE(
+            InvalidArgument,
+            "Tablet has a different schema $0 vs $1. "
+            "Requested index is not ready to backfill. IndexMap: $2",
+            tablet.peer->tablet_metadata()->schema_version(), req->schema_version(),
+            ToString(index_map)),
+        TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
+    return;
   }
 
   Result<string> resume_from = tablet.peer->tablet()->BackfillIndexes(
