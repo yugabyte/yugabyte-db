@@ -200,6 +200,13 @@ VALUE: 3
 Upon a `TRUNCATE`, the incarnation number can be bumped.  Any documents with
 unequal incarnation number shall be ignored.  The current incarnation number
 for a table should be kept track of in a special incarnation document.
+
+```
+W1218 xx:xx:xx.xxxxxx 15532 docdb.cc:1343] IntentToWriteRequest
+KEY  : SubDocKey(DocKey(CoTableId=07400000-0000-0080-0030-000001400000, [], []))
+VALUE: 0
+```
+
 Compactions should be tweaked to identify and remove the documents with invalid
 incarnation number.
 
