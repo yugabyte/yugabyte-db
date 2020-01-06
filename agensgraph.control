@@ -2,3 +2,5 @@ default_version = '0.0.0'
 module_pathname = '$libdir/agensgraph'
 
 schema = 'ag_catalog'
+
+comment = 'AgensGraph graph database extension'
