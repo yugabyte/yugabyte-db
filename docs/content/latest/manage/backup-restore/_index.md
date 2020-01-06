@@ -3,7 +3,7 @@ title: Back up and restore
 linkTitle: Back up and restore
 description: Back up and restore
 image: /images/section_icons/manage/enterprise.png
-headcontent: Back up and restore your data in YugabyteDB.
+headcontent: Create backups and restore your data.
 aliases:
   - /manage/backup-restore/
 menu:
@@ -19,7 +19,7 @@ This section goes into details of backing up data and restoring it from Yugabyte
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="backing-up-data/">
+    <a class="section-link icon-offset" href="back-up-data/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
         <div class="title">Back up data</div>
@@ -30,7 +30,7 @@ This section goes into details of backing up data and restoring it from Yugabyte
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="restoring-data/">
+    <a class="section-link icon-offset" href="restore-data/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/create_universe.png" aria-hidden="true" />
         <div class="title">Restore data</div>
