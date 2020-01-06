@@ -247,9 +247,3 @@ performing `TRUNCATE`?
   With this design, the second truncate would conflict on trying to update the
   incarnation document.  However, this is a trivial issue and likely won't show
   up often in a production environment.
-
-Another possible problem is that requests for `DROP TABLE` and `TRUNCATE` would
-not only have to hit master (for metadata changes through `CatalogManager`) but
-also have to hit tserver (for transactional conflict checking through
-`TabletServiceImpl::Read` or `TabletServiceImpl::Write`).  This may best be
-solved through transactional DDL support which is not yet ready.
