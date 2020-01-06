@@ -65,6 +65,8 @@ public class CustomerController extends AuthenticatedController {
     CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
     if (config != null) {
       responseJson.set("alertingData", config.data);
+    } else {
+      responseJson.set("alertingData", null);
     }
     responseJson.put("callhomeLevel", CustomerConfig.getOrCreateCallhomeLevel(customerUUID).toString());
 
