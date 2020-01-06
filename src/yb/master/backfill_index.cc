@@ -146,17 +146,46 @@ using namespace std::literals;
 using strings::Substitute;
 using tserver::TabletServerErrorPB;
 
+Status MultiStageAlterTable::ClearAlteringState(
+    CatalogManager* catalog_manager,
+    const scoped_refptr<TableInfo>& table,
+    uint32_t expected_version) {
+  auto l = table->LockForWrite();
+  uint32_t current_version = l->data().pb.version();
+  if (expected_version != current_version) {
+    return STATUS(AlreadyPresent, "Table has already moved to a different version.");
+  }
+  l->mutable_data()->pb.clear_fully_applied_schema();
+  l->mutable_data()->pb.clear_fully_applied_schema_version();
+  l->mutable_data()->pb.clear_fully_applied_indexes();
+  l->mutable_data()->pb.clear_fully_applied_index_info();
+  l->mutable_data()->set_state(
+      SysTablesEntryPB::RUNNING, Substitute("Current schema version=$0", current_version));
+
+  Status s =
+      catalog_manager->sys_catalog_->UpdateItem(table.get(), catalog_manager->leader_ready_term_);
+  if (!s.ok()) {
+    LOG(WARNING) << "An error occurred while updating sys-tables: " << s.ToString()
+                 << ". This master may not be the leader anymore.";
+    return s;
+  }
+
+  l->Commit();
+  LOG(INFO) << table->ToString() << " - Alter table completed version=" << current_version;
+  return Status::OK();
+}
+
 Status MultiStageAlterTable::UpdateIndexPermission(
-    CatalogManager *catalog_manager,
+    CatalogManager* catalog_manager,
     const scoped_refptr<TableInfo>& indexed_table,
-    const TableId& index_table_id,
-    IndexPermissions new_perm) {
+    const std::unordered_map<TableId, IndexPermissions>& perm_mapping,
+    boost::optional<uint32_t> current_version) {
   DVLOG(3) << __PRETTY_FUNCTION__ << yb::ToString(*indexed_table);
   if (FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms > 0) {
     TRACE("Sleeping for  $0 ms", FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms);
     DVLOG(3) << __PRETTY_FUNCTION__ << yb::ToString(*indexed_table) << " sleeping for "
              << FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms
-             << "ms BEFORE updating the index permission to " << IndexPermissions_Name(new_perm);
+             << "ms BEFORE updating the index permission to " << ToString(perm_mapping);
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms));
     DVLOG(3) << __PRETTY_FUNCTION__ << "Done Sleeping";
     TRACE("Done Sleeping");
@@ -165,6 +194,14 @@ Status MultiStageAlterTable::UpdateIndexPermission(
     TRACE("Locking indexed table");
     auto l = indexed_table->LockForWrite();
     auto &indexed_table_data = *l->mutable_data();
+    if (current_version && *current_version != indexed_table_data.pb.version()) {
+      LOG(INFO) << "The table schema version "
+                << "seems to have already been updated to " << indexed_table_data.pb.version()
+                << " We wanted to do this update at " << *current_version;
+      return STATUS_SUBSTITUTE(
+          AlreadyPresent, "Schema was already updated to $0 before we got to it (expected $1).",
+          indexed_table_data.pb.version(), *current_version);
+    }
 
     indexed_table_data.pb.mutable_fully_applied_schema()->CopyFrom(
         indexed_table_data.pb.schema());
@@ -179,42 +216,16 @@ Status MultiStageAlterTable::UpdateIndexPermission(
           indexed_table_data.pb.index_info());
     }
 
-    bool updated = false;
-    auto old_schema_version = indexed_table_data.pb.version();
     for (int i = 0; i < indexed_table_data.pb.indexes_size(); i++) {
       IndexInfoPB *idx_pb = indexed_table_data.pb.mutable_indexes(i);
-      if (idx_pb->table_id() == index_table_id) {
-        IndexPermissions old_perm = idx_pb->index_permissions();
-        if (old_perm == new_perm) {
-          LOG(INFO) << "The index permission"
-                    << " for index table id : " << yb::ToString(index_table_id)
-                    << " seems to have already been updated to "
-                    << IndexPermissions_Name(new_perm)
-                    << " by somebody else. This is OK.";
-          return STATUS_SUBSTITUTE(
-              AlreadyPresent, "IndexPermissions for $0 is already $1",
-              index_table_id, IndexPermissions_Name(new_perm));
-        }
+      if (perm_mapping.find(idx_pb->table_id()) != perm_mapping.end()) {
+        const auto new_perm = perm_mapping.at(idx_pb->table_id());
         idx_pb->set_index_permissions(new_perm);
-        VLOG(1) << "Updating index permissions"
-                << " from " << IndexPermissions_Name(old_perm) << " to "
-                << IndexPermissions_Name(new_perm) << " schema_version from " << old_schema_version
-                << " to " << old_schema_version + 1 << ". New index info would be "
-                << yb::ToString(idx_pb);
-        updated = true;
-        break;
       }
     }
-
-    if (!updated) {
-      LOG(WARNING) << "Could not find the desired index "
-                   << yb::ToString(index_table_id)
-                   << " to update in the indexed_table "
-                   << yb::ToString(indexed_table_data.pb)
-                   << "\nThis may be OK, if the index was deleted.";
-      return STATUS_SUBSTITUTE(
-          InvalidArgument, "Could not find the desired index $0", index_table_id);
-    }
+    VLOG(1) << "Updating index permissions of size " << indexed_table_data.pb.indexes_size()
+            << " to " << ToString(perm_mapping) << ". schema_version from "
+            << indexed_table_data.pb.version() << " to " << indexed_table_data.pb.version() + 1;
 
     VLOG(1) << "Before updating indexed_table_data.pb.version() is "
             << indexed_table_data.pb.version();
@@ -240,7 +251,7 @@ Status MultiStageAlterTable::UpdateIndexPermission(
           FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms);
     DVLOG(3) << __PRETTY_FUNCTION__ << yb::ToString(*indexed_table) << " sleeping for "
              << FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms
-             << "ms AFTER updating the index permission to " << IndexPermissions_Name(new_perm);
+             << "ms AFTER updating the index permission to " << ToString(perm_mapping);
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms));
     DVLOG(3) << __PRETTY_FUNCTION__ << "Done Sleeping";
     TRACE("Done Sleeping");
@@ -294,90 +305,113 @@ Status MultiStageAlterTable::StartBackfillingData(
   return Status::OK();
 }
 
-// Returns true, if the said IndexPermission is a transient state.
+// Returns true, if the said IndexPermissions is a transient state.
 // Returns false, if it is a state where the index can be. viz: READ_WRITE_AND_DELETE
-// and INDEX_UNUSED.
+// INDEX_UNUSED is considered transcient because it needs to delete the index.
 bool IsTransientState(IndexPermissions perm) {
-  return perm != INDEX_PERM_READ_WRITE_AND_DELETE && perm != INDEX_PERM_INDEX_UNUSED;
+  return perm != INDEX_PERM_READ_WRITE_AND_DELETE && perm != INDEX_PERM_NOT_USED;
 }
 
-bool MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
-    CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table) {
+IndexPermissions NextPermission(IndexPermissions perm) {
+  switch (perm) {
+    case INDEX_PERM_DELETE_ONLY:
+      return INDEX_PERM_WRITE_AND_DELETE;
+    case INDEX_PERM_WRITE_AND_DELETE:
+      return INDEX_PERM_DO_BACKFILL;
+    case INDEX_PERM_DO_BACKFILL:
+      CHECK(false) << "Not expected to be here.";
+      return INDEX_PERM_DELETE_ONLY;
+    case INDEX_PERM_READ_WRITE_AND_DELETE:
+      CHECK(false) << "Not expected to be here.";
+      return INDEX_PERM_DELETE_ONLY;
+    case INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING:
+      return INDEX_PERM_DELETE_ONLY_WHILE_REMOVING;
+    case INDEX_PERM_DELETE_ONLY_WHILE_REMOVING:
+      return INDEX_PERM_INDEX_UNUSED;
+    case INDEX_PERM_INDEX_UNUSED:
+    case INDEX_PERM_NOT_USED:
+      CHECK(false) << "Not expected to be here.";
+      return INDEX_PERM_DELETE_ONLY;
+  }
+  CHECK(false) << "Not expected to be here.";
+  return INDEX_PERM_DELETE_ONLY;
+}
+
+Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
+    CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
+    uint32_t current_version) {
   DVLOG(3) << __PRETTY_FUNCTION__ << yb::ToString(*indexed_table);
 
-  // Add index info to indexed table and increment schema version.
-  bool updated = false;
-  IndexInfoPB index_info_to_update;
+  std::unordered_map<TableId, IndexPermissions> indexes_to_update;
+  vector<IndexInfoPB> indexes_to_backfill;
+  vector<IndexInfoPB> indexes_to_delete;
   {
     TRACE("Locking indexed table");
     VLOG(1) << ("Locking indexed table");
     auto l = indexed_table->LockForRead();
+    if (current_version != l->data().pb.version()) {
+      LOG(WARNING) << "Somebody launched the next version before we got to it.";
+      return Status::OK();
+    }
+
+    // Attempt to find an index that requires us to just launch the next state (i.e. not backfill)
     for (int i = 0; i < l->data().pb.indexes_size(); i++) {
       const IndexInfoPB& idx_pb = l->data().pb.indexes(i);
-      if (idx_pb.has_index_permissions() && IsTransientState(idx_pb.index_permissions())) {
-        index_info_to_update = idx_pb;
-        // Until we get to #2784, we'll have only one index being built at a time.
-        LOG_IF(DFATAL, updated) << "For now, we cannot have multiple indexes build in parallel.";
-        updated = true;
+      if (!idx_pb.has_index_permissions()) {
+        continue;
+      }
+      if (idx_pb.index_permissions() == INDEX_PERM_DO_BACKFILL) {
+        indexes_to_backfill.emplace_back(idx_pb);
+      } else if (idx_pb.index_permissions() == INDEX_PERM_INDEX_UNUSED) {
+        indexes_to_delete.emplace_back(idx_pb);
+      } else if (idx_pb.index_permissions() != INDEX_PERM_READ_WRITE_AND_DELETE) {
+        indexes_to_update.emplace(idx_pb.table_id(), NextPermission(idx_pb.index_permissions()));
       }
     }
   }
 
-  if (!updated) {
-    TRACE("Not necessary to launch next version");
-    VLOG(1) << "Not necessary to launch next version : " << yb::ToString(index_info_to_update);
-    return false;
+  if (!indexes_to_update.empty()) {
+    Status s;
+    WARN_NOT_OK(
+        (s = UpdateIndexPermission(
+             catalog_manager, indexed_table, indexes_to_update, current_version)),
+        Format(
+            "Could not update index permissions.",
+            " Possible that the master-leader has changed, or a race "
+            "with another thread trying to launch next version. "));
+    if (s.ok()) {
+      catalog_manager->SendAlterTableRequest(indexed_table);
+    }
+    return Status::OK();
   }
 
-  const IndexPermissions old_perm = index_info_to_update.index_permissions();
-  IndexPermissions new_perm = INDEX_PERM_DELETE_ONLY;
-  switch (old_perm) {
-    case INDEX_PERM_DELETE_ONLY:
-      new_perm = INDEX_PERM_WRITE_AND_DELETE;
-      break;
-    case INDEX_PERM_WRITE_AND_DELETE:
-      new_perm = INDEX_PERM_DO_BACKFILL;
-      break;
-    case INDEX_PERM_DO_BACKFILL:
-      TRACE("Starting backfill process");
-      VLOG(1) << ("Starting backfill process");
-      WARN_NOT_OK(
-          StartBackfillingData(catalog_manager, indexed_table.get(), index_info_to_update),
-          "Could not launch Backfill");
-      return true;
-    case INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING:
-      new_perm = INDEX_PERM_DELETE_ONLY_WHILE_REMOVING;
-      break;
-    case INDEX_PERM_DELETE_ONLY_WHILE_REMOVING:
-      new_perm = INDEX_PERM_INDEX_UNUSED;
-      break;
-    case INDEX_PERM_INDEX_UNUSED:
-      // TODO(Amit): #4039 Delete the index after ensuring that there is no
-      // pending txn.
-      WARN_NOT_OK(
-          catalog_manager->DeleteIndexInfoFromTable(
-              indexed_table->id(), index_info_to_update.table_id()),
-          yb::Format(
-              "failed to delete index_info for $0 from $1", index_info_to_update.table_id(),
-              indexed_table->id()));
-      return false;
-    case INDEX_PERM_READ_WRITE_AND_DELETE:
-      DCHECK(false) << "Not expected to be here.";
-      return false;
+  IndexInfoPB index_info_to_update;
+  if (!indexes_to_delete.empty()) {
+    index_info_to_update = indexes_to_delete[0];
+    // TODO(Amit): #4039 Delete the index after ensuring that there is no pending txn.
+    WARN_NOT_OK(
+        catalog_manager->DeleteIndexInfoFromTable(
+            indexed_table->id(), index_info_to_update.table_id()),
+        yb::Format(
+            "failed to delete index_info for $0 from $1", index_info_to_update.table_id(),
+            indexed_table->id()));
+    return ClearAlteringState(catalog_manager, indexed_table, current_version);
   }
-  DCHECK(new_perm != INDEX_PERM_DELETE_ONLY);
-  Status s;
-  WARN_NOT_OK(
-      (s = UpdateIndexPermission(
-           catalog_manager, indexed_table, index_info_to_update.table_id(), new_perm)),
-      Format(
-          "Could not update permission to $0",
-          " Possible that the master-leader has changed, or a race "
-          "with another thread trying to launch next version. ", IndexPermissions_Name(new_perm)));
-  if (s.ok()) {
-    catalog_manager->SendAlterTableRequest(indexed_table);
+
+  if (!indexes_to_backfill.empty()) {
+    // TODO(Amit): Batch backfill for different indexes.
+    index_info_to_update = indexes_to_backfill[0];
+    TRACE("Starting backfill process");
+    VLOG(1) << ("Starting backfill process");
+    WARN_NOT_OK(
+        StartBackfillingData(catalog_manager, indexed_table.get(), index_info_to_update),
+        "Could not launch Backfill");
+    return Status::OK();
   }
-  return true;
+
+  TRACE("Not necessary to launch next version");
+  VLOG(1) << "Not necessary to launch next version";
+  return ClearAlteringState(catalog_manager, indexed_table, current_version);
 }
 
 // -----------------------------------------------------------------------------------------------
@@ -588,12 +622,15 @@ void BackfillTable::Done(const Status& s) {
 
 Status BackfillTable::AlterTableStateToSuccess() {
   const TableId& index_table_id = indexes()[0].table_id();
-  RETURN_NOT_OK_PREPEND(MultiStageAlterTable::UpdateIndexPermission(
-                            master_->catalog_manager(), indexed_table_,
-                            index_table_id, INDEX_PERM_READ_WRITE_AND_DELETE),
-                        "Could not update permission to "
-                        "INDEX_PERM_READ_WRITE_AND_DELETE. Possible that the "
-                        "master-leader has changed.");
+  RETURN_NOT_OK_PREPEND(
+      MultiStageAlterTable::UpdateIndexPermission(
+          master_->catalog_manager(),
+          indexed_table_,
+          {{index_table_id, INDEX_PERM_READ_WRITE_AND_DELETE}},
+          boost::none),
+      "Could not update permission to "
+      "INDEX_PERM_READ_WRITE_AND_DELETE. Possible that the "
+      "master-leader has changed.");
 
   VLOG(1) << "Sending alter table requests to the Indexed table";
   master_->catalog_manager()->SendAlterTableRequest(indexed_table_);
@@ -611,8 +648,8 @@ Status BackfillTable::AlterTableStateToAbort() {
   const TableId& index_table_id = indexes()[0].table_id();
   RETURN_NOT_OK_PREPEND(
       MultiStageAlterTable::UpdateIndexPermission(
-          master_->catalog_manager(), indexed_table_, index_table_id,
-          INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING),
+          master_->catalog_manager(), indexed_table_,
+          {{index_table_id, INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING}}, boost::none),
       "Could not update permission to "
       "INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING. Possible that the "
       "master-leader has changed.");
@@ -626,10 +663,11 @@ Status BackfillTable::ClearCheckpointStateInTablets() {
   vector<scoped_refptr<TabletInfo>> tablets;
   indexed_table_->GetAllTablets(&tablets);
   std::vector<TabletInfo*> tablet_ptrs;
+  const auto& idx_id = indexes()[0].table_id();
   for (scoped_refptr<TabletInfo>& tablet : tablets) {
     tablet_ptrs.push_back(tablet.get());
     tablet->mutable_metadata()->StartMutation();
-    tablet->mutable_metadata()->mutable_dirty()->pb.clear_backfilled_until();
+    tablet->mutable_metadata()->mutable_dirty()->pb.mutable_backfilled_until()->erase(idx_id);
   }
   RETURN_NOT_OK_PREPEND(
       master()->catalog_manager()->sys_catalog()->UpdateItems(tablet_ptrs,
@@ -744,9 +782,12 @@ BackfillTablet::BackfillTablet(
     : backfill_table_(backfill_table), tablet_(tablet) {
   {
     auto l = tablet_->LockForRead();
-    Partition::FromPB(tablet_->metadata().state().pb.partition(), &partition_);
-    if (tablet_->metadata().state().pb.has_backfilled_until()) {
-      next_row_to_backfill_ = tablet_->metadata().state().pb.backfilled_until();
+    const auto& pb = tablet_->metadata().state().pb;
+    Partition::FromPB(pb.partition(), &partition_);
+    DCHECK_EQ(backfill_table_->indexes().size(), 1);
+    const auto& idx_id = backfill_table_->indexes()[0].table_id();
+    if (pb.backfilled_until().find(idx_id) != pb.backfilled_until().end()) {
+      next_row_to_backfill_ = pb.backfilled_until().at(idx_id);
       done_.store(next_row_to_backfill_.empty(), std::memory_order_release);
     }
   }
@@ -783,8 +824,10 @@ void BackfillTablet::Done(const Status& status, const string& next_row_key) {
           << " until " << yb::ToString(next_row_to_backfill_);
   {
     tablet_->mutable_metadata()->StartMutation();
-    tablet_->mutable_metadata()->mutable_dirty()->pb.set_backfilled_until(
-        next_row_to_backfill_);
+    for (const auto& idx_info : backfill_table_->indexes()) {
+      tablet_->mutable_metadata()->mutable_dirty()->pb.mutable_backfilled_until()->insert(
+          {idx_info.table_id(), next_row_to_backfill_});
+    }
     WARN_NOT_OK(
         backfill_table_->master()->catalog_manager()->sys_catalog()->UpdateItem(
             tablet_.get(), backfill_table_->leader_term()),

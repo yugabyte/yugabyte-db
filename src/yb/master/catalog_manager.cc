@@ -3064,8 +3064,8 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
   }
 
   RETURN_NOT_OK(MultiStageAlterTable::UpdateIndexPermission(
-      this, indexed_table, index_table_id,
-      IndexPermissions::INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING));
+      this, indexed_table,
+      {{index_table_id, IndexPermissions::INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING}}));
   // Actual Deletion of the index info will happen asynchronously after all the
   // tablets move to the new IndexPermission of DELETE_ONLY_WHILE_REMOVING.
   SendAlterTableRequest(indexed_table);
@@ -6297,7 +6297,7 @@ Status CatalogManager::HandleTabletSchemaVersionReport(TabletInfo *tablet, uint3
   VLOG(1) << "Tablet " << tablet->tablet_id() << " reported version " << version;
 
   // Verify if it's the last tablet report, and the alter completed.
-  TableInfo *table = tablet->table().get();
+  auto table = tablet->table();
   {
     auto l = table->LockForRead();
     if (l->data().pb.state() != SysTablesEntryPB::ALTERING) {
@@ -6313,31 +6313,7 @@ Status CatalogManager::HandleTabletSchemaVersionReport(TabletInfo *tablet, uint3
     }
   }
 
-  if (!MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(this, tablet->table())) {
-    // If there aren't any "next steps" to launch,
-    // Update the state from altering to running and remove the last fully
-    // applied schema information (if it exists).
-    auto l = table->LockForWrite();
-    uint32_t current_version = l->data().pb.version();
-    l->mutable_data()->pb.clear_fully_applied_schema();
-    l->mutable_data()->pb.clear_fully_applied_schema_version();
-    l->mutable_data()->pb.clear_fully_applied_indexes();
-    l->mutable_data()->pb.clear_fully_applied_index_info();
-    l->mutable_data()->set_state(
-        SysTablesEntryPB::RUNNING, Substitute("Current schema version=$0", current_version));
-
-    Status s = sys_catalog_->UpdateItem(table, leader_ready_term());
-    if (!s.ok()) {
-      LOG_WITH_PREFIX(WARNING) << "An error occurred while updating sys-tables: " << s.ToString()
-                               << ". This master may not be the leader anymore.";
-      return s;
-    }
-
-    l->Commit();
-    LOG_WITH_PREFIX(INFO) << table->ToString() << " - Alter table completed version="
-                          << current_version;
-  }
-  return Status::OK();
+  return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(this, table, version);
 }
 
 // Helper class to commit TabletInfo mutations at the end of a scope.

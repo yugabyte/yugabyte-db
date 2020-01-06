@@ -296,13 +296,17 @@ message SysTabletsEntryPB {
   // True if the tablet is colocated.
   optional bool colocated = 9 [ default = false ];
 
-  // If the tablet is in the backfilling state, this is used to keep track
-  // of how far along backfill has completed. Encoded as the DocKey for
-  // the next row to be backfilled.
-  optional bytes backfilled_until = 10;
+  // Replaced by the map below.
+  optional bytes DEPRECATED_backfilled_until = 10;
 
   // For tablets which are results of splitting we set this to split parent split_depth + 1.
   optional uint64 split_depth = 11;
+
+  // If the tablet is in the backfilling state, this is used to keep track
+  // of how far along backfill has completed.
+  // Key corresponds to the table_id for the index table. Value is encoded as
+  // the DocKey for the next row to be backfilled.
+  map<string, bytes> backfilled_until = 12;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
