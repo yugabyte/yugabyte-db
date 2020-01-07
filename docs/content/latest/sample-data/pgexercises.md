@@ -75,6 +75,9 @@ Connect to the `exercises` database.
 
 ```postgresql
 yugabyte=# \c exercises
+```
+
+```
 You are now connected to database "exercises" as user "postgres".
 exercises=#
 ```

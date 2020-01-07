@@ -64,7 +64,7 @@ yugabyte=#
 To create the `chinook` database, run the following command.
 
 ```postgresql
-CREATE DATABASE chinook;
+yugabyte=# CREATE DATABASE chinook;
 ```
 
 Confirm that you have the `chinook` database by using the `\l` command to list the databases on your cluster.
