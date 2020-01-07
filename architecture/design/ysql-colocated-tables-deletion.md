@@ -1,4 +1,4 @@
-# YSQL Tablet Colocation Drop Flow
+# YSQL Table Colocation Drop Flow
 
 ## Intro
 
