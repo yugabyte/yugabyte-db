@@ -1,7 +1,7 @@
 ---
 title: cqlsh
 linkTitle: cqlsh
-description: cqlsh CLI for YCQL
+description: cqlsh
 aliases:
   - /develop/tools/cqlsh/
   - /latest/develop/tools/cqlsh/

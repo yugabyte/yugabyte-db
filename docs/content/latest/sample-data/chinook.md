@@ -53,7 +53,7 @@ To open the YSQL shell, run the `ysqlsh` command from the YugabyteDB root direct
 $ ./bin/ysqlsh
 ```
 
-```sh
+```
 ysqlsh (11.2)
 Type "help" for help.
 yugabyte=#
@@ -64,19 +64,22 @@ yugabyte=#
 To create the `chinook` database, run the following command.
 
 ```postgresql
-CREATE DATABASE chinook;
+yugabyte=# CREATE DATABASE chinook;
 ```
 
 Confirm that you have the `chinook` database by using the `\l` command to list the databases on your cluster.
 
-```
+```postgresql
 yugabyte=# \l
 ```
 
 Connect to the `chinook` database.
 
-```
+```postgresql
 yugabyte=# \c chinook
+```
+
+```
 You are now connected to database "chinook" as user "postgres".
 chinook=#
 ```
@@ -85,13 +88,13 @@ chinook=#
 
 To build the tables and database objects, run the following `\i` command.
 
-```
+```postgresql
 chinook=# \i share/chinook_ddl.sql
 ```
 
 You can verify that all 14 tables have been created by running the `\d` command.
 
-```
+```postgresql
 chinook=# \d
 ```
 
@@ -101,13 +104,13 @@ To load the `chinook` database with sample data, you need to run the SQL scripts
 
 First, run the SQL script to load the genres, artists, and albums.
 
-```
+```postgresql
 chinook=# \i share/chinook_genres_artists_albums.sql
 ```
 
 Next, run the SQL script to load the songs.
 
-```
+```postgresql
 chinook=# \i share/chinook_songs.sql
 ```
 
