@@ -8,7 +8,7 @@ aliases:
   - /manage/backup-restore/
 menu:
   latest:
-    identifier: manage-backup-restore
+    identifier: backup-restore
     parent: manage
     weight: 702
 ---
@@ -46,10 +46,10 @@ This section goes into details of backing up data and restoring it from Yugabyte
     <a class="section-link icon-offset" href="snapshots/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Manage snapshots</div>
+        <div class="title">Back up data using snapshots</div>
       </div>
       <div class="body">
-        This section describes how to use snapshots for distributed backup/restore.
+        This section describes how to use snapshots for backup and restore.
       </div>
     </a>
   </div>

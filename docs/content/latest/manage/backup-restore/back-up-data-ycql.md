@@ -9,7 +9,7 @@ aliases:
 menu:
   latest:
     identifier: back-up-data-ycql
-    parent: manage-backup-restore
+    parent: backup-restore
     weight: 703
 ---
 

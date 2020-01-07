@@ -33,59 +33,59 @@ ysql_dumpall [ <connection-option> ... ] [ <content-output-formation-option> ...
 
 The following command line options control the content and format of the output.
 
-#### -a | --data-only
+#### -a, --data-only
 
 Dump only the data, not the schema (data definitions).
 
-#### -c | --clean
+#### -c, --clean
 
 Include SQL statements to clean (drop) databases before recreating them. `DROP` statements for roles are added as well.
 
-#### -E encoding | --encoding=*encoding*
+#### -E encoding, --encoding=*encoding*
 
 Create the dump in the specified character set encoding. By default, the dump is created in the database encoding. (Another way to get the same result is to set the `PGCLIENTENCODING` environment variable to the desired dump encoding.)
 
-#### -f filename | --file=*filename*
+#### -f filename, --file=*filename*
 
 Send output to the specified file. If this is omitted, the standard output is used.
 
-#### -g | --globals-only
+#### -g, --globals-only
 
 Dump only global objects (roles), no databases.
 
-#### -o | --oids
+#### -o, --oids
 
 Dump object identifiers (OIDs) as part of the data for every table. Use this option if your application references the OID columns in some way (that is, in a foreign key constraint). Otherwise, this option should not be used.
 
-#### -O | --no-owner
+#### -O, --no-owner
 
 Do not output statements to set ownership of objects to match the original database. By default, `ysql_dumpall` issues `ALTER OWNER` or `SET SESSION AUTHORIZATION` statements to set ownership of created schema elements. These statements will fail when the script is run unless it is started by a superuser (or the same user that owns all of the objects in the script). To make a script that can be restored by any user, but will give that user ownership of all the objects, specify [`-O|--no-owner`](#o-no-owner).
 
-#### -r | --roles-only
+#### -r, --roles-only
 
 Dump only roles, no databases.
 
-#### -s | --schema-only
+#### -s, --schema-only
 
 Dump only the object definitions (schema), not data.
 
-#### -S username | --superuser=*username*
+#### -S *username*, --superuser=*username*
 
 Specify the superuser username to use when disabling triggers. This is relevant only if [`--disable-triggers`](#disable-triggers) is used. (Usually, it's better to leave this out, and instead start the resulting script as superuser.)
 
-#### -v | --verbose
+#### -v, --verbose
 
 Specifies verbose mode. This will cause `ysql_dumpall` to output start and stop times to the dump file, and progress messages to standard error. It will also enable verbose output in [`ysql_dump`](../ysql-dump).
 
-#### --version | -V
+#### --version, -V
 
 Print the `ysql_dumpall` version and exit.
 
-#### -x | --no-privileges | --no-acl
+#### -x, --no-privileges, --no-acl
 
 Prevent dumping of access privileges (`GRANT` and `REVOKE` statements).
 
-#### --column-inserts | --attribute-inserts
+#### --column-inserts, --attribute-inserts
 
 Dump data as `INSERT` statements with explicit column names (`INSERT INTO table (column, ...) VALUES ...`). This will make restoration very slow; it is mainly useful for making dumps that can be loaded into non-YugabyteDB databases.
 
@@ -151,7 +151,7 @@ Force quoting of all identifiers. This option is recommended when dumping a data
 
 Output SQL-standard `SET SESSION AUTHORIZATION` statements instead of `ALTER OWNER` statements to determine object ownership. This makes the dump more standards compatible, but depending on the history of the objects in the dump, might not restore properly.
 
-### -? | --help
+### -?, --help
 
 Show help about `ysql_dumpall` command line arguments and then exit.
 
@@ -159,33 +159,33 @@ Show help about `ysql_dumpall` command line arguments and then exit.
 
 The following command line options control the database connection parameters.
 
-#### -d *connstr* | --dbname=*connstr*
+#### -d *connstr*, --dbname=*connstr*
 
 Specifies parameters used to connect to the server, as a connection string.
 
 The option is called `-d|--dbname` for consistency with other client applications, but because `ysql_dumpall` needs to connect to many databases, the database name in the connection string will be ignored. Use the [`-l|--database`](#l-database-database) option to specify the name of the database used for the initial connection, which will dump global objects and discover what other databases should be dumped.
 
-#### -h *host* | --host *host*
+#### -h *host*, --host *host*
 
 Specifies the host name of the machine on which the database server is running. If the value begins with a slash, it is used as the directory for the Unix domain socket. The default is taken from the `PGHOST` environment variable, if set, else a Unix domain socket connection is attempted.
 
-#### -l *dbname* | --database=*database*
+#### -l *dbname*, --database=*database*
 
 Specifies the name of the database to connect to for dumping global objects and discovering what other databases should be dumped. If not specified, the `postgres` database will be used, and if that does not exist, `template1` will be used.
 
-#### -p *port* | --port=*port*
+#### -p *port*, --port=*port*
 
 Specifies the TCP port or local Unix domain socket file extension on which the server is listening for connections. Defaults to the `PGPORT` environment variable, if set, or the compiled-in default.
 
-#### -U *username* | --username=*username*
+#### -U *username*, --username=*username*
 
 The username to connect as.
 
-#### -w | --no-password
+#### -w, --no-password
 
 Never issue a password prompt. If the server requires password authentication and a password is not available by other means such as a `~/.pgpass` file, the connection attempt will fail. This option can be useful in batch jobs and scripts where no user is present to enter a password.
 
-#### -W | --password
+#### -W, --password
 
 Force `ysql_dumpall` to prompt for a password before connecting to a database.
 

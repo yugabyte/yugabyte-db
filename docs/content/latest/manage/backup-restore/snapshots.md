@@ -7,17 +7,26 @@ aliases:
   - manage/backup-restore/manage-snapshots
 menu:
   latest:
-    identifier: manage-backup-restore-manage-snapshots
-    parent: manage-backup-restore
+    identifier: snapshots-ycql
+    parent: backup-restore
     weight: 705
 isTocNested: true
 showAsideToc: true
 ---
 
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/manage/backup-restore/snapshots-ycql" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+</ul>
+
 You can create a backup for YugabyteDB using snapshots. Here are some points to keep in mind.
 
 - Distributed backups using snapshots
-  - Massively parallel, efficient for very large data sets
+  - Massively parallel, efficient for very large data sets.
   - Snapshot does a RocksDB flush and creates hard links to the files in a `.snapshots` directory on each tablet.
   - Snapshots are not transactional across the whole table, but only on each tablet [#2086](https://github.com/YugaByte/yugabyte-db/issues/2086).
   - Multi-table transactional snapshot is in the road map [#2084](https://github.com/YugaByte/yugabyte-db/issues/2084).

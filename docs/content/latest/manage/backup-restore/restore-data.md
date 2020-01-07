@@ -9,7 +9,7 @@ aliases:
 menu:
   latest:
     identifier: restore-data
-    parent: manage-backup-restore
+    parent: backup-restore
     weight: 703
 ---
 
@@ -28,15 +28,13 @@ menu:
   </li>
 </ul>
 
-To restore your YugabyteDB databases that were backed up using the `ysql_dump` and `ysql_dumpall` backup utilities, you can use the `ysqlsh` to restore one or all databases.
+To restore your YugabyteDB databases that were backed up using the `ysql_dump` and `ysql_dumpall` backup utilities, you can use the [`ysqlsh`](../../../admin/ysqlsh) to restore one or all databases.
 
 ## Restore databases using `ysqlsh \i`
 
-To restore one database using the `ysqlsh` shell, follow these steps:
+To restore databases using the `ysqlsh` shell:
 
-1. Open a command line window and change to your YugabyteDB home directory.
-
-2. Run the following command to open the `ysqlsh` command line interface.
+1. Open the `ysqlsh` from the YugabyteDB home directory.
 
 ```sh
 $ ./bin/ysqlsh
@@ -46,16 +44,18 @@ $ ./bin/ysqlsh
 ysqlsh (11.2-YB-2.0.9.0-b0)
 Type "help" for help.
 
-yugabyte=# 
+yugabyte=#
 ```
 
-3. At the `ysqlsh` shell prompt, run the following command.
+2. At the `ysqlsh` shell prompt, run the following `\i` command.
 
 ```postgresql
 yugabyte=# \i <db-sql-script>
 ```
 
-- *db-sql-script*: the SQL script file dumped using `ysql_dump`
+- *db-sql-script*: the SQL script file dumped using `ysql_dump` or `ysql_dumpall`.
+
+For details about using this command, see [`\i`](../../../admin/ysqlsh/#-i-filename-include-filename) in the [`ysqlsh`](../../../admin/ysqlsh) documentation.
 
 {{< note title="Note" >}}
 
@@ -68,8 +68,9 @@ To reduce security risks, SQL script files created using `ysql_dump` include `SE
 To restore one database using `ysqlsh` on the command line, open a command line window and run the following command. The `ysqlsh -f` command will read the SQL statements from the specified file and 
 
 ```sh
-$ ysqlsh -f <db-sql-script> >
+$ ysqlsh -f <db-sql-script>
 ```
 
-## Restore all databases
+- *db-sql-script*: the SQL script file dumped using `ysql_dump` or `ysql_dumpall`.
 
+For details about using this command, see [`-f, -file`](../../../admin/ysqlsh/#-f-filename-file-filename) in the [`ysqlsh`](../../../admin/ysqlsh) documentation.

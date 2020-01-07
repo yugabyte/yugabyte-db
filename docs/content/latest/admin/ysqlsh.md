@@ -1,7 +1,7 @@
 ---
 title: ysqlsh
 linkTitle: ysqlsh
-description: ysqlsh CLI for YSQL
+description: ysqlsh
 aliases:
   - /develop/tools/ysqlsh/
   - /latest/develop/tools/ysqlsh/
@@ -684,7 +684,7 @@ If the query fails or does not return one row, no variables are changed.
 
 If the current query buffer is empty, the most recently sent query is re-executed instead.
 
-##### \gx [ filename ] | \gx [ |command ]
+##### \gx [ filename ], \gx [ |command ]
 
 `\gx` is equivalent to `\g,` but forces expanded output mode for this query. See `\x`.
 
@@ -700,13 +700,13 @@ To simplify typing, commands that consists of several words do not have to be qu
 
 {{< /note >}}
 
-##### \H | \html
+##### \H, \html
 
 Turns on HTML query output format. If the HTML format is already on, it is switched back to the default aligned text format. This command is for compatibility and convenience, but see [`\pset`](#pset-option-value) about setting other output options.
 
-##### \i | \include filename
+##### \i *filename*, \include *filename*
 
-Reads input from the file filename and executes it as though it had been typed on the keyboard.
+Reads input from the file *filename* and executes it as though it had been typed on the keyboard.
 
 If filename is `-` (hyphen), then standard input is read until an `EOF` indication or `\q` meta-command. This can be used to intersperse interactive input with input from files. Note that Readline behavior will be used only if it is active at the outermost level.
 
@@ -753,7 +753,7 @@ SELECT
 \endif
 ```
 
-##### \ir | \include_relative *filename*
+##### \ir, \include_relative *filename*
 
 The `\ir` command is similar to `\i`, but resolves relative file names differently. When executing in interactive mode, the two commands behave identically. However, when invoked from a script, `\ir` interprets file names relative to the directory in which the script is located, rather than the current working directory.
 
@@ -812,7 +812,7 @@ To intersperse text output in between query results, use `\qecho`.
 
 {{< /note >}}
 
-##### \p or \print
+##### \p | \print
 
 Print the current query buffer to the standard output. If the current query buffer is empty, the most recently executed query is printed instead.
 
@@ -940,7 +940,7 @@ There are various shortcut commands for [`\pset`](#pset-option-value). See `\a`,
 
 {{< /note >}}
 
-##### \q | \quit
+##### \q, \quit
 
 Quits the `ysqlsh` program. In a script file, only execution of that script is terminated.
 
@@ -948,7 +948,7 @@ Quits the `ysqlsh` program. In a script file, only execution of that script is t
 
 This command is identical to `\echo` except that the output will be written to the query output channel, as set by `\o`.
 
-##### \r | \reset
+##### \r, \reset
 
 Resets (clears) the query buffer.
 
