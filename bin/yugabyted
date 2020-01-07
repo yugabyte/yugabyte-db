@@ -447,8 +447,7 @@ class ControlScript(object):
                 os.makedirs(self.configs.saved_data.get("data_dir"))
 
             # Start or initialize yb-master and yb-tserver.
-            if is_first_run:
-                Output.init_animation("Running system checks...")
+            Output.init_animation("Running system checks...")
             for name in ("master", "tserver"):
                 process = self.processes.get(name)
                 process.remove_error_logs()
@@ -460,8 +459,7 @@ class ControlScript(object):
                     process.start()
                     should_callhome = True
             if self.wait_yb_master():
-                if is_first_run:
-                    Output.update_animation("System checks")
+                Output.update_animation("System checks")
 
                 yw_logged_in = False
                 # Start or initialize yugaware after setting YSQL default isolation level.
@@ -510,13 +508,23 @@ class ControlScript(object):
                             # universe and setting security level failed and retry initializing YW.
                             Output.init_animation("Bringing up UI...")
                             yw_logged_in = not self.wait_yw_login(yw_proxy, insecure=True)
-                            Output.update_animation("UI ready")
+                            if yw_logged_in:
+                                animation_status = Output.ANIMATION_SUCCESS
+                            else:
+                                animation_status = Output.ANIMATION_FAIL
+                            Output.update_animation("UI status", status=animation_status)
                             should_callhome = True
                         else:
                             yw_logged_in = False
                     if yw_process.is_running() and yw_logged_in:
                         if self.alerts:
                             yw_proxy.send_alerts(self.alerts)
+            else:
+                Output.update_animation("Database failure", status=Output.ANIMATION_FAIL)
+                # Only error out if we fail to start initially. Otherwise, continue trying
+                # to restart master/tserver.
+                if is_first_run:
+                    Output.log_error_and_exit("Failed to start {}".format(SCRIPT_NAME))
 
             # Print startup information and start callhome thread on first successful startup.
             # Preemptively assume YW will successfully start up.
@@ -543,7 +551,8 @@ class ControlScript(object):
                         # This is to display the initial status message.
                         self.script.daemon_success.put(1)
                         # Ignore any console output as important information will be logged.
-                        with open('/dev/null', 'r') as dev_null:
+                        with open('/dev/null', 'r+') as dev_null:
+                            Output.console_access = False
                             sys.stderr.flush()
                             sys.stdout.flush()
                             os.dup2(dev_null.fileno(), sys.stdin.fileno())
@@ -676,11 +685,10 @@ class ControlScript(object):
                     Output.log_error_and_exit(
                         "Found existing nodes with universe UUID: {}".format(cluster_uuid))
                 if cur_num_tservers == num_tservers:
-                    time.sleep(2)
                     Output.log(
                         "Completed waiting for yb master, num tservers={}.".format(num_tservers))
                     return True
-            time.sleep(2)
+            time.sleep(.5)
 
         Output.log("Failed waiting for yb-master, current num tservers={}, expected {}.".format(
                    cur_num_tservers, num_tservers))
@@ -1656,12 +1664,21 @@ class Output(object):
     log_dir = None
     start_time_sec = time.time()
     script_exit_func = None
-    # Tuple of (animation_enabled, animation_message)
-    animation_status = (False, "")
+    # Only attempt to write to stdout while we have access to console.
+    console_access = True
+
+    ANIMATION_SUCCESS = 0
+    ANIMATION_FAIL = -1
+    ANIMATION_RUNNING = 1
+    # Tuple of (animation_status, animation_message) to ensure atomicity.
+    animation_status = (ANIMATION_SUCCESS, "")
     animation_thread = None
 
     @staticmethod
     def print_out(msg):
+        if not Output.console_access:
+            return
+
         try:
             print(msg.encode('utf8'))
         except UnicodeEncodeError:
@@ -1671,18 +1688,30 @@ class Output(object):
     # Note - ONLY one line can be replaced. E.g. only characters after a newline can be replaced.
     @staticmethod
     def init_animation(msg):
+        if not Output.console_access:
+            return
+
         def animate():
             loading_symbols = ['/', '-', '\\', '|']
-            check = '\u2705'
+            end_symbols = {
+                Output.ANIMATION_SUCCESS: '\u2705',
+                Output.ANIMATION_FAIL: '\u274C',
+            }
             line_len = 0
             i = 0
-            while True:
-                enabled, msg = Output.animation_status
-                symbol = loading_symbols[i] if enabled else check
+            running = True
+            while running and Output.console_access:
+                status, msg = Output.animation_status
+                if status == Output.ANIMATION_RUNNING:
+                    symbol = loading_symbols[i]
+                else:
+                    symbol = end_symbols[status]
+                    running = False
+
                 line = "\r{} {}".format(symbol, msg)
                 line_len = max(len(line), line_len)
                 line_to_write = "{:<{}}".format(line, line_len)
-                if not enabled:
+                if not running:
                     line_to_write += "\n"
                 line_to_write = line_to_write.encode('utf-8')
 
@@ -1690,24 +1719,29 @@ class Output(object):
                     sys.stdout.write(line_to_write)
                 except UnicodeEncodeError:
                     sys.stdout.write(line_to_write.encode('ascii', 'ignore'))
-                sys.stdout.flush()
 
-                if not enabled:
-                    break
+                try:
+                    sys.stdout.flush()
+                except IOError as e:
+                    Output.log("Errored when flushing stdout: {}".format(e), logging.ERROR)
+
                 i = (i + 1) % len(loading_symbols)
                 time.sleep(.05)
 
-        Output.animation_status = (True, msg)
+        Output.animation_status = (Output.ANIMATION_RUNNING, msg)
         Output.animation_thread = Thread(target=animate)
         Output.animation_thread.start()
 
     @staticmethod
-    def update_animation(msg, keep_running=False):
+    def update_animation(msg, status=ANIMATION_SUCCESS):
+        if not Output.console_access:
+            return
+
         if not Output.animation_thread:
             Output.print_out(msg)
-        time.sleep(5)
-        Output.animation_status = (keep_running, msg)
-        if not keep_running and Output.animation_thread:
+
+        Output.animation_status = (status, msg)
+        if status != Output.ANIMATION_RUNNING and Output.animation_thread:
             Output.animation_thread.join()
             Output.animation_thread = None
 
