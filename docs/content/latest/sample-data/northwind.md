@@ -69,7 +69,7 @@ CREATE DATABASE northwind;
 
 Confirm that you have the Northwind database by listing out the databases on your cluster.
 
-```
+```postgresql
 yugabyte=# \l
 ```
 
@@ -77,8 +77,11 @@ yugabyte=# \l
 
 Connect to the Northwind database.
 
-```
+```postgresql
 yugabyte=# \c northwind
+```
+
+```
 You are now connected to database "northwind" as user "postgres".
 northwind=#
 ```
@@ -87,13 +90,13 @@ northwind=#
 
 To build the tables and database objects, execute the `northwind_ddl.sql` SQL script.
 
-```
+```postgresql
 northwind=# \i share/northwind_ddl.sql
 ```
 
 You can verify that all 14 tables have been created by running the `\d` command.
 
-```
+```postgresql
 northwind=# \d
 ```
 
@@ -103,13 +106,13 @@ northwind=# \d
 
 To load the `northwind` database with sample data, run the `\i` command to execute commands in the `northwind_data.sql` file.
 
-```
+```postgresql
 northwind=# \i share/northwind_data.sql
 ```
 
 To verify that you have some data to work with, you can run a simple SELECT statement to pull data from the `customers` table.
 
-```
+```postgresql
 northwind=# SELECT * FROM customers LIMIT 2;
 ```
 
