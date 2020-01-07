@@ -15,7 +15,8 @@ import { VALIDATE_FROM_TOKEN, VALIDATE_FROM_TOKEN_RESPONSE,
          REFRESH_RELEASES_RESPONSE, IMPORT_RELEASE, IMPORT_RELEASE_RESPONSE, UPDATE_RELEASE,
          UPDATE_RELEASE_RESPONSE, GET_ALERTS, GET_ALERTS_SUCCESS, GET_ALERTS_FAILURE,
          API_TOKEN_LOADING, API_TOKEN, API_TOKEN_RESPONSE,
-         GET_SCHEDULES, GET_SCHEDULES_RESPONSE, DELETE_SCHEDULE, DELETE_SCHEDULE_RESPONSE
+         GET_SCHEDULES, GET_SCHEDULES_RESPONSE, DELETE_SCHEDULE, DELETE_SCHEDULE_RESPONSE,
+         GET_CUSTOMER_USERS, GET_CUSTOMER_USERS_SUCCESS, GET_CUSTOMER_USERS_FAILURE
        } from '../actions/customers';
 
 import { sortVersionStrings, isDefinedNotNull } from '../utils/ObjectUtils';
@@ -48,6 +49,7 @@ const INITIAL_STATE = {
   updateRelease: getInitialState({}),
   addCertificate: getInitialState({}),
   userCertificates: getInitialState({}),
+  users: getInitialState([]),
   schedules: getInitialState([]),
 };
 
@@ -181,6 +183,14 @@ export default function(state = INITIAL_STATE, action) {
       return {...state, yugaware_logs: action.payload.data.lines.reverse()};
     case GET_LOGS_FAILURE:
       return {...state, yugaware_logs: null };
+
+    case GET_CUSTOMER_USERS:
+      return setLoadingState(state, "users", getInitialState([]));
+    case GET_CUSTOMER_USERS_SUCCESS:
+      return setSuccessState(state, "users", action.payload.data);
+    case GET_CUSTOMER_USERS_FAILURE:
+      return setFailureState(state, "users", action.payload);
+
     case GET_RELEASES:
       return setLoadingState(state, "releases", []);
     case GET_RELEASES_RESPONSE:

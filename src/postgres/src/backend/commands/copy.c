@@ -2826,7 +2826,7 @@ CopyFrom(CopyState cstate)
 					 */
 					if (resultRelInfo->ri_FdwRoutine == NULL &&
 						resultRelInfo->ri_RelationDesc->rd_att->constr)
-						ExecConstraints(resultRelInfo, slot, estate);
+						ExecConstraints(resultRelInfo, slot, estate, mtstate);
 
 					/*
 					 * Also check the tuple against the partition constraint, if

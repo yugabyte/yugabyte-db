@@ -15,11 +15,11 @@ showAsideToc: true
 
 For details on the two data center (2DC) deployment architecture and supported replication scenarios, see [Two data center (2DC) deployments](../../architecture/2dc-deployments).
 
-Follow the steps below to set up a two data center (2DC) deployment using either unidirectional (one-way) or bidirectional (two-way) replication between the data centers.
+Follow the steps below to set up a two data center (2DC) deployment using either unidirectional (aka master-follower) or bidirectional (aka multi-master) replication between the data centers.
 
-## Set up a two data center (2DC) deployment
+## Set up
 
-### Set up Universe 1 (producer universe)
+### Producer universe
 
 To create the producer universe, follow these steps.
 
@@ -27,7 +27,7 @@ To create the producer universe, follow these steps.
 
 2. Create the the tables for the APIs being used.
 
-### Set up Universe 2 (consumer universe)
+### Consumer universe
 
 To create the consumer universe, follow these steps.
 
@@ -37,13 +37,13 @@ To create the consumer universe, follow these steps.
 
 Make sure to create the same tables as you did for the producer universe.
 
-After creating the required tables, you can now set up the replication behavior.
+After creating the required tables, you can now set up aysnchronous replication using the steps below.
 
-### Unidirectional (one-way) replication
+## Unidirectional (aka master-follower) replication
 
 1. Look up the producer universe UUID and the table IDs for the two tables and the index table on master UI.
 
-2. Run the following `yb-admin` [`setup_universe_replication`](../../admin/yb-admin/#setup-universe-replication) command from the YugabyteDB home directory.
+2. Run the following `yb-admin` [`setup_universe_replication`](../../admin/yb-admin/#setup-universe-replication) command from the YugabyteDB home directory in the producer universe.
 
 ```sh
 ./bin/yb-admin -master_addresses <consumer_universe_master_addresses>
@@ -52,10 +52,13 @@ setup_universe_replication <producer_universe_uuid>
   <table_id>,[<table_id>..]
 ```
 
-#### Example
+**Example**
 
 ```sh
-./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
+./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3 \
+	127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+	000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
 ```
 
 {{< note title="Note" >}}
@@ -64,36 +67,38 @@ There should be three table IDs in the command above — two of those are YSQL f
 
 {{< /note >}}
 
-### Bidirectional (two-way) replication
+## Bidirectional (aka multi-master) replication
 
-To set up 2-way replication, follow the steps above in [Unidirectional (one-way) replication](#unidirectional-one-way-replication) and then do the same steps for the the “yugabyte-producer” universe.
+To set up bidirectional replication, follow the steps above in the Unidirectional replication section above and then do the same steps for the the “yugabyte-consumer” universe.
 
 Note that this time, “yugabyte-producer” will be set up to consume data from “yugabyte-consumer”.
 
-#### Load data into producer universe
+## Load data into producer universe
 
-1. Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`) from the [YugabyteDB workload generator repository](https://github.com/yugabyte/yb-sample-apps).
+1. Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`) from [GitHub](https://github.com/yugabyte/yb-sample-apps).
 
-2. Start pumping data into “yugabyte-producer” using the [YugabyteDB workload generator (`yb-sample-apps`)](https://github.com/yugabyte/yb-sample-apps).
+2. Start loading data into “yugabyte-producer” using the YugabyteDB workload generator JAR.
 
-##### YSQL example
+**YSQL example**
 
 ```sh
 java -jar yb-sample-apps.jar --workload SqlSecondaryIndex  --nodes 127.0.0.1:5433
 ```
 
-##### YCQL example
+**YCQL example**
 
 ```sh
 java -jar yb-sample-apps.jar --workload CassandraBatchKeyValue --nodes 127.0.0.1:9042
 ```
 
-#### Verify replication
+For bidirectional replication, repeat this step in the "yugabyte-consumer" universe.
 
-**For one-way replication:**
+## Verify replication
+
+**For unidirectional replication**
 
 Connect to “yugabyte-consumer” universe using the YSQL shell (`ysqlsh`) or the YCQL shell (`cqlsh`), and then confirm that you can see expected records.
 
-**For two-way replication:**
+**For bidirectional replication**
 
 Repeat the steps above, but pump data into “yugabyte-consumer”. To avoid primary key conflict errors, keep the key space for the two universes separate.

@@ -48,7 +48,8 @@ class PgCreateDatabase : public PgDdl {
                    const char *database_name,
                    PgOid database_oid,
                    PgOid source_database_oid,
-                   PgOid next_oid);
+                   PgOid next_oid,
+                   const bool colocated);
   virtual ~PgCreateDatabase();
 
   StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_DATABASE; }
@@ -61,6 +62,7 @@ class PgCreateDatabase : public PgDdl {
   const PgOid database_oid_;
   const PgOid source_database_oid_;
   const PgOid next_oid_;
+  bool colocated_ = false;
 };
 
 class PgDropDatabase : public PgDdl {
@@ -165,6 +167,8 @@ class PgCreateTable : public PgDdl {
   // Specify the number of tablets explicitly.
   virtual CHECKED_STATUS SetNumTablets(int32_t num_tablets);
 
+  virtual void SetColocated(bool colocated);
+
   // Execute.
   virtual CHECKED_STATUS Exec();
 
@@ -184,6 +188,7 @@ class PgCreateTable : public PgDdl {
   bool is_pg_catalog_table_;
   bool is_shared_table_;
   bool if_not_exist_;
+  bool colocated_ = true;
   boost::optional<YBHashSchema> hash_schema_;
   std::vector<std::string> range_columns_;
   client::YBSchemaBuilder schema_builder_;
@@ -256,7 +261,8 @@ class PgCreateIndex : public PgCreateTable {
                 const PgObjectId& base_table_id,
                 bool is_shared_index,
                 bool is_unique_index,
-                bool if_not_exist);
+                bool if_not_exist,
+                bool colocated);
   virtual ~PgCreateIndex();
 
   StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_INDEX; }

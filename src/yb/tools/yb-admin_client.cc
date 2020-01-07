@@ -363,12 +363,23 @@ Status ClusterAdminClient::GetMasterLeaderInfo(PeerId* leader_uuid) {
   return Status::OK();
 }
 
-Status ClusterAdminClient::DumpMasterState() {
+Status ClusterAdminClient::DumpMasterState(bool to_console) {
   CHECK(initted_);
   master::DumpMasterStateRequestPB req;
   req.set_peers_also(true);
   req.set_on_disk(true);
-  return ResultToStatus(InvokeRpc(&MasterServiceProxy::DumpState, master_proxy_.get(), req));
+  req.set_return_dump_as_string(to_console);
+
+  const auto resp = VERIFY_RESULT(InvokeRpc(
+      &MasterServiceProxy::DumpState, master_proxy_.get(), req));
+
+  if (to_console) {
+    cout << resp.dump() << endl;
+  } else {
+    cout << "Master state dump has been completed and saved into "
+            "the master respective log files." << endl;
+  }
+  return Status::OK();
 }
 
 Status ClusterAdminClient::GetLoadMoveCompletion() {
@@ -867,14 +878,18 @@ Status ClusterAdminClient::DeleteTableById(const TableId& table_id) {
 }
 
 Status ClusterAdminClient::DeleteIndex(const YBTableName& table_name) {
-  RETURN_NOT_OK(yb_client_->DeleteIndexTable(table_name));
-  cout << "Deleted index " << table_name.ToString() << endl;
+  YBTableName indexed_table_name;
+  RETURN_NOT_OK(yb_client_->DeleteIndexTable(table_name, &indexed_table_name));
+  cout << "Deleted index " << table_name.ToString() << " from table " <<
+      indexed_table_name.ToString() << endl;
   return Status::OK();
 }
 
 Status ClusterAdminClient::DeleteIndexById(const TableId& table_id) {
-  RETURN_NOT_OK(yb_client_->DeleteIndexTable(table_id));
-  cout << "Deleted index " << table_id << endl;
+  YBTableName indexed_table_name;
+  RETURN_NOT_OK(yb_client_->DeleteIndexTable(table_id, &indexed_table_name));
+  cout << "Deleted index " << table_id << " from table " <<
+      indexed_table_name.ToString() << endl;
   return Status::OK();
 }
 

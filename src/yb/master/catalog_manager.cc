@@ -65,9 +65,10 @@
 #include <unordered_map>
 #include <vector>
 
-#include <glog/logging.h>
 #include <boost/optional.hpp>
 #include <boost/thread/shared_mutex.hpp>
+#include <glog/logging.h>
+#include <google/protobuf/text_format.h>
 #include "yb/common/common_flags.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
@@ -176,6 +177,10 @@ DEFINE_bool(catalog_manager_wait_for_new_tablets_to_elect_leader, true,
             "This is disabled in some tests where we explicitly manage leader "
             "election.");
 TAG_FLAG(catalog_manager_wait_for_new_tablets_to_elect_leader, hidden);
+
+DEFINE_int32(catalog_manager_inject_latency_in_delete_table_ms, 0,
+             "Number of milliseconds that the master will sleep in DeleteTable.");
+TAG_FLAG(catalog_manager_inject_latency_in_delete_table_ms, hidden);
 
 DEFINE_int32(replication_factor, 3,
              "Default number of replicas for tables that do not have the num_replicas set.");
@@ -1403,9 +1408,11 @@ Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& rep
 }
 
 Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
-                                           const IndexInfoPB& index_info) {
+                                           const IndexInfoPB& index_info,
+                                           CreateTableResponsePB* resp) {
   TRACE("Locking indexed table");
-  auto l = indexed_table->LockForWrite();
+  auto l = DCHECK_NOTNULL(indexed_table)->LockForWrite();
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
 
   // Add index info to indexed table and increment schema version.
   l->mutable_data()->pb.add_indexes()->CopyFrom(index_info);
@@ -1824,8 +1831,45 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
   NamespaceId namespace_id = ns->id();
 
+  // For index table, find the table info
+  scoped_refptr<TableInfo> indexed_table;
+  if (PROTO_IS_INDEX(req)) {
+    TRACE("Looking up indexed table");
+    indexed_table = GetTableInfo(req.indexed_table_id());
+    if (indexed_table == nullptr) {
+      return STATUS_SUBSTITUTE(
+            NotFound, "The indexed table $0 does not exist", req.indexed_table_id());
+    }
+
+    TRACE("Locking indexed table");
+    auto l_indexed_tbl = indexed_table->LockForRead();
+    RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l_indexed_tbl.get(), resp));
+  }
+
+  // Determine if this table should be colocated. If not specified, the table should be colocated if
+  // and only if the namespace is colocated.
+  bool colocated = ns->colocated();
+  if (!req.colocated()) {
+    // Opt out of colocation if the request says so.
+    colocated = false;
+  } else if (indexed_table && !indexed_table->colocated()) {
+    // Opt out of colocation if the indexed table opted out of colocation.
+    colocated = false;
+  }
+
   // Validate schema.
   Schema client_schema;
+
+  // TODO: If this is a colocated index table in a colocated database, convert any hash partition
+  // columns into range partition columns. This is because postgres does not know that this index
+  // table is in a colocated database. When we get to the "tablespaces" step where we store this
+  // into PG metadata, then PG will know if db/table is colocated and do the work there.
+  if (colocated && PROTO_IS_INDEX(req)) {
+    for (auto& col_pb : *req.mutable_schema()->mutable_columns()) {
+      col_pb.set_is_hash_key(false);
+    }
+  }
+
   RETURN_NOT_OK(SchemaFromPB(req.schema(), &client_schema));
   RETURN_NOT_OK(ValidateCreateTableSchema(client_schema, resp));
 
@@ -1848,10 +1892,18 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     return CreateCopartitionedTable(req, resp, rpc, schema, namespace_id);
   }
 
-  // If neither hash nor range schema have been specified by the protobuf request, we assume the
-  // table uses a hash schema, and we use the table_type and hash_key to determine the hashing
-  // scheme (redis or multi-column) that should be used.
-  if (!req.partition_schema().has_hash_schema() && !req.partition_schema().has_range_schema()) {
+  if (colocated) {
+    // If the table is colocated, then there should be no hash partition columns.
+    if (schema.num_hash_key_columns() > 0) {
+      Status s =
+          STATUS(InvalidArgument, "Cannot create hash partitioned table in colocated database");
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+    }
+  } else if (
+      !req.partition_schema().has_hash_schema() && !req.partition_schema().has_range_schema()) {
+    // If neither hash nor range schema have been specified by the protobuf request, we assume the
+    // table uses a hash schema, and we use the table_type and hash_key to determine the hashing
+    // scheme (redis or multi-column) that should be used.
     if (req.table_type() == REDIS_TABLE_TYPE) {
       req.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::REDIS_HASH_SCHEMA);
     } else if (schema.num_hash_key_columns() > 0) {
@@ -1890,31 +1942,37 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Create partitions.
   PartitionSchema partition_schema;
   vector<Partition> partitions;
-  s = PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema);
-  if (req.partition_schema().has_hash_schema()) {
-    switch (partition_schema.hash_schema()) {
-      case YBHashSchema::kPgsqlHash:
-        // TODO(neil) After a discussion, PGSQL hash should be done appropriately.
-        // For now, let's not doing anything. Just borrow the multi column hash.
-        FALLTHROUGH_INTENDED;
-      case YBHashSchema::kMultiColumnHash: {
-        // Use the given number of tablets to create partitions and ignore the other schema options
-        // in the request.
-        RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
-        break;
-      }
-      case YBHashSchema::kRedisHash: {
-        RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions,
-                                                        kRedisClusterSlots));
-        break;
-      }
-    }
-  } else if (req.partition_schema().has_range_schema()) {
-    vector<YBPartialRow> split_rows;
-    RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
-    DCHECK_EQ(1, partitions.size());
+  if (colocated) {
+    RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
+    req.clear_partition_schema();
+    req.set_num_tablets(1);
   } else {
-    DFATAL_OR_RETURN_NOT_OK(STATUS(InvalidArgument, "Invalid partition method"));
+    s = PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema);
+    if (req.partition_schema().has_hash_schema()) {
+      switch (partition_schema.hash_schema()) {
+        case YBHashSchema::kPgsqlHash:
+          // TODO(neil) After a discussion, PGSQL hash should be done appropriately.
+          // For now, let's not doing anything. Just borrow the multi column hash.
+          FALLTHROUGH_INTENDED;
+        case YBHashSchema::kMultiColumnHash: {
+          // Use the given number of tablets to create partitions and ignore the other schema
+          // options in the request.
+          RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
+          break;
+        }
+        case YBHashSchema::kRedisHash: {
+          RETURN_NOT_OK(
+              partition_schema.CreatePartitions(num_tablets, &partitions, kRedisClusterSlots));
+          break;
+        }
+      }
+    } else if (req.partition_schema().has_range_schema()) {
+      vector<YBPartialRow> split_rows;
+      RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
+      DCHECK_EQ(1, partitions.size());
+    } else {
+      DFATAL_OR_RETURN_NOT_OK(STATUS(InvalidArgument, "Invalid partition method"));
+    }
   }
 
   // Validate the table placement rules are a subset of the cluster ones.
@@ -1924,17 +1982,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   // For index table, populate the index info.
-  scoped_refptr<TableInfo> indexed_table;
   IndexInfoPB index_info;
 
   if (req.has_index_info()) {
     // Current message format.
-    TRACE("Looking up indexed table");
     index_info.CopyFrom(req.index_info());
-    indexed_table = GetTableInfo(index_info.indexed_table_id());
-    if (indexed_table == nullptr) {
-      return STATUS(NotFound, "The indexed table does not exist");
-    }
 
     // Assign column-ids that have just been computed and assigned to "index_info".
     if (!is_pg_table) {
@@ -1947,11 +1999,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   } else if (req.has_indexed_table_id()) {
     // Old client message format when rolling upgrade (Not having "index_info").
-    TRACE("Looking up indexed table");
-    indexed_table = GetTableInfo(req.indexed_table_id());
-    if (indexed_table == nullptr) {
-      return STATUS(NotFound, "The indexed table does not exist");
-    }
     IndexInfoBuilder index_info_builder(&index_info);
     index_info_builder.ApplyProperties(req.indexed_table_id(),
         req.is_local_index(), req.is_unique_index());
@@ -1971,10 +2018,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   scoped_refptr<TableInfo> table;
   vector<TabletInfo*> tablets;
+  bool tablets_exist;
+
   {
     std::lock_guard<LockType> l(lock_);
     TRACE("Acquired catalog manager lock");
 
+    tablets_exist =
+        colocated && colocated_tablet_ids_map_.find(ns->id()) != colocated_tablet_ids_map_.end();
     // Verify that the table does not exist.
     table = FindPtrOrNull(table_names_map_, {namespace_id, req.name()});
 
@@ -1989,28 +2040,58 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
     }
 
-    RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, true /* create_tablets */,
-                                      namespace_id, partitions, &index_info,
-                                      &tablets, resp, &table));
+    RETURN_NOT_OK(CreateTableInMemory(
+        req, schema, partition_schema, !tablets_exist /* create_tablets */, namespace_id,
+        partitions, &index_info, &tablets, resp, &table));
+
+    if (colocated) {
+      table->mutable_metadata()->mutable_dirty()->pb.set_colocated(true);
+      // if the tablet already exists, add the tablet to tablets
+      if (tablets_exist) {
+        scoped_refptr<TabletInfo> tablet = colocated_tablet_ids_map_[ns->id()];
+        DSCHECK(
+            tablet->colocated(), InternalError,
+            "The tablet for colocated database should be colocated.");
+        tablets.push_back(tablet.get());
+        auto tablet_lock = tablet->LockForWrite();
+        tablet_lock->mutable_data()->pb.add_table_ids(table->id());
+        RETURN_NOT_OK(sys_catalog_->UpdateItem(tablet.get(), leader_ready_term_));
+        tablet_lock->Commit();
+
+        tablet->mutable_metadata()->StartMutation();
+        table->AddTablets(tablets);
+      } else {  // Record the tablet
+        DSCHECK_EQ(
+            tablets.size(), 1, InternalError,
+            "Only one tablet should be created for each colocated database");
+        tablets[0]->mutable_metadata()->mutable_dirty()->pb.set_colocated(true);
+        colocated_tablet_ids_map_[ns->id()] = tablet_map_->find(tablets[0]->id())->second;
+      }
+    }
   }
 
   if (PREDICT_FALSE(FLAGS_simulate_slow_table_create_secs > 0)) {
     LOG(INFO) << "Simulating slow table creation";
     SleepFor(MonoDelta::FromSeconds(FLAGS_simulate_slow_table_create_secs));
   }
-  TRACE("Inserted new table and tablet info into CatalogManager maps");
 
   // NOTE: the table and tablets are already locked for write at this point,
   // since the CreateTableInfo/CreateTabletInfo functions leave them in that state.
   // They will get committed at the end of this function.
   // Sanity check: the tables and tablets should all be in "preparing" state.
   CHECK_EQ(SysTablesEntryPB::PREPARING, table->metadata().dirty().pb.state());
-  for (const TabletInfo *tablet : tablets) {
-    CHECK_EQ(SysTabletsEntryPB::PREPARING, tablet->metadata().dirty().pb.state());
+  if (tablets_exist) {
+    TRACE("Inserted new table and updating tablet info into CatalogManager maps");
+    s = sys_catalog_->UpdateItems(tablets, leader_ready_term_);
+  } else {
+    TRACE("Inserted new table and tablet info into CatalogManager maps");
+    for (const TabletInfo *tablet : tablets) {
+      CHECK_EQ(SysTabletsEntryPB::PREPARING, tablet->metadata().dirty().pb.state());
+    }
+    // Write Tablets to sys-tablets (in "preparing" state).
+    s = sys_catalog_->AddItems(tablets, leader_ready_term_);
   }
 
-  // Write Tablets to sys-tablets (in "preparing" state).
-  s = sys_catalog_->AddItems(tablets, leader_ready_term_);
   if (PREDICT_FALSE(!s.ok())) {
     return AbortTableCreation(table.get(), tablets,
                               s.CloneAndPrepend(
@@ -2034,7 +2115,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // For index table, insert index info in the indexed table.
   if ((req.has_index_info() || req.has_indexed_table_id()) && !is_pg_table) {
-    s = AddIndexInfoToTable(indexed_table, index_info);
+    s = AddIndexInfoToTable(indexed_table, index_info, resp);
     if (PREDICT_FALSE(!s.ok())) {
       return AbortTableCreation(table.get(), tablets,
                                 s.CloneAndPrepend(
@@ -2049,6 +2130,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   for (TabletInfo *tablet : tablets) {
     tablet->mutable_metadata()->CommitMutation();
+  }
+
+  if (colocated) {
+    auto call =
+        std::make_shared<AsyncAddTableToTablet>(master_, worker_pool_.get(), tablets[0], table);
+    table->AddTask(call);
+    WARN_NOT_OK(call->Run(), "Failed to send AddTableToTablet request");
   }
 
   if (req.has_creator_role_name()) {
@@ -2374,6 +2462,11 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
         table->namespace_id() == kSystemNamespaceId &&
         table->name() == kMetricsSnapshotsTableName)) {
     RETURN_NOT_OK(IsMetricsSnapshotsTableCreated(resp));
+  }
+
+  // If this is a colocated table and there is a pending AddTableToTablet task then we are not done.
+  if (resp->done() && l->data().pb.colocated()) {
+    resp->set_done(!table->HasTasks(MonitoredTask::Type::ASYNC_ADD_TABLE_TO_TABLET));
   }
 
   return Status::OK();
@@ -2806,6 +2899,12 @@ Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
     table_locks[i]->Commit();
   }
 
+  if (PREDICT_FALSE(FLAGS_catalog_manager_inject_latency_in_delete_table_ms > 0)) {
+    LOG(INFO) << "Sleeping in CatalogManager::DeleteTable for " <<
+        FLAGS_catalog_manager_inject_latency_in_delete_table_ms << " ms";
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_catalog_manager_inject_latency_in_delete_table_ms));
+  }
+
   for (int i = 0; i < tables.size(); i++) {
     // Send a DeleteTablet() request to each tablet replica in the table.
     DeleteTabletsAndSendRequests(tables[i]);
@@ -2893,6 +2992,17 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
     return CheckIfNoLongerLeaderAndSetupError(s, resp);
   }
 
+  // Update the internal table maps.
+  // Exclude Postgres tables which are not in the name map.
+  if (l->data().table_type() != PGSQL_TABLE_TYPE) {
+    TRACE("Removing from by-name map");
+    std::lock_guard<LockType> l_map(lock_);
+    if (table_names_map_.erase({l->data().namespace_id(), l->data().name()}) != 1) {
+      PANIC_RPC(rpc, "Could not remove table from map, name=" + table->ToString());
+    }
+    table_ids_map_.Commit();
+  }
+
   // For regular (indexed) table, delete all its index tables if any. Else for index table, delete
   // index info from the indexed table.
   if (!is_index_table) {
@@ -2914,19 +3024,6 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
   }
 
   table->AbortTasks();
-
-  // Update the internal table maps.
-  {
-    // Exclude Postgres tables which are not in the name map.
-    if (l->data().table_type() != PGSQL_TABLE_TYPE) {
-      TRACE("Removing from by-name map");
-      std::lock_guard<LockType> l_map(lock_);
-      if (table_names_map_.erase({l->data().namespace_id(), l->data().name()}) != 1) {
-        PANIC_RPC(rpc, "Could not remove table from map, name=" + table->ToString());
-      }
-      table_ids_map_.Commit();
-    }
-  }
 
   // For regular (indexed) table, insert table info and lock in the front of the list. Else for
   // index table, append them to the end. We do so so that we will commit and delete the indexed
@@ -3615,6 +3712,10 @@ bool CatalogManager::IsUserIndexUnlocked(const TableInfo& table) const {
   return IsUserCreatedTableUnlocked(table) && !table.indexed_table_id().empty();
 }
 
+bool CatalogManager::IsColocatedParentTable(const TableInfo& table) const {
+  return table.id().find(kColocatedParentTableIdSuffix) != std::string::npos;
+}
+
 bool CatalogManager::IsSequencesSystemTable(const TableInfo& table) const {
   if (table.GetTableType() == PGSQL_TABLE_TYPE) {
     // This case commonly occurs during unit testing. Avoid unnecessary assert within Get().
@@ -4014,6 +4115,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     SysNamespaceEntryPB *metadata = &ns->mutable_metadata()->mutable_dirty()->pb;
     metadata->set_name(req->name());
     metadata->set_database_type(db_type);
+    metadata->set_colocated(req->colocated());
 
     // For namespace created for a Postgres database, save the list of tables and indexes for
     // for the database that need to be copied.
@@ -4084,6 +4186,36 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 
   if (db_type == YQL_DATABASE_PGSQL && !pgsql_tables.empty()) {
     RETURN_NOT_OK(CopyPgsqlSysTables(ns->id(), pgsql_tables, resp, rpc));
+  }
+
+  // Create a tablet if it is a colocated database.
+  if (req->colocated()) {
+    CreateTableRequestPB req;
+    CreateTableResponsePB resp;
+    const auto parent_table_id = ns->id() + kColocatedParentTableIdSuffix;
+    const auto parent_table_name = ns->id() + kColocatedParentTableNameSuffix;
+    req.set_name(parent_table_name);
+    req.set_table_id(parent_table_id);
+    req.mutable_namespace_()->set_name(ns->name());
+    req.mutable_namespace_()->set_id(ns->id());
+    req.set_table_type(GetTableTypeForDatabase(ns->database_type()));
+    req.set_colocated(true);
+
+    YBSchemaBuilder schemaBuilder;
+    schemaBuilder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey()->NotNull();
+    YBSchema ybschema;
+    CHECK_OK(schemaBuilder.Build(&ybschema));
+    auto schema = yb::client::internal::GetSchema(ybschema);
+    SchemaToPB(schema, req.mutable_schema());
+    req.mutable_schema()->mutable_table_properties()->set_is_transactional(true);
+
+    // create a parent table, which will create the tablet.
+    Status s = CreateTable(&req, &resp, rpc);
+    // We do not lock here so it is technically possible that the table was already created.
+    // If so, there is nothing to do so we just ignore the "AlreadyPresent" error.
+    if (!s.ok() && !s.IsAlreadyPresent()) {
+      return s;
+    }
   }
 
   return Status::OK();
@@ -6020,7 +6152,7 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
     tablets_copy = *tablet_map_;
   }
 
-  *out << "Dumping Current state of master.\nNamespaces:\n";
+  *out << "Dumping current state of master.\nNamespaces:\n";
   for (const NamespaceInfoMap::value_type& e : namespace_ids_copy) {
     NamespaceInfo* t = e.second.get();
     auto l = t->LockForRead();
@@ -6100,33 +6232,42 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   }
 }
 
-Status CatalogManager::PeerStateDump(const vector<RaftPeerPB>& peers, bool on_disk) {
+Status CatalogManager::PeerStateDump(const vector<RaftPeerPB>& peers,
+                                     const DumpMasterStateRequestPB* req,
+                                     DumpMasterStateResponsePB* resp) {
   std::unique_ptr<MasterServiceProxy> peer_proxy;
   Endpoint sockaddr;
   MonoTime timeout = MonoTime::Now();
-  DumpMasterStateRequestPB req;
+  DumpMasterStateRequestPB peer_req;
   rpc::RpcController rpc;
 
   timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_master_ts_rpc_timeout_ms));
   rpc.set_deadline(timeout);
-  req.set_on_disk(on_disk);
+  peer_req.set_on_disk(req->on_disk());
+  peer_req.set_return_dump_as_string(req->return_dump_as_string());
+  string dump;
 
   for (const RaftPeerPB& peer : peers) {
     HostPort hostport = HostPortFromPB(DesiredHostPort(peer, master_->MakeCloudInfoPB()));
     peer_proxy.reset(new MasterServiceProxy(&master_->proxy_cache(), hostport));
 
-    DumpMasterStateResponsePB resp;
+    DumpMasterStateResponsePB peer_resp;
     rpc.Reset();
 
-    peer_proxy->DumpState(req, &resp, &rpc);
+    peer_proxy->DumpState(peer_req, &peer_resp, &rpc);
 
-    if (resp.has_error()) {
-      LOG(WARNING) << "Hit err " << resp.ShortDebugString() << " during peer "
+    if (peer_resp.has_error()) {
+      LOG(WARNING) << "Hit err " << peer_resp.ShortDebugString() << " during peer "
         << peer.ShortDebugString() << " state dump.";
-      return StatusFromPB(resp.error().status());
+      return StatusFromPB(peer_resp.error().status());
+    } else if (req->return_dump_as_string()) {
+      dump += peer_resp.dump();
     }
   }
 
+  if (req->return_dump_as_string()) {
+    resp->set_dump(resp->dump() + dump);
+  }
   return Status::OK();
 }
 

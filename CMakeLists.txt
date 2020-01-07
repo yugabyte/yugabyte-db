@@ -513,7 +513,7 @@ if (NOT "$ENV{YB_DISABLE_LATEST_SYMLINK}" STREQUAL "1")
 endif()
 
 add_custom_target(dummy_target ALL
-  cat /dev/null
+  COMMAND cat /dev/null
   COMMENT "Dummy target for dependency resolution testing")
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_modules")
@@ -1755,6 +1755,10 @@ endif()
 
 message("Linker flags: ${CMAKE_EXE_LINKER_FLAGS}")
 
+# -------------------------------------------------------------------------------------------------
+# Subdirectories
+# -------------------------------------------------------------------------------------------------
+
 add_subdirectory(src/yb/rocksdb)
 add_subdirectory(src/yb/gutil)
 add_subdirectory(src/yb/util)
@@ -1781,6 +1785,10 @@ add_subdirectory(src/yb/cdc)
 add_subdirectory(src/postgres)
 
 include("${YB_SRC_ROOT}/ent/CMakeLists.txt")
+
+# ------------------------------------------------------------------------------------------------
+# Utilities for collecting the dependency graph
+# ------------------------------------------------------------------------------------------------
 
 # We could not accumulate multiple lines in YB_ALL_DEPS due to a CMake bug with cache variables,
 # but we can write multiple lines in the output file.

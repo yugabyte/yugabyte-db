@@ -383,4 +383,9 @@ void VersionEdit::ModifyFlushedFrontier(UserFrontierPtr value, FrontierModificat
   }
 }
 
+std::string FileDescriptor::ToString() const {
+  return yb::Format("{ number: $0 path_id: $1 total_file_size: $2 base_file_size: $3 }",
+                    GetNumber(), GetPathId(), total_file_size, base_file_size);
+}
+
 }  // namespace rocksdb

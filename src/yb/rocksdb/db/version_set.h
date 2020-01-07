@@ -755,6 +755,10 @@ class VersionSet {
 
   static uint64_t GetTotalSstFilesSize(Version* dummy_versions);
 
+  bool has_manifest_writers() const {
+    return !manifest_writers_.empty();
+  }
+
  private:
   struct ManifestWriter;
 

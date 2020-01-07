@@ -14,6 +14,7 @@ import com.yugabyte.yw.models.CustomerTask;
 
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
 import org.junit.Test;
@@ -50,6 +51,7 @@ import static play.test.Helpers.route;
 
 public class CustomerTaskControllerTest extends WithApplication {
   private Customer customer;
+  private Users user;
   private Universe universe;
   private Commissioner mockCommissioner;
 
@@ -65,12 +67,13 @@ public class CustomerTaskControllerTest extends WithApplication {
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
+    user = ModelFactory.testUser(customer);
     universe = createUniverse(customer.getCustomerId());
   }
 
   @Test
   public void testTaskHistoryEmptyList() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     Result result = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/tasks")
                             .header("X-AUTH-TOKEN", authToken));
 
@@ -154,7 +157,7 @@ public class CustomerTaskControllerTest extends WithApplication {
 
   @Test
   public void testFetchTaskWithFailedSubtasks() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     UUID universeUUID = UUID.randomUUID();
     UUID taskUUID = createTaskWithStatus(universeUUID, CustomerTask.TargetType.Universe, Create,
         "Foo", "Failure", 50.0);
@@ -182,7 +185,7 @@ public class CustomerTaskControllerTest extends WithApplication {
 
   @Test
   public void testTaskHistoryList() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     UUID universeUUID = UUID.randomUUID();
     UUID taskUUID = createTaskWithStatus(universeUUID, CustomerTask.TargetType.Universe,
         Create, "Foo", "Running", 50.0);
@@ -221,7 +224,7 @@ public class CustomerTaskControllerTest extends WithApplication {
 
   @Test
   public void testTaskCompletionTime() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     UUID taskUUID = createTaskWithStatus(universe.universeUUID, CustomerTask.TargetType.Universe,
         Create, "Foo", "Success", 100.0);
 
@@ -247,7 +250,7 @@ public class CustomerTaskControllerTest extends WithApplication {
 
   @Test
   public void testTaskHistoryUniverseList() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     Universe universe1 = createUniverse("Universe 2", customer.getCustomerId());
 
     UUID taskUUID1 = createTaskWithStatus(universe.universeUUID, CustomerTask.TargetType.Universe,
@@ -267,7 +270,7 @@ public class CustomerTaskControllerTest extends WithApplication {
 
   @Test
   public void testTaskHistoryProgressCompletes() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     UUID taskUUID = createTaskWithStatus(universe.universeUUID, CustomerTask.TargetType.Universe,
         Create, "Foo", "Success", 100.0);
     Result result = FakeApiHelper.doRequestWithAuthToken("GET", "/api/customers/" +
@@ -281,7 +284,7 @@ public class CustomerTaskControllerTest extends WithApplication {
 
   @Test
   public void testTaskStatusWithValidUUID() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     ObjectNode responseJson = Json.newObject();
     UUID taskUUID = createTaskWithStatusAndResponse(universe.universeUUID,
         CustomerTask.TargetType.Universe, Create, "Foo", "Success", 100.0, responseJson);
@@ -312,7 +315,7 @@ public class CustomerTaskControllerTest extends WithApplication {
 
   @Test
   public void testTaskStatusWithInvalidTaskUUID() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     UUID taskUUID = UUID.randomUUID();
 
     Result result = FakeApiHelper.doRequestWithAuthToken("GET", "/api/customers/" +
@@ -326,7 +329,7 @@ public class CustomerTaskControllerTest extends WithApplication {
 
   @Test
   public void testTaskStatusWithInvalidCustomerUUID() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     UUID taskUUID = UUID.randomUUID();
     UUID customerUUID = UUID.randomUUID();
     Result result = FakeApiHelper.doRequestWithAuthToken("GET", "/api/customers/" +
@@ -336,6 +339,6 @@ public class CustomerTaskControllerTest extends WithApplication {
 
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(),
-        equalTo("Unable To Authenticate Customer")));
+        equalTo("Unable To Authenticate User")));
   }
 }

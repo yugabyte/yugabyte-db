@@ -58,22 +58,6 @@ public class Customer extends Model {
   @Constraints.Required
   public String code;
 
-  @Column(length = 256, unique = true, nullable = false)
-  @Constraints.Required
-  @Constraints.Email
-  public String email;
-
-  public String getEmail() {
-    return this.email;
-  }
-
-  @Column(length = 256, nullable = false)
-  public String passwordHash;
-
-  public void setPassword(String password) {
-    this.passwordHash = BCrypt.hashpw(password, BCrypt.gensalt());
-  }
-
   @Column(length = 256, nullable = false)
   @Constraints.Required
   @Constraints.MinLength(3)
@@ -83,20 +67,8 @@ public class Customer extends Model {
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   public Date creationDate;
 
-  private String authToken;
-
-  @Column(nullable = true)
-  private Date authTokenIssueDate;
-
-  @Column(nullable = true)
-  private String apiToken;
-
   @Column(nullable = true, columnDefinition = "TEXT")
   private JsonNode features;
-
-  public Date getAuthTokenIssueDate() {
-    return this.authTokenIssueDate;
-  }
 
   @Column(columnDefinition = "TEXT", nullable = false)
   private String universeUUIDs = "";
@@ -178,117 +150,13 @@ public class Customer extends Model {
    * @param password
    * @return Newly Created Customer
    */
-  public static Customer create(String code, String name, String email, String password) {
+  public static Customer create(String code, String name) {
     Customer cust = new Customer();
-    cust.email = email.toLowerCase();
-    cust.setPassword(password);
     cust.code = code;
     cust.name = name;
     cust.creationDate = new Date();
     cust.save();
     return cust;
-  }
-
-  /**
-   * Validate if the email and password combination is valid, we use this to authenticate
-   * the customer.
-   *
-   * @param email
-   * @param password
-   * @return Authenticated Customer Info
-   */
-  public static Customer authWithPassword(String email, String password) {
-    Customer cust = Customer.find.where().eq("email", email).findUnique();
-
-    if (cust != null && BCrypt.checkpw(password, cust.passwordHash)) {
-      return cust;
-    } else {
-      return null;
-    }
-  }
-
-  /**
-   * Create a random auth token for the customer and store it in the DB.
-   *
-   * @return authToken
-   */
-  public String createAuthToken() {
-    Date tokenExpiryDate = new DateTime().minusDays(1).toDate();
-    if (authTokenIssueDate == null || authTokenIssueDate.before(tokenExpiryDate)) {
-      authToken = UUID.randomUUID().toString();
-      authTokenIssueDate = new Date();
-      save();
-    }
-    return authToken;
-  }
-
-  /**
-   * Create a random auth token without expiry date for customer and store it in the DB.
-   *
-   * @return apiToken
-   */
-  public String upsertApiToken() {
-    apiToken = UUID.randomUUID().toString();
-    save();
-    return apiToken;
-  }
-
-  /**
-   * Get current apiToken.
-   *
-   * @return apiToken
-   */
-  public String getApiToken() {
-    if (apiToken == null) {
-      return null;
-    }
-    return apiToken.toString();
-  }
-
-  /**
-   * Authenticate with Token, would check if the authToken is valid.
-   *
-   * @param authToken
-   * @return Authenticated Customer Info
-   */
-  public static Customer authWithToken(String authToken) {
-    if (authToken == null) {
-      return null;
-    }
-
-    try {
-      // TODO: handle authToken expiry etc.
-      return find.where().eq("authToken", authToken).findUnique();
-    } catch (Exception e) {
-      return null;
-    }
-  }
-
-  /**
-   * Authenticate with API Token, would check if apiToken is valid.
-   *
-   * @param apiToken
-   * @return Authenticated Customer Info
-   */
-  public static Customer authWithApiToken(String apiToken) {
-    if (apiToken == null) {
-      return null;
-    }
-
-    try {
-      return find.where().eq("apiToken", apiToken).findUnique();
-    } catch (Exception e) {
-      return null;
-    }
-  }
-
-  /**
-   * Delete authToken for the customer.
-   */
-  public void deleteAuthToken() {
-    authToken = null;
-    authTokenIssueDate = null;
-    save();
   }
 
   /**

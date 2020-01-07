@@ -115,6 +115,8 @@ struct DeferredAssignmentActions;
 
 static const char* const kSecurityConfigType = "security-configuration";
 static const char* const kYsqlCatalogConfigType = "ysql-catalog-configuration";
+static const char* const kColocatedParentTableIdSuffix = ".colocated.parent.uuid";
+static const char* const kColocatedParentTableNameSuffix = ".colocated.parent.tablename";
 
 using PlacementId = std::string;
 
@@ -433,6 +435,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Is the table a special sequences system table?
   bool IsSequencesSystemTable(const TableInfo& table) const;
 
+  // Is the table a table created for colocated database?
+  bool IsColocatedParentTable(const TableInfo& table) const;
+
   // Is the table created by user?
   // Note that table can be regular table or index in this case.
   bool IsUserCreatedTable(const TableInfo& table) const;
@@ -500,7 +505,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   consensus::RaftPeerPB::Role Role() const;
 
   CHECKED_STATUS PeerStateDump(const vector<consensus::RaftPeerPB>& masters_raft,
-                               bool on_disk = false);
+                               const DumpMasterStateRequestPB* req,
+                               DumpMasterStateResponsePB* resp);
 
   // If we get removed from an existing cluster, leader might ask us to detach ourselves from the
   // cluster. So we enter a shell mode equivalent state, with no bg tasks and no tablet peer
@@ -762,7 +768,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Add index info to the indexed table.
   CHECKED_STATUS AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
-                                     const IndexInfoPB& index_info);
+                                     const IndexInfoPB& index_info,
+                                     CreateTableResponsePB* resp);
 
   // Delete index info from the indexed table.
   CHECKED_STATUS DeleteIndexInfoFromTable(const TableId& indexed_table_id,
@@ -1137,6 +1144,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Tablets of system tables on the master indexed by the tablet id.
   std::unordered_map<std::string, std::shared_ptr<tablet::AbstractTablet>> system_tablets_;
+
+  // Tablet of colocated namespaces indexed by the namespace id.
+  std::unordered_map<NamespaceId, scoped_refptr<TabletInfo>> colocated_tablet_ids_map_;
 
   boost::optional<std::future<Status>> initdb_future_;
   boost::optional<InitialSysCatalogSnapshotWriter> initial_snapshot_writer_;

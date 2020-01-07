@@ -282,7 +282,7 @@ CHECKED_STATUS WaitAllReplicasHaveIndex(MiniCluster* cluster, int64_t index, Mon
 std::thread RestartsThread(
     MiniCluster* cluster, CoarseDuration interval, std::atomic<bool>* stop_flag);
 
-std::vector<rocksdb::DB*> GetAllRocksDbs(MiniCluster* cluster);
+std::vector<rocksdb::DB*> GetAllRocksDbs(MiniCluster* cluster, bool include_intents = true);
 
 int NumTotalRunningCompactions(MiniCluster* cluster);
 

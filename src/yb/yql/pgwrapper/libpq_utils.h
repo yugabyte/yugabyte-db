@@ -40,6 +40,8 @@ Result<int32_t> GetInt32(PGresult* result, int row, int column);
 
 Result<int64_t> GetInt64(PGresult* result, int row, int column);
 
+Result<double> GetDouble(PGresult* result, int row, int column);
+
 Result<std::string> GetString(PGresult* result, int row, int column);
 
 inline Result<int32_t> GetValueImpl(PGresult* result, int row, int column, int32_t*) {

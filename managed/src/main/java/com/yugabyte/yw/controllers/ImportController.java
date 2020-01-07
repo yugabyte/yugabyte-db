@@ -74,7 +74,7 @@ import play.mvc.*;
 
 import javax.persistence.PersistenceException;
 
-public class ImportController extends Controller {
+public class ImportController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ImportController.class);
 
   // Threadpool to run user submitted tasks.
@@ -569,19 +569,14 @@ public class ImportController extends Controller {
         for (Map.Entry<String, Integer> entry : tserverList.entrySet()) {
           // Check if this node is already present.
           NodeDetails node = universe.getNodeByPrivateIP(entry.getKey());
-          // If the node is already present, set the tserver flag.
-          if (node != null) {
-            node.isTserver = true;
-            continue;
+          if (node == null) {
+            // If the node is not present, create the node details and add it.
+            node = createAndAddNode(universeDetails, entry.getKey(), provider, region,
+                                                  zone, index, cluster.userIntent.instanceType);
+            node.isMaster = false;
           }
-
-          // If the node is not present, create the node details and add it.
-          NodeDetails newNode = createAndAddNode(universeDetails, entry.getKey(), provider, region,
-                                                 zone, index, cluster.userIntent.instanceType);
-          // This node is only a tserver and not a master.
-          newNode.isMaster = false;
-          newNode.isTserver = true;
-          newNode.tserverRpcPort = entry.getValue();
+          node.isTserver = true;
+          node.tserverRpcPort = entry.getValue();
           index++;
         }
 
@@ -593,7 +588,6 @@ public class ImportController extends Controller {
         universe.setUniverseDetails(universeDetails);
       }
     };
-
     // Save the updated universe object and return the updated universe.
     return Universe.saveDetails(taskParams.universeUUID, updater);
   }

@@ -371,7 +371,7 @@ class UniverseDetail extends Component {
                   Edit GFlags
                 </YBLabelWithIcon>
               </YBMenuItem>
-              <YBMenuItem eventKey="4" onClick={showManageKeyModal}>
+              <YBMenuItem eventKey="4" onClick={showManageKeyModal} availability={getFeatureState(currentCustomer.data.features, "universes.details.overview.manageEncryption")}>
                 <YBLabelWithIcon icon="fa fa-key fa-fw">
                   Manage Encryption Keys
                 </YBLabelWithIcon>

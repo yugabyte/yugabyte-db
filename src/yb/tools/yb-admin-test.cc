@@ -38,6 +38,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/table_creator.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
@@ -61,6 +62,10 @@ namespace tools {
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBTableName;
+using client::YBSchema;
+using client::YBSchemaBuilder;
+using client::YBTableCreator;
+using client::YBTableType;
 using std::shared_ptr;
 using std::vector;
 using itest::TabletServerMap;
@@ -257,6 +262,82 @@ TEST_F(AdminCliTest, TestDeleteTable) {
       exe_path, "-master_addresses", master_address, "delete_table", keyspace, table_name)));
 
   vector<YBTableName> tables;
+  ASSERT_OK(client->ListTables(&tables, /* filter */ "", /* exclude_ysql */ true));
+  ASSERT_EQ(master::kNumSystemTables, tables.size());
+}
+
+TEST_F(AdminCliTest, TestDeleteIndex) {
+  FLAGS_num_tablet_servers = 1;
+  FLAGS_num_replicas = 1;
+
+  vector<string> ts_flags, master_flags;
+  master_flags.push_back("--replication_factor=1");
+  BuildAndStart(ts_flags, master_flags);
+  string master_address = ToString(cluster_->master()->bound_rpc_addr());
+
+  auto client = ASSERT_RESULT(YBClientBuilder()
+      .add_master_server_addr(master_address)
+      .Build());
+
+  // Default table that gets created;
+  string table_name = kTableName.table_name();
+  string keyspace = kTableName.namespace_name();
+  string index_name = table_name + "-index";
+
+  vector<pair<string, YBTableName>> table_details;
+  ASSERT_OK(client->ListTablesWithIds(&table_details, /* filter */ table_name));
+  ASSERT_EQ(1, table_details.size());
+  string table_id = table_details[0].first;
+
+  YBSchema index_schema;
+  YBSchemaBuilder b;
+  b.AddColumn("C$_key")->Type(INT32)->NotNull()->HashPrimaryKey();
+  ASSERT_OK(b.Build(&index_schema));
+
+  // Create index.
+  shared_ptr<YBTableCreator> table_creator(client->NewTableCreator());
+
+  IndexInfoPB *index_info = table_creator->mutable_index_info();
+  index_info->set_indexed_table_id(table_id);
+  index_info->set_is_local(false);
+  index_info->set_is_unique(false);
+  index_info->set_hash_column_count(1);
+  index_info->set_range_column_count(0);
+  index_info->set_use_mangled_column_name(true);
+  index_info->add_indexed_hash_column_ids(10);
+
+  auto *col = index_info->add_columns();
+  col->set_column_name("C$_key");
+  col->set_indexed_column_id(10);
+
+  Status s = table_creator->
+      table_name(YBTableName(YQL_DATABASE_CQL, keyspace, index_name))
+      .table_type(YBTableType::YQL_TABLE_TYPE)
+      .schema(&index_schema)
+      .indexed_table_id(table_id)
+      .is_local_index(false)
+      .is_unique_index(false)
+      .Create();
+  ASSERT_OK(s);
+
+  vector<YBTableName> tables;
+  ASSERT_OK(client->ListTables(&tables, /* filter */ "", /* exclude_ysql */ true));
+  ASSERT_EQ(2 + master::kNumSystemTables, tables.size());
+
+  // Delete index.
+  string exe_path = GetAdminToolPath();
+  LOG(INFO) << "Delete index via yb-admin: " << keyspace << "." << index_name;
+  ASSERT_OK(Subprocess::Call(ToStringVector(
+      exe_path, "-master_addresses", master_address, "delete_index", keyspace, index_name)));
+
+  ASSERT_OK(client->ListTables(&tables, /* filter */ "", /* exclude_ysql */ true));
+  ASSERT_EQ(1 + master::kNumSystemTables, tables.size());
+
+  // Delete table.
+  LOG(INFO) << "Delete table via yb-admin: " << keyspace << "." << table_name;
+  ASSERT_OK(Subprocess::Call(ToStringVector(
+      exe_path, "-master_addresses", master_address, "delete_table", keyspace, table_name)));
+
   ASSERT_OK(client->ListTables(&tables, /* filter */ "", /* exclude_ysql */ true));
   ASSERT_EQ(master::kNumSystemTables, tables.size());
 }

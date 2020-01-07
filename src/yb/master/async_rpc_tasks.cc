@@ -403,6 +403,7 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
   req_.mutable_schema()->CopyFrom(table_lock->data().pb.schema());
   req_.mutable_partition_schema()->CopyFrom(table_lock->data().pb.partition_schema());
   req_.mutable_config()->CopyFrom(tablet_pb.committed_consensus_state().config());
+  req_.set_colocated(tablet_pb.colocated());
   if (table_lock->data().pb.has_index_info()) {
     req_.mutable_index_info()->CopyFrom(table_lock->data().pb.index_info());
   }
@@ -941,6 +942,51 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
     Status status = task->Run();
     WARN_NOT_OK(status, "Failed to send new RemoveServer request");
   }
+}
+
+// ============================================================================
+//  Class AsyncAddTableToTablet.
+// ============================================================================
+AsyncAddTableToTablet::AsyncAddTableToTablet(
+    Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+    const scoped_refptr<TableInfo>& table)
+    : RetryingTSRpcTask(
+          master, callback_pool, gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)), table.get()),
+      tablet_(tablet),
+      table_(table),
+      tablet_id_(tablet->tablet_id()) {
+  req_.set_tablet_id(tablet->id());
+  auto& add_table = *req_.mutable_add_table();
+  add_table.set_table_id(table_->id());
+  add_table.set_table_name(table_->name());
+  add_table.set_table_type(table_->GetTableType());
+  {
+    auto l = table->LockForRead();
+    add_table.set_schema_version(l->data().pb.version());
+    *add_table.mutable_schema() = l->data().pb.schema();
+    *add_table.mutable_partition_schema() = l->data().pb.partition_schema();
+  }
+}
+
+string AsyncAddTableToTablet::description() const {
+  return Substitute("AddTableToTablet RPC ($0) ($1)", table_->ToString(), tablet_->ToString());
+}
+
+void AsyncAddTableToTablet::HandleResponse(int attempt) {
+  if (!rpc_.status().ok()) {
+    AbortTask();
+    LOG(WARNING) << Substitute(
+        "Got error when adding table $0 to tablet $1, attempt $2 and error $3",
+        table_->ToString(), tablet_->ToString(), attempt, rpc_.status().ToString());
+    return;
+  }
+  TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
+}
+
+bool AsyncAddTableToTablet::SendRequest(int attempt) {
+  ts_admin_proxy_->AddTableToTabletAsync(req_, &resp_, &rpc_, BindRpcCallback());
+  VLOG(1) << "Send AddTableToTablet request (attempt " << attempt << "):\n" << req_.DebugString();
+  return true;
 }
 
 }  // namespace master

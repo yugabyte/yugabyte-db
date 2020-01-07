@@ -290,13 +290,13 @@ class OperationCompletionCallback {
 // transactions, sync.  This is templated to accept any response PB that has a TabletServerError
 // 'error' field and to set the error before performing the latch countdown.  The callback does
 // *not* take ownership of either latch or response.
-template<class ResponsePB>
+template<class LatchPtr, class ResponsePBPtr>
 class LatchOperationCompletionCallback : public OperationCompletionCallback {
  public:
-  explicit LatchOperationCompletionCallback(CountDownLatch* latch,
-                                            ResponsePB* response)
-    : latch_(DCHECK_NOTNULL(latch)),
-      response_(DCHECK_NOTNULL(response)) {
+  explicit LatchOperationCompletionCallback(LatchPtr latch,
+                                            ResponsePBPtr response)
+    : latch_(std::move(latch)),
+      response_(std::move(response)) {
   }
 
   virtual void OperationCompleted() override {
@@ -307,9 +307,17 @@ class LatchOperationCompletionCallback : public OperationCompletionCallback {
   }
 
  private:
-  CountDownLatch* latch_;
-  ResponsePB* response_;
+  LatchPtr latch_;
+  ResponsePBPtr response_;
 };
+
+template<class LatchPtr, class ResponsePBPtr>
+std::unique_ptr<LatchOperationCompletionCallback<LatchPtr, ResponsePBPtr>>
+    MakeLatchOperationCompletionCallback(
+        LatchPtr latch, ResponsePBPtr response) {
+  return std::make_unique<LatchOperationCompletionCallback<LatchPtr, ResponsePBPtr>>(
+      std::move(latch), std::move(response));
+}
 
 class SynchronizerOperationCompletionCallback : public OperationCompletionCallback {
  public:

@@ -424,7 +424,7 @@ ExecInsert(ModifyTableState *mtstate,
 		 * Check the constraints of the tuple.
 		 */
 		if (resultRelationDesc->rd_att->constr)
-			ExecConstraints(resultRelInfo, slot, estate);
+			ExecConstraints(resultRelInfo, slot, estate, mtstate);
 
 		/*
 		 * Also check the tuple against the partition constraint, if there is
@@ -1131,7 +1131,7 @@ ExecUpdate(ModifyTableState *mtstate,
 		 * Check the constraints of the tuple.
 		 */
 		if (resultRelationDesc->rd_att->constr)
-			ExecConstraints(resultRelInfo, slot, estate);
+			ExecConstraints(resultRelInfo, slot, estate, mtstate);
 
 
 		RangeTblEntry *rte = rt_fetch(resultRelInfo->ri_RangeTableIndex,
@@ -1348,7 +1348,7 @@ lreplace:;
 		 * have it validate all remaining checks.
 		 */
 		if (resultRelationDesc->rd_att->constr)
-			ExecConstraints(resultRelInfo, slot, estate);
+			ExecConstraints(resultRelInfo, slot, estate, mtstate);
 
 		/*
 		 * replace the heap tuple

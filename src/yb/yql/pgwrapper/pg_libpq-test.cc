@@ -17,6 +17,7 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
+#include "yb/master/catalog_manager.h"
 #include "yb/common/common.pb.h"
 
 using namespace std::literals;
@@ -32,7 +33,7 @@ namespace pgwrapper {
 
 class PgLibPqTest : public LibPqTestBase {
  protected:
-  void TestMultiBankAccount(const std::string& isolation_level);
+  void TestMultiBankAccount(IsolationLevel isolation);
 
   void DoIncrement(int key, int num_increments, IsolationLevel isolation);
 
@@ -193,6 +194,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableReadWriteConflict)) {
   auto tries = 1;
   for (; tries <= kNumTries; ++tries) {
     auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("DROP TABLE IF EXISTS t"));
     ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
 
     size_t reads_won = 0, writes_won = 0;
@@ -349,9 +351,9 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentIndexInsert)) {
 }
 
 Result<int64_t> ReadSumBalance(
-    PGConn* conn, int accounts, const std::string& begin_transaction_statement,
+    PGConn* conn, int accounts, IsolationLevel isolation,
     std::atomic<int>* counter) {
-  RETURN_NOT_OK(conn->Execute(begin_transaction_statement));
+  RETURN_NOT_OK(conn->StartTransaction(isolation));
   bool failed = true;
   auto se = ScopeExit([conn, &failed] {
     if (failed) {
@@ -371,7 +373,7 @@ Result<int64_t> ReadSumBalance(
   return sum;
 }
 
-void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
+void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
   constexpr int kAccounts = RegularBuildVsSanitizers(20, 10);
   constexpr int64_t kInitialBalance = 100;
 
@@ -385,9 +387,6 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
 
   PGConn conn = ASSERT_RESULT(Connect());
 
-  const std::string begin_transaction_statement =
-      "START TRANSACTION ISOLATION LEVEL " + isolation_level;
-
   for (int i = 1; i <= kAccounts; ++i) {
     ASSERT_OK(conn.ExecuteFormat(
         "CREATE TABLE account_$0 (id int, balance bigint, PRIMARY KEY(id))", i));
@@ -398,11 +397,14 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
   std::atomic<int> writes(0);
   std::atomic<int> reads(0);
 
+  constexpr auto kRequiredReads = RegularBuildVsSanitizers(5, 2);
+  constexpr auto kRequiredWrites = RegularBuildVsSanitizers(1000, 500);
+
   std::atomic<int> counter(100000);
   TestThreadHolder thread_holder;
   for (int i = 1; i <= kThreads; ++i) {
     thread_holder.AddThreadFunctor(
-        [this, &writes, &begin_transaction_statement,
+        [this, &writes, &isolation,
          &stop_flag = thread_holder.stop_flag()]() {
       auto conn = ASSERT_RESULT(Connect());
       while (!stop_flag.load(std::memory_order_acquire)) {
@@ -412,7 +414,7 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
           ++to;
         }
         int64_t amount = RandomUniformInt(1, 10);
-        ASSERT_OK(conn.Execute(begin_transaction_statement));
+        ASSERT_OK(conn.StartTransaction(isolation));
         auto status = conn.ExecuteFormat(
               "UPDATE account_$0 SET balance = balance - $1 WHERE id = $0", from, amount);
         if (status.ok()) {
@@ -435,22 +437,28 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
   }
 
   thread_holder.AddThreadFunctor(
-      [this, &counter, &reads, &begin_transaction_statement,
-       &stop_flag = thread_holder.stop_flag()]() {
+      [this, &counter, &reads, &writes, isolation, &stop_flag = thread_holder.stop_flag()]() {
+    SetFlagOnExit set_flag_on_exit(&stop_flag);
     auto conn = ASSERT_RESULT(Connect());
+    auto failures_in_row = 0;
     while (!stop_flag.load(std::memory_order_acquire)) {
-      auto sum = ReadSumBalance(&conn, kAccounts, begin_transaction_statement, &counter);
+      if (isolation == IsolationLevel::SERIALIZABLE_ISOLATION) {
+        auto lower_bound = reads.load() * kRequiredWrites < writes.load() * kRequiredReads
+            ? 1.0 - 1.0 / (1 << failures_in_row) : 0.0;
+        ASSERT_OK(conn.ExecuteFormat("SET yb_transaction_priority_lower_bound = $0", lower_bound));
+      }
+      auto sum = ReadSumBalance(&conn, kAccounts, isolation, &counter);
       if (!sum.ok()) {
+        ++failures_in_row;
         ASSERT_TRUE(TransactionalFailure(sum.status())) << sum.status();
       } else {
+        failures_in_row = 0;
         ASSERT_EQ(*sum, kAccounts * kInitialBalance);
         ++reads;
       }
     }
   });
 
-  constexpr auto kRequiredReads = RegularBuildVsSanitizers(5, 2);
-  constexpr auto kRequiredWrites = RegularBuildVsSanitizers(1000, 500);
   auto wait_status = WaitFor([&reads, &writes, &stop = thread_holder.stop_flag()] {
     return stop.load() || (writes.load() >= kRequiredWrites && reads.load() >= kRequiredReads);
   }, kTimeout, Format("At least $0 reads and $1 writes", kRequiredReads, kRequiredWrites));
@@ -461,8 +469,8 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
 
   thread_holder.Stop();
 
-  ASSERT_OK(WaitFor([&conn, &begin_transaction_statement, &counter]() -> Result<bool> {
-    auto sum = ReadSumBalance(&conn, kAccounts, begin_transaction_statement, &counter);
+  ASSERT_OK(WaitFor([&conn, isolation, &counter]() -> Result<bool> {
+    auto sum = ReadSumBalance(&conn, kAccounts, isolation, &counter);
     if (!sum.ok()) {
       if (!TransactionalFailure(sum.status())) {
         return sum.status();
@@ -493,11 +501,11 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSnapshot)) {
-  TestMultiBankAccount("REPEATABLE READ");
+  TestMultiBankAccount(IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSerializable)) {
-  TestMultiBankAccount("SERIALIZABLE");
+  TestMultiBankAccount(IsolationLevel::SERIALIZABLE_ISOLATION);
 }
 
 void PgLibPqTest::DoIncrement(int key, int num_increments, IsolationLevel isolation) {
@@ -506,9 +514,7 @@ void PgLibPqTest::DoIncrement(int key, int num_increments, IsolationLevel isolat
   // Perform increments
   int succeeded_incs = 0;
   while (succeeded_incs < num_increments) {
-    ASSERT_OK(conn.Execute(isolation == IsolationLevel::SERIALIZABLE_ISOLATION ?
-        "START TRANSACTION ISOLATION LEVEL SERIALIZABLE" :
-        "START TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+    ASSERT_OK(conn.StartTransaction(isolation));
     bool committed = false;
     auto exec_status = conn.ExecuteFormat("UPDATE t SET value = value + 1 WHERE key = $0", key);
     if (exec_status.ok()) {
@@ -797,6 +803,94 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestSystemTableRollback)) {
   LOG(INFO) << "Status of second table creation: " << s;
   auto res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM pg_class WHERE relname='fktable'"));
   ASSERT_EQ(0, PQntuples(res.get()));
+}
+
+namespace {
+Result<string> GetTableIdByTableName(
+    client::YBClient* client, const string& namespace_name, const string& table_name) {
+  std::vector<yb::client::YBTableName> tables;
+  RETURN_NOT_OK(client->ListTables(&tables));
+  for (const auto& t : tables) {
+    if (t.namespace_name() == namespace_name && t.table_name() == table_name) {
+      return t.table_id();
+    }
+  }
+  return STATUS(NotFound, "The table does not exist");
+}
+} // namespace
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TabletColocation)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test_db WITH colocated = true"));
+  conn = ASSERT_RESULT(ConnectToDB("test_db"));
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  string ns_id;
+  auto list_result = client->ListNamespaces(YQL_DATABASE_PGSQL);
+  ASSERT_OK(list_result);
+  for (const auto& ns : list_result.get()) {
+    if (ns.name() == "test_db") {
+      ns_id = ns.id();
+      break;
+    }
+  }
+  ASSERT_FALSE(ns_id.empty());
+
+  // A parent table with one tablet should be created when the database is created.
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(WaitFor(
+      [&] {
+        EXPECT_OK(client->GetTabletsFromTableId(
+            ns_id + master::kColocatedParentTableIdSuffix, 0, &tablets));
+        return tablets.size() == 1;
+      },
+      30s, "Create colocated database"));
+  auto colocated_tablet_id = tablets[0].tablet_id();
+
+  // Create a range partition table, the table should share the tablet with the parent table.
+  ASSERT_OK(conn.Execute("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC))"));
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "test_db", "foo"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
+
+  // Create a colocated index table.
+  ASSERT_OK(conn.Execute("CREATE INDEX foo_index1 ON foo (a)"));
+  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "test_db", "foo_index1"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
+
+  // Create a non-colocated index table (by opting-out).
+  ASSERT_OK(conn.Execute("CREATE INDEX foo_index2 ON foo (a) WITH (colocated = false)"));
+  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "test_db", "foo_index2"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  for (auto& tablet : tablets) {
+    ASSERT_NE(tablet.tablet_id(), colocated_tablet_id);
+  }
+
+  // Create a hash partition table and opt out of using the colocated tablet.
+  ASSERT_OK(conn.Execute("CREATE TABLE bar (a INT) WITH (colocated = false)"));
+  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "test_db", "bar"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  for (auto& tablet : tablets) {
+    ASSERT_NE(tablet.tablet_id(), colocated_tablet_id);
+  }
+
+  // Create an index on the non-colocated table. The index should follow the table and opt out of
+  // colocation.
+  ASSERT_OK(conn.Execute("CREATE INDEX bar_index ON bar (a)"));
+  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "test_db", "bar_index"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  for (auto& tablet : tablets) {
+    ASSERT_NE(tablet.tablet_id(), colocated_tablet_id);
+  }
+
+  // Fail when creating a hash partition table without opt-out.
+  const auto status = conn.Execute("CREATE TABLE baz (a INT)");
+  ASSERT_FALSE(status.ok());
+  ASSERT_STR_CONTAINS(
+      status.ToString(), "Cannot create hash partitioned table in colocated database");
 }
 
 } // namespace pgwrapper

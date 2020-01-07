@@ -599,7 +599,7 @@ struct MemTrackerData {
 const MemTrackerData& CollectMemTrackerData(const MemTrackerPtr& tracker, int depth,
                                             std::vector<MemTrackerData>* output);
 
-std::string DumpMemTrackers();
+std::string DumpMemoryUsage();
 
 } // namespace yb
 

@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Users;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -41,6 +42,7 @@ import static play.test.Helpers.contentAsString;
 public class ReleaseControllerTest extends WithApplication {
 
   private Customer customer;
+  private Users user;
   ReleaseManager mockReleaseManager;
 
   @Override
@@ -56,6 +58,7 @@ public class ReleaseControllerTest extends WithApplication {
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
+    user = ModelFactory.testUser(customer);
 
   }
 
@@ -68,24 +71,24 @@ public class ReleaseControllerTest extends WithApplication {
     if (includeMetadata) {
       uri = uri + "?includeMetadata=true";
     }
-    return FakeApiHelper.doRequestWithAuthToken("GET", uri, customer.createAuthToken());
+    return FakeApiHelper.doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
 
   private Result refreshReleases(UUID customerUUID) {
     String uri = "/api/customers/" + customerUUID + "/releases";
-    return FakeApiHelper.doRequestWithAuthToken("PUT", uri, customer.createAuthToken());
+    return FakeApiHelper.doRequestWithAuthToken("PUT", uri, user.createAuthToken());
   }
 
   private Result createRelease(UUID customerUUID, JsonNode body) {
     String uri = "/api/customers/" + customerUUID + "/releases";
     return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri,
-        customer.createAuthToken(), body);
+        user.createAuthToken(), body);
   }
 
   private Result updateRelease(UUID customerUUID, String version, JsonNode body) {
     String uri = "/api/customers/" + customerUUID + "/releases/" + version;
     return FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", uri,
-        customer.createAuthToken(), body);
+        user.createAuthToken(), body);
   }
 
   private void mockReleaseData(boolean multiple) {
@@ -160,7 +163,7 @@ public class ReleaseControllerTest extends WithApplication {
     assertEquals(FORBIDDEN, result.status());
 
     String resultString = contentAsString(result);
-    assertEquals(resultString, "Unable To Authenticate Customer");
+    assertEquals(resultString, "Unable To Authenticate User");
   }
 
   @Test
@@ -313,7 +316,7 @@ public class ReleaseControllerTest extends WithApplication {
     assertEquals(FORBIDDEN, result.status());
 
     String resultString = contentAsString(result);
-    assertEquals(resultString, "Unable To Authenticate Customer");
+    assertEquals(resultString, "Unable To Authenticate User");
   }
 
   @Test

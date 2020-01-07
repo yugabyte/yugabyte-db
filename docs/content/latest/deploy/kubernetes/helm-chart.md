@@ -100,7 +100,7 @@ $ helm search repo yugabytedb/yugabyte
 Output:-
 ```sh
 NAME               	CHART VERSION	APP VERSION	DESCRIPTION
-yugabytedb/yugabyte	1.3.0        	1.3.0.0-b1 	YugaByte Database is the high-performance distr...
+yugabytedb/yugabyte	1.3.0        	1.3.0.0-b1 	YugabyteDB is the high-performance distr...
 ```
 
 ### Install YugabyteDB
@@ -264,7 +264,7 @@ By default, the YugabyteDB Helm will expose only the master UI endpoint using Lo
 
 For helm v2.x:-
 ```sh
-helm install yugabytedb/yugabyte -f https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --name yb-demo --wait --set "disableYsql=false"
+helm install yugabytedb/yugabyte -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --name yb-demo --wait --set "disableYsql=false"
 ```
 For helm v3.x:-
 ```sh

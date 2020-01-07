@@ -412,6 +412,7 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   LOG(INFO) << "Create another database from default database";
   CHECK_YBC_STATUS(YBCPgNewCreateDatabase(copy_db_name, copy_db_oid,
                                           kDefaultDatabaseOid, kInvalidOid /* next_oid */,
+                                          false /* colocated */,
                                           &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
@@ -462,7 +463,7 @@ TEST_F(PggateTestCatalog, TestReserveOids) {
 
   CHECK_YBC_STATUS(YBCPgNewCreateDatabase(db_name, db_oid,
                                           kInvalidOid /* source_database_oid */,
-                                          100 /* next_oid */, &pg_stmt));
+                                          100 /* next_oid */, false /* colocated */, &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;

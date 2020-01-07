@@ -6,14 +6,14 @@
 </a>
 
 ## Prerequisites
-1. Create a resource group for our YugaByte DB deployment.
+1. Create a resource group for our YugabyteDB deployment.
      - Login into your [Azure portal](https://portal.azure.com/).
      - Click Resource groups from the menu of services to access the Resource Groups blade. You will see all the resource groups in your subscription listed in the blade.
      - Click Add (+) to create a new resource group. The Create Resource Group blade appears.
      - Provide the needed information for the new resource group.
      - Click Create. The resource group might take a few seconds to create. Once it is created, you see the resource group on the Azure portal dashboard.
 
-  2. Create an SSH key for our user to get access to deployed YugaByte VM's.
+  2. Create an SSH key for our user to get access to deployed YugabyteDB VMs.
      - Open Terminal on your local computer.
      - Run the following command
         ```
@@ -30,7 +30,7 @@
        Enter passphrase (empty for no passphrase):
        Enter same passphrase again:
        ```
-      - After this, you will have a public and private key that you can use to authenticate YugaByte DB VM's.
+      - After this, you will have a public and private key that you can use to authenticate YugabyteDB VM's.
         ```
         Your identification has been saved in /home/username/.ssh/id_rsa.
         Your public key has been saved in /home/username/.ssh/id_rsa.pub.
@@ -60,7 +60,7 @@
 
 - Clone this repo.
     ```
-    $ git clone https://github.com/YugaByte/azure-resource-manager.git
+    $ git clone https://github.com/yugabyte/azure-resource-manager.git
     ```
 - Change current directory to cloned git repo directory
   ```
@@ -74,13 +74,13 @@
     ```
     $ az group deployment show -g <Your-Azure-Resource-Group> -n <Your-Deployment-Name> --query properties.outputs
     ```
-    In the output, you will get the YugabyteDB admin URL, JDBC URL, YSQL, YCQL and YEDIS connection string. You can use YugaByte admin URL to access admin portal.
+    In the output, you will get the YugabyteDB admin URL, JDBC URL, YSQL, YCQL and YEDIS connection string. You can use YugabyteDB admin URL to access admin portal.
 
 ## Deploying using Azure Portal
 
 - Clone this repo locally.
      ```
-     $ git clone https://github.com/YugaByte/azure-resource-manager.git
+     $ git clone https://github.com/yugabyte/azure-resource-manager.git
      ```
 - First create a resource group, to create a new resource group, select Resource groups from the [Azure portal](https://portal.azure.com/).
 - Under newly created Resource groups, select Add.

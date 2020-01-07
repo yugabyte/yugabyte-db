@@ -60,6 +60,7 @@ DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_int32(delay_init_tablet_peer_ms);
 DECLARE_bool(fail_in_apply_if_no_metadata);
+DECLARE_bool(delete_intents_sst_files);
 
 namespace yb {
 namespace client {
@@ -823,6 +824,7 @@ TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDi
   SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
   FLAGS_transaction_disable_proactive_cleanup_in_tests = true;
   FLAGS_aborted_intent_cleanup_ms = 1000; // 1 sec
+  FLAGS_delete_intents_sst_files = false;
 
 #ifndef NDEBUG
   const int kTransactions = 10;
@@ -1585,24 +1587,27 @@ TEST_F_EX(QLTransactionTest, DeleteFlushedIntents, QLTransactionTestSingleTablet
     ASSERT_OK(txn->CommitFuture().get());
   }
 
-  auto deadline = MonoTime::Now() + 15s;
-  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
-  for (const auto& peer : peers) {
-    if (!peer->tablet()) {
-      continue;
+  ASSERT_OK(WaitFor([this] {
+    if (CountIntents(cluster_.get()) != 0) {
+      return false;
     }
-    auto* db = peer->tablet()->TEST_intents_db();
-    if (!db) {
-      continue;
+
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+    size_t total_sst_files = 0;
+    for (auto& peer : peers) {
+      auto intents_db = peer->tablet()->TEST_intents_db();
+      if (!intents_db) {
+        continue;
+      }
+      std::vector<rocksdb::LiveFileMetaData> files;
+      intents_db->GetLiveFilesMetaData(&files);
+      LOG(INFO) << "T " << peer->tablet_id() << " P " << peer->permanent_uuid() << ": files: "
+                << AsString(files);
+      total_sst_files += files.size();
     }
-    ASSERT_OK(Wait([db] {
-      rocksdb::ReadOptions read_opts;
-      read_opts.query_id = rocksdb::kDefaultQueryId;
-      std::unique_ptr<rocksdb::Iterator> iter(db->NewIterator(read_opts));
-      iter->SeekToFirst();
-      return !iter->Valid();
-    }, deadline, "Intents are removed"));
-  }
+
+    return total_sst_files == 0;
+  }, 15s, "Intents and files are removed"));
 }
 
 // Test performs transactional writes to get flushed intents.

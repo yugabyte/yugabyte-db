@@ -14,7 +14,6 @@
 #include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
-#include "yb/util/status.h"
 
 #include "yb/client/session.h"
 #include "yb/client/transaction.h"
@@ -23,6 +22,40 @@
 
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_service.proxy.h"
+
+#include "yb/util/random_util.h"
+#include "yb/util/status.h"
+
+namespace {
+
+uint64_t txn_priority_lower_bound = 0;
+uint64_t txn_priority_upper_bound = std::numeric_limits<uint64_t>::max();
+
+// Converts double value in range 0..1 to uint64_t value in range
+// 0..std::numeric_limits<uint64_t>::max()
+uint64_t ConvertBound(double value) {
+  if (value <= 0.0) {
+    return 0;
+  }
+  if (value >= 1.0) {
+    return std::numeric_limits<uint64_t>::max();
+  }
+  return value * std::numeric_limits<uint64_t>::max();
+}
+
+} // namespace
+
+extern "C" {
+
+void YBCAssignTransactionPriorityLowerBound(double newval, void* extra) {
+  txn_priority_lower_bound = ConvertBound(newval);
+}
+
+void YBCAssignTransactionPriorityUpperBound(double newval, void* extra) {
+  txn_priority_upper_bound = ConvertBound(newval);
+}
+
+}
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -132,6 +165,9 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op) {
     } else {
       txn_ = std::make_shared<YBTransaction>(GetOrCreateTransactionManager());
     }
+    auto priority = RandomUniformInt(
+        txn_priority_lower_bound, std::max(txn_priority_lower_bound, txn_priority_upper_bound));
+    txn_->SetPriority(priority);
     if (isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
       txn_->InitWithReadPoint(isolation, std::move(*session_->read_point()));
     } else {

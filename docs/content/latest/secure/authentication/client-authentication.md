@@ -136,7 +136,7 @@ This record matches connection attempts made using TCP/IP. `host` records match 
 
 #### hostssl
 
-This record specifies a local or remote host that can connect to a YugaByteDB cluster using SSL.
+This record specifies a local or remote host that can connect to a YugabyteDB cluster using SSL.
 
 #### hostnossl
 

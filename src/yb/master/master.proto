@@ -288,6 +288,9 @@ message SysTabletsEntryPB {
   required bytes table_id = 6;
   // Table ids for all the tables on this tablet.
   repeated bytes table_ids = 8;
+
+  // True if the tablet is colocated.
+  optional bool colocated = 9 [ default = false ];
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -355,6 +358,8 @@ message SysTablesEntryPB {
   optional bool is_pg_shared_table = 16 [ default = false ]; // Is this a shared table?
 
   optional uint32 wal_retention_secs = 24;
+
+  optional bool colocated = 25 [ default = false ]; // Is this a colocated table?
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
@@ -370,6 +375,9 @@ message SysNamespaceEntryPB {
 
   // For Postgres:
   optional uint32 next_pg_oid = 3; // Next oid to assign.
+
+  // True if the namespace is colocated.
+  optional bool colocated = 4 [ default = false ];
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a User Defined Type.
@@ -797,6 +805,8 @@ message CreateTableRequestPB {
   optional bytes table_id = 13; // id to assign to this table.
   optional bool is_pg_catalog_table = 14 [ default = false ]; // Is this a sys catalog table?
   optional bool is_pg_shared_table = 15 [ default = false ];  // Is this a shared table?
+
+  optional bool colocated = 17 [ default = true ]; // Is this a colocated table?
 }
 
 message CreateTableResponsePB {
@@ -1108,10 +1118,15 @@ message DumpMasterStateRequestPB {
   // If set to true, the leader sends request to all current peers to dump their state too.
   // The on_disk is sent along to peers too.
   optional bool peers_also = 2 [default = false];
+
+  // If set to true, the dump will be returned back as a string in the response.
+  // Else the dump will be saved into the master respective log files.
+  optional bool return_dump_as_string = 3 [default = false];
 }
 
 message DumpMasterStateResponsePB {
   optional MasterErrorPB error = 1;
+  optional string dump = 2;
 }
 
 message ChangeLoadBalancerStateRequestPB {
@@ -1234,6 +1249,9 @@ message CreateNamespaceRequestPB {
   optional bytes source_namespace_id = 5; // namespace id of the source database to copy from.
   optional uint32 next_pg_oid = 6; // Next oid to assign. Ingored when source_namespace_id is given
                                    // and the next_pg_oid from source namespace will be used.
+
+  // True if the namespace is colocated.
+  optional bool colocated = 7 [ default = false ];
 }
 
 message CreateNamespaceResponsePB {

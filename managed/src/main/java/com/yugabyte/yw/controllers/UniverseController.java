@@ -131,6 +131,7 @@ public class UniverseController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
 
+    // Check the universe belongs to the Customer.
     if (!customer.getUniverseUUIDs().contains(universeUUID)) {
       return ApiResponse.error(BAD_REQUEST,
           String.format("Universe UUID: %s doesn't belong " +
@@ -164,7 +165,7 @@ public class UniverseController extends AuthenticatedController {
 
     if (data.shell_location == null) {
       Application application = Play.current().injector().instanceOf(Application.class);
-      data.shell_location = application.path().getAbsolutePath() + "/bin";
+      data.shell_location = application.path().getAbsolutePath() + "/../bin";
     }
 
     List<String> shellArguments = new ArrayList<>();
@@ -422,15 +423,6 @@ public class UniverseController extends AuthenticatedController {
 
   public Result setUniverseKey(UUID customerUUID, UUID universeUUID) {
     EncryptionAtRestKeyParams taskParams;
-    try {
-      LOG.info("Updating universe key {} for {}.", universeUUID, customerUUID);
-      // Get the user submitted form data.
-      ObjectNode formData = (ObjectNode) request().body().asJson();
-      taskParams = EncryptionAtRestKeyParams.bindFromFormData(universeUUID, formData);
-
-    } catch (Throwable t) {
-      return ApiResponse.error(BAD_REQUEST, t.getMessage());
-    }
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
@@ -441,6 +433,22 @@ public class UniverseController extends AuthenticatedController {
       universe = Universe.get(universeUUID);
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
+    }
+
+    if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+      return ApiResponse.error(BAD_REQUEST,
+          String.format("Universe UUID: %s doesn't belong " +
+              "to Customer UUID: %s", universeUUID, customerUUID));
+    }
+
+    try {
+      LOG.info("Updating universe key {} for {}.", universeUUID, customerUUID);
+      // Get the user submitted form data.
+      ObjectNode formData = (ObjectNode) request().body().asJson();
+      taskParams = EncryptionAtRestKeyParams.bindFromFormData(universeUUID, formData);
+
+    } catch (Throwable t) {
+      return ApiResponse.error(BAD_REQUEST, t.getMessage());
     }
 
     try {
@@ -519,6 +527,13 @@ public class UniverseController extends AuthenticatedController {
       String errMsg= "Invalid universe UUID: " + universeUUID;
       LOG.error(errMsg);
       return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
+
+    // Check the universe belongs to the Customer.
+    if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+      return ApiResponse.error(BAD_REQUEST,
+          String.format("Universe UUID: %s doesn't belong " +
+              "to Customer UUID: %s", universeUUID, customerUUID));
     }
 
     if (!universe.getUniverseDetails().isUniverseEditable()) {
@@ -630,6 +645,14 @@ public class UniverseController extends AuthenticatedController {
     if (universe == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Universe UUID: " + universeUUID);
     }
+
+    // Check the universe belongs to the Customer.
+    if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+      return ApiResponse.error(BAD_REQUEST,
+          String.format("Universe UUID: %s doesn't belong " +
+              "to Customer UUID: %s", universeUUID, customerUUID));
+    }
+
     String active = "false";
     Map<String, String> config = new HashMap<>();
     try {
@@ -650,6 +673,12 @@ public class UniverseController extends AuthenticatedController {
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+    // Check the universe belongs to the Customer.
+    if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+      return ApiResponse.error(BAD_REQUEST,
+          String.format("Universe UUID: %s doesn't belong " +
+              "to Customer UUID: %s", universeUUID, customerUUID));
     }
     try {
       Universe universe = Universe.get(universeUUID);
@@ -679,6 +708,13 @@ public class UniverseController extends AuthenticatedController {
       universe = Universe.get(universeUUID);
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
+    }
+
+    // Check the universe belongs to the Customer.
+    if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+      return ApiResponse.error(BAD_REQUEST,
+          String.format("Universe UUID: %s doesn't belong " +
+              "to Customer UUID: %s", universeUUID, customerUUID));
     }
 
     // Create the Commissioner task to destroy the universe.
@@ -744,6 +780,13 @@ public class UniverseController extends AuthenticatedController {
       universe = Universe.get(universeUUID);
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
+    }
+
+    // Check the universe belongs to the Customer.
+    if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+      return ApiResponse.error(BAD_REQUEST,
+          String.format("Universe UUID: %s doesn't belong " +
+              "to Customer UUID: %s", universeUUID, customerUUID));
     }
 
     try {
@@ -832,6 +875,14 @@ public class UniverseController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
     }
 
+    // Check the universe belongs to the Customer.
+    if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+      return ApiResponse.error(BAD_REQUEST,
+          String.format("Universe UUID: %s doesn't belong " +
+              "to Customer UUID: %s", universeUUID, customerUUID));
+    }
+
+
     List<Cluster> existingReadOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
     if (existingReadOnlyClusters.size() != 1) {
       String errMsg = "Expected just one read only cluster, but found " +
@@ -900,6 +951,13 @@ public class UniverseController extends AuthenticatedController {
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
     }
+    // Check the universe belongs to the Customer.
+    if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+      return ApiResponse.error(BAD_REQUEST,
+          String.format("Universe UUID: %s doesn't belong " +
+              "to Customer UUID: %s", universeUUID, customerUUID));
+    }
+
     try {
       return ApiResponse.success(Json.toJson(UniverseResourceDetails.create(universe.getNodes(),
           universe.getUniverseDetails())));
@@ -953,6 +1011,13 @@ public class UniverseController extends AuthenticatedController {
       universe = Universe.get(universeUUID);
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
+    }
+
+    // Check the universe belongs to the Customer.
+    if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+      return ApiResponse.error(BAD_REQUEST,
+          String.format("Universe UUID: %s doesn't belong " +
+              "to Customer UUID: %s", universeUUID, customerUUID));
     }
 
     // Bind rolling restart params
@@ -1066,6 +1131,13 @@ public class UniverseController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
     }
 
+    // Check the universe belongs to the Customer.
+    if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+      return ApiResponse.error(BAD_REQUEST,
+          String.format("Universe UUID: %s doesn't belong " +
+              "to Customer UUID: %s", universeUUID, customerUUID));
+    }
+
     // Get alive status
     try {
       JsonNode result = PlacementInfoUtil.getUniverseAliveStatus(universe, metricQueryHelper);
@@ -1096,6 +1168,13 @@ public class UniverseController extends AuthenticatedController {
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
     }
+    // Check the universe belongs to the Customer.
+    if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+      return ApiResponse.error(BAD_REQUEST,
+          String.format("Universe UUID: %s doesn't belong " +
+              "to Customer UUID: %s", universeUUID, customerUUID));
+    }
+
 
     // Get alive status
     try {
@@ -1135,6 +1214,13 @@ public class UniverseController extends AuthenticatedController {
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
     }
+    // Check the universe belongs to the Customer.
+    if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+      return ApiResponse.error(BAD_REQUEST,
+          String.format("Universe UUID: %s doesn't belong " +
+              "to Customer UUID: %s", universeUUID, customerUUID));
+    }
+
     final String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificate();
     YBClient client = null;

@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Users;
 
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -71,15 +72,17 @@ public class CustomerControllerTest extends WithApplication {
   }
 
   private Customer customer;
+  private Users user;
 
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
+    user = ModelFactory.testUser(customer);
   }
 
   @Test
   public void testCustomerGETWithValidUUID() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Result result = route(fakeRequest("GET", baseRoute + customer.uuid).cookie(validCookie));
     assertEquals(OK, result.status());
@@ -91,7 +94,7 @@ public class CustomerControllerTest extends WithApplication {
 
   @Test
   public void testCustomerGETWithInvalidUUID() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     UUID invalidUUID = UUID.randomUUID();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Result result = route(fakeRequest("GET", baseRoute + invalidUUID).cookie(validCookie));
@@ -99,12 +102,12 @@ public class CustomerControllerTest extends WithApplication {
 
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(),
-        equalTo("Unable To Authenticate Customer")));
+        equalTo("Unable To Authenticate User")));
   }
 
   @Test
   public void testCustomerPUTWithValidParams() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     ObjectNode params = Json.newObject();
     params.put("code", "tc");
@@ -128,7 +131,7 @@ public class CustomerControllerTest extends WithApplication {
 
   @Test
   public void testCustomerPUTWithDefaultCallhome() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     ObjectNode params = Json.newObject();
     params.put("code", "tc");
@@ -145,7 +148,7 @@ public class CustomerControllerTest extends WithApplication {
 
   @Test
   public void testCustomerPUTWithValidFeatures() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     ObjectNode params = Json.newObject();
     params.put("code", "tc");
@@ -162,7 +165,7 @@ public class CustomerControllerTest extends WithApplication {
 
   @Test
   public void testCustomerPUTWithInvalidFeatures() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     ObjectNode params = Json.newObject();
     params.put("code", "tc");
@@ -176,7 +179,7 @@ public class CustomerControllerTest extends WithApplication {
 
   @Test
   public void testFeatureUpsert() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     JsonNode inputFeatures = Json.parse("{\"features\": {\"foo\": \"bar\", \"key\": \"old\"}}");
     JsonNode expectedFeatures = Json.parse("{\"foo\": \"bar\", \"key\": \"old\"}");
@@ -196,7 +199,7 @@ public class CustomerControllerTest extends WithApplication {
 
   @Test
   public void testCustomerPUTWithInvalidParams() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     ObjectNode params = Json.newObject();
     params.put("password", "new-password");
@@ -210,7 +213,7 @@ public class CustomerControllerTest extends WithApplication {
 
   @Test
   public void testCustomerPUTWithInvalidUUID() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     UUID invalidUUID = UUID.randomUUID();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Result result = route(fakeRequest("PUT", baseRoute + invalidUUID).cookie(validCookie));
@@ -218,12 +221,12 @@ public class CustomerControllerTest extends WithApplication {
 
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(),
-        equalTo("Unable To Authenticate Customer")));
+        equalTo("Unable To Authenticate User")));
   }
 
   @Test
   public void testCustomerDELETEWithValidUUID() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Result result = route(fakeRequest("DELETE", baseRoute + customer.uuid).cookie(validCookie));
     assertEquals(OK, result.status());
@@ -235,19 +238,19 @@ public class CustomerControllerTest extends WithApplication {
   public void testCustomerDELETEWithInvalidUUID() {
     UUID invalidUUID = UUID.randomUUID();
 
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Result result = route(fakeRequest("DELETE", baseRoute + invalidUUID).cookie(validCookie));
     assertEquals(FORBIDDEN, result.status());
 
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(),
-        equalTo("Unable To Authenticate Customer")));
+        equalTo("Unable To Authenticate User")));
   }
 
   @Test
   public void testCustomerMetricsWithInvalidParams() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     ObjectNode params = Json.newObject();
 
@@ -260,7 +263,7 @@ public class CustomerControllerTest extends WithApplication {
 
   @Test
   public void testCustomerMetricsWithValidMetricsParams() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metrics")));
@@ -277,7 +280,7 @@ public class CustomerControllerTest extends WithApplication {
 
   @Test
   public void testCustomerMetricsForContainerMetricsMultiAZ() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("container_metrics")));
     params.put("start", "1479281737000");
@@ -307,7 +310,7 @@ public class CustomerControllerTest extends WithApplication {
 
   @Test
   public void testCustomerMetricsForContainerMetricsSingleAZ() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("container_metrics")));
     params.put("start", "1479281737000");
@@ -337,7 +340,7 @@ public class CustomerControllerTest extends WithApplication {
 
   @Test
   public void testCustomerMetricsForContainerMetricsWithNodeName() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("container_metrics")));
     params.put("start", "1479281737000");
@@ -362,7 +365,7 @@ public class CustomerControllerTest extends WithApplication {
 
   @Test
   public void testCustomerMetricsWithInValidMetricsParam() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric1")));
@@ -379,7 +382,7 @@ public class CustomerControllerTest extends WithApplication {
 
   @Test
   public void testCustomerMetricsWithValidTableNameParams() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Universe u1 = createUniverse("Foo-1", customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
@@ -408,7 +411,7 @@ public class CustomerControllerTest extends WithApplication {
 
   @Test
   public void testCustomerMetricsWithoutTableNameParams() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Universe u1 = createUniverse("Foo-1", customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
@@ -437,7 +440,7 @@ public class CustomerControllerTest extends WithApplication {
 
   @Test
   public void testCustomerMetricsExceptionThrown() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
@@ -454,7 +457,7 @@ public class CustomerControllerTest extends WithApplication {
 
   @Test
   public void testCustomerMetricsWithMultipleUniverses() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Universe u1 = createUniverse("Foo-1", customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-a"));
@@ -489,7 +492,7 @@ public class CustomerControllerTest extends WithApplication {
 
   @Test
   public void testCustomerMetricsWithNodePrefixParam() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Universe u1 = createUniverse("Foo-1", customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
@@ -517,7 +520,7 @@ public class CustomerControllerTest extends WithApplication {
 
   @Test
   public void testCustomerMetricsWithNodeNameParam() {
-    String authToken = customer.createAuthToken();
+    String authToken = user.createAuthToken();
 
     Universe u1 = createUniverse("Foo-1", customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
@@ -541,7 +544,7 @@ public class CustomerControllerTest extends WithApplication {
 
   private Result getHostInfo(UUID customerUUID) {
     String uri = baseRoute + customerUUID + "/host_info";
-    return FakeApiHelper.doRequestWithAuthToken("GET", uri, customer.createAuthToken());
+    return FakeApiHelper.doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
 
   @Test
@@ -552,7 +555,7 @@ public class CustomerControllerTest extends WithApplication {
 
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(),
-        equalTo("Unable To Authenticate Customer")));
+        equalTo("Unable To Authenticate User")));
   }
 
   @Test

@@ -79,7 +79,7 @@ EXIT_SIGNALS = (SIGABRT, SIGINT, SIGTERM)
 # YugabyteDB configs.
 IP_ANY = "0.0.0.0"
 IP_LOCALHOST = "127.0.0.1"
-DEFAULT_BIND_IP = IP_LOCALHOST
+DEFAULT_BIND_IP = IP_ANY
 DEFAULT_MASTER_RPC_PORT = 7100
 DEFAULT_TSERVER_RPC_PORT = 9100
 DEFAULT_MASTER_WEBSERVER_PORT = 7000
@@ -139,6 +139,7 @@ class ControlScript(object):
 
         self.set_signals(self.kill_children)
         atexit.register(self.kill_children)
+        Output.script_exit_func = self.kill_children
 
         self.start_processes()
 
@@ -199,7 +200,7 @@ class ControlScript(object):
                 "{} is not running. Cannot connect to YCQL.".format(SCRIPT_NAME))
         path = os.path.join(BIN_DIR, YUGABYTE_API_CLIENT_PROGRAMS["ycql"])
         cmd = [
-            path, self.configs.saved_data.get("bind_ip"),
+            path, self.advertise_ip(),
             str(self.configs.saved_data.get("ycql_port"))
         ]
         os.execv(path, cmd)
@@ -351,7 +352,8 @@ class ControlScript(object):
             "--metrics_snapshotter_tserver_metrics_whitelist={}".format(
                 ",".join(METRICS_SNAPSHOT_LIST)),
             "--yb_num_shards_per_tserver={}".format(YB_NUM_SHARDS_PER_TSERVER),
-            "--ysql_num_shards_per_tserver={}".format(YSQL_NUM_SHARDS_PER_TSERVER)
+            "--ysql_num_shards_per_tserver={}".format(YSQL_NUM_SHARDS_PER_TSERVER),
+            "--cluster_uuid={}".format(self.configs.saved_data.get("universe_uuid"))
         ]
 
         yb_master_cmd = [os.path.join(BIN_DIR, "yb-master")] + common_gflags + \
@@ -451,13 +453,12 @@ class ControlScript(object):
                 process = self.processes.get(name)
                 process.remove_error_logs()
                 if not process.is_running():
-                    process.start()
                     if not is_first_run:
                         Output.print_and_log(
                             "{} died unexpectedly. Restarting...".format(process.name),
                             logging.ERROR)
+                    process.start()
                     should_callhome = True
-
             if self.wait_yb_master():
                 if is_first_run:
                     Output.update_animation("System checks")
@@ -490,11 +491,12 @@ class ControlScript(object):
                         err = yw_proxy.import_universe(
                             advertise_ip,
                             master_rpc_port,
-                            self.get_universe_uuid())
+                            self.configs.saved_data.get("universe_uuid"))
                         if err:
                             Output.log_error_and_exit(err)
 
-                        err = yw_proxy.set_landing_page(self.get_universe_uuid())
+                        err = yw_proxy.set_landing_page(
+                            self.configs.saved_data.get("universe_uuid"))
                         should_callhome = True
                         Output.update_animation("UI ready")
                     else:
@@ -587,10 +589,11 @@ class ControlScript(object):
 
             # Keep the parent process alive until the daemon confirms yugabyted started properly.
             try:
-                self.script.daemon_success.get(timeout=180)
+                self.script.daemon_success.get(timeout=600)
             except queue.Empty as e:
-                Output.log_error_and_exit(
-                    "Timed out trying to start {} daemon.".format(SCRIPT_NAME))
+                Output.print_and_log(
+                    "Timed out trying to start {} daemon.".format(SCRIPT_NAME), logging.ERROR)
+                self.stop()
             sys.exit()
         os.chdir(YUGABYTE_DIR)
         os.setsid()
@@ -649,31 +652,10 @@ class ControlScript(object):
         Output.log("Checking play_evolutions table")
         list_tables_cmd = [os.path.join(BIN_DIR, "ysqlsh"), "-d", WEBSERVER_DB, "-c", "\d"]
         out, err, ret_code = run_process(list_tables_cmd)
-        Output.log("Finished play evolutions table")
+        Output.log("Finished checking play evolutions table")
         return not err and not ret_code and "play_evolutions" in out
 
-    # Rudimentary yb-admin call.
-    def get_universe_uuid(self):
-        saved_uuid = self.configs.saved_data.get("universe_uuid")
-        if saved_uuid:
-            return saved_uuid
-        elif not self.get_failed_node_processes():
-            cmd = [os.path.join(BIN_DIR, "yb-admin"), "get_universe_config"]
-            stdout, _, _ = run_process(cmd)
-            if stdout:
-                universe_configs = stdout.split()
-                if universe_configs:
-                    univ_uuid = universe_configs[-1].replace('"', '')
-                    self.configs.saved_data["universe_uuid"] = univ_uuid
-                    self.configs.save_configs()
-                    return univ_uuid
-        return None
-
     def wait_yb_master(self, timeout=180):
-        if (not self.processes.get("master").is_running()
-                or not self.processes.get("tserver").is_running()):
-            return False
-
         Output.log("Waiting for yb master via ybadmin...")
         num_tservers = 1
         master_addr = "{}:{}".format(self.advertise_ip(),
@@ -681,15 +663,26 @@ class ControlScript(object):
 
         start_time = time.time()
         cur_num_tservers = None
+        universe_uuid = self.configs.saved_data.get("universe_uuid")
         while time.time() - start_time < timeout:
+            if (not self.processes.get("master").is_running()
+                    or not self.processes.get("tserver").is_running()):
+                Output.log("Failed waiting for yb-master... process died.", logging.ERROR)
+                return False
             cur_num_tservers = YBAdminProxy.get_num_tservers(master_addr)
-            if cur_num_tservers is not None and cur_num_tservers == num_tservers:
-                time.sleep(2)
-                Output.log("Completed waiting for yb master, num tservers={}.".format(num_tservers))
-                return True
+            if cur_num_tservers is not None:
+                cluster_uuid = YBAdminProxy.get_cluster_uuid(master_addr)
+                if cluster_uuid != universe_uuid:
+                    Output.log_error_and_exit(
+                        "Found existing nodes with universe UUID: {}".format(cluster_uuid))
+                if cur_num_tservers == num_tservers:
+                    time.sleep(2)
+                    Output.log(
+                        "Completed waiting for yb master, num tservers={}.".format(num_tservers))
+                    return True
             time.sleep(2)
 
-        Output.log("Failed waiting for yb master, current num tservers={}, expected {}.".format(
+        Output.log("Failed waiting for yb-master, current num tservers={}, expected {}.".format(
                    cur_num_tservers, num_tservers))
         return False
 
@@ -752,7 +745,7 @@ class ControlScript(object):
             (Output.make_yellow("YCQL"), "bin/cqlsh{}".format(ycql_flags)),
             (Output.make_yellow("Data Dir"), self.configs.saved_data.get("data_dir")),
             (Output.make_yellow("Log Dir"), self.configs.saved_data.get("log_dir")),
-            (Output.make_yellow("Universe UUID"), self.get_universe_uuid())
+            (Output.make_yellow("Universe UUID"), self.configs.saved_data.get("universe_uuid"))
         ]
         div_line = "+" + "-" * 98 + "+" + "\n"
         status = "\n" + div_line
@@ -804,7 +797,8 @@ class ControlScript(object):
             cmd = ["java", "-version"]
             java_info = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
             return java_info is not None
-        except (OSError) as e:
+        except (OSError, subprocess.CalledProcessError) as e:
+            Output.log("Failed to find java: {}".format(e), logging.ERROR)
             return False
 
     # Parse config file and input args. Validate them and save any new configs.
@@ -855,7 +849,7 @@ class ControlScript(object):
             sys.exit(1)
 
         # Override configs and defaults with user specified variables
-        update_config_file = False
+        update_config_file = not os.path.exists(self.conf_file)
         for k, v in get_kv(args.__dict__):
             if (v is not None and k in self.configs.saved_data
                     and v != self.configs.saved_data.get(k)):
@@ -997,7 +991,8 @@ class Configs(object):
             "ycql_port": DEFAULT_YCQL_PORT,
             "bind_ip": DEFAULT_BIND_IP,
             "webserver_port": DEFAULT_WEBSERVER_PORT,
-            "universe_uuid": "",
+            "universe_uuid": str(uuid.uuid4()),
+            "node_uuid": str(uuid.uuid4()),
             "polling_interval": "5",
             "callhome": DEFAULT_CALLHOME,
             "master_flags": "",
@@ -1317,8 +1312,8 @@ class Diagnostics(object):
         # TODO: This is going to change for multi-node.
         cur_master_addr = master_addrs
         data = {
-            "cluster_uuid": YBAdminProxy.get_cluster_uuid(master_addrs),
-            "node_uuid": YBAdminProxy.get_node_uuid(master_addrs, cur_master_addr),
+            "cluster_uuid": self.configs.saved_data.get("universe_uuid"),
+            "node_uuid": self.configs.saved_data.get("node_uuid"),
             "server_type": SCRIPT_NAME,
             "timestamp": int(time.time()),
             "payload": payload
@@ -1342,9 +1337,9 @@ class YBAdminProxy(object):
 
     # Returns number of tservers reported by yb-master.
     @staticmethod
-    def get_num_tservers(master_addrs):
+    def get_num_tservers(master_addrs, timeout=10):
         cmd = [YBAdminProxy.path, "--master_addresses", master_addrs, "list_all_tablet_servers"]
-        out, err, ret_code = run_process(cmd)
+        out, err, ret_code = run_process(cmd, timeout=timeout)
         return len(out.splitlines()) - 1 if not ret_code else None
 
     # Returns the cluster_uuid for this universe
@@ -1454,7 +1449,8 @@ class LogAnalyzer(object):
 class YugaWareProxy(object):
     def __init__(self, ip, webserver_port, univ_name="local-universe"):
         self.univ_name = univ_name
-        self.api_token = ""
+        self.api_token_secure = ""
+        self.api_token_insecure = ""
         self.cust_uuid = ""
         self.url = "http://{}:{}/api/v1".format(ip, webserver_port)
 
@@ -1480,7 +1476,7 @@ class YugaWareProxy(object):
             req.get_method = lambda: "PUT"
             resp = urlopen(req)
             api_data = json.loads(resp.read())
-            self.api_token = api_data["apiToken"]
+            self.api_token_secure = api_data["apiToken"]
             return None
         except (ValueError, HTTPError, URLError, KeyError) as e:
             return "Failed to log into webserver. {}".format(e)
@@ -1492,7 +1488,7 @@ class YugaWareProxy(object):
             req = Request(target)
             resp = urlopen(req)
             session_data = json.loads(resp.read())
-            self.api_token = session_data["apiToken"]
+            self.api_token_insecure = session_data["apiToken"]
             self.cust_uuid = session_data["customerUUID"]
             return None
         except (ValueError, HTTPError, URLError, KeyError) as e:
@@ -1502,7 +1498,7 @@ class YugaWareProxy(object):
     def import_universe(self, master_address, master_rpc_port, universeUUID):
         target = "{}/customers/{}/universes/import".format(self.url, self.cust_uuid)
         headers = {
-            "X-AUTH-YW-API-TOKEN": self.api_token,
+            "X-AUTH-YW-API-TOKEN": self.api_token_secure,
             "Content-Type": "application/json",
         }
         data = {
@@ -1558,7 +1554,7 @@ class YugaWareProxy(object):
     def set_landing_page(self, universe_uuid):
         target = "{}/customers/{}/features".format(self.url, self.cust_uuid)
         headers = {
-            "X-AUTH-YW-API-TOKEN": self.api_token,
+            "X-AUTH-YW-API-TOKEN": self.api_token_secure,
             "Content-Type": "application/json",
         }
         data = {
@@ -1591,7 +1587,7 @@ class YugaWareProxy(object):
     def set_security(self, level):
         target = "{}/customers/{}/security".format(self.url, self.cust_uuid)
         headers = {
-            "X-AUTH-YW-API-TOKEN": self.api_token,
+            "X-AUTH-YW-API-TOKEN": self.api_token_secure,
             "Content-Type": "application/json",
         }
         data = {"level": level}
@@ -1616,7 +1612,7 @@ class YugaWareProxy(object):
     def send_alerts(self, alerts):
         target = "{}/customers/{}/alerts".format(self.url, self.cust_uuid)
         headers = {
-            "X-AUTH-YW-API-TOKEN": self.api_token,
+            "X-AUTH-YW-API-TOKEN": self.api_token_secure,
             "Content-Type": "application/json",
         }
         Output.log("Adding alerts: {}".format(alerts))
@@ -1659,6 +1655,7 @@ class Output(object):
     SHIRT = "\xf0\x9f\x91\x95".encode('latin1').decode('utf8')
     log_dir = None
     start_time_sec = time.time()
+    script_exit_func = None
     # Tuple of (animation_enabled, animation_message)
     animation_status = (False, "")
     animation_thread = None
@@ -1733,6 +1730,8 @@ class Output(object):
         if Output.log_dir:
             msg += "\nFor more information, check the logs in {}".format(Output.log_dir)
         Output.print_and_log(msg, logging.ERROR)
+        if Output.script_exit_func:
+            Output.script_exit_func()
         sys.exit(1)
 
     @staticmethod
@@ -1802,9 +1801,15 @@ def get_kv(map):
     else:
         return map.items()
 
-def run_process(cmd):
+def run_process(cmd, timeout=None):
     proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-    out, err = proc.communicate()
+    if PY_VERSION >= 3:
+        try:
+            out, err = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired as e:
+            return None, str(e), -1
+    else:
+        out, err = proc.communicate()
     return out.decode('utf-8'), err.decode('utf-8'), proc.returncode
 
 if __name__ == '__main__':

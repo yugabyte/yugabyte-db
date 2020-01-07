@@ -43,6 +43,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 
 import org.junit.Before;
 import org.junit.Ignore;
@@ -61,6 +62,7 @@ import play.test.WithApplication;
 public class ImportControllerTest extends CommissionerBaseTest {
   private static String MASTER_ADDRS = "127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100";
   private Customer customer;
+  private Users user;
   private String authToken;
   private YBClient mockClient;
   private ListTabletServersResponse mockResponse;
@@ -86,7 +88,8 @@ public class ImportControllerTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
-    authToken = customer.createAuthToken();
+    user = ModelFactory.testUser(customer);
+    authToken = user.createAuthToken();
     mockClient = mock(YBClient.class);
     mockResponse = mock(ListTabletServersResponse.class);
     when(mockApiHelper.getRequest(any(String.class))).thenReturn(Json.newObject());
@@ -247,7 +250,10 @@ public class ImportControllerTest extends CommissionerBaseTest {
 
     url = "/api/customers/" + customer.uuid + "/universes/" + univUUID;
     result = doRequestWithAuthToken("GET", url, authToken);
-    assertBadRequest(result, "Invalid Universe UUID");
+    String expectedResult = String.format("Universe UUID: %s doesn't belong " +
+                                          "to Customer UUID: %s", univUUID,
+                                          customer.uuid);
+    assertBadRequest(result, expectedResult);
 
     try {
       universe = Universe.get(UUID.fromString(univUUID));

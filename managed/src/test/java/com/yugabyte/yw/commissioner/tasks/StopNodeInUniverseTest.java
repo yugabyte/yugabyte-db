@@ -176,7 +176,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     @Test
     public void testStopNonMasterNode() {
         NodeTaskParams taskParams = new NodeTaskParams();
-        Customer customer = ModelFactory.testCustomer("fb", "foo@bar.com");
+        Customer customer = ModelFactory.testCustomer("tc2", "Test Customer 2");
         Universe universe = createUniverse(customer.getCustomerId());
         UniverseDefinitionTaskParams.UserIntent userIntent =
                 new UniverseDefinitionTaskParams.UserIntent();

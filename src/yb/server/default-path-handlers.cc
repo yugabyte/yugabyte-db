@@ -68,6 +68,7 @@
 #include "yb/util/histogram.pb.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/version_info.h"
@@ -165,10 +166,8 @@ static void MemUsageHandler(const Webserver::WebRequest& req, std::stringstream*
 #ifndef TCMALLOC_ENABLED
   (*output) << "Memory tracking is not available unless tcmalloc is enabled.";
 #else
-  char buf[20480];
-  MallocExtension::instance()->GetStats(buf, sizeof(buf));
-  // Replace new lines with <br> for html
-  string tmp(buf);
+  auto tmp = TcMallocStats();
+  // Replace new lines with <br> for html.
   replace_all(tmp, "\n", tags.line_break);
   (*output) << tmp << tags.end_pre_tag;
 #endif

@@ -99,6 +99,7 @@ YBCStatus YBCPgNewCreateDatabase(const char *database_name,
                                  YBCPgOid database_oid,
                                  YBCPgOid source_database_oid,
                                  YBCPgOid next_oid,
+                                 const bool colocated,
                                  YBCPgStatement *handle);
 YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle);
 
@@ -143,6 +144,8 @@ YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name
                                     bool is_desc, bool is_nulls_first);
 
 YBCStatus YBCPgCreateTableSetNumTablets(YBCPgStatement handle, int32_t num_tablets);
+
+YBCStatus YBCPgCreateTableSetColocated(YBCPgStatement handle, bool colocated);
 
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle);
 
@@ -206,6 +209,7 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               bool is_shared_index,
                               bool is_unique_index,
                               bool if_not_exist,
+                              bool colocated,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,

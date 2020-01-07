@@ -218,11 +218,13 @@ struct TransactionMetadata {
   TransactionId transaction_id = boost::uuids::nil_uuid();
   IsolationLevel isolation = IsolationLevel::NON_TRANSACTIONAL;
   TabletId status_tablet;
+
+  // By default random value is picked for newly created transaction.
   uint64_t priority;
 
   // Used for snapshot isolation (as read time and for conflict resolution).
   // start_time is used only for backward compability during rolling update.
-  HybridTime DEPRECATED_start_time;
+  HybridTime start_time;
 
   static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
 
@@ -232,8 +234,9 @@ struct TransactionMetadata {
   void ForceToPB(TransactionMetadataPB* dest) const;
 
   std::string ToString() const {
-    return Format("{ transaction_id: $0 isolation: $1 status_tablet: $2 priority: $3 }",
-                  transaction_id, isolation, status_tablet, priority);
+    return Format(
+        "{ transaction_id: $0 isolation: $1 status_tablet: $2 priority: $3 start_time: $4 }",
+        transaction_id, isolation, status_tablet, priority, start_time);
   }
 };
 

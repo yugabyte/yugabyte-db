@@ -518,6 +518,33 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
   consensus::LeaderStepDownResponsePB stepdown_resp_;
 };
 
+// Task to add a table to a tablet. Catalog Manager uses this task to send the request to the
+// tserver admin service.
+class AsyncAddTableToTablet : public RetryingTSRpcTask {
+ public:
+  AsyncAddTableToTablet(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+      const scoped_refptr<TableInfo>& table);
+
+  Type type() const override { return ASYNC_ADD_TABLE_TO_TABLET; }
+
+  std::string type_name() const override { return "Add Table to Tablet"; }
+
+  std::string description() const override;
+
+ private:
+  TabletId tablet_id() const override { return tablet_id_; }
+
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+
+  scoped_refptr<TabletInfo> tablet_;
+  scoped_refptr<TableInfo> table_;
+  const TabletId tablet_id_;
+  tserver::AddTableToTabletRequestPB req_;
+  tserver::AddTableToTabletResponsePB resp_;
+};
+
 } // namespace master
 } // namespace yb
 

@@ -161,6 +161,9 @@ DEFINE_int32(num_raft_ops_to_force_idle_intents_db_to_flush, 1000,
              "the last write to the intents RocksDB "
              "is greater than this value, the intents RocksDB would be requested to flush.");
 
+DEFINE_bool(delete_intents_sst_files, true,
+            "Delete whole intents .SST files when possible.");
+
 DEFINE_test_flag(
     bool, tablet_verify_flushed_frontier_after_modifying, false,
     "After modifying the flushed frontier in RocksDB, verify that the restored value of it "
@@ -601,6 +604,7 @@ Status Tablet::OpenKeyValueTablet() {
     rocksdb::DB* intents_db = nullptr;
     RETURN_NOT_OK(rocksdb::DB::Open(rocksdb_options, db_dir + kIntentsDBSuffix, &intents_db));
     intents_db_.reset(intents_db);
+    intents_db_->ListenFilesChanged(std::bind(&Tablet::CleanupIntentFiles, this));
   }
 
   ql_storage_.reset(new docdb::QLRocksDBStorage(doc_db()));
@@ -623,6 +627,63 @@ Status Tablet::OpenKeyValueTablet() {
                         << ", obj: " << db;
 
   return Status::OK();
+}
+
+void Tablet::SetCleanupPool(ThreadPool* thread_pool) {
+  cleanup_intent_files_token_ = thread_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
+}
+
+void Tablet::CleanupIntentFiles() {
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  if (!scoped_read_operation.ok() || state_ != State::kOpen || !FLAGS_delete_intents_sst_files ||
+      !cleanup_intent_files_token_) {
+    return;
+  }
+
+  WARN_NOT_OK(
+      cleanup_intent_files_token_->SubmitFunc(std::bind(&Tablet::DoCleanupIntentFiles, this)),
+      "Submit cleanup intent files failed");
+}
+
+void Tablet::DoCleanupIntentFiles() {
+  HybridTime best_file_max_ht = HybridTime::kMax;
+  std::vector<rocksdb::LiveFileMetaData> files;
+  // Stops when there are no more files to delete.
+  for (;;) {
+    ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+    if (!scoped_read_operation.ok()) {
+      break;
+    }
+
+    best_file_max_ht = HybridTime::kMax;
+    const rocksdb::LiveFileMetaData* best_file = nullptr;
+    files.clear();
+    intents_db_->GetLiveFilesMetaData(&files);
+    for (const auto& file : files) {
+      auto& frontier = down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier);
+      auto file_max_ht = frontier.hybrid_time();
+      if (file_max_ht < best_file_max_ht) {
+        best_file = &file;
+        best_file_max_ht = file_max_ht;
+      }
+    }
+
+    auto min_running_start_ht = transaction_participant_->MinRunningHybridTime();
+    if (!min_running_start_ht.is_valid() || min_running_start_ht <= best_file_max_ht) {
+      break;
+    }
+
+    LOG_WITH_PREFIX(INFO)
+        << "Intents SST file will be deleted: " << best_file->ToString()
+        << ", max ht: " << best_file_max_ht << ", min running transaction start ht: "
+        << min_running_start_ht;
+    regular_db_->Flush(rocksdb::FlushOptions());
+    intents_db_->DeleteFile(best_file->name);
+  }
+
+  if (best_file_max_ht != HybridTime::kMax) {
+    transaction_participant_->WaitMinRunningHybridTime(best_file_max_ht);
+  }
 }
 
 Status Tablet::EnableCompactions() {
@@ -676,6 +737,8 @@ void Tablet::Shutdown(IsDropTable is_drop_table) {
     LOG_WITH_PREFIX(WARNING) << "Failed to shut down: " << op_pause.status();
     return;
   }
+
+  cleanup_intent_files_token_.reset();
 
   if (transaction_coordinator_) {
     transaction_coordinator_->Shutdown();

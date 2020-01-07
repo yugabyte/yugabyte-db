@@ -63,6 +63,7 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -117,13 +118,13 @@ public class UniverseControllerTest extends WithApplication {
   play.Configuration mockAppConfig;
 
   private Customer customer;
+  private Users user;
   private KmsConfig kmsConfig;
   private String authToken;
   private YBClientService mockService;
   private YBClient mockClient;
   private ApiHelper mockApiHelper;
   private CallHome mockCallHome;
-  private HealthChecker mockHealthChecker;
   private EncryptionAtRestManager mockEARManager;
   private QueryExecutor mockQueryExecutor;
   private ShellProcessHandler mockShellProcessHandler;
@@ -208,12 +209,13 @@ public class UniverseControllerTest extends WithApplication {
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
+    user = ModelFactory.testUser(customer);
     ObjectNode kmsConfigReq = Json.newObject()
             .put("name", "some config name")
             .put("base_url", "some_base_url")
             .put("api_key", "some_api_token");
     kmsConfig = ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", kmsConfigReq);
-    authToken = customer.createAuthToken();
+    authToken = user.createAuthToken();
     when(mockEARManager.getServiceInstance("SMARTKEY")).thenReturn(new SmartKeyEARService());
     when(mockEARManager.getServiceInstance("AWS")).thenReturn(new AwsEARService());
   }
@@ -255,7 +257,7 @@ public class UniverseControllerTest extends WithApplication {
 
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(),
-        equalTo("Unable To Authenticate Customer")));
+        equalTo("Unable To Authenticate User")));
   }
 
   @Test
@@ -291,7 +293,7 @@ public class UniverseControllerTest extends WithApplication {
 
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(),
-        equalTo("Unable To Authenticate Customer")));
+        equalTo("Unable To Authenticate User")));
   }
 
   @Test
@@ -299,7 +301,10 @@ public class UniverseControllerTest extends WithApplication {
     UUID invalidUUID = UUID.randomUUID();
     String url = "/api/customers/" + customer.uuid + "/universes/" + invalidUUID;
     Result result = doRequestWithAuthToken("GET", url, authToken);
-    assertBadRequest(result, "Invalid Universe UUID: " + invalidUUID);
+    String expectedResult = String.format("Universe UUID: %s doesn't belong " +
+                                          "to Customer UUID: %s", invalidUUID,
+                                          customer.uuid);
+    assertBadRequest(result, expectedResult);
   }
 
   @Test
@@ -1785,7 +1790,7 @@ public class UniverseControllerTest extends WithApplication {
 
   @Test
   public void testRunQueryWithInvalidUniverse() {
-    Customer c2 = ModelFactory.testCustomer("tc2", "tc2@demo.com");
+    Customer c2 = ModelFactory.testCustomer("tc2", "Test Customer 2");
     Universe u = createUniverse(c2.getCustomerId());
     ObjectNode bodyJson = Json.newObject();
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
@@ -1836,7 +1841,7 @@ public class UniverseControllerTest extends WithApplication {
 
   @Test
   public void testRunInShellWithInvalidUniverse() {
-    Customer c2 = ModelFactory.testCustomer("tc2", "tc2@demo.com");
+    Customer c2 = ModelFactory.testCustomer("tc2", "Test Customer 2");
     Universe u = createUniverse(c2.getCustomerId());
     ObjectNode bodyJson = Json.newObject();
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
@@ -1881,7 +1886,7 @@ public class UniverseControllerTest extends WithApplication {
       bodyJson.put("shell_location", scriptLocation);
     } else {
       Application application = Play.current().injector().instanceOf(Application.class);
-      scriptLocation = application.path().getAbsolutePath() + "/bin";
+      scriptLocation = application.path().getAbsolutePath() + "/../bin";
     }
 
     ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
