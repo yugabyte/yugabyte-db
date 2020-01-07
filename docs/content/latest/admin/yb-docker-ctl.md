@@ -80,7 +80,7 @@ Stops the specified local YugabyteDB cluster node.
 
 ## Optional arguments
 
-### --help | -h
+### --help, -h
 
 Displays the online help and then exits.
 

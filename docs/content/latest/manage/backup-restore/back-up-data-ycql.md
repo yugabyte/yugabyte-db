@@ -1,3 +1,33 @@
+---
+title: Back up data
+linkTitle: Back up data
+description: Back up data
+image: /images/section_icons/manage/enterprise.png
+headcontent: Back up data in YugabyteDB.
+aliases:
+  - /manage/backup-restore/backing-up-data
+menu:
+  latest:
+    identifier: back-up-data-ycql
+    parent: backup-restore
+    weight: 703
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/manage/backup-restore/back-up-data" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+  <li >
+    <a href="/latest/manage/backup-restore/back-up-data-ycql" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+</ul>
+
 This page documents backups for YugabyteDB’s [Cassandra compatible YCQL API](../../../api/ycql).
 
 ## Schema backup
@@ -32,7 +62,7 @@ cqlsh -e "COPY <keyspace>.<table> TO 'data.csv' WITH HEADER = TRUE;"
 
 - Backing up select columns of the table
 
-In order to backup selected columns of the table, specify the column names in a list.
+In order to back up selected columns of the table, specify the column names in a list.
 
 ```sh
 cqlsh -e "COPY <keyspace>.<table> (<column 1 name>, <column 2 name>, ...) TO 'data.csv' WITH HEADER = TRUE;"
@@ -70,10 +100,9 @@ There are a number of useful options in the `COPY TO` command used to perform th
 | MAXREQUESTS | Maximum number of requests each worker can process in parallel. Default value is `6`. |
 | MAXOUTPUTSIZE | Maximum size of the output file, measured in number of lines. When set, the output file is split into segment when the value is exceeded. Use `-1` for no maximum. Default value: `-1`. |
 
-
 ## Example
 
-We are going to use the example shown in the [quick start](../../../quick-start/test-cassandra/) section in order to demonstrate how to perform backups.
+We are going to use the example shown in the [quick start](../../../quick-start/test-cassandra/) section in order to demonstrate how to create backups.
 
 This section assumes you already have a YugabyteDB cluster. You can install a local cluster on your laptop using [these quick start instructions](../../../quick-start/install/).
 
@@ -112,6 +141,7 @@ You can query all the 6 rows we inserted by running the following command in `cq
 ```sql
 cqlsh> SELECT * FROM myapp.stock_market;
 ```
+
 ```
  stock_symbol | ts                  | current_price
 --------------+---------------------+---------------
@@ -125,7 +155,7 @@ cqlsh> SELECT * FROM myapp.stock_market;
 (6 rows)
 ```
 
-### Backup the schema
+### Back up the schema
 
 Run the following in order to backup the schema of the keyspace `myapp`.
 
@@ -151,15 +181,13 @@ CREATE TABLE myapp.stock_market (
     AND default_time_to_live = 0;
 ```
 
-
-### Backing up all the columns of the table
+### Back up all the columns of the table
 
 Run the following command in order to backup the data in the table `myapp.stock_market`.
 
 ```sh
 $ cqlsh -e "COPY myapp.stock_market TO 'myapp_data.csv' WITH HEADER = TRUE ;"
 ```
-
 
 All columns of the rows in the table `myapp.stock_market` are saved to the file `myapp_data.csv`.
 
@@ -174,14 +202,13 @@ GOOG,2017-10-26 09:00:00,972.56
 GOOG,2017-10-26 10:00:00,971.90997
 ```
 
-### Backing up some columns of the table
+### Back up some columns of the table
 
 In order to backup a subset of columns, you can specify them in the backup command. In the example below, the `stock_symbol` and `ts` columns are backed up, while the `current_price` column is not.
 
 ```sh
 $ cqlsh -e "COPY myapp.stock_market (stock_symbol, ts) TO 'myapp_data_partial.csv' WITH HEADER = TRUE ;"
 ```
-
 
 The selected columns (`stock_symbol` and `ts`) of the rows in the table `myapp.stock_market` are saved to the file `myapp_data_partial.csv`.
 

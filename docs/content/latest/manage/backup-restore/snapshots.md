@@ -1,38 +1,49 @@
 ---
-title: Backing Up Data using Snapshots
-linkTitle: Backing Up Data using Snapshots
-description: Backing Up Data using Snapshots
+title: Back up data using snapshots
+linkTitle: Back up data using snapshots
+description: Back up data using snapshots
 image: /images/section_icons/manage/enterprise.png
-headcontent: Backing up data using Snapshots
 aliases:
   - manage/backup-restore/manage-snapshots
 menu:
   latest:
-    identifier: manage-backup-restore-manage-snapshots
-    parent: manage-backup-restore
+    identifier: snapshots-ycql
+    parent: backup-restore
     weight: 705
 isTocNested: true
 showAsideToc: true
 ---
 
-This page covers backups for YugabyteDB using snapshots. Here are some points to keep in mind.
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/manage/backup-restore/snapshots-ycql" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+</ul>
+
+You can create a backup for YugabyteDB using snapshots. Here are some points to keep in mind.
 
 - Distributed backups using snapshots
-  - Massively parallel, efficient for very large data sets
-  - Snapshot does a rocksdb flush and hardlinks the files in a `.snapshots` directory on each tablet
-  - Snapshots are not transactional across the whole table but only on each tablet [#2086](https://github.com/yugabyte/yugabyte-db/issues/2086)
-  - Multi table transactional snapshot is in the roadmap [#2084](https://github.com/yugabyte/yugabyte-db/issues/2084) 
-  - Snapshoting is broken in YSQL [#2083](https://github.com/yugabyte/yugabyte-db/issues/2083)
-  - The platform edition (enterprise) automates all this for you
+  - Massively parallel, efficient for very large data sets.
+  - Snapshot does a RocksDB flush and creates hard links to the files in a `.snapshots` directory on each tablet.
+  - Snapshots are not transactional across the whole table, but only on each tablet [#2086](https://github.com/YugaByte/yugabyte-db/issues/2086).
+  - Multi-table transactional snapshot is in the road map [#2084](https://github.com/YugaByte/yugabyte-db/issues/2084).
+  - Single table snapshots don't work in YSQL [#2083](https://github.com/YugaByte/yugabyte-db/issues/2083).
+  - Yugabyte Platform automates these steps for you.
 
+In this tutorial you will be using YCQL, but the same APIs are used in YSQL.
 
-In this tutorial we'll be using YCQL but the same apis are used in YSQL. 
+## Step 1: Create a local cluster
 
-### Step 1: Create a 1 node local cluster
-Read [creating a local cluster](../../quick-start/create-local-cluster.md) on how to quickstart a a local cluster.
+Read [creating a local cluster](../../quick-start/create-local-cluster.md) on how to create a local cluster.
+
+```sh
+$ ./bin/yb-ctl create
+```
 
 ```
-$ ./bin/yb-ctl create
 Creating cluster.
 Waiting for cluster to be ready.
 ----------------------------------------------------------------------------------------------------
@@ -49,21 +60,31 @@ Waiting for cluster to be ready.
 For more info, please use: yb-ctl status
 ```
 
-See [yb-ctl reference](../../admin/yb-ctl.md) for all options.
+For details on options, see [yb-ctl reference](../../admin/yb-ctl.md).
 
-### Step 2: Creating a table with data
-After [getting started on YCQL api](../../api/ycql/quick-start/) log into cqlsh:
+## Step 2: Create a table with data
+
+After [getting started on YCQL API](../../api/ycql/quick-start/), open `cqlsh`:
+
 ```
 $ ./bin/cqlsh
 ```
 
-Create a keyspace, table & insert test data and verify we have data in the db by doing a simple select:
+Create a keyspace, table, and insert some test data.
+
 ```
 cqlsh> CREATE KEYSPACE ydb;
 cqlsh> CREATE TABLE IF NOT EXISTS ydb.test_tb(user_id INT PRIMARY KEY);
 cqlsh> INSERT INTO ydb.test_tb(user_id) VALUES (5);
-cqlsh> SELECT * FROM ydb.test_tb;
+```
 
+You can verify that you have data in the database by running a simple SELECT statement.
+
+```
+cqlsh> SELECT * FROM ydb.test_tb;
+```
+
+```
  user_id
 ---------
        5
@@ -72,11 +93,11 @@ cqlsh> SELECT * FROM ydb.test_tb;
 
 ```
 
-### Step 3: Creating a snapshot
+## Step 3: Create a snapshot
 
-Create a snapshot from `yb-admin` binary:
+Create a snapshot using the `yb-admin create_snapshot` command:
 
-```
+```sh
 $ ./bin/yb-admin create_snapshot ydb test_tb
 Started flushing table ydb.test_tb
 Flush request id: fe0db953a7a5416c90f01b1e11a36d24
@@ -85,84 +106,101 @@ Flushing complete: SUCCESS
 Started snapshot creation: 4963ed18fc1e4f1ba38c8fcf4058b295
 ```
 
-We can see when it finishes by listing snapshots:
+To see when your snapshot is ready, you can run the `yb-admin list_snapshots` command.
 
-```
+```sh
 $ ./bin/yb-admin list_snapshots
 Snapshot UUID                    	State
 4963ed18fc1e4f1ba38c8fcf4058b295 	COMPLETE
 ```
 
-### Step 3.1: Exporting the snapshot
+### Step 3.1: Export the snapshot
 
-First we need to export a meta data file that describes the snapshot. 
+Before exporting the snapshot, you need to export a metadata file that describes the snapshot.
+
+```sh
+$ ./bin/yb-admin export_snapshot 4963ed18fc1e4f1ba38c8fcf4058b295 test_tb.snapshot
+```
 
 ```
-$ ./bin/yb-admin export_snapshot 4963ed18fc1e4f1ba38c8fcf4058b295 test_tb.snapshot
 Exporting snapshot 4963ed18fc1e4f1ba38c8fcf4058b295 (COMPLETE) to file test_tb.snapshot
 Snapshot meta data was saved into file: test_tb.snapshot
 ```
 
-Then we need to copy the actual data from the table & tablets. In this case we 
-have to use a script that copies all data. The filepath structure is:
+Next, you need to copy the actual data from the table and tablets. In this case, you
+have to use a script that copies all data. The file path structure is:
 
 ```
 <yb_data_dir>/node-<node_number>/disk-<disk_number>/yb-data/tserver/data/rocksdb/table-<table_id>/[tablet-<tablet_id>.snapshots]/<snapshot_id>
 ```
 
-* `<yb_data_dir>` is the directory where YDB data is stored. (default=`~/yugabyte-data`)
-* `<node_number>` is used when multiple nodes are running on the same server (usually in testing/qa/dev) (default=1)
-* `<disk_number>` when running yugabyte on multiple disks with `--fs_data_dirs` flag (default=1)
-* `<table_id>` is the UUID of the table (can take it from WEB UI)
-* `<tablet_id>` in each table we have a list of tablets. And each tablet has a `<tablet_id>.snapshots` directory, which is what we really need to copy
-* `<snapshot_id>` there is a directory for each snapshot since you can have multiple completed snapshots on each server
+- `<yb_data_dir>` is the directory where YugabyteDB data is stored. (default=`~/yugabyte-data`)
+- `<node_number>` is used when multiple nodes are running on the same server (for testing, QA, and development). The default value is `1`.
+- `<disk_number>` when running yugabyte on multiple disks with the `--fs_data_dirs` option. The default value is `1`.
+- `<table_id>` is the UUID of the table. You can get it from the Admin UI.
+- `<tablet_id>` in each table there is a list of tablets. Each tablet has a `<tablet_id>.snapshots` directory that you need to copy.
+- `<snapshot_id>` there is a directory for each snapshot since you can have multiple completed snapshots on each server.
 
-This directory structure is specific to `yb-ctl` which is a local testing tool. 
-In practice, for each server, we will have an `--fs_data_dirs` flag, which is a csv of paths where to put the data (normally different paths should be on different disks).
+This directory structure is specific to `yb-ctl`, which is a local testing tool.
+In practice, for each server, you will use the `--fs_data_dirs` configuration option, which is a CSV of paths where to put the data (normally different paths should be on different disks).
 In this `yb-ctl` example, these are the full paths up to the `disk-x`.
 
-
-### Step 3.2: Copying snapshot data to another directory
+### Step 3.2: Copy snapshot data to another directory
 
 {{< note title="Tip" >}}
-When snapshoting a multi-node cluster, we need to go into each node and copy 
-the folders of ONLY the leader tablets on that node. No need to keep a copy for each replica, since each tablet-replica will 
-have the same data.
+
+To get a snapshot of a multi-node cluster, you need to go into each node and copy
+the folders of ONLY the leader tablets on that node. There is no need to keep a copy for each replica, since each tablet-replica has
+a copy of the same data.
+
 {{< /note >}}
 
+First, get the `table_id` UUID that you want to snapshot. You can find the UUID in
+the Admin UI (`http://127.0.0.1:7000/tables`) under **User Tables**.
 
-First we need to get the `table_id` UUID that we're snapshoting. We can get this in 
-the WEB UI [http://127.0.0.1:7000/tables](http://127.0.0.1:7000/tables) under "User Tables".
+For each table, there are multiple tablets where the data is stored. You need to get a list of tablets and the leader for each of them.
 
-For each table, there are multiple tablets where the data is stored. We need to get a list of tablets and the Leader for each of them.
+```sh
+$ ./bin/yb-admin list_tablets ydb test_tb 0
+```
 
 ```
-$ ./bin/yb-admin list_tablets ydb test_tb 0
 Tablet UUID                      	Range                                                    	Leader
 cea3aaac2f10460a880b0b4a2a4b652a 	partition_key_start: "" partition_key_end: "\177\377"    	127.0.0.1:9100
 e509cf8eedba410ba3b60c7e9138d479 	partition_key_start: "\177\377" partition_key_end: ""    	127.0.0.1:9100
 ```
-The third argument is for limiting the number of returned results. Setting it `0` returns all tablets.
 
-Using this information we can construct the full path of all directories where snapshots are stored for each (tablet,snapshot_id).
+The third argument is for limiting the number of returned results. Setting it to `0` returns all tablets.
 
-We can create a small script to manually copy/move the folders to a backup directory/filesystem or external storage.
+Using this information, you can construct the full path of all directories where snapshots are stored for each (`tablet`, `snapshot_id`).
+
+You can create a small script to manually copy, or move, the folders to a backup directory or external storage.
 
 {{< note title="Tip" >}}
-When doing RF1 as the source the output of the `yb-admin` like listing the tablets only shows LEADERS, because there's only 1 copy, which is the leader.
+
+When doing RF1 as the source, the output of the `yb-admin`, like listing the tablets, only shows LEADERS because there's only one copy, which is the leader.
+
 {{< /note >}}
 
+## Step 4: Destroy the cluster and create a new one
 
-### Step 4: Destroying cluster and creating a new one
-First we destroy the cluster. 
-```
+Now destroy the cluster.
+
+```sh
 $ ./bin/yb-ctl destroy
+```
+
+```
 Destroying cluster.
 ```
-And spin up a new one with 3 nodes in replicated setup.
+
+Next, spin up a new cluster with three nodes in the replicated setup.
+
+```sh
+./bin/yb-ctl --rf 3 create
+```
 
 ```
-./bin/yb-ctl --rf 3 create
 Creating cluster.
 Waiting for cluster to be ready.
 ----------------------------------------------------------------------------------------------------
@@ -178,17 +216,28 @@ Waiting for cluster to be ready.
 
 For more info, please use: yb-ctl status
 ```
+
 {{< note title="Tip" >}}
-Make sure to get the master ip from `$ ./bin/yb-ctl status` since we have multiple nodes on different ips
+
+Make sure to get the master IP address from `$ ./bin/yb-ctl status` since you have multiple nodes on different IP addresses.
+
 {{< /note >}}
 
-### Step 5: Triggering snapshot import
+## Step 5: Trigger snapshot import
+
 {{< note title="Tip" >}}
+
 The `keyspace` and `table` can be different from the exported one.
+
 {{< /note >}}
-First we need to import the snapshot file into yugabyte.
-```
+
+First, import the snapshot file into YugabyteDB.
+
+```sh
 $ ./bin/yb-admin import_snapshot test_tb.snapshot ydb test_tb
+```
+
+```
 Read snapshot meta file test_tb.snapshot
 Importing snapshot 4963ed18fc1e4f1ba38c8fcf4058b295 (COMPLETE)
 Target imported table name: ydb.test_tb
@@ -202,35 +251,42 @@ Tablet 1         	e509cf8eedba410ba3b60c7e9138d479 	e509cf8eedba410ba3b60c7e9138
 Snapshot         	4963ed18fc1e4f1ba38c8fcf4058b295 	4963ed18fc1e4f1ba38c8fcf4058b295
 ```
 
-After importing the `metadata file` we see some changes:
- 
-1. `Old ID` and `New ID` for table and tablets.
-2. `table_id` and `tablet_id` have chaged so we have a different paths from previously
-3. Each `tablet_id` has changed, so we have different `tablet-<tablet_id>` directories.
-4. When restoring we have to use the new IDs to get the right paths to move data.
+After you import the `metadata file`, you see some changes:
 
-Using these IDs, we can restore the previous `.snapshot` folders to the new paths. 
+1. `Old ID` and `New ID` for table and tablets.
+2. `table_id` and `tablet_id` have changed, so you have a different paths from previously.
+3. Each `tablet_id` has changed, so you have different `tablet-<tablet_id>` directories.
+4. When restoring, you have to use the new IDs to get the right paths to move data.
+
+Using these IDs, you can restore the previous `.snapshot` folders to the new paths.
 
 {{< note title="Tip" >}}
+
 For each tablet we have to copy the snapshots folder on all replicas.
+
 {{< /note >}}
 
+Now, you can start restoring the snapshot:
 
-Now we can start restoring the snapshot:
-```
+```sh
 $ ./bin/yb-admin restore_snapshot 4963ed18fc1e4f1ba38c8fcf4058b295
+```
+
+```
 Started restoring snapshot: 4963ed18fc1e4f1ba38c8fcf4058b295
 ```
-After some time we can see that the restore has completed:
+
+After some time, you can see that the restore has completed:
+
 ```
 $ ./bin/yb-admin list_snapshots
 Snapshot UUID                    	State
 4963ed18fc1e4f1ba38c8fcf4058b295 	COMPLETE
 ```
 
-### Step 6: Verifying the data
+## Step 6: Verify the data
 
-```
+```sh
 $ ./bin/cqlsh
 ```
 
@@ -242,11 +298,16 @@ cqlsh> SELECT * FROM ydb.test_tb;
        5
 
 ```
-Finally we can delete the snapshot so we can free disk space if no longer need it.
-```
+
+Finally, if no longer needed, you can delete the snapshot and increase disk space.
+
+```sh
 $ ./bin/yb-admin delete_snapshot 4963ed18fc1e4f1ba38c8fcf4058b295
+```
+
+```
 Deleted snapshot: 4963ed18fc1e4f1ba38c8fcf4058b295
 ```
 
-This was a guide on how snapshoting works on Yugabyte. While some manual steps need to be followed, all of this
-is automated in Yugabyte Platform and Yugabyte Cloud.
+This was a guide on how to snapshot and restore data on YugabyteDB. In the Yugabyte Platform and Yugabyte Cloud,
+all of the manual steps above are automated.

@@ -1,3 +1,32 @@
+---
+title: Restore data
+linkTitle: Restore data
+description: Restore data
+image: /images/section_icons/manage/enterprise.png
+headcontent: Restore data in YugabyteDB.
+aliases:
+  - /manage/backup-restore/backing-up-data
+menu:
+  latest:
+    identifier: restore-data-ycql
+    parent: backup-restore
+    weight: 703
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/manage/backup-restore/restore-data" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+  <li >
+    <a href="/latest/manage/backup-restore/restore-data-ycql" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+</ul>
 
 
 ## Restore the schema
@@ -10,7 +39,7 @@ $ cqlsh -e "source 'schema.cql'"
 
 ### Restoring data from a backup
 
-In order to restore data from a backup, run the following command.
+To restore data from a backup, run the following command.
 
 ```sh
 $ cqlsh -e "COPY <keyspace name>.<table name> FROM 'data.csv' WITH HEADER = TRUE ;"
