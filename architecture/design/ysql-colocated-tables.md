@@ -136,7 +136,7 @@ We decided to use single RocksDB for entire tablet. This is because:
 * It enables us to leverage code that was written for postgres system tables. Today, all postgres system tables are colocated on a single tablet in master and uses a single RocksDB. We can leverage a lot of that code.
 * We may hit other scaling limits with multiple RocksDBs. For example, it's possible that having 1 million RocksDBs (1000 DBs, with 1000 tables per DB) will cause other side effects.
 
-### Create and Drop DB / Table
+### Create, Drop, Truncate
 
 #### Create Database
 
@@ -167,13 +167,19 @@ If the table is created with `colocated=false`, then it should go through the cu
 
 When a colocated table is dropped, catalog manager should simply mark the table as deleted (and not remove any tablets). It'll then need to invoke a `ChangeMetadataRequest` to replicate the table removal. Note that, currently, `ChangeMetadata` operation does not support table removal, and we'll need to add this capability.
 
-It can then run a background task to delete all rows corresponding to that table from RocksDB.
+To delete the data, a table-level tombstone can be created.
+Special handling needs to be done for this tombstone in areas like compactions and iterators.
 
 If the table being dropped has `colocated=false`, then it should go through the current drop table process and delete the tablets.
 
 #### Drop Database
 
 This should delete the database from sys catalog and also remove the tablets created.
+
+#### Truncate Table
+
+Like `DROP TABLE`, a table-level tombstone should be created.
+However, catalog manager should not mark the table as deleted.
 
 #### Postgres Metadata
 
