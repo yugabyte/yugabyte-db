@@ -254,3 +254,16 @@ performing `TRUNCATE`?
   With this design, the second truncate would conflict on trying to update the
   incarnation document.  However, this is a trivial issue and likely won't show
   up often in a production environment.
+
+Any operations on a colocated user table should create documents with
+incarnation numbers in them.  The incarnation number should be inserted into
+the documents in the following way:
+
+1. Read the incarnation number
+
+   1. Look for the cached value in the tablet metadata
+   1. If not found, read it from the incarnation document
+   1. If not found, create the incarnation document with incarnation number
+      zero
+
+1. Insert the incarnation number to all documents
