@@ -1,14 +1,14 @@
 ---
-title: Backup and restore
-linkTitle: Backup and restore
-description: Backup and restore
+title: Back up and restore
+linkTitle: Back up and restore
+description: Back up and restore
 image: /images/section_icons/manage/enterprise.png
-headcontent: Back up and restore your data in YugabyteDB.
+headcontent: Create backups and restore your data.
 aliases:
   - /manage/backup-restore/
 menu:
   latest:
-    identifier: manage-backup-restore
+    identifier: backup-restore
     parent: manage
     weight: 702
 ---
@@ -19,10 +19,10 @@ This section goes into details of backing up data and restoring it from Yugabyte
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="backing-up-data/">
+    <a class="section-link icon-offset" href="back-up-data/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Backing up data</div>
+        <div class="title">Back up data</div>
       </div>
       <div class="body">
         This section describes how to create a backup of the data in YugabyteDB.
@@ -30,10 +30,10 @@ This section goes into details of backing up data and restoring it from Yugabyte
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="restoring-data/">
+    <a class="section-link icon-offset" href="restore-data/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/create_universe.png" aria-hidden="true" />
-        <div class="title">Restoring data</div>
+        <div class="title">Restore data</div>
       </div>
       <div class="body">
         This section describes how to restore data into YugabyteDB from a backup.
@@ -46,10 +46,10 @@ This section goes into details of backing up data and restoring it from Yugabyte
     <a class="section-link icon-offset" href="snapshots/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Manage snapshots</div>
+        <div class="title">Back up data using snapshots</div>
       </div>
       <div class="body">
-        This section describes how to use snapshots for distributed backup/restore.
+        This section describes how to use snapshots for backup and restore.
       </div>
     </a>
   </div>

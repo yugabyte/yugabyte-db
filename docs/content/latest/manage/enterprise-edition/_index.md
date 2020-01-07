@@ -104,7 +104,7 @@ YugabyteDB creates a `universe` with a bunch of instances (VMs, pods, machines e
     <a class="section-link icon-offset" href="backup-restore/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
-        <div class="title">Backup restore</div>
+        <div class="title">Backup and restore</div>
       </div>
       <div class="body">
         Backup and restore tables using the Yugabyte Admin Console.
