@@ -329,6 +329,7 @@ void RetryingTSRpcTask::RunDelayedTask(const Status& status) {
 void RetryingTSRpcTask::UnregisterAsyncTaskCallback() {}
 
 void RetryingTSRpcTask::UnregisterAsyncTask() {
+  std::unique_lock<decltype(unregister_mutex_)> lock(unregister_mutex_);
   UnregisterAsyncTaskCallback();
 
   auto s = state();
