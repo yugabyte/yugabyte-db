@@ -80,6 +80,6 @@ The **Masters** section highlights the YB-Master service along its corresponding
 
 ### 4.2 TServer status
 
-Click **See all nodes** to go to the **Tablet Servers** page where we can observe the one YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats. Additionally, you can see that the **Load (Num Tablets)** is balanced across all available YB-TServer (tserver) services. These tablets are the shards of the user tables currently managed by the cluster (which in this case is the `system_redis.redis` table). As new tables get added, new tablets will get automatically created and distributed evenly across all the available YB-TServer services.
+Click **See all nodes** to go to the **Tablet Servers** page where we can observe the one YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats. Additionally, you can see that the **Load (Num Tablets)** is balanced across all available YB-TServers. These tablets are the shards of the user tables currently managed by the cluster (which in this case is the `system_redis.redis` table). As new tables get added, new tablets will get automatically created and distributed evenly across all the available YB-TServers.
 
 ![tserver-list](/images/admin/master-tservers-list-kubernetes-rf1.png)

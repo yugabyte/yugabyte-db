@@ -313,7 +313,7 @@ for ip in $ALL_NODES; do \
 done
 ```
 
-The advantage of using symbolic links (symlinks) is that, when you later need to do a rolling software upgrade, you can upgrade YB-Master and YB-TServer services one at a time by stopping the YB-Master service, switching the link to the new release, and starting the YB-Master service. Then, do the same for YB-TServer services.
+The advantage of using symbolic links (symlinks) is that, when you later need to do a rolling software upgrade, you can upgrade YB-Master and YB-TServer servers one at a time by stopping the YB-Master server, switching the link to the new release, and starting the YB-Master server. Then, do the same for YB-TServer servers.
 
 ## 3. Prepare YB-Master configuration files
 
@@ -402,7 +402,7 @@ done
 )
 ```
 
-### Create configuration file for AZ2 YB-TServer services
+### Create configuration file for AZ2 YB-TServer servers
 
 ```sh
 (CLOUD=aws; REGION=us-west; AZ=us-west-2b; CONFIG_FILE=~/yb-conf/tserver.conf; \
@@ -424,7 +424,7 @@ done
 )
 ```
 
-### Create configuration file for AZ3 YB-TServer services
+### Create configuration file for AZ3 YB-TServer servers
 
 ```sh
 (CLOUD=aws; REGION=us-west; AZ=us-west-2c; CONFIG_FILE=~/yb-conf/tserver.conf; \
@@ -457,9 +457,9 @@ for ip in $ALL_NODES; do \
 done
 ```
 
-## 5. Start YB-Master services
+## 5. Start YB-Master servers
 
-Note: On the first time when all three YB-Master services are started, it creates the cluster. If a YB-Master service is restarted (after cluster has been created) such as during a rolling upgrade of software it simply rejoins the cluster.
+Note: On the first time when all three YB-Master servers are started, it creates the cluster. If a YB-Master server is restarted (after cluster has been created) such as during a rolling upgrade of software it simply rejoins the cluster.
 
 ```sh
 for ip in $MASTER_NODES; do \
@@ -472,7 +472,7 @@ done
 
 ### Verify
 
-Verify that the YB-Master services are running.
+Verify that the YB-Master servers are running.
 
 ```sh
 for ip in $MASTER_NODES; do  \
@@ -481,7 +481,7 @@ for ip in $MASTER_NODES; do  \
 done
 ```
 
-Check the YB-Master UI by going to any of the 3 YB-Master services.
+Check the YB-Master UI by going to any of the 3 YB-Master servers.
 
 ```
 http://<any-master-ip>:7000/
@@ -495,11 +495,11 @@ $ links http://<a-master-ip>:7000/
 
 ### Troubleshooting
 
-Make sure all the ports detailed in the earlier section are opened up. Else, check the log at `/mnt/d0/yb-master.out` for `stdout` or `stderr` output from the YB-Master service. Also, check INFO/WARNING/ERROR/FATAL glogs output by the process in the `/mnt/d0/yb-data/master/logs/*`
+Make sure all the ports detailed in the earlier section are opened up. Else, check the log at `/mnt/d0/yb-master.out` for `stdout` or `stderr` output from the YB-Master server. Also, check INFO/WARNING/ERROR/FATAL glogs output by the process in the `/mnt/d0/yb-data/master/logs/*`
 
-## 6. Start YB-TServer services
+## 6. Start YB-TServer servers
 
-After starting all the YB-Master services in the previous step, start YB-TServer services on all the nodes.
+After starting all the YB-Master servers in the previous step, start YB-TServer servers on all the nodes.
 
 ```sh
 for ip in $ALL_NODES; do \
@@ -510,7 +510,7 @@ for ip in $ALL_NODES; do \
 done
 ```
 
-Verify that the YB-TServer services are running.
+Verify that the YB-TServer servers are running.
 
 ```sh
 for ip in $ALL_NODES; do  \
@@ -523,9 +523,7 @@ done
 
 Note: This example is a multi-AZ (single region deployment). 
 
-The default replica placement policy when the cluster is first created is to treat all nodes as equal irrespective of the placement_* configuration flags. 
-However, for the current deployment, we want to explicitly place 1 replica in each AZ. 
-The following command sets replication factor of 3 across `us-west-2a`, `us-west-2b` and `us-west-2c` leading to the placement of 1 replica in each AZ.
+The default replica placement policy when the cluster is first created is to treat all nodes as equal irrespective of the placement_* configuration flags. However, for the current deployment, we want to explicitly place 1 replica in each AZ. The following command sets replication factor of 3 across `us-west-2a`, `us-west-2b` and `us-west-2c` leading to the placement of 1 replica in each AZ.
 
 ```sh
 ssh -i $PEM $ADMIN_USER@$MASTER1 \
@@ -574,11 +572,7 @@ replication_info {
 }
 ```
 
-Suppose your deployment is multi-region rather than multi-zone, one additional 
-option to consider is to set a preferred location for all the tablet leaders 
-using the [set_preferred_zones yb-admin command](../../../admin/yb-admin). 
-For multi-row/multi-table transactional operations, colocating the leaders to be in a single zone/region can help reduce the number of 
-cross-region network hops involved in executing the transaction and as a result improve performance.
+Suppose your deployment is multi-region rather than multi-zone, one additional  option to consider is to set a preferred location for all the tablet leaders using the [set_preferred_zones yb-admin command](../../../admin/yb-admin). For multi-row/multi-table transactional operations, colocating the leaders to be in a single zone/region can help reduce the number of cross-region network hops involved in executing the transaction and as a result improve performance.
 
 The following command sets the preferred zone to `aws.us-west.us-west-2c`:
 
@@ -631,7 +625,7 @@ replication_info {
 ## 8. Test PostgreSQL-compatible YSQL API
 
 Connect to the cluster using the `ysqlsh` utility that comes pre-bundled in the `bin` directory. 
-If you need to try `ysqlsh` from a different node, you can download `ysqlsh` using instructions documented [here](../../../develop/tools/ysqlsh/).
+If you need to try `ysqlsh` from a different node, you can download `ysqlsh` using instructions documented [here](../../../admin/ysqlsh/).
 
 From any node, execute the following command.
 
@@ -669,7 +663,7 @@ Output should be the following:
 
 ### Using cqlsh
 
-Connect to the cluster using the `cqlsh` utility that comes pre-bundled in the `bin` directory. If you need to try cqlsh from a different node, you can download cqlsh using instructions documented [here](../../../develop/tools/cqlsh/).
+Connect to the cluster using the `cqlsh` utility that comes pre-bundled in the `bin` directory. If you need to try cqlsh from a different node, you can download cqlsh using instructions documented [here](../../../admin/cqlsh/).
 
 From any node, execute the following command.
 
