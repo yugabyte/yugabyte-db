@@ -95,6 +95,22 @@ The YugabyteDB APIs are isolated and independent from one another today. This me
 
 Trade-offs depend on the type of database used as baseline for comparison.
 
+### Distributed SQL
+
+Examples: Amazon Aurora, Google Cloud Spanner, CockroachDB, TiDB
+
+**Benefits of YugabyteDB**
+
+- Low-latency reads and high-throughput writes. 
+- Cloud-neutral deployments with a Kubernetes-native database.
+- 100% Apache 2.0 open source even for enterprise features.
+
+**Trade-offs**
+
+- None
+
+Learn more: [What is Distributed SQL?](https://blog.yugabyte.com/what-is-distributed-sql/)
+
 ### Monolithic SQL
 
 Examples: PostgreSQL, MySQL, Oracle, Amazon Aurora.
@@ -103,6 +119,7 @@ Examples: PostgreSQL, MySQL, Oracle, Amazon Aurora.
 
 - Scale write throughput linearly across multiple nodes and/or geographic regions. 
 - Automatic failover and native repair.
+- 100% Apache 2.0 open source even for enterprise features.
 
 **Trade-offs**
 
@@ -118,6 +135,7 @@ Examples: Vitess, Citus
 
 - Distributed transactions across any number of nodes.
 - No single point of failure given all nodes are equal.
+- 100% Apache 2.0 open source even for enterprise features.
 
 **Trade-offs**
 
@@ -134,6 +152,7 @@ Examples: MongoDB, Amazon DynamoDB, FoundationDB, Azure Cosmos DB.
 - Flexibility of SQL as query needs change in response to business changes.
 - Distributed transactions across any number of nodes.
 - Low latency, strongly consistent reads given that read-time quorum is avoided altogether.
+- 100% Apache 2.0 open source even for enterprise features.
 
 **Trade-offs**
 
@@ -150,6 +169,7 @@ Examples: Apache Cassandra, Couchbase.
 - Flexibility of SQL as query needs change in response to business changes.
 - Strongly consistent, zero data loss writes.
 - Strongly consistent as well as timeline-consistent reads without resorting to eventual consistency-related penalties such as read repairs and anti-entropy.
+- 100% Apache 2.0 open source even for enterprise features.
 
 **Trade-offs**
 

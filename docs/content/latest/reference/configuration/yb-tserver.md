@@ -13,7 +13,7 @@ isTocNested: 3
 showAsideToc: true
 ---
 
-Use the `yb-tserver` binary and its options to configure the [YB-TServer](../../../architecture/concepts/yb-tserver/) service. The `yb-tserver` executable file is located in the `bin` directory of YugabyteDB home.
+Use the `yb-tserver` binary and its options to configure the [YB-TServer](../../../architecture/concepts/yb-tserver/) server. The `yb-tserver` executable file is located in the `bin` directory of YugabyteDB home.
 
 ## Syntax
 
@@ -83,7 +83,7 @@ Comma-separated list of all the `yb-master` RPC addresses. Mandatory.
 
 {{< note title="Note" >}}
 
-The number of comma-separated values should match the total number of YB-Master services (or the replication factor).
+The number of comma-separated values should match the total number of YB-Master servers (or the replication factor).
 
 {{< /note >}}
 
@@ -197,7 +197,7 @@ Settings related to managing geo-distributed clusters and Raft consensus.
 
 The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds (ms), is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
 
-For read replica clusters, set the value to `10` on both YB-Master and YB-TServer services.  Because the the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
+For read replica clusters, set the value to `10` on both YB-Master and YB-TServer servers.  Because the the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
 
 Default: `6`
 
@@ -463,7 +463,7 @@ Default: `false`
 
 #### --use_node_to_node_encryption
 
-Enable server-server, or node-to-node, encryption between YugabyteDB YB-Master and YB-TServer services in a cluster or universe. To work properly, all YB-Master services must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) setting enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) must be disabled.
+Enable server-server, or node-to-node, encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) setting enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) must be disabled.
 
 Default: `false`
 

@@ -19,7 +19,7 @@ $ ./bin/yb-ctl --rf 1 --num_shards_per_tserver 4 create \
              --tserver_flags "memstore_size_mb=1"
 ```
 
-This example creates a universe with one node. Now, let's add two more nodes to make this a 3-node, rf=1 universe. We need to pass the memstore size flag to each of the added YB-TServer services. You can do that by running the following:
+This example creates a universe with one node. Now, let's add two more nodes to make this a 3-node, rf=1 universe. We need to pass the memstore size flag to each of the added YB-TServer servers. You can do that by running the following:
 
 ```sh
 $ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
@@ -29,7 +29,7 @@ $ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
 $ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
 ```
 
-We can check the status of the cluster to confirm that we have three YB-TServer services.
+We can check the status of the cluster to confirm that we have three YB-TServer servers.
 
 ```sh
 $ ./bin/yb-ctl status

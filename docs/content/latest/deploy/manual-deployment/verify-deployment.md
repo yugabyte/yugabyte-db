@@ -13,9 +13,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-As before, we shall assume that we brought up a universe on four nodes with replication factor `3`. Let us assume their IP addresses are `172.151.17.130`, `172.151.17.220`, `172.151.17.140` and `172.151.17.150`
+We now have a cluster/universe on 6 nodes with replication factor `3`. Assume their IP addresses are `172.151.17.130`, `172.151.17.220`, `172.151.17.140`, `172.151.17.150`, `172.151.17.160` and `172.151.17.170`. YB-Master servers are running on only the first 3 of these nodes.
 
-## [Optional] Setup YEDIS service
+## [Optional] Setup YEDIS API
 
 {{< note title="Note" >}}
 
@@ -23,7 +23,7 @@ If you want this cluster to be able to support Redis clients, you **must** perfo
 
 {{< /note >}}
 
-While the YCQL and YSQL services are turned on by default after all of the YB-TServers start, the Redis-compatible YEDIS service is off by default. If you want this cluster to be able to support Redis clients, run the following command from any of the 4 instances. The command below will add the special Redis table into the DB and also start the YEDIS server on port 6379 on all instances.
+While the YCQL and YSQL APIs are turned on by default after all of the YB-TServers start, the Redis-compatible YEDIS API is off by default. If you want this cluster to be able to support Redis clients, run the following command from any of the 4 instances. The command below will add the special Redis table into the DB and also start the YEDIS server on port 6379 on all instances.
 
 ```sh
 $ ./bin/yb-admin --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 setup_redis_table
@@ -45,22 +45,22 @@ If this is a public cloud deployment, remember to use the public ip for the node
 
 ## Connect clients
 
-- Clients can connect to YSQL API at:
+- Clients can connect to YSQL API at
 
 ```sh
-172.151.17.130:5433,172.151.17.220:5433,172.151.17.140:5433,172.151.17.150:5433
+172.151.17.130:5433,172.151.17.220:5433,172.151.17.140:5433,172.151.17.150:5433,172.151.17.160:5433,172.151.17.170:5433
 ```
 
-- Clients can connect to YCQL API at:
+- Clients can connect to YCQL API at
 
 ```sh
-172.151.17.130:9042,172.151.17.220:9042,172.151.17.140:9042,172.151.17.150:9042
+172.151.17.130:9042,172.151.17.220:9042,172.151.17.140:9042,172.151.17.150:9042,172.151.17.160:9042,172.151.17.170:9042
 ```
 
-- Clients can connect to YEDIS API at:
+- Clients can connect to YEDIS API at
 
 ```sh
-172.151.17.130:6379,172.151.17.220:6379,172.151.17.140:6379,172.151.17.150:6379
+172.151.17.130:6379,172.151.17.220:6379,172.151.17.140:6379,172.151.17.150:6379,172.151.17.160:6379,172.151.17.170:6379
 ```
 
 ## Default ports reference

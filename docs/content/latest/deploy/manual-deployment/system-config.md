@@ -28,7 +28,7 @@ Here's the command to install these packages.
 $ sudo yum install -y epel-release ntp
 ```
 
-## Setting ulimits
+## ulimits
 
 In Linux, `ulimit` is used to limit and control the usage of system resources (threads, files, and network connections) on a per-process or per-user basis.
 
@@ -81,7 +81,7 @@ $ ulimit -n <value>
 
 {{< note title="Note" >}}
 
-- After changing a ulimit setting, the YB-Master and YB-TServer services must be restarted in order for the new settings to take effect. Check the `/proc/<process pid>` file to see the current settings.
+- After changing a ulimit setting, the YB-Master and YB-TServer servers must be restarted in order for the new settings to take effect. Check the `/proc/<process pid>` file to see the current settings.
 - Changes made using ulimit may revert following a system restart depending on the system configuration.
 
 {{< /note >}}
