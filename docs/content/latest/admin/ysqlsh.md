@@ -1,7 +1,7 @@
 ---
 title: ysqlsh
 linkTitle: ysqlsh
-description: ysqlsh
+description: ysqlsh shell for YSQL
 aliases:
   - /develop/tools/ysqlsh/
   - /latest/develop/tools/ysqlsh/
@@ -14,7 +14,7 @@ isTocNested: 5
 showAsideToc: true
 ---
 
-Use the `ysqlsh` command line interface (CLI) to connect to YugabyteDB and use [Yugabyte Structured Query Language (YSQL)](../../api/ysql/), the distributed SQL API for YugabyteDB that is compatible with the SQL dialect of PostgreSQL. `ysqlsh` provides a YSQL shell to enable you to:
+The YugabyteDB SQL shell (`ysqlsh`) provides a CLI for interacting with YugabyteDB using [YSQL](../../api/ysql/). It enables you to:
 
 - interactively enter SQL queries and see the query results
 - input from a file or the command line

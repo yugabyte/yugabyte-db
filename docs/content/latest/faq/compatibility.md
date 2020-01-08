@@ -25,13 +25,13 @@ The [YSQL](../../api/ysql) API is compatible with PostgreSQL. This means Postgre
 
 - YugabyteDB's API compatibility is aimed at accelerating developer onboarding. By integrating well with the existing ecosystem, YugabyteDB ensures that developers can get started easily using a language they are already comfortable with. 
 
-- YugabyteDB's API compatibility is not aimed at lift-and-shift porting of existing applications written for the original language. This is because existing applications are not written to take advantage of the distributed SQL APIs provided by YugabyteDB. For such existing applications, developers should expect to modify their previously monolithic PostgreSQL and/or non-transactional Cassandra data access logic as they look to migrate to YugabyteDB.
+- YugabyteDB's API compatibility is not aimed at lift-and-shift porting of existing applications written for the original language. This is because existing applications are not written to take advantage of the distributed, strongly-consistent storage architecture that YugabyteDB provides. For such existing applications, developers should expect to modify their previously monolithic PostgreSQL and/or non-transactional Cassandra data access logic as they look to migrate to YugabyteDB.
 
 ## YSQL compatibility with PostgreSQL
 
 ### What is the extent of compatibility with PostgreSQL?
 
-As highlighted in [Distributed PostgreSQL on a Google Spanner Architecture – Query Layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-query-layer/), YSQL reuses open source PostgreSQL’s query layer (written in C) as much as possible and as a result is wire-compatible with PostgreSQL dialect and client drivers. Specifically, YSQL v1.2 is based on PostgreSQL v11.2. Following are some of the currently supported features:
+As highlighted in [Distributed PostgreSQL on a Google Spanner Architecture – Query Layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-query-layer/), YSQL reuses open source PostgreSQL’s query layer (written in C) as much as possible and as a result is wire-compatible with PostgreSQL dialect and client drivers. Specifically, YSQL is based on PostgreSQL v11.2. Following are some of the currently supported features:
 
 - DDL statements: CREATE, DROP and TRUNCATE tables
 - Data types: All primitive types including numeric types (integers and floats), text data types, byte arrays, date-time types, UUID, SERIAL, as well as JSONB

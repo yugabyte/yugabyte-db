@@ -156,7 +156,7 @@ and [Wipe and restart with placement info flags](#wipe-and-restart-with-placemen
 
 Specifies the number of replicas for each tablet. Should be an odd number of least `3` or  (for example, `3` or `5`) so that a majority consensus can be established.
 
-Replication factor for the cluster as well as default number of YB-Master services.
+Replication factor for the cluster as well as default number of YB-Master servers.
 
 Default: `1`
 
@@ -194,7 +194,7 @@ To quickly create a local YugabyteDB cluster for development and learning, use t
 
 In order to ensure that all of the replicas for a given tablet can be placed on different nodes, the number of nodes created with the initial create command is always equal to the replication factor.  To expand or shrink the cluster, use the [`add_node`](#add-nodes) and [`remove_node`](#stop-remove-nodes) commands.
 
-Each of these initial nodes run a `yb-tserver` service and a `yb-master` service. Note that the number of YB-Master services in a cluster must equal the replication factor for the cluster to be considered operating normally.
+Each of these initial nodes run a `yb-tserver` server and a `yb-master` server. Note that the number of YB-Master servers in a cluster must equal the replication factor for the cluster to be considered operating normally.
 
 ### Create a local 1-node cluster with replication factor of 1
 
@@ -319,7 +319,7 @@ $ ./bin/yb-ctl setup_redis
 
 ### Add nodes
 
-- Adding a new node to the cluster. This will start a new YB-TServer service and give it a new `node_id` for tracking purposes.
+- Adding a new node to the cluster. This will start a new YB-TServer server and give it a new `node_id` for tracking purposes.
 
 ```sh
 $ ./bin/yb-ctl add_node
@@ -370,7 +370,7 @@ $ ./bin/yb-ctl add_node --placement_info "cloud1.region1.zone1"
 
 ### Create a cluster with custom flags
 
-You can also pass custom flags to the YB-Master and YB-TServer services.
+You can also pass custom flags to the YB-Master and YB-TServer servers.
 
 ```sh
 $ ./bin/yb-ctl --rf 1 create --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20,master_backup_svc_queue_length=70" --tserver_flags "log_inject_latency=false,log_segment_size_mb=128,raft_heartbeat_interval_ms=1000"

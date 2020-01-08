@@ -44,7 +44,7 @@ The next major release is the v2.1 release in Winter 2020.
 
 ## Can I deploy YugabyteDB to production?
 
-Yes, both YugabyteDB APIs are production ready. [YCQL](https://blog.yugabyte.com/yugabyte-db-1-0-a-peek-under-the-hood/) achieved this status starting with v1.0 in May 2018. [YSQL](https://blog.yugabyte.com/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/) achieved this status starting v2.0 in September 2019.
+Yes, both YugabyteDB APIs are production ready. [YCQL](https://blog.yugabyte.com/yugabyte-db-1-0-a-peek-under-the-hood/) achieved this status starting with v1.0 in May 2018 while [YSQL](https://blog.yugabyte.com/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/) became production ready starting v2.0 in September 2019.
 
 ## Which companies are currently using YugabyteDB in production?
 
@@ -78,15 +78,101 @@ Details for both the above benchhmarks are published in [Building a Strongly Con
 
 Starting with [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is 100% open source. It is licensed under Apache 2.0 and the source is available on [GitHub](https://github.com/yugabyte/yugabyte-db).
 
-## How does YugabyteDB, Yugabyte Platform and Yugabyte Cloud differ from each other?
+## How do YugabyteDB, Yugabyte Platform and Yugabyte Cloud differ from each other?
 
-[YugabyteDB](../../quick-start/) is the best choice for the startup organizations with strong technical operations expertise looking to deploy YugabyteDB into production with traditional DevOps tools.
+[YugabyteDB](../../quick-start/) is the 100% open source core database. It is the best choice for the startup organizations with strong technical operations expertise looking to deploy to production with traditional DevOps tools.
 
-[Yugabyte Platform](../../deploy/enterprise-edition/) is commercial software for running a self-managed DB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugabyteDB in mission-critical production environments with one or more regions (across both public cloud and on-premise data centers).
+[Yugabyte Platform](../../deploy/enterprise-edition/) is commercial software for running a self-managed YugabyteDB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugabyteDB in mission-critical production environments with one or more regions (across both public cloud and on-premise data centers).
 
 [Yugabyte Cloud](http://yugabyte.com/cloud) is Yugabyte's fully-managed cloud service on AWS and GCP. You can [sign up](https://www.yugabyte.com/cloud/) for early access now.
 
 A more detailed comparison of the above is available [here](https://www.yugabyte.com/platform/#compare-editions).
+
+## What are the trade-offs involved in using YugabyteDB?
+
+Trade-offs depend on the type of database used as baseline for comparison.
+
+### Distributed SQL
+
+Examples: Amazon Aurora, Google Cloud Spanner, CockroachDB, TiDB
+
+**Benefits of YugabyteDB**
+
+- Low-latency reads and high-throughput writes. 
+- Cloud-neutral deployments with a Kubernetes-native database.
+- 100% Apache 2.0 open source even for enterprise features.
+
+**Trade-offs**
+
+- None
+
+Learn more: [What is Distributed SQL?](https://blog.yugabyte.com/what-is-distributed-sql/)
+
+### Monolithic SQL
+
+Examples: PostgreSQL, MySQL, Oracle, Amazon Aurora.
+
+**Benefits of YugabyteDB**
+
+- Scale write throughput linearly across multiple nodes and/or geographic regions. 
+- Automatic failover and native repair.
+- 100% Apache 2.0 open source even for enterprise features.
+
+**Trade-offs**
+
+- Transactions and JOINs can now span multiple nodes, thereby increasing latency.
+
+Learn more: [Distributed PostgreSQL on a Google Spanner Architecture – Query Layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-query-layer/)
+
+### Traditional NewSQL
+
+Examples: Vitess, Citus
+
+**Benefits of YugabyteDB**
+
+- Distributed transactions across any number of nodes.
+- No single point of failure given all nodes are equal.
+- 100% Apache 2.0 open source even for enterprise features.
+
+**Trade-offs**
+
+- None
+
+Learn more: [Rise of Globally Distributed SQL Databases – Redefining Transactional Stores for Cloud Native Era](https://blog.yugabyte.com/rise-of-globally-distributed-sql-databases-redefining-transactional-stores-for-cloud-native-era/)
+
+### Transactional NoSQL 
+
+Examples: MongoDB, Amazon DynamoDB, FoundationDB, Azure Cosmos DB.
+
+**Benefits of YugabyteDB**
+
+- Flexibility of SQL as query needs change in response to business changes.
+- Distributed transactions across any number of nodes.
+- Low latency, strongly consistent reads given that read-time quorum is avoided altogether.
+- 100% Apache 2.0 open source even for enterprise features.
+
+**Trade-offs**
+
+- None
+
+Learn more: [Why are NoSQL Databases Becoming Transactional?](https://blog.yugabyte.com/nosql-databases-becoming-transactional-mongodb-dynamodb-faunadb-cosmosdb/)
+
+### Eventually Consistent NoSQL
+
+Examples: Apache Cassandra, Couchbase.
+
+**Benefits of YugabyteDB**
+
+- Flexibility of SQL as query needs change in response to business changes.
+- Strongly consistent, zero data loss writes.
+- Strongly consistent as well as timeline-consistent reads without resorting to eventual consistency-related penalties such as read repairs and anti-entropy.
+- 100% Apache 2.0 open source even for enterprise features.
+
+**Trade-offs**
+
+- Extremely short unavailability during the leader election time for all shard leaders lost during a node failure or network partition. 
+
+Learn more: [Apache Cassandra: The Truth Behind Tunable Consistency, Lightweight Transactions & Secondary Indexes](https://blog.yugabyte.com/apache-cassandra-lightweight-transactions-secondary-indexes-tunable-consistency/)
 
 ## How does YugabyteDB compare to other SQL and NoSQL databases?
 

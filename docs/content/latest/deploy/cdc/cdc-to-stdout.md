@@ -25,7 +25,7 @@ A 1-node YugabyteDB cluster with an RF of 1 is up and running locally (the `yb-c
 
 A JRE (or JDK), for Java 8 or later, is installed. JDK and JRE installers for Linux, macOS, and Windows can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 
-## Step 1 — Add a database table
+## 1. Add a database table
 
 Start your local YugabyteDB cluster and add a table, named `users`, to the default `yugabyte` database.
 
@@ -33,22 +33,16 @@ Start your local YugabyteDB cluster and add a table, named `users`, to the defau
 CREATE TABLE users (name text, pass text, id int, PRIMARY KEY (id));
 ```
 
-## Step 2 — Download the Kafka Connect YugabyteDB Source Connector
+## 2. Download the YugabyteDB CDC Connector
 
-Download the Kafka Connect YugabyteDB Source Connector JAR file (`yb-cdc-connector.jar`).
+Download the CDC Connector JAR file (`yb-cdc-connector.jar`).
 
 ```sh
 $ wget -O yb-cdc-connector.jar https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar?raw=true
 
 ```
 
-{{< note title="Note" >}}
-
-The Kafka Connect YugabyteDB Source Connector also supports change data capture (CDC) to `stdout`.
-
-{{< /note >}}
-
-## Step 3 — Stream the log output stream to "stdout"
+## 3. Stream the log output stream to "stdout"
 
 Run the command below to to start logging an output stream of data changes from the YugabyteDB `cdc` table to `stdout`.
 
@@ -61,9 +55,9 @@ java -jar yb-cdc-connector.jar
 The example above uses the following parameters:
 
 - `--table_name` — Specifies the namespace and table, where namespace is the database (YSQL) or keyspace (YCQL).
-- `--master_addrs` — Specifies the IP addresses for all of the YB-Master services that are producing or consuming. Default value is `127.0.0.1:7100`. If you are using a 3-node local cluster, then you need to specify a comma-delimited list of the addresses for all of your YB-Master services.
+- `--master_addrs` — Specifies the IP addresses for all of the YB-Master servers that are producing or consuming. Default value is `127.0.0.1:7100`. If you are using a 3-node local cluster, then you need to specify a comma-delimited list of the addresses for all of your YB-Master servers.
 - `--log_only`: Flag to restrict logging only to the console (`stdout`).
 
-## Step 4 — Write values and observe
+## 4. Write values and observe
 
 In another terminal shell, write some values to the table and observe the values on your `stdout` output stream.

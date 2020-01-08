@@ -15,49 +15,52 @@ showAsideToc: true
 
 {{< note title="Note" >}}
 
-The number of nodes of a cluster on which the YB-TServer server needs to be started **must** equal or exceed the replication factor in order for any table to get created successfully.
+- The number of nodes in a cluster running YB-TServers **must** equal or exceed the replication factor in order for any table to get created successfully.
+- For running a single cluster across multiple data centers or 2 clusters in 2 data centers, refer to the [Multi-DC Deployments](../../../deploy/multi-dc/) section.
 
 {{< /note >}}
 
+This section covers deployment for a single region or data center in a multi-zone/multi-rack configuration. Note that single zone configuration is a special case of multi-zone where all placement related flags are set to the same value across every node. 
+
 ## Example scenario
 
-Let us assume the following.
-
-- We want to create a a 4-node cluster with replication factor of `3`.
-      - We would need to run the YB-TServer process on all the 4 nodes say `node-a`, `node-b`, `node-c`, `node-d`
-      - Let us assume the master private IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140` (`node-a`, `node-b`, `node-c`)
-- We have multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`
-
-This section covers deployment for a single region/zone (or a single data center/rack). Execute the following steps on each of the instances.
+- Create a 6-node cluster with replication factor of 3.
+      - YB-TServer server should on all the 6 nodes but as noted in the previous section, the YB-Master server should run on only 3 of these nodes.
+      - Assume the 3 YB-Master private IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140`.
+      - Cloud will be `aws`, region will be `us-west` and the 3 AZs will be `us-west-2a`, `us-west-2b`, `us-west-2c`. 2 nodes will be placed in each AZ in such a way that 1 replica for each tablet (aka shard) gets placed in any 1 node for each AZ. 
+- Multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`
 
 ## Run YB-TServer with command line options
 
-- Run the YB-TServer service (`yb-tserver`) as shown here. Note that all of the master addresses have to be provided using the `--tserver_master_addrs` option. For each YB-TServer, replace the RPC bind address configuration option with the private IP address of the YB-TServer service.
-
-For the full list of configuration options, see the [YB-TServer reference](../../../reference/configuration/yb-tserver/).
+Run the `yb-tserver` server on each of the 6 nodes as shown below. Note that all of the master addresses have to be provided using the `--tserver_master_addrs` option. Replace the `rpc_bind_addresses` value with the private IP address of the host as well as the set the `placement_cloud`,`placement_region` and `placement_zone` values appropriately. For single zone deployment, simply use the same value for the `placement_zone` flag.
 
 ```sh
 $ ./bin/yb-tserver \
   --tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
   --rpc_bind_addresses 172.151.17.130 \
   --start_pgsql_proxy \
-  --pgsql_proxy_bind_address=172.151.17.130:5433 \
-  --cql_proxy_bind_address=172.151.17.130:9042 \
+  --pgsql_proxy_bind_address 172.151.17.130:5433 \
+  --cql_proxy_bind_address 172.151.17.130:9042 \
   --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
+  --placement_cloud aws \
+  --placement_region us-west \
+  --placement_zone us-west-2a \
   >& /home/centos/disk1/yb-tserver.out &
 ```
+
+For the full list of configuration options, see the [YB-TServer reference](../../../reference/configuration/yb-tserver/).
 
 If you need to turn on the YEDIS API as well, add `--redis_proxy_bind_address=172.151.17.130:6379` to the above list.
 
 {{< note title="Note" >}}
 
-The number of comma-separated values in the `--tserver_master_addrs` option should match the total number of YB-Master services (or the replication factor).
+The number of comma-separated values in the `--tserver_master_addrs` option should match the total number of YB-Master servers (or the replication factor).
 
 {{< /note >}}
 
 ## Run YB-TServer with configuration file
 
-- Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the `--flagfile` option as shown here. For each YB-TServer service, replace the RPC bind address flags with the private IP address of the host running the YB-TServer service.
+Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the `--flagfile` option as shown here. For each YB-TServer server, replace the RPC bind address flags with the private IP address of the host running the YB-TServer server.
 
 ```sh
 --tserver_master_addrs=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
@@ -66,6 +69,9 @@ The number of comma-separated values in the `--tserver_master_addrs` option shou
 --pgsql_proxy_bind_address=172.151.17.130:5433
 --cql_proxy_bind_address=172.151.17.130:9042
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2
+--placement_cloud=aws 
+--placement_region=us-west 
+--placement_zone=us-west-2a 
 ```
 
 Add `--redis_proxy_bind_address=172.22.25.108:6379` to the above list if you need to turn on the YEDIS API as well.
@@ -74,9 +80,68 @@ Add `--redis_proxy_bind_address=172.22.25.108:6379` to the above list if you nee
 $ ./bin/yb-tserver --flagfile tserver.conf >& /home/centos/disk1/yb-tserver.out &
 ```
 
+## Set replica placement policy
+
+{{< note title="Note" >}}
+
+This step is required for only multi-AZ deployments and can be skipped for a single AZ deployment.
+
+{{< /note >}}
+
+The default replica placement policy when the cluster is first created is to treat all nodes as equal irrespective of the placement_* configuration flags.  However, for the current deployment, we want to explicitly place 1 replica of each tablet in each AZ. The following command sets replication factor of 3 across `us-west-2a`, `us-west-2b`, `us-west-2c` leading to such a placement.
+
+On any host running the yb-master, run the following command.
+
+```sh
+$ ./bin/yb-admin \
+    --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
+    modify_placement_info  \
+    aws.us-west.us-west-2a,aws.us-west.us-west-2b,aws.us-west.us-west-2c 3
+```
+
+Verify by running the following.
+
+```sh
+$ curl -s http://<any-master-ip>:7000/cluster-config
+```
+
+And confirm that the output looks similar to what is shown below with `min_num_replicas` set to 1 for each AZ.
+
+```
+replication_info {
+  live_replicas {
+    num_replicas: 3
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "aws"
+        placement_region: "us-west"
+        placement_zone: "us-west-2a"
+      }
+      min_num_replicas: 1
+    }
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "aws"
+        placement_region: "us-west"
+        placement_zone: "us-west-2b"
+      }
+      min_num_replicas: 1
+    }
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "aws"
+        placement_region: "us-west"
+        placement_zone: "us-west-2b"
+      }
+      min_num_replicas: 1
+    }
+  }
+}
+```
+
 ## Verify health
 
-Make sure all four YB-TServer services are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
+Make sure all YB-TServer servers are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
 
 You can do this as shown below.
 
