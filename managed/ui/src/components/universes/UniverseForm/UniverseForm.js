@@ -138,8 +138,9 @@ class UniverseForm extends Component {
   }
 
   componentDidMount() {
-    this.props.resetConfig();
-    this.setState({editNotAllowed: true});
+    if (this.props.type === "Create") {
+      this.props.resetConfig();
+    }
   }
 
   componentWillUnmount() {
