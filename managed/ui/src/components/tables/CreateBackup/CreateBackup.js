@@ -9,6 +9,7 @@ import { Row, Col } from 'react-bootstrap';
 import { isNonEmptyObject, isDefinedNotNull, isNonEmptyArray, isEmptyString, isNonEmptyString } from 'utils/ObjectUtils';
 import { Field } from 'formik';
 import { YBModalForm } from '../../common/forms';
+import * as cron from 'cron-validator';
 import * as Yup from "yup";
 
 import '../common.scss';
@@ -143,7 +144,11 @@ export default class CreateBackup extends Component {
               .required('Storage Config is Required'),
               enableSSE: Yup.bool(),
               schedulingFrequency: Yup.number('Frequency must be a number'),
-              cronExpression: Yup.string().matches(/((\*|\?|\d+((\/|-){0,1}(\d+))*)\s*){6}/, { message: "Does not looks like a valid cron expression", excludeEmptyString: true }),
+              cronExpression: Yup.string().test({
+                name: "isValidCron",
+                test: (value) => (value && cron.isValidCron(value)) || !value,
+                message: 'Does not looks like a valid cron expression'
+              })
             })
           }
           render={props => {
