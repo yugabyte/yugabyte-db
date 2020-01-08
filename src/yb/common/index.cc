@@ -149,7 +149,7 @@ int32_t IndexInfo::IsExprCovered(const string& expr_name) const {
   //     CREATE INDEX jindex on tab(j->'b'->>'a');
   int32_t idx = 0;
   for (const auto &col : columns_) {
-    if (expr_name.find(col.column_name) != expr_name.npos) {
+    if (!col.column_name.empty() && expr_name.find(col.column_name) != expr_name.npos) {
       return idx;
     }
     idx++;
@@ -161,7 +161,7 @@ int32_t IndexInfo::IsExprCovered(const string& expr_name) const {
 int32_t IndexInfo::FindKeyIndex(const string& key_expr_name) const {
   for (int32_t idx = 0; idx < key_column_count(); idx++) {
     const auto& col = columns_[idx];
-    if (key_expr_name.find(col.column_name) != key_expr_name.npos) {
+    if (!col.column_name.empty() && key_expr_name.find(col.column_name) != key_expr_name.npos) {
       // Return the found key column that is referenced by the expression.
       return idx;
     }
