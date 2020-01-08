@@ -19,7 +19,7 @@ if [ -n "$MISSING_EXTENSIONS" ]; then
     else
         stderr
         stderr '***************************'
-        stderr "ERROR: issing extensions required for testing: $MISSING_EXTENSIONS"
+        stderr "ERROR: Missing extensions required for testing: $MISSING_EXTENSIONS"
         stderr
         stderr "You may over-ride by setting \$ALLOW_MISSING_EXTENSIONS to a value."
         stderr '***************************'
