@@ -1,7 +1,7 @@
 ---
-title: Using the Yugabyte CDC connector
-linkTitle: Using the Yugabyte CDC connector
-description: Using the Yugabyte CDC connector
+title: Using the YugabyteDB CDC connector
+linkTitle: Using the YugabyteDB CDC connector
+description: Using the YugabyteDB CDC connector
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
@@ -13,11 +13,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Use change data capture (CDC) in your YugabyteDB deployments to asynchronously replicate data changes. In the sections below, learn how you can use the Yugabyte CDC connector to send data changes to Apache Kafka or to `stdout`.
+Use change data capture (CDC) in your YugabyteDB deployments to asynchronously replicate data changes. In the sections below, learn how you can use the YugabyteDB CDC connector to send data changes to Apache Kafka or to `stdout`.
 
 {{< note title="Note" >}}
 
-The information on this page is for testing and learning about using CDC with the Yugabyte CDC connector on a local YugabyteDB cluster. Details about requirements for production deployments will be added shortly.
+The information on this page is for testing and learning about using CDC with the YugabyteDB CDC connector on a local YugabyteDB cluster. Details about requirements for production deployments will be added shortly.
 
 {{< /note >}}
 
@@ -49,9 +49,9 @@ The Confluent Platform currently only supports Java 8 and 11. If you do not use 
 
 {{< /note >}}
 
-## Install the Yugabyte CDC connector
+## Install the YugabyteDB CDC connector
 
-1. Download the [Yugabyte CDC connector (`yb-cdc-connector.jar`)](https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar).
+1. Download the [YugabyteDB CDC connector (`yb-cdc-connector.jar`)](https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar).
 
 2. Install the JAR file in the following recommended location:
 
@@ -59,9 +59,9 @@ The Confluent Platform currently only supports Java 8 and 11. If you do not use 
 - macOS: `\Library\Java\Extensions\yb-cdc-connector.jar`
 - Windows: `%SystemRoot%\Sun\Java\lib\ext\yb-cdc-connector.jar`
 
-## Use the Yugabyte CDC connector
+## Use the YugabyteDB CDC connector
 
-To use the Yugabyte CDC connector, run the `yb_cdc_connector` JAR file.
+To use the YugabyteDB CDC connector, run the `yb_cdc_connector` JAR file.
 
 ### Syntax for Apache Kafka
 
@@ -97,9 +97,9 @@ Specify the namespace and table, where namespace is the database (YSQL) or keysp
 
 #### `--master_addrs`
 
-Specify the IP addresses for all of the YB-Master services that are producing or consuming. Default value is `127.0.0.1:7100`.
+Specify the IP addresses for all of the YB-Master servers that are producing or consuming. Default value is `127.0.0.1:7100`.
 
-If you are using a 3-node local cluster, then you need to specify a comma-delimited list of the addresses for all of your YB-Master services.
+If you are using a 3-node local cluster, then you need to specify a comma-delimited list of the addresses for all of your YB-Master servers.
 
 #### `--log_only` (stdout only)
 
@@ -111,7 +111,7 @@ Specify the Apache Kafka topic name.
 
 #### `schema_registry_addrs` (Apache Kafka only)
 
-### `table_schema_path` (Apache Kafka only)
+#### `table_schema_path` (Apache Kafka only)
 
 Specify the location of the Avro file (`.avsc`) for the table schema.
 
@@ -133,7 +133,7 @@ To get the stream ID, run the YugabyteDB CDC connector and the first time you ca
 
 ### Sending a CDC output stream to "stdout"
 
-The following command will start the Yugabyte CDC connector and send an output stream from a 3-node YugabyteDB cluster to `stdout`.
+The following command will start the YugabyteDB CDC connector and send an output stream from a 3-node YugabyteDB cluster to `stdout`.
 
 ```sh
 java -jar yb_cdc_connector.jar
@@ -144,7 +144,7 @@ java -jar yb_cdc_connector.jar
 
 ### Sending a CDC output stream to a Kafka topic
 
-The following command will start the Yugabyte CDC connector and send an output stream from a 3-node YugabyteDB cluster to a Kafka topic.
+The following command will start the YugabyteDB CDC connector and send an output stream from a 3-node YugabyteDB cluster to a Kafka topic.
 
 ```sh
 java -jar target/yb_cdc_connector.jar

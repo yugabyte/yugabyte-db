@@ -15,7 +15,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-To enable server-server (or node-to-node) encryption, start the YB-Master and YB-TServer services using the appropriate configuration options described here.
+To enable server-server (or node-to-node) encryption, start the YB-Master and YB-TServer servers using the appropriate configuration options described here.
 
 Configuration option           | Service                  | Description                  |
 -------------------------------|--------------------------|------------------------------|
@@ -23,7 +23,7 @@ Configuration option           | Service                  | Description         
 `allow_insecure_connections`   | YB-Master only           | Optional, defaults to `true`. Set to `false` to disallow any process with unencrypted communication from joining this cluster. Default value is `true`. Note that this flag requires the `use_node_to_node_encryption` to be enabled. |
 `certs_dir`                    | YB-Master, YB-TServer | Optional. This directory should contain the configuration that was prepared in the a step for this node to perform encrypted communication with the other nodes. Default value for YB-Masters is `<data drive>/yb-data/master/data/certs` and for YB-TServers this location is `<data drive>/yb-data/tserver/data/certs` |
 
-## Start the master process
+## Start the YB-Master server
 
 You can enable access control by starting the `yb-master` processes minimally with the `--use_node_to_node_encryption=true` configuration option as described above. Your command should look similar to that shown below:
 
@@ -38,9 +38,9 @@ bin/yb-master                               \
 
 You can read more about bringing up the YB-Masters for a deployment in the section on [manual deployment of a YugabyteDB cluster](../../../deploy/manual-deployment/start-masters/).
 
-## Start the YB-TServer service
+## Start the YB-TServer server
 
-You can enable access control by starting the `yb-tserver` service minimally with the `--use_node_to_node_encryption=true` flag as described above. Your command should look similar to that shown below:
+You can enable access control by starting the `yb-tserver` server minimally with the `--use_node_to_node_encryption=true` flag as described above. Your command should look similar to that shown below:
 
 ```
 bin/yb-tserver                                  \

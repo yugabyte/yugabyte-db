@@ -37,7 +37,7 @@ A local install of the Confluent Platform should be up and running. The [Conflue
 
 To get a local Confluent Platform (with Apache Kafka) up and running quickly, follow the steps in the [Confluent Platform Quick Start (Local)](https://docs.confluent.io/current/quickstart/ce-quickstart.html#ce-quickstart).
 
-## Step 1 — Add the "users" table
+## 1. Add the "users" table
 
 With your local YugabyteDB cluster running, create a table, called `users`, in the default database (`yugabyte`).
 
@@ -45,7 +45,7 @@ With your local YugabyteDB cluster running, create a table, called `users`, in t
 CREATE TABLE users (name text, pass text, id int, primary key (id));
 ```
 
-## Step 2 — Create Avro schemas
+## 2. Create Avro schemas
 
 The Kafka Connect YugabyteDB Source Connector supports the use of [Apache Avro schemas](http://avro.apache.org/docs/current/#schemas) to serialize and deserialize tables. You can use the [Schema Registry](https://docs.confluent.io/current/schema-registry/index.html) in the Confluent Platform to create and manage Avro schema files. For a step-by-step tutorial, see [Schema Registry Tutorial](https://docs.confluent.io/current/schema-registry/schema_registry_tutorial.html).
 
@@ -81,7 +81,7 @@ You can use the following two Avro schema examples that will work with the `user
 }
 ```
 
-## Step 3 — Start the Apache Kafka services
+## 3. Start the Apache Kafka services
 
 1. Create a Kafka topic.
 
@@ -95,7 +95,7 @@ You can use the following two Avro schema examples that will work with the `user
     bin/kafka-avro-console-consumer --bootstrap-server localhost:9092 --topic users_topic --key-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer     --value-deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer
     ```
 
-## Step 4 — Download the Kafka Connect YugabyteDB Source Connector
+## 4. Download the Kafka Connect YugabyteDB Source Connector
 
 Download the Kafka Connect YugabyteDB Source Connector JAR file (`yb-cdc-connector.jar`).
 
@@ -104,7 +104,7 @@ $ wget -O yb-cdc-connector.jar https://github.com/yugabyte/yb-kafka-connector/bl
 
 ```
 
-## Step 5 — Log to Kafka
+## 5. Log to Kafka
 
 Run the following command to start logging an output stream of data changes from the YugabyteDB `cdc` table to Apache Kafka.
 
@@ -119,11 +119,11 @@ java -jar yb-cdc-connector.jar
 The example above uses the following parameters:
 
 - `--table_name` — Specifies the namespace and table, where namespace is the database (YSQL) or keyspace (YCQL).
-- `--master_addrs` — Specifies the IP addresses for all of the YB-Master services that are producing or consuming. Default value is `127.0.0.1:7100`. If you are using a 3-node local cluster, then you need to specify a comma-delimited list of the addresses for all of your YB-Master services.
+- `--master_addrs` — Specifies the IP addresses for all of the YB-Master servers that are producing or consuming. Default value is `127.0.0.1:7100`. If you are using a 3-node local cluster, then you need to specify a comma-delimited list of the addresses for all of your YB-Master servers.
 - `topic_name` — Specifies the Apache Kafka topic name.
 - `table_schema_path` — Specifies the location of the Avro file (`.avsc`) for the table schema.
 - `primary_key_schema_path` — Specifies the location of the Avro file (`.avsc`) for the primary key schema.
 
-## Step 6 — Write values and observe
+## 6. Write values and observe
 
 In another window, write values to the table and observe the values on your Kafka output stream.

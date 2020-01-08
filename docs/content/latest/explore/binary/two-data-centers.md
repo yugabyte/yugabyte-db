@@ -100,7 +100,7 @@ To configure "Data Center - West" to be the consumer of data changes from the "D
 yb-admin -master_addresses <consumer-master-addresses> setup_universe_replication <producer-universe_uuid> <producer_master_addresses> <producer-table-ids>
 ```
 
-- *consumer-master-addresses*: a comma-separated list of the YB-Master services. For this simulation, you have one YB-Master service for each cluster (typically, there are three).
+- *consumer-master-addresses*: a comma-separated list of the YB-Master servers. For this simulation, you have one YB-Master server for each cluster (typically, there are three).
 - *producer-universe-uuid*: a unique identifier for the producer cluster. The UUID can be found in the YB-Master UI (`<yb-master-ip>:7000`).
 - *producer-table-ids*: A comma-separated list of `table_id` values (the generated UUIDs can be found in the YB-Master UI (`<yb-master-ip>:7000`).
 
