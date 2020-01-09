@@ -463,10 +463,9 @@ void CDCServiceImpl::ReadCdcMinReplicatedIndexForAllTabletsAndUpdatePeers() {
     };
     for (const auto& row : client::TableRange(table, options)) {
       count++;
-      auto stream_id = row.column(0).string_value();
-      auto tablet_id = row.column(1).string_value();
-      auto checkpoint = row.column(2).string_value();
-
+      auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
+      auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
+      auto checkpoint = row.column(master::kCdcCheckpointIdx).string_value();
 
       LOG(INFO) << "stream_id: " << stream_id << ", tablet_id: " << tablet_id
               << ", checkpoint: " << checkpoint;
@@ -768,8 +767,13 @@ Result<OpId> CDCServiceImpl::GetLastCheckpoint(
   const auto op = table.NewReadOp();
   auto* const req = op->mutable_request();
   DCHECK(!producer_tablet.stream_id.empty() && !producer_tablet.tablet_id.empty());
-  QLAddStringHashValue(req, producer_tablet.stream_id);
   QLAddStringHashValue(req, producer_tablet.tablet_id);
+
+  auto cond = req->mutable_where_expr()->mutable_condition();
+  cond->set_op(QLOperator::QL_OP_AND);
+  QLAddStringCondition(cond, Schema::first_column_id() + master::kCdcStreamIdIdx,
+      QL_OP_EQUAL, producer_tablet.stream_id);
+
   table.AddColumns({master::kCdcCheckpoint}, req);
   RETURN_NOT_OK(session->ApplyAndFlush(op));
 
@@ -821,8 +825,8 @@ Status CDCServiceImpl::UpdateCheckpoint(const ProducerTabletInfo& producer_table
     const auto op = table.NewUpdateOp();
     auto* const req = op->mutable_request();
     DCHECK(!producer_tablet.stream_id.empty() && !producer_tablet.tablet_id.empty());
-    QLAddStringHashValue(req, producer_tablet.stream_id);
     QLAddStringHashValue(req, producer_tablet.tablet_id);
+    QLAddStringRangeValue(req, producer_tablet.stream_id);
     table.AddStringColumnValue(req, master::kCdcCheckpoint, commit_op_id.ToString());
     RETURN_NOT_OK(session->ApplyAndFlush(op));
   }
