@@ -112,7 +112,8 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     string tablet_id_1;
     string tablet_id_2;
     string table_id_1;
-    FLAGS_yb_num_shards_per_tserver = 10;
+    // Speed up test by having low number of tablets.
+    FLAGS_yb_num_shards_per_tserver = 2;
 
     ASSERT_OK(cluster_->WaitForTabletServerCount(1));
 
@@ -162,7 +163,8 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
                            schema_copy,
                            &tablet_id_2);
     // Sleep for enough to make sure the TS has plenty of time to re-heartbeat.
-    SleepFor(MonoDelta::FromSeconds(2));
+    auto sleep_duration_sec = MonoDelta::FromSeconds(RegularBuildVsSanitizers(2, 5));
+    SleepFor(sleep_duration_sec);
     after_create_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
     // For a normal table, we expect 4 writes per tablet.
     // For a copartitioned table, we expect just 1 write per tablet.
@@ -184,7 +186,7 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_1, 1, &locs));
     ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_2, 1, &locs));
     // Sleep for enough to make sure the TS has plenty of time to re-heartbeat.
-    SleepFor(MonoDelta::FromSeconds(2));
+    SleepFor(sleep_duration_sec);
 
     // After restart, check that the tablet reports produced the expected number of
     // writes to the catalog table:
@@ -200,7 +202,7 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(cluster_->mini_master()->Restart());
     // Sleep for enough to make sure the TS has plenty of time to re-heartbeat.
     ASSERT_OK(cluster_->WaitForTabletServerCount(1));
-    SleepFor(MonoDelta::FromSeconds(2));
+    SleepFor(sleep_duration_sec);
     EXPECT_EQ(0, GetCatalogMetric(METRIC_rows_inserted));
 
     // TODO: KUDU-870: once the master supports detecting failed/lost replicas,
