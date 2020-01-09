@@ -25,7 +25,7 @@ non-primary key columns are deleted only in the case of inserts.
  
 ## Table level TTL
 
-**Table Level TTL**: YCQL allows the TTL property to be specified at the table level. 
+YCQL allows the TTL property to be specified at the table level. 
 In this case, we do not store the TTL on a per KV basis in DocDB; but the TTL is implicitly enforced 
 on reads as well as during compactions (to reclaim space).
 Table level TTL can be defined with `default_time_to_live` [property](../../../api/ycql/ddl_create_table#table-properties-1). 
