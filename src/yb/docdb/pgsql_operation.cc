@@ -555,13 +555,14 @@ Status PgsqlReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB
     // Empty components mean that we don't have primary key at all, but request
     // could still contain hash_code as part of tablet routing.
     // So we should ignore it.
-    pair->set_key(std::string(1, ValueTypeAsChar::kGroupEnd));
+    DocKey doc_key(schema.cotable_id());
+    pair->set_key(doc_key.Encode().data());
   } else {
     std::vector<PrimitiveValue> hashed_components;
     RETURN_NOT_OK(InitKeyColumnPrimitiveValues(
         request_.partition_column_values(), schema, 0 /* start_idx */, &hashed_components));
 
-    DocKey doc_key(request_.hash_code(), hashed_components);
+    DocKey doc_key(schema.cotable_id(), request_.hash_code(), hashed_components);
     pair->set_key(doc_key.Encode().data());
   }
 
