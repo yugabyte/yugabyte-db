@@ -174,6 +174,8 @@ class GcpCloud(AbstractCloud):
                         compute_image_name = self.get_compute_image(name)
                         if compute_image_name not in pricing_map:
                             continue
+                        if "memory" not in pricing_map[compute_image_name]:
+                            continue
                         result[name] = {
                             "prices": {},
                             "numCores": instance["guestCpus"],

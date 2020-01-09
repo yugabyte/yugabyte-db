@@ -146,7 +146,6 @@ public class UniverseControllerTest extends WithApplication {
         .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
         .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
         .overrides(bind(CallHome.class).toInstance(mockCallHome))
-        .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
         .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
         .overrides(bind(QueryExecutor.class).toInstance(mockQueryExecutor))
         .overrides(bind(ShellProcessHandler.class).toInstance(mockShellProcessHandler))
