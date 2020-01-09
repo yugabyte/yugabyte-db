@@ -91,6 +91,8 @@ After 10 seconds, querying for the rows the `views` column will return `NULL`:
 (1 rows)
 ```
 
+## TTL commands & functions
+
 There are several ways to work with TTL:
 
 1. Table level TTL with [`default_time_to_live`](../../../api/ycql/ddl_create_table#table-properties-1) property. 
