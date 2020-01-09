@@ -32,10 +32,64 @@ Table level TTL can be defined with `default_time_to_live` [property](../../../a
 
 Below, we will look at how the row-level TTL is achieved in detail.
 
-## Row level & Column level TTL
+## Row level TTL
 
 YCQL allows the TTL property to be specified at the level of each INSERT/UPDATE operation. 
-In such cases, the TTL is stored as part of the RocksDB value. 
+Row level TTL expires the whole row. The value is specified at insert/update time with `USING TTL` clause.
+In such cases, the TTL is stored as part of the DocDB value. A simple query would be:
+
+```cassandraql
+INSERT INTO pageviews(path) VALUES ('/index') USING TTL 10;
+SELECT * FROM pageviews;
+
+ path   | views
+--------+-------
+ /index |  null
+
+(1 rows)
+```
+After 10 seconds, the row is expired:
+
+```cassandraql
+SELECT * FROM pageviews;
+
+ path | views
+------+-------
+
+(0 rows)
+```
+
+## Column level TTL
+
+YCQL also allows to have column level TTL independent on each row.  
+In such cases, the TTL is stored as part of the DocDB column value. 
+But we can achieve it only when updating the column:
+
+```cassandraql
+INSERT INTO pageviews(path,views) VALUES ('/index', 10);
+
+SELECT * FROM pageviews;
+
+ path   | views
+--------+-------
+ /index |  10
+
+(1 rows)
+
+UPDATE pageviews USING TTL 10 SET views=10 WHERE path='/index';
+```
+
+After 10 seconds, querying for the rows the `views` column will return `NULL`:
+
+```cassandraql
+ select * from pageviews;
+
+ path   | views
+--------+-------
+ /index |  null
+
+(1 rows)
+```
 
 There are several ways to work with TTL:
 
@@ -43,4 +97,4 @@ There are several ways to work with TTL:
 2. [Expiring rows with TTL](../../../api/ycql/dml_insert#insert-a-row-with-expiration-time-using-the-using-ttl-clause)
 3. [`TTL` function](../../../api/ycql/expr_fcall/#ttl-function) to return number of seconds until expiration
 4. [`WriteTime` function](../../../api/ycql/expr_fcall#writetime-function) returns timestamp when row/column was inserted
-
+5. [Update row/column TTL](./../../api/ycql/dml_update/#using-clause) to update the TTL of a row or column
