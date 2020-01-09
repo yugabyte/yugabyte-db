@@ -102,7 +102,7 @@ Assuming we have a table `page_views` and a column named `views`:
 ```
 
 ## TTL function
-We can get the number of seconds when the column or row expires. 
+We can get the number of seconds when the column expires. 
 Assuming we have a table `page_views` and a column named `views`:
 ```
 SELECT TTL(views) FROM page_views;
