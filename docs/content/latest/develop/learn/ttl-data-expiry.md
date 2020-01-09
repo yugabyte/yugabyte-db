@@ -82,7 +82,7 @@ UPDATE pageviews USING TTL 10 SET views=10 WHERE path='/index';
 After 10 seconds, querying for the rows the `views` column will return `NULL`:
 
 ```cassandraql
- select * from pageviews;
+SELECT * FROM pageviews;
 
  path   | views
 --------+-------
@@ -91,7 +91,7 @@ After 10 seconds, querying for the rows the `views` column will return `NULL`:
 (1 rows)
 ```
 
-## TTL commands & functions
+## TTL related commands & functions
 
 There are several ways to work with TTL:
 
