@@ -646,7 +646,9 @@ class OperationConflictResolverContext : public ConflictResolverContext {
 
   CHECKED_STATUS CheckConflictWithCommitted(
       const TransactionId& id, HybridTime commit_time) override {
-    resolution_ht_.MakeAtLeast(commit_time);
+    if (commit_time != HybridTime::kMax) {
+      resolution_ht_.MakeAtLeast(commit_time);
+    }
     return Status::OK();
   }
 
