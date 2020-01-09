@@ -15,8 +15,6 @@ REGRESS = orafce orafce2 dbms_output dbms_utility files varchar2 nvarchar2 aggre
 
 REGRESS_OPTS = --load-language=plpgsql --schedule=parallel_schedule --encoding=utf8
 
-EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h
-
 #override CFLAGS += -pedantic
 
 ifdef NO_PGXS
@@ -67,4 +65,4 @@ endif
 distprep: $(srcdir)/sqlparse.c $(srcdir)/sqlscan.c
 
 maintainer-clean:
-	rm -f $(srcdir)/sqlparse.c $(srcdir)/sqlscan.c
+	rm -f $(srcdir)/sqlparse.c $(srcdir)/sqlscan.c $(srcdir)/sqlparse.h $(srcdir)/y.tab.c $(srcdir)/y.tab.h
