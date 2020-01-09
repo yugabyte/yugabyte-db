@@ -12,8 +12,8 @@ menu:
 showAsideToc: true
 isTocNested: true
 ---
-In YCQL there are two types of TTL, the table TTL and column level TTL. The column TTLs are stored
-with the value of the column. The table TTL is not stored in DocDB (it is stored
+In YCQL there are two types of TTL, the table level TTL and column level TTL. The column TTLs are stored
+with the value of the column. The table level TTL is not stored in DocDB (it is stored
 in master’s syscatalog as part of the table’s schema). If no TTL is present at the column’s value,
 the table TTL acts as the default value.
 
@@ -34,7 +34,7 @@ Below, we will look at how the row-level TTL is achieved in detail.
 
 ## Row level & Column level TTL
 
-YCQL allows the TTL property to be specified at  the level of each INSERT/UPDATE operation. 
+YCQL allows the TTL property to be specified at the level of each INSERT/UPDATE operation. 
 In such cases, the TTL is stored as part of the RocksDB value. 
 
 There are several ways to work with TTL:
