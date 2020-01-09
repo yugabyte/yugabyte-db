@@ -132,6 +132,9 @@ pre code.copy + textarea, .copy pre textarea {
   padding: 0 0 1px 1px;
   border: none;
 }
+.content-flex-container > h1 + div + h2, .content-flex-container > h1 + h2{
+  margin-top: -92px !important;
+}
 .content-flex-wrapper {
   display: flex;
   flex-direction: row;
