@@ -50,7 +50,7 @@ version.BuildInfo{Version:"v3.0.0-beta.4", GitCommit:"...", GitTreeState:"dirty"
 
 ## Create cluster
 
-For Helm v3, jump directly to [Add charts repository](#add-charts-repository) section.
+For Helm 3, jump directly to [Add charts repository](#add-charts-repository) section.
 
 ### Create service account (Helm 2 only)
 
@@ -121,22 +121,16 @@ yugabytedb/yugabyte	1.3.0        	1.3.0.0-b1 	YugabyteDB is the high-performance
 
 Install YugabyteDB in the Kubernetes cluster using the command below. By default, this Helm chart will expose only the master UI endpoint using LoadBalancer. If you need to connect external clients, see the section below.
 
-{{< note title="Note" >}}
-
-By default, the current Helm chart sets YSQL to be disabled. To enable YSQL using the current Helm chart, you need to add `--set "disableYsql=false"`. In the next update, this will be unnecessary (GitHub issue [#3306](https://github.com/yugabyte/yugabyte-db/issues/3306)).
-
-{{< /note >}}
-
 **For Helm 2:**
 
 ```sh
-$ helm install yugabytedb/yugabyte --namespace yb-demo --name yb-demo --wait --set "disableYsql=false"
+$ helm install yugabytedb/yugabyte --namespace yb-demo --name yb-demo --wait
 ```
 
 **For Helm 3:**
 
 ```sh
-$ helm install yb-demo yugabytedb/yugabyte --namespace yb-demo --wait --set "disableYsql=false"
+$ helm install yb-demo yugabytedb/yugabyte --namespace yb-demo --wait
 ```
 
 If you are running in a resource-constrained environment or a local environment, such as Minikube, you will have to change the default resource requirements by using the command below. See next section for a detailed description of these resource requirements.
