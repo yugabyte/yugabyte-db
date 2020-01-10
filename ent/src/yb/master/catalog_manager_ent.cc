@@ -1294,6 +1294,7 @@ Status CatalogManager::CreateCdcStateTableIfNeeded(rpc::RpcContext *rpc) {
     schema_builder.AddColumn(master::kCdcCheckpoint)->Type(DataType::STRING);
     schema_builder.AddColumn(master::kCdcData)->Type(QLType::CreateTypeMap(
         DataType::STRING, DataType::STRING));
+    schema_builder.AddColumn(master::kCdcLastReplicationTime)->Type(DataType::TIMESTAMP);
 
     client::YBSchema yb_schema;
     CHECK_OK(schema_builder.Build(&yb_schema));
