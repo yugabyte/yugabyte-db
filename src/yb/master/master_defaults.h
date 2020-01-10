@@ -57,6 +57,8 @@ constexpr size_t kCdcStreamIdIdx = 1;
 static const char* const kCdcCheckpoint  = "checkpoint";
 constexpr size_t kCdcCheckpointIdx = 2;
 static const char* const kCdcData = "data";
+static const char* const kCdcLastReplicationTime = "last_replication_time";
+constexpr size_t kCdcLastReplicationTimeIdx = 4;
 
 static const char* const kSystemAuthRolesTableName = "roles";
 static const char* const kSystemAuthRolePermissionsTableName = "role_permissions";

@@ -115,7 +115,8 @@ class CDCServiceImpl : public CDCServiceIf {
   CHECKED_STATUS UpdateCheckpoint(const ProducerTabletInfo& producer_tablet,
                                   const OpId& sent_op_id,
                                   const OpId& commit_op_id,
-                                  const std::shared_ptr<client::YBSession>& session);
+                                  const std::shared_ptr<client::YBSession>& session,
+                                  uint64_t last_record_hybrid_time);
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> GetTablets(
       const CDCStreamId& stream_id);
