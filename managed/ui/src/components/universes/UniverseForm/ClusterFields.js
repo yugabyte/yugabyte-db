@@ -416,6 +416,7 @@ export default class ClusterFields extends Component {
         numVolumes: volumesList.length,
         mountPoints: mountPoints,
         storageType: volumeDetail.volumeType === "EBS" ? DEFAULT_STORAGE_TYPES['AWS'] : DEFAULT_STORAGE_TYPES['GCP'],
+        storageClass: 'standard',
         diskIops: null
       };
       updateFormField(`${clusterType}.volumeSize`, volumeDetail.volumeSizeGB);
@@ -688,7 +689,8 @@ export default class ClusterFields extends Component {
         numVolumes: formValues[clusterType].numVolumes,
         mountPoints: formValues[clusterType].mountPoints,
         storageType: formValues[clusterType].storageType,
-        diskIops: formValues[clusterType].diskIops
+        diskIops: formValues[clusterType].diskIops,
+        storageClass: formValues[clusterType].storageClass || 'standard',
       },
       accessKeyCode: formValues[clusterType].accessKeyCode
     };
