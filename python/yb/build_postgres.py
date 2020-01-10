@@ -735,12 +735,12 @@ class PostgresBuilder:
             if self.export_compile_commands:
                 logging.info(
                     "Even though PostgreSQL is already up-to-date in directory %s, we still need "
-                    "to create compile_commands.json, so proceeding with %s" %
-                    (self.pg_build_root, self.steps_description()))
+                    "to create compile_commands.json, so proceeding with %s",
+                    self.pg_build_root, self.steps_description())
             else:
                 logging.info(
                     "PostgreSQL is already up-to-date in directory %s, skipping %s.",
-                    (self.pg_build_root, self.steps_description()))
+                    self.pg_build_root, self.steps_description())
                 return
 
         with WorkDirContext(self.pg_build_root):
