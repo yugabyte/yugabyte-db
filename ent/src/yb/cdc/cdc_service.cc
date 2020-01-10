@@ -358,7 +358,11 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
       s.IsNotFound() ? CDCErrorPB::CHECKPOINT_TOO_OLD : CDCErrorPB::UNKNOWN_ERROR,
       context);
 
-  s = UpdateCheckpoint(producer_tablet, OpId::FromPB(resp->checkpoint().op_id()), op_id, session);
+  uint64_t last_record_hybrid_time = resp->records_size() > 0 ?
+      resp->records(resp->records_size() - 1).time() : 0;
+
+  s = UpdateCheckpoint(producer_tablet, OpId::FromPB(resp->checkpoint().op_id()), op_id, session,
+                       last_record_hybrid_time);
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
   {
@@ -476,9 +480,11 @@ void CDCServiceImpl::ReadCdcMinReplicatedIndexForAllTabletsAndUpdatePeers() {
       auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
       auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
       auto checkpoint = row.column(master::kCdcCheckpointIdx).string_value();
+      auto last_replication_time = row.column(master::kCdcLastReplicationTimeIdx).timestamp_value();
 
-      LOG(INFO) << "stream_id: " << stream_id << ", tablet_id: " << tablet_id
-              << ", checkpoint: " << checkpoint;
+      VLOG(1) << "stream_id: " << stream_id << ", tablet_id: " << tablet_id
+              << ", checkpoint: " << checkpoint << ", last_replication_time: "
+              << last_replication_time.ToFormattedString();
 
 
       auto result = OpId::FromString(checkpoint);
@@ -801,7 +807,8 @@ Result<OpId> CDCServiceImpl::GetLastCheckpoint(
 Status CDCServiceImpl::UpdateCheckpoint(const ProducerTabletInfo& producer_tablet,
                                         const OpId& sent_op_id,
                                         const OpId& commit_op_id,
-                                        const std::shared_ptr<client::YBSession>& session) {
+                                        const std::shared_ptr<client::YBSession>& session,
+                                        uint64_t last_record_hybrid_time) {
   bool update_cdc_state = true;
   auto now = CoarseMonoClock::Now();
   TabletCheckpoint sent_checkpoint({sent_op_id, now});
@@ -838,6 +845,13 @@ Status CDCServiceImpl::UpdateCheckpoint(const ProducerTabletInfo& producer_table
     QLAddStringHashValue(req, producer_tablet.tablet_id);
     QLAddStringRangeValue(req, producer_tablet.stream_id);
     table.AddStringColumnValue(req, master::kCdcCheckpoint, commit_op_id.ToString());
+    // If we have a last record hybrid time, use that for physical time. If not, it means we're
+    // caught up, so the current time.
+    uint64_t last_replication_time_micros = last_record_hybrid_time != 0 ?
+        HybridTime(last_record_hybrid_time).GetPhysicalValueMicros() : GetCurrentTimeMicros();
+    table.AddTimestampColumnValue(
+        req, master::kCdcLastReplicationTime,
+        last_replication_time_micros / MonoTime::kMicrosecondsPerMillisecond);
     RETURN_NOT_OK(session->ApplyAndFlush(op));
   }
 
