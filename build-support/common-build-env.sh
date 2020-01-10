@@ -179,7 +179,7 @@ declare -i -r YB_DOWNLOAD_LOCK_TIMEOUT_SEC=120
 
 readonly YB_DOWNLOAD_LOCKS_DIR=/tmp/yb_download_locks
 
-readonly YB_NFS_PATH_RE="^/(n|z|u|net|Volumes/net)/"
+readonly YB_NFS_PATH_RE="^/(n|z|u|net|Volumes/net|servers)/"
 
 # -------------------------------------------------------------------------------------------------
 # Functions
