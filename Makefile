@@ -16,6 +16,7 @@ OBJS = ag_catalog.o \
        cypher_keywords.o \
        cypher_parser.o \
        cypher_path.o \
+       graphid.o \
        nodes.o \
        outfuncs.o \
        scan.o

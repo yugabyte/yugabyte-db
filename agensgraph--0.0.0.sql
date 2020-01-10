@@ -5,7 +5,7 @@
 -- catalog tables
 --
 
-CREATE TABLE ag_graph(
+CREATE TABLE ag_graph (
   name name NOT NULL,
   namespace regnamespace NOT NULL
 );
@@ -31,6 +31,37 @@ LANGUAGE c
 AS 'MODULE_PATHNAME';
 
 --
+-- graphid type
+--
+
+CREATE TYPE graphid;
+
+CREATE FUNCTION graphid_in(cstring)
+RETURNS graphid
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION graphid_out(graphid)
+RETURNS cstring
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE TYPE graphid (
+  INPUT = graphid_in,
+  OUTPUT = graphid_out,
+  INTERNALLENGTH = 8,
+  PASSEDBYVALUE,
+  ALIGNMENT = float8,
+  STORAGE = plain
+);
+
+--
 -- agtype type and support functions
 --
 
@@ -53,13 +84,9 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE TYPE agtype (
-INPUT = agtype_in,
-OUTPUT = agtype_out,
-LIKE = jsonb,
-CATEGORY = 'U',
-PREFERRED = FALSE,
-DELIMITER = ',',
-COLLATABLE = FALSE
+  INPUT = agtype_in,
+  OUTPUT = agtype_out,
+  LIKE = jsonb
 );
 
 --
@@ -127,46 +154,46 @@ AS 'MODULE_PATHNAME';
 --
 
 CREATE OPERATOR + (
-    LEFTARG = agtype,
-    RIGHTARG = agtype,
-    FUNCTION = agtype_add,
-    COMMUTATOR = +
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = agtype_add,
+  COMMUTATOR = +
 );
 
 CREATE OPERATOR - (
-    LEFTARG = agtype,
-    RIGHTARG = agtype,
-    FUNCTION = agtype_sub
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = agtype_sub
 );
 
 CREATE OPERATOR - (
-    RIGHTARG = agtype,
-    FUNCTION = agtype_neg
+  RIGHTARG = agtype,
+  FUNCTION = agtype_neg
 );
 
 CREATE OPERATOR * (
-    LEFTARG = agtype,
-    RIGHTARG = agtype,
-    FUNCTION = agtype_mul,
-    COMMUTATOR = *
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = agtype_mul,
+  COMMUTATOR = *
 );
 
 CREATE OPERATOR / (
-    LEFTARG = agtype,
-    RIGHTARG = agtype,
-    FUNCTION = agtype_div
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = agtype_div
 );
 
 CREATE OPERATOR % (
-    LEFTARG = agtype,
-    RIGHTARG = agtype,
-    FUNCTION = agtype_mod
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = agtype_mod
 );
 
 CREATE OPERATOR ^ (
-    LEFTARG = agtype,
-    RIGHTARG = agtype,
-    FUNCTION = agtype_pow
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = agtype_pow
 );
 
 --
@@ -226,39 +253,39 @@ AS 'MODULE_PATHNAME';
 --
 
 CREATE OPERATOR = (
-    LEFTARG = agtype,
-    RIGHTARG = agtype,
-    FUNCTION = agtype_eq
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = agtype_eq
 );
 
 CREATE OPERATOR <> (
-    LEFTARG = agtype,
-    RIGHTARG = agtype,
-    FUNCTION = agtype_ne
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = agtype_ne
 );
 
 CREATE OPERATOR < (
-    LEFTARG = agtype,
-    RIGHTARG = agtype,
-    FUNCTION = agtype_lt
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = agtype_lt
 );
 
 CREATE OPERATOR > (
-    LEFTARG = agtype,
-    RIGHTARG = agtype,
-    FUNCTION = agtype_gt
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = agtype_gt
 );
 
 CREATE OPERATOR <= (
-    LEFTARG = agtype,
-    RIGHTARG = agtype,
-    FUNCTION = agtype_le
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = agtype_le
 );
 
 CREATE OPERATOR >= (
-    LEFTARG = agtype,
-    RIGHTARG = agtype,
-    FUNCTION = agtype_ge
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = agtype_ge
 );
 
 --
