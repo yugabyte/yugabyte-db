@@ -39,7 +39,7 @@ export default class OnPremConfiguration extends Component {
     this.state = _.clone(initialState, true);
   }
 
-  componentDidMount() {
+  componentWillMount() {
     this.props.resetConfigForm();
   }
 
@@ -67,8 +67,8 @@ export default class OnPremConfiguration extends Component {
     this.setState({isEditingProvider: true});
   };
 
-  componentDidUpdate(prevProps) {
-    const { cloudBootstrap: { data: { response, type }, error, promiseState }, accessKeys, cloud: { providers }} = this.props;
+  componentWillReceiveProps(nextProps) {
+    const { cloudBootstrap: {data: { response, type }, error, promiseState}, accessKeys, cloud: {providers}} = nextProps;
     let onPremAccessKey = {};
     if (isNonEmptyArray(accessKeys.data) && isNonEmptyArray(providers.data)) {
       const onPremProvider = providers.data.find((provider) => {

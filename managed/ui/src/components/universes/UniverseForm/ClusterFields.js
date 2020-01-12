@@ -114,7 +114,7 @@ export default class ClusterFields extends Component {
     }
   }
 
-  componentDidMount() {
+  componentWillMount() {
     const { formValues, clusterType, updateFormField, type } = this.props;
     const { universe: { currentUniverse: { data: { universeDetails }}}} = this.props;
     // Set default software version in case of create
@@ -215,18 +215,8 @@ export default class ClusterFields extends Component {
     }
   }
 
-  componentDidUpdate(prevProps, prevState) {
-    const {
-      universe,
-      universe: { currentUniverse, universeConfigTemplate },
-      cloud,
-      cloud: { nodeInstanceList, instanceTypes },
-      clusterType,
-      formValues,
-      setPlacementStatus,
-      toggleDisableSubmit,
-      type
-    } = this.props;
+  componentWillReceiveProps(nextProps) {
+    const { universe: { currentUniverse }, cloud: { nodeInstanceList, instanceTypes }, clusterType, formValues } = nextProps;
 
     const currentFormValues = formValues[clusterType];
     let providerSelected = this.state.providerSelected;
@@ -234,10 +224,10 @@ export default class ClusterFields extends Component {
       providerSelected = currentFormValues.provider;
     }
 
-    if (prevProps.cloud.instanceTypes.data !== instanceTypes.data
-      && isNonEmptyArray(instanceTypes.data) && providerSelected) {
+    if (nextProps.cloud.instanceTypes.data !== this.props.cloud.instanceTypes.data
+      && isNonEmptyArray(nextProps.cloud.instanceTypes.data) && providerSelected) {
 
-      if (this.props.type === "Create" || (this.props.type === "Async" && !this.state.isReadOnlyExists)) {
+      if (nextProps.type === "Create" || (nextProps.type === "Async" && !this.state.isReadOnlyExists)) {
         let instanceTypeSelected = null;
         const currentProviderCode = this.getCurrentProvider(providerSelected).code;
         instanceTypeSelected = DEFAULT_INSTANCE_TYPE_MAP[currentProviderCode];
@@ -268,23 +258,23 @@ export default class ClusterFields extends Component {
     // Set default storageType once API call has completed, defaults to AWS provider if current provider is not GCP
     if (typeof currentProvider !== 'undefined' &&
       currentProvider.code === "gcp" &&
-      isNonEmptyArray(cloud.gcpTypes.data) &&
-      !isNonEmptyArray(prevProps.cloud.gcpTypes.data)
+      isNonEmptyArray(nextProps.cloud.gcpTypes.data) &&
+      !isNonEmptyArray(this.props.cloud.gcpTypes.data)
     ) {
       this.props.updateFormField(`${clusterType}.storageType`, DEFAULT_STORAGE_TYPES['GCP']);
       this.setState({"storageType": DEFAULT_STORAGE_TYPES['GCP']});
-    } else if (isNonEmptyArray(cloud.ebsTypes) && !isNonEmptyArray(prevProps.cloud.ebsTypes)) {
+    } else if (isNonEmptyArray(nextProps.cloud.ebsTypes) && !isNonEmptyArray(this.props.cloud.ebsTypes)) {
       this.props.updateFormField(`${clusterType}.storageType`, DEFAULT_STORAGE_TYPES['AWS']);
       this.setState({"storageType": DEFAULT_STORAGE_TYPES['AWS']});
     }
 
-    if (isNonEmptyArray(this.props.softwareVersions) && isNonEmptyObject(prevProps.formValues[clusterType]) && !isNonEmptyString(prevProps.formValues[clusterType].ybSoftwareVersion)) {
+    if (isNonEmptyArray(nextProps.softwareVersions) && isNonEmptyObject(this.props.formValues[clusterType]) && !isNonEmptyString(this.props.formValues[clusterType].ybSoftwareVersion)) {
       this.setState({ybSoftwareVersion: this.props.softwareVersions[0]});
-      this.props.updateFormField(`${clusterType}.ybSoftwareVersion`, this.props.softwareVersions[0]);
+      this.props.updateFormField(`${clusterType}.ybSoftwareVersion`, nextProps.softwareVersions[0]);
     }
 
     // Form Actions on Create Universe Success
-    if (getPromiseState(prevProps.universe.createUniverse).isLoading() && getPromiseState(this.props.universe.createUniverse).isSuccess()) {
+    if (getPromiseState(this.props.universe.createUniverse).isLoading() && getPromiseState(nextProps.universe.createUniverse).isSuccess()) {
       this.props.reset();
       this.props.fetchUniverseMetadata();
       this.props.fetchCustomerTasks();
@@ -295,10 +285,10 @@ export default class ClusterFields extends Component {
       }
     }
     // Form Actions on Edit Universe Success
-    if ((getPromiseState(prevProps.universe.editUniverse).isLoading() && getPromiseState(universe.editUniverse).isSuccess()) ||
-        (getPromiseState(prevProps.universe.addReadReplica).isLoading() && getPromiseState(universe.addReadReplica).isSuccess()) ||
-        (getPromiseState(prevProps.universe.editReadReplica).isLoading() && getPromiseState(universe.editReadReplica).isSuccess()) ||
-        (getPromiseState(prevProps.universe.deleteReadReplica).isLoading() && getPromiseState(universe.deleteReadReplica).isSuccess())) {
+    if ((getPromiseState(this.props.universe.editUniverse).isLoading() && getPromiseState(nextProps.universe.editUniverse).isSuccess()) ||
+        (getPromiseState(this.props.universe.addReadReplica).isLoading() && getPromiseState(nextProps.universe.addReadReplica).isSuccess()) ||
+        (getPromiseState(this.props.universe.editReadReplica).isLoading() && getPromiseState(nextProps.universe.editReadReplica).isSuccess()) ||
+        (getPromiseState(this.props.universe.deleteReadReplica).isLoading() && getPromiseState(nextProps.universe.deleteReadReplica).isSuccess())) {
       this.props.fetchCurrentUniverse(currentUniverse.data.universeUUID);
       this.props.fetchUniverseMetadata();
       this.props.fetchCustomerTasks();
@@ -306,11 +296,11 @@ export default class ClusterFields extends Component {
       browserHistory.push(this.props.location.pathname);
     }
     // Form Actions on Configure Universe Success
-    if (getPromiseState(prevProps.universe.universeConfigTemplate).isLoading() && getPromiseState(universe.universeConfigTemplate).isSuccess()) {
-      this.props.fetchUniverseResources(universe.universeConfigTemplate.data);
+    if (getPromiseState(this.props.universe.universeConfigTemplate).isLoading() && getPromiseState(nextProps.universe.universeConfigTemplate).isSuccess()) {
+      this.props.fetchUniverseResources(nextProps.universe.universeConfigTemplate.data);
     }
     // If nodeInstanceList changes, fetch number of available nodes
-    if (getPromiseState(nodeInstanceList).isSuccess() && getPromiseState(prevProps.cloud.nodeInstanceList).isLoading()) {
+    if (getPromiseState(nodeInstanceList).isSuccess() && getPromiseState(this.props.cloud.nodeInstanceList).isLoading()) {
       let numNodesAvailable = nodeInstanceList.data.reduce((acc, val) => {
         if (!val.inUse) {
           acc++;
@@ -318,7 +308,7 @@ export default class ClusterFields extends Component {
         return acc;
       }, 0);
       // Add Existing nodes in Universe userIntent to available nodes for calculation in case of Edit
-      if (prevProps.type === "Edit" || (type === "Async" && !this.state.isReadOnlyExists)) {
+      if (this.props.type === "Edit" || (nextProps.type === "Async" && !this.state.isReadOnlyExists)) {
         const cluster = getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType);
         if (isDefinedNotNull(cluster)) {
           numNodesAvailable += cluster.userIntent.numNodes;
@@ -326,6 +316,25 @@ export default class ClusterFields extends Component {
       }
       this.setState({maxNumNodes: numNodesAvailable});
     }
+}
+componentDidUpdate(prevProps, prevState) {
+  const {
+    universe: {
+      currentUniverse,
+      universeConfigTemplate
+      },
+      formValues,
+      clusterType,
+      setPlacementStatus,
+      toggleDisableSubmit,
+      type
+    } = this.props;
+    let currentProviderUUID = this.state.providerSelected;
+
+    if (isNonEmptyObject(formValues[clusterType]) && isNonEmptyString(formValues[clusterType].provider)) {
+      currentProviderUUID = formValues[clusterType].provider;
+    }
+    const currentProvider = this.getCurrentProvider(currentProviderUUID);
 
     const configureIntentValid = () => {
       return (!_.isEqual(this.state, prevState)) &&
