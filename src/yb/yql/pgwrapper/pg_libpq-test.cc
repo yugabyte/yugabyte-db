@@ -386,6 +386,10 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
 #endif
 
   PGConn conn = ASSERT_RESULT(Connect());
+  std::vector<PGConn> thread_connections;
+  for (int i = 0; i < kThreads; ++i) {
+    thread_connections.push_back(ASSERT_RESULT(Connect()));
+  }
 
   for (int i = 1; i <= kAccounts; ++i) {
     ASSERT_OK(conn.ExecuteFormat(
@@ -404,9 +408,8 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
   TestThreadHolder thread_holder;
   for (int i = 1; i <= kThreads; ++i) {
     thread_holder.AddThreadFunctor(
-        [this, &writes, &isolation,
+        [&conn = thread_connections[i - 1], &writes, &isolation,
          &stop_flag = thread_holder.stop_flag()]() {
-      auto conn = ASSERT_RESULT(Connect());
       while (!stop_flag.load(std::memory_order_acquire)) {
         int from = RandomUniformInt(1, kAccounts);
         int to = RandomUniformInt(1, kAccounts - 1);
@@ -444,7 +447,7 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
     while (!stop_flag.load(std::memory_order_acquire)) {
       if (isolation == IsolationLevel::SERIALIZABLE_ISOLATION) {
         auto lower_bound = reads.load() * kRequiredWrites < writes.load() * kRequiredReads
-            ? 1.0 - 1.0 / (1 << failures_in_row) : 0.0;
+            ? 1.0 - 1.0 / (1ULL << failures_in_row) : 0.0;
         ASSERT_OK(conn.ExecuteFormat("SET yb_transaction_priority_lower_bound = $0", lower_bound));
       }
       auto sum = ReadSumBalance(&conn, kAccounts, isolation, &counter);

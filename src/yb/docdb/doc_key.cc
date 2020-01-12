@@ -1114,9 +1114,9 @@ bool DocKeyBelongsTo(Slice doc_key, const Schema& schema) {
 
   doc_key.consume_byte();
 
-  std::string bytes;
-  schema.cotable_id().EncodeToComparable(&bytes);
-  return doc_key.starts_with(bytes);
+  uint8_t bytes[kUuidSize];
+  schema.cotable_id().EncodeToComparable(bytes);
+  return doc_key.starts_with(Slice(bytes, kUuidSize));
 }
 
 const KeyBounds KeyBounds::kNoBounds;
