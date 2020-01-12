@@ -1129,7 +1129,10 @@ yb::Status GetSubDocument(
   // Seed key_bytes with the subdocument key. For each subkey in the projection, build subdocument
   // and reuse key_bytes while appending the subkey.
   *data.result = SubDocument();
-  KeyBytes key_bytes(data.subdocument_key);
+  KeyBytes key_bytes;
+  // Preallocate some extra space to avoid allocation for small subkeys.
+  key_bytes.Reserve(data.subdocument_key.size() + kMaxBytesPerEncodedHybridTime + 32);
+  key_bytes.AppendRawBytes(data.subdocument_key);
   const size_t subdocument_key_size = key_bytes.size();
   for (const PrimitiveValue& subkey : *projection) {
     // Append subkey to subdocument key. Reserve extra kMaxBytesPerEncodedHybridTime + 1 bytes in
