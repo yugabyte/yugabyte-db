@@ -648,13 +648,6 @@ class SubDocKey {
     doc_ht_ = hybrid_time;
   }
 
-  // Sets HybridTime with the maximum write id so that the reader can see the values written at
-  // exactly the given hybrid time. Useful when constructing a seek key.
-  void SetHybridTimeForReadPath(HybridTime hybrid_time) {
-    DCHECK(hybrid_time.is_valid());
-    doc_ht_ = DocHybridTime(hybrid_time, kMaxWriteId);
-  }
-
   bool has_hybrid_time() const {
     return doc_ht_.is_valid();
   }

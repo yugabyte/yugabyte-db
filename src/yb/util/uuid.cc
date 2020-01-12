@@ -57,8 +57,7 @@ CHECKED_STATUS Uuid::ToString(std::string *strval) const {
   return Status::OK();
 }
 
-void Uuid::EncodeToComparable(std::string* bytes) const {
-  uint8_t output[kUuidSize];
+void Uuid::EncodeToComparable(uint8_t* output) const {
   if (boost_uuid_.version() == boost::uuids::uuid::version_time_based) {
     // Take the MSB of the UUID and get the timestamp ordered bytes.
     ToTimestampBytes(output);
@@ -66,6 +65,11 @@ void Uuid::EncodeToComparable(std::string* bytes) const {
     ToVersionFirstBytes(output);
   }
   memcpy(output + kUuidMsbSize, boost_uuid_.data + kUuidMsbSize, kUuidLsbSize);
+}
+
+void Uuid::EncodeToComparable(std::string* bytes) const {
+  uint8_t output[kUuidSize];
+  EncodeToComparable(output);
   bytes->assign(reinterpret_cast<char *>(output), kUuidSize);
 }
 

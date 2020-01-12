@@ -71,6 +71,7 @@ class Uuid {
   CHECKED_STATUS ToBytes(std::string* bytes) const;
 
   // Encodes the UUID into the time comparable uuid to be stored in RocksDB.
+  void EncodeToComparable(uint8_t* output) const;
   void EncodeToComparable(std::string* bytes) const;
 
   // Given a string holding the raw bytes in network byte order, it builds the appropriate

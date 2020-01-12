@@ -17,7 +17,6 @@
 #include <boost/optional/optional.hpp>
 
 #include "yb/common/read_hybrid_time.h"
-#include "yb/util/trilean.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/doc_key.h"
@@ -185,6 +184,9 @@ class IntentAwareIterator {
   // Seek to latest subdoc key among regular and intent iterator.
   void SeekToLatestSubDocKeyInternal();
 
+  // Choose latest subkey among regular and intent iterators.
+  Slice LatestSubDocKey();
+
   // Skips regular entries with hybrid time after read limit.
   // If `is_forward` is `false` and `iter_` is positioned to the earliest record for the current
   // key, there are two cases:
@@ -243,7 +245,7 @@ class IntentAwareIterator {
     bool* found_later_regular_result);
 
   // Whether current entry is regular key-value pair.
-  bool IsEntryRegular();
+  bool IsEntryRegular(bool descending = false);
 
   // Set the exclusive upperbound of the intent iterator to the current SubDocKey of the regular
   // iterator. This is necessary to avoid RocksDB iterator from scanning over the deleted intents
@@ -256,6 +258,10 @@ class IntentAwareIterator {
 
   void SeekIntentIterIfNeeded();
 
+  // Does initial steps for prev doc key/sub doc key seek.
+  // Returns true if prepare succeed.
+  bool PreparePrev(const Slice& key);
+
   bool SatisfyBounds(const Slice& slice);
 
   bool ResolvedIntentFromSameTransaction() const {
@@ -264,8 +270,11 @@ class IntentAwareIterator {
 
   DocHybridTime GetIntentDocHybridTime() const {
     return ResolvedIntentFromSameTransaction() ? intent_dht_from_same_txn_
-                                               :  resolved_intent_txn_dht_;
+                                               : resolved_intent_txn_dht_;
   }
+
+  // Returns true if iterator currently points to some record.
+  bool HasCurrentEntry();
 
   const ReadHybridTime read_time_;
   const string encoded_read_time_local_limit_;
