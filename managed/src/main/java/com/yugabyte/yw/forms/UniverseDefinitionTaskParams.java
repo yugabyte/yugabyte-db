@@ -330,6 +330,27 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return false;
     }
 
+    public boolean onlyRegionsChanged(UserIntent other) {
+      if (universeName.equals(other.universeName) &&
+          provider.equals(other.provider) &&
+          providerType == other.providerType &&
+          replicationFactor == other.replicationFactor &&
+          newRegionsAdded(regionList, other.regionList) &&
+          Objects.equals(preferredRegion, other.preferredRegion) &&
+          instanceType.equals(other.instanceType) &&
+          numNodes == other.numNodes &&
+          ybSoftwareVersion.equals(other.ybSoftwareVersion) &&
+          (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode)) &&
+          assignPublicIP == other.assignPublicIP &&
+          useTimeSync == other.useTimeSync) {
+        return true;
+      }
+      return false;
+    }
+
+    private static boolean newRegionsAdded(List<UUID> left, List<UUID> right) {
+      return (new HashSet<>(left)).containsAll(new HashSet<>(right));
+    }
     /**
      * Helper API to check if the set of regions is the same in two lists. Does not validate that
      * the UUIDs correspond to actual, existing Regions.
