@@ -299,7 +299,7 @@ export default class AZSelectorTable extends Component {
       uniqueAzs: [...new Set(groupsArray.map(item => item.value))].length});
   };
 
-  componentDidMount() {
+  componentWillMount() {
     const {universe: {currentUniverse, universeConfigTemplate}, type, clusterType} = this.props;
     const currentCluster = getPromiseState(universeConfigTemplate).isSuccess() ?
       getClusterByType(universeConfigTemplate.data.clusters, clusterType) :
