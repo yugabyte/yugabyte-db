@@ -1,4 +1,4 @@
-## 1. Create a 1 node cluster with replication factor 1
+## 1. Create a local cluster
 
 ```sh
 $ kubectl apply -f yugabyte-statefulset-rf-1.yaml
