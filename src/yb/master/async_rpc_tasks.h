@@ -193,6 +193,10 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   std::atomic<rpc::ScheduledTaskId> reactor_task_id_{rpc::kInvalidTaskId};
 
+  // Mutex protecting calls to UnregisterAsyncTask to avoid races between Run and user triggered
+  // Aborts.
+  std::mutex unregister_mutex_;
+
  private:
   // Returns true if we should impose a limit in the number of retries for this task type.
   bool RetryLimitTaskType() {

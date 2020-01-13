@@ -137,7 +137,7 @@ class UniverseForm extends Component {
     this.props.submitEditUniverseReadReplica(this.getFormPayload(), universeUUID);
   }
 
-  componentDidMount() {
+  componentWillMount() {
     this.props.resetConfig();
     this.setState({editNotAllowed: true});
   }
@@ -146,9 +146,9 @@ class UniverseForm extends Component {
     this.props.resetConfig();
   }
 
-  componentDidUpdate(prevProps) {
-    if (this.props.universe.formSubmitSuccess) {
-      prevProps.reset();
+  componentWillUpdate(newProps) {
+    if (newProps.universe.formSubmitSuccess) {
+      this.props.reset();
     }
   }
 
@@ -318,6 +318,7 @@ class UniverseForm extends Component {
         submitPayload.nodeDetailsSet = submitPayload.nodeDetailsSet.filter((c)=>(c.state === "ToBeAdded"));
       }
     }
+
     return submitPayload;
   }
 

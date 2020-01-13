@@ -39,67 +39,67 @@ Creates a local YugabyteDB cluster. With no optional arguments, creates a 1-node
 
 For more details and examples, see [Create a local cluster](#create-a-local-cluster), [Create a cluster across multiple zones, regions, and clouds](#Create-a-cluster-across-multiple-zones-regions-and-clouds), and [Create a cluster with custom flags](#create-a-cluster-with-custom-flags).
 
-### start
+##### start
 
 Starts the existing cluster or, if not existing, creates and starts the cluster.
 
-### stop
+##### stop
 
 Stops the cluster, if running.
 
-### destroy
+##### destroy
 
 Destroys the current cluster.
 
 For details and examples, see [Destroy a local cluster](#destroy-a-local-cluster).
 
-### status
+##### status
 
 Displays the current status of the cluster.
 
 For details and examples, see [Check cluster status](#check-cluster-status).
 
-### restart
+##### restart
 
 Restarts the current cluster all at once.
 
 For details and examples, see [Restart a cluster](#restart-a-cluster) and [Restart with custom tags](#restart-with-custom-tags).
 
-### wipe_restart
+##### wipe_restart
 
 Stops the current cluster, wipes all data files and starts the cluster as before (losing all flags).
 
 For details and examples, see [Wipe and restart with placement info flags](#wipe-and-restart-with-placement-info-flags).
 
-### add_node
+##### add_node
 
 Adds a new node to the current cluster.
 
 For details and examples, see [Add nodes](#add-nodes) and [Create a cluster across multiple zones, regions, and clouds](#create-a-cluster-across-multiple-zones-regions-and-clouds).
 
-### remove_node
+##### remove_node
 
 Stops a particular node in the running cluster.
 
 For details and examples, see [Stop and remove nodes](#stop-and-remove-nodes).
 
-### start_node
+##### start_node
 
 Starts a specified node in the running cluster.
 
-### stop_node
+##### stop_node
 
 Stops the specified node in the running cluster.
 
 For details and examples, see [Stop and remove nodes](#stop-and-remove-nodes).
 
-### restart_node
+##### restart_node
 
 Restarts the specified node in a running cluster.
 
 For details and examples, see [Restart node with placement information](#restart-node-with-placement-information).
 
-### setup_redis
+##### setup_redis
 
 Enables YugabyteDB support for the Redis-compatible YEDIS API.
 
@@ -107,29 +107,29 @@ For details and examples, see [Initialize the YEDIS API](#initialize-the-yedis-a
 
 ## Optional arguments
 
-### --help | -h
+##### --help, -h
 
 Shows the help message and then exits.
 
-### --binary_dir
+##### --binary_dir
 
 Specifies the directory in which to find the YugabyteDB `yb-master` and `yb-tserver` binary files.
 
 Default: `<yugabyte-installation-dir>/bin/`
 
-### --data_dir
+##### --data_dir
 
 Specifies the data directory for YugabyteDB.
 
 Default: `$HOME/yugabyte-data/`
 
-### --master_flags
+##### --master_flags
 
 Specifies a list of YB-Master flags, separated by commas.
 
 For details and examples, see [Create a cluster with custom flags](#create-a-cluster-with-custom-flags).
 
-### --tserver_flags
+##### --tserver_flags
 
 Specifies a list of YB-TServer flags, separated by commas.
 
@@ -143,7 +143,7 @@ To enable [YSQL authentication](../../secure/authentication/ysql-authentication)
 $./bin/yb-ctl create --tserver_flags "ysql_enable_auth=true"
 ```
 
-### --placement_info
+##### --placement_info
 
 Specifies the cloud, region, and zone as `cloud.region.zone`, separated by commas.
 
@@ -152,39 +152,39 @@ Default: `cloud1.datacenter1.rack1`
 For details and examples, see [Create a cluster across multiple zones, regions, and clouds](#create-a-cluster-across-multiple-zones-regions-and-clouds), [Restart node with placement information](#restart-node-with-placement-information),
 and [Wipe and restart with placement info flags](#wipe-and-restart-with-placement-info-flags).
 
-### --replication_factor | -rf
+##### --replication_factor, -rf
 
 Specifies the number of replicas for each tablet. Should be an odd number of least `3` or  (for example, `3` or `5`) so that a majority consensus can be established.
 
-Replication factor for the cluster as well as default number of YB-Master services.
+Replication factor for the cluster as well as default number of YB-Master servers.
 
 Default: `1`
 
-### --require_clock_sync
+##### --require_clock_sync
 
 Specifies whether YugabyteDB requires clock synchronization between the nodes in the cluster.
 
 Default: `false`
 
-### --num_shards_per_tserver
+##### --num_shards_per_tserver
 
 Number of shards (tablets) to start per tablet server for each table.
 
 Default: `2`
 
-### --timeout-yb-admin-sec
+##### --timeout-yb-admin-sec
 
 Timeout, in seconds, for operations that call `yb-admin` and wait on the cluster.
 
-### --timeout-processes-running-sec
+##### --timeout-processes-running-sec
 
 Timeout, in seconds, for operations that wait on the cluster.
 
-### --verbose
+##### --verbose
 
 Flag to log internal debug messages to `stderr`.
   
-### --install-if-needed
+##### --install-if-needed
 
 With this option, if YugabyteDB is not yet installed on the system, the latest version will be downloaded and installed automatically.
 
@@ -194,7 +194,7 @@ To quickly create a local YugabyteDB cluster for development and learning, use t
 
 In order to ensure that all of the replicas for a given tablet can be placed on different nodes, the number of nodes created with the initial create command is always equal to the replication factor.  To expand or shrink the cluster, use the [`add_node`](#add-nodes) and [`remove_node`](#stop-remove-nodes) commands.
 
-Each of these initial nodes run a `yb-tserver` service and a `yb-master` service. Note that the number of YB-Master services in a cluster must equal the replication factor for the cluster to be considered operating normally.
+Each of these initial nodes run a `yb-tserver` server and a `yb-master` server. Note that the number of YB-Master servers in a cluster must equal the replication factor for the cluster to be considered operating normally.
 
 ### Create a local 1-node cluster with replication factor of 1
 
@@ -319,7 +319,7 @@ $ ./bin/yb-ctl setup_redis
 
 ### Add nodes
 
-- Adding a new node to the cluster. This will start a new YB-TServer service and give it a new `node_id` for tracking purposes.
+- Adding a new node to the cluster. This will start a new YB-TServer server and give it a new `node_id` for tracking purposes.
 
 ```sh
 $ ./bin/yb-ctl add_node
@@ -370,7 +370,7 @@ $ ./bin/yb-ctl add_node --placement_info "cloud1.region1.zone1"
 
 ### Create a cluster with custom flags
 
-You can also pass custom flags to the YB-Master and YB-TServer services.
+You can also pass custom flags to the YB-Master and YB-TServer servers.
 
 ```sh
 $ ./bin/yb-ctl --rf 1 create --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20,master_backup_svc_queue_length=70" --tserver_flags "log_inject_latency=false,log_segment_size_mb=128,raft_heartbeat_interval_ms=1000"

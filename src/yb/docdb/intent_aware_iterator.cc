@@ -363,6 +363,10 @@ void IntentAwareIterator::SeekOutOfSubDoc(const Slice& key) {
   SeekOutOfSubDoc(&key_bytes);
 }
 
+bool IntentAwareIterator::HasCurrentEntry() {
+  return iter_valid_ || resolved_intent_state_ == ResolvedIntentState::kValid;
+}
+
 void IntentAwareIterator::SeekToLastDocKey() {
   iter_.SeekToLast();
   SkipFutureRecords(Direction::kBackward);
@@ -373,10 +377,9 @@ void IntentAwareIterator::SeekToLastDocKey() {
     seek_intent_iter_needed_ = SeekIntentIterNeeded::kNoNeed;
     skip_future_intents_needed_ = false;
   }
-  if (!iter_valid_ && resolved_intent_state_ != ResolvedIntentState::kValid) {
-    return;
+  if (HasCurrentEntry()) {
+    SeekToLatestDocKeyInternal();
   }
-  SeekToLatestDocKeyInternal();
 }
 
 template <class T>
@@ -446,8 +449,8 @@ Status IntentAwareIterator::NextFullValue(
   return status_;
 }
 
-void IntentAwareIterator::PrevSubDocKey(const KeyBytes& key_bytes) {
-  ROCKSDB_SEEK(&iter_, key_bytes);
+bool IntentAwareIterator::PreparePrev(const Slice& key) {
+  ROCKSDB_SEEK(&iter_, key);
 
   if (iter_.Valid()) {
     iter_.Prev();
@@ -458,7 +461,7 @@ void IntentAwareIterator::PrevSubDocKey(const KeyBytes& key_bytes) {
 
   if (intent_iter_.Initialized()) {
     ResetIntentUpperbound();
-    ROCKSDB_SEEK(&intent_iter_, GetIntentPrefixForKeyWithoutHt(key_bytes));
+    ROCKSDB_SEEK(&intent_iter_, GetIntentPrefixForKeyWithoutHt(key));
     if (intent_iter_.Valid()) {
       intent_iter_.Prev();
     } else {
@@ -469,10 +472,13 @@ void IntentAwareIterator::PrevSubDocKey(const KeyBytes& key_bytes) {
     skip_future_intents_needed_ = false;
   }
 
-  if (!iter_valid_ && resolved_intent_state_ != ResolvedIntentState::kValid) {
-    return;
+  return HasCurrentEntry();
+}
+
+void IntentAwareIterator::PrevSubDocKey(const KeyBytes& key_bytes) {
+  if (PreparePrev(key_bytes)) {
+    SeekToLatestSubDocKeyInternal();
   }
-  SeekToLatestSubDocKeyInternal();
 }
 
 void IntentAwareIterator::PrevDocKey(const DocKey& doc_key) {
@@ -480,43 +486,21 @@ void IntentAwareIterator::PrevDocKey(const DocKey& doc_key) {
 }
 
 void IntentAwareIterator::PrevDocKey(const Slice& encoded_doc_key) {
-  ROCKSDB_SEEK(&iter_, encoded_doc_key);
-  if (iter_.Valid()) {
-    iter_.Prev();
-  } else {
-    iter_.SeekToLast();
+  if (PreparePrev(encoded_doc_key)) {
+    SeekToLatestDocKeyInternal();
   }
-  SkipFutureRecords(Direction::kBackward);
+}
 
-  if (intent_iter_.Initialized()) {
-    ResetIntentUpperbound();
-    ROCKSDB_SEEK(&intent_iter_, GetIntentPrefixForKeyWithoutHt(encoded_doc_key));
-    if (intent_iter_.Valid()) {
-      intent_iter_.Prev();
-    } else {
-      intent_iter_.SeekToLast();
-    }
-    SeekToSuitableIntent<Direction::kBackward>();
-    seek_intent_iter_needed_ = SeekIntentIterNeeded::kNoNeed;
-    skip_future_intents_needed_ = false;
-  }
-
-  if (!iter_valid_ && resolved_intent_state_ != ResolvedIntentState::kValid) {
-    return;
-  }
-  SeekToLatestDocKeyInternal();
+Slice IntentAwareIterator::LatestSubDocKey() {
+  DCHECK(HasCurrentEntry())
+      << "Expected iter_valid(" << iter_valid_ << ") || resolved_intent_state_("
+      << resolved_intent_state_ << ") == ResolvedIntentState::kValid";
+  return IsEntryRegular(/* descending */ true) ? iter_.key()
+                                               : resolved_intent_key_prefix_.AsSlice();
 }
 
 void IntentAwareIterator::SeekToLatestSubDocKeyInternal() {
-  DCHECK(iter_valid_ || resolved_intent_state_ == ResolvedIntentState::kValid)
-      << "Expected iter_valid(" << iter_valid_ << ") || resolved_intent_state_("
-      << resolved_intent_state_ << ") == ResolvedIntentState::kValid";
-  // Choose latest subkey among regular and intent iterators.
-  Slice subdockey_slice(
-      !iter_valid_ ||
-      (resolved_intent_state_ == ResolvedIntentState::kValid
-          && iter_.key().compare(resolved_intent_sub_doc_key_encoded_) < 0)
-      ? resolved_intent_key_prefix_.AsSlice() : iter_.key());
+  auto subdockey_slice = LatestSubDocKey();
 
   // Strip the hybrid time and seek the slice.
   auto doc_ht = DocHybridTime::DecodeFromEnd(&subdockey_slice);
@@ -529,15 +513,8 @@ void IntentAwareIterator::SeekToLatestSubDocKeyInternal() {
 }
 
 void IntentAwareIterator::SeekToLatestDocKeyInternal() {
-  DCHECK(iter_valid_ || resolved_intent_state_ == ResolvedIntentState::kValid)
-      << "Expected iter_valid(" << iter_valid_ << ") || resolved_intent_state_("
-      << resolved_intent_state_ << ") == ResolvedIntentState::kValid";
-  // Choose latest subkey among regular and intent iterators.
-  Slice subdockey_slice(
-      !iter_valid_ ||
-      (resolved_intent_state_ == ResolvedIntentState::kValid
-          && iter_.key().compare(resolved_intent_sub_doc_key_encoded_) < 0)
-      ? resolved_intent_key_prefix_.AsSlice() : iter_.key());
+  auto subdockey_slice = LatestSubDocKey();
+
   // Seek to the first key for row containing found subdockey.
   auto dockey_size = DocKey::EncodedSize(subdockey_slice, DocKeyPart::WHOLE_DOC_KEY);
   if (!dockey_size.ok()) {
@@ -579,15 +556,15 @@ bool IntentAwareIterator::valid() {
   if (skip_future_intents_needed_) {
     SkipFutureIntents();
   }
-  return !status_.ok() || iter_valid_ || resolved_intent_state_ == ResolvedIntentState::kValid;
+  return !status_.ok() || HasCurrentEntry();
 }
 
-bool IntentAwareIterator::IsEntryRegular() {
+bool IntentAwareIterator::IsEntryRegular(bool descending) {
   if (PREDICT_FALSE(!iter_valid_)) {
     return false;
   }
   if (resolved_intent_state_ == ResolvedIntentState::kValid) {
-    return iter_.key().compare(resolved_intent_sub_doc_key_encoded_) < 0;
+    return (iter_.key().compare(resolved_intent_sub_doc_key_encoded_) < 0) != descending;
   }
   return true;
 }

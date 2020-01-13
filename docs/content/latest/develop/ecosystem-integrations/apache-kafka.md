@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-In this tutorial, we are going to use the [Kafka Connect-based Sink Connector for YugabyteDB](https://github.com/yugabyte/yb-kafka-connector) to store events from Apache Kafka into YugabyteDB using YugabyteDB's [YCQL](../../../api/ycql) API.
+In this tutorial, we are going to use the [Kafka Connect-based Sink Connector for YugabyteDB](https://github.com/yugabyte/yb-kafka-connector) to store events from Apache Kafka into YugabyteDB using the [YCQL](../../../api/ycql) API.
 
 ## 1. Start local cluster
 

@@ -544,6 +544,20 @@ CHECKED_STATUS PTSelectStmt::AnalyzeIndexes(SemContext *sem_context) {
 
 // Return whether the index covers the read fully.
 bool PTSelectStmt::CoversFully(const IndexInfo& index_info) const {
+  // INDEXes that were created before v2.0 are defined by column IDs instead of mangled_names.
+  // - Returns TRUE if a list of column refs of a statement is a subset of INDEX columns.
+  // - Use ColumnID to check if a column in a query is covered by the index.
+  // - The list "column_refs_" contains IDs of all columns that are referred to by SELECT.
+  // - The list "IndexInfo::columns_" contains the IDs of all columns in the INDEX.
+  if (!index_info.use_mangled_column_name()) {
+    for (const int32 table_col_id : column_refs_) {
+      if (!index_info.IsColumnCovered(ColumnId(table_col_id))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   // Check all ColumnRef in selected list.
   for (const PTExpr *expr : covering_exprs_) {
     // If this expression does not have column reference, it is considered "coverred".

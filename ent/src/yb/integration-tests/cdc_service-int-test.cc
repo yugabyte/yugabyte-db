@@ -159,7 +159,7 @@ void VerifyCdcState(client::YBClient* client) {
   ASSERT_OK(table.Open(cdc_state_table, client));
   ASSERT_EQ(1, boost::size(client::TableRange(table)));
   const auto& row = client::TableRange(table).begin();
-  string checkpoint = row->column(2).string_value();
+  string checkpoint = row->column(master::kCdcCheckpointIdx).string_value();
   size_t split = checkpoint.find(".");
   auto index = boost::lexical_cast<int>(checkpoint.substr(split + 1, string::npos));
   // Verify that op id index has been advanced and is not 0.

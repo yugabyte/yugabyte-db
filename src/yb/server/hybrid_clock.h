@@ -136,6 +136,10 @@ class HybridClock : public Clock {
     }
 
     void HandleLogicalComponentOverflow();
+
+    std::string ToString() const {
+      return Format("{ last_usec: $0 logical: $1 }", last_usec, logical);
+    }
   };
 
   enum State {

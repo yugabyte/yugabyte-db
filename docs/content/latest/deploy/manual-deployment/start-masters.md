@@ -14,45 +14,49 @@ showAsideToc: true
 ---
 
 {{< note title="Note" >}}
-
-- The number of nodes of a cluster on which the YB-Master server need to be started **must** equal the replication factor.
+- The number of nodes in a cluster running YB-Masters **must** equal the replication factor.
 - The number of comma-separated addresses present in `master_addresses` should also equal the replication factor.
-
+- For running a single cluster across multiple data centers or 2 clusters in 2 data centers, refer to the [Multi-DC Deployments](../../../deploy/multi-dc/) section.
 {{< /note >}}
+
+This section covers deployment for a single region or data center in a multi-zone/multi-rack configuration. Note that single zone configuration is a special case of multi-zone where all placement related flags are set to the same value across every node. 
 
 ## Example scenario
 
-Let us assume the following.
+- Create a 6-node cluster with replication factor 3.
+      - YB-Master server should run on only 3 these nodes but as noted in the next section, the YB-TServer server should run on all 6 nodes.
+      - Assume the 3 YB-Master private IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140`.
+      - Cloud will be `aws`, region will be `us-west` and the 3 AZs will be `us-west-2a`, `us-west-2b`, `us-west-2c`. 2 nodes will be placed in each AZ in such a way that 1 replica for each tablet (aka shard) gets placed in any 1 node for each AZ. 
+- Multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`.
 
-- We want to create a a 4 node cluster with replication factor `3`.
-      - We would need to run the YB-Master process on only three of the nodes, for example, `node-a`, `node-b`, `node-c`.
-      - Let us assume their private IP addresses are `172.151.17.130`, `172.151.17.220`, and `172.151.17.140`.
-- We have multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`.
+## Run YB-Master servers with command line parameters
 
-This section covers deployment for a single region or zone (or a single data center or rack). Execute the following steps on each of the instances.
-
-## Run YB-Master services with command line parameters
-
-- Run `yb-master` binary on each of the nodes as shown below. Note how multiple directories can be provided to the `--fs_data_dirs` option. For each YB-Master service, replace the RPC bind address configuration with the private IP address of the host running the YB-Master.
-
-For the full list of configuration options (or flags), see the [YB-Master reference](../../../reference/configuration/yb-master/).
+Run the `yb-master` server on each of the 3 nodes as shown below. Note how multiple directories can be provided to the `--fs_data_dirs` option. Replace the `rpc_bind_addresses` value with the private IP address of the host as well as the set the `placement_cloud`,`placement_region` and `placement_zone` values appropriately. For single zone deployment, simply use the same value for the `placement_zone` flag.
 
 ```sh
 $ ./bin/yb-master \
   --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
   --rpc_bind_addresses 172.151.17.130 \
   --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
+  --placement_cloud aws \
+  --placement_region us-west \
+  --placement_zone us-west-2a \
   >& /home/centos/disk1/yb-master.out &
 ```
 
-## Run YB-Master services with configuration file
+For the full list of configuration options (or flags), see the [YB-Master reference](../../../reference/configuration/yb-master/).
 
-- Alternatively, you can also create a `master.conf` file with the following flags and then run `yb-master` with the `--flagfile` option as shown below. For each YB-Master service, replace the RPC bind address configuration option with the private IP address of the YB-Master service.
+## Run YB-Master servers with configuration file
+
+Alternatively, you can also create a `master.conf` file with the following flags and then run `yb-master` with the `--flagfile` option as shown below. For each YB-Master server, replace the RPC bind address configuration option with the private IP address of the YB-Master server.
 
 ```sh
 --master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
 --rpc_bind_addresses=172.151.17.130
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2
+--placement_cloud=aws 
+--placement_region=us-west 
+--placement_zone=us-west-2a 
 ```
 
 ```sh
@@ -61,7 +65,7 @@ $ ./bin/yb-master --flagfile master.conf >& /home/centos/disk1/yb-master.out &
 
 ## Verify health
 
-- Make sure all the 3 yb-masters are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
+Make sure all the 3 yb-masters are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
 
 ```sh
 $ cat /home/centos/disk1/yb-data/master/logs/yb-master.INFO

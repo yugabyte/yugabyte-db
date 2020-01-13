@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The YugabyteDB `yb-docker-ctl` utility provides a simple command line interface (CLI), or shell, for administering a local Docker-based cluster for development and learning. It manages the [YB-Master](../yb-master/) and [YB-TServer](../yb-tserver/) containers to perform the necessary administration.
+The `yb-docker-ctl` utility provides a simple command line interface (CLI), or shell, for administering a local Docker-based cluster for development and learning. It manages the [YB-Master](../yb-master/) and [YB-TServer](../yb-tserver/) containers to perform the necessary administration.
 
 ## Download
 
@@ -80,7 +80,7 @@ Stops the specified local YugabyteDB cluster node.
 
 ## Optional arguments
 
-### --help | -h
+### --help, -h
 
 Displays the online help and then exits.
 

@@ -15,17 +15,17 @@ showAsideToc: true
 
 ## Overview
 
-YugabyteDB consists of two distributed services - the YB-Master service and the YB-TServer service. The YB-Master service should be brought up first followed by the YB-TServer service. In order to bring up these distributed services, the respective processes (YB-Master or YB-TServer) need to be started across different machines. Below are some considerations and recommendations on starting these services. The *deployment configurations* section below has detailed steps on how to setup YugabyteDB clusters.
+A YugabyteDB cluster consists of two distributed services - the YB-TServer service and the YB-Master service. The YB-Master service should be brought up first followed by the YB-TServer service. In order to bring up these distributed services, the respective servers (YB-Master or YB-TServer) need to be started across different nodes. Below are some considerations and recommendations on starting these services. The *deployment configurations* section below has detailed steps on how to setup YugabyteDB clusters.
 
 ## Basics
 
 - YugabyteDB works on a variety of operating systems. For production workloads, the recommended operating systems are CentOS 7.x and RHEL 7.x.
-- Set the appropriate [system limits using `ulimit`](../manual-deployment/system-config/#setting-ulimits) on each node running a YugabyteDB process.
+- Set the appropriate [system limits using `ulimit`](../manual-deployment/system-config/#setting-ulimits) on each node running a YugabyteDB server.
 - Use [ntp](../manual-deployment/system-config/#ntp) to synchronize time among the machines.
 
 ## Replication
 
-YugabyteDB internally replicates data in order to survive node failure without compromising data correctness. The number of copies of the data represents the replication factor.
+YugabyteDB internally replicates data in a strongly consistent manner using Raft consensus protocol in order to survive node failure without compromising data correctness. The number of copies of the data represents the replication factor.
 
 You would first need to choose a replication factor. You would need at least as many machines as the replication factor. YugabyteDB works with both hostnames or IP addresses. IP addresses are preferred at this point, they are more extensively tested. Below are some recommendations relating to the replication factor.
 
@@ -34,9 +34,9 @@ You would first need to choose a replication factor. You would need at least as 
   - A replication factor of `3` allows tolerating one machine failure.
   - A replication factor of `5` allows tolerating two machine failures.
   - More generally, if the replication factor is `n`, YugabyteDB can survive `(n - 1) / 2` failures without compromising correctness or availability of data.
-- Number of YB-Master processes running in a cluster should match replication factor. Run each process on a separate machine to prevent losing data on failures.
-- Number of YB-TServer processes running in the cluster should not be less than the replication factor. Run each process on a separate machine to prevent losing data on failures.
-- Specify the replication factor using the `--replication_factor` when bringing up the YB-Master processes.
+- Number of YB-Master servers running in a cluster should match replication factor. Run each server on a separate machine to prevent losing data on failures.
+- Number of YB-TServer servers running in the cluster should not be less than the replication factor. Run each server on a separate machine to prevent losing data on failures.
+- Specify the replication factor using the `--replication_factor` when bringing up the YB-Master servers.
 
 See the [yb-master command reference](../manual-deployment/start-masters) for more information.
 
@@ -59,7 +59,7 @@ Allocate adequate CPU and RAM. YugabyteDB has good defaults for running on a wid
 - Both local or remote attached storage work with YugabyteDB. Since YugabyteDB internally replicates data for fault tolerance, remote attached storage which which does its own additional replication is not a requirement. Local disks often offer better performance at a lower cost.
 - Multi-disk nodes
       - Do not use RAID across multiple disks. YugabyteDB can natively handle multi-disk nodes (JBOD).
-      - Create a data directory on each of the data disks and specify a comma separated list of those directories to the yb-master and yb-tserver processes via the `--fs_data_dirs` flag.
+      - Create a data directory on each of the data disks and specify a comma separated list of those directories to the yb-master and yb-tserver servers via the `--fs_data_dirs` flag.
 - Mount settings
       - XFS is the recommended filesystem.
       - Use the `noatime` setting when mounting the data drives.
@@ -72,7 +72,7 @@ Below is a minimal list of default ports (along with the network access required
       - 7100 (YB-Master RPC communication port)
       - 9100 (YB-TServer RPC communication port)
 - In order to view the cluster dashboard, you need to be able to navigate to the following ports on the nodes
-      - 7000 (Cluster dashboard viewable from any of the YB-Master processes)
+      - 7000 (Cluster dashboard viewable from any of the YB-Master servers)
 - To use the database from the app, the following ports need to be accessible from the app (or commandline interface)
       - 9042 (which supports YCQL, YugabyteDB's Cassandra-compatible API)
       - 6379 (which supports YEDIS, YugabyteDB's Redis-compatible API)
@@ -108,7 +108,7 @@ For YugabyteDB to preserve data consistency, the clock drift and clock skew acro
 
 ### Clock skew
 
-Set a safe value for the maximum clock skew parameter (`--max_clock_skew_usec`) when starting the YugabyteDB processes. We recommend setting this parameter to twice the expected maximum clock skew between any two nodes in your deployment.
+Set a safe value for the maximum clock skew parameter (`--max_clock_skew_usec`) when starting the YugabyteDB servers. We recommend setting this parameter to twice the expected maximum clock skew between any two nodes in your deployment.
 
 For example, if the maximum clock skew across nodes is expected to be no more than 250ms, then set the parameter to 500ms (`--max_clock_skew_usec=500000`).
 

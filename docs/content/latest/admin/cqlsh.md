@@ -1,7 +1,7 @@
 ---
 title: cqlsh
 linkTitle: cqlsh
-description: cqlsh CLI for YCQL
+description: cqlsh shell for YCQL
 aliases:
   - /develop/tools/cqlsh/
   - /latest/develop/tools/cqlsh/
@@ -16,7 +16,7 @@ showAsideToc: true
 
 ## Overview
 
-The YugabyteDB CQL shell (`cqlsh`) provides a command line interface (CLI) for interacting with YugabyteDB using [YCQL](../../api/ycql/).
+The YugabyteDB CQL shell (`cqlsh`) provides a CLI for interacting with YugabyteDB using [YCQL](../../api/ycql/).
 
 ## Download
 
@@ -98,7 +98,7 @@ cqlsh> SHOW VERSION
 
 ### SHOW HOST
 
-Prints the IP address and port of the YB-TServer service that `cqlsh` is connected to in addition to the cluster name. Example:
+Prints the IP address and port of the YB-TServer server that `cqlsh` is connected to in addition to the cluster name. Example:
 
 ```sql
 cqlsh> SHOW HOST

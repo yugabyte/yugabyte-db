@@ -15,41 +15,46 @@ showAsideToc: true
 
 ## Introduction
 
-[Helm](https://helm.sh/) is an open source packaging tool that helps install applications and services on Kubernetes. It uses a packaging format called `charts`. Charts are a collection of YAML templates that describe a related set of Kubernetes resources.
+[Helm](https://helm.sh/) is an open source packaging tool that helps install applications and services on Kubernetes. It uses a packaging format called `charts`. A Helm chart is a package containing all resource definitions necessary to create an instance of a Kubernetes application, tool, or service in a Kubernetes cluster.
 
 ## Prerequisites
 
-You must have a Kubernetes cluster that has Helm configured. If you have not installed Helm client and server (aka Tiller) yet, see [Installing Helm](https://docs.helm.sh/using_helm/#installing-helm).
+You must have a Kubernetes cluster that has Helm configured. If you have not installed the Helm client (`helm`), see [Installing Helm](https://helm.sh/docs/intro/install/).
 
-The YugabyteDB Helm chart documented here has been tested with the following software versions:
+The Helm chart for YugabyteDB (`yugabyte-helm`) has been tested with the following software versions:
 
 - Kubernetes 1.10+
-- Helm 2.8.0+/3.0.0-beta.4
-- YugabyteDB Docker Images 1.1.0+
-- Kubernetes nodes where a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be 3 nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB.
-- For optimal performance, ensure to set the appropriate [system limits using `ulimit`](../../manual-deployment/system-config/#setting-ulimits/) on each node in your Kubernetes cluster.
+- Helm 2.8.0+ or 3.0.0-beta.4
+- YugabyteDB Docker image (yugabytedb/yugabyte) 1.1.0+
+- Kubernetes nodes where a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB.
+- For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../manual-deployment/system-config/#setting-ulimits/) on each node in your Kubernetes cluster.
 
-Confirm that your `helm` is configured correctly.
+Confirm that `helm` is configured correctly.
 
 ```sh
 $ helm version
 ```
-Output for helm v2.x:-
+
+**Output for Helm 2:**
+
 ```
 Client: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"}
 Server: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"}
 ```
-Output for helm v3.x:-
+
+**Output for Helm 3:**
+
 ```
 version.BuildInfo{Version:"v3.0.0-beta.4", GitCommit:"...", GitTreeState:"dirty", GoVersion:"go1.13.1"}
 ```
 
-## Create Cluster
-For Helm3, jump directly to [Add charts repository](#add-charts-repository) section.
+## Create cluster
 
-### Create service account
+For Helm 3, jump directly to [Add charts repository](#add-charts-repository) section.
 
-For creating the cluster, you need to have a service account with cluster-admin privilege.
+### Create service account (Helm 2 only)
+
+Before you can create the cluster, you need to have a service account that has been granted the `cluster-admin` role. Use the following command to create a `yugabyte-helm` service account granted with the ClusterRole of `cluster-admin`.
 
 ```sh
 $ kubectl create -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/yugabyte-rbac.yaml
@@ -60,15 +65,15 @@ serviceaccount/yugabyte-helm created
 clusterrolebinding.rbac.authorization.k8s.io/yugabyte-helm created
 ```
 
-### Initialize Helm
+### Initialize Helm (Helm 2 only)
 
-Initialize `helm` with the service account, but use the `--upgrade` flag to ensure that you can upgrade any previous initializations you may have made.
+Initialize `helm` with the service account, but use the `--upgrade` option to ensure that you can upgrade any previous initializations you may have made.
 
 ```sh
 $ helm init --service-account yugabyte-helm --upgrade --wait
 ```
 
-```sh
+```
 $HELM_HOME has been configured at `/Users/<user>/.helm`.
 
 Tiller (the Helm server-side component) has been upgraded to the current version.
@@ -77,11 +82,15 @@ Happy Helming!
 
 ### Add charts repository
 
+To add the YugabyteDB charts repository, run the following command.
+
 ```sh
 $ helm repo add yugabytedb https://charts.yugabyte.com
 ```
 
 ### Fetch updates from the repository
+
+Make sure that you have the latest updates to the repository by running the following command.
 
 ```sh
 $ helm repo update
@@ -89,15 +98,20 @@ $ helm repo update
 
 ### Validate the chart version
 
-For helm v2.x:-
+**For Helm 2:**
+
 ```sh
 $ helm search yugabytedb/yugabyte
 ```
-For helm v3.x:-
+
+**For Helm 3:**
+
 ```sh
 $ helm search repo yugabytedb/yugabyte
 ```
-Output:-
+
+**Output:**
+
 ```sh
 NAME               	CHART VERSION	APP VERSION	DESCRIPTION
 yugabytedb/yugabyte	1.3.0        	1.3.0.0-b1 	YugabyteDB is the high-performance distr...
@@ -107,51 +121,33 @@ yugabytedb/yugabyte	1.3.0        	1.3.0.0-b1 	YugabyteDB is the high-performance
 
 Install YugabyteDB in the Kubernetes cluster using the command below. By default, this Helm chart will expose only the master UI endpoint using LoadBalancer. If you need to connect external clients, see the section below.
 
-For helm v2.x:-
+**For Helm 2:**
+
 ```sh
 $ helm install yugabytedb/yugabyte --namespace yb-demo --name yb-demo --wait
 ```
-For helm v3.x:-
+
+**For Helm 3:**
+
 ```sh
 $ helm install yb-demo yugabytedb/yugabyte --namespace yb-demo --wait
 ```
 
 If you are running in a resource-constrained environment or a local environment, such as Minikube, you will have to change the default resource requirements by using the command below. See next section for a detailed description of these resource requirements.
 
-For helm v2.x:-
+**For Helm 2:**
+
 ```sh
 $ helm install yugabytedb/yugabyte --set resource.master.requests.cpu=0.1,resource.master.requests.memory=0.2Gi,resource.tserver.requests.cpu=0.1,resource.tserver.requests.memory=0.2Gi --namespace yb-demo --name yb-demo
 ```
-For helm v3.x:-
+
+**For Helm 3:**
+
 ```sh
 $ helm install yb-demo yugabytedb/yugabyte --set resource.master.requests.cpu=0.1,resource.master.requests.memory=0.2Gi,resource.tserver.requests.cpu=0.1,resource.tserver.requests.memory=0.2Gi --namespace yb-demo
 ```
 
-### Installing YugabyteDB with YSQL
-
-To enable YSQL, install YugabyteDB with additional parameter as shown below.
-
-For helm v2.x:-
-```sh
-$ helm install yugabytedb/yugabyte --wait --namespace yb-demo --name yb-demo --set "disableYsql=false"
-```
-For helm v3.x:-
-```sh
-$ helm install yb-demo yugabytedb/yugabyte --wait --namespace yb-demo --set "disableYsql=false"
-```
-
-If you are running in a resource-constrained environment or a local environment, such as Minikube, you will have to change the default resource requirements by using the command below. See next section for a detailed description of these resource requirements.
-
-For helm v2.x:-
-```sh
-$ helm install yugabytedb/yugabyte --set resource.master.requests.cpu=0.1,resource.master.requests.memory=0.2Gi,resource.tserver.requests.cpu=0.1,resource.tserver.requests.memory=0.2Gi --namespace yb-demo --name yb-demo --set "disableYsql=false"
-```
-For helm v3.x:-
-```sh
-$ helm install yb-demo yugabytedb/yugabyte --set resource.master.requests.cpu=0.1,resource.master.requests.memory=0.2Gi,resource.tserver.requests.cpu=0.1,resource.tserver.requests.memory=0.2Gi --namespace yb-demo --set "disableYsql=false"
-```
-
-Connect using YSQL (`ysqlsh`) client as shown below.
+Connect using the YSQL CLI (`ysqlsh`) by running the following command.
 
 ```sh
 $ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0.yb-tservers.yb-demo
@@ -161,15 +157,20 @@ $ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-ts
 
 You can check the status of the cluster using various commands noted below.
 
-For helm v2.x:-
+**For Helm 2:**
+
 ```sh
 $ helm status yb-demo
 ```
-For helm v3.x:-
+
+**For Helm 3:**
+
 ```sh
 $ helm status yb-demo -n yb-demo
 ```
-Output:-
+
+**Output**:
+
 ```sh
 LAST DEPLOYED: Fri Oct  5 09:04:46 2018
 NAMESPACE: yb-demo
@@ -205,7 +206,7 @@ Check the pods.
 $ kubectl get pods --namespace yb-demo
 ```
 
-```sh
+```
 NAME           READY     STATUS    RESTARTS   AGE
 yb-master-0    1/1       Running   0          4m
 yb-master-1    1/1       Running   0          4m
@@ -221,38 +222,43 @@ Check the services.
 $ kubectl get services --namespace yb-demo
 ```
 
-```sh
+```
 NAME           TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                               AGE
 yb-master-ui   LoadBalancer   10.111.34.175   <pending>     7000:31418/TCP                        1m
 yb-masters     ClusterIP      None            <none>        7100/TCP,7000/TCP                     1m
 yb-tservers    ClusterIP      None            <none>        7100/TCP,9000/TCP,6379/TCP,9042/TCP   1m
 ```
 
-You can even check the history of the `yb-demo` Helm chart.
+You can even check the history of the `yb-demo` deployment.
 
-For helm v2.x:-
+**For Helm 2:**
+
 ```sh
 $ helm history yb-demo
 ```
-For helm v3.x:-
+
+**For Helm 3**:
+
 ```sh
 $ helm history yb-demo -n yb-demo
 ```
-Output:-
+
+**Output:**
+
 ```sh
 REVISION  UPDATED                   STATUS    CHART           DESCRIPTION
 1         Fri Oct  5 09:04:46 2018  DEPLOYED  yugabyte-1.3.0 Install complete
 ```
 
-## Connect using shell clients
+## Connect using YugabyteDB CLIs
 
-If you installed YugabyteDB with YSQL on, then connect using the YSQL (`ysqlsh`) client as shown below.
+To connect and use the YSQL CLI (`ysqlsh`), run the following command.
 
 ```sh
 $ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0.yb-tservers.yb-demo
 ```
 
-Connect using YCQL (`cqlsh`) client as shown below.
+To connect and use the YCQL CLI (`cqlsh`), run the following command.
 
 ```sh
 $ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/cqlsh yb-tserver-0.yb-tservers.yb-demo
@@ -260,15 +266,18 @@ $ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/cqlsh yb-tserver-0
 
 ## Connect using external clients
 
-By default, the YugabyteDB Helm will expose only the master UI endpoint using LoadBalancer. If you want to expose YSQL and YCQL services using LoadBalancer for your app to use, you can do the following.
+By default, the YugabyteDB Helm chart will expose only the master UI endpoint using LoadBalancer. If you want to expose YSQL and YCQL services using LoadBalancer for your app to use, you can do the following.
 
-For helm v2.x:-
+**For Helm 2**:
+
 ```sh
-helm install yugabytedb/yugabyte -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --name yb-demo --wait --set "disableYsql=false"
+helm install yugabytedb/yugabyte -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --name yb-demo --wait
 ```
-For helm v3.x:-
+
+**For Helm 3:**
+
 ```sh
-helm install yb-demo yugabytedb/yugabyte -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --wait --set "disableYsql=false"
+helm install yb-demo yugabytedb/yugabyte -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --wait
 ```
 
 To connect an external program, get the load balancer IP address of the corresponding service. The example below shows how to do this for the YSQL and YCQL services.
@@ -276,6 +285,7 @@ To connect an external program, get the load balancer IP address of the correspo
 ```sh
 $ kubectl get services --all-namespaces
 ```
+
 ```
 NAMESPACE     NAME                   TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)               AGE
 ...
@@ -288,27 +298,32 @@ Any program can use the `EXTERNAL-IP` of the `ysql-service` and `yql-service` to
 
 ## Upgrade the cluster
 
-You can perform rolling upgrades on the YugabyteDB cluster with the following command. Change the `Image.tag` value to any valid tag from [YugabyteDB's listing on the Docker Hub registry](https://hub.docker.com/r/yugabytedb/yugabyte/tags/). By default, the `latest` Docker image is used for the install.
+You can perform rolling upgrades on the YugabyteDB cluster with the following command. Change the `Image.tag` value to any valid tag from [YugabyteDB's listing on the Docker Hub registry](https://hub.docker.com/r/yugabytedb/yugabyte/tags/). By default, the installation uses the `latest` Docker image. In the examples, the Docker image specified is `2.0.10.0-b4`.
 
-For helm v2.x:-
+**For Helm 2:**
+
 ```sh
-$ helm upgrade yb-demo yugabytedb/yugabyte --set Image.tag=1.3.1.0-b16 --wait
+$ helm upgrade yb-demo yugabytedb/yugabyte --set Image.tag=2.0.10.0-b4 --wait
 ```
-For helm v3.x:-
+
+**For Helm 3:**
+
 ```sh
-$ helm upgrade yb-demo yugabytedb/yugabyte --set Image.tag=1.3.1.0-b16 --wait -n yb-demo
+$ helm upgrade yb-demo yugabytedb/yugabyte --set Image.tag=2.0.10.0-b4 --wait -n yb-demo
 ```
+
 ## Delete the cluster
 
-Deleting the cluster involves purging the helm chart followed by deletion of the PVCs.
+To delete the cluster, you need to purge the Helm chart, and then delete the PVCs.
 
-For helm v2.x:-
+**For Helm 2:**
 
 ```sh
 $ helm del --purge yb-demo
 ```
 
-For helm v3.x:-
+**For Helm 3:**
+
 ```sh
 $ helm uninstall yb-demo -n yb-demo
 ```

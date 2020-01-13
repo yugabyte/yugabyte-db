@@ -144,6 +144,9 @@ void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec
   HybridClockComponents current_components = components_.load(boost::memory_order_acquire);
   HybridClockComponents new_components = { now->time_point, 1 };
 
+  VLOG(4) << __func__ << ", new: " << new_components.ToString() << ", current: "
+          << current_components.ToString();
+
   // Loop over the check in case of concurrent updates making the CAS fail.
   while (now->time_point > current_components.last_usec) {
     if (components_.compare_exchange_weak(current_components, new_components)) {
@@ -203,6 +206,9 @@ void HybridClock::Update(const HybridTime& to_update) {
     GetPhysicalValueMicros(to_update), GetLogicalValue(to_update) + 1
   };
 
+  VLOG(4) << __func__ << ", new: " << new_components.ToString() << ", current: "
+          << current_components.ToString();
+
   new_components.HandleLogicalComponentOverflow();
 
   // Keep trying to CAS until it works or until HT has advanced past this update.
@@ -226,7 +232,7 @@ uint64_t HybridClock::ErrorForMetrics() {
 
 void HybridClock::HybridClockComponents::HandleLogicalComponentOverflow() {
   if (logical > HybridTime::kLogicalBitMask) {
-    static constexpr uint64_t kMaxOverflowValue = 1 << HybridTime::kBitsForLogicalComponent;
+    static constexpr uint64_t kMaxOverflowValue = 1ULL << HybridTime::kBitsForLogicalComponent;
     if (logical > kMaxOverflowValue) {
       LOG(FATAL) << "Logical component is too high: last_usec=" << last_usec
                  << "logical=" << logical << ", max allowed is " << kMaxOverflowValue;

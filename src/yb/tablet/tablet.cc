@@ -2360,7 +2360,7 @@ Status Tablet::CreateReadIntents(
 
   for (const auto& pgsql_read : pgsql_batch) {
     docdb::PgsqlReadOperation doc_op(pgsql_read, txn_op_ctx);
-    RETURN_NOT_OK(doc_op.GetIntents(SchemaRef(), write_batch));
+    RETURN_NOT_OK(doc_op.GetIntents(SchemaRef(pgsql_read.table_id()), write_batch));
   }
 
   return Status::OK();

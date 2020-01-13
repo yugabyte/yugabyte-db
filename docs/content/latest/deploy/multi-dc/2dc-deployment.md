@@ -5,19 +5,28 @@ description: Two data center (2DC) deployments
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
-    parent: deploy
-    identifier: replicate-2dc
+    parent: multi-dc
+    identifier: 2dc-deployment
     weight: 633
+aliases:
+ - /latest/deploy/replicate-2dc/
 type: page
 isTocNested: true
 showAsideToc: true
 ---
 
+
+{{< tip title="Recommended Reading" >}}
+
+[9 Techniques to Build Cloud-Native, Geo-Distributed SQL Apps with Low Latency](https://blog.yugabyte.com/9-techniques-to-build-cloud-native-geo-distributed-sql-apps-with-low-latency/) highlights the various multi-DC deployment strategies (including 2DC deployments) for a distributed SQL database like YugabyteDB.
+
+{{< /tip >}}
+
 For details on the two data center (2DC) deployment architecture and supported replication scenarios, see [Two data center (2DC) deployments](../../architecture/2dc-deployments).
 
-Follow the steps below to set up a two data center (2DC) deployment using either unidirectional (aka master-follower) or bidirectional (aka multi-master) replication between the data centers.
+Follow the steps below to set up a 2DC deployment using either unidirectional (aka master-follower) or bidirectional (aka multi-master) replication between the data centers.
 
-## Set up
+## 1. Set up
 
 ### Producer universe
 
@@ -39,7 +48,7 @@ Make sure to create the same tables as you did for the producer universe.
 
 After creating the required tables, you can now set up aysnchronous replication using the steps below.
 
-## Unidirectional (aka master-follower) replication
+## 2. Unidirectional (aka master-follower) replication
 
 1. Look up the producer universe UUID and the table IDs for the two tables and the index table on master UI.
 
@@ -67,13 +76,13 @@ There should be three table IDs in the command above — two of those are YSQL f
 
 {{< /note >}}
 
-## Bidirectional (aka multi-master) replication
+## 3. Bidirectional (aka multi-master) replication
 
 To set up bidirectional replication, follow the steps above in the Unidirectional replication section above and then do the same steps for the the “yugabyte-consumer” universe.
 
 Note that this time, “yugabyte-producer” will be set up to consume data from “yugabyte-consumer”.
 
-## Load data into producer universe
+## 4. Load data into producer universe
 
 1. Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`) from [GitHub](https://github.com/yugabyte/yb-sample-apps).
 
@@ -93,7 +102,7 @@ java -jar yb-sample-apps.jar --workload CassandraBatchKeyValue --nodes 127.0.0.1
 
 For bidirectional replication, repeat this step in the "yugabyte-consumer" universe.
 
-## Verify replication
+## 5. Verify replication
 
 **For unidirectional replication**
 

@@ -13,7 +13,7 @@ isTocNested: 3
 showAsideToc: true
 ---
 
-Use the `yb-master` binary and its options to configure the [YB-Master](../../../architecture/concepts/yb-master) service. The `yb-master` executable file is located in the `bin` directory of YugabyteDB home.
+Use the `yb-master` binary and its options to configure the [YB-Master](../../../architecture/concepts/yb-master) server. The `yb-master` executable file is located in the `bin` directory of YugabyteDB home.
 
 ## Syntax
 
@@ -67,7 +67,7 @@ Specifies a comma-separated list of all RPC addresses for `yb-master` consensus-
 
 {{< note title="Note" >}}
 
-The number of comma-separated values should match the total number of YB-Master service (or the replication factor).
+The number of comma-separated values should match the total number of YB-Master server (or the replication factor).
 
 {{< /note >}}
 
@@ -227,7 +227,7 @@ Default: Server automatically picks a valid default internally, typically 8.
 
 #### --max_clock_skew_usec
 
-The expected maximum clock skew, in microseconds (µs), between any two services in your deployment.
+The expected maximum clock skew, in microseconds (µs), between any two servers in your deployment.
 
 Default: `50000` (50,000 µs = 50ms)
 
@@ -247,7 +247,7 @@ Settings related to managing geo-distributed clusters and Raft consensus.
 
 The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds, is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
 
-For read replica clusters, set the value to `10` on both YB-Master and YB-TServer services.  Because the the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
+For read replica clusters, set the value to `10` on both YB-Master and YB-TServer servers.  Because the the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
 
 Default: `6`
 
@@ -307,7 +307,7 @@ Default: `false`
 
 #### --use_node_to_node_encryption
 
-Enable server-server, or node-to-node, encryption between YugabyteDB YB-Master and YB-TServer services in a cluster or universe. To work properly, all YB-Master services must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) setting enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) must be disabled.
+Enable server-server, or node-to-node, encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) setting enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) must be disabled.
 
 Default: `false`
 
@@ -337,7 +337,7 @@ The Admin UI for yb-master is available at http://localhost:7000.
 
 ### Home
 
-Home page of the YB-Master service that gives a high level overview of the cluster. Note all YB-Master services in a cluster show identical information.
+Home page of the YB-Master server that gives a high level overview of the cluster. Note all YB-Master servers in a cluster show identical information.
 
 ![master-home](/images/admin/master-home-binary-with-tables.png)
 
@@ -349,7 +349,7 @@ List of tables present in the cluster.
 
 ### Tablet servers
 
-List of all nodes (aka YB-TServer services) present in the cluster.
+List of all nodes (aka YB-TServer servers) present in the cluster.
 
 ![master-tservers](/images/admin/master-tservers-list-binary-with-tablets.png)
 

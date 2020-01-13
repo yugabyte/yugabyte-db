@@ -136,6 +136,8 @@ Result<PGConn> PGConn::Connect(const HostPort& host_port, const std::string& db_
     PGConnPtr result(PQconnectdb(conn_info.c_str()));
     auto status = PQstatus(result.get());
     if (status == ConnStatusType::CONNECTION_OK) {
+      LOG(INFO) << "Connected to PG: " << host_port << ", time taken: "
+                << MonoDelta(CoarseMonoClock::Now() - start);
       return PGConn(std::move(result));
     }
     auto now = CoarseMonoClock::now();

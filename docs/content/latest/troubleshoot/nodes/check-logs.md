@@ -23,8 +23,7 @@ In the sections below, the YugabyteDB `yugabyte-data` directory is represented b
 
 ## YB-Master logs
 
-YB-Master services manage system meta-data, such as namespaces (databases or keyspaces), tables, and types: they handle DDL statements (for example, `CREATE TABLE`, `DROP TABLE`, `ALTER TABLE` KEYSPACE/TYPE`).  YB-Master services also manage users, permissions, and coordinate background operations, such as load balancing.
-Master logs can be found at:
+The YB-Master service manages system metadata, such as namespaces (databases or keyspaces) and tables. It also handles DDL statements such as `CREATE TABLE`, `DROP TABLE`, `ALTER TABLE` / `KEYSPACE/TYPE`.  It also manages users, permissions, and coordinate background operations, such as load balancing. Its logs can be found at:
 
 ```sh
 $ cd <yugabyte-data-directory>/disk1/yb-data/master/logs/
@@ -34,8 +33,7 @@ Logs are organized by error severity: `FATAL`, `ERROR`, `WARNING`, `INFO`. In ca
 
 ## YB-TServer logs
 
-YB-TServer services perform the actual I/O for end-user requests: they handle DML statements (for example, `INSERT`, `UPDATE`, `DELETE`, and `SELECT`) and Redis commands.
-YB-TServer logs can be found at:
+The YB-TServer service performs the actual I/O for end-user requests. It handles DML statements such as `INSERT`, `UPDATE`, `DELETE`, and `SELECT`. Its logs can be found at:
 
 ```sh
 $ cd <yugabyte-data-directory>/disk1/yb-data/tserver/logs/

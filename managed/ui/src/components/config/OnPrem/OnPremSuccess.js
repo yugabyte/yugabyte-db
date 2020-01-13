@@ -26,7 +26,7 @@ class OnPremSuccess extends Component {
     this.props.deleteProviderConfig(uuid);
   }
 
-  componentDidMount() {
+  componentWillMount() {
     const { configuredProviders } = this.props;
     const currentProvider = configuredProviders.data.find(provider => provider.code === 'onprem');
     if (isDefinedNotNull(currentProvider)) {
@@ -47,7 +47,7 @@ class OnPremSuccess extends Component {
     this.setState({manageInstances: false});
   }
 
-  componentDidUpdate(prevProps) {
+  componentWillReceiveProps(nextProps) {
     const {
       accessKeys,
       cloud: {nodeInstanceList, instanceTypes, onPremJsonFormData},
@@ -55,9 +55,9 @@ class OnPremSuccess extends Component {
       cloudBootstrap: {data: {type, response}},
       configuredProviders,
       configuredRegions,
-    } = this.props;
+    } = nextProps;
 
-    if (cloudBootstrap !== prevProps.cloudBootstrap && type === "cleanup"
+    if (cloudBootstrap !== this.props.cloudBootstrap && type === "cleanup"
       && isDefinedNotNull(response)) {
       this.props.resetConfigForm();
       this.props.fetchCloudMetadata();

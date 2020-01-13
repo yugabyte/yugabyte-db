@@ -386,6 +386,10 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
 #endif
 
   PGConn conn = ASSERT_RESULT(Connect());
+  std::vector<PGConn> thread_connections;
+  for (int i = 0; i < kThreads; ++i) {
+    thread_connections.push_back(ASSERT_RESULT(Connect()));
+  }
 
   for (int i = 1; i <= kAccounts; ++i) {
     ASSERT_OK(conn.ExecuteFormat(
@@ -404,9 +408,8 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
   TestThreadHolder thread_holder;
   for (int i = 1; i <= kThreads; ++i) {
     thread_holder.AddThreadFunctor(
-        [this, &writes, &isolation,
+        [&conn = thread_connections[i - 1], &writes, &isolation,
          &stop_flag = thread_holder.stop_flag()]() {
-      auto conn = ASSERT_RESULT(Connect());
       while (!stop_flag.load(std::memory_order_acquire)) {
         int from = RandomUniformInt(1, kAccounts);
         int to = RandomUniformInt(1, kAccounts - 1);
@@ -444,7 +447,7 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
     while (!stop_flag.load(std::memory_order_acquire)) {
       if (isolation == IsolationLevel::SERIALIZABLE_ISOLATION) {
         auto lower_bound = reads.load() * kRequiredWrites < writes.load() * kRequiredReads
-            ? 1.0 - 1.0 / (1 << failures_in_row) : 0.0;
+            ? 1.0 - 1.0 / (1ULL << failures_in_row) : 0.0;
         ASSERT_OK(conn.ExecuteFormat("SET yb_transaction_priority_lower_bound = $0", lower_bound));
       }
       auto sum = ReadSumBalance(&conn, kAccounts, isolation, &counter);
@@ -891,6 +894,48 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TabletColocation)) {
   ASSERT_FALSE(status.ok());
   ASSERT_STR_CONTAINS(
       status.ToString(), "Cannot create hash partitioned table in colocated database");
+}
+
+// Test for ensuring that transaction conflicts work as expected for colocated tables.
+// Related to https://github.com/yugabyte/yugabyte-db/issues/3251.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TxnConflictsForColocatedTables)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test_db WITH colocated = true"));
+
+  auto conn1 = ASSERT_RESULT(ConnectToDB("test_db"));
+  auto conn2 = ASSERT_RESULT(ConnectToDB("test_db"));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE t (a INT, PRIMARY KEY (a ASC))"));
+  ASSERT_OK(conn1.Execute("INSERT INTO t(a) VALUES(1)"));
+
+  // From conn1, select the row in UPDATE row lock mode. From conn2, delete the row.
+  // Ensure that conn1's transaction will detect a conflict at the time of commit.
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  auto res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t FOR UPDATE"));
+  ASSERT_EQ(PQntuples(res.get()), 1);
+
+  ASSERT_OK(conn2.Execute("DELETE FROM t WHERE a = 1"));
+
+  auto status = conn1.CommitTransaction();
+  ASSERT_FALSE(status.ok());
+  ASSERT_STR_CONTAINS(status.ToString(), "Operation expired");
+
+  // Ensure that reads to separate tables in a colocated database do not conflict.
+  ASSERT_OK(conn1.Execute("CREATE TABLE t2 (a INT, PRIMARY KEY (a ASC))"));
+
+  ASSERT_OK(conn1.Execute("INSERT INTO t(a) VALUES(1)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO t2(a) VALUES(1)"));
+
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+
+  res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t FOR UPDATE"));
+  ASSERT_EQ(PQntuples(res.get()), 1);
+  res = ASSERT_RESULT(conn2.Fetch("SELECT * FROM t2 FOR UPDATE"));
+  ASSERT_EQ(PQntuples(res.get()), 1);
+
+  ASSERT_OK(conn1.CommitTransaction());
+  ASSERT_OK(conn2.CommitTransaction());
 }
 
 } // namespace pgwrapper

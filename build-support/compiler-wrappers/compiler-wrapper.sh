@@ -406,10 +406,10 @@ if [[ $local_build_only == "false" &&
           $exit_code -eq 255 ||
           $exit_code -eq $YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY ]] ||
         egrep "\
-ccache: error: Failed to open .*: No such file or directory|\
 : Stale file handle|\
 file not recognized: file truncated|\
-/usr/bin/env: bash: Input/output error\
+/usr/bin/env: bash: Input/output error|\
+: No such file or directory
 " "$stderr_path" &&
         ! grep ": syntax error " "$stderr_path"
     then

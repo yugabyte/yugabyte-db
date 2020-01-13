@@ -195,6 +195,10 @@ public class PlacementInfoUtil {
       UserIntent tempIntent = newIntent.clone();
       tempIntent.numNodes = existingIntent.numNodes;
       if (!tempIntent.equals(existingIntent)) {
+        if (tempIntent.onlyRegionsChanged(existingIntent)) {
+          LOG.info("Only new regions are added, so we will do expand");
+          return ConfigureNodesMode.UPDATE_CONFIG_FROM_USER_INTENT;
+        }
         return ConfigureNodesMode.NEW_CONFIG;
       }
     }
@@ -1110,7 +1114,7 @@ public class PlacementInfoUtil {
 
       boolean isSimpleExpand = true;
       for (UUID requiredAZUUID: requiredAZToNodeMap.keySet()) {
-        if (!existingAZToNodeMap.containsKey(requiredAZUUID) ||
+        if (existingAZToNodeMap.containsKey(requiredAZUUID) &&
             requiredAZToNodeMap.get(requiredAZUUID) < existingAZToNodeMap.get(requiredAZUUID)) {
           isSimpleExpand = false;
           break;
@@ -1229,7 +1233,7 @@ public class PlacementInfoUtil {
           break;
         }
       }
-    } else {
+    } else if (numDeltaNodes > 0) {
       // Desired action is to add nodes.
       LinkedHashSet<PlacementIndexes> indexes =
               findPlacementsOfAZUuid(sortByValues(azUuidToNumNodes, true), cluster);

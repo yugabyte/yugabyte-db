@@ -1289,8 +1289,8 @@ Status CatalogManager::CreateCdcStateTableIfNeeded(rpc::RpcContext *rpc) {
     req.set_table_type(TableType::YQL_TABLE_TYPE);
 
     client::YBSchemaBuilder schema_builder;
-    schema_builder.AddColumn(master::kCdcStreamId)->HashPrimaryKey()->Type(DataType::STRING);
     schema_builder.AddColumn(master::kCdcTabletId)->HashPrimaryKey()->Type(DataType::STRING);
+    schema_builder.AddColumn(master::kCdcStreamId)->PrimaryKey()->Type(DataType::STRING);
     schema_builder.AddColumn(master::kCdcCheckpoint)->Type(DataType::STRING);
     schema_builder.AddColumn(master::kCdcData)->Type(QLType::CreateTypeMap(
         DataType::STRING, DataType::STRING));

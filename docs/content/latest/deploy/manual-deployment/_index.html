@@ -14,10 +14,11 @@ menu:
     weight: 610
 ---
 
-For a sample, step-by-step guide to setting up a multi-node YugabyteDB deployment in a single
-availability zone (AZ), multi-AZ, or multi-region manner on, for example, AWS
-instances <a href="../public-clouds/aws#manual-deployment">, see detailed instructions here</a>. The
-steps can be easily adopted for on-premise deployments or deployments in other clouds.
+This section covers the generic manual deployment of a single YugabyteDB cluster in a single region or data center with a multi-zone/multi-rack configuration. Note that single zone configuration is a special case of multi-zone where all placement related flags are set to the same value across every node. 
+
+<p>
+
+For AWS deployments specifically, a <a href="../public-clouds/aws#manual-deployment">step-by-step guide</a> to deploying a YugabyteDB cluster is also available. These steps can be easily adopted for on-premise deployments or deployments in other clouds.
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -46,7 +47,7 @@ steps can be easily adopted for on-premise deployments or deployments in other c
     <a class="section-link icon-offset" href="./start-masters/">
       <div class="head">
         <img class="icon" src="/images/section_icons/admin/yb-master.png" aria-hidden="true" />
-        <div class="title">3. Start YB-Master services</div>
+        <div class="title">3. Start YB-Masters</div>
       </div>
       <div class="body">
           Start the YB-Master service.
@@ -57,7 +58,7 @@ steps can be easily adopted for on-premise deployments or deployments in other c
     <a class="section-link icon-offset" href="./start-tservers/">
       <div class="head">
         <img class="icon" src="/images/section_icons/admin/yb-tserver.png" aria-hidden="true" />
-        <div class="title">4. Start YB-TServer services</div>
+        <div class="title">4. Start YB-TServers</div>
       </div>
       <div class="body">
           Start the YB-TServer service.

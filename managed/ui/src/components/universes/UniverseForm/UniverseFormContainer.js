@@ -187,6 +187,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].volumeSize = userIntent.deviceInfo.volumeSize;
     data[clusterType].storageType = userIntent.deviceInfo.storageType;
     data[clusterType].mountPoints = userIntent.deviceInfo.mountPoints;
+    data[clusterType].storageClass = userIntent.deviceInfo.storageClass;
 
     data[clusterType].regionList = cluster.regions.map((item) => {
       return {value: item.uuid, name: item.name, label: item.name};

@@ -56,7 +56,9 @@ class KeyBytes {
   }
 
   void Reserve(size_t len) {
-    data_.reserve(len);
+    if (len > data_.capacity()) {
+      data_.reserve(len);
+    }
   }
 
   std::string ToString() const {
@@ -201,10 +203,6 @@ class KeyBytes {
     AppendUInt16ToKey(x, &data_);
   }
 
-  void AppendHybridTimeForSeek(HybridTime hybrid_time) {
-    DocHybridTime(hybrid_time, kMaxWriteId).AppendEncodedInDocDbFormat(&data_);
-  }
-
   void AppendHybridTime(const DocHybridTime& hybrid_time) {
     hybrid_time.AppendEncodedInDocDbFormat(&data_);
   }
@@ -235,19 +233,11 @@ class KeyBytes {
     data_.pop_back();
   }
 
-  // Assuming the key bytes currently end with a hybrid time, replace that hybrid time with a
-  // different one.
-  CHECKED_STATUS ReplaceLastHybridTimeForSeek(HybridTime hybrid_time);
-
   size_t size() const { return data_.size(); }
 
   bool IsPrefixOf(const rocksdb::Slice& slice) const {
     return slice.starts_with(data_);
   }
-
-  // Checks whether the other slice can be obtained by adding an encoded DocHybridTime to
-  // to this encoded key.
-  CHECKED_STATUS OnlyLacksHybridTimeFrom(const rocksdb::Slice& other_slice, bool* result) const;
 
   rocksdb::Slice AsSlice() const { return rocksdb::Slice(data_); }
 
@@ -298,7 +288,6 @@ class KeyBytes {
   }
 
  private:
-
   std::string data_;
 };
 

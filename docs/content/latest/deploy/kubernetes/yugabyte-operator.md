@@ -78,7 +78,7 @@ Enable TLS encryption for YugabyteDB, if desired. It is disabled by default. You
 
 ### YB-Master and YB-TServer
 
-YB-Master and YB-TServer are two essential components of a YugabyteDB cluster. YB-Master is responsible for recording and maintaining system metadata & for admin activities. YB-TServer services are mainly responsible for data I/O.
+YB-Master and YB-TServer are two essential components of a YugabyteDB cluster. YB-Master is responsible for recording and maintaining system metadata & for admin activities. YB-TServer is responsible for data I/O.
 Specify YB-Master and YB-TServer attributes under `master`/`tserver`. The valid attributes are as described below. These two are **required** fields.
 
 #### Replicas

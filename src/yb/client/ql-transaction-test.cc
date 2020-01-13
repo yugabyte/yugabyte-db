@@ -65,6 +65,13 @@ DECLARE_bool(delete_intents_sst_files);
 namespace yb {
 namespace client {
 
+struct WriteConflictsOptions {
+  bool do_restarts = false;
+  size_t active_transactions = 50;
+  size_t total_keys = 5;
+  bool non_txn_writes = false;
+};
+
 class QLTransactionTest : public TransactionTestBase {
  protected:
   void SetUp() override {
@@ -77,7 +84,7 @@ class QLTransactionTest : public TransactionTestBase {
   // Otherwise second transaction would see pending intents from first one and should not restart.
   void TestReadRestart(bool commit = true);
 
-  void TestWriteConflicts(bool do_restarts);
+  void TestWriteConflicts(const WriteConflictsOptions& options);
 
   void TestReadOnlyTablets(IsolationLevel isolation_level,
                            bool perform_write,
@@ -596,24 +603,26 @@ TEST_F(QLTransactionTest, ReadOnlyTablets) {
                       true /* written_intents_expected */);
 }
 
-void QLTransactionTest::TestWriteConflicts(bool do_restarts) {
+void QLTransactionTest::TestWriteConflicts(const WriteConflictsOptions& options) {
   struct ActiveTransaction {
     YBTransactionPtr transaction;
     YBSessionPtr session;
     std::future<Status> flush_future;
     std::future<Status> commit_future;
+
+    std::string ToString() const {
+      return transaction ? transaction->ToString() : "no-txn";
+    }
   };
 
-  constexpr size_t kActiveTransactions = 50;
   constexpr auto kTestTime = 60s;
-  constexpr int kTotalKeys = 5;
   std::vector<ActiveTransaction> active_transactions;
 
   auto stop = std::chrono::steady_clock::now() + kTestTime;
 
   std::thread restart_thread;
 
-  if (do_restarts) {
+  if (options.do_restarts) {
     restart_thread = std::thread([this, stop] {
         CDSAttacher attacher;
         int it = 0;
@@ -626,7 +635,7 @@ void QLTransactionTest::TestWriteConflicts(bool do_restarts) {
 
   int value = 0;
   size_t tries = 0;
-  size_t committed = 0;
+  size_t written = 0;
   size_t flushed = 0;
   for (;;) {
     auto expired = std::chrono::steady_clock::now() >= stop;
@@ -636,19 +645,23 @@ void QLTransactionTest::TestWriteConflicts(bool do_restarts) {
       }
       LOG(INFO) << "Time expired, remaining transactions: " << active_transactions.size();
       for (const auto& txn : active_transactions) {
-        LOG(INFO) << "TXN: " << txn.transaction->ToString() << ", "
+        LOG(INFO) << "TXN: " << txn.ToString() << ", "
                   << (!txn.commit_future.valid() ? "Flushing" : "Committing");
       }
     }
-    while (!expired && active_transactions.size() < kActiveTransactions) {
-      auto key = RandomUniformInt(1, kTotalKeys);
+    while (!expired && active_transactions.size() < options.active_transactions) {
+      auto key = RandomUniformInt<size_t>(1, options.total_keys);
       ActiveTransaction active_txn;
-      active_txn.transaction = CreateTransaction();
+      if (!options.non_txn_writes || RandomUniformBool()) {
+        active_txn.transaction = CreateTransaction();
+      }
       active_txn.session = CreateSession(active_txn.transaction);
       const auto op = table_.NewInsertOp();
       auto* const req = op->mutable_request();
       QLAddInt32HashValue(req, key);
-      table_.AddInt32ColumnValue(req, kValueColumn, ++value);
+      const auto val = ++value;
+      table_.AddInt32ColumnValue(req, kValueColumn, val);
+      LOG(INFO) << "TXN: " << active_txn.ToString() << " write " << key << " = " << val;
       ASSERT_OK(active_txn.session->Apply(op));
       active_txn.flush_future = active_txn.session->FlushFuture();
 
@@ -658,23 +671,30 @@ void QLTransactionTest::TestWriteConflicts(bool do_restarts) {
 
     auto w = active_transactions.begin();
     for (auto i = active_transactions.begin(); i != active_transactions.end(); ++i) {
+      const auto txn_id = i->ToString();
       if (!i->commit_future.valid()) {
         if (i->flush_future.wait_for(0s) == std::future_status::ready) {
           auto flush_status = i->flush_future.get();
           if (!flush_status.ok()) {
-            LOG(INFO) << "Flush failed: " << flush_status;
+            LOG(INFO) << "TXN: " << txn_id << ", flush failed: " << flush_status;
             continue;
           }
           ++flushed;
+          LOG(INFO) << "TXN: " << txn_id << ", flushed";
+          if (!i->transaction) {
+            ++written;
+            continue;
+          }
           i->commit_future = i->transaction->CommitFuture();
         }
       } else if (i->commit_future.wait_for(0s) == std::future_status::ready) {
         auto commit_status = i->commit_future.get();
         if (!commit_status.ok()) {
-          LOG(INFO) << "Commit failed: " << commit_status;
+          LOG(INFO) << "TXN: " << txn_id << ", commit failed: " << commit_status;
           continue;
         }
-        ++committed;
+        LOG(INFO) << "TXN: " << txn_id << ", committed";
+        ++written;
         continue;
       }
 
@@ -688,24 +708,40 @@ void QLTransactionTest::TestWriteConflicts(bool do_restarts) {
     std::this_thread::sleep_for(expired ? 1s : 100ms);
   }
 
-  if (do_restarts) {
+  if (options.do_restarts) {
     restart_thread.join();
   }
 
-  LOG(INFO) << "Committed: " << committed << ", flushed: " << flushed << ", tries: " << tries;
+  LOG(INFO) << "Written: " << written << ", flushed: " << flushed << ", tries: " << tries;
 
-  ASSERT_GE(committed, kTotalKeys);
-  ASSERT_GT(flushed, committed);
-  ASSERT_GT(flushed, kActiveTransactions);
+  ASSERT_GE(written, options.total_keys);
+  ASSERT_GT(flushed, written);
+  ASSERT_GT(flushed, options.active_transactions);
   ASSERT_GT(tries, flushed);
 }
 
 TEST_F_EX(QLTransactionTest, WriteConflicts, QLTransactionBigLogSegmentSizeTest) {
-  TestWriteConflicts(false /* do_restarts */);
+  WriteConflictsOptions options = {
+    .do_restarts = false,
+  };
+  TestWriteConflicts(options);
 }
 
 TEST_F_EX(QLTransactionTest, WriteConflictsWithRestarts, QLTransactionBigLogSegmentSizeTest) {
-  TestWriteConflicts(true /* do_restarts */);
+  WriteConflictsOptions options = {
+    .do_restarts = true,
+  };
+  TestWriteConflicts(options);
+}
+
+TEST_F_EX(QLTransactionTest, MixedWriteConflicts, QLTransactionBigLogSegmentSizeTest) {
+  WriteConflictsOptions options = {
+    .do_restarts = false,
+    .active_transactions = 3,
+    .total_keys = 1,
+    .non_txn_writes = true,
+  };
+  TestWriteConflicts(options);
 }
 
 TEST_F(QLTransactionTest, ResolveIntentsWriteReadUpdateRead) {
