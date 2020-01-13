@@ -1265,10 +1265,14 @@ Status RedisWriteOperation::ApplyRemove(const DocOperationApplyData& data) {
 
 Status RedisReadOperation::Execute() {
   SimulateTimeoutIfTesting(&deadline_);
+  // If we have a KEYS command, we don't specify any key for the iterator. Therefore, don't use
+  // bloom filters for this command.
   SubDocKey doc_key(
       DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()));
+  auto bloom_filter_mode = request_.has_keys_request() ?
+      BloomFilterMode::DONT_USE_BLOOM_FILTER : BloomFilterMode::USE_BLOOM_FILTER;
   auto iter = yb::docdb::CreateIntentAwareIterator(
-      doc_db_, BloomFilterMode::USE_BLOOM_FILTER,
+      doc_db_, bloom_filter_mode,
       doc_key.Encode().AsSlice(),
       redis_query_id(), /* txn_op_context */ boost::none, deadline_, read_time_);
   iterator_ = std::move(iter);
