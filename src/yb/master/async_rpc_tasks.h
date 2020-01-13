@@ -549,6 +549,33 @@ class AsyncAddTableToTablet : public RetryingTSRpcTask {
   tserver::AddTableToTabletResponsePB resp_;
 };
 
+// Task to remove a table from a tablet. Catalog Manager uses this task to send the request to the
+// tserver admin service.
+class AsyncRemoveTableFromTablet : public RetryingTSRpcTask {
+ public:
+  AsyncRemoveTableFromTablet(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+      const scoped_refptr<TableInfo>& table);
+
+  Type type() const override { return ASYNC_REMOVE_TABLE_FROM_TABLET; }
+
+  std::string type_name() const override { return "Remove Table from Tablet"; }
+
+  std::string description() const override;
+
+ private:
+  TabletId tablet_id() const override { return tablet_id_; }
+
+  bool SendRequest(int attempt) override;
+  void HandleResponse(int attempt) override;
+
+  const scoped_refptr<TableInfo> table_;
+  const scoped_refptr<TabletInfo> tablet_;
+  const TabletId tablet_id_;
+  tserver::RemoveTableFromTabletRequestPB req_;
+  tserver::RemoveTableFromTabletResponsePB resp_;
+};
+
 } // namespace master
 } // namespace yb
 

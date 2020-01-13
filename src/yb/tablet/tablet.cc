@@ -1622,6 +1622,12 @@ Status Tablet::AddTable(const TableInfoPB& table_info) {
   return Status::OK();
 }
 
+Status Tablet::RemoveTable(const std::string& table_id) {
+  metadata_->RemoveTable(table_id);
+  RETURN_NOT_OK(metadata_->Flush());
+  return Status::OK();
+}
+
 Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
   DCHECK(key_schema_.KeyEquals(*DCHECK_NOTNULL(operation_state->schema())))
       << "Schema keys cannot be altered";

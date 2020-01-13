@@ -346,7 +346,7 @@ TEST_F(CreateTableITest, TestNoAllocBlacklist) {
   ASSERT_EQ(inspect_->ListTabletsOnTS(1).size(), 0);
 }
 
-TEST_F(CreateTableITest, TabletColocationRemoteBootstrapTest) {
+TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
   const int kNumReplicas = 3;
   vector<string> ts_flags;
   vector<string> master_flags;

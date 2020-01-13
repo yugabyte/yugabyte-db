@@ -37,6 +37,7 @@
 #include "yb/client/client.h"
 #include "yb/consensus/consensus.h"
 #include "yb/gutil/strings/strcat.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/operations/operation_tracker.h"
@@ -164,7 +165,7 @@ void OperationDriver::ExecuteAsync() {
   auto delay = GetAtomicFlag(&FLAGS_TEST_delay_execute_async_ms);
   if (delay != 0 &&
       operation_type() == OperationType::kWrite &&
-      operation_->state()->tablet()->tablet_id() != "00000000000000000000000000000000") {
+      operation_->state()->tablet()->tablet_id() != master::kSysCatalogTabletId) {
     LOG(INFO) << "T " << operation_->state()->tablet()->tablet_id()
               << " Debug sleep for: " << MonoDelta(1ms * delay) << "\n" << GetStackTrace();
     std::this_thread::sleep_for(1ms * delay);
