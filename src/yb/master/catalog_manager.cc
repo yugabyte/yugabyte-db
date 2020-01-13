@@ -2905,9 +2905,16 @@ Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_catalog_manager_inject_latency_in_delete_table_ms));
   }
 
-  for (int i = 0; i < tables.size(); i++) {
+  for (const scoped_refptr<TableInfo> &table : tables) {
     // Send a DeleteTablet() request to each tablet replica in the table.
-    DeleteTabletsAndSendRequests(tables[i]);
+    DeleteTabletsAndSendRequests(table);
+    // Send a RemoveTableFromTablet() request to each colocated parent tablet replica in the table.
+    if (IsColocatedUserTable(*table)) {
+      auto call = std::make_shared<AsyncRemoveTableFromTablet>(
+          master_, worker_pool_.get(), table->GetColocatedTablet(), table);
+      table->AddTask(call);
+      WARN_NOT_OK(call->Run(), "Failed to send RemoveTableFromTablet request");
+    }
   }
 
   // If there are any permissions granted on this table find them and delete them. This is necessary
@@ -3068,7 +3075,9 @@ void CatalogManager::CleanUpDeletedTables() {
           // gotten to point 3, which would add further tasks for the deletes.
           //
           // However, HasTasks is cheaper than AreAllTabletsDeleted...
-          if (table->AreAllTabletsDeleted() || IsSystemTableUnlocked(*table)) {
+          if (table->AreAllTabletsDeleted() ||
+              IsSystemTableUnlocked(*table) ||
+              IsColocatedUserTable(*table)) {
             tables_to_delete.push_back(table);
             // TODO(bogdan): uncomment this once we also untangle catalog loader logic.
             // Since we have lock_, this table cannot be in the map AND be DELETED.
@@ -3714,6 +3723,10 @@ bool CatalogManager::IsUserIndexUnlocked(const TableInfo& table) const {
 
 bool CatalogManager::IsColocatedParentTable(const TableInfo& table) const {
   return table.id().find(kColocatedParentTableIdSuffix) != std::string::npos;
+}
+
+bool CatalogManager::IsColocatedUserTable(const TableInfo& table) const {
+  return table.colocated() && !IsColocatedParentTable(table);
 }
 
 bool CatalogManager::IsSequencesSystemTable(const TableInfo& table) const {
@@ -5275,6 +5288,10 @@ void CatalogManager::DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>
       return;
     }
   }
+  // Do not delete the tablet of a colocated table.
+  if (IsColocatedUserTable(*table)) {
+    return;
+  }
 
   vector<scoped_refptr<TabletInfo>> tablets;
   table->GetAllTablets(&tablets);
@@ -5288,6 +5305,10 @@ void CatalogManager::DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>
     tablet_lock->mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
     CHECK_OK(sys_catalog_->UpdateItem(tablet.get(), leader_ready_term_));
     tablet_lock->Commit();
+  }
+  if (IsColocatedParentTable(*table)) {
+    SharedLock<LockType> catalog_lock(lock_);
+    colocated_tablet_ids_map_.erase(table->namespace_id());
   }
 }
 

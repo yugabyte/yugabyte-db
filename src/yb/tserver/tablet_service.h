@@ -203,6 +203,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
                         AddTableToTabletResponsePB* resp,
                         rpc::RpcContext context) override;
 
+  void RemoveTableFromTablet(const RemoveTableFromTabletRequestPB* req,
+                             RemoveTableFromTabletResponsePB* resp,
+                             rpc::RpcContext context) override;
+
  private:
   TabletServer* server_;
 };

@@ -139,7 +139,8 @@ Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* comple
     NONE,
     SCHEMA,
     WAL_RETENTION_SECS,
-    ADD_TABLE
+    ADD_TABLE,
+    REMOVE_TABLE,
   };
 
   MetadataChange metadata_change = MetadataChange::NONE;
@@ -166,6 +167,13 @@ Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* comple
     }
   }
 
+  if (state()->request()->has_remove_table_id()) {
+    metadata_change = MetadataChange::NONE;
+    if (++num_operations == 1) {
+      metadata_change = MetadataChange::REMOVE_TABLE;
+    }
+  }
+
   switch (metadata_change) {
     case MetadataChange::NONE:
       return STATUS_FORMAT(
@@ -178,19 +186,27 @@ Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* comple
             << " got alter request for version " << state()->schema_version();
         break;
       }
-      DCHECK_EQ(1, num_operations) << "Invalid number of alter operations: " << num_operations;
+      DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
+                                   << num_operations;
       RETURN_NOT_OK(tablet->AlterSchema(state()));
       log->SetSchemaForNextLogSegment(*DCHECK_NOTNULL(state()->schema()),
                                       state()->schema_version());
       break;
     case MetadataChange::WAL_RETENTION_SECS:
-      DCHECK_EQ(1, num_operations) << "Invalid number of alter operations: " << num_operations;
+      DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
+                                   << num_operations;
       RETURN_NOT_OK(tablet->AlterWalRetentionSecs(state()));
       log->set_wal_retention_secs(state()->request()->wal_retention_secs());
       break;
     case MetadataChange::ADD_TABLE:
-      DCHECK_EQ(1, num_operations) << "Invalid number of alter operations: " << num_operations;
+      DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
+                                   << num_operations;
       RETURN_NOT_OK(tablet->AddTable(state()->request()->add_table()));
+      break;
+    case MetadataChange::REMOVE_TABLE:
+      DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
+                                   << num_operations;
+      RETURN_NOT_OK(tablet->RemoveTable(state()->request()->remove_table_id()));
       break;
   }
 

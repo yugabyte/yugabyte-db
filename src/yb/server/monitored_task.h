@@ -74,6 +74,7 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
     ASYNC_COPARTITION_TABLE,
     ASYNC_FLUSH_TABLETS,
     ASYNC_ADD_TABLE_TO_TABLET,
+    ASYNC_REMOVE_TABLE_FROM_TABLET,
   };
 
   virtual Type type() const = 0;

@@ -354,6 +354,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Apply replicated add table operation.
   CHECKED_STATUS AddTable(const TableInfoPB& table_info);
 
+  // Apply replicated remove table operation.
+  CHECKED_STATUS RemoveTable(const std::string& table_id);
+
   // Truncate this tablet by resetting the content of RocksDB.
   CHECKED_STATUS Truncate(TruncateOperationState* state);
 

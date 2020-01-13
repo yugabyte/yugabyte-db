@@ -990,5 +990,42 @@ bool AsyncAddTableToTablet::SendRequest(int attempt) {
   return true;
 }
 
+// ============================================================================
+//  Class AsyncRemoveTableFromTablet.
+// ============================================================================
+AsyncRemoveTableFromTablet::AsyncRemoveTableFromTablet(
+    Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+    const scoped_refptr<TableInfo>& table)
+    : RetryingTSRpcTask(
+          master, callback_pool, gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)), table.get()),
+      table_(table),
+      tablet_(tablet),
+      tablet_id_(tablet->tablet_id()) {
+  req_.set_tablet_id(tablet->id());
+  req_.set_remove_table_id(table->id());
+}
+
+string AsyncRemoveTableFromTablet::description() const {
+  return Substitute("RemoveTableFromTablet RPC ($0) ($1)", table_->ToString(), tablet_->ToString());
+}
+
+void AsyncRemoveTableFromTablet::HandleResponse(int attempt) {
+  if (!rpc_.status().ok()) {
+    AbortTask();
+    LOG(WARNING) << Substitute(
+        "Got error when removing table $0 from tablet $1, attempt $2 and error $3",
+        table_->ToString(), tablet_->ToString(), attempt, rpc_.status().ToString());
+    return;
+  }
+  TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
+}
+
+bool AsyncRemoveTableFromTablet::SendRequest(int attempt) {
+  ts_admin_proxy_->RemoveTableFromTabletAsync(req_, &resp_, &rpc_, BindRpcCallback());
+  VLOG(1) << "Send RemoveTableFromTablet request (attempt " << attempt << "):\n"
+          << req_.DebugString();
+  return true;
+}
+
 }  // namespace master
 }  // namespace yb

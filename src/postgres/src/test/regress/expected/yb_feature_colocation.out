@@ -11,7 +11,7 @@ CREATE TABLE foo2 (a INT, b INT, PRIMARY KEY (a ASC));
 -- opt out of using colocated tablet
 CREATE TABLE foo3 (a INT) WITH (colocated = false);
 -- multi column primary key table
-CREATE TABLE foo4(a INT, b INT, PRIMARY KEY (a ASC, b DESC));
+CREATE TABLE foo4 (a INT, b INT, PRIMARY KEY (a ASC, b DESC));
 CREATE TABLE foo5 (a INT, PRIMARY KEY (a ASC)) WITH (colocated = true);
 INSERT INTO foo1 (a) VALUES (0), (1), (2);
 INSERT INTO foo1 (a, b) VALUES (0, '0'); -- fail
@@ -191,3 +191,98 @@ SELECT * FROM bar3;
  3 | 3
 (4 rows)
 
+-- non-colocated table with index
+CREATE TABLE bar4 (a INT, b INT, PRIMARY KEY (a ASC)) WITH (colocated = false);
+CREATE INDEX ON bar4 (a);
+INSERT INTO bar4 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
+EXPLAIN SELECT * FROM bar4 WHERE a = 1;
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Index Scan using bar4_a_idx on bar4  (cost=0.00..4.11 rows=1 width=8)
+   Index Cond: (a = 1)
+(2 rows)
+
+SELECT * FROM bar4 WHERE a = 1;
+ a | b
+---+---
+ 1 | 1
+(1 row)
+
+UPDATE bar4 SET b = b + 1 WHERE a > 3;
+SELECT * FROM bar4;
+ a | b
+---+---
+ 0 | 0
+ 1 | 1
+ 2 | 2
+ 3 | 3
+ 4 | 5
+ 5 | 6
+(6 rows)
+
+DELETE FROM bar4 WHERE a > 3;
+SELECT * FROM bar4;
+ a | b
+---+---
+ 0 | 0
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(4 rows)
+
+-- drop table
+DROP TABLE foo1;
+SELECT * FROM foo1;
+ERROR:  relation "foo1" does not exist
+LINE 1: SELECT * FROM foo1;
+                      ^
+DROP TABLE foo3;
+SELECT * FROM foo3;
+ERROR:  relation "foo3" does not exist
+LINE 1: SELECT * FROM foo3;
+                      ^
+DROP TABLE bar1;
+SELECT * FROM bar1;
+ERROR:  relation "bar1" does not exist
+LINE 1: SELECT * FROM bar1;
+                      ^
+-- drop index
+DROP INDEX bar4_a_idx;
+EXPLAIN SELECT * FROM bar4 WHERE a = 1;
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Index Scan using bar4_pkey on bar4  (cost=0.00..4.11 rows=1 width=8)
+   Index Cond: (a = 1)
+(2 rows)
+
+\dt
+        List of relations
+ Schema | Name | Type  |  Owner
+--------+------+-------+----------
+ public | bar2 | table | yugabyte
+ public | bar3 | table | yugabyte
+ public | bar4 | table | yugabyte
+ public | foo2 | table | yugabyte
+ public | foo4 | table | yugabyte
+ public | foo5 | table | yugabyte
+(6 rows)
+
+\di
+               List of relations
+ Schema |    Name    | Type  |  Owner   | Table
+--------+------------+-------+----------+-------
+ public | bar2_a_idx | index | yugabyte | bar2
+ public | bar2_pkey  | index | yugabyte | bar2
+ public | bar3_a_idx | index | yugabyte | bar3
+ public | bar3_pkey  | index | yugabyte | bar3
+ public | bar4_pkey  | index | yugabyte | bar4
+ public | foo2_pkey  | index | yugabyte | foo2
+ public | foo4_pkey  | index | yugabyte | foo4
+ public | foo5_pkey  | index | yugabyte | foo5
+(8 rows)
+
+-- drop database
+\c yugabyte
+DROP DATABASE colocation_test;
+\c colocation_test
+\connect: FATAL:  database "colocation_test" does not exist
