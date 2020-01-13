@@ -34,14 +34,14 @@ SELECT create_graph('GraphB');
 
 -- Show GraphA's construction to verify case is preserved.
 SELECT * FROM ag_graph WHERE name = 'GraphA';
-SELECT * FROM pg_namespace WHERE nspname = 'GraphA';
+SELECT nspname FROM pg_namespace WHERE nspname = 'GraphA';
 
 -- Rename GraphA to GraphX.
 SELECT alter_graph('GraphA', 'RENAME', 'GraphX');
 
 -- Show GraphX's construction to verify case is preserved.
 SELECT * FROM ag_graph WHERE name = 'GraphX';
-SELECT * FROM pg_namespace WHERE nspname = 'GraphX';
+SELECT nspname FROM pg_namespace WHERE nspname = 'GraphX';
 
 -- Verify there isn't a graph GraphA anymore.
 SELECT * FROM ag_graph WHERE name = 'GraphA';

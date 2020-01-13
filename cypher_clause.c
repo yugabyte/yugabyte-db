@@ -79,7 +79,7 @@ static void insert_dummy_clause(ParseState *pstate)
      * We need to build the parse node tree structure, so we can use
      * Postgres' transform logic.
      */
-    //Setup Function Call Node
+    // Setup Function Call Node
     fc = makeFuncCall(list_make1(makeString("cypher_dummy_clause")), NIL, 0);
 
     /*
@@ -112,6 +112,7 @@ static Query *transform_cypher_create(ParseState *pstate,
                                       cypher_create *clause)
 {
     Const *pattern_const;
+    Const *null_const;
     Expr *func_expr;
     Oid func_create_oid;
     Oid internal_type = INTERNALOID;
@@ -120,11 +121,18 @@ static Query *transform_cypher_create(ParseState *pstate,
 
     query = makeNode(Query);
     query->commandType = CMD_SELECT;
+    query->targetList = NIL;
 
     func_create_oid = GetSysCacheOid3(
         PROCNAMEARGSNSP, PointerGetDatum("cypher_create_clause"),
         PointerGetDatum(buildoidvector(&internal_type, 1)),
         ObjectIdGetDatum(ag_catalog_namespace_id()));
+
+
+    null_const = makeNullConst(AGTYPEOID, -1, InvalidOid);
+    tle = makeTargetEntry((Expr *)null_const, pstate->p_next_resno++,
+                          "cypher_create_null_value", false);
+    query->targetList = lappend(query->targetList, tle);
 
     /*
      * Create the Const Node to hold the pattern. skip the parse node,
@@ -147,7 +155,7 @@ static Query *transform_cypher_create(ParseState *pstate,
     // Create the target entry
     tle = makeTargetEntry(func_expr, pstate->p_next_resno++,
                           "cypher_create_clause", false);
-    query->targetList = list_make1(tle);
+    query->targetList = lappend(query->targetList, tle);
 
     // In the simple CREATE case, add a dummy clause to the FROM clause
     insert_dummy_clause(pstate);

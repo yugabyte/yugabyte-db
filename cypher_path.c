@@ -3,11 +3,14 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_type_d.h"
 #include "optimizer/paths.h"
+#include "optimizer/tlist.h"
 #include "utils/builtins.h"
 #include "utils/syscache.h"
 
+#include "agtype.h"
 #include "ag_catalog.h"
 #include "cypher_path.h"
+#include "cypher_scan.h"
 #include "nodes.h"
 
 typedef struct cypher_create_path
@@ -65,7 +68,43 @@ struct Plan *plan_cypher_create_path(PlannerInfo *root, RelOptInfo *rel,
                                      struct CustomPath *best_path, List *tlist,
                                      List *clauses, List *custom_plans)
 {
-    ereport(ERROR, (errmsg("CREATE clause is not implemented")));
+    cypher_create_path *ccp = (cypher_create_path *)best_path;
+    List *custom_private = NIL;
+    CustomScan *cs = makeNode(CustomScan);
+
+    cs->scan.plan.type = ccp->cp.path.pathtype;
+    cs->scan.plan.startup_cost = ccp->cp.path.startup_cost;
+    cs->scan.plan.total_cost = ccp->cp.path.total_cost;
+    cs->scan.plan.plan_rows = 0;
+    cs->scan.plan.plan_width = 0;
+
+    cs->scan.plan.parallel_aware = ccp->cp.path.parallel_aware;
+    cs->scan.plan.parallel_safe = ccp->cp.path.parallel_safe;
+
+    // Set later in set_plan_refs
+    cs->scan.plan.plan_node_id = 0;
+    cs->scan.plan.targetlist = tlist;
+    cs->scan.plan.qual = NIL;
+    cs->scan.plan.lefttree = NULL;
+    cs->scan.plan.righttree = NULL;
+    cs->scan.plan.initPlan = NIL;
+    cs->scan.plan.extParam = NULL;
+    cs->scan.plan.allParam = NULL;
+    cs->scan.scanrelid = 0;
+    cs->flags = ccp->cp.flags;
+
+    custom_private = lappend(custom_private, ccp->pattern);
+    cs->custom_private = custom_private;
+
+    // Drop the child path for basic CREATE clause
+    cs->custom_plans = NIL;
+    cs->custom_exprs = NULL;
+    cs->custom_scan_tlist = tlist;
+    cs->custom_relids = NULL;
+
+    cs->methods = &cypher_create_scan_methods;
+
+    return (Plan *)cs;
 }
 
 /*
@@ -85,11 +124,7 @@ static bool is_cypher_create_clause(PlannerInfo *root, RelOptInfo *rel,
     if (rte->rtekind != RTE_SUBQUERY)
         return false;
 
-    // if there isn't one entry in the target list, it isn't a cypher clause
-    if (list_length(rte->subquery->targetList) != 1)
-        return false;
-
-    target_entry = (TargetEntry *)linitial(rte->subquery->targetList);
+    target_entry = llast(rte->subquery->targetList);
 
     // If the one entry is not a FuncExpr, its not a cypher clause
     if (!IsA(target_entry->expr, FuncExpr))
@@ -121,11 +156,11 @@ static void handle_cypher_create_clause(PlannerInfo *root, RelOptInfo *rel,
     TargetEntry *target_entry;
 
     ccp = palloc(sizeof(cypher_create_path));
-
     ccp->cp.path.type = T_CustomPath;
     ccp->cp.path.pathtype = T_CustomScan;
     ccp->cp.path.parent = rel;
     ccp->cp.path.pathtarget = rel->reltarget;
+
     ccp->cp.path.param_info = NULL;
     // Do not allow parallel methods
     ccp->cp.path.parallel_aware = false;
@@ -147,7 +182,7 @@ static void handle_cypher_create_clause(PlannerInfo *root, RelOptInfo *rel,
     ccp->cp.methods = &cypher_create_path_methods;
 
     // Add the list of patterns from in the Cypher Clause arg list to the Path
-    target_entry = (TargetEntry *)linitial(rte->subquery->targetList);
+    target_entry = (TargetEntry *)llast(rte->subquery->targetList);
     func_expr = (FuncExpr *)target_entry->expr;
     c = linitial(func_expr->args);
 

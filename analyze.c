@@ -21,6 +21,8 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "nodes.h"
+#include "agtype.h"
 #include "analyze.h"
 #include "cypher_clause.h"
 #include "cypher_parser.h"
@@ -41,7 +43,7 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate);
 static const char *expr_get_const_cstring(Node *expr, const char *source_str);
 static int get_query_location(const int location, const char *source_str);
 static void cypher_parse_error_callback(void *arg);
-static Query *parse_and_analyze_cypher(const char *query_str, Param *params);
+static Query *analyze_cypher(const char *query_str, List *stmt, Param *params);
 static Query *coerce_target_list(Query *query, RangeTblFunction *rtfunc,
                                  const char *sourcetext);
 
@@ -222,6 +224,7 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     Node *arg;
     const char *query_str;
     Node *params;
+    List *stmt;
     cypher_parse_error_callback_arg ecb_arg;
     ErrorContextCallback ecb;
     Query *query;
@@ -295,7 +298,9 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     ecb.arg = &ecb_arg;
     error_context_stack = &ecb;
 
-    query = parse_and_analyze_cypher(query_str, (Param *)params);
+    stmt = parse_cypher(query_str);
+
+    query = analyze_cypher(query_str, stmt, (Param *)params);
 
     /*
      * uninstall the error context callback because error positions after this
@@ -303,7 +308,28 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
      */
     error_context_stack = ecb.previous;
 
-    query = coerce_target_list(query, rtfunc, pstate->p_sourcetext);
+    // cypher queries that end with a CREATE node do not need to have the
+    // coercion logic applied to it, because we are forcing the column
+    // definition list to be a particular way.
+    if (is_ag_node(llast(stmt), cypher_create))
+    {
+        if (rtfunc->funccolcount != 1 ||
+                linitial_oid(rtfunc->funccoltypes) != AGTYPEOID)
+        {
+            ereport(
+                    ERROR,
+                    (errcode(ERRCODE_DATATYPE_MISMATCH),
+                    errmsg("column definition list for a CREATE clause must"
+                           " contain a single agtype entry"),
+                    parser_errposition(pstate,
+                                       exprLocation(rtfunc->funcexpr))));
+
+        }
+    }
+    else
+    {
+        query = coerce_target_list(query, rtfunc, pstate->p_sourcetext);
+    }
 
     // rte->functions and rte->funcordinality are kept for debugging.
     // rte->alias, rte->eref, and rte->lateral need to be the same.
@@ -358,13 +384,10 @@ static void cypher_parse_error_callback(void *arg)
     errposition(pos + geterrposition());
 }
 
-static Query *parse_and_analyze_cypher(const char *query_str, Param *params)
+static Query *analyze_cypher(const char *query_str, List *stmt, Param *params)
 {
-    List *stmt;
     ParseState *pstate;
     Query *query;
-
-    stmt = parse_cypher(query_str);
 
     pstate = make_parsestate(NULL);
     pstate->p_sourcetext = query_str;

@@ -80,10 +80,10 @@ SELECT * FROM ag_graph WHERE name = 'GraphA';
  GraphA | "GraphA"
 (1 row)
 
-SELECT * FROM pg_namespace WHERE nspname = 'GraphA';
- nspname | nspowner | nspacl 
----------+----------+--------
- GraphA  |       10 | 
+SELECT nspname FROM pg_namespace WHERE nspname = 'GraphA';
+ nspname 
+---------
+ GraphA
 (1 row)
 
 -- Rename GraphA to GraphX.
@@ -101,10 +101,10 @@ SELECT * FROM ag_graph WHERE name = 'GraphX';
  GraphX | "GraphX"
 (1 row)
 
-SELECT * FROM pg_namespace WHERE nspname = 'GraphX';
- nspname | nspowner | nspacl 
----------+----------+--------
- GraphX  |       10 | 
+SELECT nspname FROM pg_namespace WHERE nspname = 'GraphX';
+ nspname 
+---------
+ GraphX
 (1 row)
 
 -- Verify there isn't a graph GraphA anymore.
