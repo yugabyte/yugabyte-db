@@ -12,10 +12,10 @@ menu:
 showAsideToc: true
 isTocNested: true
 ---
-In YCQL there are two types of TTL, the table level TTL and column level TTL. The column TTLs are stored
+In YCQL there are two types of TTL, the table level TTL and column level TTL. The column level TTLs are stored
 with the value of the column. The table level TTL is not stored in DocDB (it is stored
-in master’s syscatalog as part of the table’s schema). If no TTL is present at the column’s value,
-the table TTL acts as the default value.
+in yb-master system catalog as part of the table’s schema). If no TTL is present at the column’s value,
+the table level TTL acts as the default value.
 
 Furthermore, YCQL has a distinction between rows created using Insert vs Update. We keep track of
 this difference (and row level TTLs) using a "liveness column", a special system column invisible to
@@ -79,7 +79,7 @@ SELECT * FROM pageviews;
 UPDATE pageviews USING TTL 10 SET views=10 WHERE path='/index';
 ```
 
-After 10 seconds, querying for the rows the `views` column will return `NULL`:
+After 10 seconds, querying for the rows the `views` column will return `NULL` but notice that the row still exists:
 
 ```cassandraql
 SELECT * FROM pageviews;

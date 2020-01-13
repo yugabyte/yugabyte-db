@@ -36,7 +36,7 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 | [CurrentTime](../function_datetime/#currentdate-currenttime-and-currenttimestamp) | [`TIME`](../type_datetime) | () | Return the system current time of day |
 | [CurrentTimestamp](../function_datetime/#currentdate-currenttime-and-currenttimestamp) | [`TIMESTAMP`](../type_datetime) | () | Return the system current timestamp |
 | [Now](../function_datetime/#now) | [`TIMEUUID`](../type_uuid) | () | Returns the UUID of the current timestamp |
-| [TTL](#ttl-function) | [`BIGINT`](../type_int) | (\<AnyType>) | Seek time-to-live of a column |
+| [TTL](#ttl-function) | [`BIGINT`](../type_int) | (\<AnyType>) | Get time-to-live of a column |
 | [ToDate](../function_datetime/#todate) | [`DATE`](../type_datetime) | ([`TIMESTAMP`](../type_datetime)) | Conversion |
 | [ToDate](../function_datetime/#todate) | [`DATE`](../type_datetime) | ([`TIMEUUID`](../type_uuid)) | Conversion |
 | ToTime | [`TIME`](../type_datetime) | ([`TIMESTAMP`](../type_datetime))  | Conversion |
@@ -89,8 +89,9 @@ CAST function converts the value returned from a table column to the specified d
 | `TIMEUUID` | `DATE`, `TIMESTAMP` |
 
 ## WriteTime function
-We can get the timestamp when the column/row was writen.
-Assuming we have a table `page_views` and a column named `views`:
+
+The `WriteTime` function returns the timestamp in when a column was written.
+For example, suppose we have a table `page_views` with a column named `views`:
 ```
  SELECT writetime(views) FROM page_views;
 
@@ -102,7 +103,7 @@ Assuming we have a table `page_views` and a column named `views`:
 ```
 
 ## TTL function
-We can get the number of seconds until a column or row expires. 
+The TTL function returns the number of seconds until a column or row expires. 
 Assuming we have a table `page_views` and a column named `views`:
 ```
 SELECT TTL(views) FROM page_views;
