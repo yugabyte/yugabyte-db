@@ -492,6 +492,16 @@ void TableInfo::GetAllTablets(TabletInfos *ret) const {
   }
 }
 
+TabletInfoPtr TableInfo::GetColocatedTablet() const {
+  shared_lock<decltype(lock_)> l(lock_);
+  if (colocated()) {
+    for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
+      return make_scoped_refptr(e.second);
+    }
+  }
+  return nullptr;
+}
+
 IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
   auto l = LockForRead();
   for (const auto& index_info_pb : l->data().pb.indexes()) {

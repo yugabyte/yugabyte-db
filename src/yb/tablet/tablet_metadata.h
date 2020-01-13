@@ -386,6 +386,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
       const RaftGroupId& raft_group_id, const Partition& partition,
       const std::string& lower_bound_key, const std::string& upper_bound_key) const;
 
+  bool colocated() const { return colocated_; }
+
  private:
   typedef simple_spinlock MutexType;
 

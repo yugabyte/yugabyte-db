@@ -12,7 +12,7 @@ CREATE TABLE foo2 (a INT, b INT, PRIMARY KEY (a ASC));
 -- opt out of using colocated tablet
 CREATE TABLE foo3 (a INT) WITH (colocated = false);
 -- multi column primary key table
-CREATE TABLE foo4(a INT, b INT, PRIMARY KEY (a ASC, b DESC));
+CREATE TABLE foo4 (a INT, b INT, PRIMARY KEY (a ASC, b DESC));
 CREATE TABLE foo5 (a INT, PRIMARY KEY (a ASC)) WITH (colocated = true);
 
 INSERT INTO foo1 (a) VALUES (0), (1), (2);
@@ -62,3 +62,34 @@ UPDATE bar3 SET b = b + 1 WHERE a > 3;
 SELECT * FROM bar3;
 DELETE FROM bar3 WHERE a > 3;
 SELECT * FROM bar3;
+
+-- non-colocated table with index
+CREATE TABLE bar4 (a INT, b INT, PRIMARY KEY (a ASC)) WITH (colocated = false);
+CREATE INDEX ON bar4 (a);
+INSERT INTO bar4 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
+EXPLAIN SELECT * FROM bar4 WHERE a = 1;
+SELECT * FROM bar4 WHERE a = 1;
+UPDATE bar4 SET b = b + 1 WHERE a > 3;
+SELECT * FROM bar4;
+DELETE FROM bar4 WHERE a > 3;
+SELECT * FROM bar4;
+
+-- drop table
+DROP TABLE foo1;
+SELECT * FROM foo1;
+DROP TABLE foo3;
+SELECT * FROM foo3;
+DROP TABLE bar1;
+SELECT * FROM bar1;
+
+-- drop index
+DROP INDEX bar4_a_idx;
+EXPLAIN SELECT * FROM bar4 WHERE a = 1;
+
+\dt
+\di
+
+-- drop database
+\c yugabyte
+DROP DATABASE colocation_test;
+\c colocation_test

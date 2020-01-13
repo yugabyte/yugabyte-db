@@ -361,12 +361,16 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // This only returns tablets which are in RUNNING state.
   void GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos *ret) const;
 
+  // Get all tablets of the table.
   void GetAllTablets(TabletInfos *ret) const;
+
+  // Get the tablet of the table.  The table must be colocated.
+  TabletInfoPtr GetColocatedTablet() const;
 
   // Get info of the specified index.
   IndexInfo GetIndexInfo(const TableId& index_id) const;
 
-  // Returns true if the table creation is in-progress.
+  // Returns true if all tablets of the table are deleted.
   bool AreAllTabletsDeleted() const;
 
   // Returns true if the table creation is in-progress.
