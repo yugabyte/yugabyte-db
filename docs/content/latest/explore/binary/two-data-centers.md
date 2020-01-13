@@ -34,7 +34,7 @@ Waiting for cluster to be ready.
 Create and start your second local cluster that will simulate "Data Center = West" by running the following `yb-ctl create` command from your YugabyteDB home directory.
 
 ```sh
-$ ./bin/yb-ctl create --data_dir yb-datacenter-west --ip_start 2
+$ ./bin/yb-ctl create --data_dir /Users/yugabyte_user/yugabyte/yb-datacenter-west --ip_start 2
 ```
 
 This will start up a 1-node cluster using IP address of `127.0.0.2` and create `yb-datacenter-west` as the data directory. Upon starting, you should see a screen like the following.
@@ -97,50 +97,50 @@ You now have the identical database table on each of your clusters and can now s
 To configure "Data Center - West" to be the consumer of data changes from the "Data Center - East" cluster, you need to use the `yb-admin` `setup_universe_replication` command. Review the syntax and then you can run the command.
 
 ```sh
-yb-admin -master_addresses <consumer-master-addresses> setup_universe_replication <producer-universe_uuid> <producer_master_addresses> <producer-table-ids>
+yb-admin -master_addresses <consumer-master-addresses> \ 
+setup_universe_replication <producer-universe_uuid> <producer_master_addresses> <producer-table-ids>
 ```
 
 - *consumer-master-addresses*: a comma-separated list of the YB-Master servers. For this simulation, you have one YB-Master server for each cluster (typically, there are three).
 - *producer-universe-uuid*: a unique identifier for the producer cluster. The UUID can be found in the YB-Master UI (`<yb-master-ip>:7000`).
-- *producer-table-ids*: A comma-separated list of `table_id` values (the generated UUIDs can be found in the YB-Master UI (`<yb-master-ip>:7000`).
+- *producer-table-ids*: A comma-separated list of `table_id` values. The generated UUIDs can be found in the YB-Master UI (`<yb-master-ip>:7000`/tables).
 
-Based on your actual values (which you got from the YB-Master UI page (`yb-master-ip>:7000`)), run the `yb-admin` `setup_universe_replication` command like in this example.
+Based on your actual values (which you got from the YB-Master UI page at `yb-master-ip>:7000`), run the `yb-admin` `setup_universe_replication` command like in this example.
 
-*consumer-master-addresses*: `127.0.0.2:7100`
-*producer-universe-uuid*: `7acd6399-657d-42dc-a90a-646869898c2d`
-*producer-master-addresses*: `127.0.0.1:7100`
-*producer-table-ids*: `000030a9000030008000000000004000`
+- consumer-master-addresses: `127.0.0.2:7100`
+- producer-universe-uuid: `7acd6399-657d-42dc-a90a-646869898c2d`
+- producer-master-addresses: `127.0.0.1:7100`
+- producer-table-ids: `000030a9000030008000000000004000`
 
 ```sh
-yb-admin -master_addresses 127.0.0.2:7100 setup_universe_replication 7acd6399-657d-42dc-a90a-646869898c2d 127.0.0.1:7100 000030a9000030008000000000004000
+$ ./bin/yb-admin -master_addresses 127.0.0.2:7100 \
+setup_universe_replication 7acd6399-657d-42dc-a90a-646869898c2d 127.0.0.1:7100 000030a9000030008000000000004000
 ```
 
 You should see a message like the following:
 
 ```
-I1113 12:02:46.443101 136273344 mem_tracker.cc:250] MemTracker: hard memory limit is 13.600000 GB
-I1113 12:02:46.443816 136273344 mem_tracker.cc:252] MemTracker: soft memory limit is 11.560000 GB
 Replication setup successfully
 ```
 
 ## 4. Verify unidirectional replication
 
-Now that you've configured unidirectional replication, you can now add data to the `users` table on the "Data Center - West" cluster and see the data appear in the `users` table on "Data Center - East" cluster. 
+Now that you've configured unidirectional replication, you can now add data to the `users` table on the "Data Center - East" cluster and see the data appear in the `users` table on "Data Center - West" cluster. 
 
-To add data to the "Data Center - East" cluster, open the YSQL shell (`ysqlsh`) by running the following command, making sure you are pointing to the new producer host.
+To add data to the "Data Center - East" cluster, open `ysqlsh` by running the following command, making sure you are pointing to the new producer host.
 
 ```sh
 $ ./bin/ysqlsh -host 127.0.0.1
 ```
 
-On the "producer" cluster, open the YSQL shell (`ysqlsh`) and run the following to quickly see that data has been replicated between clusters.
+```postgresql
+yugabyte=# INSERT INTO users(email, username) VALUES ('hector@example.com', 'hector'), ('steve@example.com', 'steve');
+```
+
+On the consumer "Data Center - West" cluster, open `ysqlsh` and run the following to quickly see that data has been replicated between clusters.
 
 ```sh
 $ ./bin/ysqlsh -host 127.0.0.2
-```
-
-```postgresql
-yugabyte=# INSERT INTO users(email, username) VALUES ('hector@example.com', 'hector'), ('steve@example.com', 'steve');
 ```
 
 ```postgresql
@@ -163,13 +163,14 @@ Bidirectional asynchronous replication lets you insert data into the same table 
 
 To configure bidirectional asynchronous replication for the same table, you need to run the following `yb-admin` `setup_universe_replication` command to set up the "Data Center - East" cluster to be the consumer of the "Data Center - West" cluster. For this example, here are the values used and the command example.
 
-*consumer-master-addresses*: `127.0.0.1:7100`
-*producer-universe-uuid*: `0a315687-e9bd-430f-b6f4-ac831193a394`
-*producer-master-addresses*: `127.0.0.2:7100`
-*producer-table-ids*: `000030a9000030008000000000004000`
+- consumer-master-addresses: `127.0.0.1:7100`
+- producer-universe-uuid: `0a315687-e9bd-430f-b6f4-ac831193a394`
+- producer-master-addresses: `127.0.0.2:7100`
+- producer-table-ids: `000030a9000030008000000000004000`
 
 ```sh
-$ ./bin/yb-admin -master_addresses 127.0.0.1:7100 setup_universe_replication 0a315687-e9bd-430f-b6f4-ac831193a394  127.0.0.2:7100 000030a9000030008000000000004000
+$ ./bin/yb-admin -master_addresses 127.0.0.1:7100 \
+setup_universe_replication 0a315687-e9bd-430f-b6f4-ac831193a394  127.0.0.2:7100 000030a9000030008000000000004000
 ```
 
 You should see a message that shows the following:
@@ -182,20 +183,20 @@ Replication setup successfully
 
 Now that you've configured bidirectional replication, you can now add data to the `users` table on the "Data Center - West" cluster and see the data appear in the `users` table on "Data Center - East" cluster.
 
-To add data to the "Data Center - West" cluster, open the YSQL shell (`ysqlsh`) by running the following command, making sure you are pointing to the new producer host.
+To add data to the "Data Center - West" cluster, open`ysqlsh` by running the following command, making sure you are pointing to the new producer host.
 
 ```sh
 $ ./bin/ysqlsh -host 127.0.0.2
 ```
 
-On the new "consumer" cluster, open the YSQL shell (`ysqlsh`) and run the following to quickly see that data has been replicated between clusters.
+```postgresql
+yugabyte=# INSERT INTO users(email, username) VALUES ('neha@example.com', 'neha'), ('mikhail@example.com', 'mikhail');
+```
+
+On the new "consumer" cluster, open `ysqlsh` and run the following to quickly see that data has been replicated between clusters.
 
 ```sh
 $ ./bin/ysqlsh -host 127.0.0.1
-```
-
-```postgresql
-yugabyte=# INSERT INTO users(email, username) VALUES ('neha@example.com', 'neha'), ('mikhail@example.com', 'mikhail');
 ```
 
 ```postgresql
@@ -216,7 +217,7 @@ You should see the following in the results.
 
 ## 7. Clean up
 
-At this point, you've finished the tutorial and can either stop and save your examples or destroy and remove the clusters and their associated data directories.
+At this point, you've finished the tutorial. You can either stop and save your examples or destroy and remove the clusters and their associated data directories.
 
 To stop the simulated "data centers", use the `yb-ctl stop` commands using the `--data_dir` option to specify the cluster.
 
@@ -231,17 +232,12 @@ To destroy the simulated "data centers" and remove its associate data directory,
 **Example — destroying and removing the "Data Center - West"**
 
 ```sh
-$ ./bin/yb-ctl stop --data_dir /Users/yugabyte_user/yugabyte/yb-datacenter-west
+$ ./bin/yb-ctl destroy --data_dir /Users/yugabyte_user/yugabyte/yb-datacenter-west
 ```
 
-## What's next
+## What's next?
 
 For more information, see the following in the Architecture section:
 
 - [Two data center (2DC) deployments](../../architecture/2dc-deployments/)
 - [Change data capture (CDC)](../../architecture/cdc-architecture)
-
-For detailed design documents, see the following GitHub repository pages:
-
-- [Two Data Center Deployment Support with YugabyteDB](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-2DC-deployment.md)
-- [Change Data Capture in YugabyteDB](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-change-data-capture.md)
