@@ -275,6 +275,9 @@ public class UniverseTest extends FakeDBApplication {
   @Test
   public void testToJSONSuccess() {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
+    Map<String, String> config = new HashMap<>();
+    config.put("takeBackups", "true");
+    u.setConfig(config);
 
     // Create regions
     Region r1 = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
@@ -319,6 +322,8 @@ public class UniverseTest extends FakeDBApplication {
         u.getUniverseDetails()));
     assertThat(universeJson.get("resources").asText(), allOf(notNullValue(),
         equalTo(resources.asText())));
+    JsonNode universeConfig = universeJson.get("universeConfig");
+    assertEquals(universeConfig.toString(), "{\"takeBackups\":\"true\"}");
     JsonNode clustersListJson = universeJson.get("universeDetails").get("clusters");
     assertThat(clustersListJson, notNullValue());
     assertTrue(clustersListJson.isArray());

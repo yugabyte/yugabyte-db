@@ -397,6 +397,8 @@ public class UniverseController extends AuthenticatedController {
         }
       }
 
+      universe.setConfig(ImmutableMap.of("takeBackups", "true"));
+
       // Submit the task to create the universe.
       UUID taskUUID = commissioner.submit(taskType, taskParams);
       LOG.info("Submitted create universe for {}:{}, task uuid = {}.",

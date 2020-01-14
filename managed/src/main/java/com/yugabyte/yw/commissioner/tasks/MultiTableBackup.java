@@ -47,6 +47,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     public UUID storageConfigUUID;
     public long schedulingFrequency = 0L;
     public String cronExpression = null;
+    public String keyspace = null;
     public boolean sse = false;
   }
 
@@ -76,7 +77,7 @@ public class MultiTableBackup extends UniverseTaskBase {
       List<BackupTableParams> tableBackupParams = new ArrayList<>();
       try {
         client = ybService.getClient(masterAddresses, certificate);
-        ListTablesResponse response = client.getTablesList(null, true, null);
+        ListTablesResponse response = client.getTablesList(null, true, params().keyspace);
         List<TableInfo> tableInfoList = response.getTableInfoList();
         for (TableInfo table : tableInfoList) {
           String tableKeySpace = table.getNamespace().getName().toString();

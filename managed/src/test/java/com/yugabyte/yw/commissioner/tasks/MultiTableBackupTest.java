@@ -40,6 +40,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -55,44 +56,51 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
   Universe defaultUniverse;
   YBClient mockClient;
   ListTablesResponse mockListTablesResponse;
+  ListTablesResponse mockListTablesResponse1;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
     List<TableInfo> tableInfoList = new ArrayList<TableInfo>();
+    List<TableInfo> tableInfoList1 = new ArrayList<TableInfo>();
     Set<String> tableNames = new HashSet<String>();
     tableNames.add("Table1");
     tableNames.add("Table2");
     TableInfo ti1 = TableInfo.newBuilder()
         .setName("Table1")
-        .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+        .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default0"))
         .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()))
         .setTableType(TableType.REDIS_TABLE_TYPE)
         .build();
     TableInfo ti2 = TableInfo.newBuilder()
         .setName("Table2")
-        .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+        .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default1"))
         .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()))
         .setTableType(TableType.YQL_TABLE_TYPE)
         .build();
     tableInfoList.add(ti1);
     tableInfoList.add(ti2);
+    tableInfoList1.add(ti1);
     mockClient = mock(YBClient.class);
     mockListTablesResponse = mock(ListTablesResponse.class);
+    mockListTablesResponse1 = mock(ListTablesResponse.class);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     try {
       when(mockClient.getTablesList(null, true, null)).thenReturn(mockListTablesResponse);
+      when(mockClient.getTablesList(null, true, "$$$Default0")).thenReturn(mockListTablesResponse1);
     } catch (Exception e) {
       // Do nothing.
     }
     when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
+    when(mockListTablesResponse1.getTableInfoList()).thenReturn(tableInfoList1);
   }
 
-  private TaskInfo submitTask() {
+  private TaskInfo submitTask(String keyspace) {
     MultiTableBackup.Params backupTableParams = new MultiTableBackup.Params();
     backupTableParams.universeUUID = defaultUniverse.universeUUID;
     backupTableParams.customerUUID = defaultCustomer.uuid;
+    backupTableParams.keyspace = keyspace;
     backupTableParams.storageConfigUUID = UUID.randomUUID();
     try {
       UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, backupTableParams);
@@ -116,8 +124,23 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
 
-    TaskInfo taskInfo = submitTask();
+    TaskInfo taskInfo = submitTask(null);
     verify(mockTableManager, times(2)).createBackup(any());
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testMultiTableBackupKeyspace() {
+    Map<String, String> config = new HashMap<>();
+    config.put("takeBackups", "true");
+    defaultUniverse.setConfig(config);
+    ShellProcessHandler.ShellResponse shellResponse =  new ShellProcessHandler.ShellResponse();
+    shellResponse.message = "{\"success\": true}";
+    shellResponse.code = 0;
+    when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
+
+    TaskInfo taskInfo = submitTask("$$$Default0");
+    verify(mockTableManager, times(1)).createBackup(any());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }
 
@@ -126,7 +149,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     Map<String, String> config = new HashMap<>();
     config.put("takeBackups", "false");
     defaultUniverse.setConfig(config);
-    TaskInfo taskInfo = submitTask();
+    TaskInfo taskInfo = submitTask(null);
     verify(mockTableManager, times(0)).createBackup(any());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }

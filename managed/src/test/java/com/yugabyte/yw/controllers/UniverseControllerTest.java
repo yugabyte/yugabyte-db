@@ -453,6 +453,7 @@ public class UniverseControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertNotNull(json.get("universeUUID"));
     assertNotNull(json.get("universeDetails"));
+    assertNotNull(json.get("universeConfig"));
 
     CustomerTask th = CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique();
     assertNotNull(th);
@@ -621,6 +622,7 @@ public class UniverseControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "universeUUID", u.universeUUID.toString());
     assertNotNull(json.get("universeDetails"));
+    assertNotNull(json.get("universeConfig"));
 
     CustomerTask th = CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique();
     assertNotNull(th);
