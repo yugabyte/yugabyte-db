@@ -143,6 +143,8 @@ class OnPremFillInstanceProvisionTemplateMethod(AbstractMethod):
                                  help='Private key file to ssh into the instance.')
         self.parser.add_argument('--passwordless_sudo', action='store_true',
                                  help='If the ssh_user has passwordless sudo access or not.')
+        self.parser.add_argument("--air_gap", action="store_true",
+                                 help='If instances are air gapped or not.')
 
     def callback(self, args):
         config = {'devops_home': ybutils.YB_DEVOPS_HOME, 'cloud': self.cloud.name}
