@@ -6,14 +6,19 @@ YSQL uses the query layer from PostgreSQL v11.2, and intends to support most Pos
 
 ## PostgreSQL Feature Support
 
-Here are the features currently supported as of YugaByte DB v1.3, Jul 15 2019. This list also indicates what is planned for YugaByte DB v2.0 coming out around the end of August.
+Here are the features currently supported as of YugaByte DB v2.0, Jan 15 2020. This list also indicates what is planned for YugaByte DB v2.1 coming out around the beginning of February.
 
 - [ ] All data types
     - [x] Basic types
     - [x] Autoincrement IDs (various `SERIAL` types)
     - [x] Arrays, NULLs in Arrays
     - [x] `JSONB`, `JSONB`-modifying operators and functions
-    - [ ] Enum ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
+    - [x] User-defined types
+        - [x] Base types
+        - [x] Enumerated types
+        - [x] Range types
+        - [x] Composite (record) types
+        - [x] Array types
     - [ ] XML data type
 - [x] DDL Statements
     - [x] Tables with UNIQUE KEY, PRIMARY KEY, CONSTRAINTS
@@ -27,8 +32,9 @@ Here are the features currently supported as of YugaByte DB v1.3, Jul 15 2019. T
     - [x] Common Table Expressions (CTE) and Recursive Queries
     - [x] Upserts (`INSERT ... ON CONFLICT DO NOTHING/UPDATE`)
     - [x] Window functions
-    - [ ] Authentication ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
-    - [ ] Role based access control ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
+    - [x] Authentication
+    - [x] Role based access control
+    - [x] Row-level security
 - [x] All Constraints
     - [x] Primary Key
     - [x] Foreign Key
@@ -45,25 +51,33 @@ Here are the features currently supported as of YugaByte DB v1.3, Jul 15 2019. T
     - [x] Serializable and Snapshot Isolation levels
     - [ ] Savepoints
 - [ ] Advanced SQL Support
-    - [x] Stored Procedure
+    - [x] Stored procedures
+    - [x] User-defined functions
     - [x] Triggers
+        - [x] Row-level triggers (BEFORE, AFTER, INSTEAD OF)
+        - [x] Statement-level triggers (BEFORE, AFTER, INSTEAD OF)
+        - [ ] Deferrable triggers
+        - [ ] Transition tables (REFERENCING clause for triggers)
     - [x] Views
-    - [x] Extensions
+    - [x] Extensions ![Generic badge](https://img.shields.io/badge/Status-BETA-blue.svg)
+        - [x] pgcrypto
+        - [x] fuzzystrmatch
+        - [x] spi module
+    - [x] Generic extension framework
     - [ ] Materialized Views
-    - [ ] Generic extension framework ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
     - [ ] Foreign data wrappers
 
 ## Core DB Features
 
 - [ ] Change data capture
-    - [ ] Kafka integration ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
-    - [ ] Elastic search integraion ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
+    - [x] Kafka integration ![Generic badge](https://img.shields.io/badge/Status-BETA-blue.svg)
+    - [ ] Elastic search integration ![Generic badge](https://img.shields.io/badge/Target-v2.2-green.svg)
 - [ ] Two DC deployment
-    - [ ] Master-slave (asynchronous replication) ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
-    - [ ] Multi-master (bidirectional replication, last writer wins semantics) ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
+    - [x] Master-slave (asynchronous replication)
+    - [x] Multi-master (bidirectional replication, last writer wins semantics)
 - [ ] Security
-    - [ ] SSL Support/TLS Encryption ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
-    - [ ] Encryption at rest ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
+    - [x] SSL Support/TLS Encryption 
+    - [x] Encryption at rest ![Generic badge](https://img.shields.io/badge/Target-v2.1-green.svg)
 - [ ] Read replica support
 
 
@@ -89,13 +103,14 @@ Here are the features currently supported as of YugaByte DB v1.3, Jul 15 2019. T
     - [x] EntityFramework
     - [x] Diesel
 - [ ] Ecosystem
-    - [ ] GraphQL support ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
-    - [ ] Advanced Spring support ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
+    - [x] GraphQL support ![Generic badge](https://img.shields.io/badge/Status-BETA-blue.svg)
+    - [x] Advanced Spring support ![Generic badge](https://img.shields.io/badge/Status-BETA-blue.svg)
 - [ ] Tools support
     - [x] psql
-    - [ ] pgAdmin ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
-    - [ ] TablePlus
-    - [ ] pg_dump ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
-    - [ ] pgbench ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
+    - [x] pg_dump
+    - [x] pgbench
+    - [x] DBeaver
+    - [x] pgAdmin ![Generic badge](https://img.shields.io/badge/Status-BETA-blue.svg)
+    - [x] TablePlus ![Generic badge](https://img.shields.io/badge/Status-BETA-blue.svg)
 
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/YSQL-Features-Supported.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
