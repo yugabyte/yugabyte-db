@@ -15,11 +15,31 @@ isTocNested: 3
 showAsideToc: true
 ---
 
-The YugabyteDB JDBC Driver is based on the [PostgreSQL JDBC Driver](https://github.com/pgjdbc/pgjdbc). The YugabyteDB implementation adds a `YBClusterAwareDataSource` that requires only an initial _contact point_ for the YugabyteDB cluster. Then it discovers the rest of the nodes and automatically responds to nodes being started, stopped, added, or removed. Internally, the driver maintains a connection pool for each node and chooses a live node to get a connection. Whenever the connection is closed, the connection will be returned to the respective pool.
+## Overview
+
+The YugabyteDB JDBC Driver is based on the open source [PostgreSQL JDBC Driver (PgJDBC)](https://github.com/pgjdbc/pgjdbc) and incorporates all of the functionality and behavior of that driver. The YugabyteDB JDBC driver extends PgJDBC to add support for distributed SQL databases created in YugabyteDB universes, including cluster awareness and load balancing.
+
+### Cluster awareness
+
+The YugabyteDB JBDC driver supports distributed SQL databases on a YugabyteDB universe, or cluster, and adds cluster awareness. When you specify any one node in your YugabyteDB cluster as the initial *contact point*  (`YBClusterAwareDataSource`), the driver discovers the rest of the nodes in the universe and automatically responds to nodes being started, stopped, added, or removed.
+
+### Connection pooling
+
+Internally, the driver maintains a connection pool for each node and selects a live node to get a connection from. If a connection is available in the node's connection pool, a connection is made and used until released back to the pool. If a connection is not available, a new connection is created.
+
+### Load balancing
+
+When a connection is requested, the YugabyteDB JDBC driver uses a round-robin load balancing system to select a node to connect to. If that node has an available connection in the pool, a connection is opened. Upon releasing the connection, YugabyteDB returns the connection to the pool.
+
+## Resources
+
+To get the latest source code, file issues, and track enhancements, see the [Yugabyte JDBC Driver repository](https://github.com/yugabyte/jdbc-yugabytedb).
+
+For details on functionality incorporated from the PostgreSQL JDBC driver, see [Documentation (PostgreSQL JDBC Driver)](https://jdbc.postgresql.org/documentation/documentation.html).
 
 ## Download
 
-Add the following lines to your Apache Maven project.
+Add the following lines to your Apache Maven project to access and download the YugabyteDB JDBC driver.
 
 ```
 <dependency>
