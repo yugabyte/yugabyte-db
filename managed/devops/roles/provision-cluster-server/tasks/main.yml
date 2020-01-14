@@ -38,7 +38,7 @@
       name: ntp
       state: restarted
     when: ansible_distribution == "Ubuntu"
-  when: not should_setup_chrony
+  when: not should_setup_chrony and not air_gap
 
 - block:
   - name: Uninstall NTP if available
@@ -54,7 +54,7 @@
     vars:
       #  per AWS Time Sync docs: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/set-time.html
       chrony_server: "169.254.169.123 prefer iburst minpoll 4 maxpoll 4"
-  when: should_setup_chrony
+  when: should_setup_chrony and not air_gap
 
 - name: Provision | Set swappiness off
   sysctl:
