@@ -139,6 +139,7 @@ public class EncryptionAtRestControllerTest extends WithApplication {
         JsonNode json = Json.parse(contentAsString(listResult));
         assertTrue(json.isArray());
         assertEquals(1, json.size());
+        assertAuditEntry(0, customer.uuid);
     }
 
     @Test
@@ -149,6 +150,7 @@ public class EncryptionAtRestControllerTest extends WithApplication {
         JsonNode json = Json.parse(contentAsString(listResult));
         assertTrue(json.isArray());
         assertEquals(json.size(), 0);
+        assertAuditEntry(0, customer.uuid);
     }
 
     @Test
@@ -173,6 +175,7 @@ public class EncryptionAtRestControllerTest extends WithApplication {
         json = Json.parse(contentAsString(deleteResult));
         UUID taskUUID = UUID.fromString(json.get("taskUUID").asText());
         assertNotNull(taskUUID);
+        assertAuditEntry(1, customer.uuid);
     }
 
     @Ignore("This test passes locally but fails on Jenkins due to Guice not injecting mocked ApiHelper for an unknown reason")
@@ -205,6 +208,7 @@ public class EncryptionAtRestControllerTest extends WithApplication {
         JsonNode json = Json.parse(contentAsString(createKeyResult));
         String keyValue = json.get("value").asText();
         assertEquals(keyValue, mockEncryptionKey);
+        assertAuditEntry(2, customer.uuid);
     }
 
     @Test
@@ -226,5 +230,6 @@ public class EncryptionAtRestControllerTest extends WithApplication {
                 universe.universeUUID.toString()
         );
         assertErrorNodeValue(json, expectedErrorMsg);
+        assertAuditEntry(0, customer.uuid);
     }
 }

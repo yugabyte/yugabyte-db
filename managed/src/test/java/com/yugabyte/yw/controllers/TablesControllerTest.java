@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -28,6 +29,7 @@ import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -39,6 +41,7 @@ import java.util.UUID;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.protobuf.ByteString;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
@@ -80,6 +83,7 @@ import com.yugabyte.yw.models.Schedule;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
 import play.test.WithApplication;
@@ -191,6 +195,7 @@ public class TablesControllerTest extends WithApplication {
     }
     LOG.info("Processed " + numTables + " tables");
     assertEquals(numTables, tableNames.size());
+    assertAuditEntry(0, customer.uuid);
  }
 
   @Test
@@ -204,6 +209,7 @@ public class TablesControllerTest extends WithApplication {
     Result r = tablesController.universeList(customer.uuid, u1.universeUUID);
     assertEquals(200, r.status());
     assertEquals("Expected error. Masters are not currently queryable.", contentAsString(r));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -222,6 +228,7 @@ public class TablesControllerTest extends WithApplication {
     assertEquals(BAD_REQUEST, r.status());
     String errMsg = "Cannot find universe " + badUUID;
     assertThat(Json.parse(contentAsString(r)).get("error").asText(), containsString(errMsg));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -243,6 +250,7 @@ public class TablesControllerTest extends WithApplication {
     Result result = FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, emptyJson);
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), containsString(errorString));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -317,6 +325,7 @@ public class TablesControllerTest extends WithApplication {
     // TODO: Ideally i think the targetUUID for tables should be tableUUID, but currently
     // we don't control the UUID generation for tables from middleware side.
     assertThat(task.getTargetUUID(), allOf(notNullValue(), equalTo(universe.universeUUID)));
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -348,6 +357,7 @@ public class TablesControllerTest extends WithApplication {
     assertEquals("mock_table", json.at("/tableDetails/tableName").asText());
     assertEquals("mock_ks", json.at("/tableDetails/keyspace").asText());
     assertEquals("mock_column", json.at("/tableDetails/columns/0/name").asText());
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -373,6 +383,7 @@ public class TablesControllerTest extends WithApplication {
     String errMsg = "UUID of table in schema (" + mockTableUUID2.toString().replace("-", "") +
         ") did not match UUID of table in request (" + mockTableUUID1 + ").";
     assertEquals(errMsg, Json.parse(contentAsString(result)).get("error").asText());
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -431,6 +442,7 @@ public class TablesControllerTest extends WithApplication {
 
     Result result = FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, topJson);
     assertEquals(OK, result.status());
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -458,6 +470,7 @@ public class TablesControllerTest extends WithApplication {
     Result result = FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, topJson);
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), containsString("Invalid S3 Bucket provided: foobar"));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -477,6 +490,7 @@ public class TablesControllerTest extends WithApplication {
     assertErrorNodeValue(resultJson, "keyspace", "This field is required");
     assertErrorNodeValue(resultJson, "tableName", "This field is required");
     assertErrorNodeValue(resultJson, "actionType", "This field is required");
+    assertAuditEntry(0, customer.uuid);
   }
   @Test
   public void testCreateBackupWithInvalidStorageConfig() {
@@ -495,6 +509,7 @@ public class TablesControllerTest extends WithApplication {
     Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
         user.createAuthToken(), bodyJson);
     assertBadRequest(result, "Invalid StorageConfig UUID: " + randomUUID);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -530,6 +545,7 @@ public class TablesControllerTest extends WithApplication {
     Backup backup = Backup.fetchByTaskUUID(fakeTaskUUID);
     assertNotNull(backup);
     assertEquals(tableUUID, backup.getBackupInfo().tableUUID);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -555,6 +571,7 @@ public class TablesControllerTest extends WithApplication {
     Schedule schedule = Schedule.get(scheduleUUID);
     assertNotNull(schedule);
     assertEquals(schedule.getCronExpression(), "5 * * * *");
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -583,6 +600,7 @@ public class TablesControllerTest extends WithApplication {
     assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
     CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertNotNull(ct);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -606,6 +624,7 @@ public class TablesControllerTest extends WithApplication {
     Schedule schedule = Schedule.get(scheduleUUID);
     assertNotNull(schedule);
     assertEquals(schedule.getCronExpression(), "5 * * * *");
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -629,10 +648,20 @@ public class TablesControllerTest extends WithApplication {
     Schedule schedule = Schedule.get(scheduleUUID);
     assertNotNull(schedule);
     assertEquals(schedule.getFrequency(), 6000);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
   public void testDeleteTableWithValidParams() throws Exception {
+    Customer customer = ModelFactory.testCustomer();
+    Users user = ModelFactory.testUser(customer);
+    Map<String, String> flashData = Collections.emptyMap();
+    Map<String, Object> argData = ImmutableMap.of("user", user);
+    Http.Request request = mock(Http.Request.class);
+    Long id = 2L;
+    play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
+    Http.Context context = new Http.Context(id, header, request, flashData, flashData, argData);
+    Http.Context.current.set(context);
     tablesController.commissioner = mockCommissioner;
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(Matchers.any(TaskType.class),
@@ -647,10 +676,9 @@ public class TablesControllerTest extends WithApplication {
     when(mockSchemaResponse.getNamespace()).thenReturn("mock_ks");
     when(mockSchemaResponse.getTableType()).thenReturn(TableType.YQL_TABLE_TYPE);
     when(mockSchemaResponse.getTableId()).thenReturn(tableUUID.toString().replace("-", ""));
+    when(request.method()).thenReturn("DELETE");
+    when(request.path()).thenReturn("/api/customer/test/universe/test");
 
-    // Creating fake authentication
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(universe.universeUUID);
@@ -658,6 +686,7 @@ public class TablesControllerTest extends WithApplication {
 
     Result result = tablesController.drop(customer.uuid, universe.universeUUID, tableUUID);
     assertEquals(OK, result.status());
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -675,5 +704,6 @@ public class TablesControllerTest extends WithApplication {
     Result result = tablesController.drop(customer.uuid, universe.universeUUID, badTableUUID);
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), containsString(errorString));
+    assertAuditEntry(0, customer.uuid);
   }
 }

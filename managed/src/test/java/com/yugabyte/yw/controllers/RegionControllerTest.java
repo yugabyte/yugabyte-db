@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.core.IsInstanceOf.instanceOf;
 import static org.junit.Assert.*;
@@ -99,6 +100,7 @@ public class RegionControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertEquals(0, json.size());
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -107,6 +109,7 @@ public class RegionControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertEquals(0, json.size());
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -127,6 +130,7 @@ public class RegionControllerTest extends FakeDBApplication {
     assertValue(zonesJson.get(0), "uuid", az.uuid.toString());
     assertValue(zonesJson.get(0), "code", az.code);
     assertValue(zonesJson.get(0), "subnet", az.subnet);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -136,6 +140,7 @@ public class RegionControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     assertEquals("[]", json.toString());
     assertEquals(0, json.size());
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -147,6 +152,7 @@ public class RegionControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     assertEquals("[]", json.toString());
     assertEquals(0, json.size());
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -161,6 +167,7 @@ public class RegionControllerTest extends FakeDBApplication {
     assertEquals(json.get(0).path("code").asText(), r.code);
     assertEquals(json.get(0).path("name").asText(), r.name);
     assertThat(json.get(0).path("zones"), allOf(notNullValue(), instanceOf(ArrayNode.class)));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -176,6 +183,7 @@ public class RegionControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertEquals(2, json.size());
+    assertAuditEntry(0, customer.uuid);
   }
 
 
@@ -187,6 +195,7 @@ public class RegionControllerTest extends FakeDBApplication {
     Result result = createRegion(randomUUID, regionJson);
     assertEquals(BAD_REQUEST, result.status());
     assertErrorResponse(result, "Invalid Provider UUID:" + randomUUID);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -195,6 +204,7 @@ public class RegionControllerTest extends FakeDBApplication {
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result),
             CoreMatchers.containsString("\"code\":[\"This field is required\"]"));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -208,6 +218,7 @@ public class RegionControllerTest extends FakeDBApplication {
     assertThat(json.get("uuid").toString(), is(notNullValue()));
     assertValue(json, "code", "foo-region");
     assertValue(json, "name", "Foo PlacementRegion");
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -222,6 +233,7 @@ public class RegionControllerTest extends FakeDBApplication {
     assertThat(json.get("uuid").toString(), is(notNullValue()));
     assertValue(json, "code", "us-west1");
     assertValue(json, "name", "Gcp US West 1");
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -248,6 +260,7 @@ public class RegionControllerTest extends FakeDBApplication {
     assertNotNull(json.get("zones"));
     Region r = Region.getByCode(provider, "foo-region");
     assertEquals(1, r.zones.size());
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -268,6 +281,7 @@ public class RegionControllerTest extends FakeDBApplication {
     assertInternalServerError(result, "Region Bootstrap failed.");
     Region r = Region.getByCode(provider, "foo-region");
     assertNull(r);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -277,6 +291,7 @@ public class RegionControllerTest extends FakeDBApplication {
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result),
             CoreMatchers.containsString("Invalid Provider/Region UUID:" + randomUUID));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -297,5 +312,6 @@ public class RegionControllerTest extends FakeDBApplication {
     for (AvailabilityZone az: zones) {
       assertFalse(az.active);
     }
+    assertAuditEntry(1, customer.uuid);
   }
 }
