@@ -85,6 +85,15 @@ yb-admin -master_addresses <master-addresses> change_config <tablet_id> [ ADD_SE
 - *peer_uuid*: The UUID of the peer.
 - PRE_VOTER | PRE_OBSERVER: Role of the new peer joining the quorum. Required when using the `ADD_SERVER` subcommand.
 
+**Notes:**
+
+If you need to take a node down temporarily, but intend to bring it back up, you should not need to use the `REMOVE_SERVER` subcommand.
+
+- If the node is down for less than 15 minutes, it will catch up through RPC calls when it comes back online.
+- If the node is offline longer than 15 minutes, then it will go through Remote Bootstrap, where the current leader will forward all relevant files to catch up.
+
+If you do not intend to bring a node back up (perhaps you brought it down for maintenance, but discovered that the disk is bad), then you want to decommission the node (using the `REMOTE_SERVER` subcommand) and then add in a new node (using the `ADD_SERVER` subcommand).
+
 #### change_master_config
 
 Changes the master configuration.

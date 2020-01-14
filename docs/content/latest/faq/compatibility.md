@@ -1,14 +1,14 @@
 ---
-title: API compatibility
-linkTitle: API compatibility
-description: API compatibility
+title: API compatibility FAQ
+linkTitle: API compatibility FAQ
+description: API compatibility FAQ
 aliases:
   - /faq/cassandra/
   - /latest/faq/cassandra/
 menu:
   latest:
     parent: faq
-    weight: 2740
+    weight: 2730
 isTocNested: true
 showAsideToc: true
 ---
