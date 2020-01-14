@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 
@@ -87,6 +88,7 @@ public class InstanceTypeController extends AuthenticatedController {
                                             formData.get().numCores,
                                             formData.get().memSizeGB,
                                             formData.get().instanceTypeDetails);
+      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(it);
     } catch (Exception e) {
       LOG.error("Unable to create instance type {}: {}", formData.data(), e.getMessage());
@@ -117,6 +119,7 @@ public class InstanceTypeController extends AuthenticatedController {
       instanceType.setActive(false);
       instanceType.save();
       ObjectNode responseJson = Json.newObject();
+      Audit.createAuditEntry(ctx(), request());
       responseJson.put("success", true);
       return ApiResponse.success(responseJson);
     } catch (Exception e) {

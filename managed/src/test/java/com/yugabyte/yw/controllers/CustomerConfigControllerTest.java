@@ -20,6 +20,7 @@ import java.util.UUID;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -47,6 +48,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     assertErrorNodeValue(node, "name", "This field is required");
     assertErrorNodeValue(node, "type", "This field is required");
     assertEquals(BAD_REQUEST, result.status());
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
@@ -63,6 +65,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     JsonNode node = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
     assertErrorNodeValue(node, "type", "Invalid type provided");
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
@@ -78,6 +81,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     JsonNode node = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
     assertErrorNodeValue(node, "data", "Invalid data provided, expected a object.");
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
@@ -95,6 +99,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     assertOk(result);
     assertNotNull(node.get("configUUID"));
     assertEquals(1, CustomerConfig.getAll(defaultCustomer.uuid).size());
+    assertAuditEntry(1, defaultCustomer.uuid);
   }
 
   @Test
@@ -105,6 +110,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
         defaultUser.createAuthToken());
     JsonNode node = Json.parse(contentAsString(result));
     assertEquals(1, node.size());
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
@@ -114,6 +120,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
         defaultUser.createAuthToken());
     JsonNode node = Json.parse(contentAsString(result));
     assertEquals(0, node.size());
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
@@ -125,6 +132,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     JsonNode node = Json.parse(contentAsString(result));
     assertOk(result);
     assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
+    assertAuditEntry(1, defaultCustomer.uuid);
   }
 
   @Test
@@ -136,5 +144,6 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
         defaultUser.createAuthToken());
     assertBadRequest(result, "Invalid configUUID: " + configUUID);
     assertEquals(1, CustomerConfig.getAll(customer.uuid).size());
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 }

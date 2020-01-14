@@ -43,6 +43,7 @@ import java.io.*;
 
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.Users.Role;
 import static org.hamcrest.CoreMatchers.*;
@@ -111,12 +112,14 @@ public class UsersControllerTest extends WithApplication {
     assertEquals(userList.size(), 1);
     assertThat(userList.get(0).uuid, allOf(notNullValue(), equalTo(user1.uuid)));
     assertEquals(userList.get(0).email, user1.email);
+    assertAuditEntry(0, customer1.uuid);
   }
 
   @Test
   public void testGetUsersWithInvalidToken() throws IOException {
     List<Users> userList = getListOfUsers(authToken1, customer2);
     assertNull(userList);
+    assertAuditEntry(0, customer1.uuid);
   }
 
   @Test
@@ -137,6 +140,7 @@ public class UsersControllerTest extends WithApplication {
     assertEquals(user.email, "foo@bar.com");
     List<Users> userList = getListOfUsers(authToken1, customer1);
     assertEquals(userList.size(), 2);
+    assertAuditEntry(1, customer1.uuid);
   }
 
   @Test
@@ -147,6 +151,7 @@ public class UsersControllerTest extends WithApplication {
         .cookie(validCookie));
     List<Users> userList = getListOfUsers(authToken1, customer1);
     assertNull(userList);
+    assertAuditEntry(1, customer1.uuid);
   }
 
   @Test
@@ -160,6 +165,6 @@ public class UsersControllerTest extends WithApplication {
         .cookie(validCookie));
     testUser1 = Users.get(testUser1.uuid);
     assertEquals(testUser1.getRole(), Role.ReadOnly);
+    assertAuditEntry(1, customer1.uuid);
   }
-
 }

@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static junit.framework.TestCase.assertTrue;
@@ -171,6 +172,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertOk(result);
     assertTrue(json.isArray());
     assertEquals(0, json.size());
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -185,6 +187,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
 
     assertOk(result);
+    assertAuditEntry(0, customer.uuid);
     assertEquals(2, json.size());
     assertValues(json, "uuid", (List) ImmutableList.of(p1.uuid.toString(), p2.uuid.toString()));
     assertValues(json, "name", (List) ImmutableList.of(p1.name, p2.name));
@@ -210,6 +213,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertEquals(1, json.size());
     assertValues(json, "uuid", (List) ImmutableList.of(p.uuid.toString()));
     assertValues(json, "name", (List) ImmutableList.of(p.name.toString()));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -222,6 +226,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertOk(result);
     assertValue(json, "name", "Microsoft");
     assertValue(json, "customerUUID", customer.uuid.toString());
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -232,6 +237,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     bodyJson.put("name", "Amazon");
     Result result = createProvider(bodyJson);
     assertBadRequest(result, "Duplicate provider code: aws");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -244,6 +250,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertValue(json, "name", "Amazon");
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -252,6 +259,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     bodyJson.put("code", "aws");
     Result result = createProvider(bodyJson);
     assertBadRequest(result, "\"name\":[\"This field is required\"]}");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -291,6 +299,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
         assertEquals(configJson.size(), config.size());
       }
     }
+    assertAuditEntry(2, customer.uuid);
   }
 
   @Test
@@ -331,6 +340,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertEquals(1, createdRegions.size());
     List<AvailabilityZone> createdZones = AvailabilityZone.getAZsForRegion(createdRegions.get(0).uuid);
     assertEquals(1, createdZones.size());
+    assertAuditEntry(1, customer.uuid);
   }
 
 
@@ -365,6 +375,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Result result = createKubernetesProvider(bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertBadRequest(result, "Kubeconfig can't be at two levels");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -380,6 +391,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertEquals(0, AccessKey.getAll(p.uuid).size());
     assertNull(Provider.get(p.uuid));
     verify(mockAccessManager, times(1)).deleteKey(r.uuid, ak.getKeyCode());
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -397,6 +409,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertNull(Provider.get(p.uuid));
     verify(mockAccessManager, times(1)).deleteKey(r.uuid, ak.getKeyCode());
     verify(mockAccessManager, times(1)).deleteKey(r1.uuid, ak.getKeyCode());
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -404,6 +417,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     UUID providerUUID = UUID.randomUUID();
     Result result = deleteProvider(providerUUID);
     assertBadRequest(result, "Invalid Provider UUID: " + providerUUID);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -422,6 +436,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     customer.save();
     Result result = deleteProvider(p.uuid);
     assertBadRequest(result, "Cannot delete Provider with Universes");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -433,6 +448,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertThat(json.asText(),
         allOf(notNullValue(), equalTo("Deleted provider: " + p.uuid)));
     assertNull(Provider.get(p.uuid));
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -445,6 +461,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Result result = deleteProvider(p.uuid);
     assertOk(result);
     assertFalse(new File(scriptFile).exists());
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -466,6 +483,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertEquals(p.uuid, UUID.fromString(json.get("uuid").asText()));
     p.refresh();
     assertEquals("slow", p.getConfig().get("KUBECONFIG_STORAGE_CLASSES"));
+    assertAuditEntry(1, customer.uuid);
   }
 
    @Test
@@ -484,6 +502,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
     Result result = editProvider(bodyJson, p.uuid);
     assertOk(result);
+    assertAuditEntry(1, customer.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(p.uuid, UUID.fromString(json.get("uuid").asText()));
     p.refresh();
@@ -510,6 +529,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertEquals(p.uuid, UUID.fromString(json.get("uuid").asText()));
     p.refresh();
     assertEquals("1234", p.getConfig().get("AWS_HOSTED_ZONE_ID"));
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -520,6 +540,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Result result = editProvider(bodyJson, p.uuid);
     verify(mockDnsManager, times(0)).listDnsRecord(any(), any());
     assertBadRequest(result, "Expected aws/k8s, but found providers with code: onprem");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -530,6 +551,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Result result = editProvider(bodyJson, p.uuid);
     verify(mockDnsManager, times(0)).listDnsRecord(any(), any());
     assertBadRequest(result, "Required field hosted zone id");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -553,6 +575,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertEquals("test", provider.getAwsHostedZoneName());
     assertEquals("1234", provider.getConfig().get("AWS_HOSTED_ZONE_ID"));
     assertEquals("test", provider.getConfig().get("AWS_HOSTED_ZONE_NAME"));
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -568,6 +591,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Result result = createProvider(bodyJson);
     verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
     assertInternalServerError(result, "Invalid devops API response: ");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -583,6 +607,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Result result = createProvider(bodyJson);
     verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
     assertInternalServerError(result, "Invalid devops API response: ");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -590,6 +615,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Provider provider = ModelFactory.gcpProvider(customer);
     ObjectNode bodyJson = Json.newObject();
     prepareBootstrap(bodyJson, provider, true);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -600,6 +626,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     perRegionMetadata.put("region1", Json.newObject());
     bodyJson.put("perRegionMetadata", perRegionMetadata);
     prepareBootstrap(bodyJson, provider, false);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -612,6 +639,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertNotNull(json);
     assertNotNull(json.get("taskUUID"));
+    assertAuditEntry(1, customer.uuid);
   }
 
   private void prepareBootstrap(

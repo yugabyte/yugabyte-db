@@ -185,6 +185,8 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertEquals(json.get("universeUUID").asText(), univUUID);
     assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
 
+    assertAuditEntry(3, customer.uuid);
+
     // Confirm customer knows about this universe and has correct node names/ips.
     url = "/api/customers/" + customer.uuid + "/universes/" + univUUID;
     result = doRequestWithAuthToken("GET", url, authToken);
@@ -247,6 +249,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     }
     assertNotNull(deleteTaskInfo);
     assertValue(Json.toJson(deleteTaskInfo), "taskState", "Success");
+    assertAuditEntry(4, customer.uuid);
 
     url = "/api/customers/" + customer.uuid + "/universes/" + univUUID;
     result = doRequestWithAuthToken("GET", url, authToken);
@@ -271,6 +274,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
                               .put("masterAddresses", "incorrect_format");
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertBadRequest(result, "Could not parse host:port from masterAddresseses: incorrect_format");
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -283,6 +287,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
                                    ImportUniverseFormData.State.IMPORTED_TSERVERS.name());
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertBadRequest(result, "Valid universe uuid needs to be set.");
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -307,5 +312,6 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertEquals(universe.getUniverseDetails().importedState, ImportedState.STARTED);
     assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
     assertFalse(universe.getUniverseDetails().isUniverseEditable());
+    assertAuditEntry(1, customer.uuid);
   }
 }

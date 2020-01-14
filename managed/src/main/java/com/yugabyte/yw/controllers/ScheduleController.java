@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
 import org.slf4j.Logger;
@@ -48,6 +49,7 @@ public class ScheduleController extends AuthenticatedController {
 
     ObjectNode responseJson = Json.newObject();
     responseJson.put("success", true);
+    Audit.createAuditEntry(ctx(), request());
     return ApiResponse.success(responseJson);
   }
 }

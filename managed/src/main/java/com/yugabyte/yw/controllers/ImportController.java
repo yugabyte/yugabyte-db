@@ -27,6 +27,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ImportedState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Capability;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
@@ -122,6 +123,7 @@ public class ImportController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid customer uuid : " + customerUUID.toString());
     }
 
+    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     switch (importForm.currentState) {
       case BEGIN:
         return importUniverseMasters(importForm, customer, results);

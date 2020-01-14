@@ -44,6 +44,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
@@ -165,6 +166,7 @@ public class AccessKeyControllerTest extends WithApplication {
     UUID invalidProviderUUID = UUID.randomUUID();
     Result result = getAccessKey(invalidProviderUUID, "foo");
     assertBadRequest(result, "Invalid Provider UUID: " + invalidProviderUUID);
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
@@ -173,6 +175,7 @@ public class AccessKeyControllerTest extends WithApplication {
     Result result = getAccessKey(defaultProvider.uuid, accessKey.getKeyCode());
     assertEquals(BAD_REQUEST, result.status());
     assertBadRequest(result, "KeyCode not found: " + accessKey.getKeyCode());
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
@@ -184,6 +187,7 @@ public class AccessKeyControllerTest extends WithApplication {
     JsonNode idKey = json.get("idKey");
     assertValue(idKey, "keyCode", accessKey.getKeyCode());
     assertValue(idKey, "providerUUID", accessKey.getProviderUUID().toString());
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
@@ -191,6 +195,7 @@ public class AccessKeyControllerTest extends WithApplication {
     UUID invalidProviderUUID = UUID.randomUUID();
     Result result = listAccessKey(invalidProviderUUID);
     assertBadRequest(result, "Invalid Provider UUID: " + invalidProviderUUID);
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
@@ -199,6 +204,7 @@ public class AccessKeyControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertEquals(json.size(), 0);
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
@@ -213,12 +219,14 @@ public class AccessKeyControllerTest extends WithApplication {
       assertThat(key.get("idKey").get("keyCode").asText(), allOf(notNullValue(), containsString("key-")));
       assertThat(key.get("idKey").get("providerUUID").asText(), allOf(notNullValue(), equalTo(defaultProvider.uuid.toString())));
     });
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
   public void testCreateAccessKeyWithInvalidProviderUUID() {
     Result result = createAccessKey(UUID.randomUUID(), "foo", false, false);
     assertBadRequest(result, "Invalid Provider/Region UUID");
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
@@ -227,6 +235,7 @@ public class AccessKeyControllerTest extends WithApplication {
     JsonNode node = Json.parse(contentAsString(result));
     assertErrorNodeValue(node, "keyCode", "This field is required");
     assertErrorNodeValue(node, "regionUUID", "This field is required");
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
@@ -234,6 +243,7 @@ public class AccessKeyControllerTest extends WithApplication {
     Provider gcpProvider = ModelFactory.gcpProvider(ModelFactory.testCustomer("fb", "foo@bar.com"));
     Result result = createAccessKey(gcpProvider.uuid, "key-code", false, false);
     assertBadRequest(result, "Invalid Provider/Region UUID");
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
@@ -243,6 +253,7 @@ public class AccessKeyControllerTest extends WithApplication {
     Result result = createAccessKey(defaultProvider.uuid, "key-code", false, false);
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
+    assertAuditEntry(1, defaultCustomer.uuid);
     assertValue(json.get("idKey"), "keyCode", "key-code");
     assertValue(json.get("idKey"), "providerUUID", defaultProvider.uuid.toString());
   }
@@ -254,6 +265,7 @@ public class AccessKeyControllerTest extends WithApplication {
     Result result = createAccessKey(defaultProvider.uuid, "key-code-1", false, false);
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
+    assertAuditEntry(1, defaultCustomer.uuid);
     assertValue(json.get("idKey"), "keyCode", "key-code-1");
     assertValue(json.get("idKey"), "providerUUID", defaultProvider.uuid.toString());
   }
@@ -272,6 +284,7 @@ public class AccessKeyControllerTest extends WithApplication {
         updatedFile.capture(), eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE), eq("ssh-user"));
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
+    assertAuditEntry(1, defaultCustomer.uuid);
     assertNotNull(json);
     try {
       List<String> lines = Files.readAllLines(updatedFile.getValue().toPath());
@@ -296,6 +309,7 @@ public class AccessKeyControllerTest extends WithApplication {
         updatedFile.capture(), eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE), eq(null));
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
+    assertAuditEntry(1, defaultCustomer.uuid);
     assertNotNull(json);
     try {
       List<String> lines = Files.readAllLines(updatedFile.getValue().toPath());
@@ -312,6 +326,7 @@ public class AccessKeyControllerTest extends WithApplication {
         .thenThrow(new RuntimeException("Something went wrong!!"));
     Result result = createAccessKey(defaultProvider.uuid, "key-code-1", false, false);
     assertErrorResponse(result, "Unable to create access key: key-code-1");
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
@@ -322,6 +337,7 @@ public class AccessKeyControllerTest extends WithApplication {
     when(mockAccessManager.addKey(onpremRegion.uuid, "key-code-1")).thenReturn(accessKey);
     Result result = createAccessKey(onpremProvider.uuid, "key-code-1", false, false, onpremRegion, true, false);
     assertOk(result);
+    assertAuditEntry(1, defaultCustomer.uuid);
     verify(mockTemplateManager, times(1)).createProvisionTemplate(accessKey, true, false);
   }
 
@@ -334,6 +350,7 @@ public class AccessKeyControllerTest extends WithApplication {
     doThrow(new RuntimeException("foobar")).when(mockTemplateManager).createProvisionTemplate(accessKey, false, false);
     Result result = createAccessKey(onpremProvider.uuid, "key-code-1", false, false, onpremRegion, false, false);
     assertErrorResponse(result, "Unable to create access key: key-code-1");
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
@@ -341,12 +358,14 @@ public class AccessKeyControllerTest extends WithApplication {
     UUID invalidProviderUUID = UUID.randomUUID();
     Result result = deleteAccessKey(invalidProviderUUID, "foo");
     assertBadRequest(result, "Invalid Provider UUID: " + invalidProviderUUID);
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
   public void testDeleteAccessKeyWithInvalidAccessKeyCode() {
     Result result = deleteAccessKey(defaultProvider.uuid, "foo");
     assertBadRequest(result, "KeyCode not found: foo");
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
@@ -354,6 +373,7 @@ public class AccessKeyControllerTest extends WithApplication {
     AccessKey.create(defaultProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
     Result result = deleteAccessKey(defaultProvider.uuid, "key-code-1");
     assertEquals(OK, result.status());
+    assertAuditEntry(1, defaultCustomer.uuid);
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("Deleted KeyCode: key-code-1")));
   }
 }

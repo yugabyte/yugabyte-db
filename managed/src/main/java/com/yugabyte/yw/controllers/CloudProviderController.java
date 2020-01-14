@@ -130,6 +130,7 @@ public class CloudProviderController extends AuthenticatedController {
       }
       NodeInstance.deleteByProvider(providerUUID);
       provider.delete();
+      Audit.createAuditEntry(ctx(), request());
       return ApiResponse.success("Deleted provider: " + providerUUID);
     } catch (RuntimeException e) {
       LOG.error(e.getMessage());
@@ -185,6 +186,7 @@ public class CloudProviderController extends AuthenticatedController {
             break;
         }
       }
+      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(provider);
     } catch (RuntimeException e) {
       String errorMsg = "Unable to create provider: " + providerCode;
@@ -272,6 +274,7 @@ public class CloudProviderController extends AuthenticatedController {
         return ApiResponse.error(INTERNAL_SERVER_ERROR, "Couldn't create instance types");
         // TODO: make instance types more multi-tenant friendly...
       }
+      Audit.createAuditEntry(ctx(), request(), requestBody);
       return ApiResponse.success(provider);
     } catch (RuntimeException e) {
       if (provider != null) {
@@ -444,6 +447,7 @@ public class CloudProviderController extends AuthenticatedController {
       Map<String, Object> instanceTypeMetadata = configHelper.getConfig(DockerInstanceTypeMetadata);
       instanceTypeMetadata.forEach((itCode, metadata) ->
           InstanceType.createWithMetadata(newProvider, itCode, Json.toJson(metadata)));
+      Audit.createAuditEntry(ctx(), request());
       return ApiResponse.success(newProvider);
     } catch (Exception e) {
       LOG.error(e.getMessage());
@@ -518,6 +522,7 @@ public class CloudProviderController extends AuthenticatedController {
 
     ObjectNode resultNode = Json.newObject();
     resultNode.put("taskUUID", taskUUID.toString());
+    Audit.createAuditEntry(ctx(), request(), requestBody, taskUUID);
     return ApiResponse.success(resultNode);
   }
 
@@ -569,6 +574,7 @@ public class CloudProviderController extends AuthenticatedController {
       Map<String, String> config = processConfig(formData, Common.CloudType.kubernetes);
       if (config != null) {
         updateKubeConfig(provider, config, true);
+        Audit.createAuditEntry(ctx(), request(), formData);
         return ApiResponse.success(provider);
       }
       else {
@@ -600,6 +606,7 @@ public class CloudProviderController extends AuthenticatedController {
     } catch (RuntimeException e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
+    Audit.createAuditEntry(ctx(), request());
     return ApiResponse.success(provider);
   }
 
