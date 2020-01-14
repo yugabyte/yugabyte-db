@@ -1,14 +1,14 @@
 ---
-title: Yugabyte Platform
-linkTitle: Yugabyte Platform
-description: Yugabyte Platform
+title: Yugabyte Platform FAQ
+linkTitle: Yugabyte Platform FAQ
+description: Yugabyte Platform FAQ
 aliases:
   - /faq/enterprise-edition/
 menu:
   latest:
     identifier: enterprise-edition
     parent: faq
-    weight: 2730
+    weight: 2750
 isTocNested: false
 showAsideToc: true
 ---
