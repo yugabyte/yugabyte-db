@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.forms.UserRegisterFormData;
@@ -73,6 +74,11 @@ public class UsersController extends AuthenticatedController {
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Could not create user");
     }
+    ObjectNode userInfo = Json.newObject()
+            .put("email", formData.get().email)
+            .put("role", formData.get().role.name())
+            .put("customerUUID", customerUUID.toString());
+    Audit.createAuditEntry(ctx(), request(), userInfo);
     return ApiResponse.success(user);
 
   }
@@ -103,6 +109,7 @@ public class UsersController extends AuthenticatedController {
     if (user.delete()) {
       ObjectNode responseJson = Json.newObject();
       responseJson.put("success", true);
+      Audit.createAuditEntry(ctx(), request());
       return ApiResponse.success(responseJson);
     } else {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete User UUID: " + userUUID);
@@ -138,6 +145,7 @@ public class UsersController extends AuthenticatedController {
     } else {
       return ApiResponse.error(BAD_REQUEST, "Invalid Request");
     }
+    Audit.createAuditEntry(ctx(), request());
     return ApiResponse.success();
   }
 }

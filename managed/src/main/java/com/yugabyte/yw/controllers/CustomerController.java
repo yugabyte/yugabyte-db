@@ -23,6 +23,7 @@ import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
@@ -127,6 +128,7 @@ public class CustomerController extends AuthenticatedController {
 
     if (customer.delete()) {
       ObjectNode responseJson = Json.newObject();
+      Audit.createAuditEntry(ctx(), request());
       responseJson.put("success", true);
       return ApiResponse.success(responseJson);
     } else {
@@ -154,6 +156,7 @@ public class CustomerController extends AuthenticatedController {
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, "Failed to update features: " + e.getMessage());
     }
+    Audit.createAuditEntry(ctx(), request(), requestBody);
     return ok(customer.getFeatures());
   }
 

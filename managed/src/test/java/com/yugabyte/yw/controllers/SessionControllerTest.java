@@ -6,6 +6,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
@@ -41,6 +42,7 @@ import play.mvc.Result;
 import play.test.Helpers;
 
 import java.util.Map;
+import java.util.UUID;
 
 import static com.yugabyte.yw.models.Users.Role;
 
@@ -84,11 +86,14 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
   public void testLoginWithInvalidPassword() {
     startApp(false);
+    Customer customer = ModelFactory.testCustomer();
+    Users user = ModelFactory.testUser(customer);
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password1");
@@ -98,11 +103,14 @@ public class SessionControllerTest {
     assertEquals(UNAUTHORIZED, result.status());
     assertThat(json.get("error").toString(),
                allOf(notNullValue(), containsString("Invalid User Credentials")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
   public void testLoginWithNullPassword() {
     startApp(false);
+    Customer customer = ModelFactory.testCustomer();
+    Users user = ModelFactory.testUser(customer);
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
@@ -111,6 +119,7 @@ public class SessionControllerTest {
     assertEquals(BAD_REQUEST, result.status());
     assertThat(json.get("error").toString(),
                allOf(notNullValue(), containsString("{\"password\":[\"This field is required\"]}")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -128,6 +137,7 @@ public class SessionControllerTest {
     assertEquals(OK, result.status());
     assertNotNull(json.get("apiToken"));
     assertNotNull(json.get("customerUUID"));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -143,6 +153,7 @@ public class SessionControllerTest {
     JsonNode json = Json.parse(contentAsString(result));
 
     assertUnauthorized(result, "No read only customer exists.");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -156,6 +167,7 @@ public class SessionControllerTest {
     JsonNode json = Json.parse(contentAsString(result));
 
     assertUnauthorized(result, "Insecure login unavailable.");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -172,6 +184,7 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
+    Customer c1 = Customer.get(UUID.fromString(json.get("customerUUID").asText()));
 
     ObjectNode loginJson = Json.newObject();
     registerJson.put("code", "fb");
@@ -182,6 +195,7 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
+    assertAuditEntry(0, c1.uuid);
   }
 
   @Test
@@ -243,6 +257,7 @@ public class SessionControllerTest {
     String authToken = json.get("authToken").asText();
     result = route(fakeRequest("GET", "/api/logout").header("X-AUTH-TOKEN", authToken));
     assertEquals(OK, result.status());
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -262,6 +277,7 @@ public class SessionControllerTest {
     json = Json.parse(contentAsString(result));
     String authToken2 = json.get("authToken").asText();
     assertEquals(authToken1, authToken2);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -283,6 +299,7 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("apiToken"));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -307,6 +324,7 @@ public class SessionControllerTest {
     json = Json.parse(contentAsString(result));
     String apiToken2 = json.get("apiToken").asText();
     assertNotEquals(apiToken1, apiToken2);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test

@@ -7,6 +7,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -88,6 +89,7 @@ public class BackupsController extends AuthenticatedController {
 
     ObjectNode resultNode = Json.newObject();
     resultNode.put("taskUUID", taskUUID.toString());
+    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
     return ApiResponse.success(resultNode);
   }
 }

@@ -27,6 +27,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.ReleaseManager.ReleaseState.DISABLED;
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.doThrow;
@@ -146,6 +147,7 @@ public class ReleaseControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertTrue(json.get("success").asBoolean());
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -153,6 +155,7 @@ public class ReleaseControllerTest extends WithApplication {
     ObjectNode body = Json.newObject();
     Result result = createRelease(customer.uuid, body);
     assertBadRequest(result, "{\"version\":[\"This field is required\"]}");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -164,6 +167,7 @@ public class ReleaseControllerTest extends WithApplication {
 
     String resultString = contentAsString(result);
     assertEquals(resultString, "Unable To Authenticate User");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -174,6 +178,7 @@ public class ReleaseControllerTest extends WithApplication {
     Result result = createRelease(customer.uuid, body);
     verify(mockReleaseManager, times(1)).addRelease("0.0.1");
     assertInternalServerError(result, "Some Error");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -185,6 +190,7 @@ public class ReleaseControllerTest extends WithApplication {
     assertEquals(OK, result.status());
     assertEquals(1, json.size());
     assertEquals("0.0.1", json.get(0).asText());
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -192,6 +198,7 @@ public class ReleaseControllerTest extends WithApplication {
     doThrow(new RuntimeException("Some Error")).when(mockReleaseManager).getReleaseMetadata();
     Result result = getReleases(customer.uuid);
     assertInternalServerError(result, "Some Error");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -202,6 +209,7 @@ public class ReleaseControllerTest extends WithApplication {
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(0, json.size());
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -213,6 +221,7 @@ public class ReleaseControllerTest extends WithApplication {
     assertEquals(2, json.size());
     assertEquals("0.0.2", json.get(0).asText());
     assertEquals("0.0.3", json.get(1).asText());
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -229,6 +238,7 @@ public class ReleaseControllerTest extends WithApplication {
             "state", "ACTIVE")
     );
     assertReleases(expectedMap, releases);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -247,6 +257,7 @@ public class ReleaseControllerTest extends WithApplication {
     assertEquals(OK, result.status());
     HashMap releases = Json.fromJson(json, HashMap.class);
     assertReleases(expectedMap, releases);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -270,6 +281,7 @@ public class ReleaseControllerTest extends WithApplication {
     assertEquals(expectedVersion.getValue(), "0.0.1");
     assertEquals(expectedReleaseMetadata.getValue().state, DISABLED);
     assertValue(json, "state", "DISABLED");
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -279,6 +291,7 @@ public class ReleaseControllerTest extends WithApplication {
     Result result = updateRelease(customer.uuid, "0.0.2", body);
     verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.2");
     assertBadRequest(result, "Invalid Release version: 0.0.2");
+    assertAuditEntry(0, customer.uuid);
   }
 
 
@@ -290,6 +303,7 @@ public class ReleaseControllerTest extends WithApplication {
     Result result = updateRelease(customer.uuid, "0.0.2", body);
     verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.2");
     assertInternalServerError(result, "Some Error");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -300,6 +314,7 @@ public class ReleaseControllerTest extends WithApplication {
     Result result = updateRelease(customer.uuid, "0.0.1", body);
     verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.1");
     assertBadRequest(result, "Missing Required param: State");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -307,6 +322,7 @@ public class ReleaseControllerTest extends WithApplication {
     Result result = refreshReleases(customer.uuid);
     verify(mockReleaseManager, times(1)).importLocalReleases();
     assertOk(result);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -317,6 +333,7 @@ public class ReleaseControllerTest extends WithApplication {
 
     String resultString = contentAsString(result);
     assertEquals(resultString, "Unable To Authenticate User");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -324,5 +341,6 @@ public class ReleaseControllerTest extends WithApplication {
     doThrow(new RuntimeException("Some Error")).when(mockReleaseManager).importLocalReleases();
     Result result = refreshReleases(customer.uuid);
     assertInternalServerError(result, "Some Error");
+    assertAuditEntry(0, customer.uuid);
   }
 }

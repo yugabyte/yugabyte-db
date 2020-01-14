@@ -2,11 +2,14 @@
 
 package com.yugabyte.yw.common;
 
+import com.yugabyte.yw.models.Audit;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import play.libs.Json;
 import play.mvc.Result;
 
 import java.util.List;
+import java.util.UUID;
 
 import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -82,5 +85,10 @@ public class AssertHelper {
     expectedJson.fieldNames().forEachRemaining( field ->
             assertEquals(expectedJson.get(field), actualJson.get(field))
     );
+  }
+
+  public static void assertAuditEntry(int numEntries, UUID uuid) {
+    List<Audit> auditEntries = Audit.getAll(uuid);
+    assertEquals(auditEntries.size(), numEntries);
   }
 }

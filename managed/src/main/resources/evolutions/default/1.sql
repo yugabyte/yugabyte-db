@@ -20,6 +20,20 @@ create table alert (
   constraint pk_alert primary key (uuid)
 );
 
+create table audit (
+  id                            bigint not null,
+  user_uuid                     uuid not null,
+  customer_uuid                 uuid not null,
+  payload                       TEXT,
+  api_call                      TEXT not null,
+  api_method                    TEXT not null,
+  task_uuid                     uuid,
+  timestamp                     timestamp not null,
+  constraint uq_audit_task_uuid unique (task_uuid),
+  constraint pk_audit primary key (id)
+);
+create sequence audit_id_seq increment by 1;
+
 create table availability_zone (
   uuid                          uuid not null,
   code                          varchar(25) not null,
@@ -271,57 +285,60 @@ create index ix_region_provider_uuid on region (provider_uuid);
 
 # --- !Downs
 
-alter table if exists availability_zone drop constraint if exists fk_availability_zone_region_uuid;
+alter table availability_zone drop constraint if exists fk_availability_zone_region_uuid;
 drop index if exists ix_availability_zone_region_uuid;
 
-alter table if exists region drop constraint if exists fk_region_provider_uuid;
+alter table region drop constraint if exists fk_region_provider_uuid;
 drop index if exists ix_region_provider_uuid;
 
-drop table if exists access_key cascade;
+drop table if exists access_key;
 
-drop table if exists alert cascade;
+drop table if exists alert;
 
-drop table if exists availability_zone cascade;
+drop table if exists audit;
+drop sequence if exists audit_id_seq;
 
-drop table if exists backup cascade;
+drop table if exists availability_zone;
 
-drop table if exists certificate_info cascade;
+drop table if exists backup;
 
-drop table if exists customer cascade;
+drop table if exists certificate_info;
+
+drop table if exists customer;
 drop sequence if exists customer_id_seq;
 
-drop table if exists customer_config cascade;
+drop table if exists customer_config;
 
-drop table if exists customer_task cascade;
+drop table if exists customer_task;
 drop sequence if exists customer_task_id_seq;
 
-drop table if exists health_check cascade;
+drop table if exists health_check;
 
-drop table if exists instance_type cascade;
+drop table if exists instance_type;
 
-drop table if exists kms_config cascade;
+drop table if exists kms_config;
 
-drop table if exists kms_history cascade;
+drop table if exists kms_history;
 
-drop table if exists metric_config cascade;
+drop table if exists metric_config;
 
-drop table if exists node_instance cascade;
+drop table if exists node_instance;
 
-drop table if exists price_component cascade;
+drop table if exists price_component;
 
-drop table if exists provider cascade;
+drop table if exists provider;
 
-drop table if exists region cascade;
+drop table if exists region;
 
-drop table if exists schedule cascade;
+drop table if exists schedule;
 
-drop table if exists schedule_task cascade;
+drop table if exists schedule_task;
 
-drop table if exists task_info cascade;
+drop table if exists task_info;
 
-drop table if exists universe cascade;
+drop table if exists universe;
 
-drop table if exists users cascade;
+drop table if exists users;
 
-drop table if exists yugaware_property cascade;
+drop table if exists yugaware_property;
 

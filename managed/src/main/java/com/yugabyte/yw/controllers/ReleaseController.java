@@ -7,6 +7,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.forms.ReleaseFormData;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +50,7 @@ public class ReleaseController extends AuthenticatedController {
     } catch (RuntimeException re) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, re.getMessage());
     }
+    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ApiResponse.success();
   }
 
@@ -82,12 +84,13 @@ public class ReleaseController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
 
+    ObjectNode formData;
     try {
       ReleaseManager.ReleaseMetadata m = releaseManager.getReleaseByVersion(version);
       if (m == null) {
         return ApiResponse.error(BAD_REQUEST, "Invalid Release version: " + version);
       }
-      ObjectNode formData = (ObjectNode)request().body().asJson();
+      formData = (ObjectNode)request().body().asJson();
       // For now we would only let the user change the state on their releases.
       if (formData.has("state")) {
         m.state = ReleaseManager.ReleaseState.valueOf(formData.get("state").asText());
@@ -95,6 +98,7 @@ public class ReleaseController extends AuthenticatedController {
       } else {
         return ApiResponse.error(BAD_REQUEST, "Missing Required param: State");
       }
+      Audit.createAuditEntry(ctx(), request(), formData);
       return ApiResponse.success(m);
     } catch (RuntimeException re) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, re.getMessage());

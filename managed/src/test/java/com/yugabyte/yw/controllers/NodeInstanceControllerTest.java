@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.mockito.Matchers.any;
@@ -159,12 +160,14 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     JsonNode json = parseResult(r);
     assertTrue(json.isObject());
     checkNodeValid(json);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
   public void testGetNodeWithInvalidUuid() {
     Result r = getNode(UUID.randomUUID());
     checkNotOk(r, "Null content");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -175,6 +178,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     assertTrue(json.isArray());
     assertEquals(1, json.size());
     checkNodeValid(json.get(0));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -185,6 +189,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     assertTrue(json.isArray());
     assertEquals(1, json.size());
     checkNodeValid(json.get(0));
+    assertAuditEntry(0, customer.uuid);
   }
   @Test
   public void testListByZoneWrongZone() {
@@ -193,6 +198,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     String error =
       "Invalid com.yugabyte.yw.models.AvailabilityZoneUUID: " + wrongUuid.toString();
     checkNotOk(r, error);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -207,6 +213,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
     node.inUse = false;
     node.save();
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -224,6 +231,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     NodeInstance dbNode = NodeInstance.get(uuid);
     assertTrue(dbNode != null);
     checkNodesMatch(nodeJson, dbNode);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -233,12 +241,14 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     String error =
       "Invalid com.yugabyte.yw.models.AvailabilityZoneUUID: " + wrongUuid.toString();
     checkNotOk(r, error);
+    assertAuditEntry(0, customer.uuid);
   }
   // Test for Delete Instance, use case is only for OnPrem, but test can be validated with AWS provider as well
   @Test
   public void testDeleteInstanceWithValidInstanceIP() {
     Result r = deleteInstance(customer.uuid, provider.uuid, FAKE_IP);
     assertOk(r);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -246,12 +256,14 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     UUID invalidProviderUUID = UUID.randomUUID();
     Result r = deleteInstance(customer.uuid, invalidProviderUUID, FAKE_IP);
     assertBadRequest(r, "Invalid Provider UUID: " + invalidProviderUUID);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
   public void testDeleteInstanceWithValidProviderInvalidInstanceIP() {
     Result r = deleteInstance(customer.uuid, provider.uuid, "abc");
     assertBadRequest(r, "Node Not Found");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -262,12 +274,14 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
     String resultString = contentAsString(r);
     assertEquals(resultString, "Unable To Authenticate User");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
   public void testDeleteInstance() {
     Result r = deleteInstance(customer.uuid, provider.uuid, FAKE_IP);
     assertOk(r);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -282,6 +296,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     Result r = performNodeAction(customer.uuid, u.universeUUID, "host-n1",
             NodeActionType.DELETE, true);
     assertBadRequest(r, "{\"nodeAction\":[\"This field is required\"]}");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -294,6 +309,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
       Result r = performNodeAction(customer.uuid, u.universeUUID, "fake-n1",
               nodeActionType, true);
       assertBadRequest(r, "Invalid Node fake-n1 for Universe");
+      assertAuditEntry(0, customer.uuid);
     }
   }
 
@@ -324,6 +340,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
       assertEquals("host-n1", ct.getTargetName());
       Mockito.reset(mockCommissioner);
     }
+    assertAuditEntry(NodeActionType.values().length, customer.uuid);
   }
 
   @Test
@@ -347,5 +364,6 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     Result invalidStop = performNodeAction(customer.uuid, u.universeUUID, curNode.nodeName,
                                            NodeActionType.STOP, false);
     assertBadRequest(invalidStop, "Cannot STOP " + curNode.nodeName + " as it will under replicate the masters.");
+    assertAuditEntry(0, customer.uuid);
   }
 }

@@ -97,6 +97,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     }
     assertEquals(test_certs, result_labels);
     assertEquals(test_certs_uuids, result_uuids);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -106,6 +107,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertEquals(cert_uuid, UUID.fromString(json.asText()));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -124,6 +126,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     CertificateInfo ci = CertificateInfo.get(certUUID);
     assertEquals(ci.label, "test");
     assertTrue(ci.certificate.contains("/tmp"));
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -136,6 +139,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("certExpiry", date.getTime());
     Result result = uploadCertificate(customer.uuid, bodyJson);
     assertBadRequest(result, "{\"keyContent\":[\"This field is required\"]}");
+    assertAuditEntry(0, customer.uuid);
   }
 
 }
