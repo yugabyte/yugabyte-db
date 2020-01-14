@@ -57,11 +57,11 @@ $ ./bin/yb-tserver --help
 
 ### Help options
 
-#### --help
+##### --help
 
 Displays help on all options.
 
-#### --helpon
+##### --helpon
 
 Displays help on modules named by the specified option (or flag) value.
 
@@ -69,17 +69,21 @@ Displays help on modules named by the specified option (or flag) value.
 
 ### General options
 
-#### --flagfile
+##### --flagfile
 
 Specifies the file to load the configuration options (or flags) from. The configuration settings, or flags, must be in the same format as supported by the command line options.
 
-#### --version
+##### --version
 
 Shows version and build info, then exits.
 
-#### --tserver_master_addrs
+##### --tserver_master_addrs
 
-Comma-separated list of all the `yb-master` RPC addresses. Mandatory.
+Specifies a comma-separated list of all the `yb-master` RPC addresses.
+
+Required.
+
+Default: `127.0.0.1:7100`
 
 {{< note title="Note" >}}
 
@@ -87,51 +91,57 @@ The number of comma-separated values should match the total number of YB-Master 
 
 {{< /note >}}
 
-Default: `127.0.0.1:7100`
+##### --fs_data_dirs
 
-#### --fs_data_dirs
+Specifies a comma-separated list of mount directories, where `yb-tserver` will add a `yb-data/tserver` data directory, `tserver.err`, `tserver.out`, and `pg_data` directory.
 
-Comma-separated list of directories where the `yb-tserver` will place it's `yb-data/tserver` data directory. Mandatory.
+Required.
 
-#### --max_clock_skew_usec
+##### --fs_wal_dirs
 
-Specifies the expected maximum clock skew, in microseconds (µs) between any two nodes in your deployment.
+Specifies a comma-separated list of directories, where `yb-tserver` will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a sub-directory of a data directory.
+
+Default: Same value as `--fs_data_dirs`
+
+##### --max_clock_skew_usec
+
+Specifies the expected maximum clock skew, in microseconds (µs), between any two nodes in your deployment.
 
 Default: `50000` (50,000 µs = 50ms)
 
-#### --rpc_bind_addresses
+##### --rpc_bind_addresses
 
 Specifies the comma-separated list of addresses to bind to for RPC connections.
 
 Default: `0.0.0.0:9100`
 
-#### --server_broadcast_addresses
+##### --server_broadcast_addresses
 
-Public IP or DNS hostname of the server (with an optional port).
+Specifies the public IP or DNS hostname of the server (with an optional port).
 
 Default: `0.0.0.0:9100`
 
-#### --use_private_ip
+##### --use_private_ip
 
 Determines when to use private IP addresses. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the [placement (`--placement_*`) configuration options](#placement-options).
 
 Default: `never`
 
-#### --webserver_interface
+##### --webserver_interface
 
-Address to bind for the web server user interface.
+The address to bind for the web server user interface.
 
 Default: `0.0.0.0` (`127.0.0.1`)
 
-#### --webserver_port
+##### --webserver_port
 
 The port for monitoring the web server.
 
 Default: `9000`
 
-#### --webserver_doc_root
+##### --webserver_doc_root
 
-Monitoring web server home.
+The monitoring web server home directory..
 
 Default: The `www` directory in the YugabyteDB home directory.
 
@@ -139,49 +149,49 @@ Default: The `www` directory in the YugabyteDB home directory.
 
 ### Logging options
 
-#### --log_dir
+##### --log_dir
 
 The directory to write `yb-tserver` log files.
 
 Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
 
-#### --logemaillevel
+##### --logemaillevel
 
 Email log messages logged at this level, or higher. Values: `0` (all), 1, 2, `3` (FATAL), `999` (none)
 
 Default: `999`
 
-#### --logmailer
+##### --logmailer
 
 The mailer used to send logging email messages.
 
 Default: `"/bin/mail"
 
-#### --logtostderr
+##### --logtostderr
 
 Write log messages to `stderr` instead of `logfiles`.
 
 Default: `false`
 
-#### --max_log_size
+##### --max_log_size
 
 The maximum log size, in megabytes (MB). A value of `0` will be silently overridden to `1`.
 
 Default: `1800` (1.8 GB)
 
-#### --minloglevel
+##### --minloglevel
 
 The minimum level to log messages. Values are: `0` (INFO), `1`, `2`, `3` (FATAL).
 
 Default: `0` (INFO)
 
-#### --stderrthreshold
+##### --stderrthreshold
 
 Log messages at, or above, this level are copied to `stderr` in addition to log files.
 
 Default: `2`
 
-#### --stop_logging_if_full_disk
+##### --stop_logging_if_full_disk
 
 Stop attempting to log to disk if the disk is full.
 
@@ -193,7 +203,7 @@ Default: `false`
 
 Settings related to managing geo-distributed clusters and Raft consensus.
 
-#### --leader_failure_max_missed_heartbeat_periods
+##### --leader_failure_max_missed_heartbeat_periods
 
 The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds (ms), is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
 
@@ -201,25 +211,25 @@ For read replica clusters, set the value to `10` on both YB-Master and YB-TServe
 
 Default: `6`
 
-#### --placement_zone
+##### --placement_zone
 
 The name of the availability zone, or rack, where this instance is deployed.
 
 Default: `rack1`
 
-#### --placement_region
+##### --placement_region
 
 Specifies the name of the region, or data center, where this instance is deployed.
 
 Default: `datacenter1`
 
-#### --placement_cloud
+##### --placement_cloud
 
 Specifies the name of the cloud where this instance is deployed.
 
 Default: `cloud1`
 
-#### --raft_heartbeat_interval_ms
+##### --raft_heartbeat_interval_ms
 
 The heartbeat interval, in milliseconds (ms), for Raft replication. The leader produces heartbeats to followers at this interval. The followers expect a heartbeat at this interval and consider a leader to have failed if it misses several in a row.
 
@@ -231,13 +241,13 @@ Default: `500`
 
 The following options, or flags, support the use of the [YSQL API](../../api/ysql/).
 
-#### --enable_ysql
+##### --enable_ysql
 
 Enables the YSQL API. Replaces the deprecated `--start_pgsql_proxy` option.
 
 Default: `true`
 
-#### --ysql_enable_auth
+##### --ysql_enable_auth
 
 Enables YSQL authentication.
 
@@ -251,7 +261,7 @@ Enables YSQL authentication.
 
 Default: `false`
 
-#### --pgsql_proxy_bind_address
+##### --pgsql_proxy_bind_address
 
 Specifies the TCP/IP bind addresses for the YSQL API. The default value of `0.0.0.0:5433` allows listening for all IPv4 addresses access to localhost on port `5433`. The `--pgsql_proxy_bind_address` value overwrites `listen_addresses` (default value of `127.0.0.1:5433`) that controls which interfaces accept connection attempts.
 
@@ -265,13 +275,13 @@ When using local YugabyteDB clusters built using the
 
 {{< /note >}}
 
-#### --pgsql_proxy_webserver_port
+##### --pgsql_proxy_webserver_port
 
 Specifies the web server port for YSQL metrics monitoring.
 
 Default: `13000`
 
-#### --ysql_hba_conf
+##### --ysql_hba_conf
 
 Specifies a comma-separated list of PostgreSQL client authentication settings that is written to the `ysql_hba.conf` file.
 
@@ -279,29 +289,29 @@ For details on using `--ysql_hba_conf` to specify client authentication, see [Co
 
 Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
 
-#### --ysql_pg_conf
+##### --ysql_pg_conf
 
 Comma-separated list of PostgreSQL setting assignments.
 
-#### --ysql_timezone
+##### --ysql_timezone
 
 Specifies the time zone for displaying and interpreting timestamps.
 
 Default: Uses the YSQL time zone.
 
-#### --ysql_datestyle
+##### --ysql_datestyle
 
 Specifies the display format for data and time values.
 
 Default: Uses the YSQL display format.
 
-#### --ysql_max_connections
+##### --ysql_max_connections
 
 Specifies the maximum number of concurrent YSQL connections.
 
 Default: `300`
 
-#### --ysql_default_transaction_isolation
+##### --ysql_default_transaction_isolation
 
 Specifies the default transaction isolation level.
 
@@ -315,7 +325,7 @@ YugabyteDB supports two transaction isolation levels: `REPEATABLE READ` (aka sna
 
 {{< /note >}}
 
-#### --ysql_log_statement
+##### --ysql_log_statement
 
 Specifies the types of YSQL statements that should be logged. 
 
@@ -323,7 +333,7 @@ Valid values: `none` (off), `ddl` (only data definition queries, such as create/
 
 Default: `none`
 
-#### --ysql_log_min_messages
+##### --ysql_log_min_messages
 
 Specifies the lowest YSQL message level to log.
 
@@ -333,19 +343,19 @@ Specifies the lowest YSQL message level to log.
 
 The following options, or flags, support the use of the [YCQL API](../../api/ycql/).
 
-#### --use_cassandra_authentication
+##### --use_cassandra_authentication
 
 Specify `true` to enable YCQL authentication (`username` and `password`), enable YCQL security statements (`CREATE ROLE`, `DROP ROLE`, `GRANT ROLE`, `REVOKE ROLE`, `GRANT PERMISSION`, and `REVOKE PERMISSION`), and enforce permissions for YCQL statements.
 
 Default: `false`
 
-#### --cql_proxy_bind_address
+##### --cql_proxy_bind_address
 
 Specifies the bind address for the YCQL API.
 
 Default: `0.0.0.0:9042` (`127.0.0.1:9042`)
 
-#### --cql_proxy_webserver_port
+##### --cql_proxy_webserver_port
 
 Specifies the port for monitoring YCQL metrics.
 
@@ -357,13 +367,13 @@ Default: `12000`
 
 The following options, or flags, support the use of the YEDIS API.
 
-#### --redis_proxy_bind_address
+##### --redis_proxy_bind_address
 
 Specifies the bind address for the YEDIS API.
 
 Default: `0.0.0.0:6379`
 
-#### --redis_proxy_webserver_port
+##### --redis_proxy_webserver_port
 
 Specifies the port for monitoring YEDIS metrics.
 
@@ -373,25 +383,25 @@ Default: `11000`
 
 ### Performance options
 
-#### --enable_ondisk_compression
+##### --enable_ondisk_compression
 
 Enable Snappy compression at the the cluster level.
 
 Default: `true`
 
-#### --rocksdb_compact_flush_rate_limit_bytes_per_sec
+##### --rocksdb_compact_flush_rate_limit_bytes_per_sec
 
 Used to control rate of memstore flush and SSTable file compaction.
 
 Default: `256MB`
 
-#### --remote_bootstrap_rate_limit_bytes_per_sec
+##### --remote_bootstrap_rate_limit_bytes_per_sec
 
 Rate control across all tablets being remote bootstrapped from or to this process.
 
 Default: `256MB`
 
-#### --yb_num_shards_per_tserver
+##### --yb_num_shards_per_tserver
 
 The number of shards per YB-TServer per table when a user table is created.
 
@@ -401,25 +411,25 @@ Default: Server automatically picks a valid default internally, typically `8`.
 
 ### Write Ahead Log (WAL) options
 
-#### --fs_wal_dirs
+##### --fs_wal_dirs
 
 The directory where the `yb-tserver` will place its write-ahead logs. May be the same as one of the directories listed in `--fs_data_dirs`, but not a sub-directory of a data directory.
 
 Default: Same as `--fs_data_dirs`
 
-#### --durable_wal_write
+##### --durable_wal_write
 
 If set to `false`, the writes to the Raft log are synced to disk every `interval_durable_wal_write_ms` milliseconds or every `bytes_durable_wal_write_mb` MB, whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the zones/regions are independent failure domains and there isn't a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
 
 Default: `false`
 
-#### --interval_durable_wal_write_ms
+##### --interval_durable_wal_write_ms
 
 When [`--durable_wal_write`](#durable-wal-write) is false, writes to the Raft log are synced to disk every `--interval_durable_wal_write_ms` or [`--bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb), whichever comes first.
 
 Default: `1000`
 
-#### --bytes_durable_wal_write_mb
+##### --bytes_durable_wal_write_mb
 
 When `--durable_wal_write` is `false`, writes to the Raft log are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
 
@@ -431,37 +441,37 @@ Default: `1`
 
 For details on enabling client-server encryption, see [Client-server encryption](../../secure/tls-encryption/client-to-server).
 
-#### --certs_dir
+##### --certs_dir
 
 Directory that contains certificate authority, private key, and certificates for this server.
 
 Default: `""` (Uses `<data drive>/yb-data/tserver/data/certs`.)
 
-#### --allow_insecure_connections
+##### --allow_insecure_connections
 
 Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this option requires the [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled and [`use_client_to_server_encryption`](#use-client-to-server-encryption) to be enabled.
 
 Default: `true`
 
-#### --certs_for_client_dir
+##### --certs_for_client_dir
 
 The directory that contains certificate authority, private key, and certificates for this server that should be used for client-to-server communications.
 
 Default: `""` (Use the same directory as for server-to-server communications.)
 
-#### --dump_certificate_entries
+##### --dump_certificate_entries
 
 Dump certificate entries.
 
 Default: `false`
 
-#### --use_client_to_server_encryption
+##### --use_client_to_server_encryption
 
 Use client-to-server, or client-server, encryption with YCQL. 
 
 Default: `false`
 
-#### --use_node_to_node_encryption
+##### --use_node_to_node_encryption
 
 Enable server-server, or node-to-node, encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) setting enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) must be disabled.
 
@@ -473,19 +483,19 @@ Default: `false`
 
 To learn about CDC, see [Change data capture (CDC)](../../architecture/cdc-architecture).
 
-#### --cdc_rpc_timeout_ms
+##### --cdc_rpc_timeout_ms
 
 Timeout used for CDC->`yb-tserver` asynchronous RPC calls.
 
 Default: `30000`
 
-#### --cdc_state_checkpoint_update_interval_ms
+##### --cdc_state_checkpoint_update_interval_ms
 
 RAte at which CDC state's checkpoint is updated.
 
 Default: `15000`
 
-#### --cdc_ybclient_reactor_threads
+##### --cdc_ybclient_reactor_threads
 
 The number of reactor threads to be used for processing `ybclient` requests for CDC.
 
