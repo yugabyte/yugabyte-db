@@ -24,6 +24,9 @@ def construct_command(args):
         {%- if not passwordless_sudo %}
         '--ask_sudo_pass ' \
         {%- endif %}
+        {%- if air_gap %}
+        '--air_gap ' \
+        {%- endif %}
         '--local_package_path {{local_package_path}} '\
         '@@DEFAULT_NODE_NAME@@' % (args.ip, args.mount_points)
 

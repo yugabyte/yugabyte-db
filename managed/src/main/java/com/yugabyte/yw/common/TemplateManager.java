@@ -59,6 +59,9 @@ public class TemplateManager extends DevopsBase {
     commandArgs.add(keyInfo.privateKey);
     commandArgs.add("--local_package_path");
     commandArgs.add(appConfig.getString("yb.thirdparty.packagePath"));
+    if (airGapInstall) {
+      commandArgs.add("--air_gap");
+    }
     if (passwordlessSudoAccess) {
       commandArgs.add("--passwordless_sudo");
     }
