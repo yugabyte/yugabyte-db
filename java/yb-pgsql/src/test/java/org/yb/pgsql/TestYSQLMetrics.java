@@ -74,4 +74,67 @@ public class TestYSQLMetrics extends BasePgSQLTest {
     verifyStatementMetric(statement, "INSERT INTO invalid_table VALUES (1)",
                           INSERT_STMT_METRIC, 0, 0, false);
   }
+
+  @Test
+  public void testStatementStats() throws Exception {
+    Statement statement = connection.createStatement();
+
+    String stmt, stat_stmt;
+
+    // DDL is non-txn.
+    stmt      = "CREATE TABLE test (k int PRIMARY KEY, v int)";
+    stat_stmt = "CREATE TABLE test (k int PRIMARY KEY, v int)";
+    verifyStatementStat(statement, stmt, stat_stmt, 1, true);
+
+    // Select uses txn.
+    stmt = "SELECT * FROM test";
+    stat_stmt = stmt;
+    verifyStatementStat(statement, stmt, stat_stmt, 1, true);
+
+    // Non-txn insert.
+    stmt      = "INSERT INTO test VALUES (1, 1)";
+    stat_stmt = "INSERT INTO test VALUES ($1, $2)";
+    verifyStatementStat(statement, stmt, stat_stmt, 1, true);
+
+    // Multiple non-txn inserts to check statement fingerprinting.
+    final int num_non_txn_inserts = 10;
+    final int offset = 100;
+    for (int i = 0; i < num_non_txn_inserts; i++) {
+      int j = offset + i;
+      stmt = "INSERT INTO test VALUES (" + j + ", " + j + ")";
+      // Use same stat_stmt.
+      verifyStatementStat(statement, stmt, stat_stmt, 1, true);
+    }
+
+    // Txn insert.
+    statement.execute("BEGIN");
+    stmt      = "INSERT INTO test VALUES (2, 2)";
+    stat_stmt = "INSERT INTO test VALUES ($1, $2)";
+    verifyStatementStat(statement, stmt, stat_stmt, 1, true);
+    statement.execute("END");
+
+    // Non-txn update.
+    stmt      = "UPDATE test SET v = 2 WHERE k = 1";
+    stat_stmt = "UPDATE test SET v = $1 WHERE k = $2";
+    verifyStatementStat(statement, stmt, stat_stmt, 1, true);
+
+    // Txn update.
+    stmt      = "UPDATE test SET v = 3";
+    stat_stmt = "UPDATE test SET v = $1";
+    verifyStatementStat(statement, stmt, stat_stmt, 1, true);
+
+    // Non-txn delete.
+    stmt      = "DELETE FROM test WHERE k = 2";
+    stat_stmt = "DELETE FROM test WHERE k = $1";
+    verifyStatementStat(statement, stmt, stat_stmt, 1, true);
+    // Txn delete.
+    stmt      = "DELETE FROM test";
+    stat_stmt = stmt;
+    verifyStatementStat(statement, stmt, stat_stmt, 1, true);
+
+    // Invalid statement should not update metrics.
+    stmt      = "INSERT INTO invalid_table VALUES (1)";
+    stat_stmt = "INSERT INTO invalid_table VALUES ($1)";
+    verifyStatementStat(statement, stmt, stat_stmt, 0, false);
+  }
 }
