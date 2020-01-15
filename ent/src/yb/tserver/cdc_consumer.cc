@@ -179,7 +179,8 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
 
   cluster_config_version_.store(cluster_config_version, std::memory_order_release);
   producer_consumer_tablet_map_from_master_.clear();
-  uuid_master_addrs_.clear();
+  decltype(uuid_master_addrs_) old_uuid_master_addrs;
+  uuid_master_addrs_.swap(old_uuid_master_addrs);
 
   if (!consumer_registry) {
     LOG_WITH_PREFIX(INFO) << "Given empty CDC consumer registry: removing Pollers";
@@ -199,6 +200,12 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
       std::vector<HostPort> hp;
       HostPortsFromPBs(producer_map.second.master_addrs(), &hp);
       uuid_master_addrs_[producer_map.first] = HostPort::ToCommaSeparatedString(hp);
+
+      // If master addresses changed, mark for YBClient update.
+      if (ContainsKey(old_uuid_master_addrs, producer_map.first) &&
+          uuid_master_addrs_[producer_map.first] != old_uuid_master_addrs[producer_map.first]) {
+        changed_master_addrs_.insert(producer_map.first);
+      }
     }
     // recreate the set of CDCPollers
     for (const auto& stream_entry : producer_entry_pb.stream_map()) {
@@ -224,14 +231,26 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
 }
 
 void CDCConsumer::TriggerPollForNewTablets() {
-  SharedLock<rw_spinlock> read_lock_master(master_data_mutex_);
+  std::lock_guard<rw_spinlock> write_lock_master(master_data_mutex_);
 
   for (const auto& entry : producer_consumer_tablet_map_from_master_) {
+    auto uuid = entry.first.universe_uuid;
     bool start_polling;
     {
       SharedLock<rw_spinlock> read_lock_pollers(producer_pollers_map_mutex_);
       start_polling = producer_pollers_map_.find(entry.first) == producer_pollers_map_.end() &&
                       is_leader_for_tablet_(entry.second.tablet_id);
+
+      // Update the Master Addresses, if altered after setup.
+      if (ContainsKey(remote_clients_, uuid) && changed_master_addrs_.count(uuid) > 0) {
+        auto status = remote_clients_[uuid]->client->SetMasterAddresses(uuid_master_addrs_[uuid]);
+        if (status.ok()) {
+          changed_master_addrs_.erase(uuid);
+        } else {
+          LOG_WITH_PREFIX(WARNING) << "Problem Setting Master Addresses for " << uuid
+                                   << ": " << status.ToString();
+        }
+      }
     }
     if (start_polling) {
       std::lock_guard <rw_spinlock> write_lock_pollers(producer_pollers_map_mutex_);
@@ -241,8 +260,6 @@ void CDCConsumer::TriggerPollForNewTablets() {
           is_leader_for_tablet_(entry.second.tablet_id);
       if (start_polling) {
         // This is a new tablet, trigger a poll.
-        auto uuid = entry.first.universe_uuid;
-
         // See if we need to create a new client connection
         if (!ContainsKey(remote_clients_, uuid)) {
           CHECK(ContainsKey(uuid_master_addrs_, uuid));

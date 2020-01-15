@@ -524,6 +524,7 @@ class YBClient {
   // from its own master address list.
   CHECKED_STATUS AddMasterToClient(const HostPort& add);
   CHECKED_STATUS RemoveMasterFromClient(const HostPort& remove);
+  CHECKED_STATUS SetMasterAddresses(const std::string& addrs);
 
   // Policy with which to choose amongst multiple replicas.
   enum ReplicaSelection {
