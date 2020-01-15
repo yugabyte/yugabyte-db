@@ -22,12 +22,12 @@ Server: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"
 
 ## Create a cluster
 
-### Create a service account with cluster admin access
+### Create a service account with cluster-admin role privileges
 
-For deploying a YugaWare helm chart we need have a service account which has cluster admin access, if the user in context already has that access you can skip this step.
+For deploying a YugaWare Helm (v2.x) chart, you need to have a service account with `cluster-admin` role privileges — if the user in context already has that access, you can skip this step.
 
 ```sh
-$ kubectl apply -f https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/helm/yugabyte-rbac.yaml
+$ kubectl apply -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/yugabyte-rbac.yaml
 ```
 
 ```sh
