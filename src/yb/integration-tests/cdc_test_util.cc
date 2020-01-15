@@ -20,6 +20,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 namespace yb {
 namespace cdc {
@@ -49,32 +50,20 @@ void CreateCDCStream(const std::unique_ptr<CDCServiceProxy>& cdc_proxy,
   }
 }
 
-Status WaitUntilWalRetentionSecs(std::function<int()> get_wal_retention_secs,
-                                 uint32_t expected_wal_retention_secs,
-                                 const TableName& table_name) {
-  MonoTime start = MonoTime::Now();
-  auto timeout = MonoDelta::FromSeconds(20);
-
-  int backoff_exp = 0;
-  const int kMaxBackoffExp = 3;
-  Status s;
-  uint32_t wal_retention_secs;
-  while (true) {
-    wal_retention_secs = get_wal_retention_secs();
+void WaitUntilWalRetentionSecs(std::function<int()> get_wal_retention_secs,
+                               uint32_t expected_wal_retention_secs,
+                               const TableName& table_name) {
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    uint32_t wal_retention_secs = get_wal_retention_secs();
     if (wal_retention_secs == expected_wal_retention_secs) {
-      return Status::OK();
+      return true;
+    } else {
+      LOG(INFO) << "wal_retention_secs " << wal_retention_secs
+                << " doesn't match expected " << expected_wal_retention_secs
+                << " for table " << table_name;
+      return false;
     }
-
-    if (MonoTime::Now().GetDeltaSince(start).MoreThan(timeout)) {
-      break;
-    }
-
-    SleepFor(MonoDelta::FromMilliseconds(1 << backoff_exp));
-    backoff_exp = min(backoff_exp + 1, kMaxBackoffExp);
-  }
-  return STATUS_SUBSTITUTE(TimedOut,
-      "wal_retention_secs $0 doesn't match expected $1 for table $2",
-      wal_retention_secs, expected_wal_retention_secs, table_name);
+  }, MonoDelta::FromSeconds(20), "Verify wal retention set on Producer."));
 }
 
 void VerifyWalRetentionTime(MiniCluster* cluster,
@@ -88,11 +77,11 @@ void VerifyWalRetentionTime(MiniCluster* cluster,
       const std::string& table_name = peer->tablet_metadata()->table_name();
       if (table_name.substr(0, table_name_start.length()) == table_name_start) {
         auto table_id = peer->tablet_metadata()->table_id();
-        ASSERT_OK(WaitUntilWalRetentionSecs([&peer]() { return peer->log()->wal_retention_secs(); },
-            expected_wal_retention_secs, table_name));
-        ASSERT_OK(WaitUntilWalRetentionSecs(
+        WaitUntilWalRetentionSecs([&peer]() { return peer->log()->wal_retention_secs(); },
+            expected_wal_retention_secs, table_name);
+        WaitUntilWalRetentionSecs(
             [&peer]() { return peer->tablet_metadata()->wal_retention_secs(); },
-            expected_wal_retention_secs, table_name));
+            expected_wal_retention_secs, table_name);
         ntablets_checked++;
       }
     }

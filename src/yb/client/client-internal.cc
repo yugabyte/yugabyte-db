@@ -1705,7 +1705,7 @@ Status YBClient::Data::RemoveMasterAddress(const HostPort& addr) {
     std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
     auto it = std::find(master_server_addrs_.begin(), master_server_addrs_.end(), str);
     if (it != master_server_addrs_.end()) {
-      master_server_addrs_.erase(it);
+      master_server_addrs_.erase(it, it + str.size());
     }
   }
 

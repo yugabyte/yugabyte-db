@@ -457,7 +457,8 @@ class TwoDCTest : public YBTest, public testing::WithParamInterface<int> {
     return LoggedWaitFor([=]() -> Result<bool> {
       static int i = 0;
       constexpr int kNumIterationsWithCorrectResult = 5;
-      if (NumProducerTabletsPolled(cluster) == num_producer_tablets) {
+      auto cur_tablets = NumProducerTabletsPolled(cluster);
+      if (cur_tablets == num_producer_tablets) {
         if (i++ == kNumIterationsWithCorrectResult) {
           i = 0;
           return true;
@@ -465,6 +466,7 @@ class TwoDCTest : public YBTest, public testing::WithParamInterface<int> {
       } else {
         i = 0;
       }
+      LOG(INFO) << "Tablets being polled: " << cur_tablets;
       return false;
     }, MonoDelta::FromSeconds(kRpcTimeout), "Num producer tablets being polled");
   }
@@ -967,6 +969,179 @@ TEST_P(TwoDCTest, BiDirectionalWrites) {
 
   // Ensure that same records exist on both universes.
   VerifyWrittenRecords(tables[0]->name(), tables[1]->name());
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+  Destroy();
+}
+
+TEST_P(TwoDCTest, AlterUniverseReplicationMasters) {
+  // Tablets = Servers + 1 to stay simple but ensure round robin gives a tablet to everyone.
+  uint32_t t_count = 2, master_count = 3;
+  auto tables = ASSERT_RESULT(SetUpWithParams(
+      {t_count, t_count}, {t_count, t_count}, 1,  master_count));
+
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer table from the list.
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables{tables[0], tables[2]},
+    initial_tables{tables[0]};
+
+  // SetupUniverseReplication only utilizes 1 master.
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, initial_tables));
+
+  master::GetUniverseReplicationResponsePB v_resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &v_resp));
+  ASSERT_EQ(v_resp.entry().producer_master_addresses_size(), 1);
+  ASSERT_EQ(HostPortFromPB(v_resp.entry().producer_master_addresses(0)),
+            producer_cluster()->leader_mini_master()->bound_rpc_addr());
+
+  // After creating the cluster, make sure all producer tablets are being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), t_count));
+
+  LOG(INFO) << "Alter Replication to include all Masters";
+  // Alter Replication to include the other masters.
+  {
+    master::AlterUniverseReplicationRequestPB alter_req;
+    master::AlterUniverseReplicationResponsePB alter_resp;
+    alter_req.set_producer_id(kUniverseId);
+
+    // GetMasterAddresses returns 3 masters.
+    string master_addr = producer_cluster()->GetMasterAddresses();
+    auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
+    HostPortsToPBs(hp_vec, alter_req.mutable_producer_master_addresses());
+
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+    auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+        &consumer_client()->proxy_cache(),
+        consumer_cluster()->leader_mini_master()->bound_rpc_addr());
+    ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
+    ASSERT_FALSE(alter_resp.has_error());
+
+    // Verify that the consumer now has all masters.
+    ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      master::GetUniverseReplicationResponsePB tmp_resp;
+      return VerifyUniverseReplication(consumer_cluster(), consumer_client(),
+          kUniverseId, &tmp_resp).ok() &&
+          tmp_resp.entry().producer_master_addresses_size() == master_count;
+    }, MonoDelta::FromSeconds(kRpcTimeout), "Verify master count increased."));
+    ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), t_count));
+  }
+
+  // Stop the old master.
+  LOG(INFO) << "Failover to new Master";
+  MiniMaster* old_master = producer_cluster()->leader_mini_master();
+  producer_cluster()->leader_mini_master()->Shutdown();
+  MiniMaster* new_master = producer_cluster()->leader_mini_master();
+  ASSERT_NE(nullptr, new_master);
+  ASSERT_NE(old_master, new_master);
+
+  LOG(INFO) << "Add Table after Master Failover";
+  // Add a new table to replication and ensure that it can read using the new master config.
+  {
+    master::AlterUniverseReplicationRequestPB alter_req;
+    master::AlterUniverseReplicationResponsePB alter_resp;
+    alter_req.set_producer_id(kUniverseId);
+    alter_req.add_producer_table_ids_to_add(producer_tables[1]->id());
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+    auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+        &consumer_client()->proxy_cache(),
+        consumer_cluster()->leader_mini_master()->bound_rpc_addr());
+    ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
+    ASSERT_FALSE(alter_resp.has_error());
+
+    // Verify that the consumer now has both tables in the universe.
+    ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      master::GetUniverseReplicationResponsePB tmp_resp;
+      return VerifyUniverseReplication(consumer_cluster(), consumer_client(),
+          kUniverseId, &tmp_resp).ok() &&
+          tmp_resp.entry().tables_size() == 2;
+    }, MonoDelta::FromSeconds(kRpcTimeout), "Verify table created with alter."));
+    ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), t_count * 2));
+  }
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+  Destroy();
+}
+
+TEST_P(TwoDCTest, AlterUniverseReplicationTables) {
+  // Setup the consumer and producer cluster.
+  auto tables = ASSERT_RESULT(SetUpWithParams({3, 3}, {3, 3}, 1));
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables{tables[0], tables[2]};
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables{tables[1], tables[3]};
+
+  // Setup universe replication on the first table.
+  auto initial_table = { producer_tables[0] };
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, initial_table));
+
+  // Verify that universe was setup on consumer.
+  master::GetUniverseReplicationResponsePB v_resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &v_resp));
+  ASSERT_EQ(v_resp.entry().producer_id(), kUniverseId);
+  ASSERT_EQ(v_resp.entry().tables_size(), 1);
+  ASSERT_EQ(v_resp.entry().tables(0), producer_tables[0]->id());
+
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 3));
+
+  // 'add_table'. Add the next table with the alter command.
+  {
+    master::AlterUniverseReplicationRequestPB alter_req;
+    master::AlterUniverseReplicationResponsePB alter_resp;
+    alter_req.set_producer_id(kUniverseId);
+    alter_req.add_producer_table_ids_to_add(producer_tables[1]->id());
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+    auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+        &consumer_client()->proxy_cache(),
+        consumer_cluster()->leader_mini_master()->bound_rpc_addr());
+    ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
+    ASSERT_FALSE(alter_resp.has_error());
+
+    // Verify that the consumer now has both tables in the universe.
+    ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      master::GetUniverseReplicationResponsePB tmp_resp;
+      return VerifyUniverseReplication(consumer_cluster(), consumer_client(),
+                                          kUniverseId, &tmp_resp).ok() &&
+             tmp_resp.entry().tables_size() == 2;
+    }, MonoDelta::FromSeconds(kRpcTimeout), "Verify table created with alter."));
+    ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 6));
+  }
+
+  // Write some rows to the new table on the Producer. Ensure that the Consumer gets it.
+  WriteWorkload(6, 10, producer_client(), producer_tables[1]->name());
+  ASSERT_OK(VerifyWrittenRecords(producer_tables[1]->name(), consumer_tables[1]->name()));
+
+  // 'remove_table'. Remove the original table, leaving only the new one.
+  {
+    master::AlterUniverseReplicationRequestPB alter_req;
+    master::AlterUniverseReplicationResponsePB alter_resp;
+    alter_req.set_producer_id(kUniverseId);
+    alter_req.add_producer_table_ids_to_remove(producer_tables[0]->id());
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+    auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+        &consumer_client()->proxy_cache(),
+        consumer_cluster()->leader_mini_master()->bound_rpc_addr());
+    ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
+    ASSERT_FALSE(alter_resp.has_error());
+
+    // Verify that the consumer now has only the new table created by the previous alter.
+    ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      return VerifyUniverseReplication(consumer_cluster(), consumer_client(),
+          kUniverseId, &v_resp).ok() &&
+          v_resp.entry().tables_size() == 1;
+    }, MonoDelta::FromSeconds(kRpcTimeout), "Verify table removed with alter."));
+    ASSERT_EQ(v_resp.entry().tables(0), producer_tables[1]->id());
+    ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 3));
+  }
+
+  LOG(INFO) << "All alter tests passed.  Tearing down...";
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
   Destroy();

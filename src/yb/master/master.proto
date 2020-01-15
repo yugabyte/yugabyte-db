@@ -1650,6 +1650,17 @@ message DeleteUniverseReplicationResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message AlterUniverseReplicationRequestPB {
+  optional string producer_id = 1;
+  // The below options are currently mutually exclusive.  Only 1 operation at a time.
+  repeated HostPortPB producer_master_addresses = 2;
+  repeated string producer_table_ids_to_add = 4;
+  repeated string producer_table_ids_to_remove = 5;
+}
+
+message AlterUniverseReplicationResponsePB {
+  optional MasterErrorPB error = 1;
+}
 
 message SetUniverseReplicationEnabledRequestPB {
   optional string producer_id = 1;
@@ -1774,6 +1785,8 @@ service MasterService {
       returns (SetupUniverseReplicationResponsePB);
   rpc DeleteUniverseReplication(DeleteUniverseReplicationRequestPB)
       returns (DeleteUniverseReplicationResponsePB);
+  rpc AlterUniverseReplication(AlterUniverseReplicationRequestPB)
+      returns (AlterUniverseReplicationResponsePB);
   rpc SetUniverseReplicationEnabled(SetUniverseReplicationEnabledRequestPB)
       returns (SetUniverseReplicationEnabledResponsePB);
   rpc GetUniverseReplication(GetUniverseReplicationRequestPB)

@@ -60,6 +60,11 @@ CDCRpcTasks::~CDCRpcTasks() {
   }
 }
 
+Result<client::YBClient*> CDCRpcTasks::UpdateMasters(const std::string& master_addrs) {
+  RETURN_NOT_OK(yb_client_->SetMasterAddresses(master_addrs));
+  return yb_client_.get();
+}
+
 Result<google::protobuf::RepeatedPtrField<TabletLocationsPB>> CDCRpcTasks::GetTableLocations(
     const std::string& table_id) {
   google::protobuf::RepeatedPtrField<TabletLocationsPB> tablets;

@@ -715,6 +715,50 @@ Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer
   return Status::OK();
 }
 
+Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_uuid,
+    const std::vector<std::string>& producer_addresses,
+    const std::vector<TableId>& add_tables,
+    const std::vector<TableId>& remove_tables) {
+  master::AlterUniverseReplicationRequestPB req;
+  master::AlterUniverseReplicationResponsePB resp;
+  req.set_producer_id(producer_uuid);
+
+  if (!producer_addresses.empty()) {
+    req.mutable_producer_master_addresses()->Reserve(producer_addresses.size());
+    for (const auto& addr : producer_addresses) {
+      // HostPort::FromString() expects a default port.
+      auto hp = VERIFY_RESULT(HostPort::FromString(addr, master::kMasterDefaultPort));
+      HostPortToPB(hp, req.add_producer_master_addresses());
+    }
+  }
+
+  if (!add_tables.empty()) {
+    req.mutable_producer_table_ids_to_add()->Reserve(add_tables.size());
+    for (const auto& table : add_tables) {
+      req.add_producer_table_ids_to_add(table);
+    }
+  }
+
+  if (!remove_tables.empty()) {
+    req.mutable_producer_table_ids_to_remove()->Reserve(remove_tables.size());
+    for (const auto& table : remove_tables) {
+      req.add_producer_table_ids_to_remove(table);
+    }
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master_proxy_->AlterUniverseReplication(req, &resp, &rpc);
+
+  if (resp.has_error()) {
+    cout << "Error altering universe replication: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Replication altered successfully" << endl;
+  return Status::OK();
+}
+
 CHECKED_STATUS ClusterAdminClient::SetUniverseReplicationEnabled(const std::string& producer_id,
                                                                  bool is_enabled) {
   master::SetUniverseReplicationEnabledRequestPB req;
