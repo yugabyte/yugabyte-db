@@ -483,8 +483,13 @@ public class AWSInitializer extends AbstractInitializer {
       Integer volumeCount;
       Integer volumeSizeGB;
       VolumeType volumeType;
-      // Parse the local instance store details. Format of the raw data is either "1 x 800 SSD" or
-      // "12 x 2000 HDD".
+      // Parse the local instance store details. Format of the raw data is one of the following:
+      // 1 x 75 NVMe SSD
+      // EBS only
+      // 125 GB NVMe SSD
+      // 1 x 800 SSD
+      // 12 x 2000 HDD
+      // 2 x 900 GB NVMe SSD
       String[] parts = productAttrs.get("storage").replaceAll(",", "").split(" ");
       if (parts.length < 4) {
         if (!productAttrs.get("storage").equals("EBS only")) {
@@ -534,7 +539,12 @@ public class AWSInitializer extends AbstractInitializer {
         if (parts[1].equals("x")) {
           volumeCount = Integer.parseInt(parts[0]);
           volumeSizeGB = Integer.parseInt(parts[2]);
-          volumeType = VolumeType.valueOf(parts[3].toUpperCase());
+          if (parts[3].equals("GB")) {
+            volumeType = VolumeType.valueOf(parts[4].toUpperCase());
+          } else {
+            volumeType = VolumeType.valueOf(parts[3].toUpperCase());
+          }
+
         } else {
           volumeCount = 1;
           volumeSizeGB = Integer.parseInt(parts[0]);
