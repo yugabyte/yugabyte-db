@@ -148,6 +148,12 @@ pullRpczEntries(void)
       before_changecount = beentry->st_changecount;
 
       rpcz[i].proc_id = beentry->st_procpid;
+
+      /* avoid filling any more fields if invalid */
+      if (beentry->st_procpid <= 0) {
+        break;
+      }
+
       rpcz[i].db_oid = beentry->st_databaseid;
 
       rpcz[i].query = (char *) palloc(pgstat_track_activity_query_size);
