@@ -27,9 +27,9 @@ For most YugabyteDB deployments, you should not need to adjust the configuration
 
 WAL files are per tablet and the retention policy is managed by the following two `yb-tserver` configuration options:
 
-- [`log_min_segments_to_retain`](../../reference/configuration/yb-tserver/#log-min-segments-to-retain) – default is `2`.
-- [`log_min_seconds_to_retain`](../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) – default is `900`.
+- [`--log_min_segments_to_retain`](../../reference/configuration/yb-tserver/#log-min-segments-to-retain) – default is `2`.
+- [`--log_min_seconds_to_retain`](../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) – default is `900`.
 
 Also, the following `yb-tserver` configuration option is a factor in the size of each WAL file before it is rolled into a new one:
 
-- [`log_segment_size_mb`](../../reference/configuration/yb-tserver/#log-segment-size-mb) – default is `64`.
+- [`--log_segment_size_mb`](../../reference/configuration/yb-tserver/#log-segment-size-mb) – default is `64`.
