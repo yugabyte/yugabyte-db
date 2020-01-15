@@ -23,13 +23,13 @@ For YCQL, YugabyteDB provides automatic load balancing.
 
 ## Can write ahead log (WAL) files be cleaned up or reduced in size? I'm running out of disk space.
 
-For most YugabyteDB deployments, you shouldn't need to adjust these values. While your data size is small and growing, the WAL files may seem to be much larger, but over time, the WAL files should reach their steady state while the data size continues to grow and become larger than the WAL files.
+For most YugabyteDB deployments, you should not need to adjust the log file configuration options for the write ahead log (WAL). While your data size is small and growing, the WAL files may seem to be much larger, but over time, the WAL files should reach their steady state while the data size continues to grow and become larger than the WAL files.
 
 WAL files are per tablet and the retention policy is managed by the following two `yb-tserver` configuration options:
 
-- [`log_min_segments_to_retain`](../../reference/configuration/tserver/#log-min-segments-to-retain)
-- [`log_min_seconds_to_retain`](../../reference/configuration/tserver/#log-min-seconds-to-retain)
+- [`log_min_segments_to_retain`](../../reference/configuration/yb-tserver/#log-min-segments-to-retain)
+- [`log_min_seconds_to_retain`](../../reference/configuration/yb-tserver/#log-min-seconds-to-retain)
 
-Also, the following `yb-tserver` configuration option is a factor in the size of each WAL before it is rolled into a new one:
+Also, the following `yb-tserver` configuration option is a factor in the size of each WAL file before it is rolled into a new one:
 
-- [`log_segment_size_mb`](../../reference/configuration/tserver/#log-segment-size-mb)
+- [`log_segment_size_mb`](../../reference/configuration/yb-tserver/#log-segment-size-mb)
