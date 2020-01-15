@@ -90,7 +90,7 @@ CAST function converts the value returned from a table column to the specified d
 
 ## WriteTime function
 
-The `WriteTime` function returns the timestamp in when a column was written.
+The `WriteTime` function returns the timestamp in microseconds when a column was written.
 For example, suppose we have a table `page_views` with a column named `views`:
 ```
  SELECT writetime(views) FROM page_views;

@@ -17,7 +17,7 @@ with the value of the column. The table level TTL is not stored in DocDB (it is 
 in yb-master system catalog as part of the table’s schema). If no TTL is present at the column’s value,
 the table level TTL acts as the default value.
 
-Furthermore, YCQL has a distinction between rows created using Insert vs Update. We keep track of
+Furthermore, YCQL has a distinction between rows created using Insert vs. Update. We keep track of
 this difference (and row level TTLs) using a "liveness column", a special system column invisible to
 the user. It is added for inserts, but not updates: making sure the row is present even if all
 non-primary key columns are deleted only in the case of inserts.
@@ -61,9 +61,8 @@ SELECT * FROM pageviews;
 
 ## Column level TTL
 
-YCQL also allows to have column level TTL independent on each row.  
-In such cases, the TTL is stored as part of the DocDB column value. 
-But we can achieve it only when updating the column:
+YCQL also allows to set column level TTL.  In such cases, the TTL is stored as part of the DocDB column value. 
+But we can set it only when updating the column:
 
 ```cassandraql
 INSERT INTO pageviews(path,views) VALUES ('/index', 10);
