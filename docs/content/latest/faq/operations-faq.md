@@ -16,7 +16,7 @@ showAsideToc: true
 For YSQL, an external load balancer is recommended, but note the following:
 
 - If you use the [YugabyteDB JDBC driver (beta)](../../reference/drivers/yugabytedb-jdbc-driver) with an application regularly opens and closes connections to clients, then the YugabyteDB JDBC driver effectively provides basic load balancing by randomly using connections to your nodes.
-- If you use the [Spring Data Yugabyte driver (beta)](../../reference/drivers/spring-data-yugabytedb) with your Spring application, then the underlying YugabyteDB JDBC driver provides basic load balancing.
+- If you use the[Spring Data Yugabyte driver (beta)](../../reference/drivers/spring-data-yugabytedb) with your Spring application, then the underlying YugabyteDB JDBC driver provides basic load balancing.
 - If you have an application that is not in the same Kubernetes cluster, then you should use an external load balancing system.
 
 For YCQL, YugabyteDB provides automatic load balancing.
@@ -27,9 +27,9 @@ For most YugabyteDB deployments, you should not need to adjust the configuration
 
 WAL files are per tablet and the retention policy is managed by the following two `yb-tserver` configuration options:
 
-- [`log_min_segments_to_retain`](../../reference/configuration/yb-tserver/#log-min-segments-to-retain)
-- [`log_min_seconds_to_retain`](../../reference/configuration/yb-tserver/#log-min-seconds-to-retain)
+- [`log_min_segments_to_retain`](../../reference/configuration/yb-tserver/#log-min-segments-to-retain) – default is `2`.
+- [`log_min_seconds_to_retain`](../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) – default is `900`.
 
 Also, the following `yb-tserver` configuration option is a factor in the size of each WAL file before it is rolled into a new one:
 
-- [`log_segment_size_mb`](../../reference/configuration/yb-tserver/#log-segment-size-mb)
+- [`log_segment_size_mb`](../../reference/configuration/yb-tserver/#log-segment-size-mb) – default is `64`.
