@@ -224,7 +224,16 @@ def main():
             "--destination", yw_dir, "--unarchived"
         ]
         logging.info("Creating YugaWare package with command: {}".format(package_yw_cmd))
-        subprocess.check_call(package_yw_cmd, cwd=managed_dir)
+        try:
+            subprocess.check_output(package_yw_cmd, cwd=managed_dir)
+        except subprocess.CalledProcessError as e:
+            logging.error(
+                "Failed to build YugaWare package:\n{}\nOutput:\n{}".format(
+                    traceback.format_exc(), e.output))
+            raise
+        except OSError as e:
+            logging.error("Failed to build YugaWare package: {}".format(e))
+            raise
 
     if args.build_archive:
         release_file = os.path.realpath(release_util.generate_release())
