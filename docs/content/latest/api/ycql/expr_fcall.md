@@ -63,10 +63,9 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 
 
 ## Partition_hash function
-
-YugabyteDB uses `partition_hash` function that returns an `uint16` hash of `partition_keys` to distribute rows internally. 
-The full hash partition value spans from `0 - 65535`. 
-We can use this function to query a subset of the data and get approximate results or do a parallel full table scan.
+YugabyteDB uses `partition_hash` function that takes as arguments the values of the `partition keys` and returns an `uint16` 
+hash used to distribute rows internally. The full hash partition value spans from `0 - 65535`. 
+We can use this function to query a subset of the data, get approximate count of rows in table, or do a parallel full table scans.
 
 ### Querying a subset of the data
 Assuming we have a table:
@@ -74,12 +73,12 @@ Assuming we have a table:
 create table t (h1 int, h2 int, r1 int, r2 int, v int, 
                          primary key ((h1, h2), r1, r2));
 ```
-We can use this function to query a subset of the data (in this case, 1/256 of the data):
+We can use this function to query a subset of the data (in this case, 1/128 of the data):
 ```sql
 select count(*) from t where partition_hash(h1, h2) >= 0 and
-                                      partition_hash(h1, h2) < 256;
+                                      partition_hash(h1, h2) < 512;
 ```
-To do a distributed scan, we can issue in this case 256 queries each using a different hash range.
+To do a distributed scan, we can issue in this case 128 queries each using a different hash range.
 
 
 ## Semantics
