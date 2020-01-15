@@ -42,6 +42,11 @@ DECLARE_string(metric_node_name);
 TAG_FLAG(pg_transactions_enabled, advanced);
 TAG_FLAG(pg_transactions_enabled, hidden);
 
+DEFINE_bool(pg_stat_statements_enabled, true,
+            "True to enable statement stats in PostgreSQL server");
+TAG_FLAG(pg_stat_statements_enabled, advanced);
+TAG_FLAG(pg_stat_statements_enabled, hidden);
+
 // Top-level postgres configuration flags.
 DEFINE_bool(ysql_enable_auth, false,
               "True to enforce password authentication for all connections");
@@ -274,7 +279,11 @@ Status PgWrapper::Start() {
   argv.push_back("-c");
   // TODO: we should probably load the metrics library in a different way once we let
   // users change the shared_preload_libraries conf parameter.
-  argv.push_back("shared_preload_libraries=yb_pg_metrics");
+  if (FLAGS_pg_stat_statements_enabled) {
+    argv.push_back("shared_preload_libraries=pg_stat_statements,yb_pg_metrics");
+  } else {
+    argv.push_back("shared_preload_libraries=yb_pg_metrics");
+  }
   argv.push_back("-c");
   argv.push_back("yb_pg_metrics.node_name=" + FLAGS_metric_node_name);
   argv.push_back("-c");

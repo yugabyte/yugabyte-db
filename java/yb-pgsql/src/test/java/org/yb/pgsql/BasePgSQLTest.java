@@ -30,6 +30,7 @@ import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.Metrics;
+import org.yb.minicluster.Metrics.YSQLStat;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
@@ -484,6 +485,46 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return toPgConnection(connection).getBackendPID();
   }
 
+  protected int getStatementStat(String statName) throws Exception {
+    int value = 0;
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      URL url = new URL(String.format("http://%s:%d/statements",
+                                      ts.getLocalhostIP(),
+                                      ts.getPgsqlWebPort()));
+      Scanner scanner = new Scanner(url.openConnection().getInputStream());
+      JsonParser parser = new JsonParser();
+      JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
+      JsonObject obj = tree.getAsJsonObject();
+      YSQLStat ysqlStat = new Metrics(obj, true).getYSQLStat(statName);
+      if (ysqlStat != null) {
+        value += ysqlStat.calls;
+      }
+      scanner.close();
+    }
+    return value;
+  }
+
+  protected void verifyStatementStat(Statement statement, String stmt, String statName,
+                                     int stmtMetricDelta, boolean validStmt) throws Exception {
+    int oldValue = 0;
+    if (statName != null) {
+      oldValue = getStatementStat(statName);
+    }
+
+    if (validStmt) {
+      statement.execute(stmt);
+    } else {
+      runInvalidQuery(statement, stmt);
+    }
+
+    int newValue = 0;
+    if (statName != null) {
+      newValue = getStatementStat(statName);
+    }
+
+    assertEquals(oldValue + stmtMetricDelta, newValue);
+  }
+
   protected int getMetricCounter(String metricName) throws Exception {
     int value = 0;
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
@@ -497,6 +538,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       assertEquals(obj.get("type").getAsString(), "server");
       assertEquals(obj.get("id").getAsString(), "yb.ysqlserver");
       value += new Metrics(obj).getYSQLMetric(metricName).count;
+      scanner.close();
     }
     return value;
   }
