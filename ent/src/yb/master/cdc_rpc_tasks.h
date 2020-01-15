@@ -60,6 +60,7 @@ class CDCRpcTasks {
   client::YBClient* client() const {
     return yb_client_.get();
   }
+  Result<client::YBClient*> UpdateMasters(const std::string& master_addrs);
 
  private:
   std::unique_ptr<rpc::SecureContext> secure_context_;

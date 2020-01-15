@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <set>
 #include <google/protobuf/util/message_differencer.h>
 
 #include "yb/master/catalog_manager.h"
@@ -1784,11 +1785,11 @@ bool CatalogManager::CDCStreamExistsUnlocked(const CDCStreamId& stream_id) {
 }
 
 /*
- * UniverseReplication is setup in 3 stages within the Catalog Manager
- * 1. SetupUniverseReplication: Creates the persistent entry and validates input
- * 2. GetTableSchemaCallback:   Validates compatibility between Producer & Consumer Tables
+ * UniverseReplication is setup in 4 stages within the Catalog Manager
+ * 1. SetupUniverseReplication: Validates user input & requests Producer schema.
+ * 2. GetTableSchemaCallback:   Validates Schema compatibility & requests Producer CDC init.
  * 3. AddCDCStreamToUniverseAndInitConsumer:  Setup RPC connections for CDC Streaming
- * 4. InitCDCConsumer:          Initializes the Consumer architecture to begin tailing data
+ * 4. InitCDCConsumer:          Initializes the Consumer settings to begin tailing data
  */
 Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRequestPB* req,
                                                 SetupUniverseReplicationResponsePB* resp,
@@ -1878,7 +1879,7 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
     MarkUniverseReplicationFailed(ri);
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, result.status());
   }
-  auto cdc_rpc = *result;
+  std::shared_ptr<CDCRpcTasks> cdc_rpc = *result;
 
   // For each table, run an async RPC task to verify a sufficient Producer:Consumer schema match.
   for (int i = 0; i < req->producer_table_ids_size(); i++) {
@@ -2018,7 +2019,8 @@ void CatalogManager::GetTableSchemaCallback(
     l->Commit();
     return;
   }
-  auto cdc_rpc = *res;
+  std::shared_ptr<CDCRpcTasks> cdc_rpc = *res;
+  vector<TableId> validated_tables;
 
   if (l->data().is_deleted_or_failed()) {
     // Nothing to do since universe is being deleted.
@@ -2028,17 +2030,35 @@ void CatalogManager::GetTableSchemaCallback(
   auto map = l->mutable_data()->pb.mutable_validated_tables();
   (*map)[info->table_id] = resp.identifier().table_id();
 
-  // Now, all tables are validated.  Create CDC stream for each.
+  // Now, all tables are validated.
   if (l->mutable_data()->pb.validated_tables_size() == l->mutable_data()->pb.tables_size()) {
     l->mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::VALIDATED);
+    auto tbl_iter = l->data().pb.tables();
+    validated_tables.insert(validated_tables.begin(), tbl_iter.begin(), tbl_iter.end());
+  }
 
+  // TODO: end of config validation should be where SetupUniverseReplication exits back to user
+  LOG(INFO) << "UpdateItem in GetTableSchemaCallback";
+
+  // Update sys_catalog.
+  status = sys_catalog_->UpdateItem(universe.get(), leader_ready_term_);
+  if (!status.ok()) {
+    status = status.CloneAndPrepend(
+        Substitute("An error occurred while updating sys-catalog universe replication entry: $0",
+                   status.ToString()));
+    LOG(WARNING) << status.ToString();
+    return;
+  }
+  l->Commit();
+
+  // Create CDC stream for each validated table, after persisting the replication state change.
+  if (!validated_tables.empty()) {
     std::unordered_map<std::string, std::string> options;
     options.reserve(2);
     options.emplace(cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
     options.emplace(cdc::kRecordFormat, CDCRecordFormat_Name(cdc::CDCRecordFormat::WAL));
 
-    auto tables = l->data().pb.tables();
-    for (const auto& table : tables) {
+    for (const auto& table : validated_tables) {
       string producer_bootstrap_id;
       auto it = table_bootstrap_ids.find(table);
       if (it != table_bootstrap_ids.end()) {
@@ -2059,17 +2079,6 @@ void CatalogManager::GetTableSchemaCallback(
       }
     }
   }
-
-  // Update sys_catalog.
-  status = sys_catalog_->UpdateItem(universe.get(), leader_ready_term_);
-  if (!status.ok()) {
-    status = status.CloneAndPrepend(
-        Substitute("An error occurred while updating sys-catalog universe replication entry: $0",
-                   status.ToString()));
-    LOG(WARNING) << status.ToString();
-    return;
-  }
-  l->Commit();
 }
 
 void CatalogManager::GetCDCStreamCallback(
@@ -2116,55 +2125,69 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
     return;
   }
 
-  auto l = universe->LockForWrite();
-  if (l->data().is_deleted_or_failed()) {
-    // Nothing to do if universe is being deleted.
-    return;
-  }
-
-  auto map = l->mutable_data()->pb.mutable_table_streams();
-  (*map)[table_id] = *stream_id;
-
-  // This functions as a barrier: waiting for the last RPC call from GetTableSchemaCallback.
-  if (l->mutable_data()->pb.table_streams_size() == l->data().pb.tables_size()) {
-    // Register CDC consumers for all tables and start replication.
-    LOG(INFO) << "Registering CDC consumers for universe " << universe->id();
-
-    auto validated_tables = l->data().pb.validated_tables();
-
-    std::vector<CDCConsumerStreamInfo> consumer_info;
-    consumer_info.reserve(l->data().pb.tables_size());
-    for (const auto& table : validated_tables) {
-      CDCConsumerStreamInfo info;
-      info.producer_table_id = table.first;
-      info.consumer_table_id = table.second;
-      info.stream_id = (*map)[info.producer_table_id];
-      consumer_info.push_back(info);
+  bool merge_alter = false;
+  {
+    auto l = universe->LockForWrite();
+    if (l->data().is_deleted_or_failed()) {
+      // Nothing to do if universe is being deleted.
+      return;
     }
 
-    std::vector<HostPort> hp;
-    HostPortsFromPBs(l->data().pb.producer_master_addresses(), &hp);
+    auto map = l->mutable_data()->pb.mutable_table_streams();
+    (*map)[table_id] = *stream_id;
 
-    Status s = InitCDCConsumer(consumer_info, HostPort::ToCommaSeparatedString(hp),
-                               l->data().pb.producer_id());
-    if (!s.ok()) {
-      LOG(ERROR) << "Error registering subscriber: " << s.ToString();
-      l->mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
-    } else {
-      l->mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::ACTIVE);
+    // This functions as a barrier: waiting for the last RPC call from GetTableSchemaCallback.
+    if (l->mutable_data()->pb.table_streams_size() == l->data().pb.tables_size()) {
+      // All tables successfully validated! Register CDC consumers & start replication.
+      LOG(INFO) << "Registering CDC consumers for universe " << universe->id();
+
+      auto validated_tables = l->data().pb.validated_tables();
+
+      std::vector<CDCConsumerStreamInfo> consumer_info;
+      consumer_info.reserve(l->data().pb.tables_size());
+      for (const auto& table : validated_tables) {
+        CDCConsumerStreamInfo info;
+        info.producer_table_id = table.first;
+        info.consumer_table_id = table.second;
+        info.stream_id = (*map)[info.producer_table_id];
+        consumer_info.push_back(info);
+      }
+
+      std::vector<HostPort> hp;
+      HostPortsFromPBs(l->data().pb.producer_master_addresses(), &hp);
+
+      Status s = InitCDCConsumer(consumer_info, HostPort::ToCommaSeparatedString(hp),
+          l->data().pb.producer_id());
+      if (!s.ok()) {
+        LOG(ERROR) << "Error registering subscriber: " << s.ToString();
+        l->mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
+      } else {
+        GStringPiece original_producer_id(universe->id());
+        if (original_producer_id.ends_with(".ALTER")) {
+          // Don't enable ALTER universes, merge them into the main universe instead.
+          merge_alter = true;
+        } else {
+          l->mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::ACTIVE);
+        }
+      }
     }
+
+    // Update sys_catalog with new producer table id info.
+    Status status = sys_catalog_->UpdateItem(universe.get(), leader_ready_term_);
+    if (!status.ok()) {
+      status = status.CloneAndPrepend(
+          Substitute("An error occurred while updating sys-catalog universe replication entry: $0",
+              status.ToString()));
+      LOG(WARNING) << status.ToString();
+      return;
+    }
+    l->Commit();
   }
 
-  // Update sys_catalog with new producer table id info.
-  Status status = sys_catalog_->UpdateItem(universe.get(), leader_ready_term_);
-  if (!status.ok()) {
-    status = status.CloneAndPrepend(
-        Substitute("An error occurred while updating sys-catalog universe replication entry: $0",
-                   status.ToString()));
-    LOG(WARNING) << status.ToString();
-    return;
+  // If this is an 'alter', merge back into primary command now that setup is a success.
+  if (merge_alter) {
+    MergeUniverseReplication(universe);
   }
-  l->Commit();
 }
 
 Status CatalogManager::InitCDCConsumer(
@@ -2211,13 +2234,91 @@ Status CatalogManager::InitCDCConsumer(
     return STATUS(InvalidArgument, "Already created a consumer for this universe");
   }
 
-  // Store this topology as metadata in DocDB.
+  // TServers will use the ClusterConfig to create CDC Consumers for applicable local tablets.
   (*producer_map)[producer_universe_uuid] = std::move(producer_entry);
   l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
   RETURN_NOT_OK(sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_));
   l->Commit();
 
   return Status::OK();
+}
+
+void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationInfo> universe) {
+  // Merge back into primary command now that setup is a success.
+  GStringPiece original_producer_id(universe->id());
+  if (!original_producer_id.ends_with(".ALTER")) {
+    return;
+  }
+  original_producer_id.remove_suffix(sizeof(".ALTER")-1 /* exclude \0 ending */);
+  LOG(INFO) << "Merging CDC universe: " << universe->id()
+            << " into " << original_producer_id.ToString();
+
+  scoped_refptr<UniverseReplicationInfo> original_universe;
+  {
+    std::shared_lock<LockType> catalog_lock(lock_);
+    TRACE("Acquired catalog manager lock");
+
+    original_universe = FindPtrOrNull(universe_replication_map_, original_producer_id.ToString());
+    if (original_universe == nullptr) {
+      LOG(ERROR) << "Universe not found: " << original_producer_id.ToString();
+      return;
+    }
+  }
+  // Merge Cluster Config for TServers.
+  {
+    auto cl = cluster_config_->LockForWrite();
+    auto pm = cl->mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+    auto original_producer_entry = pm->find(original_universe->id());
+    auto alter_producer_entry = pm->find(universe->id());
+    if (original_producer_entry != pm->end() && alter_producer_entry != pm->end()) {
+      // Merge the Tables from the Alter into the original.
+      auto as = alter_producer_entry->second.stream_map();
+      original_producer_entry->second.mutable_stream_map()->insert(as.begin(), as.end());
+      // Delete the Alter
+      pm->erase(alter_producer_entry);
+    } else {
+      LOG(WARNING) << "Could not find both universes in Cluster Config: " << universe->id();
+    }
+    cl->mutable_data()->pb.set_version(cl->mutable_data()->pb.version() + 1);
+    auto status = sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_);
+    if (!status.ok()) {
+      status = status.CloneAndPrepend(
+          Substitute("An error occurred while merging sys-catalog cluster config: $0",
+              status.ToString()));
+      LOG(WARNING) << status.ToString();
+      return;
+    }
+    cl->Commit();
+  }
+  // Merge Master Config on Consumer. (no need for Producer changes, since it uses stream_id)
+  {
+    auto original_lock = original_universe->LockForWrite();
+    auto alter_lock = universe->LockForWrite();
+    // Merge Table->StreamID mapping.
+    auto at = alter_lock->mutable_data()->pb.mutable_tables();
+    original_lock->mutable_data()->pb.mutable_tables()->MergeFrom(*at);
+    at->Clear();
+    auto as = alter_lock->mutable_data()->pb.mutable_table_streams();
+    original_lock->mutable_data()->pb.mutable_table_streams()->insert(as->begin(), as->end());
+    as->clear();
+    auto av = alter_lock->mutable_data()->pb.mutable_validated_tables();
+    original_lock->mutable_data()->pb.mutable_validated_tables()->insert(av->begin(), av->end());
+    av->clear();
+    alter_lock->mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETED);
+
+    vector<UniverseReplicationInfo*> universes{original_universe.get(), universe.get()};
+    auto status = sys_catalog_->UpdateItems(universes, leader_ready_term_);
+    if (!status.ok()) {
+      LOG(WARNING) << status.CloneAndPrepend(
+          "An error occurred while merging sys-catalog universe replication entry:").ToString();
+      return;
+    }
+    alter_lock->Commit();
+    original_lock->Commit();
+  }
+  // TODO: universe_replication_map_.erase(universe->id()) at a later time.
+  //       TwoDCTest.AlterUniverseReplicationTables crashes due to undiagnosed race right now.
+  LOG(INFO) << "Done with Merging " << universe->id() << " into " << original_universe->id();
 }
 
 Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplicationRequestPB* req,
@@ -2248,7 +2349,7 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
   auto l = ri->LockForWrite();
   l->mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETED);
 
-  // Delete subscribers.
+  // Delete subscribers on the Consumer Registry (removes from TServers).
   LOG(INFO) << "Deleting subscribers for producer " << req->producer_id();
   {
     auto cl = cluster_config_->LockForWrite();
@@ -2256,20 +2357,19 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
     auto it = producer_map->find(req->producer_id());
     if (it != producer_map->end()) {
       producer_map->erase(it);
+      cl->mutable_data()->pb.set_version(cl->mutable_data()->pb.version() + 1);
+      RETURN_NOT_OK(sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_));
+      cl->Commit();
     }
-    cl->mutable_data()->pb.set_version(cl->mutable_data()->pb.version() + 1);
-    RETURN_NOT_OK(sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_));
-    cl->Commit();
   }
 
+  // Delete CDC stream config on the Producer.
   if (!l->data().pb.table_streams().empty()) {
-    // Delete CDC streams.
     auto result = ri->GetOrCreateCDCRpcTasks(l->data().pb.producer_master_addresses());
     if (!result.ok()) {
       LOG(WARNING) << "Unable to create cdc rpc task. CDC streams won't be deleted: " << result;
     } else {
       auto cdc_rpc = *result;
-
       vector<CDCStreamId> streams;
       for (const auto& table : l->data().pb.table_streams()) {
         streams.push_back(table.second);
@@ -2281,7 +2381,7 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
     }
   }
 
-  // Delete universe.
+  // Delete universe in the Universe Config.
   DeleteUniverseReplicationUnlocked(ri);
   l->Commit();
 
@@ -2300,7 +2400,6 @@ void CatalogManager::DeleteUniverseReplicationUnlocked(
                << ": universe_id: " << universe->id();
     return;
   }
-
   // Remove it from the map.
   std::lock_guard<LockType> catalog_lock(lock_);
   if (universe_replication_map_.erase(universe->id()) < 1) {
@@ -2373,6 +2472,230 @@ Status CatalogManager::SetUniverseReplicationEnabled(
     l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
     RETURN_NOT_OK(sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_));
     l->Commit();
+  }
+
+  return Status::OK();
+}
+
+Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRequestPB* req,
+                                                AlterUniverseReplicationResponsePB* resp,
+                                                rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing AlterUniverseReplication request from " << RequestorString(rpc)
+            << ": " << req->ShortDebugString();
+
+  // Sanity Checking Cluster State and Input.
+  RETURN_NOT_OK(CheckOnline());
+
+  if (!req->has_producer_id()) {
+    Status s = STATUS(InvalidArgument, "Producer universe ID must be provided", req->DebugString());
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+  }
+
+  // Verify that there is an existing Universe config
+  scoped_refptr<UniverseReplicationInfo> original_ri;
+  {
+    std::shared_lock<LockType> l(lock_);
+
+    original_ri = FindPtrOrNull(universe_replication_map_, req->producer_id());
+    if (original_ri == nullptr) {
+      Status s = STATUS(NotFound, "Could not find CDC producer universe", req->DebugString());
+      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+    }
+  }
+
+  // Currently, config options are mutually exclusive to simplify transactionality.
+  int config_count = (req->producer_master_addresses_size() > 0 ? 1 : 0) +
+                     (req->producer_table_ids_to_remove_size() > 0 ? 1 : 0) +
+                     (req->producer_table_ids_to_add_size() > 0 ? 1 : 0);
+  if (config_count != 1) {
+    Status s = STATUS(InvalidArgument, "Only 1 Alter operation per request currently supported",
+        req->DebugString());
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+  }
+
+  // Config logic...
+  if (req->producer_master_addresses_size() > 0) {
+    // 'set_master_addresses'
+    // TODO: Verify the input. Setup an RPC Task, ListTables, ensure same.
+
+    // 1a. Persistent Config: Update the Universe Config for Master.
+    {
+      auto l = original_ri->LockForWrite();
+      l->mutable_data()->pb.mutable_producer_master_addresses()->CopyFrom(
+          req->producer_master_addresses());
+      RETURN_NOT_OK(sys_catalog_->UpdateItem(original_ri.get(), leader_ready_term_));
+      l->Commit();
+    }
+    // 1b. Persistent Config: Update the Consumer Registry (updates TServers)
+    {
+      auto l = cluster_config_->LockForWrite();
+      auto producer_map = l->mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+      auto it = producer_map->find(req->producer_id());
+      if (it == producer_map->end()) {
+        LOG(WARNING) << "Valid Producer Universe not in Consumer Registry: " << req->producer_id();
+        Status s = STATUS(NotFound, "Could not find CDC producer universe", req->DebugString());
+        return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+      }
+      (*it).second.mutable_master_addrs()->CopyFrom(req->producer_master_addresses());
+      l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
+      RETURN_NOT_OK(sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_));
+      l->Commit();
+    }
+    // 2. Memory Update: Change cdc_rpc_tasks (Master cache)
+    {
+      auto result = original_ri->GetOrCreateCDCRpcTasks(req->producer_master_addresses());
+      if (!result.ok()) {
+        return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, result.status());
+      }
+    }
+  } else if (req->producer_table_ids_to_remove_size() > 0) {
+    // 'remove_table'
+    auto it = req->producer_table_ids_to_remove();
+    std::set<string> table_ids_to_remove(it.begin(), it.end());
+    // Filter out any tables that aren't in the existing replication config.
+    {
+      auto l = original_ri->LockForRead();
+      auto tbl_iter = l->data().pb.tables();
+      std::set<string> existing_tables(tbl_iter.begin(), tbl_iter.end()), filtered_list;
+      set_intersection(table_ids_to_remove.begin(), table_ids_to_remove.end(),
+                       existing_tables.begin(), existing_tables.end(),
+                       std::inserter(filtered_list, filtered_list.begin()));
+      filtered_list.swap(table_ids_to_remove);
+    }
+
+    vector<CDCStreamId> streams_to_remove;
+    // 1. Update the Consumer Registry (removes from TServers).
+    {
+      auto cl = cluster_config_->LockForWrite();
+      auto pm = cl->mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+      auto producer_entry = pm->find(req->producer_id());
+      if (producer_entry != pm->end()) {
+        // Remove the Tables Specified (not part of the key).
+        auto stream_map = producer_entry->second.mutable_stream_map();
+        for (auto& p : *stream_map) {
+          if (table_ids_to_remove.count(p.second.producer_table_id()) > 0) {
+            streams_to_remove.push_back(p.first);
+          }
+        }
+        if (streams_to_remove.size() == stream_map->size()) {
+          // If this ends with an empty Map, disallow and force user to delete.
+          LOG(WARNING) << "CDC 'remove_table' tried to remove all tables." << req->producer_id();
+          Status s = STATUS(InvalidArgument,
+              "Cannot remove all tables with alter. Use delete_universe_replication instead.",
+              req->DebugString());
+          return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+        } else if (streams_to_remove.empty()) {
+          // If this doesn't delete anything, notify the user.
+          Status s = STATUS(InvalidArgument, "Removal matched no entries.", req->DebugString());
+          return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+        }
+        for (auto& key : streams_to_remove) {
+          stream_map->erase(stream_map->find(key));
+        }
+      }
+      cl->mutable_data()->pb.set_version(cl->mutable_data()->pb.version() + 1);
+      RETURN_NOT_OK(sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_));
+      cl->Commit();
+    }
+    // 2. Remove from Master Configs on Producer and Consumer.
+    {
+      auto l = original_ri->LockForWrite();
+      if (!l->data().pb.table_streams().empty()) {
+        // Delete Relevant Table->StreamID mappings on Consumer.
+        auto table_streams = l->mutable_data()->pb.mutable_table_streams();
+        auto validated_tables = l->mutable_data()->pb.mutable_validated_tables();
+        for (auto& key : table_ids_to_remove) {
+          table_streams->erase(table_streams->find(key));
+          validated_tables->erase(validated_tables->find(key));
+        }
+        for (int i = 0; i < l->mutable_data()->pb.tables_size(); i++) {
+          if (table_ids_to_remove.count(l->mutable_data()->pb.tables(i)) > 0) {
+            l->mutable_data()->pb.mutable_tables()->DeleteSubrange(i, 1);
+            --i;
+          }
+        }
+        // Delete CDC stream config on the Producer.
+        auto result = original_ri->GetOrCreateCDCRpcTasks(l->data().pb.producer_master_addresses());
+        if (!result.ok()) {
+          LOG(WARNING) << "Unable to create cdc rpc task. CDC streams won't be deleted: " << result;
+        } else {
+          auto s = (*result)->client()->DeleteCDCStream(streams_to_remove);
+          if (!s.ok()) {
+            std::stringstream os;
+            std::copy(streams_to_remove.begin(), streams_to_remove.end(),
+                      std::ostream_iterator<CDCStreamId>(os, ", "));
+            LOG(WARNING) << "Unable to delete CDC streams: " << os.str() << s;
+          }
+        }
+      }
+      RETURN_NOT_OK(sys_catalog_->UpdateItem(original_ri.get(), leader_ready_term_));
+      l->Commit();
+    }
+  } else if (req->producer_table_ids_to_add_size() > 0) {
+    // 'add_table'
+    string alter_producer_id = req->producer_id() + ".ALTER";
+
+    // Verify no 'alter' command running.
+    scoped_refptr<UniverseReplicationInfo> alter_ri;
+    {
+      std::shared_lock<LockType> l(lock_);
+      alter_ri = FindPtrOrNull(universe_replication_map_, alter_producer_id);
+    }
+    {
+      if (alter_ri != nullptr) {
+        LOG(INFO) << "Found " << alter_producer_id << "... Removing";
+        if (alter_ri->LockForRead()->data().is_deleted_or_failed()) {
+          // Delete previous Alter if it's completed but failed.
+          master::DeleteUniverseReplicationRequestPB delete_req;
+          delete_req.set_producer_id(alter_ri->id());
+          master::DeleteUniverseReplicationResponsePB delete_resp;
+          Status s = DeleteUniverseReplication(&delete_req, &delete_resp, rpc);
+          if (!s.ok()) {
+            resp->mutable_error()->Swap(delete_resp.mutable_error());
+            return s;
+          }
+        } else {
+          Status s = STATUS(InvalidArgument, "Alter for CDC producer currently running",
+                            req->DebugString());
+          return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+        }
+      }
+    }
+    // Only add new tables.  Ignore tables that are currently being replicated.
+    auto tid_iter = req->producer_table_ids_to_add();
+    unordered_set<string> new_tables(tid_iter.begin(), tid_iter.end());
+    {
+      auto l = original_ri->LockForRead();
+      for(auto t : l->data().pb.tables()) {
+        auto pos = new_tables.find(t);
+        if (pos != new_tables.end()) {
+          new_tables.erase(pos);
+        }
+      }
+    }
+    if (new_tables.empty()) {
+      Status s = STATUS(InvalidArgument, "CDC producer already contains all requested tables",
+          req->DebugString());
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+    }
+
+    // 1. create an ALTER table request that mirrors the original 'setup_replication'.
+    master::SetupUniverseReplicationRequestPB setup_req;
+    master::SetupUniverseReplicationResponsePB setup_resp;
+    setup_req.set_producer_id(alter_producer_id);
+    setup_req.mutable_producer_master_addresses()->CopyFrom(
+        original_ri->LockForRead()->data().pb.producer_master_addresses());
+    for (auto t : new_tables) {
+      setup_req.add_producer_table_ids(t);
+    }
+
+    // 2. run the 'setup_replication' pipeline on the ALTER Table
+    Status s = SetupUniverseReplication(&setup_req, &setup_resp, rpc);
+    if (!s.ok()) {
+      resp->mutable_error()->Swap(setup_resp.mutable_error());
+      return s;
+    }
+    // NOTE: ALTER merges back into original after completion.
   }
 
   return Status::OK();

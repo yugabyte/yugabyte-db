@@ -293,6 +293,39 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "alter_universe_replication",
+      " <producer_universe_uuid>"
+      " {set_master_addresses <producer_master_addresses,...> |"
+      "  add_table <table_id>[, <table_id>...] | remove_table <table_id>[, <table_id>...] }",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 5) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        const string producer_uuid = args[2];
+        vector<string> master_addresses;
+        vector<string> add_tables;
+        vector<string> remove_tables;
+
+        vector<string> newElem, *lst;
+        if (args[3] == "set_master_addresses") lst = &master_addresses;
+        else if (args[3] == "add_table") lst = &add_tables;
+        else if (args[3] == "remove_table") lst = &remove_tables;
+        else
+          return ClusterAdminCli::kInvalidArguments;
+
+        boost::split(newElem, args[4], boost::is_any_of(","));
+        lst->insert(lst->end(), newElem.begin(), newElem.end());
+
+        RETURN_NOT_OK_PREPEND(client->AlterUniverseReplication(producer_uuid,
+                                                               master_addresses,
+                                                               add_tables,
+                                                               remove_tables),
+            Substitute("Unable to alter replication for universe $0", producer_uuid));
+
+        return Status::OK();
+      });
+
+  Register(
       "set_universe_replication_enabled", " <producer_universe_uuid> <0|1>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 4) {

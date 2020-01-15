@@ -46,12 +46,19 @@ Result<std::shared_ptr<CDCRpcTasks>> UniverseReplicationInfo::GetOrCreateCDCRpcT
 
   std::lock_guard<decltype(lock_)> l(lock_);
   if (cdc_rpc_tasks_ != nullptr) {
+    // Master Addresses changed, update YBClient with new retry logic.
+    if (master_addrs_ != master_addrs) {
+      if (cdc_rpc_tasks_->UpdateMasters(master_addrs).ok()) {
+        master_addrs_ = master_addrs;
+      }
+    }
     return cdc_rpc_tasks_;
   }
 
   auto result = CDCRpcTasks::CreateWithMasterAddrs(producer_id_, master_addrs);
   if (result.ok()) {
     cdc_rpc_tasks_ = *result;
+    master_addrs_ = master_addrs;
   }
   return result;
 }
