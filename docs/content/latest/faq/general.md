@@ -1,12 +1,12 @@
 ---
-title: Product FAQ
-linkTitle: Product FAQ
-description: Product FAQ
+title: General FAQ
+linkTitle: General FAQ
+description: General FAQ
 aliases:
   - /faq/product/
 menu:
   latest:
-    identifier: product
+    identifier: general-faq
     parent: faq
     weight: 2710
 isTocNested: false
