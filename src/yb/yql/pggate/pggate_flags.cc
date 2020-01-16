@@ -45,6 +45,9 @@ DEFINE_int32(pggate_tserver_shm_fd, -1,
 DEFINE_test_flag(bool, pggate_ignore_tserver_shm, false,
               "Ignore the shared memory of the local tablet server.");
 
+DEFINE_int32(ysql_request_limit, 1024,
+             "Maximum number of requests to be sent at once");
+
 DEFINE_int32(ysql_prefetch_limit, 1024,
              "Maximum number of rows to prefetch");
 

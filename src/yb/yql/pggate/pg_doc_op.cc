@@ -187,8 +187,10 @@ void PgDocOp::HandleResponseStatus(client::YBPgsqlOp* op) {
 
 PgDocReadOp::PgDocReadOp(
     PgSession::ScopedRefPtr pg_session,
-    client::YBPgsqlReadOp *read_op)
-    : PgDocOp(std::move(pg_session)), read_op_(read_op) {
+    PgTableDesc::ScopedRefPtr table_desc)
+    : PgDocOp(std::move(pg_session)),
+      table_desc_(table_desc),
+      template_op_(table_desc->NewPgsqlSelect()) {
 }
 
 PgDocReadOp::~PgDocReadOp() {
@@ -197,12 +199,12 @@ PgDocReadOp::~PgDocReadOp() {
 void PgDocReadOp::InitUnlocked(std::unique_lock<std::mutex>* lock) {
   PgDocOp::InitUnlocked(lock);
 
-  read_op_->mutable_request()->set_return_paging_state(true);
+  template_op_->mutable_request()->set_return_paging_state(true);
 }
 
 void PgDocReadOp::SetRequestPrefetchLimit() {
   // Predict the maximum prefetch-limit using the associated gflags.
-  PgsqlReadRequestPB *req = read_op_->mutable_request();
+  PgsqlReadRequestPB *req = template_op_->mutable_request();
   int predicted_limit = FLAGS_ysql_prefetch_limit;
   if (!req->is_forward_scan()) {
     // Backward scan is slower than forward scan, so predicted limit is a smaller number.
@@ -224,12 +226,74 @@ void PgDocReadOp::SetRequestPrefetchLimit() {
 }
 
 void PgDocReadOp::SetRowMark() {
-  PgsqlReadRequestPB *const req = read_op_->mutable_request();
+  PgsqlReadRequestPB *const req = template_op_->mutable_request();
 
   if (exec_params_.rowmark < 0) {
     req->clear_row_mark_type();
   } else {
     req->set_row_mark_type(static_cast<yb::RowMarkType>(exec_params_.rowmark));
+  }
+}
+
+void PgDocReadOp::InitializeNextOps(int num_ops) {
+  if (num_ops <= 0) {
+    return;
+  }
+
+  if (template_op_->request().partition_column_values_size() == 0) {
+    read_ops_.push_back(template_op_->DeepCopy());
+    can_produce_more_ops_ = false;
+  } else {
+    int num_hash_cols = table_desc_->num_hash_key_columns();
+
+    if (partition_exprs_.empty()) {
+      // Initialize partition_exprs_ on the first call.
+      partition_exprs_.resize(num_hash_cols);
+      for (int c_idx = 0; c_idx < num_hash_cols; ++c_idx) {
+        const auto& col_expr = template_op_->request().partition_column_values(c_idx);
+        if (col_expr.has_condition()) {
+          for (const auto& expr : col_expr.condition().operands(1).condition().operands()) {
+            partition_exprs_[c_idx].push_back(&expr);
+          }
+        } else {
+          partition_exprs_[c_idx].push_back(&col_expr);
+        }
+      }
+    }
+
+    // Total number of unrolled operations.
+    int total_op_count = 1;
+    for (auto& exprs : partition_exprs_) {
+      total_op_count *= exprs.size();
+    }
+
+    while (num_ops > 0 && next_op_idx_ < total_op_count) {
+      // Construct a new YBPgsqlReadOp.
+      auto read_op(template_op_->DeepCopy());
+      read_op->mutable_request()->clear_partition_column_values();
+      for (int i = 0; i < num_hash_cols; ++i) {
+        read_op->mutable_request()->add_partition_column_values();
+      }
+
+      // Fill in partition_column_values from currently selected permutation.
+      int pos = next_op_idx_;
+      for (int c_idx = num_hash_cols - 1; c_idx >= 0; --c_idx) {
+        int sel_idx = pos % partition_exprs_[c_idx].size();
+        read_op->mutable_request()->mutable_partition_column_values(c_idx)
+               ->CopyFrom(*partition_exprs_[c_idx][sel_idx]);
+        pos /= partition_exprs_[c_idx].size();
+      }
+      read_ops_.push_back(std::move(read_op));
+
+      --num_ops;
+      ++next_op_idx_;
+    }
+
+    if (next_op_idx_ == total_op_count) {
+      can_produce_more_ops_ = false;
+    }
+
+    DCHECK(!read_ops_.empty()) << "read_ops_ should not be empty after setting!";
   }
 }
 
@@ -239,14 +303,23 @@ Status PgDocReadOp::SendRequestUnlocked() {
   SetRequestPrefetchLimit();
   SetRowMark();
 
-  auto apply_outcome = VERIFY_RESULT(pg_session_->PgApplyAsync(read_op_, &read_time_));
-  SCHECK_EQ(apply_outcome.buffered, OpBuffered::kFalse,
-            IllegalState, "YSQL read operation should not be buffered");
+  CHECK(!read_ops_.empty() || can_produce_more_ops_);
+  if (can_produce_more_ops_) {
+    InitializeNextOps(FLAGS_ysql_request_limit - read_ops_.size());
+  }
+
+  client::YBSessionPtr yb_session;
+  for (auto& read_op : read_ops_) {
+    auto apply_outcome = VERIFY_RESULT(pg_session_->PgApplyAsync(read_op, &read_time_));
+    SCHECK_EQ(apply_outcome.buffered, OpBuffered::kFalse,
+              IllegalState, "YSQL read operation should not be buffered");
+    yb_session = apply_outcome.yb_session; // All unrolled operations have the same session
+  }
 
   waiting_for_response_ = true;
   Status s = pg_session_->PgFlushAsync([self = shared_from(this)](const Status& s) {
                                          self->ReceiveResponse(s);
-                                       }, apply_outcome.yb_session);
+                                       }, yb_session);
   if (!s.ok()) {
     waiting_for_response_ = false;
     return s;
@@ -262,7 +335,9 @@ void PgDocReadOp::ReceiveResponse(Status exec_status) {
   exec_status_ = exec_status;
 
   if (exec_status.ok()) {
-    HandleResponseStatus(read_op_.get());
+    for (auto& read_op : read_ops_) {
+      HandleResponseStatus(read_op.get());
+    }
   }
 
   // exec_status_ could be changed by HandleResponseStatus.
@@ -273,30 +348,38 @@ void PgDocReadOp::ReceiveResponse(Status exec_status) {
 
   if (!is_canceled_) {
     // Save it to cache.
-    WriteToCacheUnlocked(read_op_);
-
-    // Setup request for the next batch of data.
-    const PgsqlResponsePB& res = read_op_->response();
-    if (res.has_paging_state()) {
-      PgsqlReadRequestPB *req = read_op_->mutable_request();
-      // Set up paging state for next request.
-      // A query request can be nested, and paging state belong to the innermost query which is
-      // the read operator that is operated first and feeds data to other queries.
-      // Recursive Proto Message:
-      //     PgsqlReadRequestPB { PgsqlReadRequestPB index_request; }
-      PgsqlReadRequestPB *innermost_req = req;
-      while (innermost_req->has_index_request()) {
-        innermost_req = innermost_req->mutable_index_request();
-      }
-      *innermost_req->mutable_paging_state() = res.paging_state();
-      // Parse/Analysis/Rewrite catalog version has already been checked on the first request.
-      // The docdb layer will check the target table's schema version is compatible.
-      // This allows long-running queries to continue in the presence of other DDL statements
-      // as long as they do not affect the table(s) being queried.
-      req->clear_ysql_catalog_version();
-    } else {
-      end_of_data_ = true;
+    for (auto& read_op : read_ops_) {
+      WriteToCacheUnlocked(read_op);
     }
+
+    // For each read_op, set up its request for the next batch of data, or remove it from the list
+    // if no data is left.
+    for (auto iter = read_ops_.begin(); iter != read_ops_.end(); /* NOOP */) {
+      auto& read_op = *iter;
+      const PgsqlResponsePB& res = read_op->response();
+      if (res.has_paging_state()) {
+        PgsqlReadRequestPB *req = read_op->mutable_request();
+        // Set up paging state for next request.
+        // A query request can be nested, and paging state belong to the innermost query which is
+        // the read operator that is operated first and feeds data to other queries.
+        // Recursive Proto Message:
+        //     PgsqlReadRequestPB { PgsqlReadRequestPB index_request; }
+        PgsqlReadRequestPB *innermost_req = req;
+        while (innermost_req->has_index_request()) {
+          innermost_req = innermost_req->mutable_index_request();
+        }
+        *innermost_req->mutable_paging_state() = res.paging_state();
+        // Parse/Analysis/Rewrite catalog version has already been checked on the first request.
+        // The docdb layer will check the target table's schema version is compatible.
+        // This allows long-running queries to continue in the presence of other DDL statements
+        // as long as they do not affect the table(s) being queried.
+        req->clear_ysql_catalog_version();
+        ++iter;
+      } else {
+        iter = read_ops_.erase(iter);
+      }
+    }
+    end_of_data_ = read_ops_.empty() && !can_produce_more_ops_;
   } else {
     end_of_data_ = true;
   }

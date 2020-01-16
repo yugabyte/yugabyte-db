@@ -45,10 +45,7 @@ class PgDml : public PgStatement {
   CHECKED_STATUS PrepareColumnForWrite(PgColumn *pg_col, PgsqlExpressionPB *assign_pb);
 
   // Bind a column with an expression.
-  CHECKED_STATUS BindColumn(int attnum, PgExpr *attr_value);
-  CHECKED_STATUS BindColumnCondEq(int attr_num, PgExpr *attr_value);
-  CHECKED_STATUS BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr *attr_value_end);
-  CHECKED_STATUS BindColumnCondIn(int attnum, int n_attr_values, PgExpr **attr_values);
+  virtual CHECKED_STATUS BindColumn(int attnum, PgExpr *attr_value);
 
   // Assign an expression to a column.
   CHECKED_STATUS AssignColumn(int attnum, PgExpr *attr_value);

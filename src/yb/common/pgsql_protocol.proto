@@ -123,7 +123,8 @@ message PgsqlWriteRequestPB {
   // Row Identifiers provides information for the row that the server INSERTs, DELETEs, or UPDATEs.
   // - hash_code, if provided, helps locating the row. It is used by the proxy to find tablet server
   //   and by DocDB to find a set of matching rows.
-  // - partition_column_values are for partition columns.
+  // - partition_column_values are for partition columns,
+  //   e.g. for h1 = 1 AND h2 = 2 partition_column_values would be [1, 2].
   // - range_column_values are for range columns.
   // - column_values are for non-primary columns. They are used to further identify the row to be
   //   inserted, deleted, or updated.
@@ -230,7 +231,8 @@ message PgsqlReadRequestPB {
   // - Hash code is used to locate efficiently a group of data values of the same hash code.
   //   First, it is used to find tablet server.
   //   Then, it is used again by DocDB to narrow the search within a tablet.
-  // - Partition columns are used to compute the hash code.
+  // - Partition columns are used to compute the hash code,
+  //   e.g. for h1 = 1 AND h2 = 2 partition_column_values would be [1, 2].
   // - Range columns combining with partition columns are used for indexing.
   optional uint32 hash_code = 4;
   repeated PgsqlExpressionPB partition_column_values = 5;

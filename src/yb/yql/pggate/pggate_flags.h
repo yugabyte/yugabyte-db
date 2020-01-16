@@ -23,6 +23,7 @@ DECLARE_string(pggate_proxy_bind_address);
 DECLARE_string(pggate_master_addresses);
 DECLARE_int32(pggate_tserver_shm_fd);
 DECLARE_bool(pggate_ignore_tserver_shm);
+DECLARE_int32(ysql_request_limit);
 DECLARE_int32(ysql_prefetch_limit);
 DECLARE_double(ysql_backward_prefetch_scale_factor);
 DECLARE_int32(ysql_session_max_batch_size);

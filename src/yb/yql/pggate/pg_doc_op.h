@@ -130,12 +130,12 @@ class PgDocReadOp : public PgDocOp {
   typedef scoped_refptr<PgDocReadOp> ScopedRefPtr;
 
   // Constructors & Destructors.
-  PgDocReadOp(PgSession::ScopedRefPtr pg_session, client::YBPgsqlReadOp *read_op);
+  PgDocReadOp(PgSession::ScopedRefPtr pg_session,
+              PgTableDesc::ScopedRefPtr table_desc);
   virtual ~PgDocReadOp();
 
-  // Access function.
-  std::shared_ptr<client::YBPgsqlReadOp> read_op() {
-    return read_op_;
+  client::YBPgsqlReadOp& GetTemplateOp() {
+    return *template_op_;
   }
 
  private:
@@ -150,8 +150,52 @@ class PgDocReadOp : public PgDocOp {
   // Set the row_mark_type field of our read request based on our exec control parameter.
   void SetRowMark();
 
-  // Operator.
-  std::shared_ptr<client::YBPgsqlReadOp> read_op_;
+  PgTableDesc::ScopedRefPtr table_desc_;
+
+  // Template operation, used to fill in read_ops_ by copying it with custom partition_column_values
+  std::unique_ptr<client::YBPgsqlReadOp> template_op_;
+
+  // Initialize up to N new operations from template_op_ and add them to read_ops_.
+  //
+  // If partition column binds are defined, partition_column_values on each opearation
+  // is set to be the next permutation. Otherwise, template_op_ is copied as-is just once.
+  //
+  // Also updates the value of can_produce_more_ops_.
+  void InitializeNextOps(int num_ops);
+
+  // Used internally for InitializeNextOps to keep track of which permutation should be used
+  // to construct the next read_op.
+  // Is valid as long as can_produce_more_ops_ is true.
+  //
+  // Example:
+  // For a query clause "h1 = 1 AND h2 IN (2,3) AND h3 IN (4,5,6) AND h4 = 7",
+  // there are 1*2*3*1 = 6 possible permutation.
+  // As such, this field will take on values 0 through 5.
+  int next_op_idx_ = 0;
+
+  // Used internally for InitializeNextOps to holds all partition expressions of expressions.
+  // Elements correspond to a hash columns, in the same order as they were defined
+  // in CREATE TABLE statement.
+  // This is somewhat similar to what hash_values_options_ in CQL is used for.
+  //
+  // Example:
+  // For a query clause "h1 = 1 AND h2 IN (2,3) AND h3 IN (4,5,6) AND h4 = 7",
+  // this will be initialized to [[1], [2, 3], [4, 5, 6], [7]]
+  std::vector<std::vector<const PgsqlExpressionPB*>> partition_exprs_;
+
+  // True when either:
+  // 1) Partition columns are not bound but the request hasn't been sent yet.
+  // 2) Partition columns are bound and some permutations remain unprocessed.
+  bool can_produce_more_ops_ = true;
+
+  // Operation(s).
+  //
+  // If there's more than one, partition_column_values will be fully specified on all of them.
+  //
+  // This list is initialized only in SendRequestUnlocked - i.e. just before operations are sent.
+  // In ReceiveResponse this list is pruned from exhausted operations, remaining are set up to
+  // retrieve the next batch of data.
+  std::vector<std::shared_ptr<client::YBPgsqlReadOp>> read_ops_;
 };
 
 class PgDocWriteOp : public PgDocOp {

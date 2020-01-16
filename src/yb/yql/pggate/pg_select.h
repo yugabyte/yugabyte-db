@@ -96,9 +96,10 @@ class PgSelect : public PgDml {
   PgObjectId index_id_;
   PgTableDesc::ScopedRefPtr index_desc_;
 
-  // Protobuf instruction.
-  std::shared_ptr<client::YBPgsqlReadOp> read_op_;
+  // References mutable request from template operation of doc_op_.
   PgsqlReadRequestPB *read_req_ = nullptr;
+
+  // References mutable index request from template operation of doc_op_, valid if index_id_ is set.
   PgsqlReadRequestPB *index_req_ = nullptr;
 };
 

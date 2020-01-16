@@ -72,7 +72,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
     // Find the full-scan time.
     long fullscan_time = timeQueryWithRowCount("SELECT gps_code FROM airports",
                                                -1 /* expectedRowCount */,
-                                               0 /* maxRuntimeMillis */,
                                                execCount);
     LOG.info(String.format("Full scan: %d ms", fullscan_time));
 
@@ -84,14 +83,12 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
     scan_time = timeQueryWithRowCount("SELECT count(*) FROM airports" +
                                       "  WHERE iso_region = 'US-CA'",
                                       -1 /* expectedRowCount */,
-                                      0 /* maxRuntimeMillis */,
                                       execCount);
     assertLessThan(scan_time * 10, fullscan_time);
 
     scan_time = timeQueryWithRowCount("SELECT * FROM airports" +
                                       "  WHERE iso_region = 'US-CA' LIMIT 1",
                                       1 /* expectedRowCount */,
-                                      0 /* maxRuntimeMillis */,
                                       execCount);
     assertLessThan(scan_time * 20, fullscan_time);
 
@@ -99,7 +96,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA'" +
                                       "  ORDER BY ident LIMIT 1",
                                       1 /* expectedRowCount */,
-                                      0 /* maxRuntimeMillis */,
                                       execCount);
     assertLessThan(scan_time * 25, fullscan_time);
 
@@ -107,7 +103,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA'" +
                                       "  ORDER BY ident ASC LIMIT 1",
                                       1 /* expectedRowCount */,
-                                      0 /* maxRuntimeMillis */,
                                       execCount);
     assertLessThan(scan_time * 25, fullscan_time);
 
@@ -116,7 +111,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA'" +
                                       "  ORDER BY ident DESC LIMIT 1",
                                       1 /* expectedRowCount */,
-                                      0 /* maxRuntimeMillis */,
                                       execCount);
     assertLessThan(scan_time * 10, fullscan_time);
 
@@ -124,7 +118,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA'" +
                                       "  ORDER BY iso_region, ident LIMIT 1",
                                       1 /* expectedRowCount */,
-                                      0 /* maxRuntimeMillis */,
                                       execCount);
     assertLessThan(scan_time * 25, fullscan_time);
 
@@ -132,14 +125,12 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
     scan_time = timeQueryWithRowCount("SELECT gps_code FROM airports" +
                                       "  WHERE iso_region = 'US-CA' AND ident >= '4' LIMIT 2",
                                       2 /* expectedRowCount */,
-                                      0 /* maxRuntimeMillis */,
                                       execCount);
     assertLessThan(scan_time, fullscan_time);
 
     long op_time = timeQueryWithRowCount("SELECT gps_code FROM airports" +
                                          "  WHERE iso_region = 'US-CA' AND ident < '4' LIMIT 2",
                                          2 /* expectedRowCount */,
-                                         0 /* maxRuntimeMillis */,
                                          execCount);
     assertLessThan(op_time * 25, fullscan_time);
 
@@ -151,14 +142,12 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
     scan_time = timeQueryWithRowCount("SELECT gps_code FROM airports" +
                                       "  WHERE iso_region = 'US-CA' ORDER BY name DESC LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 25, fullscan_time);
 
     scan_time = timeQueryWithRowCount("SELECT gps_code FROM airports" +
                                       "  WHERE iso_region = 'US-CA' ORDER BY name ASC LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 25, fullscan_time);
 
@@ -170,14 +159,12 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
     scan_time = timeQueryWithRowCount("SELECT gps_code FROM airports" +
                                       "  WHERE iso_region = 'US-CA' ORDER BY gps_code ASC LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 15, fullscan_time);
 
     scan_time = timeQueryWithRowCount("SELECT gps_code FROM airports" +
                                       "  WHERE iso_region = 'US-CA' ORDER BY gps_code DESC LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 15, fullscan_time);
 
@@ -185,14 +172,12 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
     scan_time = timeQueryWithRowCount("SELECT gps_code FROM airports" +
                                       "  ORDER BY iso_region, gps_code LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 5, fullscan_time);
 
     scan_time = timeQueryWithRowCount("SELECT gps_code FROM airports" +
                                       "  ORDER BY iso_region ASC, gps_code ASC LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 5, fullscan_time);
 
@@ -200,7 +185,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
     long reverse_time = timeQueryWithRowCount("SELECT gps_code FROM airports" +
                                               "  ORDER BY iso_region DESC, gps_code DESC LIMIT 1",
                                               1,
-                                              0,
                                               execCount);
     assertLessThan(reverse_time * 25, fullscan_time);
 
@@ -208,7 +192,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
     scan_time = timeQueryWithRowCount("SELECT gps_code FROM airports" +
                                       "  ORDER BY iso_region ASC, gps_code DESC LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
 
     //----------------------------------------------------------------------------------------------
@@ -223,7 +206,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates, ident, name LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 15, fullscan_time);
 
@@ -231,7 +213,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates ASC, ident, name LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 15, fullscan_time);
 
@@ -239,7 +220,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates DESC, ident DESC, name DESC LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 15, fullscan_time);
 
@@ -247,7 +227,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates, ident, name ASC LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 15, fullscan_time);
 
@@ -256,7 +235,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates, ident LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 15, fullscan_time);
 
@@ -265,7 +243,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 15, fullscan_time);
 
@@ -274,7 +251,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates, ident, name DESC LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time, fullscan_time);
 
@@ -283,7 +259,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates DESC, ident, name LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time, fullscan_time);
 
@@ -292,7 +267,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA'" +
                                       "  ORDER BY type, coordinates LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
 
     // This ORDER BY statement behavior is dependent on the cost estimator. It might choose the
@@ -301,7 +275,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY ident LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time, fullscan_time);
 
@@ -320,7 +293,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates, ident, name LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 15, fullscan_time);
 
@@ -328,7 +300,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates ASC, ident, name LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 15, fullscan_time);
 
@@ -336,7 +307,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates DESC, ident DESC, name DESC LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 15, fullscan_time);
 
@@ -344,7 +314,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates, ident, name ASC LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 15, fullscan_time);
 
@@ -353,7 +322,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates, ident LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 15, fullscan_time);
 
@@ -362,7 +330,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 15, fullscan_time);
 
@@ -371,7 +338,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates, ident, name DESC LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time, fullscan_time);
 
@@ -380,7 +346,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates DESC, ident, name LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time, fullscan_time);
 
@@ -389,7 +354,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA'" +
                                       "  ORDER BY type, coordinates LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
 
     // This ORDER BY statement behavior is dependent on the cost estimator. It might choose the
@@ -398,7 +362,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY ident LIMIT 1",
                                       1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time, fullscan_time);
 
@@ -415,7 +378,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates, ident, name",
                                       -1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 10, fullscan_time);
 
@@ -424,7 +386,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates, ident",
                                       -1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 10, fullscan_time);
 
@@ -433,7 +394,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates",
                                       -1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time * 10, fullscan_time);
 
@@ -442,7 +402,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA'" +
                                       "  ORDER BY type, coordinates",
                                       -1,
-                                      0,
                                       execCount);
 
     // This ORDER BY statement behavior is dependent on the cost estimator. It might choose the
@@ -451,7 +410,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY ident",
                                       -1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time, fullscan_time);
 
@@ -468,7 +426,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates, ident, name",
                                       -1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time, fullscan_time);
 
@@ -477,7 +434,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates, ident",
                                       -1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time, fullscan_time);
 
@@ -486,7 +442,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY coordinates",
                                       -1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time, fullscan_time);
 
@@ -495,7 +450,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA'" +
                                       "  ORDER BY type, coordinates",
                                       -1,
-                                      0,
                                       execCount);
 
     // This ORDER BY statement behavior is dependent on the cost estimator. It might choose the
@@ -504,7 +458,6 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                       "  WHERE iso_region = 'US-CA' AND type = 'small_airport'" +
                                       "  ORDER BY ident",
                                       -1,
-                                      0,
                                       execCount);
     assertLessThan(scan_time, fullscan_time);
   }
