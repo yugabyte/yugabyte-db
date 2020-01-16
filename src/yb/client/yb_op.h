@@ -461,6 +461,10 @@ class YBPgsqlReadOp : public YBPgsqlOp {
 
   static YBPgsqlReadOp *NewSelect(const std::shared_ptr<YBTable>& table);
 
+  // Create a deep copy of this operation, copying all fields and request PB content.
+  // Does NOT, however, copy response and rows data.
+  std::unique_ptr<YBPgsqlReadOp> DeepCopy();
+
   // Note: to avoid memory copy, this PgsqlReadRequestPB is moved into tserver ReadRequestPB
   // when the request is sent to tserver. It is restored after response is received from tserver
   // (see ReadRpc's constructor).

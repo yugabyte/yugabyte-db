@@ -75,11 +75,11 @@ EXPLAIN (COSTS FALSE) DELETE FROM single_row WHERE k != 1;
 (3 rows)
 
 EXPLAIN (COSTS FALSE) DELETE FROM single_row WHERE k IN (1, 2);
-                   QUERY PLAN
-------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  Delete on single_row
-   ->  Foreign Scan on single_row
-         Filter: (k = ANY ('{1,2}'::integer[]))
+   ->  Index Scan using single_row_pkey on single_row
+         Index Cond: (k = ANY ('{1,2}'::integer[]))
 (3 rows)
 
 -- Below statements should all USE single-row.
@@ -197,11 +197,11 @@ EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k != 1;
 (3 rows)
 
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k IN (1, 2);
-                   QUERY PLAN
-------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  Update on single_row
-   ->  Foreign Scan on single_row
-         Filter: (k = ANY ('{1,2}'::integer[]))
+   ->  Index Scan using single_row_pkey on single_row
+         Index Cond: (k = ANY ('{1,2}'::integer[]))
 (3 rows)
 
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 + 3 WHERE k = 1;

@@ -44,6 +44,7 @@ import java.net.InetSocketAddress;
 import java.net.URL;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -182,6 +183,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return null;
   }
 
+  protected String pgRequestLimit() {
+    return null;
+  }
+
   /**
    * @return flags shared between tablet server and initdb
    */
@@ -198,6 +203,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     // Setup flag for postgres test on prefetch-limit when starting tserver.
     if (pgPrefetchLimit() != null) {
       flagMap.put("ysql_prefetch_limit", pgPrefetchLimit());
+    }
+
+    if (pgRequestLimit() != null) {
+      flagMap.put("ysql_request_limit", pgRequestLimit());
     }
 
     flagMap.put("ysql_beta_features", "true");
@@ -633,7 +642,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   //------------------------------------------------------------------------------------------------
   // Test Utilities
 
-  protected class Row implements Comparable<Row> {
+  protected class Row implements Comparable<Row>, Cloneable {
     ArrayList<Comparable> elems = new ArrayList<>();
 
     Row(Comparable... args) {
@@ -676,16 +685,17 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     public int compareTo(Row other) {
       // In our test, if selected Row has different number of columns from expected row, something
       // must be very wrong. Stop the test here.
-      assertEquals(elems.size(), other.elems.size());
+      assertEquals("Row width mismatch between " + this + " and " + other,
+          elems.size(), other.elems.size());
       for (int i = 0; i < elems.size(); i++) {
         if (elems.get(i) == null || other.elems.get(i) == null) {
           if (elems.get(i) != other.elems.get(i)) {
             return elems.get(i) == null ? -1 : 1;
           }
         } else {
-          int compare_result = elems.get(i).compareTo(other.elems.get(i));
-          if (compare_result != 0) {
-            return compare_result;
+          int compareResult = promoteType(elems.get(i)).compareTo(promoteType(other.elems.get(i)));
+          if (compareResult != 0) {
+            return compareResult;
           }
         }
       }
@@ -712,6 +722,31 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       }
       sb.append(']');
       return sb.toString();
+    }
+
+    @Override
+    public Row clone() throws CloneNotSupportedException {
+      Row clone = (Row)super.clone();
+      clone.elems = new ArrayList<>(elems.size());
+      for (Comparable<?> c : elems) {
+        clone.elems.add(c);
+      }
+      return clone;
+    }
+
+    //
+    // Helpers
+    //
+
+    /** Converts the value to a widest one of the same type */
+    private Comparable promoteType(Comparable v) {
+      if (v instanceof Byte || v instanceof Short || v instanceof Integer) {
+        return ((Number)v).longValue();
+      } else if (v instanceof Float) {
+        return ((Float)v).doubleValue();
+      } else {
+        return v;
+      }
     }
   }
 
@@ -971,7 +1006,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS * 2);
   }
 
-  // Run a query and check row-count.
+  /** Run a query and check row-count. */
   private void runQueryWithRowCount(String stmt, int expectedRowCount)
       throws Exception {
     // Query and check row count.
@@ -985,17 +1020,34 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
     if (expectedRowCount >= 0) {
       // Caller wants to assert row-count.
-      assertEquals(rowCount, expectedRowCount);
+      assertEquals(expectedRowCount, rowCount);
     } else {
       LOG.info(String.format("Exec query: row count = %d", rowCount));
     }
   }
 
-  // Time execution time of a statement.
-  protected long timeQueryWithRowCount(String stmt, int expectedRowCount, long maxRuntimeMillis,
-                                       int numberOfRuns)
+  /** Run a query and check row-count. */
+  private void runQueryWithRowCount(PreparedStatement pstmt, int expectedRowCount)
       throws Exception {
-    LOG.info(String.format("Exec query: %s", stmt));
+    // Query and check row count.
+    int rowCount = 0;
+    try (ResultSet rs = pstmt.executeQuery()) {
+      while (rs.next()) {
+        rowCount++;
+      }
+    }
+    if (expectedRowCount >= 0) {
+      // Caller wants to assert row-count.
+      assertEquals(expectedRowCount, rowCount);
+    } else {
+      LOG.info(String.format("Exec query: row count = %d", rowCount));
+    }
+  }
+
+  /** Time execution of a query. */
+  protected long timeQueryWithRowCount(String stmt, int expectedRowCount, int numberOfRuns)
+      throws Exception {
+    LOG.info(String.format("Exec statement: %s", stmt));
 
     // Not timing the first query run as its result is not predictable.
     runQueryWithRowCount(stmt, expectedRowCount);
@@ -1007,15 +1059,127 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     // Check the elapsed time.
-    long elapsedTimeMillis = System.currentTimeMillis() - startTimeMillis;
+    long result = System.currentTimeMillis() - startTimeMillis;
     LOG.info(String.format("Ran query %d times. Total elapsed time = %d msecs",
-                           numberOfRuns, elapsedTimeMillis));
-    if (maxRuntimeMillis > 0) {
-      // Caller want to assert if runtime takes longer than expectation.
-      assertTrue(elapsedTimeMillis < numberOfRuns * maxRuntimeMillis);
+        numberOfRuns, result));
+    return result;
+  }
+
+  /** Time execution of a query. */
+  protected long timeQueryWithRowCount(
+      PreparedStatement pstmt,
+      int expectedRowCount,
+      int numberOfRuns) throws Exception {
+    LOG.info("Exec prepared statement");
+
+    // Not timing the first query run as its result is not predictable.
+    runQueryWithRowCount(pstmt, expectedRowCount);
+
+    // Seek average run-time for a few different run.
+    final long startTimeMillis = System.currentTimeMillis();
+    for (int qrun = 0; qrun < numberOfRuns; qrun++) {
+      runQueryWithRowCount(pstmt, expectedRowCount);
     }
 
-    return elapsedTimeMillis;
+    // Check the elapsed time.
+    long result = System.currentTimeMillis() - startTimeMillis;
+    LOG.info(String.format("Ran statement %d times. Total elapsed time = %d msecs",
+        numberOfRuns, result));
+    return result;
+  }
+
+  /** Time execution of a statement. */
+  protected long timeStatement(String stmt, int numberOfRuns)
+      throws Exception {
+    LOG.info(String.format("Exec statement: %s", stmt));
+
+    // Not timing the first query run as its result is not predictable.
+    try (Statement statement = connection.createStatement()) {
+      statement.executeUpdate(stmt);
+    }
+
+    // Seek average run-time for a few different run.
+    final long startTimeMillis = System.currentTimeMillis();
+    try (Statement statement = connection.createStatement()) {
+      for (int qrun = 0; qrun < numberOfRuns; qrun++) {
+        statement.executeUpdate(stmt);
+      }
+    }
+
+    // Check the elapsed time.
+    long result = System.currentTimeMillis() - startTimeMillis;
+    LOG.info(String.format("Ran statement %d times. Total elapsed time = %d msecs",
+        numberOfRuns, result));
+    return result;
+  }
+
+  /** Time execution of a statement. */
+  protected long timeStatement(PreparedStatement pstmt, int numberOfRuns)
+      throws Exception {
+    LOG.info("Exec prepared statement");
+
+    // Not timing the first query run as its result is not predictable.
+    pstmt.executeUpdate();
+
+    // Seek average run-time for a few different run.
+    final long startTimeMillis = System.currentTimeMillis();
+    for (int qrun = 0; qrun < numberOfRuns; qrun++) {
+      pstmt.executeUpdate();
+    }
+
+    // Check the elapsed time.
+    long result = System.currentTimeMillis() - startTimeMillis;
+    LOG.info(String.format("Ran statement %d times. Total elapsed time = %d msecs",
+        numberOfRuns, result));
+    return result;
+  }
+
+  /** Time execution of a query. */
+  protected void assertQueryRuntimeWithRowCount(
+      String stmt,
+      int expectedRowCount,
+      int numberOfRuns,
+      long maxTotalMillis) throws Exception {
+    long elapsedMillis = timeQueryWithRowCount(stmt, expectedRowCount, numberOfRuns);
+    assertTrue(
+        String.format("Query took %d ms! Expected %d ms at most", elapsedMillis, maxTotalMillis),
+        elapsedMillis <= maxTotalMillis);
+  }
+
+  /** Time execution of a query. */
+  protected void assertQueryRuntimeWithRowCount(
+      PreparedStatement pstmt,
+      int expectedRowCount,
+      int numberOfRuns,
+      long maxTotalMillis) throws Exception {
+    long elapsedMillis = timeQueryWithRowCount(pstmt, expectedRowCount, numberOfRuns);
+    assertTrue(
+        String.format("Query took %d ms! Expected %d ms at most", elapsedMillis, maxTotalMillis),
+        elapsedMillis <= maxTotalMillis);
+  }
+
+  /** Time execution of a statement. */
+  protected void assertStatementRuntime(
+      String stmt,
+      int numberOfRuns,
+      long maxTotalMillis) throws Exception {
+    long elapsedMillis = timeStatement(stmt, numberOfRuns);
+    assertTrue(
+        String.format("Statement took %d ms! Expected %d ms at most", elapsedMillis,
+            maxTotalMillis),
+        elapsedMillis <= maxTotalMillis);
+  }
+
+  /** Time execution of a statement. */
+  protected void assertStatementRuntime(
+      PreparedStatement pstmt,
+      int numberOfRuns,
+      long maxTotalMillis) throws Exception {
+    long elapsedMillis = timeStatement(pstmt, numberOfRuns);
+    assertTrue(
+        String.format("Statement took %d ms! Expected %d ms at most", elapsedMillis,
+            maxTotalMillis),
+        elapsedMillis <= maxTotalMillis);
   }
 
   public static class ConnectionBuilder {

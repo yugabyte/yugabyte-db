@@ -50,9 +50,8 @@ Status PgSelect::Prepare() {
   }
 
   // Allocate READ/SELECT operation.
-  auto doc_op = make_shared<PgDocReadOp>(
-      pg_session_, table_desc_->NewPgsqlSelect());
-  read_req_ = doc_op->read_op()->mutable_request();
+  auto doc_op = make_shared<PgDocReadOp>(pg_session_, table_desc_);
+  read_req_ = doc_op->GetTemplateOp().mutable_request();
   if (index_id_.IsValid()) {
     index_req_ = read_req_->mutable_index_request();
     index_req_->set_table_id(index_id_.GetYBTableId());
@@ -126,14 +125,17 @@ Status PgSelect::DeleteEmptyPrimaryBinds() {
   // Either ybctid or hash/primary key must be present.
   if (!ybctid_bind_) {
     PgTableDesc::ScopedRefPtr table_desc = index_desc_ ? index_desc_ : table_desc_;
-    PgsqlReadRequestPB *read_req = index_desc_ ? index_req_ : read_req_;
+    PgsqlReadRequestPB*       read_req   = index_desc_ ? index_req_  : read_req_;
 
     bool miss_partition_columns = false;
     bool has_partition_columns = false;
 
     for (size_t i = 0; i < table_desc->num_hash_key_columns(); i++) {
-      PgColumn &col = table_desc->columns()[i];
-      if (expr_binds_.find(col.bind_pb()) == expr_binds_.end()) {
+      PgColumn&          col  = table_desc->columns()[i];
+      PgsqlExpressionPB* expr = col.bind_pb();
+      if (expr_binds_.find(expr) == expr_binds_.end()
+          // Special treatment for IN clause, we assume it's bound
+          && !expr->has_condition()) {
         miss_partition_columns = true;
       } else {
         has_partition_columns = true;
@@ -293,6 +295,8 @@ Status PgSelect::BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr 
               "Attribute value type does not match column type");
   }
 
+  CHECK(!col->desc()->is_partition()) << "This method cannot be used for binding partition column!";
+
   // Alloc the protobuf.
   PgsqlExpressionPB *condition_expr_pb = AllocColumnBindConditionExprPB(col);
 
@@ -359,33 +363,69 @@ Status PgSelect::BindColumnCondIn(int attr_num, int n_attr_values, PgExpr **attr
     }
   }
 
-  // Alloc the protobuf.
-  PgsqlExpressionPB *condition_expr_pb = AllocColumnBindConditionExprPB(col);
-
-  condition_expr_pb->mutable_condition()->set_op(QL_OP_IN);
-
-  auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
-  auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
-
-  op1_pb->set_column_id(attr_num - 1);
-
-  for (int i = 0; i < n_attr_values; i++) {
-    // Link the given expression "attr_value" with the allocated protobuf. Note that except for
-    // constants and place_holders, all other expressions can be setup just one time during prepare.
-    // Examples:
-    // - Bind values for primary columns in where clause.
-    //     WHERE hash = ?
-    // - Bind values for a column in INSERT statement.
-    //     INSERT INTO a_table(hash, key, col) VALUES(?, ?, ?)
-
-    if (attr_values[i]) {
-      RETURN_NOT_OK(attr_values[i]->Eval(this,
-            op2_pb->mutable_value()->mutable_list_value()->add_elems()));
+  if (col->desc()->is_partition()) {
+    // Alloc the protobuf.
+    PgsqlExpressionPB* bind_pb = col->bind_pb();
+    if (bind_pb == nullptr) {
+      bind_pb = AllocColumnBindPB(col);
+    } else {
+      if (expr_binds_.find(bind_pb) != expr_binds_.end()) {
+        LOG(WARNING) << strings::Substitute("Column $0 is already bound to another value.",
+                                            attr_num);
+      }
     }
 
-    if (attr_num == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
-      CHECK(attr_values[i]->is_constant()) << "Column ybctid must be bound to constant";
-      ybctid_bind_ = true;
+    bind_pb->mutable_condition()->set_op(QL_OP_IN);
+    bind_pb->mutable_condition()->add_operands()->set_column_id(attr_num - 1);
+
+    // There's no "list of expressions" field so we simulate it with an artificial nested OR
+    // with repeated operands, one per bind expression.
+    // This is only used for operation unrolling in pg_doc_op and is not understood by DocDB.
+    auto op2_pb = bind_pb->mutable_condition()->add_operands();
+    op2_pb->mutable_condition()->set_op(QL_OP_OR);
+
+    for (int i = 0; i < n_attr_values; i++) {
+      auto* attr_pb = op2_pb->mutable_condition()->add_operands();
+      // Link the expression and protobuf. During execution, expr will write result to the pb.
+      RETURN_NOT_OK(attr_values[i]->PrepareForRead(this, attr_pb));
+
+      expr_binds_[attr_pb] = attr_values[i];
+
+      if (attr_num == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
+        CHECK(attr_values[i]->is_constant()) << "Column ybctid must be bound to constant";
+        ybctid_bind_ = true;
+      }
+    }
+  } else {
+    // Alloc the protobuf.
+    PgsqlExpressionPB *condition_expr_pb = AllocColumnBindConditionExprPB(col);
+
+    condition_expr_pb->mutable_condition()->set_op(QL_OP_IN);
+
+    auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
+    auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
+
+    op1_pb->set_column_id(attr_num - 1);
+
+    for (int i = 0; i < n_attr_values; i++) {
+      // Link the given expression "attr_value" with the allocated protobuf.
+      // Note that except for constants and place_holders, all other expressions can be setup
+      // just one time during prepare.
+      // Examples:
+      // - Bind values for primary columns in where clause.
+      //     WHERE hash = ?
+      // - Bind values for a column in INSERT statement.
+      //     INSERT INTO a_table(hash, key, col) VALUES(?, ?, ?)
+
+      if (attr_values[i]) {
+        RETURN_NOT_OK(attr_values[i]->Eval(this,
+              op2_pb->mutable_value()->mutable_list_value()->add_elems()));
+      }
+
+      if (attr_num == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
+        CHECK(attr_values[i]->is_constant()) << "Column ybctid must be bound to constant";
+        ybctid_bind_ = true;
+      }
     }
   }
 
