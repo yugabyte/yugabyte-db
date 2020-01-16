@@ -221,59 +221,71 @@ Default: `2`
 
 ### Raft options
 
+{{< note title="Note" >}}
+
+Ensure that values used for Raft and the write ahead log (WAL) in `yb-master` configurations match the values in `yb-tserver` configurations.
+
+{{< /note >}}
+
 ##### --follower_unavailable_considered_failed_sec
 
-The duration, in seconds, after which a follower is considered to be failed because the leader is unable to heartbeat to it. The follower is then evicted from the configuration and the data is re-replicated somewhere else.
+The duration, in seconds, after which a follower is considered to be failed because the leader has not received a heartbeat. The follower is then evicted from the configuration and the data is rereplicated elsewhere.
 
 Default: `900` (15 minutes)
 
 {{< note title="Important" >}}
 
-The value should match the value for [`--log_min_seconds_to_retain`](#log-min-seconds-to-retain).
+The `--follower_unavailable_considered_failed_sec` value should match the value for [`--log_min_seconds_to_retain`](#log-min-seconds-to-retain).
 
 {{< /note >}}
 
-### Write ahead log (WAL) options
+#### Write ahead log (WAL) options
+
+{{< note title="Note" >}}
+
+Ensure that values used for the write ahead log (WAL) in `yb-master` configurations match the values in `yb-tserver` configurations.
+
+{{< /note >}}
 
 ##### --fs_wal_dirs
 
-The directory where the `yb-master` will place its write-ahead log files. May be the same as one of the directories listed in `--fs_data_dirs`, but not a sub-directory of a data directory.
+The directory where the `yb-tserver` retains WAL files. May be the same as one of the directories listed in [`--fs_data_dirs`](#fs-data-dirs), but not a subdirectory of a data directory.
 
 Default: Same as `--fs_data_dirs`
 
 ##### --durable_wal_write
 
-If set to `false`, the writes to the Raft log are synced to disk every `interval_durable_wal_write_ms` milliseconds or every `bytes_durable_wal_write_mb` MB, whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there isn't a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
+If set to `false`, the writes to the WAL are synced to disk every [`interval_durable_wal_write_ms`](#interval-durable-wal-write-mas) milliseconds (ms) or every [`bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single AZ deployments, this option should be set to `true`.
 
 Default: `false`
 
 ##### --interval_durable_wal_write_ms
 
-When [`--durable_wal_write`](#durable-wal-write) is false, writes to the Raft log are synced to disk every `--interval_durable_wal_write_ms` or [`--bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb), whichever comes first.
+When [`--durable_wal_write`](#durable-wal-write) is false, writes to the WAL are synced to disk every `--interval_durable_wal_write_ms` or [`--bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb), whichever comes first.
 
 Default: `1000`
 
 ##### --bytes_durable_wal_write_mb
 
-When `--durable_wal_write` is `false`, writes to the Raft log are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
+When [`--durable_wal_write`](#durable-wal-write) is `false`, writes to the WAL are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
 
 Default: `1`
 
 ##### --log_min_seconds_to_retain
 
-The minimum number of seconds for which to keep log segments to keep at all times, regardless of what is required for durability. Logs may be retained for a longer amount of time if they are necessary for correct restart. This should be set long enough such that a tablet server which has temporarily failed can be restarted within the given time period. 
+The minimum duration, in seconds, to retain WAL segments, regardless of durability requirements. WAL segments can be retained for a longer amount of time, if they are necessary for correct restart. This value should be set long enough such that a tablet server which has temporarily failed can be restarted within the given time period.
 
 Default: `900` (15 minutes)
 
 ##### --log_min_segments_to_retain
 
-The minimum number of past log segments to keep at all times, regardless of what is required for durability. The value must be at least `1`.
+The minimum number of WAL segments (files) to retain, regardless of durability requirements. The value must be at least `1`.
 
 Default: `2`
 
 ##### --log_segment_size_mb
 
-The default segment size, in megabytes (MB), for log rollovers.
+The size, in megabytes (MB), of a WAL segment (file). When the WAL segment reaches the specified size, then a log rollover occurs and a new WAL segment file is created.
 
 Default: `64`
 
