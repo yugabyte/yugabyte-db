@@ -371,13 +371,10 @@ AS 'MODULE_PATHNAME';
 -- functions for updating clauses
 --
 
+-- This function is defined as a VOLATILE function to prevent the optimizer
+-- from pulling up Query's for CREATE clauses.
 CREATE FUNCTION cypher_create_clause(internal)
 RETURNS agtype
-LANGUAGE c
-AS 'MODULE_PATHNAME';
-
-CREATE FUNCTION cypher_dummy_clause()
-RETURNS SETOF agtype
 LANGUAGE c
 AS 'MODULE_PATHNAME';
 

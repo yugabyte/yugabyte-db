@@ -22,7 +22,6 @@
 #include "parser/cypher_expr.h"
 #include "utils/agtype.h"
 
-static void insert_dummy_clause(ParseState *pstate);
 static Query *transform_cypher_create(ParseState *pstate,
                                       cypher_create *clause);
 static Query *transform_cypher_return(ParseState *pstate,
@@ -60,54 +59,6 @@ Query *transform_cypher_stmt(ParseState *pstate, List *stmt)
     }
 }
 
-/*
- * Postgres' optimizer phase pulls up simple subqueries. This optimization
- * can result in the set_rel_pathlist_hook not being called to turn the
- * modifying function calls into our CustomPath. To avoid this, we put a
- * dummy function call in the From clause, so the planner does not pull
- * up this sub-select and we can intercept and modify in the
- * set_rel_pathlist_hook.
- */
-static void insert_dummy_clause(ParseState *pstate)
-{
-    FuncCall *fc;
-    FuncExpr *fe;
-    RangeFunction *rf;
-    RangeTblEntry *rte;
-
-    /*
-     * We need to build the parse node tree structure, so we can use
-     * Postgres' transform logic.
-     */
-    // Setup Function Call Node
-    fc = makeFuncCall(list_make1(makeString("cypher_dummy_clause")), NIL, 0);
-
-    /*
-     * Use Postgres' tranform logic to create the FuncExpr that will
-     * be inserted in the RangeTable
-     */
-    // Setup Range Table Node
-    rf = makeNode(RangeFunction);
-    rf->lateral = false;
-    rf->ordinality = NULL;
-    rf->is_rowsfrom = false;
-    rf->functions = list_make1(list_make2(fc, NIL));
-    rf->alias = NULL;
-    rf->coldeflist = NIL;
-
-    // Build a FuncExpr node from the FuncCall parse node
-    fe = (FuncExpr *)transformExpr(pstate, (Node *)fc,
-                                   EXPR_KIND_FROM_FUNCTION);
-
-    // Add the FuncExpr node to the range table
-    rte = addRangeTableEntryForFunction(
-        pstate, lappend(NIL, FigureColname((Node *)fc)), lappend(NIL, fe),
-        list_make1(NIL), rf, false, true);
-
-    // Add the range table ref to pstate's joinlist
-    addRTEtoQuery(pstate, rte, true, false, false);
-}
-
 static Query *transform_cypher_create(ParseState *pstate,
                                       cypher_create *clause)
 {
@@ -127,7 +78,6 @@ static Query *transform_cypher_create(ParseState *pstate,
         PROCNAMEARGSNSP, PointerGetDatum("cypher_create_clause"),
         PointerGetDatum(buildoidvector(&internal_type, 1)),
         ObjectIdGetDatum(ag_catalog_namespace_id()));
-
 
     null_const = makeNullConst(AGTYPEOID, -1, InvalidOid);
     tle = makeTargetEntry((Expr *)null_const, pstate->p_next_resno++,
@@ -156,9 +106,6 @@ static Query *transform_cypher_create(ParseState *pstate,
     tle = makeTargetEntry(func_expr, pstate->p_next_resno++,
                           "cypher_create_clause", false);
     query->targetList = lappend(query->targetList, tle);
-
-    // In the simple CREATE case, add a dummy clause to the FROM clause
-    insert_dummy_clause(pstate);
 
     query->rtable = pstate->p_rtable;
     query->jointree = makeFromExpr(pstate->p_joinlist, NULL);

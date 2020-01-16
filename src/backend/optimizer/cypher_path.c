@@ -53,15 +53,12 @@ static void cypher_set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 }
 
 PG_FUNCTION_INFO_V1(cypher_create_clause);
+
 Datum cypher_create_clause(PG_FUNCTION_ARGS)
 {
-    ereport(ERROR, (errmsg("invalid use of cypher CREATE clause")));
-}
+    ereport(ERROR, (errmsg_internal("unhandled cypher_create_clause(internal) function call")));
 
-PG_FUNCTION_INFO_V1(cypher_dummy_clause);
-Datum cypher_dummy_clause(PG_FUNCTION_ARGS)
-{
-    ereport(ERROR, (errmsg("invalid use of cypher DUMMY clause")));
+    PG_RETURN_NULL();
 }
 
 struct Plan *plan_cypher_create_path(PlannerInfo *root, RelOptInfo *rel,
