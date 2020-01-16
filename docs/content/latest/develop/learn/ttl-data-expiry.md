@@ -61,7 +61,7 @@ SELECT * FROM pageviews;
 
 ## Column level TTL
 
-YCQL also allows to set column level TTL.  In such cases, the TTL is stored as part of the DocDB column value. 
+YCQL also allows to set column level TTL. In such cases, the TTL is stored as part of the DocDB column value. 
 But we can set it only when updating the column:
 
 ```cassandraql
