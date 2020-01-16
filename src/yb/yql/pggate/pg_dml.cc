@@ -168,18 +168,6 @@ Status PgDml::UpdateBindPBs() {
   return Status::OK();
 }
 
-Status PgDml::BindColumnCondEq(int attr_num, PgExpr *attr_value) {
-  return Status::OK();
-}
-
-Status PgDml::BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr *attr_value_end) {
-  return Status::OK();
-}
-
-Status PgDml::BindColumnCondIn(int attr_num, int n_attr_values, PgExpr **attr_values) {
-  return Status::OK();
-}
-
 //--------------------------------------------------------------------------------------------------
 
 Status PgDml::AssignColumn(int attr_num, PgExpr *attr_value) {

@@ -526,16 +526,15 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
 
 		int idx = ybScan->sk_attno[i] - FirstLowInvalidHeapAttributeNumber;
 		
-    bool is_hash_or_primary_key = (bms_is_member(idx, scan_plan.hash_key) ||
-        bms_is_member(idx, scan_plan.primary_key));
-    bool is_search_array_only = ((key[i].sk_flags & SK_SEARCHARRAY) == SK_SEARCHARRAY);
+	bool is_primary_key = bms_is_member(idx, scan_plan.primary_key); // Includes hash key
+	bool is_search_array_only = ((key[i].sk_flags & SK_SEARCHARRAY) == SK_SEARCHARRAY);
 
-    if (!ShouldPushdownScanKey(relation, &scan_plan, ybScan->sk_attno[i], &ybScan->key[i], 
-          is_search_array_only, is_hash_or_primary_key))
-      continue;
+	if (!ShouldPushdownScanKey(relation, &scan_plan, ybScan->sk_attno[i], &ybScan->key[i],
+	    is_search_array_only, is_primary_key))
+		continue;
 
-    if (is_hash_or_primary_key)
-			scan_plan.sk_cols = bms_add_member(scan_plan.sk_cols, idx);
+	if (is_primary_key)
+		scan_plan.sk_cols = bms_add_member(scan_plan.sk_cols, idx);
 	}
 
 	/* All or some of the keys should not be pushed down if any of the following is true.
@@ -607,12 +606,11 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
     {
       int idx = ybScan->sk_attno[i] - FirstLowInvalidHeapAttributeNumber;
 
-      bool is_hash_or_primary_key = (bms_is_member(idx, scan_plan.hash_key) ||
-          bms_is_member(idx, scan_plan.primary_key));
+      bool is_primary_key = bms_is_member(idx, scan_plan.primary_key); // Includes hash key
       bool is_search_array_only = ((key[i].sk_flags & SK_SEARCHARRAY) == SK_SEARCHARRAY);
 
       if (!ShouldPushdownScanKey(relation, &scan_plan, ybScan->sk_attno[i], &ybScan->key[i], 
-            is_search_array_only, is_hash_or_primary_key))
+            is_search_array_only, is_primary_key))
         continue;
 
       if (bms_is_member(idx, scan_plan.sk_cols))
@@ -660,12 +658,11 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
     {
       int idx = ybScan->sk_attno[i] - FirstLowInvalidHeapAttributeNumber;
 
-      bool is_hash_or_primary_key = (bms_is_member(idx, scan_plan.hash_key) ||
-          bms_is_member(idx, scan_plan.primary_key));
+      bool is_primary_key = bms_is_member(idx, scan_plan.primary_key); // Includes hash key
       bool is_search_array_only = ((key[i].sk_flags & SK_SEARCHARRAY) == SK_SEARCHARRAY);
 
       if (!ShouldPushdownScanKey(relation, &scan_plan, ybScan->sk_attno[i], &ybScan->key[i], 
-            is_search_array_only, is_hash_or_primary_key))
+            is_search_array_only, is_primary_key))
         continue;
 
       if (!bms_is_member(idx, scan_plan.sk_cols))
@@ -677,8 +674,7 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
           if (ybScan->key[i].sk_flags == 0)
             /* Use a -ve value so that qsort places EQUAL before others */
             offsets[noffsets++] = -i;
-          else if (is_search_array_only && !IsSystemRelation(relation) && 
-              is_hash_or_primary_key)
+          else if (is_search_array_only && is_primary_key)
             offsets[noffsets++] = i;
           break;
 
@@ -712,7 +708,7 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
         continue;
 
       bool is_hash_key = bms_is_member(idx, scan_plan.hash_key);
-      bool is_hash_or_primary_key = is_hash_key || bms_is_member(idx, scan_plan.primary_key);
+      bool is_primary_key = bms_is_member(idx, scan_plan.primary_key); // Includes hash key
       bool is_search_array_only = ((key[i].sk_flags & SK_SEARCHARRAY) == SK_SEARCHARRAY);
 
       switch (ybScan->key[i].sk_strategy)
@@ -721,9 +717,8 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
           /* Bind the scan keys */
           if (ybScan->key[i].sk_flags == 0) {
             ybcBindColumnCondEq(ybScan, is_hash_key, ybScan->sk_attno[i], key[i].sk_argument);
-            is_column_bound[idx] = true; 
-          } else if (is_search_array_only && !IsSystemRelation(relation) && 
-              is_hash_or_primary_key) {
+            is_column_bound[idx] = true;
+          } else if (is_search_array_only && is_primary_key) {
 
             /* based on _bt_preprocess_array_keys() */
 
@@ -776,7 +771,13 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
             /* Build temporary vars */
             IndexScanDescData tmp_scan_desc;
             memset(&tmp_scan_desc, 0, sizeof(IndexScanDescData));
-            tmp_scan_desc.indexRelation = index;
+
+            if (index != NULL) {
+              tmp_scan_desc.indexRelation = index;
+            } else {
+              Assert(relation->rd_index); // Relation itself is an index.
+              tmp_scan_desc.indexRelation = relation;
+            }
 
             /*
              * Sort the non-null elements and eliminate any duplicates.  We must
@@ -784,7 +785,7 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
              * successive primitive indexscans produce data in index order.
              */
             num_elems = _bt_sort_array_elements(&tmp_scan_desc, cur,
-                false, elem_values, num_nonnulls);
+                false /* reverse */, elem_values, num_nonnulls);
 
             /*
              * And set up the BTArrayKeyInfo data.
@@ -1309,26 +1310,22 @@ void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
 		Oid			clause_op;
 		int			op_strategy;
 
-		/* TODO: support array search condition */
-		if (IsA(clause, ScalarArrayOpExpr))
-			continue;
+		if (IsA(clause, NullTest))
+			ybcAddAttributeColumn(&scan_plan, attnum);
+		else
+		{
+			clause_op = qinfo->clause_op;
 
-    if (IsA(clause, NullTest))
-      ybcAddAttributeColumn(&scan_plan, attnum);
-    else
-    {
-      clause_op = qinfo->clause_op;
+			if (OidIsValid(clause_op))
+			{
+				op_strategy = get_op_opfamily_strategy(clause_op,
+				                                       path->indexinfo->opfamily[qinfo->indexcol]);
+				Assert(op_strategy != 0);  /* not a member of opfamily?? */
 
-      if (OidIsValid(clause_op))
-      {
-        op_strategy = get_op_opfamily_strategy(clause_op,
-                                               path->indexinfo->opfamily[qinfo->indexcol]);
-        Assert(op_strategy != 0);  /* not a member of opfamily?? */
-
-        if (ybc_should_pushdown_op(&scan_plan, attnum, op_strategy))
-          ybcAddAttributeColumn(&scan_plan, attnum);
-      }
-    }
+				if (ybc_should_pushdown_op(&scan_plan, attnum, op_strategy))
+					ybcAddAttributeColumn(&scan_plan, attnum);
+			}
+		}
 	}
 
 	/*

@@ -560,6 +560,15 @@ YBPgsqlReadOp *YBPgsqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
   return op;
 }
 
+std::unique_ptr<YBPgsqlReadOp> YBPgsqlReadOp::DeepCopy() {
+  auto op = std::unique_ptr<YBPgsqlReadOp>(NewSelect(table_));
+  op->set_yb_consistency_level(yb_consistency_level());
+  op->SetReadTime(read_time());
+  op->SetTablet(tablet());
+  op->mutable_request()->CopyFrom(request());
+  return op;
+}
+
 std::string YBPgsqlReadOp::ToString() const {
   return "PGSQL_READ " + read_request_->DebugString();
 }

@@ -51,45 +51,45 @@ public class TestPgRegressLargeTable extends BasePgSQLTest {
     final int execCount = 3;
 
     // Check elapsed time.
-    timeQueryWithRowCount("SELECT 1 FROM airports LIMIT 1",
-                          1 /* expectedRowCount */,
-                          2000 /* maxRuntimeMillis */,
-                          execCount);
+    assertQueryRuntimeWithRowCount("SELECT 1 FROM airports LIMIT 1",
+                                   1 /* expectedRowCount */,
+                                   execCount /* numberOfRuns */,
+                                   2000 /* maxTotalMillis */);
 
     // Check time when selecting less than 4096 rows (YugaByte default prefetch limit).
-    timeQueryWithRowCount("SELECT 1 FROM airports LIMIT 1 OFFSET 1000",
-                          1 /* expectedRowCount */,
-                          2000 /* maxRuntimeMillis */,
-                          execCount);
+    assertQueryRuntimeWithRowCount("SELECT 1 FROM airports LIMIT 1 OFFSET 1000",
+                                   1 /* expectedRowCount */,
+                                   execCount /* numberOfRuns */,
+                                   2000 /* maxTotalMillis */);
 
     // Check time when selecting more than 4096 rows (YugaByte default prefetch limit).
-    timeQueryWithRowCount("SELECT 1 FROM airports LIMIT 1 OFFSET 5000",
-                          1 /* expectedRowCount */,
-                          3000 /* maxRuntimeMillis */,
-                          execCount);
+    assertQueryRuntimeWithRowCount("SELECT 1 FROM airports LIMIT 1 OFFSET 5000",
+                                   1 /* expectedRowCount */,
+                                   execCount /* numberOfRuns */,
+                                   3000 /* maxTotalMillis */);
 
     // Check aggregate functions.
-    timeQueryWithRowCount("SELECT count(*) FROM airports",
-                          1 /* expectedRowCount */,
-                          4000 /* maxRuntimeMillis */,
-                          execCount);
+    assertQueryRuntimeWithRowCount("SELECT count(*) FROM airports",
+                                   1 /* expectedRowCount */,
+                                   execCount /* numberOfRuns */,
+                                   4000 /* maxTotalMillis */);
 
     // Check large result set.
-    timeQueryWithRowCount("SELECT * FROM airports",
-                          9999 /* expectedRowCount */,
-                          10000 /* maxRuntimeMillis */,
-                          execCount);
+    assertQueryRuntimeWithRowCount("SELECT * FROM airports",
+                                   9999 /* expectedRowCount */,
+                                   execCount /* numberOfRuns */,
+                                   10000 /* maxTotalMillis */);
 
     // Check large result set with WHERE clause.
-    timeQueryWithRowCount("SELECT * FROM airports WHERE ident < '04' AND ident > '01'",
-                          188 /* expectedRowCount */,
-                          10000 /* maxRuntimeMillis */,
-                          execCount);
+    assertQueryRuntimeWithRowCount("SELECT * FROM airports WHERE ident < '04' AND ident > '01'",
+                                   188 /* expectedRowCount */,
+                                   execCount /* numberOfRuns */,
+                                   10000 /* maxTotalMillis */);
 
     // Check large result set with WHERE clause.
-    timeQueryWithRowCount("SELECT * FROM airports WHERE iso_region = 'US-CA'",
-                          488 /* expectedRowCount */,
-                          10000 /* maxRuntimeMillis */,
-                          execCount);
+    assertQueryRuntimeWithRowCount("SELECT * FROM airports WHERE iso_region = 'US-CA'",
+                                   488 /* expectedRowCount */,
+                                   execCount /* numberOfRuns */,
+                                   10000 /* maxTotalMillis */);
   }
 }
