@@ -1,27 +1,27 @@
 MODULE_big = agensgraph
 
-OBJS = ag_catalog.o \
-       ag_graph.o \
-       agtype.o \
-       agtype_ext.o \
-       agtype_ops.o \
-       agtype_parser.o \
-       agtype_util.o \
-       agensgraph.o \
-       analyze.o \
-       commands.o \
-       cypher_clause.o \
-       cypher_expr.o \
-       cypher_gram.o \
-       cypher_keywords.o \
-       cypher_parser.o \
-       cypher_path.o \
-       cypher_scan.o \
-       cypher_scan_state.o \
-       graphid.o \
-       nodes.o \
-       outfuncs.o \
-       scan.o
+OBJS = src/backend/agensgraph.o \
+       src/backend/catalog/ag_catalog.o \
+       src/backend/catalog/ag_graph.o \
+       src/backend/commands/commands.o \
+       src/backend/executor/cypher_create.o \
+       src/backend/nodes/ag_nodes.o \
+       src/backend/nodes/outfuncs.o \
+       src/backend/optimizer/cypher_path.o \
+       src/backend/optimizer/cypher_plan.o \
+       src/backend/parser/ag_scanner.o \
+       src/backend/parser/cypher_analyze.o \
+       src/backend/parser/cypher_clause.o \
+       src/backend/parser/cypher_expr.o \
+       src/backend/parser/cypher_gram.o \
+       src/backend/parser/cypher_keywords.o \
+       src/backend/parser/cypher_parser.o \
+       src/backend/utils/adt/agtype.o \
+       src/backend/utils/adt/agtype_ext.o \
+       src/backend/utils/adt/agtype_ops.o \
+       src/backend/utils/adt/agtype_parser.o \
+       src/backend/utils/adt/agtype_util.o \
+       src/backend/utils/adt/graphid.o
 
 EXTENSION = agensgraph
 
@@ -35,10 +35,13 @@ REGRESS = agtype \
 
 REGRESS_OPTS = --load-extension=agensgraph
 
+ag_include_dir = $(srcdir)/src/include
+PG_CPPFLAGS = -I$(ag_include_dir)
+
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
-cypher_gram.c: BISONFLAGS += --defines=$(basename $@)_def.h
+src/backend/parser/cypher_gram.c: BISONFLAGS += --defines=$(ag_include_dir)/parser/$(basename $(notdir $@))_def.h
 
-scan.c: FLEX_NO_BACKUP=yes
+src/backend/parser/ag_scanner.c: FLEX_NO_BACKUP=yes
