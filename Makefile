@@ -7,8 +7,9 @@ OBJS = src/backend/agensgraph.o \
        src/backend/executor/cypher_create.o \
        src/backend/nodes/ag_nodes.o \
        src/backend/nodes/outfuncs.o \
-       src/backend/optimizer/cypher_path.o \
-       src/backend/optimizer/cypher_plan.o \
+       src/backend/optimizer/cypher_createplan.o \
+       src/backend/optimizer/cypher_pathnode.o \
+       src/backend/optimizer/cypher_paths.o \
        src/backend/parser/ag_scanner.o \
        src/backend/parser/cypher_analyze.o \
        src/backend/parser/cypher_clause.o \

@@ -4,7 +4,7 @@
 #include "utils/builtins.h"
 
 #include "nodes/ag_nodes.h"
-#include "optimizer/cypher_path.h"
+#include "optimizer/cypher_paths.h"
 #include "parser/cypher_analyze.h"
 
 PG_MODULE_MAGIC;

@@ -373,7 +373,7 @@ AS 'MODULE_PATHNAME';
 
 -- This function is defined as a VOLATILE function to prevent the optimizer
 -- from pulling up Query's for CREATE clauses.
-CREATE FUNCTION cypher_create_clause(internal)
+CREATE FUNCTION _cypher_create_clause(internal)
 RETURNS agtype
 LANGUAGE c
 AS 'MODULE_PATHNAME';

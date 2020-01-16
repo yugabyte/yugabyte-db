@@ -1,20 +1,23 @@
 #include "postgres.h"
 
-#include "optimizer/tlist.h"
+#include "executor/tuptable.h"
+#include "nodes/execnodes.h"
+#include "nodes/extensible.h"
+#include "nodes/nodes.h"
+#include "nodes/plannodes.h"
 
-#include "nodes/ag_nodes.h"
-#include "nodes/cypher_execnodes.h"
+#include "executor/cypher_executor.h"
 
-void cypher_create_begin_custom_scan(CustomScanState *node, EState *estate,
-                                     int eflags);
-TupleTableSlot *cypher_create_exec_custom_scan(CustomScanState *node);
-void cypher_create_end_custom_scan(CustomScanState *node);
+static void begin_cypher_create(CustomScanState *node, EState *estate,
+                                int eflags);
+static TupleTableSlot *exec_cypher_create(CustomScanState *node);
+static void end_cypher_create(CustomScanState *node);
 
-const CustomExecMethods cypher_create_custom_exec_methods = {
-    "Cypher Create Custom Exec Methods",
-    cypher_create_begin_custom_scan,
-    cypher_create_exec_custom_scan,
-    cypher_create_end_custom_scan,
+const CustomExecMethods cypher_create_exec_methods = {
+    "Cypher Create",
+    begin_cypher_create,
+    exec_cypher_create,
+    end_cypher_create,
     NULL,
     NULL,
     NULL,
@@ -23,18 +26,30 @@ const CustomExecMethods cypher_create_custom_exec_methods = {
     NULL,
     NULL,
     NULL,
-    NULL};
+    NULL
+};
 
-void cypher_create_begin_custom_scan(CustomScanState *node, EState *estate,
-                                     int eflags)
+static void begin_cypher_create(CustomScanState *node, EState *estate,
+                                int eflags)
 {
 }
 
-TupleTableSlot *cypher_create_exec_custom_scan(CustomScanState *node)
+static TupleTableSlot *exec_cypher_create(CustomScanState *node)
 {
     return NULL;
 }
 
-void cypher_create_end_custom_scan(CustomScanState *node)
+static void end_cypher_create(CustomScanState *node)
 {
+}
+
+Node *create_cypher_create_plan_state(CustomScan *cscan)
+{
+    CustomScanState *css;
+
+    css = makeNode(CustomScanState);
+
+    css->methods = &cypher_create_exec_methods;
+
+    return (Node *)css;
 }

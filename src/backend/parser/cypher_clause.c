@@ -75,7 +75,7 @@ static Query *transform_cypher_create(ParseState *pstate,
     query->targetList = NIL;
 
     func_create_oid = GetSysCacheOid3(
-        PROCNAMEARGSNSP, PointerGetDatum("cypher_create_clause"),
+        PROCNAMEARGSNSP, PointerGetDatum("_cypher_create_clause"),
         PointerGetDatum(buildoidvector(&internal_type, 1)),
         ObjectIdGetDatum(ag_catalog_namespace_id()));
 
