@@ -1,7 +1,7 @@
 
 ## Install the pg driver gem
 
-Install the Ruby PostgreSQL driver (pg) using the following command. You can get further details for the driver [here](https://bitbucket.org/ged/ruby-pg/wiki/Home).
+Install the Ruby PostgreSQL driver (`pg`) using the following command. You can get further details for the driver [here](https://bitbucket.org/ged/ruby-pg/wiki/Home).
 
 ```sh
 $ gem install pg -- --with-pg-config=<yugabyte-install-dir>/postgres/bin/pg_config
@@ -13,7 +13,7 @@ $ gem install pg -- --with-pg-config=<yugabyte-install-dir>/postgres/bin/pg_conf
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../quick-start/explore-ysql/).
+- installed YugabyteDB and created a universe. If not, follow these steps in [Quick start](../../../quick-start/explore-ysql/).
 
 ### Writing the Ruby code
 
@@ -26,7 +26,7 @@ require 'pg'
 
 begin
   # Output a table of current connections to the DB
-  conn = PG.connect(host: '127.0.0.1', port: '5433', dbname: 'postgres', user: 'postgres', password: 'postgres')
+  conn = PG.connect(host: '127.0.0.1', port: '5433', dbname: 'yugabyte', user: 'yugabyte', password: 'yugabyte')
 
   # Create table
   conn.exec ("CREATE TABLE employee (id int PRIMARY KEY, \

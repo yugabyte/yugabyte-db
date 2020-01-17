@@ -171,7 +171,7 @@ Specifies the host name of the machine on which the database server is running. 
 
 #### -l *dbname*, --database=*database*
 
-Specifies the name of the database to connect to for dumping global objects and discovering what other databases should be dumped. If not specified, the `postgres` database will be used, and if that does not exist, `template1` will be used.
+Specifies the name of the database to connect to for dumping global objects and discovering what other databases should be dumped. If not specified, the `yugabyte` database will be used, and if that does not exist, `template1` will be used.
 
 #### -p *port*, --port=*port*
 
@@ -216,7 +216,7 @@ This utility also uses the environment variables supported by `libpq`.
 ## Notes
 
 - Since `ysql_dumpall` calls [`ysql_dump`](../ysql-dump) internally, some diagnostic messages will refer to `ysql_dump`.
-- The [`-c|--clean`](#c-clean) option can be useful even when your intention is to restore the dump script into a fresh cluster. Use of `-c|--clean` authorizes the script to drop and recreate the built-in `postgres` and `template1` databases, ensuring that those databases will retain the same properties (for instance, locale and encoding) that they had in the source cluster. Without the option, those databases will retain their existing database-level properties, as well as any pre-existing contents.
+- The [`-c|--clean`](#c-clean) option can be useful even when your intention is to restore the dump script into a fresh cluster. Use of `-c|--clean` authorizes the script to drop and recreate the built-in `yugabyte`, `postgres`, and `template1` databases, ensuring that those databases will retain the same properties (for instance, locale and encoding) that they had in the source cluster. Without the option, those databases will retain their existing database-level properties, as well as any pre-existing contents.
 - Once restored, it is wise to run `ANALYZE` on each database so the optimizer has useful statistics. You can also run `vacuumdb -a -z` to analyze all databases.
 - The dump script should not be expected to run completely without errors. In particular, because the script will issue `CREATE ROLE` statements for every role existing in the source cluster, it is certain to get a `role already exists` error for the bootstrap superuser, unless the destination cluster was initialized with a different bootstrap superuser name. This error is harmless and should be ignored. Use of the [`-c|--clean`](#c-clean) option is likely to produce additional harmless error messages about non-existent objects, although you can minimize those by adding [`--if-exists`](#if-exists).
 

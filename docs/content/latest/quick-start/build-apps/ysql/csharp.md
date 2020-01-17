@@ -2,22 +2,22 @@
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YSQL shell. If not, please follow these steps in the [ysql guide](../../../api/ysql/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YSQL shell. If not, please follow these steps in the [ysql guide](../../../api/ysql/).
 - installed Visual Studio
 
 ## Writing a HelloWorld C# application
 
-In your Visual Studio create a new Project and choose Console Application as template. Follow the instructions to save the project.
+In your Visual Studio, create a new Project and choose **Console Application as template**. Follow the instructions to save the project.
 
 ### Install YSQL C# driver
 
-To install the driver in your Visual Studio project
+To install the driver in your Visual Studio project:
 
 <ol>
   <li>Open your Project Solution View.</li>
-  <li>Right-click on Packages and click Add Packages.</li>
+  <li>Right-click on **Packages** and click **Add Packages**.</li>
   ![Add Package](/images/develop/client-drivers/csharp/visual-studio-add-package.png) 
-  <li>Search for Npgsql and click Add Package.</li>
+  <li>Search for Npgsql and click **Add Package**.</li>
   ![Search Package](/images/develop/client-drivers/csharp/visual-studio-search-ngpsql-package.png)
 </ol>
 
@@ -33,7 +33,7 @@ namespace Yugabyte_CSharp_Demo
     {
         static void Main(string[] args)
         {
-            NpgsqlConnection conn = new NpgsqlConnection("host=localhost;port=5433;database=yb_demo;user id=postgres;password=");
+            NpgsqlConnection conn = new NpgsqlConnection("host=localhost;port=5433;database=yb_demo;user id=yugabyte;password=");
 
             try
             {

@@ -19,7 +19,7 @@ $ git clone https://github.com/jtv/libpqxx.git
 
 ### Dependencies
 
-Note that this package depends on pg binaries. Make sure that postgres bin directory is on the command path.
+Note that this package depends on PostgreSQL binaries. Make sure that the PostgreSQL `bin` directory is on the command path.
 
 ```sh
 export PATH=$PATH:<yugabyte-install-dir>/postgres/bin
@@ -46,7 +46,7 @@ Create a file `ybsql_hello_world.cpp` and copy the contents below:
 
 int main(int, char *argv[])
 {
-  pqxx::connection c("host=127.0.0.1 port=5433 dbname=postgres user=postgres password=postgres");
+  pqxx::connection c("host=127.0.0.1 port=5433 dbname=yugabyte user=yugabyte password=yugabyte");
   pqxx::work txn(c);
   pqxx::result r;
 
@@ -103,7 +103,7 @@ int main(int, char *argv[])
 
 ### Run the application
 
-You can compile the file using gcc or clang. Note that C++11 is the minimum supported C++ version. Make sure your compiler supports this, and if necessary, that you have support for C++11 configured. For gcc, you can use:
+You can compile the file using `gcc` or `clang`. Note that C++ 11 is the minimum supported C++ version. Make sure your compiler supports this, and if necessary, that you have support for C++11 configured. For gcc, you can use:
 
 ```sh
 $ g++ -std=c++11 ybsql_hello_world.cpp -lpqxx -lpq -I<yugabyte-install-dir>/postgres/include -o ybsql_hello_world
