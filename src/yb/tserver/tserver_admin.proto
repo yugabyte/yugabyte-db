@@ -60,6 +60,8 @@ message ChangeMetadataRequestPB {
   optional tablet.TableInfoPB add_table = 8;
 
   optional uint32 wal_retention_secs = 9;
+
+  optional bytes remove_table_id = 10;
 }
 
 // This is used to export tablet metadata changes to a protobuf file to be reloaded on a new cluster
@@ -210,6 +212,16 @@ message AddTableToTabletResponsePB {
   optional fixed64 propagated_hybrid_time = 2;
 }
 
+message RemoveTableFromTabletRequestPB {
+  required bytes tablet_id = 1;
+  required bytes remove_table_id = 2;
+}
+
+message RemoveTableFromTabletResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
 service TabletServerAdminService {
   // Create a new, empty tablet with the specified parameters. Only used for
   // brand-new tablets, not for "moves".
@@ -229,4 +241,7 @@ service TabletServerAdminService {
   rpc CountIntents(CountIntentsRequestPB) returns (CountIntentsResponsePB);
 
   rpc AddTableToTablet(AddTableToTabletRequestPB) returns (AddTableToTabletResponsePB);
+
+  rpc RemoveTableFromTablet(RemoveTableFromTabletRequestPB)
+      returns (RemoveTableFromTabletResponsePB);
 }

@@ -1,7 +1,7 @@
 ---
-title: Product
-linkTitle: Product
-description: Product
+title: Product FAQ
+linkTitle: Product FAQ
+description: Product FAQ
 aliases:
   - /faq/product/
 menu:
@@ -86,7 +86,8 @@ Starting with [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-
 
 [Yugabyte Cloud](http://yugabyte.com/cloud) is Yugabyte's fully-managed cloud service on AWS and GCP. You can [sign up](https://www.yugabyte.com/cloud/) for early access now.
 
-A more detailed comparison of the above is available [here](https://www.yugabyte.com/platform/#compare-editions).
+For a more detailed comparison between YugabyteDB and Yugabyte Platform, see [Adopt YugabyteDB Your Way
+](https://www.yugabyte.com/platform/#compare-editions).
 
 ## What are the trade-offs involved in using YugabyteDB?
 

@@ -84,98 +84,100 @@
   file:
     path: /etc/security/limits.d/20-nproc.conf
     state: absent
-
-- name: Update package cache on RedHat platforms
-  command: yum makecache fast -y
-  become: yes
-  when: ansible_os_family == "RedHat" and update_yum_cache
-
-- name: Set Linux packages to Install
-  set_fact:
-    linux_packages: "{{ required_packages }}"
-
-- name: Set Dev packages to Install
-  set_fact:
-    linux_packages: "{{ linux_packages + dev_packages }}"
-  when: install_dev_packages
-
-- name: Set Debian packages to Install
-  set_fact:
-    linux_packages: "{{ linux_packages + debian_packages }}"
-  when: install_dev_packages and ansible_os_family == "Debian"
-
-- name: Set RedHat packages to Install
-  set_fact:
-    linux_packages: "{{ linux_packages + redhat_packages }}"
-  when: install_dev_packages and ansible_os_family == "RedHat"
-
 - block:
-  - name: Find all yum repos
-    find:
-      paths: "/etc/yum.repos.d/"
-      patterns: "*.repo"
-    register: repos
+  - name: Update package cache on RedHat platforms
+    command: yum makecache fast -y
+    become: yes
+    when: ansible_os_family == "RedHat" and update_yum_cache
 
-  - name: Replace mirror links from https to http
+  - name: Set Linux packages to Install
+    set_fact:
+      linux_packages: "{{ required_packages }}"
+
+  - name: Set Dev packages to Install
+    set_fact:
+      linux_packages: "{{ linux_packages + dev_packages }}"
+    when: install_dev_packages
+
+  - name: Set Debian packages to Install
+    set_fact:
+      linux_packages: "{{ linux_packages + debian_packages }}"
+    when: install_dev_packages and ansible_os_family == "Debian"
+
+  - name: Set RedHat packages to Install
+    set_fact:
+      linux_packages: "{{ linux_packages + redhat_packages }}"
+    when: install_dev_packages and ansible_os_family == "RedHat"
+
+  - block:
+    - name: Find all yum repos
+      find:
+        paths: "/etc/yum.repos.d/"
+        patterns: "*.repo"
+      register: repos
+
+    - name: Replace mirror links from https to http
+      become: yes
+      become_method: sudo
+      replace:
+        dest: "{{ item.path }}"
+        regexp: '^#(baseurl=.*)$'
+        replace: '\1'
+        backup: no
+      with_items: "{{ repos.files }}"
+
+    - name: Replace mirror links from https to http
+      become: yes
+      become_method: sudo
+      replace:
+        dest: "{{ item.path }}"
+        regexp: '^(.*)https(.*)$'
+        replace: '\1http\2'
+        backup: no
+      with_items: "{{ repos.files }}"
+
+    when: ansible_os_family == "RedHat" and (cloud_type is not defined or cloud_type != "onprem")
+
+  - name: Install epel-release if RedHat.
     become: yes
     become_method: sudo
-    replace:
-      dest: "{{ item.path }}"
-      regexp: '^#(baseurl=.*)$'
-      replace: '\1'
-      backup: no
-    with_items: "{{ repos.files }}"
+    yum:
+      name: epel-release
+      state: latest
+      update_cache: yes
+    register: result
+    until: result is succeeded
+    retries: "{{ yum_retry_count }}"
+    when: ansible_os_family == "RedHat"
 
-  - name: Replace mirror links from https to http
+  - name: Install linux packages we need on our YugaByte clusters on CentOS
     become: yes
     become_method: sudo
-    replace:
-      dest: "{{ item.path }}"
-      regexp: '^(.*)https(.*)$'
-      replace: '\1http\2'
-      backup: no
-    with_items: "{{ repos.files }}"
+    yum:
+      name: "{{ item }}"
+      state: latest
+      update_cache: yes
+    with_items:
+      - "{{ linux_packages }}"
+    register: result
+    until: result is succeeded
+    retries: "{{ yum_retry_count }}"
+    when: ansible_os_family == "RedHat"
 
-  when: ansible_os_family == "RedHat" and (cloud_type is not defined or cloud_type != "onprem")
+  - name: Install linux packages we need on our YugaByte clusters
+    become: yes
+    become_method: sudo
+    package:
+      name: "{{ item }}"
+      state: latest
+    with_items:
+      - "{{ linux_packages }}"
+    register: result
+    until: result is succeeded
+    retries: "{{ yum_retry_count }}"
+    when: ansible_os_family != "RedHat"
 
-- name: Install epel-release if RedHat.
-  become: yes
-  become_method: sudo
-  yum:
-    name: epel-release
-    state: latest
-    update_cache: yes
-  register: result
-  until: result.rc == 0
-  retries: "{{ yum_retry_count }}"
-  when: ansible_os_family == "RedHat"
-
-- name: Install linux packages we need on our YugaByte clusters on CentOS
-  become: yes
-  become_method: sudo
-  yum:
-    name: "{{ item }}"
-    state: latest
-    update_cache: yes
-  with_items:
-    - "{{ linux_packages }}"
-  register: result
-  until: result.rc == 0
-  retries: "{{ yum_retry_count }}"
-  when: ansible_os_family == "RedHat"
-
-- name: Install linux packages we need on our YugaByte clusters
-  become: yes
-  become_method: sudo
-  package:
-    name: "{{ item }}"
-    state: latest
-  with_items:
-    - "{{ linux_packages }}"
-  register: result
-  until: result.rc == 0
-  retries: "{{ yum_retry_count }}"
-  when: ansible_os_family != "RedHat"
+  when: not air_gap
 
 - name: Register our custom SSH port "{{ custom_ssh_port }}" with SELinux
   become: yes

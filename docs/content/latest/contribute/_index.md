@@ -12,7 +12,7 @@ menu:
     weight: 2900
 ---
 
-The Yugabyte team are strong supporters of open source. [YugabyteDB](https://github.com/yugabyte/yugabyte-db) is distributed under the Apache v2.0 license, which is very permissive open source license. We value external contributions and welcome them! To contribute, you can submit GitHub pull requests. This page contains everything you need to get you going quickly.
+Yugabyte maintainers are strong supporters of open source. [YugabyteDB](https://github.com/yugabyte/yugabyte-db) is distributed under the Apache v2.0 license, which is very permissive open source license. We value external contributions and welcome them! To contribute, you can submit GitHub pull requests. This page contains everything you need to get you going quickly.
 
 ## Learn about the architecture
 

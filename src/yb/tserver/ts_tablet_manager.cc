@@ -1026,11 +1026,13 @@ Status TSTabletManager::DeleteTablet(
     std::lock_guard<RWMutex> lock(lock_);
     RETURN_NOT_OK(CheckRunningUnlocked(error_code));
     CHECK_EQ(1, tablet_map_.erase(tablet_id)) << tablet_id;
-    UnregisterDataWalDir(meta->table_id(),
-                         tablet_id,
-                         meta->table_type(),
-                         meta->data_root_dir(),
-                         meta->wal_root_dir());
+    if (!meta->colocated()) {
+      UnregisterDataWalDir(meta->table_id(),
+                           tablet_id,
+                           meta->table_type(),
+                           meta->data_root_dir(),
+                           meta->wal_root_dir());
+    }
   }
 
   return Status::OK();

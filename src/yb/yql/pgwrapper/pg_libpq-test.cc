@@ -10,15 +10,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 
-#include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
-#include "yb/master/catalog_manager.h"
+#include "yb/client/client_fwd.h"
 #include "yb/common/common.pb.h"
+#include "yb/master/catalog_manager.h"
 
 using namespace std::literals;
 
@@ -822,17 +824,19 @@ Result<string> GetTableIdByTableName(
 }
 } // namespace
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TabletColocation)) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE DATABASE test_db WITH colocated = true"));
-  conn = ASSERT_RESULT(ConnectToDB("test_db"));
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
-
+  const string kDatabaseName = "test_db";
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_bar_index;
   string ns_id;
-  auto list_result = client->ListNamespaces(YQL_DATABASE_PGSQL);
-  ASSERT_OK(list_result);
-  for (const auto& ns : list_result.get()) {
-    if (ns.name() == "test_db") {
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", kDatabaseName));
+  ASSERT_TRUE(ASSERT_RESULT(client->NamespaceExists(kDatabaseName, YQL_DATABASE_PGSQL)));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+
+  for (const auto& ns : ASSERT_RESULT(client->ListNamespaces(YQL_DATABASE_PGSQL))) {
+    if (ns.name() == kDatabaseName) {
       ns_id = ns.id();
       break;
     }
@@ -852,29 +856,29 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TabletColocation)) {
 
   // Create a range partition table, the table should share the tablet with the parent table.
   ASSERT_OK(conn.Execute("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC))"));
-  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "test_db", "foo"));
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "foo"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
   ASSERT_EQ(tablets.size(), 1);
   ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
 
   // Create a colocated index table.
   ASSERT_OK(conn.Execute("CREATE INDEX foo_index1 ON foo (a)"));
-  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "test_db", "foo_index1"));
+  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "foo_index1"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
   ASSERT_EQ(tablets.size(), 1);
   ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
 
   // Create a non-colocated index table (by opting-out).
   ASSERT_OK(conn.Execute("CREATE INDEX foo_index2 ON foo (a) WITH (colocated = false)"));
-  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "test_db", "foo_index2"));
+  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "foo_index2"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
   for (auto& tablet : tablets) {
     ASSERT_NE(tablet.tablet_id(), colocated_tablet_id);
   }
 
-  // Create a hash partition table and opt out of using the colocated tablet.
+  // Create a hash partition table and opt out of using the parent tablet.
   ASSERT_OK(conn.Execute("CREATE TABLE bar (a INT) WITH (colocated = false)"));
-  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "test_db", "bar"));
+  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "bar"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
   for (auto& tablet : tablets) {
     ASSERT_NE(tablet.tablet_id(), colocated_tablet_id);
@@ -883,17 +887,95 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TabletColocation)) {
   // Create an index on the non-colocated table. The index should follow the table and opt out of
   // colocation.
   ASSERT_OK(conn.Execute("CREATE INDEX bar_index ON bar (a)"));
-  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "test_db", "bar_index"));
+  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "bar_index"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
   for (auto& tablet : tablets) {
     ASSERT_NE(tablet.tablet_id(), colocated_tablet_id);
   }
+  tablets_bar_index.Swap(&tablets);
 
   // Fail when creating a hash partition table without opt-out.
   const auto status = conn.Execute("CREATE TABLE baz (a INT)");
   ASSERT_FALSE(status.ok());
   ASSERT_STR_CONTAINS(
       status.ToString(), "Cannot create hash partitioned table in colocated database");
+
+  // Create another table and index.
+  ASSERT_OK(conn.Execute("CREATE TABLE qux (a INT, PRIMARY KEY (a ASC)) WITH (colocated = true)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX qux_index ON qux (a)"));
+  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "qux_index"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+
+  // Drop a table in the parent tablet.
+  ASSERT_OK(conn.Execute("DROP TABLE qux"));
+  ASSERT_FALSE(ASSERT_RESULT(
+        client->TableExists(client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, "qux"))));
+  ASSERT_FALSE(ASSERT_RESULT(
+        client->TableExists(client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, "qux_index"))));
+
+  // Drop a table that is opted out.
+  ASSERT_OK(conn.Execute("DROP TABLE bar"));
+  ASSERT_FALSE(ASSERT_RESULT(
+        client->TableExists(client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, "bar"))));
+  ASSERT_FALSE(ASSERT_RESULT(
+        client->TableExists(client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, "bar_index"))));
+
+  // The tablets for bar_index should be deleted.
+  std::vector<bool> tablet_founds(tablets_bar_index.size(), true);
+  ASSERT_OK(WaitFor(
+      [&] {
+        for (int i = 0; i < tablets_bar_index.size(); ++i) {
+          client->LookupTabletById(
+              tablets_bar_index[i].tablet_id(),
+              CoarseMonoClock::Now() + 30s,
+              [&, i](const Result<client::internal::RemoteTabletPtr>& result) {
+                tablet_founds[i] = result.ok();
+              },
+              client::UseCache::kFalse);
+        }
+        return std::all_of(
+            tablet_founds.cbegin(),
+            tablet_founds.cend(),
+            [](bool tablet_found) {
+              return !tablet_found;
+            });
+      },
+      30s, "Drop table opted out of colocation"));
+
+  // Drop the database.
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDatabaseName));
+  ASSERT_FALSE(ASSERT_RESULT(client->NamespaceExists(kDatabaseName, YQL_DATABASE_PGSQL)));
+  ASSERT_FALSE(ASSERT_RESULT(
+        client->TableExists(client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, "foo"))));
+  ASSERT_FALSE(ASSERT_RESULT(
+        client->TableExists(client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, "foo_index2"))));
+
+  // The colocation tablet should be deleted.
+  bool tablet_found = true;
+  int rpc_calls = 0;
+  ASSERT_OK(WaitFor(
+      [&] {
+        rpc_calls++;
+        client->LookupTabletById(
+            colocated_tablet_id,
+            CoarseMonoClock::Now() + 30s,
+            [&](const Result<client::internal::RemoteTabletPtr>& result) {
+              tablet_found = result.ok();
+              rpc_calls--;
+            },
+            client::UseCache::kFalse);
+        return !tablet_found;
+      },
+      30s, "Drop colocated database"));
+  // To prevent an "AddressSanitizer: stack-use-after-scope", do not return from this function until
+  // all callbacks are done.
+  ASSERT_OK(WaitFor(
+      [&rpc_calls] {
+        LOG(INFO) << "Waiting for " << rpc_calls << " RPCs to run callbacks";
+        return rpc_calls == 0;
+      },
+      30s, "Drop colocated database (wait for RPCs to finish)"));
 }
 
 // Test for ensuring that transaction conflicts work as expected for colocated tables.

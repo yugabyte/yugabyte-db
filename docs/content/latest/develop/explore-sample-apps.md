@@ -1,7 +1,7 @@
 ---
-title: Explore sample applications
-linkTitle: Explore sample applications
-description: Explore sample applications
+title: Explore sample apps
+linkTitle: Explore sample apps
+description: Explore sample apps
 headcontent: 
 image: /images/section_icons/index/develop.png
 aliases:

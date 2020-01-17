@@ -851,6 +851,29 @@ void TabletServiceAdminImpl::AddTableToTablet(
       &change_req, tablet.peer.get(), tablet.leader_term);
   if (PREDICT_FALSE(!s.ok())) {
     SetupErrorAndRespond(resp->mutable_error(), s, &context);
+    return;
+  }
+  context.RespondSuccess();
+}
+
+void TabletServiceAdminImpl::RemoveTableFromTablet(
+    const RemoveTableFromTabletRequestPB* req,
+    RemoveTableFromTabletResponsePB* resp,
+    rpc::RpcContext context) {
+  auto tablet =
+      LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+  if (!tablet) {
+    return;
+  }
+
+  tserver::ChangeMetadataRequestPB change_req;
+  change_req.set_remove_table_id(req->remove_table_id());
+  change_req.set_tablet_id(req->tablet_id());
+  Status s = tablet::SyncReplicateChangeMetadataOperation(
+      &change_req, tablet.peer.get(), tablet.leader_term);
+  if (PREDICT_FALSE(!s.ok())) {
+    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+    return;
   }
   context.RespondSuccess();
 }
