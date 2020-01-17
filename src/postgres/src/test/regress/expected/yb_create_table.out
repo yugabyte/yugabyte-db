@@ -400,73 +400,73 @@ CREATE TABLE tbl1 (
 CREATE TABLE tbl2 (
 	a			int4,
 	primary key (a asc)
-) SPLIT (AT VALUES (4), (25), (100));
+) SPLIT AT VALUES ((4), (25), (100));
 WARNING:  Range split points are not supported, ignoring
 CREATE TABLE tbl3 (
 	a			int4,
 	primary key (a asc)
-) SPLIT (AT VALUES (25), (100), (4));
+) SPLIT AT VALUES ((25), (100), (4));
 ERROR:  Split points must be in sorted order
 CREATE TABLE tbl4 (
 	a			int4,
 	b			text,
 	primary key (a asc, b)
-) SPLIT (AT VALUES (1, 'c'), (1, 'cb'), (2, 'a'));
+) SPLIT AT VALUES ((1, 'c'), (1, 'cb'), (2, 'a'));
 WARNING:  Range split points are not supported, ignoring
 CREATE TABLE tbl5 (
 	a			int4,
 	b			text,
 	primary key (b asc)
-) SPLIT (AT VALUES ('a'), ('aba'), ('ac'));
+) SPLIT AT VALUES (('a'), ('aba'), ('ac'));
 WARNING:  Range split points are not supported, ignoring
 CREATE TABLE tbl6 (
 	a			int4,
 	b			text,
 	primary key (b asc)
-) SPLIT (AT VALUES ('a'), (2, 'aba'), ('ac'));
+) SPLIT AT VALUES (('a'), (2, 'aba'), ('ac'));
 ERROR:  Split points must specify a split at each primary key column
 CREATE TABLE tbl7 (
 	a			int4,
 	primary key (a asc)
-) SPLIT (AT VALUES ('a'), ('b'), ('c'));
+) SPLIT AT VALUES (('a'), ('b'), ('c'));
 ERROR:  invalid input syntax for integer: "a"
 CREATE TABLE tbl8 (
 	a			text,
 	primary key (a asc)
-) SPLIT (AT VALUES (100), (1000), (10000));
+) SPLIT AT VALUES ((100), (1000), (10000));
 ERROR:  Type mismatch in split point
 CREATE TABLE tbl9 (
 	a			int4,
 	primary key (a hash)
-) SPLIT (AT VALUES (100), (1000), (10000));
+) SPLIT AT VALUES ((100), (1000), (10000));
 ERROR:  HASH columns cannot be used for split points
 CREATE TEMPORARY TABLE tbl10 (
 	a			int4 primary key
-) SPLIT (INTO 20 TABLETS);
+) SPLIT INTO 20 TABLETS;
 WARNING:  Split options on TEMP table will be ignored
 CREATE TABLE tbl11 (
 	a			int4,
 	b			int4,
 	c			int4,
 	primary key (a asc, b desc)
-) SPLIT (AT VALUES (-7, 1), (0, 0), (23, 4));
+) SPLIT AT VALUES ((-7, 1), (0, 0), (23, 4));
 WARNING:  Range split points are not supported, ignoring
 CREATE TABLE tbl12 (
 	a			int4,
 	b			text,
 	primary key (b desc)
-) SPLIT (AT VALUES ('bienvenidos'), ('goodbye'), ('hello'), ('hola'));
+) SPLIT AT VALUES (('bienvenidos'), ('goodbye'), ('hello'), ('hola'));
 WARNING:  Range split points are not supported, ignoring
 CREATE TABLE tbl12 (
 	a			text,
 	b			date,
 	c			time
-) SPLIT (INTO 9 TABLETS);
+) SPLIT INTO 9 TABLETS;
 ERROR:  Cannot have SPLIT options in the absence of a primary key
 CREATE TABLE tbl13 (
 	a			int4,
 	primary key (a asc)
-) SPLIT (AT VALUES (MINVALUE), (0), (MAXVALUE));
+) SPLIT AT VALUES ((MINVALUE), (0), (MAXVALUE));
 ERROR:  Split points must specify finite values
 -- TODO(jason): remove when issue #1721 is closed or closing.
 DISCARD TEMP;

@@ -579,7 +579,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <rolespec> OptTableSpaceOwner
 %type <ival>	opt_check_option
 
-%type <splitopt> OptSplit
+%type <splitopt> OptSplit SplitClause
 
 %type <str>		opt_provider security_label
 
@@ -4236,25 +4236,36 @@ ExistingIndex:   USING INDEX index_name				{ $$ = $3; }
 		;
 
 OptSplit:
-			SPLIT '(' INTO Iconst TABLETS ')'
+			SPLIT '(' SplitClause ')'
 				{
-					$$ = makeNode(OptSplit);
-					$$->split_type = NUM_TABLETS;
-					$$->num_tablets = $4;
-					$$->split_points = NULL;
+					$$ = $3;
 				}
-			| SPLIT '(' AT VALUES yb_split_points ')'
-				{
-					$$ = makeNode(OptSplit);
-					$$->split_type = SPLIT_POINTS;
-					$$->num_tablets = -1;
-					$$->split_points = $5;
-				}
+			| SPLIT SplitClause
+        {
+        	$$ = $2;
+        }
 			| /* EMPTY */
 				{
 					$$ = (OptSplit*) NULL;
 				}
 		;
+
+SplitClause:
+      INTO Iconst TABLETS
+      	{
+      		$$ = makeNode(OptSplit);
+      		$$->split_type = NUM_TABLETS;
+      		$$->num_tablets = $2;
+      		$$->split_points = NULL;
+      	}
+      | AT VALUES '(' yb_split_points ')'
+        {
+      	  $$ = makeNode(OptSplit);
+      	  $$->split_type = SPLIT_POINTS;
+      	  $$->num_tablets = -1;
+      	  $$->split_points = $4;
+        }
+      ;
 
 yb_split_points:
 			yb_split_point							{ $$ = list_make1($1); }
@@ -5800,7 +5811,7 @@ TriggerOneEvent:
 		;
 
 TriggerReferencing:
-			REFERENCING TriggerTransitions			
+			REFERENCING TriggerTransitions
 				{
 					parser_ybc_signal_unsupported(@1, "REFERENCING clause (transition tables)", 1668);
 					$$ = $2;
@@ -7912,7 +7923,7 @@ opt_unique:
 		;
 
 opt_concurrently:
-			CONCURRENTLY							{ 
+			CONCURRENTLY							{
 					parser_ybc_not_support(@1, "CREATE INDEX CONCURRENTLY");
                                                       $$ = true; }
 			| /*EMPTY*/								{ $$ = false; }
