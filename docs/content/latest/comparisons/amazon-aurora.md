@@ -16,7 +16,7 @@ Generally available since 2015, Amazon Aurora is built on a proprietary distribu
 
 ## Horizontal write scalability
 
-By default, Aurora runs in a single-master configuration where only a single node can process write requests and all other nodes are read-only replicas. If the writer node becomes unavailable, a failover mechanism promotes one of the read-only nodes to be the new writer. 
+By default, Aurora runs in a single-master configuration where only a single node can process write requests and all other nodes are read replicas. If the writer node becomes unavailable, a failover mechanism promotes one of the read-only nodes to be the new writer. 
 
 [Multi-master](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-multi-master.html) configuration is a recent addition to Aurora MySQL (not yet available on Aurora PostgreSQL) for scaling writes that involves a second writer node. However, since all of the data is now present in both the nodes, concurrent writes to the same data on the two nodes can lead to [write conflicts and deadlock errors](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-multi-master.html#aurora-multi-master-deadlocks) that the application has to handle. A long list of [limitations](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-multi-master.html#aurora-multi-master-limitations) include the inability to scale beyond the original two writer nodes as well as lack of geo-distributed writes across multiple regions.
 

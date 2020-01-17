@@ -21,7 +21,7 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
 
 2. Hybrid Transactional/Analytical Processing (HTAP), also known as Translytical, applications needing real-time analytics on transactional data. E.g User personalization, fraud detection, machine learning.
 
-3. Streaming applications needing to efficiently ingest, analyze and store ever-growing data. E.g. IoT sensor analytics, time series metrics, real time monitoring.
+3. Streaming applications needing to efficiently ingest, analyze and store ever-growing data. E.g. IoT sensor analytics, time series metrics, real-time monitoring.
 
 A few such use cases are detailed [here](https://www.yugabyte.com/).
 

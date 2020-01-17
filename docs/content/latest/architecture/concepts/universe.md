@@ -84,4 +84,4 @@ Note that:
 - There is always one primary cluster in a universe.
 - There can be zero or more read replica clusters in that universe.
 
-For more information about read replica clusters, see [Read-only replicas](../../docdb/replication/#read-only-replicas).
+For more information about read replica clusters, see [read replicas](../../docdb/replication/#read-only-replicas).
