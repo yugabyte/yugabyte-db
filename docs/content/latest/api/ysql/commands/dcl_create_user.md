@@ -55,16 +55,16 @@ See [`CREATE ROLE`](../dcl_create_role) for more details.
 yugabyte=# CREATE USER John WITH PASSWORD 'password';
 ```
 
-- Grant John all permissions on the `postgres` database.
+- Grant John all permissions on the `yugabyte` database.
 
 ```postgresql
-yugabyte=# GRANT ALL ON DATABASE postgres TO John;
+yugabyte=# GRANT ALL ON DATABASE yugabyte TO John;
 ```
 
-- Remove John's permissions from the `postgres` database.
+- Remove John's permissions from the `yugabyte` database.
 
 ```postgresql
-yugabyte=# REVOKE ALL ON DATABASE postgres FROM John;
+yugabyte=# REVOKE ALL ON DATABASE yugabyte FROM John;
 ```
 
 ## See also

@@ -82,7 +82,7 @@ yugabyte=# \c northwind
 ```
 
 ```
-You are now connected to database "northwind" as user "postgres".
+You are now connected to database "northwind" as user "yugabyte".
 northwind=#
 ```
 

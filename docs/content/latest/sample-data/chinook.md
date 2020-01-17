@@ -80,7 +80,7 @@ yugabyte=# \c chinook
 ```
 
 ```
-You are now connected to database "chinook" as user "postgres".
+You are now connected to database "chinook" as user "yugabyte".
 chinook=#
 ```
 

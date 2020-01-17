@@ -3,7 +3,7 @@
 
 The tutorial assumes that you have:
 
-- installed YugabyteDB, and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../quick-start/explore-ysql).
+- installed YugabyteDB, and created a universe. If not, please follow these steps in the [Quick Start guide](../../../quick-start/explore-ysql).
 - have a 32-bit (x86) or 64-bit (x64) architecture machine.
 - have gcc 4.1.2+, clang 3.4+ installed.
 
@@ -15,7 +15,7 @@ The C driver is already available as part of the YugabyteDB installation. You ca
 $ export LD_LIBRARY_PATH=<yugabyte-install-dir>/postgres/lib
 ```
 
-Alternatively, you can download the postgres binaries or build the driver from source as documented [here](https://www.postgresql.org/download/).
+Alternatively, you can download the PostgreSQL binaries or build the driver from source as documented [here](https://www.postgresql.org/download/).
 
 ## Working example
 
@@ -38,7 +38,7 @@ main(int argc, char **argv)
   int         i, j;
 
   /* connection string */
-  conninfo = "host=127.0.0.1 port=5433 dbname=postgres user=postgres password=postgres";
+  conninfo = "host=127.0.0.1 port=5433 dbname=yugabyte user=yugabyte password=yugabyte";
 
   /* Make a connection to the database */
   conn = PQconnectdb(conninfo);
