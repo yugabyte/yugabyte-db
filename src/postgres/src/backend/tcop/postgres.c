@@ -3975,11 +3975,13 @@ yb_restart_portal(const PortalRestartData* rd)
 	                             no_portal_name /* allowDup */,
 	                             no_portal_name /* dupSilent */);
 
-	/* Set portal data */
+	/* Store portal data */
 	MemoryContext oldContext = MemoryContextSwitchTo(portal->portalContext);
 
-	const char    *stmt_name = no_portal_name ? NULL : pstrdup(rd->portal_name);
-	ParamListInfo params     = yb_copy_param_list(rd->params);
+	const char*   stmt_name    = no_portal_name ? NULL : pstrdup(rd->portal_name);
+	const char*   query_string = pstrdup(rd->query_string);
+	const char*   command_tag  = pstrdup(rd->command_tag);
+	ParamListInfo params       = yb_copy_param_list(rd->params);
 
 	MemoryContextSwitchTo(oldContext);
 
@@ -3990,8 +3992,8 @@ yb_restart_portal(const PortalRestartData* rd)
 
 	PortalDefineQuery(portal,
 	                  stmt_name,
-	                  rd->query_string,
-	                  rd->command_tag,
+	                  query_string,
+	                  command_tag,
 	                  cplan->stmt_list,
 	                  cplan);
 
