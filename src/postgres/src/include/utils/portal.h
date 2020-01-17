@@ -194,7 +194,10 @@ typedef struct PortalData
 	bool		visible;		/* include this portal in pg_cursors? */
 }			PortalData;
 
-/* Data needed to restart a Portal after its execution failed */
+/*
+ * Data needed to restart a Portal after its execution failed.
+ * Note that stuff to be stored in the portal needs to be copied to the portal context.
+ */
 typedef struct PortalRestartData
 {
 	const char		*portal_name;	/* portal's name ('\0' for unnamed portal, never NULL) */
