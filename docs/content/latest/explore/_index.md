@@ -69,10 +69,10 @@ Use your [local cluster](../quick-start/) to explore all the core features of Yu
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="tunable-reads/">
+    <a class="section-link icon-offset" href="follower-reads/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />       
-        <div class="title">Tunable reads</div>
+        <div class="title">Follower reads</div>
       </div>
       <div class="body">
         Reduce read latency by reading from follower replicas.
@@ -90,16 +90,28 @@ Use your [local cluster](../quick-start/) to explore all the core features of Yu
       </div>
     </a>
   </div>
-  </div>
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="two-data-centers/">
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="change-data-capture/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
-        <div class="title">Two data center deployment</div>
+        <div class="title">Change data capture (CDC)</div>
       </div>
       <div class="body">
-        Replicate data changes between two geo-distributed data centers (2DC).
+        Stream data changes from YugabyteDB to external systems.
       </div>
     </a>
   </div>
+
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="two-data-centers/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
+        <div class="title">Two data center (2DC)</div>
+      </div>
+      <div class="body">
+        Replicate data changes between two geo-distributed data centers.
+      </div>
+    </a>
+  </div>
+</div>
 </div>

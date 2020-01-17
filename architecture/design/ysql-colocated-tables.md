@@ -256,4 +256,4 @@ Since colocated tablets have multiple tables with different schemas, we cannot f
 We could potentially split the tablet such that some tables are in one tablet and other tables are in the second tablet, but this will require some changes to the design.
 
 
-[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/ysql-colocated-tables.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
+[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/ysql-colocated-tables.md?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)
