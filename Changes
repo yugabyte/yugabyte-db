@@ -1,6 +1,11 @@
 Revision history for pgTAP
 ==========================
 
+1.2.0
+--------------------------
+* Make description field optional in has_view() and hasnt_view() when
+  specifying schema (#230). Thanks to Godwottery for the patch!
+
 1.1.0 2019-11-25T19:05:38Z
 --------------------------
 * Remove support for PostgreSQL older than 9.1. Note that some automated tests
