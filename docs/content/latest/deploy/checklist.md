@@ -86,7 +86,7 @@ It can also leverage multiple disks per node, and has been tested beyond 10TB of
 Write-heavy applications usually require more disk IOPS (especially if the size of each record is larger), 
 therefore in this case the total IOPS that a disk can support matters. 
 On the read side, if the data does not fit into the cache and data needs to be read 
-from the disk in order to satisfy queries, the disk performance (latency and iops) will start to matter.
+from the disk in order to satisfy queries, the disk performance (latency and IOPS) will start to matter.
 
 YugabyteDB uses per-tablet [size tiered compaction](../../architecture/concepts/yb-tserver/). 
 Therefore the typical space amplification in YugabyteDB tends to be in the 10-20% range.
