@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(884);
+SELECT plan(896);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -48,8 +48,8 @@ CREATE DOMAIN public."myDomain" AS TEXT CHECK(TRUE);
 
 CREATE SEQUENCE public.someseq;
 
-CREATE SCHEMA someschema;
 
+CREATE SCHEMA someschema;
 RESET client_min_messages;
 
 /****************************************************************************/
@@ -375,6 +375,22 @@ SELECT * FROM check_test(
     ''
 );
 
+SELECT * FROM check_test(
+    has_view( 'information_schema', 'tables'::name ),
+    true,
+    'has_view(sch, view)',
+    'View information_schema.tables should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_view( 'foo', '__SDFSDFD__'::name ),
+    false,
+    'has_view(sch, non-existent view, desc)',
+    'View foo."__SDFSDFD__" should exist',
+    ''
+);
+
 /****************************************************************************/
 -- Test hasnt_view().
 
@@ -415,6 +431,22 @@ SELECT * FROM check_test(
     false,
     'hasnt_view(sch, view, desc)',
     'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_view( 'information_schema', 'tables'::name ),
+    false,
+    'hasnt_view(sch, view)',
+    'View information_schema.tables should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_view( 'foo', '__SDFSDFD__'::name ),
+    true,
+    'hasnt_view(sch, non-existent view)',
+    'View foo."__SDFSDFD__" should not exist',
     ''
 );
 

@@ -2839,6 +2839,7 @@ specified table does *not* exist.
 ### `has_view()` ###
 
     SELECT has_view( :schema, :view, :description );
+    SELECT has_view( :schema, :view );
     SELECT has_view( :view, :description );
     SELECT has_view( :view );
 
@@ -2866,6 +2867,7 @@ exist".
 ### `hasnt_view()` ###
 
     SELECT hasnt_view( :schema, :view, :description );
+    SELECT hasnt_view( :schema, :view );
     SELECT hasnt_view( :view, :description );
     SELECT hasnt_view( :view );
 
