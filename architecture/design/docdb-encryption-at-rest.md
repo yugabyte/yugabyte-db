@@ -1,6 +1,6 @@
-# Encryption At Rest in YugaByte DB
+# Encryption At Rest in YugabyteDB
 
-Data at rest within a YugaByte DB cluster should be protected from unauthorized users by encrypting it. This document outlines how this is achieved internally, along with what features we support.
+Data at rest within a YugabyteDB cluster should be protected from unauthorized users by encrypting it. This document outlines how this is achieved internally, along with what features we support.
 
 ## Features
 
@@ -23,7 +23,7 @@ This feature makes the following assumptions:
 
 ## Basic Concepts
 
-There are two types of keys to encrypt data in YugaByte DB:
+There are two types of keys to encrypt data in YugabyteDB:
 * **Universe key**: Top level symmetric key used to encrypt other keys (see data keys below), these are common to the cluster. 
 * **Data key**: Symmetric key used to encrypt the data. There is one data key generated per flushed file.
 
@@ -121,13 +121,13 @@ we would make appropriate API calls to create a new Universe Key and use that ke
 taking with some of the KMS system that we would support via Platform. 
 
 ## Equinix [SmartKey](https://www.equinix.com/services/edge-services/smartkey/). Integration
-  SmartKey is KMS a offering from Equinix, they provide SDK and API to manage the keys in their platform, YugaByte platform would integrate with SmartKey via the REST API route and authenticate
+  SmartKey is KMS a offering from Equinix, they provide SDK and API to manage the keys in their platform, Yugabyte platform would integrate with SmartKey via the REST API route and authenticate
 using their API key in order to manage the Keys. We would use the name attribute on the Key to link the universe that the key is generated for. Once the key is generated we would make appropriate RPC 
-calls to YugaByte to enable encryption. We would call their rekey api when the user wants to rekey the universe and update the YugaByte nodes in a rolling fashion. 
+calls to YugabyteDB to enable encryption. We would call their rekey api when the user wants to rekey the universe and update the YugabyteDB nodes in a rolling fashion. 
 
 ## AWS [Key Management Service](https://docs.aws.amazon.com/kms/latest/developerguide/overview.html)
   Amazon offers their KMS solution, we will your their KMS api to manage the keys, And they have the concept of aliases which we would use that to build a relationship between the key and universe.
-When the key needs to be rotated we would create a new key and update the alias accordingly. And do the update on YugaByte nodes in a rolling fashion.
+When the key needs to be rotated we would create a new key and update the alias accordingly. And do the update on YugabyteDB nodes in a rolling fashion.
 
 # Implementation Internals
 
@@ -172,7 +172,7 @@ message EncryptionHeaderPB {
 
 We only store the universe key version in the file header, so the actual universe key data will never be persisted with the tablet data!
 
-An `Env` object sits between YugaByte and the filesystem and is responsible for creating new files. YugaByte has the notion of an encrypted and plaintext Env, corresponding to the type of file it creates. The encrypted Env owns an object that listens on heartbeat and is responsible for fetching universe keys. The encrypted Env creates new files as follows:
+An `Env` object sits between YugabyteDB and the filesystem and is responsible for creating new files. YugabyteDB has the notion of an encrypted and plaintext Env, corresponding to the type of file it creates. The encrypted Env owns an object that listens on heartbeat and is responsible for fetching universe keys. The encrypted Env creates new files as follows:
 
 ### Writable File Creation
 
@@ -201,6 +201,6 @@ Since the nth byte of tablet data in an encrypted file corresponds to offset n +
 # Future Work
 
 * Enable using a KMIP server for the universe key
-* Make YugaByte platform act like a KMIP server which would encapsulate different KMS systems and give one common interface for YugaByte to interact.
+* Make Yugabyte platform act like a KMIP server which would encapsulate different KMS systems and give one common interface for YugabyteDB to interact.
 
-[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/docdb-encryption-at-rest.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
+[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/docdb-encryption-at-rest.md?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)

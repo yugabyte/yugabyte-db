@@ -6,7 +6,7 @@ YSQL uses the query layer from PostgreSQL v11.2, and intends to support most Pos
 
 ## PostgreSQL Feature Support
 
-Here are the features currently supported as of YugaByte DB v2.0, Jan 15 2020. This list also indicates what is planned for YugaByte DB v2.1 coming out around the beginning of February.
+Here are the features currently supported as of YugabyteDB v2.0, Jan 15 2020. This list also indicates what is planned for YugabyteDB v2.1 coming out around the beginning of February.
 
 - [ ] All data types
     - [x] Basic types
@@ -143,4 +143,4 @@ Here are the features currently supported as of YugaByte DB v2.0, Jan 15 2020. T
     - [ ] Framework to publish TPCC performance numbers with each release
     - [ ] Available as rpm/deb/container/yum/brew
 
-[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/YSQL-Features-Supported.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
+[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/YSQL-Features-Supported.md?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)

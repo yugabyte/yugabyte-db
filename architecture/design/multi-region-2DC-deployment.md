@@ -1,15 +1,15 @@
-# Two Data Center Deployment Support with YugaByte DB
+# Two Data Center Deployment Support with YugabyteDB
 
-This document outlines the 2-datacenter deployments that YugaByte DB is being enhanced to support, as well as the architecture that enables these. This feature is built on top of [Change Data Capture (CDC)](https://github.com/YugaByte/yugabyte-db/blob/master/architecture/design/docdb-change-data-capture.md) support in DocDB, and that design may be of interest.
+This document outlines the 2-datacenter deployments that YugabyteDB is being enhanced to support, as well as the architecture that enables these. This feature is built on top of [Change Data Capture (CDC)](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-change-data-capture.md) support in DocDB, and that design may be of interest.
 
 ### Watch an example video (less than 2 mins)
 <a href="http://www.youtube.com/watch?feature=player_embedded&v=2quaIAKBATk" target="_blank">
-  <img src="http://img.youtube.com/vi/2quaIAKBATk/0.jpg" alt="YugaByte DB 2DC deployment" width="240" height="180" border="10" />
+  <img src="http://img.youtube.com/vi/2quaIAKBATk/0.jpg" alt="YugabyteDB 2DC deployment" width="240" height="180" border="10" />
 </a>
 
 ## Features
 
-> **Note:** In this design document, the terms "cluster" and "universe" will be used interchangeably. While not a requirement in the final design, we assume here that each YugaByte DB universe is deployed in a single data-center for simplicity purposes.
+> **Note:** In this design document, the terms "cluster" and "universe" will be used interchangeably. While not a requirement in the final design, we assume here that each YugabyteDB universe is deployed in a single data-center for simplicity purposes.
 
 This feature will support the following:
 
@@ -40,7 +40,7 @@ The replication could be unidirectional from a **source cluster** (aka the *mast
 
 The source-sink deployment architecture is shown in the diagram below:
 
-![2DC source-sink deployment](https://github.com/YugaByte/yugabyte-db/raw/master/architecture/design/images/2DC-source-sink-deployment.png)
+![2DC source-sink deployment](https://github.com/yugabyte/yugabyte-db/raw/master/architecture/design/images/2DC-source-sink-deployment.png)
 
 ### Multi-Master with *last writer wins (LWW)* semantics
 
@@ -51,13 +51,13 @@ The replication of data can be bi-directional between two clusters. In this case
 
 The architecture diagram is shown below:
 
-![2DC multi-master deployment](https://github.com/YugaByte/yugabyte-db/raw/master/architecture/design/images/2DC-multi-master-deployment.png)
+![2DC multi-master deployment](https://github.com/yugabyte/yugabyte-db/raw/master/architecture/design/images/2DC-multi-master-deployment.png)
 
 
 
 # Design - Lifecycle of Replication
 
-2DC one-way sync replication in YugaByte DB can be broken down into the following phases:
+2DC one-way sync replication in YugabyteDB can be broken down into the following phases:
 
 * Initialize the producer and the consumer
 * Set up a distributed CDC
@@ -86,7 +86,7 @@ This instructs the sink cluster to perform the following two actions:
 
 This is shown diagrammatically below.
 
-![2DC initialize consumer and producer](https://github.com/YugaByte/yugabyte-db/raw/master/architecture/design/images/2DC-step1-initialize.png)
+![2DC initialize consumer and producer](https://github.com/yugabyte/yugabyte-db/raw/master/architecture/design/images/2DC-step1-initialize.png)
 
 The **sink replication consumer** and the **source replication producer** are distributed, scale-out services that run on each node of the sink and source clusters respectively. In the case of the *source replication producer*, each node is responsible for all the source tablet leaders it hosts (note that the tablets are restricted to only those that participate in replication). In the case of the *sink replication consumer*, the metadata about which sink node owns which source tablet is explicitly tracked in the system catalog.
 
@@ -299,4 +299,4 @@ Since 2DC replication is done asynchronously and by replicating the WAL (and the
   * Since both universes will generate the same sequence numbers, this can result in conflicting rows. It’s better to use UUIDs  instead.
 
 
-[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/multi-region-2DC-deployment.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
+[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/multi-region-2DC-deployment.md?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)

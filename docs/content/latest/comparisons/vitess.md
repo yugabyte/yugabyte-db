@@ -16,7 +16,7 @@ Vitess is an automated sharding solution for MySQL. Each MySQL instance acts as 
 
 ## No single logical SQL database
 
-SQL features that access multiple rows of data spread across multiple shards are not allowed. Examples are distributed ACID transactions and JOINs. This means a Vitess cluster loses the notion of a single logical SQL database. Application developers have to be acutely aware of their sharding mechanism and account for those whose designing their schema as well as while executing queries.
+SQL features that access multiple rows of data spread across multiple shards are not allowed. Examples are distributed ACID transactions and JOINs. This means a Vitess cluster loses the notion of a single logical SQL database. Application developers have to be acutely aware of their sharding mechanism and account for those while designing their schema as well as while executing queries.
 
 ## Lack of continuous availability
 

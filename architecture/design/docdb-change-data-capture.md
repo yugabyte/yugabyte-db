@@ -1,10 +1,10 @@
-# Change Data Capture in YugaByte DB
+# Change Data Capture in YugabyteDB
 
-**Change data capture** (or **CDC** for short) enables capturing changes performed to the data stored in YugaByte DB. This document provides an overview of the approach YugaByte DB uses for providing change capture stream on tables that can be consumed by third party applications. This feature is useful in a number of scenarios such as:
+**Change data capture** (or **CDC** for short) enables capturing changes performed to the data stored in YugabyteDB. This document provides an overview of the approach YugabyteDB uses for providing change capture stream on tables that can be consumed by third party applications. This feature is useful in a number of scenarios such as:
 
 ### Microservice-oriented architectures
 
-There are some microservices that require a stream of changes to the data. For example, a search system powered by a service such as Elasticsearch may be used in conjunction with the database stores the transactions. The search system requires a stream of changes made to the data in YugaByte DB. 
+There are some microservices that require a stream of changes to the data. For example, a search system powered by a service such as Elasticsearch may be used in conjunction with the database stores the transactions. The search system requires a stream of changes made to the data in YugabyteDB. 
 
 ### Asynchronous replication to remote systems
 
@@ -12,7 +12,7 @@ Remote systems such as caches and analytics pipelines may subscribe to the strea
 
 ### Two data center deployments
 
-Two datacenter deployments in YugaByte DB leverage change data capture at the core.
+Two datacenter deployments in YugabyteDB leverage change data capture at the core.
 
 > Note that in this design, the terms "data center", "cluster" and "universe" will be used interchangeably. We assume here that each YB universe is deployed in a single data-center.
 
@@ -159,4 +159,4 @@ Note that once you have received a change for a row for some timestamp t, you wi
 
 
 
-[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/docdb-change-data-capture.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
+[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/docdb-change-data-capture.md?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)
