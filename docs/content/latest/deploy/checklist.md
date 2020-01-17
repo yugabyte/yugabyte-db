@@ -60,7 +60,7 @@ If you do not have enough CPUs, this will show up as higher latencies and eventu
 
 Memory depends on your application query pattern. 
 Writes require memory but only up to a certain point (4GB, but if you have a write-heavy workload you may need a little more). 
-Beyond that, more memory generally helps improve the read throughput/latencies by caching data in the internal cache. 
+Beyond that, more memory generally helps improve the read throughput and latencies by caching data in the internal cache. 
 If you do not have enough memory to fit the read working set, then you will typically 
 experience higher read latencies because data has to be read from disk. 
 Having a faster disk could help in some of these cases.
