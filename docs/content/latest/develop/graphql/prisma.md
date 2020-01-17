@@ -59,9 +59,9 @@ When prompted, enter or select the following values:
 - Does your database contain existing data? **No**
 - Enter database host: **localhost**
 - Enter database port: **5433**
-- Enter database user: **postgres**
+- Enter database user: **yugabyte**
 - Enter database password: [No password, just press **Enter**]
-- Enter database name (the database includes the schema) **postgres**
+- Enter database name (the database includes the schema) **yugabyte**
 - Use SSL? **N**
 - Select the programming language for the generated Prisma client: **Prisma JavaScript Client**
 

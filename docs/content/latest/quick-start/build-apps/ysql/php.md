@@ -13,8 +13,8 @@ Create a file `yb-sql-sample.php` with the following content.
 
 try {
   /* Establish connection. */
-  $dbh = new PDO('pgsql:host=127.0.0.1;port=5433;dbname=postgres;user=postgres;password=postgres',
-                 'postgres', null, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+  $dbh = new PDO('pgsql:host=127.0.0.1;port=5433;dbname=yugabyte;user=yugabyte;password=yugabyte',
+                 'yugabyte', null, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                                          PDO::ATTR_EMULATE_PREPARES => true,
                                          PDO::ATTR_PERSISTENT => true));
 

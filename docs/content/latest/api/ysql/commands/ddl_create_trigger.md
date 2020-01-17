@@ -48,7 +48,6 @@ Use the `CREATE TRIGGER` statement to define a new trigger.
 
 ## Examples
 
-
 - Set up a table with triggers for tracking modification time and user (role).
     Use the pre-installed extensions `insert_username` and `moddatetime`.
 
@@ -107,7 +106,6 @@ Use the `CREATE TRIGGER` statement to define a new trigger.
 
   {{< /note >}}
 
-
 - Update some rows.
     For each update the triggers should set both `username`  and `moddate` accordingly.
 
@@ -133,4 +131,3 @@ Use the `CREATE TRIGGER` statement to define a new trigger.
 - [`INSERT`](../dml_insert)
 - [`UPDATE`](../dml_update)
 - [`DELETE`](../dml_delete)
-

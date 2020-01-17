@@ -1,7 +1,7 @@
 
 ## Install the psycopg2 driver
 
-Install the python PostgreSQL driver using the following command. You can get further details for the driver [here](https://pypi.org/project/psycopg2/).
+Install the python yugabyteQL driver using the following command. You can get further details for the driver [here](https://pypi.org/project/psycopg2/).
 
 ```sh
 $ pip install psycopg2-binary
@@ -13,7 +13,7 @@ $ pip install psycopg2-binary
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../quick-start/explore-ysql/).
+- installed YugabyteDB and created a universe. If not, please follow these steps in the [Quick Start guide](../../../quick-start/explore-ysql/).
 
 ### Writing the Python code
 
@@ -23,7 +23,7 @@ Create a file `yb-sql-helloworld.py` and add the following content to it.
 import psycopg2
 
 # Create the database connection.
-conn = psycopg2.connect("host=127.0.0.1 port=5433 dbname=postgres user=postgres password=postgres")
+conn = psycopg2.connect("host=127.0.0.1 port=5433 dbname=yugabyte user=yugabyte password=yugabyte")
 
 # Open a cursor to perform database operations
 cur = conn.cursor()

@@ -67,7 +67,7 @@ yugabyte=# CREATE DATABASE yb_demo;
 ```
 
 ```postgresql
-yugabyte=# GRANT ALL ON DATABASE yb_demo to postgres;
+yugabyte=# GRANT ALL ON DATABASE yb_demo to yugabyte;
 ```
 
 ```postgresql
