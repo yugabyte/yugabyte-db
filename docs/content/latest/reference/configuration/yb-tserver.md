@@ -100,7 +100,7 @@ Required.
 
 ##### --fs_wal_dirs
 
-Specifies a comma-separated list of directories, where `yb-tserver` will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a sub-directory of a data directory.
+Specifies a comma-separated list of directories, where `yb-tserver` will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory.
 
 Default: Same value as `--fs_data_dirs`
 
@@ -220,6 +220,20 @@ The `--follower_unavailable_considered_failed_sec` value should match the value 
 
 {{< /note >}}
 
+##### --leader_failure_max_missed_heartbeat_periods
+
+The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds (ms), is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
+
+For read replica clusters, set the value to `10` in all `yb-tserver` and `yb-master` configurations.  Because the the data is globally replicated, RPC latencies are higher. Use this option to increase the failure detection interval in such a higher RPC latency deployment.
+
+Default: `6`
+
+##### --raft_heartbeat_interval_ms
+
+The heartbeat interval, in milliseconds (ms), for Raft replication. The leader produces heartbeats to followers at this interval. The followers expect a heartbeat at this interval and consider a leader to have failed if it misses several in a row.
+
+Default: `500`
+
 #### Write ahead log (WAL) options
 
 {{< note title="Note" >}}
@@ -274,15 +288,7 @@ Default: `64`
 
 ### Geo-distribution options
 
-Settings related to managing geo-distributed clusters and Raft consensus.
-
-##### --leader_failure_max_missed_heartbeat_periods
-
-The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds (ms), is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
-
-For read replica clusters, set the value to `10` on both YB-Master and YB-TServer servers.  Because the the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
-
-Default: `6`
+Settings related to managing geo-distributed clusters.
 
 ##### --placement_zone
 
@@ -301,12 +307,6 @@ Default: `datacenter1`
 Specifies the name of the cloud where this instance is deployed.
 
 Default: `cloud1`
-
-##### --raft_heartbeat_interval_ms
-
-The heartbeat interval, in milliseconds (ms), for Raft replication. The leader produces heartbeats to followers at this interval. The followers expect a heartbeat at this interval and consider a leader to have failed if it misses several in a row.
-
-Default: `500`
 
 ---
 

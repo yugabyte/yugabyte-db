@@ -40,7 +40,7 @@ YugabyteDB feature highlights are listed below.
 
 ### 2. High Performance
 
-- Low latency for geo-distributed applications with multiple [read consistency levels](../architecture/concepts/replication/#tunable-read-consistency) and [read-only replicas](../architecture/concepts/replication/#read-only-replicas).
+- Low latency for geo-distributed applications with multiple [read consistency levels](../architecture/concepts/replication/#tunable-read-consistency) and [read replicas](../architecture/concepts/replication/#read-only-replicas).
 
 - High throughput for ingesting and serving ever-growing datasets.
 
