@@ -3,9 +3,9 @@
 > **NOTE:** This design doc is still a work in progress.
 
 
-Recall that the storage layer of YugaByte DB is a distributed document store called DocDB. The architecture of DocDB is inspired by Google Spanner. This design doc outlines the various Raft enhancements in DocDB.
+Recall that the storage layer of YugabyteDB is a distributed document store called DocDB. The architecture of DocDB is inspired by Google Spanner. This design doc outlines the various Raft enhancements in DocDB.
 
-YugaByte DB uses Raft consensus without any atomic clocks in order to achieve single-key linearizability while maintaining high read performance. **Linearizability** is one of the strongest single-key consistency models, and implies that every operation appears to take place atomically and in some total linear order that is consistent with the real-time ordering of those operations. In other words, the following should be true of operations on a single key:
+YugabyteDB uses Raft consensus without any atomic clocks in order to achieve single-key linearizability while maintaining high read performance. **Linearizability** is one of the strongest single-key consistency models, and implies that every operation appears to take place atomically and in some total linear order that is consistent with the real-time ordering of those operations. In other words, the following should be true of operations on a single key:
 * Operations can execute concurrently, but the state of the database at any point in time must appear to be the result of some totally ordered, sequential execution of operations.
 * If operation A completes before operation B begins, then B should logically take effect after A.
 
@@ -66,7 +66,7 @@ In the figure above, the cause of the high latency is the step 4b, which introdu
 
 Leader leases eliminate the need for the extra heartbeat from the remote peers (step 4b in the diagram above), without sacrificing safety.
 
-In YugaByte DB, a newly elected leader cannot serve reads (or initiate writing a no-op Raft operation which is a prerequisite to accepting writes) until it has acquired a leader lease. During a leader election, a voter must propagate the longest remaining duration time of an old leader’s lease known to that voter to the new candidate it is voting for. Upon receiving a majority of votes, the new leader must wait out the old leader’s lease duration before considers itself as having the lease. The old leader, upon the expiry of its leader lease, steps down and no longer functions as a leader. The new leader continuously extends its leader lease as a part of Raft replication. Typically, leader leases have a short duration, for example the default in YugaByte DB is 2 seconds.
+In YugabyteDB, a newly elected leader cannot serve reads (or initiate writing a no-op Raft operation which is a prerequisite to accepting writes) until it has acquired a leader lease. During a leader election, a voter must propagate the longest remaining duration time of an old leader’s lease known to that voter to the new candidate it is voting for. Upon receiving a majority of votes, the new leader must wait out the old leader’s lease duration before considers itself as having the lease. The old leader, upon the expiry of its leader lease, steps down and no longer functions as a leader. The new leader continuously extends its leader lease as a part of Raft replication. Typically, leader leases have a short duration, for example the default in YugabyteDB is 2 seconds.
 
 The sequence of steps is as follows:
 
@@ -78,7 +78,7 @@ The sequence of steps is as follows:
 * It is easy to adjust the time delta by the max rate of clock drift on each node to take care of the variation between monotonic clock rates on different nodes.
 
 This is shown diagrammatically in the diagram below.
-![Raft leader leases timing sequence](https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/architecture/design/images/docdb-raft-leader-leases-timing-sequence.png)
+![Raft leader leases timing sequence](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/architecture/design/images/docdb-raft-leader-leases-timing-sequence.png)
 
 > **NOTE**: The above sequence creates a time window where the old leader steps down and the new leader does not step up, causing an unavailability window. In practice, however, this may not be hugely impactful since the unavailability window occurs only during failure scenarios (which are comparatively rare events) and the time window itself is quite “small” as observed by the end user. The unavailability window is bounded by the following equation:
 
@@ -96,18 +96,18 @@ Let us assume the scenario where term does not change. This implies that in a na
 
 To utilize the network better, DocDB batches multiple outstanding updates into a single record. This batching of updates in order to commit them to the Raft log is referred to as a **group commit**. The idea here is to group all the incoming update requests from the client into a new Raft message batch and send them over the network together. While one Raft replica batch is being replicated to a majority, all new incoming updates are grouped into a new Raft message batch. This is shown in the diagram below. 
 
-![Group commits in Raft](https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/architecture/design/images/docdb-raft-group-commit.png)
+![Group commits in Raft](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/architecture/design/images/docdb-raft-group-commit.png)
 
 The entries inside a single Raft message batch are required to be ordered as well. This is done by introducing another entry into the Raft id tuple called the *op id*, which preserves the order of the client updates.
 
 ## Leader Balancing
 
-YugaByte DB uses the Raft algorithm to implement a consistent and fault-tolerant write-ahead log. Per the Raft consensus algorithm, the various nodes that host the different Raft replicas (called tablet peers) first elect a leader. This results in one of the nodes becoming the leader of the tablet, and the others become followers. There could now arise scenarios where the distribution of Raft leaders and followers per node is uneven.
+YugabyteDB uses the Raft algorithm to implement a consistent and fault-tolerant write-ahead log. Per the Raft consensus algorithm, the various nodes that host the different Raft replicas (called tablet peers) first elect a leader. This results in one of the nodes becoming the leader of the tablet, and the others become followers. There could now arise scenarios where the distribution of Raft leaders and followers per node is uneven.
 
-YugaByte DB tries to balance the Raft leaders and followers evenly across the nodes of the cluster. This is done as a background operation in a throttled manner so as to not impact foreground latencies or throughput.
+YugabyteDB tries to balance the Raft leaders and followers evenly across the nodes of the cluster. This is done as a background operation in a throttled manner so as to not impact foreground latencies or throughput.
 
 > **NOTE**: This is the default behavior. There are user defined policies that change the distribution of leaders, see the *affinitized leaders* section for more details.
 
 
 
-[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/docdb-raft-enhancements.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
+[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/docdb-raft-enhancements.md?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)

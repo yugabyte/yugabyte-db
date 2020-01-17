@@ -1,7 +1,7 @@
 ---
-title: Using the YugabyteDB CDC connector
-linkTitle: Using the YugabyteDB CDC connector
-description: Using the YugabyteDB CDC connector
+title: YugabyteDB CDC connector
+linkTitle: YugabyteDB CDC connector
+description: YugabyteDB CDC connector
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
@@ -13,19 +13,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Use change data capture (CDC) in your YugabyteDB deployments to asynchronously replicate data changes. In the sections below, learn how you can use the YugabyteDB CDC connector to send data changes to Apache Kafka or to `stdout`.
-
-{{< note title="Note" >}}
-
-The information on this page is for testing and learning about using CDC with the YugabyteDB CDC connector on a local YugabyteDB cluster. Details about requirements for production deployments will be added shortly.
-
-{{< /note >}}
+Use change data capture (CDC) in your YugabyteDB deployments to asynchronously stream data changes to external systems. In the sections below, learn how you can use the YugabyteDB CDC connector to send data changes to Apache Kafka or to `stdout`.
 
 ## Prerequisites
-
-### YugabyteDB
-
-A 1-node YugabyteDB cluster with an RF of 1 is up and running locally (the `yb-ctl create` command creates this by default). If you are new to YugabyteDB, you can create a local YugabyteDB cluster in under five minutes by following the steps in the [Quick start](/quick-start/install/).
 
 ### Java
 
@@ -37,19 +27,7 @@ A Java runtime (or JDK) for Java 8 or later. JDK and JRE installers for Linux, m
 
 The JRE directory location can be found by looking at the `JAVA_HOME` environment variable.
 
-### [Optional] Apache Kafka
-
-A local install of the Confluent Platform should be up and running. The [Confluent Platform](https://docs.confluent.io/current/platform.html) includes [Apache Kafka](https://docs.confluent.io/current/kafka/introduction.html) and additional tools and services (including Zookeeper and Avro), making it easy for you to quickly get started using the Kafka event streaming platform.
-
-To quickly get a local Confluent Platform (with Apache Kafka) up and running, follow the steps in the [Confluent Platform Quick Start (Local)](https://docs.confluent.io/current/quickstart/ce-quickstart.html#ce-quickstart).
-
-{{< note title="Note" >}}
-
-The Confluent Platform currently only supports Java 8 and 11. If you do not use one of these, an error message is generated and it will not start.
-
-{{< /note >}}
-
-## Install the YugabyteDB CDC connector
+## Install the connector
 
 1. Download the [YugabyteDB CDC connector (`yb-cdc-connector.jar`)](https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar).
 
@@ -59,7 +37,7 @@ The Confluent Platform currently only supports Java 8 and 11. If you do not use 
 - macOS: `\Library\Java\Extensions\yb-cdc-connector.jar`
 - Windows: `%SystemRoot%\Sun\Java\lib\ext\yb-cdc-connector.jar`
 
-## Use the YugabyteDB CDC connector
+## Use the connector
 
 To use the YugabyteDB CDC connector, run the `yb_cdc_connector` JAR file.
 
@@ -105,17 +83,17 @@ If you are using a 3-node local cluster, then you need to specify a comma-delimi
 
 Flag to restrict logging only to the console.
 
-#### `topic_name` (Apache Kafka only)
+#### `--topic_name` (Apache Kafka only)
 
 Specify the Apache Kafka topic name.
 
-#### `schema_registry_addrs` (Apache Kafka only)
+#### `--schema_registry_addrs` (Apache Kafka only)
 
-#### `table_schema_path` (Apache Kafka only)
+#### `--table_schema_path` (Apache Kafka only)
 
 Specify the location of the Avro file (`.avsc`) for the table schema.
 
-#### `primary_key_schema_path` (Apache Kafka only)
+#### `--primary_key_schema_path` (Apache Kafka only)
 
 Specify the location of the Avro file (`.avsc`) for the primary key schema.
 

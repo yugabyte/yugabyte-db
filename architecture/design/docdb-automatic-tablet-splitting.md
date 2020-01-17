@@ -143,4 +143,4 @@ of the nodes.
 Bulk load tool relies on partitioning to be fixed during the load process, so we decided to pre-split and disable 
 dynamic splitting during bulk load.
 
-[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/docdb-automatic-tablet-splitting.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
+[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/docdb-automatic-tablet-splitting.md?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)

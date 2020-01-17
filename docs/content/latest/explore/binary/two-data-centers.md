@@ -1,4 +1,4 @@
-## Before you begin
+## Prerequisites
 
 - YugabyteDB is installed and ready for use. If you are new to YugabyteDB, you can create a local YugabyteDB cluster in under five minutes by following the steps in the [Quick start](../../quick-start/install/).
 

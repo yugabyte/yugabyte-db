@@ -13,13 +13,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Follow the steps below to connect a local YugabyteDB cluster to use the Change Data Capture (CDC) API to send data changes to Apache Kafka. To learn about the change data capture (CDC) architecture, see [Change data capture (CDC)](../architecture/cdc-architecture).
+Follow the steps below to connect a YugabyteDB cluster to use the Change Data Capture (CDC) API to send data changes to Apache Kafka. To learn about the change data capture (CDC) architecture, see [Change data capture (CDC)](../architecture/cdc-architecture).
 
 ## Prerequisites
 
 ### YugabyteDB
 
-A 1-node YugabyteDB cluster with RF of 1 is up and running locally (the `yb-ctl create` command create this by default). If you are new to YugabyteDB, you can create a local YugabyteDB cluster in under five minutes by following the steps in the [Quick start](/quick-start/install/).
+Create a YugabyteDB cluster using the steps outlined in [Manual Deployment](../manual-deployment/).
 
 ### Java
 
@@ -37,7 +37,7 @@ A local install of the Confluent Platform should be up and running. The [Conflue
 
 To get a local Confluent Platform (with Apache Kafka) up and running quickly, follow the steps in the [Confluent Platform Quick Start (Local)](https://docs.confluent.io/current/quickstart/ce-quickstart.html#ce-quickstart).
 
-## 1. Add the "users" table
+## 1. Create the source table
 
 With your local YugabyteDB cluster running, create a table, called `users`, in the default database (`yugabyte`).
 
