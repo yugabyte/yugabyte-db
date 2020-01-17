@@ -32,9 +32,6 @@ Here are the features currently supported as of YugaByte DB v2.0, Jan 15 2020. T
     - [x] Common Table Expressions (CTE) and Recursive Queries
     - [x] Upserts (`INSERT ... ON CONFLICT DO NOTHING/UPDATE`)
     - [x] Window functions
-    - [x] Authentication
-    - [x] Role based access control
-    - [x] Row-level security
 - [x] All Constraints
     - [x] Primary Key
     - [x] Foreign Key
@@ -64,27 +61,49 @@ Here are the features currently supported as of YugaByte DB v2.0, Jan 15 2020. T
         - [x] fuzzystrmatch
         - [x] spi module
     - [x] Generic extension framework
+    - [ ] Partitions support
     - [ ] Materialized Views
     - [ ] Foreign data wrappers
 
 ## Core DB Features
 
-- [ ] Change data capture
-    - [x] Kafka integration ![Generic badge](https://img.shields.io/badge/Status-BETA-blue.svg)
-    - [ ] Elastic search integration ![Generic badge](https://img.shields.io/badge/Target-v2.2-green.svg)
-- [ ] Two DC deployment
-    - [x] Master-slave (asynchronous replication)
-    - [x] Multi-master (bidirectional replication, last writer wins semantics)
-- [ ] Security
+- [x] Security
+    - [x] Authentication
+    - [x] Role based access control
+    - [x] Row-level security
     - [x] SSL Support/TLS Encryption 
     - [x] Encryption at rest ![Generic badge](https://img.shields.io/badge/Target-v2.1-green.svg)
-- [ ] Read replica support
+- [ ] Backup and restore
+    - [x] Scan based backups using `ysql_dump`
+    - [ ] Distributed backups ![Generic badge](https://img.shields.io/badge/Target-v2.2-green.svg)
+- [ ] Distributed, dynamic rebuilding of indexes
+    - [ ] Support for simple indexes ![Generic badge](https://img.shields.io/badge/Target-v2.2-green.svg)
+    - [ ] Support for unique constraints ![Generic badge](https://img.shields.io/badge/Target-v2.2-green.svg)
+- Sharding and splitting
+    - [x] Hash sharding support
+    - [x] Range sharding support
+    - [ ] Dynamic tablet splitting ![Generic badge](https://img.shields.io/badge/Target-v2.2-green.svg)
+- [ ] Change data capture
+    - [x] Kafka integration ![Generic badge](https://img.shields.io/badge/Status-BETA-blue.svg)
+    - [ ] Generic client library for consumers ![Generic badge](https://img.shields.io/badge/Target-v2.2-green.svg)
+    - [ ] Elastic search integration ![Generic badge](https://img.shields.io/badge/Target-v2.2-green.svg)
+- [ ] Colocated tables
+    - [x] Most functionality available in beta ![Generic badge](https://img.shields.io/badge/Target-v2.1-green.svg)
+    - [x] Production readiness ![Generic badge](https://img.shields.io/badge/Target-v2.2-green.svg)
+- [ ] Geo-distributed deployments
+    - [x] Three or more DCs (with sync replication)
+    - [x] Master-slave (asynchronous replication)
+    - [x] Multi-master (bidirectional replication, last writer wins semantics)
+    - [ ] Follower reads
+    - [ ] Read replica support
+    - [ ] Row level geo-partitioning
 
 
 ## App Development Support
 
 - [x] Client driver support
-    - [x] Java, Go
+    - [x] Java
+    - [x] Go
     - [x] NodeJS
     - [x] Python
     - [x] Ruby
@@ -104,7 +123,7 @@ Here are the features currently supported as of YugaByte DB v2.0, Jan 15 2020. T
     - [x] Diesel
 - [ ] Ecosystem
     - [x] GraphQL support ![Generic badge](https://img.shields.io/badge/Status-BETA-blue.svg)
-    - [x] Advanced Spring support ![Generic badge](https://img.shields.io/badge/Status-BETA-blue.svg)
+    - [x] Spring Data Yugabyte ![Generic badge](https://img.shields.io/badge/Status-BETA-blue.svg)
 - [ ] Tools support
     - [x] psql
     - [x] pg_dump
@@ -112,5 +131,16 @@ Here are the features currently supported as of YugaByte DB v2.0, Jan 15 2020. T
     - [x] DBeaver
     - [x] pgAdmin ![Generic badge](https://img.shields.io/badge/Status-BETA-blue.svg)
     - [x] TablePlus ![Generic badge](https://img.shields.io/badge/Status-BETA-blue.svg)
+
+## Performance
+- [ ] Parallel queries
+- [ ] YCSB
+    - [ ] Easy to run YCSB package ![Generic badge](https://img.shields.io/badge/Target-v2.1-green.svg)
+    - [ ] Framework to publish YCSB performance numbers with each release
+    - [ ] Available as rpm/deb/container/yum/brew
+- [ ] TPCC
+    - [ ] Easy to run TPCC package ![Generic badge](https://img.shields.io/badge/Target-v2.1-green.svg)
+    - [ ] Framework to publish TPCC performance numbers with each release
+    - [ ] Available as rpm/deb/container/yum/brew
 
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/YSQL-Features-Supported.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
