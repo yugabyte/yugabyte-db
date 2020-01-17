@@ -1,13 +1,13 @@
 # AWS
 
-This is an analysis of the most cost-effective AWS machines to run YugaByte DB.
+This is an analysis of the most cost-effective AWS machines to run YugabyteDB.
 
 - 3 nodes of 16 cores each with replication factor 3, fully cached workload can handle 100K reads and 20K writes.
-See [this performance report](https://github.com/YugaByte/yugabyte-db/blob/master/docs/yb-perf-0.9.5rc-Feb-13.md) for details.
+See [this performance report](https://github.com/yugabyte/yugabyte-db/blob/master/docs/yb-perf-0.9.5rc-Feb-13.md) for details.
 - 3 nodes of 8 cores each with replication factor 3, fully uncached workload with 1.4TB total can handle77K read ops/sec.
 See [this post](https://blog.yugabyte.com/achieving-sub-ms-latencies-on-large-data-sets-in-public-clouds-bf38d13ac42d) for more details.
 - The app needs between 1TB and 2TB of storage per node.
-- Analyzed many other machine types, concluded they are not as effective to run YugaByte DB
+- Analyzed many other machine types, concluded they are not as effective to run YugabyteDB
 
 ```
 machine-type   vCPUs   memory    raw-cost    storage-cost      Total (1TB)    Total (2TB)

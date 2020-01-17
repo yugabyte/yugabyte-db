@@ -73,7 +73,7 @@ When performing strongly consistent reads as a part of the above command, all re
 
 ![Reads from the tablet leader](/images/ce/tunable-reads-leader.png)
 
-## 4. Timeline consistent reads from tablet replicas
+## 4. Follower reads from tablet replicas
 
 Stop the workload application above, and then run the following variant of that workload application. This command will do updates to the same key `key:0` which will go through the tablet leader, but it will reads from the replicas.
 

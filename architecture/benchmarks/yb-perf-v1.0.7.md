@@ -1,24 +1,24 @@
 # Summary
 
-3 node, 16 vCPUs. Each write is replicated 3 ways internally. Each key-value is around 64 bytes combined. See [setup details](https://github.com/YugaByte/yugabyte-db/blob/master/docs/yb-perf-v1.0.7.md#setup) for more info.
+3 node, 16 vCPUs. Each write is replicated 3 ways internally. Each key-value is around 64 bytes combined. See [setup details](https://github.com/yugabyte/yugabyte-db/blob/master/docs/yb-perf-v1.0.7.md#setup) for more info.
 
-* CassandraKeyValue (see [details](https://github.com/YugaByte/yugabyte-db/blob/master/docs/yb-perf-v1.0.7.md#cassandrakeyvalue))
+* CassandraKeyValue (see [details](https://github.com/yugabyte/yugabyte-db/blob/master/docs/yb-perf-v1.0.7.md#cassandrakeyvalue))
     * 97K writes/sec at 2.6ms (256 writers)
     * 220K reads/sec at 1.2ms (256 readers)
-* CassandraSecondaryIndex (see [details](https://github.com/YugaByte/yugabyte-db/blob/master/docs/yb-perf-v1.0.7.md#cassandrasecondaryindex))
+* CassandraSecondaryIndex (see [details](https://github.com/yugabyte/yugabyte-db/blob/master/docs/yb-perf-v1.0.7.md#cassandrasecondaryindex))
     * 5.9K writes/sec at 10.7ms (64 writers)
     * 200K reads/sec at 1.3ms (256 readers)
-* CassandraBatchKeyValue (see [details](https://github.com/YugaByte/yugabyte-db/blob/master/docs/yb-perf-v1.0.7.md#cassandrabatchkeyvalue))
+* CassandraBatchKeyValue (see [details](https://github.com/yugabyte/yugabyte-db/blob/master/docs/yb-perf-v1.0.7.md#cassandrabatchkeyvalue))
     * 220K writes/sec at 14ms (32 writes)
     * 258K writes/sec at 24ms (64 writers)
-* RedisKeyValue (see [details](https://github.com/YugaByte/yugabyte-db/blob/master/docs/yb-perf-v1.0.7.md#rediskeyvalue))
+* RedisKeyValue (see [details](https://github.com/yugabyte/yugabyte-db/blob/master/docs/yb-perf-v1.0.7.md#rediskeyvalue))
     * 89K writes/sec at 2.9ms (256 writers)
     * 170K reads/sec at 1.5ms (256 readers)
-* RedisPipelinedKeyValue (see [details](https://github.com/YugaByte/yugabyte-db/blob/master/docs/yb-perf-v1.0.7.md#redispipelinedkeyvalue))
+* RedisPipelinedKeyValue (see [details](https://github.com/yugabyte/yugabyte-db/blob/master/docs/yb-perf-v1.0.7.md#redispipelinedkeyvalue))
     * 536K writes/sec at 21ms (24 writers)
     * 538K reads/sec at 14ms (16 readers)
 
-See [YCSB results](https://github.com/YugaByte/yugabyte-db/blob/master/docs/yb-perf-v1.0.7.md#ycsb-run-info).
+See [YCSB results](https://github.com/yugabyte/yugabyte-db/blob/master/docs/yb-perf-v1.0.7.md#ycsb-run-info).
 
 # Setup:
 
