@@ -78,7 +78,7 @@ yugabyte=# \c exercises
 ```
 
 ```
-You are now connected to database "exercises" as user "postgres".
+You are now connected to database "exercises" as user "yugabyte".
 exercises=#
 ```
 

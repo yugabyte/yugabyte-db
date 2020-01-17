@@ -114,7 +114,7 @@ The focus here was to quickly show how each of the functions could be used, alon
 
 ```sh
 yugabyte=# \c yb_demo  
-You are now connected to database "yb_demo" as user "postgres".
+You are now connected to database "yb_demo" as user "yugabyte".
 
 yb_demo =# select lower('hELLO world') AS LOWER,
   upper('hELLO world') AS UPPER,
@@ -155,12 +155,12 @@ yugabyte=# select $$%&*$&$%7'\67458\''""""';;'\//\/\/\""'/'''''"""""'''''''''$$;
  %&*$&$%7'\67458\''""""';;'\//\/\/\""'/'''''"""""'''''''''
 
 yugabyte=# select $__unique_$           Lots of space
-postgres$#                    and multi line too       $__unique_$;
+yugabyte=#                    and multi-line too       $__unique_$;
 
                    ?column?
 ----------------------------------------------
             Lots of space                    +
-                    and multi line too
+                    and multi-line too
 
 yugabyte=# select $$first$$ AS "F1", $$second$$ AS "F2";
 
