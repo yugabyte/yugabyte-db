@@ -203,7 +203,7 @@ public class TestCreateTable extends BaseCQLTest {
     assertEquals(ids.size(), 5);
 
     // Test with number of tablets exceeding the limit.
-    assertQueryError("CREATE TABLE test_num_tablets_4 (id int PRIMARY KEY) WITH tablets = 60;",
+    assertQueryError("CREATE TABLE test_num_tablets_4 (id int PRIMARY KEY) WITH tablets = 50000;",
         "Number of tablets exceeds system limit");
   }
 }
