@@ -80,6 +80,7 @@
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_session.h"
+#include "yb/tserver/remote_bootstrap_snapshots.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/background_task.h"
@@ -278,7 +279,6 @@ using tablet::TABLET_DATA_TOMBSTONED;
 using tablet::TabletDataState;
 using tablet::RaftGroupMetadata;
 using tablet::RaftGroupMetadataPtr;
-using tablet::TabletClass;
 using tablet::TabletPeer;
 using tablet::TabletPeerPtr;
 using tablet::TabletStatusListener;
@@ -840,9 +840,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   LOG(INFO) << init_msg;
   TRACE(init_msg);
 
-  gscoped_ptr<enterprise::RemoteBootstrapClient> rb_client(
-      new enterprise::RemoteBootstrapClient(
-          tablet_id, fs_manager_, fs_manager_->uuid()));
+  auto rb_client = std::make_unique<RemoteBootstrapClient>(tablet_id, fs_manager_);
 
   // Download and persist the remote superblock in TABLET_DATA_COPYING state.
   if (replacing_tablet) {
@@ -1090,7 +1088,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   CHECK(LookupTablet(tablet_id, &tablet_peer))
       << "Tablet not registered prior to OpenTabletAsync call: " << tablet_id;
 
-  shared_ptr<TabletClass> tablet;
+  tablet::TabletPtr tablet;
   scoped_refptr<Log> log;
   const string kLogPrefix = TabletLogPrefix(tablet_id);
 

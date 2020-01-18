@@ -239,7 +239,7 @@ bool GetConsensusOrRespond(const TabletPeerPtr& tablet_peer,
 }
 
 Status GetTabletRef(const TabletPeerPtr& tablet_peer,
-                    shared_ptr<Tablet>* tablet,
+                    tablet::TabletPtr* tablet,
                     TabletServerErrorPB::Code* error_code) {
   *DCHECK_NOTNULL(tablet) = tablet_peer->shared_tablet();
   if (PREDICT_FALSE(!*tablet)) {

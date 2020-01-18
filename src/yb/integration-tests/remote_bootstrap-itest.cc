@@ -87,7 +87,7 @@ using yb::itest::TServerDetails;
 using yb::tablet::TABLET_DATA_READY;
 using yb::tablet::TABLET_DATA_TOMBSTONED;
 using yb::tserver::ListTabletsResponsePB;
-using yb::tserver::enterprise::RemoteBootstrapClient;
+using yb::tserver::RemoteBootstrapClient;
 using std::string;
 using std::unordered_map;
 using std::vector;
@@ -520,23 +520,22 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
   ASSERT_OK(fs_manager->Open());
 
   // Start up a RemoteBootstrapClient and open a remote bootstrap session.
-  gscoped_ptr<RemoteBootstrapClient> rb_client(
-      new RemoteBootstrapClient(tablet_id, fs_manager.get(), fs_manager->uuid()));
+  RemoteBootstrapClient rb_client(tablet_id, fs_manager.get());
   scoped_refptr<tablet::RaftGroupMetadata> meta;
-  ASSERT_OK(rb_client->Start(cluster_->tablet_server(kTsIndex)->uuid(),
-                             &cluster_->proxy_cache(),
-                             cluster_->tablet_server(kTsIndex)->bound_rpc_hostport(),
-                             &meta));
+  ASSERT_OK(rb_client.Start(cluster_->tablet_server(kTsIndex)->uuid(),
+                            &cluster_->proxy_cache(),
+                            cluster_->tablet_server(kTsIndex)->bound_rpc_hostport(),
+                            &meta));
 
   // Tombstone the tablet on the remote!
   ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
 
   // Now finish bootstrapping!
   tablet::TabletStatusListener listener(meta);
-  ASSERT_OK(rb_client->FetchAll(&listener));
+  ASSERT_OK(rb_client.FetchAll(&listener));
   // Call Finish, which closes the remote session.
-  ASSERT_OK(rb_client->Finish());
-  ASSERT_OK(rb_client->Remove());
+  ASSERT_OK(rb_client.Finish());
+  ASSERT_OK(rb_client.Remove());
 
   SleepFor(MonoDelta::FromMilliseconds(500));  // Give a little time for a crash (KUDU-1009).
   ASSERT_TRUE(cluster_->tablet_server(kTsIndex)->IsProcessAlive());

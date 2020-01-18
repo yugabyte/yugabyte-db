@@ -113,7 +113,7 @@ class BootstrapTest : public LogTestBase {
   }
 
   Status RunBootstrapOnTestTablet(const RaftGroupMetadataPtr& meta,
-                                  shared_ptr<TabletClass>* tablet,
+                                  TabletPtr* tablet,
                                   ConsensusBootstrapInfo* boot_info) {
     gscoped_ptr<TabletStatusListener> listener(new TabletStatusListener(meta));
     scoped_refptr<LogAnchorRegistry> log_anchor_registry(new LogAnchorRegistry());
@@ -142,7 +142,7 @@ class BootstrapTest : public LogTestBase {
     return Status::OK();
   }
 
-  Status BootstrapTestTablet(shared_ptr<TabletClass>* tablet,
+  Status BootstrapTestTablet(TabletPtr* tablet,
                              ConsensusBootstrapInfo* boot_info) {
     RaftGroupMetadataPtr meta;
     RETURN_NOT_OK_PREPEND(LoadTestRaftGroupMetadata(&meta),
@@ -181,7 +181,7 @@ TEST_F(BootstrapTest, TestBootstrap) {
   BuildLog();
   const auto current_op_id = MakeOpId(1, current_index_);
   AppendReplicateBatch(current_op_id, current_op_id);
-  shared_ptr<TabletClass> tablet;
+  TabletPtr tablet;
   ConsensusBootstrapInfo boot_info;
   ASSERT_OK(BootstrapTestTablet(&tablet, &boot_info));
 
@@ -195,7 +195,7 @@ TEST_F(BootstrapTest, TestIncompleteRemoteBootstrap) {
   BuildLog();
 
   ASSERT_OK(PersistTestRaftGroupMetadataState(TABLET_DATA_COPYING));
-  shared_ptr<TabletClass> tablet;
+  TabletPtr tablet;
   ConsensusBootstrapInfo boot_info;
   Status s = BootstrapTestTablet(&tablet, &boot_info);
   ASSERT_TRUE(s.IsCorruption()) << "Expected corruption: " << s.ToString();
@@ -217,7 +217,7 @@ TEST_F(BootstrapTest, TestOrphanedReplicate) {
 
   // Bootstrap the tablet. It shouldn't replay anything.
   ConsensusBootstrapInfo boot_info;
-  shared_ptr<TabletClass> tablet;
+  TabletPtr tablet;
   ASSERT_OK(BootstrapTestTablet(&tablet, &boot_info));
 
   // Table should be empty because we didn't replay the REPLICATE.
@@ -242,7 +242,7 @@ TEST_F(BootstrapTest, TestMissingConsensusMetadata) {
   RaftGroupMetadataPtr meta;
   ASSERT_OK(LoadTestRaftGroupMetadata(&meta));
 
-  shared_ptr<TabletClass> tablet;
+  TabletPtr tablet;
   ConsensusBootstrapInfo boot_info;
   Status s = RunBootstrapOnTestTablet(meta, &tablet, &boot_info);
 
@@ -265,7 +265,7 @@ TEST_F(BootstrapTest, TestCommitFirstMessageBySpecifyingCommittedIndexInSecond) 
   AppendReplicateBatch(mutate_opid, insert_opid,
                        {TupleForAppend(10, 2, "this is a test mutate")}, true /* sync */);
   ConsensusBootstrapInfo boot_info;
-  shared_ptr<TabletClass> tablet;
+  TabletPtr tablet;
   ASSERT_OK(BootstrapTestTablet(&tablet, &boot_info));
   ASSERT_EQ(boot_info.orphaned_replicates.size(), 1);
   ASSERT_OPID_EQ(boot_info.last_committed_id, insert_opid);
@@ -294,7 +294,7 @@ TEST_F(BootstrapTest, TestOperationOverwriting) {
 
   // When bootstrapping we should apply ops 1.1 and get 3.2 as pending.
   ConsensusBootstrapInfo boot_info;
-  shared_ptr<TabletClass> tablet;
+  TabletPtr tablet;
   ASSERT_OK(BootstrapTestTablet(&tablet, &boot_info));
 
   ASSERT_EQ(boot_info.orphaned_replicates.size(), 1);
@@ -331,7 +331,7 @@ TEST_F(BootstrapTest, TestConsensusOnlyOperationOutOfOrderHybridTime) {
   AppendReplicateBatch(second_opid, second_opid, {TupleForAppend(1, 1, "foo")});
 
   ConsensusBootstrapInfo boot_info;
-  shared_ptr<TabletClass> tablet;
+  TabletPtr tablet;
   ASSERT_OK(BootstrapTestTablet(&tablet, &boot_info));
   ASSERT_EQ(boot_info.orphaned_replicates.size(), 0);
   ASSERT_OPID_EQ(boot_info.last_committed_id, second_opid);
@@ -355,7 +355,7 @@ TEST_F(BootstrapTest, TestBootstrapHighOpIdIndex) {
   }
 
   // Kick off tablet bootstrap and ensure everything worked.
-  shared_ptr<TabletClass> tablet;
+  TabletPtr tablet;
   ConsensusBootstrapInfo boot_info;
   ASSERT_OK(BootstrapTestTablet(&tablet, &boot_info));
   OpId last_opid;

@@ -111,7 +111,7 @@ TEST_F(TabletSplitTest,  v) {
   }
   auto source_rows2 = source_rows;
 
-  std::vector<std::shared_ptr<TabletClass>> split_tablets;
+  std::vector<TabletPtr> split_tablets;
 
   Partition partition = tablet()->metadata()->partition();
   docdb::KeyBounds key_bounds;

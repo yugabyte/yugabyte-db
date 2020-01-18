@@ -8,6 +8,7 @@
 #include "yb/consensus/consensus.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_metrics.h"
@@ -77,8 +78,7 @@ consensus::ReplicateMsgPtr SnapshotOperation::NewReplicateMsg() {
 
 Status SnapshotOperation::Prepare() {
   TRACE("PREPARE SNAPSHOT: Starting");
-  Tablet* tablet = state()->tablet();
-  RETURN_NOT_OK(tablet->PrepareForSnapshotOp(state()));
+  RETURN_NOT_OK(state()->tablet()->snapshots().Prepare(state()));
 
   TRACE("PREPARE SNAPSHOT: finished");
   return Status::OK();
@@ -99,45 +99,7 @@ Status SnapshotOperation::DoAborted(const Status& status) {
 
 Status SnapshotOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   TRACE("APPLY SNAPSHOT: Starting");
-  TabletClass* const tablet = down_cast<TabletClass*>(state()->tablet());
-  bool handled = false;
-
-  switch (state()->operation()) {
-    case TabletSnapshotOpRequestPB::CREATE: {
-      handled = true;
-      RETURN_NOT_OK(tablet->CreateSnapshot(state()));
-      break;
-    }
-    case TabletSnapshotOpRequestPB::RESTORE: {
-      handled = true;
-      RETURN_NOT_OK(tablet->RestoreSnapshot(state()));
-      break;
-    }
-    case TabletSnapshotOpRequestPB::DELETE: {
-      handled = true;
-      RETURN_NOT_OK(tablet->DeleteSnapshot(state()));
-      break;
-    }
-    case TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
-  }
-
-  if (!handled) {
-    FATAL_INVALID_ENUM_VALUE(tserver::TabletSnapshotOpRequestPB::Operation, state()->operation());
-  }
-
-  // The schema lock was acquired by Tablet::PrepareForCreateSnapshot.
-  // Normally, we would release it in tablet.cc after applying the operation,
-  // but currently we need to wait until after the COMMIT message is logged
-  // to release this lock as a workaround for KUDU-915. See the same TODO in
-  // AlterSchemaOperation().
-  state()->ReleaseSchemaLock();
-
-  // Now that all of the changes have been applied and the commit is durable
-  // make the changes visible to readers.
-  TRACE("SnapshotOperation: making snapshot visible");
-  state()->Finish();
-
-  return Status::OK();
+  return state()->tablet()->snapshots().Replicated(state());
 }
 
 string SnapshotOperation::ToString() const {

@@ -68,11 +68,11 @@ class TabletBootstrap {
   // Plays the log segments, rebuilding the portion of the Tablet's soft state that is present in
   // the log (additional soft state may be present in other replicas).  A successful call will yield
   // the rebuilt tablet and the rebuilt log.
-  CHECKED_STATUS Bootstrap(std::shared_ptr<TabletClass>* rebuilt_tablet,
+  CHECKED_STATUS Bootstrap(TabletPtr* rebuilt_tablet,
                            scoped_refptr<log::Log>* rebuilt_log,
                            consensus::ConsensusBootstrapInfo* results);
 
- protected:
+ private:
   // Opens the tablet.
   // Sets result to true if there was any data on disk for this tablet.
   virtual Result<bool> OpenTablet();
@@ -104,7 +104,7 @@ class TabletBootstrap {
   // Finishes bootstrap, setting 'rebuilt_log' and 'rebuilt_tablet'.
   CHECKED_STATUS FinishBootstrap(const std::string& message,
                                  scoped_refptr<log::Log>* rebuilt_log,
-                                 std::shared_ptr<TabletClass>* rebuilt_tablet);
+                                 TabletPtr* rebuilt_tablet);
 
   // Plays the log segments into the tablet being built.  The process of playing the segments
   // generates a new log that can be continued later on when then tablet is rebuilt and starts
@@ -153,13 +153,15 @@ class TabletBootstrap {
 
   Env* GetEnv();
 
+  void CleanupSnapshots();
+
   BootstrapTabletData data_;
   RaftGroupMetadataPtr meta_;
   std::shared_ptr<MemTracker> mem_tracker_;
   std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
   MetricRegistry* metric_registry_;
   TabletStatusListener* listener_;
-  std::unique_ptr<TabletClass> tablet_;
+  TabletPtr tablet_;
   const scoped_refptr<log::LogAnchorRegistry> log_anchor_registry_;
   scoped_refptr<log::Log> log_;
   std::unique_ptr<log::LogReader> log_reader_;
@@ -198,7 +200,6 @@ class TabletBootstrap {
 
   bool skip_wal_rewrite_;
 
- private:
   DISALLOW_COPY_AND_ASSIGN(TabletBootstrap);
 };
 

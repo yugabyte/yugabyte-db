@@ -19,9 +19,6 @@ string(REPLACE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/ent
 
 set(TSERVER_SRCS_EXTENSIONS
   ${YB_ENT_CURRENT_SOURCE_DIR}/backup_service.cc
-  ${YB_ENT_CURRENT_SOURCE_DIR}/remote_bootstrap_client_ent.cc
-  ${YB_ENT_CURRENT_SOURCE_DIR}/remote_bootstrap_service_ent.cc
-  ${YB_ENT_CURRENT_SOURCE_DIR}/remote_bootstrap_session_ent.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/tablet_server_ent.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/header_manager_impl.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_consumer.cc

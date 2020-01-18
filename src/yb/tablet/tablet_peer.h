@@ -110,8 +110,8 @@ class TabletPeer : public consensus::ConsensusContext,
 
   // Initializes the TabletPeer, namely creating the Log and initializing
   // Consensus.
-  CHECKED_STATUS InitTabletPeer(const std::shared_ptr<TabletClass> &tablet,
-                                const std::shared_future<client::YBClient*> &client_future,
+  CHECKED_STATUS InitTabletPeer(const TabletPtr& tablet,
+                                const std::shared_future<client::YBClient*>& client_future,
                                 const std::shared_ptr<MemTracker>& server_mem_tracker,
                                 rpc::Messenger* messenger,
                                 rpc::ProxyCache* proxy_cache,
@@ -189,12 +189,12 @@ class TabletPeer : public consensus::ConsensusContext,
 
   std::shared_ptr<consensus::Consensus> shared_consensus() const;
 
-  TabletClass* tablet() const {
+  Tablet* tablet() const {
     std::lock_guard<simple_spinlock> lock(lock_);
     return tablet_.get();
   }
 
-  std::shared_ptr<TabletClass> shared_tablet() const {
+  TabletPtr shared_tablet() const {
     std::lock_guard<simple_spinlock> lock(lock_);
     return tablet_;
   }
@@ -382,7 +382,7 @@ class TabletPeer : public consensus::ConsensusContext,
   scoped_refptr<log::Log> log_;
   std::atomic<log::Log*> log_atomic_{nullptr};
 
-  std::shared_ptr<TabletClass> tablet_;
+  TabletPtr tablet_;
   rpc::ProxyCache* proxy_cache_;
   std::shared_ptr<consensus::RaftConsensus> consensus_;
   gscoped_ptr<TabletStatusListener> status_listener_;

@@ -127,20 +127,21 @@ class TabletHarness {
 
     clock_ = server::LogicalClock::CreateStartingAt(HybridTime::kInitial);
     TabletOptions tablet_options;
-    tablet_.reset(new TabletClass(metadata,
-                                  std::shared_future<client::YBClient*>(),
-                                  clock_,
-                                  std::shared_ptr<MemTracker>(),
-                                  std::shared_ptr<MemTracker>(),
-                                  metrics_registry_.get(),
-                                  new log::LogAnchorRegistry(),
-                                  tablet_options,
-                                  std::string() /* log_pefix_suffix */,
-                                  nullptr /* transaction_participant_context */,
-                                  client::LocalTabletFilter(),
-                                  nullptr /* transaction_coordinator_context */,
-                                  IsSysCatalogTablet::kFalse,
-                                  TransactionsEnabled::kFalse));
+    tablet_ = std::make_shared<Tablet>(
+        metadata,
+        std::shared_future<client::YBClient*>(),
+        clock_,
+        std::shared_ptr<MemTracker>(),
+        std::shared_ptr<MemTracker>(),
+        metrics_registry_.get(),
+        new log::LogAnchorRegistry(),
+        tablet_options,
+        std::string() /* log_pefix_suffix */,
+        nullptr /* transaction_participant_context */,
+        client::LocalTabletFilter(),
+        nullptr /* transaction_coordinator_context */,
+        IsSysCatalogTablet::kFalse,
+        TransactionsEnabled::kFalse);
     return Status::OK();
   }
 
@@ -150,11 +151,11 @@ class TabletHarness {
     return tablet_->EnableCompactions();
   }
 
-  Result<std::shared_ptr<TabletClass>> OpenTablet(const TabletId& tablet_id) {
+  Result<TabletPtr> OpenTablet(const TabletId& tablet_id) {
     RaftGroupMetadataPtr metadata;
     RETURN_NOT_OK(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id, &metadata));
     TabletOptions tablet_options;
-    auto tablet = std::make_shared<TabletClass>(
+    auto tablet = std::make_shared<Tablet>(
         metadata,
         std::shared_future<client::YBClient*>(),
         clock_,
@@ -179,7 +180,7 @@ class TabletHarness {
     return clock_.get();
   }
 
-  const std::shared_ptr<TabletClass>& tablet() {
+  const TabletPtr& tablet() {
     return tablet_;
   }
 
@@ -201,7 +202,7 @@ class TabletHarness {
   scoped_refptr<server::Clock> clock_;
   Schema schema_;
   gscoped_ptr<FsManager> fs_manager_;
-  std::shared_ptr<TabletClass> tablet_;
+  TabletPtr tablet_;
 };
 
 } // namespace tablet

@@ -37,6 +37,7 @@
 #include "yb/consensus/retryable_requests.h"
 
 #include "yb/server/hybrid_clock.h"
+#include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
@@ -317,7 +318,7 @@ TabletBootstrap::TabletBootstrap(const BootstrapTabletData& data)
 
 TabletBootstrap::~TabletBootstrap() {}
 
-Status TabletBootstrap::Bootstrap(shared_ptr<TabletClass>* rebuilt_tablet,
+Status TabletBootstrap::Bootstrap(TabletPtr* rebuilt_tablet,
                                   scoped_refptr<Log>* rebuilt_log,
                                   ConsensusBootstrapInfo* consensus_info) {
   string tablet_id = meta_->raft_group_id();
@@ -407,16 +408,18 @@ Status TabletBootstrap::Bootstrap(shared_ptr<TabletClass>* rebuilt_tablet,
 
 Status TabletBootstrap::FinishBootstrap(const string& message,
                                         scoped_refptr<log::Log>* rebuilt_log,
-                                        shared_ptr<TabletClass>* rebuilt_tablet) {
+                                        TabletPtr* rebuilt_tablet) {
   tablet_->MarkFinishedBootstrapping();
   listener_->StatusMessage(message);
-  rebuilt_tablet->reset(tablet_.release());
+  *rebuilt_tablet = std::move(tablet_);
   rebuilt_log->swap(log_);
   return Status::OK();
 }
 
 Result<bool> TabletBootstrap::OpenTablet() {
-  auto tablet = std::make_unique<TabletClass>(
+  CleanupSnapshots();
+
+  auto tablet = std::make_shared<Tablet>(
       meta_, data_.client_future, data_.clock, mem_tracker_, block_based_table_mem_tracker_,
       metric_registry_, log_anchor_registry_, tablet_options_, data_.log_prefix_suffix,
       data_.transaction_participant_context, data_.local_tablet_filter,
@@ -723,34 +726,7 @@ Status TabletBootstrap::PlayTabletSnapshotOpRequest(ReplicateMsg* replicate_msg)
 
   SnapshotOperationState tx_state(/* tablet */ nullptr, snapshot);
 
-  RETURN_NOT_OK(tablet_->PrepareForSnapshotOp(&tx_state));
-  bool handled = false;
-
-  // Apply the snapshot operation to the tablet.
-  switch (snapshot->operation()) {
-    case TabletSnapshotOpRequestPB::CREATE: {
-      handled = true;
-      RETURN_NOT_OK_PREPEND(tablet_->CreateSnapshot(&tx_state), "Failed to CreateSnapshot:");
-      break;
-    }
-    case TabletSnapshotOpRequestPB::RESTORE: {
-      handled = true;
-      RETURN_NOT_OK_PREPEND(tablet_->RestoreSnapshot(&tx_state), "Failed to RestoreSnapshot:");
-      break;
-    }
-    case TabletSnapshotOpRequestPB::DELETE: {
-      handled = true;
-      RETURN_NOT_OK_PREPEND(tablet_->DeleteSnapshot(&tx_state), "Failed to DeleteSnapshot:");
-      break;
-    }
-    case TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
-  }
-
-  if (!handled) {
-    FATAL_INVALID_ENUM_VALUE(tserver::TabletSnapshotOpRequestPB::Operation,
-                             snapshot->operation());
-  }
-  return Status::OK();
+  return tablet_->snapshots().Bootstrap(&tx_state);
 }
 
 // Never deletes 'replicate_entry' or 'commit_entry'.
@@ -1155,6 +1131,41 @@ Env* TabletBootstrap::GetEnv() {
     return tablet_options_.env;
   }
   return meta_->fs_manager()->env();
+}
+
+void TabletBootstrap::CleanupSnapshots() {
+  // Disk clean-up: deleting temporary/incomplete snapshots.
+  const string top_snapshots_dir = TabletSnapshots::SnapshotsDirName(meta_->rocksdb_dir());
+
+  if (meta_->fs_manager()->env()->FileExists(top_snapshots_dir)) {
+    vector<string> snapshot_dirs;
+    Status s = meta_->fs_manager()->env()->GetChildren(
+        top_snapshots_dir, ExcludeDots::kTrue, &snapshot_dirs);
+
+    if (!s.ok()) {
+      LOG(WARNING) << "Cannot get list of snapshot directories in "
+                   << top_snapshots_dir << ": " << s;
+    } else {
+      for (const string& dir_name : snapshot_dirs) {
+        const string snapshot_dir = JoinPathSegments(top_snapshots_dir, dir_name);
+
+        if (TabletSnapshots::IsTempSnapshotDir(snapshot_dir)) {
+          LOG(INFO) << "Deleting old temporary snapshot directory " << snapshot_dir;
+
+          s = meta_->fs_manager()->env()->DeleteRecursively(snapshot_dir);
+          if (!s.ok()) {
+            LOG(WARNING) << "Cannot delete old temporary snapshot directory "
+                         << snapshot_dir << ": " << s;
+          }
+
+          s = meta_->fs_manager()->env()->SyncDir(top_snapshots_dir);
+          if (!s.ok()) {
+            LOG(WARNING) << "Cannot sync top snapshots dir " << top_snapshots_dir << ": " << s;
+          }
+        }
+      }
+    }
+  }
 }
 
 // ============================================================================

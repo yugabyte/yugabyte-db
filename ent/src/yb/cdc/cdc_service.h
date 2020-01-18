@@ -97,8 +97,10 @@ class CDCServiceImpl : public CDCServiceIf {
   void Shutdown() override;
 
   // Used in cdc_service-int-test.cc.
-  scoped_refptr<CDCTabletMetrics> GetCDCTabletMetrics(const ProducerTabletInfo& producer,
+  std::shared_ptr<CDCTabletMetrics> GetCDCTabletMetrics(
+      const ProducerTabletInfo& producer,
       std::shared_ptr<tablet::TabletPeer> tablet_peer = nullptr);
+
   std::shared_ptr<CDCServerMetrics> GetCDCServerMetrics() {
     return server_metrics_;
   }

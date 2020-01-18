@@ -56,7 +56,6 @@ using tablet::RaftGroupMetadataPtr;
 using tablet::TabletStatusListener;
 
 class RemoteBootstrapClientTest : public RemoteBootstrapTest {
-  typedef enterprise::RemoteBootstrapClient RemoteBootstrapClientClass;
  public:
   explicit RemoteBootstrapClientTest(TableType table_type = DEFAULT_TABLE_TYPE)
       : RemoteBootstrapTest(table_type) {}
@@ -81,9 +80,7 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
     messenger_ = ASSERT_RESULT(rpc::MessengerBuilder(CURRENT_TEST_NAME()).Build());
     proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
-    client_.reset(new RemoteBootstrapClientClass(GetTabletId(),
-                                                 fs_manager_.get(),
-                                                 fs_manager_->uuid()));
+    client_ = std::make_unique<RemoteBootstrapClient>(GetTabletId(), fs_manager_.get());
     ASSERT_OK(GetRaftConfigLeader(tablet_peer_->consensus()
         ->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED), &leader_));
 
@@ -97,7 +94,7 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
   gscoped_ptr<FsManager> fs_manager_;
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
-  gscoped_ptr<RemoteBootstrapClientClass> client_;
+  std::unique_ptr<RemoteBootstrapClient> client_;
   RaftGroupMetadataPtr meta_;
   RaftPeerPB leader_;
 };

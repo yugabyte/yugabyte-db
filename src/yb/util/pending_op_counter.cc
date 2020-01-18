@@ -20,7 +20,6 @@
 using strings::Substitute;
 
 namespace yb {
-namespace util {
 
 uint64_t PendingOperationCounter::Update(uint64_t delta) {
   const uint64_t result = counters_.fetch_add(delta, std::memory_order::memory_order_release);
@@ -65,5 +64,4 @@ Status PendingOperationCounter::WaitForOpsToFinish(const MonoDelta& timeout) {
   return Status::OK();
 }
 
-}  // namespace util
 }  // namespace yb

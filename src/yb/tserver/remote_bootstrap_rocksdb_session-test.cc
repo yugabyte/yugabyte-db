@@ -32,9 +32,8 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapTest {
 TEST_F(RemoteBootstrapRocksDBTest, TestCheckpointDirectory) {
   string checkpoint_dir;
   {
-    scoped_refptr<enterprise::RemoteBootstrapSession>
-        temp_session(new enterprise::RemoteBootstrapSession(
-            tablet_peer_, "TestTempSession", "FakeUUID", fs_manager(), nullptr /* nsessions */));
+    auto temp_session = make_scoped_refptr<RemoteBootstrapSession>(
+        tablet_peer_, "TestTempSession", "FakeUUID", nullptr /* nsessions */);
     CHECK_OK(temp_session->Init());
     checkpoint_dir = temp_session->checkpoint_dir_;
     ASSERT_FALSE(checkpoint_dir.empty());
@@ -76,11 +75,8 @@ TEST_F(RemoteBootstrapRocksDBTest, CheckSuperBlockHasRocksDBFields) {
 }
 
 TEST_F(RemoteBootstrapRocksDBTest, TestNonExistentRocksDBFile) {
-  string data;
-  int64_t total_data_length = 0;
-  RemoteBootstrapErrorPB::Code error_code;
-  auto status = session_->GetRocksDBFilePiece("SomeNonExistentFile", 0, 0, &data,
-                                              &total_data_length, &error_code);
+  GetDataPieceInfo info;
+  auto status = session_->GetRocksDBFilePiece("SomeNonExistentFile", &info);
   ASSERT_TRUE(status.IsNotFound());
 }
 
