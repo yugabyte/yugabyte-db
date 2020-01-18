@@ -621,7 +621,7 @@ class GoogleCloudAdmin():
 
     def create_instance(self, region, zone, cloud_subnet, instance_name, instance_type, server_type,
                         use_preemptible, can_ip_forward, machine_image, num_volumes, volume_type,
-                        volume_size, boot_disk_size_gb=None, ssh_keys=None):
+                        volume_size, boot_disk_size_gb=None, assign_public_ip=True, ssh_keys=None):
         # TODO: we need the network name during create instance and this way we can keep it in the
         # provider config and set it as an env var.
         network_name = os.environ.get("CUSTOM_GCE_NETWORK", YB_NETWORK_NAME)
@@ -637,6 +637,8 @@ class GoogleCloudAdmin():
             # Default: 10GB
             boot_disk_init_params["diskSizeGb"] = boot_disk_size_gb
         boot_disk_json["initializeParams"] = boot_disk_init_params
+
+        accessConfigs = [{"natIP": None}] if assign_public_ip else None
 
         body = {
             "canIpForward": can_ip_forward,
@@ -657,9 +659,7 @@ class GoogleCloudAdmin():
             },
             "name": instance_name,
             "networkInterfaces": [{
-                "accessConfigs": [{
-                    "natIP": None
-                }],
+                "accessConfigs": accessConfigs,
                 "network": "projects/{}/global/networks/{}".format(
                     self.project, network_name),
                 "subnetwork": "regions/{}/subnetworks/{}".format(
