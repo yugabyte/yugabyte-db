@@ -392,7 +392,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
     for (auto it = tablet_peers.begin(); it != tablet_peers.end(); it++) {
       shared_ptr<yb::tablet::TabletPeer> tablet_peer = *it;
       if (tablet_peer) {
-        shared_ptr<yb::tablet::TabletClass> tablet_class = tablet_peer->shared_tablet();
+        auto tablet_class = tablet_peer->shared_tablet();
         total_file_sizes += (tablet_class)
             ? tablet_class->GetCurrentVersionSstFilesSize() : 0;
         uncompressed_file_sizes += (tablet_class)

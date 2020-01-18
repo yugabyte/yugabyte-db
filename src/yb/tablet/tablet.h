@@ -161,6 +161,14 @@ struct DocDbOpIds {
 
 typedef std::function<Status(const TableInfo&)> AddTableListener;
 
+class TabletScopedIf : public RefCountedThreadSafe<TabletScopedIf> {
+ public:
+  virtual std::string Key() const = 0;
+ protected:
+  friend class RefCountedThreadSafe<TabletScopedIf>;
+  virtual ~TabletScopedIf() { }
+};
+
 class Tablet : public AbstractTablet, public TransactionIntentApplier {
  public:
   class CompactionFaultHooks;
@@ -316,11 +324,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS KeyValueBatchFromPgsqlWriteBatch(WriteOperation* operation);
 
-  //------------------------------------------------------------------------------------------------
-  // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
-  // YQL_TABLE_TYPE.
-  CHECKED_STATUS CreateCheckpoint(const std::string& dir);
-
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
   // The returned iterator is not initialized.
@@ -415,9 +418,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Returns oldest mutable memtable write hybrid time in RocksDB or HybridTime::kMax if memtable
   // is empty.
   Result<HybridTime> OldestMutableMemtableWriteHybridTime() const;
-
-  // Returns the location of the last rocksdb checkpoint. Used for tests only.
-  std::string TEST_LastRocksDBCheckpointDir() { return last_rocksdb_checkpoint_dir_; }
 
   // For non-kudu table type fills key-value batch in transaction state request and updates
   // request in state. Due to acquiring locks it can block the thread.
@@ -514,26 +514,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const docdb::ConsensusFrontier& value,
       rocksdb::FrontierModificationMode mode);
 
-  // Prepares the operation context for a snapshot operation.
-  CHECKED_STATUS PrepareForSnapshotOp(SnapshotOperationState* tx_state);
-
-  // Restore the RocksDB checkpoint from the provided directory.
-  // Only used when table_type_ == YQL_TABLE_TYPE.
-  CHECKED_STATUS RestoreCheckpoint(
-      const std::string& dir, const docdb::ConsensusFrontier& frontier);
-
-  // Create snapshot for this tablet.
-  virtual CHECKED_STATUS CreateSnapshot(SnapshotOperationState* tx_state);
-
-  // Delete snapshot for this tablet.
-  virtual CHECKED_STATUS DeleteSnapshot(SnapshotOperationState* tx_state);
-
-  // Restore snapshot for this tablet. In addition to backup/restore, this is used for initial
-  // syscatalog RocksDB creation without the initdb overhead.
-  CHECKED_STATUS RestoreSnapshot(SnapshotOperationState* tx_state);
-
-  static std::string SnapshotsDirName(const std::string& rocksdb_dir);
-
   // Get the isolation level of the given transaction from the metadata stored in the provisional
   // records RocksDB.
   Result<IsolationLevel> GetIsolationLevel(const TransactionMetadataPB& transaction) override;
@@ -554,12 +534,28 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   void SetCleanupPool(ThreadPool* thread_pool);
 
-  // ==============================================================================================
- protected:
+  TabletSnapshots& snapshots() {
+    return *snapshots_;
+  }
 
+  // Allows us to add tablet-specific information that will get deref'd when the tablet does.
+  void AddAdditionalMetadata(const std::string& key, std::shared_ptr<void> additional_metadata) {
+    std::lock_guard<std::mutex> lock(control_path_mutex_);
+    additional_metadata_.emplace(key, std::move(additional_metadata));
+  }
+
+  std::shared_ptr<void> GetAdditionalMetadata(const std::string& key) {
+    std::lock_guard<std::mutex> lock(control_path_mutex_);
+    auto val = additional_metadata_.find(key);
+    return (val != additional_metadata_.end()) ? val->second : nullptr;
+  }
+
+ private:
   friend class Iterator;
   friend class TabletPeerTest;
   friend class ScopedReadOperation;
+  friend class TabletComponent;
+
   FRIEND_TEST(TestTablet, TestGetLogRetentionSizeForIndex);
 
   CHECKED_STATUS StartDocWriteOperation(WriteOperation* operation);
@@ -588,7 +584,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       bool is_ysql_catalog_table) const;
 
   // Pause any new read/write operations and wait for all pending read/write operations to finish.
-  util::ScopedPendingOperationPause PauseReadWriteOperations();
+  ScopedPendingOperationPause PauseReadWriteOperations();
+
+  CHECKED_STATUS ResetRocksDBs(bool destroy = false);
 
   std::string LogPrefix() const;
 
@@ -611,9 +609,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   RaftGroupMetadataPtr metadata_;
   TableType table_type_;
-
-  // Used for tests only.
-  std::string last_rocksdb_checkpoint_dir_;
 
   // Lock protecting access to the 'components_' member (i.e the rowsets in the tablet)
   //
@@ -704,7 +699,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // RocksDB.
   //
   // This is marked mutable because read path member functions (which are const) are using this.
-  mutable yb::util::PendingOperationCounter pending_op_counter_;
+  mutable PendingOperationCounter pending_op_counter_;
 
   std::shared_ptr<yb::docdb::HistoryRetentionPolicy> retention_policy_;
 
@@ -725,10 +720,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   HybridTimeLeaseProvider ht_lease_provider_;
 
-  // (end of protected section)
-  // ==============================================================================================
-
- private:
   HybridTime DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;
 
@@ -760,6 +751,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   TransactionsEnabled txns_enabled_;
 
   std::unique_ptr<ThreadPoolToken> cleanup_intent_files_token_;
+
+  std::unique_ptr<TabletSnapshots> snapshots_;
+
+  mutable std::mutex control_path_mutex_;
+  std::unordered_map<std::string, std::shared_ptr<void>> additional_metadata_
+    GUARDED_BY(control_path_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

@@ -155,6 +155,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/tserver/remote_bootstrap_client.h"
+#include "yb/tserver/remote_bootstrap_snapshots.h"
 
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
@@ -300,7 +301,6 @@ using tablet::RaftGroupStatePB;
 using tablet::TabletStatusListener;
 using tablet::TabletStatusPB;
 using tserver::HandleReplacingStaleTablet;
-using tserver::enterprise::RemoteBootstrapClient;
 using tserver::TabletServerErrorPB;
 using master::MasterServiceProxy;
 using yb::pgwrapper::PgWrapper;
@@ -5166,10 +5166,8 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   LOG_WITH_PREFIX(INFO) << " Initiating remote bootstrap from peer " << bootstrap_peer_uuid
             << " (" << bootstrap_peer_addr.ToString() << ").";
 
-  gscoped_ptr<RemoteBootstrapClient> rb_client(
-      new RemoteBootstrapClient(tablet_id,
-                                master_->fs_manager(),
-                                master_->fs_manager()->uuid()));
+  auto rb_client = std::make_unique<tserver::RemoteBootstrapClient>(
+      tablet_id, master_->fs_manager());
 
   // Download and persist the remote superblock in TABLET_DATA_COPYING state.
   if (replacing_tablet) {

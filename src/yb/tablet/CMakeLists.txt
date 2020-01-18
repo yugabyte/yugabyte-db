@@ -30,13 +30,13 @@
 # under the License.
 #
 
-YB_INCLUDE_EXTENSIONS()
-
 set(TABLET_SRCS
   abstract_tablet.cc
+  tablet_snapshots.cc
   tablet.cc
   tablet_bootstrap.cc
   tablet_bootstrap_if.cc
+  tablet_component.cc
   tablet_metrics.cc
   tablet_peer_mm_ops.cc
   tablet_peer.cc

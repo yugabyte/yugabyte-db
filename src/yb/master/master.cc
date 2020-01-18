@@ -83,7 +83,6 @@ using std::vector;
 using yb::consensus::RaftPeerPB;
 using yb::rpc::ServiceIf;
 using yb::tserver::ConsensusServiceImpl;
-using yb::tserver::enterprise::RemoteBootstrapServiceImpl;
 using strings::Substitute;
 
 DEFINE_int32(master_tserver_svc_num_threads, 10,
@@ -205,7 +204,8 @@ Status Master::RegisterServices() {
                                                      rpc::ServicePriority::kHigh));
 
   std::unique_ptr<ServiceIf> remote_bootstrap_service(
-      new RemoteBootstrapServiceImpl(fs_manager_.get(), catalog_manager_.get(), metric_entity()));
+      new tserver::RemoteBootstrapServiceImpl(
+          fs_manager_.get(), catalog_manager_.get(), metric_entity()));
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_remote_bootstrap_svc_queue_length,
                                                      std::move(remote_bootstrap_service)));
   return Status::OK();

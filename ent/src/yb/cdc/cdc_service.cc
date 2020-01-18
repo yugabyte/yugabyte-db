@@ -375,7 +375,7 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
   }
 
   // Update relevant GetChanges metrics before handing off the Response.
-  scoped_refptr<CDCTabletMetrics> tablet_metric = GetCDCTabletMetrics(producer_tablet, tablet_peer);
+  auto tablet_metric = GetCDCTabletMetrics(producer_tablet, tablet_peer);
   if (tablet_metric) {
     auto lid = resp->checkpoint().op_id();
     tablet_metric->last_read_opid_term->set_value(lid.term());
@@ -858,9 +858,9 @@ OpId CDCServiceImpl::GetMinSentCheckpointForTablet(const std::string& tablet_id)
   return min_op_id;
 }
 
-scoped_refptr<CDCTabletMetrics>
-    CDCServiceImpl::GetCDCTabletMetrics(const ProducerTabletInfo& producer,
-        std::shared_ptr<tablet::TabletPeer> tablet_peer) {
+std::shared_ptr<CDCTabletMetrics> CDCServiceImpl::GetCDCTabletMetrics(
+    const ProducerTabletInfo& producer,
+    std::shared_ptr<tablet::TabletPeer> tablet_peer) {
   // 'nullptr' not recommended: using for tests.
   if (tablet_peer == nullptr) {
     auto status = tablet_manager_->GetTabletPeer(producer.tablet_id, &tablet_peer);
@@ -871,9 +871,7 @@ scoped_refptr<CDCTabletMetrics>
   if (tablet == nullptr) return nullptr;
 
   std::string key = "CDCMetrics::" + producer.stream_id;
-  scoped_refptr<tablet::enterprise::TabletScopedIf> metrics_raw =
-      tablet->get_additional_metadata(key);
-  scoped_refptr<CDCTabletMetrics> ret;
+  std::shared_ptr<void> metrics_raw = tablet->GetAdditionalMetadata(key);
   if (metrics_raw == nullptr) {
     //  Create a new METRIC_ENTITY_cdc here.
     MetricEntity::AttributeMap attrs;
@@ -881,13 +879,12 @@ scoped_refptr<CDCTabletMetrics>
     attrs["stream_id"] = producer.stream_id;
     auto entity = METRIC_ENTITY_cdc.Instantiate(metric_registry_,
         std::to_string(ProducerTabletInfo::Hash {}(producer)), attrs);
-    ret = new CDCTabletMetrics(entity, key);
+    metrics_raw = std::make_shared<CDCTabletMetrics>(entity);
     // Adding the new metric to the tablet so it maintains the same lifetime scope.
-    tablet->add_additional_metadata(ret);
-  } else {
-    ret = dynamic_cast<CDCTabletMetrics*>(metrics_raw.get());
+    tablet->AddAdditionalMetadata(key, metrics_raw);
   }
-  return ret;
+
+  return std::static_pointer_cast<CDCTabletMetrics>(metrics_raw);
 }
 
 OpId CDCServiceImpl::GetMinAppliedCheckpointForTablet(

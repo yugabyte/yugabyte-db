@@ -535,7 +535,7 @@ void TabletServerPathHandlers::HandleTabletSVGPage(const Webserver::WebRequest& 
   string id;
   std::shared_ptr<TabletPeer> peer;
   if (!LoadTablet(tserver_, req, &id, &peer, output)) return;
-  shared_ptr<Tablet> tablet = peer->shared_tablet();
+  auto tablet = peer->shared_tablet();
   if (!tablet) {
     *output << "Tablet " << EscapeForHtmlToString(id) << " not running";
     return;

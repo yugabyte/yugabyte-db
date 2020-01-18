@@ -21,10 +21,6 @@
 namespace yb {
 namespace tablet {
 
-namespace enterprise {
-class Tablet;
-}
-
 class AbstractTablet;
 
 class OperationDriver;
@@ -39,12 +35,12 @@ typedef std::shared_ptr<Tablet> TabletPtr;
 class TabletPeer;
 typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
 
+class SnapshotOperationState;
+class TabletSnapshots;
 class TabletStatusPB;
 class TabletStatusListener;
 class TransactionParticipant;
 class WriteOperationState;
-
-using TabletClass = enterprise::Tablet;
 
 YB_STRONGLY_TYPED_BOOL(RequireLease);
 YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);

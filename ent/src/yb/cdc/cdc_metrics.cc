@@ -68,8 +68,7 @@ namespace cdc {
 
 #define MINIT(x) x(METRIC_##x.Instantiate(entity))
 #define GINIT(x) x(METRIC_##x.Instantiate(entity, 0))
-CDCTabletMetrics::CDCTabletMetrics(const scoped_refptr<MetricEntity>& entity,
-    const std::string& key)
+CDCTabletMetrics::CDCTabletMetrics(const scoped_refptr<MetricEntity>& entity)
     : MINIT(rpc_payload_bytes_responded),
       MINIT(rpc_heartbeats_responded),
       GINIT(last_read_opid_term),
@@ -77,8 +76,7 @@ CDCTabletMetrics::CDCTabletMetrics(const scoped_refptr<MetricEntity>& entity,
       GINIT(last_read_hybridtime),
       GINIT(last_read_physicaltime),
       GINIT(last_readable_opid_index),
-      entity_(entity),
-      key_(key) { }
+      entity_(entity) {}
 
 CDCServerMetrics::CDCServerMetrics(const scoped_refptr<MetricEntity>& entity)
     : MINIT(cdc_rpc_proxy_count),

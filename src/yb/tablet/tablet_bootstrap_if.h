@@ -140,7 +140,7 @@ struct BootstrapTabletData {
 // TSTabletManager.
 CHECKED_STATUS BootstrapTablet(
     const BootstrapTabletData& data,
-    std::shared_ptr<TabletClass>* rebuilt_tablet,
+    TabletPtr* rebuilt_tablet,
     scoped_refptr<log::Log>* rebuilt_log,
     consensus::ConsensusBootstrapInfo* consensus_info);
 

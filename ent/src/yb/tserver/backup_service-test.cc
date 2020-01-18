@@ -16,6 +16,7 @@
 #include "yb/rpc/messenger.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_snapshots.h"
 
 #include "yb/tserver/backup.proxy.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -30,7 +31,7 @@ using std::string;
 
 using yb::rpc::RpcController;
 using yb::tablet::TabletPeer;
-using yb::tablet::enterprise::Tablet;
+using yb::tablet::Tablet;
 
 class BackupServiceTest : public TabletServerTestBase {
  public:
@@ -57,7 +58,7 @@ TEST_F(BackupServiceTest, TestCreateTabletSnapshot) {
 
   const string snapshot_id = "00000000000000000000000000000000";
   const string rocksdb_dir = tablet->tablet_metadata()->rocksdb_dir();
-  const string top_snapshots_dir = Tablet::SnapshotsDirName(rocksdb_dir);
+  const string top_snapshots_dir = tablet::TabletSnapshots::SnapshotsDirName(rocksdb_dir);
   const string snapshot_dir = JoinPathSegments(top_snapshots_dir, snapshot_id);
 
   TabletSnapshotOpRequestPB req;

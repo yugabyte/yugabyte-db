@@ -50,12 +50,9 @@ class MetricEntity;
 namespace cdc {
 
 // Container for all metrics specific to a single tablet.
-class CDCTabletMetrics : public yb::tablet::enterprise::TabletScopedIf {
+class CDCTabletMetrics {
  public:
-  explicit CDCTabletMetrics(const scoped_refptr<MetricEntity>& metric_entity_cdc,
-      const std::string& key);
-
-  virtual std::string Key() const { return key_; }
+  explicit CDCTabletMetrics(const scoped_refptr<MetricEntity>& metric_entity_cdc);
 
   scoped_refptr<Histogram> rpc_payload_bytes_responded;
   scoped_refptr<Counter> rpc_heartbeats_responded;
@@ -73,7 +70,6 @@ class CDCTabletMetrics : public yb::tablet::enterprise::TabletScopedIf {
 
  private:
   scoped_refptr<MetricEntity> entity_;
-  std::string key_;
 };
 
 class CDCServerMetrics {
