@@ -104,6 +104,9 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
 
     case PgsqlWriteRequestPB::PGSQL_UPSERT:
       return ApplyInsert(data, IsUpsert::kTrue);
+
+    case PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED:
+      return ApplyTruncateColocated(data);
   }
   return Status::OK();
 }
@@ -270,6 +273,13 @@ Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
   RETURN_NOT_OK(PopulateResultSet(table_row));
 
   response_->set_rows_affected_count(1);
+  response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
+  return Status::OK();
+}
+
+Status PgsqlWriteOperation::ApplyTruncateColocated(const DocOperationApplyData& data) {
+  RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(DocPath(
+      encoded_doc_key_.as_slice()), data.read_time, data.deadline));
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();
 }

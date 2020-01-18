@@ -262,13 +262,13 @@ class PgApiImpl {
   //   Case 1: INSERT INTO tab(x) VALUES(x_expr)
   //   - BindColumn() can be used for BOTH primary-key and regular columns.
   //   - This bind-column function is used to bind "x" with "x_expr", and "x_expr" that can contain
-  //     bind-variables (placeholders) and contants whose values can be updated for each execution
+  //     bind-variables (placeholders) and constants whose values can be updated for each execution
   //     of the same allocated statement.
   //
   //   Case 2: SELECT / UPDATE / DELETE <WHERE key = "key_expr">
   //   - BindColumn() can only be used for primary-key columns.
   //   - This bind-column function is used to bind the primary column "key" with "key_expr" that can
-  //     contain bind-variables (placeholders) and contants whose values can be updated for each
+  //     contain bind-variables (placeholders) and constants whose values can be updated for each
   //     execution of the same allocated statement.
   CHECKED_STATUS DmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
   CHECKED_STATUS DmlBindColumnCondEq(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
@@ -277,6 +277,9 @@ class PgApiImpl {
   CHECKED_STATUS DmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
   CHECKED_STATUS DmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
       YBCPgExpr *attr_value);
+
+  // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
+  CHECKED_STATUS DmlBindTable(YBCPgStatement handle);
 
   // API for SET clause.
   CHECKED_STATUS DmlAssignColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
@@ -335,6 +338,14 @@ class PgApiImpl {
                            PgStatement **handle);
 
   CHECKED_STATUS ExecDelete(PgStatement *handle);
+
+  //------------------------------------------------------------------------------------------------
+  // Colocated Truncate.
+  CHECKED_STATUS NewTruncateColocated(const PgObjectId& table_id,
+                                      bool is_single_row_txn,
+                                      PgStatement **handle);
+
+  CHECKED_STATUS ExecTruncateColocated(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
   // Select.

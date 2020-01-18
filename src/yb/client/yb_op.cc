@@ -509,8 +509,8 @@ YBPgsqlWriteOp *YBPgsqlWriteOp::NewDelete(const std::shared_ptr<YBTable>& table)
   return NewYBPgsqlWriteOp(table, PgsqlWriteRequestPB::PGSQL_DELETE);
 }
 
-YBPgsqlWriteOp *YBPgsqlWriteOp::NewUpsert(const std::shared_ptr<YBTable>& table) {
-  return NewYBPgsqlWriteOp(table, PgsqlWriteRequestPB::PGSQL_UPSERT);
+YBPgsqlWriteOp *YBPgsqlWriteOp::NewTruncateColocated(const std::shared_ptr<YBTable>& table) {
+  return NewYBPgsqlWriteOp(table, PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED);
 }
 
 std::string YBPgsqlWriteOp::ToString() const {

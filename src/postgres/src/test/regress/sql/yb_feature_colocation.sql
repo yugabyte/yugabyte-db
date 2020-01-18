@@ -5,86 +5,141 @@
 CREATE DATABASE colocation_test colocated = true;
 \c colocation_test
 
+-- CREATE TABLE
+
 -- TODO: This test should be changed once we complete issue #3034
-CREATE TABLE foo1 (a INT); -- fail
-CREATE TABLE foo1 (a INT, PRIMARY KEY (a ASC));
-CREATE TABLE foo2 (a INT, b INT, PRIMARY KEY (a ASC));
+CREATE TABLE tab_nonkey (a INT); -- fail
+CREATE TABLE tab_range (a INT, PRIMARY KEY (a ASC));
+CREATE TABLE tab_range_nonkey (a INT, b INT, PRIMARY KEY (a ASC));
 -- opt out of using colocated tablet
-CREATE TABLE foo3 (a INT) WITH (colocated = false);
+CREATE TABLE tab_nonkey_noco (a INT) WITH (colocated = false);
 -- multi column primary key table
-CREATE TABLE foo4 (a INT, b INT, PRIMARY KEY (a ASC, b DESC));
-CREATE TABLE foo5 (a INT, PRIMARY KEY (a ASC)) WITH (colocated = true);
+CREATE TABLE tab_range_range (a INT, b INT, PRIMARY KEY (a ASC, b DESC));
+CREATE TABLE tab_range_colo (a INT, PRIMARY KEY (a ASC)) WITH (colocated = true);
 
-INSERT INTO foo1 (a) VALUES (0), (1), (2);
-INSERT INTO foo1 (a, b) VALUES (0, '0'); -- fail
-INSERT INTO foo2 (a, b) VALUES (0, '0'), (1, '1');
-INSERT INTO foo3 (a) VALUES (0), (1), (2), (3);
-INSERT INTO foo4 (a, b) VALUES (0, 0), (0, 1), (1, 0), (1, 1);
-INSERT INTO foo5 (a) VALUES (0), (1), (2), (3);
+INSERT INTO tab_range (a) VALUES (0), (1), (2);
+INSERT INTO tab_range (a, b) VALUES (0, '0'); -- fail
+INSERT INTO tab_range_nonkey (a, b) VALUES (0, '0'), (1, '1');
+INSERT INTO tab_nonkey_noco (a) VALUES (0), (1), (2), (3);
+INSERT INTO tab_range_range (a, b) VALUES (0, 0), (0, 1), (1, 0), (1, 1);
+INSERT INTO tab_range_colo (a) VALUES (0), (1), (2), (3);
 
-SELECT * FROM foo1;
-SELECT * FROM foo1 WHERE a = 2;
-SELECT * FROM foo1 WHERE n = '0'; -- fail
-SELECT * FROM foo2;
-SELECT * FROM foo3 ORDER BY a ASC;
-SELECT * FROM foo4;
-SELECT * FROM foo5;
+SELECT * FROM tab_range;
+SELECT * FROM tab_range WHERE a = 2;
+SELECT * FROM tab_range WHERE n = '0'; -- fail
+SELECT * FROM tab_range_nonkey;
+SELECT * FROM tab_nonkey_noco ORDER BY a ASC;
+SELECT * FROM tab_range_range;
+SELECT * FROM tab_range_colo;
+
+-- CREATE INDEX
 
 -- table with index
-CREATE TABLE bar1 (a INT, b INT, PRIMARY KEY (a ASC));
-CREATE INDEX ON bar1 (a);
-INSERT INTO bar1 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
-EXPLAIN SELECT * FROM bar1 WHERE a = 1;
-SELECT * FROM bar1 WHERE a = 1;
-UPDATE bar1 SET b = b + 1 WHERE a > 3;
-SELECT * FROM bar1;
-DELETE FROM bar1 WHERE a > 3;
-SELECT * FROM bar1;
+CREATE TABLE tab_range_nonkey2 (a INT, b INT, PRIMARY KEY (a ASC));
+CREATE INDEX idx_range ON tab_range_nonkey2 (a);
+INSERT INTO tab_range_nonkey2 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
+EXPLAIN SELECT * FROM tab_range_nonkey2 WHERE a = 1;
+SELECT * FROM tab_range_nonkey2 WHERE a = 1;
+UPDATE tab_range_nonkey2 SET b = b + 1 WHERE a > 3;
+SELECT * FROM tab_range_nonkey2;
+DELETE FROM tab_range_nonkey2 WHERE a > 3;
+SELECT * FROM tab_range_nonkey2;
 
 -- colocated table with non-colocated index
-CREATE TABLE bar2 (a INT, b INT, PRIMARY KEY (a ASC));
-CREATE INDEX ON bar2 (a) WITH (colocated = true);
-INSERT INTO bar2 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
-EXPLAIN SELECT * FROM bar2 WHERE a = 1;
-SELECT * FROM bar2 WHERE a = 1;
-UPDATE bar2 SET b = b + 1 WHERE a > 3;
-SELECT * FROM bar2;
-DELETE FROM bar2 WHERE a > 3;
-SELECT * FROM bar2;
+CREATE TABLE tab_range_nonkey3 (a INT, b INT, PRIMARY KEY (a ASC));
+CREATE INDEX idx_range_colo ON tab_range_nonkey3 (a) WITH (colocated = true);
+INSERT INTO tab_range_nonkey3 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
+EXPLAIN SELECT * FROM tab_range_nonkey3 WHERE a = 1;
+SELECT * FROM tab_range_nonkey3 WHERE a = 1;
+UPDATE tab_range_nonkey3 SET b = b + 1 WHERE a > 3;
+SELECT * FROM tab_range_nonkey3;
+DELETE FROM tab_range_nonkey3 WHERE a > 3;
+SELECT * FROM tab_range_nonkey3;
 
 -- colocated table with colocated index
-CREATE TABLE bar3 (a INT, b INT, PRIMARY KEY (a ASC));
-CREATE INDEX ON bar3 (a) WITH (colocated = false);
-INSERT INTO bar3 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
-EXPLAIN SELECT * FROM bar3 WHERE a = 1;
-SELECT * FROM bar3 WHERE a = 1;
-UPDATE bar3 SET b = b + 1 WHERE a > 3;
-SELECT * FROM bar3;
-DELETE FROM bar3 WHERE a > 3;
-SELECT * FROM bar3;
+CREATE TABLE tab_range_nonkey4 (a INT, b INT, PRIMARY KEY (a ASC));
+CREATE INDEX idx_range_noco ON tab_range_nonkey4 (a) WITH (colocated = false);
+INSERT INTO tab_range_nonkey4 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
+EXPLAIN SELECT * FROM tab_range_nonkey4 WHERE a = 1;
+SELECT * FROM tab_range_nonkey4 WHERE a = 1;
+UPDATE tab_range_nonkey4 SET b = b + 1 WHERE a > 3;
+SELECT * FROM tab_range_nonkey4;
+DELETE FROM tab_range_nonkey4 WHERE a > 3;
+SELECT * FROM tab_range_nonkey4;
 
 -- non-colocated table with index
-CREATE TABLE bar4 (a INT, b INT, PRIMARY KEY (a ASC)) WITH (colocated = false);
-CREATE INDEX ON bar4 (a);
-INSERT INTO bar4 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
-EXPLAIN SELECT * FROM bar4 WHERE a = 1;
-SELECT * FROM bar4 WHERE a = 1;
-UPDATE bar4 SET b = b + 1 WHERE a > 3;
-SELECT * FROM bar4;
-DELETE FROM bar4 WHERE a > 3;
-SELECT * FROM bar4;
+CREATE TABLE tab_range_nonkey_noco (a INT, b INT, PRIMARY KEY (a ASC)) WITH (colocated = false);
+CREATE INDEX idx_range2 ON tab_range_nonkey_noco (a);
+INSERT INTO tab_range_nonkey_noco (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
+EXPLAIN SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
+SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
+UPDATE tab_range_nonkey_noco SET b = b + 1 WHERE a > 3;
+SELECT * FROM tab_range_nonkey_noco;
+DELETE FROM tab_range_nonkey_noco WHERE a > 3;
+SELECT * FROM tab_range_nonkey_noco;
 
--- drop table
-DROP TABLE foo1;
-SELECT * FROM foo1;
-DROP TABLE foo3;
-SELECT * FROM foo3;
-DROP TABLE bar1;
-SELECT * FROM bar1;
+-- more tables and indexes
+CREATE TABLE tab_range_nonkey_noco2 (a INT, b INT, PRIMARY KEY (a ASC)) WITH (colocated = false);
+CREATE INDEX idx_range3 ON tab_range_nonkey_noco2 (a);
+INSERT INTO tab_range_nonkey_noco2 (a, b) VALUES (0, 0);
+CREATE TABLE tab_range_nonkey_noco3 (a INT, b INT, PRIMARY KEY (a ASC)) WITH (colocated = false);
+CREATE INDEX idx_range4 ON tab_range_nonkey_noco3 (a);
+CREATE TABLE tab_range_nonkey5 (a INT, b INT, PRIMARY KEY (a ASC));
+CREATE INDEX idx_range5 ON tab_range_nonkey5 (a);
 
--- drop index
-DROP INDEX bar4_a_idx;
-EXPLAIN SELECT * FROM bar4 WHERE a = 1;
+\dt
+\di
+
+-- TRUNCATE TABLE
+
+-- truncate colocated table with default index
+TRUNCATE TABLE tab_range;
+-- TODO(jason): fix output of select after issue #3359
+SELECT * FROM tab_range;
+
+-- truncate non-colocated table without index
+TRUNCATE TABLE tab_nonkey_noco;
+SELECT * FROM tab_nonkey_noco;
+
+-- truncate colocated table with explicit index
+TRUNCATE TABLE tab_range_nonkey2;
+-- TODO(jason): fix output of select after issue #3359
+SELECT * FROM tab_range_nonkey2;
+
+-- truncate non-colocated table with explicit index
+TRUNCATE TABLE tab_range_nonkey_noco2;
+SELECT * FROM tab_range_nonkey_noco2;
+
+\dt
+\di
+
+-- DROP TABLE
+
+-- drop colocated table with default index
+DROP TABLE tab_range;
+SELECT * FROM tab_range;
+
+-- drop non-colocated table without index
+DROP TABLE tab_nonkey_noco;
+SELECT * FROM tab_nonkey_noco;
+
+--- drop colocated table with explicit index
+DROP TABLE tab_range_nonkey2;
+SELECT * FROM tab_range_nonkey2;
+
+-- drop non-colocated table with explicit index
+DROP TABLE tab_range_nonkey_noco2;
+SELECT * FROM tab_range_nonkey_noco2;
+
+-- DROP INDEX
+
+-- drop index on non-colocated table
+DROP INDEX idx_range2;
+EXPLAIN SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
+
+-- drop index on colocated table
+DROP INDEX idx_range5;
+EXPLAIN SELECT * FROM tab_range_nonkey5 WHERE a = 1;
 
 \dt
 \di
