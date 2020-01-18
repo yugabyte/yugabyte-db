@@ -22,6 +22,7 @@
 #include "yb/yql/pggate/pg_insert.h"
 #include "yb/yql/pggate/pg_update.h"
 #include "yb/yql/pggate/pg_delete.h"
+#include "yb/yql/pggate/pg_truncate_colocated.h"
 #include "yb/yql/pggate/pg_select.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -652,6 +653,10 @@ Status PgApiImpl::DmlBindIndexColumn(PgStatement *handle, int attr_num, PgExpr *
   return down_cast<PgSelect*>(handle)->BindIndexColumn(attr_num, attr_value);
 }
 
+Status PgApiImpl::DmlBindTable(PgStatement *handle) {
+  return down_cast<PgDml*>(handle)->BindTable();
+}
+
 CHECKED_STATUS PgApiImpl::DmlAssignColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {
   return down_cast<PgDml*>(handle)->AssignColumn(attr_num, attr_value);
 }
@@ -682,6 +687,7 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_cou
     case StmtOp::STMT_INSERT:
     case StmtOp::STMT_UPDATE:
     case StmtOp::STMT_DELETE:
+    case StmtOp::STMT_TRUNCATE:
       {
         Status status = down_cast<PgDmlWrite *>(handle)->Exec();
         if (rows_affected_count) {
@@ -753,6 +759,26 @@ Status PgApiImpl::ExecDelete(PgStatement *handle) {
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   return down_cast<PgDelete*>(handle)->Exec();
+}
+
+// Colocated Truncate ------------------------------------------------------------------------------
+
+Status PgApiImpl::NewTruncateColocated(const PgObjectId& table_id,
+                                       const bool is_single_row_txn,
+                                       PgStatement **handle) {
+  *handle = nullptr;
+  auto stmt = make_scoped_refptr<PgTruncateColocated>(pg_session_, table_id, is_single_row_txn);
+  RETURN_NOT_OK(stmt->Prepare());
+  *handle = stmt.detach();
+  return Status::OK();
+}
+
+Status PgApiImpl::ExecTruncateColocated(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_TRUNCATE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  return down_cast<PgTruncateColocated*>(handle)->Exec();
 }
 
 // Select ------------------------------------------------------------------------------------------

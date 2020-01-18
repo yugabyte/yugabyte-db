@@ -198,6 +198,13 @@ Status PgDml::UpdateBindPBs() {
 
 //--------------------------------------------------------------------------------------------------
 
+Status PgDml::BindTable() {
+  bind_table_ = true;
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
 Status PgDml::AssignColumn(int attr_num, PgExpr *attr_value) {
   // Find column.
   PgColumn *col = nullptr;

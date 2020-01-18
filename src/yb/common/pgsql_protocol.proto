@@ -93,7 +93,7 @@ message PgsqlRSRowDescPB {
 }
 
 //--------------------------------------------------------------------------------------------------
-// Data Writting Instructions - INSERT, UPDATE, and DELETE.
+// Data Writing Instructions - INSERT, UPDATE, DELETE, colocated TRUNCATE.
 //--------------------------------------------------------------------------------------------------
 
 // Instruction.
@@ -104,6 +104,7 @@ message PgsqlWriteRequestPB {
     PGSQL_UPDATE = 2;
     PGSQL_DELETE = 3;
     PGSQL_UPSERT = 4;
+    PGSQL_TRUNCATE_COLOCATED = 5;
   }
 
   // Client info

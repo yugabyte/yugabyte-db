@@ -535,6 +535,15 @@ YBCDropTable(Oid relationId)
 {
 	YBCPgStatement handle;
 
+	/* Create table-level tombstone */
+	/* TODO(jason): do this only for colocated tables (issue #3387) */
+	HandleYBStatus(YBCPgNewTruncateColocated(MyDatabaseId, relationId, false, &handle));
+	HandleYBStmtStatus(YBCPgDmlBindTable(handle), handle);
+	int rows_affected_count = 0;
+	HandleYBStmtStatus(YBCPgDmlExecWriteOp(handle, &rows_affected_count),
+					   handle);
+	HandleYBStatus(YBCPgDeleteStatement(handle));
+	/* Drop the table */
 	HandleYBStatus(YBCPgNewDropTable(MyDatabaseId,
 									 relationId,
 									 false,    /* if_exists */
@@ -549,8 +558,17 @@ YBCTruncateTable(Relation rel) {
 	Oid relationId = RelationGetRelid(rel);
 
 	/* Truncate the base table */
+	/* TODO(jason): do this only for non-colocated tables (issue #3387) */
 	HandleYBStatus(YBCPgNewTruncateTable(MyDatabaseId, relationId, &handle));
 	HandleYBStmtStatus(YBCPgExecTruncateTable(handle), handle);
+	HandleYBStatus(YBCPgDeleteStatement(handle));
+	/* Create table-level tombstone */
+	/* TODO(jason): do this only for colocated tables (issue #3387) */
+	HandleYBStatus(YBCPgNewTruncateColocated(MyDatabaseId, relationId, false, &handle));
+	HandleYBStmtStatus(YBCPgDmlBindTable(handle), handle);
+	int rows_affected_count = 0;
+	HandleYBStmtStatus(YBCPgDmlExecWriteOp(handle, &rows_affected_count),
+					   handle);
 	HandleYBStatus(YBCPgDeleteStatement(handle));
 
 	if (!rel->rd_rel->relhasindex)
@@ -567,8 +585,17 @@ YBCTruncateTable(Relation rel) {
 		if (indexId == rel->rd_pkindex)
 			continue;
 
+		/* Truncate the index table */
 		HandleYBStatus(YBCPgNewTruncateTable(MyDatabaseId, indexId, &handle));
 		HandleYBStmtStatus(YBCPgExecTruncateTable(handle), handle);
+		HandleYBStatus(YBCPgDeleteStatement(handle));
+		/* Create table-level tombstone */
+		/* TODO(jason): do this only for colocated tables (issue #3387) */
+		HandleYBStatus(YBCPgNewTruncateColocated(MyDatabaseId, relationId, false, &handle));
+		HandleYBStmtStatus(YBCPgDmlBindTable(handle), handle);
+		int rows_affected_count = 0;
+		HandleYBStmtStatus(YBCPgDmlExecWriteOp(handle, &rows_affected_count),
+						   handle);
 		HandleYBStatus(YBCPgDeleteStatement(handle));
 	}
 
@@ -832,6 +859,15 @@ YBCDropIndex(Oid relationId)
 {
 	YBCPgStatement handle;
 
+	/* Create table-level tombstone */
+	/* TODO(jason): do this only for colocated tables (issue #3387) */
+	HandleYBStatus(YBCPgNewTruncateColocated(MyDatabaseId, relationId, false, &handle));
+	HandleYBStmtStatus(YBCPgDmlBindTable(handle), handle);
+	int rows_affected_count = 0;
+	HandleYBStmtStatus(YBCPgDmlExecWriteOp(handle, &rows_affected_count),
+					   handle);
+	HandleYBStatus(YBCPgDeleteStatement(handle));
+	/* Drop the index table */
 	HandleYBStatus(YBCPgNewDropIndex(MyDatabaseId,
 									 relationId,
 									 false,	   /* if_exists */

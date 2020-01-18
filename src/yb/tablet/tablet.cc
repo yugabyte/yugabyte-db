@@ -1388,6 +1388,14 @@ Status Tablet::KeyValueBatchFromPgsqlWriteBatch(WriteOperation* operation) {
   for (size_t i = 0; i < pgsql_write_batch->size(); i++) {
     PgsqlWriteRequestPB* req = pgsql_write_batch->Mutable(i);
     PgsqlResponsePB* resp = operation->response()->add_pgsql_response_batch();
+    // Don't create a table-level tombstone for non-colocated tables.
+    // TODO(jason): prevent this code path by skipping earlier, up to
+    // postgres/src/backend/commands/ybccmds.c (issue #3387).
+    if ((req->stmt_type() == PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED) &&
+        !metadata_->colocated()) {
+      resp->set_skipped(true);
+      continue;
+    }
     const tablet::TableInfo* table_info = VERIFY_RESULT(metadata_->GetTableInfo(req->table_id()));
     if (table_info->schema_version != req->schema_version()) {
       resp->set_status(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH);

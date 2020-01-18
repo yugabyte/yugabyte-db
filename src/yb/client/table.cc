@@ -288,6 +288,10 @@ YBPgsqlWriteOp* YBTable::NewPgsqlDelete() {
   return YBPgsqlWriteOp::NewDelete(shared_from_this());
 }
 
+YBPgsqlWriteOp* YBTable::NewPgsqlTruncateColocated() {
+  return YBPgsqlWriteOp::NewTruncateColocated(shared_from_this());
+}
+
 YBPgsqlReadOp* YBTable::NewPgsqlSelect() {
   return YBPgsqlReadOp::NewSelect(shared_from_this());
 }

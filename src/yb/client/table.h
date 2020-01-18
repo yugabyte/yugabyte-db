@@ -112,6 +112,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   YBPgsqlWriteOp* NewPgsqlInsert();
   YBPgsqlWriteOp* NewPgsqlUpdate();
   YBPgsqlWriteOp* NewPgsqlDelete();
+  YBPgsqlWriteOp* NewPgsqlTruncateColocated();
 
   YBPgsqlReadOp* NewPgsqlRead();
   YBPgsqlReadOp* NewPgsqlSelect();

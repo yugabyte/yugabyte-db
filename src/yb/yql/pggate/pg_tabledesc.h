@@ -56,6 +56,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   client::YBPgsqlWriteOp* NewPgsqlInsert();
   client::YBPgsqlWriteOp* NewPgsqlUpdate();
   client::YBPgsqlWriteOp* NewPgsqlDelete();
+  client::YBPgsqlWriteOp* NewPgsqlTruncateColocated();
 
   // Find the column given the postgres attr number.
   Result<PgColumn *> FindColumn(int attr_num);
