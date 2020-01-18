@@ -19,41 +19,47 @@
 
 #include "nodes/cypher_nodes.h"
 #include "parser/cypher_expr.h"
+#include "parser/cypher_parse_node.h"
 #include "utils/agtype.h"
 
-static Node *transform_cypher_expr_recurse(ParseState *pstate, Node *expr);
-static Node *transform_A_Const(ParseState *pstate, A_Const *ac);
-static Node *transform_AEXPR_OP(ParseState *pstate, A_Expr *a);
-static Node *transform_BoolExpr(ParseState *pstate, BoolExpr *expr);
-static Node *transform_cypher_bool_const(ParseState *pstate,
+static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
+                                           Node *expr);
+static Node *transform_A_Const(cypher_parsestate *cpstate, A_Const *ac);
+static Node *transform_AEXPR_OP(cypher_parsestate *cpstate, A_Expr *a);
+static Node *transform_BoolExpr(cypher_parsestate *cpstate, BoolExpr *expr);
+static Node *transform_cypher_bool_const(cypher_parsestate *cpstate,
                                          cypher_bool_const *bc);
-static Node *transform_cypher_param(ParseState *pstate, cypher_param *cp);
-static Node *transform_cypher_map(ParseState *pstate, cypher_map *cm);
-static Node *transform_cypher_list(ParseState *pstate, cypher_list *cl);
-static Node *transform_cypher_indirection(ParseState *pstate,
-                                          A_Indirection *ind);
-static Node *transform_cypher_string_match(ParseState *pstate,
+static Node *transform_cypher_param(cypher_parsestate *cpstate,
+                                    cypher_param *cp);
+static Node *transform_cypher_map(cypher_parsestate *cpstate, cypher_map *cm);
+static Node *transform_cypher_list(cypher_parsestate *cpstate,
+                                   cypher_list *cl);
+static Node *transform_cypher_indirection(cypher_parsestate *cpstate,
+                                          A_Indirection *a_ind);
+static Node *transform_cypher_string_match(cypher_parsestate *cpstate,
                                            cypher_string_match *csm_node);
 
-Node *transform_cypher_expr(ParseState *pstate, Node *expr,
+Node *transform_cypher_expr(cypher_parsestate *cpstate, Node *expr,
                             ParseExprKind expr_kind)
 {
-    Node *result;
+    ParseState *pstate = (ParseState *)cpstate;
     ParseExprKind old_expr_kind;
+    Node *result;
 
     // save and restore identity of expression type we're parsing
     Assert(expr_kind != EXPR_KIND_NONE);
     old_expr_kind = pstate->p_expr_kind;
     pstate->p_expr_kind = expr_kind;
 
-    result = transform_cypher_expr_recurse(pstate, expr);
+    result = transform_cypher_expr_recurse(cpstate, expr);
 
     pstate->p_expr_kind = old_expr_kind;
 
     return result;
 }
 
-static Node *transform_cypher_expr_recurse(ParseState *pstate, Node *expr)
+static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
+                                           Node *expr)
 {
     if (!expr)
         return NULL;
@@ -64,7 +70,7 @@ static Node *transform_cypher_expr_recurse(ParseState *pstate, Node *expr)
     switch (nodeTag(expr))
     {
     case T_A_Const:
-        return transform_A_Const(pstate, (A_Const *)expr);
+        return transform_A_Const(cpstate, (A_Const *)expr);
     case T_A_Expr:
     {
         A_Expr *a = (A_Expr *)expr;
@@ -72,45 +78,46 @@ static Node *transform_cypher_expr_recurse(ParseState *pstate, Node *expr)
         switch (a->kind)
         {
         case AEXPR_OP:
-            return transform_AEXPR_OP(pstate, a);
+            return transform_AEXPR_OP(cpstate, a);
         default:
             ereport(ERROR, (errmsg("unrecognized A_Expr kind: %d", a->kind)));
         }
     }
     case T_BoolExpr:
-        return transform_BoolExpr(pstate, (BoolExpr *)expr);
+        return transform_BoolExpr(cpstate, (BoolExpr *)expr);
     case T_NullTest:
     {
         NullTest *n = (NullTest *)expr;
 
-        n->arg = (Expr *)transform_cypher_expr_recurse(pstate, (Node *)n->arg);
+        n->arg = (Expr *)transform_cypher_expr_recurse(cpstate,
+                                                       (Node *)n->arg);
         n->argisrow = type_is_rowtype(exprType((Node *)n->arg));
 
         return expr;
     }
     case T_A_Indirection:
-        return transform_cypher_indirection(pstate, (A_Indirection *)expr);
+        return transform_cypher_indirection(cpstate, (A_Indirection *)expr);
     case T_ExtensibleNode:
         if (is_ag_node(expr, cypher_bool_const))
         {
-            return transform_cypher_bool_const(pstate,
+            return transform_cypher_bool_const(cpstate,
                                                (cypher_bool_const *)expr);
         }
         else if (is_ag_node(expr, cypher_param))
         {
-            return transform_cypher_param(pstate, (cypher_param *)expr);
+            return transform_cypher_param(cpstate, (cypher_param *)expr);
         }
         else if (is_ag_node(expr, cypher_map))
         {
-            return transform_cypher_map(pstate, (cypher_map *)expr);
+            return transform_cypher_map(cpstate, (cypher_map *)expr);
         }
         else if (is_ag_node(expr, cypher_list))
         {
-            return transform_cypher_list(pstate, (cypher_list *)expr);
+            return transform_cypher_list(cpstate, (cypher_list *)expr);
         }
         else if (is_ag_node(expr, cypher_string_match))
         {
-            return transform_cypher_string_match(pstate,
+            return transform_cypher_string_match(cpstate,
                                                  (cypher_string_match *)expr);
         }
         else
@@ -125,8 +132,9 @@ static Node *transform_cypher_expr_recurse(ParseState *pstate, Node *expr)
     return NULL;
 }
 
-static Node *transform_A_Const(ParseState *pstate, A_Const *ac)
+static Node *transform_A_Const(cypher_parsestate *cpstate, A_Const *ac)
 {
+    ParseState *pstate = (ParseState *)cpstate;
     ParseCallbackState pcbstate;
     Value *v = &ac->val;
     Datum d = (Datum)0;
@@ -174,18 +182,20 @@ static Node *transform_A_Const(ParseState *pstate, A_Const *ac)
     return (Node *)c;
 }
 
-static Node *transform_AEXPR_OP(ParseState *pstate, A_Expr *a)
+static Node *transform_AEXPR_OP(cypher_parsestate *cpstate, A_Expr *a)
 {
+    ParseState *pstate = (ParseState *)cpstate;
     Node *last_srf = pstate->p_last_srf;
-    Node *lexpr = transform_cypher_expr_recurse(pstate, a->lexpr);
-    Node *rexpr = transform_cypher_expr_recurse(pstate, a->rexpr);
+    Node *lexpr = transform_cypher_expr_recurse(cpstate, a->lexpr);
+    Node *rexpr = transform_cypher_expr_recurse(cpstate, a->rexpr);
 
     return (Node *)make_op(pstate, a->name, lexpr, rexpr, last_srf,
                            a->location);
 }
 
-static Node *transform_BoolExpr(ParseState *pstate, BoolExpr *expr)
+static Node *transform_BoolExpr(cypher_parsestate *cpstate, BoolExpr *expr)
 {
+    ParseState *pstate = (ParseState *)cpstate;
     List *args = NIL;
     const char *opname;
     ListCell *la;
@@ -210,7 +220,7 @@ static Node *transform_BoolExpr(ParseState *pstate, BoolExpr *expr)
     {
         Node *arg = lfirst(la);
 
-        arg = transform_cypher_expr_recurse(pstate, arg);
+        arg = transform_cypher_expr_recurse(cpstate, arg);
         arg = coerce_to_boolean(pstate, arg, opname);
 
         args = lappend(args, arg);
@@ -219,9 +229,10 @@ static Node *transform_BoolExpr(ParseState *pstate, BoolExpr *expr)
     return (Node *)makeBoolExpr(expr->boolop, args, expr->location);
 }
 
-static Node *transform_cypher_bool_const(ParseState *pstate,
+static Node *transform_cypher_bool_const(cypher_parsestate *cpstate,
                                          cypher_bool_const *bc)
 {
+    ParseState *pstate = (ParseState *)cpstate;
     ParseCallbackState pcbstate;
     Datum agt;
     Const *c;
@@ -237,8 +248,10 @@ static Node *transform_cypher_bool_const(ParseState *pstate,
     return (Node *)c;
 }
 
-static Node *transform_cypher_param(ParseState *pstate, cypher_param *cp)
+static Node *transform_cypher_param(cypher_parsestate *cpstate,
+                                    cypher_param *cp)
 {
+    ParseState *pstate = (ParseState *)cpstate;
     Const *const_str;
     FuncExpr *func_expr;
     Oid func_access_oid;
@@ -246,14 +259,12 @@ static Node *transform_cypher_param(ParseState *pstate, cypher_param *cp)
     oidvector *parameter_types;
     List *args = NIL;
 
-    if (!pstate->p_ref_hook_state)
+    if (!cpstate->params)
     {
-        ereport(
-            ERROR,
-            (errcode(ERRCODE_UNDEFINED_PARAMETER),
-             errmsg(
-                "parameters argument is missing from cypher function call"),
-             parser_errposition(pstate, cp->location)));
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_PARAMETER),
+                 errmsg("parameters argument is missing from cypher() function call"),
+                 parser_errposition(pstate, cp->location)));
     }
 
     /* we need the Oid for _agtype */
@@ -268,7 +279,7 @@ static Node *transform_cypher_param(ParseState *pstate, cypher_param *cp)
         PointerGetDatum(parameter_types),
         ObjectIdGetDatum(ag_catalog_namespace_id()));
 
-    args = lappend(args, copyObject(pstate->p_ref_hook_state));
+    args = lappend(args, copyObject(cpstate->params));
 
     const_str = makeConst(AGTYPEOID, -1, InvalidOid, -1,
                           string_to_agtype(cp->name), false, false);
@@ -282,8 +293,9 @@ static Node *transform_cypher_param(ParseState *pstate, cypher_param *cp)
     return (Node *)func_expr;
 }
 
-static Node *transform_cypher_map(ParseState *pstate, cypher_map *cm)
+static Node *transform_cypher_map(cypher_parsestate *cpstate, cypher_map *cm)
 {
+    ParseState *pstate = (ParseState *)cpstate;
     List *newkeyvals = NIL;
     ListCell *le;
     FuncExpr *fexpr;
@@ -307,7 +319,7 @@ static Node *transform_cypher_map(ParseState *pstate, cypher_map *cm)
         val = lfirst(le);
         le = lnext(le);
 
-        newval = transform_cypher_expr_recurse(pstate, val);
+        newval = transform_cypher_expr_recurse(cpstate, val);
 
         setup_parser_errposition_callback(&pcbstate, pstate, cm->location);
         // typtypmod, typcollation, typlen, and typbyval of agtype are
@@ -342,7 +354,7 @@ static Node *transform_cypher_map(ParseState *pstate, cypher_map *cm)
     return (Node *)fexpr;
 }
 
-static Node *transform_cypher_list(ParseState *pstate, cypher_list *cl)
+static Node *transform_cypher_list(cypher_parsestate *cpstate, cypher_list *cl)
 {
     List *newelems = NIL;
     ListCell *le;
@@ -355,7 +367,7 @@ static Node *transform_cypher_list(ParseState *pstate, cypher_list *cl)
     {
         Node *newv;
 
-        newv = transform_cypher_expr_recurse(pstate, lfirst(le));
+        newv = transform_cypher_expr_recurse(cpstate, lfirst(le));
 
         newelems = lappend(newelems, newv);
     }
@@ -383,7 +395,7 @@ static Node *transform_cypher_list(ParseState *pstate, cypher_list *cl)
     return (Node *)fexpr;
 }
 
-static Node *transform_cypher_indirection(ParseState *pstate,
+static Node *transform_cypher_indirection(cypher_parsestate *cpstate,
                                           A_Indirection *a_ind)
 {
     int location;
@@ -405,7 +417,7 @@ static Node *transform_cypher_indirection(ParseState *pstate,
         PointerGetDatum(parameter_types),
         ObjectIdGetDatum(ag_catalog_namespace_id()));
 
-    ind_arg_expr = transform_cypher_expr_recurse(pstate, a_ind->arg);
+    ind_arg_expr = transform_cypher_expr_recurse(cpstate, a_ind->arg);
     location = exprLocation(ind_arg_expr);
 
     args = lappend(args, ind_arg_expr);
@@ -423,7 +435,7 @@ static Node *transform_cypher_indirection(ParseState *pstate,
             }
             else
             {
-                node = transform_cypher_expr_recurse(pstate, indices->uidx);
+                node = transform_cypher_expr_recurse(cpstate, indices->uidx);
                 args = lappend(args, node);
             }
         }
@@ -447,7 +459,7 @@ static Node *transform_cypher_indirection(ParseState *pstate,
     return (Node *)func_expr;
 }
 
-static Node *transform_cypher_string_match(ParseState *pstate,
+static Node *transform_cypher_string_match(cypher_parsestate *cpstate,
                                            cypher_string_match *csm_node)
 {
     Node *expr;
@@ -479,9 +491,9 @@ static Node *transform_cypher_string_match(ParseState *pstate,
         PROCNAMEARGSNSP, func_name, PointerGetDatum(parameter_types),
         ObjectIdGetDatum(ag_catalog_namespace_id()));
 
-    expr = transform_cypher_expr_recurse(pstate, csm_node->lhs);
+    expr = transform_cypher_expr_recurse(cpstate, csm_node->lhs);
     args = lappend(args, expr);
-    expr = transform_cypher_expr_recurse(pstate, csm_node->rhs);
+    expr = transform_cypher_expr_recurse(cpstate, csm_node->rhs);
     args = lappend(args, expr);
 
     func_expr = makeFuncExpr(func_access_oid, AGTYPEOID, args, InvalidOid,

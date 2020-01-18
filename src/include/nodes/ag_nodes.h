@@ -8,6 +8,8 @@
 
 typedef enum ag_node_tag
 {
+    ag_node_invalid_t = 0,
+
     // projection
     cypher_return_t,
     cypher_with_t,
@@ -33,11 +35,18 @@ typedef enum ag_node_tag
 
 void register_ag_nodes(void);
 
-ExtensibleNode *new_ag_node(Size size, ag_node_tag tag);
+ExtensibleNode *_new_ag_node(Size size, ag_node_tag tag);
+
+#define new_ag_node(size, tag) \
+    ( \
+        AssertMacro((size) >= sizeof(ExtensibleNode)), \
+        AssertMacro(tag != ag_node_invalid_t), \
+        _new_ag_node(size, tag) \
+    )
+
 #define make_ag_node(type) \
     ((type *)new_ag_node(sizeof(type), CppConcat(type, _t)))
 
-#define is_ag_node(node, type) _is_ag_node(node, #type)
 static inline bool _is_ag_node(Node *node, const char *extnodename)
 {
     ExtensibleNode *extnode;
@@ -51,5 +60,7 @@ static inline bool _is_ag_node(Node *node, const char *extnodename)
 
     return false;
 }
+
+#define is_ag_node(node, type) _is_ag_node((Node *)(node), CppAsString(type))
 
 #endif

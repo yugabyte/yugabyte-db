@@ -17,6 +17,7 @@ OBJS = src/backend/agensgraph.o \
        src/backend/parser/cypher_gram.o \
        src/backend/parser/cypher_keywords.o \
        src/backend/parser/cypher_parser.o \
+       src/backend/parser/cypher_parse_node.o \
        src/backend/utils/adt/agtype.o \
        src/backend/utils/adt/agtype_ext.o \
        src/backend/utils/adt/agtype_ops.o \

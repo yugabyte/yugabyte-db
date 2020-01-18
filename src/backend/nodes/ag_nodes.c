@@ -12,6 +12,7 @@ static void read_ag_node(ExtensibleNode *node);
 
 // This list must match ag_node_tag.
 const char *node_names[] = {
+    "ag_node_invalid",
     "cypher_return",
     "cypher_with",
     "cypher_match",
@@ -81,7 +82,7 @@ void register_ag_nodes(void)
         RegisterExtensibleNodeMethods(&node_methods[i]);
 }
 
-ExtensibleNode *new_ag_node(Size size, ag_node_tag tag)
+ExtensibleNode *_new_ag_node(Size size, ag_node_tag tag)
 {
     ExtensibleNode *n;
 

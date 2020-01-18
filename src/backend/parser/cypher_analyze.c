@@ -5,7 +5,6 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "fmgr.h"
-#include "mb/pg_wchar.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/nodes.h"
@@ -17,6 +16,7 @@
 #include "parser/parse_collate.h"
 #include "parser/parse_node.h"
 #include "parser/parse_relation.h"
+#include "parser/parsetree.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
@@ -24,14 +24,9 @@
 #include "nodes/ag_nodes.h"
 #include "parser/cypher_analyze.h"
 #include "parser/cypher_clause.h"
+#include "parser/cypher_parse_node.h"
 #include "parser/cypher_parser.h"
 #include "utils/agtype.h"
-
-typedef struct cypher_parse_error_callback_arg
-{
-    const char *source_str;
-    int query_loc;
-} cypher_parse_error_callback_arg;
 
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook;
 
@@ -42,10 +37,13 @@ static bool is_func_cypher(FuncExpr *funcexpr);
 static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate);
 static const char *expr_get_const_cstring(Node *expr, const char *source_str);
 static int get_query_location(const int location, const char *source_str);
-static void cypher_parse_error_callback(void *arg);
-static Query *analyze_cypher(const char *query_str, List *stmt, Param *params);
-static Query *coerce_target_list(Query *query, RangeTblFunction *rtfunc,
-                                 const char *sourcetext);
+static Query *analyze_cypher(List *stmt, ParseState *parent_pstate,
+                             const char *query_str, int query_loc,
+                             const char *graph_name, Param *params);
+static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
+                                        ParseState *parent_pstate,
+                                        const char *query_str, int query_loc,
+                                        const char *graph_name, Param *params);
 
 void post_parse_analyze_init(void)
 {
@@ -223,10 +221,10 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     FuncExpr *funcexpr = (FuncExpr *)rtfunc->funcexpr;
     Node *arg;
     const char *query_str;
+    int query_loc;
     Node *params;
+    errpos_ecb_state ecb_state;
     List *stmt;
-    cypher_parse_error_callback_arg ecb_arg;
-    ErrorContextCallback ecb;
     Query *query;
 
     /*
@@ -266,6 +264,8 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
                         errmsg("a dollar-quoted string constant is expected"),
                         parser_errposition(pstate, exprLocation(arg))));
     }
+    query_loc = get_query_location(((Const *)arg)->location,
+                                   pstate->p_sourcetext);
 
     /*
      * Check to see if the cypher function had any parameters passed to it,
@@ -276,12 +276,10 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
         params = lsecond(funcexpr->args);
         if (!IsA(params, Param))
         {
-            ereport(
-                ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg(
-                     "second argument of cypher function must be a parameter"),
-                 parser_errposition(pstate, exprLocation(params))));
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("second argument of cypher function must be a parameter"),
+                     parser_errposition(pstate, exprLocation(params))));
         }
     }
     else
@@ -289,47 +287,51 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
         params = NULL;
     }
 
-    // install error context callback to adjust the error position
-    ecb_arg.source_str = pstate->p_sourcetext;
-    ecb_arg.query_loc = get_query_location(((Const *)arg)->location,
-                                           pstate->p_sourcetext);
-    ecb.previous = error_context_stack;
-    ecb.callback = cypher_parse_error_callback;
-    ecb.arg = &ecb_arg;
-    error_context_stack = &ecb;
+    /*
+     * install error context callback to adjust an error position for
+     * parse_cypher() since locations that parse_cypher() stores are 0 based
+     */
+    setup_errpos_ecb(&ecb_state, pstate, query_loc);
 
     stmt = parse_cypher(query_str);
 
-    query = analyze_cypher(query_str, stmt, (Param *)params);
+    cancel_errpos_ecb(&ecb_state);
+
+    Assert(pstate->p_expr_kind == EXPR_KIND_NONE);
+    pstate->p_expr_kind = EXPR_KIND_FROM_SUBSELECT;
+    // transformRangeFunction() always sets p_lateral_active to true.
+    // FYI, rte is RTE_FUNCTION and is being converted to RTE_SUBQUERY here.
+    pstate->p_lateral_active = true;
 
     /*
-     * uninstall the error context callback because error positions after this
-     * point do not need adjustment
+     * Cypher queries that end with CREATE clause do not need to have the
+     * coercion logic applied to them because we are forcing the column
+     * definition list to be a particular way in this case.
      */
-    error_context_stack = ecb.previous;
-
-    // cypher queries that end with a CREATE node do not need to have the
-    // coercion logic applied to it, because we are forcing the column
-    // definition list to be a particular way.
     if (is_ag_node(llast(stmt), cypher_create))
     {
-        if (rtfunc->funccolcount != 1 ||
-                linitial_oid(rtfunc->funccoltypes) != AGTYPEOID)
+        // column definition list must be ... AS relname(colname agtype) ...
+        if (!(rtfunc->funccolcount == 1 &&
+              linitial_oid(rtfunc->funccoltypes) == AGTYPEOID))
         {
-            ereport(
-                    ERROR,
+            ereport(ERROR,
                     (errcode(ERRCODE_DATATYPE_MISMATCH),
-                    errmsg("column definition list for a CREATE clause must"
-                           " contain a single agtype entry"),
-                    parser_errposition(pstate,
-                                       exprLocation(rtfunc->funcexpr))));
-
+                     errmsg("column definition list for CREATE clause must contain a single agtype attribute"),
+                     errhint("... cypher($$ ... CREATE ... $$) AS t(c agtype) ..."),
+                     parser_errposition(pstate, exprLocation(rtfunc->funcexpr))));
         }
+
+        query = analyze_cypher(stmt, pstate, query_str, query_loc, NULL,
+                               (Param *)params);
     }
     else
     {
-        query = coerce_target_list(query, rtfunc, pstate->p_sourcetext);
+        query = analyze_cypher_and_coerce(stmt, rtfunc, pstate, query_str,
+                                          query_loc, NULL, (Param *)params);
     }
+
+    pstate->p_lateral_active = false;
+    pstate->p_expr_kind = EXPR_KIND_NONE;
 
     // rte->functions and rte->funcordinality are kept for debugging.
     // rte->alias, rte->eref, and rte->lateral need to be the same.
@@ -371,66 +373,111 @@ static int get_query_location(const int location, const char *source_str)
     return strchr(p + 1, '$') - source_str + 1;
 }
 
-static void cypher_parse_error_callback(void *arg)
+static Query *analyze_cypher(List *stmt, ParseState *parent_pstate,
+                             const char *query_str, int query_loc,
+                             const char *graph_name, Param *params)
 {
-    cypher_parse_error_callback_arg *ecb_arg = arg;
-    int pos;
-
-    if (geterrcode() == ERRCODE_QUERY_CANCELED)
-        return;
-
-    Assert(ecb_arg->query_loc > -1);
-    pos = pg_mbstrlen_with_len(ecb_arg->source_str, ecb_arg->query_loc);
-    errposition(pos + geterrposition());
-}
-
-static Query *analyze_cypher(const char *query_str, List *stmt, Param *params)
-{
+    cypher_clause *clause;
+    ListCell *lc;
+    cypher_parsestate parent_cpstate;
+    cypher_parsestate *cpstate;
     ParseState *pstate;
+    errpos_ecb_state ecb_state;
     Query *query;
 
-    pstate = make_parsestate(NULL);
-    pstate->p_sourcetext = query_str;
+    /*
+     * Since the first clause in stmt is the innermost subquery, the order of
+     * the clauses is inverted.
+     */
+    clause = NULL;
+    foreach (lc, stmt)
+    {
+        cypher_clause *next;
+
+        next = palloc(sizeof(*next));
+        next->self = lfirst(lc);
+        next->prev = clause;
+
+        clause = next;
+    }
 
     /*
-     * In order to avoid using a global variable in the cypher_expr.c file or
-     * tightly coupling the grammar logic with the transform logic, we are
-     * using the p_ref_hook_state variable in the ParseState to hold then
-     * information we need to handle cypher parameters. The side effect of
-     * this is we can no longer support SQL subqueries in a Cypher query.
+     * convert ParseState into cypher_parsestate temporarily to pass it to
+     * make_cypher_parsestate()
      */
-    pstate->p_ref_hook_state = params;
+    parent_cpstate.pstate = *parent_pstate;
+    parent_cpstate.graph_name = NULL;
+    parent_cpstate.params = NULL;
 
-    query = transform_cypher_stmt(pstate, stmt);
+    cpstate = make_cypher_parsestate(&parent_cpstate);
+    pstate = (ParseState *)cpstate;
 
-    free_parsestate(pstate);
+    /*
+     * override p_sourcetext with query_str to make parser_errposition() work
+     * correctly with errpos_ecb()
+     */
+    pstate->p_sourcetext = query_str;
+
+    cpstate->graph_name = graph_name;
+    cpstate->params = params;
+
+    /*
+     * install error context callback to adjust an error position since
+     * locations in stmt are 0 based
+     */
+    setup_errpos_ecb(&ecb_state, parent_pstate, query_loc);
+
+    query = transform_cypher_clause(cpstate, clause);
+
+    cancel_errpos_ecb(&ecb_state);
+
+    free_cypher_parsestate(cpstate);
 
     return query;
 }
 
 /*
- * Since some target entries of query may be referenced for sorting (ORDER BY),
- * we cannot apply the coercion directly to the expressions of the target
- * entries. Therefore, we do the coercion by doing SELECT over query.
+ * Since some target entries of subquery may be referenced for sorting (ORDER
+ * BY), we cannot apply the coercion directly to the expressions of the target
+ * entries. Therefore, we do the coercion by doing SELECT over subquery.
  */
-static Query *coerce_target_list(Query *query, RangeTblFunction *rtfunc,
-                                 const char *sourcetext)
+static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
+                                        ParseState *parent_pstate,
+                                        const char *query_str, int query_loc,
+                                        const char *graph_name, Param *params)
 {
     ParseState *pstate;
-    Query *outer_query;
+    Query *query;
+    const bool lateral = false;
+    Query *subquery;
     RangeTblEntry *rte;
     int rtindex;
-    RangeTblRef *rtr;
     ListCell *lt;
     ListCell *lc1;
     ListCell *lc2;
     ListCell *lc3;
 
-    pstate = make_parsestate(NULL);
-    pstate->p_sourcetext = sourcetext;
+    pstate = make_parsestate(parent_pstate);
+
+    query = makeNode(Query);
+    query->commandType = CMD_SELECT;
+
+    /*
+     * Below is similar to transform_prev_cypher_clause().
+     */
+
+    Assert(pstate->p_expr_kind == EXPR_KIND_NONE);
+    pstate->p_expr_kind = EXPR_KIND_FROM_SUBSELECT;
+    pstate->p_lateral_active = lateral;
+
+    subquery = analyze_cypher(stmt, pstate, query_str, query_loc, graph_name,
+                              (Param *)params);
+
+    pstate->p_lateral_active = false;
+    pstate->p_expr_kind = EXPR_KIND_NONE;
 
     // check the number of attributes first
-    if (list_length(query->targetList) != rtfunc->funccolcount)
+    if (list_length(subquery->targetList) != rtfunc->funccolcount)
     {
         ereport(ERROR,
                 (errcode(ERRCODE_DATATYPE_MISMATCH),
@@ -438,27 +485,19 @@ static Query *coerce_target_list(Query *query, RangeTblFunction *rtfunc,
                  parser_errposition(pstate, exprLocation(rtfunc->funcexpr))));
     }
 
-    outer_query = makeNode(Query);
-    outer_query->commandType = CMD_SELECT;
-
-    rte = addRangeTableEntryForSubquery(pstate, query, makeAlias("_", NIL),
-                                        false, true);
+    rte = addRangeTableEntryForSubquery(pstate, subquery, makeAlias("_", NIL),
+                                        lateral, true);
     rtindex = list_length(pstate->p_rtable);
-    rtr = makeNode(RangeTblRef);
-    rtr->rtindex = rtindex;
-    pstate->p_joinlist = lappend(pstate->p_joinlist, rtr);
-    /*
-     * It is unnecessary to update p_namespace because rte is the only
-     * RangeTblEntry here and p_namespace is not referenced below.
-     */
+    Assert(rtindex == 1);
+    addRTEtoQuery(pstate, rte, true, true, true);
 
-    outer_query->targetList = expandRelAttrs(pstate, rte, rtindex, 0, -1);
+    query->targetList = expandRelAttrs(pstate, rte, rtindex, 0, -1);
 
     // do the type coercion for each target entry
     lc1 = list_head(rtfunc->funccolnames);
     lc2 = list_head(rtfunc->funccoltypes);
     lc3 = list_head(rtfunc->funccoltypmods);
-    foreach (lt, outer_query->targetList)
+    foreach (lt, query->targetList)
     {
         TargetEntry *te = lfirst(lt);
         Node *expr = (Node *)te->expr;
@@ -505,12 +544,12 @@ static Query *coerce_target_list(Query *query, RangeTblFunction *rtfunc,
         lc3 = lnext(lc3);
     }
 
-    outer_query->rtable = pstate->p_rtable;
-    outer_query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
+    query->rtable = pstate->p_rtable;
+    query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
 
-    assign_query_collations(pstate, outer_query);
+    assign_query_collations(pstate, query);
 
     free_parsestate(pstate);
 
-    return outer_query;
+    return query;
 }

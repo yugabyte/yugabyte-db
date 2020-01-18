@@ -108,13 +108,13 @@ PREPARE cypher_missing_params_argument(int) AS
 SELECT $1, * FROM cypher($$
 RETURN $var
 $$) AS t(i agtype);
-ERROR:  parameters argument is missing from cypher function call
+ERROR:  parameters argument is missing from cypher() function call
 LINE 3: RETURN $var
                ^
 SELECT * FROM cypher($$
 RETURN $var
 $$) AS t(i agtype);
-ERROR:  parameters argument is missing from cypher function call
+ERROR:  parameters argument is missing from cypher() function call
 LINE 2: RETURN $var
                ^
 --

@@ -7,6 +7,17 @@
 #include "nodes/pg_list.h"
 #include "parser/parse_node.h"
 
-Query *transform_cypher_stmt(ParseState *pstate, List *stmt);
+#include "parser/cypher_parse_node.h"
+
+typedef struct cypher_clause cypher_clause;
+
+struct cypher_clause
+{
+    Node *self;
+    cypher_clause *prev; // previous clause
+};
+
+Query *transform_cypher_clause(cypher_parsestate *cpstate,
+                               cypher_clause *clause);
 
 #endif

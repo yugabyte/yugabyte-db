@@ -175,4 +175,5 @@ void out_cypher_list(StringInfo str, const ExtensibleNode *node);
 
 /* string match */
 void out_cypher_string_match(StringInfo str, const ExtensibleNode *node);
+
 #endif

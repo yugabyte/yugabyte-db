@@ -13,55 +13,113 @@
 #include "parser/parse_node.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_target.h"
+#include "parser/parsetree.h"
 #include "utils/builtins.h"
-#include "utils/lsyscache.h"
+#include "utils/syscache.h"
 
 #include "nodes/ag_nodes.h"
 #include "nodes/cypher_nodes.h"
 #include "parser/cypher_clause.h"
 #include "parser/cypher_expr.h"
+#include "parser/cypher_parse_node.h"
 #include "utils/agtype.h"
 
-static Query *transform_cypher_create(ParseState *pstate,
-                                      cypher_create *clause);
-static Query *transform_cypher_return(ParseState *pstate,
-                                      cypher_return *clause);
-static List *transform_cypher_item_list(ParseState *pstate, List *items);
+static Query *transform_cypher_return(cypher_parsestate *cpstate,
+                                      cypher_clause *clause);
+static List *transform_cypher_item_list(cypher_parsestate *cpstate,
+                                        List *items);
+static Query *transform_cypher_create(cypher_parsestate *cpstate,
+                                      cypher_clause *clause);
 
-Query *transform_cypher_stmt(ParseState *pstate, List *stmt)
+static RangeTblEntry *transform_prev_cypher_clause(cypher_parsestate *cpstate,
+                                                   cypher_clause *clause);
+static Query *analyze_cypher_clause(cypher_clause *clause,
+                                    cypher_parsestate *parent_cpstate);
+
+Query *transform_cypher_clause(cypher_parsestate *cpstate,
+                               cypher_clause *clause)
 {
-    /*
-     *  XXX: current implementation is only for a single RETURN or CREATE
-     *  clause
-     */
-    if (list_length(stmt) > 1)
-        ereport(ERROR, (errmsg("unexpected query")));
+    Query *result;
 
-    if (is_ag_node(linitial(stmt), cypher_return))
-    {
-        cypher_return *clause;
+    Node *self = clause->self;
 
-        clause = (cypher_return *)linitial(stmt);
-
-        return transform_cypher_return(pstate, clause);
-    }
-    else if (is_ag_node(linitial(stmt), cypher_create))
-    {
-        cypher_create *clause;
-
-        clause = (cypher_create *)linitial(stmt);
-
-        return transform_cypher_create(pstate, clause);
-    }
+    // examine the type of clause and call appropriate transform logic for it
+    if (is_ag_node(self, cypher_return))
+        result = transform_cypher_return(cpstate, clause);
+    else if (is_ag_node(self, cypher_with))
+        return NULL;
+    else if (is_ag_node(self, cypher_match))
+        return NULL;
+    else if (is_ag_node(self, cypher_create))
+        result = transform_cypher_create(cpstate, clause);
+    else if (is_ag_node(self, cypher_set))
+        return NULL;
+    else if (is_ag_node(self, cypher_delete))
+        return NULL;
     else
-    {
-        ereport(ERROR, (errmsg("unexpected query")));
-    }
+        ereport(ERROR, (errmsg_internal("unexpected Node for cypher_clause")));
+
+    result->querySource = QSRC_ORIGINAL;
+    result->canSetTag = true;
+
+    return result;
 }
 
-static Query *transform_cypher_create(ParseState *pstate,
-                                      cypher_create *clause)
+static Query *transform_cypher_return(cypher_parsestate *cpstate,
+                                      cypher_clause *clause)
 {
+    ParseState *pstate = (ParseState *)cpstate;
+    cypher_return *self = (cypher_return *)clause->self;
+    Query *query;
+
+    query = makeNode(Query);
+    query->commandType = CMD_SELECT;
+
+    if (clause->prev)
+        transform_prev_cypher_clause(cpstate, clause->prev);
+
+    query->targetList = transform_cypher_item_list(cpstate, self->items);
+
+    query->rtable = pstate->p_rtable;
+    query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
+
+    assign_query_collations(pstate, query);
+
+    return query;
+}
+
+static List *transform_cypher_item_list(cypher_parsestate *cpstate,
+                                        List *items)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    List *targets = NIL;
+    ListCell *li;
+
+    foreach (li, items)
+    {
+        ResTarget *item = lfirst(li);
+        Node *expr;
+        char *colname;
+        TargetEntry *te;
+
+        expr = transform_cypher_expr(cpstate, item->val,
+                                     EXPR_KIND_SELECT_TARGET);
+        colname = (item->name ? item->name : FigureColname(item->val));
+
+        te = makeTargetEntry((Expr *)expr, (AttrNumber)pstate->p_next_resno++,
+                             colname, false);
+
+        targets = lappend(targets, te);
+    }
+
+    return targets;
+}
+
+static Query *transform_cypher_create(cypher_parsestate *cpstate,
+                                      cypher_clause *clause)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    cypher_create *self = (cypher_create *)clause->self;
     Const *pattern_const;
     Const *null_const;
     Expr *func_expr;
@@ -90,7 +148,7 @@ static Query *transform_cypher_create(ParseState *pstate,
      * internal type is copied.
      */
     pattern_const = makeConst(internal_type, -1, InvalidOid, 1,
-                              PointerGetDatum(clause->pattern), false, true);
+                              PointerGetDatum(self->pattern), false, true);
 
     /*
      * Create the FuncExpr Node.
@@ -113,44 +171,53 @@ static Query *transform_cypher_create(ParseState *pstate,
     return query;
 }
 
-static Query *transform_cypher_return(ParseState *pstate,
-                                      cypher_return *clause)
+/*
+ * This function is similar to transformFromClause() that is called with a
+ * single RangeSubselect.
+ */
+static RangeTblEntry *transform_prev_cypher_clause(cypher_parsestate *cpstate,
+                                                   cypher_clause *clause)
 {
+    ParseState *pstate = (ParseState *)cpstate;
+    const bool lateral = false;
     Query *query;
+    RangeTblEntry *rte;
 
-    query = makeNode(Query);
-    query->commandType = CMD_SELECT;
+    Assert(pstate->p_expr_kind == EXPR_KIND_NONE);
+    pstate->p_expr_kind = EXPR_KIND_FROM_SUBSELECT;
+    // p_lateral_active is false since query is the only FROM clause item here.
+    pstate->p_lateral_active = lateral;
 
-    query->targetList = transform_cypher_item_list(pstate, clause->items);
+    query = analyze_cypher_clause(clause, cpstate);
 
-    query->jointree = makeFromExpr(NIL, NULL);
+    pstate->p_lateral_active = false;
+    pstate->p_expr_kind = EXPR_KIND_NONE;
 
-    assign_query_collations(pstate, query);
+    rte = addRangeTableEntryForSubquery(pstate, query, makeAlias("_", NIL),
+                                        lateral, true);
 
-    return query;
+    /*
+     * NOTE: skip namespace conflicts check since rte will be the only
+     *       RangeTblEntry in pstate
+     */
+
+    Assert(list_length(pstate->p_rtable) == 1);
+    addRTEtoQuery(pstate, rte, true, true, true);
+
+    return rte;
 }
 
-static List *transform_cypher_item_list(ParseState *pstate, List *items)
+static Query *analyze_cypher_clause(cypher_clause *clause,
+                                    cypher_parsestate *parent_cpstate)
 {
-    List *targets = NIL;
-    ListCell *li;
+    cypher_parsestate *cpstate;
+    Query *query;
 
-    foreach (li, items)
-    {
-        ResTarget *item = lfirst(li);
-        Node *expr;
-        char *colname;
-        TargetEntry *te;
+    cpstate = make_cypher_parsestate(parent_cpstate);
 
-        expr = transform_cypher_expr(pstate, item->val,
-                                     EXPR_KIND_SELECT_TARGET);
-        colname = (item->name ? item->name : FigureColname(item->val));
+    query = transform_cypher_clause(cpstate, clause);
 
-        te = makeTargetEntry((Expr *)expr, (AttrNumber)pstate->p_next_resno++,
-                             colname, false);
+    free_cypher_parsestate(cpstate);
 
-        targets = lappend(targets, te);
-    }
-
-    return targets;
+    return query;
 }
