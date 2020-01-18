@@ -87,19 +87,9 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
 
   void Shutdown() override;
 
- protected:
-  typedef enterprise::RemoteBootstrapSession RemoteBootstrapSessionClass;
-
-  virtual CHECKED_STATUS GetDataFilePiece(
-      const DataIdPB& data_id, const scoped_refptr<RemoteBootstrapSessionClass>& session,
-      uint64_t offset, int64_t client_maxlen,
-      std::string* data, int64_t* total_data_length, RemoteBootstrapErrorPB::Code* error_code);
-
-  virtual CHECKED_STATUS ValidateSnapshotFetchRequestDataId(const DataIdPB& data_id) const;
-
  private:
   struct SessionData {
-    scoped_refptr<RemoteBootstrapSessionClass> session;
+    scoped_refptr<RemoteBootstrapSession> session;
     CoarseTimePoint expiration;
 
     void ResetExpiration();
@@ -111,7 +101,7 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
   CHECKED_STATUS ValidateFetchRequestDataId(
       const DataIdPB& data_id,
       RemoteBootstrapErrorPB::Code* app_error,
-      const scoped_refptr<RemoteBootstrapSessionClass>& session) const;
+      const scoped_refptr<RemoteBootstrapSession>& session) const;
 
   // Destroy the specified remote bootstrap session.
   CHECKED_STATUS DoEndRemoteBootstrapSession(

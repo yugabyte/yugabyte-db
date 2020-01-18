@@ -11,6 +11,8 @@
 // under the License.
 
 #include "yb/tserver/remote_bootstrap_session-test.h"
+
+#include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 
 namespace yb {
@@ -18,7 +20,7 @@ namespace tserver {
 
 using std::string;
 
-using yb::tablet::enterprise::Tablet;
+using yb::tablet::Tablet;
 
 static const string kSnapshotId = "0123456789ABCDEF0123456789ABCDEF";
 
@@ -38,12 +40,12 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapTest {
     tablet::SnapshotOperationState tx_state(tablet().get(), &request);
     tx_state.set_hybrid_time(tablet()->clock()->Now());
     tablet_peer_->log()->GetLatestEntryOpId().ToPB(tx_state.mutable_op_id());
-    ASSERT_OK(tablet()->CreateSnapshot(&tx_state));
+    ASSERT_OK(tablet()->snapshots().Create(&tx_state));
 
     // Create extra file to check that it will not break snapshot files collecting
     // inside RemoteBootstrapSession::InitSession().
     const string rocksdb_dir = tablet()->metadata()->rocksdb_dir();
-    const string top_snapshots_dir = Tablet::SnapshotsDirName(rocksdb_dir);
+    const string top_snapshots_dir = tablet::TabletSnapshots::SnapshotsDirName(rocksdb_dir);
     const string snapshot_dir = JoinPathSegments(top_snapshots_dir, kSnapshotId);
     ASSERT_TRUE(env_->FileExists(snapshot_dir));
 
@@ -71,7 +73,7 @@ TEST_F(RemoteBootstrapRocksDBTest, CheckSuperBlockHasSnapshotFields) {
   const string& rocksdb_dir = kv_store.rocksdb_dir();
   ASSERT_TRUE(env_->FileExists(rocksdb_dir));
 
-  const string top_snapshots_dir = Tablet::SnapshotsDirName(rocksdb_dir);
+  const string top_snapshots_dir = tablet::TabletSnapshots::SnapshotsDirName(rocksdb_dir);
   ASSERT_TRUE(env_->FileExists(top_snapshots_dir));
 
   const string snapshot_dir = JoinPathSegments(top_snapshots_dir, kSnapshotId);
@@ -81,7 +83,9 @@ TEST_F(RemoteBootstrapRocksDBTest, CheckSuperBlockHasSnapshotFields) {
   ASSERT_OK(env_->GetChildren(snapshot_dir, &snapshot_files));
 
   // Ignore "." and ".." entries in snapshot_dir.
-  ASSERT_EQ(kv_store.snapshot_files().size(), snapshot_files.size() - 2);
+  ASSERT_EQ(kv_store.snapshot_files().size(), snapshot_files.size() - 2)
+      << "KV store snapshot files: " << AsString(kv_store.snapshot_files())
+      << ", filesystem: " << AsString(snapshot_files);
 
   for (int i = 0; i < kv_store.snapshot_files().size(); ++i) {
     const auto& snapshot_file = kv_store.snapshot_files(i);

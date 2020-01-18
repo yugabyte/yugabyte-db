@@ -25,6 +25,7 @@
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/operations/operation.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
@@ -89,7 +90,7 @@ Status InitialSysCatalogSnapshotWriter::WriteSnapshot(
     const std::string& dest_path) {
   RETURN_NOT_OK(sys_catalog_tablet->Flush(yb::tablet::FlushMode::kSync));
   RETURN_NOT_OK(Env::Default()->CreateDir(dest_path));
-  RETURN_NOT_OK(sys_catalog_tablet->CreateCheckpoint(
+  RETURN_NOT_OK(sys_catalog_tablet->snapshots().CreateCheckpoint(
       JoinPathSegments(dest_path, kSysCatalogSnapshotRocksDbSubDir)));
 
   tserver::ExportedTabletMetadataChanges exported_tablet_metadata_changes;

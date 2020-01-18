@@ -98,8 +98,9 @@
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/server/hybrid_clock.h"
 
-#include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/maintenance_manager.h"
+#include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/transaction_coordinator.h"
@@ -109,6 +110,7 @@
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet_options.h"
+
 #include "yb/util/bloom_filter.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/enums.h"
@@ -188,8 +190,6 @@ using namespace std::literals;  // NOLINT
 
 using rocksdb::WriteBatch;
 using rocksdb::SequenceNumber;
-using yb::util::ScopedPendingOperation;
-using yb::util::ScopedPendingOperationPause;
 using yb::tserver::WriteRequestPB;
 using yb::tserver::WriteResponsePB;
 using yb::docdb::KeyValueWriteBatchPB;
@@ -231,8 +231,6 @@ using docdb::StorageDbType;
 ////////////////////////////////////////////////////////////
 
 namespace {
-
-static const std::string kSnapshotsDirSuffix = ".snapshots";
 
 void EmitRocksDbMetricsAsJson(
     std::shared_ptr<rocksdb::Statistics> rocksdb_statistics,
@@ -425,6 +423,8 @@ Tablet::Tablet(
         transaction_coordinator_context,
         metrics_->expired_transactions.get());
   }
+
+  snapshots_ = std::make_unique<TabletSnapshots>(this);
 }
 
 Tablet::~Tablet() {
@@ -466,6 +466,8 @@ Status Tablet::CreateTabletDirectories(const string& db_dir, FsManager* fs) {
 
   RETURN_NOT_OK_PREPEND(fs->CreateDirIfMissingAndSync(db_dir + kIntentsDBSuffix),
                         Format("Failed to create RocksDB tablet intents directory $0", db_dir));
+
+  RETURN_NOT_OK(snapshots_->CreateDirectories(db_dir, fs));
 
   return Status::OK();
 }
@@ -755,9 +757,7 @@ void Tablet::Shutdown(IsDropTable is_drop_table) {
   // Shutdown the RocksDB instance for this table, if present.
   // Destroy intents and regular DBs in reverse order to their creation.
   // Also it makes sure that regular DB is alive during flush filter of intents db.
-  intents_db_.reset();
-  regular_db_.reset();
-  key_bounds_ = docdb::KeyBounds();
+  WARN_NOT_OK(ResetRocksDBs(), "Failed to reset rocksdb during shutdown");
   state_ = kShutdown;
 
   // Release the mutex that prevents snapshot restore / truncate operations from running. Such
@@ -766,6 +766,34 @@ void Tablet::Shutdown(IsDropTable is_drop_table) {
   // prevent us from decrementing that counter back, disabling read/write operations permanently.
   op_pause.ReleaseMutexButKeepDisabled();
   DCHECK(op_pause.status().ok());  // Ensure that op_pause stays in scope throughout this function.
+}
+
+CHECKED_STATUS ResetRocksDB(
+    bool destroy, const rocksdb::Options& options, std::unique_ptr<rocksdb::DB>* db) {
+  if (!*db) {
+    return Status::OK();
+  }
+
+  auto dir = (**db).GetName();
+  db->reset();
+  if (!destroy) {
+    return Status::OK();
+  }
+
+  return rocksdb::DestroyDB(dir, options);
+}
+
+Status Tablet::ResetRocksDBs(bool destroy) {
+  rocksdb::Options rocksdb_options;
+  if (destroy) {
+    docdb::InitRocksDBOptions(&rocksdb_options, LogPrefix(), rocksdb_statistics_, tablet_options_);
+  }
+
+  Status intents_status = ResetRocksDB(destroy, rocksdb_options, &intents_db_);
+  Status regular_status = ResetRocksDB(destroy, rocksdb_options, &regular_db_);
+  key_bounds_ = docdb::KeyBounds();
+
+  return regular_status.ok() ? intents_status : regular_status;
 }
 
 Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
@@ -840,48 +868,6 @@ Status Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
   // frontier.
   set_hybrid_time(operation_state->hybrid_time(), &frontiers);
   return ApplyKeyValueRowOperations(put_batch, &frontiers, hybrid_time);
-}
-
-Status Tablet::CreateCheckpoint(const std::string& dir) {
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
-  RETURN_NOT_OK(scoped_read_operation);
-
-  auto temp_intents_dir = dir + kIntentsDBSuffix;
-  auto final_intents_dir = JoinPathSegments(dir, kIntentsSubdir);
-
-  std::lock_guard<std::mutex> lock(create_checkpoint_lock_);
-
-  Status status;
-  if (!regular_db_) {
-    LOG_WITH_PREFIX(INFO) << "Skipped creating checkpoint in " << dir;
-    return STATUS(NotSupported,
-                  "Tablet does not have a RocksDB (could be a transaction status tablet)");
-  }
-
-  auto parent_dir = DirName(dir);
-  RETURN_NOT_OK_PREPEND(metadata()->fs_manager()->CreateDirIfMissing(parent_dir),
-                        Format("Unable to create checkpoints directory $0", parent_dir));
-
-  // Order does not matter because we flush both DBs and does not have parallel writes.
-  if (intents_db_) {
-    status = rocksdb::checkpoint::CreateCheckpoint(intents_db_.get(), temp_intents_dir);
-  }
-  if (status.ok()) {
-    status = rocksdb::checkpoint::CreateCheckpoint(regular_db_.get(), dir);
-  }
-  if (status.ok() && intents_db_) {
-    status = Env::Default()->RenameFile(temp_intents_dir, final_intents_dir);
-  }
-
-  if (!status.ok()) {
-    LOG_WITH_PREFIX(WARNING) << "Create checkpoint status: " << status;
-    return STATUS_FORMAT(IllegalState, "Unable to create checkpoint: $0", status);
-  }
-  LOG_WITH_PREFIX(INFO) << "Checkpoint created in " << dir;
-
-  last_rocksdb_checkpoint_dir_ = dir;
-
-  return Status::OK();
 }
 
 Status Tablet::PrepareTransactionWriteBatch(
@@ -1774,25 +1760,11 @@ Status Tablet::Truncate(TruncateOperationState *state) {
   const rocksdb::SequenceNumber sequence_number = regular_db_->GetLatestSequenceNumber();
   const string db_dir = regular_db_->GetName();
 
-  rocksdb::Options rocksdb_options;
-  docdb::InitRocksDBOptions(&rocksdb_options, LogPrefix(), rocksdb_statistics_, tablet_options_);
-
-  Status intents_status;
-  if (intents_db_) {
-    auto intents_dir = intents_db_->GetName();
-    intents_db_.reset();
-    intents_status = rocksdb::DestroyDB(intents_dir, rocksdb_options);
-  }
-  regular_db_.reset();
-  auto s = rocksdb::DestroyDB(db_dir, rocksdb_options);
-  if (s.ok() && !intents_status.ok()) {
-    s = intents_status;
-  }
+  auto s = ResetRocksDBs(/* destroy= */ true);
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Failed to clean up db dir " << db_dir << ": " << s;
     return STATUS(IllegalState, "Failed to clean up db dir", s.ToString());
   }
-  key_bounds_ = docdb::KeyBounds::kNoBounds;
 
   // Create a new database.
   // Note: db_dir == metadata()->rocksdb_dir() is still valid db dir.
@@ -2376,130 +2348,6 @@ bool Tablet::ShouldApplyWrite() {
   return !regular_db_->NeedsDelay();
 }
 
-// Create snapshot for this tablet.
-Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
-  return STATUS(NotSupported, "Internal error: CreateSnapshot called on the base Tablet class");
-}
-
-// Delete snapshot for this tablet.
-Status Tablet::DeleteSnapshot(SnapshotOperationState* tx_state) {
-  return STATUS(NotSupported, "Internal error: DeleteSnapshot called on the base Tablet class");
-}
-
-Status Tablet::RestoreCheckpoint(const std::string& dir, const docdb::ConsensusFrontier& frontier) {
-  // The following two lines can't just be changed to RETURN_NOT_OK(PauseReadWriteOperations()):
-  // op_pause has to stay in scope until the end of the function.
-  auto op_pause = PauseReadWriteOperations();
-  RETURN_NOT_OK(op_pause);
-
-  // Check if tablet is in shutdown mode.
-  if (IsShutdownRequested()) {
-    return STATUS(IllegalState, "Tablet was shut down");
-  }
-
-  std::lock_guard<std::mutex> lock(create_checkpoint_lock_);
-
-  const rocksdb::SequenceNumber sequence_number = regular_db_->GetLatestSequenceNumber();
-  const string db_dir = regular_db_->GetName();
-  const std::string intents_db_dir = intents_db_ ? intents_db_->GetName() : std::string();
-
-  // Destroy DB object.
-  // TODO: snapshot current DB and try to restore it in case of failure.
-  intents_db_.reset();
-  regular_db_.reset();
-  key_bounds_ = docdb::KeyBounds::kNoBounds;
-
-  rocksdb::Options rocksdb_options;
-  docdb::InitRocksDBOptions(&rocksdb_options, LogPrefix(), rocksdb_statistics_, tablet_options_);
-
-  Status s = rocksdb::DestroyDB(db_dir, rocksdb_options);
-  if (PREDICT_FALSE(!s.ok())) {
-    LOG_WITH_PREFIX(WARNING) << "Cannot cleanup db files in directory " << db_dir << ": " << s;
-    return STATUS(IllegalState, "Cannot cleanup db files", s.ToString());
-  }
-
-  if (!intents_db_dir.empty()) {
-    s = rocksdb::DestroyDB(intents_db_dir, rocksdb_options);
-    if (PREDICT_FALSE(!s.ok())) {
-      LOG_WITH_PREFIX(WARNING) << "Cannot cleanup db files in directory " << intents_db_dir << ": "
-                               << s;
-      return STATUS(IllegalState, "Cannot cleanup intents db files", s.ToString());
-    }
-  }
-
-  s = rocksdb::CopyDirectory(rocksdb_options.env, dir, db_dir, rocksdb::CreateIfMissing::kTrue);
-  if (PREDICT_FALSE(!s.ok())) {
-    LOG_WITH_PREFIX(WARNING) << "Copy checkpoint files status: " << s;
-    return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
-  }
-
-  if (!intents_db_dir.empty()) {
-    auto intents_tmp_dir = JoinPathSegments(dir, tablet::kIntentsSubdir);
-    rocksdb_options.env->RenameFile(intents_db_dir, intents_db_dir);
-  }
-
-  // Reopen database from copied checkpoint.
-  // Note: db_dir == metadata()->rocksdb_dir() is still valid db dir.
-  s = OpenKeyValueTablet();
-  if (PREDICT_FALSE(!s.ok())) {
-    LOG_WITH_PREFIX(WARNING) << "Failed tablet db opening from checkpoint: " << s;
-    return s;
-  }
-
-  docdb::ConsensusFrontier final_frontier = frontier;
-  rocksdb::UserFrontierPtr checkpoint_flushed_frontier = regular_db_->GetFlushedFrontier();
-
-  // The history cutoff we are setting after restoring to this snapshot is determined by the
-  // compactions that were done in the checkpoint, not in the old state of RocksDB in this replica.
-  if (checkpoint_flushed_frontier) {
-    final_frontier.set_history_cutoff(
-        down_cast<docdb::ConsensusFrontier&>(*checkpoint_flushed_frontier).history_cutoff());
-  }
-
-  s = ModifyFlushedFrontier(final_frontier, rocksdb::FrontierModificationMode::kForce);
-  if (PREDICT_FALSE(!s.ok())) {
-    LOG_WITH_PREFIX(WARNING) << "Failed tablet DB setting flushed op id: " << s;
-    return s;
-  }
-
-  LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << dir;
-  LOG_WITH_PREFIX(INFO) << "Sequence numbers: old=" << sequence_number
-            << ", restored=" << regular_db_->GetLatestSequenceNumber();
-
-  LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
-  s = EnableCompactions();
-  if (!s.ok()) {
-    LOG_WITH_PREFIX(WARNING) << "Failed to enable compactions after restoring a checkpoint";
-    return s;
-  }
-
-  DCHECK(op_pause.status().ok());  // Ensure that op_pause stays in scope throughout this function.
-  return Status::OK();
-}
-
-Status Tablet::PrepareForSnapshotOp(SnapshotOperationState* tx_state) {
-  tx_state->AcquireSchemaLock(&schema_lock_);
-
-  return Status::OK();
-}
-
-Status Tablet::RestoreSnapshot(SnapshotOperationState* tx_state) {
-  const string top_snapshots_dir = Tablet::SnapshotsDirName(metadata_->rocksdb_dir());
-  const string snapshot_dir = tx_state->GetSnapshotDir(top_snapshots_dir);
-
-  docdb::ConsensusFrontier frontier;
-  frontier.set_op_id(tx_state->op_id());
-  frontier.set_hybrid_time(tx_state->hybrid_time());
-  const Status s = RestoreCheckpoint(snapshot_dir, frontier);
-  VLOG(1) << "Complete checkpoint restoring for tablet " << tablet_id()
-          << " with result " << s << " in folder " << metadata_->rocksdb_dir();
-  return s;
-}
-
-std::string Tablet::SnapshotsDirName(const std::string& rocksdb_dir) {
-  return rocksdb_dir + kSnapshotsDirSuffix;
-}
-
 Result<IsolationLevel> Tablet::GetIsolationLevel(const TransactionMetadataPB& transaction) {
   if (transaction.has_isolation()) {
     return transaction.isolation();
@@ -2507,13 +2355,12 @@ Result<IsolationLevel> Tablet::GetIsolationLevel(const TransactionMetadataPB& tr
   return VERIFY_RESULT(transaction_participant_->PrepareMetadata(transaction)).isolation;
 }
 
-
 Status Tablet::CreateSubtablet(
     const TabletId& tablet_id, const Partition& partition,
     const docdb::KeyBounds& key_bounds) {
   auto metadata = VERIFY_RESULT(metadata_->CreateSubtabletMetadata(
       tablet_id, partition, key_bounds.lower.data(), key_bounds.upper.data()));
-  return CreateCheckpoint(metadata->rocksdb_dir());
+  return snapshots_->CreateCheckpoint(metadata->rocksdb_dir());
 }
 
 Result<int64_t> Tablet::CountIntents() {

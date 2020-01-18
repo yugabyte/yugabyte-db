@@ -27,7 +27,7 @@ namespace tserver {
 using rpc::RpcContext;
 using tablet::SnapshotOperationState;
 using tablet::OperationCompletionCallback;
-using tablet::enterprise::Tablet;
+using tablet::Tablet;
 
 TabletServiceBackupImpl::TabletServiceBackupImpl(TSTabletManager* tablet_manager,
                                                  const scoped_refptr<MetricEntity>& metric_entity)

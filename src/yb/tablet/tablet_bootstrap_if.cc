@@ -80,12 +80,12 @@ void TabletStatusListener::StatusMessage(const string& status) {
 
 Status BootstrapTablet(
     const BootstrapTabletData& data,
-    shared_ptr<TabletClass>* rebuilt_tablet,
+    TabletPtr* rebuilt_tablet,
     scoped_refptr<log::Log>* rebuilt_log,
     ConsensusBootstrapInfo* consensus_info) {
   TRACE_EVENT1("tablet", "BootstrapTablet",
                "tablet_id", data.meta->raft_group_id());
-  enterprise::TabletBootstrap bootstrap(data);
+  TabletBootstrap bootstrap(data);
   RETURN_NOT_OK(bootstrap.Bootstrap(rebuilt_tablet, rebuilt_log, consensus_info));
   // Set WAL retention time from the metadata.
   (*rebuilt_log)->set_wal_retention_secs(data.meta->wal_retention_secs());

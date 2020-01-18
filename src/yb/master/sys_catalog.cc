@@ -85,7 +85,6 @@ using yb::consensus::RaftConfigPB;
 using yb::consensus::RaftPeerPB;
 using yb::log::Log;
 using yb::log::LogAnchorRegistry;
-using yb::tablet::TabletClass;
 using yb::tserver::WriteRequestPB;
 using yb::tserver::WriteResponsePB;
 using strings::Substitute;
@@ -479,7 +478,7 @@ Status SysCatalogTable::SetupTablet(const scoped_refptr<tablet::RaftGroupMetadat
 Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata>& metadata) {
   CHECK(tablet_peer());
 
-  shared_ptr<TabletClass> tablet;
+  tablet::TabletPtr tablet;
   scoped_refptr<Log> log;
   consensus::ConsensusBootstrapInfo consensus_info;
   RETURN_NOT_OK(tablet_peer()->SetBootstrapping());

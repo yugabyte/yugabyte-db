@@ -62,6 +62,30 @@ namespace tserver {
 
 class TabletPeerLookupIf;
 
+struct GetDataPieceInfo {
+  // Input
+  uint64_t offset;
+  int64_t client_maxlen;
+
+  // Output
+  std::string data;
+  int64_t data_size;
+  RemoteBootstrapErrorPB::Code error_code;
+
+  int64_t bytes_remaining() const {
+    return data_size - offset;
+  }
+};
+
+class RemoteBootstrapSource {
+ public:
+  virtual CHECKED_STATUS Init() = 0;
+  virtual CHECKED_STATUS ValidateDataId(const DataIdPB& data_id) = 0;
+  virtual CHECKED_STATUS GetDataPiece(const DataIdPB& data_id, GetDataPieceInfo* info) = 0;
+
+  virtual ~RemoteBootstrapSource() = default;
+};
+
 // A potential Learner must establish a RemoteBootstrapSession with the leader in order
 // to fetch the needed superblock, blocks, and log segments.
 // This class is refcounted to make it easy to remove it from the session map
@@ -70,15 +94,11 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
  public:
   RemoteBootstrapSession(const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                          std::string session_id, std::string requestor_uuid,
-                         FsManager* fs_manager, const std::atomic<int>* nsessions);
+                         const std::atomic<int>* nsessions);
 
   // Initialize the session, including anchoring files (TODO) and fetching the
   // tablet superblock and list of WAL segments.
   CHECKED_STATUS Init();
-
-  // Add snapshot files to tablet superblock. This does nothing in the base class, because
-  // snapshots are implemented in enterprise::RemoteBootstrapSession. TODO: unify the two classes.
-  virtual CHECKED_STATUS InitSnapshotFiles();
 
   // Return ID of tablet corresponding to this session.
   const std::string& tablet_id() const;
@@ -86,29 +106,9 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // Return UUID of the requestor that initiated this session.
   const std::string& requestor_uuid() const;
 
-  // Get a piece of a log segment.
-  // If maxlen is 0, we use a system-selected length for the data piece.
-  // *data is set to a std::string containing the data. Ownership of this object
-  // is passed to the caller. A string is used because the RPC interface is
-  // sending data serialized as protobuf and we want to minimize copying.
-  // On error, Status is set to a non-OK value and error_code is filled in.
-  //
-  // This method is thread-safe.
-  CHECKED_STATUS GetLogSegmentPiece(
-      uint64_t segment_seqno, uint64_t offset, int64_t client_maxlen,
-      std::string* data, int64_t* log_file_size, RemoteBootstrapErrorPB::Code* error_code);
+  CHECKED_STATUS GetDataPiece(const DataIdPB& data_id, GetDataPieceInfo* info);
 
-  // Get a piece of a RocksDB checkpoint file.
-  CHECKED_STATUS GetRocksDBFilePiece(
-      const std::string file_name, uint64_t offset, int64_t client_maxlen,
-      std::string* data, int64_t* log_file_size, RemoteBootstrapErrorPB::Code* error_code);
-
-  // Get a piece of a RocksDB file.
-  // The behavior and params are very similar to GetLogSegmentPiece(), but this one
-  // is only for sending rocksdb files.
-  CHECKED_STATUS GetFilePiece(
-      const std::string& path, const std::string& file_name, uint64_t offset, int64_t client_maxlen,
-      std::string* data, int64_t* log_file_size, RemoteBootstrapErrorPB::Code* error_code);
+  CHECKED_STATUS ValidateDataId(const DataIdPB& data_id);
 
   MonoTime start_time() { return start_time_; }
 
@@ -136,14 +136,26 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   static const std::string kCheckpointsDir;
 
- protected:
+  // Get a piece of a RocksDB file.
+  // The behavior and params are very similar to GetLogSegmentPiece(), but this one
+  // is only for sending rocksdb files.
+  static CHECKED_STATUS GetFilePiece(
+      const std::string& path, const std::string& file_name, Env* env, GetDataPieceInfo* info);
+
+ private:
   friend class RefCountedThreadSafe<RemoteBootstrapSession>;
 
   FRIEND_TEST(RemoteBootstrapRocksDBTest, TestCheckpointDirectory);
   FRIEND_TEST(RemoteBootstrapRocksDBTest, CheckSuperBlockHasRocksDBFields);
   FRIEND_TEST(RemoteBootstrapRocksDBTest, CheckSuperBlockHasSnapshotFields);
+  FRIEND_TEST(RemoteBootstrapRocksDBTest, TestNonExistentRocksDBFile);
 
   virtual ~RemoteBootstrapSession();
+
+  template <class Source>
+  void AddSource() {
+    sources_[Source::id_type()] = std::make_unique<Source>(tablet_peer_, &tablet_superblock_);
+  }
 
   // Snapshot the log segment's length and put it into segment map.
   CHECKED_STATUS OpenLogSegment(uint64_t segment_seqno, RemoteBootstrapErrorPB::Code* error_code)
@@ -155,10 +167,26 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // Helper API to set initial_committed_cstate_.
   CHECKED_STATUS SetInitialCommittedState();
 
+  // Get a piece of a log segment.
+  // If maxlen is 0, we use a system-selected length for the data piece.
+  // *data is set to a std::string containing the data. Ownership of this object
+  // is passed to the caller. A string is used because the RPC interface is
+  // sending data serialized as protobuf and we want to minimize copying.
+  // On error, Status is set to a non-OK value and error_code is filled in.
+  //
+  // This method is thread-safe.
+  CHECKED_STATUS GetLogSegmentPiece(uint64_t segment_seqno, GetDataPieceInfo* info);
+
+  // Get a piece of a RocksDB checkpoint file.
+  CHECKED_STATUS GetRocksDBFilePiece(const std::string& file_name, GetDataPieceInfo* info);
+
+  Env* env() const;
+
+  RemoteBootstrapSource* Source(DataIdPB::IdType id_type) const;
+
   std::shared_ptr<tablet::TabletPeer> tablet_peer_;
   const std::string session_id_;
   const std::string requestor_uuid_;
-  FsManager* const fs_manager_;
 
   mutable std::mutex mutex_;
 
@@ -195,7 +223,8 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // calculate the rate for the rate limiter.
   const std::atomic<int>* nsessions_;
 
- private:
+  std::array<std::unique_ptr<RemoteBootstrapSource>, DataIdPB::IdType_ARRAYSIZE> sources_;
+
   DISALLOW_COPY_AND_ASSIGN(RemoteBootstrapSession);
 };
 

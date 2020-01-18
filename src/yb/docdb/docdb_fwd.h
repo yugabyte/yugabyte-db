@@ -19,6 +19,7 @@
 namespace yb {
 namespace docdb {
 
+class ConsensusFrontier;
 class DocPath;
 class DocWriteBatch;
 class IntentAwareIterator;

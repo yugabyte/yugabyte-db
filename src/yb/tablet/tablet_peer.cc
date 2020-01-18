@@ -164,7 +164,7 @@ TabletPeer::~TabletPeer() {
   LOG_IF_WITH_PREFIX(DFATAL, tablet_) << "TabletPeer not fully shut down.";
 }
 
-Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
+Status TabletPeer::InitTabletPeer(const TabletPtr &tablet,
                                   const std::shared_future<client::YBClient*> &client_future,
                                   const std::shared_ptr<MemTracker>& server_mem_tracker,
                                   Messenger* messenger,
