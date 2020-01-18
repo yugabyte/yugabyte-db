@@ -552,8 +552,15 @@ Status Tablet::OpenKeyValueTablet() {
       &rocksdb_options, LogPrefix(docdb::StorageDbType::kRegular), rocksdb_statistics_,
       tablet_options_);
   rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker(kRegularDB, mem_tracker_);
-  rocksdb_options.block_based_table_mem_tracker = MemTracker::FindOrCreateTracker(
-      Format("$0-$1", kRegularDB, tablet_id()), block_based_table_mem_tracker_);
+  rocksdb_options.block_based_table_mem_tracker =
+      MemTracker::FindOrCreateTracker(
+          Format("$0-$1", kRegularDB, tablet_id()), block_based_table_mem_tracker_,
+          AddToParent::kTrue, CreateMetrics::kFalse);
+  // We may not have a metrics_entity_ instantiated in tests.
+  if (metric_entity_) {
+    rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(metric_entity_,
+        Format("$0_$1", "BlockBasedTable", kRegularDB));
+  }
 
   key_bounds_ = docdb::KeyBounds(metadata()->lower_bound_key(), metadata()->upper_bound_key());
 
@@ -603,8 +610,12 @@ Status Tablet::OpenKeyValueTablet() {
         std::make_shared<docdb::DocDBIntentsCompactionFilterFactory>(this, &key_bounds_) : nullptr;
 
     rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker(kIntentsDB, mem_tracker_);
-    rocksdb_options.block_based_table_mem_tracker = MemTracker::FindOrCreateTracker(
-      Format("$0-$1", kIntentsDB, tablet_id()), block_based_table_mem_tracker_);
+    rocksdb_options.block_based_table_mem_tracker =
+        MemTracker::FindOrCreateTracker(
+            Format("$0-$1", kIntentsDB, tablet_id()), block_based_table_mem_tracker_,
+            AddToParent::kTrue, CreateMetrics::kFalse);
+    rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(metric_entity_,
+      Format("$0_$1", "BlockBasedTable", kIntentsDB));
 
     rocksdb::DB* intents_db = nullptr;
     RETURN_NOT_OK(rocksdb::DB::Open(rocksdb_options, db_dir + kIntentsDBSuffix, &intents_db));
