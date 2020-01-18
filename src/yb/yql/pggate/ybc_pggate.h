@@ -243,13 +243,13 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
 //   Case 1: INSERT INTO tab(x) VALUES(x_expr)
 //   - BindColumn() can be used for BOTH primary-key and regular columns.
 //   - This bind-column function is used to bind "x" with "x_expr", and "x_expr" that can contain
-//     bind-variables (placeholders) and contants whose values can be updated for each execution
+//     bind-variables (placeholders) and constants whose values can be updated for each execution
 //     of the same allocated statement.
 //
 //   Case 2: SELECT / UPDATE / DELETE <WHERE key = "key_expr">
 //   - BindColumn() can only be used for primary-key columns.
 //   - This bind-column function is used to bind the primary column "key" with "key_expr" that can
-//     contain bind-variables (placeholders) and contants whose values can be updated for each
+//     contain bind-variables (placeholders) and constants whose values can be updated for each
 //     execution of the same allocated statement.
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 YBCStatus YBCPgDmlBindColumnCondEq(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
@@ -258,6 +258,9 @@ YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBC
 YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
     YBCPgExpr *attr_values);
 YBCStatus YBCPgDmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
+
+// Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
+YBCStatus YBCPgDmlBindTable(YBCPgStatement handle);
 
 // API for SET clause.
 YBCStatus YBCPgDmlAssignColumn(YBCPgStatement handle,
@@ -314,6 +317,14 @@ YBCStatus YBCPgNewDelete(YBCPgOid database_oid,
                          YBCPgStatement *handle);
 
 YBCStatus YBCPgExecDelete(YBCPgStatement handle);
+
+// Colocated TRUNCATE ------------------------------------------------------------------------------
+YBCStatus YBCPgNewTruncateColocated(YBCPgOid database_oid,
+                                    YBCPgOid table_oid,
+                                    bool is_single_row_txn,
+                                    YBCPgStatement *handle);
+
+YBCStatus YBCPgExecTruncateColocated(YBCPgStatement handle);
 
 // SELECT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewSelect(YBCPgOid database_oid,

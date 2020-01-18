@@ -2759,6 +2759,13 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
   auto l = table->LockForRead();
   RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
 
+  // Exit early if the table is colocated because it should be handled by a write DML.
+  // TODO(jason): prevent this code path by checking earlier, up to
+  // postgres/src/backend/commands/ybccmds.c (issue #3387).
+  if (IsColocatedUserTable(*table)) {
+    return Status::OK();
+  }
+
   // Send a Truncate() request to each tablet in the table.
   SendTruncateTableRequest(table);
 

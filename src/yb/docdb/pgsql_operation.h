@@ -63,11 +63,12 @@ class PgsqlWriteOperation :
     }
   }
 
-  // Insert, update, and delete operations.
+  // Insert, update, delete, and colocated truncate operations.
   CHECKED_STATUS ApplyInsert(
       const DocOperationApplyData& data, IsUpsert is_upsert = IsUpsert::kFalse);
   CHECKED_STATUS ApplyUpdate(const DocOperationApplyData& data);
   CHECKED_STATUS ApplyDelete(const DocOperationApplyData& data);
+  CHECKED_STATUS ApplyTruncateColocated(const DocOperationApplyData& data);
 
   CHECKED_STATUS DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
                            const ReadHybridTime& read_ht, CoarseTimePoint deadline);
