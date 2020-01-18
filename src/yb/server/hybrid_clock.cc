@@ -144,8 +144,7 @@ void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec
   HybridClockComponents current_components = components_.load(boost::memory_order_acquire);
   HybridClockComponents new_components = { now->time_point, 1 };
 
-  VLOG(4) << __func__ << ", new: " << new_components.ToString() << ", current: "
-          << current_components.ToString();
+  VLOG(4) << __func__ << ", new: " << new_components << ", current: " << current_components;
 
   // Loop over the check in case of concurrent updates making the CAS fail.
   while (now->time_point > current_components.last_usec) {
@@ -206,8 +205,10 @@ void HybridClock::Update(const HybridTime& to_update) {
     GetPhysicalValueMicros(to_update), GetLogicalValue(to_update) + 1
   };
 
-  VLOG(4) << __func__ << ", new: " << new_components.ToString() << ", current: "
-          << current_components.ToString();
+  // VLOG(4) crashes in TSAN mode
+  if (VLOG_IS_ON(4)) {
+    LOG(INFO) << __func__ << ", new: " << new_components << ", current: " << current_components;
+  }
 
   new_components.HandleLogicalComponentOverflow();
 
@@ -230,7 +231,15 @@ uint64_t HybridClock::ErrorForMetrics() {
   return error;
 }
 
-void HybridClock::HybridClockComponents::HandleLogicalComponentOverflow() {
+std::string HybridClockComponents::ToString() const {
+  return Format("{ last_usec: $0 logical: $1 }", last_usec, logical);
+}
+
+std::ostream& operator<<(std::ostream& out, const HybridClockComponents& components) {
+  return out << components.ToString();
+}
+
+void HybridClockComponents::HandleLogicalComponentOverflow() {
   if (logical > HybridTime::kLogicalBitMask) {
     static constexpr uint64_t kMaxOverflowValue = 1ULL << HybridTime::kBitsForLogicalComponent;
     if (logical > kMaxOverflowValue) {
