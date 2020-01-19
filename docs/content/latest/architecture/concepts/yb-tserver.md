@@ -70,7 +70,8 @@ One such is a prioritizated queue to give priority to small compactions over lar
 to make sure the number of SSTable files for any tablet stays as low as possible.
 
 ### Manual compactions
-YugabyteDB allows compactions to be externally triggered on a table with `yb-admin` cli. 
+YugabyteDB allows compactions to be externally triggered on a table with `compact_table` subcommand in 
+[`yb-admin` cli]({{< ref "yb-admin.md" >}}). 
 This can be useful for cases when new data is not coming into the system for a table anymore, 
 users want to reclaim disk space due to overwrites/deletes that have already happened or due to TTL expiry.
 
