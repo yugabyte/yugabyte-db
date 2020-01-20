@@ -119,7 +119,7 @@ class MasterFailoverTest : public YBTest {
     b.AddColumn("int_val")->Type(INT32)->NotNull();
     b.AddColumn("string_val")->Type(STRING)->NotNull();
     CHECK_OK(b.Build(&schema));
-    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+    std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     return table_creator->table_name(table_name)
         .schema(&schema)
         .timeout(MonoDelta::FromSeconds(90))
@@ -128,7 +128,7 @@ class MasterFailoverTest : public YBTest {
   }
 
   Status RenameTable(const YBTableName& table_name_orig, const YBTableName& table_name_new) {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(table_name_orig));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(table_name_orig));
     return table_alterer
       ->RenameTo(table_name_new)
       ->timeout(MonoDelta::FromSeconds(90))

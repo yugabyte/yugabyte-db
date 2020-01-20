@@ -168,7 +168,7 @@ class TwoDCTest : public YBTest, public testing::WithParamInterface<int> {
                                                      table.namespace_type()));
 
     // Add a table, make sure it reports itself.
-    gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
+    std::unique_ptr<YBTableCreator> table_creator(client->NewTableCreator());
         RETURN_NOT_OK(table_creator->table_name(table)
                           .schema(&schema_)
                           .table_type(YBTableType::YQL_TABLE_TYPE)

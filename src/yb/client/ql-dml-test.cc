@@ -309,7 +309,7 @@ TEST_F(QLDmlTest, TestInsertWrongSchema) {
   const YBSessionPtr session(NewSession());
 
   // Move to schema version 1 by altering table
-  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   table_alterer->AddColumn("c3")->Type(INT32)->NotNull();
   EXPECT_OK(table_alterer->timeout(MonoDelta::FromSeconds(60))->Alter());
 

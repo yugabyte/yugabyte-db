@@ -415,8 +415,8 @@ void YBClient::Shutdown() {
   }
 }
 
-YBTableCreator* YBClient::NewTableCreator() {
-  return new YBTableCreator(this);
+std::unique_ptr<YBTableCreator> YBClient::NewTableCreator() {
+  return std::unique_ptr<YBTableCreator>(new YBTableCreator(this));
 }
 
 Status YBClient::IsCreateTableInProgress(const YBTableName& table_name,
@@ -483,12 +483,12 @@ Status YBClient::DeleteIndexTable(const string& table_id,
                             wait);
 }
 
-YBTableAlterer* YBClient::NewTableAlterer(const YBTableName& name) {
-  return new YBTableAlterer(this, name);
+std::unique_ptr<YBTableAlterer> YBClient::NewTableAlterer(const YBTableName& name) {
+  return std::unique_ptr<YBTableAlterer>(new YBTableAlterer(this, name));
 }
 
-YBTableAlterer* YBClient::NewTableAlterer(const string id) {
-  return new YBTableAlterer(this, id);
+std::unique_ptr<YBTableAlterer> YBClient::NewTableAlterer(const string id) {
+  return std::unique_ptr<YBTableAlterer>(new YBTableAlterer(this, id));
 }
 
 Status YBClient::IsAlterTableInProgress(const YBTableName& table_name,

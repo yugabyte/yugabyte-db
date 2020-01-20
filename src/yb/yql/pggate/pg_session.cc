@@ -27,6 +27,7 @@
 #include "yb/client/error.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
+#include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
@@ -46,6 +47,7 @@ namespace yb {
 namespace pggate {
 
 using std::make_shared;
+using std::unique_ptr;
 using std::shared_ptr;
 using std::string;
 using namespace std::literals;  // NOLINT
@@ -195,7 +197,7 @@ Status PgSession::CreateSequencesDataTable() {
   pggate::PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
 
   // Try to create the table.
-  gscoped_ptr<yb::client::YBTableCreator> table_creator(client_->NewTableCreator());
+  std::unique_ptr<yb::client::YBTableCreator> table_creator(client_->NewTableCreator());
 
   Status s = table_creator->table_name(table_name)
       .schema(&schema)
@@ -395,15 +397,15 @@ Status PgSession::DeleteDBSequences(int64_t db_oid) {
 
 //--------------------------------------------------------------------------------------------------
 
-client::YBTableCreator *PgSession::NewTableCreator() {
+unique_ptr<client::YBTableCreator> PgSession::NewTableCreator() {
   return client_->NewTableCreator();
 }
 
-client::YBTableAlterer *PgSession::NewTableAlterer(const YBTableName& table_name) {
+unique_ptr<client::YBTableAlterer> PgSession::NewTableAlterer(const YBTableName& table_name) {
   return client_->NewTableAlterer(table_name);
 }
 
-client::YBTableAlterer *PgSession::NewTableAlterer(const string table_id) {
+unique_ptr<client::YBTableAlterer> PgSession::NewTableAlterer(const string table_id) {
   return client_->NewTableAlterer(table_id);
 }
 

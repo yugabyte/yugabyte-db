@@ -50,7 +50,6 @@
 
 #include "yb/common/ql_value.h"
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -150,7 +149,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
                                                  kTableName.namespace_type()));
 
     // Add a table, make sure it reports itself.
-    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+    std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     CHECK_OK(table_creator->table_name(kTableName)
              .schema(&schema_)
              .table_type(YBTableType::YQL_TABLE_TYPE)
@@ -225,7 +224,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
   Status AddNewI32Column(const YBTableName& table_name,
                          const string& column_name,
                          const MonoDelta& timeout) {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(table_name));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(table_name));
     table_alterer->AddColumn(column_name)->Type(INT32)->NotNull();
     return table_alterer->timeout(timeout)->Alter();
   }
@@ -251,7 +250,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
     RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name(),
                                                       table_name.namespace_type()));
 
-    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+    std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     return table_creator->table_name(table_name)
         .schema(&schema_)
         .num_tablets(10)
@@ -314,7 +313,7 @@ TEST_F(AlterTableTest, TestAddNullableColumnWithoutDefault) {
   ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
 
   {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     table_alterer->AddColumn("new")->Type(INT32);
     ASSERT_OK(table_alterer->Alter());
   }
@@ -513,7 +512,7 @@ TEST_F(AlterTableTest, TestDropAndAddNewColumn) {
   VerifyRows(0, kNumRows, C1_MATCHES_INDEX);
 
   LOG(INFO) << "Dropping and adding back c1";
-  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
   ASSERT_OK(AddNewI32Column(kTableName, "c1"));
@@ -531,7 +530,7 @@ TEST_F(AlterTableTest, DISABLED_TestCompactionAfterDrop) {
   ASSERT_NE(0, docdb_dump.length());
 
   LOG(INFO) << "Dropping c1";
-  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
   LOG(INFO) << "Forcing compaction";
@@ -559,7 +558,7 @@ TEST_F(AlterTableTest, TestLogSchemaReplay) {
   UpdateRow(0, { {"c1", 1}, {"c2", 10001} });
 
   LOG(INFO) << "Dropping c1";
-  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
   UpdateRow(1, { {"c2", 10002} });
@@ -584,7 +583,7 @@ TEST_F(AlterTableTest, TestLogSchemaReplay) {
 // Tests that a renamed table can still be altered. This is a regression test, we used to not carry
 // over column ids after a table rename.
 TEST_F(AlterTableTest, TestRenameTableAndAdd) {
-  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   YBTableName new_name(kTableName.namespace_type(), kTableName.namespace_name(), "someothername");
   ASSERT_OK(table_alterer->RenameTo(new_name)
             ->Alter());
@@ -610,7 +609,7 @@ TEST_F(AlterTableTest, TestBootstrapAfterAlters) {
   ASSERT_EQ("{ int32:16777216, int32:10002, null }", rows[1]);
 
   LOG(INFO) << "Dropping c1";
-  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
   rows = ScanToStrings();
@@ -691,7 +690,7 @@ TEST_F(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
 
   // Drop c1.
   LOG(INFO) << "Dropping c1";
-  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
   rows = ScanToStrings();
@@ -889,7 +888,7 @@ TEST_F(AlterTableTest, TestMultipleAlters) {
 
   // Issue a bunch of new alters without waiting for them to finish.
   for (int i = 0; i < kNumNewCols; i++) {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kSplitTableName));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kSplitTableName));
     table_alterer->AddColumn(strings::Substitute("new_col$0", i))
                  ->Type(INT32)->NotNull();
     ASSERT_OK(table_alterer->wait(false)->Alter());
@@ -913,7 +912,7 @@ TEST_F(ReplicatedAlterTableTest, TestReplicatedAlter) {
   VerifyRows(0, kNumRows, C1_MATCHES_INDEX);
 
   LOG(INFO) << "Dropping and adding back c1";
-  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
   ASSERT_OK(AddNewI32Column(kTableName, "c1"));
