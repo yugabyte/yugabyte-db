@@ -102,7 +102,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // SELECT --------------------------------- A < r1 < B -------------------------------------------
   LOG(INFO) << "Test SELECTing from table WITH RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, kInvalidOid, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
+                                  NULL /* prepare_params */, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
@@ -170,7 +171,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // SELECT --------------------------------- A < r1 -----------------------------------------------
   LOG(INFO) << "Test SELECTing from table WITH RANGE values: A < r1";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, kInvalidOid, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
+                                  NULL /* prepare_params */, &pg_stmt));
 
   // Specify the selected expressions.
   YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref);
@@ -235,7 +237,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // SELECT --------------------------------- r1 < B -----------------------------------------------
   LOG(INFO) << "Test SELECTing from table WITH RANGE values: r1 < B";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, kInvalidOid, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
+                                  NULL /* prepare_params */, &pg_stmt));
 
   // Specify the selected expressions.
   YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref);
@@ -300,7 +303,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // SELECT --------------------------------- A < r1 < A -------------------------------------------
   LOG(INFO) << "Test SELECTing from table WITH RANGE values: A < r1 < A";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, kInvalidOid, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
+                                  NULL /* prepare_params */, &pg_stmt));
 
   // Specify the selected expressions.
   YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref);

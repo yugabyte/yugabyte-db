@@ -223,7 +223,7 @@ QLScanRange::QLScanRange(const Schema& schema, const PgsqlConditionPB& condition
   bool has_range_column = false;
   for (const auto& operand : operands) {
     if (operand.expr_case() == PgsqlExpressionPB::ExprCase::kColumnId &&
-        schema.is_range_column(schema.column_id(operand.column_id()))) {
+        schema.is_range_column(operand.column_id())) {
       has_range_column = true;
       break;
     }
@@ -259,7 +259,7 @@ QLScanRange::QLScanRange(const Schema& schema, const PgsqlConditionPB& condition
       if (has_range_column) {
         // - <column> = <value> --> min/max values = <value>
         QL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
-        const ColumnId column_id = schema.column_id(col_expr->column_id());
+        const ColumnId column_id(col_expr->column_id());
         ranges_.at(column_id).min_value = val_expr->value();
         ranges_.at(column_id).max_value = val_expr->value();
       }
@@ -269,7 +269,7 @@ QLScanRange::QLScanRange(const Schema& schema, const PgsqlConditionPB& condition
     case QL_OP_LESS_THAN_EQUAL: {
       if (has_range_column) {
         QL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
-        const ColumnId column_id = schema.column_id(col_expr->column_id());
+        const ColumnId column_id(col_expr->column_id());
         if (operands.Get(0).expr_case() == PgsqlExpressionPB::ExprCase::kColumnId) {
           // - <column> <= <value> --> max_value = <value>
           ranges_.at(column_id).max_value = val_expr->value();
@@ -284,7 +284,7 @@ QLScanRange::QLScanRange(const Schema& schema, const PgsqlConditionPB& condition
     case QL_OP_GREATER_THAN_EQUAL: {
       if (has_range_column) {
         QL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
-        const ColumnId column_id = schema.column_id(col_expr->column_id());
+        const ColumnId column_id (col_expr->column_id());
         if (operands.Get(0).expr_case() == PgsqlExpressionPB::ExprCase::kColumnId) {
           // - <column> >= <value> --> min_value = <value>
           ranges_.at(column_id).min_value = val_expr->value();
@@ -302,7 +302,7 @@ QLScanRange::QLScanRange(const Schema& schema, const PgsqlConditionPB& condition
         // - max_value = <value_2>
         CHECK_EQ(operands.size(), 3);
         if (operands.Get(0).expr_case() == PgsqlExpressionPB::ExprCase::kColumnId) {
-          const ColumnId column_id = schema.column_id(operands.Get(0).column_id());
+          const ColumnId column_id(operands.Get(0).column_id());
           if (operands.Get(1).expr_case() == PgsqlExpressionPB::ExprCase::kValue) {
             ranges_.at(column_id).min_value = operands.Get(1).value();
           }
@@ -320,7 +320,7 @@ QLScanRange::QLScanRange(const Schema& schema, const PgsqlConditionPB& condition
         // IN arguments should have already been de-duplicated and ordered by the executor.
         int in_size = val_expr->value().list_value().elems_size();
         if (in_size > 0) {
-          const ColumnId column_id = schema.column_id(col_expr->column_id());
+          const ColumnId column_id(col_expr->column_id());
           ranges_.at(column_id).min_value = val_expr->value().list_value().elems(0);
           ranges_.at(column_id).max_value = val_expr->value().list_value().elems(in_size - 1);
         }

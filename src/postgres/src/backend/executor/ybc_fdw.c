@@ -261,9 +261,9 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 
 	node->fdw_state = (void *) ybc_state;
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-	                              RelationGetRelid(relation),
-	                              InvalidOid /* index_oid */,
-	                              &ybc_state->handle));
+																RelationGetRelid(relation),
+																NULL /* prepare_params */, 
+																&ybc_state->handle));
 	ResourceOwnerEnlargeYugaByteStmts(CurrentResourceOwner);
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybc_state->handle);
 	ybc_state->stmt_owner = CurrentResourceOwner;

@@ -318,7 +318,7 @@ YBCStatus YBCPgExecDelete(YBCPgStatement handle);
 // SELECT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewSelect(YBCPgOid database_oid,
                          YBCPgOid table_oid,
-                         YBCPgOid index_oid,
+                         const YBCPgPrepareParameters *prepare_params,
                          YBCPgStatement *handle);
 
 // Set forward/backward scan direction.

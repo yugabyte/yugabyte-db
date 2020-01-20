@@ -34,12 +34,11 @@ class PgSelect : public PgDml {
   typedef scoped_refptr<PgSelect> ScopedRefPtr;
 
   // Constructors.
-  PgSelect(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
+  PgSelect(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id,
+           const PgObjectId& index_id, const PgPrepareParameters *prepare_params);
   virtual ~PgSelect();
 
   StmtOp stmt_op() const override { return StmtOp::STMT_SELECT; }
-
-  void UseIndex(const PgObjectId& index_id);
 
   // Prepare SELECT before execution.
   CHECKED_STATUS Prepare();
@@ -63,9 +62,7 @@ class PgSelect : public PgDml {
   CHECKED_STATUS BindColumnCondIn(int attnum, int n_attr_values, PgExpr **attr_values);
 
   // Set forward (or backward) scan.
-  void SetForwardScan(const bool is_forward_scan) {
-    DCHECK_NOTNULL(read_req_)->set_is_forward_scan(is_forward_scan);
-  }
+  void SetForwardScan(const bool is_forward_scan);
 
   // Execute.
   CHECKED_STATUS Exec(const PgExecParameters *exec_params);
@@ -92,9 +89,6 @@ class PgSelect : public PgDml {
 
   // Load index.
   CHECKED_STATUS LoadIndex();
-
-  PgObjectId index_id_;
-  PgTableDesc::ScopedRefPtr index_desc_;
 
   // References mutable request from template operation of doc_op_.
   PgsqlReadRequestPB *read_req_ = nullptr;

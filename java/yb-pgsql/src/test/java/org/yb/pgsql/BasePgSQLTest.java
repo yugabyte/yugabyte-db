@@ -64,6 +64,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.yb.AssertionWrappers.assertArrayEquals;
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
@@ -146,6 +147,19 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     } else {
       // We get a lot of timeouts in macOS debug builds.
       return 45000;
+    }
+  }
+
+  public static void perfAssertLessThan(double time1, double time2) {
+    if (TestUtils.isReleaseBuild()) {
+      assertLessThan(time1, time2);
+    }
+  }
+
+  public static void perfAssertEquals(double time1, double time2) {
+    if (TestUtils.isReleaseBuild()) {
+      assertLessThan(time1, time2 * 1.3);
+      assertLessThan(time1 * 1.3, time2);
     }
   }
 

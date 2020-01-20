@@ -72,6 +72,10 @@ class PgDml : public PgStatement {
   // Method members.
   // Constructor.
   PgDml(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
+  PgDml(PgSession::ScopedRefPtr pg_session,
+        const PgObjectId& table_id,
+        const PgObjectId& index_id,
+        const PgPrepareParameters *prepare_params);
 
   // Load table.
   CHECKED_STATUS LoadTable();
@@ -99,11 +103,20 @@ class PgDml : public PgStatement {
   //
   // TODO(neil) All related information to table descriptor should be cached in the global API
   // object or some global data structures.
-  const PgObjectId table_id_;
+  PgObjectId table_id_;
   PgTableDesc::ScopedRefPtr table_desc_;
+
+  PgObjectId index_id_;
+  PgTableDesc::ScopedRefPtr index_desc_;
 
   // Postgres targets of statements. These are either selected or returned expressions.
   std::vector<PgExpr*> targets_;
+
+  // Prepare control parameters.
+  PgPrepareParameters prepare_params_ = { kInvalidOid /* index_oid */,
+                                          false /* index_only_scan */,
+                                          false /* use_secondary_index */,
+                                          false /* querying_systable */ };
 
   // -----------------------------------------------------------------------------------------------
   // Data members for generated protobuf.

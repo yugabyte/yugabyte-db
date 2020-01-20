@@ -759,12 +759,14 @@ Status PgApiImpl::ExecDelete(PgStatement *handle) {
 
 Status PgApiImpl::NewSelect(const PgObjectId& table_id,
                             const PgObjectId& index_id,
+                            const PgPrepareParameters *prepare_params,
                             PgStatement **handle) {
   *handle = nullptr;
-  auto stmt = make_scoped_refptr<PgSelect>(pg_session_, table_id);
-  if (index_id.IsValid()) {
-    stmt->UseIndex(index_id);
+  if (prepare_params && prepare_params->index_only_scan && !index_id.IsValid()) {
+    return STATUS(InvalidArgument, "Cannot run query with invalid index ID");
   }
+  auto stmt = make_scoped_refptr<PgSelect>(pg_session_, table_id, index_id, prepare_params);
+
   RETURN_NOT_OK(stmt->Prepare());
   *handle = stmt.detach();
   return Status::OK();
