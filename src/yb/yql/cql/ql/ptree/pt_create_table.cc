@@ -17,8 +17,15 @@
 
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/util/flag_tags.h"
 
 DECLARE_bool(use_cassandra_authentication);
+
+DEFINE_bool(cql_table_is_transactional_by_default, false,
+            "When the 'transactions' property is not specified at CREATE TABLE time "
+            "for a YCQL table, this flag determines the default setting for whether "
+            "the table is transactional or not.");
+TAG_FLAG(cql_table_is_transactional_by_default, advanced);
 
 namespace yb {
 namespace ql {
@@ -247,6 +254,13 @@ void PTCreateTable::PrintSemanticAnalysisResult(SemContext *sem_context) {
 }
 
 CHECKED_STATUS PTCreateTable::ToTableProperties(TableProperties *table_properties) const {
+  // Some external tools need to create indexes for a regular table.
+  // For such tools any new table can be created as transactional by default.
+  if (PREDICT_FALSE(FLAGS_cql_table_is_transactional_by_default)) {
+    // Note: the table property can be overrided below by the user specified value.
+    table_properties->SetTransactional(true);
+  }
+
   if (table_properties_ != nullptr) {
     for (PTTableProperty::SharedPtr table_property : table_properties_->node_list()) {
       RETURN_NOT_OK(table_property->SetTableProperty(table_properties));

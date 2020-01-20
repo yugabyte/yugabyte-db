@@ -1153,4 +1153,72 @@ public class TestIndex extends BaseCQLTest {
     assertQuery("SELECT * FROM test_order WHERE b = 'index_hash' ORDER BY c DESC;", rowDesc);
     assertQuery("SELECT * FROM test_order WHERE b = 'index_hash' ORDER BY c ASC;", rowAsc);
   }
+
+  @Test
+  public void testCreateIndexWithNonTransactionalTable() throws Exception {
+    LOG.info("Start test: " + getCurrentTestMethodName());
+
+    // Create transactional test table and index.
+    session.execute("create table test_tr_tbl (h1 int primary key, c1 int) " +
+                    "with transactions = {'enabled' : true};");
+    session.execute("create index on test_tr_tbl(c1);");
+    session.execute("create index idx2 on test_tr_tbl(c1) with " +
+                    "transactions = {'enabled' : true};");
+
+    runInvalidStmt("create index on test_tr_tbl(c1) with " +
+                   "transactions = {'enabled' : false};");
+    runInvalidStmt("create index on test_tr_tbl(c1) with " +
+                   "transactions = {'enabled' : true, 'consistency_level' : 'user_enforced'};");
+    runInvalidStmt("create index on test_tr_tbl(c1) with " +
+                   "transactions = {'enabled' : false, 'consistency_level' : 'user_enforced'};");
+    runInvalidStmt("create index on test_tr_tbl(c1) with " +
+                   "transactions = {'consistency_level' : 'user_enforced'};");
+
+    // Create non-transactional test tables and indexes.
+    session.execute("create table test_non_tr_tbl (h1 int primary key, c1 int) " +
+                    "with transactions = {'enabled' : false};");
+
+    runInvalidStmt("create index on test_non_tr_tbl(c1);");
+    runInvalidStmt("create index on test_non_tr_tbl(c1) with " +
+                   "transactions = {'enabled' : true};");
+    runInvalidStmt("create index on test_non_tr_tbl(c1) with " +
+                   "transactions = {'enabled' : false};");
+    runInvalidStmt("create index on test_non_tr_tbl(c1) with " +
+                   "transactions = {'enabled' : true, 'consistency_level' : 'user_enforced'};");
+    runInvalidStmt("create index on test_non_tr_tbl(c1) with " +
+                   "transactions = {'consistency_level' : 'user_enforced'};");
+
+    // Test weak index.
+    session.execute("create index test_non_tr_tbl_idx on test_non_tr_tbl(c1) with " +
+                    "transactions = {'enabled' : false, 'consistency_level' : 'user_enforced'};");
+    assertQuery("select options, transactions from system_schema.indexes where " +
+                "index_name = 'test_non_tr_tbl_idx';",
+                "Row[{target=c1, h1}, {enabled=false, consistency_level=user_enforced}]");
+
+    session.execute("create table test_reg_tbl (h1 int primary key, c1 int);");
+
+    runInvalidStmt("create index on test_reg_tbl(c1);");
+    runInvalidStmt("create index on test_reg_tbl(c1) with " +
+                   "transactions = {'enabled' : true};");
+    runInvalidStmt("create index on test_reg_tbl(c1) with " +
+                   "transactions = {'enabled' : false};");
+    runInvalidStmt("create index on test_reg_tbl(c1) with " +
+                   "transactions = {'enabled' : true, 'consistency_level' : 'user_enforced'};");
+    runInvalidStmt("create index on test_reg_tbl(c1) with " +
+                   "transactions = {'consistency_level' : 'user_enforced'};");
+
+    // Test weak index.
+    session.execute("create index test_reg_tbl_idx on test_reg_tbl(c1) with " +
+                    "transactions = {'enabled' : false, 'consistency_level' : 'user_enforced'};");
+    assertQuery("select options, transactions from system_schema.indexes where " +
+                "index_name = 'test_reg_tbl_idx';",
+                "Row[{target=c1, h1}, {enabled=false, consistency_level=user_enforced}]");
+
+    // Drop test tables.
+    session.execute("drop table test_tr_tbl;");
+    session.execute("drop table test_non_tr_tbl;");
+    session.execute("drop table test_reg_tbl;");
+
+    LOG.info("End test: " + getCurrentTestMethodName());
+  }
 }

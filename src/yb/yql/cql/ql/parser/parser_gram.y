@@ -699,10 +699,14 @@ using namespace yb::ql;
 // looking one token ahead). NOT_LA exists so that productions such as NOT LIKE can be given the
 // same precedence as LIKE; otherwise they'd effectively have the same precedence as NOT, at least
 // with respect to their left-hand subexpression. NULLS_LA and WITH_LA are needed to make the
-// grammar LALR(1).
+// grammar LALR(1). (Look Ahead Left to Right parser.)
 //
-// OFFSET_LA is added to support OFFSET clause in SELECT.
-%token                    NOT_LA NULLS_LA WITH_LA OFFSET_LA
+// All *_LA tokens can be inserted into the grammer stack only manually - it's done in
+// the LexProcessor::Scan() method in the scanner.cc module.
+// OFFSET_LA and GROUP_LA were added to support using of these keywords as regular column names.
+// - OFFSET_LA is used to support OFFSET clause in SELECT statement
+// - GROUP_LA is used to support GROUP BY clause in SELECT statement
+%token                    NOT_LA NULLS_LA WITH_LA OFFSET_LA GROUP_LA
 
 %token                    SCAN_ERROR "incomprehensible_character_pattern"
 %token END                0 "end_of_file"
@@ -2503,7 +2507,7 @@ group_clause:
   /*EMPTY*/ {
     $$ = nullptr;
   }
-  | GROUP_P BY group_by_list {
+  | GROUP_LA BY group_by_list {
     $$ = $3;
   }
 ;
@@ -3779,10 +3783,6 @@ xmlexists_argument:
 // Aggregate decoration clauses
 within_group_clause:
   /*EMPTY*/ {
-    $$ = nullptr;
-  }
-  | WITHIN GROUP_P '(' sort_clause ')' {
-    PARSER_UNSUPPORTED(@1);
     $$ = nullptr;
   }
 ;
@@ -5247,6 +5247,7 @@ col_name_keyword:
   | FLOAT_P { $$ = $1; }
   | FROZEN { $$ = $1; }
   | GREATEST { $$ = $1; }
+  | GROUP_P { $$ = $1; }
   | GROUPING { $$ = $1; }
   | INET { $$ = $1; }
   | JSON { $$ = $1; }
@@ -5377,7 +5378,6 @@ reserved_keyword:
   | FOREIGN { $$ = $1; }
   | FROM { $$ = $1; }
   | GRANT { $$ = $1; }
-  | GROUP_P { $$ = $1; }
   | HAVING { $$ = $1; }
   | IF_P { $$ = $1; }
   | IN_P { $$ = $1; }
@@ -5657,8 +5657,6 @@ CreateOptRoleElem:
   | ROLE role_list {
   }
   | IN_P ROLE role_list {
-  }
-  | IN_P GROUP_P role_list {
   }
 ;
 
@@ -7891,8 +7889,6 @@ grantee_list:
 grantee:
   RoleSpec {
   }
-  | GROUP_P RoleSpec {
-  }
 ;
 
 opt_grant_grant_option:
@@ -8630,8 +8626,6 @@ RenameStmt:
   | ALTER FOREIGN DATA_P WRAPPER name RENAME TO name {
   }
   | ALTER FUNCTION function_with_argtypes RENAME TO name {
-  }
-  | ALTER GROUP_P RoleId RENAME TO RoleId {
   }
   | ALTER opt_procedural LANGUAGE name RENAME TO name {
   }
