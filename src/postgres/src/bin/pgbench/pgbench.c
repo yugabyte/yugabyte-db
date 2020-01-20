@@ -4376,12 +4376,6 @@ initGenerateData(PGconn *con)
 	ereport(ELEVEL_LOG_MAIN, (errmsg("generating data...\n")));
 
 	/*
-	 * we do all of this in one transaction to enable the backend's
-	 * data-loading optimizations
-	 */
-	executeStatement(con, "begin");
-
-	/*
 	 * truncate away any old data, in one command in case there are foreign
 	 * keys
 	 */
@@ -4413,9 +4407,12 @@ initGenerateData(PGconn *con)
 		executeStatement(con, sql);
 	}
 
-	/* We begin a new transaction for the insertion into ysql_bench_accounts. */
-	executeStatement(con, "commit");
+	/*
+	 * we do all of this in one transaction to enable the backend's
+	 * data-loading optimizations
+	 */
 	executeStatement(con, "begin");
+
 	/*
 	 * accounts is big enough to be worth using COPY and tracking runtime
 	 */
