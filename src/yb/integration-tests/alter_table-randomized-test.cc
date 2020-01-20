@@ -312,7 +312,7 @@ struct MirrorTable {
 
   void AddAColumn(const string& name, bool nullable) {
     // Add to the real table.
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
 
     table_alterer->AddColumn(name)->Type(INT32);
     ASSERT_OK(table_alterer->Alter());
@@ -322,7 +322,7 @@ struct MirrorTable {
   }
 
   void DropAColumn(const string& name) {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     CHECK_OK(table_alterer->DropColumn(name)->Alter());
     ts_.DropColumn(name);
   }

@@ -808,11 +808,13 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 }
 
 void
-YBCExecAlterTable(YBCPgStatement handle)
+YBCExecAlterTable(YBCPgStatement handle, Oid relationId)
 {
 	if (handle)
 	{
-		HandleYBStmtStatus(YBCPgExecAlterTable(handle), handle);
+		if (IsYBRelationById(relationId)) {
+			HandleYBStmtStatus(YBCPgExecAlterTable(handle), handle);
+		}
 		HandleYBStatus(YBCPgDeleteStatement(handle));
 	}
 }
@@ -849,9 +851,7 @@ YBCRename(RenameStmt *stmt, Oid relationId)
 
 	}
 
-	if (IsYBRelationById(relationId)) {
-		YBCExecAlterTable(handle);
-	}
+	YBCExecAlterTable(handle, relationId);
 }
 
 void

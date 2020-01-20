@@ -201,7 +201,7 @@ void MasterPartitionedTest::CheckLeaderMasterIsResponsive(int master_idx) {
 void MasterPartitionedTest::CreateTable(const YBTableName& table_name, int num_tablets) {
   ASSERT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name(),
                                                 table_name.namespace_type()));
-  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+  std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   master::ReplicationInfoPB replication_info;
   replication_info.mutable_live_replicas()->set_num_replicas(3);
   ASSERT_OK(table_creator->table_name(table_name)

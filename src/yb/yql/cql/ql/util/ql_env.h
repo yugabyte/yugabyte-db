@@ -56,9 +56,10 @@ class QLEnv {
   //------------------------------------------------------------------------------------------------
   // Table related methods.
 
-  virtual client::YBTableCreator* NewTableCreator();
+  virtual std::unique_ptr<client::YBTableCreator> NewTableCreator();
 
-  virtual client::YBTableAlterer* NewTableAlterer(const client::YBTableName& table_name);
+  virtual std::unique_ptr<client::YBTableAlterer> NewTableAlterer(
+      const client::YBTableName& table_name);
 
   virtual CHECKED_STATUS TruncateTable(const std::string& table_id);
 

@@ -652,7 +652,7 @@ void RemoteBootstrapITest::CreateTableAssignLeaderAndWaitForTabletServersReady(
   // Create a table with several tablets. These will all be simultaneously
   // remotely bootstrapped to a single target node from the same leader host.
   YBSchema client_schema(YBSchemaFromSchema(GetSimpleTestSchema()));
-  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+  std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(TestWorkloadOptions::kDefaultTableName)
                 .num_tablets(num_tablets)
                 .schema(&client_schema)

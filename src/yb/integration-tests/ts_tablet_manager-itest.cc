@@ -142,7 +142,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
                                                 kTableName.namespace_type()));
   // Create the table.
   std::shared_ptr<YBTable> table;
-  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+  std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(kTableName)
             .schema(&schema_)
             .hash_schema(YBHashSchema::kMultiColumnHash)

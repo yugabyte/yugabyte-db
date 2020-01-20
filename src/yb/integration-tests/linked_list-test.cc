@@ -538,7 +538,7 @@ Status LinkedListTester::CreateLinkedListTable() {
   RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(table_name_.namespace_name(),
                                                     table_name_.namespace_type()));
 
-  gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
   RETURN_NOT_OK_PREPEND(table_creator->table_name(table_name_)
                         .schema(&schema_)
                         .num_tablets(CalcNumTablets(num_replicas_))

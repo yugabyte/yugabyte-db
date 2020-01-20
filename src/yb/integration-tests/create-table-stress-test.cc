@@ -161,7 +161,7 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
 void CreateTableStressTest::CreateBigTable(const YBTableName& table_name, int num_tablets) {
   ASSERT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name(),
                                                 table_name.namespace_type()));
-  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+  std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(table_name)
             .schema(&schema_)
             .num_tablets(num_tablets)

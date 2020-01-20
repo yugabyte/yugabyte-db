@@ -257,8 +257,7 @@ class YBClient {
  public:
   ~YBClient();
 
-  // Creates a YBTableCreator; it is the caller's responsibility to free it.
-  YBTableCreator* NewTableCreator();
+  std::unique_ptr<YBTableCreator> NewTableCreator();
 
   // set 'create_in_progress' to true if a CreateTable operation is in-progress.
   CHECKED_STATUS IsCreateTableInProgress(const YBTableName& table_name,
@@ -284,9 +283,8 @@ class YBClient {
                                   YBTableName* indexed_table_name = nullptr,
                                   bool wait = true);
 
-  // Creates a YBTableAlterer; it is the caller's responsibility to free it.
-  YBTableAlterer* NewTableAlterer(const YBTableName& table_name);
-  YBTableAlterer* NewTableAlterer(const string id);
+  std::unique_ptr<YBTableAlterer> NewTableAlterer(const YBTableName& table_name);
+  std::unique_ptr<YBTableAlterer> NewTableAlterer(const string id);
 
   // Set 'alter_in_progress' to true if an AlterTable operation is in-progress.
   CHECKED_STATUS IsAlterTableInProgress(const YBTableName& table_name,
