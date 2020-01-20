@@ -108,7 +108,12 @@ CHECKED_STATUS PTAlterTable::AppendModColumn(SemContext *sem_context,
     MCString name = *column->new_name();
     const ColumnDesc* desc = sem_context->GetColumnDesc(name);
     if (desc != nullptr) {
-      return sem_context->Error(this, "Duplicate column name", ErrorCode::DUPLICATE_COLUMN);
+      // Expecting the error message matching to the reg-exp: "[Ii]nvalid column name"
+      // for the error correct handling in tools (like Kong).
+      return sem_context->Error(this,
+          Format("Invalid column name because it conflicts with the existing column: $0",
+              name.c_str()),
+          ErrorCode::DUPLICATE_COLUMN);
     }
   }
 
