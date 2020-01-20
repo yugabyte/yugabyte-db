@@ -26,12 +26,18 @@ showAsideToc: true
 You can create a backup for YugabyteDB using snapshots. Here are some points to keep in mind.
 
 - Distributed backups using snapshots
-  - Massively parallel, efficient for very large data sets.
-  - Snapshot does a RocksDB flush and creates hard links to the files in a `.snapshots` directory on each tablet.
+  - Massively parallel, efficient for very large data sets
   - Snapshots are not transactional across the whole table, but only on each tablet [#2086](https://github.com/YugaByte/yugabyte-db/issues/2086).
-  - Multi-table transactional snapshot is in the road map [#2084](https://github.com/YugaByte/yugabyte-db/issues/2084).
+  - Multi-table transactional snapshot is in the road map [#2084](https://github.com/YugaByte/yugabyte-db/issues/2084). 
   - Single table snapshots don't work in YSQL [#2083](https://github.com/YugaByte/yugabyte-db/issues/2083).
   - Yugabyte Platform automates these steps for you.
+- Implementation notes:
+ - Once the snapshot command is issued, we will “buffer” newly incoming writes to that tablet without writing them immediately.
+ - For the existing data: we flush it to disk and hardlink the files in a `.snapshots` directory on each tablet.
+ - These steps are pretty fast - small flush to disk and hardlinks. Most likely the incoming operations that were buffered will not timeout. 
+ - The buffered writes are now opened up for writes.
+ - The snapshot operation is done. Because YugabyteDB is an LSM database, these files will never get modified.
+ - If this takes longer, some ops can timeout but in practice, users should expect such slowness occasionally when using network storage (AWS EBS, Persistent Disk in GCP, SAN storage, etc.).
 
 In this tutorial you will be using YCQL, but the same APIs are used in YSQL.
 
