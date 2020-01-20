@@ -34,8 +34,36 @@ static MonoDelta kSessionTimeout = 60s;
 //--------------------------------------------------------------------------------------------------
 // PgDml
 //--------------------------------------------------------------------------------------------------
+
 PgDml::PgDml(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id)
     : PgStatement(std::move(pg_session)), table_id_(table_id) {
+}
+
+PgDml::PgDml(PgSession::ScopedRefPtr pg_session,
+             const PgObjectId& table_id,
+             const PgObjectId& index_id,
+             const PgPrepareParameters *prepare_params)
+    : PgDml(pg_session, table_id) {
+
+  if (prepare_params) {
+    prepare_params_ = *prepare_params;
+
+    if (prepare_params_.use_secondary_index) {
+      // TODO(neil) Instead of assign "index_id" to "table_id_", which can cause confusion, change
+      // PgGate layer to take the pair(Table, Index) together as inputs.
+
+      if (prepare_params_.index_only_scan) {
+        // IndexOnlyScan ( SysTable or UserTable ). Select from INDEX table.
+        table_id_ = index_id;
+      } else if (prepare_params_.querying_systable) {
+        // IndexScan ( SystemTable )
+        index_id_ = index_id;
+      } else {
+        // IndexScan ( UserTable )
+        table_id_ = index_id;
+      }
+    }
+  }
 }
 
 PgDml::~PgDml() {

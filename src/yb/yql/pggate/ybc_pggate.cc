@@ -496,11 +496,12 @@ YBCStatus YBCPgExecDelete(YBCPgStatement handle) {
 // SELECT Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewSelect(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
-                         const YBCPgOid index_oid,
+                         const YBCPgPrepareParameters *prepare_params,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  const PgObjectId index_id(database_oid, index_oid);
-  return ToYBCStatus(pgapi->NewSelect(table_id, index_id, handle));
+  const PgObjectId index_id(database_oid,
+                            prepare_params ? prepare_params->index_oid : kInvalidOid);
+  return ToYBCStatus(pgapi->NewSelect(table_id, index_id, prepare_params, handle));
 }
 
 YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan) {
