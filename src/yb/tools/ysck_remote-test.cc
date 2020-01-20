@@ -96,7 +96,7 @@ class RemoteYsckTest : public YBTest {
     // Create one table.
     ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
                                                   kTableName.namespace_type()));
-    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+    std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(table_creator->table_name(kTableName)
                      .schema(&schema_)
                      .num_tablets(3)

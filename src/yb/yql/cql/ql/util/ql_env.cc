@@ -20,7 +20,8 @@
 #include "yb/client/permissions.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
-#include "yb/client/transaction.h"
+#include "yb/client/table_alterer.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/transaction_pool.h"
 
 #include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
@@ -33,6 +34,7 @@ namespace ql {
 
 using std::string;
 using std::shared_ptr;
+using std::unique_ptr;
 using std::weak_ptr;
 
 using client::TransactionManager;
@@ -60,11 +62,11 @@ QLEnv::QLEnv(client::YBClient* client,
 QLEnv::~QLEnv() {}
 
 //------------------------------------------------------------------------------------------------
-YBTableCreator* QLEnv::NewTableCreator() {
+unique_ptr<YBTableCreator> QLEnv::NewTableCreator() {
   return client_->NewTableCreator();
 }
 
-YBTableAlterer* QLEnv::NewTableAlterer(const YBTableName& table_name) {
+unique_ptr<YBTableAlterer> QLEnv::NewTableAlterer(const YBTableName& table_name) {
   return client_->NewTableAlterer(table_name);
 }
 

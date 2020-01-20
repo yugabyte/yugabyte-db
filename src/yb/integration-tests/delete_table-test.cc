@@ -1137,7 +1137,7 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   const int kNumTablets = 2;
   Schema schema(GetSimpleTestSchema());
   client::YBSchema client_schema(client::YBSchemaFromSchema(schema));
-  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+  std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(TestWorkloadOptions::kDefaultTableName)
                           .num_tablets(kNumTablets)
                           .schema(&client_schema)

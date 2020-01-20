@@ -349,7 +349,7 @@ class PgAlterTable : public PgDdl {
  private:
   const client::YBTableName table_name_;
   const PgObjectId table_id_;
-  client::YBTableAlterer* table_alterer;
+  std::unique_ptr<client::YBTableAlterer> table_alterer;
 
 };
 

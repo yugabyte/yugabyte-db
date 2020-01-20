@@ -1141,7 +1141,7 @@ void HandleCreateDB(LocalCommandData data) {
   // Figure out the redis table name that we should be using.
   const string db_name = data.arg(1).ToBuffer();
   const auto table_name = RedisServiceData::GetYBTableNameForRedisDatabase(db_name);
-  gscoped_ptr<yb::client::YBTableCreator> table_creator(data.client()->NewTableCreator());
+  std::unique_ptr<yb::client::YBTableCreator> table_creator(data.client()->NewTableCreator());
   s = table_creator->table_name(table_name)
           .table_type(yb::client::YBTableType::REDIS_TABLE_TYPE)
           .Create();

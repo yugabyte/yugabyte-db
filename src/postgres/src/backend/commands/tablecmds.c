@@ -3774,7 +3774,7 @@ ATController(AlterTableStmt *parsetree,
 	 */
 	if (handle)
 	{
-		YBCExecAlterTable(handle);
+		YBCExecAlterTable(handle, relid);
 	}
 	/* Phase 3: scan/rewrite tables as needed */
 	ATRewriteTables(parsetree, &wqueue, lockmode);
