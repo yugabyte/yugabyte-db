@@ -589,10 +589,7 @@ index_getnext_tid(IndexScanDesc scan, ScanDirection direction)
 	 * scan->xs_recheck and possibly scan->xs_itup/scan->xs_hitup, though we
 	 * pay no attention to those fields here.
 	 */
-	if (IsYBBackedRelation(scan->indexRelation))
-		found = ybcingettuple(scan, direction);
-	else
-		found = scan->indexRelation->rd_amroutine->amgettuple(scan, direction);
+	found = scan->indexRelation->rd_amroutine->amgettuple(scan, direction);
 
 	/* Reset kill flag immediately for safety */
 	scan->kill_prior_tuple = false;
@@ -637,18 +634,14 @@ HeapTuple
 index_fetch_heap(IndexScanDesc scan)
 {
 	/*
-	 * For YugaByte secondary indexes, we need to select from the base table using
-	 * ybctid. For primary keys, the row is already prepared in "xs_hitup" that can
-	 * be returned directly.
+	 * For YugaByte secondary indexes, there are two scenarios.
+	 * - If YugaByte returns an index-tuple, the returned ybctid value should be used to query data.
+	 * - If YugaByte returns a heap_tuple, all requested data was already selected in the tuple.
 	 */
 	if (IsYugaByteEnabled())
 	{
-		if (scan->indexRelation->rd_index->indisprimary)
-		{
-			Assert(scan->xs_hitup != 0);
+		if (scan->xs_hitup != 0)
 			return scan->xs_hitup;
-		}
-
 		return YBCFetchTuple(scan->heapRelation, scan->xs_ctup.t_ybctid);
 	}
 

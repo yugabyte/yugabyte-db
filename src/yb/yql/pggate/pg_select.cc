@@ -27,15 +27,12 @@ using std::make_shared;
 // PgSelect
 //--------------------------------------------------------------------------------------------------
 
-PgSelect::PgSelect(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id)
-    : PgDml(std::move(pg_session), table_id) {
+PgSelect::PgSelect(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id,
+                   const PgObjectId& index_id, const PgPrepareParameters *prepare_params)
+    : PgDml(std::move(pg_session), table_id, index_id, prepare_params) {
 }
 
 PgSelect::~PgSelect() {
-}
-
-void PgSelect::UseIndex(const PgObjectId& index_id) {
-  index_id_ = index_id;
 }
 
 Status PgSelect::LoadIndex() {
@@ -84,6 +81,14 @@ void PgSelect::PrepareColumns() {
       col.AllocPrimaryBindPB(read_req_);
     }
   }
+}
+
+void PgSelect::SetForwardScan(const bool is_forward_scan) {
+  PgsqlReadRequestPB *innermost_req = DCHECK_NOTNULL(read_req_);
+  while (innermost_req->has_index_request()) {
+    innermost_req = innermost_req->mutable_index_request();
+  }
+  innermost_req->set_is_forward_scan(is_forward_scan);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -266,7 +271,7 @@ Status PgSelect::BindColumnCondEq(int attr_num, PgExpr *attr_value) {
     auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
     auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
 
-    op1_pb->set_column_id(attr_num - 1);
+    op1_pb->set_column_id(col->id());
 
     RETURN_NOT_OK(attr_value->Eval(this, op2_pb->mutable_value()));
   }
@@ -308,7 +313,7 @@ Status PgSelect::BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr 
       auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
       auto op3_pb = condition_expr_pb->mutable_condition()->add_operands();
 
-      op1_pb->set_column_id(attr_num - 1);
+      op1_pb->set_column_id(col->id());
 
       RETURN_NOT_OK(attr_value->Eval(this, op2_pb->mutable_value()));
       RETURN_NOT_OK(attr_value_end->Eval(this, op3_pb->mutable_value()));
@@ -318,7 +323,7 @@ Status PgSelect::BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr 
       auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
       auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
 
-      op1_pb->set_column_id(attr_num - 1);
+      op1_pb->set_column_id(col->id());
 
       RETURN_NOT_OK(attr_value->Eval(this, op2_pb->mutable_value()));
     }
@@ -329,7 +334,7 @@ Status PgSelect::BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr 
       auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
       auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
 
-      op1_pb->set_column_id(attr_num - 1);
+      op1_pb->set_column_id(col->id());
 
       RETURN_NOT_OK(attr_value_end->Eval(this, op2_pb->mutable_value()));
     } else {
@@ -376,7 +381,7 @@ Status PgSelect::BindColumnCondIn(int attr_num, int n_attr_values, PgExpr **attr
     }
 
     bind_pb->mutable_condition()->set_op(QL_OP_IN);
-    bind_pb->mutable_condition()->add_operands()->set_column_id(attr_num - 1);
+    bind_pb->mutable_condition()->add_operands()->set_column_id(col->id());
 
     // There's no "list of expressions" field so we simulate it with an artificial nested OR
     // with repeated operands, one per bind expression.
@@ -405,7 +410,7 @@ Status PgSelect::BindColumnCondIn(int attr_num, int n_attr_values, PgExpr **attr
     auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
     auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
 
-    op1_pb->set_column_id(attr_num - 1);
+    op1_pb->set_column_id(col->id());
 
     for (int i = 0; i < n_attr_values; i++) {
       // Link the given expression "attr_value" with the allocated protobuf.

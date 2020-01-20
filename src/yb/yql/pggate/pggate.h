@@ -340,6 +340,7 @@ class PgApiImpl {
   // Select.
   CHECKED_STATUS NewSelect(const PgObjectId& table_id,
                            const PgObjectId& index_id,
+                           const PgPrepareParameters *prepare_params,
                            PgStatement **handle);
 
   CHECKED_STATUS SetForwardScan(PgStatement *handle, bool is_forward_scan);

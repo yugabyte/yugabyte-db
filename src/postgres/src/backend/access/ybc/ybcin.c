@@ -247,28 +247,45 @@ ybcinbeginscan(Relation rel, int nkeys, int norderbys)
 void 
 ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys, int norderbys)
 {
-	if (scan->indexRelation->rd_index->indisprimary)
-		ybc_pkey_beginscan(scan->heapRelation, scan->indexRelation, scan, nscankeys, scankey);
-	else
-		ybc_index_beginscan(scan->indexRelation, scan, nscankeys, scankey);
+	if (scan->opaque)
+	{
+		/* For rescan, end the previous scan. */
+		ybcinendscan(scan);
+		scan->opaque = NULL;
+	}
+
+	YbScanDesc ybScan = ybcBeginScan(scan->heapRelation, scan->indexRelation, scan->xs_want_itup,
+																	 nscankeys, scankey);
+	ybScan->index = scan->indexRelation;
+	scan->opaque = ybScan;
 }
 
+/*
+ * Processing the following SELECT.
+ *   SELECT data FROM heapRelation WHERE rowid IN
+ *     ( SELECT rowid FROM indexRelation WHERE key = given_value )
+ *
+ * TODO(neil) Postgres layer should make just one request for IndexScan.
+ *   - Query ROWID from IndexTable using key.
+ *   - Query data from Table (relation) using ROWID.
+ */
 bool
 ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 {
 	Assert(dir == ForwardScanDirection || dir == BackwardScanDirection);
 	const bool is_forward_scan = (dir == ForwardScanDirection);
 
-	scan->xs_ctup.t_ybctid = 0;
+	YbScanDesc ybscan = (YbScanDesc) scan->opaque;
+	ybscan->exec_params = scan->yb_exec_params;
+	Assert(PointerIsValid(ybscan));
 
-	/* 
-	 * If IndexTuple is requested or it is a secondary index, return the result as IndexTuple.
-	 * Otherwise, return the result as a HeapTuple of the base table.
+	/*
+	 * IndexScan(SysTable, Index) --> HeapTuple.
 	 */
-	if (scan->xs_want_itup || !scan->indexRelation->rd_index->indisprimary)
-	{
-		IndexTuple tuple = ybc_index_getnext(scan, is_forward_scan);
-
+	scan->xs_ctup.t_ybctid = 0;
+	if (ybscan->prepare_params.index_only_scan ||
+			(!ybscan->prepare_params.querying_systable && ybscan->prepare_params.use_secondary_index)) {
+		IndexTuple tuple = ybc_getnext_indextuple(ybscan, is_forward_scan, &scan->xs_recheck);
 		if (tuple)
 		{
 			scan->xs_ctup.t_ybctid = tuple->t_ybctid;
@@ -278,8 +295,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	}
 	else
 	{
-		HeapTuple tuple = ybc_pkey_getnext(scan, is_forward_scan);
-
+		HeapTuple tuple = ybc_getnext_heaptuple(ybscan, is_forward_scan, &scan->xs_recheck);
 		if (tuple)
 		{
 			scan->xs_ctup.t_ybctid = tuple->t_ybctid;
@@ -294,8 +310,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 void 
 ybcinendscan(IndexScanDesc scan)
 {
-	if (scan->indexRelation->rd_index->indisprimary)
-		ybc_pkey_endscan(scan);
-	else
-		ybc_index_endscan(scan);
+	YbScanDesc ybscan = (YbScanDesc)scan->opaque;
+	Assert(PointerIsValid(ybscan));
+	ybcEndScan(ybscan);
 }
