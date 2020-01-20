@@ -37,7 +37,7 @@ You can create a backup for YugabyteDB using snapshots. Here are some points to 
  - These steps are pretty fast - small flush to disk and hardlinks. Most likely the incoming operations that were buffered will not timeout. 
  - The buffered writes are now opened up for writes.
  - The snapshot operation is done. Because YugabyteDB is an LSM database, these files will never get modified.
- - If this takes longer, some ops can timeout but in practice, users should expect such slowness occasionally when using network storage (AWS EBS, Persistent Disk in GCP, SAN storage etc).
+ - If this takes longer, some ops can timeout but in practice, users should expect such slowness occasionally when using network storage (AWS EBS, Persistent Disk in GCP, SAN storage, etc.).
 
 In this tutorial you will be using YCQL, but the same APIs are used in YSQL.
 
