@@ -4,9 +4,9 @@ linkTitle: Operations FAQ
 description: Operations FAQ
 menu:
   latest:
-    identifier: operations-faq
+    identifier: faq-operations
     parent: faq
-    weight: 2740
+    weight: 2720
 isTocNested: false
 showAsideToc: true
 ---

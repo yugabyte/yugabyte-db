@@ -7,6 +7,7 @@ aliases:
   - /latest/faq/cassandra/
 menu:
   latest:
+    identifier: faq-api-compatibility
     parent: faq
     weight: 2730
 isTocNested: true
