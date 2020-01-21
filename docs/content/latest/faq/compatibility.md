@@ -48,16 +48,14 @@ The YugabyteDB APIs are currently isolated and independent from one another. Dat
 
 When time permits, we could allow the YCQL tables to be "accessed" from YSQL (which is fully PostgreSQL compatible) as a foreign table, using foreign data wrappers (FDW). Note that the work for this has not yet started, but it is fully possible to do in the current architecture.
 
-**Performance Differences**
-
-There are differences in the performance, but this is the current state of things as well. YCQL is higher performing at the moment that YSQL due to various reasons, and we are rapidly closing the gap. This is something we intend to write about a lot more over time.
+There are differences in the performance, but this is the current state of things as well. Currently, YCQL offers higher performance due to a variety of reasons, but we are rapidly closing the gap. Expect to hear a lot more about this over the next three to six months.
 
 In the short term, we recommend:
 
 - If you need relational features (for example, foreign keys) or query flexibility (for example, joins) in your application, YSQL is the way to go. In the next three to six months, we expect to get YSQL performance close to YCQL.
-- If you do not need the the relational features or query flexibility, but have lots of data (for example, over 10TB of data), care about very low latencies (sub-millisecond), and need features such as automatic data expiry using the TTL feature, you should use YCQL.
+- If you do not need the above, but have lots of data (for example, over 10TB of data), care about very low latencies (sub-millisecond), and need features such as automatic data expiry using the TTL feature, you should use YCQL.
 
-If you have a specific use case in mind, share it in our [Slack community](https://www.yugabyte.com/slack) and we can help you decide the best approach.
+If you have a specific use case in mind, share it in our [Slack community](https://www.yugabyte.com/slack) and the community can help you decide the best approach.
 
 ## YCQL compatibility with Apache Cassandra QL
 
