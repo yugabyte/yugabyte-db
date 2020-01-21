@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.RunInShellFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
+import com.yugabyte.yw.forms.AlertConfigFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
@@ -402,7 +403,7 @@ public class UniverseController extends AuthenticatedController {
         }
       }
 
-      universe.setConfig(ImmutableMap.of("takeBackups", "true"));
+      universe.setConfig(ImmutableMap.of(Universe.TAKE_BACKUPS, "true"));
 
       // Submit the task to create the universe.
       UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -599,8 +600,8 @@ public class UniverseController extends AuthenticatedController {
       CustomerTask.create(customer,
                           universe.universeUUID,
                           taskUUID,
-                          primaryCluster == null 
-                            ? CustomerTask.TargetType.Cluster 
+                          primaryCluster == null
+                            ? CustomerTask.TargetType.Cluster
                             : CustomerTask.TargetType.Universe,
                           CustomerTask.TaskType.Update,
                           universe.name);
@@ -671,7 +672,7 @@ public class UniverseController extends AuthenticatedController {
     try {
       if (request().getQueryString("markActive") != null) {
         active = request().getQueryString("markActive");
-        config.put("takeBackups", active);
+        config.put(Universe.TAKE_BACKUPS, active);
       } else {
         return ApiResponse.error(BAD_REQUEST, "Invalid Query: Need to specify markActive value");
       }
@@ -681,6 +682,61 @@ public class UniverseController extends AuthenticatedController {
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e);
     }
+  }
+
+  public Result configureAlerts(UUID customerUUID, UUID universeUUID) {
+      Customer customer = Customer.get(customerUUID);
+      if (customer == null) {
+        return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+      }
+      Universe universe = Universe.get(universeUUID);
+      if (universe == null) {
+        return ApiResponse.error(BAD_REQUEST, "Invalid Universe UUID: " + universeUUID);
+      }
+
+      // Check the universe belongs to the Customer.
+      if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+        return ApiResponse.error(BAD_REQUEST,
+            String.format("Universe UUID: %s doesn't belong " +
+                "to Customer UUID: %s", universeUUID, customerUUID));
+      }
+
+      Map<String, String> config = new HashMap<>();
+      try {
+        Form<AlertConfigFormData> formData =
+          formFactory.form(AlertConfigFormData.class).bindFromRequest();
+        if (formData.hasErrors()) {
+            return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+        }
+
+        AlertConfigFormData alertConfig = formData.get();
+        long disabledUntilSecs = 0;
+        if (alertConfig.disabled) {
+          if (null == alertConfig.disablePeriodSecs) {
+            disabledUntilSecs = Long.MAX_VALUE;
+          } else {
+            disabledUntilSecs = (System.currentTimeMillis() / 1000) + alertConfig.disablePeriodSecs;
+          }
+          LOG.info(String.format(
+            "Will disable alerts for universe %s until unix time %d [ %s ].",
+            universeUUID,
+            disabledUntilSecs,
+            Util.unixTimeToString(disabledUntilSecs)
+          ));
+        } else {
+          LOG.info(String.format(
+            "Will enable alerts for universe %s [unix time  = %d].",
+            universeUUID,
+            disabledUntilSecs
+          ));
+        }
+        config.put(Universe.DISABLE_ALERTS_UNTIL, Long.toString(disabledUntilSecs));
+        universe.setConfig(config);
+
+        return ApiResponse.success();
+      } catch (Exception e) {
+        return ApiResponse.error(INTERNAL_SERVER_ERROR, e);
+      }
   }
 
   public Result index(UUID customerUUID, UUID universeUUID) {

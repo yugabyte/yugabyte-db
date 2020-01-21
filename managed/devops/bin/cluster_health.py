@@ -118,14 +118,17 @@ class Report:
         file.write(str(self))
         file.close()
 
-    def __str__(self):
+    def as_json(self, only_errors=False):
         j = {
             "timestamp": self.start_ts,
             "yb_version": self.yb_version,
-            "data": [e.as_json() for e in self.entries],
+            "data": [e.as_json() for e in self.entries if not only_errors or e.has_error],
             "has_error": True in [e.has_error for e in self.entries]
         }
         return json.dumps(j, indent=2)
+
+    def __str__(self):
+        return self.as_json()
 
 
 ###################################################################################################
@@ -450,7 +453,7 @@ def assemble_mail_row(data, is_first_check, timestamp):
         td_element('0', '', details_content))
 
 
-def send_mail(report, subject, destination, nodes, universe_name):
+def send_mail(report, subject, destination, nodes, universe_name, report_only_errors):
     logging.info("Sending email: '{}' to '{}'".format(subject, destination))
     style_font = "font-family: SF Pro Display, SF Pro, Helvetica Neue, Helvetica, sans-serif;"
     json_object = json.loads(str(report))
@@ -468,12 +471,17 @@ def send_mail(report, subject, destination, nodes, universe_name):
             if node == node_check_data_row["node"]:
                 if node_check_data_row["has_error"]:
                     node_has_error = True
+                elif report_only_errors:
+                    continue
                 node_content_data.append(assemble_mail_row(
                     node_check_data_row,
                     is_first_check,
                     json_object["timestamp"])
                 )
                 is_first_check = False
+
+        if report_only_errors and not node_has_error:
+            continue
 
         node_header_style_colors_color = '#ffffff;' if node_has_error else '#289b42;'
         node_header_style_colors_back = '#E8473F;' if node_has_error else '#ffffff'
@@ -523,6 +531,8 @@ def send_mail(report, subject, destination, nodes, universe_name):
             table_container_style,
             table_container(''.join(node_content_data))))
 
+    if not email_content_data:
+        email_content_data = "<b>No errors to report.</b>"
     sender = EMAIL_FROM
     msg = MIMEMultipart('alternative')
     msg['Subject'] = subject
@@ -558,6 +568,9 @@ def send_mail(report, subject, destination, nodes, universe_name):
         version=make_header_left("Universe version", report.yb_version))
     body = '<html><body><pre style="{}">{}\n{} {}</pre></body></html>\n'.format(
         style, header, ''.join(email_content_data), timestamp)
+
+    msg.attach(MIMEText(report.as_json(report_only_errors), 'plain'))
+    # the last part of a multipart MIME message is the preferred part
     msg.attach(MIMEText(body, 'html'))
 
     s = smtplib.SMTP_SSL(EMAIL_SERVER, EMAIL_PORT)
@@ -678,11 +691,13 @@ def main():
     parser.add_argument('--log_file', type=str, default=None, required=False,
                         help='Log file to which the report will be written to')
     parser.add_argument('--send_status', action="store_true",
-                        help='Send email with status update even if no errors')
+                        help='Send email even if no errors')
     parser.add_argument('--start_time_ms', type=int, required=False, default=None,
                         help='Potential start time of the universe, to prevent uptime confusion.')
     parser.add_argument('--retry_interval_secs', type=int, required=False, default=30,
                         help='Time to wait between retries of failed checks')
+    parser.add_argument('--report_only_errors', action="store_true",
+                        help='Only report nodes with errors')
     args = parser.parse_args()
     universe = UniverseDefinition(args.cluster_payload)
     # Technically, each cluster can have its own version, but in practice, we disallow that in YW.
@@ -730,7 +745,10 @@ def main():
     # NOTE: We only send emails if we are provided a destination, which can be a CSV of addresses.
     if args.destination and (args.send_status or report.has_errors()):
         try:
-            send_mail(report, subject, args.destination, summary_nodes, args.universe_name)
+            send_mail(
+                report, subject, args.destination, summary_nodes,
+                args.universe_name, args.report_only_errors
+            )
         except Exception as e:
             logging.error("Sending email failed with: {}".format(str(e)))
     report.write_to_log(args.log_file)

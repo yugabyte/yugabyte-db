@@ -28,6 +28,9 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.text.SimpleDateFormat;
+import java.util.Locale;
+import java.util.Date;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -299,4 +302,11 @@ public class Util {
       return null;
     }
   }
+
+  public static String unixTimeToString(long epochSec) {
+    Date date = new Date(epochSec * 1000);
+    SimpleDateFormat format = new SimpleDateFormat();
+    return format.format(date);
+  }
+
 }
