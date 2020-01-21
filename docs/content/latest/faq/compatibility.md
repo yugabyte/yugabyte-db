@@ -42,6 +42,12 @@ As highlighted in [Distributed PostgreSQL on a Google Spanner Architecture – Q
 
 YugabyteDB's goal is to remain as compatible with PostgreSQL as possible. If you see a feature currently missing, please file a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues) for us.
 
+## Are YSQL and YCQL compatible with each other?
+
+The YugabyteDB APIs are currently isolated and independent from one another. Data inserted or managed by one API cannot be queried by the other API. Additionally, Yugabyte does not provide a way to access the data across the APIs. An external framework, such as Presto, might be useful for simple use cases. For an example that joins YCQL and YSQL data, see the blog post about [Presto on YugabyteDB: Interactive OLAP SQL Queries Made Easy](https://blog.yugabyte.com/presto-on-yugabyte-db-interactive-olap-sql-queries-made-easy-facebook/).
+
+Application developers should select an API first before undertaking detailed database schema/query design and implementation.
+
 ## YCQL compatibility with Apache Cassandra QL
 
 ### Features where YCQL goes beyond Apache Cassandra QL
