@@ -8,6 +8,7 @@ aliases:
   - /latest/introduction/benefits/
   - /latest/introduction/core-features/
   - /latest/introduction/
+  - /latest/faq/architecture/
 menu:
   latest:
     identifier: faq-general
