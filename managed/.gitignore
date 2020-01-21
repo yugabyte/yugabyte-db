@@ -1,7 +1,7 @@
 build
 logs
 target
-devops/yb_pyenv
+devops/python_virtual_env
 .idea
 .idea_modules
 /.classpath
