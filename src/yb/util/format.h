@@ -22,7 +22,7 @@ namespace yb {
 
 namespace internal {
 
-template <class Type, bool integral>
+template <class Type, class Enabled = void>
 class FormatValue {
  public:
   explicit FormatValue(const Type& input) : value_(ToString(input)) {}
@@ -43,12 +43,25 @@ class FormatValue {
   std::string value_;
 };
 
-class BufferedValue {
+template <class T>
+class FormatValue<T,
+    std::enable_if_t<std::is_integral<T>::value || std::is_same<void*, T>::value>> {
  public:
-  BufferedValue() {}
+  template<class U>
+  explicit FormatValue(const U& t) {
+    auto end = IntToBuffer(t, buffer_);
+    len_ = end - buffer_;
+  }
 
-  BufferedValue(const BufferedValue& rhs) = delete;
-  void operator=(const BufferedValue& rhs) = delete;
+  explicit FormatValue(void* const& ptr) {
+    buffer_[0] = '0';
+    buffer_[1] = 'x';
+    FastHex64ToBuffer(reinterpret_cast<size_t>(ptr), buffer_ + 2);
+    len_ = 2 + sizeof(ptr) * 2;
+  }
+
+  FormatValue(const FormatValue& rhs) = delete;
+  void operator=(const FormatValue& rhs) = delete;
 
   size_t Add(size_t position) const {
     return position + len_;
@@ -59,37 +72,22 @@ class BufferedValue {
     return position + len_;
   }
 
- protected:
+ private:
   char buffer_[kFastToBufferSize];
   size_t len_;
 };
 
 template <class T>
-class FormatValue<T, true> : public BufferedValue {
+class FormatValue<T, std::enable_if_t<std::is_convertible<T, const char*>::value>> {
  public:
-  explicit FormatValue(const T& t) {
-    auto end = IntToBuffer(t, buffer_);
-    len_ = end - buffer_;
-  }
-};
+  template<class U>
+  explicit FormatValue(const U& value) : value_(value), len_(strlen(value_)) {}
 
-template <>
-class FormatValue<void*, false> : public BufferedValue {
- public:
-  explicit FormatValue(const void* ptr) {
-    buffer_[0] = '0';
-    buffer_[1] = 'x';
-    FastHex64ToBuffer(reinterpret_cast<size_t>(ptr), buffer_ + 2);
-    len_ = 2 + sizeof(ptr) * 2;
-  }
-};
+  template<class U, size_t N>
+  explicit FormatValue(U(&value)[N]) : value_(value), len_(strnlen(value_, N)) {}
 
-class FormatCStrValue {
- public:
-  FormatCStrValue(const char* value, size_t len) : value_(value), len_(len) {}
-
-  FormatCStrValue(const FormatCStrValue& rhs) = delete;
-  void operator=(const FormatCStrValue& rhs) = delete;
+  FormatValue(const FormatValue& rhs) = delete;
+  void operator=(const FormatValue& rhs) = delete;
 
   size_t Add(size_t position) const {
     return position + len_;
@@ -102,53 +100,12 @@ class FormatCStrValue {
 
  private:
   const char *value_;
-  size_t len_;
-};
-
-template <size_t N>
-class FormatValue<char[N], false> {
- public:
-  explicit FormatValue(const char* value) : value_(value) {}
-
-  FormatValue(const FormatValue& rhs) = delete;
-  void operator=(const FormatValue& rhs) = delete;
-
-  size_t Add(size_t position) const {
-    return position + N - 1;
-  }
-
-  char* Add(char* position) const {
-    memcpy(position, value_, N - 1);
-    return position + N - 1;
-  }
-
- private:
-  const char *value_;
-};
-
-template <>
-class FormatValue<const char*, false> : public FormatCStrValue {
- public:
-  explicit FormatValue(const char* value) : FormatCStrValue(value, strlen(value)) {}
-};
-
-template <>
-class FormatValue<char*, false> : public FormatCStrValue {
- public:
-  explicit FormatValue(const char* value) : FormatCStrValue(value, strlen(value)) {}
-};
-
-template <>
-class FormatValue<std::string, false> : public FormatCStrValue {
- public:
-  explicit FormatValue(const std::string& value) : FormatCStrValue(value.c_str(), value.length()) {}
+  const size_t len_;
 };
 
 template <class T>
-struct MakeFormatValue {
-  typedef typename std::remove_cv<typename std::remove_reference<T>::type>::type CleanedT;
-  typedef FormatValue<CleanedT, std::is_integral<CleanedT>::value> type;
-};
+using FormatValueType =
+    FormatValue<typename std::remove_cv_t<typename std::remove_reference_t<T>>>;
 
 template<class Current, class... Args>
 class FormatTuple;
@@ -156,7 +113,7 @@ class FormatTuple;
 template<class Current>
 class FormatTuple<Current> {
  public:
-  typedef typename MakeFormatValue<Current>::type Value;
+  typedef FormatValueType<Current> Value;
 
   explicit FormatTuple(const Current& current)
       : value_(current) {}
@@ -175,7 +132,7 @@ class FormatTuple<Current> {
 template<class Current, class... Args>
 class FormatTuple {
  public:
-  typedef typename MakeFormatValue<Current>::type Value;
+  typedef FormatValueType<Current> Value;
   typedef FormatTuple<Args...> Tail;
 
   explicit FormatTuple(const Current& current, const Args&... args)
