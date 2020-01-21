@@ -116,6 +116,18 @@ Specifies the comma-separated list of addresses to bind to for RPC connections.
 
 Default: `0.0.0.0:9100`
 
+{{< note title="Note" >}}
+
+I
+
+{{< /note >}}
+
+{{< note title="Note" >}}
+
+For 
+
+{{< /note >}}
+
 ##### --server_broadcast_addresses
 
 Specifies the public IP or DNS hostname of the server (with an optional port).
