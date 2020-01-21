@@ -77,7 +77,7 @@ readonly VALID_CLOUD_TYPES_STR="${VALID_CLOUD_TYPES[@]}"
 readonly FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python_requirements_frozen.txt"
 
 # Basename (i.e. name excluding the directory path) of our virtualenv.
-readonly YB_VIRTUALENV_BASENAME=yb_pyenv
+readonly YB_VIRTUALENV_BASENAME=python_virtual_env
 
 readonly YBOPS_TOP_LEVEL_DIR_BASENAME=opscli
 readonly YBOPS_PACKAGE_NAME=ybops
