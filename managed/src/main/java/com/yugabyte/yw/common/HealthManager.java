@@ -45,7 +45,8 @@ public class HealthManager extends DevopsBase {
       String customerTag,
       String destination,
       Long potentialStartTimeMs,
-      Boolean shouldSendStatusUpdate) {
+      Boolean sendMailAlways,
+      Boolean reportOnlyErrors) {
     List<String> commandArgs = new ArrayList<>();
 
     commandArgs.add(PY_WRAPPER);
@@ -64,7 +65,7 @@ public class HealthManager extends DevopsBase {
       commandArgs.add("--start_time_ms");
       commandArgs.add(String.valueOf(potentialStartTimeMs));
     }
-    if (shouldSendStatusUpdate) {
+    if (sendMailAlways) {
       commandArgs.add("--send_status");
     }
     // Start with a copy of the cloud config env vars.
@@ -80,6 +81,9 @@ public class HealthManager extends DevopsBase {
     String email = appConfig.getString("yb.health.default_email");
     if (email != null) {
       extraEnvVars.put("YB_ALERTS_EMAIL", email);
+    }
+    if (reportOnlyErrors) {
+      commandArgs.add("--report_only_errors");
     }
 
     LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");

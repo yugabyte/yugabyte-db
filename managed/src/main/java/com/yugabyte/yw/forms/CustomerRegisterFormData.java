@@ -42,6 +42,8 @@ public class CustomerRegisterFormData {
     public long checkIntervalMs = 0;
 
     public long statusUpdateIntervalMs = 0;
+
+    public Boolean reportOnlyErrors = false;
   }
 
   public AlertingData alertingData;

@@ -45,7 +45,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
     Map<String, String> config = new HashMap<>();
-    config.put("takeBackups", "true");
+    config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.setConfig(config);
   }
 

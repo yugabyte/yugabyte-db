@@ -86,7 +86,7 @@ public class Scheduler {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.initialize();
- 
+
     LOG.info("Starting scheduling service");
   }
 
@@ -108,7 +108,7 @@ public class Scheduler {
        LOG.info("Previous scheduler still running");
        return;
     }
-      
+
     LOG.info("Running scheduler");
     try {
       running.set(true);
@@ -236,7 +236,7 @@ public class Scheduler {
     }
     Map<String, String> config = universe.getConfig();
     if (universe.getUniverseDetails().updateInProgress || config.isEmpty() ||
-        config.get("takeBackups").equals("false") ||
+        config.get(Universe.TAKE_BACKUPS).equals("false") ||
         universe.getUniverseDetails().backupInProgress) {
       LOG.warn("Cannot run MultiTableBackup task since the universe {} is currently {}",
                taskParams.universeUUID.toString(), "in a locked state");
