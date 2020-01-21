@@ -60,7 +60,7 @@ public class UniverseTest extends FakeDBApplication {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     assertNotNull(u);
     Map<String, String> config = new HashMap<>();
-    config.put("takeBackups", "true");
+    config.put(Universe.TAKE_BACKUPS, "true");
     u.setConfig(config);
     assertEquals(config, u.getConfig());
   }
@@ -276,7 +276,7 @@ public class UniverseTest extends FakeDBApplication {
   public void testToJSONSuccess() {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     Map<String, String> config = new HashMap<>();
-    config.put("takeBackups", "true");
+    config.put(Universe.TAKE_BACKUPS, "true");
     u.setConfig(config);
 
     // Create regions

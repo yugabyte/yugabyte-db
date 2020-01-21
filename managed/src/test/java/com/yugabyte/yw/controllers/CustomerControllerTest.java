@@ -120,6 +120,7 @@ public class CustomerControllerTest extends WithApplication {
     params.put("confirmPassword", "new-password");
     ObjectNode alertingData = Json.newObject();
     alertingData.put("sendAlertsToYb", true);
+    alertingData.put("reportOnlyErrors", false);
     params.put("alertingData", alertingData);
     params.put("callhomeLevel", "LOW");
     Result result = route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));

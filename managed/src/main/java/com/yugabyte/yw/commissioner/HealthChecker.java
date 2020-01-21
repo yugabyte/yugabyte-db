@@ -127,6 +127,7 @@ public class HealthChecker {
   }
 
   private void initialize() {
+    LOG.info("Scheduling health checker every " + this.healthCheckIntervalMs() + " ms");
     this.actorSystem.scheduler().schedule(
       Duration.create(0, TimeUnit.MILLISECONDS), // initialDelay
       Duration.create(this.healthCheckIntervalMs(), TimeUnit.MILLISECONDS), // interval
@@ -162,17 +163,18 @@ public class HealthChecker {
     return config.getString("yb.health.default_email");
   }
 
-  private void addPromMetrics(Universe u, String response) {
-    if (healthMetric == null) {
-      return;
-    }
-
+  private void processResults(Universe u, String response) {
+    Boolean hasErrors = false;
     try {
       JsonNode healthJSON = Util.convertStringToJson(response);
       for (JsonNode entry : healthJSON.path("data")) {
         String nodeName = entry.path("node").asText();
         String checkName = entry.path("message").asText();
         Boolean checkResult = entry.path("has_error").asBoolean();
+        hasErrors = checkResult || hasErrors;
+        if (null == healthMetric)
+          continue;
+
         Gauge.Child prometheusVal = healthMetric.labels(
           u.universeUUID.toString(),
           u.name,
@@ -181,6 +183,8 @@ public class HealthChecker {
         );
         prometheusVal.set(checkResult ? 1 : 0);
       }
+      LOG.info("Health check for universe " + u.name +
+               (hasErrors ? " reported errors." : "reported success."));
      } catch (Exception e) {
       LOG.warn("Failed to convert health check response to prometheus metrics " + e.getMessage());
     }
@@ -199,6 +203,7 @@ public class HealthChecker {
     for (Customer c : Customer.getAll()) {
       checkCustomer(c);
     }
+    LOG.info("Completed running health checker.");
     running.set(false);
   }
 
@@ -343,8 +348,9 @@ public class HealthChecker {
       return;
     }
     List<String> destinations = new ArrayList<String>();
+    AlertingData alertingData = null;
     if (config != null) {
-      AlertingData alertingData = Json.fromJson(config.data, AlertingData.class);
+      alertingData = Json.fromJson(config.data, AlertingData.class);
       String ybEmail = ybAlertEmail();
       if (alertingData.sendAlertsToYb && ybEmail != null && !ybEmail.isEmpty()) {
         destinations.add(ybEmail);
@@ -367,18 +373,35 @@ public class HealthChecker {
     String customerTag = String.format("[%s][%s]", c.name, c.code);
     Provider mainProvider = Provider.get(UUID.fromString(
           details.getPrimaryCluster().userIntent.provider));
+
+    String disabledUntilStr = u.getConfig().getOrDefault(Universe.DISABLE_ALERTS_UNTIL, "0");
+    long disabledUntilSecs = 0;
+    try {
+      disabledUntilSecs = Long.parseLong(disabledUntilStr);
+    } catch (NumberFormatException ne) {
+      LOG.warn("invalid universe config for disabled alerts: [ " + disabledUntilStr + " ]");
+      disabledUntilSecs = 0;
+    }
+    boolean silenceEmails = ((System.currentTimeMillis() / 1000) <= disabledUntilSecs);
+
+    boolean reportOnlyErrors = !shouldSendStatusUpdate &&
+                               null != alertingData &&
+                               alertingData.reportOnlyErrors;
+    boolean sendMailAlways = (shouldSendStatusUpdate || lastCheckHadErrors);
     // Call devops and process response.
     ShellProcessHandler.ShellResponse response = healthManager.runCommand(
         mainProvider,
         new ArrayList(clusterMetadata.values()),
         u.name,
         customerTag,
-        (destinations.size() == 0 ? null : String.join(",", destinations)),
+        (destinations.size() == 0 || silenceEmails) ? null : String.join(",", destinations),
         potentialStartTime,
-        (shouldSendStatusUpdate || lastCheckHadErrors));
+        sendMailAlways,
+        reportOnlyErrors
+    );
 
     if (response.code == 0) {
-      addPromMetrics(u, response.message);
+      processResults(u, response.message);
       HealthCheck.addAndPrune(u.universeUUID, u.customerId, response.message);
     } else {
       LOG.error(String.format(

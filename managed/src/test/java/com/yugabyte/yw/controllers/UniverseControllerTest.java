@@ -271,7 +271,7 @@ public class UniverseControllerTest extends WithApplication {
                  "/update_backup_state?markActive=true";
     Result result = doRequestWithAuthToken("PUT", url, authToken);
     assertOk(result);
-    assertThat(Universe.get(u.universeUUID).getConfig().get("takeBackups"),
+    assertThat(Universe.get(u.universeUUID).getConfig().get(Universe.TAKE_BACKUPS),
                allOf(notNullValue(), equalTo("true")));
     assertAuditEntry(1, customer.uuid);
   }
