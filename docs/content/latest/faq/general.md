@@ -192,3 +192,9 @@ See [YugabyteDB in Comparison](../../comparisons/)
 In the near-term, Yugabyte is not actively working on new feature or driver enhancements to the [YEDIS](../../yedis/) API other than bug fixes and stability improvements. Current focus is on [YSQL](../../api/ysql) and [YCQL](../../api/ycql).
 
 For key-value workloads that need persistence, elasticity and fault-tolerance, YCQL (with notion of keyspaces, tables, role-based access control and more) is often a great fit, especially if the application new rather than an existing one already written in Redis. The YCQL drivers are also more clustering aware, and hence YCQL is expected to perform better than YEDIS for equivalent scenarios. In general, our new feature development (support for data types, built-ins, TLS, backups and more), correctness testing (using Jepsen) and performance optimization is in the YSQL and YCQL areas.
+
+## Why is consistent hash sharding the default sharding strategy?
+
+Users primarily turn to YugabyteDB for scalability reasons. Most use cases that require scalability do not need to perform range lookups on the primary key, so consistent hash sharding is the default sharding strategy for YugabyteDB. Common applications that do not need hash sharding include user identity (user IDs do not need ordering), product catalog (product IDs are not related to one another), and stock ticker data (one stock symbol is independent of all other stock symbols). For applications that benefit from range sharding, YugabyteDB lets you select that option.
+
+To learn more about sharding strategies and lessons learned, see Karthik's blog on ["Four Data Sharding Strategies We Analyzed in Building a Distributed SQL Database"](https://blog.yugabyte.com/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/).
