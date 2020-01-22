@@ -39,8 +39,7 @@
 
 . "${BASH_SOURCE%/*}/../../../build-support/common-build-env.sh"
 
-# In case we are on NFS, try to use the shared thirdparty, if possible.
-find_thirdparty_dir
+find_or_download_thirdparty
 
 if is_mac; then
   THIRDPARTY_BUILD_TYPE=clang_uninstrumented

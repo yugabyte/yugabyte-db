@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python2.7
 
 """
 Deduplicates similar stack frames. Used for post-processing thread stacks dumped from a core file.
