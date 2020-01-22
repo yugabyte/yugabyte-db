@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: ysql-dump
     parent: admin
-    weight: 2466
+    weight: 2467
 isTocNested: 3
 showAsideToc: true
 ---
