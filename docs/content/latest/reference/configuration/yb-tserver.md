@@ -124,13 +124,13 @@ In cases where `rpc_bind_addresses` is set to `0.0.0.0` (or not explicitly set, 
 
 ##### --server_broadcast_addresses
 
-Specifies the public IP or DNS hostname of the server (with an optional port). This value might be used by servers to communicate with one another, depending on the connection policy parameter.
+Specifies the public IP or DNS hostname of the server (with an optional port). This value might be used by servers to communicate with one another, depending on the connection policy parameter. When using the default, or explicitly setting the value to `0.0.0.0:9100`, the server will listen on all available network interfaces.
 
 Default: `0.0.0.0:9100`
 
 ##### --use_private_ip
 
-Specifies the policy that determines when to use private IP addresses. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the [placement (`--placement_*`) configuration options](#placement-options).
+Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the [placement (`--placement_*`) configuration options](#placement-options).
 
 Valid values for the policy are:
 
