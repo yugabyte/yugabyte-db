@@ -1,0 +1,19 @@
+LOAD 'agensgraph';
+SET search_path TO ag_catalog;
+SELECT * FROM cypher($$CREATE ()$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+-- Column definition list for CREATE clause must contain a single agtype
+-- attribute.
+SELECT * FROM cypher($$CREATE ()$$) AS (a int);
+ERROR:  column definition list for CREATE clause must contain a single agtype attribute
+LINE 1: SELECT * FROM cypher($$CREATE ()$$) AS (a int);
+                      ^
+HINT:  ... cypher($$ ... CREATE ... $$) AS t(c agtype) ...
+SELECT * FROM cypher($$CREATE ()$$) AS (a agtype, b int);
+ERROR:  column definition list for CREATE clause must contain a single agtype attribute
+LINE 1: SELECT * FROM cypher($$CREATE ()$$) AS (a agtype, b int);
+                      ^
+HINT:  ... cypher($$ ... CREATE ... $$) AS t(c agtype) ...

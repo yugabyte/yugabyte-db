@@ -27,6 +27,8 @@ static Query *transform_cypher_return(cypher_parsestate *cpstate,
                                       cypher_clause *clause);
 static List *transform_cypher_item_list(cypher_parsestate *cpstate,
                                         List *items);
+static Query *transform_cypher_with(cypher_parsestate *cpstate,
+                                    cypher_clause *clause);
 static Query *transform_cypher_create(cypher_parsestate *cpstate,
                                       cypher_clause *clause);
 
@@ -46,7 +48,7 @@ Query *transform_cypher_clause(cypher_parsestate *cpstate,
     if (is_ag_node(self, cypher_return))
         result = transform_cypher_return(cpstate, clause);
     else if (is_ag_node(self, cypher_with))
-        return NULL;
+        return transform_cypher_with(cpstate, clause);
     else if (is_ag_node(self, cypher_match))
         return NULL;
     else if (is_ag_node(self, cypher_create))
@@ -112,6 +114,29 @@ static List *transform_cypher_item_list(cypher_parsestate *cpstate,
     }
 
     return targets;
+}
+
+static Query *transform_cypher_with(cypher_parsestate *cpstate,
+                                    cypher_clause *clause)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    cypher_with *self = (cypher_with *)clause->self;
+    Query *query;
+
+    query = makeNode(Query);
+    query->commandType = CMD_SELECT;
+
+    if (clause->prev)
+        transform_prev_cypher_clause(cpstate, clause->prev);
+
+    query->targetList = transform_cypher_item_list(cpstate, self->items);
+
+    query->rtable = pstate->p_rtable;
+    query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
+
+    assign_query_collations(pstate, query);
+
+    return query;
 }
 
 static Query *transform_cypher_create(cypher_parsestate *cpstate,

@@ -419,7 +419,24 @@ with:
     WITH distinct_opt return_item_list order_by_opt skip_opt limit_opt
     where_opt
         {
+            ListCell *li;
             cypher_with *n;
+
+            // check expressions are aliased
+            foreach (li, $3)
+            {
+                ResTarget *item = lfirst(li);
+
+                // variable does not have to be aliased
+                if (IsA(item->val, ColumnRef) || item->name)
+                    continue;
+
+                ereport(ERROR,
+                        (errcode(ERRCODE_SYNTAX_ERROR),
+                         errmsg("expression item must be aliased"),
+                         errhint("Items can be aliased by using AS."),
+                         ag_scanner_errposition(item->location, scanner)));
+            }
 
             n = make_ag_node(cypher_with);
             n->distinct = $2;

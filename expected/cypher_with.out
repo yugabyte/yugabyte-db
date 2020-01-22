@@ -1,0 +1,20 @@
+LOAD 'agensgraph';
+SET search_path TO ag_catalog;
+SELECT * FROM cypher($$
+WITH true AS b
+RETURN b
+$$) AS (b bool);
+ b 
+---
+ t
+(1 row)
+
+-- Expression item must be aliased.
+SELECT * FROM cypher($$
+WITH 1 + 1
+RETURN i
+$$) AS (i int);
+ERROR:  expression item must be aliased
+LINE 2: WITH 1 + 1
+             ^
+HINT:  Items can be aliased by using AS.

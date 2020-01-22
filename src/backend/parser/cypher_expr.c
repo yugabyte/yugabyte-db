@@ -8,10 +8,9 @@
 #include "nodes/parsenodes.h"
 #include "nodes/value.h"
 #include "parser/parse_coerce.h"
-#include "parser/parse_expr.h"
-#include "parser/parse_func.h"
 #include "parser/parse_node.h"
 #include "parser/parse_oper.h"
+#include "parser/parse_relation.h"
 #include "utils/builtins.h"
 #include "utils/int8.h"
 #include "utils/lsyscache.h"
@@ -26,6 +25,9 @@
 static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
                                            Node *expr);
 static Node *transform_A_Const(cypher_parsestate *cpstate, A_Const *ac);
+static Node *transform_ColumnRef(cypher_parsestate *cpstate, ColumnRef *cref);
+static Node *transform_A_Indirection(cypher_parsestate *cpstate,
+                                     A_Indirection *a_ind);
 static Node *transform_AEXPR_OP(cypher_parsestate *cpstate, A_Expr *a);
 static Node *transform_BoolExpr(cypher_parsestate *cpstate, BoolExpr *expr);
 static Node *transform_cypher_bool_const(cypher_parsestate *cpstate,
@@ -35,8 +37,6 @@ static Node *transform_cypher_param(cypher_parsestate *cpstate,
 static Node *transform_cypher_map(cypher_parsestate *cpstate, cypher_map *cm);
 static Node *transform_cypher_list(cypher_parsestate *cpstate,
                                    cypher_list *cl);
-static Node *transform_cypher_indirection(cypher_parsestate *cpstate,
-                                          A_Indirection *a_ind);
 static Node *transform_cypher_string_match(cypher_parsestate *cpstate,
                                            cypher_string_match *csm_node);
 
@@ -72,6 +72,10 @@ static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
     {
     case T_A_Const:
         return transform_A_Const(cpstate, (A_Const *)expr);
+    case T_ColumnRef:
+        return transform_ColumnRef(cpstate, (ColumnRef *)expr);
+    case T_A_Indirection:
+        return transform_A_Indirection(cpstate, (A_Indirection *)expr);
     case T_A_Expr:
     {
         A_Expr *a = (A_Expr *)expr;
@@ -81,7 +85,8 @@ static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
         case AEXPR_OP:
             return transform_AEXPR_OP(cpstate, a);
         default:
-            ereport(ERROR, (errmsg("unrecognized A_Expr kind: %d", a->kind)));
+            ereport(ERROR, (errmsg_internal("unrecognized A_Expr kind: %d",
+                                            a->kind)));
         }
     }
     case T_BoolExpr:
@@ -96,8 +101,6 @@ static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
 
         return expr;
     }
-    case T_A_Indirection:
-        return transform_cypher_indirection(cpstate, (A_Indirection *)expr);
     case T_ExtensibleNode:
         if (is_ag_node(expr, cypher_bool_const))
         {
@@ -123,12 +126,14 @@ static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
         }
         else
         {
-            ereport(ERROR, (errmsg("unrecognized ExtensibleNode: %s",
-                                   ((ExtensibleNode *)expr)->extnodename)));
+            ereport(ERROR,
+                    (errmsg_internal("unrecognized ExtensibleNode: %s",
+                                     ((ExtensibleNode *)expr)->extnodename)));
             return NULL;
         }
     default:
-        ereport(ERROR, (errmsg("unrecognized node type: %d", nodeTag(expr))));
+        ereport(ERROR, (errmsg_internal("unrecognized node type: %d",
+                                        nodeTag(expr))));
     }
     return NULL;
 }
@@ -172,7 +177,8 @@ static Node *transform_A_Const(cypher_parsestate *cpstate, A_Const *ac)
         is_null = true;
         break;
     default:
-        ereport(ERROR, (errmsg("unrecognized node type: %d", nodeTag(v))));
+        ereport(ERROR,
+                (errmsg_internal("unrecognized node type: %d", nodeTag(v))));
         return NULL;
     }
     cancel_parser_errposition_callback(&pcbstate);
@@ -181,6 +187,84 @@ static Node *transform_A_Const(cypher_parsestate *cpstate, A_Const *ac)
     c = makeConst(AGTYPEOID, -1, InvalidOid, -1, d, is_null, false);
     c->location = ac->location;
     return (Node *)c;
+}
+
+static Node *transform_ColumnRef(cypher_parsestate *cpstate, ColumnRef *cref)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    Node *field1;
+    const char *colname;
+    Node *var;
+
+    field1 = linitial(cref->fields);
+    Assert(IsA(field1, String));
+    colname = strVal(field1);
+
+    var = colNameToVar(pstate, colname, false, cref->location);
+    if (!var)
+    {
+        ereport(ERROR, (errcode(ERRCODE_UNDEFINED_COLUMN),
+                        errmsg("variable `%s` does not exist", colname),
+                        parser_errposition(pstate, cref->location)));
+    }
+
+    return var;
+}
+
+static Node *transform_A_Indirection(cypher_parsestate *cpstate,
+                                     A_Indirection *a_ind)
+{
+    int location;
+    ListCell *lc;
+    Node *ind_arg_expr;
+    FuncExpr *func_expr;
+    Oid func_access_oid;
+    List *args = NIL;
+
+    /* get the agtype_access_operator function */
+    func_access_oid = get_ag_func_oid("agtype_access_operator", 1,
+                                      AGTYPEARRAYOID);
+
+    ind_arg_expr = transform_cypher_expr_recurse(cpstate, a_ind->arg);
+    location = exprLocation(ind_arg_expr);
+
+    args = lappend(args, ind_arg_expr);
+    foreach (lc, a_ind->indirection)
+    {
+        Node *node = lfirst(lc);
+
+        if (IsA(node, A_Indices))
+        {
+            A_Indices *indices = (A_Indices *)node;
+
+            if (indices->is_slice)
+            {
+                ereport(ERROR, (errmsg("slices are not supported yet")));
+            }
+            else
+            {
+                node = transform_cypher_expr_recurse(cpstate, indices->uidx);
+                args = lappend(args, node);
+            }
+        }
+        else if (IsA(node, String))
+        {
+            Const *const_str = makeConst(AGTYPEOID, -1, InvalidOid, -1,
+                                         string_to_agtype(strVal(node)), false,
+                                         false);
+            args = lappend(args, const_str);
+        }
+        else
+        {
+            ereport(ERROR, (errmsg_internal("invalid indirection node %d",
+                                            nodeTag(node))));
+        }
+    }
+
+    func_expr = makeFuncExpr(func_access_oid, AGTYPEOID, args, InvalidOid,
+                             InvalidOid, COERCE_EXPLICIT_CALL);
+    func_expr->location = location;
+    return (Node *)func_expr;
 }
 
 static Node *transform_AEXPR_OP(cypher_parsestate *cpstate, A_Expr *a)
@@ -213,7 +297,8 @@ static Node *transform_BoolExpr(cypher_parsestate *cpstate, BoolExpr *expr)
         opname = "NOT";
         break;
     default:
-        ereport(ERROR, (errmsg("unrecognized boolop: %d", (int)expr->boolop)));
+        ereport(ERROR, (errmsg_internal("unrecognized boolop: %d",
+                                        (int)expr->boolop)));
         return NULL;
     }
 
@@ -358,62 +443,6 @@ static Node *transform_cypher_list(cypher_parsestate *cpstate, cypher_list *cl)
     fexpr->location = cl->location;
 
     return (Node *)fexpr;
-}
-
-static Node *transform_cypher_indirection(cypher_parsestate *cpstate,
-                                          A_Indirection *a_ind)
-{
-    int location;
-    ListCell *lc;
-    Node *ind_arg_expr;
-    FuncExpr *func_expr;
-    Oid func_access_oid;
-    List *args = NIL;
-
-    /* get the agtype_access_operator function */
-    func_access_oid = get_ag_func_oid("agtype_access_operator", 1,
-                                      AGTYPEARRAYOID);
-
-    ind_arg_expr = transform_cypher_expr_recurse(cpstate, a_ind->arg);
-    location = exprLocation(ind_arg_expr);
-
-    args = lappend(args, ind_arg_expr);
-    foreach (lc, a_ind->indirection)
-    {
-        Node *node = lfirst(lc);
-
-        if (IsA(node, A_Indices))
-        {
-            A_Indices *indices = (A_Indices *)node;
-
-            if (indices->is_slice)
-            {
-                ereport(ERROR, (errmsg("slices are not supported yet")));
-            }
-            else
-            {
-                node = transform_cypher_expr_recurse(cpstate, indices->uidx);
-                args = lappend(args, node);
-            }
-        }
-        else if (IsA(node, String))
-        {
-            Const *const_str = makeConst(AGTYPEOID, -1, InvalidOid, -1,
-                                         string_to_agtype(strVal(node)), false,
-                                         false);
-            args = lappend(args, const_str);
-        }
-        else
-        {
-            ereport(ERROR,
-                    (errmsg("invalid indirection node %d", nodeTag(node))));
-        }
-    }
-
-    func_expr = makeFuncExpr(func_access_oid, AGTYPEOID, args, InvalidOid,
-                             InvalidOid, COERCE_EXPLICIT_CALL);
-    func_expr->location = location;
-    return (Node *)func_expr;
 }
 
 static Node *transform_cypher_string_match(cypher_parsestate *cpstate,

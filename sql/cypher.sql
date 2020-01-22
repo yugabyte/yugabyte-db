@@ -43,7 +43,3 @@ SELECT (SELECT * FROM cypher($$RETURN 0$$) AS r(c agtype));
 
 SELECT * FROM cypher($$RETURN true$$) AS (c bool);
 SELECT * FROM cypher($$RETURN 0$$) AS (c oid);
-
-SELECT * FROM cypher($$CREATE ()$$) AS (a agtype);
-SELECT * FROM cypher($$CREATE ()$$) AS (a int);
-SELECT * FROM cypher($$CREATE ()$$) AS (a agtype, b int);

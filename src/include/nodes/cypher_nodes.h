@@ -17,7 +17,7 @@ typedef struct cypher_return
 {
     ExtensibleNode extensible;
     bool distinct;
-    List *items;
+    List *items; // a list of ResTarget's
     List *order_by;
     Node *skip;
     Node *limit;
@@ -27,7 +27,7 @@ typedef struct cypher_with
 {
     ExtensibleNode extensible;
     bool distinct;
-    List *items;
+    List *items; // a list of ResTarget's
     List *order_by;
     Node *skip;
     Node *limit;

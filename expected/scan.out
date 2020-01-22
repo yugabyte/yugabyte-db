@@ -389,39 +389,39 @@ LINE 1: SELECT * FROM cypher($$RETURN "high surrogate \uD835$$) AS t...
 SELECT * FROM cypher($$
 RETURN _$09A_z
 $$) AS t(id text);
-ERROR:  unrecognized node type: 341
-LINE 1: SELECT * FROM cypher($$
-                              ^
+ERROR:  variable `_$09A_z` does not exist
+LINE 2: RETURN _$09A_z
+               ^
 SELECT * FROM cypher($$
 RETURN A
 $$) AS t(id text);
-ERROR:  unrecognized node type: 341
-LINE 1: SELECT * FROM cypher($$
-                              ^
+ERROR:  variable `A` does not exist
+LINE 2: RETURN A
+               ^
 SELECT * FROM cypher($$
 RETURN z
 $$) AS t(id text);
-ERROR:  unrecognized node type: 341
-LINE 1: SELECT * FROM cypher($$
-                              ^
+ERROR:  variable `z` does not exist
+LINE 2: RETURN z
+               ^
 SELECT * FROM cypher($$
 RETURN `$`
 $$) AS t(id text);
-ERROR:  unrecognized node type: 341
-LINE 1: SELECT * FROM cypher($$
-                              ^
+ERROR:  variable `$` does not exist
+LINE 2: RETURN `$`
+               ^
 SELECT * FROM cypher($$
 RETURN `0`
 $$) AS t(id text);
-ERROR:  unrecognized node type: 341
-LINE 1: SELECT * FROM cypher($$
-                              ^
+ERROR:  variable `0` does not exist
+LINE 2: RETURN `0`
+               ^
 SELECT * FROM cypher($$
 RETURN ````
 $$) AS t(id text);
-ERROR:  unrecognized node type: 341
-LINE 1: SELECT * FROM cypher($$
-                              ^
+ERROR:  variable ``` does not exist
+LINE 2: RETURN ````
+               ^
 -- zero-length quoted identifier
 SELECT * FROM cypher($$
 RETURN ``
