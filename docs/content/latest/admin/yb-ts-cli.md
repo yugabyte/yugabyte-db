@@ -72,11 +72,11 @@ Deletes the tablet with the specified tablet ID (`tablet_id`) and reason.
 **Syntax**
 
 ```sh
-$ ./bin/yb-ts-cli  [ --server_address=<addr> ] delete_tablet <tablet_id> <reason-string>
+$ ./bin/yb-ts-cli  [ --server_address=<addr> ] delete_tablet <tablet_id> "<reason-string>"
 ```
 
 - *tablet_id*: The identifier (ID) for the tablet.
-- *reason-string*: The reason...
+- *reason-string*: Text string noting why the tablet was deleted.
 
 ##### dump_tablet
 
@@ -123,19 +123,21 @@ Sets the specified configuration option (flag) for the tablet server.
 $ ./bin/yb-ts-cli set_flag [ --force ] <flag> <value>
 ```
 
-- -force: Optional. See [--force](#force).
-- *flag*: The `yb-tserver` configuration option to be set. See [`yb-tserver`](../../../reference/configuration/yb-tserver/#configuration-options)
+- --force: Optional. See [--force](#force).
+- *flag*: The `yb-tserver` configuration option (without the `--`) to be set. See [`yb-tserver`](../../../reference/configuration/yb-tserver/#configuration-options)
 - *value*: The value to be applied.
 
 ##### status
 
-Prints the status of the tablet servers
+Prints the status of the tablet server, including information on the node instance, bound RPC addresses, bound HTTP addresses, and version information.
 
 **Syntax**
 
 ```sh
 $ ./bin/yb-ts-cli  [ --server_address=<addr> ] status
 ```
+
+For an example, see [Return the status of a tablet server](#return-the-status-of-a-tablet-server)
 
 ## Options
 
@@ -161,10 +163,10 @@ Default: `60000` (1000 ms = 1 sec)
 
 ## Examples
 
-### Return the status of the specified tablet server
+### Return the status of a tablet server
 
 ```sh
-$ ./bin/yb-ts-cli status -server_address=127.0.0.1
+$ ./bin/yb-ts-cli -server_address=127.0.0.1 status
 ```
 
 ```json
