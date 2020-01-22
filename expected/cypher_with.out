@@ -1,6 +1,13 @@
 LOAD 'agensgraph';
 SET search_path TO ag_catalog;
-SELECT * FROM cypher($$
+SELECT * FROM create_graph('cypher_with_graph');
+NOTICE:  graph "cypher_with_graph" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('cypher_with_graph', $$
 WITH true AS b
 RETURN b
 $$) AS (b bool);
@@ -10,7 +17,7 @@ $$) AS (b bool);
 (1 row)
 
 -- Expression item must be aliased.
-SELECT * FROM cypher($$
+SELECT * FROM cypher('cypher_with_graph', $$
 WITH 1 + 1
 RETURN i
 $$) AS (i int);
@@ -18,3 +25,10 @@ ERROR:  expression item must be aliased
 LINE 2: WITH 1 + 1
              ^
 HINT:  Items can be aliased by using AS.
+SELECT * FROM drop_graph('cypher_with_graph');
+NOTICE:  graph "cypher_with_graph" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+

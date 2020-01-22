@@ -6,6 +6,7 @@
 void insert_graph(const Name graph_name, const Oid nsp_id);
 void delete_graph(const Name graph_name);
 void update_graph_name(const Name graph_name, const Name new_name);
+bool graph_exists(const Name graph_name);
 
 Oid get_graph_namespace(const Name graph_name);
 

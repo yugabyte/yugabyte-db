@@ -3,6 +3,7 @@ MODULE_big = agensgraph
 OBJS = src/backend/agensgraph.o \
        src/backend/catalog/ag_catalog.o \
        src/backend/catalog/ag_graph.o \
+       src/backend/catalog/ag_label.o \
        src/backend/commands/commands.o \
        src/backend/executor/cypher_create.o \
        src/backend/nodes/ag_nodes.o \

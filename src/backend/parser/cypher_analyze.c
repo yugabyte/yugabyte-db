@@ -16,6 +16,7 @@
 #include "parser/parsetree.h"
 #include "utils/builtins.h"
 
+#include "catalog/ag_graph.h"
 #include "nodes/ag_nodes.h"
 #include "parser/cypher_analyze.h"
 #include "parser/cypher_clause.h"
@@ -198,6 +199,8 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     RangeTblFunction *rtfunc = linitial(rte->functions);
     FuncExpr *funcexpr = (FuncExpr *)rtfunc->funcexpr;
     Node *arg;
+    Const *graph_name_const;
+    Name graph_name;
     const char *query_str;
     int query_loc;
     Node *params;
@@ -219,8 +222,18 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
                  parser_errposition(pstate, exprLocation((Node *)funcexpr))));
     }
 
+    graph_name_const = (Const *)linitial(funcexpr->args);
+    graph_name = (Name)graph_name_const->constvalue;
+    
+    if (!graph_exists(graph_name))
+    {
+        ereport(ERROR,
+                (errmsg("graph \"%s\" does not exist", NameStr(*graph_name)),
+                 parser_errposition(pstate, exprLocation((Node *)funcexpr))));
+    }
+
     // NOTE: Remove asserts once the prototype of cypher() function is fixed.
-    arg = linitial(funcexpr->args);
+    arg = lsecond(funcexpr->args);
     Assert(exprType(arg) == CSTRINGOID);
 
     /*
@@ -249,9 +262,9 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
      * Check to see if the cypher function had any parameters passed to it,
      * if so make sure Postgres parsed the second argument to a Param node.
      */
-    if (list_length(funcexpr->args) == 2)
+    if (list_length(funcexpr->args) == 3)
     {
-        params = lsecond(funcexpr->args);
+        params = lthird(funcexpr->args);
         if (!IsA(params, Param))
         {
             ereport(ERROR,
@@ -299,13 +312,14 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
                      parser_errposition(pstate, exprLocation(rtfunc->funcexpr))));
         }
 
-        query = analyze_cypher(stmt, pstate, query_str, query_loc, NULL,
-                               (Param *)params);
+        query = analyze_cypher(stmt, pstate, query_str, query_loc,
+                               NameStr(*graph_name), (Param *)params);
     }
     else
     {
         query = analyze_cypher_and_coerce(stmt, rtfunc, pstate, query_str,
-                                          query_loc, NULL, (Param *)params);
+                                          query_loc, NameStr(*graph_name),
+                                          (Param *)params);
     }
 
     pstate->p_lateral_active = false;

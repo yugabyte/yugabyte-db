@@ -11,6 +11,16 @@ CREATE TABLE ag_graph (
 );
 CREATE UNIQUE INDEX ag_graph_name_index ON ag_graph USING btree (name);
 
+CREATE TABLE ag_label (
+  graph_name name NOT NULL,
+  label_name name NOT NULL,
+  label_oid oid NOT NULL,
+  label_type int NOT NULL
+);
+CREATE UNIQUE INDEX ag_label_index
+ON ag_label
+USING btree (graph_name, label_name);
+
 --
 -- utility functions
 --
@@ -382,7 +392,7 @@ AS 'MODULE_PATHNAME';
 -- query functions
 --
 
-CREATE FUNCTION cypher(query_string cstring, params agtype = NULL)
+CREATE FUNCTION cypher(graph_name name, query_string cstring, params agtype = NULL)
 RETURNS SETOF record
 LANGUAGE c
 AS 'MODULE_PATHNAME';

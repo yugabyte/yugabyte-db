@@ -1,19 +1,50 @@
 LOAD 'agensgraph';
 SET search_path TO ag_catalog;
-SELECT * FROM cypher($$CREATE ()$$) AS (a agtype);
+SELECT * FROM create_graph('cypher_create_graph');
+NOTICE:  graph "cypher_create_graph" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('cypher_create_graph', $$CREATE ()$$) AS (a agtype);
  a 
 ---
 (0 rows)
 
+SELECT * FROM cypher('cypher_create_graph', $$CREATE (:label1)$$) as q(a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_create_graph', $$CREATE ()-[]-()$$) as q(a agtype);
+ERROR:  edges are not supported in CREATE clause
+LINE 1: SELECT * FROM cypher('cypher_create_graph', $$CREATE ()-[]-(...
+                                                     ^
+SELECT * FROM cypher_create_graph.label1;
+ vertex_id | props 
+-----------+-------
+(0 rows)
+
 -- Column definition list for CREATE clause must contain a single agtype
 -- attribute.
-SELECT * FROM cypher($$CREATE ()$$) AS (a int);
+SELECT * FROM cypher('cypher_create_graph', $$CREATE ()$$) AS (a int);
 ERROR:  column definition list for CREATE clause must contain a single agtype attribute
-LINE 1: SELECT * FROM cypher($$CREATE ()$$) AS (a int);
+LINE 1: SELECT * FROM cypher('cypher_create_graph', $$CREATE ()$$) A...
                       ^
 HINT:  ... cypher($$ ... CREATE ... $$) AS t(c agtype) ...
-SELECT * FROM cypher($$CREATE ()$$) AS (a agtype, b int);
+SELECT * FROM cypher('cypher_create_graph', $$CREATE ()$$) AS (a agtype, b int);
 ERROR:  column definition list for CREATE clause must contain a single agtype attribute
-LINE 1: SELECT * FROM cypher($$CREATE ()$$) AS (a agtype, b int);
+LINE 1: SELECT * FROM cypher('cypher_create_graph', $$CREATE ()$$) A...
                       ^
 HINT:  ... cypher($$ ... CREATE ... $$) AS t(c agtype) ...
+SELECT * FROM drop_graph('cypher_create_graph', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table cypher_create_graph.""
+drop cascades to table cypher_create_graph.label1
+NOTICE:  graph "cypher_create_graph" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+

@@ -205,3 +205,32 @@ void update_graph_name(const Name graph_name, const Name new_name)
 
     heap_close(ag_graph, RowExclusiveLock);
 }
+
+bool graph_exists(const Name graph_name)
+{
+    ScanKeyData scan_keys[1];
+    Relation ag_graph;
+    SysScanDesc scan_desc;
+    HeapTuple tuple;
+
+    ScanKeyInit(&scan_keys[0], Anum_ag_graph_name, BTEqualStrategyNumber,
+                F_NAMEEQ, NameGetDatum(graph_name));
+
+    ag_graph = heap_open(ag_graph_relation_id(), AccessShareLock);
+
+    scan_desc = systable_beginscan(ag_graph, ag_graph_name_index_id(), true,
+                                   NULL, 1, scan_keys);
+
+    tuple = systable_getnext(scan_desc);
+
+    systable_endscan(scan_desc);
+
+    heap_close(ag_graph, AccessShareLock);
+
+    if (!HeapTupleIsValid(tuple))
+    {
+        return false;
+    }
+
+    return true;
+}
