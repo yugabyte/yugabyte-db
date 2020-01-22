@@ -11,66 +11,151 @@ isTocNested: 3
 showAsideToc: true
 ---
 
+`yb-ts-cli` is a command line tool that can be used to perform an operation on tablet server (`yb-tserver`). Some of the commands perform operations similar to [`yb-admin` commands](../../../reference/configuration/yb-tserver).
+
+`yb-ts-cli` is a binary file installed with YugabyteDB and is located in the `bin` directory of the YugabyteDB home directory.
+
 ## Syntax
 
 ```sh
-./yb-ts-cli [--server_address=<addr>] <command> <options>
+yb-ts-cli [ --server_address=<addr> ] <command> <options>
 ```
-- *command*: asdfad
-- *options*: asfads
+
+- *addr*: The IP address of the tablet server. Default is `localhost`.
+- *command*: The operation to be performed. See [Commands](#commands) below.
+- *options*: The options to be applied to the command. See [Options](#options).
 
 ## Command line help
 
+To display the available online help, run `yb-ts-cli` without any commands or options (flags) at the YugabyteDB home directory.
 
+```sh
+$ ./bin/yb-ts-cli
+```
 
 ## Commands
 
-### list_tablets
-
-### are_tablets_running
+##### are_tablets_running
 
 If all tablets are running, returns "All tablets are running".
 
-### set_flag
+**Syntax**
 
-Set the specified option (flag).
+```sh
+yb-ts-cli [ --server_address=<addr> ] are_tablets_running
+```
 
-### dump_tablet.
+##### count_intents
 
-Dump the tablet with the specified tablet ID (`tablet_id`).
+Print the count of uncompleted intents (or [provisional records](../../../architecture/transactions/ditributed-txns/#provisional-records)). Useful for debugging and troubleshooting.
 
-### delete_tablet
+**Syntax**
 
-Delete the tablet with the specified tablet ID (`tablet_id`).
+```sh
+$ ./bin/yb-ts-cli  [ --server_address=<addr> ] count_intents
+```
 
-### current_hybrid_time
+##### current_hybrid_time
 
+Prints the value of the current [hybrid time](../../../architecture/transactions/single-row-transactions/#hybrid-time-as-an-mvcc-timestamp).
 
+**Syntax**
 
-### status
+```sh
+$ ./bin/yb-ts-cli  [ --server_address=<addr> ] current_hybrid_time
+```
 
-Returns the status of the tablet servers.
+##### delete_tablet
 
+Deletes the tablet with the specified tablet ID (`tablet_id`) and reason.
 
-### count_intents
+**Syntax**
+
+```sh
+$ ./bin/yb-ts-cli  [ --server_address=<addr> ] delete_tablet <tablet_id> <reason-string>
+```
+
+- *tablet_id*: The identifier (ID) for the tablet.
+- *reason-string*: The reason...
+
+##### dump_tablet
+
+Dump, or export, the specified tablet ID (`tablet_id`).
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<addr> ] dump_tablet <tablet_id>
+```
+
+- *tablet_id*: The identifier (ID) for the tablet.
+
+##### list_tablets
+
+Lists the tablets on the specified tablet server, displaying the following information:
+
+- Tablet id
+- State
+- Table name
+- Partition
+- Schema
+- properties
+  - lumn_name
+  - Tablet id
+  - State
+  - Table name
+  - Partition
+  - Schema
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<addr> ] list_tablets
+```
+
+##### set_flag
+
+Sets the specified configuration option (flag) for the tablet server.
+
+**Syntax**
+
+```sh
+$ ./bin/yb-ts-cli set_flag [ --force ] <flag> <value>
+```
+
+- -force: Optional. See [--force](#force).
+- *flag*: The `yb-tserver` configuration option to be set. See [`yb-tserver`](../../../reference/configuration/yb-tserver/#configuration-options)
+- *value*: The value to be applied.
+
+##### status
+
+Prints the status of the tablet servers
+
+**Syntax**
+
+```sh
+$ ./bin/yb-ts-cli  [ --server_address=<addr> ] status
+```
 
 ## Options
 
-##### -force
+The following options (or flags) can be used, when specified, with the commands above.
+
+##### --force
 
 If `true`, allows the `set_flag` command to set an option which is not explicitly marked as runtime-settable. The change may be ignored on the server or may cause the server to crash.
 
 Default: `false`
 
-##### -server-address
+##### --server-address
 
-The address of the YB-TServer to run against.
+The address of the YB-TServer server to run against.
 
 Default: `localhost`
 
-##### -timeout_ms
+##### --timeout_ms
 
-The duration, in milliseconds (ms), before RPC request fails.
+The duration, in milliseconds (ms), before the RPC request times out.
 
 Default: `60000` (1000 ms = 1 sec)
 
@@ -111,7 +196,7 @@ version_info {
 ### Display the current hybrid time
 
 ```sh
-$ ./bin/yb-ts-cli current_hybrid_time
+$ ./bin/yb-ts-cli  [ --server_address=<addr> ] current_hybrid_time
 ```
 
 ```
