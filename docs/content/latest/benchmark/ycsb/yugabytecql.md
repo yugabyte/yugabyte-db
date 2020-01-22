@@ -1,31 +1,19 @@
-## Step 1. Clone the YCSB repository
+
+## Step 1. Download the YCSB binaries
 
 You can do this by running the following commands.
 
 ```sh
 cd $HOME
-git clone https://github.com/yugabyte/YCSB.git
+wget https://github.com/yugabyte/YCSB/releases/download/1.0/ycsb.tar.gz
+tar -zxvf ycsb.tar.gz
 cd YCSB
 ```
 
-## Step 2. Compile the code
-
-You can compile the code using the following commands.
-
-```sh
-mvn clean package
-```
-
-We can also just compile the yugabyteCQL binding using:
-
-```sh
-mvn -pl yugabyteCQL -am clean package -DskipTests
-```
-
-## Step 3. Start your database
+## Step 2. Start your database
 Start the database using steps mentioned here: https://docs.yugabyte.com/latest/quick-start/explore-ysql/.
 
-## Step 4. Configure your database and table
+## Step 3. Configure your database
 Create the Database and table using the cqlsh tool.
 The cqlsh tool is distributed as part of the database package.
 
@@ -34,8 +22,8 @@ bin/cqlsh <ip> --execute "create keyspace ycsb"
 bin/cqlsh <ip> --keyspace ycsb --execute 'create table usertable (y_id varchar primary key, field0 varchar, field1 varchar, field2 varchar, field3 varchar, field4 varchar, field5 varchar, field6 varchar,  field7 varchar, field8 varchar, field9 varchar);'
 ```
 
-## Step 5. Configure YCSB connection properties
-Set the following connection configurations in yugabyteCQL/db.properties:
+## Step 4. Configure YCSB connection properties
+Set the following connection configurations in db.properties:
 
 ```sh
 hosts=<ip>
@@ -46,7 +34,7 @@ cassandra.username=yugabyte
 The other configuration parameters like username, password, connection
 parameters, etc. are described in detail at [this page](https://github.com/yugabyte/YCSB/tree/master/yugabyteCQL)
 
-## Step 6. Running the workload
+## Step 5. Running the workload
 Before you can actually run the workload, you need to "load" the data first.
 
 ```sh

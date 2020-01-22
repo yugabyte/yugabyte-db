@@ -15,34 +15,24 @@ showAsideToc: True
 isTocNested: True
 ---
 
+Following are the steps to be taken to run TPCC against Yugabyte.
 
-## Step 1. Install Java and Ant.
-
-## Step 2. Clone the TPCC repository.
+## Step 1. Download the TPCC binaries.
 
 You can do this by running the following commands.
 
 ```sh
 cd $HOME
-git clone https://github.com/yugabyte/tpcc.git
+wget https://github.com/yugabyte/tpcc/releases/download/1.0/tpcc.tar.gz
+tar -zxvf tpcc.tar.gz
 cd tpcc
 ```
 
-## Step 3. Compile the code
-
-You can compile the code using the following commands.
-
-```sh
-ant bootstrap
-ant resolve
-ant build
-```
-
-## Step 4. Start your database
+## Step 2. Start your database
 Start the database using steps mentioned here: https://docs.yugabyte.com/latest/quick-start/explore-ysql/.
 
-## Step 5. Configure connection properties
-Set the following connection configurations in yugabyteSQL/db.properties:
+## Step 3. Configure connection properties
+Set the following connection configurations in the workload config file.
 
 ```sh
 <!-- Connection details -->
@@ -57,7 +47,7 @@ Set the following connection configurations in yugabyteSQL/db.properties:
 The details of the workloads have already been populated in the sample config present in /config.
 The workload descriptor works the same way as it does in the upstream branch and details can be found in the [on-line documentation](https://github.com/oltpbenchmark/oltpbench/wiki).
 
-## Step 6. Running the Benchmark
+## Step 4. Running the Benchmark
 A utility script (./tpccbenchmark) is provided for running the benchmark. The options are
 
 ```
@@ -88,7 +78,7 @@ Then, you can run the workload:
 ./tpccbenchmark -c config/workload_1.xml --execute=true -s 5 -o outputfile
 ```
 
-We can also load and perform the benchmark together as well:
+We can also load and perform the benchmark in a single step:
 
 ```sh
 ./tpccbenchmark -c config/workload_1.xml --create=true --load=true --execute=true -s 5 -o outputfile
