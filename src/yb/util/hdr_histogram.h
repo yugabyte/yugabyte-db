@@ -116,6 +116,11 @@ class HdrHistogram {
   // Count of all events recorded.
   uint64_t TotalCount() const { return base::subtle::NoBarrier_Load(&total_count_); }
 
+  // Count of all events recorded in buckets. Resets to 0 after ResetPercentiles.
+  uint64_t TotalCountInBuckets() const {
+    return base::subtle::NoBarrier_Load(&total_count_in_buckets_);
+  }
+
   // Sum of all events recorded.
   uint64_t TotalSum() const { return base::subtle::NoBarrier_Load(&total_sum_); }
 
@@ -168,6 +173,10 @@ class HdrHistogram {
   // This is a percentile in percents, i.e. 99.99 percentile.
   uint64_t ValueAtPercentile(double percentile) const;
 
+  // Resets the counts_ array to reset the percentiles information.
+  // Preserves the values for TotalSum and TotalCount.
+  void ResetPercentiles();
+
   // Get the percentile at a given value
   // TODO: implement
   // double PercentileAtOrBelowValue(uint64_t value) const;
@@ -203,6 +212,7 @@ class HdrHistogram {
 
   // Also hot.
   base::subtle::Atomic64 total_count_;
+  base::subtle::Atomic64 total_count_in_buckets_;
   base::subtle::Atomic64 total_sum_;
   base::subtle::Atomic64 min_value_;
   base::subtle::Atomic64 max_value_;
