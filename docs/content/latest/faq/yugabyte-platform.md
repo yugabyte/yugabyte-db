@@ -6,7 +6,7 @@ aliases:
   - /faq/enterprise-edition/
 menu:
   latest:
-    identifier: enterprise-edition
+    identifier: faq-yugabyte-platform
     parent: faq
     weight: 2750
 isTocNested: false
