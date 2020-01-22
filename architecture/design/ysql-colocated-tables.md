@@ -2,7 +2,7 @@
 
 > **Note:** This is a new feature that is still in a design phase.
 
-Colocating tables can dramitacally increase the number of relations (tables, indexes, etc) that can be supported per node while keeping the number of tablets per node low. 
+Colocating tables can dramatically increase the number of relations (tables, indexes, etc) that can be supported per node while keeping the number of tablets per node low. 
 
 In workloads that do very little IOPS and have a small data set, the bottleneck shifts from CPU/disk/network to the number of tablets one can host per node. There are practical limitations to the number of tablets that YugabyteDB can handle per node, even though this number could be very high, depending on the workload pattern. Although the number of tablets a node can handle keeps improving with software optimizations, as a general rule we currently recommend no more than 5000 tablets / node. Since each table by default requires at least one tablet without colocation, this implies that a YugabyteDB cluster cannot handle much more than 5000 relations (tables, indexes, etc) per node. With the default replication factor of 3, this limit is even lower in practice.
 
