@@ -124,7 +124,7 @@ $ ./bin/yb-ts-cli set_flag [ --force ] <flag> <value>
 ```
 
 - --force: Optional. See [--force](#force).
-- *flag*: The `yb-tserver` configuration option (without the `--`) to be set. See [`yb-tserver`](../../../reference/configuration/yb-tserver/#configuration-options)
+- *flag*: The `yb-tserver` configuration option (without the `--`) to be set. See [`yb-tserver`](../../reference/configuration/yb-tserver/#configuration-options)
 - *value*: The value to be applied.
 
 ##### status
@@ -145,13 +145,13 @@ The following options (or flags) can be used, when specified, with the commands 
 
 ##### --force
 
-If `true`, allows the `set_flag` command to set an option which is not explicitly marked as runtime-settable. The change may be ignored on the server or may cause the server to crash.
+If `true`, allows the [`set_flag`](#set-flag) command to set an option which is not explicitly marked as runtime-settable. The change may be ignored on the server or may cause the server to crash.
 
 Default: `false`
 
 ##### --server-address
 
-The address of the YB-TServer server to run against.
+The address of the tablet server to run against.
 
 Default: `localhost`
 
