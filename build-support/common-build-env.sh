@@ -1130,6 +1130,9 @@ download_thirdparty() {
 # -------------------------------------------------------------------------------------------------
 
 detect_brew() {
+  if is_ubuntu; then
+    return
+  fi
   if is_linux; then
     detect_linuxbrew
   elif is_mac; then
@@ -1724,6 +1727,9 @@ find_shared_thirdparty_dir() {
 }
 
 find_or_download_thirdparty() {
+  if [[ ${YB_IS_THIRDPARTY_BUILD:-} == "1" ]]; then
+    return
+  fi
   if ! "$is_clean_build"; then
     if [[ -f $BUILD_ROOT/thirdparty_url.txt ]]; then
       local thirdparty_url_from_file=$(<"$BUILD_ROOT/thirdparty_url.txt")
