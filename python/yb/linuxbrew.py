@@ -21,7 +21,7 @@ from yb.command_util import run_program
 from yb.common_util import safe_path_join
 
 
-linuxbrew_dir = None
+g_linuxbrew_dir = None
 g_build_root = None
 
 YB_SRC_ROOT = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..')
@@ -45,6 +45,8 @@ class LinuxbrewHome:
             find_script_result = run_program(os.path.join(
                 YB_SRC_ROOT, 'build-support', 'find_linuxbrew.sh'))
             linuxbrew_dir = find_script_result.stdout.strip()
+            if not linuxbrew_dir:
+                return
             if not os.path.isdir(linuxbrew_dir) and os.path.exists('/etc/centos-release'):
                 raise RuntimeError(
                         ("Directory returned by the '{}' script does not exist: '{}'. " +
@@ -62,7 +64,8 @@ class LinuxbrewHome:
             self.patchelf_path = safe_path_join(self.linuxbrew_dir, 'bin', 'patchelf')
         finally:
             if old_build_root is None:
-                del os.environ['BUILD_ROOT']
+                if 'BUILD_ROOT' in os.environ:
+                    del os.environ['BUILD_ROOT']
             else:
                 os.environ['BUILD_ROOT'] = old_build_root
 
