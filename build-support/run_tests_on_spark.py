@@ -379,6 +379,7 @@ def parallel_run_test(test_descriptor_str):
         artifact_paths = []
         num_errors_copying_artifacts = 0
 
+        rel_artifact_paths = None
         if global_conf.archive_for_workers:
             artifact_paths = [error_output_path]
             if os.path.exists(artifact_list_path):
