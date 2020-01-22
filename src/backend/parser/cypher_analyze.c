@@ -1,10 +1,6 @@
 #include "postgres.h"
 
-#include "access/htup.h"
-#include "access/htup_details.h"
-#include "catalog/pg_proc.h"
-#include "catalog/pg_type.h"
-#include "fmgr.h"
+#include "catalog/pg_type_d.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/nodes.h"
@@ -18,14 +14,13 @@
 #include "parser/parse_relation.h"
 #include "parser/parsetree.h"
 #include "utils/builtins.h"
-#include "utils/lsyscache.h"
-#include "utils/syscache.h"
 
 #include "nodes/ag_nodes.h"
 #include "parser/cypher_analyze.h"
 #include "parser/cypher_clause.h"
 #include "parser/cypher_parse_node.h"
 #include "parser/cypher_parser.h"
+#include "utils/ag_func.h"
 #include "utils/agtype.h"
 
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook;
@@ -193,25 +188,7 @@ static bool is_rte_cypher(RangeTblEntry *rte)
  */
 static bool is_func_cypher(FuncExpr *funcexpr)
 {
-    HeapTuple proctup;
-    Form_pg_proc proc;
-    Oid nspid;
-    const char *nspname;
-
-    proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcexpr->funcid));
-    Assert(HeapTupleIsValid(proctup));
-    proc = (Form_pg_proc)GETSTRUCT(proctup);
-    if (strncmp(NameStr(proc->proname), "cypher", NAMEDATALEN) != 0)
-    {
-        ReleaseSysCache(proctup);
-        return false;
-    }
-    nspid = proc->pronamespace;
-    ReleaseSysCache(proctup);
-
-    nspname = get_namespace_name_or_temp(nspid);
-    Assert(nspname);
-    return (strcmp(nspname, "ag_catalog") == 0);
+    return is_oid_ag_func(funcexpr->funcid, "cypher");
 }
 
 // convert cypher() call to SELECT subquery in-place

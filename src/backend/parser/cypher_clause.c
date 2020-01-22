@@ -14,14 +14,13 @@
 #include "parser/parse_relation.h"
 #include "parser/parse_target.h"
 #include "parser/parsetree.h"
-#include "utils/builtins.h"
-#include "utils/syscache.h"
 
 #include "nodes/ag_nodes.h"
 #include "nodes/cypher_nodes.h"
 #include "parser/cypher_clause.h"
 #include "parser/cypher_expr.h"
 #include "parser/cypher_parse_node.h"
+#include "utils/ag_func.h"
 #include "utils/agtype.h"
 
 static Query *transform_cypher_return(cypher_parsestate *cpstate,
@@ -124,7 +123,6 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
     Const *null_const;
     Expr *func_expr;
     Oid func_create_oid;
-    Oid internal_type = INTERNALOID;
     Query *query;
     TargetEntry *tle;
 
@@ -132,10 +130,7 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
     query->commandType = CMD_SELECT;
     query->targetList = NIL;
 
-    func_create_oid = GetSysCacheOid3(
-        PROCNAMEARGSNSP, PointerGetDatum("_cypher_create_clause"),
-        PointerGetDatum(buildoidvector(&internal_type, 1)),
-        ObjectIdGetDatum(ag_catalog_namespace_id()));
+    func_create_oid = get_ag_func_oid("_cypher_create_clause", 1, INTERNALOID);
 
     null_const = makeNullConst(AGTYPEOID, -1, InvalidOid);
     tle = makeTargetEntry((Expr *)null_const, pstate->p_next_resno++,
@@ -147,7 +142,7 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
      * because we would not be able to control how our pointer to the
      * internal type is copied.
      */
-    pattern_const = makeConst(internal_type, -1, InvalidOid, 1,
+    pattern_const = makeConst(INTERNALOID, -1, InvalidOid, 1,
                               PointerGetDatum(self->pattern), false, true);
 
     /*

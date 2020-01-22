@@ -409,9 +409,12 @@ Datum string_to_agtype(char *s);
 Datum boolean_to_agtype(bool b);
 bool is_decimal_needed(char *numstr);
 
-// Oid of agtype
+// OID of agtype and _agtype
 #define AGTYPEOID \
     (GetSysCacheOid2(TYPENAMENSP, CStringGetDatum("agtype"), \
+                     ObjectIdGetDatum(ag_catalog_namespace_id())))
+#define AGTYPEARRAYOID \
+    (GetSysCacheOid2(TYPENAMENSP, CStringGetDatum("_agtype"), \
                      ObjectIdGetDatum(ag_catalog_namespace_id())))
 
 #endif

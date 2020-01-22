@@ -20,6 +20,7 @@
 #include "nodes/cypher_nodes.h"
 #include "parser/cypher_expr.h"
 #include "parser/cypher_parse_node.h"
+#include "utils/ag_func.h"
 #include "utils/agtype.h"
 
 static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
@@ -255,8 +256,6 @@ static Node *transform_cypher_param(cypher_parsestate *cpstate,
     Const *const_str;
     FuncExpr *func_expr;
     Oid func_access_oid;
-    Oid func_arg_type;
-    oidvector *parameter_types;
     List *args = NIL;
 
     if (!cpstate->params)
@@ -267,17 +266,9 @@ static Node *transform_cypher_param(cypher_parsestate *cpstate,
                  parser_errposition(pstate, cp->location)));
     }
 
-    /* we need the Oid for _agtype */
-    func_arg_type =
-        GetSysCacheOid2(TYPENAMENSP, CStringGetDatum("_agtype"),
-                        ObjectIdGetDatum(ag_catalog_namespace_id()));
-    parameter_types = buildoidvector(&func_arg_type, 1);
-
     /* get the agtype_access_operator function */
-    func_access_oid = GetSysCacheOid3(
-        PROCNAMEARGSNSP, PointerGetDatum("agtype_access_operator"),
-        PointerGetDatum(parameter_types),
-        ObjectIdGetDatum(ag_catalog_namespace_id()));
+    func_access_oid = get_ag_func_oid("agtype_access_operator", 1,
+                                      AGTYPEARRAYOID);
 
     args = lappend(args, copyObject(cpstate->params));
 
@@ -300,8 +291,6 @@ static Node *transform_cypher_map(cypher_parsestate *cpstate, cypher_map *cm)
     ListCell *le;
     FuncExpr *fexpr;
     Oid func_oid;
-    Oid agg_arg_types[1];
-    oidvector *parameter_types;
 
     Assert(list_length(cm->keyvals) % 2 == 0);
 
@@ -332,20 +321,9 @@ static Node *transform_cypher_map(cypher_parsestate *cpstate, cypher_map *cm)
     }
 
     if (list_length(newkeyvals) == 0)
-    {
-        agg_arg_types[0] = InvalidOid;
-        parameter_types = buildoidvector(agg_arg_types, 0);
-    }
+        func_oid = get_ag_func_oid("agtype_build_map", 0);
     else
-    {
-        agg_arg_types[0] = ANYOID;
-        parameter_types = buildoidvector(agg_arg_types, 1);
-    }
-
-    func_oid = GetSysCacheOid3(PROCNAMEARGSNSP,
-                               PointerGetDatum("agtype_build_map"),
-                               PointerGetDatum(parameter_types),
-                               ObjectIdGetDatum(ag_catalog_namespace_id()));
+        func_oid = get_ag_func_oid("agtype_build_map", 1, ANYOID);
 
     fexpr = makeFuncExpr(func_oid, AGTYPEOID, newkeyvals, InvalidOid,
                          InvalidOid, COERCE_EXPLICIT_CALL);
@@ -360,8 +338,6 @@ static Node *transform_cypher_list(cypher_parsestate *cpstate, cypher_list *cl)
     ListCell *le;
     FuncExpr *fexpr;
     Oid func_oid;
-    Oid agg_arg_types[1];
-    oidvector *parameter_types;
 
     foreach (le, cl->elems)
     {
@@ -373,20 +349,9 @@ static Node *transform_cypher_list(cypher_parsestate *cpstate, cypher_list *cl)
     }
 
     if (list_length(newelems) == 0)
-    {
-        agg_arg_types[0] = InvalidOid;
-        parameter_types = buildoidvector(agg_arg_types, 0);
-    }
+        func_oid = get_ag_func_oid("agtype_build_list", 0);
     else
-    {
-        agg_arg_types[0] = ANYOID;
-        parameter_types = buildoidvector(agg_arg_types, 1);
-    }
-
-    func_oid = GetSysCacheOid3(PROCNAMEARGSNSP,
-                               PointerGetDatum("agtype_build_list"),
-                               PointerGetDatum(parameter_types),
-                               ObjectIdGetDatum(ag_catalog_namespace_id()));
+        func_oid = get_ag_func_oid("agtype_build_list", 1, ANYOID);
 
     fexpr = makeFuncExpr(func_oid, AGTYPEOID, newelems, InvalidOid, InvalidOid,
                          COERCE_EXPLICIT_CALL);
@@ -405,17 +370,9 @@ static Node *transform_cypher_indirection(cypher_parsestate *cpstate,
     Oid func_access_oid;
     List *args = NIL;
 
-    /* we need the array type agtype[] */
-    Oid func_arg_types[] = {
-        (GetSysCacheOid2(TYPENAMENSP, CStringGetDatum("_agtype"),
-                         ObjectIdGetDatum(ag_catalog_namespace_id())))};
-    oidvector *parameter_types = buildoidvector(func_arg_types, 1);
-
     /* get the agtype_access_operator function */
-    func_access_oid = GetSysCacheOid3(
-        PROCNAMEARGSNSP, PointerGetDatum("agtype_access_operator"),
-        PointerGetDatum(parameter_types),
-        ObjectIdGetDatum(ag_catalog_namespace_id()));
+    func_access_oid = get_ag_func_oid("agtype_access_operator", 1,
+                                      AGTYPEARRAYOID);
 
     ind_arg_expr = transform_cypher_expr_recurse(cpstate, a_ind->arg);
     location = exprLocation(ind_arg_expr);
@@ -466,30 +423,26 @@ static Node *transform_cypher_string_match(cypher_parsestate *cpstate,
     FuncExpr *func_expr;
     Oid func_access_oid;
     List *args = NIL;
-    Datum func_name;
-
-    Oid func_arg_types[] = {AGTYPEOID, AGTYPEOID};
-    oidvector *parameter_types = buildoidvector(func_arg_types, 2);
+    const char *func_name;
 
     switch (csm_node->operation)
     {
     case CSMO_STARTS_WITH:
-        func_name = PointerGetDatum("agtype_string_match_starts_with");
+        func_name = "agtype_string_match_starts_with";
         break;
     case CSMO_ENDS_WITH:
-        func_name = PointerGetDatum("agtype_string_match_ends_with");
+        func_name = "agtype_string_match_ends_with";
         break;
     case CSMO_CONTAINS:
-        func_name = PointerGetDatum("agtype_string_match_contains");
+        func_name = "agtype_string_match_contains";
         break;
 
     default:
-        ereport(ERROR, (errmsg("unknown CSMO operation")));
+        ereport(ERROR,
+                (errmsg_internal("unknown Cypher string match operation")));
     }
 
-    func_access_oid = GetSysCacheOid3(
-        PROCNAMEARGSNSP, func_name, PointerGetDatum(parameter_types),
-        ObjectIdGetDatum(ag_catalog_namespace_id()));
+    func_access_oid = get_ag_func_oid(func_name, 2, AGTYPEOID, AGTYPEOID);
 
     expr = transform_cypher_expr_recurse(cpstate, csm_node->lhs);
     args = lappend(args, expr);

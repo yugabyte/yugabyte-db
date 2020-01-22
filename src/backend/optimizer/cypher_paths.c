@@ -6,24 +6,16 @@
 #include "nodes/relation.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
-#include "utils/builtins.h"
-#include "utils/syscache.h"
 
-#include "catalog/ag_catalog.h"
 #include "optimizer/cypher_pathnode.h"
 #include "optimizer/cypher_paths.h"
+#include "utils/ag_func.h"
 
 typedef enum cypher_clause_kind
 {
     CYPHER_CLAUSE_NONE,
     CYPHER_CLAUSE_CREATE
 } cypher_clause_kind;
-
-// Cypher clause function OID cache
-static struct
-{
-    Oid create;
-} cypher_clause_func_oid;
 
 static set_rel_pathlist_hook_type prev_set_rel_pathlist_hook;
 
@@ -35,23 +27,6 @@ static void handle_cypher_create_clause(PlannerInfo *root, RelOptInfo *rel,
 
 void set_rel_pathlist_init(void)
 {
-    const Oid _oids[1] = {INTERNALOID};
-    oidvector *args;
-    Oid ag_catalog_oid;
-
-    /*
-     * initialize cypher_clause_func_oid to look up the OID of the function for
-     * each updating clause only once.
-     */
-
-    args = buildoidvector(_oids, 1);
-    ag_catalog_oid = ag_catalog_namespace_id();
-
-    cypher_clause_func_oid.create = GetSysCacheOid3(
-        PROCNAMEARGSNSP, PointerGetDatum("_cypher_create_clause"),
-        PointerGetDatum(args), ObjectIdGetDatum(ag_catalog_oid));
-
-    // install the hook
     prev_set_rel_pathlist_hook = set_rel_pathlist_hook;
     set_rel_pathlist_hook = set_rel_pathlist;
 }
@@ -59,15 +34,6 @@ void set_rel_pathlist_init(void)
 void set_rel_pathlist_fini(void)
 {
     set_rel_pathlist_hook = prev_set_rel_pathlist_hook;
-}
-
-PG_FUNCTION_INFO_V1(_cypher_create_clause);
-
-Datum _cypher_create_clause(PG_FUNCTION_ARGS)
-{
-    ereport(ERROR, (errmsg_internal("unhandled _cypher_create_clause(internal) function call")));
-
-    PG_RETURN_NULL();
 }
 
 static void set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti,
@@ -111,7 +77,7 @@ static cypher_clause_kind get_cypher_clause_kind(RangeTblEntry *rte)
 
     fe = (FuncExpr *)te->expr;
 
-    if (fe->funcid == cypher_clause_func_oid.create)
+    if (is_oid_ag_func(fe->funcid, "_cypher_create_clause"))
         return CYPHER_CLAUSE_CREATE;
     else
         return CYPHER_CLAUSE_NONE;
