@@ -313,15 +313,21 @@
 #define METRIC_DEFINE_gauge_double(entity, name, label, unit, desc, ...) \
     METRIC_DEFINE_gauge(double, entity, name, label, unit, desc, ## __VA_ARGS__)
 
-#define METRIC_DEFINE_histogram(entity, name, label, unit, desc, max_val, num_sig_digits) \
-  ::yb::HistogramPrototype BOOST_PP_CAT(METRIC_, name)(                                   \
-      ::yb::MetricPrototype::CtorArgs(BOOST_PP_STRINGIZE(entity), \
-                                      BOOST_PP_STRINGIZE(name), \
-                                      label, \
-                                      unit, \
-                                      desc), \
-      max_val, \
-      num_sig_digits)
+#define METRIC_DEFINE_histogram_with_percentiles(                              \
+    entity, name, label, unit, desc, max_val, num_sig_digits)                  \
+  ::yb::HistogramPrototype BOOST_PP_CAT(METRIC_, name)(                        \
+      ::yb::MetricPrototype::CtorArgs(BOOST_PP_STRINGIZE(entity),              \
+                                      BOOST_PP_STRINGIZE(name), label, unit,   \
+                                      desc),                                   \
+      max_val, num_sig_digits, yb::ExportPercentiles::kTrue)
+
+#define METRIC_DEFINE_histogram(entity, name, label, unit, desc, max_val,      \
+                                num_sig_digits)                                \
+  ::yb::HistogramPrototype BOOST_PP_CAT(METRIC_, name)(                        \
+      ::yb::MetricPrototype::CtorArgs(BOOST_PP_STRINGIZE(entity),              \
+                                      BOOST_PP_STRINGIZE(name), label, unit,   \
+                                      desc),                                   \
+      max_val, num_sig_digits, yb::ExportPercentiles::kFalse)
 
 // The following macros act as forward declarations for entity types and metric prototypes.
 #define METRIC_DECLARE_entity(name) \
@@ -1208,19 +1214,24 @@ inline void IncrementCounter(const scoped_refptr<Counter>& counter) {
   }
 }
 
+YB_STRONGLY_TYPED_BOOL(ExportPercentiles);
+
 class HistogramPrototype : public MetricPrototype {
  public:
   HistogramPrototype(const MetricPrototype::CtorArgs& args,
-                     uint64_t max_trackable_value, int num_sig_digits);
+                     uint64_t max_trackable_value, int num_sig_digits,
+                     ExportPercentiles export_percentiles = ExportPercentiles::kFalse);
   scoped_refptr<Histogram> Instantiate(const scoped_refptr<MetricEntity>& entity);
 
   uint64_t max_trackable_value() const { return max_trackable_value_; }
   int num_sig_digits() const { return num_sig_digits_; }
+  ExportPercentiles export_percentiles() const { return export_percentiles_; }
   virtual MetricType::Type type() const override { return MetricType::kHistogram; }
 
  private:
   const uint64_t max_trackable_value_;
   const int num_sig_digits_;
+  const ExportPercentiles export_percentiles_;
   DISALLOW_COPY_AND_ASSIGN(HistogramPrototype);
 };
 
@@ -1245,7 +1256,8 @@ class Histogram : public Metric {
       PrometheusWriter* writer, const MetricEntity::AttributeMap& attr) const override;
 
   // Returns a snapshot of this histogram including the bucketed values and counts.
-  CHECKED_STATUS GetHistogramSnapshotPB(HistogramSnapshotPB* snapshot,
+  // Resets the bucketed counts, but not the total count/sum.
+  CHECKED_STATUS GetAndResetHistogramSnapshotPB(HistogramSnapshotPB* snapshot,
                                 const MetricJsonOptions& opts) const;
 
 
@@ -1260,10 +1272,12 @@ class Histogram : public Metric {
 
  private:
   FRIEND_TEST(MetricsTest, SimpleHistogramTest);
+  FRIEND_TEST(MetricsTest, ResetHistogramTest);
   friend class MetricEntity;
   explicit Histogram(const HistogramPrototype* proto);
 
   const gscoped_ptr<HdrHistogram> histogram_;
+  const ExportPercentiles export_percentiles_;
   DISALLOW_COPY_AND_ASSIGN(Histogram);
 };
 
