@@ -19,6 +19,11 @@
 
 . "${0%/*}/../common-build-env.sh"
 
+if [[ ${YB_COMMON_BUILD_ENV_SOURCED:-} != "1" ]]; then
+  echo >&2 "Failed to source common-build-env.sh"
+  exit 1
+fi
+
 set -euo pipefail
 
 # -------------------------------------------------------------------------------------------------
@@ -353,8 +358,6 @@ if [[ $local_build_only == "false" &&
         effective_build_workers_file=$cached_build_workers_file
       else
         log "The build worker list file ('$YB_BUILD_WORKERS_FILE') does not exist. Will retry".
-        log "Current mounts on $( hostname ):"
-        mount
         sleep 0.5
         let num_missing_build_workers_file_retries+=1
         continue
@@ -418,8 +421,12 @@ file not recognized: file truncated|\
       # indicating that the host is down.
       # TODO: maintain a blacklist of hosts that are down and don't retry on the same host from
       # that blacklist list too soon.
-      log "Host $build_host is experiencing problems, retrying on a different host" \
-          "(this was attempt $attempt) after a 0.$sleep_deciseconds second delay"
+      if [[ -f "$stderr_path" && $exit_code -eq 0 ]]; then
+        echo "Exit code is 0, showing error output:" >&2
+        cat "$stderr_path" >&2
+      fi
+      log "Host $build_host is experiencing problems (exit code $exit_code), retrying on another" \
+          "host (this was attempt $attempt) after a 0.$sleep_deciseconds second delay"
       sleep 0.$sleep_deciseconds
       if [[ $sleep_deciseconds -lt 9 ]]; then
         let sleep_deciseconds+=1
@@ -585,7 +592,7 @@ if "$is_linking" && ! is_configure_mode_invocation && [[
 fi
 
 set_default_compiler_type
-find_thirdparty_by_url
+find_or_download_thirdparty
 find_compiler_by_type "$YB_COMPILER_TYPE"
 
 case "$cc_or_cxx" in

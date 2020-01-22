@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python2.7
 
 """
 Build a dependency graph of sources, object files, libraries, and binaries.  Compute the set of

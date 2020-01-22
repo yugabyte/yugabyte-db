@@ -95,7 +95,7 @@ class MacLibraryPackager:
                                        os.path.join('@loader_path/../lib/', bin_file))
 
             # Elements in libs are absolute paths.
-            logging.info('library dependencies for file %s: %s', bin_file, libs)
+            logging.debug('library dependencies for file %s: %s', bin_file, libs)
 
             # Treat this as a special case for now (10/14/18).
             libs.append(yb_lib_file_for_postgres)

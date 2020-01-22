@@ -207,35 +207,9 @@ deactivate_virtualenv() {
   fi
 }
 
-# It is important that this be always called with virtualenv deactivated.
-capture_system_python_path() {
-  SYSTEM_PYTHON_PATH=""
-  if "$is_linux" && [[ -z ${VIRTUAL_ENV:-} ]]; then
-    # For OSs like CentOS, the system path still holds important libraries that aren't pip managed
-    # into the virtualenv, such as selinux. For these, we get the system paths before we activate.
-    # But we don't do this if we're already in a virtualenv, because we won't get the system
-    # pythonpath there anyway.
-    SYSTEM_PYTHON_PATH=$(python -c 'import site; print ":".join(site.getsitepackages())')
-  fi
-}
-
-add_system_python_path() {
-  if "$is_linux"; then
-    PYTHONPATH+=:$SYSTEM_PYTHON_PATH
-    export PYTHONPATH
-  fi
-}
-
 activate_virtualenv() {
   if ! should_use_virtual_env; then
     return
-  fi
-
-  local add_system_python_path=false
-  if [[ ${1:-} == "--with-system-python-path" ]]; then
-    local add_system_python_path=true
-  elif [[ $# -ne 0 ]]; then
-    fatal "Unexpected arguments to $FUNCNAME (only --with-system-python-path is supported): $*"
   fi
 
   if [[ ! $virtualenv_dir = */$YB_VIRTUALENV_BASENAME ]]; then
@@ -245,7 +219,6 @@ activate_virtualenv() {
   if [[ ! -d $virtualenv_dir ]]; then
     # We need to be using system python to install the virtualenv module or create a new virtualenv.
     deactivate_virtualenv
-    capture_system_python_path
 
     pip_install virtualenv
     (
@@ -255,7 +228,6 @@ activate_virtualenv() {
     )
   elif "$is_linux"; then
     deactivate_virtualenv
-    capture_system_python_path
   fi
 
   if [[ ! -f "$virtualenv_dir/bin/activate" ]]; then
@@ -268,10 +240,6 @@ activate_virtualenv() {
   unset PYTHONPATH
   set -u
   export PYTHONPATH=$virtualenv_dir/lib/python2.7/site-packages
-
-  if "$add_system_python_path"; then
-    add_system_python_path
-  fi
 }
 
 # Somehow permissions got corrupted for some files in the virtualenv, possibly due to sudo
