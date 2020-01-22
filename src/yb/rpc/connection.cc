@@ -62,7 +62,7 @@ using strings::Substitute;
 DEFINE_uint64(rpc_connection_timeout_ms, yb::NonTsanVsTsan(15000, 30000),
     "Timeout for RPC connection operations");
 
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_histogram_with_percentiles(
     server, handler_latency_outbound_transfer, "Time taken to transfer the response ",
     yb::MetricUnit::kMicroseconds, "Microseconds spent to queue and write the response to the wire",
     60000000LU, 2);
