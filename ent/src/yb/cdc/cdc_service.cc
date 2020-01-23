@@ -361,7 +361,17 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
   s = UpdateCheckpoint(producer_tablet, OpId::FromPB(resp->checkpoint().op_id()), op_id, session);
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
-  tablet_peer->consensus()->UpdateCDCConsumerOpId(GetMinSentCheckpointForTablet(req->tablet_id()));
+  {
+    std::shared_ptr<consensus::Consensus> shared_consensus = tablet_peer->shared_consensus();
+
+    RPC_CHECK_NE_AND_RETURN_ERROR(shared_consensus, nullptr,
+        STATUS_SUBSTITUTE(InternalError, "Failed to get tablet $0 peer consensus",
+            req->tablet_id()),
+        resp->mutable_error(),
+        CDCErrorPB::INTERNAL_ERROR, context);
+
+    shared_consensus->UpdateCDCConsumerOpId(GetMinSentCheckpointForTablet(req->tablet_id()));
+  }
 
   // TODO(hector): Move the following code to a different thread. We might have to create a thread
   // pool to handle this.
