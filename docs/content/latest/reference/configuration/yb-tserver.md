@@ -112,7 +112,7 @@ Default: `50000` (50,000 µs = 50ms)
 
 ##### --rpc_bind_addresses
 
-Specifies the comma-separated list of the network interface addresses to bind to for RPC connections. Typically, the value is set to the private IP address of the host on which the server is running.
+Specifies the comma-separated list of the network interface addresses to bind to for RPC connections. Typically, the value is set to the private IP address of the host on which the server is running. When using the default, or explicitly setting the value to `0.0.0.0:9100`, the server will listen on all available network interfaces.
 
 Default: `0.0.0.0:9100`
 
@@ -124,7 +124,7 @@ In cases where `rpc_bind_addresses` is set to `0.0.0.0` (or not explicitly set, 
 
 ##### --server_broadcast_addresses
 
-Specifies the public IP or DNS hostname of the server (with an optional port). This value might be used by servers to communicate with one another, depending on the connection policy parameter. When using the default, or explicitly setting the value to `0.0.0.0:9100`, the server will listen on all available network interfaces.
+Specifies the public IP or DNS hostname of the server (with an optional port). This value is used by servers to communicate with one another, depending on the connection policy parameter.
 
 Default: `0.0.0.0:9100`
 
