@@ -1104,7 +1104,7 @@ download_thirdparty() {
   fi
   export YB_THIRDPARTY_DIR=$extracted_dir
   yb_thirdparty_dir_where_from=" (downloaded from $YB_THIRDPARTY_URL)"
-  save_var_to_file_in_build_dir "$YB_THIRDPARTY_DIR" "thirdparty_path.txt"
+  save_thirdparty_info_to_build_dir
 
   # Read a linuxbrew_url.txt file in the third-party directory that we downloaded, and follow that
   # link to download and install the appropriate Linuxbrew package.
@@ -1219,10 +1219,14 @@ save_brew_path_to_build_dir() {
   fi
 }
 
-save_paths_to_build_dir() {
-  save_brew_path_to_build_dir
+save_thirdparty_info_to_build_dir() {
   save_var_to_file_in_build_dir "${YB_THIRDPARTY_DIR:-}" "thirdparty_path.txt"
   save_var_to_file_in_build_dir "${YB_THIRDPARTY_URL:-}" "thirdparty_url.txt"
+}
+
+save_paths_to_build_dir() {
+  save_brew_path_to_build_dir
+  save_thirdparty_info_to_build_dir
 }
 
 detect_linuxbrew() {
@@ -1574,12 +1578,6 @@ is_src_root_on_nfs() {
 }
 
 using_remote_compilation() {
-  if [[ ! ${YB_REMOTE_COMPILATION:-} =~ ^(0|1)$ ]]; then
-    # TODO: this will still return from the function as if the value is false. This is how bash
-    # return values work.
-    fatal "YB_REMOTE_COMPILATION is supposed to be 0 or 1 by the time using_remote_compilation is" \
-          "called."
-  fi
   if [[ ${YB_REMOTE_COMPILATION:-} == "1" ]]; then
     return 0  # "true" return value
   fi
@@ -1791,10 +1789,7 @@ find_or_download_thirdparty() {
     export YB_THIRDPARTY_DIR=$YB_SRC_ROOT/thirdparty
     yb_thirdparty_dir_where_from=" (default)"
   fi
-  if [[ ! -e "$BUILD_ROOT/thirdparty_path.txt" ]]; then
-    mkdir -p "$BUILD_ROOT"
-    echo "$YB_THIRDPARTY_DIR" >"$BUILD_ROOT/thirdparty_path.txt"
-  fi
+  save_thirdparty_info_to_build_dir
 }
 
 log_thirdparty_and_toolchain_details() {
