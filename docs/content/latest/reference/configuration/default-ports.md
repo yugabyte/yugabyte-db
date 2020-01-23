@@ -40,7 +40,7 @@ Use the following targets to monitor `yb-tserver` and `yb-master` server metrics
 
 | Server     | Target                     |
 | ---------- | -------------------------- |
-| yb-master  | `<yb-master-address>:7100` |  
+| yb-master  | `<master-address>:7100` |  
 | yb-tserver | `<tserver-address>:9100`   |
 
 ### APIs
