@@ -24,7 +24,7 @@ Application clients connect to these addresses.
 | ycql    | 9042  | yb-tserver | [`--cql_proxy_bind_address 0.0.0.0:9042`](../yb-tserver/#cql-proxy-bind-address)   |
 | yedis   | 6379  | yb-tserver | [`--redis_proxy_bind_address 0.0.0.0:6379`](../yb-tserver/#redis-proxy-bind-address) |
 
-## Prometheus monitoring
+## Monitoring with Prometheus
 
 Use the following targets to configure [Prometheus](https://prometheus.io/) to scrape available metrics (in [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format)) from the YugabyteDB HTTP endpoint:
 
@@ -32,7 +32,7 @@ Use the following targets to configure [Prometheus](https://prometheus.io/) to s
 /prometheus-metrics
 ```
 
-For a quick tutorial on using Prometheus with YugabyteDB, see [Observability with Prometheus]()
+For a quick tutorial on using Prometheus with YugabyteDB, see [Observability with Prometheus](../../../explore/observability).
 
 ### Servers
 
