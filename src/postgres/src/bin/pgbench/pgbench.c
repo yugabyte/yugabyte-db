@@ -195,6 +195,7 @@ bool		report_per_command = false;	/* report per-command latencies, retries
 										 * after the failures and errors
 										 * (failures without retrying) */
 int			main_pid;			/* main process id used in log filename */
+uint32		batch_size = 1024;	/* Batch size used for a transaction */
 
 /*
  * There're different types of restrictions for deciding that the current failed
@@ -822,6 +823,7 @@ usage(void)
 		   "  --progress-timestamp     use Unix epoch timestamps for progress\n"
 		   "  --random-seed=SEED       set random seed (\"time\", \"rand\", integer)\n"
 		   "  --sampling-rate=NUM      fraction of transactions to log (e.g., 0.01 for 1%%)\n"
+		   "  --batch-size=NUM         batch size for a transaction\n"
 		   "\nCommon options:\n"
 		   "  -d, --debug=no|fails|all print debugging output (default: no)\n"
 		   "  -h, --host=HOSTNAME      database server host or socket directory\n"
@@ -4374,12 +4376,6 @@ initGenerateData(PGconn *con)
 	ereport(ELEVEL_LOG_MAIN, (errmsg("generating data...\n")));
 
 	/*
-	 * we do all of this in one transaction to enable the backend's
-	 * data-loading optimizations
-	 */
-	executeStatement(con, "begin");
-
-	/*
 	 * truncate away any old data, in one command in case there are foreign
 	 * keys
 	 */
@@ -4410,6 +4406,12 @@ initGenerateData(PGconn *con)
 				 i + 1, i / ntellers + 1);
 		executeStatement(con, sql);
 	}
+
+	/*
+	 * we do all of this in one transaction to enable the backend's
+	 * data-loading optimizations
+	 */
+	executeStatement(con, "begin");
 
 	/*
 	 * accounts is big enough to be worth using COPY and tracking runtime
@@ -4475,13 +4477,28 @@ initGenerateData(PGconn *con)
 			}
 		}
 
-	}
-	if (PQputline(con, "\\.\n"))
-		ereport(ELEVEL_FATAL, (errmsg("very last PQputline failed\n")));
-	if (PQendcopy(con))
-		ereport(ELEVEL_FATAL, (errmsg("PQendcopy failed\n")));
+		if (j % batch_size == 0 || j == (int64) naccounts * scale)
+		{
+			/* We have submitted the batch. Commit the transaction. */
+			 if (PQputline(con, "\\.\n"))
+				ereport(ELEVEL_FATAL, (errmsg("very last PQputline failed\n")));
+			if (PQendcopy(con))
+				ereport(ELEVEL_FATAL, (errmsg("PQendcopy failed\n")));
+			executeStatement(con, "commit");
 
-	executeStatement(con, "commit");
+			if (j != (int64) naccounts * scale)
+			{
+				/* We would need to begin a new transaction if we have more
+				* records to be pushed to the database.
+				*/
+				executeStatement(con, "begin");
+				res = PQexec(con, "copy ysql_bench_accounts from stdin");
+				if (PQresultStatus(res) != PGRES_COPY_IN)
+					ereport(ELEVEL_FATAL, (errmsg("%s", PQerrorMessage(con))));
+				PQclear(res);
+			}
+		}
+	}
 }
 
 /*
@@ -5366,6 +5383,7 @@ printResults(TState *threads, StatsData *total, instr_time total_time,
 	printf("query mode: %s\n", QUERYMODE[querymode]);
 	printf("number of clients: %d\n", nclients);
 	printf("number of threads: %d\n", nthreads);
+	printf("batch size: %d\n", batch_size);
 	if (duration <= 0)
 	{
 		printf("number of transactions per client: %d\n", nxacts);
@@ -5691,6 +5709,7 @@ main(int argc, char **argv)
 		{"foreign-keys", no_argument, NULL, 8},
 		{"random-seed", required_argument, NULL, 9},
 		{"max-tries", required_argument, NULL, 10},
+		{"batch-size", required_argument, NULL, 11},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -6076,6 +6095,19 @@ main(int argc, char **argv)
 					}
 					benchmarking_option_set = true;
 					max_tries = (uint32) max_tries_arg;
+				}
+				break;
+			case 11:			/* batch-size */
+				{
+					int32		batch_size_arg = atoi(optarg);
+
+					if (batch_size_arg <= 0)
+					{
+						ereport(ELEVEL_FATAL,
+								(errmsg("invalid number of batch_size: \"%s\"\n",
+										optarg)));
+					}
+					batch_size = (uint32) batch_size_arg;
 				}
 				break;
 			default:
