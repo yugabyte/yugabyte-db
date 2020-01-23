@@ -20,24 +20,42 @@ Application clients connect to these addresses.
 
 | API     | Port  | Server | Configuration setting (default)           |
 | ------- | ----- | ------- |------------------------------------------|
-| ysql    | 5433  | yb-tserver | [`--pgsql_proxy_bind_address 0.0.0.0:5433`](../yb-tserver/#pgsql-proxy-bind-address) | 
-| ycql    | 9042  | yb-tserver | [`--cql_proxy_bind_address 0.0.0.0:9042`](../yb-tserver/#cql-proxy-bind-address)   | 
+| ysql    | 5433  | yb-tserver | [`--pgsql_proxy_bind_address 0.0.0.0:5433`](../yb-tserver/#pgsql-proxy-bind-address) |
+| ycql    | 9042  | yb-tserver | [`--cql_proxy_bind_address 0.0.0.0:9042`](../yb-tserver/#cql-proxy-bind-address)   |
 | yedis   | 6379  | yb-tserver | [`--redis_proxy_bind_address 0.0.0.0:6379`](../yb-tserver/#redis-proxy-bind-address) |
 
 ## Prometheus monitoring
 
-A Prometheus server can pull metrics from these ports.
+Use the following targets to configure [Prometheus](https://prometheus.io/) to scrape available metrics (in [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format)) from the YugabyteDB HTTP endpoint:
 
-| API     | Port  | Server | Configuration setting (default)           |
-| ------- | ----- | ------- |------------------------------------------|
-| ysql    | 13000 | yb-tserver| [`--pgsql_proxy_webserver_port 13000`](../yb-tserver/#pgsql-proxy-webserver-port)     | 
-| ycql    | 12000 | yb-tserver| [`--cql_proxy_webserver_port 12000`](../yb-tserver/#cql-proxy-webserver-port)       | 
-| yedis   | 11000 | yb-tserver| [`--redis_proxy_webserver_port 11000`](../yb-tserver/#redis-proxy-webserver-port)     | 
+```
+/prometheus-metrics
+```
 
+For a quick tutorial on using Prometheus with YugabyteDB, see [Observability with Prometheus]()
 
-## Server-to-server RPCs
+### Servers
 
-Server-to-server communication is handled via RPCs on these addresses.
+Use the following targets to monitor `yb-tserver` and `yb-master` server metrics.
+
+| Server     | Target                     |
+| ---------- | -------------------------- |
+| yb-master  | `<yb-master-address>:7100` |  
+| yb-tserver | `<tserver-address>:9100`   |
+
+### APIs
+
+Use the following `yb-tserver` targets to more API metrics.
+
+| API     | Target
+| ------- | ------------------------- |
+| ysql    | `<tserver-address>:13000` |
+| ycql    | `<tserver-address>:12000` |
+| yedis   | `<tserver-address>:11000` |
+
+## Internode RPC communication
+
+Internode (server-to-server or node-to-node) communication is managed using RPC calls on these addresses.
 
 | Server    | Port | Configuration setting (default)                              |
 | ---------- | ---- | ------------------------------------------------------------ |
