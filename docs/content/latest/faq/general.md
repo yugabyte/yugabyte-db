@@ -378,6 +378,10 @@ See [YugabyteDB in Comparison](../../comparisons/)
 - [Apache Cassandra](../../comparisons/cassandra/)
 - [Azure Cosmos DB](../../comparisons/azure-cosmos/)
 
+## What is the difference between `ysqlsh` and `psql`?
+
+The YSQL shell (`ysqlsh`) is functionally similar to PostgreSQL's `psql`, but uses different default values for some variables (for example, the default user, default databasse, and the path to SSL certificates). This is done for the user's convenience. You can work on the same host with PostgreSQL by using `psql` and with your YugabyteDB cluster by using `ysqlsh`. For more details, see [ysqlsh](../../admin/ysqlsh).
+
 ## What is the status of the YEDIS API?
 
 In the near-term, Yugabyte is not actively working on new feature or driver enhancements to the [YEDIS](../../yedis/) API other than bug fixes and stability improvements. Current focus is on [YSQL](../../api/ysql) and [YCQL](../../api/ycql).
