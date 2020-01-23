@@ -34,7 +34,7 @@ db.passwd=
 The other configuration parameters, are described in detail at [this page](https://github.com/brianfrankcooper/YCSB/wiki/Core-Properties)
 
 ## Step 5. Running the workload
-Before you can actually run the workload, you need to "load" the data first.
+Before starting the workload, you will need to "load" the data first.
 
 ```sh
 bin/ycsb load yugabyteSQL -P yugabyteSQL/db.properties -P workloads/workloada

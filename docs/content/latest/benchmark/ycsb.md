@@ -25,23 +25,23 @@ For more information about YCSB see:
 {{< /note >}}
 
 <ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#yugabytecql" class="nav-link active" id="yugabytecql-tab" data-toggle="tab" role="tab" aria-controls="yugabytecql" aria-selected="true">
-      yugabyteCQL
+  <li>
+    <a href="#yugabytesql" class="nav-link" id="yugabytesql-tab" data-toggle="tab" role="tab" aria-controls="yugabytesql" aria-selected="true">
+      YSQL
     </a>
   </li>
-  <li>
-    <a href="#yugabytesql" class="nav-link" id="yugabytesql-tab" data-toggle="tab" role="tab" aria-controls="yugabytesql" aria-selected="false">
-      yugabyteSQL
+  <li >
+    <a href="#yugabytecql" class="nav-link active" id="yugabytecql-tab" data-toggle="tab" role="tab" aria-controls="yugabytecql" aria-selected="false">
+      YCQL
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div id="yugabytecql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabytecql-tab">
-    {{% includeMarkdown "ycsb/yugabytecql.md" /%}}
-  </div>
-  <div id="yugabytesql" class="tab-pane fade" role="tabpanel" aria-labelledby="yugabytesql-tab">
+  <div id="yugabytesql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabytesql-tab">
     {{% includeMarkdown "ycsb/yugabytesql.md" /%}}
   </div> 
+  <div id="yugabytecql" class="tab-pane fade" role="tabpanel" aria-labelledby="yugabytecql-tab">
+    {{% includeMarkdown "ycsb/yugabytecql.md" /%}}
+  </div>
 </div>

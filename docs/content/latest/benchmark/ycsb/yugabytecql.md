@@ -35,7 +35,7 @@ The other configuration parameters like username, password, connection
 parameters, etc. are described in detail at [this page](https://github.com/yugabyte/YCSB/tree/master/yugabyteCQL)
 
 ## Step 5. Running the workload
-Before you can actually run the workload, you need to "load" the data first.
+Before starting the workload, you will need to "load" the data first.
 
 ```sh
 bin/ycsb load yugabyteCQL -P yugabyteCQL/db.properties -P workloads/workloada
