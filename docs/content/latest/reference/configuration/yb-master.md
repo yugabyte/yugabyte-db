@@ -103,7 +103,7 @@ In cases where `rpc_bind_addresses` is set to `0.0.0.0` (or not explicitly set, 
 
 ##### --server_broadcast_addresses
 
-Specifies the public IP or DNS hostname of the server (with an optional port). This value might be used by servers to communicate with one another, depending on the connection policy parameter.
+Specifies the public IP or DNS hostname of the server (with an optional port). This value is used by servers to communicate with one another, depending on the connection policy parameter.
 
 Default: `0.0.0.0:7100`
 
