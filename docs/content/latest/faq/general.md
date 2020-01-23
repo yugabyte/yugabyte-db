@@ -280,92 +280,6 @@ Starting with [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-
 For a more detailed comparison between YugabyteDB and Yugabyte Platform, see [Adopt YugabyteDB Your Way
 ](https://www.yugabyte.com/platform/#compare-editions).
 
-## What are the trade-offs involved in using YugabyteDB?
-
-Trade-offs depend on the type of database used as baseline for comparison.
-
-### Distributed SQL
-
-Examples: Amazon Aurora, Google Cloud Spanner, CockroachDB, TiDB
-
-**Benefits of YugabyteDB**
-
-- Low-latency reads and high-throughput writes. 
-- Cloud-neutral deployments with a Kubernetes-native database.
-- 100% Apache 2.0 open source even for enterprise features.
-
-**Trade-offs**
-
-- None
-
-Learn more: [What is Distributed SQL?](https://blog.yugabyte.com/what-is-distributed-sql/)
-
-### Monolithic SQL
-
-Examples: PostgreSQL, MySQL, Oracle, Amazon Aurora.
-
-**Benefits of YugabyteDB**
-
-- Scale write throughput linearly across multiple nodes and/or geographic regions. 
-- Automatic failover and native repair.
-- 100% Apache 2.0 open source even for enterprise features.
-
-**Trade-offs**
-
-- Transactions and JOINs can now span multiple nodes, thereby increasing latency.
-
-Learn more: [Distributed PostgreSQL on a Google Spanner Architecture – Query Layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-query-layer/)
-
-### Traditional NewSQL
-
-Examples: Vitess, Citus
-
-**Benefits of YugabyteDB**
-
-- Distributed transactions across any number of nodes.
-- No single point of failure given all nodes are equal.
-- 100% Apache 2.0 open source even for enterprise features.
-
-**Trade-offs**
-
-- None
-
-Learn more: [Rise of Globally Distributed SQL Databases – Redefining Transactional Stores for Cloud Native Era](https://blog.yugabyte.com/rise-of-globally-distributed-sql-databases-redefining-transactional-stores-for-cloud-native-era/)
-
-### Transactional NoSQL 
-
-Examples: MongoDB, Amazon DynamoDB, FoundationDB, Azure Cosmos DB.
-
-**Benefits of YugabyteDB**
-
-- Flexibility of SQL as query needs change in response to business changes.
-- Distributed transactions across any number of nodes.
-- Low latency, strongly consistent reads given that read-time quorum is avoided altogether.
-- 100% Apache 2.0 open source even for enterprise features.
-
-**Trade-offs**
-
-- None
-
-Learn more: [Why are NoSQL Databases Becoming Transactional?](https://blog.yugabyte.com/nosql-databases-becoming-transactional-mongodb-dynamodb-faunadb-cosmosdb/)
-
-### Eventually Consistent NoSQL
-
-Examples: Apache Cassandra, Couchbase.
-
-**Benefits of YugabyteDB**
-
-- Flexibility of SQL as query needs change in response to business changes.
-- Strongly consistent, zero data loss writes.
-- Strongly consistent as well as timeline-consistent reads without resorting to eventual consistency-related penalties such as read repairs and anti-entropy.
-- 100% Apache 2.0 open source even for enterprise features.
-
-**Trade-offs**
-
-- Extremely short unavailability during the leader election time for all shard leaders lost during a node failure or network partition. 
-
-Learn more: [Apache Cassandra: The Truth Behind Tunable Consistency, Lightweight Transactions & Secondary Indexes](https://blog.yugabyte.com/apache-cassandra-lightweight-transactions-secondary-indexes-tunable-consistency/)
-
 ## How does YugabyteDB compare to other SQL and NoSQL databases?
 
 See [YugabyteDB in Comparison](../../comparisons/)
@@ -377,6 +291,10 @@ See [YugabyteDB in Comparison](../../comparisons/)
 - [Amazon DynamoDB](../../comparisons/amazon-dynamodb/)
 - [Apache Cassandra](../../comparisons/cassandra/)
 - [Azure Cosmos DB](../../comparisons/azure-cosmos/)
+
+## What is the difference between `ysqlsh` and `psql`?
+
+The YSQL shell (`ysqlsh`) is functionally similar to PostgreSQL's `psql` , but uses different default values for some variables (for example, the default user, default databasse, and the path to SSL certificates). This is done for the user's convenience. In the Yugabyte `bin` directory, there is a deprecated `psql` alias that opens the `ysqlsh` CLI. For more details, see [ysqlsh](../../admin/ysqlsh). 
 
 ## What is the status of the YEDIS API?
 
