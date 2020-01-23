@@ -159,8 +159,8 @@ public class TestUtils {
   private static String findYbSrcRootContaining(String initialPath) {
     File currentPath = new File(initialPath);
     while (currentPath != null) {
-      if (new File(currentPath, "yb_build.sh").exists() ||
-          new File(currentPath, "src").exists()) {
+      if (new File(currentPath, "yb_build.sh").exists() &&
+          new File(currentPath, "build-support").exists()) {
         return currentPath.getAbsolutePath();
       }
       currentPath = currentPath.getParentFile();

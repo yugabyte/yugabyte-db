@@ -208,23 +208,19 @@ is_configure_mode_invocation() {
 cc_or_cxx=${0##*/}
 
 stderr_path=/tmp/yb-$cc_or_cxx.$RANDOM-$RANDOM-$RANDOM.$$.stderr
-# stdout_path=""
 
 compiler_args=( "$@" )
-
-BUILD_ROOT=""
-if [[ ! "$*" == */testCCompiler.c.o\ -c\ testCCompiler.c* && \
-      ! "$*" == */testCXXCompiler\.cxx\.o\ -o* ]]; then
-  handle_build_root_from_current_dir
-  BUILD_ROOT=$predefined_build_root
-  # Not calling set_build_root here, because we don't need additional setup that it does.
-fi
-
 set +u
 # The same as one string. We allow undefined variables for this line because an empty array is
 # treated as such.
 compiler_args_str="${compiler_args[*]}"
 set -u
+
+if [[ -z ${BUILD_ROOT:-} ]]; then
+  handle_build_root_from_current_dir
+  BUILD_ROOT=$predefined_build_root
+  # Not calling set_build_root here, because we don't need additional setup that it does.
+fi
 
 output_file=""
 input_files=()
