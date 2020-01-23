@@ -380,7 +380,7 @@ See [YugabyteDB in Comparison](../../comparisons/)
 
 ## What is the difference between `ysqlsh` and `psql`?
 
-The YSQL shell (`ysqlsh`) is functionally similar to PostgreSQL's `psql`, but uses different default values for some variables (for example, the default user, default databasse, and the path to SSL certificates). This is done for the user's convenience. You can work on the same host with PostgreSQL by using `psql` and with your YugabyteDB cluster by using `ysqlsh`. For more details, see [ysqlsh](../../admin/ysqlsh). In the Yugabyte `bin` directory, the `psql` alias opens the `ysqlsh` CLI.
+The YSQL shell (`ysqlsh`) is functionally similar to PostgreSQL's `psql` , but uses different default values for some variables (for example, the default user, default databasse, and the path to SSL certificates). This is done for the user's convenience. You can work on the same host with PostgreSQL by using `psql` and with your YugabyteDB cluster by using `ysqlsh`. For more details, see [ysqlsh](../../admin/ysqlsh). In the Yugabyte `bin` directory, there is a deprecated `psql` alias that opens the `ysqlsh` CLI.
 
 ## What is the status of the YEDIS API?
 
