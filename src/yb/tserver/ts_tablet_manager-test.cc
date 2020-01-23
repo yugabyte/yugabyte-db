@@ -109,12 +109,19 @@ class TsTabletManagerTest : public YBTest {
   Status CreateNewTablet(const std::string& tablet_id,
                          const Schema& schema,
                          std::shared_ptr<tablet::TabletPeer>* out_tablet_peer) {
+    return CreateNewTablet(tablet_id, tablet_id, schema, out_tablet_peer);
+  }
+
+  Status CreateNewTablet(const std::string& table_id,
+                         const std::string& tablet_id,
+                         const Schema& schema,
+                         std::shared_ptr<tablet::TabletPeer>* out_tablet_peer) {
     Schema full_schema = SchemaBuilder(schema).Build();
     std::pair<PartitionSchema, Partition> partition = tablet::CreateDefaultPartition(full_schema);
 
     std::shared_ptr<tablet::TabletPeer> tablet_peer;
     RETURN_NOT_OK(
-      tablet_manager_->CreateNewTablet(tablet_id, tablet_id, partition.second, tablet_id,
+      tablet_manager_->CreateNewTablet(table_id, tablet_id, partition.second, tablet_id,
         TableType::DEFAULT_TABLE_TYPE, full_schema, partition.first, boost::none /* index_info */,
         config_, &tablet_peer));
     if (out_tablet_peer) {
@@ -156,6 +163,96 @@ TEST_F(TsTabletManagerTest, TestCreateTablet) {
   // Ensure that the tablet got re-loaded and re-opened off disk.
   ASSERT_TRUE(tablet_manager_->LookupTablet(kTabletId, &peer));
   ASSERT_EQ(kTabletId, peer->tablet()->tablet_id());
+}
+
+TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
+  const std::string kTableId = "my-table-id";
+  const std::string kTabletId1 = "my-tablet-id-1";
+  const std::string kTabletId2 = "my-tablet-id-2";
+
+  auto shutdown_tserver_and_reload_tablet_manager = [this]() {
+    // Re-load the tablet manager from the filesystem.
+    LOG(INFO) << "Shutting down tablet manager";
+    mini_server_->Shutdown();
+    LOG(INFO) << "Restarting tablet manager";
+    CreateMiniTabletServer();
+    ASSERT_OK(mini_server_->Start());
+    ASSERT_OK(mini_server_->WaitStarted());
+    tablet_manager_ = mini_server_->server()->tablet_manager();
+  };
+
+  auto count_tablet_in_assignment_map =
+      [&kTableId](const TSTabletManager::TableDiskAssignmentMap* table_assignment_map,
+                  const std::string& tablet_id) {
+        auto table_assignment_iter = table_assignment_map->find(kTableId);
+        EXPECT_NE(table_assignment_iter, table_assignment_map->end());
+        // the number of data directories for this table should be non-empty.
+        EXPECT_GT(table_assignment_iter->second.size(), 0);
+        int tablet_count = 0;
+        for (const auto& tablet_assignment_iter : table_assignment_iter->second) {
+          // directory_map maps a directory name to a set of tablet ids.
+          for (const TabletId& tablet : tablet_assignment_iter.second) {
+            if (tablet_id == tablet) {
+              tablet_count++;
+            }
+          }
+        }
+        return tablet_count;
+      };
+
+  auto assert_tablet_assignment_count =
+      [this, &count_tablet_in_assignment_map](const std::string& tablet_id, int count) {
+    ASSERT_EQ(
+        count_tablet_in_assignment_map(&tablet_manager_->table_data_assignment_map_, tablet_id),
+        count);
+    ASSERT_EQ(
+        count_tablet_in_assignment_map(&tablet_manager_->table_wal_assignment_map_, tablet_id),
+        count);
+  };
+
+  // Create a new tablet.
+  std::shared_ptr<TabletPeer> peer;
+  ASSERT_OK(CreateNewTablet(kTableId, kTabletId1, schema_, &peer));
+  ASSERT_EQ(kTabletId1, peer->tablet()->tablet_id());
+  peer.reset();
+  ASSERT_OK(CreateNewTablet(kTableId, kTabletId2, schema_, &peer));
+  ASSERT_EQ(kTabletId2, peer->tablet()->tablet_id());
+
+  assert_tablet_assignment_count(kTabletId1, 1);
+  assert_tablet_assignment_count(kTabletId2, 1);
+
+  shutdown_tserver_and_reload_tablet_manager();
+
+  assert_tablet_assignment_count(kTabletId1, 1);
+  assert_tablet_assignment_count(kTabletId2, 1);
+
+  boost::optional<int64_t> cas_config_opid_index_less_or_equal;
+  boost::optional<TabletServerErrorPB::Code> error_code;
+  ASSERT_OK(tablet_manager_->DeleteTablet(kTabletId1,
+      tablet::TABLET_DATA_TOMBSTONED,
+      cas_config_opid_index_less_or_equal,
+      &error_code));
+
+  assert_tablet_assignment_count(kTabletId1, 0);
+  assert_tablet_assignment_count(kTabletId2, 1);
+
+  shutdown_tserver_and_reload_tablet_manager();
+
+  assert_tablet_assignment_count(kTabletId1, 0);
+  assert_tablet_assignment_count(kTabletId2, 1);
+
+  ASSERT_OK(tablet_manager_->DeleteTablet(kTabletId1,
+                                          tablet::TABLET_DATA_DELETED,
+                                          cas_config_opid_index_less_or_equal,
+                                          &error_code));
+
+  assert_tablet_assignment_count(kTabletId1, 0);
+  assert_tablet_assignment_count(kTabletId2, 1);
+
+  shutdown_tserver_and_reload_tablet_manager();
+
+  assert_tablet_assignment_count(kTabletId1, 0);
+  assert_tablet_assignment_count(kTabletId2, 1);
 }
 
 TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
