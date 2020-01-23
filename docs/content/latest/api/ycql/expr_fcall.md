@@ -49,7 +49,7 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 | [UnixTimestampOf](../function_datetime/#unixtimestampof) | [`BIGINT`](../type_int) | ([`TIMEUUID`](../type_uuid)) | Conversion |
 | [UUID](../function_datetime/#uuid) | [`UUID`](../type_uuid) | () | Returns a version 4 UUID |
 | [WriteTime](#writetime-function) | [`BIGINT`](../type_int) | (\<AnyType>) | Returns the timestamp when the column was written |
-| [partition_hash](#partition-hash-function) | [`BIGINT`](../type_int) | () | Returns a `uint16` of partition keys |
+| [partition_hash](#partition-hash-function) | [`BIGINT`](../type_int) | () | Returns an `uint16` hash of partition key's values |
 
 ## Aggregate Functions
 
@@ -63,9 +63,10 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 
 
 ## Partition_hash function
-YugabyteDB uses `partition_hash` function that takes as arguments the values of the `partition keys` and returns an `uint16` 
-hash used to distribute rows internally. The full hash partition value spans from `0 - 65535`. 
-We can use this function to query a subset of the data, get approximate count of rows in table, or do a parallel full table scans.
+`partition_hash` is a function that takes as arguments the values of partition keys of a row and returns an `uint16` hash value.
+The full hash partition value spans from `0 - 65535`. Each tablet keeps are range of values and the hash is used to decode on which tablet the row will reside.  
+We can also use `partition_hash` as a filter in the `WHERE` clause to query tablets directly based on their hash-range. 
+We can query a subset of the data, get approximate count of rows in table, or do a parallel full table scans.
 
 ### Querying a subset of the data
 Assuming we have a table:
@@ -78,6 +79,7 @@ We can use this function to query a subset of the data (in this case, 1/128 of t
 select count(*) from t where partition_hash(h1, h2) >= 0 and
                                       partition_hash(h1, h2) < 512;
 ```
+The value `512` comes from dividing the full hash partition range by the number of subsets that we want to query (`65536/128=512`).
 To do a distributed scan, we can issue in this case 128 queries each using a different hash range.
 
 
