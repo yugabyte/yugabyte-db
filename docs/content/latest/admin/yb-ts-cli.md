@@ -4,14 +4,14 @@ linkTitle: yb-ts-cli
 description: yb-ts-cli
 menu:
   latest:
-    identifier: yb-ts-tool
+    identifier: yb-ts-cli
     parent: admin
     weight: 2466
 isTocNested: 3
 showAsideToc: true
 ---
 
-`yb-ts-cli` is a command line tool that can be used to perform an operation on tablet server (`yb-tserver`). Some of the commands perform operations similar to [`yb-admin` commands](../../../reference/configuration/yb-tserver).
+`yb-ts-cli` is a command line tool that can be used to perform an operation on a particular tablet server (`yb-tserver`). Some of the commands perform operations similar to [`yb-admin` commands](../yb-admin). The `yb-admin` commands focus on cluster administration, the `yb-ts-cli` commands apply to specific YB-TServer nodes.
 
 `yb-ts-cli` is a binary file installed with YugabyteDB and is located in the `bin` directory of the YugabyteDB home directory.
 
