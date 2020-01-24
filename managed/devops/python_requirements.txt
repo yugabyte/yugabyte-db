@@ -40,7 +40,7 @@ pycrypto
 python-dateutil==2.5.3
 python-dotenv==0.6.4
 pyyaml
-setuptools==44.0.0
+setuptools>=11.333
 six==1.10.0
 slackclient
 stormssh
