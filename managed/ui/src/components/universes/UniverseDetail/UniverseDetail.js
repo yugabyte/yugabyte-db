@@ -76,11 +76,11 @@ class UniverseDetail extends Component {
     }
   }
 
-  componentDidUpdate(prevProps, prevState, snapshot) {
-    const { universe: { currentUniverse } } = this.props;
+  componentDidUpdate(prevProps) {
+    const { universe: { currentUniverse }, universeTables } = this.props;
     if (getPromiseState(currentUniverse).isSuccess() &&
         !getPromiseState(prevProps.universe.currentUniverse).isSuccess()) {
-      if (hasLiveNodes(currentUniverse.data)) {
+      if (hasLiveNodes(currentUniverse.data) && !universeTables.length) {
         this.props.fetchUniverseTables(currentUniverse.data.universeUUID);
       }
     }
