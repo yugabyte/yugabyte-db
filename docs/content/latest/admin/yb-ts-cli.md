@@ -18,10 +18,10 @@ showAsideToc: true
 ## Syntax
 
 ```sh
-yb-ts-cli [ --server_address=<addr> ] <command> <options>
+yb-ts-cli [ --server_address=<host>:<port> ] <command> <options>
 ```
 
-- *addr*: The IP address of the tablet server. Default is `localhost`.
+- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:7100`.
 - *command*: The operation to be performed. See [Commands](#commands) below.
 - *options*: The options to be applied to the command. See [Options](#options).
 
@@ -42,18 +42,22 @@ If all tablets are running, returns "All tablets are running".
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<addr> ] are_tablets_running
+yb-ts-cli [ --server_address=<host>:<port> ] are_tablets_running
 ```
+
+- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:7100`.
 
 ##### count_intents
 
-Print the count of uncompleted intents (or [provisional records](../../../architecture/transactions/ditributed-txns/#provisional-records)). Useful for debugging and troubleshooting.
+Print the count of uncommitted intents (or [provisional records](../../../architecture/transactions/ditributed-txns/#provisional-records)). Useful for debugging and troubleshooting.
 
 **Syntax**
 
 ```sh
-$ ./bin/yb-ts-cli  [ --server_address=<addr> ] count_intents
+$ ./bin/yb-ts-cli  [ --server_address=<host>:<port> ] count_intents
 ```
+
+- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:7100`.
 
 ##### current_hybrid_time
 
@@ -62,8 +66,10 @@ Prints the value of the current [hybrid time](../../../architecture/transactions
 **Syntax**
 
 ```sh
-$ ./bin/yb-ts-cli  [ --server_address=<addr> ] current_hybrid_time
+$ ./bin/yb-ts-cli  [ --server_address=<host>:<port> ] current_hybrid_time
 ```
+
+- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:7100`.
 
 ##### delete_tablet
 
@@ -72,9 +78,10 @@ Deletes the tablet with the specified tablet ID (`tablet_id`) and reason.
 **Syntax**
 
 ```sh
-$ ./bin/yb-ts-cli  [ --server_address=<addr> ] delete_tablet <tablet_id> "<reason-string>"
+$ ./bin/yb-ts-cli  [ --server_address=<host>:<port> ] delete_tablet <tablet_id> "<reason-string>"
 ```
 
+- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:7100`.
 - *tablet_id*: The identifier (ID) for the tablet.
 - *reason-string*: Text string noting why the tablet was deleted.
 
@@ -85,9 +92,10 @@ Dump, or export, the specified tablet ID (`tablet_id`).
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<addr> ] dump_tablet <tablet_id>
+yb-ts-cli [ --server_address=<host>:<port> ] dump_tablet <tablet_id>
 ```
 
+- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:7100`.
 - *tablet_id*: The identifier (ID) for the tablet.
 
 ##### list_tablets
@@ -110,8 +118,10 @@ Lists the tablets on the specified tablet server, displaying the following infor
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<addr> ] list_tablets
+yb-ts-cli [ --server_address=<host>:<port> ] list_tablets
 ```
+
+- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:7100`.
 
 ##### set_flag
 
@@ -120,9 +130,10 @@ Sets the specified configuration option (flag) for the tablet server.
 **Syntax**
 
 ```sh
-$ ./bin/yb-ts-cli set_flag [ --force ] <flag> <value>
+$ ./bin/yb-ts-cli [ --server_address=<host>:<port> ] set_flag [ --force ] <flag> <value>
 ```
 
+- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:7100`.
 - --force: Optional. See [--force](#force).
 - *flag*: The `yb-tserver` configuration option (without the `--`) to be set. See [`yb-tserver`](../../reference/configuration/yb-tserver/#configuration-options)
 - *value*: The value to be applied.
@@ -134,8 +145,10 @@ Prints the status of the tablet server, including information on the node instan
 **Syntax**
 
 ```sh
-$ ./bin/yb-ts-cli  [ --server_address=<addr> ] status
+$ ./bin/yb-ts-cli [ --server_address=<host>:<port> ] status
 ```
+
+- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:7100`.
 
 For an example, see [Return the status of a tablet server](#return-the-status-of-a-tablet-server)
 
@@ -151,9 +164,9 @@ Default: `false`
 
 ##### --server-address
 
-The address of the tablet server to run against.
+The address (*host* and *port*) of the tablet server to run against.
 
-Default: `localhost`
+Default: `localhost:7100`
 
 ##### --timeout_ms
 
