@@ -91,17 +91,33 @@ Default: Same value as `--fs_data_dirs`
 
 ##### --rpc_bind_addresses
 
-Specifies a comma-separated list of addresses to bind to for RPC connections.
-
-Required.
+Specifies the comma-separated list of the network interface addresses to bind to for RPC connections. Typically, the value is set to the private IP address of the host on which the server is running. When using the default, or explicitly setting the value to `0.0.0.0:7100`, the server will listen on all available network interfaces.
 
 Default: `0.0.0.0:7100`
 
-##### -- server_broadcast_addresses
+{{< note title="Note" >}}
 
-Specifies the public IP or DNS hostname of the server (along with an optional port).
+In cases where `rpc_bind_addresses` is set to `0.0.0.0` (or not explicitly set, and uses the default) or in cases involving public IP addresses, make sure that [`server_broadcast_addresses`](#server-broadcast-addresses) is correctly set.
+
+{{< /note >}}
+
+##### --server_broadcast_addresses
+
+Specifies the public IP or DNS hostname of the server (with an optional port). This value is used by servers to communicate with one another, depending on the connection policy parameter.
 
 Default: `0.0.0.0:7100`
+
+##### --use_private_ip
+
+Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the [placement (`--placement_*`) configuration options](#placement-options).
+
+Valid values for the policy are:
+
+- `never` — Always use the [`--server_broadcast_addresses`](#server-broadcast-addresses).
+- `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone. 
+- `region` — Use the private IP address across all zone in a region; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the region.
+
+Default: `never`
 
 ##### -- webserver_interface
 
