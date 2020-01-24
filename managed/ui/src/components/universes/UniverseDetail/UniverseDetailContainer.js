@@ -126,6 +126,7 @@ function mapStateToProps(state, ownProps) {
     customer: state.customer,
     universe: state.universe,
     tasks: state.tasks,
+    universeTables: state.tables.universeTablesList,
     modal: state.modal,
     providers: state.cloud.providers,
     updateAvailable: isUpdateAvailable(state)
