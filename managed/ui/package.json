@@ -6,7 +6,7 @@
     "start": "react-app-rewired start",
     "start:prod": "pushstate-server build",
     "cleanup": "rimraf build && rimraf ../src/main/public",
-    "fetch-map": "aws s3 sync s3://$YB_MAP_URL build/static/map",
+    "fetch-map": "aws s3 cp s3://$YB_MAP_URL/yb_map.tar.gz build/static && tar -xvf build/static/yb_map.tar.gz -C build/static && rm build/static/yb_map.tar.gz",
     "build": "npm run cleanup && react-app-rewired build && npm run fetch-map",
     "build-and-copy": "npm run build && ncp build ../src/main/public",
     "eject": "react-app-rewired eject",
