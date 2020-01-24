@@ -314,9 +314,9 @@ class ControlScript(object):
         cur_pid = os.getpid()
         pgid = os.getpgid(cur_pid)
         if not pgid:
-            Output.log_error_and_exit(
+            Output.log(
                 "PGID could not be found for PID {}. Is {} running?".format(cur_pid, SCRIPT_NAME))
-
+            os._exit(os.EX_OK)
         self.set_signals(SIG_DFL)
 
         for p in self.processes.values():
@@ -328,12 +328,15 @@ class ControlScript(object):
             # any spawned child processes are killed. Use SIGKILL because YugaWare
             # requires KILL signal to terminate and nodes currently do not gracefully terminate.
             os.killpg(pgid, SIGKILL)
-            Output.log_error_and_exit(
+            Output.log(
                 "{} may not have terminated properly... "
                 "Please check PGID {}.".format(SCRIPT_NAME, pgid))
         except OSError as err:
-            Output.log_error_and_exit(
+            Output.log(
                 "Failed to kill PGID {}... Is {} running?\n{}".format(pgid, SCRIPT_NAME, str(err)))
+
+        # exit no matter what
+        os._exit(os.EX_OK)
 
     # Starts yb-master, yb-tserver, and yugaware processes.
     # After initializing, creates a callhome thread.
@@ -427,7 +430,6 @@ class ControlScript(object):
                 return
 
         is_first_run = True
-        yw_first_run  = True
         callhome_thread = None
         self.stop_callhome = False
         while True:
@@ -447,19 +449,22 @@ class ControlScript(object):
                 os.makedirs(self.configs.saved_data.get("data_dir"))
 
             # Start or initialize yb-master and yb-tserver.
-            Output.init_animation("Running system checks...")
+            if is_first_run:
+                Output.init_animation("Running system checks...")
             for name in ("master", "tserver"):
                 process = self.processes.get(name)
                 process.remove_error_logs()
                 if not process.is_running():
                     if not is_first_run:
-                        Output.print_and_log(
+                        Output.log(
                             "{} died unexpectedly. Restarting...".format(process.name),
                             logging.ERROR)
                     process.start()
                     should_callhome = True
-            if self.wait_yb_master():
-                Output.update_animation("System checks")
+
+            if self.wait_master_tserver():
+                if is_first_run:
+                    Output.update_animation("System checks")
 
                 yw_logged_in = False
                 # Start or initialize yugaware after setting YSQL default isolation level.
@@ -469,7 +474,7 @@ class ControlScript(object):
                     yw_process = self.processes.get("yugaware")
                     yw_proxy = YugaWareProxy(advertise_ip,
                         self.configs.saved_data.get("webserver_port"))
-                    if not self.is_yw_initialized():
+                    if is_first_run and not self.is_yw_initialized():
                         Output.log("Setting up admin console schema...")
                         Output.init_animation("Installing database...")
                         if not self.init_yw():
@@ -477,66 +482,51 @@ class ControlScript(object):
                         Output.update_animation("Database installed")
 
                         yw_process.start()
+
                         Output.init_animation("Bringing up UI...")
-                        err = self.wait_yw_login(yw_proxy)
-                        if err:
-                            Output.log_error_and_exit(err)
+                        Output.log(self.wait_yw_login(yw_proxy))
                         yw_logged_in = True
 
-                        yw_proxy.set_security("insecure")
-                        yw_proxy.insecure_login()
+                        Output.log(yw_proxy.set_security("insecure"))
+                        Output.log(yw_proxy.insecure_login())
 
-                        err = yw_proxy.import_universe(
-                            advertise_ip,
-                            master_rpc_port,
-                            self.configs.saved_data.get("universe_uuid"))
-                        if err:
-                            Output.log_error_and_exit(err)
+                        Output.log(yw_proxy.import_universe(
+                                    advertise_ip,
+                                    master_rpc_port,
+                                    self.configs.saved_data.get("universe_uuid")))
 
-                        err = yw_proxy.set_landing_page(
-                            self.configs.saved_data.get("universe_uuid"))
+                        Output.log(yw_proxy.set_landing_page(
+                                self.configs.saved_data.get("universe_uuid")))
                         should_callhome = True
                         Output.update_animation("UI ready")
                     else:
                         if not yw_process.is_running():
-                            if not yw_first_run:
-                                Output.print_and_log(
+                            if not is_first_run:
+                                Output.log(
                                     "Webserver died unexpectedly. Restarting...", logging.ERROR)
                             yw_process.start()
-                            yw_first_run = True
+
                             # TODO: If insecure login fails here, we should assume importing
                             # universe and setting security level failed and retry initializing YW.
-                            Output.init_animation("Bringing up UI...")
+                            if is_first_run:
+                                Output.init_animation("Bringing up UI...")
+
                             yw_logged_in = not self.wait_yw_login(yw_proxy, insecure=True)
                             if yw_logged_in:
                                 animation_status = Output.ANIMATION_SUCCESS
                             else:
                                 animation_status = Output.ANIMATION_FAIL
-                            Output.update_animation("UI status", status=animation_status)
+                            if is_first_run:
+                                Output.update_animation("UI status", status=animation_status)
+
                             should_callhome = True
                         else:
                             yw_logged_in = False
                     if yw_process.is_running() and yw_logged_in:
                         if self.alerts:
                             yw_proxy.send_alerts(self.alerts)
-            else:
-                Output.update_animation("Database failure", status=Output.ANIMATION_FAIL)
-                # Only error out if we fail to start initially. Otherwise, continue trying
-                # to restart master/tserver.
-                if is_first_run:
-                    Output.log_error_and_exit("Failed to start {}".format(SCRIPT_NAME))
 
-            # Print startup information and start callhome thread on first successful startup.
-            # Preemptively assume YW will successfully start up.
-            if is_first_run and self.wait_yb_master():
-                first_run_success = True
-                for name in ("master", "tserver", "yugaware"):
-                    process = self.processes.get(name)
-                    if process is not None and not process.is_running():
-                        first_run_success = False
-                        break
-                if first_run_success and self.is_yb_initialized() \
-                        and (not self.configs.temp_data.get("ui") or self.is_yw_initialized()):
+                if is_first_run:
                     status = self.get_status_string() + \
                         "{} {} started successfully! To load a sample dataset, " \
                         "try '{} demo'.\n" \
@@ -546,6 +536,7 @@ class ControlScript(object):
                             Output.make_underline(SLACK_LINK), Output.SHIRT,
                             Output.make_underline(COMMUNITY_REWARDS_LINK))
                     Output.print_out(status)
+
                     if self.configs.temp_data.get("daemon"):
                         # Let original process know daemon was successful so it can exit.
                         # This is to display the initial status message.
@@ -559,13 +550,18 @@ class ControlScript(object):
                             os.dup2(dev_null.fileno(), sys.stderr.fileno())
                             os.dup2(dev_null.fileno(), sys.stdout.fileno())
 
-                if self.configs.saved_data.get("callhome"):
-                    callhome_thread = Thread(target=self.callhome_loop)
-                    callhome_thread.daemon = True
-                    callhome_thread.start()
+                    if self.configs.saved_data.get("callhome"):
+                        callhome_thread = Thread(target=self.callhome_loop)
+                        callhome_thread.daemon = True
+                        callhome_thread.start()
 
-                is_first_run = False
+            elif is_first_run:
+                Output.update_animation("Database failure", status=Output.ANIMATION_FAIL)
+                # Only error out if we fail to start initially. Otherwise, continue trying
+                # to restart master/tserver.
+                Output.log_error_and_exit("Failed to start {}".format(SCRIPT_NAME))
 
+            is_first_run = False
 
             if should_callhome:
                 self.callhome()
@@ -664,7 +660,7 @@ class ControlScript(object):
         Output.log("Finished checking play evolutions table")
         return not err and not ret_code and "play_evolutions" in out
 
-    def wait_yb_master(self, timeout=180):
+    def wait_master_tserver(self, timeout=180):
         Output.log("Waiting for yb master via ybadmin...")
         num_tservers = 1
         master_addr = "{}:{}".format(self.advertise_ip(),
@@ -1747,6 +1743,9 @@ class Output(object):
 
     @staticmethod
     def log(msg, level=logging.INFO):
+        if '' == msg or msg is None:
+            return
+
         full_msg = msg
         time_since_sec = time.time() - Output.start_time_sec
         if time_since_sec < 1000:
