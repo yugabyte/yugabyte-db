@@ -112,19 +112,31 @@ Default: `50000` (50,000 µs = 50ms)
 
 ##### --rpc_bind_addresses
 
-Specifies the comma-separated list of addresses to bind to for RPC connections.
+Specifies the comma-separated list of the network interface addresses to bind to for RPC connections. Typically, the value is set to the private IP address of the host on which the server is running. When using the default, or explicitly setting the value to `0.0.0.0:9100`, the server will listen on all available network interfaces.
 
 Default: `0.0.0.0:9100`
 
+{{< note title="Note" >}}
+
+In cases where `rpc_bind_addresses` is set to `0.0.0.0` (or not explicitly set, and uses the default) or in cases involving public IP addresses, make sure that [`server_broadcast_addresses`](#server-broadcast-addresses) is correctly set.
+
+{{< /note >}}
+
 ##### --server_broadcast_addresses
 
-Specifies the public IP or DNS hostname of the server (with an optional port).
+Specifies the public IP or DNS hostname of the server (with an optional port). This value is used by servers to communicate with one another, depending on the connection policy parameter.
 
 Default: `0.0.0.0:9100`
 
 ##### --use_private_ip
 
-Determines when to use private IP addresses. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the [placement (`--placement_*`) configuration options](#placement-options).
+Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the [placement (`--placement_*`) configuration options](#placement-options).
+
+Valid values for the policy are:
+
+- `never` — Always use the [`--server_broadcast_addresses`](#server-broadcast-addresses).
+- `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone. 
+- `region` — Use the private IP address across all zone in a region; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the region.
 
 Default: `never`
 
