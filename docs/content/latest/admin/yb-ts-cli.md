@@ -49,7 +49,7 @@ yb-ts-cli [ --server_address=<host>:<port> ] are_tablets_running
 
 ##### count_intents
 
-Print the count of uncommitted intents (or [provisional records](../../../architecture/transactions/ditributed-txns/#provisional-records)). Useful for debugging and troubleshooting.
+Print the count of uncommitted intents (or [provisional records](../../../architecture/transactions/ditributed-txns/#provisional-records)). Useful for debugging transactional workloads.
 
 **Syntax**
 
@@ -83,7 +83,7 @@ $ ./bin/yb-ts-cli  [ --server_address=<host>:<port> ] delete_tablet <tablet_id> 
 
 - *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:7100`.
 - *tablet_id*: The identifier (ID) for the tablet.
-- *reason-string*: Text string noting why the tablet was deleted.
+- *reason-string*: Text string providing useful information on why the tablet was deleted.
 
 ##### dump_tablet
 
@@ -211,11 +211,9 @@ version_info {
 ### Display the current hybrid time
 
 ```sh
-$ ./bin/yb-ts-cli  [ --server_address=<addr> ] current_hybrid_time
+$ ./bin/yb-ts-cli  [ --server_address=yb-tserver-1:7100 ] current_hybrid_time
 ```
 
 ```
 6470519323472437248
 ```
-
-### 
