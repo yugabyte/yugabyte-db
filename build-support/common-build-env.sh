@@ -883,7 +883,6 @@ Linking CXX shared library|\
 Linking CXX executable)"
 }
 
-
 put_path_entry_first() {
   expect_num_args 1 "$@"
   local path_entry=$1
