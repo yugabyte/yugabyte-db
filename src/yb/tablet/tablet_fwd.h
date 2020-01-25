@@ -39,7 +39,9 @@ class SnapshotOperationState;
 class TabletSnapshots;
 class TabletStatusPB;
 class TabletStatusListener;
+class TransactionIntentApplier;
 class TransactionParticipant;
+class TransactionParticipantContext;
 class WriteOperationState;
 
 YB_STRONGLY_TYPED_BOOL(RequireLease);
