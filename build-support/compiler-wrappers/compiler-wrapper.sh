@@ -317,10 +317,9 @@ fi
 # -------------------------------------------------------------------------------------------------
 # Remote build
 
-nonexistent_file_args=()
 local_build_only=false
 for arg in "$@"; do
-  if [[ $arg =~ *CMakeTmp* || $arg == "-" ]]; then
+  if [[ $arg == *CMakeTmp* || $arg == "-" ]]; then
     local_build_only=true
   fi
 done
@@ -339,7 +338,6 @@ if [[ $local_build_only == "false" &&
   cached_build_workers_file=/tmp/cached_build_workers_$USER
   declare -i num_missing_build_workers_file_retries=0
 
-  current_dir=$PWD
   declare -i attempt=0
   declare -i no_worker_count=0
   sleep_deciseconds=1  # a decisecond is one-tenth of a second
@@ -360,8 +358,7 @@ if [[ $local_build_only == "false" &&
       fi
     fi
     set +e
-    build_worker_name=$( shuf -n 1 "$effective_build_workers_file" )
-    if [[ $? -ne 0 ]]; then
+    if ! build_worker_name=$( shuf -n 1 "$effective_build_workers_file" ); then
       set -e
       log "shuf failed, trying again in a moment"
       sleep 0.5
@@ -377,7 +374,7 @@ if [[ $local_build_only == "false" &&
     if [[ -z $build_worker_name ]]; then
       let no_worker_count+=1
       if [[ $no_worker_count -ge 100 ]]; then
-        fatal "Found no live workers in "$YB_BUILD_WORKERS_FILE" in $no_worker_count attempts"
+        fatal "Found no live workers in $YB_BUILD_WORKERS_FILE in $no_worker_count attempts"
       fi
       log "Waiting for one second while no live workers are present in $YB_BUILD_WORKERS_FILE"
       sleep 1
@@ -404,11 +401,11 @@ if [[ $local_build_only == "false" &&
           $exit_code -eq 254 ||
           $exit_code -eq 255 ||
           $exit_code -eq $YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY ]] ||
-        egrep "\
+        grep -E "\
 : Stale file handle|\
 file not recognized: file truncated|\
 /usr/bin/env: bash: Input/output error|\
-: No such file or directory
+: No such file or directory\
 " "$stderr_path" &&
         ! grep ": syntax error " "$stderr_path"
     then
