@@ -57,7 +57,12 @@ class ConsensusContext {
   // time value for a read/write operation in case of RF==1 mode.
   virtual void ChangeConfigReplicated(const RaftConfigPB& config) = 0;
 
+  // See DB::GetCurrentVersionNumSSTFiles
   virtual uint64_t NumSSTFiles() = 0;
+
+  // Register listener that will be invoked when number of SST files changed.
+  // Listener could be set only once and then reset.
+  virtual void ListenNumSSTFilesChanged(std::function<void()> listener) = 0;
 
   virtual ~ConsensusContext() = default;
 };
