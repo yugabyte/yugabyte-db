@@ -373,7 +373,7 @@ void HdrHistogram::DumpHumanReadable(std::ostream* out) const {
 AbstractHistogramIterator::AbstractHistogramIterator(const HdrHistogram* histogram)
   : histogram_(CHECK_NOTNULL(histogram)),
     cur_iter_val_(),
-    histogram_total_count_(histogram_->TotalCount()),
+    histogram_total_count_(histogram_->TotalCountInBuckets()),
     current_bucket_index_(0),
     current_sub_bucket_index_(0),
     current_value_at_index_(0),
@@ -393,7 +393,7 @@ bool AbstractHistogramIterator::HasNext() const {
 }
 
 Status AbstractHistogramIterator::Next(HistogramIterationValue* value) {
-  if (histogram_->TotalCount() != histogram_total_count_) {
+  if (histogram_->TotalCountInBuckets() != histogram_total_count_) {
     return STATUS(IllegalState, "Concurrently modified histogram while traversing it");
   }
 
