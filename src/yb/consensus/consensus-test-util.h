@@ -518,6 +518,14 @@ class LocalTestPeerProxy : public TestPeerProxy {
     tserver::TabletServerErrorPB* error = response->mutable_error();
     error->set_code(tserver::TabletServerErrorPB::UNKNOWN_ERROR);
     StatusToPB(status, error->mutable_status());
+    ClearStatus(response);
+  }
+
+  void ClearStatus(VoteResponsePB* response) {
+  }
+
+  void ClearStatus(ConsensusResponsePB* response) {
+    response->clear_status();
   }
 
   template<class Request, class Response>
@@ -917,10 +925,11 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
     majority_replicated_op_id_ = data.op_id;
     committed_index->CopyFrom(data.op_id);
   }
-  virtual void NotifyTermChange(int64_t term) override {}
-  virtual void NotifyFailedFollower(const std::string& uuid,
-                                    int64_t term,
-                                    const std::string& reason) override {}
+  void NotifyTermChange(int64_t term) override {}
+  void NotifyFailedFollower(const std::string& uuid,
+                            int64_t term,
+                            const std::string& reason) override {}
+  void MajorityReplicatedNumSSTFilesChanged(uint64_t) override {}
 
  private:
   mutable simple_spinlock lock_;

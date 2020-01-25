@@ -477,6 +477,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   uint64_t GetCurrentVersionSstFilesUncompressedSize() const;
   uint64_t GetCurrentVersionNumSSTFiles() const;
 
+  void ListenNumSSTFilesChanged(std::function<void()> listener);
+
   // Returns the number of memtables in intents and regular db-s.
   std::pair<int, int> GetNumMemtables() const;
 
@@ -735,6 +737,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void CleanupIntentFiles();
   void DoCleanupIntentFiles();
 
+  void RegularDbFilesChanged();
+
   HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) override;
 
   void MinRunningHybridTimeSatisfied() override {
@@ -757,6 +761,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   mutable std::mutex control_path_mutex_;
   std::unordered_map<std::string, std::shared_ptr<void>> additional_metadata_
     GUARDED_BY(control_path_mutex_);
+
+  std::mutex num_sst_files_changed_listener_mutex_;
+  std::function<void()> num_sst_files_changed_listener_
+      GUARDED_BY(num_sst_files_changed_listener_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };
