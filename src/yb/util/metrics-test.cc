@@ -190,9 +190,11 @@ TEST_F(MetricsTest, ResetHistogramTest) {
   }
   EXPECT_EQ(5050, hist->histogram_->TotalSum());
   EXPECT_EQ(100, hist->histogram_->TotalCount());
-  EXPECT_EQ(50.5, hist->histogram_->MeanValue());
+  EXPECT_EQ(5050, hist->histogram_->CurrentSum());
+  EXPECT_EQ(100, hist->histogram_->CurrentCount());
 
   EXPECT_EQ(1, hist->histogram_->MinValue());
+  EXPECT_EQ(50.5, hist->histogram_->MeanValue());
   EXPECT_EQ(100, hist->histogram_->MaxValue());
   EXPECT_EQ(10, hist->histogram_->ValueAtPercentile(10));
   EXPECT_EQ(25, hist->histogram_->ValueAtPercentile(25));
@@ -205,14 +207,18 @@ TEST_F(MetricsTest, ResetHistogramTest) {
   hist->histogram_->DumpHumanReadable(&LOG(INFO));
   // Test that the Histogram's percentiles are reset.
   HistogramSnapshotPB snapshot_pb;
-  ASSERT_OK(hist->GetAndResetHistogramSnapshotPB(&snapshot_pb, MetricJsonOptions()));
+  MetricJsonOptions options;
+  options.include_raw_histograms = true;
+  ASSERT_OK(hist->GetAndResetHistogramSnapshotPB(&snapshot_pb, options));
   hist->histogram_->DumpHumanReadable(&LOG(INFO));
 
   EXPECT_EQ(5050, hist->histogram_->TotalSum());
   EXPECT_EQ(100, hist->histogram_->TotalCount());
-  EXPECT_EQ(50.5, hist->histogram_->MeanValue());
+  EXPECT_EQ(0, hist->histogram_->CurrentSum());
+  EXPECT_EQ(0, hist->histogram_->CurrentCount());
 
   EXPECT_EQ(0, hist->histogram_->MinValue());
+  EXPECT_EQ(0, hist->histogram_->MeanValue());
   EXPECT_EQ(0, hist->histogram_->MaxValue());
   EXPECT_EQ(0, hist->histogram_->ValueAtPercentile(10));
   EXPECT_EQ(0, hist->histogram_->ValueAtPercentile(25));
