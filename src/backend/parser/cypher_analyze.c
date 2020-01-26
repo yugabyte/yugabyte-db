@@ -12,6 +12,7 @@
 #include "parser/parse_collate.h"
 #include "parser/parse_node.h"
 #include "parser/parse_relation.h"
+#include "parser/parse_target.h"
 #include "parser/parsetree.h"
 #include "utils/builtins.h"
 
@@ -465,10 +466,12 @@ static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
     rte = addRangeTableEntryForSubquery(pstate, subquery, makeAlias("_", NIL),
                                         lateral, true);
     rtindex = list_length(pstate->p_rtable);
-    Assert(rtindex == 1);
+    Assert(rtindex == 1); // rte is the only RangeTblEntry in pstate
     addRTEtoQuery(pstate, rte, true, true, true);
 
     query->targetList = expandRelAttrs(pstate, rte, rtindex, 0, -1);
+
+    markTargetListOrigins(pstate, query->targetList);
 
     // do the type coercion for each target entry
     lc1 = list_head(rtfunc->funccolnames);

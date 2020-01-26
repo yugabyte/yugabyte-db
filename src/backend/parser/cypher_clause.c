@@ -1,12 +1,15 @@
 #include "postgres.h"
 
-#include "access/attnum.h"
 #include "catalog/pg_type_d.h"
 #include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/parsenodes.h"
 #include "nodes/pg_list.h"
 #include "nodes/primnodes.h"
+#include "optimizer/var.h"
+#include "parser/parse_clause.h"
+#include "parser/parse_coerce.h"
 #include "parser/parse_collate.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_func.h"
@@ -19,32 +22,42 @@
 #include "nodes/cypher_nodes.h"
 #include "parser/cypher_clause.h"
 #include "parser/cypher_expr.h"
+#include "parser/cypher_item.h"
 #include "parser/cypher_parse_node.h"
 #include "utils/ag_func.h"
 #include "utils/agtype.h"
 
+// projection
 static Query *transform_cypher_return(cypher_parsestate *cpstate,
                                       cypher_clause *clause);
-static List *transform_cypher_item_list(cypher_parsestate *cpstate,
-                                        List *items);
+static List *transform_cypher_order_by(cypher_parsestate *cpstate,
+                                       List *sort_items, List **target_list,
+                                       ParseExprKind expr_kind);
+static TargetEntry *find_target_list_entry(cypher_parsestate *cpstate,
+                                           Node *node, List **target_list,
+                                           ParseExprKind expr_kind);
+static Node *transform_cypher_limit(cypher_parsestate *cpstate, Node *node,
+                                    ParseExprKind expr_kind,
+                                    const char *construct_name);
 static Query *transform_cypher_with(cypher_parsestate *cpstate,
                                     cypher_clause *clause);
+
+// updating clause
 static Query *transform_cypher_create(cypher_parsestate *cpstate,
                                       cypher_clause *clause);
 
 static RangeTblEntry *transform_prev_cypher_clause(cypher_parsestate *cpstate,
-                                                   cypher_clause *clause);
+                                                   cypher_clause *prev_clause);
 static Query *analyze_cypher_clause(cypher_clause *clause,
                                     cypher_parsestate *parent_cpstate);
 
 Query *transform_cypher_clause(cypher_parsestate *cpstate,
                                cypher_clause *clause)
 {
+    Node *self = clause->self;
     Query *result;
 
-    Node *self = clause->self;
-
-    // examine the type of clause and call appropriate transform logic for it
+    // examine the type of clause and call the transform logic for it
     if (is_ag_node(self, cypher_return))
         result = transform_cypher_return(cpstate, clause);
     else if (is_ag_node(self, cypher_with))
@@ -79,7 +92,38 @@ static Query *transform_cypher_return(cypher_parsestate *cpstate,
     if (clause->prev)
         transform_prev_cypher_clause(cpstate, clause->prev);
 
-    query->targetList = transform_cypher_item_list(cpstate, self->items);
+    query->targetList = transform_cypher_item_list(cpstate, self->items,
+                                                   EXPR_KIND_SELECT_TARGET);
+
+    markTargetListOrigins(pstate, query->targetList);
+
+    // ORDER BY
+    query->sortClause = transform_cypher_order_by(cpstate, self->order_by,
+                                                  &query->targetList,
+                                                  EXPR_KIND_ORDER_BY);
+
+    // TODO: auto GROUP BY for aggregation
+
+    // DISTINCT
+    if (self->distinct)
+    {
+        query->distinctClause = transformDistinctClause(pstate,
+                                                        &query->targetList,
+                                                        query->sortClause,
+                                                        false);
+        query->hasDistinctOn = false;
+    }
+    else
+    {
+        query->distinctClause = NIL;
+        query->hasDistinctOn = false;
+    }
+
+    // SKIP and LIMIT
+    query->limitOffset = transform_cypher_limit(cpstate, self->skip,
+                                                EXPR_KIND_OFFSET, "SKIP");
+    query->limitCount = transform_cypher_limit(cpstate, self->limit,
+                                               EXPR_KIND_LIMIT, "LIMIT");
 
     query->rtable = pstate->p_rtable;
     query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
@@ -89,31 +133,85 @@ static Query *transform_cypher_return(cypher_parsestate *cpstate,
     return query;
 }
 
-static List *transform_cypher_item_list(cypher_parsestate *cpstate,
-                                        List *items)
+// see transformSortClause()
+static List *transform_cypher_order_by(cypher_parsestate *cpstate,
+                                       List *sort_items, List **target_list,
+                                       ParseExprKind expr_kind)
 {
     ParseState *pstate = (ParseState *)cpstate;
-    List *targets = NIL;
+    List *sort_list = NIL;
     ListCell *li;
 
-    foreach (li, items)
+    foreach (li, sort_items)
     {
-        ResTarget *item = lfirst(li);
-        Node *expr;
-        char *colname;
+        SortBy *sort_by = lfirst(li);
         TargetEntry *te;
 
-        expr = transform_cypher_expr(cpstate, item->val,
-                                     EXPR_KIND_SELECT_TARGET);
-        colname = (item->name ? item->name : FigureColname(item->val));
+        te = find_target_list_entry(cpstate, sort_by->node, target_list,
+                                    expr_kind);
 
-        te = makeTargetEntry((Expr *)expr, (AttrNumber)pstate->p_next_resno++,
-                             colname, false);
-
-        targets = lappend(targets, te);
+        sort_list = addTargetToSortList(pstate, te, sort_list, *target_list,
+                                        sort_by);
     }
 
-    return targets;
+    return sort_list;
+}
+
+// see findTargetlistEntrySQL99()
+static TargetEntry *find_target_list_entry(cypher_parsestate *cpstate,
+                                           Node *node, List **target_list,
+                                           ParseExprKind expr_kind)
+{
+    Node *expr;
+    ListCell *lt;
+    TargetEntry *te;
+
+    expr = transform_cypher_expr(cpstate, node, expr_kind);
+
+    foreach (lt, *target_list)
+    {
+        Node *te_expr;
+
+        te = lfirst(lt);
+        te_expr = strip_implicit_coercions((Node *)te->expr);
+
+        if (equal(expr, te_expr))
+            return te;
+    }
+
+    te = transform_cypher_item(cpstate, node, expr, expr_kind, NULL, true);
+
+    *target_list = lappend(*target_list, te);
+
+    return te;
+}
+
+// see transformLimitClause()
+static Node *transform_cypher_limit(cypher_parsestate *cpstate, Node *node,
+                                    ParseExprKind expr_kind,
+                                    const char *construct_name)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    Node *qual;
+
+    if (!node)
+        return NULL;
+
+    qual = transform_cypher_expr(cpstate, node, expr_kind);
+
+    qual = coerce_to_specific_type(pstate, qual, INT8OID, construct_name);
+
+    // LIMIT can't refer to any variables of the current query.
+    if (contain_vars_of_level(qual, 0))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+                 errmsg("argument of %s must not contain variables",
+                        construct_name),
+                 parser_errposition(pstate, locate_var_of_level(qual, 0))));
+    }
+
+    return qual;
 }
 
 static Query *transform_cypher_with(cypher_parsestate *cpstate,
@@ -121,18 +219,48 @@ static Query *transform_cypher_with(cypher_parsestate *cpstate,
 {
     ParseState *pstate = (ParseState *)cpstate;
     cypher_with *self = (cypher_with *)clause->self;
+    cypher_return *return_clause;
+    cypher_clause *prev_clause;
     Query *query;
+    RangeTblEntry *rte;
+    int rtindex;
+    Node *qual;
+
+    return_clause = make_ag_node(cypher_return);
+    return_clause->distinct = self->distinct;
+    return_clause->items = self->items;
+    return_clause->order_by = self->order_by;
+    return_clause->skip = self->skip;
+    return_clause->limit = self->limit;
+
+    prev_clause = palloc(sizeof(*prev_clause));
+    prev_clause->self = (Node *)return_clause;
+    prev_clause->prev = clause->prev;
 
     query = makeNode(Query);
     query->commandType = CMD_SELECT;
 
-    if (clause->prev)
-        transform_prev_cypher_clause(cpstate, clause->prev);
+    rte = transform_prev_cypher_clause(cpstate, prev_clause);
+    rtindex = list_length(pstate->p_rtable);
+    Assert(rtindex == 1); // rte is the only RangeTblEntry in pstate
 
-    query->targetList = transform_cypher_item_list(cpstate, self->items);
+    query->targetList = expandRelAttrs(pstate, rte, rtindex, 0, -1);
+
+    markTargetListOrigins(pstate, query->targetList);
+
+    // see transformWhereClause()
+    if (self->where)
+    {
+        qual = transform_cypher_expr(cpstate, self->where, EXPR_KIND_WHERE);
+        qual = coerce_to_boolean(pstate, qual, "WHERE");
+    }
+    else
+    {
+        qual = NULL;
+    }
 
     query->rtable = pstate->p_rtable;
-    query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
+    query->jointree = makeFromExpr(pstate->p_joinlist, qual);
 
     assign_query_collations(pstate, query);
 
@@ -196,7 +324,7 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
  * single RangeSubselect.
  */
 static RangeTblEntry *transform_prev_cypher_clause(cypher_parsestate *cpstate,
-                                                   cypher_clause *clause)
+                                                   cypher_clause *prev_clause)
 {
     ParseState *pstate = (ParseState *)cpstate;
     const bool lateral = false;
@@ -208,7 +336,7 @@ static RangeTblEntry *transform_prev_cypher_clause(cypher_parsestate *cpstate,
     // p_lateral_active is false since query is the only FROM clause item here.
     pstate->p_lateral_active = lateral;
 
-    query = analyze_cypher_clause(clause, cpstate);
+    query = analyze_cypher_clause(prev_clause, cpstate);
 
     pstate->p_lateral_active = false;
     pstate->p_expr_kind = EXPR_KIND_NONE;

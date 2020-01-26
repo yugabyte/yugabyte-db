@@ -1,8 +1,6 @@
 #ifndef AG_KEYWORDS_H
 #define AG_KEYWORDS_H
 
-#include "postgres.h"
-
 #include "common/keywords.h"
 
 extern const ScanKeyword cypher_keywords[];

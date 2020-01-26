@@ -8,8 +8,6 @@
 #ifndef AG_CYPHER_GRAM_H
 #define AG_CYPHER_GRAM_H
 
-#include "postgres.h"
-
 #include "nodes/nodes.h"
 #include "nodes/pg_list.h"
 
