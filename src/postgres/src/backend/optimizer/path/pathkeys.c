@@ -215,11 +215,16 @@ make_pathkey_from_sortinfo(PlannerInfo *root,
 		return NULL;
 
 	/* This "eclass" is either a "=" or "sort" operator, and for hash_columns, we allow equality
-   * condition but not ASC or DESC sorting.
-   */
-  if (is_hash_index && eclass->ec_sortref != 0) {
-    return NULL;
-  }
+   	* condition but not ASC or DESC sorting.
+   	*/
+  	if (is_hash_index && eclass->ec_sortref != 0) {
+    		return NULL;
+  	}
+
+  	/* We are picking a hash index. The strategy can only be BTEqualStrategyNumber */
+  	if (is_hash_index) {
+    		strategy = BTEqualStrategyNumber;
+  	}
 
 	/* And finally we can find or create a PathKey node */
 	return make_canonical_pathkey(root, eclass, opfamily,
