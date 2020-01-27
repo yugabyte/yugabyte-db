@@ -251,7 +251,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   void TransactionReady(const Status& status, const BatcherPtr& self);
 
-  void ExecuteOperations();
+  // initial - whether this method is called first time for this batch.
+  void ExecuteOperations(Initial initial);
 
   // See note about lock ordering in batcher.cc
   mutable simple_spinlock mutex_;

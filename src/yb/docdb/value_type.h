@@ -118,6 +118,7 @@ namespace docdb {
     ((kMergeFlags, 'k')) /* ASCII code 107 */ \
     /* Indicator for whether an intent is for a row lock. */ \
     ((kRowLock, 'l'))  /* ASCII code 108 */ \
+    ((kBitSet, 'm')) /* ASCII code 109 */ \
     /* Timestamp value in microseconds */ \
     ((kTimestamp, 's'))  /* ASCII code 115 */ \
     /* TTL value in milliseconds, optionally present at the start of a value. */ \

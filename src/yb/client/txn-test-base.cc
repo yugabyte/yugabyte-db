@@ -123,13 +123,14 @@ uint64_t TransactionTestBase::log_segment_size_bytes() const {
 }
 
 void TransactionTestBase::WriteRows(
-    const YBSessionPtr& session, size_t transaction, const WriteOpType op_type) {
+    const YBSessionPtr& session, size_t transaction, const WriteOpType op_type, Flush flush) {
   for (size_t r = 0; r != kNumRows; ++r) {
     ASSERT_OK(WriteRow(
         session,
         KeyForTransactionAndIndex(transaction, r),
         ValueForTransactionAndIndex(transaction, r, op_type),
-        op_type));
+        op_type,
+        flush));
   }
 }
 
@@ -202,7 +203,8 @@ void TransactionTestBase::VerifyRows(
   for (size_t r = 0; r != kNumRows; ++r) {
     SCOPED_TRACE(Format("Row: $0, key: $1", r, KeyForTransactionAndIndex(transaction, r)));
     auto& op = ops[r];
-    ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
+    ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK)
+        << QLResponsePB_QLStatus_Name(op->response().status());
     auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
     ASSERT_EQ(rowblock->row_count(), 1);
     const auto& first_column = rowblock->row(0).column(0);

@@ -29,10 +29,12 @@ namespace yb {
 namespace tablet {
 
 RunningTransaction::RunningTransaction(TransactionMetadata metadata,
-                                       IntraTxnWriteId last_write_id,
+                                       const TransactionalBatchData& last_batch_data,
+                                       OneWayBitmap&& replicated_batches,
                                        RunningTransactionContext* context)
     : metadata_(std::move(metadata)),
-      last_write_id_(last_write_id),
+      last_batch_data_(last_batch_data),
+      replicated_batches_(std::move(replicated_batches)),
       context_(*context),
       remove_intents_task_(&context->applier_, &context->participant_context_, context,
                            metadata_.transaction_id),
@@ -44,8 +46,17 @@ RunningTransaction::~RunningTransaction() {
   context_.rpcs_.Abort({&get_status_handle_, &abort_handle_});
 }
 
-void RunningTransaction::UpdateLastWriteId(IntraTxnWriteId value) {
-  last_write_id_ = value;
+void RunningTransaction::AddReplicatedBatch(
+  size_t batch_idx, boost::container::small_vector_base<uint8_t>* encoded_replicated_batches) {
+  VLOG_WITH_PREFIX(4) << __func__ << "(" << batch_idx << ")";
+  replicated_batches_.Set(batch_idx);
+  encoded_replicated_batches->push_back(docdb::ValueTypeAsChar::kBitSet);
+  replicated_batches_.EncodeTo(encoded_replicated_batches);
+}
+
+void RunningTransaction::BatchReplicated(const TransactionalBatchData& value) {
+  VLOG_WITH_PREFIX(4) << __func__ << "(" << value.ToString() << ")";
+  last_batch_data_ = value;
 }
 
 void RunningTransaction::SetLocalCommitTime(HybridTime time) {

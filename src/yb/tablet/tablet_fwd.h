@@ -42,11 +42,13 @@ class TabletStatusListener;
 class TransactionIntentApplier;
 class TransactionParticipant;
 class TransactionParticipantContext;
+class UpdateTxnOperationState;
 class WriteOperationState;
 
 YB_STRONGLY_TYPED_BOOL(RequireLease);
 YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);
 YB_STRONGLY_TYPED_BOOL(TransactionsEnabled);
+YB_STRONGLY_TYPED_BOOL(AlreadyApplied);
 
 }  // namespace tablet
 }  // namespace yb

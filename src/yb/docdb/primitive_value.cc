@@ -56,6 +56,7 @@ using yb::util::DecodeDoubleFromKey;
     case ValueType::kArray: FALLTHROUGH_INTENDED; \
     case ValueType::kMergeFlags: FALLTHROUGH_INTENDED; \
     case ValueType::kRowLock: FALLTHROUGH_INTENDED; \
+    case ValueType::kBitSet: FALLTHROUGH_INTENDED; \
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED; \
     case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED; \
     case ValueType::kInvalid: FALLTHROUGH_INTENDED; \
@@ -221,6 +222,7 @@ string PrimitiveValue::ToString() const {
       return Format("Intent($0)", uint16_val_);
     case ValueType::kMergeFlags: FALLTHROUGH_INTENDED;
     case ValueType::kRowLock: FALLTHROUGH_INTENDED;
+    case ValueType::kBitSet: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
@@ -547,6 +549,7 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kObsoleteIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kMergeFlags: FALLTHROUGH_INTENDED;
     case ValueType::kRowLock: FALLTHROUGH_INTENDED;
+    case ValueType::kBitSet: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
     case ValueType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED;
@@ -1131,6 +1134,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kInvalid: FALLTHROUGH_INTENDED;
     case ValueType::kMergeFlags: FALLTHROUGH_INTENDED;
     case ValueType::kRowLock: FALLTHROUGH_INTENDED;
+    case ValueType::kBitSet: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
     case ValueType::kUserTimestamp: FALLTHROUGH_INTENDED;
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;

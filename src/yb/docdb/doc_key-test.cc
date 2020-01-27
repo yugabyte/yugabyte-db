@@ -440,7 +440,7 @@ class IntentCollector {
  public:
   explicit IntentCollector(std::vector<CollectedIntent>* out) : out_(out) {}
 
-  Status operator()(IntentStrength strength, Slice value, KeyBytes* key) {
+  Status operator()(IntentStrength strength, Slice value, KeyBytes* key, LastKey) {
     out_->push_back({strength, *key, value});
     return Status::OK();
   }

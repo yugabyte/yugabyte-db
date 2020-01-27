@@ -54,7 +54,15 @@
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 
+#include "yb/util/flag_tags.h"
+
 using namespace std::literals;
+
+DEFINE_bool(redis_allow_reads_from_followers, false,
+            "If true, the read will be served from the closest replica in the same AZ, which can "
+            "be a follower.");
+TAG_FLAG(redis_allow_reads_from_followers, evolving);
+TAG_FLAG(redis_allow_reads_from_followers, runtime);
 
 namespace yb {
 namespace client {
@@ -110,6 +118,11 @@ RedisResponsePB* YBRedisOp::mutable_response() {
 
 const RedisResponsePB& YBRedisOp::response() const {
   return *DCHECK_NOTNULL(redis_response_.get());
+}
+
+OpGroup YBRedisReadOp::group() {
+  return FLAGS_redis_allow_reads_from_followers ? OpGroup::kConsistentPrefixRead
+                                                : OpGroup::kLeaderRead;
 }
 
 // YBRedisWriteOp -----------------------------------------------------------------
@@ -348,6 +361,11 @@ YBqlReadOp::YBqlReadOp(const shared_ptr<YBTable>& table)
 }
 
 YBqlReadOp::~YBqlReadOp() {}
+
+OpGroup YBqlReadOp::group() {
+  return yb_consistency_level_ == YBConsistencyLevel::CONSISTENT_PREFIX
+      ? OpGroup::kConsistentPrefixRead : OpGroup::kLeaderRead;
+}
 
 YBqlReadOp *YBqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
   YBqlReadOp *op = new YBqlReadOp(table);
@@ -764,7 +782,7 @@ Status YBNoOp::Execute(const YBPartialRow& key) {
   return Status::OK();
 }
 
-bool YBPgsqlReadOp::wrote_data(IsolationLevel isolation_level) {
+bool YBPgsqlReadOp::should_add_intents(IsolationLevel isolation_level) {
   return isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION ||
          IsValidRowMarkType(GetRowMarkTypeFromPB(*read_request_));
 }

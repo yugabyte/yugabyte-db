@@ -266,6 +266,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
   CHECKED_STATUS ApplyKeyValueRowOperations(
+      int64_t batch_idx, // index of this batch in its transaction
       const docdb::KeyValueWriteBatchPB& put_batch,
       const rocksdb::UserFrontiers* frontiers,
       HybridTime hybrid_time);
@@ -573,6 +574,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void UnregisterReader(HybridTime read_point) override;
 
   CHECKED_STATUS PrepareTransactionWriteBatch(
+      int64_t batch_idx, // index of this batch in its transaction
       const docdb::KeyValueWriteBatchPB& put_batch,
       HybridTime hybrid_time,
       rocksdb::WriteBatch* rocksdb_write_batch);

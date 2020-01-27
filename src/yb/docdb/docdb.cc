@@ -47,6 +47,8 @@
 #include "yb/rocksutil/write_batch_formatter.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/server/hybrid_clock.h"
+
+#include "yb/util/bitmap.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/enums.h"
@@ -75,11 +77,28 @@ using namespace std::placeholders;
 
 DEFINE_test_flag(bool, docdb_sort_weak_intents_in_tests, false,
                 "Sort weak intents to make their order deterministic.");
+DEFINE_bool(enable_transaction_sealing, false,
+            "Whether transaction sealing is enabled.");
+DEFINE_test_flag(bool, TEST_fail_on_replicated_batch_idx_set_in_txn_record, false,
+                 "Fail when a set of replicated batch indexes is found in txn record.");
 
 namespace yb {
 namespace docdb {
 
 namespace {
+
+// Slice parts with the number of slices fixed at compile time.
+template <int N>
+struct FixedSliceParts {
+  FixedSliceParts(const std::array<Slice, N>& input) : parts(input.data()) { // NOLINT
+  }
+
+  operator SliceParts() const {
+    return SliceParts(parts, N);
+  }
+
+  const Slice* parts;
+};
 
 // Main intent data::
 // Prefix + DocPath + IntentType + DocHybridTime -> TxnId + value of the intent
@@ -87,14 +106,16 @@ namespace {
 // Prefix + TxnId + DocHybridTime -> Main intent data key
 //
 // Expects that last entry of key is DocHybridTime.
+template <int N>
 void AddIntent(
     const TransactionId& transaction_id,
-    const SliceParts& key,
+    const FixedSliceParts<N>& key,
     const SliceParts& value,
-    rocksdb::WriteBatch* rocksdb_write_batch) {
+    rocksdb::WriteBatch* rocksdb_write_batch,
+    Slice reverse_value_prefix = Slice()) {
   char reverse_key_prefix[1] = { ValueTypeAsChar::kTransactionId };
   size_t doc_ht_buffer[kMaxWordsPerEncodedHybridTimeWithValueType];
-  auto doc_ht_slice = key.parts[key.num_parts - 1];
+  auto doc_ht_slice = key.parts[N - 1];
   memcpy(doc_ht_buffer, doc_ht_slice.data(), doc_ht_slice.size());
   for (size_t i = 0; i != kMaxWordsPerEncodedHybridTimeWithValueType; ++i) {
     doc_ht_buffer[i] = ~doc_ht_buffer[i];
@@ -107,7 +128,14 @@ void AddIntent(
       doc_ht_slice,
   }};
   rocksdb_write_batch->Put(key, value);
-  rocksdb_write_batch->Put(reverse_key, key);
+  if (reverse_value_prefix.empty()) {
+    rocksdb_write_batch->Put(reverse_key, key);
+  } else {
+    std::array<Slice, N + 1> reverse_value;
+    reverse_value[0] = reverse_value_prefix;
+    memcpy(&reverse_value[1], key.parts, sizeof(*key.parts) * N);
+    rocksdb_write_batch->Put(reverse_key, reverse_value);
+  }
 }
 
 // key should be valid prefix of doc key, ending with some complete pritimive value or group end.
@@ -202,7 +230,7 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
   if (!read_pairs.empty()) {
     RETURN_NOT_OK(EnumerateIntents(
         read_pairs,
-        [&result](IntentStrength strength, Slice value, KeyBytes* key) {
+        [&result](IntentStrength strength, Slice value, KeyBytes* key, LastKey) {
           RefCntPrefix prefix(key->data());
           auto intent_types = strength == IntentStrength::kStrong
               ? IntentTypeSet({IntentType::kStrongRead})
@@ -443,7 +471,7 @@ Status EnumerateWeakIntents(
   }
 
   // For any non-empty key we already know that the empty key intent is weak.
-  functor(IntentStrength::kWeak, kEmptyIntentValue, encoded_key_buffer);
+  functor(IntentStrength::kWeak, kEmptyIntentValue, encoded_key_buffer, LastKey::kFalse);
 
   auto hashed_part_size = VERIFY_RESULT(DocKey::EncodedSize(key, DocKeyPart::HASHED_PART_ONLY));
 
@@ -468,7 +496,8 @@ Status EnumerateWeakIntents(
     }
 
     // Generate a week intent that only includes the hash component.
-    RETURN_NOT_OK(functor(IntentStrength::kWeak, kEmptyIntentValue, encoded_key_buffer));
+    RETURN_NOT_OK(functor(
+        IntentStrength::kWeak, kEmptyIntentValue, encoded_key_buffer, LastKey::kFalse));
 
     // Remove the kGroupEnd we added a bit earlier so we can append some range components.
     encoded_key_buffer->RemoveLastByte();
@@ -491,7 +520,8 @@ Status EnumerateWeakIntents(
       return Status::OK();
     }
     if (partial_range_key_intents || *key.cdata() == ValueTypeAsChar::kGroupEnd) {
-      RETURN_NOT_OK(functor(IntentStrength::kWeak, kEmptyIntentValue, encoded_key_buffer));
+      RETURN_NOT_OK(functor(
+          IntentStrength::kWeak, kEmptyIntentValue, encoded_key_buffer, LastKey::kFalse));
     }
     encoded_key_buffer->RemoveLastByte();
     range_key_start = key.cdata();
@@ -509,7 +539,8 @@ Status EnumerateWeakIntents(
       // This was the last subkey.
       return Status::OK();
     }
-    RETURN_NOT_OK(functor(IntentStrength::kWeak, kEmptyIntentValue, encoded_key_buffer));
+    RETURN_NOT_OK(functor(
+        IntentStrength::kWeak, kEmptyIntentValue, encoded_key_buffer, LastKey::kFalse));
     subkey_start = key.cdata();
   }
 
@@ -522,10 +553,11 @@ Status EnumerateWeakIntents(
 
 Status EnumerateIntents(
     Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,
-    KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents) {
+    KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
+    LastKey last_key) {
   RETURN_NOT_OK(EnumerateWeakIntents(
       key, functor, encoded_key_buffer, partial_range_key_intents));
-  return functor(IntentStrength::kStrong, intent_value, encoded_key_buffer);
+  return functor(IntentStrength::kStrong, intent_value, encoded_key_buffer, last_key);
 }
 
 Status EnumerateIntents(
@@ -533,12 +565,14 @@ Status EnumerateIntents(
     const EnumerateIntentsCallback& functor, PartialRangeKeyIntents partial_range_key_intents) {
   KeyBytes encoded_key;
 
-  for (int index = 0; index < kv_pairs.size(); ++index) {
+  for (int index = 0; index < kv_pairs.size(); ) {
     const auto &kv_pair = kv_pairs.Get(index);
+    ++index;
     CHECK(!kv_pair.key().empty());
     CHECK(!kv_pair.value().empty());
     RETURN_NOT_OK(EnumerateIntents(
-        kv_pair.key(), kv_pair.value(), functor, &encoded_key, partial_range_key_intents));
+        kv_pair.key(), kv_pair.value(), functor, &encoded_key, partial_range_key_intents,
+        LastKey(index == kv_pairs.size())));
   }
 
   return Status::OK();
@@ -553,10 +587,12 @@ class PrepareTransactionWriteBatchHelper {
   PrepareTransactionWriteBatchHelper(HybridTime hybrid_time,
                                      rocksdb::WriteBatch* rocksdb_write_batch,
                                      const TransactionId& transaction_id,
+                                     const Slice& replicated_batches_state,
                                      IntraTxnWriteId* intra_txn_write_id)
       : hybrid_time_(hybrid_time),
         rocksdb_write_batch_(rocksdb_write_batch),
         transaction_id_(transaction_id),
+        replicated_batches_state_(replicated_batches_state),
         intra_txn_write_id_(intra_txn_write_id) {
   }
 
@@ -569,7 +605,8 @@ class PrepareTransactionWriteBatchHelper {
   }
 
   // Using operator() to pass this object conveniently to EnumerateIntents.
-  CHECKED_STATUS operator()(IntentStrength intent_strength, Slice value_slice, KeyBytes* key) {
+  CHECKED_STATUS operator()(IntentStrength intent_strength, Slice value_slice, KeyBytes* key,
+                            LastKey last_key) {
     if (intent_strength == IntentStrength::kWeak) {
       weak_intents_[key->data()] |= StrongToWeak(strong_intent_types_);
       return Status::OK();
@@ -598,12 +635,19 @@ class PrepareTransactionWriteBatchHelper {
 
     DocHybridTimeBuffer doc_ht_buffer;
 
-    std::array<Slice, 3> key_parts = {{
+    constexpr size_t kNumKeyParts = 3;
+    std::array<Slice, kNumKeyParts> key_parts = {{
         key->AsSlice(),
         Slice(intent_type, 2),
         doc_ht_buffer.EncodeWithValueType(hybrid_time_, write_id_++),
     }};
-    AddIntent(transaction_id_, key_parts, value, rocksdb_write_batch_);
+
+    Slice reverse_value_prefix;
+    if (last_key && FLAGS_enable_transaction_sealing) {
+      reverse_value_prefix = replicated_batches_state_;
+    }
+    AddIntent<kNumKeyParts>(
+        transaction_id_, key_parts, value, rocksdb_write_batch_, reverse_value_prefix);
 
     return Status::OK();
   }
@@ -640,13 +684,14 @@ class PrepareTransactionWriteBatchHelper {
       DocHybridTimeBuffer* doc_ht_buffer) {
     char intent_type[2] = { ValueTypeAsChar::kIntentTypeSet,
                             static_cast<char>(intent_and_types.second.ToUIntPtr()) };
-    std::array<Slice, 3> key = {{
+    constexpr size_t kNumKeyParts = 3;
+    std::array<Slice, kNumKeyParts> key = {{
         Slice(intent_and_types.first),
         Slice(intent_type, 2),
         doc_ht_buffer->EncodeWithValueType(hybrid_time_, write_id_++),
     }};
 
-    AddIntent(transaction_id_, key, value, rocksdb_write_batch_);
+    AddIntent<kNumKeyParts>(transaction_id_, key, value, rocksdb_write_batch_);
   }
 
   // TODO(dtxn) weak & strong intent in one batch.
@@ -655,6 +700,7 @@ class PrepareTransactionWriteBatchHelper {
   HybridTime hybrid_time_;
   rocksdb::WriteBatch* rocksdb_write_batch_;
   const TransactionId& transaction_id_;
+  Slice replicated_batches_state_;
   IntentTypeSet strong_intent_types_;
   std::unordered_map<std::string, IntentTypeSet> weak_intents_;
   IntraTxnWriteId write_id_ = 0;
@@ -678,13 +724,14 @@ void PrepareTransactionWriteBatch(
     const TransactionId& transaction_id,
     IsolationLevel isolation_level,
     PartialRangeKeyIntents partial_range_key_intents,
+    const Slice& replicated_batches_state,
     IntraTxnWriteId* write_id) {
   VLOG(4) << "PrepareTransactionWriteBatch(), write_id = " << *write_id;
 
   RowMarkType row_mark = GetRowMarkTypeFromPB(put_batch);
 
   PrepareTransactionWriteBatchHelper helper(
-      hybrid_time, rocksdb_write_batch, transaction_id, write_id);
+      hybrid_time, rocksdb_write_batch, transaction_id, replicated_batches_state, write_id);
 
   if (!put_batch.write_pairs().empty()) {
     if (IsValidRowMarkType(row_mark)) {
@@ -1322,15 +1369,16 @@ Slice DocHybridTimeBuffer::EncodeWithValueType(const DocHybridTime& doc_ht) {
 CHECKED_STATUS IntentToWriteRequest(
     const Slice& transaction_id_slice,
     HybridTime commit_ht,
-    rocksdb::Iterator* reverse_index_iter,
+    const Slice& reverse_index_key,
+    const Slice& reverse_index_value,
     rocksdb::Iterator* intent_iter,
     rocksdb::WriteBatch* regular_batch,
     IntraTxnWriteId* write_id) {
   DocHybridTimeBuffer doc_ht_buffer;
-  intent_iter->Seek(reverse_index_iter->value());
-  if (!intent_iter->Valid() || intent_iter->key() != reverse_index_iter->value()) {
-    LOG(DFATAL) << "Unable to find intent: " << reverse_index_iter->value().ToDebugString()
-                << " for " << reverse_index_iter->key().ToDebugString();
+  intent_iter->Seek(reverse_index_value);
+  if (!intent_iter->Valid() || intent_iter->key() != reverse_index_value) {
+    LOG(DFATAL) << "Unable to find intent: " << reverse_index_value.ToDebugHexString()
+                << " for " << reverse_index_key.ToDebugHexString();
     return Status::OK();
   }
   auto intent = VERIFY_RESULT(ParseIntentKey(intent_iter->key(), transaction_id_slice));
@@ -1436,16 +1484,23 @@ Status PrepareApplyIntentsBatch(
     // If the key ends at the transaction id then it is transaction metadata (status tablet,
     // isolation level etc.).
     if (key_slice.size() > txn_reverse_index_prefix.size()) {
+      auto reverse_index_value = reverse_index_iter.value();
+      if (!reverse_index_value.empty() && reverse_index_value[0] == ValueTypeAsChar::kBitSet) {
+        CHECK(!FLAGS_TEST_fail_on_replicated_batch_idx_set_in_txn_record);
+        reverse_index_value.remove_prefix(1);
+        RETURN_NOT_OK(OneWayBitmap::Skip(&reverse_index_value));
+      }
+
       // Value of reverse index is a key of original intent record, so seek it and check match.
       if (regular_batch &&
           (!key_bounds || key_bounds->IsWithinBounds(reverse_index_iter.value()))) {
         RETURN_NOT_OK(IntentToWriteRequest(
-            transaction_id_slice, commit_ht, &reverse_index_iter, &intent_iter,
-            regular_batch, &write_id));
+            transaction_id_slice, commit_ht, reverse_index_iter.key(), reverse_index_value,
+            &intent_iter, regular_batch, &write_id));
       }
 
       if (intents_batch) {
-        intents_batch->SingleDelete(reverse_index_iter.value());
+        intents_batch->SingleDelete(reverse_index_value);
       }
     }
 

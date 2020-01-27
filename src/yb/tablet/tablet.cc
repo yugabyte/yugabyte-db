@@ -855,12 +855,13 @@ void Tablet::StartOperation(WriteOperationState* operation_state) {
 }
 
 Status Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
-  const KeyValueWriteBatchPB& put_batch =
+  const auto& write_request =
       operation_state->consensus_round() && operation_state->consensus_round()->replicate_msg()
           // Online case.
-          ? operation_state->consensus_round()->replicate_msg()->write_request().write_batch()
+          ? operation_state->consensus_round()->replicate_msg()->write_request()
           // Bootstrap case.
-          : operation_state->request()->write_batch();
+          : *operation_state->request();
+  const KeyValueWriteBatchPB& put_batch = write_request.write_batch();
   if (metrics_) {
     metrics_->rows_inserted->IncrementBy(put_batch.write_pairs().size());
   }
@@ -875,10 +876,11 @@ Status Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
   // Even if we have an external hybrid time, use the local commit hybrid time in the consensus
   // frontier.
   set_hybrid_time(operation_state->hybrid_time(), &frontiers);
-  return ApplyKeyValueRowOperations(put_batch, &frontiers, hybrid_time);
+  return ApplyKeyValueRowOperations(write_request.batch_idx(), put_batch, &frontiers, hybrid_time);
 }
 
 Status Tablet::PrepareTransactionWriteBatch(
+    int64_t batch_idx,
     const KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
     rocksdb::WriteBatch* rocksdb_write_batch) {
@@ -892,8 +894,10 @@ Status Tablet::PrepareTransactionWriteBatch(
                     PgsqlError(YBPgErrorCode::YB_PG_IN_FAILED_SQL_TRANSACTION));
     }
   }
-  auto metadata_with_write_id = transaction_participant()->MetadataWithWriteId(transaction_id);
-  if (!metadata_with_write_id) {
+  boost::container::small_vector<uint8_t, 16> encoded_replicated_batch_idx_set;
+  auto prepare_batch_data = transaction_participant()->PrepareBatchData(
+      transaction_id, batch_idx, &encoded_replicated_batch_idx_set);
+  if (!prepare_batch_data) {
     // If metadata is missing it could be caused by aborted and removed transaction.
     // In this case we should not add new intents for it.
     return STATUS(TryAgain,
@@ -902,17 +906,21 @@ Status Tablet::PrepareTransactionWriteBatch(
                          PgsqlError(YBPgErrorCode::YB_PG_IN_FAILED_SQL_TRANSACTION));
   }
 
-  auto isolation_level = metadata_with_write_id->first.isolation;
-  auto write_id = metadata_with_write_id->second;
+  auto isolation_level = prepare_batch_data->first;
+  auto& last_batch_data = prepare_batch_data->second;
   yb::docdb::PrepareTransactionWriteBatch(
       put_batch, hybrid_time, rocksdb_write_batch, transaction_id, isolation_level,
-      UsePartialRangeKeyIntents(metadata_.get()), &write_id);
-  transaction_participant()->UpdateLastWriteId(transaction_id, write_id);
+      UsePartialRangeKeyIntents(metadata_.get()),
+      Slice(encoded_replicated_batch_idx_set.data(), encoded_replicated_batch_idx_set.size()),
+      &last_batch_data.write_id);
+  last_batch_data.hybrid_time = hybrid_time;
+  transaction_participant()->BatchReplicated(transaction_id, last_batch_data);
 
   return Status::OK();
 }
 
-Status Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
+Status Tablet::ApplyKeyValueRowOperations(int64_t batch_idx,
+                                          const KeyValueWriteBatchPB& put_batch,
                                           const rocksdb::UserFrontiers* frontiers,
                                           const HybridTime hybrid_time) {
   if (put_batch.write_pairs().empty() && put_batch.read_pairs().empty()) {
@@ -926,7 +934,7 @@ Status Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
   rocksdb::WriteBatch write_batch;
   if (put_batch.has_transaction()) {
     RequestScope request_scope(transaction_participant_.get());
-    RETURN_NOT_OK(PrepareTransactionWriteBatch(put_batch, hybrid_time, &write_batch));
+    RETURN_NOT_OK(PrepareTransactionWriteBatch(batch_idx, put_batch, hybrid_time, &write_batch));
     WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
   } else {
     PrepareNonTransactionWriteBatch(put_batch, hybrid_time, &write_batch);
@@ -995,6 +1003,7 @@ void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_req
   if (batch_request->has_external_hybrid_time()) {
     write_request->set_external_hybrid_time(batch_request->external_hybrid_time());
   }
+  write_request->set_batch_idx(batch_request->batch_idx());
 }
 
 } // namespace

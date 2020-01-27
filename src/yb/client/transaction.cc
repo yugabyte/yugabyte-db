@@ -179,7 +179,7 @@ class YBTransaction::Impl final {
       }
       state_.store(TransactionState::kAborted, std::memory_order_release);
     }
-    DoAbort(TransactionRpcDeadline(), Status::OK(), transaction);
+    DoAbort(TransactionRpcDeadline(), transaction);
 
     return Status::OK();
   }
@@ -187,14 +187,52 @@ class YBTransaction::Impl final {
   bool Prepare(const internal::InFlightOps& ops,
                ForceConsistentRead force_consistent_read,
                CoarseTimePoint deadline,
+               Initial initial,
                Waiter waiter,
                TransactionMetadata* metadata) {
-    VLOG_WITH_PREFIX(2) << "Prepare(" << AsString(ops) << ", " << force_consistent_read << ")";
+    VLOG_WITH_PREFIX(2) << "Prepare(" << AsString(ops) << ", " << force_consistent_read << ", "
+                        << initial << ")";
 
     bool has_tablets_without_metadata = false;
     {
       std::unique_lock<std::mutex> lock(mutex_);
-      if (!ready_) {
+      const bool defer = !ready_;
+
+      int num_tablets = 0;
+      if (!defer || initial) {
+        for (auto op_it = ops.begin(); op_it != ops.end();) {
+          ++num_tablets;
+          auto& first_op = **op_it;
+          auto* tablet = first_op.tablet.get();
+          auto op_group = first_op.yb_op->group();
+          bool should_add_intents = (**op_it).yb_op->should_add_intents(metadata_.isolation);
+          for (;;) {
+            if (++op_it == ops.end() || (**op_it).tablet.get() != tablet ||
+                (**op_it).yb_op->group() != op_group) {
+              break;
+            }
+          }
+
+          bool has_metadata;
+          if (initial && should_add_intents) {
+            auto& tablet_state = tablets_[tablet->tablet_id()];
+            // TODO(dtxn) Handle skipped writes, i.e. writes that did not write anything (#3220)
+            first_op.batch_idx = tablet_state.num_batches;
+            ++tablet_state.num_batches;
+            has_metadata = tablet_state.has_metadata;
+          } else {
+            auto it = tablets_.find(tablet->tablet_id());
+            has_metadata = it != tablets_.end() && it->second.has_metadata;
+          }
+          has_tablets_without_metadata = has_tablets_without_metadata || !has_metadata;
+        }
+      }
+
+      if (initial) {
+        running_requests_ += ops.size();
+      }
+
+      if (defer) {
         if (waiter) {
           waiters_.push_back(std::move(waiter));
         }
@@ -204,28 +242,11 @@ class YBTransaction::Impl final {
         return false;
       }
 
-      int num_tablets = 0;
-      for (auto op_it = ops.begin(); op_it != ops.end();) {
-        ++num_tablets;
-        auto* tablet = (**op_it).tablet.get();
-        for (;;) {
-          if (++op_it == ops.end() || (**op_it).tablet.get() != tablet) {
-            break;
-          }
-        }
-
-        has_tablets_without_metadata =
-            has_tablets_without_metadata ||
-            tablets_with_metadata_.count(tablet->tablet_id()) == 0;
-      }
-
       // For serializable isolation we never choose read time, since it always reads latest
       // snapshot.
       // For snapshot isolation, if read time was not yet picked, we have to choose it now, if there
       // multiple tablets that will process first request.
       SetReadTimeIfNeeded(num_tablets > 1 || force_consistent_read);
-
-      running_requests_ += ops.size();
     }
 
     VLOG_WITH_PREFIX(3) << "Prepare, has_tablets_without_metadata: "
@@ -251,42 +272,55 @@ class YBTransaction::Impl final {
       std::this_thread::sleep_for(FLAGS_TEST_transaction_inject_flushed_delay_ms * 1ms);
     }
 
-    std::lock_guard<std::mutex> lock(mutex_);
-    running_requests_ -= ops.size();
+    bool abort = false;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      running_requests_ -= ops.size();
 
-    if (status.ok()) {
-      if (used_read_time && metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
-        const bool read_point_already_set = static_cast<bool>(read_point_.GetReadTime());
-#ifndef NDEBUG
-        if (read_point_already_set) {
-          // Display details of operations before crashing in debug mode.
-          int op_idx = 1;
-          for (const auto& op : ops) {
-            LOG(ERROR) << "Operation " << op_idx << ": " << op->ToString();
-            op_idx++;
+      if (status.ok()) {
+        if (used_read_time && metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+          const bool read_point_already_set = static_cast<bool>(read_point_.GetReadTime());
+          #ifndef NDEBUG
+          if (read_point_already_set) {
+            // Display details of operations before crashing in debug mode.
+            int op_idx = 1;
+            for (const auto& op : ops) {
+              LOG(ERROR) << "Operation " << op_idx << ": " << op->ToString();
+              op_idx++;
+            }
+          }
+          #endif
+          LOG_IF_WITH_PREFIX(DFATAL, read_point_already_set)
+              << "Read time already picked (" << read_point_.GetReadTime()
+              << ", but server replied with used read time: " << used_read_time;
+          read_point_.SetReadTime(used_read_time, ConsistentReadPoint::HybridTimeMap());
+        }
+        const std::string* prev_tablet_id = nullptr;
+        for (const auto& op : ops) {
+          if (op->yb_op->applied() && op->yb_op->should_add_intents(metadata_.isolation)) {
+            const std::string& tablet_id = op->tablet->tablet_id();
+            if (prev_tablet_id == nullptr || tablet_id != *prev_tablet_id) {
+              prev_tablet_id = &tablet_id;
+              tablets_[tablet_id].has_metadata = true;
+            }
           }
         }
-#endif
-        LOG_IF_WITH_PREFIX(DFATAL, read_point_already_set)
-            << "Read time already picked (" << read_point_.GetReadTime()
-            << ", but server replied with used read time: " << used_read_time;
-        read_point_.SetReadTime(used_read_time, ConsistentReadPoint::HybridTimeMap());
-      }
-      const std::string* prev_tablet_id = nullptr;
-      for (const auto& op : ops) {
-        if (op->yb_op->succeeded() && op->yb_op->wrote_data(metadata_.isolation)) {
-          const std::string& tablet_id = op->tablet->tablet_id();
-          if (prev_tablet_id == nullptr || tablet_id != *prev_tablet_id) {
-            prev_tablet_id = &tablet_id;
-            tablets_with_metadata_.insert(tablet_id);
+      } else {
+        if (status.IsTryAgain()) {
+          auto state = state_.load(std::memory_order_acquire);
+          VLOG_WITH_PREFIX(4) << "Abort desired, state: " << AsString(state);
+          if (state == TransactionState::kRunning) {
+            abort = true;
+            // State will be changed to aborted in SetError
           }
         }
+        SetError(status, &lock);
       }
-    } else if (status.IsTryAgain()) {
-      SetError(status, &lock);
     }
-    // We should not handle other errors, because it is just notification that batch was failed.
-    // And they are handled during processing of that batch.
+
+    if (abort && !child_) {
+      DoAbort(TransactionRpcDeadline(), transaction_->shared_from_this());
+    }
   }
 
   void Commit(CoarseTimePoint deadline, CommitCallback callback) {
@@ -306,7 +340,7 @@ class YBTransaction::Impl final {
         //
         // See https://github.com/yugabyte/yugabyte-db/issues/3105 for details -- we might be able
         // to remove this special case if it turns out there is a bug elsewhere.
-        if (tablets_with_metadata_.empty()) {
+        if (tablets_.empty()) {
           commit_callback_(Status::OK());
           return;
         }
@@ -321,27 +355,38 @@ class YBTransaction::Impl final {
   }
 
   void Abort(CoarseTimePoint deadline) {
+    VLOG_WITH_PREFIX(2) << "Abort";
+
     auto transaction = transaction_->shared_from_this();
     {
       std::unique_lock<std::mutex> lock(mutex_);
       auto state = state_.load(std::memory_order_acquire);
       if (state != TransactionState::kRunning) {
-        LOG_IF(DFATAL, state != TransactionState::kAborted) << "Abort of committed transaction";
+        LOG_IF_WITH_PREFIX(DFATAL, state != TransactionState::kAborted)
+            << "Abort of committed transaction: " << AsString(state);
         return;
       }
       if (child_) {
-        LOG(DFATAL) << "Abort of child transaction";
+        LOG_WITH_PREFIX(DFATAL) << "Abort of child transaction";
         return;
       }
       state_.store(TransactionState::kAborted, std::memory_order_release);
       if (!ready_) {
-        waiters_.emplace_back(std::bind(&Impl::DoAbort, this, deadline, _1, transaction));
+        waiters_.emplace_back([this, deadline, transaction](const Status& status) {
+          if (!status.ok()) {
+            // We already stopped to send heartbeats, so transaction would be aborted anyway.
+            LOG_WITH_PREFIX(WARNING) << "Failed to abort transaction: " << status;
+            return;
+          }
+
+          DoAbort(deadline, transaction);
+        });
         lock.unlock();
         RequestStatusTablet(deadline);
         return;
       }
     }
-    DoAbort(deadline, Status::OK(), transaction);
+    DoAbort(deadline, transaction);
   }
 
   bool IsRestartRequired() const {
@@ -406,12 +451,13 @@ class YBTransaction::Impl final {
     state_.store(TransactionState::kCommitted, std::memory_order_release);
     ChildTransactionResultPB result;
     auto& tablets = *result.mutable_tablets();
-    tablets.Reserve(tablets_with_metadata_.size());
-    for (const auto& tablet : tablets_with_metadata_) {
+    tablets.Reserve(tablets_.size());
+    for (const auto& tablet : tablets_) {
       auto& out = *tablets.Add();
-      out.set_tablet_id(tablet);
-      // Required for backward compatibility.
-      out.set_metadata_state(InvolvedTabletMetadataState::EXIST);
+      out.set_tablet_id(tablet.first);
+      out.set_metadata_state(
+          tablet.second.has_metadata ? InvolvedTabletMetadataState::EXIST
+                                     : InvolvedTabletMetadataState::MISSING);
     }
     read_point_.FinishChildTransactionResult(HadReadTime(child_had_read_time_), &result);
     return result;
@@ -425,7 +471,11 @@ class YBTransaction::Impl final {
     }
 
     for (const auto& tablet : result.tablets()) {
-      tablets_with_metadata_.insert(tablet.tablet_id());
+      auto& tablet_state = tablets_[tablet.tablet_id()];
+      tablet_state.num_batches += tablet.num_batches();
+      tablet_state.has_metadata =
+          tablet_state.has_metadata ||
+          tablet.metadata_state() == InvolvedTabletMetadataState::EXIST;
     }
     read_point_.ApplyChildTransactionResult(result);
 
@@ -519,7 +569,7 @@ class YBTransaction::Impl final {
   void DoCommit(
       CoarseTimePoint deadline, const Status& status, const YBTransactionPtr& transaction) {
     VLOG_WITH_PREFIX(1)
-        << Format("Commit, tablets: $0, status: $1", tablets_with_metadata_, status);
+        << Format("Commit, tablets: $0, status: $1", tablets_, status);
 
     if (!status.ok()) {
       commit_callback_(status);
@@ -528,8 +578,8 @@ class YBTransaction::Impl final {
 
     // If we don't have any tablets that have intents written to them, just abort it.
     // But notify caller that commit was successful, so it is transparent for him.
-    if (tablets_with_metadata_.empty()) {
-      DoAbort(deadline, Status::OK(), transaction);
+    if (tablets_.empty()) {
+      DoAbort(deadline, transaction);
       commit_callback_(Status::OK());
       return;
     }
@@ -540,11 +590,9 @@ class YBTransaction::Impl final {
     auto& state = *req.mutable_state();
     state.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
     state.set_status(TransactionStatus::COMMITTED);
-    state.mutable_tablets()->Reserve(tablets_with_metadata_.size());
-    for (const auto& tablet : tablets_with_metadata_) {
-      // If metadata is missing then the tablet does not contain intents, so does not
-      // need to be involved in Apply/Cleanup.
-      state.add_tablets(tablet);
+    state.mutable_tablets()->Reserve(tablets_.size());
+    for (const auto& tablet : tablets_) {
+      state.add_tablets(tablet.first);
     }
 
     manager_->rpcs().RegisterAndStart(
@@ -557,15 +605,8 @@ class YBTransaction::Impl final {
         &commit_handle_);
   }
 
-  void DoAbort(
-      CoarseTimePoint deadline, const Status& status, const YBTransactionPtr& transaction) {
-    VLOG_WITH_PREFIX(1) << "Abort, status: " << status;
-
-    if (!status.ok()) {
-      // We already stopped to send heartbeats, so transaction would be aborted anyway.
-      LOG(WARNING) << "Failed to abort transaction: " << status;
-      return;
-    }
+  void DoAbort(CoarseTimePoint deadline, const YBTransactionPtr& transaction) {
+    VLOG_WITH_PREFIX(1) << "Abort";
 
     tserver::AbortTransactionRequestPB req;
     req.set_tablet_id(status_tablet_->tablet_id());
@@ -593,8 +634,13 @@ class YBTransaction::Impl final {
 
     std::vector<std::string> tablet_ids;
     {
-      std::unique_lock<std::mutex> lock(mutex_);
-      tablet_ids.assign(tablets_with_metadata_.begin(), tablets_with_metadata_.end());
+      std::lock_guard<std::mutex> lock(mutex_);
+      tablet_ids.reserve(tablets_.size());
+      for (const auto& tablet : tablets_) {
+        if (tablet.second.has_metadata) {
+          tablet_ids.push_back(tablet.first);
+        }
+      }
     }
 
     CleanupTransaction(
@@ -866,10 +912,19 @@ class YBTransaction::Impl final {
   rpc::Rpcs::Handle commit_handle_;
   rpc::Rpcs::Handle abort_handle_;
 
-  typedef std::unordered_set<TabletId> TabletIds;
+  struct TabletState {
+    size_t num_batches = 0;
+    bool has_metadata = false;
+
+    std::string ToString() const {
+      return Format("{ num_batches: $0 has_metadata: $1 }", num_batches, has_metadata);
+    }
+  };
+
+  typedef std::unordered_map<TabletId, TabletState> TabletStates;
 
   std::mutex mutex_;
-  TabletIds tablets_with_metadata_;
+  TabletStates tablets_;
   std::vector<Waiter> waiters_;
   std::promise<TransactionMetadata> metadata_promise_;
   std::shared_future<TransactionMetadata> metadata_future_;
@@ -916,10 +971,11 @@ void YBTransaction::InitWithReadPoint(
 bool YBTransaction::Prepare(const internal::InFlightOps& ops,
                             ForceConsistentRead force_consistent_read,
                             CoarseTimePoint deadline,
+                            Initial initial,
                             Waiter waiter,
                             TransactionMetadata* metadata) {
   return impl_->Prepare(
-      ops, force_consistent_read, deadline, std::move(waiter), metadata);
+      ops, force_consistent_read, deadline, initial, std::move(waiter), metadata);
 }
 
 void YBTransaction::Flushed(
