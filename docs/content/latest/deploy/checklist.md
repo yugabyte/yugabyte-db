@@ -56,7 +56,7 @@ Allocate adequate CPU and RAM. YugabyteDB has good defaults for running on a wid
 ### Disks
 
 - Use SSDs (solid state disks) for good performance.
-- Both local or remote attached storage work with YugabyteDB. Since YugabyteDB internally replicates data for fault tolerance, remote attached storage which which does its own additional replication is not a requirement. Local disks often offer better performance at a lower cost.
+- Both local or remote attached storage work with YugabyteDB. Since YugabyteDB internally replicates data for fault tolerance, remote attached storage which does its own additional replication is not a requirement. Local disks often offer better performance at a lower cost.
 - Multi-disk nodes
       - Do not use RAID across multiple disks. YugabyteDB can natively handle multi-disk nodes (JBOD).
       - Create a data directory on each of the data disks and specify a comma separated list of those directories to the yb-master and yb-tserver servers via the `--fs_data_dirs` flag.
