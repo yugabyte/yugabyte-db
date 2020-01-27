@@ -112,9 +112,10 @@ class TransactionPool::Impl {
       ++preparing_transactions_;
     }
     IncrementGauge(gauge_preparing_);
-    if (new_txn->Prepare({}, ForceConsistentRead::kFalse, TransactionRpcDeadline(),
-                         std::bind(&Impl::TransactionReady, this, _1, new_txn, old_taken),
-                         nullptr /* metadata */)) {
+    if (new_txn->Prepare(
+        /* ops= */{}, ForceConsistentRead::kFalse, TransactionRpcDeadline(), Initial::kFalse,
+        std::bind(&Impl::TransactionReady, this, _1, new_txn, old_taken),
+        nullptr /* metadata */)) {
       TransactionReady(Status::OK(), new_txn, old_taken);
     }
     return result;

@@ -602,7 +602,7 @@ class OperationConflictResolverContext : public ConflictResolverContext {
     IntentTypeSet strong_intent_types;
 
     EnumerateIntentsCallback callback = [&strong_intent_types, resolver]
-        (IntentStrength intent_strength, Slice, KeyBytes* encoded_key_buffer) {
+        (IntentStrength intent_strength, Slice, KeyBytes* encoded_key_buffer, LastKey) {
       return resolver->ReadIntentConflicts(
           intent_strength == IntentStrength::kStrong ? strong_intent_types
                                                      : StrongToWeak(strong_intent_types),

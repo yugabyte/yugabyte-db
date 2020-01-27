@@ -36,6 +36,8 @@
 
 #include "yb/server/server_fwd.h"
 
+#include "yb/tablet/tablet_fwd.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/opid.pb.h"
 #include "yb/util/result.h"
@@ -50,6 +52,7 @@ class WriteBatch;
 namespace yb {
 
 class HybridTime;
+class OneWayBitmap;
 class TransactionMetadataPB;
 
 namespace tserver {
@@ -59,9 +62,6 @@ class TransactionStatePB;
 }
 
 namespace tablet {
-
-class TransactionIntentApplier;
-class UpdateTxnOperationState;
 
 struct TransactionApplyData {
   int64_t leader_term;
@@ -121,6 +121,18 @@ class TransactionParticipantContext {
   ~TransactionParticipantContext() {}
 };
 
+struct TransactionalBatchData {
+  // Write id of last strong write intent in transaction.
+  IntraTxnWriteId write_id = 0;
+
+  // Hybrid time of last replicated write in transaction.
+  HybridTime hybrid_time;
+
+  std::string ToString() const {
+    return Format("{ write_id: $0 hybrid_time: $1 }", write_id, hybrid_time);
+  }
+};
+
 // TransactionParticipant manages running transactions, i.e. transactions that have intents in
 // appropriate tablet. Since this class manages transactions of tablet there is separate class
 // instance per tablet.
@@ -140,10 +152,17 @@ class TransactionParticipant : public TransactionStatusManager {
 
   Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& id) override;
 
-  boost::optional<std::pair<TransactionMetadata, IntraTxnWriteId>> MetadataWithWriteId(
-      const TransactionId& id);
+  // Prepares batch data for specified transaction id.
+  // I.e. adds specified batch idx to set of replicated batches and fills encoded_replicated_batches
+  // with new state of replicated batch indexes. Encoding does not matter for user of this function,
+  // he should just append it to appropriate value.
+  //
+  // Returns boost::none when transaction is unknown.
+  boost::optional<std::pair<IsolationLevel, TransactionalBatchData>> PrepareBatchData(
+      const TransactionId& id, size_t batch_idx,
+      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches);
 
-  void UpdateLastWriteId(const TransactionId& id, IntraTxnWriteId value);
+  void BatchReplicated(const TransactionId& id, const TransactionalBatchData& data);
 
   HybridTime LocalCommitTime(const TransactionId& id) override;
 
@@ -161,7 +180,9 @@ class TransactionParticipant : public TransactionStatusManager {
     const tserver::TransactionStatePB& state;
     const consensus::OpId& op_id;
     HybridTime hybrid_time;
-    bool already_applied;
+    AlreadyApplied already_applied;
+
+    std::string ToString() const;
   };
 
   CHECKED_STATUS ProcessReplicated(const ReplicatedData& data);
@@ -185,6 +206,8 @@ class TransactionParticipant : public TransactionStatusManager {
 
   // Returns pair of number of intents and number of transactions.
   std::pair<size_t, size_t> TEST_CountIntents() const;
+
+  OneWayBitmap TEST_TransactionReplicatedBatches(const TransactionId& id) const;
 
  private:
   int64_t RegisterRequest() override;

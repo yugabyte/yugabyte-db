@@ -105,6 +105,10 @@ struct InFlightOp {
   // order of operations. This is important when multiple operations act on the same row.
   int sequence_number_;
 
+  // Set only for the first operation in group.
+  // Operations are groupped by tablet and operation kind (write, leader read, follower read).
+  int64_t batch_idx = -1;
+
   std::string ToString() const;
 };
 
