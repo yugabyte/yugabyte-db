@@ -147,12 +147,16 @@ void PrepareNonTransactionWriteBatch(
     HybridTime hybrid_time,
     rocksdb::WriteBatch* rocksdb_write_batch);
 
+YB_STRONGLY_TYPED_BOOL(LastKey);
+
 // Enumerates intents corresponding to provided key value pairs.
 // For each key it generates a strong intent and for each parent of each it generates a weak one.
 // functor should accept 3 arguments:
 // intent_kind - kind of intent weak or strong
 // value_slice - value of intent
 // key - pointer to key in format of SubDocKey (no ht)
+// last_key - whether it is last strong key in enumeration
+
 // TODO(dtxn) don't expose this method outside of DocDB if TransactionConflictResolver is moved
 // inside DocDB.
 // Note: From https://stackoverflow.com/a/17278470/461529:
@@ -161,7 +165,8 @@ void PrepareNonTransactionWriteBatch(
 // from it triggers heap allocation."
 // So, we use boost::function which doesn't have such issue:
 // http://www.boost.org/doc/libs/1_65_1/doc/html/function/misc.html
-typedef boost::function<Status(IntentStrength, Slice, KeyBytes*)> EnumerateIntentsCallback;
+typedef boost::function<
+    Status(IntentStrength, Slice, KeyBytes*, LastKey)> EnumerateIntentsCallback;
 
 CHECKED_STATUS EnumerateIntents(
     const google::protobuf::RepeatedPtrField<yb::docdb::KeyValuePairPB>& kv_pairs,
@@ -169,8 +174,11 @@ CHECKED_STATUS EnumerateIntents(
 
 CHECKED_STATUS EnumerateIntents(
     Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,
-    KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents);
+    KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
+    LastKey last_key = LastKey::kFalse);
 
+// replicated_batches_state format does not matter at this point, because it is just
+// appended to appropriate value.
 void PrepareTransactionWriteBatch(
     const docdb::KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
@@ -178,6 +186,7 @@ void PrepareTransactionWriteBatch(
     const TransactionId& transaction_id,
     IsolationLevel isolation_level,
     PartialRangeKeyIntents partial_range_key_intents,
+    const Slice& replicated_batches_state,
     IntraTxnWriteId* write_id);
 
 CHECKED_STATUS PrepareApplyIntentsBatch(

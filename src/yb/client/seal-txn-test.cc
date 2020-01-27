@@ -1,0 +1,105 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+
+#include "yb/client/session.h"
+#include "yb/client/transaction.h"
+#include "yb/client/txn-test-base.h"
+
+#include "yb/tablet/tablet_peer.h"
+
+DECLARE_int32(TEST_write_rejection_percentage);
+DECLARE_bool(TEST_fail_on_replicated_batch_idx_set_in_txn_record);
+DECLARE_bool(enable_transaction_sealing);
+
+namespace yb {
+namespace client {
+
+class SealTxnTest : public TransactionTestBase {
+ protected:
+  void SetUp() override {
+    FLAGS_enable_transaction_sealing = true;
+
+    SetIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
+    TransactionTestBase::SetUp();
+  }
+
+  void TestNumBatches(bool restart);
+};
+
+// Writes some data as part of transaction and check that batches are correcly tracked by
+// transaction participant.
+void SealTxnTest::TestNumBatches(bool restart) {
+  auto txn = CreateTransaction();
+  auto session = CreateSession(txn);
+
+  size_t prev_num_non_empty = 0;
+  for (auto op_type : {WriteOpType::INSERT, WriteOpType::UPDATE}) {
+    WriteRows(session, /* transaction= */ 0, op_type, Flush::kFalse);
+    ASSERT_OK(session->Flush());
+
+    size_t num_non_empty = 0;
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+    for (const auto& peer : peers) {
+      auto txn_participant = peer->tablet()->transaction_participant();
+      if (!txn_participant) {
+        continue;
+      }
+      auto replicated_batch_idx_set = txn_participant->TEST_TransactionReplicatedBatches(txn->id());
+      LOG(INFO) << peer->tablet_id() << ": " << replicated_batch_idx_set.ToString();
+      if (replicated_batch_idx_set.CountSet() != 0) {
+        ++num_non_empty;
+        ASSERT_EQ(replicated_batch_idx_set.ToString(),
+                  op_type == WriteOpType::INSERT ? "[0]" : "[0, 1]");
+      }
+    }
+
+    if (op_type == WriteOpType::INSERT) {
+      ASSERT_GT(num_non_empty, 0);
+      if (restart) {
+        ASSERT_OK(cluster_->RestartSync());
+      }
+    } else {
+      ASSERT_EQ(num_non_empty, prev_num_non_empty);
+    }
+    prev_num_non_empty = num_non_empty;
+  }
+}
+
+TEST_F(SealTxnTest, NumBatches) {
+  TestNumBatches(/* restart= */ false);
+}
+
+TEST_F(SealTxnTest, NumBatchesWithRestart) {
+  TestNumBatches(/* restart= */ true);
+}
+
+TEST_F(SealTxnTest, NumBatchesWithRejection) {
+  FLAGS_TEST_write_rejection_percentage = 75;
+  TestNumBatches(/* restart= */ false);
+}
+
+// Check that we could disable writing information about the number of batches,
+// since it is required for backward compatibility.
+TEST_F(SealTxnTest, NumBatchesDisable) {
+  FLAGS_enable_transaction_sealing = false;
+  FLAGS_TEST_fail_on_replicated_batch_idx_set_in_txn_record = true;
+
+  auto txn = CreateTransaction();
+  auto session = CreateSession(txn);
+  WriteRows(session);
+  ASSERT_OK(cluster_->RestartSync());
+  ASSERT_OK(txn->CommitFuture().get());
+}
+
+} // namespace client
+} // namespace yb

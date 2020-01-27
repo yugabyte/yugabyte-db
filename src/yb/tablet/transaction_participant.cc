@@ -77,6 +77,8 @@ DEFINE_test_flag(bool, fail_in_apply_if_no_metadata, false,
 DEFINE_test_flag(int32, inject_load_transaction_delay_ms, 0,
                  "Inject delay before loading each transaction at startup.");
 
+DECLARE_bool(TEST_fail_on_replicated_batch_idx_set_in_txn_record);
+
 DEFINE_uint64(max_transactions_in_status_request, 128,
               "Request status for at most specified number of transactions at once.");
 
@@ -155,7 +157,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
           return false;
         }
         VLOG_WITH_PREFIX(4) << "Create new transaction: " << metadata->transaction_id;
-        transactions_.insert(std::make_shared<RunningTransaction>(*metadata, 0, this));
+        transactions_.insert(std::make_shared<RunningTransaction>(
+            *metadata, TransactionalBatchData(), OneWayBitmap(), this));
         TransactionsModifiedUnlocked(&min_running_notifier);
         store = true;
       }
@@ -237,8 +240,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return lock_and_iterator.transaction().metadata();
   }
 
-  boost::optional<std::pair<TransactionMetadata, IntraTxnWriteId>> MetadataWithWriteId(
-      const TransactionId& id) {
+  boost::optional<std::pair<IsolationLevel, TransactionalBatchData>> PrepareBatchData(
+      const TransactionId& id, size_t batch_idx,
+      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches) {
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents of not.
     auto lock_and_iterator = LockAndFind(
@@ -247,10 +251,11 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       return boost::none;
     }
     auto& transaction = lock_and_iterator.transaction();
-    return std::make_pair(transaction.metadata(), transaction.last_write_id());
+    transaction.AddReplicatedBatch(batch_idx, encoded_replicated_batches);
+    return std::make_pair(transaction.metadata().isolation, transaction.last_batch_data());
   }
 
-  void UpdateLastWriteId(const TransactionId& id, IntraTxnWriteId value) {
+  void BatchReplicated(const TransactionId& id, const TransactionalBatchData& data) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = transactions_.find(id);
     if (it == transactions_.end()) {
@@ -258,7 +263,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
           << "Update last write id for unknown transaction: " << id;
       return;
     }
-    (**it).UpdateLastWriteId(value);
+    (**it).BatchReplicated(data);
   }
 
   void RequestStatusAt(const StatusRequest& request) {
@@ -589,6 +594,12 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return transactions_.size();
   }
 
+  OneWayBitmap TEST_TransactionReplicatedBatches(const TransactionId& id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = transactions_.find(id);
+    return it != transactions_.end() ? (**it).replicated_batches() : OneWayBitmap();
+  }
+
  private:
   class StartTimeTag;
 
@@ -864,7 +875,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       iterator->SeekToLast();
     }
     key_bytes->Truncate(key_bytes->size() - 1);
-    IntraTxnWriteId next_write_id = 0;
+    TransactionalBatchData last_batch_data;
+    OneWayBitmap replicated_batches;
     while (iterator->Valid() && iterator->key().starts_with(*key_bytes)) {
       auto decoded_key = docdb::DecodeIntentKey(iterator->value());
       LOG_IF_WITH_PREFIX(DFATAL, !decoded_key.ok())
@@ -872,7 +884,23 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
           << iterator->key().ToDebugHexString() << " => "
           << iterator->value().ToDebugHexString() << ": " << decoded_key.status();
       if (decoded_key.ok() && docdb::HasStrong(decoded_key->intent_types)) {
-        std::string rev_key = iterator->value().ToString();
+        last_batch_data.hybrid_time = decoded_key->doc_ht.hybrid_time();
+        Slice rev_key_slice(iterator->value());
+        if (!rev_key_slice.empty() && rev_key_slice[0] == docdb::ValueTypeAsChar::kBitSet) {
+          CHECK(!FLAGS_TEST_fail_on_replicated_batch_idx_set_in_txn_record);
+          rev_key_slice.remove_prefix(1);
+          auto result = OneWayBitmap::Decode(&rev_key_slice);
+          if (result.ok()) {
+            replicated_batches = std::move(*result);
+            VLOG_WITH_PREFIX(1) << "Decoded replicated batches for " << id << ": "
+                                << replicated_batches.ToString();
+          } else {
+            LOG_WITH_PREFIX(DFATAL)
+                << "Failed to decode replicated batches from "
+                << iterator->value().ToDebugHexString() << ": " << result.status();
+          }
+        }
+        std::string rev_key = rev_key_slice.ToBuffer();
         iterator->Seek(rev_key);
         // Delete could run in parallel to this load, since our deletes break snapshot read
         // we could get into situation when metadata and reverse record were successfully read,
@@ -883,12 +911,13 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
               << ": " << docdb::SubDocKey::DebugSliceToString(iterator->key())
               << " => " << iterator->value().ToDebugHexString();
           auto status = docdb::DecodeIntentValue(
-              iterator->value(), Slice(id.data, id.size()), &next_write_id, nullptr /* body */);
+              iterator->value(), Slice(id.data, id.size()), &last_batch_data.write_id,
+              nullptr /* body */);
           LOG_IF_WITH_PREFIX(DFATAL, !status.ok())
               << "Failed to decode intent value: " << status << ", "
               << docdb::SubDocKey::DebugSliceToString(iterator->key()) << " => "
               << iterator->value().ToDebugHexString();
-          ++next_write_id;
+          ++last_batch_data.write_id;
         }
         break;
       }
@@ -903,7 +932,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
         check_status_queues_[metadata->status_tablet].push_back(metadata->transaction_id);
       }
       transactions_.insert(std::make_shared<RunningTransaction>(
-          std::move(*metadata), next_write_id, this));
+          std::move(*metadata), last_batch_data, std::move(replicated_batches), this));
       TransactionsModifiedUnlocked(&min_running_notifier);
     }
     load_cond_.notify_all();
@@ -1140,14 +1169,16 @@ Result<TransactionMetadata> TransactionParticipant::PrepareMetadata(
   return impl_->PrepareMetadata(pb);
 }
 
-boost::optional<std::pair<TransactionMetadata, IntraTxnWriteId>>
-    TransactionParticipant::MetadataWithWriteId(
-    const TransactionId& id) {
-  return impl_->MetadataWithWriteId(id);
+boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>
+    TransactionParticipant::PrepareBatchData(
+    const TransactionId& id, size_t batch_idx,
+    boost::container::small_vector_base<uint8_t>* encoded_replicated_batches) {
+  return impl_->PrepareBatchData(id, batch_idx, encoded_replicated_batches);
 }
 
-void TransactionParticipant::UpdateLastWriteId(const TransactionId& id, IntraTxnWriteId value) {
-  return impl_->UpdateLastWriteId(id, value);
+void TransactionParticipant::BatchReplicated(
+    const TransactionId& id, const TransactionalBatchData& data) {
+  return impl_->BatchReplicated(id, data);
 }
 
 HybridTime TransactionParticipant::LocalCommitTime(const TransactionId& id) {
@@ -1215,6 +1246,16 @@ void TransactionParticipant::WaitMinRunningHybridTime(HybridTime ht) {
 
 size_t TransactionParticipant::TEST_GetNumRunningTransactions() const {
   return impl_->TEST_GetNumRunningTransactions();
+}
+
+OneWayBitmap TransactionParticipant::TEST_TransactionReplicatedBatches(
+    const TransactionId& id) const {
+  return impl_->TEST_TransactionReplicatedBatches(id);
+}
+
+std::string TransactionParticipant::ReplicatedData::ToString() const {
+  return Format("{ leader_term: $0 state: $1 op_id: $2 hybrid_time: $3 already_applied: $4 }",
+               leader_term, state, op_id, hybrid_time, already_applied);
 }
 
 } // namespace tablet

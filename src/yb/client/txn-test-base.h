@@ -57,7 +57,8 @@ class TransactionTestBase : public KeyValueTableTest {
 
   void WriteRows(
       const YBSessionPtr& session, size_t transaction = 0,
-      const WriteOpType op_type = WriteOpType::INSERT);
+      const WriteOpType op_type = WriteOpType::INSERT,
+      Flush flush = Flush::kTrue);
 
   void VerifyRow(int line, const YBSessionPtr& session, int32_t key, int32_t value,
                  const std::string& column = kValueColumn);

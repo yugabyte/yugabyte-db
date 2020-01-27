@@ -90,6 +90,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   bool Prepare(const internal::InFlightOps& ops,
                ForceConsistentRead force_consistent_read,
                CoarseTimePoint deadline,
+               Initial initial,
                Waiter waiter,
                TransactionMetadata* metadata);
 

@@ -21,6 +21,8 @@
 
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/bitmap.h"
+
 namespace yb {
 namespace tablet {
 
@@ -28,7 +30,8 @@ namespace tablet {
 class RunningTransaction : public std::enable_shared_from_this<RunningTransaction> {
  public:
   RunningTransaction(TransactionMetadata metadata,
-                     IntraTxnWriteId last_write_id,
+                     const TransactionalBatchData& last_batch_data,
+                     OneWayBitmap&& replicated_batches,
                      RunningTransactionContext* context);
 
   ~RunningTransaction();
@@ -45,16 +48,26 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
     return metadata_;
   }
 
-  IntraTxnWriteId last_write_id() const {
-    return last_write_id_;
+  const TransactionalBatchData& last_batch_data() const {
+    return last_batch_data_;
+  }
+
+  size_t num_replicated_batches() const {
+    return replicated_batches_.CountSet();
+  }
+
+  const OneWayBitmap& replicated_batches() const {
+    return replicated_batches_;
   }
 
   HybridTime local_commit_time() const {
     return local_commit_time_;
   }
 
-  void UpdateLastWriteId(IntraTxnWriteId value);
   void SetLocalCommitTime(HybridTime time);
+  void AddReplicatedBatch(
+      size_t batch_idx, boost::container::small_vector_base<uint8_t>* encoded_replicated_batches);
+  void BatchReplicated(const TransactionalBatchData& value);
   void RequestStatusAt(const StatusRequest& request,
                        std::unique_lock<std::mutex>* lock);
   bool WasAborted() const;
@@ -106,7 +119,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   std::string LogPrefix() const;
 
   TransactionMetadata metadata_;
-  IntraTxnWriteId last_write_id_ = 0;
+  TransactionalBatchData last_batch_data_;
+  OneWayBitmap replicated_batches_;
   RunningTransactionContext& context_;
   RemoveIntentsTask remove_intents_task_;
   HybridTime local_commit_time_ = HybridTime::kInvalid;
