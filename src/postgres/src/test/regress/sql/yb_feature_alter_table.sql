@@ -114,6 +114,7 @@ create index "testing_idx" on atacc1(a);
 create index "testing_idx" on atacc1("........pg.dropped.1........");
 alter table atacc1 rename a to z;
 alter table atacc1 add constraint checka check (a >= 0);
+alter table if exists atacc1 add constraint checka check (a >= 0);
 
 -- test create as and select into
 insert into atacc1 values (21, 22, 23);
@@ -126,9 +127,13 @@ drop table test2;
 
 -- test constraints
 alter table atacc1 add constraint checkb check (b < 0); -- should fail
+alter table if exists atacc1 add constraint checkb check (b < 0); -- should fail
 alter table atacc1 add constraint checkb check (b > 0);
 alter table atacc1 add constraint checkb2 check (b > 10);
 alter table atacc1 add constraint checkb3 check (b > 10);
+insert into atacc1 values (5, 5, 5); -- should fail
+alter table atacc1 drop constraint checkb2;
+alter table if exists atacc1 add constraint checkb2 check (b > 10);
 insert into atacc1 values (5, 5, 5); -- should fail
 alter table atacc1 drop constraint checkb2;
 insert into atacc1 values (5, 5, 5);
@@ -169,6 +174,12 @@ alter table pg_class alter relname set not null;
 -- try altering non-existent table, should fail
 alter table non_existent alter column bar set not null;
 alter table non_existent alter column bar drop not null;
+
+-- try altering non-existent table with IF EXISTS clause, should pass with a notice message
+alter table if exists non_existent alter column bar set not null;
+alter table if exists non_existent alter column bar drop not null;
+alter table if exists non_existent
+    add constraint some_constraint_name foreign key (k) references atacc1;
 
 -- test setting columns to null and not null and vice versa
 -- test checking for null values and primary key
