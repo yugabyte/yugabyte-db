@@ -1173,16 +1173,17 @@ class ProcessManager(object):
 
     # Checks resource settings for current shell. Prints warning if requirements aren't met.
     def set_rlimits(self, print_info=False):
+        rlim_max = resource.RLIM_INFINITY
         # TODO: Figure out what specs are recommended. max_user_processes is problematic.
         # https://github.com/yugabyte/yugabyte-db/issues/2818
         recommended_resources = {
-            "RLIMIT_FSIZE": (resource.RLIM_INFINITY, "file_size"),
-            "RLIMIT_MEMLOCK": (resource.RLIM_INFINITY, "max_locked_memory"),
-            "RLIMIT_AS": (resource.RLIM_INFINITY, "max_memory_size"),
+            # "RLIMIT_FSIZE": (rlim_max, "file_size"),
+            # "RLIMIT_MEMLOCK": (rlim_max, "max_locked_memory"),
+            # "RLIMIT_AS": (rlim_max, "max_memory_size"),
             "RLIMIT_NOFILE": (64000, "open_files"),
-            "RLIMIT_CPU": (resource.RLIM_INFINITY, "cpu_time"),
+            # "RLIMIT_CPU": (rlim_max, "cpu_time"),
             "RLIMIT_NPROC": (64, "max_user_processes"),
-            "RLIMIT_VMEM": (resource.RLIM_INFINITY, "virtual_memory"),
+            # "RLIMIT_VMEM": (rlim_max, "virtual_memory"),
         }
 
         # If the current platform does not support the resource,
@@ -1194,7 +1195,7 @@ class ProcessManager(object):
             # Check soft limit, not hard limit.
             key = getattr(resource, res)
             soft_lim, hard_lim = resource.getrlimit(key)
-            if soft_lim < min_val:
+            if soft_lim != rlim_max and (soft_lim < min_val or min_val == rlim_max):
                 try:
                     resource.setrlimit(key, (min_val, hard_lim))
                     if print_info:
