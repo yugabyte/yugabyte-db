@@ -29,7 +29,7 @@ namespace pggate {
 
 class PgDml : public PgStatement {
  public:
-  virtual ~PgDml();
+  virtual ~PgDml() = default;
 
   // Append a target in SELECT or RETURNING.
   CHECKED_STATUS AppendTarget(PgExpr *target);

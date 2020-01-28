@@ -66,10 +66,6 @@ PgDml::PgDml(PgSession::ScopedRefPtr pg_session,
   }
 }
 
-PgDml::~PgDml() {
-  doc_op_->AbortAndWait();
-}
-
 Status PgDml::LoadTable() {
   table_desc_ = VERIFY_RESULT(pg_session_->LoadTable(table_id_));
   return Status::OK();
