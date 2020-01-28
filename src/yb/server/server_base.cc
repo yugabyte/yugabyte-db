@@ -73,6 +73,7 @@
 #include "yb/util/spinlock_profiling.h"
 #include "yb/util/thread.h"
 #include "yb/util/version_info.h"
+#include "yb/util/encryption_util.h"
 #include "yb/gutil/sysinfo.h"
 
 DEFINE_int32(num_reactor_threads, -1,
@@ -433,6 +434,8 @@ void RpcAndWebServerBase::GenerateInstanceID() {
 }
 
 Status RpcAndWebServerBase::Init() {
+  yb::enterprise::InitOpenSSL();
+
   Status s = fs_manager_->Open();
   if (s.IsNotFound() || (!s.ok() && fs_manager_->HasAnyLockFiles())) {
     LOG(INFO) << "Could not load existing FS layout: " << s.ToString();
