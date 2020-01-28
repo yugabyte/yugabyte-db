@@ -15,6 +15,7 @@
 set -euo pipefail
 . "${BASH_SOURCE%/*}/../build-support/common-build-env.sh"
 
+export YB_IS_BUILD_THIRDPARTY_SCRIPT=1
 activate_virtualenv
 export PYTHONPATH=$YB_SRC_ROOT/python:${PYTHONPATH:-}
 detect_brew
