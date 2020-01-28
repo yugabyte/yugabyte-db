@@ -57,7 +57,7 @@ void GetBindVariableSchemasFromDmlStmt(const PTDmlStmt& stmt,
   for (const PTBindVar *var : stmt.bind_variables()) {
     DCHECK_NOTNULL(var->name().get());
     schemas->emplace_back(var->name() ? string(var->name()->c_str()) : string(), var->ql_type());
-    if (table_names != nullptr) {
+    if (table_names != nullptr && stmt.bind_table()) {
       table_names->emplace_back(stmt.bind_table()->name());
     }
   }
@@ -120,7 +120,7 @@ QLClient GetClientFromOp(const YBqlOp& op) {
 
 //------------------------------------------------------------------------------------------------
 PreparedResult::PreparedResult(const PTDmlStmt& stmt)
-    : table_name_(stmt.bind_table()->name()),
+    : table_name_(stmt.bind_table() ? stmt.bind_table()->name() : YBTableName()),
       hash_col_indices_(stmt.hash_col_indices()),
       column_schemas_(stmt.selected_schemas()) {
   GetBindVariableSchemasFromDmlStmt(stmt, &bind_variable_schemas_);
