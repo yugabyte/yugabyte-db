@@ -42,9 +42,6 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   explicit PgDocOp(PgSession::ScopedRefPtr pg_session);
   virtual ~PgDocOp();
 
-  // Mark this operation as aborted and wait for it to finish.
-  void AbortAndWait();
-
   // Set execution control parameters.
   // When "exec_params" is null, the default setup in PgExecParameters are used.
   void SetExecParams(const PgExecParameters *exec_params);
@@ -66,16 +63,13 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   }
 
  protected:
-  virtual void InitUnlocked(std::unique_lock<std::mutex>* lock);
-  virtual CHECKED_STATUS SendRequestUnlocked() = 0;
+  virtual void Init();
+  virtual CHECKED_STATUS SendRequest() = 0;
+  virtual void ProcessResponse(const Status& exec_status) = 0;
 
   // Caching and reading return result.
-  void WriteToCacheUnlocked(std::shared_ptr<client::YBPgsqlOp> yb_op);
-  void ReadFromCacheUnlocked(string* result);
-
-  // Send another request if no request is pending and we've already consumed
-  // all data in the cache.
-  CHECKED_STATUS SendRequestIfNeededUnlocked();
+  void WriteToCache(client::YBPgsqlOp* yb_op);
+  void ReadFromCache(string* result);
 
   // Sets exec_status_ based on the operation result.
   void HandleResponseStatus(client::YBPgsqlOp* op);
@@ -87,26 +81,18 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // operation to ensure that it is operating on one snapshot.
   uint64_t read_time_ = 0;
 
-  // This mutex protects the fields below.
-  mutable std::mutex mtx_;
-  std::condition_variable cv_;
-
   // Result set either from selected or returned targets is cached in a list of strings.
   // Querying state variables.
   Status exec_status_ = Status::OK();
 
-  // Whether or not we are waiting for a response from DocDB after sending a request. Only one
-  // request can be sent to DocDB at a time.
-  bool waiting_for_response_ = false;
+  // Future object to fetch a response from DocDB after sending a request.
+  // Object's valid() method returns false in case no request is sent
+  // or sent request was buffered by the session.
+  // Only one request can be sent to DocDB at a time.
+  PgSessionAsyncRunResult response_;
 
   // Whether all requested data by the statement has been received or there's a run-time error.
   bool end_of_data_ = false;
-
-  // Whether or not result_cache_ is empty().
-  bool has_cached_data_ = false;
-
-  // Whether or not the statement has been canceled by application / users.
-  bool is_canceled_ = false;
 
   // Caching state variables.
   std::list<string> result_cache_;
@@ -132,7 +118,6 @@ class PgDocReadOp : public PgDocOp {
   // Constructors & Destructors.
   PgDocReadOp(PgSession::ScopedRefPtr pg_session,
               PgTableDesc::ScopedRefPtr table_desc);
-  virtual ~PgDocReadOp();
 
   client::YBPgsqlReadOp& GetTemplateOp() {
     return *template_op_;
@@ -140,9 +125,9 @@ class PgDocReadOp : public PgDocOp {
 
  private:
   // Process response from DocDB.
-  void InitUnlocked(std::unique_lock<std::mutex>* lock) override;
-  CHECKED_STATUS SendRequestUnlocked() override;
-  virtual void ReceiveResponse(Status exec_status);
+  void Init() override;
+  CHECKED_STATUS SendRequest() override;
+  void ProcessResponse(const Status& exec_status) override;
 
   // Analyze options and pick the appropriate prefetch limit.
   void SetRequestPrefetchLimit();
@@ -211,7 +196,6 @@ class PgDocWriteOp : public PgDocOp {
 
   // Constructors & Destructors.
   PgDocWriteOp(PgSession::ScopedRefPtr pg_session, client::YBPgsqlWriteOp *write_op);
-  virtual ~PgDocWriteOp();
 
   // Access function.
   std::shared_ptr<client::YBPgsqlWriteOp> write_op() {
@@ -220,8 +204,8 @@ class PgDocWriteOp : public PgDocOp {
 
  private:
   // Process response from DocDB.
-  CHECKED_STATUS SendRequestUnlocked() override;
-  virtual void ReceiveResponse(Status exec_status);
+  CHECKED_STATUS SendRequest() override;
+  virtual void ProcessResponse(const Status& exec_status) override;
 
   // Operator.
   std::shared_ptr<client::YBPgsqlWriteOp> write_op_;
@@ -244,12 +228,11 @@ class PgDocCompoundOp : public PgDocOp {
 
   // Constructors & Destructors.
   explicit PgDocCompoundOp(PgSession::ScopedRefPtr pg_session);
-  virtual ~PgDocCompoundOp();
 
-  virtual Result<RequestSent> Execute() {
+  Result<RequestSent> Execute() override {
     return RequestSent::kTrue;
   }
-  virtual CHECKED_STATUS GetResult(string *result_set) {
+  CHECKED_STATUS GetResult(string *result_set) override {
     return Status::OK();
   }
 
