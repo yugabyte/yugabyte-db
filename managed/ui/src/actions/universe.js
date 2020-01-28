@@ -107,6 +107,11 @@ export const IMPORT_UNIVERSE_INIT = 'IMPORT_UNIVERSE_INIT';
 export const IMPORT_UNIVERSE_RESPONSE = 'IMPORT_UNIVERSE_RESPONSE';
 export const IMPORT_UNIVERSE_RESET = 'IMPORT_UNIVERSE_RESET';
 
+export const SET_ALERTS_CONFIG = 'SET_ALERTS_CONFIG';
+export const SET_ALERTS_CONFIG_RESPONSE = 'SET_ALERTS_CONFIG_RESPONSE';
+
+export const UPDATE_BACKUP_STATE = 'UPDATE_BACKUP_STATE';
+export const UPDATE_BACKUP_STATE_RESPONSE = 'UPDATE_BACKUP_STATE_RESPONSE';
 
 export function createUniverse(formValues) {
   const customerUUID = localStorage.getItem("customerId");
@@ -580,5 +585,40 @@ export function importUniverseResponse(response) {
 export function importUniverseReset() {
   return {
     type: IMPORT_UNIVERSE_RESET
+  };
+}
+
+export function setAlertsConfig(universeUUID, data) {
+  const customerUUID = localStorage.getItem("customerId");
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/config_alerts`;
+  const request = axios.post(endpoint, data);
+  return {
+    type: SET_ALERTS_CONFIG,
+    payload: request
+  };
+}
+
+export function setAlertsConfigResponse(response) {
+  return {
+    type: SET_ALERTS_CONFIG_RESPONSE,
+    payload: response
+  };
+}
+
+export function updateBackupState(universeUUID, flag) {
+  const customerUUID = localStorage.getItem("customerId");
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/update_backup_state?markActive=${flag}`;
+  const request = axios.put(endpoint);
+
+  return {
+    type: UPDATE_BACKUP_STATE,
+    payload: request
+  };
+}
+
+export function updateBackupStateResponse(response) {
+  return {
+    type: UPDATE_BACKUP_STATE_RESPONSE,
+    payload: response
   };
 }
