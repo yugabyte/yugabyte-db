@@ -75,6 +75,24 @@ TEST_F(TestQLStatement, TestExecutePrepareAfterTableDrop) {
   LOG(INFO) << "Done.";
 }
 
+TEST_F(TestQLStatement, TestPrepareWithUnknownSystemTable) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor *processor = GetQLProcessor();
+
+  LOG(INFO) << "Running prepare for an unknown system table test.";
+
+  // Prepare a select statement.
+  Statement stmt("system", "select * from system.unknown_table;");
+  PreparedResult::UniPtr result;
+  CHECK_OK(stmt.Prepare(processor, nullptr /* mem_tracker */, false /* internal */, &result));
+  CHECK_EQ(result->table_name().ToString(), "");
+
+  LOG(INFO) << "Done.";
+}
+
 TEST_F(TestQLStatement, TestPKIndices) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
