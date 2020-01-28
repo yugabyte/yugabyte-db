@@ -82,7 +82,23 @@ public class PgRegressRunner {
           "expected", "output", "sql", "data"}) {
         FileUtils.copyDirectory(new File(pgRegressDir, name), new File(pgRegressOutputDir, name));
       }
-      FileUtils.copyFile(new File(pgRegressDir, schedule), new File(pgRegressOutputDir, schedule));
+      File scheduleInputFile = new File(pgRegressDir, schedule);
+      File scheduleOutputFile = new File(pgRegressOutputDir, schedule);
+
+      // Copy the schedule file, replacing some lines based on the operating system.
+      try (BufferedReader scheduleReader = new BufferedReader(new FileReader(scheduleInputFile));
+           PrintWriter scheduleWriter = new PrintWriter(new FileWriter(scheduleOutputFile))) {
+        String line;
+        while ((line = scheduleReader.readLine()) != null) {
+          line = line.trim();
+          if (line.equals("test: yb_inet") && !TestUtils.IS_LINUX) {
+            // We only support IPv6-specific tests in yb_inet.sql on Linux, not on macOS.
+            line = "test: yb_inet_ipv4only";
+          }
+          LOG.info("Schedule output line: " + line);
+          scheduleWriter.println(line);
+        }
+      }
     } catch (IOException ex) {
       LOG.error("Failed to copy pgregress data from " + pgRegressDir + " to " + pgRegressOutputDir);
       throw new RuntimeException(ex);
@@ -134,7 +150,7 @@ public class PgRegressRunner {
             "--user=" + pgUser,
             "--dbname=yugabyte",
             "--use-existing",
-            "--schedule=" + pgSchedule,
+            "--schedule=" + new File(pgRegressOutputDir, pgSchedule),
             "--outputdir=" + pgRegressOutputDir);
     procBuilder.directory(pgRegressDir);
     procBuilder.environment().putAll(extraEnvVars);
