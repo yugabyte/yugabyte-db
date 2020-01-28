@@ -19,6 +19,7 @@
 #include <functional>
 #include <mutex>
 #include <thread>
+#include <functional>
 
 #include "yb/util/monotime.h"
 

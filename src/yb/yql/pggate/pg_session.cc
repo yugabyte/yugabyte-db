@@ -78,6 +78,7 @@ const int kDefaultPgYbSessionTimeoutMs = 60 * 1000;
 DEFINE_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
              "Timeout for operations between PostgreSQL server and YugaByte DocDB services");
 
+namespace {
 //--------------------------------------------------------------------------------------------------
 // Constants used for the sequences data table.
 //--------------------------------------------------------------------------------------------------
@@ -96,6 +97,126 @@ static constexpr const size_t kPgSequenceLastValueColIdx = 2;
 
 static constexpr const char* const kPgSequenceIsCalledColName = "is_called";
 static constexpr const size_t kPgSequenceIsCalledColIdx = 3;
+
+string GetStatusStringSet(const client::CollectedErrors& errors) {
+  std::set<string> status_strings;
+  for (const auto& error : errors) {
+    status_strings.insert(error->status().ToString());
+  }
+  return RangeToString(status_strings.begin(), status_strings.end());
+}
+
+// Given a set of errors from operations, this function attempts to combine them into one status
+// that is later passed to PostgreSQL and further converted into a more specific error code.
+Status CombineErrorsToStatus(client::CollectedErrors errors, Status status) {
+  if (errors.empty())
+    return status;
+
+  if (status.IsIOError() &&
+      // TODO: move away from string comparison here and use a more specific status than IOError.
+      // See https://github.com/YugaByte/yugabyte-db/issues/702
+      status.message() == client::internal::Batcher::kErrorReachingOutToTServersMsg &&
+      errors.size() == 1) {
+    return errors.front()->status();
+  }
+  if (status.ok()) {
+    return STATUS(InternalError, GetStatusStringSet(errors));
+  }
+  return status.CloneAndAppend(". Errors from tablet servers: " + GetStatusStringSet(errors));
+}
+
+// Given two statuses, include messages from the first status in front and take state
+// from whichever is not OK (if there is one), otherwise return the first status.
+Status CombineStatuses(const Status& first_status, const Status& second_status) {
+  if (!first_status.ok()) {
+    return first_status.CloneAndAppend(second_status.message());
+  } else if (!second_status.ok()) {
+    return second_status.CloneAndPrepend(first_status.message());
+  }
+  return first_status;
+}
+
+} // namespace
+
+//--------------------------------------------------------------------------------------------------
+// Class PgSessionAsyncRunResult
+//--------------------------------------------------------------------------------------------------
+PgSessionAsyncRunResult::PgSessionAsyncRunResult(std::future<Status> future_status,
+                                                 client::YBSessionPtr session)
+    :  future_status_(std::move(future_status)),
+       session_(std::move(session)) {
+}
+
+Status PgSessionAsyncRunResult::GetStatus() {
+  DCHECK(InProgress());
+  auto status = future_status_.get();
+  future_status_ = std::future<Status>();
+  return CombineErrorsToStatus(session_->GetPendingErrors(), status);
+}
+
+bool PgSessionAsyncRunResult::InProgress() const {
+  return future_status_.valid();
+}
+
+//--------------------------------------------------------------------------------------------------
+// Class PgSession::RunHelper
+//--------------------------------------------------------------------------------------------------
+PgSession::RunHelper::RunHelper(PgSession* pg_session, bool transactional)
+    :  pg_session_(*pg_session),
+       transactional_(transactional),
+       buffered_ops_(transactional_ ? pg_session_.buffered_txn_write_ops_
+                                    : pg_session_.buffered_write_ops_) {
+}
+
+Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op, uint64_t* read_time) {
+  // If the operation is a write op and we are in buffered write mode,
+  // save the op and return invalid future to indicate the op should not be flushed
+  // except in bulk by FlushBufferedWriteOperations().
+  //
+  // We allow read ops while buffering writes because it can happen when building indexes for sys
+  // catalog tables during initdb. Continuing read ops to scan the table can be issued while
+  // writes to its index are being buffered.
+  DCHECK_EQ(pg_session_.ShouldHandleTransactionally(*op), transactional_)
+      << "All operations must be either transactional or non-transactional";
+  if (pg_session_.buffer_write_ops_ > 0 &&
+      op->type() == YBOperation::Type::PGSQL_WRITE) {
+    buffered_ops_.push_back(std::move(op));
+    return Status::OK();
+  }
+  bool read_only = op->read_only();
+  if (op->type() == YBOperation::Type::PGSQL_READ) {
+    const auto& read_req = down_cast<client::YBPgsqlReadOp*>(op.get())->request();
+    const bool has_row_marker = IsValidRowMarkType(GetRowMarkTypeFromPB(read_req));
+    read_only = read_only && !has_row_marker;
+  }
+  // Get session for each operation individually to begin transaction if necessary
+  // and print debug logs.
+  auto session = VERIFY_RESULT(pg_session_.GetSession(transactional_, read_only));
+  if (!yb_session_) {
+    yb_session_ = session->shared_from_this();
+    if (transactional_ && read_time) {
+      if (!*read_time) {
+        *read_time = pg_session_.clock_->Now().ToUint64();
+      }
+      yb_session_->SetInTxnLimit(HybridTime(*read_time));
+    }
+  } else {
+    // Session can't be changed as all operations either transactional or non-transactional.
+    DCHECK_EQ(yb_session_.get(), session);
+  }
+  return yb_session_->Apply(std::move(op));
+}
+
+Result<PgSessionAsyncRunResult> PgSession::RunHelper::Flush() {
+  if (yb_session_) {
+    auto future_status = MakeFuture<Status>([this](auto callback) {
+      yb_session_->FlushAsync([callback](const Status& status) { callback(status); });
+    });
+    return PgSessionAsyncRunResult(std::move(future_status), std::move(yb_session_));
+  }
+  // All operations were buffered, no need to flush.
+  return PgSessionAsyncRunResult();
+}
 
 //--------------------------------------------------------------------------------------------------
 // Class PgSession
@@ -464,15 +585,12 @@ Status PgSession::FlushBufferedWriteOperations(PgsqlOpBuffer* write_ops, bool tr
       DCHECK(!YBCIsInitDbModeEnvVarSet());
     }
 
-    client::YBSessionPtr session =
-      VERIFY_RESULT(GetSession(
-          transactional,
-          false /* read_only_op */,
-          write_ops->at(0)->IsYsqlCatalogOp()))->shared_from_this();
+    auto session =
+      VERIFY_RESULT(GetSession(transactional, false /* read_only_op */))->shared_from_this();
 
     int num_writes = 0;
     for (auto it = write_ops->begin(); it != write_ops->end(); ++it) {
-      DCHECK_EQ(ShouldBufferTransactionally(it->get()), transactional)
+      DCHECK_EQ(ShouldHandleTransactionally(**it), transactional)
           << "Table name: " << it->get()->table()->name().ToString()
           << ", table is transactional: "
           << it->get()->table()->schema().table_properties().is_transactional()
@@ -484,7 +602,7 @@ Status PgSession::FlushBufferedWriteOperations(PgsqlOpBuffer* write_ops, bool tr
       if (num_writes >= FLAGS_ysql_session_max_batch_size || std::next(it) == write_ops->end()) {
         Synchronizer sync;
         StatusFunctor callback = sync.AsStatusFunctor();
-        session->FlushAsync([this, session, callback] (const Status& status) {
+        session->FlushAsync([session, callback] (const Status& status) {
                               callback(CombineErrorsToStatus(session->GetPendingErrors(), status));
                             });
         Status s = sync.Wait();
@@ -537,115 +655,17 @@ Status PgSession::FlushBufferedWriteOperations() {
   return final_status;
 }
 
-bool PgSession::ShouldBufferTransactionally(client::YBPgsqlOp* op) {
-  return op->IsTransactional() && !YBCIsInitDbModeEnvVarSet();
+bool PgSession::ShouldHandleTransactionally(const client::YBPgsqlOp& op) {
+  return op.IsTransactional() &&  !YBCIsInitDbModeEnvVarSet() &&
+         (!op.IsYsqlCatalogOp() || pg_txn_manager_->IsDdlMode() ||
+             // In this mode, used for some tests, we will execute direct statements on YSQL system
+             // catalog tables in the user-controlled transaction, as opposed to executing them
+             // non-transactionally.
+             FLAGS_ysql_enable_manual_sys_table_txn_ctl);
 }
 
-Result<PgApplyOutcome> PgSession::PgApplyAsync(
-    const std::shared_ptr<client::YBPgsqlOp>& op,
-    uint64_t* read_time) {
-
-  if (op->type() == YBOperation::Type::PGSQL_READ) {
-    const PgsqlReadRequestPB& read_req = down_cast<client::YBPgsqlReadOp*>(op.get())->request();
-    has_row_mark_ = IsValidRowMarkType(GetRowMarkTypeFromPB(read_req));
-  }
-
-  // If the operation is a write op and we are in buffered write mode, save the op and return false
-  // to indicate the op should not be flushed except in bulk by FlushBufferedWriteOperations().
-  //
-  // We allow read ops while buffering writes because it can happen when building indexes for sys
-  // catalog tables during initdb. Continuing read ops to scan the table can be issued while
-  // writes to its index are being buffered.
-  if (buffer_write_ops_ > 0 && op->type() == YBOperation::Type::PGSQL_WRITE) {
-    bool use_txn = ShouldBufferTransactionally(op.get());
-    if (use_txn) {
-      buffered_txn_write_ops_.push_back(op);
-    } else {
-      buffered_write_ops_.push_back(op);
-    }
-    return PgApplyOutcome{OpBuffered::kTrue, /* yb_session */ nullptr};
-  }
-
-
-  auto session = VERIFY_RESULT(GetSessionForOp(op));
-  if (read_time && session != session_.get()) {
-    if (!*read_time) {
-      *read_time = clock_->Now().ToUint64();
-    }
-    session->SetInTxnLimit(HybridTime(*read_time));
-  }
-  RETURN_NOT_OK(session->Apply(op));
-
-  return PgApplyOutcome{OpBuffered::kFalse, session->shared_from_this()};
-}
-
-Status PgSession::PgFlushAsync(StatusFunctor callback, const client::YBSessionPtr& yb_session) {
-  VLOG(2) << __PRETTY_FUNCTION__ << " called, yb_session=" << yb_session.get();
-
-  has_row_mark_ = false;
-
-  yb_session->FlushAsync([this, yb_session, callback] (const Status& status) {
-    callback(CombineErrorsToStatus(yb_session->GetPendingErrors(), status));
-  });
-  return Status::OK();
-}
-
-Result<client::YBSession*> PgSession::GetSessionForOp(
-    const std::shared_ptr<client::YBPgsqlOp>& op) {
-  return GetSession(
-      op->IsTransactional(),
-      op->read_only() && !has_row_mark_,
-      op->IsYsqlCatalogOp());
-}
-
-namespace {
-
-string GetStatusStringSet(const client::CollectedErrors& errors) {
-  std::set<string> status_strings;
-  for (const auto& error : errors) {
-    status_strings.insert(error->status().ToString());
-  }
-  return RangeToString(status_strings.begin(), status_strings.end());
-}
-
-} // anonymous namespace
-
-Status PgSession::CombineErrorsToStatus(client::CollectedErrors errors, Status status) {
-  if (errors.empty())
-    return status;
-
-  if (status.IsIOError() &&
-      // TODO: move away from string comparison here and use a more specific status than IOError.
-      // See https://github.com/YugaByte/yugabyte-db/issues/702
-      status.message() == client::internal::Batcher::kErrorReachingOutToTServersMsg &&
-      errors.size() == 1) {
-    return errors.front()->status();
-  }
-  if (status.ok()) {
-    return STATUS(InternalError, GetStatusStringSet(errors));
-  }
-  return status.CloneAndAppend(". Errors from tablet servers: " + GetStatusStringSet(errors));
-}
-
-Status PgSession::CombineStatuses(Status first_status, Status second_status) {
-  if (!first_status.ok()) {
-    return first_status.CloneAndAppend(second_status.message());
-  } else if (!second_status.ok()) {
-    return second_status.CloneAndPrepend(first_status.message());
-  } else {
-    return first_status;
-  }
-}
-
-Result<YBSession*> PgSession::GetSession(
-    bool transactional, bool read_only_op, bool is_ysql_catalog_op) {
-  if (transactional && !YBCIsInitDbModeEnvVarSet() &&
-      (!is_ysql_catalog_op ||
-       pg_txn_manager_->IsDdlMode() ||
-       // In this mode, used for some tests, we will execute direct statements on YSQL system
-       // catalog tables in the user-controlled transaction, as opposed to executing them
-       // non-transactionally.
-       FLAGS_ysql_enable_manual_sys_table_txn_ctl)) {
+Result<YBSession*> PgSession::GetSession(bool transactional, bool read_only_op) {
+  if (transactional) {
     YBSession* txn_session = VERIFY_RESULT(pg_txn_manager_->GetTransactionalSession());
     RETURN_NOT_OK(pg_txn_manager_->BeginWriteTransactionIfNecessary(read_only_op));
     VLOG(2) << __PRETTY_FUNCTION__
@@ -657,14 +677,6 @@ Result<YBSession*> PgSession::GetSession(
           << ": read_only_op=" << read_only_op << ", returning non-transactional session "
           << session_.get();
   return session_.get();
-}
-
-int PgSession::CountPendingErrors() const {
-  return session_->CountPendingErrors();
-}
-
-std::vector<std::unique_ptr<client::YBError>> PgSession::GetPendingErrors() {
-  return session_->GetPendingErrors();
 }
 
 Result<bool> PgSession::IsInitDbDone() {
