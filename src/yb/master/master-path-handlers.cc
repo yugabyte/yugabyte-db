@@ -681,10 +681,6 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
       continue;
     }
 
-    if (master_->catalog_manager()->IsColocatedParentTable(*table)) {
-      continue;
-    }
-
     table_cat = kUserTable;
     string keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
     bool is_platform = keyspace.compare(kSystemPlatformNamespace) == 0;

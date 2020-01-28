@@ -61,16 +61,25 @@ class DocKeyTest : public YBTest {
     vector<SubDocKey> sub_doc_keys;
     Uuid cotable_id;
     EXPECT_OK(cotable_id.FromHexString("0123456789abcdef0123456789abcdef"));
-    for (bool has_cotable_id : {false, true}) {
+
+    std::vector<std::pair<Uuid, PgTableOid>> table_id_pairs;
+    table_id_pairs.emplace_back(cotable_id, 0);
+    table_id_pairs.emplace_back(Uuid(boost::uuids::nil_uuid()), 9911);
+    table_id_pairs.emplace_back(Uuid(boost::uuids::nil_uuid()), 0);
+
+    for (const auto& table_id_pair : table_id_pairs) {
       for (int num_hash_keys = 0; num_hash_keys <= kMaxNumHashKeys; ++num_hash_keys) {
         for (int num_range_keys = 0; num_range_keys <= kMaxNumRangeKeys; ++num_range_keys) {
           for (int num_sub_keys = 0; num_sub_keys <= kMaxNumSubKeys; ++num_sub_keys) {
             for (int has_hybrid_time = 0; has_hybrid_time <= 1; ++has_hybrid_time) {
               SubDocKey sub_doc_key;
 
-              if (has_cotable_id) {
+              if (!table_id_pair.first.IsNil()) {
                 sub_doc_key.doc_key().set_cotable_id(cotable_id);
+              } else if (table_id_pair.second > 0) {
+                sub_doc_key.doc_key().set_pgtable_id(table_id_pair.second);
               }
+
               if (num_hash_keys > 0) {
                 sub_doc_key.doc_key().set_hash(kAsciiFriendlyHash);
               }
@@ -464,12 +473,18 @@ TEST_F(DocKeyTest, TestDecodePrefixLengths) {
     size_t expected_hash_enc_size = 0;
     const DocKey& doc_key = sub_doc_key.doc_key();
     DocKey hash_only_key;
-    if (!doc_key.hashed_group().empty() || doc_key.has_cotable_id()) {
+    if (!doc_key.hashed_group().empty() || doc_key.has_cotable_id() || doc_key.has_pgtable_id()) {
       if (doc_key.has_cotable_id()) {
         if (doc_key.hashed_group().empty()) {
           hash_only_key = DocKey(doc_key.cotable_id());
         } else {
           hash_only_key = DocKey(doc_key.cotable_id(), doc_key.hash(), doc_key.hashed_group());
+        }
+      } else if (doc_key.has_pgtable_id()) {
+        if (doc_key.hashed_group().empty()) {
+          hash_only_key = DocKey(doc_key.pgtable_id());
+        } else {
+          hash_only_key = DocKey(doc_key.pgtable_id(), doc_key.hash(), doc_key.hashed_group());
         }
       } else {
         hash_only_key = DocKey(doc_key.hash(), doc_key.hashed_group());
@@ -484,14 +499,16 @@ TEST_F(DocKeyTest, TestDecodePrefixLengths) {
     SubDocKey cur_key;
     boost::container::small_vector<size_t, 8> prefix_lengths;
     std::vector<size_t> expected_prefix_lengths;
-    if (doc_key.has_hash() || doc_key.has_cotable_id()) {
-      if (doc_key.has_hash() && doc_key.has_cotable_id()) {
-        cur_key.doc_key() = DocKey(doc_key.cotable_id(), doc_key.hash(), doc_key.hashed_group());
-      } else if (doc_key.has_hash()) {
+    if (doc_key.has_hash() || doc_key.has_cotable_id() || doc_key.has_pgtable_id()) {
+      if (doc_key.has_hash()) {
         cur_key.doc_key() = DocKey(doc_key.hash(), doc_key.hashed_group());
-      } else {
-        cur_key.doc_key() = DocKey(doc_key.cotable_id());
       }
+      if (doc_key.has_cotable_id()) {
+        cur_key.doc_key().set_cotable_id(doc_key.cotable_id());
+      } else if (doc_key.has_pgtable_id()) {
+        cur_key.doc_key().set_pgtable_id(doc_key.pgtable_id());
+      }
+
       // Subtract one to avoid counting the final kGroupEnd, unless this is the entire key.
       if (doc_key.range_group().empty()) {
         expected_prefix_lengths.push_back(cur_key.Encode().size());
@@ -567,20 +584,31 @@ TEST_F(DocKeyTest, TestEnumerateIntents) {
       std::vector<SubDocKey> expected_intents;
       SubDocKey current_expected_intent;
 
-      if (sub_doc_key.doc_key().has_cotable_id()) {
-        DocKey cotable_id_only_doc_key;
-        cotable_id_only_doc_key.set_cotable_id(sub_doc_key.doc_key().cotable_id());
-        current_expected_intent = SubDocKey(cotable_id_only_doc_key);
+      if (sub_doc_key.doc_key().has_cotable_id() || sub_doc_key.doc_key().has_pgtable_id()) {
+        DocKey table_id_only_doc_key;
+        if (sub_doc_key.doc_key().has_cotable_id()) {
+          table_id_only_doc_key.set_cotable_id(sub_doc_key.doc_key().cotable_id());
+        } else {
+          table_id_only_doc_key.set_pgtable_id(sub_doc_key.doc_key().pgtable_id());
+        }
+        current_expected_intent = SubDocKey(table_id_only_doc_key);
         expected_intents.push_back(current_expected_intent);
       } else {
         expected_intents.push_back(SubDocKey());
       }
 
       if (!sub_doc_key.doc_key().hashed_group().empty()) {
-        current_expected_intent = SubDocKey(DocKey(
-            sub_doc_key.doc_key().cotable_id(),
-            sub_doc_key.doc_key().hash(),
-            sub_doc_key.doc_key().hashed_group()));
+        if (sub_doc_key.doc_key().has_cotable_id()) {
+          current_expected_intent = SubDocKey(DocKey(
+              sub_doc_key.doc_key().cotable_id(),
+              sub_doc_key.doc_key().hash(),
+              sub_doc_key.doc_key().hashed_group()));
+        } else {
+          current_expected_intent = SubDocKey(DocKey(
+              sub_doc_key.doc_key().pgtable_id(),
+              sub_doc_key.doc_key().hash(),
+              sub_doc_key.doc_key().hashed_group()));
+        }
         expected_intents.push_back(current_expected_intent);
       }
 

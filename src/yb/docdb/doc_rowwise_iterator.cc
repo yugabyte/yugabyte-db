@@ -498,7 +498,7 @@ Status DocRowwiseIterator::Init() {
       doc_db_, BloomFilterMode::DONT_USE_BLOOM_FILTER,
       boost::none /* user_key_for_filter */, query_id, txn_op_context_, deadline_, read_time_);
 
-  DocKeyEncoder(&iter_key_).CotableId(schema_.cotable_id());
+  DocKeyEncoder(&iter_key_).Schema(schema_);
   row_key_ = iter_key_;
   row_hash_key_ = row_key_;
   VLOG(3) << __PRETTY_FUNCTION__ << " Seeking to " << row_key_;
@@ -792,6 +792,7 @@ Status DocRowwiseIterator::DoNextRow(const Schema& projection, QLTableRow* table
 
   DocKeyDecoder decoder(row_key_);
   RETURN_NOT_OK(decoder.DecodeCotableId());
+  RETURN_NOT_OK(decoder.DecodePgtableId());
   bool has_hash_components = VERIFY_RESULT(decoder.DecodeHashCode());
 
   // Populate the key column values from the doc key. The key column values in doc key were
@@ -851,26 +852,36 @@ CHECKED_STATUS DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) 
 }
 
 Result<Slice> DocRowwiseIterator::GetTupleId() const {
-  // Return tuple id without cotable id if any.
+  // Return tuple id without cotable id / pgtable id if any.
   Slice tuple_id = row_key_;
   if (tuple_id.starts_with(ValueTypeAsChar::kTableId)) {
     tuple_id.remove_prefix(1 + kUuidSize);
+  } else if (tuple_id.starts_with(ValueTypeAsChar::kPgTableOid)) {
+    tuple_id.remove_prefix(1 + sizeof(PgTableOid));
   }
   return tuple_id;
 }
 
 Result<bool> DocRowwiseIterator::SeekTuple(const Slice& tuple_id) {
-  // If cotable id is present in the table schema, we need to prepend it in the tuple key to seek.
-  if (!schema_.cotable_id().IsNil()) {
+  // If cotable id / pgtable id is present in the table schema, then
+  // we need to prepend it in the tuple key to seek.
+  if (schema_.has_cotable_id() || schema_.has_pgtable_id()) {
+    uint32_t size = schema_.has_pgtable_id() ? sizeof(PgTableOid) : kUuidSize;
     if (!tuple_key_) {
-      std::string bytes;
-      schema_.cotable_id().EncodeToComparable(&bytes);
       tuple_key_.emplace();
-      tuple_key_->Reserve(1 + kUuidSize + tuple_id.size());
-      tuple_key_->AppendValueType(ValueType::kTableId);
-      tuple_key_->AppendRawBytes(bytes);
+      tuple_key_->Reserve(1 + size + tuple_id.size());
+
+      if (schema_.has_cotable_id()) {
+        std::string bytes;
+        schema_.cotable_id().EncodeToComparable(&bytes);
+        tuple_key_->AppendValueType(ValueType::kTableId);
+        tuple_key_->AppendRawBytes(bytes);
+      } else {
+        tuple_key_->AppendValueType(ValueType::kPgTableOid);
+        tuple_key_->AppendUInt32(schema_.pgtable_id());
+      }
     } else {
-      tuple_key_->Truncate(1 + kUuidSize);
+      tuple_key_->Truncate(1 + size);
     }
     tuple_key_->AppendRawBytes(tuple_id);
     db_iter_->Seek(*tuple_key_);

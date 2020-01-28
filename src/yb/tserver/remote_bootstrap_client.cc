@@ -325,7 +325,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     // Create the superblock on disk.
     if (ts_manager != nullptr && !colocated) {
       // TODO: GetAndRegisterDataAndWalDir is in charge of load balancing the disk storage.
-      // Collocated tables are mostly for small clusters, single nodes. But we still need to make
+      // Colocated tables are mostly for small clusters, single nodes. But we still need to make
       // sure that if the node has more than one data disk, we are balancing the storage correctly.
       ts_manager->GetAndRegisterDataAndWalDir(&fs_manager(),
                                               table_id,

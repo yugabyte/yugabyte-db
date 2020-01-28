@@ -95,7 +95,14 @@ class DocKey {
          std::vector<PrimitiveValue> hashed_components,
          std::vector<PrimitiveValue> range_components = std::vector<PrimitiveValue>());
 
+  DocKey(PgTableOid pgtable_id,
+         DocKeyHash hash,
+         std::vector<PrimitiveValue> hashed_components,
+         std::vector<PrimitiveValue> range_components = std::vector<PrimitiveValue>());
+
   explicit DocKey(const Uuid& cotable_id);
+
+  explicit DocKey(PgTableOid pgtable_id);
 
   // Constructors to create a DocKey for the given schema to support co-located tables.
   explicit DocKey(const Schema& schema);
@@ -128,6 +135,14 @@ class DocKey {
 
   bool has_cotable_id() const {
     return !cotable_id_.IsNil();
+  }
+
+  const PgTableOid pgtable_id() const {
+    return pgtable_id_;
+  }
+
+  bool has_pgtable_id() const {
+    return pgtable_id_ > 0;
   }
 
   DocKeyHash hash() const {
@@ -223,11 +238,26 @@ class DocKey {
   }
 
   bool BelongsTo(const Schema& schema) const {
-    return cotable_id_ == schema.cotable_id();
+    if (!cotable_id_.IsNil()) {
+      return cotable_id_ == schema.cotable_id();
+    } else if (pgtable_id_ > 0) {
+      return pgtable_id_ == schema.pgtable_id();
+    }
+    return schema.cotable_id().IsNil() && schema.pgtable_id() == 0;
   }
 
   void set_cotable_id(const Uuid& cotable_id) {
+    if (!cotable_id.IsNil()) {
+      DCHECK_EQ(pgtable_id_, 0);
+    }
     cotable_id_ = cotable_id;
+  }
+
+  void set_pgtable_id(const PgTableOid pgtable_id) {
+    if (pgtable_id > 0) {
+      DCHECK(cotable_id_.IsNil());
+    }
+    pgtable_id_ = pgtable_id;
   }
 
   void set_hash(DocKeyHash hash) {
@@ -256,6 +286,10 @@ class DocKey {
   // Uuid of the non-primary table this DocKey belongs to co-located in a tablet. Nil for the
   // primary or single-tenant table.
   Uuid cotable_id_;
+
+  // Postgres table OID of the non-primary table this DocKey belongs to in colocated tables.
+  // 0 for primary or single tenant table.
+  PgTableOid pgtable_id_;
 
   // TODO: can we get rid of this field and just use !hashed_group_.empty() instead?
   bool hash_present_;
@@ -286,9 +320,9 @@ class DocKeyEncoderAfterHashStep {
   KeyBytes* out_;
 };
 
-class DocKeyEncoderAfterCotableIdStep {
+class DocKeyEncoderAfterTableIdStep {
  public:
-  explicit DocKeyEncoderAfterCotableIdStep(KeyBytes* out) : out_(out) {
+  explicit DocKeyEncoderAfterTableIdStep(KeyBytes* out) : out_(out) {
   }
 
   template <class Collection>
@@ -331,7 +365,11 @@ class DocKeyEncoder {
  public:
   explicit DocKeyEncoder(KeyBytes* out) : out_(out) {}
 
-  DocKeyEncoderAfterCotableIdStep CotableId(const Uuid& cotable_id);
+  DocKeyEncoderAfterTableIdStep CotableId(const Uuid& cotable_id);
+
+  DocKeyEncoderAfterTableIdStep PgtableId(const PgTableOid pgtable_id);
+
+  DocKeyEncoderAfterTableIdStep Schema(const Schema& schema);
 
  private:
   KeyBytes* out_;
@@ -342,6 +380,8 @@ class DocKeyDecoder {
   explicit DocKeyDecoder(const Slice& input) : input_(input) {}
 
   Result<bool> DecodeCotableId(Uuid* uuid = nullptr);
+  Result<bool> DecodePgtableId(PgTableOid* pgtable_id = nullptr);
+
   Result<bool> HasPrimitiveValue();
 
   Result<bool> DecodeHashCode(
