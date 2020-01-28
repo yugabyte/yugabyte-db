@@ -54,7 +54,7 @@ class LinuxbrewHome:
                                 find_script_result.program_path,
                                 linuxbrew_dir,
                                 find_script_result))
-            self.linuxbrew_dir = os.path.abspath(linuxbrew_dir)
+            self.linuxbrew_dir = os.path.realpath(linuxbrew_dir)
 
             # Directories derived from the Linuxbrew top-level one.
             self.linuxbrew_link_target = os.path.realpath(linuxbrew_dir)

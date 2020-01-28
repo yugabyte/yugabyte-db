@@ -79,7 +79,7 @@ find "$lib_dir" "$linuxbrew_dir" -name "*.so*" ! -name "ld.so*" -exec "$patchelf
   >(grep -v 'warning: working around a Linux kernel bug by creating a hole' >&2) \;
 
 ORIG_BREW_HOME=${original_linuxbrew_path_to_patch}
-ORIG_LEN=${#ORIG_BREW_HOME}
+ORIG_LEN=${original_linuxbrew_path_length}
 
 # Take $ORIG_LEN number of '\0' from /dev/zero, replace '\0' with 'x', then prepend to
 # "$distribution_dir/linuxbrew-" and keep first $ORIG_LEN symbols, so we have a path of $ORIG_LEN
@@ -95,7 +95,10 @@ fi
 
 ln -sfT "$linuxbrew_dir" "$BREW_HOME"
 
-find "$distribution_dir" -type f -not -path "$distribution_dir/yugabyte-logs/*" \
-   -exec sed -i --binary "s%$ORIG_BREW_HOME%$BREW_HOME%g" {} \;
+find "$distribution_dir" \( \
+   -type f -and \
+   -not -path "$distribution_dir/yugabyte-logs/*" -and \
+   -not -name "post_install.sh" \
+\) -exec sed -i --binary "s%$ORIG_BREW_HOME%$BREW_HOME%g" {} \;
 
 touch "$completion_file"
