@@ -324,7 +324,7 @@ MiniMaster* MiniCluster::leader_mini_master() {
   while (sw.elapsed().wall_seconds() < kMasterLeaderElectionWaitTimeSeconds) {
     for (int i = 0; i < mini_masters_.size(); i++) {
       MiniMaster* master = mini_master(i);
-      if (master->master()->IsShutdown()) {
+      if (master->master() == nullptr || master->master()->IsShutdown()) {
         continue;
       }
       CatalogManager::ScopedLeaderSharedLock l(master->master()->catalog_manager());
