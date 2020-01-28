@@ -99,7 +99,8 @@ class TwoDCTest : public YBTest, public testing::WithParamInterface<int> {
   Result<std::vector<std::shared_ptr<client::YBTable>>>
       SetUpWithParams(std::vector<uint32_t> num_consumer_tablets,
                       std::vector<uint32_t> num_producer_tablets,
-                      uint32_t replication_factor) {
+                      uint32_t replication_factor,
+                      uint32_t num_masters = 1) {
     FLAGS_enable_ysql = false;
     // Allow for one-off network instability by ensuring a single CDC RPC timeout << test timeout.
     FLAGS_cdc_read_rpc_timeout_ms = (kRpcTimeout / 6) * 1000;
@@ -111,6 +112,7 @@ class TwoDCTest : public YBTest, public testing::WithParamInterface<int> {
     YBTest::SetUp();
     MiniClusterOptions opts;
     opts.num_tablet_servers = replication_factor;
+    opts.num_masters = num_masters;
     FLAGS_replication_factor = replication_factor;
     opts.cluster_id = "producer";
     producer_cluster_ = std::make_unique<MiniCluster>(Env::Default(), opts);
@@ -187,12 +189,14 @@ class TwoDCTest : public YBTest, public testing::WithParamInterface<int> {
 
   Status SetupUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
-      const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables) {
+      const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
+      bool leader_only = true) {
     master::SetupUniverseReplicationRequestPB req;
     master::SetupUniverseReplicationResponsePB resp;
 
     req.set_producer_id(universe_id);
     string master_addr = producer_cluster->GetMasterAddresses();
+    if (leader_only) master_addr = producer_cluster->leader_mini_master()->bound_rpc_addr_str();
     auto hp_vec = VERIFY_RESULT(HostPort::ParseStrings(master_addr, 0));
     HostPortsToPBs(hp_vec, req.mutable_producer_master_addresses());
 
@@ -585,36 +589,75 @@ TEST_P(TwoDCTest, PollWithConsumerRestart) {
   Destroy();
 }
 
-TEST_P(TwoDCTest, PollWithProducerRestart) {
+TEST_P(TwoDCTest, PollWithProducerNodesRestart) {
   // Avoid long delays with node failures so we can run with more aggressive test timing
   FLAGS_replication_failure_delay_exponent = 7; // 2^7 == 128ms
 
-  uint32_t replication_factor = NonTsanVsTsan(3, 1);
-  auto tables = ASSERT_RESULT(SetUpWithParams({4}, {4}, replication_factor));
+  uint32_t replication_factor = 3, tablet_count = 4, master_count = 3;
+  auto tables = ASSERT_RESULT(
+      SetUpWithParams({tablet_count}, {tablet_count}, replication_factor,  master_count));
 
   ASSERT_OK(SetupUniverseReplication(
     producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId,
-    {tables[0]} /* all producer tables */));
+    {tables[0]} /* all producer tables */, false /* leader_only */));
 
   // After creating the cluster, make sure all tablets being polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
 
-  producer_cluster_->mini_tablet_server(0)->Shutdown();
-  // Tablet Server Stop/Start Test needs replication for other polling sources
-  if (replication_factor > 1) {
-    // Verify that the cluster has rebalanced all the CDC Pollers
-    ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
-  }
-  ASSERT_OK(producer_cluster_->mini_tablet_server(0)->Start());
+  // Stop the Master and wait for failover.
+  LOG(INFO) << "Failover to new Master";
+  MiniMaster* old_master = producer_cluster()->leader_mini_master();
+  ASSERT_OK(old_master->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  producer_cluster()->leader_mini_master()->Shutdown();
+  MiniMaster* new_master = producer_cluster()->leader_mini_master();
+  ASSERT_NE(nullptr, new_master);
+  ASSERT_NE(old_master, new_master);
 
-  // After starting the node.
+  // Stop a TServer on the Producer after failing its master.
+  producer_cluster_->mini_tablet_server(0)->Shutdown();
+  // This Verifies:
+  // 1. Consumer successfully transitions over to using the new master for Tablet lookup.
+  // 2. Consumer cluster has rebalanced all the CDC Pollers
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
+  WriteWorkload(0, 5, producer_client(), tables[0]->name());
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+
+  // Restart the Producer TServer and verify that rebalancing happens.
+  ASSERT_OK(old_master->Start());
+  ASSERT_OK(producer_cluster_->mini_tablet_server(0)->Start());
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
+  WriteWorkload(6, 10, producer_client(), tables[0]->name());
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+
+  // Cleanup.
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+  Destroy();
+}
+
+TEST_P(TwoDCTest, PollWithProducerClusterRestart) {
+  // Avoid long delays with node failures so we can run with more aggressive test timing
+  FLAGS_replication_failure_delay_exponent = 7; // 2^7 == 128ms
+
+  uint32_t replication_factor = 3, tablet_count = 4;
+  auto tables = ASSERT_RESULT(
+      SetUpWithParams({tablet_count}, {tablet_count}, replication_factor));
+
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId,
+      {tables[0]} /* all producer tables */));
+
+  // After creating the cluster, make sure all tablets being polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
 
+  // Restart the ENTIRE Producer cluster.
   ASSERT_OK(producer_cluster_->RestartSync());
 
   // After producer cluster restart.
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
+  WriteWorkload(0, 5, producer_client(), tables[0]->name());
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 
+  // Cleanup.
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
   Destroy();
 }
