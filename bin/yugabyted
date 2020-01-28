@@ -128,7 +128,6 @@ class ControlScript(object):
             sys.exit(1)
         Output.print_and_log("Starting {}...".format(SCRIPT_NAME))
         self.set_env_vars()
-        self.install_yb()
 
         if self.configs.temp_data.get("daemon"):
             self.daemonize()
@@ -289,11 +288,11 @@ class ControlScript(object):
         if not os.path.exists(logpath):
             Output.print_and_log("No logs directory at {}".format(logpath))
             return
-        tmpprefix = "yugabyted-" + str(datetime.now()).replace(" ", "-")
-        tmppath = tempfile.mkstemp(suffix=".tar.gz", prefix=tmpprefix)[1]
-        with tarfile.open(name=tmppath, mode='w:gz', dereference=True) as archive:
+        tmpprefix = "yugabyted-{}.tar.gz".format(str(datetime.now()).replace(" ", "-"))
+        tarpath = os.path.join(os.path.expanduser('~'), tmpprefix)
+        with tarfile.open(name=tarpath, mode='w:gz', dereference=True) as archive:
             archive.add(logpath)
-        Output.print_and_log("Logs are packaged into {}".format(tmppath))
+        Output.print_and_log("Logs are packaged into {}".format(tarpath))
 
     # Checks yb-master and yb-tserver are running. Returns failed processes.
     # TODO: Check postmaster.pid.
@@ -310,6 +309,7 @@ class ControlScript(object):
         if signum:
             Output.log("Received signal: {}".format(signum), logging.DEBUG)
         Output.print_and_log("Shutting down...")
+        Output.console_access = False
         self.script.daemon_success.put(-1)
         cur_pid = os.getpid()
         pgid = os.getpgid(cur_pid)
@@ -451,6 +451,8 @@ class ControlScript(object):
             # Start or initialize yb-master and yb-tserver.
             if is_first_run:
                 Output.init_animation("Running system checks...")
+                self.post_install_yb()
+
             for name in ("master", "tserver"):
                 process = self.processes.get(name)
                 process.remove_error_logs()
@@ -614,7 +616,7 @@ class ControlScript(object):
         os.environ["USE_NATIVE_METRICS"] = "true"
 
     # Runs post_install script for linux computers.
-    def install_yb(self):
+    def post_install_yb(self):
         if not sys.platform.startswith('linux'):
             return
 
@@ -1763,6 +1765,7 @@ class Output(object):
         if Output.log_dir:
             msg += "\nFor more information, check the logs in {}".format(Output.log_dir)
         Output.print_and_log(msg, logging.ERROR)
+        Output.console_access = False
         if Output.script_exit_func:
             Output.script_exit_func()
         sys.exit(1)
