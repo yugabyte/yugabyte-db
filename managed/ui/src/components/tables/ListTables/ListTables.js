@@ -7,6 +7,8 @@ import tableIcon from '../images/table.png';
 import './ListTables.scss';
 import { isNonEmptyArray } from 'utils/ObjectUtils';
 import { TableAction } from '../../tables';
+
+import { UniverseAction } from '../../universes';
 import { YBPanelItem } from '../../panels';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
@@ -17,6 +19,7 @@ import { isDisabled } from '../../../utils/LayoutUtils';
 
 class TableTitle extends Component {
   render() {
+    const currentUniverse = this.props.universe.currentUniverse.data;
     const {numCassandraTables, numRedisTables, numPostgresTables} = this.props;
     return (
       <div className="table-container-title clearfix">
@@ -33,6 +36,12 @@ class TableTitle extends Component {
           <div className="table-type-count">
             <Image src={tableIcon} className="table-type-logo"/>
             <YBResourceCount kind="YEDIS" size={numRedisTables}/>
+          </div>
+        </div>
+        <div className="pull-right">
+          <div className="backup-action-btn-group">
+            <UniverseAction className="table-action" universe={currentUniverse}
+              actionType="toggle-backup" btnClass={"btn-orange"} />
           </div>
         </div>
       </div>
@@ -74,7 +83,8 @@ export default class ListTables extends Component {
           header={
             <TableTitle numRedisTables={numRedisTables}
                         numCassandraTables={numCassandraTables}
-                        numPostgresTables={numPostgresTables}/>
+                        numPostgresTables={numPostgresTables}
+                        {...this.props} />
           }
           body={
             <ListTableGrid {...this.props}/>
