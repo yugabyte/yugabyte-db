@@ -817,7 +817,8 @@ message CreateTableRequestPB {
   optional bool is_pg_catalog_table = 14 [ default = false ]; // Is this a sys catalog table?
   optional bool is_pg_shared_table = 15 [ default = false ];  // Is this a shared table?
 
-  optional bool colocated = 17 [ default = true ]; // Is this a colocated table?
+  // Is this a colocated table? This field is only applicable for a colocated database.
+  optional bool colocated = 17 [ default = true ];
 }
 
 message CreateTableResponsePB {

@@ -444,6 +444,7 @@ Status EnumerateWeakIntents(
   }
 
   const bool has_cotable_id = *key.cdata() == ValueTypeAsChar::kTableId;
+  const bool has_pgtable_id = *key.cdata() == ValueTypeAsChar::kPgTableOid;
   {
     bool is_table_root_key = false;
     if (has_cotable_id) {
@@ -456,6 +457,16 @@ Status EnumerateWeakIntents(
       }
       encoded_key_buffer->AppendRawBytes(key.cdata(), kUuidSize + 1);
       is_table_root_key = key[kUuidSize + 1] == ValueTypeAsChar::kGroupEnd;
+    } else if (has_pgtable_id) {
+      const auto kMinExpectedSize = sizeof(PgTableOid) + 2;
+      if (key.size() < kMinExpectedSize) {
+        return STATUS_FORMAT(
+            Corruption,
+            "Expected an encoded SubDocKey starting with a pgtable id to be at least $0 bytes long",
+            kMinExpectedSize);
+      }
+      encoded_key_buffer->AppendRawBytes(key.cdata(), sizeof(PgTableOid) + 1);
+      is_table_root_key = key[sizeof(PgTableOid) + 1] == ValueTypeAsChar::kGroupEnd;
     } else {
       is_table_root_key = *key.cdata() == ValueTypeAsChar::kGroupEnd;
     }
