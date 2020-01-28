@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python2
 
 #
 # Copyright (c) YugaByte, Inc.
@@ -30,8 +30,6 @@ import build_definitions
 import_submodules(build_definitions)
 
 sys.path = [os.path.join(os.path.dirname(__file__), '..', 'python')] + sys.path
-
-from yb.linuxbrew import get_linuxbrew_dir
 
 CHECKSUM_FILE_NAME = 'thirdparty_src_checksums.txt'
 CLOUDFRONT_URL = 'http://d3dr9sfxru4sde.cloudfront.net/{}'
@@ -85,13 +83,13 @@ class Builder:
         self.tp_download_dir = os.path.join(self.tp_dir, 'download')
         self.tp_installed_dir = os.path.join(self.tp_dir, 'installed')
         self.tp_installed_common_dir = os.path.join(self.tp_installed_dir, BUILD_TYPE_COMMON)
+        self.tp_installed_llvm7_common_dir = os.path.join(
+                self.tp_installed_dir + '_llvm7', BUILD_TYPE_COMMON)
         self.src_dir = os.path.dirname(self.tp_dir)
         if not os.path.isdir(self.src_dir):
             fatal('YB src directory "{}" does not exist'.format(self.src_dir))
         self.build_support_dir = os.path.join(self.src_dir, 'build-support')
         self.enterprise_root = os.path.join(self.src_dir, 'ent')
-        self.cc_wrapper = os.path.join(self.build_support_dir, 'compiler-wrappers', 'cc')
-        self.cxx_wrapper = os.path.join(self.build_support_dir, 'compiler-wrappers', 'c++')
 
         self.dependencies = [
             build_definitions.zlib.ZLibDependency(),
@@ -146,14 +144,22 @@ class Builder:
 
     def set_compiler(self, compiler_type):
         if is_mac():
+            if compiler_type != 'clang':
+                raise ValueError(
+                    "Cannot set compiler type to %s on macOS, only clang is supported" %
+                        compiler_type)
             self.compiler_type = 'clang'
-            return
+        else:
+            self.compiler_type = compiler_type
 
-        self.compiler_type = compiler_type
         os.environ['YB_COMPILER_TYPE'] = compiler_type
         self.find_compiler_by_type(compiler_type)
-        os.environ['CC'] = self.cc_wrapper
-        os.environ['CXX'] = self.cxx_wrapper
+
+        c_compiler = self.get_c_compiler()
+        cxx_compiler = self.get_cxx_compiler()
+
+        os.environ['CC'] = c_compiler
+        os.environ['CXX'] = cxx_compiler
 
     def init(self):
         os.environ['YB_IS_THIRDPARTY_BUILD'] = '1'
@@ -162,7 +168,11 @@ class Builder:
         parser.add_argument('--build-type',
                             default=None,
                             type=str,
+                            choices=BUILD_TYPES,
                             help='Build only specific part of thirdparty dependencies.')
+        parser.add_argument('--skip-sanitizers',
+                            action='store_true',
+                            help='Do not build ASAN and TSAN instrumented dependencies.')
         parser.add_argument('--clean',
                             action='store_const',
                             const=True,
@@ -212,13 +222,16 @@ class Builder:
             os.environ['YB_MAKE_PARALLELISM'] = str(self.args.make_parallelism)
 
     def run(self):
-        self.set_compiler('gcc')
+        self.set_compiler('clang' if is_mac() else 'gcc')
         if self.args.clean:
             self.clean()
         self.prepare_out_dirs()
         self.curl_path = which('curl')
-        os.environ['PATH'] = os.path.join(self.tp_installed_common_dir, 'bin') + ':' + \
-                                 os.environ['PATH']
+        os.environ['PATH'] = ':'.join([
+                os.path.join(self.tp_installed_common_dir, 'bin'),
+                os.path.join(self.tp_installed_llvm7_common_dir, 'bin'),
+                os.environ['PATH']
+        ])
         self.build(BUILD_TYPE_COMMON)
         if is_linux():
             self.build(BUILD_TYPE_UNINSTRUMENTED)
@@ -226,7 +239,7 @@ class Builder:
             # See https://github.com/yugabyte/yugabyte-db/issues/3044#issuecomment-560639105
             # self.build(BUILD_TYPE_GCC8_UNINSTRUMENTED)
         self.build(BUILD_TYPE_CLANG_UNINSTRUMENTED)
-        if is_linux():
+        if is_linux() and not self.args.skip_sanitizers:
             self.build(BUILD_TYPE_ASAN)
             self.build(BUILD_TYPE_TSAN)
 
@@ -242,11 +255,19 @@ class Builder:
             fatal("Unknown compiler type {}".format(compiler_type))
 
         for compiler in compilers:
-            if not os.path.exists(compiler):
+            if compiler is None or not os.path.exists(compiler):
                 fatal("Compiler executable does not exist: {}".format(compiler))
 
         self.cc = compilers[0]
         self.cxx = compilers[1]
+
+    def get_c_compiler(self):
+        assert self.cc is not None
+        return self.cc
+
+    def get_cxx_compiler(self):
+        assert self.cxx is not None
+        return self.cxx
 
     def find_gcc(self):
         return self.do_find_gcc('gcc', 'g++')
@@ -267,10 +288,7 @@ class Builder:
         if not os.path.isdir(gcc_bin_dir):
             fatal("Directory {} does not exist".format(gcc_bin_dir))
 
-        return os.path.join(gcc_bin_dir, c_compiler), os.path.join(gcc_bin_dir, cxx_compiler)
-
-    def find_gcc8(self):
-        return which('gcc-8'), which('g++-8')
+        return os.path.join(gcc_bin_dir, 'gcc'), os.path.join(gcc_bin_dir, 'g++')
 
     def find_clang(self):
         clang_dir = None
@@ -279,7 +297,7 @@ class Builder:
         else:
             candidate_dirs = [
                 os.path.join(self.tp_dir, 'clang-toolchain'),
-                self.tp_installed_common_dir,
+                '/usr'
             ]
             for dir in candidate_dirs:
                 bin_dir = os.path.join(dir, 'bin')
@@ -291,13 +309,13 @@ class Builder:
 
         clang_bin_dir = os.path.join(clang_dir, 'bin')
 
-        return os.path.join(clang_bin_dir, 'clang'), os.path.join(clang_bin_dir)
+        return os.path.join(clang_bin_dir, 'clang'), os.path.join(clang_bin_dir, 'clang++')
 
     def detect_linuxbrew(self):
         if not is_linux():
             return
 
-        self.linuxbrew_dir = get_linuxbrew_dir()
+        self.linuxbrew_dir = os.environ.get('YB_LINUXBREW_DIR')
 
         if self.linuxbrew_dir:
             self.using_linuxbrew = True
@@ -306,9 +324,9 @@ class Builder:
     def clean(self):
         heading('Clean')
         for dependency in self.selected_dependencies:
-            for dir in BUILD_TYPES:
+            for dir_name in BUILD_TYPES:
                 for leaf in [dependency.name, '.build-stamp-{}'.format(dependency)]:
-                    path = os.path.join(self.tp_build_dir, dir, leaf)
+                    path = os.path.join(self.tp_build_dir, dir_name, leaf)
                     if os.path.exists(path):
                         log("Removing {} build output: {}".format(dependency.name, path))
                         remove_path(path)
@@ -448,12 +466,7 @@ class Builder:
             log("File {} already exists but has wrong checksum, removing".format(path))
             remove_path(path)
         log("Fetching {}".format(filename))
-        if re.match("s3:.*", url):
-            subprocess.check_call(['s3cmd', 'get', url, path])
-            # Alternatively we can use AWS CLI:
-            # aws s3 cp "$download_url" "$FILENAME"
-        else:
-            subprocess.check_call([self.curl_path, '-o', path, '--location', url])
+        subprocess.check_call([self.curl_path, '-o', path, '--location', url])
         if not os.path.exists(path):
             fatal("Downloaded '{}' but but unable to find '{}'".format(url, path))
         expected_checksum = self.get_expected_checksum(filename, downloaded_path=path)
@@ -599,37 +612,49 @@ class Builder:
         if 'install' not in kwargs or kwargs['install']:
             log_output(log_prefix, [build_tool, 'install'])
 
-    def build(self, type):
-        if type != BUILD_TYPE_COMMON and self.args.build_type is not None:
-            if type != self.args.build_type:
+    def build(self, build_type):
+        if build_type != BUILD_TYPE_COMMON and self.args.build_type is not None:
+            if build_type != self.args.build_type:
                 return
 
-        self.set_build_type(type)
+        self.set_build_type(build_type)
         self.setup_compiler()
         # This is needed at least for glog to be able to find gflags.
         self.add_rpath(os.path.join(self.tp_installed_dir, self.build_type, 'lib'))
-        build_group = BUILD_GROUP_COMMON if type == BUILD_TYPE_COMMON else BUILD_GROUP_INSTRUMENTED
+        build_group = (
+            BUILD_GROUP_COMMON if build_type == BUILD_TYPE_COMMON
+                               else BUILD_GROUP_INSTRUMENTED
+        )
         for dep in self.selected_dependencies:
             if dep.build_group == build_group and dep.should_build(self):
                 self.build_dependency(dep)
 
-    def set_build_type(self, type):
-        self.build_type = type
-        self.prefix = os.path.join(self.tp_installed_dir, type)
+    def get_prefix(self, qualifier=None):
+        return os.path.join(
+            self.tp_installed_dir + ('_' + qualifier if qualifier else ''),
+            self.build_type)
+
+    def set_build_type(self, build_type):
+        self.build_type = build_type
         self.find_prefix = self.tp_installed_common_dir
-        if type != BUILD_TYPE_COMMON:
+        self.prefix = self.get_prefix()
+        if build_type != BUILD_TYPE_COMMON:
             self.find_prefix += ';' + self.prefix
         self.prefix_bin = os.path.join(self.prefix, 'bin')
         self.prefix_lib = os.path.join(self.prefix, 'lib')
         self.prefix_include = os.path.join(self.prefix, 'include')
         if self.building_with_clang():
             compiler = 'clang'
-        elif type == BUILD_TYPE_GCC8_UNINSTRUMENTED:
+        elif build_type == BUILD_TYPE_GCC8_UNINSTRUMENTED:
             compiler = 'gcc8'
         else:
             compiler = 'gcc'
         self.set_compiler(compiler)
-        heading("Building {} dependencies".format(type))
+        heading("Building {} dependencies (compiler type: {})".format(
+            build_type, self.compiler_type))
+        log("Compiler type: {}".format(self.compiler_type))
+        log("C compiler: {}".format(self.get_c_compiler()))
+        log("C++ compiler: {}".format(self.get_cxx_compiler()))
 
     def setup_compiler(self):
         self.init_flags()
@@ -652,7 +677,7 @@ class Builder:
         self.cxx_flags.insert(0, '-isystem')
         self.cxx_flags.insert(1, stdlib_include)
         self.cxx_flags.insert(0, '-stdlib=libc++')
-        # CLang complains about argument unused during compilation: '-stdlib=libc++' when both
+        # Clang complains about argument unused during compilation: '-stdlib=libc++' when both
         # -stdlib=libc++ and -nostdinc++ are specified.
         self.cxx_flags.insert(0, '-Wno-error=unused-command-line-argument')
         self.prepend_lib_dir_and_rpath(stdlib_lib)
@@ -669,8 +694,16 @@ class Builder:
 
         self.download_dependency(dep)
 
-        os.environ["CXXFLAGS"] = " ".join(self.compiler_flags + self.cxx_flags)
-        os.environ["CFLAGS"] = " ".join(self.compiler_flags + self.c_flags)
+        # Additional flags coming from the dependency itself.
+        dep_additional_cxx_flags = (dep.get_additional_cxx_flags(self) +
+                                    dep.get_additional_c_cxx_flags(self))
+        dep_additional_c_flags = (dep.get_additional_c_flags(self) +
+                                  dep.get_additional_c_cxx_flags(self))
+
+        os.environ["CXXFLAGS"] = " ".join(
+                self.compiler_flags + self.cxx_flags + dep_additional_cxx_flags)
+        os.environ["CFLAGS"] = " ".join(
+                self.compiler_flags + self.c_flags + dep_additional_c_flags)
         os.environ["LDFLAGS"] = " ".join(self.ld_flags)
         os.environ["LIBS"] = " ".join(self.libs)
 
@@ -774,6 +807,9 @@ class Builder:
 
     # Returns true if we are using clang to build current build_type.
     def building_with_clang(self):
+        if is_mac():
+            # We only support clang on macOS.
+            return True
         return self.build_type == BUILD_TYPE_ASAN or self.build_type == BUILD_TYPE_TSAN or \
                self.build_type == BUILD_TYPE_CLANG_UNINSTRUMENTED
 
@@ -783,7 +819,7 @@ class Builder:
                self.args.build_type != BUILD_TYPE_GCC8_UNINSTRUMENTED
 
     def check_cxx_compiler_flag(self, flag):
-        process = subprocess.Popen([self.cxx_wrapper, '-x', 'c++', flag, '-'],
+        process = subprocess.Popen([self.get_cxx_compiler(), '-x', 'c++', flag, '-'],
                                    stdin=subprocess.PIPE)
         process.stdin.write("int main() { return 0; }")
         process.stdin.close()
@@ -792,6 +828,7 @@ class Builder:
     def add_checked_flag(self, flags, flag):
         if self.check_cxx_compiler_flag(flag):
             flags.append(flag)
+
 
 def main():
     unset_if_set('CC')
@@ -806,6 +843,7 @@ def main():
     builder = Builder()
     builder.init()
     builder.run()
+
 
 if __name__ == "__main__":
     main()

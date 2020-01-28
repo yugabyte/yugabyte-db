@@ -203,6 +203,15 @@ class Dependency(object):
         self.archive_name = make_archive_name(name, version, self.download_url)
         self.patch_version = 0
 
+    def get_additional_c_cxx_flags(self, builder):
+        return []
+
+    def get_additional_c_flags(self, builder):
+        return []
+
+    def get_additional_cxx_flags(self, builder):
+        return []
+
     def should_build(self, builder):
         return True
 

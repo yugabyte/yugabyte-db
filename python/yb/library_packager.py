@@ -438,7 +438,10 @@ class LibraryPackager:
             post_install_script = post_install_script_input.read()
 
         new_post_install_script = post_install_script
-        replacements = [("original_linuxbrew_path_to_patch", linuxbrew_home.linuxbrew_dir)]
+        replacements = [
+            ("original_linuxbrew_path_to_patch", linuxbrew_home.linuxbrew_dir),
+            ("original_linuxbrew_path_length", len(linuxbrew_home.linuxbrew_dir)),
+        ]
         for macro_var_name, list_of_binary_names in [
             ("main_elf_names_to_patch", main_elf_names_to_patch),
             ("postgres_elf_names_to_patch", postgres_elf_names_to_patch),
@@ -448,7 +451,7 @@ class LibraryPackager:
 
         for macro_var_name, value in replacements:
             new_post_install_script = new_post_install_script.replace(
-                '${%s}' % macro_var_name, value)
+                '${%s}' % macro_var_name, str(value))
 
         with open(post_install_path, 'w') as post_install_script_output:
             post_install_script_output.write(new_post_install_script)
