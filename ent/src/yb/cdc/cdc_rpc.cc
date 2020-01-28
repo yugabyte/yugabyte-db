@@ -166,9 +166,6 @@ class CDCReadRpc : public rpc::Rpc, public client::internal::TabletRpc {
     Status new_status = status;
     if (invoker_.Done(&new_status)) {
       InvokeCallback(new_status);
-    } else if(!called_) {
-      // Clear any response errors that were set.
-      resp_.Clear();
     }
   }
 
@@ -207,7 +204,6 @@ class CDCReadRpc : public rpc::Rpc, public client::internal::TabletRpc {
     return nullptr;
   }
 
- private:
   void SendRpcToTserver(int attempt_num) override {
     // should be fast because the proxy cache has EndPoint from the tablet lookup.
     cdc_proxy_ = std::make_shared<CDCServiceProxy>(
@@ -218,6 +214,7 @@ class CDCReadRpc : public rpc::Rpc, public client::internal::TabletRpc {
         std::bind(&CDCReadRpc::Finished, this, Status::OK()));
   }
 
+ private:
   const std::string &tablet_id() const {
     return req_.tablet_id();
   }
