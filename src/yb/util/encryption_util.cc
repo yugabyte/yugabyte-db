@@ -12,6 +12,12 @@
 //
 
 #include <openssl/rand.h>
+#include <openssl/crypto.h>
+#include <openssl/evp.h>
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
 #include <memory>
 #include <boost/pointer_cast.hpp>
 
@@ -117,6 +123,53 @@ Result<uint32_t> GetHeaderSize(SequentialFile* file, HeaderManager* header_manag
   RETURN_NOT_OK(file->Read(metadata_start, &encryption_info, buf));
   auto status = VERIFY_RESULT(header_manager->GetFileEncryptionStatusFromPrefix(encryption_info));
   return status.is_encrypted ? (status.header_size + metadata_start) : 0;
+}
+
+std::vector<std::unique_ptr<std::mutex>> crypto_mutexes;
+
+__attribute__((unused)) void NO_THREAD_SAFETY_ANALYSIS LockingCallback(
+    int mode, int n, const char* /*file*/, int /*line*/) {
+  CHECK_LT(static_cast<size_t>(n), crypto_mutexes.size());
+  if (mode & CRYPTO_LOCK) {
+    crypto_mutexes[n]->lock();
+  } else {
+    crypto_mutexes[n]->unlock();
+  }
+}
+__attribute__((unused)) void NO_THREAD_SAFETY_ANALYSIS ThreadId(CRYPTO_THREADID *tid) {
+  auto id = Thread::CurrentThreadId();
+  CRYPTO_THREADID_set_numeric(tid, id);
+}
+
+class OpenSSLInitializer {
+ public:
+  OpenSSLInitializer() {
+    SSL_library_init();
+    SSL_load_error_strings();
+    OpenSSL_add_all_algorithms();
+    OpenSSL_add_all_ciphers();
+
+    while (crypto_mutexes.size() != CRYPTO_num_locks()) {
+      crypto_mutexes.emplace_back(std::make_unique<std::mutex>());
+    }
+    CRYPTO_set_locking_callback(&LockingCallback);
+    CRYPTO_THREADID_set_callback(&ThreadId);
+  }
+
+  ~OpenSSLInitializer() {
+    CRYPTO_set_locking_callback(nullptr);
+    CRYPTO_THREADID_set_callback(nullptr);
+    ERR_free_strings();
+    EVP_cleanup();
+    CRYPTO_cleanup_all_ex_data();
+    ERR_remove_thread_state(nullptr);
+    SSL_COMP_free_compression_methods();
+  }
+};
+
+OpenSSLInitializer& InitOpenSSL() {
+  static OpenSSLInitializer initializer;
+  return initializer;
 }
 
 } // namespace enterprise
