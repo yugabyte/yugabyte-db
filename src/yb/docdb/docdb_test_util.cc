@@ -238,7 +238,8 @@ vector<PrimitiveValue> GenRandomPrimitiveValues(RandomNumberGenerator* rng, int 
 }
 
 DocKey CreateMinimalDocKey(RandomNumberGenerator* rng, UseHash use_hash) {
-  return use_hash ? DocKey(static_cast<DocKeyHash>((*rng)()), {}, {}) : DocKey();
+  return use_hash ? DocKey(static_cast<DocKeyHash>((*rng)()), std::vector<PrimitiveValue>(),
+      std::vector<PrimitiveValue>()) : DocKey();
 }
 
 DocKey GenRandomDocKey(RandomNumberGenerator* rng, UseHash use_hash) {

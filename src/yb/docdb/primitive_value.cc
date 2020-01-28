@@ -18,6 +18,7 @@
 #include <glog/logging.h>
 
 #include "yb/common/jsonb.h"
+#include "yb/common/schema.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_kv_util.h"
@@ -210,6 +211,8 @@ string PrimitiveValue::ToString() const {
       return "[]";
     case ValueType::kTableId:
       return Format("TableId($0)", uuid_val_.ToString());
+    case ValueType::kPgTableOid:
+      return Format("PgTableOid($0)", uint32_val_);
     case ValueType::kTransactionId:
       return Substitute("TransactionId($0)", uuid_val_.ToString());
     case ValueType::kWriteId:
@@ -272,6 +275,7 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
       key_bytes->AppendInt32(int32_val_);
       return;
 
+    case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
       key_bytes->AppendUInt32(uint32_val_);
       return;
@@ -446,6 +450,7 @@ string PrimitiveValue::ToValue() const {
       AppendBigEndianUInt32(int32_val_, &result);
       return result;
 
+    case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
       AppendBigEndianUInt32(uint32_val_, &result);
@@ -723,6 +728,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       type_ref = value_type;
       return Status::OK();
 
+    case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
       if (slice->size() < sizeof(uint32_t)) {
@@ -1021,6 +1027,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       int32_val_ = BigEndian::Load32(slice.data());
       return Status::OK();
 
+    case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Descending:
       if (slice.size() != sizeof(uint32_t)) {
@@ -1269,6 +1276,12 @@ PrimitiveValue PrimitiveValue::TableId(Uuid table_id) {
   return primitive_value;
 }
 
+PrimitiveValue PrimitiveValue::PgTableOid(const yb::PgTableOid pgtable_id) {
+  PrimitiveValue primitive_value(pgtable_id);
+  primitive_value.type_ = ValueType::kPgTableOid;
+  return primitive_value;
+}
+
 PrimitiveValue PrimitiveValue::Jsonb(const std::string& json) {
   PrimitiveValue primitive_value;
   primitive_value.type_ = ValueType::kJsonb;
@@ -1310,6 +1323,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kWriteId: FALLTHROUGH_INTENDED;
     case ValueType::kInt32: return int32_val_ == other.int32_val_;
 
+    case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32: return uint32_val_ == other.uint32_val_;
 
@@ -1392,6 +1406,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return CompareUsingLessThan(int32_val_, other.int32_val_);
     case ValueType::kUInt32Descending:
       return CompareUsingLessThan(other.uint32_val_, uint32_val_);
+    case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
       return CompareUsingLessThan(uint32_val_, other.uint32_val_);
     case ValueType::kUInt64Descending:

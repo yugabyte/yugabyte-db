@@ -127,6 +127,7 @@ namespace docdb {
     ((kWriteId, 'w')) /* ASCII code 119 */ \
     ((kTransactionId, 'x')) /* ASCII code 120 */ \
     ((kTableId, 'y')) /* ASCII code 121 */ \
+    ((kPgTableOid, 'z')) /* ASCII code 122 */ \
     \
     ((kObject, '{'))  /* ASCII code 123 */ \
     \

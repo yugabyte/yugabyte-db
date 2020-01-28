@@ -3757,7 +3757,8 @@ bool CatalogManager::IsUserCreatedTable(const TableInfo& table) const {
 bool CatalogManager::IsUserCreatedTableUnlocked(const TableInfo& table) const {
   if (table.GetTableType() == PGSQL_TABLE_TYPE || table.GetTableType() == YQL_TABLE_TYPE) {
     if (!IsSystemTableUnlocked(table) && !IsSequencesSystemTable(table) &&
-        GetNamespaceNameUnlocked(table.namespace_id()) != kSystemNamespaceName) {
+        GetNamespaceNameUnlocked(table.namespace_id()) != kSystemNamespaceName &&
+        !IsColocatedParentTable(table)) {
       return true;
     }
   }

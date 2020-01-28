@@ -482,6 +482,8 @@ class TableProperties {
   bool is_ysql_catalog_table_ = false;
 };
 
+typedef uint32_t PgTableOid;
+
 // The schema for a set of rows.
 //
 // A Schema is simply a set of columns, along with information about
@@ -507,7 +509,8 @@ class Schema {
                      NameToIndexMap::key_equal(),
                      NameToIndexMapAllocator(&name_to_index_bytes_)),
       has_nullables_(false),
-      cotable_id_(boost::uuids::nil_uuid()) {
+      cotable_id_(boost::uuids::nil_uuid()),
+      pgtable_id_(0) {
   }
 
   Schema(const Schema& other);
@@ -526,14 +529,15 @@ class Schema {
   Schema(const vector<ColumnSchema>& cols,
          int key_columns,
          const TableProperties& table_properties = TableProperties(),
-         const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()))
+         const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()),
+         const PgTableOid pgtable_id = 0)
     : name_to_index_bytes_(0),
       // TODO: C++11 provides a single-arg constructor
       name_to_index_(10,
                      NameToIndexMap::hasher(),
                      NameToIndexMap::key_equal(),
                      NameToIndexMapAllocator(&name_to_index_bytes_)) {
-    CHECK_OK(Reset(cols, key_columns, table_properties, cotable_id));
+    CHECK_OK(Reset(cols, key_columns, table_properties, cotable_id, pgtable_id));
   }
 
   // Construct a schema with the given information.
@@ -546,14 +550,15 @@ class Schema {
          const vector<ColumnId>& ids,
          int key_columns,
          const TableProperties& table_properties = TableProperties(),
-         const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()))
+         const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()),
+         const PgTableOid pgtable_id = 0)
     : name_to_index_bytes_(0),
       // TODO: C++11 provides a single-arg constructor
       name_to_index_(10,
                      NameToIndexMap::hasher(),
                      NameToIndexMap::key_equal(),
                      NameToIndexMapAllocator(&name_to_index_bytes_)) {
-    CHECK_OK(Reset(cols, ids, key_columns, table_properties, cotable_id));
+    CHECK_OK(Reset(cols, ids, key_columns, table_properties, cotable_id, pgtable_id));
   }
 
   // Reset this Schema object to the given schema.
@@ -561,9 +566,10 @@ class Schema {
   // state and may not be used.
   CHECKED_STATUS Reset(const vector<ColumnSchema>& cols, int key_columns,
                        const TableProperties& table_properties = TableProperties(),
-                       const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid())) {
+                       const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()),
+                       const PgTableOid pgtable_id = 0) {
     std::vector<ColumnId> ids;
-    return Reset(cols, ids, key_columns, table_properties, cotable_id);
+    return Reset(cols, ids, key_columns, table_properties, cotable_id, pgtable_id);
   }
 
   // Reset this Schema object to the given schema.
@@ -573,7 +579,8 @@ class Schema {
                        const vector<ColumnId>& ids,
                        int key_columns,
                        const TableProperties& table_properties = TableProperties(),
-                       const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()));
+                       const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()),
+                       const PgTableOid pgtable_id = 0);
 
   // Return the number of bytes needed to represent a single row of this schema.
   //
@@ -762,8 +769,32 @@ class Schema {
     return cotable_id_;
   }
 
+  bool has_cotable_id() const {
+    return !cotable_id_.IsNil();
+  }
+
   void set_cotable_id(const Uuid& cotable_id) {
+    if (!cotable_id.IsNil()) {
+      DCHECK_EQ(pgtable_id_, 0);
+    }
     cotable_id_ = cotable_id;
+  }
+
+  // Gets and sets the PG table OID of the non-primary table this schema belongs to in a tablet
+  // with colocated tables.
+  const PgTableOid pgtable_id() const {
+    return pgtable_id_;
+  }
+
+  bool has_pgtable_id() const {
+    return pgtable_id_ > 0;
+  }
+
+  void set_pgtable_id(const PgTableOid pgtable_id) {
+    if (pgtable_id > 0) {
+      DCHECK(cotable_id_.IsNil());
+    }
+    pgtable_id_ = pgtable_id;
   }
 
   // Extract a given column from a row where the type is
@@ -1089,6 +1120,10 @@ class Schema {
   // Uuid of the non-primary table this schema belongs to co-located in a tablet. Nil for the
   // primary or single-tenant table.
   Uuid cotable_id_;
+
+  // PG table OID of the non-primary table this schema belongs to in a tablet with colocated
+  // tables. Nil for the primary or single-tenant table.
+  PgTableOid pgtable_id_;
 
   // NOTE: if you add more members, make sure to add the appropriate
   // code to swap() and CopyFrom() as well to prevent subtle bugs.
