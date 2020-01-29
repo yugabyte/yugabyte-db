@@ -346,7 +346,8 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   }
 
   // Logs the usage of this tracker and all of its children (recursively).
-  std::string LogUsage(const std::string& prefix = "") const;
+  std::string LogUsage(
+      const std::string& prefix = "", size_t usage_threshold = 0, int indent = 0) const;
 
   void EnableLogging(bool enable, bool log_stack) {
     enable_logging_ = enable;
@@ -571,6 +572,8 @@ class ScopedTrackedConsumption {
 
   int64_t consumption() const { return consumption_; }
 
+  const MemTrackerPtr& mem_tracker() { return tracker_; }
+
  private:
   MemTrackerPtr tracker_;
   int64_t consumption_;
@@ -600,6 +603,9 @@ const MemTrackerData& CollectMemTrackerData(const MemTrackerPtr& tracker, int de
                                             std::vector<MemTrackerData>* output);
 
 std::string DumpMemoryUsage();
+
+bool CheckMemoryPressureWithLogging(
+    const MemTrackerPtr& mem_tracker, double score, const char* error_prefix);
 
 } // namespace yb
 

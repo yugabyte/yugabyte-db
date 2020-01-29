@@ -26,9 +26,9 @@
 #include "yb/rpc/serialization.h"
 
 #include "yb/util/flag_tags.h"
-#include "yb/util/size_literals.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/size_literals.h"
 
 using google::protobuf::io::CodedInputStream;
 using yb::operator"" _MB;
@@ -46,9 +46,14 @@ DEFINE_int32(rpc_max_message_size, 255_MB,
 
 DEFINE_bool(enable_rpc_keepalive, true, "Whether to enable RPC keepalive mechanism");
 
+DEFINE_test_flag(int32, TEST_yb_inbound_big_calls_parse_delay_ms, false,
+    "Test flag for simulating slow parsing of inbound calls larger than "
+    "rpc_throttle_threshold_bytes");
+
 using std::placeholders::_1;
-DECLARE_int32(rpc_slow_query_threshold_ms);
 DECLARE_uint64(rpc_connection_timeout_ms);
+DECLARE_int32(rpc_slow_query_threshold_ms);
+DECLARE_int32(rpc_throttle_threshold_bytes);
 
 namespace yb {
 namespace rpc {
@@ -144,13 +149,26 @@ Result<ProcessDataResult> YBInboundConnectionContext::ProcessCalls(
     IoVecs data_copy(data);
     data_copy[0].iov_len -= kConnectionHeaderSize;
     data_copy[0].iov_base = const_cast<uint8_t*>(slice.data() + kConnectionHeaderSize);
-    auto result = VERIFY_RESULT(parser().Parse(connection, data_copy, ReadBufferFull::kFalse));
+    auto result = VERIFY_RESULT(
+        parser().Parse(connection, data_copy, ReadBufferFull::kFalse, &call_tracker()));
     result.consumed += kConnectionHeaderSize;
     return result;
   }
 
-  return parser().Parse(connection, data, read_buffer_full);
+  return parser().Parse(connection, data, read_buffer_full, &call_tracker());
 }
+
+namespace {
+
+CHECKED_STATUS ThrottleRpcStatus(const MemTrackerPtr& throttle_tracker, const YBInboundCall& call) {
+  if (ShouldThrottleRpc(throttle_tracker, call.request_data().size(), "Rejecting RPC call: ")) {
+    return STATUS_FORMAT(ServiceUnavailable, "Call rejected due to memory pressure: $0", call);
+  } else {
+    return Status::OK();
+  }
+}
+
+} // namespace
 
 Status YBInboundConnectionContext::HandleCall(
     const ConnectionPtr& connection, CallData* call_data) {
@@ -167,6 +185,12 @@ Status YBInboundConnectionContext::HandleCall(
   s = Store(call.get());
   if (!s.ok()) {
     return s;
+  }
+
+  auto throttle_status = ThrottleRpcStatus(call_tracker(), *call);
+  if (!throttle_status.ok()) {
+    call->RespondFailure(ErrorStatusPB::ERROR_APPLICATION, throttle_status);
+    return Status::OK();
   }
 
   reactor->messenger()->QueueInboundCall(call);
@@ -397,6 +421,8 @@ void YBInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>*
 }
 
 Status YBInboundCall::ParseParam(google::protobuf::Message *message) {
+  RETURN_NOT_OK(ThrottleRpcStatus(consumption_.mem_tracker(), *this));
+
   Slice param(serialized_request());
   CodedInputStream in(param.data(), param.size());
   in.SetTotalBytesLimit(FLAGS_rpc_max_message_size, FLAGS_rpc_max_message_size*3/4);
@@ -408,6 +434,11 @@ Status YBInboundCall::ParseParam(google::protobuf::Message *message) {
     return STATUS(InvalidArgument, err);
   }
   consumption_.Add(message->SpaceUsedLong());
+
+  if (PREDICT_FALSE(FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms > 0 &&
+        request_data_.size() > FLAGS_rpc_throttle_threshold_bytes)) {
+    std::this_thread::sleep_for(FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms * 1ms);
+  }
 
   return Status::OK();
 }
@@ -493,7 +524,7 @@ void YBOutboundConnectionContext::AssignConnection(const ConnectionPtr& connecti
 
 Result<ProcessDataResult> YBOutboundConnectionContext::ProcessCalls(
     const ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full) {
-  return parser().Parse(connection, data, read_buffer_full);
+  return parser().Parse(connection, data, read_buffer_full, nullptr /* tracker_for_throttle */);
 }
 
 void YBOutboundConnectionContext::UpdateLastRead(const ConnectionPtr& connection) {
