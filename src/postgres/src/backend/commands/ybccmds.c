@@ -604,7 +604,7 @@ YBCTruncateTable(Relation rel) {
 
 void
 YBCCreateIndex(const char *indexName,
-			   IndexInfo *indexInfo,			   
+			   IndexInfo *indexInfo,
 			   TupleDesc indexTupleDesc,
 			   int16 *coloptions,
 			   Oid indexId,
@@ -620,18 +620,18 @@ YBCCreateIndex(const char *indexName,
 					 schema_name,
 					 indexName);
 
+	/* Check reloptions. */
 	ListCell	*opt_cell;
-	// Set the default option to true so that tables created in a colocated database will be
-	// colocated by default. For regular database, this argument will be ignored.
-	bool		colocated = true;
-	/* Scan list to see if colocated was included */
 	foreach(opt_cell, index_options)
 	{
 		DefElem *def = (DefElem *) lfirst(opt_cell);
 
 		if (strcmp(def->defname, "colocated") == 0)
 		{
-			colocated = defGetBoolean(def);
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot set option \"%s\" on index",
+							def->defname)));
 		}
 	}
 
@@ -646,7 +646,6 @@ YBCCreateIndex(const char *indexName,
 									   rel->rd_rel->relisshared,
 									   indexInfo->ii_Unique,
 									   false, /* if_not_exists */
-									   colocated,
 									   &handle));
 
 	for (int i = 0; i < indexTupleDesc->natts; i++)
@@ -666,10 +665,10 @@ YBCCreateIndex(const char *indexName,
 								YBPgTypeOidToStr(att->atttypid))));
 		}
 
-	const int16 options        = coloptions[i];
-	const bool  is_hash        = options & INDOPTION_HASH;
-	const bool  is_desc        = options & INDOPTION_DESC;
-	const bool  is_nulls_first = options & INDOPTION_NULLS_FIRST;
+		const int16 options        = coloptions[i];
+		const bool  is_hash        = options & INDOPTION_HASH;
+		const bool  is_desc        = options & INDOPTION_DESC;
+		const bool  is_nulls_first = options & INDOPTION_NULLS_FIRST;
 
 		HandleYBStmtStatus(YBCPgCreateIndexAddColumn(handle,
 													 attname,

@@ -364,13 +364,12 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               bool is_shared_index,
                               bool is_unique_index,
                               bool if_not_exist,
-                              bool colocated,
                               YBCPgStatement *handle) {
   const PgObjectId index_id(database_oid, index_oid);
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewCreateIndex(database_name, schema_name, index_name,
-                                           index_id, table_id, is_shared_index, is_unique_index,
-                                           if_not_exist, colocated, handle));
+  return ToYBCStatus(pgapi->NewCreateIndex(database_name, schema_name, index_name, index_id,
+                                           table_id, is_shared_index, is_unique_index, if_not_exist,
+                                           handle));
 }
 
 YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
