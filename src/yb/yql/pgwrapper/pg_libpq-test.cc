@@ -868,14 +868,6 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
   ASSERT_EQ(tablets.size(), 1);
   ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
 
-  // Create a non-colocated index table (by opting-out).
-  ASSERT_OK(conn.Execute("CREATE INDEX foo_index2 ON foo (a) WITH (colocated = false)"));
-  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "foo_index2"));
-  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
-  for (auto& tablet : tablets) {
-    ASSERT_NE(tablet.tablet_id(), colocated_tablet_id);
-  }
-
   // Create a hash partition table and opt out of using the parent tablet.
   ASSERT_OK(conn.Execute("CREATE TABLE bar (a INT) WITH (colocated = false)"));
   table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "bar"));
@@ -949,7 +941,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
   ASSERT_FALSE(ASSERT_RESULT(
         client->TableExists(client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, "foo"))));
   ASSERT_FALSE(ASSERT_RESULT(
-        client->TableExists(client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, "foo_index2"))));
+        client->TableExists(client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, "foo_index1"))));
 
   // The colocation tablet should be deleted.
   bool tablet_found = true;
