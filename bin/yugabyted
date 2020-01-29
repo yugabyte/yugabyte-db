@@ -113,6 +113,8 @@ DEMO_DB_PREFIX = "yb_demo_"
 ALERT_WARNING = "Warning"
 ULIMIT_ERR_CODE = "LOW_ULIMITS"
 
+start_time_sec = time.time()
+
 class ControlScript(object):
     def __init__(self):
         self.configs = None
@@ -435,8 +437,9 @@ class ControlScript(object):
         while True:
             should_callhome = False
 
+            is_first_install = is_first_run and not self.is_yb_initialized()
             # Delete corrupted data dirs left from interrupting yb-master and yb-tserver startup.
-            if not self.is_yb_initialized() and os.path.exists(self.configs.saved_data.get("data_dir")):
+            if is_first_install and os.path.exists(self.configs.saved_data.get("data_dir")):
                 Output.print_and_log(
                     "Found data from failed initialization in {}. Removing...".format(
                         self.configs.saved_data.get("data_dir")))
@@ -552,6 +555,9 @@ class ControlScript(object):
                             os.dup2(dev_null.fileno(), sys.stderr.fileno())
                             os.dup2(dev_null.fileno(), sys.stdout.fileno())
 
+                    Diagnostics.first_run_secs = time.time() - start_time_sec
+                    Diagnostics.first_install = is_first_install
+
                     if self.configs.saved_data.get("callhome"):
                         callhome_thread = Thread(target=self.callhome_loop)
                         callhome_thread.daemon = True
@@ -622,7 +628,8 @@ class ControlScript(object):
 
         post_install_script_path = os.path.join(YUGABYTE_DIR, 'bin', 'post_install.sh')
 
-        Output.log("Running the post-installation script {}".format(post_install_script_path))
+        Output.log("Running the post-installation script {} (may be a no-op)".format(
+                    post_install_script_path))
         process = subprocess.Popen(
                 post_install_script_path, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         std_out, std_err = process.communicate()
@@ -787,7 +794,7 @@ class ControlScript(object):
                 req = Request(url, headers=headers, data=data.encode('utf8'))
                 resp = urlopen(req)
             except Exception as e:
-                # Callhome failures do not matter and should not be displayed/logged.
+                Output.log("Callhome failed: " + str(e))
                 pass
 
     # Calls func after receiving certain exit signals.
@@ -1294,6 +1301,9 @@ class YBProcessManager(ProcessManager):
 
 
 class Diagnostics(object):
+    first_install = None
+    first_run_secs = None
+
     def __init__(self, configs):
         self.configs = configs
 
@@ -1303,8 +1313,15 @@ class Diagnostics(object):
             "data_dir_size": self.get_dir_size(self.configs.saved_data.get("data_dir")),
             "num_cpus": multiprocessing.cpu_count(),
             "master_flags": self.configs.saved_data.get("master_flags"),
-            "tserver_flags": self.configs.saved_data.get("tserver_flags")
+            "tserver_flags": self.configs.saved_data.get("tserver_flags"),
+            "is_docker" : str(os.path.exists("/.dockerenv"))
         }
+        if Diagnostics.first_install is not None:
+            payload['first_install'] = str(Diagnostics.first_install)
+            Diagnostics.first_install = None
+        if Diagnostics.first_run_secs is not None:
+            payload['first_run_secs'] = str(int(Diagnostics.first_run_secs))
+            Diagnostics.first_run_secs = None
         for p in processes.values():
             payload["{}_status".format(p.name)] = "UP" if p.is_running() else "DOWN"
             if p.start_time:
@@ -1660,7 +1677,6 @@ class Output(object):
     PARTY = "\xf0\x9f\x8e\x89".encode('latin1').decode('utf8')
     SHIRT = "\xf0\x9f\x91\x95".encode('latin1').decode('utf8')
     log_dir = None
-    start_time_sec = time.time()
     script_exit_func = None
     # Only attempt to write to stdout while we have access to console.
     console_access = True
@@ -1749,7 +1765,7 @@ class Output(object):
             return
 
         full_msg = msg
-        time_since_sec = time.time() - Output.start_time_sec
+        time_since_sec = time.time() - start_time_sec
         if time_since_sec < 1000:
             # add time since start to make it easier to debug startup perf
             full_msg = " | {:.1f}s | {}".format(time_since_sec, msg)
