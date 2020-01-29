@@ -56,8 +56,10 @@ struct CDCClient {
   std::unique_ptr<rpc::Messenger> messenger;
   std::unique_ptr<rpc::SecureContext> secure_context;
   std::shared_ptr<client::YBClient> client;
+  std::shared_ptr<rpc::Rpcs> rpcs = std::make_shared<rpc::Rpcs>();
 
   ~CDCClient();
+  void Shutdown();
 };
 
 class CDCConsumer {
@@ -86,10 +88,6 @@ class CDCConsumer {
   // Return the value stored in cluster_config_version_. Since we are reading an atomic variable,
   // we don't need to hold the mutex.
   int32_t cluster_config_version() const NO_THREAD_SAFETY_ANALYSIS;
-
-  std::shared_ptr<rpc::Rpcs> rpcs() {
-    return rpcs_;
-  }
 
   void IncrementNumSuccessfulWriteRpcs() {
     TEST_num_successful_write_rpcs++;
@@ -141,10 +139,10 @@ class CDCConsumer {
   std::unique_ptr<ThreadPool> thread_pool_;
 
   std::string log_prefix_;
-  std::unique_ptr<CDCClient> local_client_;
+  std::shared_ptr<CDCClient> local_client_;
 
   // map: {universe_uuid : ...}.
-  std::unordered_map<std::string, std::unique_ptr<CDCClient>> remote_clients_
+  std::unordered_map<std::string, std::shared_ptr<CDCClient>> remote_clients_
     GUARDED_BY(producer_pollers_map_mutex_);
   std::unordered_map<std::string, std::string> uuid_master_addrs_
     GUARDED_BY(master_data_mutex_);
@@ -152,8 +150,6 @@ class CDCConsumer {
   bool should_run_ = true;
 
   std::atomic<int32_t> cluster_config_version_ GUARDED_BY(master_data_mutex_) = {-1};
-
-  std::shared_ptr<rpc::Rpcs> rpcs_ = std::make_shared<rpc::Rpcs>();
 
   std::atomic<uint32_t> TEST_num_successful_write_rpcs {0};
 };
