@@ -234,7 +234,6 @@ class PgApiImpl {
                                 bool is_shared_index,
                                 bool is_unique_index,
                                 bool if_not_exist,
-                                bool colocated,
                                 PgStatement **handle);
 
   CHECKED_STATUS CreateIndexAddColumn(PgStatement *handle, const char *attr_name, int attr_num,

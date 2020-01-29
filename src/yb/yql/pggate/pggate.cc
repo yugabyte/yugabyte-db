@@ -571,11 +571,10 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
                                  bool is_shared_index,
                                  bool is_unique_index,
                                  bool if_not_exist,
-                                 bool colocated,
                                  PgStatement **handle) {
   auto stmt = make_scoped_refptr<PgCreateIndex>(
       pg_session_, database_name, schema_name, index_name, index_id, base_table_id,
-      is_shared_index, is_unique_index, if_not_exist, colocated);
+      is_shared_index, is_unique_index, if_not_exist);
   *handle = stmt.detach();
   return Status::OK();
 }

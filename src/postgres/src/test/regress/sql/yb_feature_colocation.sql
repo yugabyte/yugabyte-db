@@ -48,24 +48,10 @@ SELECT * FROM tab_range_nonkey2;
 -- colocated table with non-colocated index
 CREATE TABLE tab_range_nonkey3 (a INT, b INT, PRIMARY KEY (a ASC));
 CREATE INDEX idx_range_colo ON tab_range_nonkey3 (a) WITH (colocated = true);
-INSERT INTO tab_range_nonkey3 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
-EXPLAIN SELECT * FROM tab_range_nonkey3 WHERE a = 1;
-SELECT * FROM tab_range_nonkey3 WHERE a = 1;
-UPDATE tab_range_nonkey3 SET b = b + 1 WHERE a > 3;
-SELECT * FROM tab_range_nonkey3;
-DELETE FROM tab_range_nonkey3 WHERE a > 3;
-SELECT * FROM tab_range_nonkey3;
 
 -- colocated table with colocated index
 CREATE TABLE tab_range_nonkey4 (a INT, b INT, PRIMARY KEY (a ASC));
 CREATE INDEX idx_range_noco ON tab_range_nonkey4 (a) WITH (colocated = false);
-INSERT INTO tab_range_nonkey4 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
-EXPLAIN SELECT * FROM tab_range_nonkey4 WHERE a = 1;
-SELECT * FROM tab_range_nonkey4 WHERE a = 1;
-UPDATE tab_range_nonkey4 SET b = b + 1 WHERE a > 3;
-SELECT * FROM tab_range_nonkey4;
-DELETE FROM tab_range_nonkey4 WHERE a > 3;
-SELECT * FROM tab_range_nonkey4;
 
 -- non-colocated table with index
 CREATE TABLE tab_range_nonkey_noco (a INT, b INT, PRIMARY KEY (a ASC)) WITH (colocated = false);

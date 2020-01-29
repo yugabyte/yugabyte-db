@@ -151,7 +151,7 @@ static relopt_bool boolRelOpts[] =
 		{
 			"colocated",
 			"opt-out of using colocated tablet if set to false",
-			RELOPT_KIND_HEAP | RELOPT_KIND_INDEX,
+			RELOPT_KIND_HEAP,
 			AccessExclusiveLock
 		},
 		/* true by default so that table created in colocated database will be
@@ -1394,7 +1394,8 @@ default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 		offsetof(StdRdOptions, parallel_workers)},
 		{"vacuum_cleanup_index_scale_factor", RELOPT_TYPE_REAL,
 		offsetof(StdRdOptions, vacuum_cleanup_index_scale_factor)},
-		{"colocated", RELOPT_TYPE_BOOL, offsetof(StdRdOptions, colocated)}
+		{"colocated", RELOPT_TYPE_BOOL,
+		offsetof(StdRdOptions, colocated)},
 	};
 
 	options = parseRelOptions(reloptions, validate, kind, &numoptions);
