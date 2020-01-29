@@ -173,6 +173,10 @@ TableIterator::TableIterator() : table_(nullptr) {}
 TableIterator::TableIterator(const TableHandle* table, const TableIteratorOptions& options)
     : table_(table), error_handler_(options.error_handler) {
   auto client = (*table)->client();
+
+  session_ = client->NewSession();
+  session_->SetTimeout(60s);
+
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   REPORT_AND_RETURN_IF_NOT_OK(client->GetTablets(table->name(), 0, &tablets));
   if (tablets.size() == 0) {
@@ -181,9 +185,6 @@ TableIterator::TableIterator(const TableHandle* table, const TableIteratorOption
   }
   ops_.reserve(tablets.size());
   partition_key_ends_.reserve(tablets.size());
-
-  session_ = client->NewSession();
-  session_->SetTimeout(60s);
 
   for (const auto& tablet : tablets) {
     if (!options.tablet.empty() && options.tablet != tablet.tablet_id()) {
