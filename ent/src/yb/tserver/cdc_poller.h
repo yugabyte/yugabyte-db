@@ -17,6 +17,7 @@
 #include "yb/cdc/cdc_util.h"
 #include "yb/cdc/cdc_output_client_interface.h"
 #include "yb/rpc/rpc.h"
+#include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/status.h"
 
@@ -39,12 +40,6 @@ class CDCServiceProxy;
 
 } // namespace cdc
 
-namespace client {
-
-class YBClient;
-
-} // namespace client
-
 namespace tserver {
 namespace enterprise {
 
@@ -58,8 +53,8 @@ class CDCPoller {
             std::function<bool(void)> should_continue_polling,
             std::function<void(void)> remove_self_from_pollers_map,
             ThreadPool* thread_pool,
-            const std::shared_ptr<client::YBClient>& local_client,
-            const std::shared_ptr<client::YBClient>& producer_client,
+            const std::shared_ptr<CDCClient>& local_client,
+            const std::shared_ptr<CDCClient>& producer_client,
             CDCConsumer* cdc_consumer,
             bool use_local_tserver);
   ~CDCPoller() = default;
@@ -92,7 +87,7 @@ class CDCPoller {
   std::shared_ptr<cdc::GetChangesResponsePB> resp_;
 
   std::unique_ptr<cdc::CDCOutputClient> output_client_;
-  std::shared_ptr<client::YBClient> producer_client_;
+  std::shared_ptr<CDCClient> producer_client_;
 
   ThreadPool* thread_pool_;
   CDCConsumer* cdc_consumer_;

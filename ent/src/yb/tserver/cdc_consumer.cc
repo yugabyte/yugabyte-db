@@ -50,6 +50,11 @@ CDCClient::~CDCClient() {
   }
 }
 
+void CDCClient::Shutdown() {
+  client->Shutdown();
+  rpcs->Shutdown();
+}
+
 Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
     std::function<bool(const std::string&)> is_leader_for_tablet,
     rpc::ProxyCache* proxy_cache,
@@ -117,7 +122,7 @@ void CDCConsumer::Shutdown() {
     {
       SharedLock<rw_spinlock> read_lock(producer_pollers_map_mutex_);
       for (auto &uuid_and_client : remote_clients_) {
-        uuid_and_client.second->client->Shutdown();
+        uuid_and_client.second->Shutdown();
       }
     }
     local_client_->client->Shutdown();
@@ -293,8 +298,8 @@ void CDCConsumer::TriggerPollForNewTablets() {
             std::bind(&CDCConsumer::ShouldContinuePolling, this, entry.first),
             std::bind(&CDCConsumer::RemoveFromPollersMap, this, entry.first),
             thread_pool_.get(),
-            local_client_->client,
-            remote_clients_[uuid]->client,
+            local_client_,
+            remote_clients_[uuid],
             this,
             use_local_tserver);
         LOG_WITH_PREFIX(INFO) << Format("Start polling for producer tablet $0",
@@ -309,7 +314,7 @@ void CDCConsumer::TriggerPollForNewTablets() {
 void CDCConsumer::RemoveFromPollersMap(const cdc::ProducerTabletInfo producer_tablet_info) {
   LOG_WITH_PREFIX(INFO) << Format("Stop polling for producer tablet $0",
                                   producer_tablet_info.tablet_id);
-  std::shared_ptr<client::YBClient> client_to_delete; // decrement refcount to 0 outside lock
+  std::shared_ptr<CDCClient> client_to_delete; // decrement refcount to 0 outside lock
   {
     SharedLock<rw_spinlock> read_lock_master(master_data_mutex_);
     std::lock_guard<rw_spinlock> write_lock_pollers(producer_pollers_map_mutex_);
@@ -318,7 +323,7 @@ void CDCConsumer::RemoveFromPollersMap(const cdc::ProducerTabletInfo producer_ta
     if (!ContainsKey(uuid_master_addrs_, producer_tablet_info.universe_uuid)) {
       auto it = remote_clients_.find(producer_tablet_info.universe_uuid);
       if (it != remote_clients_.end()) {
-        client_to_delete = it->second->client;
+        client_to_delete = it->second;
         remote_clients_.erase(it);
       }
     }
