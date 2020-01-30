@@ -3,10 +3,10 @@ title: Best practices
 linkTitle: Best practices
 description: Best practices when using YugabyteDB
 aliases:
-  - /latest/quick-start/best-practices/
+  - /latest/quick-start/best-practices-dev/
 menu:
   latest:
-    identifier: best-practices
+    identifier: best-practices-dev
     parent: develop
     weight: 582
 isTocNested: 4
