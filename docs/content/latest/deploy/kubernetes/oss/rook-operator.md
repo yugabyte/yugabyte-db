@@ -1,15 +1,43 @@
 ---
-title: Rook YugabyteDB operator
-linkTitle: Rook operator
-description: Rook YugabyteDB operator
+title: Open Source Kubernetes 
+linkTitle: Open Source Kubernetes
+description: Open Source Kubernetes 
 menu:
   latest:
-    identifier: rook-operator
     parent: deploy-kubernetes
-    weight: 624
+    name: Open Source
+    identifier: k8s-oss-3
+    weight: 621
+aliases:
+  - /latest/deploy/kubernetes/rook-operator/
+type: page
 isTocNested: true
 showAsideToc: true
 ---
+
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/deploy/kubernetes/oss/helm-chart" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      Helm chart
+    </a>
+  </li>
+  <li >
+    <a href="/latest/deploy/kubernetes/oss/yugabyte-operator" class="nav-link ">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      YugabyteDB operator
+    </a>
+  </li>
+  <li>
+    <a href="/latest/deploy/kubernetes/oss/rook-operator" class="nav-link active">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      Rook operator
+    </a>
+  </li>
+</ul>
+
+
 
 [Rook](https://rook.io) is an open source, cloud-native storage orchestrator for Kubernetes, providing the platform, framework, and support that can turn YugabyteDB clusters into self-managing, self-scaling, and self-healing storage services. Rook automates storage-layer tasks, including deployment, bootstrapping, configuration, provisioning, scaling, upgrading, migration, disaster recovery, monitoring, and resource management.
 

@@ -1,5 +1,64 @@
+---
+title: Google Kubernetes Engine (GKE)
+linkTitle: Google Kubernetes Engine (GKE)
+description: Google Kubernetes Engine (GKE)
+menu:
+  latest:
+    parent: deploy-kubernetes
+    name: Google Kubernetes Engine
+    identifier: k8s-gke-3
+    weight: 623
+type: page
+isTocNested: true
+showAsideToc: true
+---
 
-## 1. Create a gcloud cluster
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/deploy/kubernetes/gke/helm-chart" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      Helm chart
+    </a>
+  </li>
+  <li >
+    <a href="/latest/deploy/kubernetes/gke/statefulset-yaml" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      StatefulSet YAML
+    </a>
+  </li>
+   <li >
+    <a href="/latest/deploy/kubernetes/gke/statefulset-yaml-local-ssd" class="nav-link active">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      StatefulSet YAML with Local SSD
+    </a>
+  </li>
+</ul>
+
+## Prerequisites
+
+- Download and install the [Google Cloud SDK](https://cloud.google.com/sdk/downloads/).
+
+**NOTE:** If you install gcloud using a package manager (as opposed to downloading and installing it manually), it does not support some of the commands below.
+
+- Install `kubectl`
+
+After installing Cloud SDK, install the kubectl command line tool by running the following command:
+
+```sh
+$ gcloud components install kubectl
+```
+
+- Configure defaults for gcloud
+
+Set the project ID as `yugabyte`. You can change this as per your need.
+
+```sh
+$ gcloud config set project yugabyte
+```
+
+
+## 1. Create a GKE cluster
 
 Each cluster brings up 3 nodes each of the type `n1-standard-1` for the Kubernetes masters. You can directly create a cluster with the desired machine type using the `--machine-type` option. In thie example we are going to create a node-pool with `n1-standard-8` type nodes for the YugabyteDB universe.
 
@@ -20,7 +79,7 @@ us-west1-a                 us-west1                 UP
 ...
 ```
 
-- Create the glcoud container cluster
+- Create the GKE cluster
 
 Create a Kubernetes cluster on GKE by running the following in order to create a cluster in the desired zone.
 
@@ -28,7 +87,7 @@ Create a Kubernetes cluster on GKE by running the following in order to create a
 $ gcloud container clusters create yugabyte --zone us-west1-b
 ```
 
-- List gcloud container clusters
+- List the cluster
 
 You can list the available cluster by running the following command.
 
