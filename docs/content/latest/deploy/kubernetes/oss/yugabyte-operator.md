@@ -1,15 +1,43 @@
 ---
-title: YugabyteDB operator
-linkTitle: YugabyteDB operator
-description: YugabyteDB operator
+title: Open Source Kubernetes 
+linkTitle: Open Source Kubernetes
+description: Open Source Kubernetes 
 menu:
   latest:
-    identifier: yugabyte-operator
     parent: deploy-kubernetes
-    weight: 626
+    name: Open Source
+    identifier: k8s-oss-2
+    weight: 621
+aliases:
+  - /latest/deploy/kubernetes/yugabyte-operator/
+type: page
 isTocNested: true
 showAsideToc: true
 ---
+
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/deploy/kubernetes/oss/helm-chart" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      Helm chart
+    </a>
+  </li>
+  <li >
+    <a href="/latest/deploy/kubernetes/oss/yugabyte-operator" class="nav-link active">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      YugabyteDB operator
+    </a>
+  </li>
+  <li>
+    <a href="/latest/deploy/kubernetes/oss/rook-operator" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      Rook operator
+    </a>
+  </li>
+</ul>
+
+
 Create and manage a YugabyteDB cluster with a Kubernetes native custom resource `ybcluster.yugabyte.com`. The custom resource definition and other necessary specifications can be found in [Yugabyte k8s operator repository](https://github.com/yugaByte/yugabyte-k8s-operator/). This operator currently provides more configuration options as compared to the Rook operator. The Rook operator, in near future, will get these options too. See full list of configuration options [here](#Configuration-options).
 
 ## Prerequisites
