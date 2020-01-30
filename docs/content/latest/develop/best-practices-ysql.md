@@ -30,19 +30,6 @@ showAsideToc: true
 </ul>
 
 
-## Primary key and index sizing
-Contrary to Postgresql YugabyteDB has clustered primary keys. 
-This means rows are clustered on disk by their primary key columns.
-Rows are compressed into blocks and a block index is used to find the right block
-when querying the db. 
-
-Secondary indexes are also clustered by their columns and will also include all the columns from the primary key. 
-This means that you can query the secondary index and select any column from the primary-key without reading 
-the original row (covered index).
-
-And you have to be careful regarding the size of the primary keys since they will
-also be included in every index of the table.
-
 ## Hash vs range primary keys
 Choosing the type of partitioning in primary-keys and indexes can be hard. 
 There are differences how writes and reads are spread in a distributed database.
