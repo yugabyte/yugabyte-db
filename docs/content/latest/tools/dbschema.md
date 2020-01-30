@@ -11,15 +11,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-[DbScheam](https://DbSchema.io/) is a well-rounded, visual database tool that supports over 40 databases from a single interface. Because YugabyteDB is PostgreSQL compatible, getting DBSchema to work with distributed SQL databases is relatively simple. Follow the steps below to connect DbSchema to YugabyteDB databases, start reverse-engineering schemas, edit entity-relationship (ER) diagrams, browse data, visually build queries, and synchronize schemas.
+[DbSchema](https://dbschema.com/) is a well-rounded, visual database tool that supports over 40 databases from a single interface. Because YugabyteDB is PostgreSQL compatible, getting DBSchema to work with distributed SQL databases is relatively simple. Follow the steps below to connect DbSchema to YugabyteDB databases, start reverse-engineering schemas, edit entity-relationship (ER) diagrams, browse data, visually build queries, and synchronize schemas.
 
 ![DbSchema application](/images/develop/tools/dbschema/dbschema-application.png)
 
 ## Before you begin
-
-Before getting started with DbSchema, make sure you meet the following prerequisites.
-
-### YugabyteDB
 
 Your YugabyteDB cluster should be up and running. If you're new to YugabyteDB, create a local cluster in less than five minutes following the steps in [Quick Start](../../../quick-start/install).
 
