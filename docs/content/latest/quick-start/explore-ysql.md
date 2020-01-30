@@ -25,13 +25,13 @@ After [creating a local cluster](../create-local-cluster/), follow the steps her
 
 Follow the steps to create a database and load sample data.
 
-1. Download the sample schema using the following `curl` command.
+1. Download the sample schema using the following `wget` command.
 
     ```sh
     $ wget https://raw.githubusercontent.com/yugabyte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
     ```
 
-2. Download the sample data archive by running the following `curl` command.
+2. Download the sample data archive by running the following `wget` command.
 
     ```sh
     $ wget https://github.com/yugabyte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
@@ -55,7 +55,7 @@ Follow the steps to create a database and load sample data.
     orders.sql  products.sql  reviews.sql users.sql
     ```
 
-4. Open the YSQL command line by using the following `ysqlsh` command.
+4. Open the YSQL command line by running the following `ysqlsh` command.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -162,7 +162,6 @@ You should see an output like the following:
  vendor     | text                        |           |          | 
 Indexes:
     "products_pkey" PRIMARY KEY, lsm (id HASH)
-
 ```
 
 To see how many products there are in this table, you can run the following query.
@@ -191,7 +190,7 @@ yb_demo=# SELECT id, title, category, price, rating
 You should see an output like the following:
 
 ```
- id  |           title            | category |      price       | rating
+ id  |           title            | category |      price       | rating 
 -----+----------------------------+----------+------------------+--------
   22 | Enormous Marble Shoes      | Gizmo    | 21.4245199604423 |    4.2
   38 | Lightweight Leather Gloves | Gadget   | 44.0462485589292 |    3.8
@@ -212,7 +211,7 @@ yb_demo=# SELECT id, title, category, price, rating
 You should see an output which looks like the following:
 
 ```
- id  |           title           | category  |      price       | rating
+ id  |           title           | category  |      price       | rating 
 -----+---------------------------+-----------+------------------+--------
  152 | Enormous Aluminum Clock   | Widget    | 32.5971248660044 |    3.6
    3 | Synergistic Granite Chair | Doohickey | 35.3887448815391 |      4
@@ -234,7 +233,7 @@ yb_demo=# SELECT users.id, users.name, users.email, orders.id, orders.total
 
 You should see something like the following:
 ```
-  id  |        name         |             email             |  id   |      total
+  id  |        name         |             email             |  id   |      total       
 ------+---------------------+-------------------------------+-------+------------------
   616 | Rex Thiel           | rex-thiel@gmail.com           |  4443 | 101.414602060277
  2289 | Alanis Kovacek      | alanis.kovacek@yahoo.com      | 17195 | 71.8499366564206
@@ -302,10 +301,9 @@ yb_demo=# select * from orders where id = (select max(id) from orders);
 ```
 
 ```
-select * from orders where id = (select max(id) from orders);
-  id   |        created_at         | user_id | product_id | discount | quantity |     subtotal     | tax |      total
--------+---------------------------+---------+------------+----------+----------+------------------+-----+------------------
- 18762 | 2019-04-07 21:22:36.26783 |       1 |          2 |        0 |       10 | 700.798961307176 |   0 | 700.798961307176
+  id   |         created_at         | user_id | product_id | discount | quantity |     subtotal     | tax |      total       
+-------+----------------------------+---------+------------+----------+----------+------------------+-----+------------------
+ 18761 | 2020-01-30 09:24:29.784078 |       1 |          2 |        0 |       10 | 700.798961307176 |   0 | 700.798961307176
 (1 row)
 ```
 
@@ -316,10 +314,9 @@ yb_demo=# SELECT id, category, price, quantity FROM products WHERE id=2;
 ```
 
 ```
-SELECT id, category, price, quantity FROM products WHERE id=2;
- id | category  |      price       | quantity
+ id | category  |      price       | quantity 
 ----+-----------+------------------+----------
-  2 | Doohickey | 70.0798961307176 |     4990
+  2 | Doohickey | 70.0798961307176 |     5000
 (1 row)
 ```
 
@@ -393,12 +390,12 @@ yb_demo=# SELECT source, ROUND(SUM(orders.total)) AS total_sales
 ```
 
 ```
-source     | total_sales
+  source   | total_sales 
 -----------+-------------
  Facebook  |      333454
  Google    |      325184
+ Twitter   |      320150
  Organic   |      319637
- Twitter   |      319449
  Affiliate |      297605
 (5 rows)
 ```
