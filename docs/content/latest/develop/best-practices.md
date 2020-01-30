@@ -169,6 +169,10 @@ After [tablet splitting](https://github.com/YugaByte/yugabyte-db/issues/1004), b
 partitions will not have any limitation in size.
 
 
+## Use `TRUNCATE` to empty tables instead of `DELETE`
+`TRUNCATE` deletes the database files that store the table and is very fast. 
+While DELETE inserts a `delete marker` for each row  in transactions and they are removed from storage when a compaction 
+runs.
 
 Reach out on slack/forum for help with your data-schemas and how to better integrate best practices in your project.
 
