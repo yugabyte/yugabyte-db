@@ -126,7 +126,7 @@ Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
             break;
         }
         return STATUS_SUBSTITUTE(
-            RuntimeError, "Unsupported datatype $0", static_cast<int>(type->main()));
+            NotSupported, "Unsupported datatype $0", static_cast<int>(type->main()));
       }
       Slice data(v->value);
       return value->Deserialize(type, YQL_CLIENT_CQL, &data);
@@ -135,7 +135,9 @@ Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
       value->SetNull();
       return Status::OK();
     case Value::Kind::NOT_SET:
-      break;
+      // The RuntimeError status code will be mapped later into the non-retryable INVALID_REQUEST
+      // error code (non-retryable due to not mapping into STALE_METADATA code later).
+      return STATUS(RuntimeError, "Bind variable was not set");
   }
   return STATUS_SUBSTITUTE(
       RuntimeError, "Invalid bind variable kind $0", static_cast<int>(v->kind));
