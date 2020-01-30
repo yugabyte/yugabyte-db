@@ -75,16 +75,6 @@ in the same tserver, thus removing network that are needed for distributed trans
 This feature is in our roadmap. You can follow this 
 [issue](https://github.com/yugabyte/yugabyte-db/issues/79). 
 
-## Use jsonb columns only when necessary
-`jsonb` columns are slower to read/write compared to normal columns. 
-They also take more space and make keeping data consistency harder (needing complex queries to update jsonb values). 
-A good schema design is to keep most columns as regular ones (or arrays) and 
-only using `jsonb` for truly dynamic values. Don't have a `data jsonb` column 
-where you put everything, but a `dynamic_data jsonb` column and other ones being 
-regular ones.
-Another case is when there's a big number of columns, and most of them are `NULL` 
-in most rows. But contrary to Postgresql, YugabyteDB doesn't store `NULL` values on disk and they have no overhead 
-on storage size.
 
 ## Cluster aware drivers
 We are working hard to create cluster-aware clients in most popular languages. 
