@@ -1,17 +1,20 @@
 ---
-title: Local SSD
-linkTitle: Local SSD
-description: Local SSD
+title: Best Practices
+linkTitle: Best Practices
+description: Best Practices
 aliases:
-  - /deploy/kubernetes/local-ssd/
+  - /latest/deploy/kubernetes/local-ssd/
 menu:
   latest:
-    identifier: local-ssd
+    identifier: best-practices
     parent: deploy-kubernetes
-    weight: 622
+    weight: 626
+type: page
+isTocNested: true
+showAsideToc: true
 ---
 
-<h2>Local vs remote SSDs</h2>
+## Local vs remote SSDs 
 
 Kubernetes gives users the option of using remote disks using dynamic provisioning or local storage which has to be pre-provisioned.
 
@@ -64,19 +67,5 @@ Below is a table that summarizes the features and when to use local or remote st
   </tr>
 </table>
 
-Thus, it is generally preferable to use local storage where possible for higher performance and lower costs. The following section explains how to deploy YugabyteDB on Kubernetes using local SSDs.
+Thus, it is generally preferable to use local storage where possible for higher performance and lower costs. The [GKE section](../gke/statefulset-yaml/) shows how to deploy YugabyteDB on Kubernetes using local SSDs.
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#gke" class="nav-link active" id="gke-tab" data-toggle="tab" role="tab" aria-controls="gke" aria-selected="true">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Google Kubernetes Engine (GKE)
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="gke" class="tab-pane fade show active" role="tabpanel" aria-labelledby="gke-tab">
-    {{% includeMarkdown "local-ssd/gke.md" /%}}
-  </div>
-</div>

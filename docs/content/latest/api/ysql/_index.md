@@ -147,7 +147,7 @@ This section lists the main elements of YSQL.
 
 - [Keywords](keywords).
 - Names and Qualifiers: Some names are reserved for the system. List of [reserved names](reserved_names).
-- Data types: Most PostgreSQL-compatible data types are supported. List of [data types](data-types).
+- Data types: Most PostgreSQL-compatible data types are supported. List of [data types](datatypes).
 - [Expressions](exprs)
 - Database Objects
 - Comments

@@ -13,13 +13,7 @@ menu:
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
-    <a href="#gke" class="nav-link active" id="gke-tab" data-toggle="tab" role="tab" aria-controls="gke" aria-selected="true">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Google Kubernetes Engine (GKE)
-    </a>
-  </li>
-  <li>
-    <a href="#terraform" class="nav-link" id="terraform-tab" data-toggle="tab" role="tab" aria-controls="terraform" aria-selected="true">
+    <a href="#terraform active" class="nav-link" id="terraform-tab" data-toggle="tab" role="tab" aria-controls="terraform" aria-selected="true">
       <i class="icon-shell"></i>
       Terraform
     </a>
@@ -30,16 +24,22 @@ menu:
       Google Cloud Deployment Manager
     </a>
   </li>
+   <li>
+    <a href="#gke" class="nav-link" id="gke-tab" data-toggle="tab" role="tab" aria-controls="gke" aria-selected="true">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      Google Kubernetes Engine (GKE)
+    </a>
+  </li>
 </ul>
 
 <div class="tab-content">
-  <div id="gke" class="tab-pane fade show active" role="tabpanel" aria-labelledby="gke-tab">
-    {{% includeMarkdown "gcp/gke.md" /%}}
-  </div>
   <div id="terraform" class="tab-pane fade" role="tabpanel" aria-labelledby="terraform-tab">
     {{% includeMarkdown "gcp/terraform.md" /%}}
   </div>
   <div id="deployment-manager" class="tab-pane fade" role="tabpanel" aria-labelledby="deployment-manager-tab">
     {{% includeMarkdown "gcp/gcp-deployment-manager.md" /%}}
+  </div>
+    <div id="gke" class="tab-pane fade show active" role="tabpanel" aria-labelledby="gke-tab">
+    {{% includeMarkdown "gcp/gke.md" /%}}
   </div>
 </div>
