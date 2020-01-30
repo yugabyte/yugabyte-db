@@ -69,6 +69,19 @@ Currently, we have focused only on correctness + functionality for YSQL and are 
 while YCQL performance has been worked on quite a bit. Over time YSQL performance will be on parity with YCQL.
 
 
+## Use jsonb columns only when necessary
+`jsonb` columns are slower to read/write compared to normal columns. 
+They also take more space because they need to store keys in strings and make keeping data consistency harder 
+(needing complex queries to update jsonb values). 
+A good schema design is to keep most columns as regular ones (or arrays/collections) and 
+only using `jsonb` for truly dynamic values. 
+Don't create a `data jsonb` column where you put everything, but a `dynamic_data jsonb` column and other ones being 
+primitive columns.
+Another case is when there's a big number of columns, and most of them are `NULL` 
+in most rows. YugabyteDB doesn't store `NULL` values on disk and they have no overhead 
+on storage size.
+
+
 ## Primary key and index sizing
 Yugabyte tables require a primary key and rows are stored on disk ordered by the primary key columns.
 This means rows are clustered on disk by their primary key columns.
