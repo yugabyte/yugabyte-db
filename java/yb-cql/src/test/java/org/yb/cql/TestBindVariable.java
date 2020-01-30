@@ -2368,4 +2368,33 @@ public class TestBindVariable extends BaseCQLTest {
 
     LOG.info("End test");
   }
+
+  @Test
+  public void testTransactionUnboundArg() throws Exception {
+    LOG.info("Start test: " + getCurrentTestMethodName());
+
+    session.execute("CREATE TABLE productkey (key text," +
+                    "                         key_type text," +
+                    "                         tenant text," +
+                    "                         PRIMARY KEY (key)) " +
+                    "WITH TRANSACTIONS = {'enabled' : true};");
+    String stmt =
+        "BEGIN TRANSACTION " +
+        "  insert into productkey (key, tenant) values (:key, :timestamp); " +
+        "  insert into productkey (key, key_type, tenant) values (:key, :keyType, :tenant); " +
+        "END TRANSACTION;";
+    PreparedStatement preparedStatement = session.prepare(stmt);
+    BoundStatement boundStatement  = preparedStatement.bind();
+    boundStatement.setString("key", "test");
+
+    try {
+      ResultSet rs = session.execute(boundStatement);
+      assertNull(rs.one());
+      fail("Prepared statement \"" + stmt + "\" did not fail");
+    } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+      LOG.info("Expected exception", e);
+    }
+
+    LOG.info("End test: " + getCurrentTestMethodName());
+  }
 }
