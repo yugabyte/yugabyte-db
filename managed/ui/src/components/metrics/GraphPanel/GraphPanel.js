@@ -65,10 +65,13 @@ const panelTypes = {
   proxies: {title: "Overall Ops and Latency",
     metrics: ["ysql_server_rpc_per_second",
       "ysql_sql_latency",
+      // "ysql_server_rpc_percentile",
       "cql_server_rpc_per_second",
       "cql_sql_latency",
+      "cql_server_rpc_percentile",
       "redis_rpcs_per_sec_all",
-      "redis_ops_latency_all"
+      "redis_ops_latency_all",
+      "redis_rpc_percentile"
     ]},
 
   redis:  {title: "YEDIS Advanced",
