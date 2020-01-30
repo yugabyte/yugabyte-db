@@ -9,7 +9,7 @@ menu:
     parent: configuration
     weight: 2740
 aliases:
-  - reference/default-ports
+  - /latest/reference/default-ports
 isTocNested: 3
 showAsideToc: true
 ---
