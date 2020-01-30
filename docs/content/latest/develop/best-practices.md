@@ -75,10 +75,6 @@ This means rows are clustered on disk by their primary key columns.
 Rows are compressed into blocks and a block index is used to find the right block
 when querying the db. 
 
-Secondary indexes are also clustered by their columns and will also include all the columns from the primary key. 
-This means that you can query the secondary index and select any column from the primary-key without reading 
-the original row (covered index).
-
 You have to be careful regarding the size of the primary keys since they will
 also be included in every secondary index of the table and will make the block-index larger.
      
