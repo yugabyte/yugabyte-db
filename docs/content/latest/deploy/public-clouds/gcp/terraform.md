@@ -1,4 +1,5 @@
 ## Prerequisites
+
 1. Download and install [terraform](https://www.terraform.io/downloads.html).
 
 2. Verify by the `terraform` command, it should print a help message that looks similar to that shown below.
