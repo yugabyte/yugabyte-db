@@ -461,6 +461,9 @@ Status Log::RollOver() {
 
   DCHECK_EQ(allocation_state(), kAllocationFinished);
 
+  LOG_WITH_PREFIX(INFO) << Format("Last appended opid in segment $0: $1", active_segment_->path(),
+                                  last_appended_entry_op_id_.ToString());
+
   RETURN_NOT_OK(Sync());
   RETURN_NOT_OK(CloseCurrentSegment());
 
@@ -1045,7 +1048,8 @@ Status Log::PreAllocateNewSegment() {
   CHECK_EQ(allocation_state(), kAllocationInProgress);
 
   WritableFileOptions opts;
-  opts.sync_on_close = durable_wal_write_;
+  // We always want to sync on close: https://github.com/yugabyte/yugabyte-db/issues/3490
+  opts.sync_on_close = true;
   opts.o_direct = durable_wal_write_;
   RETURN_NOT_OK(CreatePlaceholderSegment(opts, &next_segment_path_, &next_segment_file_));
 
@@ -1073,9 +1077,7 @@ Status Log::SwitchToAllocatedSegment() {
       FsManager::GetWalSegmentFileName(tablet_wal_path_, active_segment_sequence_number_);
 
   RETURN_NOT_OK(get_env()->RenameFile(next_segment_path_, new_segment_path));
-  if (durable_wal_write_) {
-    RETURN_NOT_OK(get_env()->SyncDir(log_dir_));
-  }
+  RETURN_NOT_OK(get_env()->SyncDir(log_dir_));
 
   // Create a new segment.
   std::unique_ptr<WritableLogSegment> new_segment(
