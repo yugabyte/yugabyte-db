@@ -8,7 +8,7 @@ menu:
     parent: configuration
     weight: 2440
 aliases:
-  - admin/yb-tserver
+  - /latest/admin/yb-tserver
 isTocNested: 3
 showAsideToc: true
 ---
