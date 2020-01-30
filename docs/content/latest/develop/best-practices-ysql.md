@@ -50,17 +50,6 @@ Hash primary keys:
 - Distribute write queries linearly
 - Have slower inefficient global range scanning 
 
-## Multi tenant use cases
-There are many cases where data is spread across many tenants. Usually each 
-tenant is isolated with it's own data. In these cases users may be inclined to 
-create per-tenant tables/databases.
-Because each table/tablet has overhead, having a large number of them is not 
-recommended.
-Depending on the number of tenants, it may be better to have a `tenant_id` on 
-primary-keys which can be used to filter tenants at write/query time.
-This can be combined with moving large tenants to their own private tables.
-
-[Co-location feature](#co-location) is being worked on to provide an alternative solution.
 
 ## Co-location
 Co-location is a [new feature](https://github.com/yugabyte/yugabyte-db/issues/3033) in development where all the tables of a database is
