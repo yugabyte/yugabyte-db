@@ -1140,8 +1140,9 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode, TnodeContext* tnode_conte
     if (PREDICT_FALSE(!s.ok())) {
       // Note: INVALID_ARGUMENTS is retryable error code (due to mapping into STALE_METADATA),
       //       INVALID_REQUEST - non-retryable.
-      ErrorCode error_code = (s.code() == Status::kNotSupported ?
-          ErrorCode::INVALID_REQUEST : ErrorCode::INVALID_ARGUMENTS);
+      ErrorCode error_code =
+          s.code() == Status::kNotSupported || s.code() == Status::kRuntimeError ?
+          ErrorCode::INVALID_REQUEST : ErrorCode::INVALID_ARGUMENTS;
 
       return exec_context_->Error(tnode, s, error_code);
     }
