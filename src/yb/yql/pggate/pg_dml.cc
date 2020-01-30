@@ -66,10 +66,6 @@ PgDml::PgDml(PgSession::ScopedRefPtr pg_session,
   }
 }
 
-PgDml::~PgDml() {
-  doc_op_->AbortAndWait();
-}
-
 Status PgDml::LoadTable() {
   table_desc_ = VERIFY_RESULT(pg_session_->LoadTable(table_id_));
   return Status::OK();
@@ -193,6 +189,13 @@ Status PgDml::UpdateBindPBs() {
     RETURN_NOT_OK(attr_value->Eval(this, expr_pb));
   }
 
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+Status PgDml::BindTable() {
+  bind_table_ = true;
   return Status::OK();
 }
 

@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.CloudQueryHelper;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -159,6 +160,7 @@ public class RegionController extends AuthenticatedController {
         region = Region.create(provider, regionCode, form.name, form.ybImage, form.latitude,
             form.longitude);
       }
+      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(region);
     } catch (Exception e) {
       LOG.error(e.getMessage());
@@ -188,6 +190,7 @@ public class RegionController extends AuthenticatedController {
 
     ObjectNode responseJson = Json.newObject();
     responseJson.put("success", true);
+    Audit.createAuditEntry(ctx(), request());
     return ApiResponse.success(responseJson);
   }
 }

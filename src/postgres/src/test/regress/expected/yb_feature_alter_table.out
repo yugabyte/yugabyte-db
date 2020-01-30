@@ -205,6 +205,8 @@ alter table atacc1 rename a to z;
 ERROR:  column "a" does not exist
 alter table atacc1 add constraint checka check (a >= 0);
 ERROR:  column "a" does not exist
+alter table if exists atacc1 add constraint checka check (a >= 0);
+ERROR:  column "a" does not exist
 -- test create as and select into
 insert into atacc1 values (21, 22, 23);
 create table test1 as select * from atacc1;
@@ -226,9 +228,16 @@ drop table test2;
 -- test constraints
 alter table atacc1 add constraint checkb check (b < 0); -- should fail
 ERROR:  check constraint "checkb" is violated by some row
+alter table if exists atacc1 add constraint checkb check (b < 0); -- should fail
+ERROR:  check constraint "checkb" is violated by some row
 alter table atacc1 add constraint checkb check (b > 0);
 alter table atacc1 add constraint checkb2 check (b > 10);
 alter table atacc1 add constraint checkb3 check (b > 10);
+insert into atacc1 values (5, 5, 5); -- should fail
+ERROR:  new row for relation "atacc1" violates check constraint "checkb2"
+DETAIL:  Failing row contains (5, 5, 5).
+alter table atacc1 drop constraint checkb2;
+alter table if exists atacc1 add constraint checkb2 check (b > 10);
 insert into atacc1 values (5, 5, 5); -- should fail
 ERROR:  new row for relation "atacc1" violates check constraint "checkb2"
 DETAIL:  Failing row contains (5, 5, 5).
@@ -287,6 +296,14 @@ alter table non_existent alter column bar set not null;
 ERROR:  relation "non_existent" does not exist
 alter table non_existent alter column bar drop not null;
 ERROR:  relation "non_existent" does not exist
+-- try altering non-existent table with IF EXISTS clause, should pass with a notice message
+alter table if exists non_existent alter column bar set not null;
+NOTICE:  relation "non_existent" does not exist, skipping
+alter table if exists non_existent alter column bar drop not null;
+NOTICE:  relation "non_existent" does not exist, skipping
+alter table if exists non_existent
+    add constraint some_constraint_name foreign key (k) references atacc1;
+NOTICE:  relation "non_existent" does not exist, skipping
 -- test setting columns to null and not null and vice versa
 -- test checking for null values and primary key
 create table atacc1tmp (test int not null PRIMARY KEY);

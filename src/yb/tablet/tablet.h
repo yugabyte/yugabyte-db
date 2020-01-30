@@ -210,6 +210,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS EnableCompactions();
 
+  CHECKED_STATUS BackfillIndexes(const std::vector<IndexInfo> &indexes,
+                                 HybridTime read_time);
+
+  bool ShouldRetainDeleteMarkersInMajorCompaction() const;
+
   // Mark that the tablet has finished bootstrapping.
   // This transitions from kBootstrapping to kOpen state.
   void MarkFinishedBootstrapping();
@@ -266,6 +271,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
   CHECKED_STATUS ApplyKeyValueRowOperations(
+      int64_t batch_idx, // index of this batch in its transaction
       const docdb::KeyValueWriteBatchPB& put_batch,
       const rocksdb::UserFrontiers* frontiers,
       HybridTime hybrid_time);
@@ -328,7 +334,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // state of this tablet.
   // The returned iterator is not initialized.
   Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> NewRowIterator(
-      const Schema &projection, const boost::optional<TransactionId>& transaction_id,
+      const Schema &projection,
+      const boost::optional<TransactionId>& transaction_id,
+      const ReadHybridTime read_hybrid_time = {},
       const TableId& table_id = "") const;
   Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> NewRowIterator(
       const TableId& table_id) const;
@@ -350,6 +358,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Apply the Schema of the specified operation.
   CHECKED_STATUS AlterSchema(ChangeMetadataOperationState* operation_state);
+
+  // Used to update the tablets on the index table that the index has been backfilled.
+  // This means that major compactions can now garbage collect delete markers.
+  CHECKED_STATUS MarkBackfillDone(bool done);
 
   // Change wal_retention_secs in the metadata.
   CHECKED_STATUS AlterWalRetentionSecs(ChangeMetadataOperationState* operation_state);
@@ -477,6 +489,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   uint64_t GetCurrentVersionSstFilesUncompressedSize() const;
   uint64_t GetCurrentVersionNumSSTFiles() const;
 
+  void ListenNumSSTFilesChanged(std::function<void()> listener);
+
   // Returns the number of memtables in intents and regular db-s.
   std::pair<int, int> GetNumMemtables() const;
 
@@ -571,6 +585,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void UnregisterReader(HybridTime read_point) override;
 
   CHECKED_STATUS PrepareTransactionWriteBatch(
+      int64_t batch_idx, // index of this batch in its transaction
       const docdb::KeyValueWriteBatchPB& put_batch,
       HybridTime hybrid_time,
       rocksdb::WriteBatch* rocksdb_write_batch);
@@ -735,6 +750,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void CleanupIntentFiles();
   void DoCleanupIntentFiles();
 
+  void RegularDbFilesChanged();
+
   HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) override;
 
   void MinRunningHybridTimeSatisfied() override {
@@ -757,6 +774,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   mutable std::mutex control_path_mutex_;
   std::unordered_map<std::string, std::shared_ptr<void>> additional_metadata_
     GUARDED_BY(control_path_mutex_);
+
+  std::mutex num_sst_files_changed_listener_mutex_;
+  std::function<void()> num_sst_files_changed_listener_
+      GUARDED_BY(num_sst_files_changed_listener_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

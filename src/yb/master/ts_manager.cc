@@ -178,7 +178,10 @@ void TSManager::GetDescriptors(std::function<bool(const TSDescriptorPtr&)> condi
   for (const TSDescriptorMap::value_type& entry : servers_by_id_) {
     const TSDescriptorPtr& ts = entry.second;
     if (condition(ts)) {
+      VLOG(1) << " Adding " << yb::ToString(*ts);
       descs->push_back(ts);
+    } else {
+      VLOG(1) << " NOT Adding " << yb::ToString(*ts);
     }
   }
 }

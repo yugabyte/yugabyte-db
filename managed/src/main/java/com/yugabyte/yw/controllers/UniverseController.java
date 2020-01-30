@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.RunInShellFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
+import com.yugabyte.yw.forms.AlertConfigFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
@@ -51,6 +52,7 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HealthCheck;
@@ -202,6 +204,7 @@ public class UniverseController extends AuthenticatedController {
 
     ShellProcessHandler.ShellResponse response =
         shellProcessHandler.run(shellArguments, new HashMap<>(), false);
+    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ApiResponse.success(response.message);
  }
 
@@ -236,6 +239,8 @@ public class UniverseController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
 
+    Audit.createAuditEntry(ctx(), request(),
+        Json.toJson(formData.data()));
     return ApiResponse.success(
         queryExecutor.executeQuery(universe, formData.get())
     );
@@ -322,10 +327,11 @@ public class UniverseController extends AuthenticatedController {
    */
   public Result create(UUID customerUUID) {
     UniverseDefinitionTaskParams taskParams;
+    ObjectNode formData = null;
     try {
       LOG.info("Create for {}.", customerUUID);
       // Get the user submitted form data.
-      ObjectNode formData = (ObjectNode) request().body().asJson();
+      formData = (ObjectNode) request().body().asJson();
       taskParams = bindFormDataToTaskParams(formData);
     } catch (Throwable t) {
       return ApiResponse.error(BAD_REQUEST, t.getMessage());
@@ -397,7 +403,7 @@ public class UniverseController extends AuthenticatedController {
         }
       }
 
-      universe.setConfig(ImmutableMap.of("takeBackups", "true"));
+      universe.setConfig(ImmutableMap.of(Universe.TAKE_BACKUPS, "true"));
 
       // Submit the task to create the universe.
       UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -416,6 +422,7 @@ public class UniverseController extends AuthenticatedController {
 
       ObjectNode resultNode = (ObjectNode)universe.toJson();
       resultNode.put("taskUUID", taskUUID.toString());
+      Audit.createAuditEntry(ctx(), request(), formData, taskUUID);
       return Results.status(OK, resultNode);
     } catch (Throwable t) {
       LOG.error("Error creating universe", t);
@@ -442,11 +449,11 @@ public class UniverseController extends AuthenticatedController {
           String.format("Universe UUID: %s doesn't belong " +
               "to Customer UUID: %s", universeUUID, customerUUID));
     }
-
+    ObjectNode formData = null;
     try {
       LOG.info("Updating universe key {} for {}.", universeUUID, customerUUID);
       // Get the user submitted form data.
-      ObjectNode formData = (ObjectNode) request().body().asJson();
+      formData = (ObjectNode) request().body().asJson();
       taskParams = EncryptionAtRestKeyParams.bindFromFormData(universeUUID, formData);
 
     } catch (Throwable t) {
@@ -489,6 +496,8 @@ public class UniverseController extends AuthenticatedController {
 
       ObjectNode resultNode = (ObjectNode)universe.toJson();
       resultNode.put("taskUUID", taskUUID.toString());
+      Audit.createAuditEntry(ctx(), request(),
+        Json.toJson(formData), taskUUID);
       return Results.status(OK, resultNode);
     } catch (Exception e) {
       String errMsg = "Error occurred attempting to set the universe encryption key";
@@ -505,11 +514,12 @@ public class UniverseController extends AuthenticatedController {
    */
   public Result update(UUID customerUUID, UUID universeUUID) {
     UniverseDefinitionTaskParams taskParams;
+    ObjectNode formData = null;
     try {
       LOG.info("Update {} for {}.", customerUUID, universeUUID);
       // Get the user submitted form data.
 
-      ObjectNode formData = (ObjectNode) request().body().asJson();
+      formData = (ObjectNode) request().body().asJson();
       taskParams = bindFormDataToTaskParams(formData);
     } catch (Throwable t) {
       return ApiResponse.error(BAD_REQUEST, t.getMessage());
@@ -590,14 +600,16 @@ public class UniverseController extends AuthenticatedController {
       CustomerTask.create(customer,
                           universe.universeUUID,
                           taskUUID,
-                          primaryCluster == null 
-                            ? CustomerTask.TargetType.Cluster 
+                          primaryCluster == null
+                            ? CustomerTask.TargetType.Cluster
                             : CustomerTask.TargetType.Universe,
                           CustomerTask.TaskType.Update,
                           universe.name);
       LOG.info("Saved task uuid {} in customer tasks table for universe {} : {}.", taskUUID,
                universe.universeUUID, universe.name);
       ObjectNode resultNode = (ObjectNode)universe.toJson();
+      Audit.createAuditEntry(ctx(), request(),
+        Json.toJson(formData), taskUUID);
       resultNode.put("taskUUID", taskUUID.toString());
       return Results.status(OK, resultNode);
     } catch (Throwable t) {
@@ -660,15 +672,71 @@ public class UniverseController extends AuthenticatedController {
     try {
       if (request().getQueryString("markActive") != null) {
         active = request().getQueryString("markActive");
-        config.put("takeBackups", active);
+        config.put(Universe.TAKE_BACKUPS, active);
       } else {
         return ApiResponse.error(BAD_REQUEST, "Invalid Query: Need to specify markActive value");
       }
       universe.setConfig(config);
+      Audit.createAuditEntry(ctx(), request());
       return ApiResponse.success();
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e);
     }
+  }
+
+  public Result configureAlerts(UUID customerUUID, UUID universeUUID) {
+      Customer customer = Customer.get(customerUUID);
+      if (customer == null) {
+        return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+      }
+      Universe universe = Universe.get(universeUUID);
+      if (universe == null) {
+        return ApiResponse.error(BAD_REQUEST, "Invalid Universe UUID: " + universeUUID);
+      }
+
+      // Check the universe belongs to the Customer.
+      if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+        return ApiResponse.error(BAD_REQUEST,
+            String.format("Universe UUID: %s doesn't belong " +
+                "to Customer UUID: %s", universeUUID, customerUUID));
+      }
+
+      Map<String, String> config = new HashMap<>();
+      try {
+        Form<AlertConfigFormData> formData =
+          formFactory.form(AlertConfigFormData.class).bindFromRequest();
+        if (formData.hasErrors()) {
+            return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+        }
+
+        AlertConfigFormData alertConfig = formData.get();
+        long disabledUntilSecs = 0;
+        if (alertConfig.disabled) {
+          if (null == alertConfig.disablePeriodSecs) {
+            disabledUntilSecs = Long.MAX_VALUE;
+          } else {
+            disabledUntilSecs = (System.currentTimeMillis() / 1000) + alertConfig.disablePeriodSecs;
+          }
+          LOG.info(String.format(
+            "Will disable alerts for universe %s until unix time %d [ %s ].",
+            universeUUID,
+            disabledUntilSecs,
+            Util.unixTimeToString(disabledUntilSecs)
+          ));
+        } else {
+          LOG.info(String.format(
+            "Will enable alerts for universe %s [unix time  = %d].",
+            universeUUID,
+            disabledUntilSecs
+          ));
+        }
+        config.put(Universe.DISABLE_ALERTS_UNTIL, Long.toString(disabledUntilSecs));
+        universe.setConfig(config);
+
+        return ApiResponse.success();
+      } catch (Exception e) {
+        return ApiResponse.error(INTERNAL_SERVER_ERROR, e);
+      }
   }
 
   public Result index(UUID customerUUID, UUID universeUUID) {
@@ -754,6 +822,7 @@ public class UniverseController extends AuthenticatedController {
 
     ObjectNode response = Json.newObject();
     response.put("taskUUID", taskUUID.toString());
+    Audit.createAuditEntry(ctx(), request(), taskUUID);
     return ApiResponse.success(response);
   }
 
@@ -763,10 +832,11 @@ public class UniverseController extends AuthenticatedController {
    */
   public Result clusterCreate(UUID customerUUID, UUID universeUUID) {
     UniverseDefinitionTaskParams taskParams;
+    ObjectNode formData = null;
     try {
       LOG.info("Create cluster for {} in {}.", customerUUID, universeUUID);
       // Get the user submitted form data.
-      ObjectNode formData = (ObjectNode) request().body().asJson();
+      formData = (ObjectNode) request().body().asJson();
       taskParams = bindFormDataToTaskParams(formData);
     } catch (Throwable t) {
       return ApiResponse.error(BAD_REQUEST, t.getMessage());
@@ -852,6 +922,7 @@ public class UniverseController extends AuthenticatedController {
 
       ObjectNode resultNode = (ObjectNode)universe.toJson();
       resultNode.put("taskUUID", taskUUID.toString());
+      Audit.createAuditEntry(ctx(), request(), formData, taskUUID);
       return Results.status(OK, resultNode);
     } catch (Throwable t) {
       LOG.error("Error creating cluster", t);
@@ -932,6 +1003,7 @@ public class UniverseController extends AuthenticatedController {
 
       ObjectNode resultNode = (ObjectNode)universe.toJson();
       resultNode.put("taskUUID", taskUUID.toString());
+      Audit.createAuditEntry(ctx(), request(), taskUUID);
       return Results.status(OK, resultNode);
     } catch (Throwable t) {
       LOG.error("Error deleting cluster ", t);
@@ -1024,8 +1096,9 @@ public class UniverseController extends AuthenticatedController {
 
     // Bind rolling restart params
     RollingRestartParams taskParams;
+    ObjectNode formData = null;
     try {
-      ObjectNode formData = (ObjectNode) request().body().asJson();
+      formData = (ObjectNode) request().body().asJson();
       taskParams = (RollingRestartParams) bindFormDataToTaskParams(formData, true);
 
       if (taskParams.taskType == null) {
@@ -1106,6 +1179,7 @@ public class UniverseController extends AuthenticatedController {
         universe.universeUUID, universe.name);
       ObjectNode resultNode = Json.newObject();
       resultNode.put("taskUUID", taskUUID.toString());
+      Audit.createAuditEntry(ctx(), request(), formData, taskUUID);
       return Results.status(OK, resultNode);
     } catch (Throwable t) {
       LOG.error("Error updating universe", t);

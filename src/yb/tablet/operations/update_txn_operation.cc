@@ -76,18 +76,16 @@ Status UpdateTxnOperation::DoReplicated(int64_t leader_term, Status* complete_st
     state->tablet()->mvcc_manager()->Replicated(state->hybrid_time());
   });
 
-  // APPLYING is handled separately, because it is received for transactions not managed by
-  // this tablet as a transaction status tablet, but tablets that are involved in the data
-  // path (receive write intents) for this transaction.
-  if (state->request()->status() == TransactionStatus::APPLYING) {
+  auto transaction_participant = state->tablet()->transaction_participant();
+  if (transaction_participant) {
     TransactionParticipant::ReplicatedData data = {
-        leader_term,
-        *state->request(),
-        state->op_id(),
-        state->hybrid_time(),
-        false /* already_applied */
+        .leader_term = leader_term,
+        .state = *state->request(),
+        .op_id = state->op_id(),
+        .hybrid_time = state->hybrid_time(),
+        .already_applied = AlreadyApplied::kFalse
     };
-    return state->tablet()->transaction_participant()->ProcessReplicated(data);
+    return transaction_participant->ProcessReplicated(data);
   } else {
     TransactionCoordinator::ReplicatedData data = {
         leader_term,

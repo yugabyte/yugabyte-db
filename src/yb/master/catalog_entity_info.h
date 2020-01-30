@@ -324,6 +324,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool is_running() const;
 
   std::string ToString() const override;
+  std::string ToStringWithState() const;
 
   const NamespaceId namespace_id() const;
 
@@ -376,6 +377,14 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Returns true if the table creation is in-progress.
   bool IsCreateInProgress() const;
 
+  // Returns true if the table is backfilling an index.
+  bool IsBackfilling() const {
+    return is_backfilling_;
+  }
+  void SetIsBackfilling(bool flag) {
+    is_backfilling_ = flag;
+  }
+
   // Returns true if an "Alter" operation is in-progress.
   bool IsAlterInProgress(uint32_t version) const;
 
@@ -418,6 +427,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // If closing, requests to AddTask will be promptly aborted.
   bool closing_ = false;
+
+  // In memory state set during backfill to prevent multiple backfill jobs.
+  bool is_backfilling_ = false;
 
   // List of pending tasks (e.g. create/alter tablet requests).
   std::unordered_set<std::shared_ptr<MonitoredTask>> pending_tasks_;

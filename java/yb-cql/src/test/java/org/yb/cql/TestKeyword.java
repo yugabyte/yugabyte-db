@@ -46,6 +46,7 @@ import org.junit.runner.RunWith;
 @RunWith(value=YBTestRunner.class)
 public class TestKeyword extends BaseCQLTest {
   private final String[] unreserved_keywords = {
+    "group",
     "offset",
     "user",
     "when"

@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python2.7
 
 # Copyright (c) YugaByte, Inc.
 #
@@ -254,7 +254,7 @@ class PostgresBuilder:
 
         if self.compiler_type == 'clang':
             additional_c_cxx_flags += [
-                '-Wno-error=builtin-requires-header'
+                '-Wno-builtin-requires-header'
             ]
 
         if is_make_step:

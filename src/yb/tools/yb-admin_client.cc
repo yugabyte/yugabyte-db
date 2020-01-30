@@ -487,7 +487,7 @@ Status ClusterAdminClient::SetupRedisTable() {
   RETURN_NOT_OK(yb_client_->CreateNamespaceIfNotExists(common::kRedisKeyspaceName,
                                                        YQLDatabase::YQL_DATABASE_REDIS));
   // Try to create the table.
-  gscoped_ptr<yb::client::YBTableCreator> table_creator(yb_client_->NewTableCreator());
+  std::unique_ptr<yb::client::YBTableCreator> table_creator(yb_client_->NewTableCreator());
   Status s = table_creator->table_name(table_name)
                               .table_type(yb::client::YBTableType::REDIS_TABLE_TYPE)
                               .Create();

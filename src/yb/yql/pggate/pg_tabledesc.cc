@@ -110,5 +110,9 @@ client::YBPgsqlWriteOp* PgTableDesc::NewPgsqlDelete() {
   return table_->NewPgsqlDelete();
 }
 
+client::YBPgsqlWriteOp* PgTableDesc::NewPgsqlTruncateColocated() {
+  return table_->NewPgsqlTruncateColocated();
+}
+
 }  // namespace pggate
 }  // namespace yb

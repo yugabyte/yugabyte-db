@@ -66,7 +66,7 @@ extern void YBCDropIndex(Oid relationId);
 
 extern YBCPgStatement YBCPrepareAlterTable(AlterTableStmt* stmt, Relation rel, Oid relationId);
 
-extern void YBCExecAlterTable(YBCPgStatement handle);
+extern void YBCExecAlterTable(YBCPgStatement handle, Oid relationId);
 
 extern void YBCRename(RenameStmt* stmt, Oid relationId);
 

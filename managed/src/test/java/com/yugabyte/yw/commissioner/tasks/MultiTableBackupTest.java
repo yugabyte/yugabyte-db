@@ -117,7 +117,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
   @Test
   public void testMultiTableBackup() {
     Map<String, String> config = new HashMap<>();
-    config.put("takeBackups", "true");
+    config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.setConfig(config);
     ShellProcessHandler.ShellResponse shellResponse =  new ShellProcessHandler.ShellResponse();
     shellResponse.message = "{\"success\": true}";
@@ -132,7 +132,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
   @Test
   public void testMultiTableBackupKeyspace() {
     Map<String, String> config = new HashMap<>();
-    config.put("takeBackups", "true");
+    config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.setConfig(config);
     ShellProcessHandler.ShellResponse shellResponse =  new ShellProcessHandler.ShellResponse();
     shellResponse.message = "{\"success\": true}";
@@ -147,7 +147,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
   @Test
   public void testMultiTableBackupIgnore() {
     Map<String, String> config = new HashMap<>();
-    config.put("takeBackups", "false");
+    config.put(Universe.TAKE_BACKUPS, "false");
     defaultUniverse.setConfig(config);
     TaskInfo taskInfo = submitTask(null);
     verify(mockTableManager, times(0)).createBackup(any());

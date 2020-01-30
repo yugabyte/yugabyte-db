@@ -210,7 +210,7 @@ void DocPgsqlScanSpec::InitRangeOptions(const PgsqlConditionPB& condition) {
 
 KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_bound) const {
   KeyBytes result;
-  auto encoder = DocKeyEncoder(&result).CotableId(schema.cotable_id());
+  auto encoder = DocKeyEncoder(&result).Schema(schema);
 
   // If no hashed_component use hash lower/upper bounds if set.
   if (hashed_components_->empty()) {

@@ -36,6 +36,7 @@ namespace yb {
 namespace docdb {
 
 YB_STRONGLY_TYPED_BOOL(IsMajorCompaction);
+YB_STRONGLY_TYPED_BOOL(ShouldRetainDeleteMarkersInMajorCompaction);
 
 struct Expiration;
 
@@ -52,6 +53,8 @@ struct HistoryRetentionDirective {
   ColumnIdsPtr deleted_cols;
 
   MonoDelta table_ttl;
+
+  ShouldRetainDeleteMarkersInMajorCompaction retain_delete_markers_in_major_compaction{false};
 };
 
 // DocDB compaction filter. A new instance of this class is created for every compaction.

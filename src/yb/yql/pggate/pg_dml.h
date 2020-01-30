@@ -29,7 +29,7 @@ namespace pggate {
 
 class PgDml : public PgStatement {
  public:
-  virtual ~PgDml();
+  virtual ~PgDml() = default;
 
   // Append a target in SELECT or RETURNING.
   CHECKED_STATUS AppendTarget(PgExpr *target);
@@ -46,6 +46,9 @@ class PgDml : public PgStatement {
 
   // Bind a column with an expression.
   virtual CHECKED_STATUS BindColumn(int attnum, PgExpr *attr_value);
+
+  // Bind the whole table.
+  CHECKED_STATUS BindTable();
 
   // Assign an expression to a column.
   CHECKED_STATUS AssignColumn(int attnum, PgExpr *attr_value);
@@ -135,6 +138,9 @@ class PgDml : public PgStatement {
   bool ybctid_bind_ = false;
   std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_binds_;
   std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_assigns_;
+
+  // Used for colocated TRUNCATE that doesn't bind any columns.
+  bool bind_table_ = false;
 
   // DML Operator.
   PgDocOp::SharedPtr doc_op_;

@@ -113,6 +113,8 @@ DEMO_DB_PREFIX = "yb_demo_"
 ALERT_WARNING = "Warning"
 ULIMIT_ERR_CODE = "LOW_ULIMITS"
 
+start_time_sec = time.time()
+
 class ControlScript(object):
     def __init__(self):
         self.configs = None
@@ -128,7 +130,6 @@ class ControlScript(object):
             sys.exit(1)
         Output.print_and_log("Starting {}...".format(SCRIPT_NAME))
         self.set_env_vars()
-        self.install_yb()
 
         if self.configs.temp_data.get("daemon"):
             self.daemonize()
@@ -289,11 +290,11 @@ class ControlScript(object):
         if not os.path.exists(logpath):
             Output.print_and_log("No logs directory at {}".format(logpath))
             return
-        tmpprefix = "yugabyted-" + str(datetime.now()).replace(" ", "-")
-        tmppath = tempfile.mkstemp(suffix=".tar.gz", prefix=tmpprefix)[1]
-        with tarfile.open(name=tmppath, mode='w:gz', dereference=True) as archive:
+        tmpprefix = "yugabyted-{}.tar.gz".format(str(datetime.now()).replace(" ", "-"))
+        tarpath = os.path.join(os.path.expanduser('~'), tmpprefix)
+        with tarfile.open(name=tarpath, mode='w:gz', dereference=True) as archive:
             archive.add(logpath)
-        Output.print_and_log("Logs are packaged into {}".format(tmppath))
+        Output.print_and_log("Logs are packaged into {}".format(tarpath))
 
     # Checks yb-master and yb-tserver are running. Returns failed processes.
     # TODO: Check postmaster.pid.
@@ -310,13 +311,14 @@ class ControlScript(object):
         if signum:
             Output.log("Received signal: {}".format(signum), logging.DEBUG)
         Output.print_and_log("Shutting down...")
+        Output.console_access = False
         self.script.daemon_success.put(-1)
         cur_pid = os.getpid()
         pgid = os.getpgid(cur_pid)
         if not pgid:
-            Output.log_error_and_exit(
+            Output.log(
                 "PGID could not be found for PID {}. Is {} running?".format(cur_pid, SCRIPT_NAME))
-
+            os._exit(os.EX_OK)
         self.set_signals(SIG_DFL)
 
         for p in self.processes.values():
@@ -328,12 +330,15 @@ class ControlScript(object):
             # any spawned child processes are killed. Use SIGKILL because YugaWare
             # requires KILL signal to terminate and nodes currently do not gracefully terminate.
             os.killpg(pgid, SIGKILL)
-            Output.log_error_and_exit(
+            Output.log(
                 "{} may not have terminated properly... "
                 "Please check PGID {}.".format(SCRIPT_NAME, pgid))
         except OSError as err:
-            Output.log_error_and_exit(
+            Output.log(
                 "Failed to kill PGID {}... Is {} running?\n{}".format(pgid, SCRIPT_NAME, str(err)))
+
+        # exit no matter what
+        os._exit(os.EX_OK)
 
     # Starts yb-master, yb-tserver, and yugaware processes.
     # After initializing, creates a callhome thread.
@@ -427,14 +432,14 @@ class ControlScript(object):
                 return
 
         is_first_run = True
-        yw_first_run  = True
         callhome_thread = None
         self.stop_callhome = False
         while True:
             should_callhome = False
 
+            is_first_install = is_first_run and not self.is_yb_initialized()
             # Delete corrupted data dirs left from interrupting yb-master and yb-tserver startup.
-            if not self.is_yb_initialized() and os.path.exists(self.configs.saved_data.get("data_dir")):
+            if is_first_install and os.path.exists(self.configs.saved_data.get("data_dir")):
                 Output.print_and_log(
                     "Found data from failed initialization in {}. Removing...".format(
                         self.configs.saved_data.get("data_dir")))
@@ -449,17 +454,20 @@ class ControlScript(object):
             # Start or initialize yb-master and yb-tserver.
             if is_first_run:
                 Output.init_animation("Running system checks...")
+                self.post_install_yb()
+
             for name in ("master", "tserver"):
                 process = self.processes.get(name)
                 process.remove_error_logs()
                 if not process.is_running():
                     if not is_first_run:
-                        Output.print_and_log(
+                        Output.log(
                             "{} died unexpectedly. Restarting...".format(process.name),
                             logging.ERROR)
                     process.start()
                     should_callhome = True
-            if self.wait_yb_master():
+
+            if self.wait_master_tserver():
                 if is_first_run:
                     Output.update_animation("System checks")
 
@@ -471,7 +479,7 @@ class ControlScript(object):
                     yw_process = self.processes.get("yugaware")
                     yw_proxy = YugaWareProxy(advertise_ip,
                         self.configs.saved_data.get("webserver_port"))
-                    if not self.is_yw_initialized():
+                    if is_first_run and not self.is_yw_initialized():
                         Output.log("Setting up admin console schema...")
                         Output.init_animation("Installing database...")
                         if not self.init_yw():
@@ -479,38 +487,43 @@ class ControlScript(object):
                         Output.update_animation("Database installed")
 
                         yw_process.start()
+
                         Output.init_animation("Bringing up UI...")
-                        err = self.wait_yw_login(yw_proxy)
-                        if err:
-                            Output.log_error_and_exit(err)
+                        Output.log(self.wait_yw_login(yw_proxy))
                         yw_logged_in = True
 
-                        yw_proxy.set_security("insecure")
-                        yw_proxy.insecure_login()
+                        Output.log(yw_proxy.set_security("insecure"))
+                        Output.log(yw_proxy.insecure_login())
 
-                        err = yw_proxy.import_universe(
-                            advertise_ip,
-                            master_rpc_port,
-                            self.configs.saved_data.get("universe_uuid"))
-                        if err:
-                            Output.log_error_and_exit(err)
+                        Output.log(yw_proxy.import_universe(
+                                    advertise_ip,
+                                    master_rpc_port,
+                                    self.configs.saved_data.get("universe_uuid")))
 
-                        err = yw_proxy.set_landing_page(
-                            self.configs.saved_data.get("universe_uuid"))
+                        Output.log(yw_proxy.set_landing_page(
+                                self.configs.saved_data.get("universe_uuid")))
                         should_callhome = True
                         Output.update_animation("UI ready")
                     else:
                         if not yw_process.is_running():
-                            if not yw_first_run:
-                                Output.print_and_log(
+                            if not is_first_run:
+                                Output.log(
                                     "Webserver died unexpectedly. Restarting...", logging.ERROR)
                             yw_process.start()
-                            yw_first_run = True
+
                             # TODO: If insecure login fails here, we should assume importing
                             # universe and setting security level failed and retry initializing YW.
-                            Output.init_animation("Bringing up UI...")
+                            if is_first_run:
+                                Output.init_animation("Bringing up UI...")
+
                             yw_logged_in = not self.wait_yw_login(yw_proxy, insecure=True)
-                            Output.update_animation("UI ready")
+                            if yw_logged_in:
+                                animation_status = Output.ANIMATION_SUCCESS
+                            else:
+                                animation_status = Output.ANIMATION_FAIL
+                            if is_first_run:
+                                Output.update_animation("UI status", status=animation_status)
+
                             should_callhome = True
                         else:
                             yw_logged_in = False
@@ -518,17 +531,7 @@ class ControlScript(object):
                         if self.alerts:
                             yw_proxy.send_alerts(self.alerts)
 
-            # Print startup information and start callhome thread on first successful startup.
-            # Preemptively assume YW will successfully start up.
-            if is_first_run and self.wait_yb_master():
-                first_run_success = True
-                for name in ("master", "tserver", "yugaware"):
-                    process = self.processes.get(name)
-                    if process is not None and not process.is_running():
-                        first_run_success = False
-                        break
-                if first_run_success and self.is_yb_initialized() \
-                        and (not self.configs.temp_data.get("ui") or self.is_yw_initialized()):
+                if is_first_run:
                     status = self.get_status_string() + \
                         "{} {} started successfully! To load a sample dataset, " \
                         "try '{} demo'.\n" \
@@ -538,25 +541,35 @@ class ControlScript(object):
                             Output.make_underline(SLACK_LINK), Output.SHIRT,
                             Output.make_underline(COMMUNITY_REWARDS_LINK))
                     Output.print_out(status)
+
                     if self.configs.temp_data.get("daemon"):
                         # Let original process know daemon was successful so it can exit.
                         # This is to display the initial status message.
                         self.script.daemon_success.put(1)
                         # Ignore any console output as important information will be logged.
-                        with open('/dev/null', 'r') as dev_null:
+                        with open('/dev/null', 'r+') as dev_null:
+                            Output.console_access = False
                             sys.stderr.flush()
                             sys.stdout.flush()
                             os.dup2(dev_null.fileno(), sys.stdin.fileno())
                             os.dup2(dev_null.fileno(), sys.stderr.fileno())
                             os.dup2(dev_null.fileno(), sys.stdout.fileno())
 
-                if self.configs.saved_data.get("callhome"):
-                    callhome_thread = Thread(target=self.callhome_loop)
-                    callhome_thread.daemon = True
-                    callhome_thread.start()
+                    Diagnostics.first_run_secs = time.time() - start_time_sec
+                    Diagnostics.first_install = is_first_install
 
-                is_first_run = False
+                    if self.configs.saved_data.get("callhome"):
+                        callhome_thread = Thread(target=self.callhome_loop)
+                        callhome_thread.daemon = True
+                        callhome_thread.start()
 
+            elif is_first_run:
+                Output.update_animation("Database failure", status=Output.ANIMATION_FAIL)
+                # Only error out if we fail to start initially. Otherwise, continue trying
+                # to restart master/tserver.
+                Output.log_error_and_exit("Failed to start {}".format(SCRIPT_NAME))
+
+            is_first_run = False
 
             if should_callhome:
                 self.callhome()
@@ -609,13 +622,14 @@ class ControlScript(object):
         os.environ["USE_NATIVE_METRICS"] = "true"
 
     # Runs post_install script for linux computers.
-    def install_yb(self):
+    def post_install_yb(self):
         if not sys.platform.startswith('linux'):
             return
 
         post_install_script_path = os.path.join(YUGABYTE_DIR, 'bin', 'post_install.sh')
 
-        Output.log("Running the post-installation script {}".format(post_install_script_path))
+        Output.log("Running the post-installation script {} (may be a no-op)".format(
+                    post_install_script_path))
         process = subprocess.Popen(
                 post_install_script_path, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         std_out, std_err = process.communicate()
@@ -655,7 +669,7 @@ class ControlScript(object):
         Output.log("Finished checking play evolutions table")
         return not err and not ret_code and "play_evolutions" in out
 
-    def wait_yb_master(self, timeout=180):
+    def wait_master_tserver(self, timeout=180):
         Output.log("Waiting for yb master via ybadmin...")
         num_tservers = 1
         master_addr = "{}:{}".format(self.advertise_ip(),
@@ -676,11 +690,10 @@ class ControlScript(object):
                     Output.log_error_and_exit(
                         "Found existing nodes with universe UUID: {}".format(cluster_uuid))
                 if cur_num_tservers == num_tservers:
-                    time.sleep(2)
                     Output.log(
                         "Completed waiting for yb master, num tservers={}.".format(num_tservers))
                     return True
-            time.sleep(2)
+            time.sleep(.5)
 
         Output.log("Failed waiting for yb-master, current num tservers={}, expected {}.".format(
                    cur_num_tservers, num_tservers))
@@ -781,7 +794,7 @@ class ControlScript(object):
                 req = Request(url, headers=headers, data=data.encode('utf8'))
                 resp = urlopen(req)
             except Exception as e:
-                # Callhome failures do not matter and should not be displayed/logged.
+                Output.log("Callhome failed: " + str(e))
                 pass
 
     # Calls func after receiving certain exit signals.
@@ -1160,16 +1173,17 @@ class ProcessManager(object):
 
     # Checks resource settings for current shell. Prints warning if requirements aren't met.
     def set_rlimits(self, print_info=False):
+        rlim_max = resource.RLIM_INFINITY
         # TODO: Figure out what specs are recommended. max_user_processes is problematic.
         # https://github.com/yugabyte/yugabyte-db/issues/2818
         recommended_resources = {
-            "RLIMIT_FSIZE": (resource.RLIM_INFINITY, "file_size"),
-            "RLIMIT_MEMLOCK": (resource.RLIM_INFINITY, "max_locked_memory"),
-            "RLIMIT_AS": (resource.RLIM_INFINITY, "max_memory_size"),
+            # "RLIMIT_FSIZE": (rlim_max, "file_size"),
+            # "RLIMIT_MEMLOCK": (rlim_max, "max_locked_memory"),
+            # "RLIMIT_AS": (rlim_max, "max_memory_size"),
             "RLIMIT_NOFILE": (64000, "open_files"),
-            "RLIMIT_CPU": (resource.RLIM_INFINITY, "cpu_time"),
+            # "RLIMIT_CPU": (rlim_max, "cpu_time"),
             "RLIMIT_NPROC": (64, "max_user_processes"),
-            "RLIMIT_VMEM": (resource.RLIM_INFINITY, "virtual_memory"),
+            # "RLIMIT_VMEM": (rlim_max, "virtual_memory"),
         }
 
         # If the current platform does not support the resource,
@@ -1181,7 +1195,7 @@ class ProcessManager(object):
             # Check soft limit, not hard limit.
             key = getattr(resource, res)
             soft_lim, hard_lim = resource.getrlimit(key)
-            if soft_lim < min_val:
+            if soft_lim != rlim_max and (soft_lim < min_val or min_val == rlim_max):
                 try:
                     resource.setrlimit(key, (min_val, hard_lim))
                     if print_info:
@@ -1288,6 +1302,9 @@ class YBProcessManager(ProcessManager):
 
 
 class Diagnostics(object):
+    first_install = None
+    first_run_secs = None
+
     def __init__(self, configs):
         self.configs = configs
 
@@ -1297,8 +1314,15 @@ class Diagnostics(object):
             "data_dir_size": self.get_dir_size(self.configs.saved_data.get("data_dir")),
             "num_cpus": multiprocessing.cpu_count(),
             "master_flags": self.configs.saved_data.get("master_flags"),
-            "tserver_flags": self.configs.saved_data.get("tserver_flags")
+            "tserver_flags": self.configs.saved_data.get("tserver_flags"),
+            "is_docker" : str(os.path.exists("/.dockerenv"))
         }
+        if Diagnostics.first_install is not None:
+            payload['first_install'] = str(Diagnostics.first_install)
+            Diagnostics.first_install = None
+        if Diagnostics.first_run_secs is not None:
+            payload['first_run_secs'] = str(int(Diagnostics.first_run_secs))
+            Diagnostics.first_run_secs = None
         for p in processes.values():
             payload["{}_status".format(p.name)] = "UP" if p.is_running() else "DOWN"
             if p.start_time:
@@ -1654,14 +1678,22 @@ class Output(object):
     PARTY = "\xf0\x9f\x8e\x89".encode('latin1').decode('utf8')
     SHIRT = "\xf0\x9f\x91\x95".encode('latin1').decode('utf8')
     log_dir = None
-    start_time_sec = time.time()
     script_exit_func = None
-    # Tuple of (animation_enabled, animation_message)
-    animation_status = (False, "")
+    # Only attempt to write to stdout while we have access to console.
+    console_access = True
+
+    ANIMATION_SUCCESS = 0
+    ANIMATION_FAIL = -1
+    ANIMATION_RUNNING = 1
+    # Tuple of (animation_status, animation_message) to ensure atomicity.
+    animation_status = (ANIMATION_SUCCESS, "")
     animation_thread = None
 
     @staticmethod
     def print_out(msg):
+        if not Output.console_access:
+            return
+
         try:
             print(msg.encode('utf8'))
         except UnicodeEncodeError:
@@ -1671,18 +1703,30 @@ class Output(object):
     # Note - ONLY one line can be replaced. E.g. only characters after a newline can be replaced.
     @staticmethod
     def init_animation(msg):
+        if not Output.console_access:
+            return
+
         def animate():
             loading_symbols = ['/', '-', '\\', '|']
-            check = '\u2705'
+            end_symbols = {
+                Output.ANIMATION_SUCCESS: '\u2705',
+                Output.ANIMATION_FAIL: '\u274C',
+            }
             line_len = 0
             i = 0
-            while True:
-                enabled, msg = Output.animation_status
-                symbol = loading_symbols[i] if enabled else check
+            running = True
+            while running and Output.console_access:
+                status, msg = Output.animation_status
+                if status == Output.ANIMATION_RUNNING:
+                    symbol = loading_symbols[i]
+                else:
+                    symbol = end_symbols[status]
+                    running = False
+
                 line = "\r{} {}".format(symbol, msg)
                 line_len = max(len(line), line_len)
                 line_to_write = "{:<{}}".format(line, line_len)
-                if not enabled:
+                if not running:
                     line_to_write += "\n"
                 line_to_write = line_to_write.encode('utf-8')
 
@@ -1690,31 +1734,39 @@ class Output(object):
                     sys.stdout.write(line_to_write)
                 except UnicodeEncodeError:
                     sys.stdout.write(line_to_write.encode('ascii', 'ignore'))
-                sys.stdout.flush()
 
-                if not enabled:
-                    break
+                try:
+                    sys.stdout.flush()
+                except IOError as e:
+                    Output.log("Errored when flushing stdout: {}".format(e), logging.ERROR)
+
                 i = (i + 1) % len(loading_symbols)
                 time.sleep(.05)
 
-        Output.animation_status = (True, msg)
+        Output.animation_status = (Output.ANIMATION_RUNNING, msg)
         Output.animation_thread = Thread(target=animate)
         Output.animation_thread.start()
 
     @staticmethod
-    def update_animation(msg, keep_running=False):
+    def update_animation(msg, status=ANIMATION_SUCCESS):
+        if not Output.console_access:
+            return
+
         if not Output.animation_thread:
             Output.print_out(msg)
-        time.sleep(5)
-        Output.animation_status = (keep_running, msg)
-        if not keep_running and Output.animation_thread:
+
+        Output.animation_status = (status, msg)
+        if status != Output.ANIMATION_RUNNING and Output.animation_thread:
             Output.animation_thread.join()
             Output.animation_thread = None
 
     @staticmethod
     def log(msg, level=logging.INFO):
+        if '' == msg or msg is None:
+            return
+
         full_msg = msg
-        time_since_sec = time.time() - Output.start_time_sec
+        time_since_sec = time.time() - start_time_sec
         if time_since_sec < 1000:
             # add time since start to make it easier to debug startup perf
             full_msg = " | {:.1f}s | {}".format(time_since_sec, msg)
@@ -1730,6 +1782,7 @@ class Output(object):
         if Output.log_dir:
             msg += "\nFor more information, check the logs in {}".format(Output.log_dir)
         Output.print_and_log(msg, logging.ERROR)
+        Output.console_access = False
         if Output.script_exit_func:
             Output.script_exit_func()
         sys.exit(1)

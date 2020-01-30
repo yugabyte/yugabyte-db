@@ -131,6 +131,9 @@ DEFINE_int32(max_wait_for_safe_time_ms, 5000,
              "Maximum time in milliseconds to wait for the safe time to advance when trying to "
              "scan at the given hybrid_time.");
 
+DEFINE_int32(num_concurrent_backfills_allowed, 8,
+             "Maximum number of concurrent backfill jobs that is allowed to run.");
+
 DEFINE_test_flag(bool, tserver_noop_read_write, false, "Respond NOOP to read/write.");
 
 DEFINE_int32(max_stale_read_bound_time_ms, 0, "If we are allowed to read from followers, "
@@ -308,10 +311,10 @@ bool TabletServiceImpl::CheckWriteThrottlingOrRespond(
   const uint64_t num_sst_files = tablet_peer->raft_consensus()->MajorityNumSSTFiles();
   const auto sst_files_soft_limit = FLAGS_sst_files_soft_limit;
   const int64_t sst_files_used_delta = num_sst_files - sst_files_soft_limit;
-  if (sst_files_used_delta > 0) {
+  if (sst_files_used_delta >= 0) {
     const auto sst_files_hard_limit = FLAGS_sst_files_hard_limit;
     const auto sst_files_full_delta = sst_files_hard_limit - sst_files_soft_limit;
-    if (sst_files_used_delta > sst_files_full_delta * (1 - score)) {
+    if (sst_files_used_delta >= sst_files_full_delta * (1 - score)) {
       tablet->metrics()->majority_sst_files_rejections->Increment();
       auto message = Format("SST files limit exceeded $0 against ($1, $2), score: $3",
                             num_sst_files, sst_files_soft_limit, sst_files_hard_limit, score);
@@ -348,6 +351,7 @@ class WriteOperationCompletionCallback : public OperationCompletionCallback {
         state_(state), clock_(clock), include_trace_(trace) {}
 
   void OperationCompleted() override {
+    VLOG(1) << __PRETTY_FUNCTION__ << "completing with status " << status_;
     // When we don't need to return any data, we could return success on duplicate request.
     if (status_.IsAlreadyPresent() &&
         state_->ql_write_ops()->empty() &&
@@ -400,6 +404,7 @@ class WriteOperationCompletionCallback : public OperationCompletionCallback {
     }
     response_->set_propagated_hybrid_time(clock_->Now().ToUint64());
     context_->RespondSuccess();
+    VLOG(1) << __PRETTY_FUNCTION__ << " RespondedSuccess";
   }
 
  private:
@@ -458,8 +463,150 @@ TabletServiceImpl::TabletServiceImpl(TabletServerIf* server)
 }
 
 TabletServiceAdminImpl::TabletServiceAdminImpl(TabletServer* server)
-    : TabletServerAdminServiceIf(server->MetricEnt()),
-      server_(server) {
+    : TabletServerAdminServiceIf(server->MetricEnt()), server_(server) {}
+
+void TabletServiceAdminImpl::BackfillDone(
+    const ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp, rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "BackfillDone", req, resp, &context)) {
+    return;
+  }
+  DVLOG(3) << "Received BackfillDone RPC: " << req->DebugString();
+
+  server::UpdateClock(*req, server_->Clock());
+
+  // For now, we shall only allow this RPC on the leader.
+  auto tablet =
+      LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+  if (!tablet) {
+    return;
+  }
+
+  auto operation_state = std::make_unique<ChangeMetadataOperationState>(
+      tablet.peer->tablet(), tablet.peer->log(), req);
+
+  operation_state->set_completion_callback(
+      MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
+
+  // Submit the alter schema op. The RPC will be responded to asynchronously.
+  tablet.peer->Submit(
+      std::make_unique<tablet::ChangeMetadataOperation>(std::move(operation_state)),
+      tablet.leader_term);
+}
+
+void TabletServiceAdminImpl::GetSafeTime(
+    const GetSafeTimeRequestPB* req, GetSafeTimeResponsePB* resp, rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "GetSafeTime", req, resp, &context)) {
+    return;
+  }
+  DVLOG(3) << "Received GetSafeTime RPC: " << req->DebugString();
+
+  server::UpdateClock(*req, server_->Clock());
+
+  // For now, we shall only allow this RPC on the leader.
+  auto tablet =
+      LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+  if (!tablet) {
+    return;
+  }
+
+  HybridTime safe_time = tablet.peer->tablet()->SafeTime();
+  resp->set_safe_time(safe_time.ToUint64());
+  resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
+  DVLOG(3) << "Tablet " << tablet.peer->tablet_id()
+           << ". returning SafeTime for : " << yb::ToString(safe_time);
+
+  context.RespondSuccess();
+}
+
+void TabletServiceAdminImpl::BackfillIndex(
+    const BackfillIndexRequestPB* req, BackfillIndexResponsePB* resp, rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "BackfillIndex", req, resp, &context)) {
+    return;
+  }
+  DVLOG(3) << "Received BackfillIndex RPC: " << req->DebugString();
+
+  server::UpdateClock(*req, server_->Clock());
+
+  // For now, we shall only allow this RPC on the leader.
+  auto tablet =
+      LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+  if (!tablet) {
+    return;
+  }
+
+  uint32_t schema_version = tablet.peer->tablet_metadata()->schema_version();
+  // If the current schema is newer than the one in the request reject the request.
+  if (schema_version != req->schema_version()) {
+    if (schema_version == 1 + req->schema_version()) {
+      LOG(WARNING) << "Received BackfillIndex RPC: " << req->DebugString()
+                   << " after we have moved to schema_version = " << schema_version;
+      // This is possible if this tablet completed the backfill. But the master failed over before
+      // other tablets could complete.
+      // The new master is redoing the backfill. We are safe to ignore this request.
+      context.RespondSuccess();
+    } else {
+      SetupErrorAndRespond(
+          resp->mutable_error(), STATUS_SUBSTITUTE(
+                                     InvalidArgument, "Tablet has a different schema $0 vs $1",
+                                     schema_version, req->schema_version()),
+          TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
+    }
+    return;
+  }
+
+  DVLOG(1) << "Received Backfill Index RPC: " << req->DebugString();
+  const auto coarse_start = CoarseMonoClock::Now();
+  {
+    std::unique_lock<std::mutex> l(backfill_lock_);
+    while (num_tablets_backfilling_ >= FLAGS_num_concurrent_backfills_allowed) {
+      backfill_cond_.wait(l);
+    }
+    num_tablets_backfilling_++;
+  }
+  auto se = ScopeExit([this] {
+    std::unique_lock<std::mutex> l(this->backfill_lock_);
+    this->num_tablets_backfilling_--;
+    this->backfill_cond_.notify_all();
+  });
+
+  const auto coarse_now = CoarseMonoClock::Now();
+  const CoarseTimePoint& deadline = context.GetClientDeadline();
+  // Don't work on the request if we have had to wait more than 50%
+  // of the time allocated to us for the RPC.
+  // Backfill is a costly operation, we do not want to start working
+  // on it if we expect the client (master) to time out the RPC and
+  // force us to redo the work.
+  if (deadline - coarse_now < coarse_now - coarse_start) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS_SUBSTITUTE(
+            ServiceUnavailable, "Already running $0 backfill requests.",
+            FLAGS_num_concurrent_backfills_allowed),
+        TabletServerErrorPB::UNKNOWN_ERROR, &context);
+    return;
+  }
+
+  const IndexMap& index_map = tablet.peer->tablet_metadata()->index_map();
+  std::vector<IndexInfo> indices_to_backfill;
+  std::vector<TableId> index_ids;
+  for (const auto& idx : req->indexes()) {
+    indices_to_backfill.push_back(index_map.at(idx.table_id()));
+    index_ids.push_back(index_map.at(idx.table_id()).table_id());
+  }
+  Status s = tablet.peer->tablet()->BackfillIndexes(
+      indices_to_backfill, HybridTime(req->read_at_hybrid_time()));
+  DVLOG(1) << "Tablet " << tablet.peer->tablet_id()
+           << ". Backfilled indices for : " << yb::ToString(index_ids) << " with status " << s;
+  if (!s.ok()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), s, (s.IsIllegalState() ? TabletServerErrorPB::OPERATION_NOT_SUPPORTED
+                                                      : TabletServerErrorPB::UNKNOWN_ERROR),
+        &context);
+    return;
+  }
+
+  resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
+  context.RespondSuccess();
 }
 
 void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
@@ -468,7 +615,7 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "ChangeMetadata", req, resp, &context)) {
     return;
   }
-  DVLOG(3) << "Received Change Metadata RPC: " << req->DebugString();
+  DVLOG(1) << "Received Change Metadata RPC: " << req->DebugString();
 
   server::UpdateClock(*req, server_->Clock());
 
@@ -478,21 +625,20 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
     return;
   }
 
+  Schema tablet_schema = tablet.peer->tablet_metadata()->schema();
   uint32_t schema_version = tablet.peer->tablet_metadata()->schema_version();
+  // Sanity check, to verify that the tablet should have the same schema
+  // specified in the request.
+  Schema req_schema;
+  Status s = SchemaFromPB(req->schema(), &req_schema);
+  if (!s.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), s, TabletServerErrorPB::INVALID_SCHEMA, &context);
+    return;
+  }
 
   // If the schema was already applied, respond as succeeded.
   if (!req->has_wal_retention_secs() && schema_version == req->schema_version()) {
-    // Sanity check, to verify that the tablet should have the same schema
-    // specified in the request.
-    Schema req_schema;
-    Status s = SchemaFromPB(req->schema(), &req_schema);
-    if (!s.ok()) {
-      SetupErrorAndRespond(resp->mutable_error(), s,
-                           TabletServerErrorPB::INVALID_SCHEMA, &context);
-      return;
-    }
 
-    Schema tablet_schema = tablet.peer->tablet_metadata()->schema();
     if (req_schema.Equals(tablet_schema)) {
       context.RespondSuccess();
       return;
@@ -514,12 +660,23 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
 
   // If the current schema is newer than the one in the request reject the request.
   if (schema_version > req->schema_version()) {
-    SetupErrorAndRespond(resp->mutable_error(),
-                         STATUS(InvalidArgument, "Tablet has a newer schema"),
-                         TabletServerErrorPB::TABLET_HAS_A_NEWER_SCHEMA, &context);
+    LOG(ERROR) << "Tablet " << req->tablet_id() << " has a newer schema "
+               << " version=" << schema_version
+               << " req->schema_version()=" << req->schema_version()
+               << "\n current-schema=" << tablet_schema.ToString()
+               << "\n request-schema=" << req_schema.ToString() << " (wtf?)";
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS_SUBSTITUTE(
+            InvalidArgument, "Tablet has a newer schema Tab $0. Req $1 vs Existing version : $2",
+            req->tablet_id(), req->DebugString(), schema_version),
+        TabletServerErrorPB::TABLET_HAS_A_NEWER_SCHEMA, &context);
     return;
   }
 
+  VLOG(1) << "Tablet updating schema from "
+          << " version=" << schema_version << " current-schema=" << tablet_schema.ToString()
+          << " to request-schema=" << req_schema.ToString();
   auto operation_state = std::make_unique<ChangeMetadataOperationState>(
       tablet.peer->tablet(), tablet.peer->log(), req);
 
@@ -1394,6 +1551,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     }
     write_req.set_tablet_id(req->tablet_id());
     write_req.mutable_write_batch()->set_deprecated_may_have_metadata(true);
+    write_req.set_batch_idx(req->batch_idx());
     // TODO(dtxn) write request id
 
     auto* write_batch = write_req.mutable_write_batch();

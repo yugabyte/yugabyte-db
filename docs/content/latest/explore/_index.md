@@ -1,6 +1,6 @@
 ---
-title: Explore core 
-linkTitle: Explore core 
+title: Explore core features
+linkTitle: Explore core features
 description: Explore core features
 headcontent:
 image: /images/section_icons/index/explore.png

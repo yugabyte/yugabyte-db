@@ -426,6 +426,10 @@ YBCStatus YBCPgDmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr
   return ToYBCStatus(pgapi->DmlBindIndexColumn(handle, attr_num, attr_value));
 }
 
+YBCStatus YBCPgDmlBindTable(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->DmlBindTable(handle));
+}
+
 YBCStatus YBCPgDmlAssignColumn(YBCPgStatement handle,
                                int attr_num,
                                YBCPgExpr attr_value) {
@@ -491,6 +495,19 @@ YBCStatus YBCPgNewDelete(const YBCPgOid database_oid,
 
 YBCStatus YBCPgExecDelete(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDelete(handle));
+}
+
+// Colocated TRUNCATE Operations -------------------------------------------------------------------
+YBCStatus YBCPgNewTruncateColocated(const YBCPgOid database_oid,
+                                    const YBCPgOid table_oid,
+                                    bool is_single_row_txn,
+                                    YBCPgStatement *handle) {
+  const PgObjectId table_id(database_oid, table_oid);
+  return ToYBCStatus(pgapi->NewTruncateColocated(table_id, is_single_row_txn, handle));
+}
+
+YBCStatus YBCPgExecTruncateColocated(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecTruncateColocated(handle));
 }
 
 // SELECT Operations -------------------------------------------------------------------------------

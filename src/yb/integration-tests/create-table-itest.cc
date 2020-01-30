@@ -73,7 +73,7 @@ class CreateTableITest : public ExternalMiniClusterITestBase {
     auto db_type = master::GetDatabaseTypeForTable(
         client::YBTable::ClientToPBTableType(table_type));
     RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(), db_type));
-    gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+    std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
     client::YBSchema client_schema(client::YBSchemaFromSchema(yb::GetSimpleTestSchema()));
     if (table_type != YBTableType::REDIS_TABLE_TYPE) {
       table_creator->schema(&client_schema);
@@ -187,7 +187,7 @@ TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
   // a quorum.
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
                                                 kTableName.namespace_type()));
-  gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
   client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
   ASSERT_OK(table_creator->table_name(kTableName)
             .schema(&client_schema)
@@ -255,7 +255,7 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
 
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
                                                 kTableName.namespace_type()));
-  gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
   client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
   ASSERT_OK(table_creator->table_name(kTableName)
             .schema(&client_schema)
@@ -336,7 +336,7 @@ TEST_F(CreateTableITest, TestNoAllocBlacklist) {
   // create table
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
                                                 kTableName.namespace_type()));
-  gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
   client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
   ASSERT_OK(table_creator->table_name(kTableName)
                 .schema(&client_schema)

@@ -233,7 +233,9 @@ endfunction()
 # CMAKE_EXE_LINKER_FLAGS and CMAKE_SHARED_LINKER_FLAGS after we finish making changes to this.
 # These flags apply to both YB and RocksDB parts of the codebase.
 function(ADD_LINKER_FLAGS FLAGS)
-  message("Adding to linker flags: ${FLAGS}")
+  if ($ENV{YB_VERBOSE})
+    message("Adding to linker flags: ${FLAGS}")
+  endif()
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
 endfunction()
@@ -265,7 +267,9 @@ endfunction()
 #     hard to debug crashes.
 
 function(ADD_CXX_FLAGS FLAGS)
-  message("Adding C++ flags: ${FLAGS}")
+  if ($ENV{YB_VERBOSE})
+    message("Adding C++ flags: ${FLAGS}")
+  endif()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS}" PARENT_SCOPE)
 endfunction()
 

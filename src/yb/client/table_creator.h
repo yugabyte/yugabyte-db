@@ -87,6 +87,9 @@ class YBTableCreator {
   // For index table: sets the indexed table id of this index.
   YBTableCreator& indexed_table_id(const std::string& id);
 
+  // For index table: uses the old style request without index_info.
+  YBTableCreator& TEST_use_old_style_create_request();
+
   // For index table: sets whether this is a local index.
   YBTableCreator& is_local_index(bool is_local_index);
 
@@ -160,6 +163,8 @@ class YBTableCreator {
   // When creating index, proxy server construct index_info_, and master server will write it to
   // the data-table being indexed.
   IndexInfoPB index_info_;
+
+  bool TEST_use_old_style_create_request_ = false;
 
   MonoDelta timeout_;
   bool wait_ = true;

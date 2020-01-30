@@ -161,6 +161,7 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   void AbortTask();
 
+  virtual MonoTime ComputeDeadline();
   // Callback meant to be invoked from asynchronous RPC service proxy calls.
   void RpcCallback();
 
@@ -224,6 +225,9 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   // Only abort this task on reactor if it has been scheduled.
   void AbortIfScheduled();
+
+  virtual int num_max_retries();
+  virtual int max_delay_ms();
 
   // Use state() and MarkX() accessors.
   std::atomic<MonitoredTaskState> state_;
@@ -335,17 +339,33 @@ class AsyncAlterTable : public RetryingTSRpcTask {
 
   std::string description() const override;
 
- private:
-  TabletId tablet_id() const override;
-
+ protected:
   TabletServerId permanent_uuid() const;
-
-  void HandleResponse(int attempt) override;
-  bool SendRequest(int attempt) override;
 
   uint32_t schema_version_;
   scoped_refptr<TabletInfo> tablet_;
+
+  TabletId tablet_id() const override;
+
   tserver::ChangeMetadataResponsePB resp_;
+
+ private:
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+};
+
+class AsyncBackfillDone : public AsyncAlterTable {
+ public:
+  AsyncBackfillDone(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet)
+      : AsyncAlterTable(master, callback_pool, tablet) {}
+
+  Type type() const override { return ASYNC_BACKFILL_DONE; }
+
+  std::string type_name() const override { return "Mark backfill done."; }
+
+ private:
+  bool SendRequest(int attempt) override;
 };
 
 class AsyncCopartitionTable : public RetryingTSRpcTask {

@@ -480,12 +480,12 @@ TEST_F(ClientTest, TestListTables) {
     return n1.ToString() < n2.ToString();
   });
   ASSERT_EQ(2 + master::kNumSystemTablesWithTxn, tables.size());
-  ASSERT_EQ(kTableName, tables[0]) << "Tables:" << ToString(tables);
-  ASSERT_EQ(kTable2Name, tables[1]) << "Tables:" << ToString(tables);
+  ASSERT_EQ(kTableName, tables[0]) << "Tables:" << AsString(tables);
+  ASSERT_EQ(kTable2Name, tables[1]) << "Tables:" << AsString(tables);
   tables.clear();
   ASSERT_OK(client_->ListTables(&tables, "testtb2"));
   ASSERT_EQ(1, tables.size());
-  ASSERT_EQ(kTable2Name, tables[0]) << "Tables:" << ToString(tables);
+  ASSERT_EQ(kTable2Name, tables[0]) << "Tables:" << AsString(tables);
 }
 
 TEST_F(ClientTest, TestListTabletServers) {
@@ -1207,7 +1207,7 @@ TEST_F(ClientTest, TestMutateNonexistentRow) {
 TEST_F(ClientTest, TestWriteWithBadSchema) {
   // Remove the 'int_val' column.
   // Now the schema on the client is "old"
-  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("int_val")->Alter());
 
   // Try to do a write with the bad schema.
@@ -1221,7 +1221,7 @@ TEST_F(ClientTest, TestWriteWithBadSchema) {
 TEST_F(ClientTest, TestBasicAlterOperations) {
   // test that having no steps throws an error
   {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     Status s = table_alterer->Alter();
     ASSERT_TRUE(s.IsInvalidArgument());
     ASSERT_STR_CONTAINS(s.ToString(), "No alter steps provided");
@@ -1229,7 +1229,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
 
   // test that remove key should throws an error
   {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     Status s = table_alterer
       ->DropColumn("key")
       ->Alter();
@@ -1239,7 +1239,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
 
   // test that renaming to an already-existing name throws an error
   {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     table_alterer->AlterColumn("int_val")->RenameTo("string_val");
     Status s = table_alterer->Alter();
     ASSERT_TRUE(s.IsAlreadyPresent());
@@ -1253,7 +1253,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
       tablet_id, &tablet_peer));
 
   {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     table_alterer->DropColumn("int_val")
       ->AddColumn("new_col")->Type(INT32);
     ASSERT_OK(table_alterer->Alter());
@@ -1262,7 +1262,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
 
   {
     const YBTableName kRenamedTableName(YQL_DATABASE_CQL, kKeyspaceName, "RenamedTable");
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     ASSERT_OK(table_alterer
               ->RenameTo(kRenamedTableName)
               ->Alter());
@@ -1864,7 +1864,7 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
 }
 
 TEST_F(ClientTest, TestCreateDuplicateTable) {
-  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+  std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_TRUE(table_creator->table_name(kTableName)
               .schema(&schema_)
               .Create().IsAlreadyPresent());
@@ -1886,7 +1886,7 @@ TEST_F(ClientTest, CreateTableWithoutTservers) {
       .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
       .Build());
 
-  gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
   Status s = table_creator->table_name(YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "foobar"))
       .schema(&schema_)
       .Create();
@@ -1898,7 +1898,7 @@ TEST_F(ClientTest, TestCreateTableWithTooManyTablets) {
   FLAGS_max_create_tablets_per_ts = 1;
   auto many_tablets = FLAGS_replication_factor + 1;
 
-  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+  std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   Status s = table_creator->table_name(YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "foobar"))
       .schema(&schema_)
       .num_tablets(many_tablets)
@@ -1913,7 +1913,7 @@ TEST_F(ClientTest, TestCreateTableWithTooManyTablets) {
 
 // TODO(bogdan): Disabled until ENG-2687
 TEST_F(ClientTest, DISABLED_TestCreateTableWithTooManyReplicas) {
-  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+  std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   Status s = table_creator->table_name(YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "foobar"))
       .schema(&schema_)
       .num_tablets(2)
@@ -2068,7 +2068,7 @@ TEST_F(ClientTest, Capability) {
 }
 
 TEST_F(ClientTest, TestCreateTableWithRangePartition) {
-  gscoped_ptr <YBTableCreator> table_creator(client_->NewTableCreator());
+  std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   const std::string kPgsqlKeyspaceID = "1234";
   const std::string kPgsqlKeyspaceName = "psql" + kKeyspaceName;
   const std::string kPgsqlTableName = "pgsqlrangepartitionedtable";

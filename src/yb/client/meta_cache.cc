@@ -710,6 +710,11 @@ RemoteTabletPtr MetaCache::ProcessTabletLocations(
           DCHECK_EQ(loc.partition().partition_key_end(),
                     remote->partition().partition_key_end());
 
+          // For colocated tables, RemoteTablet already exists because it was processed
+          // in a previous iteration of the for loop (for loc.table_ids()).
+          // We need to add this tablet to the current table's tablets_by_key map.
+          tablets_by_key[remote->partition().partition_key_start()] = remote;
+
           VLOG(3) << "Refreshing tablet " << tablet_id << ": " << loc.ShortDebugString();
         } else {
           VLOG(3) << "Caching tablet " << tablet_id << ": " << loc.ShortDebugString();

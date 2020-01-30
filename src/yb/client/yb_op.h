@@ -64,6 +64,8 @@ class YBSession;
 class YBStatusCallback;
 class YBTable;
 
+YB_DEFINE_ENUM(OpGroup, (kWrite)(kLeaderRead)(kConsistentPrefixRead));
+
 // A write or read operation operates on a single table and partial row.
 // The YBOperation class itself allows the batcher to get to the
 // generic information that it needs to process all write operations.
@@ -100,7 +102,15 @@ class YBOperation {
   virtual bool succeeded() = 0;
   virtual bool returns_sidecar() = 0;
 
-  virtual bool wrote_data(IsolationLevel isolation_level) {
+  virtual OpGroup group() {
+    return read_only() ? OpGroup::kLeaderRead : OpGroup::kWrite;
+  }
+
+  virtual bool applied() {
+    return succeeded();
+  }
+
+  virtual bool should_add_intents(IsolationLevel isolation_level) {
     return !read_only() || isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION;
   }
 
@@ -226,7 +236,8 @@ class YBRedisReadOp : public YBRedisOp {
   CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
 
  protected:
-  virtual Type type() const override { return REDIS_READ; }
+  Type type() const override { return REDIS_READ; }
+  OpGroup group() override;
 
  private:
   friend class YBTable;
@@ -365,7 +376,8 @@ class YBqlReadOp : public YBqlOp {
   void SetReadTime(const ReadHybridTime& value) { read_time_ = value; }
 
  protected:
-  virtual Type type() const override { return QL_READ; }
+  Type type() const override { return QL_READ; }
+  OpGroup group() override;
 
  private:
   friend class YBTable;
@@ -399,6 +411,10 @@ class YBPgsqlOp : public YBOperation {
   virtual void SetHashCode(uint16_t hash_code) override = 0;
 
   bool succeeded() override { return response().status() == PgsqlResponsePB::PGSQL_STATUS_OK; }
+
+  bool applied() override {
+    return succeeded() && !response_->skipped();
+  }
 
  protected:
   std::unique_ptr<PgsqlResponsePB> response_;
@@ -434,10 +450,6 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
     is_single_row_txn_ = is_single_row_txn;
   }
 
-  bool wrote_data(IsolationLevel isolation_level) override {
-    return YBOperation::wrote_data(isolation_level) && !response().skipped();
-  }
-
  protected:
   virtual Type type() const override {
     return PGSQL_WRITE;
@@ -448,7 +460,7 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
   static YBPgsqlWriteOp *NewInsert(const std::shared_ptr<YBTable>& table);
   static YBPgsqlWriteOp *NewUpdate(const std::shared_ptr<YBTable>& table);
   static YBPgsqlWriteOp *NewDelete(const std::shared_ptr<YBTable>& table);
-  static YBPgsqlWriteOp *NewUpsert(const std::shared_ptr<YBTable>& table);
+  static YBPgsqlWriteOp *NewTruncateColocated(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<PgsqlWriteRequestPB> write_request_;
   // Whether this operation should be run as a single row txn.
   // Else could be distributed transaction (or non-transactional) depending on target table type.
@@ -501,7 +513,7 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   static std::vector<ColumnSchema> MakeColumnSchemasFromColDesc(
       const google::protobuf::RepeatedPtrField<PgsqlRSColDescPB>& rscol_descs);
 
-  bool wrote_data(IsolationLevel isolation_level) override;
+  bool should_add_intents(IsolationLevel isolation_level) override;
 
  protected:
   virtual Type type() const override {

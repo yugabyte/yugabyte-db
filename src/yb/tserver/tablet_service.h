@@ -207,8 +207,30 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
                              RemoveTableFromTabletResponsePB* resp,
                              rpc::RpcContext context) override;
 
+  // Called on the Indexed table to choose time to read.
+  void GetSafeTime(
+      const GetSafeTimeRequestPB* req, GetSafeTimeResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  // Called on the Indexed table to backfill the index table(s).
+  void BackfillIndex(
+      const BackfillIndexRequestPB* req, BackfillIndexResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  // Called on the Index table(s) once the backfill is complete.
+  void BackfillDone(
+      const ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
+      rpc::RpcContext context) override;
+
  private:
   TabletServer* server_;
+
+  // Used to implement wait/signal mechanism for backfill requests.
+  // Since the number of concurrently allowed backfill requests is
+  // limited.
+  mutable std::mutex backfill_lock_;
+  std::condition_variable backfill_cond_;
+  std::atomic<int32_t> num_tablets_backfilling_{0};
 };
 
 class ConsensusServiceImpl : public consensus::ConsensusServiceIf {

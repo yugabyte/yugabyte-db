@@ -96,7 +96,8 @@ Status PgDmlWrite::DeleteEmptyPrimaryBinds() {
     write_req_->clear_range_column_values();
   }
 
-  if (missing_primary_key) {
+  // Check for missing key.  This is okay when binding the whole table (for colocated truncate).
+  if (missing_primary_key && !bind_table_) {
     return STATUS(InvalidArgument, "Primary key must be fully specified for modifying table");
   }
 

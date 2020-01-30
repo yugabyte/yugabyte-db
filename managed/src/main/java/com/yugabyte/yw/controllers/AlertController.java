@@ -3,6 +3,7 @@ package com.yugabyte.yw.controllers;
 import com.google.inject.Inject;
 
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.forms.AlertFormData;
@@ -71,6 +72,7 @@ public class AlertController extends AuthenticatedController {
     } else {
       Alert.create(customerUUID, data.errCode, data.type, data.message);
     }
+    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ok();
   }
 
@@ -88,6 +90,7 @@ public class AlertController extends AuthenticatedController {
     }
     AlertFormData data = formData.get();
     Alert.create(customerUUID, data.errCode, data.type, data.message);
+    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ok();
   }
 }

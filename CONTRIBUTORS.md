@@ -85,3 +85,4 @@ This is a list of people who have contributed code to the [YugaByte DB](https://
 * [ameyb](https://github.com/ameyb)
 * [fastest963](https://github.com/fastest963)
 * [eliahburns](https://github.com/eliahburns)
+* [bhavin192](https://github.com/bhavin192)

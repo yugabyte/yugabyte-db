@@ -5,6 +5,7 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CustomerConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +27,7 @@ public class CustomerConfigController extends AuthenticatedController {
     }
 
     CustomerConfig customerConfig = CustomerConfig.createWithFormData(customerUUID, formData);
+    Audit.createAuditEntry(ctx(), request(), formData);
     return ApiResponse.success(customerConfig);
   }
 
@@ -36,6 +38,7 @@ public class CustomerConfigController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid configUUID: " + configUUID);
     }
     customerConfig.delete();
+    Audit.createAuditEntry(ctx(), request());
     return ApiResponse.success("configUUID deleted");
   }
 

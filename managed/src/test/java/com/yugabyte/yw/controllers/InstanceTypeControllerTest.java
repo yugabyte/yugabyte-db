@@ -6,6 +6,7 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.core.IsNull.notNullValue;
@@ -131,12 +132,14 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     UUID randomUUID = UUID.randomUUID();
     JsonNode json = doListInstanceTypesAndVerify(randomUUID, BAD_REQUEST);
     assertErrorNodeValue(json, "Invalid Provider UUID: " + randomUUID);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
   public void testListEmptyInstanceTypeWithValidProviderUUID() {
     JsonNode json = doListInstanceTypesAndVerify(awsProvider.uuid, OK);
     assertEquals(0, json.size());
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -167,6 +170,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
         .map(instanceType -> instanceType.idKey.instanceTypeCode)
         .collect(Collectors.toList());
     assertValues(json, "instanceTypeCode", expectedCodes);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -182,6 +186,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     UUID randomUUID = UUID.randomUUID();
     JsonNode json = doCreateInstanceTypeAndVerify(randomUUID, instanceTypeJson, BAD_REQUEST);
     assertErrorNodeValue(json, "Invalid Provider UUID: " + randomUUID);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -190,6 +195,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     assertErrorNodeValue(json, "idKey", "This field is required");
     assertErrorNodeValue(json, "memSizeGB", "This field is required");
     assertErrorNodeValue(json, "numCores", "This field is required");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -218,6 +224,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     assertValue(machineDetailsNode, "volumeSizeGB", "10");
     assertValue(machineDetailsNode, "volumeType", "EBS");
     assertValue(machineDetailsNode, "mountPath", "/mnt/d0");
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -239,6 +246,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     assertValue(machineDetailsNode, "volumeSizeGB", "20");
     assertValue(machineDetailsNode, "volumeType", "SSD");
     assertValue(machineDetailsNode, "mountPath", "/tmp/path/");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -264,6 +272,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       assertValue(machineDetailsNode, "volumeType", "SSD");
       assertValue(machineDetailsNode, "mountPath", String.format("/mnt/d%d", i));
     }
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -271,6 +280,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     String fakeInstanceCode = "foo";
     JsonNode json = doGetInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST);
     assertErrorNodeValue(json, "Instance Type not found: " + fakeInstanceCode);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -279,6 +289,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     UUID randomUUID = UUID.randomUUID();
     JsonNode json = doGetInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST);
     assertErrorNodeValue(json, "Invalid Provider UUID: " + randomUUID);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -289,6 +300,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     it = InstanceType.get(awsProvider.code, it.getInstanceTypeCode());
     assertTrue(json.get("success").asBoolean());
     assertFalse(it.isActive());
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -296,6 +308,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     String fakeInstanceCode = "foo";
     JsonNode json = doDeleteInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST);
     assertErrorNodeValue(json, "Instance Type not found: " + fakeInstanceCode);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -304,5 +317,6 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     UUID randomUUID = UUID.randomUUID();
     JsonNode json = doDeleteInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST);
     assertErrorNodeValue(json, "Invalid Provider UUID: " + randomUUID);
+    assertAuditEntry(0, customer.uuid);
   }
 }

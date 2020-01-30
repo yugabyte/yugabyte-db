@@ -112,7 +112,7 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     dwb.TEST_CopyToWriteBatchPB(&kv_write_batch);
     PrepareTransactionWriteBatch(
         kv_write_batch, hybrid_time, rocksdb_write_batch, *current_txn_id_, txn_isolation_level_,
-        partial_range_key_intents, &intra_txn_write_id_);
+        partial_range_key_intents, /* replicated_batches_state= */ Slice(), &intra_txn_write_id_);
   } else {
     // TODO: this block has common code with docdb::PrepareNonTransactionWriteBatch and probably
     // can be refactored, so common code is reused.

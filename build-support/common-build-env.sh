@@ -14,7 +14,6 @@
 #
 
 # This is common between build and test scripts.
-
 set -euo pipefail
 
 if [[ $BASH_SOURCE == $0 ]]; then
@@ -28,7 +27,7 @@ if [[ -n ${YB_COMMON_BUILD_ENV_SOURCED:-} ]]; then
   return
 fi
 
-YB_COMMON_BUILD_ENV_SOURCED=1
+readonly YB_COMMON_BUILD_ENV_SOURCED=1
 
 # -------------------------------------------------------------------------------------------------
 # Load yugabyte-bash-common
@@ -53,7 +52,8 @@ if [[ $YB_SRC_ROOT == */ ]]; then
 fi
 
 YB_BASH_COMMON_DIR=$YB_SRC_ROOT/submodules/yugabyte-bash-common
-if [[ ! -d $YB_BASH_COMMON_DIR || -z "$( ls -A "$YB_BASH_COMMON_DIR" )" ]]; then
+if [[ ! -d $YB_BASH_COMMON_DIR || -z "$( ls -A "$YB_BASH_COMMON_DIR" )" ]] &&
+   [[ -d $YB_SRC_ROOT/.git ]]; then
   ( cd "$YB_SRC_ROOT"; git submodule update --init --recursive )
 fi
 
@@ -69,10 +69,10 @@ declare -i MAX_JAVA_BUILD_ATTEMPTS=5
 declare -r -i YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY=2
 
 # What matches these expressions will be filtered out of Maven output.
-MVN_OUTPUT_FILTER_REGEX='\[INFO\] (Download(ing|ed): '
-MVN_OUTPUT_FILTER_REGEX+='|[^ ]+ already added, skipping$)'
-MVN_OUTPUT_FILTER_REGEX+='|^Generating .*[.]html[.][.][.]$'
+MVN_OUTPUT_FILTER_REGEX='^\[INFO\] (Download(ing|ed)( from [-a-z0-9.]+)?): '
+MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] [^ ]+ already added, skipping$'
 MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] Copying .*[.]jar to .*[.]jar$'
+MVN_OUTPUT_FILTER_REGEX+='|^Generating .*[.]html[.][.][.]$'
 
 readonly YB_JENKINS_NFS_HOME_DIR=/n/jenkins
 
@@ -181,6 +181,48 @@ readonly YB_DOWNLOAD_LOCKS_DIR=/tmp/yb_download_locks
 
 readonly YB_NFS_PATH_RE="^/(n|z|u|net|Volumes/net|servers|nfusr)/"
 
+readonly MVN_OPTS_TO_DOWNLOAD_ALL_DEPS=(
+  dependency:resolve
+  dependency:resolve-plugins
+  dependency:go-offline
+)
+
+# -------------------------------------------------------------------------------------------------
+# Global variables
+# -------------------------------------------------------------------------------------------------
+
+use_nfs_shared_thirdparty=false
+no_nfs_shared_thirdparty=false
+
+# This is needed so we can ignore thirdparty_path.txt, linuxbrew_path.txt, and
+# custom_homebrew_path.txt in the build directory and not pick up old paths from those files in
+# a clean build.
+is_clean_build=false
+
+# A human-readable description of how we set the respective variables.
+yb_thirdparty_dir_where_from=""
+if [[ -n ${YB_THIRDPARTY_DIR:-} ]]; then
+  yb_thirdparty_dir_where_from=" (from environment)"
+fi
+
+yb_thirdparty_url_where_from=""
+if [[ -n ${YB_THIRDPARTY_URL:-} ]]; then
+  yb_thirdparty_url_where_from=" (from environment)"
+fi
+
+yb_linuxbrew_dir_where_from=""
+if [[ -n ${YB_LINUXBREW_DIR:-} ]]; then
+  yb_linuxbrew_dir_where_from=" (from environment)"
+fi
+
+yb_custom_homebrew_dir_where_from=""
+if [[ -n ${YB_CUSTOM_HOMEBREW_DIR:-} ]]; then
+  yb_custom_homebrew_dir_where_from=" (from environment)"
+fi
+
+# To deduplicate Maven arguments
+yb_mvn_parameters_already_set=false
+
 # -------------------------------------------------------------------------------------------------
 # Functions
 # -------------------------------------------------------------------------------------------------
@@ -208,7 +250,6 @@ normalize_build_type() {
 # Sets the build directory based on the given build type (the build_type variable) and the value of
 # the YB_COMPILER_TYPE environment variable.
 set_build_root() {
-  set_use_ninja
   if [[ ${1:-} == "--no-readonly" ]]; then
     local -r make_build_root_readonly=false
     shift
@@ -246,6 +287,7 @@ set_build_root() {
 
   export BUILD_ROOT
   export YB_BUILD_ROOT=$BUILD_ROOT
+  set_use_ninja
 }
 
 # Resolve the BUILD_ROOT symlink and save the result to the real_build_root_path variable.
@@ -529,22 +571,30 @@ set_cmake_build_type_and_compiler_type() {
 
   cmake_opts+=( "-DCMAKE_BUILD_TYPE=$cmake_build_type" )
   cmake_opts+=( "${YB_DEFAULT_CMAKE_OPTS[@]}" )
+}
 
+find_make_or_ninja_and_update_cmake_opts() {
   if using_ninja; then
     cmake_opts+=( -G Ninja )
     make_program=ninja
-    if ! which ninja &>/dev/null; then
-      if using_linuxbrew; then
+    if [[ -z ${YB_NINJA_PATH:-} ]]; then
+      local which_ninja=$( which ninja 2>/dev/null )
+      if [[ -f $which_ninja ]]; then
+        YB_NINJA_PATH=$which_ninja
+      elif using_linuxbrew; then
         export YB_NINJA_PATH=$YB_LINUXBREW_DIR/bin/ninja
         make_program=$YB_NINJA_PATH
       elif using_custom_homebrew; then
         export YB_NINJA_PATH=$YB_CUSTOM_HOMEBREW_DIR/bin/ninja
         make_program=$YB_NINJA_PATH
-      elif is_mac; then
-        log "Did not find the 'ninja' executable, auto-installing ninja using Homebrew"
-        brew install ninja
+      else
+        fatal "Ninja not found"
       fi
     fi
+    if [[ ! -x $YB_NINJA_PATH ]]; then
+      fatal "Ninja path $YB_NINJA_PATH does not exist or is not executable"
+    fi
+    export YB_NINJA_PATH
     make_file=build.ninja
   else
     make_program=make
@@ -555,6 +605,9 @@ set_cmake_build_type_and_compiler_type() {
 }
 
 set_mvn_parameters() {
+  if "$yb_mvn_parameters_already_set"; then
+    return
+  fi
   local should_use_shared_dirs=false
   should_copy_artifacts_to_non_shared_repo=false
   if is_jenkins && is_src_root_on_nfs; then
@@ -563,11 +616,17 @@ set_mvn_parameters() {
       should_copy_artifacts_to_non_shared_repo=true
       log "Will not use shared Maven repository ($YB_SHARED_MVN_LOCAL_REPO), but will copy" \
           "the artifact with group id ${YB_TMP_GROUP_ID:-undefined} from it to" \
-          "$YB_NON_SHARED_MVN_LOCAL_REPO"
+          "$YB_NON_SHARED_MVN_LOCAL_REPO."
     else
       should_use_shared_dirs=true
-      log "Will use shared Maven repository ($YB_SHARED_MVN_LOCAL_REPO)." \
-          "Based on parameters: is_run_test_script=$is_run_test_script," \
+      if [[ -z ${YB_MVN_LOCAL_REPO:-} ]]; then
+        log "Will use shared Maven repository ($YB_SHARED_MVN_LOCAL_REPO)."
+      fi
+      if [[ -z ${YB_MVN_SETTINGS_PATH:-} ]]; then
+        log "Will use shared Maven settings file ($YB_SHARED_MVN_SETTINGS)."
+      fi
+      log "The above choices are based on:" \
+          "is_run_test_script=$is_run_test_script," \
           "YB_TMP_GROUP_ID=${YB_TMP_GROUP_ID:-undefined}," \
           "OSTYPE=$OSTYPE"
     fi
@@ -600,6 +659,7 @@ set_mvn_parameters() {
       "YB_MVN_LOCAL_REPO=$YB_MVN_LOCAL_REPO," \
       "YB_MVN_SETTINGS_PATH=$YB_MVN_SETTINGS_PATH," \
       "should_copy_artifacts_to_non_shared_repo=$should_copy_artifacts_to_non_shared_repo"
+  yb_mvn_parameters_already_set=true
 }
 
 # Put a retry loop here since it is possible that multiple concurrent builds will try to do this
@@ -803,6 +863,7 @@ create_dir_on_ephemeral_drive() {
 # if the build runs to completion. This only filters stdin, so it is expected that stderr is
 # redirected to stdout when invoking the C++ build.
 filter_boring_cpp_build_output() {
+  # For Ninja, keep every 10th successful C/C++ compilation message.
   egrep -v --line-buffered "\
 ^(\[ *[0-9]{1,2}%\] +)*(\
 Building C(XX)? object |\
@@ -814,9 +875,13 @@ Scanning dependencies of target |\
 ^ssh: connect to host .* port [0-9]+: Connection (timed out|refused)|\
 Host .* seems to be down, retrying on a different host|\
 Connection to .* closed by remote host.|\
-ssh: Could not resolve hostname build-workers-.*: Name or service not known"
+ssh: Could not resolve hostname build-workers-.*: Name or service not known|\
+^\[[0-9]+?[1-9]/[0-9]+\] (\
+Building CXX object|\
+Running C[+][+] protocol buffer compiler|\
+Linking CXX shared library|\
+Linking CXX executable)"
 }
-
 
 put_path_entry_first() {
   expect_num_args 1 "$@"
@@ -969,15 +1034,33 @@ popd() {
   command popd "$@" > /dev/null
 }
 
-detect_brew() {
-  if is_linux; then
-    detect_linuxbrew
-  elif is_mac; then
-    detect_custom_homebrew
-  else
-    log "Not a Linux or a macOS platform, the detect_brew function is a no-op."
+# Creates files such as thirdparty_url.txt, thirdparty_path.txt, linuxbrew_path.txt in the build
+# directory. This is only being done if the file does not exist.
+save_var_to_file_in_build_dir() {
+  if [[ ${YB_IS_BUILD_THIRDPARTY_SCRIPT:-0} == "1" ]]; then
+    return
+  fi
+  expect_num_args 2 "$@"
+  local value=$1
+  if [[ -z ${value:-} ]]; then
+    return
+  fi
+
+  local file_name=$2
+  if [[ -z ${BUILD_ROOT:-} ]]; then
+    fatal "BUILD_ROOT is not set"
+  fi
+  if [[ ! -f $BUILD_ROOT/$file_name ]]; then
+    if [[ ! -d $BUILD_ROOT ]]; then
+      mkdir -p "$BUILD_ROOT"
+    fi
+    echo "$value" >"$BUILD_ROOT/$file_name"
   fi
 }
+
+# -------------------------------------------------------------------------------------------------
+# Downloading third-party dependencies from GitHub releases
+# -------------------------------------------------------------------------------------------------
 
 download_and_extract_archive() {
   expect_num_args 2 "$@"
@@ -1016,14 +1099,48 @@ download_and_extract_archive() {
 
 download_thirdparty() {
   download_and_extract_archive "$YB_THIRDPARTY_URL" /opt/yb-build/thirdparty
+  if [[ -n ${YB_THIRDPARTY_DIR:-} && $YB_THIRDPARTY_DIR != $extracted_dir ]]; then
+    log_thirdparty_and_toolchain_details
+    fatal "YB_THIRDPARTY_DIR is already set to '$YB_THIRDPARTY_DIR', cannot set it to" \
+          "'$extracted_dir'"
+  fi
   export YB_THIRDPARTY_DIR=$extracted_dir
+  yb_thirdparty_dir_where_from=" (downloaded from $YB_THIRDPARTY_URL)"
+  save_thirdparty_info_to_build_dir
+
+  # Read a linuxbrew_url.txt file in the third-party directory that we downloaded, and follow that
+  # link to download and install the appropriate Linuxbrew package.
   local linuxbrew_url_path=$YB_THIRDPARTY_DIR/linuxbrew_url.txt
   if [[ -f $linuxbrew_url_path ]]; then
     local linuxbrew_url=$(<"$linuxbrew_url_path")
     download_and_extract_archive "$linuxbrew_url" /opt/yb-build/brew
+    if [[ -n ${YB_LINUXBREW_DIR:-} && $YB_LINUXBREW_DIR != $extracted_dir ]]; then
+      log_thirdparty_and_toolchain_details
+      fatal "YB_LINUXBREW_DIR is already set to '$YB_LINUXBREW_DIR', cannot set it to" \
+            "'$extracted_dir'"
+    fi
     export YB_LINUXBREW_DIR=$extracted_dir
+    yb_linuxbrew_dir_where_from=" (downloaded from $linuxbrew_url)"
+    save_brew_path_to_build_dir
   else
     fatal "Cannot download Linuxbrew: file $linuxbrew_url_path does not exist"
+  fi
+}
+
+# -------------------------------------------------------------------------------------------------
+# Detecting Homebrew/Linuxbrew
+# -------------------------------------------------------------------------------------------------
+
+detect_brew() {
+  if is_ubuntu; then
+    return
+  fi
+  if is_linux; then
+    detect_linuxbrew
+  elif is_mac; then
+    detect_custom_homebrew
+  else
+    log "Not a Linux or a macOS platform, the detect_brew function is a no-op."
   fi
 }
 
@@ -1073,15 +1190,12 @@ try_set_linuxbrew_dir() {
         -d "$linuxbrew_dir/lib" &&
         -d "$linuxbrew_dir/include" ]]; then
     export YB_LINUXBREW_DIR=$(realpath "$linuxbrew_dir")
+    save_brew_path_to_build_dir
     return 0
   else
     return 1
   fi
 }
-
-# -------------------------------------------------------------------------------------------------
-# Detecting Homebrew/Linuxbrew
-# -------------------------------------------------------------------------------------------------
 
 wait_for_directory_existence() {
   expect_num_args 1 "$@"
@@ -1092,18 +1206,45 @@ wait_for_directory_existence() {
       fatal "Gave up waiting for directory '$dir_path' to appear after $attempt seconds"
     fi
     log "Directory '$dir_path' not found, waiting for it to mount"
-    ( set +e; ls "$dir_path"/* >/dev/null )
     let attempt+=1
     sleep 1
   done
 }
 
+save_brew_path_to_build_dir() {
+  if is_linux; then
+    save_var_to_file_in_build_dir "${YB_LINUXBREW_DIR:-}" "linuxbrew_path.txt"
+  fi
+  if is_mac; then
+    save_var_to_file_in_build_dir "${YB_CUSTOM_HOMEBREW_DIR:-}" "custom_homebrew_path.txt"
+  fi
+}
+
+save_thirdparty_info_to_build_dir() {
+  save_var_to_file_in_build_dir "${YB_THIRDPARTY_DIR:-}" "thirdparty_path.txt"
+  save_var_to_file_in_build_dir "${YB_THIRDPARTY_URL:-}" "thirdparty_url.txt"
+}
+
+save_paths_to_build_dir() {
+  save_brew_path_to_build_dir
+  save_thirdparty_info_to_build_dir
+}
+
 detect_linuxbrew() {
+  if [[ ${YB_IS_BUILD_THIRDPARTY_SCRIPT:-0} == "0" && -z ${BUILD_ROOT:-} ]]; then
+    fatal "BUILD_ROOT is not set, and we are not building third-party dependencies, not trying" \
+          "to use the default version of Linuxbrew."
+  fi
   if ! is_linux; then
     fatal "Expected this function to only be called on Linux"
   fi
   if [[ -n ${YB_LINUXBREW_DIR:-} ]]; then
     export YB_LINUXBREW_DIR
+    return
+  fi
+  if ! "$is_clean_build" && [[ -n ${BUILD_ROOT:-} && -f $BUILD_ROOT/linuxbrew_path.txt ]]; then
+    export YB_LINUXBREW_DIR=$(<$BUILD_ROOT/linuxbrew_path.txt)
+    yb_linuxbrew_dir_where_from=" (from file '$BUILD_ROOT/linuxbrew_path.txt')"
     return
   fi
 
@@ -1143,6 +1284,7 @@ detect_linuxbrew() {
     local linuxbrew_dir
     for linuxbrew_dir in "${candidates[@]}"; do
       if try_set_linuxbrew_dir "$linuxbrew_dir"; then
+        yb_linuxbrew_dir_where_from=" (from '$version_file')"
         return
       fi
     done
@@ -1152,7 +1294,9 @@ detect_linuxbrew() {
   if ! is_jenkins && [[ ! -d $linuxbrew_local_dir ]]; then
     install_linuxbrew "$linuxbrew_version"
   fi
-  if ! try_set_linuxbrew_dir "$linuxbrew_local_dir"; then
+  if try_set_linuxbrew_dir "$linuxbrew_local_dir"; then
+    yb_linuxbrew_dir_where_from=" (local installation)"
+  else
     if [[ ${#candidates[@]} -gt 0 ]]; then
       log "Could not find Linuxbrew in any of these directories: ${candidates[@]}."
     else
@@ -1178,6 +1322,13 @@ detect_custom_homebrew() {
     export YB_CUSTOM_HOMEBREW_DIR
     return
   fi
+  if ! "$is_clean_build" && [[ -n ${BUILD_ROOT:-} && -f $BUILD_ROOT/custom_homebrew_path.txt ]]
+  then
+    export YB_CUSTOM_HOMEBREW_DIR=$(<$BUILD_ROOT/custom_homebrew_path.txt)
+    yb_custom_homebrew_dir_where_from=" (from file '$BUILD_ROOT/custom_homebrew_path.txt')"
+    return
+  fi
+
   local candidates=(
     "$HOME/.homebrew-yb-build"
   )
@@ -1216,6 +1367,8 @@ detect_custom_homebrew() {
           -d "$homebrew_dir/lib" &&
           -d "$homebrew_dir/include" ]]; then
       export YB_CUSTOM_HOMEBREW_DIR=$homebrew_dir
+      yb_custom_homebrew_dir_where_from=" (from file '$version_for_jenkins_file')"
+      save_brew_path_to_build_dir
       break
     fi
   done
@@ -1259,7 +1412,7 @@ set_use_ninja() {
       fi
     fi
 
-    if using_ninja && [[ -z ${yb_ninja_path:-} ]]; then
+    if using_ninja && [[ -z ${yb_ninja_path:-} && "${yb_ninja_not_needed:-}" != "true" ]]; then
       set +e
       local which_ninja=$( which ninja 2>/dev/null )
       set -e
@@ -1427,12 +1580,6 @@ is_src_root_on_nfs() {
 }
 
 using_remote_compilation() {
-  if [[ ! $YB_REMOTE_COMPILATION =~ ^(0|1)$ ]]; then
-    # TODO: this will still return from the function as if the value is false. This is how bash
-    # return values work.
-    fatal "YB_REMOTE_COMPILATION is supposed to be 0 or 1 by the time using_remote_compilation is" \
-          "called."
-  fi
   if [[ ${YB_REMOTE_COMPILATION:-} == "1" ]]; then
     return 0  # "true" return value
   fi
@@ -1534,6 +1681,10 @@ read_file_and_trim() {
   fi
 }
 
+# -------------------------------------------------------------------------------------------------
+# Finding the third-party directory
+# -------------------------------------------------------------------------------------------------
+
 using_default_thirdparty_dir() {
   if [[ -n ${YB_THIRDPARTY_DIR:-} &&
         $YB_THIRDPARTY_DIR != "$YB_SRC_ROOT/thirdparty" ]]; then
@@ -1543,24 +1694,7 @@ using_default_thirdparty_dir() {
   return 0
 }
 
-find_thirdparty_by_url() {
-  if [[ -n ${YB_THIRDPARTY_URL:-} ]]; then
-    download_thirdparty
-    export NO_REBUILD_THIRDPARTY=1
-  fi
-}
-
-# In our internal environment we build third-party dependencies in separate directories on NFS
-# so that we can use them across many builds.
-find_thirdparty_dir() {
-  if [[ -n ${YB_THIRDPARTY_URL:-} ]]; then
-    find_thirdparty_by_url
-    log "YB_THIRDPARTY_DIR=$YB_THIRDPARTY_DIR"
-    log "YB_LINUXBREW_DIR=$YB_LINUXBREW_DIR"
-    found_shared_thirdparty_dir=true
-    return
-  fi
-  found_shared_thirdparty_dir=false
+find_shared_thirdparty_dir() {
   local parent_dir_for_shared_thirdparty=$NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY
   if [[ ! -d $parent_dir_for_shared_thirdparty ]]; then
     log "Parent directory for shared third-party directories" \
@@ -1569,10 +1703,9 @@ find_thirdparty_dir() {
     return
   fi
 
-  local version=$(
-    read_file_and_trim \
-      "$YB_BUILD_SUPPORT_DIR/shared_thirdparty_version_for_jenkins_${short_os_name}.txt"
-  )
+  local shared_thirdparty_path_file="$YB_BUILD_SUPPORT_DIR/"
+  shared_thirdparty_path_file+="shared_thirdparty_version_for_jenkins_${short_os_name}.txt"
+  local version=$(<"$shared_thirdparty_path_file")
   local thirdparty_dir_suffix="yugabyte-thirdparty-${version}/thirdparty"
   local existing_thirdparty_dir="${parent_dir_for_shared_thirdparty}/${thirdparty_dir_suffix}"
   if [[ -d $existing_thirdparty_dir ]]; then
@@ -1585,14 +1718,102 @@ find_thirdparty_dir() {
       fi
     fi
     export YB_THIRDPARTY_DIR=$existing_thirdparty_dir
-    found_shared_thirdparty_dir=true
     export NO_REBUILD_THIRDPARTY=1
+    yb_thirdparty_dir_where_from=" (from file '$shared_thirdparty_path_file')"
     return
   fi
 
-  log "Even though the top-level directory '$parent_dir_for_shared_thirdparty'" \
-      "exists, we could not find a prebuilt shared third-party directory there that exists. " \
-      "Falling back to building our own third-party dependencies."
+  fatal "Could not find NFS-shared third-party directory: '$existing_thirdparty_dir'"
+}
+
+find_or_download_thirdparty() {
+  if [[ ${YB_IS_THIRDPARTY_BUILD:-} == "1" ]]; then
+    return
+  fi
+  if ! "$is_clean_build"; then
+    if [[ -f $BUILD_ROOT/thirdparty_url.txt ]]; then
+      local thirdparty_url_from_file=$(<"$BUILD_ROOT/thirdparty_url.txt")
+      if [[ -n ${YB_THIRDPARTY_URL:-} &&
+            "$YB_THIRDPARTY_URL" != "$thirdparty_url_from_file" ]]; then
+        fatal "YB_THIRDPARTY_URL is explicitly set to '$YB_THIRDPARTY_URL' but file" \
+              "'$BUILD_ROOT/thirdparty_url.txt' contains '$thirdparty_url_from_file'"
+      fi
+      export YB_THIRDPARTY_URL=$thirdparty_url_from_file
+      yb_thirdparty_url_where_from=" (from file '$BUILD_ROOT/thirdparty_url.txt')"
+      if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "0" ]]; then
+        fatal "YB_DOWNLOAD_THIRDPARTY is explicitly set to 0 but file" \
+              "$BUILD_ROOT/thirdparty_url.txt exists"
+      fi
+      export YB_DOWNLOAD_THIRDPARTY=1
+    fi
+
+    if [[ -f $BUILD_ROOT/thirdparty_path.txt ]]; then
+      local thirdparty_dir_from_file=$(<"$BUILD_ROOT/thirdparty_path.txt")
+      if [[ -n ${YB_THIRDPARTY_DIR:-} &&
+            "$YB_THIRDPARTY_DIR" != "$thirdparty_dir_from_file" ]]; then
+        fatal "YB_THIRDPARTY_DIR is explicitly set to '$YB_THIRDPARTY_DIR' but file" \
+              "'$BUILD_ROOT/thirdparty_path.txt' contains '$thirdparty_dir_from_file'"
+      fi
+      export YB_THIRDPARTY_DIR=$thirdparty_dir_from_file
+      yb_thirdparty_dir_where_from=" (from file '$BUILD_ROOT/thirdparty_path.txt')"
+    fi
+  fi
+
+  if [[ -n ${YB_THIRDPARTY_DIR:-} && -d $YB_THIRDPARTY_DIR ]]; then
+    export YB_THIRDPARTY_DIR
+    if ! using_default_thirdparty_dir; then
+      export NO_REBUILD_THIRDPARTY=1
+    fi
+    return
+  fi
+
+  # Even if YB_THIRDPARTY_DIR is set but it does not exist, it is possible that we need to download
+  # the third-party archive.
+
+  set_prebuilt_thirdparty_url
+  if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "1" ]]; then
+    download_thirdparty
+    export NO_REBUILD_THIRDPARTY=1
+    log "Using downloaded third-party directory: $YB_THIRDPARTY_DIR"
+    if using_linuxbrew; then
+      log "Using Linuxbrew directory: $YB_LINUXBREW_DIR"
+    fi
+  elif ( [[ -f $YB_SRC_ROOT/thirdparty/.yb_thirdparty_do_not_use ]] ||
+         "$use_nfs_shared_thirdparty" ||
+         ( is_jenkins && is_src_root_on_nfs ) ||
+         using_remote_compilation ) &&
+       ! "$no_nfs_shared_thirdparty"
+  then
+    find_shared_thirdparty_dir
+  fi
+
+  if [[ -z ${YB_THIRDPARTY_DIR:-} ]]; then
+    export YB_THIRDPARTY_DIR=$YB_SRC_ROOT/thirdparty
+    yb_thirdparty_dir_where_from=" (default)"
+  fi
+  save_thirdparty_info_to_build_dir
+}
+
+log_thirdparty_and_toolchain_details() {
+  (
+    echo "Details of third-party dependencies:"
+    echo "    YB_THIRDPARTY_DIR: ${YB_THIRDPARTY_DIR:-undefined}$yb_thirdparty_dir_where_from"
+    if is_linux && [[ -n ${YB_LINUXBREW_DIR:-} ]]; then
+      echo "    YB_LINUXBREW_DIR: $YB_LINUXBREW_DIR$yb_linuxbrew_dir_where_from"
+    fi
+    if is_mac && [[ -n ${YB_CUSTOM_HOMEBREW_DIR:-} ]]; then
+      echo "    YB_CUSTOM_HOMEBREW_DIR: $YB_CUSTOM_HOMEBREW_DIR$yb_custom_homebrew_dir_where_from"
+    fi
+    if [[ -n ${YB_THIRDPARTY_URL:-} ]]; then
+      echo "    YB_THIRDPARTY_URL: $YB_THIRDPARTY_URL"
+    fi
+    if [[ -n ${YB_DOWNLOAD_THIRDPARTY:-} ]]; then
+      echo "    YB_DOWNLOAD_THIRDPARTY: $YB_DOWNLOAD_THIRDPARTY"
+    fi
+    if [[ -n ${NO_REBUILD_THIRDPARTY:-} ]]; then
+      echo "    NO_REBUILD_THIRDPARTY: ${NO_REBUILD_THIRDPARTY}"
+    fi
+  ) >&2
 }
 
 handle_predefined_build_root_quietly=false
@@ -1760,12 +1981,6 @@ check_python_script_syntax() {
   popd
 }
 
-add_python_wrappers_dir_to_path() {
-  # Make sure the Python wrappers directory is the first on PATH
-  remove_path_entry "$YB_PYTHON_WRAPPERS_DIR"
-  export PATH=$YB_PYTHON_WRAPPERS_DIR:$PATH
-}
-
 activate_virtualenv() {
   local virtualenv_parent_dir=$YB_BUILD_PARENT_DIR
   local virtualenv_dir=$virtualenv_parent_dir/$YB_VIRTUALENV_BASENAME
@@ -1779,9 +1994,6 @@ activate_virtualenv() {
     rm -rf "$virtualenv_dir"
     unset YB_RECREATE_VIRTUALENV
   fi
-
-  # To run pip2 itself we already need to add our Python wrappers directory to PATH.
-  add_python_wrappers_dir_to_path
 
   if [[ ! -d $virtualenv_dir ]]; then
     if "$yb_readonly_virtualenv"; then
@@ -1805,7 +2017,7 @@ activate_virtualenv() {
       pip2 install virtualenv --user
       mkdir -p "$virtualenv_parent_dir"
       cd "$virtualenv_parent_dir"
-      python2 -m virtualenv "$YB_VIRTUALENV_BASENAME"
+      python2.7 -m virtualenv "$YB_VIRTUALENV_BASENAME"
     )
   fi
 
@@ -1843,62 +2055,6 @@ VIRTUALENV DEBUGGING
   fi
 
   export VIRTUAL_ENV
-}
-
-check_python_interpreter_version() {
-  expect_num_args 3 "$@"
-  local python_interpreter=$1
-  local expected_major_version=$2
-  local minor_version_lower_bound=$3
-  # Get the Python interpreter version. Filter out debug output we may be adding if
-  # YB_PYTHON_WRAPPER_DEBUG is set.
-  local version_str=$(
-    export yb_log_quiet=true
-    "$python_interpreter" --version 2>&1 >/dev/null | grep -v "Invoking Python"
-  )
-  version_str=${version_str#Python }
-  local actual_major_version=${version_str%%.*}
-  local version_str_without_major=${version_str#*.}
-  local actual_minor_version=${version_str_without_major%%.*}
-  if [[ ! $actual_major_version =~ ^[0-9]+ ]]; then
-    fatal "Invalid format of Python major version: $actual_major_version." \
-          "Version string for interpreter $python_interpreter: $version_str"
-  fi
-  if [[ ! $actual_minor_version =~ ^[0-9]+ ]]; then
-    fatal "Invalid format of Python minor version: $actual_minor_version." \
-          "Version string for interpreter $python_interpreter: $version_str"
-  fi
-  if [[ $actual_major_version -ne $expected_major_version ]]; then
-    fatal "Expected major version for Python interpreter '$python_interpreter' to be" \
-          "'$expected_major_version', found '$actual_major_version'. Full Python version:" \
-          "'$version_str'."
-  fi
-  if [[ $actual_minor_version -lt $minor_version_lower_bound ]]; then
-    fatal "Expected minor version for Python interpreter '$python_interpreter' to be at least " \
-          "'$minor_version_lower_bound', found '$actual_minor_version'. Full Python version:" \
-          "'$version_str'."
-  fi
-}
-
-check_python_interpreter_versions() {
-  check_python_interpreter_version python2 2 7
-  if is_mac; then
-    local python_interpreter_basename
-    for python_interpreter_basename in python python2 python 2.7 python3; do
-      local homebrew_interpreter_path=/usr/local/bin/$python_interpreter_basename
-      if [[ -e $homebrew_interpreter_path ]]; then
-        if [[ ! -L $homebrew_interpreter_path ]]; then
-          fatal "$homebrew_interpreter_path exists but is not a symlink." \
-                "Broken Homebrew installation?"
-        fi
-        local link_target=$( readlink "$homebrew_interpreter_path" )
-        if [[ $link_target == /usr/bin/* ]]; then
-          fatal "Found symlink  $homebrew_interpreter_path -> $link_target." \
-                "Broken Homebrew installation?"
-        fi
-      fi
-    done
-  fi
 }
 
 log_file_existence() {
@@ -2041,25 +2197,18 @@ set_java_home() {
 }
 
 update_submodules() {
-  # This does NOT create any new commits in the top-level repository (the "superproject").
-  #
-  # From documentation on "update" from https://git-scm.com/docs/git-submodule:
-  # Update the registered submodules to match what the superproject expects by cloning missing
-  # submodules and updating the working tree of the submodules
-  ( cd "$YB_SRC_ROOT"; git submodule update --init --recursive )
+  if [[ -d $YB_SRC_ROOT/.git ]]; then
+    # This does NOT create any new commits in the top-level repository (the "superproject").
+    #
+    # From documentation on "update" from https://git-scm.com/docs/git-submodule:
+    # Update the registered submodules to match what the superproject expects by cloning missing
+    # submodules and updating the working tree of the submodules
+    ( cd "$YB_SRC_ROOT"; git submodule update --init --recursive )
+  fi
 }
 
 set_prebuilt_thirdparty_url() {
-  local build_thirdparty_url_file=$BUILD_ROOT/thirdparty_url.txt
-  if [[ -f $build_thirdparty_url_file ]]; then
-    export YB_THIRDPARTY_URL=$(<"$build_thirdparty_url_file")
-    export YB_DOWNLOAD_THIRDPARTY=1
-    log "Reusing previously used third-party URL from the build dir: $YB_THIRDPARTY_URL"
-    return
-  fi
-
   if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "1" ]]; then
-
     local auto_thirdparty_url=""
     local thirdparty_url_file=$YB_BUILD_SUPPORT_DIR/thirdparty_url_${short_os_name}.txt
     if [[ -f $thirdparty_url_file ]]; then
@@ -2075,17 +2224,16 @@ set_prebuilt_thirdparty_url() {
     if [[ -z ${YB_THIRDPARTY_URL:-} ]]; then
       export YB_THIRDPARTY_URL=$auto_thirdparty_url
       log "Setting third-party URL to $auto_thirdparty_url"
+      save_var_to_file_in_build_dir "$YB_THIRDPARTY_URL" thirdparty_url.txt
     elif [[ -n $auto_thirdparty_url ]]; then
       if [[ $auto_thirdparty_url != $YB_THIRDPARTY_URL ]]; then
         log "YB_THIRDPARTY_URL is already set to $YB_THIRDPARTY_URL, not trying to set it to" \
             "the default value of $auto_thirdparty_url"
       fi
     else
-      fatal "YB_THIRDPARTY_URL is not set, and could not determine the default value."
+      fatal "YB_DOWNLOAD_THIRDPARTY is 1 but YB_THIRDPARTY_URL is not set, and could not" \
+            "determine the default value."
     fi
-
-    mkdir -p "$BUILD_ROOT"
-    echo "$YB_THIRDPARTY_URL" >"$build_thirdparty_url_file"
   fi
 }
 
@@ -2117,18 +2265,7 @@ if [[ ! -d $YB_BUILD_SUPPORT_DIR ]]; then
         "$YB_BUILD_SUPPORT_DIR does not exist."
 fi
 
-if [[ -z ${YB_THIRDPARTY_DIR:-} ]]; then
-  export YB_THIRDPARTY_DIR=$YB_SRC_ROOT/thirdparty
-fi
-
 readonly YB_DEFAULT_CMAKE_OPTS=(
   "-DCMAKE_C_COMPILER=$YB_COMPILER_WRAPPER_CC"
   "-DCMAKE_CXX_COMPILER=$YB_COMPILER_WRAPPER_CXX"
 )
-
-YB_PYTHON_WRAPPERS_DIR=$YB_BUILD_SUPPORT_DIR/python-wrappers
-
-if ! "${yb_is_python_wrapper_script:-false}"; then
-  detect_brew
-  add_python_wrappers_dir_to_path
-fi

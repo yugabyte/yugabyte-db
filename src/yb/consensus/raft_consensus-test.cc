@@ -109,9 +109,8 @@ class MockQueue : public PeerMessageQueue {
                                       bool* needs_remote_bootstrap,
                                       RaftPeerPB::MemberType* member_type,
                                       bool* last_exchange_successful));
-  MOCK_METHOD3(ResponseFromPeer, void(const std::string& peer_uuid,
-                                      const ConsensusResponsePB& response,
-                                      bool* more_pending));
+  MOCK_METHOD2(ResponseFromPeer, bool(const std::string& peer_uuid,
+                                      const ConsensusResponsePB& response));
   MOCK_METHOD0(Close, void());
 };
 

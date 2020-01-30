@@ -104,6 +104,9 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
 
     case PgsqlWriteRequestPB::PGSQL_UPSERT:
       return ApplyInsert(data, IsUpsert::kTrue);
+
+    case PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED:
+      return ApplyTruncateColocated(data);
   }
   return Status::OK();
 }
@@ -274,6 +277,13 @@ Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
   return Status::OK();
 }
 
+Status PgsqlWriteOperation::ApplyTruncateColocated(const DocOperationApplyData& data) {
+  RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(DocPath(
+      encoded_doc_key_.as_slice()), data.read_time, data.deadline));
+  response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
+  return Status::OK();
+}
+
 Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
                                         const QLTableRow::SharedPtr& table_row) {
   // Filter the columns using primary key.
@@ -305,10 +315,12 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow::SharedPtr& table
   for (const PgsqlExpressionPB& expr : request_.targets()) {
     if (expr.has_column_id()) {
       if (expr.column_id() == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
-        // Strip cotable id from the serialized DocKey before returning it as ybctid.
+        // Strip cotable id / pgtable id from the serialized DocKey before returning it as ybctid.
         Slice tuple_id = encoded_doc_key_.as_slice();
         if (tuple_id.starts_with(ValueTypeAsChar::kTableId)) {
           tuple_id.remove_prefix(1 + kUuidSize);
+        } else if (tuple_id.starts_with(ValueTypeAsChar::kPgTableOid)) {
+          tuple_id.remove_prefix(1 + sizeof(PgTableOid));
         }
         rsrow->rscol(rscol_index)->set_binary_value(tuple_id.data(), tuple_id.size());
       } else {
@@ -555,14 +567,14 @@ Status PgsqlReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB
     // Empty components mean that we don't have primary key at all, but request
     // could still contain hash_code as part of tablet routing.
     // So we should ignore it.
-    DocKey doc_key(schema.cotable_id());
+    DocKey doc_key(schema);
     pair->set_key(doc_key.Encode().data());
   } else {
     std::vector<PrimitiveValue> hashed_components;
     RETURN_NOT_OK(InitKeyColumnPrimitiveValues(
         request_.partition_column_values(), schema, 0 /* start_idx */, &hashed_components));
 
-    DocKey doc_key(schema.cotable_id(), request_.hash_code(), hashed_components);
+    DocKey doc_key(schema, request_.hash_code(), hashed_components);
     pair->set_key(doc_key.Encode().data());
   }
 

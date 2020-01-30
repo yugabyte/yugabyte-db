@@ -36,8 +36,9 @@ public class HealthManagerTest extends FakeDBApplication {
   play.Configuration appConfig;
 
   private List<String> healthCheckCommand(
-      Provider provider, List<HealthManager.ClusterInfo> clusters, String universeName, String customerTag,
-      String destination, long startTimeMs, boolean shouldSendStatusUpdate) {
+      Provider provider, List<HealthManager.ClusterInfo> clusters, String universeName,
+      String customerTag, String destination, long startTimeMs,
+      boolean shouldSendStatusUpdate, boolean reportOnlyErrors) {
     List<String> expectedCommand = new ArrayList<>();
 
     expectedCommand.add(DevopsBase.PY_WRAPPER);
@@ -58,6 +59,9 @@ public class HealthManagerTest extends FakeDBApplication {
     }
     if (shouldSendStatusUpdate) {
       expectedCommand.add("--send_status");
+    }
+    if (reportOnlyErrors) {
+      expectedCommand.add("--report_only_errors");
     }
     return expectedCommand;
   }
@@ -88,26 +92,31 @@ public class HealthManagerTest extends FakeDBApplication {
     List<String> envVarOptions = new ArrayList<>();
     envVarOptions.add("testing");
     envVarOptions.add(null);
+    List<Boolean> reportOnlyErrorOptions = ImmutableList.of(true, false);
     for (String d : destinationOptions) {
       for (Boolean sendStatus : statusOptions) {
         for (Long startTime : startTimeOptions) {
           for (String envVal : envVarOptions) {
-            when(appConfig.getString("yb.health.ses_email_username")).thenReturn(envVal);
-            when(appConfig.getString("yb.health.ses_email_password")).thenReturn(envVal);
-            when(appConfig.getString("yb.health.default_email")).thenReturn(envVal);
-            List<String> expectedCommand = healthCheckCommand(
-                provider, ImmutableList.of(cluster), universeName, customerTag, d, startTime,
-                sendStatus);
-            healthManager.runCommand(
-                provider, ImmutableList.of(cluster), universeName, customerTag, d, startTime,
-                sendStatus);
-            HashMap extraEnvVars = new HashMap<>(provider.getConfig());
-            if (envVal != null) {
-              extraEnvVars.put("YB_ALERTS_USERNAME", envVal);
-              extraEnvVars.put("YB_ALERTS_PASSWORD", envVal);
-              extraEnvVars.put("YB_ALERTS_EMAIL", envVal);
+            for (Boolean reportOnlyErrors : reportOnlyErrorOptions) {
+              when(appConfig.getString("yb.health.ses_email_username")).thenReturn(envVal);
+              when(appConfig.getString("yb.health.ses_email_password")).thenReturn(envVal);
+              when(appConfig.getString("yb.health.default_email")).thenReturn(envVal);
+              List<String> expectedCommand = healthCheckCommand(
+                  provider, ImmutableList.of(cluster), universeName, customerTag, d, startTime,
+                  sendStatus, reportOnlyErrors);
+            System.out.println("running, reportOnlyErrors = " + reportOnlyErrors.toString());
+             healthManager.runCommand(
+                  provider, ImmutableList.of(cluster), universeName, customerTag, d, startTime,
+                  sendStatus, reportOnlyErrors);
+              HashMap extraEnvVars = new HashMap<>(provider.getConfig());
+              if (envVal != null) {
+                extraEnvVars.put("YB_ALERTS_USERNAME", envVal);
+                extraEnvVars.put("YB_ALERTS_PASSWORD", envVal);
+                extraEnvVars.put("YB_ALERTS_EMAIL", envVal);
+              }
+              System.out.println("verifying");
+              verify(shellProcessHandler, times(1)).run(expectedCommand, extraEnvVars, false);
             }
-            verify(shellProcessHandler, times(1)).run(expectedCommand, extraEnvVars, false);
           }
         }
       }

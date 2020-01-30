@@ -161,6 +161,7 @@ set(UTIL_SRCS
   debug/trace_event_impl_constants.cc
   debug/trace_event_synthetic_delay.cc
   decimal.cc
+  delayer.cc
   encrypted_file.cc
   encrypted_file_factory.cc
   encryption_util.cc

@@ -61,6 +61,8 @@ import play.api.Play;
 @Entity
 public class Universe extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Universe.class);
+  public static final String DISABLE_ALERTS_UNTIL = "disableAlertsUntilSecs";
+  public static final String TAKE_BACKUPS = "takeBackups";
 
   // The universe UUID.
   @Id

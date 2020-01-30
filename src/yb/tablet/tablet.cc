@@ -359,6 +359,8 @@ Tablet::Tablet(
       is_sys_catalog_(is_sys_catalog),
       txns_enabled_(txns_enabled) {
   CHECK(schema()->has_column_ids());
+  LOG_WITH_PREFIX(INFO) << " Schema version for  " << metadata_->table_name() << " is "
+                        << metadata_->schema_version();
 
   if (metric_registry) {
     MetricEntity::AttributeMap attrs;
@@ -586,6 +588,7 @@ Status Tablet::OpenKeyValueTablet() {
     return STATUS(IllegalState, rocksdb_open_status.ToString());
   }
   regular_db_.reset(db);
+  regular_db_->ListenFilesChanged(std::bind(&Tablet::RegularDbFilesChanged, this));
 
   if (transaction_participant_) {
     LOG_WITH_PREFIX(INFO) << "Opening intents DB at: " << db_dir + kIntentsDBSuffix;
@@ -629,6 +632,13 @@ Status Tablet::OpenKeyValueTablet() {
                         << ", obj: " << db;
 
   return Status::OK();
+}
+
+void Tablet::RegularDbFilesChanged() {
+  std::lock_guard<std::mutex> lock(num_sst_files_changed_listener_mutex_);
+  if (num_sst_files_changed_listener_) {
+    num_sst_files_changed_listener_();
+  }
 }
 
 void Tablet::SetCleanupPool(ThreadPool* thread_pool) {
@@ -797,7 +807,9 @@ Status Tablet::ResetRocksDBs(bool destroy) {
 }
 
 Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
-    const Schema &projection, const boost::optional<TransactionId>& transaction_id,
+    const Schema &projection,
+    const boost::optional<TransactionId>& transaction_id,
+    const ReadHybridTime read_hybrid_time,
     const TableId& table_id) const {
   if (state_ != kOpen) {
     return STATUS_FORMAT(IllegalState, "Tablet in wrong state: $0", state_);
@@ -819,7 +831,9 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
 
   auto txn_op_ctx = CreateTransactionOperationContext(
       transaction_id, schema.table_properties().is_ysql_catalog_table());
-  auto read_time = ReadHybridTime::SingleTime(SafeTime(RequireLease::kFalse));
+  const auto read_time =
+      (read_hybrid_time ? read_hybrid_time
+                        : ReadHybridTime::SingleTime(SafeTime(RequireLease::kFalse)));
   auto result = std::make_unique<DocRowwiseIterator>(
       std::move(mapped_projection), schema, txn_op_ctx, doc_db(),
       CoarseTimePoint::max() /* deadline */, read_time, &pending_op_counter_);
@@ -830,7 +844,7 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
 Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     const TableId& table_id) const {
   const tablet::TableInfo* table_info = VERIFY_RESULT(metadata_->GetTableInfo(table_id));
-  return NewRowIterator(table_info->schema, boost::none, table_id);
+  return NewRowIterator(table_info->schema, boost::none, {}, table_id);
 }
 
 void Tablet::StartOperation(WriteOperationState* operation_state) {
@@ -847,12 +861,13 @@ void Tablet::StartOperation(WriteOperationState* operation_state) {
 }
 
 Status Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
-  const KeyValueWriteBatchPB& put_batch =
+  const auto& write_request =
       operation_state->consensus_round() && operation_state->consensus_round()->replicate_msg()
           // Online case.
-          ? operation_state->consensus_round()->replicate_msg()->write_request().write_batch()
+          ? operation_state->consensus_round()->replicate_msg()->write_request()
           // Bootstrap case.
-          : operation_state->request()->write_batch();
+          : *operation_state->request();
+  const KeyValueWriteBatchPB& put_batch = write_request.write_batch();
   if (metrics_) {
     metrics_->rows_inserted->IncrementBy(put_batch.write_pairs().size());
   }
@@ -867,10 +882,11 @@ Status Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
   // Even if we have an external hybrid time, use the local commit hybrid time in the consensus
   // frontier.
   set_hybrid_time(operation_state->hybrid_time(), &frontiers);
-  return ApplyKeyValueRowOperations(put_batch, &frontiers, hybrid_time);
+  return ApplyKeyValueRowOperations(write_request.batch_idx(), put_batch, &frontiers, hybrid_time);
 }
 
 Status Tablet::PrepareTransactionWriteBatch(
+    int64_t batch_idx,
     const KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
     rocksdb::WriteBatch* rocksdb_write_batch) {
@@ -884,8 +900,10 @@ Status Tablet::PrepareTransactionWriteBatch(
                     PgsqlError(YBPgErrorCode::YB_PG_IN_FAILED_SQL_TRANSACTION));
     }
   }
-  auto metadata_with_write_id = transaction_participant()->MetadataWithWriteId(transaction_id);
-  if (!metadata_with_write_id) {
+  boost::container::small_vector<uint8_t, 16> encoded_replicated_batch_idx_set;
+  auto prepare_batch_data = transaction_participant()->PrepareBatchData(
+      transaction_id, batch_idx, &encoded_replicated_batch_idx_set);
+  if (!prepare_batch_data) {
     // If metadata is missing it could be caused by aborted and removed transaction.
     // In this case we should not add new intents for it.
     return STATUS(TryAgain,
@@ -894,17 +912,21 @@ Status Tablet::PrepareTransactionWriteBatch(
                          PgsqlError(YBPgErrorCode::YB_PG_IN_FAILED_SQL_TRANSACTION));
   }
 
-  auto isolation_level = metadata_with_write_id->first.isolation;
-  auto write_id = metadata_with_write_id->second;
+  auto isolation_level = prepare_batch_data->first;
+  auto& last_batch_data = prepare_batch_data->second;
   yb::docdb::PrepareTransactionWriteBatch(
       put_batch, hybrid_time, rocksdb_write_batch, transaction_id, isolation_level,
-      UsePartialRangeKeyIntents(metadata_.get()), &write_id);
-  transaction_participant()->UpdateLastWriteId(transaction_id, write_id);
+      UsePartialRangeKeyIntents(metadata_.get()),
+      Slice(encoded_replicated_batch_idx_set.data(), encoded_replicated_batch_idx_set.size()),
+      &last_batch_data.write_id);
+  last_batch_data.hybrid_time = hybrid_time;
+  transaction_participant()->BatchReplicated(transaction_id, last_batch_data);
 
   return Status::OK();
 }
 
-Status Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
+Status Tablet::ApplyKeyValueRowOperations(int64_t batch_idx,
+                                          const KeyValueWriteBatchPB& put_batch,
                                           const rocksdb::UserFrontiers* frontiers,
                                           const HybridTime hybrid_time) {
   if (put_batch.write_pairs().empty() && put_batch.read_pairs().empty()) {
@@ -918,7 +940,7 @@ Status Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
   rocksdb::WriteBatch write_batch;
   if (put_batch.has_transaction()) {
     RequestScope request_scope(transaction_participant_.get());
-    RETURN_NOT_OK(PrepareTransactionWriteBatch(put_batch, hybrid_time, &write_batch));
+    RETURN_NOT_OK(PrepareTransactionWriteBatch(batch_idx, put_batch, hybrid_time, &write_batch));
     WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
   } else {
     PrepareNonTransactionWriteBatch(put_batch, hybrid_time, &write_batch);
@@ -987,6 +1009,7 @@ void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_req
   if (batch_request->has_external_hybrid_time()) {
     write_request->set_external_hybrid_time(batch_request->external_hybrid_time());
   }
+  write_request->set_batch_idx(batch_request->batch_idx());
 }
 
 } // namespace
@@ -1388,6 +1411,14 @@ Status Tablet::KeyValueBatchFromPgsqlWriteBatch(WriteOperation* operation) {
   for (size_t i = 0; i < pgsql_write_batch->size(); i++) {
     PgsqlWriteRequestPB* req = pgsql_write_batch->Mutable(i);
     PgsqlResponsePB* resp = operation->response()->add_pgsql_response_batch();
+    // Don't create a table-level tombstone for non-colocated tables.
+    // TODO(jason): prevent this code path by skipping earlier, up to
+    // postgres/src/backend/commands/ybccmds.c (issue #3387).
+    if ((req->stmt_type() == PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED) &&
+        !metadata_->colocated()) {
+      resp->set_skipped(true);
+      continue;
+    }
     const tablet::TableInfo* table_info = VERIFY_RESULT(metadata_->GetTableInfo(req->table_id()));
     if (table_info->schema_version != req->schema_version()) {
       resp->set_status(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH);
@@ -1614,6 +1645,17 @@ Status Tablet::RemoveTable(const std::string& table_id) {
   return Status::OK();
 }
 
+Status Tablet::MarkBackfillDone(bool done) {
+  LOG_WITH_PREFIX(INFO) << "Setting backfill as done. Current schema  "
+                        << metadata_->schema().ToString();
+  const vector<DeletedColumn> empty_deleted_cols;
+  Schema new_schema = metadata_->schema();
+  new_schema.SetIsBackfilling(done);
+  metadata_->SetSchema(
+      new_schema, metadata_->index_map(), empty_deleted_cols, metadata_->schema_version());
+  return metadata_->Flush();
+}
+
 Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
   DCHECK(key_schema_.KeyEquals(*DCHECK_NOTNULL(operation_state->schema())))
       << "Schema keys cannot be altered";
@@ -1678,6 +1720,19 @@ Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperationState* operation_sta
   }
   return STATUS_SUBSTITUTE(InvalidArgument, "Invalid ChangeMetadataOperationState: $0",
       operation_state->ToString());
+}
+
+bool Tablet::ShouldRetainDeleteMarkersInMajorCompaction() const {
+  // If the index table is in the process of being backfilled, then we
+  // want to retain delete markers until the backfill process is complete.
+  return !schema()->table_properties().IsBackfilling();
+}
+
+// Should backfill the indexes for the records contained in this tablet.
+// Assume that we are already in the Backfilling mode.
+Status Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexes,
+                               HybridTime read_time) {
+  return Status::OK();
 }
 
 ScopedPendingOperationPause Tablet::PauseReadWriteOperations() {
@@ -2149,7 +2204,7 @@ Status Tablet::RegisterReaderTimestamp(HybridTime read_point) {
           earliest_read_time_allowed_,
           earliest_read_time_allowed_.PhysicalDiff(read_point)),
         TransactionError(TransactionErrorCode::kSnapshotTooOld));
-}
+  }
   active_readers_cnt_[read_point]++;
   return Status::OK();
 }
@@ -2380,6 +2435,15 @@ Result<int64_t> Tablet::CountIntents() {
     intent_iter->Next();
   }
   return num_intents;
+}
+
+void Tablet::ListenNumSSTFilesChanged(std::function<void()> listener) {
+  std::lock_guard<std::mutex> lock(num_sst_files_changed_listener_mutex_);
+  bool has_new_listener = listener != nullptr;
+  bool has_old_listener = num_sst_files_changed_listener_ != nullptr;
+  LOG_IF_WITH_PREFIX(DFATAL, has_new_listener == has_old_listener)
+      << __func__ << " in wrong state, has_old_listener: " << has_old_listener;
+  num_sst_files_changed_listener_ = std::move(listener);
 }
 
 // ------------------------------------------------------------------------------------------------

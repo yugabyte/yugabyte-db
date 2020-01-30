@@ -270,7 +270,7 @@ void CreateTable(const YBTableName &table_name, YBClient* client) {
 
 void CreateRedisTable(const YBTableName &table_name, YBClient* client) {
   LOG(INFO) << "Creating table with " << FLAGS_num_tablets << " hash based partitions.";
-  gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
+  std::unique_ptr<YBTableCreator> table_creator(client->NewTableCreator());
   Status table_creation_status = table_creator->table_name(table_name)
                                      .num_tablets(FLAGS_num_tablets)
                                      .table_type(yb::client::YBTableType::REDIS_TABLE_TYPE)
@@ -293,7 +293,7 @@ void CreateYBTable(const YBTableName &table_name, YBClient* client) {
   CHECK_OK(schemaBuilder.Build(&schema));
 
   LOG(INFO) << "Creating table";
-  gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
+  std::unique_ptr<YBTableCreator> table_creator(client->NewTableCreator());
   Status table_creation_status =
       table_creator->table_name(table_name)
           .schema(&schema)

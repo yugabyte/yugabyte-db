@@ -231,6 +231,7 @@ public class UniverseControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.isArray());
     assertEquals(json.size(), 0);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -246,6 +247,7 @@ public class UniverseControllerTest extends WithApplication {
     assertTrue(json.isArray());
     assertEquals(1, json.size());
     assertValue(json.get(0), "universeUUID", u.universeUUID.toString());
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -257,6 +259,7 @@ public class UniverseControllerTest extends WithApplication {
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(),
         equalTo("Unable To Authenticate User")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -268,8 +271,9 @@ public class UniverseControllerTest extends WithApplication {
                  "/update_backup_state?markActive=true";
     Result result = doRequestWithAuthToken("PUT", url, authToken);
     assertOk(result);
-    assertThat(Universe.get(u.universeUUID).getConfig().get("takeBackups"),
+    assertThat(Universe.get(u.universeUUID).getConfig().get(Universe.TAKE_BACKUPS),
                allOf(notNullValue(), equalTo("true")));
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -281,6 +285,7 @@ public class UniverseControllerTest extends WithApplication {
                  "/update_backup_state";
     Result result = doRequestWithAuthToken("PUT", url, authToken);
     assertBadRequest(result, "Invalid Query: Need to specify markActive value");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -293,6 +298,7 @@ public class UniverseControllerTest extends WithApplication {
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(),
         equalTo("Unable To Authenticate User")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -304,6 +310,7 @@ public class UniverseControllerTest extends WithApplication {
                                           "to Customer UUID: %s", invalidUUID,
                                           customer.uuid);
     assertBadRequest(result, expectedResult);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -334,6 +341,7 @@ public class UniverseControllerTest extends WithApplication {
       int nodeIdx = node.get("nodeIdx").asInt();
       assertValue(node, "nodeName", "host-n" + nodeIdx);
     }
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -350,6 +358,7 @@ public class UniverseControllerTest extends WithApplication {
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "privateIP", host);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -358,6 +367,7 @@ public class UniverseControllerTest extends WithApplication {
     UUID invalidUUID = UUID.randomUUID();
     Result result = universeController.getMasterLeaderIP(invalidUUID, UUID.randomUUID());
     assertBadRequest(result, "Invalid Customer UUID: " + invalidUUID);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -366,6 +376,7 @@ public class UniverseControllerTest extends WithApplication {
     UUID invalidUUID = UUID.randomUUID();
     Result result = universeController.getMasterLeaderIP(customer.uuid, invalidUUID);
     assertBadRequest(result, "No universe found with UUID: " + invalidUUID);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -373,6 +384,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject());
     assertBadRequest(result, "clusters: This field is required");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -397,6 +409,7 @@ public class UniverseControllerTest extends WithApplication {
     bodyJson.set("clusters", clustersJsonArray);
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertBadRequest(result, "Invalid universe name format, valid characters [a-zA-Z0-9-].");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -421,6 +434,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universe_configure";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertInternalServerError(result, "No AZ found for region: " + r.uuid);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -460,6 +474,7 @@ public class UniverseControllerTest extends WithApplication {
     assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("SingleUserUniverse")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Create)));
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -499,6 +514,7 @@ public class UniverseControllerTest extends WithApplication {
     verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), taskParams.capture());
     UniverseDefinitionTaskParams taskParam = (UniverseDefinitionTaskParams) taskParams.getValue();
     assertNotNull(taskParam.rootCA);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -537,6 +553,7 @@ public class UniverseControllerTest extends WithApplication {
     verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), taskParams.capture());
     UniverseDefinitionTaskParams taskParam = (UniverseDefinitionTaskParams) taskParams.getValue();
     assertNull(taskParam.rootCA);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -545,6 +562,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
     Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, Json.newObject());
     assertBadRequest(result, "clusters: This field is required");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -586,6 +604,7 @@ public class UniverseControllerTest extends WithApplication {
     assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Update)));
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -629,6 +648,7 @@ public class UniverseControllerTest extends WithApplication {
     assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Update)));
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -670,7 +690,12 @@ public class UniverseControllerTest extends WithApplication {
     JsonNode primaryClusterJson = clustersJson.get(0);
     assertNotNull(primaryClusterJson);
     assertNotNull(primaryClusterJson.get("userIntent"));
+    assertAuditEntry(1, customer.uuid);
 
+    fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class),
+         Matchers.any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
     // Try universe expand only, and re-check.
     userIntentJson.put("numNodes", 9);
     result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
@@ -684,6 +709,7 @@ public class UniverseControllerTest extends WithApplication {
     primaryClusterJson = clustersJson.get(0);
     assertNotNull(primaryClusterJson);
     assertNotNull(primaryClusterJson.get("userIntent"));
+    assertAuditEntry(2, customer.uuid);
   }
 
   @Test
@@ -692,6 +718,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + randomUUID;
     Result result = doRequestWithAuthToken("DELETE", url, authToken);
     assertBadRequest(result, "No universe found with UUID: " + randomUUID);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -728,6 +755,7 @@ public class UniverseControllerTest extends WithApplication {
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Delete)));
 
     assertTrue(customer.getUniverseUUIDs().isEmpty());
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -771,6 +799,7 @@ public class UniverseControllerTest extends WithApplication {
     assertNotNull(CustomerTask.findByTaskUUID(randUUID).getCompletionTime());
 
     assertTrue(customer.getUniverseUUIDs().isEmpty());
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -785,6 +814,7 @@ public class UniverseControllerTest extends WithApplication {
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject());
     assertBadRequest(result, "clusters: This field is required");
     assertNull(CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique());
+    assertAuditEntry(0, customer.uuid);
   }
 
   private ObjectNode getValidPayload(UUID univUUID, boolean isRolling) {
@@ -830,10 +860,12 @@ public class UniverseControllerTest extends WithApplication {
     if (isRolling) {
       assertBadRequest(result, "as it has nodes in one of");
       assertNull(CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique());
+      assertAuditEntry(0, customer.uuid);
     } else {
       assertOk(result);
       JsonNode json = Json.parse(contentAsString(result));
       assertValue(json, "taskUUID", fakeTaskUUID.toString());
+      assertAuditEntry(1, customer.uuid);
     }
   }
 
@@ -880,6 +912,7 @@ public class UniverseControllerTest extends WithApplication {
     Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
     assertBadRequest(result, "as it has nodes in one of");
     assertNull(CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique());
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -904,6 +937,7 @@ public class UniverseControllerTest extends WithApplication {
     assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.UpgradeSoftware)));
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -924,6 +958,7 @@ public class UniverseControllerTest extends WithApplication {
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
     assertBadRequest(result, "ybSoftwareVersion param is required for taskType: Software");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -958,6 +993,7 @@ public class UniverseControllerTest extends WithApplication {
     assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.UpgradeGflags)));
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -979,6 +1015,7 @@ public class UniverseControllerTest extends WithApplication {
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
     assertBadRequest(result, "gflags param is required for taskType: GFlags");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1017,6 +1054,7 @@ public class UniverseControllerTest extends WithApplication {
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
     assertBadRequest(result, "Neither master nor tserver gflags changed");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1037,6 +1075,7 @@ public class UniverseControllerTest extends WithApplication {
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJsonMissingGFlags);
 
     assertBadRequest(result, "gflags param is required for taskType: GFlags");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1059,6 +1098,7 @@ public class UniverseControllerTest extends WithApplication {
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
     assertBadRequest(result, "gflags param is required for taskType: GFlags");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1081,6 +1121,7 @@ public class UniverseControllerTest extends WithApplication {
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
     assertBadRequest(result, "gflags param is required for taskType: GFlags");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1118,6 +1159,7 @@ public class UniverseControllerTest extends WithApplication {
     UserIntent primaryClusterIntent = taskParam.getPrimaryCluster().userIntent;
     assertEquals(primaryClusterIntent.masterGFlags, taskParam.masterGFlags);
     assertEquals(primaryClusterIntent.tserverGFlags, taskParam.tserverGFlags);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -1149,6 +1191,7 @@ public class UniverseControllerTest extends WithApplication {
     RollingRestartParams taskParam = (RollingRestartParams) taskParams.getValue();
     assertFalse(taskParam.rollingUpgrade);
     assertEquals("new-version", taskParam.ybSoftwareVersion);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -1159,6 +1202,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/status";
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertOk(result);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1170,6 +1214,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/status";
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertBadRequest(result, "foobar");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1178,6 +1223,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/status";
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertBadRequest(result, "No universe found with UUID: " + universeUUID);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1186,6 +1232,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/find/" + u.name;
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertBadRequest(result, "Universe already exists");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1194,6 +1241,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/find/FakeUniverse";
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertOk(result);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1247,6 +1295,7 @@ public class UniverseControllerTest extends WithApplication {
     url = "/api/customers/" + customer.uuid + "/universe_resources";
     result = doRequestWithAuthTokenAndBody("POST", url, authToken, topJson);
     assertOk(result);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1324,6 +1373,7 @@ public class UniverseControllerTest extends WithApplication {
     ArrayNode nodeDetailJson = (ArrayNode) json.get("nodeDetailsSet");
     assertEquals(15, nodeDetailJson.size());
     assertTrue(areConfigObjectsEqual(nodeDetailJson, azUUIDToNumNodeMap));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1380,6 +1430,7 @@ public class UniverseControllerTest extends WithApplication {
     ArrayNode nodeDetailJson = (ArrayNode) json.get("nodeDetailsSet");
     assertEquals(nodeDetailJson.size(), totalNumNodesAfterExpand);
     assertTrue(areConfigObjectsEqual(nodeDetailJson, azUuidToNumNodes));
+    assertAuditEntry(0, customer.uuid);
   }
 
   public UniverseDefinitionTaskParams setupOnPremTestData(int numNodesToBeConfigured, Provider p, Region r, List<AvailabilityZone> azList) {
@@ -1459,6 +1510,7 @@ public class UniverseControllerTest extends WithApplication {
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, topJson);
 
     assertBadRequest(result, "Invalid Node/AZ combination for given instance type type.small");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1504,6 +1556,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universe_configure";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, topJson);
     assertBadRequest(result, "Invalid Node/AZ combination for given instance type type.small");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1531,6 +1584,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universe_configure";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, topJson);
     assertOk(result);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1591,6 +1645,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universe_configure";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, topJson);
     assertBadRequest(result, "Invalid Node/AZ combination for given instance type type.small");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1649,6 +1704,7 @@ public class UniverseControllerTest extends WithApplication {
     verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), argCaptor.capture());
     // The KMS provider service should not begin to make any requests since there is no KMS config
     verify(mockApiHelper, times(0)).postRequest(any(String.class), any(JsonNode.class), anyMap());
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -1706,6 +1762,7 @@ public class UniverseControllerTest extends WithApplication {
     JsonNode userIntent = json.get("universeDetails").get("clusters").get(0).get("userIntent");
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
     verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), argCaptor.capture());
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -1774,6 +1831,10 @@ public class UniverseControllerTest extends WithApplication {
             any(EncryptionAtRestConfig.class)
     )).thenReturn(new String("some_universe_encryption_key").getBytes());
 
+    fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class),
+            Matchers.any(UniverseDefinitionTaskParams.class)))
+            .thenReturn(fakeTaskUUID);
     // Rotate the universe key
     EncryptionAtRestKeyParams taskParams = new EncryptionAtRestKeyParams();
     ObjectNode bodyJson = (ObjectNode) Json.toJson(taskParams);
@@ -1787,6 +1848,7 @@ public class UniverseControllerTest extends WithApplication {
     ArgumentCaptor<UniverseTaskParams> argCaptor = ArgumentCaptor
             .forClass(UniverseTaskParams.class);
     verify(mockCommissioner).submit(eq(TaskType.SetUniverseKey), argCaptor.capture());
+    assertAuditEntry(2, customer.uuid);
   }
 
   @Test
@@ -1799,6 +1861,7 @@ public class UniverseControllerTest extends WithApplication {
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertBadRequest(result, String.format("Universe UUID: %s doesn't belong to Customer UUID: %s",
         u.universeUUID, customer.uuid));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1813,6 +1876,7 @@ public class UniverseControllerTest extends WithApplication {
         "/run_query";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertBadRequest(result, "run_query not supported for this application");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1837,6 +1901,7 @@ public class UniverseControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertEquals("bar", json.get("foo").asText());
+    assertAuditEntry(1, customer.uuid);
   }
 
 
@@ -1850,6 +1915,7 @@ public class UniverseControllerTest extends WithApplication {
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertBadRequest(result, String.format("Universe UUID: %s doesn't belong to Customer UUID: %s",
         u.universeUUID, customer.uuid));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1864,6 +1930,7 @@ public class UniverseControllerTest extends WithApplication {
         "/run_in_shell";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertBadRequest(result, "run_in_shell not supported for this application");
+    assertAuditEntry(0, customer.uuid);
   }
 
   private void mockAndAssertRunInShell(Universe u,
@@ -1943,6 +2010,7 @@ public class UniverseControllerTest extends WithApplication {
       mockAndAssertRunInShell(u, shellType, null, null);
       reset(mockShellProcessHandler);
     }
+    assertAuditEntry(RunInShellFormData.ShellType.values().length * 2, customer.uuid);
   }
 
   @Test
@@ -1962,5 +2030,6 @@ public class UniverseControllerTest extends WithApplication {
       mockAndAssertRunInShell(u, shellType, "/tmp/bin", null);
       reset(mockShellProcessHandler);
     }
+    assertAuditEntry(RunInShellFormData.ShellType.values().length * 2, customer.uuid);
   }
 }

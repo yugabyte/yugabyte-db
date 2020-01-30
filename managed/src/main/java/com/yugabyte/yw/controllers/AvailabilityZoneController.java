@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData.AvailabilityZoneData;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 
@@ -78,6 +79,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
         AvailabilityZone az = AvailabilityZone.create(region, azData.code, azData.name, azData.subnet);
         availabilityZones.put(az.code, az);
       }
+      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(availabilityZones);
     } catch (Exception e) {
       LOG.error(e.getMessage());
@@ -111,6 +113,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
       az.setActiveFlag(false);
       az.update();
       ObjectNode responseJson = Json.newObject();
+      Audit.createAuditEntry(ctx(), request());
       responseJson.put("success", true);
       return ApiResponse.success(responseJson);
     } catch (Exception e) {

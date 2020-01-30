@@ -272,7 +272,7 @@ class ColumnSchema {
     sorting_type_ = sorting_type;
   }
 
-  const string sorting_type_string() const {
+  const std::string sorting_type_string() const {
     switch (sorting_type_) {
       case kNotSpecified:
         return "none";
@@ -288,17 +288,17 @@ class ColumnSchema {
     LOG (FATAL) << "Invalid sorting type: " << sorting_type_;
   }
 
-  const string &name() const {
+  const std::string &name() const {
     return name_;
   }
 
   // Return a string identifying this column, including its
   // name.
-  string ToString() const;
+  std::string ToString() const;
 
   // Same as above, but only including the type information.
   // For example, "STRING NOT NULL".
-  string TypeToString() const;
+  std::string TypeToString() const;
 
   bool EqualsType(const ColumnSchema &other) const {
     return is_nullable_ == other.is_nullable_ &&
@@ -317,8 +317,8 @@ class ColumnSchema {
 
   // Stringify the given cell. This just stringifies the cell contents,
   // and doesn't include the column name or type.
-  string Stringify(const void *cell) const {
-    string ret;
+  std::string Stringify(const void *cell) const {
+    std::string ret;
     type_info()->AppendDebugStringForValue(cell, &ret);
     return ret;
   }
@@ -349,11 +349,11 @@ class ColumnSchema {
  private:
   friend class SchemaBuilder;
 
-  void set_name(const string& name) {
+  void set_name(const std::string& name) {
     name_ = name;
   }
 
-  string name_;
+  std::string name_;
   std::shared_ptr<QLType> type_;
   bool is_nullable_;
   bool is_hash_key_;
@@ -454,6 +454,10 @@ class TableProperties {
     return is_ysql_catalog_table_;
   }
 
+  bool IsBackfilling() const { return is_backfilling_; }
+
+  void SetIsBackfilling(bool is_backfilling) { is_backfilling_ = is_backfilling; }
+
   void ToTablePropertiesPB(TablePropertiesPB *pb) const;
 
   static TableProperties FromTablePropertiesPB(const TablePropertiesPB& pb);
@@ -469,6 +473,7 @@ class TableProperties {
   int64_t default_time_to_live_ = kNoDefaultTtl;
   bool contain_counters_ = false;
   bool is_transactional_ = false;
+  bool is_backfilling_ = false;
   YBConsistencyLevel consistency_level_ = YBConsistencyLevel::STRONG;
   TableId copartition_table_id_ = kNoCopartitionTableId;
   boost::optional<uint32_t> wal_retention_secs_;
@@ -476,6 +481,8 @@ class TableProperties {
   int num_tablets_ = 0;
   bool is_ysql_catalog_table_ = false;
 };
+
+typedef uint32_t PgTableOid;
 
 // The schema for a set of rows.
 //
@@ -502,7 +509,8 @@ class Schema {
                      NameToIndexMap::key_equal(),
                      NameToIndexMapAllocator(&name_to_index_bytes_)),
       has_nullables_(false),
-      cotable_id_(boost::uuids::nil_uuid()) {
+      cotable_id_(boost::uuids::nil_uuid()),
+      pgtable_id_(0) {
   }
 
   Schema(const Schema& other);
@@ -521,14 +529,15 @@ class Schema {
   Schema(const vector<ColumnSchema>& cols,
          int key_columns,
          const TableProperties& table_properties = TableProperties(),
-         const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()))
+         const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()),
+         const PgTableOid pgtable_id = 0)
     : name_to_index_bytes_(0),
       // TODO: C++11 provides a single-arg constructor
       name_to_index_(10,
                      NameToIndexMap::hasher(),
                      NameToIndexMap::key_equal(),
                      NameToIndexMapAllocator(&name_to_index_bytes_)) {
-    CHECK_OK(Reset(cols, key_columns, table_properties, cotable_id));
+    CHECK_OK(Reset(cols, key_columns, table_properties, cotable_id, pgtable_id));
   }
 
   // Construct a schema with the given information.
@@ -541,14 +550,15 @@ class Schema {
          const vector<ColumnId>& ids,
          int key_columns,
          const TableProperties& table_properties = TableProperties(),
-         const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()))
+         const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()),
+         const PgTableOid pgtable_id = 0)
     : name_to_index_bytes_(0),
       // TODO: C++11 provides a single-arg constructor
       name_to_index_(10,
                      NameToIndexMap::hasher(),
                      NameToIndexMap::key_equal(),
                      NameToIndexMapAllocator(&name_to_index_bytes_)) {
-    CHECK_OK(Reset(cols, ids, key_columns, table_properties, cotable_id));
+    CHECK_OK(Reset(cols, ids, key_columns, table_properties, cotable_id, pgtable_id));
   }
 
   // Reset this Schema object to the given schema.
@@ -556,9 +566,10 @@ class Schema {
   // state and may not be used.
   CHECKED_STATUS Reset(const vector<ColumnSchema>& cols, int key_columns,
                        const TableProperties& table_properties = TableProperties(),
-                       const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid())) {
+                       const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()),
+                       const PgTableOid pgtable_id = 0) {
     std::vector<ColumnId> ids;
-    return Reset(cols, ids, key_columns, table_properties, cotable_id);
+    return Reset(cols, ids, key_columns, table_properties, cotable_id, pgtable_id);
   }
 
   // Reset this Schema object to the given schema.
@@ -568,7 +579,8 @@ class Schema {
                        const vector<ColumnId>& ids,
                        int key_columns,
                        const TableProperties& table_properties = TableProperties(),
-                       const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()));
+                       const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()),
+                       const PgTableOid pgtable_id = 0);
 
   // Return the number of bytes needed to represent a single row of this schema.
   //
@@ -674,6 +686,8 @@ class Schema {
     table_properties_.SetTransactional(is_transactional);
   }
 
+  void SetIsBackfilling(bool is_backfilling) { table_properties_.SetIsBackfilling(is_backfilling); }
+
   // Return the column index corresponding to the given column,
   // or kColumnNotFound if the column is not in this schema.
   int find_column(const GStringPiece col_name) const {
@@ -755,8 +769,32 @@ class Schema {
     return cotable_id_;
   }
 
+  bool has_cotable_id() const {
+    return !cotable_id_.IsNil();
+  }
+
   void set_cotable_id(const Uuid& cotable_id) {
+    if (!cotable_id.IsNil()) {
+      DCHECK_EQ(pgtable_id_, 0);
+    }
     cotable_id_ = cotable_id;
+  }
+
+  // Gets and sets the PG table OID of the non-primary table this schema belongs to in a tablet
+  // with colocated tables.
+  const PgTableOid pgtable_id() const {
+    return pgtable_id_;
+  }
+
+  bool has_pgtable_id() const {
+    return pgtable_id_ > 0;
+  }
+
+  void set_pgtable_id(const PgTableOid pgtable_id) {
+    if (pgtable_id > 0) {
+      DCHECK(cotable_id_.IsNil());
+    }
+    pgtable_id_ = pgtable_id;
   }
 
   // Extract a given column from a row where the type is
@@ -788,7 +826,7 @@ class Schema {
   // in a way suitable for debugging. This isn't currently optimized
   // so should be avoided in hot paths.
   template<class RowType>
-  string DebugRow(const RowType& row) const {
+  std::string DebugRow(const RowType& row) const {
     DCHECK_SCHEMA_EQ(*this, *row.schema());
     return DebugRowColumns(row, num_columns());
   }
@@ -797,7 +835,7 @@ class Schema {
   // key-compatible with this one. Per above, this is not for use in
   // hot paths.
   template<class RowType>
-  string DebugRowKey(const RowType& row) const {
+  std::string DebugRowKey(const RowType& row) const {
     DCHECK_KEY_PROJECTION_SCHEMA_EQ(*this, *row.schema());
     return DebugRowColumns(row, num_key_columns());
   }
@@ -822,7 +860,7 @@ class Schema {
     START_KEY,
     END_KEY
   };
-  string DebugEncodedRowKey(Slice encoded_key, StartOrEnd start_or_end) const;
+  std::string DebugEncodedRowKey(Slice encoded_key, StartOrEnd start_or_end) const;
 
   // Compare two rows of this schema.
   template<class RowTypeA, class RowTypeB>
@@ -903,7 +941,7 @@ class Schema {
 
   // Stringify this Schema. This is not particularly efficient,
   // so should only be used when necessary for output.
-  string ToString() const;
+  std::string ToString() const;
 
   // Return true if the schemas have exactly the same set of columns
   // and respective types.
@@ -1029,7 +1067,7 @@ class Schema {
   // row.
   template<class RowType>
   std::string DebugRowColumns(const RowType& row, int num_columns) const {
-    string ret;
+    std::string ret;
     ret.append("(");
 
     for (size_t col_idx = 0; col_idx < num_columns; col_idx++) {
@@ -1083,6 +1121,10 @@ class Schema {
   // primary or single-tenant table.
   Uuid cotable_id_;
 
+  // PG table OID of the non-primary table this schema belongs to in a tablet with colocated
+  // tables. Nil for the primary or single-tenant table.
+  PgTableOid pgtable_id_;
+
   // NOTE: if you add more members, make sure to add the appropriate
   // code to swap() and CopyFrom() as well to prevent subtle bugs.
 };
@@ -1127,37 +1169,37 @@ class SchemaBuilder {
 
   // assumes type is allowed in primary key -- this should be checked before getting here
   // using DataType (not QLType) since primary key columns only support elementary types
-  CHECKED_STATUS AddKeyColumn(const string& name, const std::shared_ptr<QLType>& type);
-  CHECKED_STATUS AddKeyColumn(const string& name, DataType type);
+  CHECKED_STATUS AddKeyColumn(const std::string& name, const std::shared_ptr<QLType>& type);
+  CHECKED_STATUS AddKeyColumn(const std::string& name, DataType type);
 
   // assumes type is allowed in hash key -- this should be checked before getting here
   // using DataType (not QLType) since hash key columns only support elementary types
-  CHECKED_STATUS AddHashKeyColumn(const string& name, const std::shared_ptr<QLType>& type);
-  CHECKED_STATUS AddHashKeyColumn(const string& name, DataType type);
+  CHECKED_STATUS AddHashKeyColumn(const std::string& name, const std::shared_ptr<QLType>& type);
+  CHECKED_STATUS AddHashKeyColumn(const std::string& name, DataType type);
 
   CHECKED_STATUS AddColumn(const ColumnSchema& column, bool is_key);
 
-  CHECKED_STATUS AddColumn(const string& name, const std::shared_ptr<QLType>& type) {
+  CHECKED_STATUS AddColumn(const std::string& name, const std::shared_ptr<QLType>& type) {
     return AddColumn(name, type, false, false, false, false, 0,
                      ColumnSchema::SortingType::kNotSpecified);
   }
 
   // convenience function for adding columns with simple (non-parametric) data types
-  CHECKED_STATUS AddColumn(const string& name, DataType type) {
+  CHECKED_STATUS AddColumn(const std::string& name, DataType type) {
     return AddColumn(name, QLType::Create(type));
   }
 
-  CHECKED_STATUS AddNullableColumn(const string& name, const std::shared_ptr<QLType>& type) {
+  CHECKED_STATUS AddNullableColumn(const std::string& name, const std::shared_ptr<QLType>& type) {
     return AddColumn(name, type, true, false, false, false, 0,
                      ColumnSchema::SortingType::kNotSpecified);
   }
 
   // convenience function for adding columns with simple (non-parametric) data types
-  CHECKED_STATUS AddNullableColumn(const string& name, DataType type) {
+  CHECKED_STATUS AddNullableColumn(const std::string& name, DataType type) {
     return AddNullableColumn(name, QLType::Create(type));
   }
 
-  CHECKED_STATUS AddColumn(const string& name,
+  CHECKED_STATUS AddColumn(const std::string& name,
                            const std::shared_ptr<QLType>& type,
                            bool is_nullable,
                            bool is_hash_key,
@@ -1167,7 +1209,7 @@ class SchemaBuilder {
                            yb::ColumnSchema::SortingType sorting_type);
 
   // convenience function for adding columns with simple (non-parametric) data types
-  CHECKED_STATUS AddColumn(const string& name,
+  CHECKED_STATUS AddColumn(const std::string& name,
                            DataType type,
                            bool is_nullable,
                            bool is_hash_key,
@@ -1179,8 +1221,8 @@ class SchemaBuilder {
                      order, sorting_type);
   }
 
-  CHECKED_STATUS RemoveColumn(const string& name);
-  CHECKED_STATUS RenameColumn(const string& old_name, const string& new_name);
+  CHECKED_STATUS RemoveColumn(const std::string& name);
+  CHECKED_STATUS RenameColumn(const std::string& old_name, const std::string& new_name);
   CHECKED_STATUS AlterProperties(const TablePropertiesPB& pb);
 
  private:

@@ -64,12 +64,6 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 
-DEFINE_bool(redis_allow_reads_from_followers, false,
-            "If true, the read will be served from the closest replica in the same AZ, which can "
-            "be a follower.");
-TAG_FLAG(redis_allow_reads_from_followers, evolving);
-TAG_FLAG(redis_allow_reads_from_followers, runtime);
-
 // When this flag is set to false and we have separate errors for operation, then batcher would
 // report IO Error status. Otherwise we will try to combine errors from separate operation to
 // status of batch. Useful in tests, when we don't need complex error analysis.
@@ -349,7 +343,7 @@ void Batcher::CombineErrorUnlocked(const InFlightOpPtr& in_flight_op, const Stat
   error_collector_->AddError(in_flight_op->yb_op, status);
   if (FLAGS_combine_batcher_errors) {
     if (combined_error_.ok()) {
-      combined_error_ = status;
+      combined_error_ = status.CloneAndPrepend(in_flight_op->ToString());
     } else if (!combined_error_.IsCombined() && combined_error_.code() != status.code()) {
       combined_error_ = STATUS(Combined, "Multiple failures");
     }
@@ -449,36 +443,10 @@ void Batcher::TabletLookupFinished(
 
 void Batcher::TransactionReady(const Status& status, const BatcherPtr& self) {
   if (status.ok()) {
-    ExecuteOperations();
+    ExecuteOperations(Initial::kFalse);
   } else {
     Abort(status);
   }
-}
-
-YB_DEFINE_ENUM(OpGroup, (kWrite)(kLeaderRead)(kConsistentPrefixRead));
-
-namespace {
-inline bool IsOkToReadFromFollower(const InFlightOpPtr& op) {
-  return op->yb_op->type() == YBOperation::Type::REDIS_READ &&
-         FLAGS_redis_allow_reads_from_followers;
-}
-
-inline bool IsQLConsistentPrefixRead(const InFlightOpPtr& op) {
-  return op->yb_op->type() == YBOperation::Type::QL_READ &&
-         std::static_pointer_cast<YBqlReadOp>(op->yb_op)->yb_consistency_level() ==
-         YBConsistencyLevel::CONSISTENT_PREFIX;
-}
-} // namespace
-
-OpGroup GetOpGroup(const InFlightOpPtr& op) {
-  if (!op->yb_op->read_only()) {
-    return OpGroup::kWrite;
-  }
-  if (IsOkToReadFromFollower(op) || IsQLConsistentPrefixRead(op)) {
-    return OpGroup::kConsistentPrefixRead;
-  }
-
-  return OpGroup::kLeaderRead;
 }
 
 void Batcher::FlushBuffersIfReady() {
@@ -509,8 +477,8 @@ void Batcher::FlushBuffersIfReady() {
             ops_queue_.end(),
             [](const InFlightOpPtr& lhs, const InFlightOpPtr& rhs) {
     if (lhs->tablet.get() == rhs->tablet.get()) {
-      auto lgroup = GetOpGroup(lhs);
-      auto rgroup = GetOpGroup(rhs);
+      auto lgroup = lhs->yb_op->group();
+      auto rgroup = rhs->yb_op->group();
       if (lgroup != rgroup) {
         return lgroup < rgroup;
       }
@@ -519,10 +487,10 @@ void Batcher::FlushBuffersIfReady() {
     return lhs->tablet.get() < rhs->tablet.get();
   });
 
-  ExecuteOperations();
+  ExecuteOperations(Initial::kTrue);
 }
 
-void Batcher::ExecuteOperations() {
+void Batcher::ExecuteOperations(Initial initial) {
   auto transaction = this->transaction();
   if (transaction) {
     // If this Batcher is executed in context of transaction,
@@ -533,6 +501,7 @@ void Batcher::ExecuteOperations() {
     if (!transaction->Prepare(ops_queue_,
                               force_consistent_read_,
                               deadline_,
+                              initial,
                               std::bind(&Batcher::TransactionReady, this, _1, BatcherPtr(this)),
                               &transaction_metadata_)) {
       return;
@@ -564,9 +533,9 @@ void Batcher::ExecuteOperations() {
 
   // Now flush the ops for each tablet.
   auto start = ops_queue_.begin();
-  auto start_group = GetOpGroup(*start);
+  auto start_group = (**start).yb_op->group();
   for (auto it = start; it != ops_queue_.end(); ++it) {
-    auto it_group = GetOpGroup(*it);
+    auto it_group = (**it).yb_op->group();
     // Aggregate and flush the ops so far if either:
     //   - we reached the next tablet or group
     if ((**it).tablet.get() != (**start).tablet.get() ||
@@ -643,7 +612,7 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
   // Split the read operations according to consistency levels since based on consistency
   // levels the read algorithm would differ.
   InFlightOps ops(begin, end);
-  auto op_group = GetOpGroup(*begin);
+  auto op_group = (**begin).yb_op->group();
   AsyncRpcData data{this, tablet, allow_local_calls_in_curr_thread, need_consistent_read,
                     std::move(ops)};
   switch (op_group) {

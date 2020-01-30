@@ -1,7 +1,7 @@
 ---
 title: 8. Strings and text
 linkTitle: 8. Strings and text
-description: Work with strings and text
+description: String and text data types
 aliases:
   - /develop/learn/strings-and-text/
 menu:

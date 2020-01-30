@@ -4,6 +4,7 @@ import com.google.inject.Inject;
 
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -13,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import play.mvc.Result;
 import play.data.Form;
 import play.data.FormFactory;
+import play.libs.Json;
 
 import java.util.Date;
 import java.util.List;
@@ -45,6 +47,7 @@ public class CertificateController extends AuthenticatedController {
     try {
       UUID certUUID = CertificateHelper.uploadRootCA(label, customerUUID, appConfig.getString("yb.storage.path"),
           certContent, keyContent, certStart, certExpiry);
+      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(certUUID);
     } catch (Exception e) {
       return ApiResponse.error(BAD_REQUEST, "Couldn't upload certfiles");

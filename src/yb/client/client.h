@@ -257,8 +257,7 @@ class YBClient {
  public:
   ~YBClient();
 
-  // Creates a YBTableCreator; it is the caller's responsibility to free it.
-  YBTableCreator* NewTableCreator();
+  std::unique_ptr<YBTableCreator> NewTableCreator();
 
   // set 'create_in_progress' to true if a CreateTable operation is in-progress.
   CHECKED_STATUS IsCreateTableInProgress(const YBTableName& table_name,
@@ -284,9 +283,8 @@ class YBClient {
                                   YBTableName* indexed_table_name = nullptr,
                                   bool wait = true);
 
-  // Creates a YBTableAlterer; it is the caller's responsibility to free it.
-  YBTableAlterer* NewTableAlterer(const YBTableName& table_name);
-  YBTableAlterer* NewTableAlterer(const string id);
+  std::unique_ptr<YBTableAlterer> NewTableAlterer(const YBTableName& table_name);
+  std::unique_ptr<YBTableAlterer> NewTableAlterer(const string id);
 
   // Set 'alter_in_progress' to true if an AlterTable operation is in-progress.
   CHECKED_STATUS IsAlterTableInProgress(const YBTableName& table_name,
@@ -296,6 +294,7 @@ class YBClient {
   CHECKED_STATUS GetTableSchema(const YBTableName& table_name,
                                 YBSchema* schema,
                                 PartitionSchema* partition_schema);
+  Result<YBTableInfo> GetYBTableInfo(const YBTableName& table_name);
 
   CHECKED_STATUS GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
                                     StatusCallback callback);
@@ -627,6 +626,7 @@ class YBClient {
   FRIEND_TEST(ClientTest, TestScanTimeout);
   FRIEND_TEST(ClientTest, TestWriteWithDeadMaster);
   FRIEND_TEST(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued);
+  FRIEND_TEST(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued);
 
   friend std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
       const YBTable* table);

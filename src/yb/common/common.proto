@@ -147,6 +147,14 @@ enum PermissionType {
   ALL_PERMISSION = 999999999;
 }
 
+enum IndexPermissions {
+  INDEX_PERM_DELETE_ONLY = 0;
+  INDEX_PERM_WRITE_AND_DELETE = 2;
+  INDEX_PERM_DO_BACKFILL = 4;
+  INDEX_PERM_READ_WRITE_AND_DELETE = 6;
+  INDEX_PERM_BACKFILL_FAILED = 8;
+}
+
 // The type used in column schemas, which may have type parameters (i.e. for collections)
 // If types have parameters, they are stored in the params field. Otherwise params is empty.
 // e.g. (using lower case of QLTypes and upper case for DataType):
@@ -225,6 +233,7 @@ message TablePropertiesPB {
   optional bool use_mangled_column_name =  6 [ default = false ];
   optional int32 num_tablets = 7 [ default = 0 ];
   optional bool is_ysql_catalog_table = 8 [ default = false ];
+  optional bool is_backfilling = 9 [ default = false ];
 }
 
 message SchemaPB {
@@ -248,6 +257,9 @@ message IndexInfoPB {
   optional uint32 version = 2 [ default = 0]; // Index table's schema version.
   optional bool is_local = 3 [ default = false ];  // Whether the index is a local index
   optional bool is_unique = 7 [ default = false ]; // Whether the index is a unique index
+  // We should only have this in the elements of "repeated IndexInfoPB indexes" of the
+  // SysTableEntryPB of the main table.
+  optional IndexPermissions index_permissions = 12 [ default = INDEX_PERM_READ_WRITE_AND_DELETE ];
 
   // Index column mapping.
   // "colexpr" is used to compute the value of this column in an INDEX.
@@ -455,6 +467,9 @@ enum InvolvedTabletMetadataState {
 message TransactionInvolvedTabletPB {
   optional bytes tablet_id = 1;
   optional InvolvedTabletMetadataState metadata_state = 2;
+
+  // Number of batches written to this tablet during transaction.
+  optional uint64 num_batches = 3;
 }
 
 // For clarification of field meaning see comments of appropriate fields in YBTransaction::Impl

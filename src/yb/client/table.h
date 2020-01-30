@@ -86,9 +86,12 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   // Is this an index?
   bool IsIndex() const;
 
+  bool IsUniqueIndex() const;
+
   // For index table: information about this index.
   const IndexInfo& index_info() const;
 
+  std::string ToString() const;
   //------------------------------------------------------------------------------------------------
   // CQL support
   // Create a new QL operation for this table.
@@ -112,6 +115,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   YBPgsqlWriteOp* NewPgsqlInsert();
   YBPgsqlWriteOp* NewPgsqlUpdate();
   YBPgsqlWriteOp* NewPgsqlDelete();
+  YBPgsqlWriteOp* NewPgsqlTruncateColocated();
 
   YBPgsqlReadOp* NewPgsqlRead();
   YBPgsqlReadOp* NewPgsqlSelect();

@@ -39,6 +39,7 @@ import java.util.UUID;
 
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.core.StringContains.containsString;
@@ -90,6 +91,7 @@ public class CustomerControllerTest extends WithApplication {
 
     assertThat(json.get("uuid").asText(), allOf(notNullValue(), equalTo(customer.uuid.toString())));
     assertEquals(json.get("name").asText(), customer.name);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -103,6 +105,7 @@ public class CustomerControllerTest extends WithApplication {
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(),
         equalTo("Unable To Authenticate User")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -117,6 +120,7 @@ public class CustomerControllerTest extends WithApplication {
     params.put("confirmPassword", "new-password");
     ObjectNode alertingData = Json.newObject();
     alertingData.put("sendAlertsToYb", true);
+    alertingData.put("reportOnlyErrors", false);
     params.put("alertingData", alertingData);
     params.put("callhomeLevel", "LOW");
     Result result = route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));
@@ -127,6 +131,7 @@ public class CustomerControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("uuid").asText(), is(equalTo(customer.uuid.toString())));
     assertThat(json.get("name").asText(), is(equalTo("Test Customer")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -144,6 +149,7 @@ public class CustomerControllerTest extends WithApplication {
     CustomerConfig callhomeConfig = CustomerConfig.getCallhomeConfig(customer.uuid);
     CollectionLevel callhomeLevel = CustomerConfig.getCallhomeLevel(customer.uuid);
     assertEquals(CollectionLevel.MEDIUM, callhomeLevel);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -161,6 +167,7 @@ public class CustomerControllerTest extends WithApplication {
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(features, json.get("features"));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -175,6 +182,7 @@ public class CustomerControllerTest extends WithApplication {
 
     Result result = route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));
     assertBadRequest(result, "{\"features\":[\"Invalid value\"]}");
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -188,6 +196,7 @@ public class CustomerControllerTest extends WithApplication {
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(expectedFeatures, json);
+    assertAuditEntry(1, customer.uuid);
 
     inputFeatures = Json.parse("{\"features\": {\"key\": \"new\"}}");
     expectedFeatures = Json.parse("{\"foo\": \"bar\", \"key\": \"new\"}");
@@ -195,6 +204,7 @@ public class CustomerControllerTest extends WithApplication {
     assertEquals(OK, result.status());
     json = Json.parse(contentAsString(result));
     assertEquals(expectedFeatures, json);
+    assertAuditEntry(2, customer.uuid);
   }
 
   @Test
@@ -209,6 +219,7 @@ public class CustomerControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(contentAsString(result), is(containsString("\"name\":[\"This field is required\"]")));
     assertThat(contentAsString(result), is(containsString("\"email\":[\"This field is required\"]")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -222,6 +233,7 @@ public class CustomerControllerTest extends WithApplication {
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(),
         equalTo("Unable To Authenticate User")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -232,6 +244,7 @@ public class CustomerControllerTest extends WithApplication {
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.get("success").asBoolean());
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -246,6 +259,7 @@ public class CustomerControllerTest extends WithApplication {
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(),
         equalTo("Unable To Authenticate User")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -259,6 +273,7 @@ public class CustomerControllerTest extends WithApplication {
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), is(containsString("\"start\":[\"This field is required\"]")));
     assertThat(contentAsString(result), is(containsString("\"metrics\":[\"This field is required\"]")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -276,6 +291,7 @@ public class CustomerControllerTest extends WithApplication {
     Result result = route(fakeRequest("POST", baseRoute + customer.uuid + "/metrics").cookie(validCookie).bodyJson(params));
     assertEquals(OK, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -306,6 +322,7 @@ public class CustomerControllerTest extends WithApplication {
     assertValue(filters, "namespace", "demo-(.*)");
     assertEquals(OK, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -336,6 +353,7 @@ public class CustomerControllerTest extends WithApplication {
     assertValue(filters, "namespace", "demo");
     assertEquals(OK, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -361,6 +379,7 @@ public class CustomerControllerTest extends WithApplication {
     assertValue(filters, "pod_name", "demo-n1");
     assertEquals(OK, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -378,6 +397,7 @@ public class CustomerControllerTest extends WithApplication {
     Result result = route(fakeRequest("POST", baseRoute + customer.uuid + "/metrics").cookie(validCookie).bodyJson(params));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"error\":\"something went wrong\"}")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -407,6 +427,7 @@ public class CustomerControllerTest extends WithApplication {
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     String tableName = filters.get("table_name").asText();
     assertThat(tableName, allOf(notNullValue(), equalTo("redis")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -435,6 +456,7 @@ public class CustomerControllerTest extends WithApplication {
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     assertThat(filters.get("table_name"), nullValue());
+    assertAuditEntry(0, customer.uuid);
   }
 
 
@@ -453,6 +475,7 @@ public class CustomerControllerTest extends WithApplication {
     Result result = route(fakeRequest("POST", baseRoute + customer.uuid + "/metrics").cookie(validCookie).bodyJson(params));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"error\":\"Weird Data provided\"}")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -488,6 +511,7 @@ public class CustomerControllerTest extends WithApplication {
     assertThat(nodePrefix, allOf(notNullValue(), containsString("host-b")));
     String[] nodePrefixes = nodePrefix.split("\\|");
     assertEquals(nodePrefixes.length, 2);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -516,6 +540,7 @@ public class CustomerControllerTest extends WithApplication {
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     String nodePrefix = filters.get("node_prefix").asText();
     assertThat(nodePrefix, allOf(notNullValue(), equalTo("host-1")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -540,6 +565,7 @@ public class CustomerControllerTest extends WithApplication {
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     String nodeName = filters.get("exported_instance").asText();
     assertThat(nodeName, allOf(notNullValue(), equalTo("host-n1")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   private Result getHostInfo(UUID customerUUID) {
@@ -556,6 +582,7 @@ public class CustomerControllerTest extends WithApplication {
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(),
         equalTo("Unable To Authenticate User")));
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -571,5 +598,6 @@ public class CustomerControllerTest extends WithApplication {
     responseNode.put("aws", response);
     responseNode.put("gcp", response);
     assertEquals(json, responseNode);
+    assertAuditEntry(0, customer.uuid);
   }
 }

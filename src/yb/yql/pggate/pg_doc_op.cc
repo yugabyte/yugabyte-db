@@ -40,24 +40,16 @@ PgDocOp::PgDocOp(PgSession::ScopedRefPtr pg_session)
 }
 
 PgDocOp::~PgDocOp() {
-}
-
-void PgDocOp::AbortAndWait() {
-  // Hold on to this object just in case there are requests in the queue while PostgreSQL client
-  // cancels the operation.
-  std::unique_lock<std::mutex> lock(mtx_);
-  is_canceled_ = true;
-  cv_.notify_all();
-
-  while (waiting_for_response_) {
-    cv_.wait(lock);
+  // Wait for result in case request was sent.
+  // Operation can be part of transaction it is necessary to complete it before transaction commit.
+  if (response_.InProgress()) {
+    __attribute__((unused)) auto status = response_.GetStatus();
   }
 }
 
 Result<bool> PgDocOp::EndOfResult() const {
-  std::lock_guard<std::mutex> lock(mtx_);
   RETURN_NOT_OK(exec_status_);
-  return !has_cached_data_ && end_of_data_;
+  return end_of_data_ && result_cache_.empty();
 }
 
 void PgDocOp::SetExecParams(const PgExecParameters *exec_params) {
@@ -67,12 +59,6 @@ void PgDocOp::SetExecParams(const PgExecParameters *exec_params) {
 }
 
 Result<RequestSent> PgDocOp::Execute() {
-  if (is_canceled_) {
-    return STATUS(IllegalState, "Operation canceled");
-  }
-
-  std::unique_lock<std::mutex> lock(mtx_);
-
   // As of 09/25/2018, DocDB doesn't cache or keep any execution state for a statement, so we
   // have to call query execution every time.
   // - Normal SQL convention: Exec, Fetch, Fetch, ...
@@ -80,77 +66,54 @@ Result<RequestSent> PgDocOp::Execute() {
   // This refers to the sequence of operations between this layer and the underlying tablet
   // server / DocDB layer, not to the sequence of operations between the PostgreSQL layer and this
   // layer.
-  InitUnlocked(&lock);
+  Init();
 
-  RETURN_NOT_OK(SendRequestUnlocked());
+  RETURN_NOT_OK(SendRequest());
 
-  return RequestSent(waiting_for_response_);
+  return RequestSent(response_.InProgress());
 }
 
-void PgDocOp::InitUnlocked(std::unique_lock<std::mutex>* lock) {
-  CHECK(!is_canceled_);
-  if (waiting_for_response_) {
-    LOG(DFATAL) << __PRETTY_FUNCTION__
-                << " is not supposed to be called while response is in flight";
-    while (waiting_for_response_) {
-      cv_.wait(*lock);
-    }
-    CHECK(!waiting_for_response_);
-  }
+void PgDocOp::Init() {
   result_cache_.clear();
   end_of_data_ = false;
-  has_cached_data_ = false;
 }
 
 Status PgDocOp::GetResult(string *result_set) {
-  std::unique_lock<std::mutex> lock(mtx_);
-  if (is_canceled_) {
-    return STATUS(IllegalState, "Operation canceled");
-  }
+  // Check request was sent.
+  DCHECK(!result_cache_.empty() || end_of_data_ || response_.InProgress());
 
   // If the execution has error, return without reading any rows.
   RETURN_NOT_OK(exec_status_);
 
-  RETURN_NOT_OK(SendRequestIfNeededUnlocked());
-
   // Wait for response from DocDB.
-  while (!has_cached_data_ && !end_of_data_) {
-    cv_.wait(lock);
+  if (result_cache_.empty() && !end_of_data_ && response_.InProgress()) {
+    ProcessResponse(response_.GetStatus());
   }
 
   RETURN_NOT_OK(exec_status_);
 
   // Read from cache.
-  ReadFromCacheUnlocked(result_set);
-
+  ReadFromCache(result_set);
   // This will pre-fetch the next chunk of data if we've consumed all cached
   // rows.
-  RETURN_NOT_OK(SendRequestIfNeededUnlocked());
+  if (result_cache_.empty() && !end_of_data_) {
+    return SendRequest();
+  }
 
   return Status::OK();
 }
 
-void PgDocOp::WriteToCacheUnlocked(std::shared_ptr<client::YBPgsqlOp> yb_op) {
+void PgDocOp::WriteToCache(client::YBPgsqlOp* yb_op) {
   if (!yb_op->rows_data().empty()) {
     result_cache_.push_back(yb_op->rows_data());
-    has_cached_data_ = !result_cache_.empty();
   }
 }
 
-void PgDocOp::ReadFromCacheUnlocked(string *result) {
+void PgDocOp::ReadFromCache(string *result) {
   if (!result_cache_.empty()) {
-    *result = result_cache_.front();
+    *result = std::move(result_cache_.front());
     result_cache_.pop_front();
-    has_cached_data_ = !result_cache_.empty();
   }
-}
-
-Status PgDocOp::SendRequestIfNeededUnlocked() {
-  // Request more data if more execution is needed and cache is empty.
-  if (!has_cached_data_ && !end_of_data_ && !waiting_for_response_) {
-    return SendRequestUnlocked();
-  }
-  return Status::OK();
 }
 
 void PgDocOp::HandleResponseStatus(client::YBPgsqlOp* op) {
@@ -193,11 +156,8 @@ PgDocReadOp::PgDocReadOp(
       template_op_(table_desc->NewPgsqlSelect()) {
 }
 
-PgDocReadOp::~PgDocReadOp() {
-}
-
-void PgDocReadOp::InitUnlocked(std::unique_lock<std::mutex>* lock) {
-  PgDocOp::InitUnlocked(lock);
+void PgDocReadOp::Init() {
+  PgDocOp::Init();
 
   template_op_->mutable_request()->set_return_paging_state(true);
 }
@@ -297,8 +257,8 @@ void PgDocReadOp::InitializeNextOps(int num_ops) {
   }
 }
 
-Status PgDocReadOp::SendRequestUnlocked() {
-  CHECK(!waiting_for_response_);
+Status PgDocReadOp::SendRequest() {
+  CHECK(!response_.InProgress());
 
   SetRequestPrefetchLimit();
   SetRowMark();
@@ -308,30 +268,12 @@ Status PgDocReadOp::SendRequestUnlocked() {
     InitializeNextOps(FLAGS_ysql_request_limit - read_ops_.size());
   }
 
-  client::YBSessionPtr yb_session;
-  for (auto& read_op : read_ops_) {
-    auto apply_outcome = VERIFY_RESULT(pg_session_->PgApplyAsync(read_op, &read_time_));
-    SCHECK_EQ(apply_outcome.buffered, OpBuffered::kFalse,
-              IllegalState, "YSQL read operation should not be buffered");
-    yb_session = apply_outcome.yb_session; // All unrolled operations have the same session
-  }
-
-  waiting_for_response_ = true;
-  Status s = pg_session_->PgFlushAsync([self = shared_from(this)](const Status& s) {
-                                         self->ReceiveResponse(s);
-                                       }, yb_session);
-  if (!s.ok()) {
-    waiting_for_response_ = false;
-    return s;
-  }
+  response_ = VERIFY_RESULT(pg_session_->RunAsync(read_ops_, &read_time_));
+  SCHECK(response_.InProgress(), IllegalState, "YSQL read operation should not be buffered");
   return Status::OK();
 }
 
-void PgDocReadOp::ReceiveResponse(Status exec_status) {
-  std::unique_lock<std::mutex> lock(mtx_);
-  CHECK(waiting_for_response_);
-  cv_.notify_all();
-  waiting_for_response_ = false;
+void PgDocReadOp::ProcessResponse(const Status& exec_status) {
   exec_status_ = exec_status;
 
   if (exec_status.ok()) {
@@ -346,43 +288,39 @@ void PgDocReadOp::ReceiveResponse(Status exec_status) {
     return;
   }
 
-  if (!is_canceled_) {
-    // Save it to cache.
-    for (auto& read_op : read_ops_) {
-      WriteToCacheUnlocked(read_op);
-    }
-
-    // For each read_op, set up its request for the next batch of data, or remove it from the list
-    // if no data is left.
-    for (auto iter = read_ops_.begin(); iter != read_ops_.end(); /* NOOP */) {
-      auto& read_op = *iter;
-      const PgsqlResponsePB& res = read_op->response();
-      if (res.has_paging_state()) {
-        PgsqlReadRequestPB *req = read_op->mutable_request();
-        // Set up paging state for next request.
-        // A query request can be nested, and paging state belong to the innermost query which is
-        // the read operator that is operated first and feeds data to other queries.
-        // Recursive Proto Message:
-        //     PgsqlReadRequestPB { PgsqlReadRequestPB index_request; }
-        PgsqlReadRequestPB *innermost_req = req;
-        while (innermost_req->has_index_request()) {
-          innermost_req = innermost_req->mutable_index_request();
-        }
-        *innermost_req->mutable_paging_state() = res.paging_state();
-        // Parse/Analysis/Rewrite catalog version has already been checked on the first request.
-        // The docdb layer will check the target table's schema version is compatible.
-        // This allows long-running queries to continue in the presence of other DDL statements
-        // as long as they do not affect the table(s) being queried.
-        req->clear_ysql_catalog_version();
-        ++iter;
-      } else {
-        iter = read_ops_.erase(iter);
-      }
-    }
-    end_of_data_ = read_ops_.empty() && !can_produce_more_ops_;
-  } else {
-    end_of_data_ = true;
+  // Save it to cache.
+  for (auto& read_op : read_ops_) {
+    WriteToCache(read_op.get());
   }
+
+  // For each read_op, set up its request for the next batch of data, or remove it from the list
+  // if no data is left.
+  for (auto iter = read_ops_.begin(); iter != read_ops_.end(); /* NOOP */) {
+    auto& read_op = *iter;
+    const PgsqlResponsePB& res = read_op->response();
+    if (res.has_paging_state()) {
+      PgsqlReadRequestPB *req = read_op->mutable_request();
+      // Set up paging state for next request.
+      // A query request can be nested, and paging state belong to the innermost query which is
+      // the read operator that is operated first and feeds data to other queries.
+      // Recursive Proto Message:
+      //     PgsqlReadRequestPB { PgsqlReadRequestPB index_request; }
+      PgsqlReadRequestPB *innermost_req = req;
+      while (innermost_req->has_index_request()) {
+        innermost_req = innermost_req->mutable_index_request();
+      }
+      *innermost_req->mutable_paging_state() = res.paging_state();
+      // Parse/Analysis/Rewrite catalog version has already been checked on the first request.
+      // The docdb layer will check the target table's schema version is compatible.
+      // This allows long-running queries to continue in the presence of other DDL statements
+      // as long as they do not affect the table(s) being queried.
+      req->clear_ysql_catalog_version();
+      ++iter;
+    } else {
+      iter = read_ops_.erase(iter);
+    }
+  }
+  end_of_data_ = read_ops_.empty() && !can_produce_more_ops_;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -391,44 +329,26 @@ PgDocWriteOp::PgDocWriteOp(PgSession::ScopedRefPtr pg_session, client::YBPgsqlWr
     : PgDocOp(pg_session), write_op_(write_op) {
 }
 
-PgDocWriteOp::~PgDocWriteOp() {
-}
-
-Status PgDocWriteOp::SendRequestUnlocked() {
-  CHECK(!waiting_for_response_);
+Status PgDocWriteOp::SendRequest() {
+  CHECK(!response_.InProgress());
 
   // If the op is buffered, we should not flush now. Just return.
-  auto apply_outcome = VERIFY_RESULT(pg_session_->PgApplyAsync(write_op_, &read_time_));
-  if (apply_outcome.buffered == OpBuffered::kTrue) {
-    return Status::OK();
-  }
-
-  waiting_for_response_ = true;
-  Status s = pg_session_->PgFlushAsync([self = shared_from(this)](const Status& s) {
-                                         self->ReceiveResponse(s);
-                                       }, apply_outcome.yb_session);
-  if (!s.ok()) {
-    waiting_for_response_ = false;
-    return s;
-  }
-  VLOG(1) << __PRETTY_FUNCTION__ << ": Sending request for " << this;
+  response_ = VERIFY_RESULT(pg_session_->RunAsync(write_op_, &read_time_));
+  // Log non buffered request.
+  VLOG_IF(1, response_.InProgress()) << __PRETTY_FUNCTION__ << ": Sending request for " << this;
   return Status::OK();
 }
 
-void PgDocWriteOp::ReceiveResponse(Status exec_status) {
-  std::unique_lock<std::mutex> lock(mtx_);
-  CHECK(waiting_for_response_);
-  waiting_for_response_ = false;
-  cv_.notify_all();
+void PgDocWriteOp::ProcessResponse(const Status& exec_status) {
   exec_status_ = exec_status;
 
   if (exec_status.ok()) {
     HandleResponseStatus(write_op_.get());
   }
 
-  if (!is_canceled_ && exec_status_.ok()) {
+  if (exec_status_.ok()) {
     // Save it to cache.
-    WriteToCacheUnlocked(write_op_);
+    WriteToCache(write_op_.get());
     // Save the number of rows affected by the write operation.
     rows_affected_count_ = write_op_.get()->response().rows_affected_count();
   }
@@ -440,9 +360,6 @@ void PgDocWriteOp::ReceiveResponse(Status exec_status) {
 
 PgDocCompoundOp::PgDocCompoundOp(PgSession::ScopedRefPtr pg_session)
     : PgDocOp(std::move(pg_session)) {
-}
-
-PgDocCompoundOp::~PgDocCompoundOp() {
 }
 
 }  // namespace pggate

@@ -70,7 +70,7 @@ export default class CustomerProfile extends Component {
     const validationSchema = Yup.object().shape({
       name: Yup.string()
         .required('Enter name'),
-    
+
       // Regex below matches either the default value 'admin' or a generic email address
       email: Yup.string()
         .matches(
@@ -103,12 +103,14 @@ export default class CustomerProfile extends Component {
         statusUpdateIntervalMs: Yup.number()
           .typeError('Must specify a number')
           .integer(),
+
+          reportOnlyErrors: Yup.boolean(),
       }),
       callhomeLevel: Yup.string()
     });
 
-    const alertingDataProps = ['alertingEmail', 'checkIntervalMs', 'statusUpdateIntervalMs', 'sendAlertsToYb'];
-    
+    const alertingDataProps = ['alertingEmail', 'checkIntervalMs', 'statusUpdateIntervalMs', 'sendAlertsToYb', 'reportOnlyErrors'];
+
     // Filter users for userUUID set during login
     const loginUserId = localStorage.getItem('userId');
     const getCurrentUser = isNonEmptyArray(users) ? users.filter(u => u.uuid === loginUserId) : [];
@@ -129,6 +131,7 @@ export default class CustomerProfile extends Component {
           customer.data.alertingData.statusUpdateIntervalMs :
           STATUS_UPDATE_INTERVAL_MS) : '',
         sendAlertsToYb: customer.data.alertingData && customer.data.alertingData.sendAlertsToYb,
+        reportOnlyErrors: customer.data.alertingData && customer.data.alertingData.reportOnlyErrors,
       },
       password: '',
       callhomeLevel: customer.data.callhomeLevel || 'NONE',
@@ -287,6 +290,18 @@ export default class CustomerProfile extends Component {
                         />
                         <Field name="alertingData.checkIntervalMs" type="text" component={YBFormInput} label="Health check interval" placeholder="Miliseconds to check universe status"/>
                         <Field name="alertingData.statusUpdateIntervalMs" type="text" component={YBFormInput} label="Report email interval" placeholder="Miliseconds to send a status report email"/>
+                        <Field name="alertingData.reportOnlyErrors">
+                          {({field, form}) => (<YBToggle onToggle={handleChange}
+                              name="alertingData.reportOnlyErrors"
+                              input={{
+                                value: field.value,
+                                onChange: field.onChange,
+                              }}
+                              label="Only include errors in alert emails"
+                              subLabel="Whether or not to include errors in alert emails."
+                            />
+                          )}
+                        </Field>
                       </Col>
                     </Row>
                     <Row>

@@ -52,7 +52,13 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/async_rpc_tasks.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/permissions_manager.h"
+#include "yb/master/sys_catalog_initialization.h"
+#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_virtual_table.h"
@@ -69,11 +75,6 @@
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/version_tracker.h"
-#include "yb/gutil/thread_annotations.h"
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/scoped_leader_shared_lock.h"
-#include "yb/master/permissions_manager.h"
-#include "yb/master/sys_catalog_initialization.h"
 
 namespace yb {
 
@@ -633,6 +634,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   friend class SysConfigLoader;
   friend class ::yb::master::ScopedLeaderSharedLock;
   friend class PermissionsManager;
+  friend class MultiStageAlterTable;
+  friend class BackfillTable;
+  friend class BackfillTablet;
 
 #define CALL_FRIEND_TEST(...) FRIEND_TEST(__VA_ARGS__)
   CALL_FRIEND_TEST(pgwrapper::PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted));
@@ -730,7 +734,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                         std::vector<TabletInfo*>* tablets);
 
   // Helper for creating copartitioned table.
-  CHECKED_STATUS CreateCopartitionedTable(const CreateTableRequestPB req,
+  CHECKED_STATUS CreateCopartitionedTable(const CreateTableRequestPB& req,
                                           CreateTableResponsePB* resp,
                                           rpc::RpcContext* rpc,
                                           Schema schema,
@@ -884,6 +888,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   void SendCreateTabletRequests(const std::vector<TabletInfo*>& tablets);
 
   // Send the "alter table request" to all tablets of the specified table.
+  //
+  // Also, initiates the required AlterTable requests to backfill the Index.
+  // Initially the index is set to be in a INDEX_PERM_DELETE_ONLY state, then
+  // updated to INDEX_PERM_WRITE_AND_DELETE state; followed by backfilling. Once
+  // all the tablets have completed backfilling, the index will be updated
+  // to be in INDEX_PERM_READ_WRITE_AND_DELETE state.
   void SendAlterTableRequest(const scoped_refptr<TableInfo>& table);
 
   // Start the background task to send the AlterTable() RPC to the leader for this

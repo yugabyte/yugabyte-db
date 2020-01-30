@@ -267,7 +267,7 @@ class AllTypesItest : public YBTest {
 
   Status CreateTable() {
     CreateAllTypesSchema();
-    gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+    std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
 
     const YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "all-types-table");
     RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name(),

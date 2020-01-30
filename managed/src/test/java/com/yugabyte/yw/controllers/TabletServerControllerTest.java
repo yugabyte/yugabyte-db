@@ -5,7 +5,10 @@ package com.yugabyte.yw.controllers;
 import static org.junit.Assert.*;
 import static play.mvc.Http.Status.OK;
 import static org.mockito.Mockito.*;
+import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.net.HostAndPort;
@@ -27,13 +30,11 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 
-import static play.inject.Bindings.bind;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 
@@ -100,6 +101,7 @@ public class TabletServerControllerTest extends WithApplication {
     customer.save();
     Result r = tabletController.listTabletServers(customer.uuid, u1.universeUUID);
     assertEquals(200, r.status());
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -113,5 +115,6 @@ public class TabletServerControllerTest extends WithApplication {
     customer.save();
     Result r = tabletController.listTabletServers(customer.uuid, u1.universeUUID);
     assertEquals(500, r.status());
+    assertAuditEntry(0, customer.uuid);
   }
 }

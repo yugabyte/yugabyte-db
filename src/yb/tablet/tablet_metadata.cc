@@ -40,6 +40,7 @@
 #include <boost/optional.hpp>
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -171,11 +172,16 @@ Status KvStoreInfo::LoadTablesFromPB(
     auto table_info = std::make_unique<TableInfo>();
     RETURN_NOT_OK(table_info->LoadFromPB(table_pb));
     if (table_info->table_id != primary_table_id) {
-      Uuid cotable_id;
-      CHECK_OK(cotable_id.FromHexString(table_info->table_id));
-      // TODO(#79): when adding for multiple KV-stores per Raft group support - check if we need
-      // to set cotable ID.
-      table_info->schema.set_cotable_id(cotable_id);
+      if (table_pb.schema().table_properties().is_ysql_catalog_table()) {
+        Uuid cotable_id;
+        CHECK_OK(cotable_id.FromHexString(table_info->table_id));
+        // TODO(#79): when adding for multiple KV-stores per Raft group support - check if we need
+        // to set cotable ID.
+        table_info->schema.set_cotable_id(cotable_id);
+      } else {
+        auto pgtable_id = VERIFY_RESULT(GetPgsqlTableOid(table_info->table_id));
+        table_info->schema.set_pgtable_id(pgtable_id);
+      }
     }
     tables[table_info->table_id] = std::move(table_info);
   }
@@ -633,6 +639,9 @@ void RaftGroupMetadata::SetSchema(const Schema& schema,
                                                           index_map,
                                                           deleted_cols,
                                                           version));
+  VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating to Schema version " << version
+                      << " from \n" << yb::ToString(kv_store_.tables[primary_table_id_])
+                      << " to \n" << yb::ToString(new_table_info);
   kv_store_.tables[primary_table_id_].swap(new_table_info);
   if (new_table_info) {
     kv_store_.old_tables.push_back(std::move(new_table_info));
@@ -671,9 +680,14 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
                                                           schema_version,
                                                           partition_schema));
   if (table_id != primary_table_id_) {
-    Uuid cotable_id;
-    CHECK_OK(cotable_id.FromHexString(table_id));
-    new_table_info->schema.set_cotable_id(cotable_id);
+    if (schema.table_properties().is_ysql_catalog_table()) {
+      Uuid cotable_id;
+      CHECK_OK(cotable_id.FromHexString(table_id));
+      new_table_info->schema.set_cotable_id(cotable_id);
+    } else {
+      auto result = CHECK_RESULT(GetPgsqlTableOid(table_id));
+      new_table_info->schema.set_pgtable_id(result);
+    }
   }
   std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
@@ -689,6 +703,9 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
           << new_table_info->ToString() << ", old table info: " << existing_table.ToString();
     }
   }
+  VLOG_WITH_PREFIX(1) << " Updating to Schema version " << schema_version
+                      << " from \n" << yb::ToString(tables[table_id])
+                      << " to \n" << yb::ToString(new_table_info);
   tables[table_id].swap(new_table_info);
 }
 
