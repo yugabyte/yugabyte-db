@@ -49,8 +49,6 @@ Hash primary keys:
 
 - Distribute write queries linearly
 - Have slower inefficient global range scanning 
-- Need to be careful regarding [big partitions](#hash-partition-size-limit) because
- they can't be split and may become hotspots
 
 ## Multi tenant use cases
 There are many cases where data is spread across many tenants. Usually each 
