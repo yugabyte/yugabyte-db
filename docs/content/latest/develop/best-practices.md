@@ -68,6 +68,17 @@ CTE queries, joins, subqueries, extensions, etc.
 Currently, we have focused only on correctness + functionality for YSQL and are just getting started with performance, 
 while YCQL performance has been worked on quite a bit. Over time YSQL performance will be on parity with YCQL.
 
+## Multi tenant use cases
+There are many cases where data is spread across many tenants. Usually each 
+tenant is isolated with it's own data. In these cases users may be inclined to 
+create per-tenant tables/databases.
+Because each table/tablet has overhead, having a large number of them is not 
+recommended.
+Depending on the number of tenants, it may be better to have a `tenant_id` on 
+primary-keys which can be used to filter tenants at write/query time.
+This can be combined with moving large tenants to their own private tables.
+
+
 
 ## Use jsonb columns only when necessary
 `jsonb` columns are slower to read/write compared to normal columns. 
