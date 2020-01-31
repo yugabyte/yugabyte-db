@@ -439,11 +439,11 @@ class ControlScript(object):
 
             is_first_install = is_first_run and not self.is_yb_initialized()
             # Delete corrupted data dirs left from interrupting yb-master and yb-tserver startup.
-            if is_first_install and os.path.exists(self.configs.saved_data.get("data_dir")):
+            if is_first_install and os.listdir(self.configs.saved_data.get("data_dir")):
                 Output.print_and_log(
                     "Found data from failed initialization in {}. Removing...".format(
                         self.configs.saved_data.get("data_dir")))
-                shutil.rmtree(self.configs.saved_data.get("data_dir"))
+                rmcontents(self.configs.saved_data.get("data_dir"))
 
             # Create data directory.
             if not os.path.exists(self.configs.saved_data.get("data_dir")):
@@ -1864,6 +1864,17 @@ def run_process(cmd, timeout=None):
     else:
         out, err = proc.communicate()
     return out.decode('utf-8'), err.decode('utf-8'), proc.returncode
+
+def rmcontents(dirname):
+    for f in os.listdir(dirname):
+        fullpath = os.path.join(dirname, f)
+        if os.path.islink(fullpath) or os.path.isfile(fullpath):
+            os.unlink(fullpath)
+            continue
+        if os.path.isdir(fullpath):
+            shutil.rmtree(fullpath)
+            continue
+        Output.log("Unexpected type of file : [ {} ]".format(fullpath))
 
 if __name__ == '__main__':
     ControlScript().run()
