@@ -141,7 +141,7 @@ void FillRedisCommands(const scoped_refptr<MetricEntity>& metric_entity,
     BOOST_PP_CAT(METRIC_handler_latency_yb_redisserver_RedisServerService_, name)
 
 #define DEFINE_REDIS_histogram_EX(name_identifier, label_str, desc_str) \
-  METRIC_DEFINE_histogram( \
+  METRIC_DEFINE_histogram_with_percentiles( \
       server, BOOST_PP_CAT(handler_latency_yb_redisserver_RedisServerService_, name_identifier), \
       (label_str), yb::MetricUnit::kMicroseconds, \
       "Microseconds spent handling " desc_str " RPC requests", \
