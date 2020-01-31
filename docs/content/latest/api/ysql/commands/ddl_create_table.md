@@ -223,5 +223,4 @@ yugabyte=# CREATE TABLE tracking (id int PRIMARY KEY) SPLIT (INTO 10 TABLETS);
 
 - [`ALTER TABLE`](../ddl_alter_table)
 - [`CREATE TABLE AS`](../ddl_create_table_as)
-- [`CREATE TABLESPACE`](../ddl_create_tablespace)
 - [`DROP TABLE`](../ddl_drop_table)

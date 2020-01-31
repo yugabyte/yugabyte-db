@@ -58,7 +58,7 @@ Add optional keyword — has no effect.
 Add optional keyword — has no effect.
 
 - The `SERIALIZABLE` isolation level not yet supported. (This is currently in progress).
-- Currently YugabyteDB will always use the snapshot isolation level internally. For more information, see [Isolation levels](../../../architecture/transactions/isolation-levels/).
+- Currently YugabyteDB will always use the snapshot isolation level internally. For more information, see [Transaction isolation levels](../../../../architecture/transactions/isolation-levels/).
 
 ## Examples
 
@@ -78,10 +78,10 @@ yugabyte=# BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 yugabyte=# INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (1, 3.0, 4, 'b');
 ```
 
-Start a new shell  with `ysqlsh` and begin another transaction to insert some more rows.
+Open the YSQL shell (`ysqlsh`) and begin another transaction to insert some more rows.
 
 ```postgresql
-yugabyte=# BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ; 
+yugabyte=# BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 ```
 
 ```postgresql
@@ -90,7 +90,7 @@ yugabyte=# INSERT INTO sample(k1, k2, v1, v2) VALUES (2, 2.0, 3, 'a'), (2, 3.0, 
 
 In each shell, check the only the rows from the current transaction are visible.
 
-1st shell.
+First shell.
 
 ```postgresql
 yugabyte=# SELECT * FROM sample; -- run in first shell
@@ -103,7 +103,8 @@ yugabyte=# SELECT * FROM sample; -- run in first shell
   1 |  3 |  4 | b
 (2 rows)
 ```
-2nd shell
+
+Second shell.
 
 ```postgresql
 yugabyte=# SELECT * FROM sample; -- run in second shell
@@ -129,7 +130,7 @@ Abort the current transaction (from the first shell).
 yugabyte=# ABORT TRANSACTION; -- run second shell.
 ```
 
-In each shell check that only the rows from the committed transaction are visible.
+In each shell, check that only the rows from the committed transaction are visible.
 
 ```postgresql
 yugabyte=# SELECT * FROM sample; -- run in first shell.

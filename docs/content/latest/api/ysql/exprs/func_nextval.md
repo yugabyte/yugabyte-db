@@ -98,8 +98,7 @@ nextval
 
 ## See also
 
-[`CREATE SEQUENCE`](../create_sequence)
-[`DROP SEQUENCE`](../drop_sequence)
-[`currval()`](../currval_sequence)
-[`lastval()`](../lastval_sequence)
-[Other YSQL Statements](..)
+- [`CREATE SEQUENCE`](../../commands/ddl_create_sequence)
+- [`DROP SEQUENCE`](../../commands/ddl_drop_sequence)
+- [`currval()`](../func_currval)
+- [`lastval()`](../func_lastval)

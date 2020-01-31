@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The transaction statement block makes changes to multiple rows in one or more tables in a [distributed ACID transaction](../../explore/transactions).
+The transaction statement block makes changes to multiple rows in one or more tables in a [distributed ACID transaction](../../../architecture/transactions/distributed-txns).
 
 ## Syntax
 

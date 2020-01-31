@@ -64,10 +64,9 @@ cqlsh:example> ALTER ROLE finance with PASSWORD = 'jsfp9ajhufans2' AND SUPERUSER
 
 ## See also
 
-[`CREATE ROLE`](../ddl_create_role)
-[`DROP ROLE`](../ddl_drop_role)
-[`GRANT ROLE`](../ddl_grant_role)
-[`REVOKE ROLE`](../ddl_revoke_role)
-[`GRANT PERMISSION`](../ddl_grant_permission)
-[`REVOKE PERMISSION`](../ddl_revoke_permission)
-[Other CQL Statements](..)
+- [`CREATE ROLE`](../ddl_create_role)
+- [`DROP ROLE`](../ddl_drop_role)
+- [`GRANT ROLE`](../ddl_grant_role)
+- [`REVOKE ROLE`](../ddl_revoke_role)
+- [`GRANT PERMISSION`](../ddl_grant_permission)
+- [`REVOKE PERMISSION`](../ddl_revoke_permission)

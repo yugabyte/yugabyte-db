@@ -99,7 +99,7 @@ Verify by running the following.
 $ curl -s http://<any-master-ip>:7000/cluster-config
 ```
 
-And confirm that the output looks similar to what is shown below with [`--min_num_replicas`](../../../reference/configuration/yb-tserver/#min-num-replicas) set to `1` for each AZ.
+And confirm that the output looks similar to what is shown below with [`--min_num_replicas`](../../../../reference/configuration/yb-tserver/#min-num-replicas) set to `1` for each AZ.
 
 ```
 replication_info {
@@ -135,4 +135,4 @@ replication_info {
 
 ## 5. Verify deployment
 
-Use the [ysqlsh](../../../../admin/ysqlsh/) (for YSQL API) or [cqlsh](../../../../admin/cqlsh/) (for YCQL API) shells to test connectivity to the cluster.
+Use the [ysqlsh](../../../admin/ysqlsh/) (for YSQL API) or [cqlsh](../../../admin/cqlsh/) (for YCQL API) shells to test connectivity to the cluster.
