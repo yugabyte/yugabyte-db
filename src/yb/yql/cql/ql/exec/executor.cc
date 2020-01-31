@@ -519,6 +519,14 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
     table_creator->is_unique_index(index_node->is_unique());
   }
 
+  // Clean-up table cache BEFORE op (the cache is used by other processor threads).
+  ql_env_->RemoveCachedTableDesc(table_name);
+  if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
+    const YBTableName indexed_table_name =
+        static_cast<const PTCreateIndex*>(tnode)->indexed_table_name();
+    ql_env_->RemoveCachedTableDesc(indexed_table_name);
+  }
+
   s = table_creator->Create();
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
@@ -539,12 +547,17 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
     return exec_context_->Error(tnode->table_name(), s, error_code);
   }
 
+  // Clean-up table cache AFTER op (the cache is used by other processor threads).
+  ql_env_->RemoveCachedTableDesc(table_name);
+
   if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
     const YBTableName indexed_table_name =
         static_cast<const PTCreateIndex*>(tnode)->indexed_table_name();
+    // Clean-up table cache AFTER op (the cache is used by other processor threads).
+    ql_env_->RemoveCachedTableDesc(indexed_table_name);
+
     result_ = std::make_shared<SchemaChangeResult>(
         "UPDATED", "TABLE", indexed_table_name.namespace_name(), indexed_table_name.table_name());
-    ql_env_->RemoveCachedTableDesc(indexed_table_name);
   } else {
     result_ = std::make_shared<SchemaChangeResult>(
         "CREATED", "TABLE", table_name.namespace_name(), table_name.table_name());
@@ -601,6 +614,9 @@ Status Executor::ExecPTNode(const PTAlterTable *tnode) {
     table_alterer->SetTableProperties(table_properties);
   }
 
+  // Clean-up table cache BEFORE op (the cache is used by other processor threads).
+  ql_env_->RemoveCachedTableDesc(table_name);
+
   Status s = table_alterer->Alter();
   if (PREDICT_FALSE(!s.ok())) {
     return exec_context_->Error(tnode, s, ErrorCode::EXEC_ERROR);
@@ -608,6 +624,8 @@ Status Executor::ExecPTNode(const PTAlterTable *tnode) {
 
   result_ = std::make_shared<SchemaChangeResult>(
       "UPDATED", "TABLE", table_name.namespace_name(), table_name.table_name());
+
+  // Clean-up table cache AFTER op (the cache is used by other processor threads).
   ql_env_->RemoveCachedTableDesc(table_name);
   return Status::OK();
 }
@@ -622,10 +640,15 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
     case OBJECT_TABLE: {
       // Drop the table.
       const YBTableName table_name = tnode->yb_table_name();
+      // Clean-up table cache BEFORE op (the cache is used by other processor threads).
+      ql_env_->RemoveCachedTableDesc(table_name);
+
       s = ql_env_->DeleteTable(table_name);
       error_not_found = ErrorCode::OBJECT_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>(
           "DROPPED", "TABLE", table_name.namespace_name(), table_name.table_name());
+
+      // Clean-up table cache AFTER op (the cache is used by other processor threads).
       ql_env_->RemoveCachedTableDesc(table_name);
       break;
     }
@@ -633,11 +656,17 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
     case OBJECT_INDEX: {
       // Drop the index.
       const YBTableName table_name = tnode->yb_table_name();
+      // Clean-up table cache BEFORE op (the cache is used by other processor threads).
+      ql_env_->RemoveCachedTableDesc(table_name);
+
       YBTableName indexed_table_name;
       s = ql_env_->DeleteIndexTable(table_name, &indexed_table_name);
       error_not_found = ErrorCode::OBJECT_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>(
           "UPDATED", "TABLE", indexed_table_name.namespace_name(), indexed_table_name.table_name());
+
+      // Clean-up table cache AFTER op (the cache is used by other processor threads).
+      ql_env_->RemoveCachedTableDesc(table_name);
       ql_env_->RemoveCachedTableDesc(indexed_table_name);
       break;
     }

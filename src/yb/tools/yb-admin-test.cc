@@ -38,6 +38,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/table_creator.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
@@ -61,6 +62,10 @@ namespace tools {
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBTableName;
+using client::YBSchema;
+using client::YBSchemaBuilder;
+using client::YBTableCreator;
+using client::YBTableType;
 using std::shared_ptr;
 using std::vector;
 using itest::TabletServerMap;

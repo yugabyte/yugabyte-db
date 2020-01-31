@@ -232,17 +232,26 @@ def get_openssl_dir():
     """
     Returns the custom OpenSSL installation directory to use or None.
     """
-    if not is_mac():
-        return
-    custom_homebrew_dir = os.getenv('YB_CUSTOM_HOMEBREW_DIR')
-    if custom_homebrew_dir:
-        opt_path = os.path.join(custom_homebrew_dir, 'opt')
+    if is_mac():
+        custom_homebrew_dir = os.getenv('YB_CUSTOM_HOMEBREW_DIR')
+        if custom_homebrew_dir:
+            opt_path = os.path.join(custom_homebrew_dir, 'opt')
+        else:
+            opt_path = '/usr/local/opt'
+        openssl_dir = os.path.join(opt_path, 'openssl')
+        if not os.path.exists(openssl_dir):
+            raise IOError("Directory does not exist: " + openssl_dir)
+        return openssl_dir
     else:
-        opt_path = '/usr/local/opt'
-    openssl_dir = os.path.join(opt_path, 'openssl')
-    if not os.path.exists(openssl_dir):
-        raise IOError("Directory does not exist: " + openssl_dir)
-    return openssl_dir
+        linuxbrew_dir = os.getenv('YB_LINUXBREW_DIR')
+        if linuxbrew_dir:
+            opt_path = os.path.join(linuxbrew_dir, 'opt')
+        else:
+            opt_path = '/usr/local/opt'
+        openssl_dir = os.path.join(opt_path, 'openssl')
+        if not os.path.exists(openssl_dir):
+            raise IOError("Directory does not exist: " + openssl_dir)
+        return openssl_dir
 
 
 def get_openssl_related_cmake_args():
@@ -256,6 +265,14 @@ def get_openssl_related_cmake_args():
         if os.getenv('YB_CUSTOM_HOMEBREW_DIR'):
             openssl_crypto_library = os.path.join(openssl_dir, 'lib', 'libcrypto.dylib')
             openssl_ssl_library = os.path.join(openssl_dir, 'lib', 'libssl.dylib')
+            openssl_options += [
+                '-DOPENSSL_CRYPTO_LIBRARY=' + openssl_crypto_library,
+                '-DOPENSSL_SSL_LIBRARY=' + openssl_ssl_library,
+                '-DOPENSSL_LIBRARIES=%s;%s' % (openssl_crypto_library, openssl_ssl_library)
+            ]
+        if os.getenv('YB_LINUXBREW_DIR'):
+            openssl_crypto_library = os.path.join(openssl_dir, 'lib', 'libcrypto.so')
+            openssl_ssl_library = os.path.join(openssl_dir, 'lib', 'libssl.so')
             openssl_options += [
                 '-DOPENSSL_CRYPTO_LIBRARY=' + openssl_crypto_library,
                 '-DOPENSSL_SSL_LIBRARY=' + openssl_ssl_library,

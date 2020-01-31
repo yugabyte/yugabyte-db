@@ -73,6 +73,7 @@ namespace master {
 using std::string;
 using std::vector;
 using std::shared_ptr;
+using std::ostringstream;
 using consensus::RaftPeerPB;
 using rpc::RpcContext;
 
@@ -556,7 +557,17 @@ void MasterServiceImpl::DumpState(
     return;
   }
 
-  server_->catalog_manager()->DumpState(&LOG(INFO), req->on_disk());
+  const string role = (req->has_peers_also() && req->peers_also() ? "Leader" : "Follower");
+  const string title = role + " Master " + server_->instance_pb().permanent_uuid();
+
+  if (req->return_dump_as_string()) {
+    ostringstream ss;
+    server_->catalog_manager()->DumpState(&ss, req->on_disk());
+    resp->set_dump(title + ":\n" + ss.str());
+  } else {
+    LOG(INFO) << title;
+    server_->catalog_manager()->DumpState(&LOG(INFO), req->on_disk());
+  }
 
   if (req->has_peers_also() && req->peers_also()) {
     std::vector<RaftPeerPB> masters_raft;
@@ -585,7 +596,7 @@ void MasterServiceImpl::DumpState(
 
     masters_raft.erase(it);
 
-    s = server_->catalog_manager()->PeerStateDump(masters_raft, req->on_disk());
+    s = server_->catalog_manager()->PeerStateDump(masters_raft, req, resp);
     CheckRespErrorOrSetUnknown(s, resp);
   }
 

@@ -137,7 +137,7 @@ class MetadataCowWrapper {
 };
 
 // The data related to a tablet which is persisted on disk.
-// This portion of TableInfo is managed via CowObject.
+// This portion of TabletInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
 struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntry::TABLET> {
   bool is_running() const {

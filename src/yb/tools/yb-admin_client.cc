@@ -333,12 +333,23 @@ Status ClusterAdminClient::GetMasterLeaderInfo(PeerId* leader_uuid) {
   return Status::OK();
 }
 
-Status ClusterAdminClient::DumpMasterState() {
+Status ClusterAdminClient::DumpMasterState(bool to_console) {
   CHECK(initted_);
   master::DumpMasterStateRequestPB req;
   req.set_peers_also(true);
   req.set_on_disk(true);
-  return ResultToStatus(InvokeRpc(&MasterServiceProxy::DumpState, master_proxy_.get(), req));
+  req.set_return_dump_as_string(to_console);
+
+  const auto resp = VERIFY_RESULT(InvokeRpc(
+      &MasterServiceProxy::DumpState, master_proxy_.get(), req));
+
+  if (to_console) {
+    cout << resp.dump() << endl;
+  } else {
+    cout << "Master state dump has been completed and saved into "
+            "the master respective log files." << endl;
+  }
+  return Status::OK();
 }
 
 Status ClusterAdminClient::GetLoadMoveCompletion() {

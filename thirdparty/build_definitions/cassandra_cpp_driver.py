@@ -36,6 +36,7 @@ class CassandraCppDriverDependency(Dependency):
             cxx_flags = builder.compiler_flags + builder.cxx_flags + builder.ld_flags
             builder.add_checked_flag(cxx_flags, '-Wno-error=implicit-fallthrough')
             builder.add_checked_flag(cxx_flags, '-Wno-error=class-memaccess')
+            builder.add_checked_flag(cxx_flags, '-Wno-error=pedantic')
 
         builder.build_with_cmake(
                 self,

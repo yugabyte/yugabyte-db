@@ -562,9 +562,12 @@ Status YBClient::Data::DeleteTable(YBClient* client,
   const Status s = SyncLeaderMasterRpc<DeleteTableRequestPB, DeleteTableResponsePB>(
       deadline, client, req, &resp,
       &attempts, "DeleteTable", &MasterServiceProxy::DeleteTable);
-  RETURN_NOT_OK(s);
 
+  // Handle special cases based on resp.error().
   if (resp.has_error()) {
+    LOG_IF(DFATAL, s.ok()) << "Expecting error status if response has error: " <<
+        resp.error().code() << " Status: " << resp.error().status().ShortDebugString();
+
     if (resp.error().code() == MasterErrorPB::OBJECT_NOT_FOUND && attempts > 1) {
       // A prior attempt to delete the table has succeeded, but
       // appeared as a failure to the client due to, e.g., an I/O or
@@ -573,6 +576,9 @@ Status YBClient::Data::DeleteTable(YBClient* client,
     } else {
       return StatusFromPB(resp.error().status());
     }
+  } else {
+    // Check the status only if the response has no error.
+    RETURN_NOT_OK(s);
   }
 
   // Spin until the table is fully deleted, if requested.

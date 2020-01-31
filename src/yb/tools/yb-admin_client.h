@@ -96,7 +96,7 @@ class ClusterAdminClient {
       int16 peer_port,
       bool use_hostport);
 
-  CHECKED_STATUS DumpMasterState();
+  CHECKED_STATUS DumpMasterState(bool to_console);
 
   // List all the tables.
   CHECKED_STATUS ListTables(bool include_db_type);

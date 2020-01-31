@@ -374,9 +374,18 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "dump_masters_state", "",
-      [client](const CLIArguments&) -> Status {
-        RETURN_NOT_OK_PREPEND(client->DumpMasterState(),
+      "dump_masters_state", " [console]",
+      [client](const CLIArguments& args) -> Status {
+        bool to_console = false;
+        if (args.size() > 2) {
+          const string output_type = args[2];
+          if (output_type == "console") {
+            to_console = true;
+          } else {
+            return ClusterAdminCli::kInvalidArguments;
+          }
+        }
+        RETURN_NOT_OK_PREPEND(client->DumpMasterState(to_console),
                               "Unable to dump master state");
         return Status::OK();
       });

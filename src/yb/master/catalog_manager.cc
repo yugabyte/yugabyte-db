@@ -175,6 +175,10 @@ DEFINE_bool(catalog_manager_wait_for_new_tablets_to_elect_leader, true,
             "election.");
 TAG_FLAG(catalog_manager_wait_for_new_tablets_to_elect_leader, hidden);
 
+DEFINE_int32(catalog_manager_inject_latency_in_delete_table_ms, 0,
+             "Number of milliseconds that the master will sleep in DeleteTable.");
+TAG_FLAG(catalog_manager_inject_latency_in_delete_table_ms, hidden);
+
 DEFINE_int32(replication_factor, 3,
              "Default number of replicas for tables that do not have the num_replicas set.");
 TAG_FLAG(replication_factor, advanced);
@@ -1372,9 +1376,11 @@ Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& rep
 }
 
 Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
-                                           const IndexInfoPB& index_info) {
+                                           const IndexInfoPB& index_info,
+                                           CreateTableResponsePB* resp) {
   TRACE("Locking indexed table");
-  auto l = indexed_table->LockForWrite();
+  auto l = DCHECK_NOTNULL(indexed_table)->LockForWrite();
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
 
   // Add index info to indexed table and increment schema version.
   l->mutable_data()->pb.add_indexes()->CopyFrom(index_info);
@@ -1771,6 +1777,21 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
   NamespaceId namespace_id = ns->id();
 
+  // For index table, find the table info
+  scoped_refptr<TableInfo> indexed_table;
+  if (PROTO_IS_INDEX(req)) {
+    TRACE("Looking up indexed table");
+    indexed_table = GetTableInfo(req.indexed_table_id());
+    if (indexed_table == nullptr) {
+      return STATUS_SUBSTITUTE(
+            NotFound, "The indexed table $0 does not exist", req.indexed_table_id());
+    }
+
+    TRACE("Locking indexed table");
+    auto l_indexed_tbl = indexed_table->LockForRead();
+    RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l_indexed_tbl.get(), resp));
+  }
+
   // Validate schema.
   Schema client_schema;
   RETURN_NOT_OK(SchemaFromPB(req.schema(), &client_schema));
@@ -1866,17 +1887,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   // For index table, populate the index info.
-  scoped_refptr<TableInfo> indexed_table;
   IndexInfoPB index_info;
 
   if (req.has_index_info()) {
     // Current message format.
-    TRACE("Looking up indexed table");
     index_info.CopyFrom(req.index_info());
-    indexed_table = GetTableInfo(index_info.indexed_table_id());
-    if (indexed_table == nullptr) {
-      return STATUS(NotFound, "The indexed table does not exist");
-    }
 
     // Assign column-ids that have just been computed and assigned to "index_info".
     if (!is_pg_table) {
@@ -1889,11 +1904,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   } else if (req.has_indexed_table_id()) {
     // Old client message format when rolling upgrade (Not having "index_info").
-    TRACE("Looking up indexed table");
-    indexed_table = GetTableInfo(req.indexed_table_id());
-    if (indexed_table == nullptr) {
-      return STATUS(NotFound, "The indexed table does not exist");
-    }
     IndexInfoBuilder index_info_builder(&index_info);
     index_info_builder.ApplyProperties(req.indexed_table_id(),
         req.is_local_index(), req.is_unique_index());
@@ -1976,7 +1986,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // For index table, insert index info in the indexed table.
   if ((req.has_index_info() || req.has_indexed_table_id()) && !is_pg_table) {
-    s = AddIndexInfoToTable(indexed_table, index_info);
+    s = AddIndexInfoToTable(indexed_table, index_info, resp);
     if (PREDICT_FALSE(!s.ok())) {
       return AbortTableCreation(table.get(), tablets,
                                 s.CloneAndPrepend(
@@ -2723,6 +2733,12 @@ Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
     table_locks[i]->Commit();
   }
 
+  if (PREDICT_FALSE(FLAGS_catalog_manager_inject_latency_in_delete_table_ms > 0)) {
+    LOG(INFO) << "Sleeping in CatalogManager::DeleteTable for " <<
+        FLAGS_catalog_manager_inject_latency_in_delete_table_ms << " ms";
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_catalog_manager_inject_latency_in_delete_table_ms));
+  }
+
   for (int i = 0; i < tables.size(); i++) {
     // Send a DeleteTablet() request to each tablet replica in the table.
     DeleteTabletsAndSendRequests(tables[i]);
@@ -2805,6 +2821,17 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
     return CheckIfNoLongerLeaderAndSetupError(s, resp);
   }
 
+  // Update the internal table maps.
+  // Exclude Postgres tables which are not in the name map.
+  if (l->data().table_type() != PGSQL_TABLE_TYPE) {
+    TRACE("Removing from by-name map");
+    std::lock_guard<LockType> l_map(lock_);
+    if (table_names_map_.erase({l->data().namespace_id(), l->data().name()}) != 1) {
+      PANIC_RPC(rpc, "Could not remove table from map, name=" + table->ToString());
+    }
+    table_ids_map_.Commit();
+  }
+
   // For regular (indexed) table, delete all its index tables if any. Else for index table, delete
   // index info from the indexed table.
   if (!is_index_table) {
@@ -2826,19 +2853,6 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
   }
 
   table->AbortTasks();
-
-  // Update the internal table maps.
-  {
-    // Exclude Postgres tables which are not in the name map.
-    if (l->data().table_type() != PGSQL_TABLE_TYPE) {
-      TRACE("Removing from by-name map");
-      std::lock_guard<LockType> l_map(lock_);
-      if (table_names_map_.erase({l->data().namespace_id(), l->data().name()}) != 1) {
-        PANIC_RPC(rpc, "Could not remove table from map, name=" + table->ToString());
-      }
-      table_ids_map_.Commit();
-    }
-  }
 
   // For regular (indexed) table, insert table info and lock in the front of the list. Else for
   // index table, append them to the end. We do so so that we will commit and delete the indexed
@@ -5866,7 +5880,7 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
     tablets_copy = *tablet_map_;
   }
 
-  *out << "Dumping Current state of master.\nNamespaces:\n";
+  *out << "Dumping current state of master.\nNamespaces:\n";
   for (const NamespaceInfoMap::value_type& e : namespace_ids_copy) {
     NamespaceInfo* t = e.second.get();
     auto l = t->LockForRead();
@@ -5946,33 +5960,42 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   }
 }
 
-Status CatalogManager::PeerStateDump(const vector<RaftPeerPB>& peers, bool on_disk) {
+Status CatalogManager::PeerStateDump(const vector<RaftPeerPB>& peers,
+                                     const DumpMasterStateRequestPB* req,
+                                     DumpMasterStateResponsePB* resp) {
   std::unique_ptr<MasterServiceProxy> peer_proxy;
   Endpoint sockaddr;
   MonoTime timeout = MonoTime::Now();
-  DumpMasterStateRequestPB req;
+  DumpMasterStateRequestPB peer_req;
   rpc::RpcController rpc;
 
   timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_master_ts_rpc_timeout_ms));
   rpc.set_deadline(timeout);
-  req.set_on_disk(on_disk);
+  peer_req.set_on_disk(req->on_disk());
+  peer_req.set_return_dump_as_string(req->return_dump_as_string());
+  string dump;
 
   for (const RaftPeerPB& peer : peers) {
     HostPort hostport = HostPortFromPB(DesiredHostPort(peer, master_->MakeCloudInfoPB()));
     peer_proxy.reset(new MasterServiceProxy(&master_->proxy_cache(), hostport));
 
-    DumpMasterStateResponsePB resp;
+    DumpMasterStateResponsePB peer_resp;
     rpc.Reset();
 
-    peer_proxy->DumpState(req, &resp, &rpc);
+    peer_proxy->DumpState(peer_req, &peer_resp, &rpc);
 
-    if (resp.has_error()) {
-      LOG(WARNING) << "Hit err " << resp.ShortDebugString() << " during peer "
+    if (peer_resp.has_error()) {
+      LOG(WARNING) << "Hit err " << peer_resp.ShortDebugString() << " during peer "
         << peer.ShortDebugString() << " state dump.";
-      return StatusFromPB(resp.error().status());
+      return StatusFromPB(peer_resp.error().status());
+    } else if (req->return_dump_as_string()) {
+      dump += peer_resp.dump();
     }
   }
 
+  if (req->return_dump_as_string()) {
+    resp->set_dump(resp->dump() + dump);
+  }
   return Status::OK();
 }
 

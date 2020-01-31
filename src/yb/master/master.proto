@@ -1103,10 +1103,15 @@ message DumpMasterStateRequestPB {
   // If set to true, the leader sends request to all current peers to dump their state too.
   // The on_disk is sent along to peers too.
   optional bool peers_also = 2 [default = false];
+
+  // If set to true, the dump will be returned back as a string in the response.
+  // Else the dump will be saved into the master respective log files.
+  optional bool return_dump_as_string = 3 [default = false];
 }
 
 message DumpMasterStateResponsePB {
   optional MasterErrorPB error = 1;
+  optional string dump = 2;
 }
 
 message ChangeLoadBalancerStateRequestPB {
