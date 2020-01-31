@@ -100,20 +100,7 @@ yb-ts-cli [ --server_address=<host>:<port> ] dump_tablet <tablet_id>
 
 ##### list_tablets
 
-Lists the tablets on the specified tablet server, displaying the following information:
-
-- Tablet id
-- State
-- Table name
-- Partition
-- Schema
-- properties
-  - lumn_name
-  - Tablet id
-  - State
-  - Table name
-  - Partition
-  - Schema
+Lists the tablets on the specified tablet server, displaying the following properties: column name, tablet ID, state, table name, partition, and schema.
 
 **Syntax**
 
