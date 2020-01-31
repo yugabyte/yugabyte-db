@@ -820,6 +820,8 @@ static bool IsTransactionalDdlStatement(NodeTag node_tag) {
 		// T_Grant...
 		case T_GrantStmt:
 		case T_GrantRoleStmt:
+		// T_Index...
+		case T_IndexStmt:
 			return true;
 		default:
 			return false;
