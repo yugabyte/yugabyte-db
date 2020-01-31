@@ -81,7 +81,7 @@ If you give YugabyteDB sufficient memory all its data will stay in memory.
       - Use the `noatime` setting when mounting the data drives.
 
 YugabyteDB does not require any form of RAID, it runs optimally on a JBOD setup (just a bunch of disks). 
-It can also leverage multiple disks per node, and has been tested beyond 10TB of storage per node.
+It can also leverage multiple disks per node and has been tested beyond 10 TB of storage per node.
 
 Write-heavy applications usually require more disk IOPS (especially if the size of each record is larger), 
 therefore in this case the total IOPS that a disk can support matters. 
