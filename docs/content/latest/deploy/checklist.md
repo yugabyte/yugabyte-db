@@ -54,7 +54,7 @@ Allocate adequate CPU and RAM. YugabyteDB has good defaults for running on a wid
   - Add more CPU (compared to adding more RAM) to improve performance.
 
 For typical OLTP workloads YugabyteDB, performance  improves with more aggregate CPU in the cluster. 
-You can achieve this by picking larger nodes, or adding more nodes to a cluster. 
+You can achieve this by using larger nodes or adding more nodes to a cluster. 
 For high performance use cases, Yugabyte recommend nodes with at least 8 CPUs (preferably 16).
 If you do not have enough CPUs, this will show up as higher latencies and eventually dropped requests.
 
@@ -80,8 +80,8 @@ If you give YugabyteDB sufficient memory data accessed and present in block cach
       - XFS is the recommended filesystem.
       - Use the `noatime` setting when mounting the data drives.
 
-YugabyteDB does not require any form of RAID, it runs optimally on a JBOD setup (just a bunch of disks). 
-It can also leverage multiple disks per node, and has been tested beyond 10TB of storage per node.
+YugabyteDB does not require any form of RAID, but runs optimally on a JBOD (just a bunch of disks) setup. 
+It can also leverage multiple disks per node and has been tested beyond 10 TB of storage per node.
 
 Write-heavy applications usually require more disk IOPS (especially if the size of each record is larger), 
 therefore in this case the total IOPS that a disk can support matters. 
