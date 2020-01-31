@@ -13,13 +13,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Follow the steps below to connect a YugabyteDB cluster to use the Change Data Capture (CDC) API to send data changes to Apache Kafka. To learn about the change data capture (CDC) architecture, see [Change data capture (CDC)](../architecture/cdc-architecture).
+Follow the steps below to connect a YugabyteDB cluster to use the Change Data Capture (CDC) API to send data changes to Apache Kafka. To learn about the change data capture (CDC) architecture, see [Change data capture (CDC)](../../../architecture/cdc-architecture).
 
 ## Prerequisites
 
 ### YugabyteDB
 
-Create a YugabyteDB cluster using the steps outlined in [Manual Deployment](../manual-deployment/).
+Create a YugabyteDB cluster using the steps outlined in [Manual Deployment](../../manual-deployment/).
 
 ### Java
 

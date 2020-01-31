@@ -22,7 +22,7 @@ showAsideToc: true
 
 {{< /tip >}}
 
-For details on the two data center (2DC) deployment architecture and supported replication scenarios, see [Two data center (2DC) deployments](../../architecture/2dc-deployments).
+For details on the two data center (2DC) deployment architecture and supported replication scenarios, see [Two data center (2DC) deployments](../../../architecture/2dc-deployments).
 
 Follow the steps below to set up a 2DC deployment using either unidirectional (aka master-follower) or bidirectional (aka multi-master) replication between the data centers.
 
