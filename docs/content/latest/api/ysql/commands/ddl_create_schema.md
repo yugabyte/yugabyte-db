@@ -92,5 +92,5 @@ yugabyte=# CREATE SCHEMA branch
 - [`CREATE TABLE`](../ddl_create_table)
 - [`CREATE VIEW`](../ddl_create_view)
 - [`CREATE INDEX`](../ddl_create_index)
-- [`CREATE SEQUENCE`](../ddl_create_seq)
+- [`CREATE SEQUENCE`](../ddl_create_sequence)
 - [`GRANT`](../dcl_grant)

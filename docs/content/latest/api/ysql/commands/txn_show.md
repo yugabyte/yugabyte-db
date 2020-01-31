@@ -56,4 +56,4 @@ The `TRANSACTION ISOLATION LEVEL` returned is either `SERIALIZABLE` or `REPEATAB
 ## See also
 
 - [`SHOW TRANSACTION`](../txn_show)
-- [`Transaction isolation levels`](../../architecture/transactions/isolation-levels)
+- [`Transaction isolation levels`](../../../../architecture/transactions/isolation-levels)
