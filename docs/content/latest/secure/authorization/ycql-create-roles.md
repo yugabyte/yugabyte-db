@@ -27,7 +27,7 @@ As an example, you can grant the `engineering` role we created above to the user
 cassandra@cqlsh> GRANT engineering TO john;
 ```
 
-Read more about [granting roles](../../api/ycql/ddl_grant_role/).
+Read more about [granting roles](../../../api/ycql/ddl_grant_role/).
 
 ## 3. Create a hierarchy of roles, if needed
 
@@ -77,7 +77,7 @@ In the table above, note the following:
 
 ## 5. Revoke roles
 
-Roles can be revoked using the [REVOKE ROLE](../../api/ycql/ddl_revoke_role/) command.
+Roles can be revoked using the [REVOKE ROLE](../../../api/ycql/ddl_revoke_role/) command.
 
 In the above example, we can revoke the `engineering` role from the user `john` as follows:
 
@@ -104,7 +104,7 @@ cassandra@cqlsh> SELECT role, can_login, is_superuser, member_of FROM system_aut
 
 ## 6. Drop roles
 
-Roles can be dropped with the [DROP ROLE](../../api/ycql/ddl_drop_role/) command.
+Roles can be dropped with the [DROP ROLE](../../../api/ycql/ddl_drop_role/) command.
 
 In the above example, we can drop the `developer` role with the following command:
 
