@@ -100,7 +100,7 @@ DCL statements protect and prevent the database from corruptions.
 | [`REASSIGN OWNED`](commands/dcl_reassign_owned) | Reassign owned objects |
 | [`REVOKE`](commands/dcl_revoke) | Revoke permissions |
 | [`SET ROLE`](commands/dcl_set_role) | Set a role |
-| [`SET SESSION AUTHORIZATION`](commands/set_session_authorization) | Set session authorization |
+| [`SET SESSION AUTHORIZATION`](commands/dcl_set_session_authorization) | Set session authorization |
 
 ## Transaction control language (TCL)
 

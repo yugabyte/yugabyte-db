@@ -41,14 +41,14 @@ showAsideToc: true
 
 [Rook](https://rook.io) is an open source, cloud-native storage orchestrator for Kubernetes, providing the platform, framework, and support that can turn YugabyteDB clusters into self-managing, self-scaling, and self-healing storage services. Rook automates storage-layer tasks, including deployment, bootstrapping, configuration, provisioning, scaling, upgrading, migration, disaster recovery, monitoring, and resource management.
 
-The [Rook YugabyteDB operator](https://rook.io/docs/rook/v1.1/yugabytedb.html) is a custom controller that uses Custom Resource Definition (CRD) to extend the Kubernetes API and automate deploying, scaling, and managing YugabyteDB clusters.  Based on the  _desired state_ that you specified in the CRD, the Rook operator observes (watching for changes in state and health), analyzes (comparing current to desired state), and acts (applying changes to the cluster) to maintain the desired state. For details, see [YugabyteDB Cluster CRD](https://rook.io/docs/rook/v1.1/yugabytedb-cluster-crd.html)
+The [Rook YugabyteDB operator](https://rook.io/docs/rook/v1.1/yugabytedb.html) is a custom controller that uses Custom Resource Definition (CRD) to extend the Kubernetes API and automate deploying, scaling, and managing YugabyteDB clusters.  Based on the  _desired state_ that you specified in the CRD, the Rook operator observes (watching for changes in state and health), analyzes (comparing current to desired state), and acts (applying changes to the cluster) to maintain the desired state. For details, see [YugabyteDB Cluster CRD](https://rook.io/docs/rook/v1.1/yugabytedb-cluster-crd.html).
 
 ## Before you begin
 
 A YugabyteDB cluster installed in a Kubernetes environment is required.
 
 - To create a local cluster in Kubernetes for development and learning, see [Quick start](https://docs.yugabyte.com/latest/quick-start/).
-- To deploy a production cluster, see the YugabyteDB documentation on [deploying in  Kubernetes](../kubernetes/).
+- To deploy a production cluster, see the YugabyteDB documentation on [deploying in  Kubernetes](../../../kubernetes/).
 
 Verify that your Kubernetes cluster is ready for Rook by reviewing the [Kubernetes cluster prerequisites for using the Rook operator](https://github.com/rook/rook/blob/master/Documentation/k8s-pre-reqs.md).
 
@@ -122,8 +122,8 @@ kubectl exec -it yb-tserver-rook-yugabytedb-0 /home/yugabyte/bin/ysqlsh -- -h yb
 
 For details on the YSQL API, see:
 
-- [Explore YSQL](../../../quick-start/explore-ysql/#kubernetes)
-- [YSQL Reference](../../../api/ysql/) 
+- [Explore YSQL](../../../../quick-start/explore-ysql/#kubernetes)
+- [YSQL Reference](../../../../api/ysql/) 
 
 ## Cleanup
 

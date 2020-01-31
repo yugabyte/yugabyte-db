@@ -32,36 +32,36 @@ YugabyteDB is developed and distributed as an [Apache 2.0 open source project](h
 
 ## What makes YugabyteDB unique?
 
-YugabyteDB is a transactional database that brings together three must-have needs of cloud-native microservices, namely SQL as a flexible query language, low-latency read performance and globally-distributed write scalability. 
+YugabyteDB is a transactional database that brings together three must-have needs of cloud-native microservices, namely SQL as a flexible query language, low-latency read performance and globally-distributed write scalability.
 
-- Monolithic SQL databases offer SQL and low-latency reads but do not have ability to scale writes across multiple nodes and/or regions. 
-- Distributed NoSQL databases offer performance and write scalablility but give up on SQL semantics such as multi-key access, ACID transactions and strong consistency.
+- Monolithic SQL databases offer SQL and low-latency reads but do not have ability to scale writes across multiple nodes and/or regions.
+- Distributed NoSQL databases offer performance and write scalability but give up on SQL semantics such as multi-key access, ACID transactions and strong consistency.
 
 YugabyteDB feature highlights are listed below.
 
 ### SQL and ACID transactions
 
-- SQL [JOINs](../quick-start/explore-ysql/#3-joins) and [distributed transactions](../quick-start/explore-ysql/#4-distributed-transactions) that allow multi-row access across any number of shards at any scale.
+- SQL [JOINs](../../quick-start/explore-ysql/#3-joins) and [distributed transactions](../../quick-start/explore-ysql/#4-distributed-transactions) that allow multi-row access across any number of shards at any scale.
 
-- Transactional [document store](../architecture/concepts/docdb/) backed by self-healing, strongly-consistent, synchronous [replication](../architecture/concepts/docdb/replication/).
+- Transactional [document store](../../architecture/concepts/docdb/) backed by self-healing, strongly-consistent, synchronous [replication](../../architecture/concepts/docdb/replication/).
 
 ### High performance and massive scalability
 
-- Low latency for geo-distributed applications with multiple [read consistency levels](../architecture/concepts/docdb/replication/#tunable-read-consistency) and [read replicas](../architecture/concepts/docdb/replication/#read-only-replicas).
+- Low latency for geo-distributed applications with multiple [read consistency levels](../../architecture/concepts/docdb/replication/#tunable-read-consistency) and [read replicas](../../architecture/concepts/docdb/replication/#read-replicas).
 
 - Linearly scalable throughput for ingesting and serving ever-growing datasets.
 
 ### Global data consistency
 
-- [Global data distribution](../explore/global-distribution/) that brings consistent data close to users through multi-region and multi-cloud deployments. Optional two-region multi-master and master-follower configurations powered by CDC-driven asynchronous replication.
+- [Global data distribution](../../explore/global-distribution/) that brings consistent data close to users through multi-region and multi-cloud deployments. Optional two-region multi-master and master-follower configurations powered by CDC-driven asynchronous replication.
 
-- [Auto-sharding & auto-rebalancing](../explore/auto-sharding/) to ensure uniform load across all nodes even for very large clusters.
+- [Auto-sharding and auto-rebalancing](../../explore/auto-sharding/) to ensure uniform load across all nodes even for very large clusters.
 
 ### Cloud native
 
-- Built for the container era with [highly elastic scaling](../explore/linear-scalability/) and infrastructure portability, including [Kubernetes-driven orchestration](../quick-start/install/#kubernetes).
+- Built for the container era with [highly elastic scaling](../../explore/linear-scalability/) and infrastructure portability, including [Kubernetes-driven orchestration](../../quick-start/install/#kubernetes).
 
-- [Self-healing database](../explore/fault-tolerance/) that automatically tolerates any failures common in the inherently unreliable modern cloud infrastructure.
+- [Self-healing database](../../explore/fault-tolerance/) that automatically tolerates any failures common in the inherently unreliable modern cloud infrastructure.
 
 ### Open source
 
@@ -69,7 +69,7 @@ YugabyteDB feature highlights are listed below.
 
 ### Built-in enterprise features
 
-- Starting [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is the only open-source distributed SQL database to have built-in enterprise features such as Distributed Backups, Data Encryption, and Read Replicas. Upcoming features such as [Change Data Capture](../architecture/cdc-architecture/) and [2 Data Center Deployments](../architecture/2dc-deployments/) are also included in open source.
+- Starting in [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is the only open-source distributed SQL database to have built-in enterprise features such as Distributed Backups, Data Encryption, and Read Replicas. Upcoming features such as [Change Data Capture (CDC)](../../architecture/cdc-architecture/) and [2 Data Center Deployments](../../architecture/2dc-deployments/) are also included in open source.
 
 ## What client APIs are supported by YugabyteDB?
 
@@ -77,21 +77,21 @@ YugabyteDB supports two flavors of distributed SQL.
 
 ### Yugabyte SQL (YSQL)
 
-[YSQL](../api/ysql/) is a fully relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Get started by [exploring YSQL features](../quick-start/explore-ysql/).
+[YSQL](../../api/ysql/) is a fully relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Get started by [exploring YSQL features](../../quick-start/explore-ysql/).
 
 ### Yugabyte Cloud QL (YCQL)
 
-[YCQL]((../api/ycql/)) is a SQL-based flexible-schema API that is best fit for internet-scale OLTP apps needing a semi-relational API highly optimized for write-intensive applications as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. Get started by [exploring YCQL features](../api/ycql/quick-start/).
+[YCQL]((../../api/ycql/)) is a SQL-based flexible-schema API that is best fit for internet-scale OLTP apps needing a semi-relational API highly optimized for write-intensive applications as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. Get started by [exploring YCQL features](../../api/ycql/quick-start/).
 
 {{< note title="Note" >}}
-The YugabyteDB APIs are isolated and independent from one another today. This means that the data inserted or managed by one API cannot be queried by the other API. Additionally, there is no common way to access the data across the APIs (external frameworks such as [Presto](../develop/ecosystem-integrations/presto/) can help for simple cases). 
+The YugabyteDB APIs are isolated and independent from one another today. This means that the data inserted or managed by one API cannot be queried by the other API. Additionally, there is no common way to access the data across the APIs (external frameworks such as [Presto](../../develop/ecosystem-integrations/presto/) can help for simple cases). 
 
 <b>The net impact is that application developers have to select an API first before undertaking detailed database schema/query design and implementation.</b>
 {{< /note >}}
 
 ## How does YugabyteDB's common document store work?
 
-[DocDB](../architecture/concepts/docdb/), YugabyteDB's distributed document store common across all APIs, is built using a custom integration of Raft replication, distributed ACID transactions and the RocksDB storage engine. Specifically, DocDB enhances RocksDB by transforming it from a key-value store (with only primitive data types) to a document store (with complex data types). **Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key.** DocDB’s [sharding](../architecture/concepts/docdb/sharding/), [replication/fault-tolerance](../architecture/concepts/docdb/replication/) and [distributed ACID transactions](../architecture/transactions/distributed-txns/) architecture are all based on the [Google Spanner design](https://research.google.com/archive/spanner-osdi2012.pdf) first published in 2012. [How We Built a High Performance Document Store on RocksDB?](https://blog.yugabyte.com/how-we-built-a-high-performance-document-store-on-rocksdb/) provides an in-depth look into DocDB.
+[DocDB](../../architecture/concepts/docdb/), YugabyteDB's distributed document store common across all APIs, is built using a custom integration of Raft replication, distributed ACID transactions and the RocksDB storage engine. Specifically, DocDB enhances RocksDB by transforming it from a key-value store (with only primitive data types) to a document store (with complex data types). **Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key.** DocDB’s [sharding](../../architecture/concepts/docdb/sharding/), [replication/fault-tolerance](../../architecture/concepts/docdb/replication/) and [distributed ACID transactions](../../architecture/transactions/distributed-txns/) architecture are all based on the [Google Spanner design](https://research.google.com/archive/spanner-osdi2012.pdf) first published in 2012. [How We Built a High Performance Document Store on RocksDB?](https://blog.yugabyte.com/how-we-built-a-high-performance-document-store-on-rocksdb/) provides an in-depth look into DocDB.
 
 ## What are the trade-offs involved in using YugabyteDB?
 
@@ -219,7 +219,6 @@ A YugabyteDB universe packs a lot more functionality than what people think of w
 
 - Failover to asynchronous replicas as the primary data and failback once the original is up and running are both natively supported within a universe.
 
-
 ## How many major releases YugabyteDB has had so far?
 
 YugabyteDB has had 6 major releases.
@@ -251,11 +250,11 @@ Some features are marked Beta in every release. Following are the points to cons
 
 - Recommended only for non-production use.
 
-Please do try our beta features and give feedback on them on our [Slack channel](https://www.yugabyte.com/slack) or by filing a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues).
+Please do try our beta features and give feedback on them on our [Slack community](https://www.yugabyte.com/slack) or by filing a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues).
 
 ## Any performance benchmarks available?
 
-[Yahoo Cloud Serving Benchmark (YCSB)](https://github.com/brianfrankcooper/YCSB/wiki) is a popular benchmarking framework for NoSQL databases. We benchmarked Yugabyte Cloud QL (YCQL) API against standard Apache Cassandra using YCSB. YugabyteDB outperformed Apache Cassandra by increasing margins as the number of keys (data density) increased across all the 6 YCSB workload configurations. 
+[Yahoo Cloud Serving Benchmark (YCSB)](https://github.com/brianfrankcooper/YCSB/wiki) is a popular benchmarking framework for NoSQL databases. We benchmarked the Yugabyte Cloud QL (YCQL) API against standard Apache Cassandra using YCSB. YugabyteDB outperformed Apache Cassandra by increasing margins as the number of keys (data density) increased across all the 6 YCSB workload configurations. 
 
 [Netflix Data Benchmark (NDBench)](https://github.com/Netflix/ndbench) is another publicly available, cloud-enabled benchmark tool for data store systems. We ran NDBench against YugabyteDB for 7 days and observed P99 and P995 latencies that were orders of magnitude less than that of Apache Cassandra. 
 
@@ -263,7 +262,7 @@ Details for both the above benchhmarks are published in [Building a Strongly Con
 
 ## What about correctness testing?
 
-[Jepsen](https://jepsen.io/) is a widely used framework to evaluate databases’ behavior under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. YugabyteDB 1.2 passes [formal Jepsen testing](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/). 
+[Jepsen](https://jepsen.io/) is a widely used framework to evaluate the behavior of databases under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. YugabyteDB 1.2 passes [formal Jepsen testing](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/). 
 
 ## Is YugabyteDB open source?
 
@@ -275,14 +274,14 @@ Starting with [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-
 
 [Yugabyte Platform](../../deploy/enterprise-edition/) is commercial software for running a self-managed YugabyteDB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugabyteDB in mission-critical production environments with one or more regions (across both public cloud and on-premise data centers).
 
-[Yugabyte Cloud](http://yugabyte.com/cloud) is Yugabyte's fully-managed cloud service on AWS and GCP. You can [sign up](https://www.yugabyte.com/cloud/) for early access now.
+[Yugabyte Cloud](http://yugabyte.com/cloud) is Yugabyte's fully-managed cloud service on Amazon Web Services (AWS) and Google Cloud Platform (GCP). You can [sign up](https://www.yugabyte.com/cloud/) for early access now.
 
 For a more detailed comparison between YugabyteDB and Yugabyte Platform, see [Adopt YugabyteDB Your Way
 ](https://www.yugabyte.com/platform/#compare-editions).
 
 ## How does YugabyteDB compare to other SQL and NoSQL databases?
 
-See [YugabyteDB in Comparison](../../comparisons/)
+See [Compare YugabyteDB to other databases](../../comparisons/)
 
 - [Google Cloud Spanner](../../comparisons/google-spanner/)
 - [CockroachDB](https://www.yugabyte.com/yugabyte-db-vs-cockroachdb/)
@@ -294,7 +293,7 @@ See [YugabyteDB in Comparison](../../comparisons/)
 
 ## What is the difference between `ysqlsh` and `psql`?
 
-The YSQL shell (`ysqlsh`) is functionally similar to PostgreSQL's `psql` , but uses different default values for some variables (for example, the default user, default databasse, and the path to SSL certificates). This is done for the user's convenience. In the Yugabyte `bin` directory, there is a deprecated `psql` alias that opens the `ysqlsh` CLI. For more details, see [ysqlsh](../../admin/ysqlsh). 
+The YSQL shell (`ysqlsh`) is functionally similar to PostgreSQL's `psql` , but uses different default values for some variables (for example, the default user, default database, and the path to TLS certificates). This is done for the user's convenience. In the Yugabyte `bin` directory, the deprecated `psql` alias opens the `ysqlsh` CLI. For more details, see [ysqlsh](../../admin/ysqlsh).
 
 ## What is the status of the YEDIS API?
 

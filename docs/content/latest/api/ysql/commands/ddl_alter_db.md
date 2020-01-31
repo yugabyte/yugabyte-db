@@ -75,6 +75,5 @@ Specify `false` to Only superusers or the owner of the database can clone it.
 ## See also
 
 - [`CREATE DATABASE`](../ddl_create_database)
-- [`CREATE TABLESPACE`](../ddl_create_tablespace)
 - [`DROP DATABASE`](../ddl_drop_database)
 - [`SET`](../cmd_set)

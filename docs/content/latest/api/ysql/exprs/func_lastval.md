@@ -78,8 +78,7 @@ yugabyte=# SELECT lastval()
 
 ## See also
 
-[`CREATE SEQUENCE`](../create_sequence)
-[`DROP SEQUENCE`](../drop_sequence)
-[`currval()`](../currval_sequence)
-[`nextval()`](../nextval_sequence)
-[Other YSQL Statements](..)
+[`CREATE SEQUENCE`](../../commands/ddl_create_sequence)
+[`DROP SEQUENCE`](../../commands/ddl_drop_sequence)
+[`currval()`](../func_currval)
+[`nextval()`](../func_nextval)
