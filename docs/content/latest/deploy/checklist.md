@@ -54,7 +54,7 @@ Allocate adequate CPU and RAM. YugabyteDB has good defaults for running on a wid
   - Add more CPU (compared to adding more RAM) to improve performance.
 
 For typical OLTP workloads YugabyteDB, performance  improves with more aggregate CPU in the cluster. 
-You can achieve this by picking larger nodes, or adding more nodes to a cluster. 
+You can achieve this by using larger nodes or adding more nodes to a cluster. 
 For high performance use cases, Yugabyte recommend nodes with at least 8 CPUs (preferably 16).
 If you do not have enough CPUs, this will show up as higher latencies and eventually dropped requests.
 
