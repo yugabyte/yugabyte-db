@@ -3,7 +3,7 @@ title: Yugabyte Platform FAQ
 linkTitle: Yugabyte Platform FAQ
 description: Yugabyte Platform FAQ
 aliases:
-  - /faq/enterprise-edition/
+  - latest/faq/enterprise-edition/
 menu:
   latest:
     identifier: faq-yugabyte-platform

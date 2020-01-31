@@ -31,7 +31,7 @@ showAsideToc: true
 
 ## Prerequisites
 
-- Connect to the Azure Cloud Shell. You can connect and get a shell from the browser by navigating to [Azure bash cloud shell](https://shell.azure.com/bash).
+- Connect to the Azure Cloud Shell. You can connect and get a shell from the browser by navigating to the [Azure bash cloud shell](https://shell.azure.com/bash).
 
 - Register the necessary Azure service providers by running the following:
 
@@ -48,12 +48,11 @@ az provider register -n Microsoft.ContainerService
 az configure --defaults location=eastus
 ```
 
-
 ## 1. Create an Azure cluster
 
 - Create an Azure resource
 
-An Azure resource group is a logical group in which Azure resources are deployed and managed. You need to specify a default location or pass the location parameter to create the resource. The resources we create for the AKS cluster will live in this Azure resouce.
+An Azure resource group is a logical group in which Azure resources are deployed and managed. You need to specify a default location or pass the location parameter to create the resource. The resources we create for the AKS cluster will live in this Azure resource.
 
 ```sh
 $ az group create --name yb-eastus-resource
@@ -61,7 +60,7 @@ $ az group create --name yb-eastus-resource
 
 - Create the AKS cluster.
 
-You can create a three node AKS cluster by running the following command.
+You can create a three-node AKS cluster by running the following command.
 
 ```sh
 $ az aks create --resource-group yb-eastus-resource --name yb-aks-cluster --node-count 3 --generate-ssh-keys
@@ -167,7 +166,7 @@ system_schema  system_auth  system
 
 ## 5. Destroy the YugabyteDB cluster (optional)
 
-Destroy the YugabyteDB cluster we created above by running the following.
+Destroy the YugabyteDB cluster you created above by running the following.
 
 ```sh
 $ kubectl delete -f https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset.yaml
@@ -197,4 +196,4 @@ $ az group delete --name yb-eastus-resource
 
 ## Advanced Kubernetes Deployment
 
-More advanced scenarios for deploying in Kubernetes are covered in the [Kubernetes Deployments](../../../deploy/kubernetes/) section.
+More advanced scenarios for deploying in Kubernetes are covered in the [Kubernetes Deployments](../../../kubernetes/) section.

@@ -57,7 +57,7 @@ yugabyte=# reassign owned by john to yugabyte;
 
 ## See also
 
-[`DROP OWNED`](../drop_owned)
+[`DROP OWNED`](../dcl_drop_owned)
 [`CREATE ROLE`](../dcl_create_role)
 [`GRANT`](../dcl_grant)
 [`REVOKE`](../dcl_revoke)

@@ -52,11 +52,11 @@ Automatically drop objects that depend on the affected objects.
 
 - RESTRICT
 
-This is the default mode and will raise an error if there are other database objects that depend on the dropped object(s).
+This is the default mode and will raise an error if there are other database objects that depend on the dropped objects.
 
 ## Examples
 
-- Drop all objects owned by john.
+- Drop all objects owned by `john`.
 
 ```postgresql
 yugabyte=# drop owned by john;
@@ -64,7 +64,7 @@ yugabyte=# drop owned by john;
 
 ## See also
 
-[`REASSIGN OWNED`](../reassign_owned)
+[`REASSIGN OWNED`](../dcl_reassign_owned)
 [`CREATE ROLE`](../dcl_create_role)
 [`GRANT`](../dcl_grant)
 [`REVOKE`](../dcl_revoke)

@@ -16,7 +16,7 @@ We now have 2 VMs each in Availability Zones `us-west-2a`, `us-west-2b`, `us-wes
 
 ### Set environment variables
 
-Now that the 6 nodes have been prepared, the yb-master process will be run on 3 of these nodes (because RF=3) and yb-tserver will be run on all 6 nodes. To learn more about YugabyteDB’s process architecture, see [here](../../../architecture/concepts/universe/).
+Now that the six nodes have been prepared, the yb-master process will be run on three of these nodes (because RF=3) and yb-tserver will be run on all six nodes. To learn more about YugabyteDB’s process architecture, see [here](../../../architecture/concepts/universe/).
 
 These install steps are written in a way that we assume that you will run the install steps from another node from which you can access the above 6 VMs over “ssh”.
 
@@ -181,7 +181,7 @@ done
 
 ### Verify system configuration
 
-Below is an example of setting up these prerequisites in  CentOS 7 or RHEL. For Ubuntu, the specific steps could be slightly different. Full documentation for system config is available [here](../manual-deployment/system-config/).
+Below is an example of setting up these prerequisites in  CentOS 7 or RHEL. For Ubuntu, the specific steps could be slightly different. Full documentation for system configuration is available [here](../manual-deployment/system-config/).
 
 #### Install ntp and other optional packages
 
