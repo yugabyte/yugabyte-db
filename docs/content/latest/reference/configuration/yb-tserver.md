@@ -324,7 +324,7 @@ Default: `cloud1`
 
 ### YSQL options
 
-The following options, or flags, support the use of the [YSQL API](../../api/ysql/).
+The following options, or flags, support the use of the [YSQL API](../../../api/ysql/).
 
 ##### --enable_ysql
 
@@ -370,7 +370,7 @@ Default: `13000`
 
 Specifies a comma-separated list of PostgreSQL client authentication settings that is written to the `ysql_hba.conf` file.
 
-For details on using `--ysql_hba_conf` to specify client authentication, see [Configure YSQL client authentication](../secure/authentication/ysql-client-authentication.md).
+For details on using `--ysql_hba_conf` to specify client authentication, see [Fine-grained authentication](../../../secure/authentication/client-authentication).
 
 Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
 
@@ -426,7 +426,7 @@ Specifies the lowest YSQL message level to log.
 
 ### YCQL options
 
-The following options, or flags, support the use of the [YCQL API](../../api/ycql/).
+The following options, or flags, support the use of the [YCQL API](../../../api/ycql/).
 
 ##### --use_cassandra_authentication
 
@@ -512,7 +512,7 @@ Default: Server automatically picks a valid default internally, typically `8`.
 
 ### Security options
 
-For details on enabling client-server encryption, see [Client-server encryption](../../secure/tls-encryption/client-to-server).
+For details on enabling client-server encryption, see [Client-server encryption](../../../secure/tls-encryption/client-to-server).
 
 ##### --certs_dir
 
@@ -554,17 +554,17 @@ Default: `false`
 
 ### Change data capture (CDC) options
 
-To learn about CDC, see [Change data capture (CDC)](../../architecture/cdc-architecture).
+To learn about CDC, see [Change data capture (CDC)](../../../architecture/cdc-architecture).
 
 ##### --cdc_rpc_timeout_ms
 
-Timeout used for CDC->`yb-tserver` asynchronous RPC calls.
+The timeout used for CDC->`yb-tserver` asynchronous RPC calls.
 
 Default: `30000`
 
 ##### --cdc_state_checkpoint_update_interval_ms
 
-RAte at which CDC state's checkpoint is updated.
+The rate at which CDC state's checkpoint is updated.
 
 Default: `15000`
 
@@ -586,7 +586,7 @@ Home page of the YB-TServer (`yb-tserver`) that gives a high level overview of t
 
 ### Dashboards
 
-List of all dashboards to review the ongoing operations:
+Here's a list of all dashboards to review the ongoing operations:
 
 ![tserver-dashboards](/images/admin/tserver-dashboards.png)
 
