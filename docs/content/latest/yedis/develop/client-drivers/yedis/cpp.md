@@ -4,7 +4,7 @@
 The tutorial assumes that you have:
 
 - installed YugabyteDB, created a universe and are able to interact with it using the Redis shell. If
-  not please follow these steps in the [Quick Start guide](../../../quick-start/test-redis/).
+  not please follow these steps in the [Quick Start guide](../../../quick-start/).
 - have C++11.
 
 ## Installing the Redis C++ driver

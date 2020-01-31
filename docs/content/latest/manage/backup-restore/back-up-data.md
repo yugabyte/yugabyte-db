@@ -66,7 +66,7 @@ Use the [`ysql_dumpall`](../../../admin/ysql-dumpall) backup utility to write ou
 
 {{< /note >}}
 
-To back up all databases, from your YugabyteDB home directory, run the `ysql_dumpall` utility command.
+To back up all databases, from your YugabyteDB home directory, run the [`ysql_dumpall`](../../../admin/ysql-dumpall) utility command.
 
 ```sh
 $ ./postgres/bin/ysql_dumpall > <backup-file>
@@ -80,4 +80,4 @@ In the following example, all databases and database objects are backed up to th
 $ ./postgres/bin/ysql_dumpall > ../backup/yb-dumpall.sql
 ```
 
-Options for the `ysql_dumpall` utility can be used to limit backups to roles only (`--roles-only`), all database objects except the data (`--schema-only`), or other options. For details about the utility's available options, see [`ysql_dumpall`](../../../admin/ysql_dumpall).
+Options for the `ysql_dumpall` utility can be used to limit backups to roles only (`--roles-only`), all database objects except the data (`--schema-only`), or other options. For details about the utility's available options, see [`ysql_dumpall`](../../../admin/ysql-dumpall).

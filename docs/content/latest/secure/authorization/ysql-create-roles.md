@@ -1,6 +1,6 @@
 ## 1. Create roles
 
-Create a role with a password. You can do this with the [CREATE ROLE](../../api/YSQL/ddl_create_role/) command.
+Create a role with a password. You can do this with the [CREATE ROLE](../../../api/ysql/commands/dcl_create_role/) statement.
 
 As an example, let us create a role `engineering` for an engineering team in an organization.
 
@@ -14,7 +14,7 @@ Roles that have `LOGIN` privileges are users. As an example, you can create a us
 yugabyte=# CREATE ROLE john LOGIN PASSWORD 'PasswdForJohn';
 ```
 
-Read about [how to create users in YugabyteDB](../../ysql-authentication/) in the authentication section.
+Read about [how to create users in YugabyteDB](../../authentication/ysql-authentication/) in the Authentication section.
 
 ## 2. Grant roles
 
@@ -26,7 +26,7 @@ As an example, you can grant the `engineering` role we created above to the user
 yugabyte=# GRANT engineering TO john;
 ```
 
-Read more about [granting roles](../../api/YSQL/dcl_grant/).
+Read more about [granting roles](../../../api/ysql/commands/dcl_grant/).
 
 ## 3. Create a hierarchy of roles, if needed
 
@@ -48,7 +48,7 @@ yugabyte=# GRANT engineering TO developer;
 
 ## 4. List roles
 
-You can list all the roles by running the following command:
+You can list all the roles by running the following statement:
 
 ```postgresql
 yugabyte=# SELECT rolname, rolcanlogin, rolsuper, memberof FROM pg_roles;
@@ -76,7 +76,7 @@ In the table above, note the following:
 
 ## 5. Revoke roles
 
-Roles can be revoked using the [REVOKE](../../api/YSQL/ddl_revoke/) command.
+Roles can be revoked using the [REVOKE](../../../api/ysql/commands/dcl_revoke/) statement.
 
 In the above example, we can revoke the `engineering` role from the user `john` as follows:
 
@@ -103,9 +103,9 @@ yugabyte     | t           | t        | {}
 
 ## 6. Drop roles
 
-Roles can be dropped with the [DROP ROLE](../../api/YSQL/ddl_drop_role/) command.
+Roles can be dropped with the [DROP ROLE](../../../api/ysql/commands/dcl_drop_role/) statement.
 
-In the above example, we can drop the `developer` role with the following command:
+In the above example, we can drop the `developer` role with the following statement:
 
 ```postgresql
 yugabyte=# DROP ROLE developer;
