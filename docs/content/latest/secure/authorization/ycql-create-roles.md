@@ -1,7 +1,7 @@
 
 ## 1. Create roles
 
-Create a role with a password. You can do this with the [CREATE ROLE](../../api/ycql/ddl_create_role/) command.
+Create a role with a password. You can do this with the [CREATE ROLE](../../../api/ycql/ddl_create_role/) command.
 
 As an example, let us create a role `engineering` for an engineering team in an organization. Note that we add the `IF NOT EXISTS` clause in case the role already exists.
 
