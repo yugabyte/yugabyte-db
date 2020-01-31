@@ -46,7 +46,7 @@ To create the consumer universe, follow these steps.
 
 Make sure to create the same tables as you did for the producer universe.
 
-After creating the required tables, you can now set up aysnchronous replication using the steps below.
+After creating the required tables, you can now set up asysnchronous replication using the steps below.
 
 ## 2. Unidirectional (aka master-follower) replication
 
