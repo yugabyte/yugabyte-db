@@ -43,7 +43,7 @@ showAsideToc: true
 
 - Install `kubectl`
 
-After installing Cloud SDK, install the kubectl command line tool by running the following command:
+After installing Cloud SDK, install the `kubectl` command line tool by running the following command:
 
 ```sh
 $ gcloud components install kubectl
@@ -65,7 +65,7 @@ $ gcloud config set compute/zone us-west1-b
 
 ## 1. Create a GKE cluster
 
-Create a Kubernetes cluster if you have not already done so by running the following command.
+Create a Kubernetes cluster, if you have not already done so, by running the following command.
 
 ```sh
 $ gcloud container clusters create yugabyte
@@ -149,7 +149,6 @@ cqlsh> DESCRIBE KEYSPACES;
 
 system_schema  system_auth  system
 ```
-
 
 ## 5. Destroy cluster (optional)
 
