@@ -42,6 +42,9 @@ if should_use_virtual_env; then
   fix_virtualenv_permissions
 fi
 
+# looks like there is some issue with setuptools and virtualenv on python2.
+# https://github.com/pypa/virtualenv/issues/1493, adding this requirement
+pip_install "setuptools<45"
 pip_install -r "$FROZEN_REQUIREMENTS_FILE"
 # Shorten the length of the shebang so it doesn't crash in our Jenkins pipeline.
 find $virtualenv_dir/bin -type f -exec sed -i \
