@@ -18,7 +18,7 @@ Partitioning can provide several benefits such as:
 
 # Usage
 
-## Types of partitioning
+## Creating partitions
 
 The following forms of partitions will be supported:
 
@@ -55,7 +55,24 @@ The table is partitioned by explicitly listing which key values appear in each p
 ### Hash Partitioning
 The table is partitioned by specifying a modulus and a remainder for each partition. Each partition will hold the rows for which the hash value of the partition key divided by the specified modulus will produce the specified remainder.
 
-## Indexes on partitions
+
+# Design
+
+## Mapping partitions to DocDB tables
+
+### Adding and removing partitions
+
+### Hash and range sharding
+
+### Colocated tables
+
+### Changing schema
+
+## Queries on partitioned tables
+
+## Support for indexes and constraints
+
+## Support for stored procedures, triggers, functions
 
 
 # Limitations
