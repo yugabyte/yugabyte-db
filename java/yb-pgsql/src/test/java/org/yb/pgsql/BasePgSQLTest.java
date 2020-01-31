@@ -1030,7 +1030,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected List<Row> setupSimpleTable(String tableName) throws SQLException {
     List<Row> allRows = new ArrayList<>();
     try (Statement statement = connection.createStatement()) {
-      createSimpleTable(tableName);
+      createSimpleTable(statement, tableName);
       String insertTemplate = "INSERT INTO %s(h, r, vi, vs) VALUES (%d, %f, %d, '%s')";
 
       for (int h = 0; h < 10; h++) {
