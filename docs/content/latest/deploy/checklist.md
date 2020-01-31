@@ -67,7 +67,7 @@ Having a faster disk could help in some of these cases.
 
 YugabyteDB explicitly manages a block cache, and doesn't need the entire data set to fit in memory. 
 We do not rely on OS to keep data in its buffers. 
-If you give YugabyteDB sufficient memory all its data will stay in memory.
+If you give YugabyteDB sufficient memory data accessed and present in block cache will stay in memory.
 
 ### Disks
 

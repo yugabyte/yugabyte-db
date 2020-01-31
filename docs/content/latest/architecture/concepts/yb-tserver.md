@@ -55,7 +55,7 @@ prevent compaction storms. This prevents the often dreaded high foreground laten
 compaction storm.
 
 The default policy makes sure that doing a compaction is worthwhile.
-The algorithm tries to make sure that the files being compacted are somewhat in the similar size ballpark. 
+The algorithm tries to make sure that the files being compacted are not too disparate in terms of size.
 For example, it does not make sense to compact a 100GB file with a 1GB file to produce a 101GB file, 
 that would be a lot of unnecessary IO for less gain. 
 
@@ -66,7 +66,7 @@ some prioritization to keep the system functional even in extreme IO patterns.
 
 In addition to throttling controls for compactions, YugabyteDB does a variety 
 of internal optimizations to minimize impact of compactions on foreground latencies. 
-One such is a prioritizated queue to give priority to small compactions over large compactions 
+One such is a prioritized queue to give priority to small compactions over large compactions 
 to make sure the number of SSTable files for any tablet stays as low as possible.
 
 ### Manual compactions
