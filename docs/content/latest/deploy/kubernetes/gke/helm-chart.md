@@ -37,7 +37,9 @@ showAsideToc: true
   </li>
 </ul>
 
-Instructions specific to GKE are coming soon. Until then, refer to the [Open Source Kubernetes](../../oss/helm-chart/) instructions.
+Instructions specific to GKE are coming soon. Until then, refer to the [Open Source Kubernetes](../../oss/helm-chart/) instruc
+
+tions.
 
 ## Configure cluster
 
