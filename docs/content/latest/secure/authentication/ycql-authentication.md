@@ -71,7 +71,7 @@ cassandra@cqlsh>
 
 ## 3. Create a new user
 
-Use the [CREATE ROLE statement](../../api/ycql/ddl_create_role/) to create a new role. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all the CQL commands on any of the database resources.
+Use the [CREATE ROLE command](../../../api/ycql/ddl_create_role/) to create a new role. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all the CQL commands on any of the database resources.
 
 **NOTE** By default, creating a role does not grant the `LOGIN` or the `SUPERUSER` privileges, these need to be explicitly granted.
 
@@ -154,7 +154,7 @@ $ cqlsh -u admin -p PasswdForAdmin
 
 ## 5. Edit user accounts
 
-You can edit existing user accounts using the [ALTER ROLE](../../api/ycql/ddl_alter_role/) command. Note that the role making these changes should have sufficient privileges to modify the target role.
+You can edit existing user accounts using the [ALTER ROLE](../../../api/ycql/ddl_alter_role/) statement. Note that the role making these changes should have sufficient privileges to modify the target role.
 
 ### Changing password for a user
 
@@ -283,7 +283,7 @@ $ cqlsh -u cassandra -p new_password
 
 ## 7. Deleting a user
 
-You can delete a user with the [DROP ROLE](../../api/ycql/ddl_drop_role/) command.
+You can delete a user with the [DROP ROLE](../../../api/ycql/ddl_drop_role/) command.
 
 For example, to drop the user `john` in the above example, run the following command as a superuser:
 

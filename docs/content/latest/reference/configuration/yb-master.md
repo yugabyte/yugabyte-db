@@ -45,7 +45,7 @@ $ ./bin/yb-master --help
 - [YSQL](#ysql-options)
 - [Logging](#logging-options)
 - [Raft](#raft-options)
-  - [Write ahead log (WAL)](write-ahead-log-wal-options)
+  - [Write ahead log (WAL)](#write-ahead-log-wal-options)
 - [Cluster](#cluster-options)
 - [Geo-distribution](#geo-distribution-options)
 - [Security](#security-options)
@@ -375,7 +375,7 @@ Default: `never`
 
 ### Security options
 
-For details on enabling server-server encryption, see [Server-server encryption](../../secure/tls-encryption/server-to-server).
+For details on enabling server-to-server encryption, see [Server-server encryption](../../../secure/tls-encryption/server-to-server).
 
 ##### -- certs_dir
 

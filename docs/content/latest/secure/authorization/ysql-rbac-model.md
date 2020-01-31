@@ -47,4 +47,4 @@ The ALTER TABLE privilege on the base table is required in order to CREATE or DR
 
 {{< /note >}}
 
-Read more about [YSQL privileges](../../api/ysql/dcl_grant/).
+Read more about [YSQL privileges](../../../api/ysql/commands/dcl_grant/).
