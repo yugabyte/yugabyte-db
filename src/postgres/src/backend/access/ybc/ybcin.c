@@ -32,6 +32,7 @@
 #include "access/ybcin.h"
 #include "catalog/index.h"
 #include "catalog/pg_type.h"
+#include "commands/ybccmds.h"
 #include "utils/rel.h"
 #include "executor/ybcModifyTable.h"
 
