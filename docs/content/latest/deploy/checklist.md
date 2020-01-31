@@ -53,6 +53,22 @@ Allocate adequate CPU and RAM. YugabyteDB has good defaults for running on a wid
   - **8 cores** or more
   - Add more CPU (compared to adding more RAM) to improve performance.
 
+For typical OLTP workloads YugabyteDB, performance  improves with more aggregate CPU in the cluster. 
+You can achieve this by using larger nodes or adding more nodes to a cluster. 
+For high performance use cases, Yugabyte recommend nodes with at least 8 CPUs (preferably 16).
+If you do not have enough CPUs, this will show up as higher latencies and eventually dropped requests.
+
+Memory depends on your application query pattern. 
+Writes require memory but only up to a certain point (4GB, but if you have a write-heavy workload you may need a little more). 
+Beyond that, more memory generally helps improve the read throughput and latencies by caching data in the internal cache. 
+If you do not have enough memory to fit the read working set, then you will typically 
+experience higher read latencies because data has to be read from disk. 
+Having a faster disk could help in some of these cases.
+
+YugabyteDB explicitly manages a block cache, and doesn't need the entire data set to fit in memory. 
+We do not rely on OS to keep data in its buffers. 
+If you give YugabyteDB sufficient memory data accessed and present in block cache will stay in memory.
+
 ### Disks
 
 - Use SSDs (solid state disks) for good performance.
@@ -63,6 +79,17 @@ Allocate adequate CPU and RAM. YugabyteDB has good defaults for running on a wid
 - Mount settings
       - XFS is the recommended filesystem.
       - Use the `noatime` setting when mounting the data drives.
+
+YugabyteDB does not require any form of RAID, but runs optimally on a JBOD (just a bunch of disks) setup. 
+It can also leverage multiple disks per node and has been tested beyond 10 TB of storage per node.
+
+Write-heavy applications usually require more disk IOPS (especially if the size of each record is larger), 
+therefore in this case the total IOPS that a disk can support matters. 
+On the read side, if the data does not fit into the cache and data needs to be read 
+from the disk in order to satisfy queries, the disk performance (latency and IOPS) will start to matter.
+
+YugabyteDB uses per-tablet [size tiered compaction](../../architecture/concepts/yb-tserver/). 
+Therefore the typical space amplification in YugabyteDB tends to be in the 10-20% range.
 
 ### Network
 

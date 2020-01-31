@@ -480,6 +480,22 @@ Used to control rate of memstore flush and SSTable file compaction.
 
 Default: `256MB`
 
+##### --rocksdb_universal_compaction_min_merge_width
+
+Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and 
+their running total (summation of size of files considered so far) is 
+within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
+
+Default: `4`
+
+##### --rocksdb_universal_compaction_size_ratio
+
+Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and 
+their running total (summation of size of files considered so far) is 
+within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
+
+Default: `20`
+
 ##### --remote_bootstrap_rate_limit_bytes_per_sec
 
 Rate control across all tablets being remote bootstrapped from or to this process.
