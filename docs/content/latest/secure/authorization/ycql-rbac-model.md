@@ -48,4 +48,4 @@ The ALTER permission on the base table is required in order to CREATE or DROP in
 
 {{< /note >}}
 
-Read more about [YCQL permissions](../../api/ycql/ddl_grant_permission/#permissions).
+Read more about [permissions in YCQL](../../../api/ycql/ddl_grant_permission/#permissions).
