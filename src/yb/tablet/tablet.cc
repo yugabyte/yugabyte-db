@@ -430,7 +430,12 @@ Tablet::Tablet(
 }
 
 Tablet::~Tablet() {
-  Shutdown();
+  if (StartShutdown()) {
+    CompleteShutdown();
+  } else {
+    LOG_IF_WITH_PREFIX(DFATAL, state_ != kShutdown)
+        << "Destroying Tablet that did not complete shutdown";
+  }
   mem_tracker_->UnregisterFromParent();
 }
 
@@ -751,12 +756,21 @@ void Tablet::MarkFinishedBootstrapping() {
   state_ = kOpen;
 }
 
-void Tablet::SetShutdownRequestedFlag() {
-  shutdown_requested_.store(true, std::memory_order::memory_order_release);
+bool Tablet::StartShutdown() {
+  bool expected = false;
+  if (!shutdown_requested_.compare_exchange_strong(expected, true)) {
+    return false;
+  }
+
+  if (transaction_participant_) {
+    transaction_participant_->StartShutdown();
+  }
+
+  return true;
 }
 
-void Tablet::Shutdown(IsDropTable is_drop_table) {
-  SetShutdownRequestedFlag();
+void Tablet::CompleteShutdown(IsDropTable is_drop_table) {
+  StartShutdown();
 
   auto op_pause = PauseReadWriteOperations();
   if (!op_pause.ok()) {
@@ -768,6 +782,10 @@ void Tablet::Shutdown(IsDropTable is_drop_table) {
 
   if (transaction_coordinator_) {
     transaction_coordinator_->Shutdown();
+  }
+
+  if (transaction_participant_) {
+    transaction_participant_->CompleteShutdown();
   }
 
   std::lock_guard<rw_spinlock> lock(component_lock_);

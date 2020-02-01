@@ -369,7 +369,7 @@ bool TabletPeer::StartShutdown() {
   {
     std::lock_guard<decltype(lock_)> lock(lock_);
     if (tablet_) {
-      tablet_->SetShutdownRequestedFlag();
+      tablet_->StartShutdown();
     }
   }
 
@@ -434,7 +434,7 @@ void TabletPeer::CompleteShutdown(IsDropTable is_drop_table) {
   VLOG_WITH_PREFIX(1) << "Shut down!";
 
   if (tablet_) {
-    tablet_->Shutdown(is_drop_table);
+    tablet_->CompleteShutdown(is_drop_table);
   }
 
   // Only mark the peer as SHUTDOWN when all other components have shut down.

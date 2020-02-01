@@ -202,6 +202,10 @@ class TransactionParticipant : public TransactionStatusManager {
   // method `MinRunningHybridTimeSatisfied` will be invoked.
   void WaitMinRunningHybridTime(HybridTime ht);
 
+  void StartShutdown();
+
+  void CompleteShutdown();
+
   size_t TEST_GetNumRunningTransactions() const;
 
   // Returns pair of number of intents and number of transactions.
