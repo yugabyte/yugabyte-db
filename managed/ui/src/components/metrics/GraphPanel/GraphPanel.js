@@ -56,6 +56,7 @@ const panelTypes = {
       "lsm_rocksdb_block_cache_usage",
       "lsm_rocksdb_blooms_checked_and_useful",
       "lsm_rocksdb_stalls",
+      "lsm_rocksdb_write_rejections",
       "lsm_rocksdb_flush_size",
       "lsm_rocksdb_compaction",
       "lsm_rocksdb_compaction_time",
