@@ -221,12 +221,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // This can be called to proactively prevent new operations from being handled, even before
   // Shutdown() is called.
-  void SetShutdownRequestedFlag();
+  // Returns true if it was the first call to StartShutdown.
+  bool StartShutdown();
   bool IsShutdownRequested() const {
     return shutdown_requested_.load(std::memory_order::memory_order_acquire);
   }
 
-  void Shutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
+  void CompleteShutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
 
   CHECKED_STATUS ImportData(const std::string& source_dir);
 
