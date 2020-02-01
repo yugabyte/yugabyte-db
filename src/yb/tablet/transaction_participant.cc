@@ -119,11 +119,33 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   ~Impl() {
-    LOG_WITH_PREFIX(INFO) << "Stop";
-    closing_.store(true, std::memory_order_release);
-    transactions_.clear();
-    MinRunningNotifier min_running_notifier(nullptr /* applier */);
-    TransactionsModifiedUnlocked(&min_running_notifier);
+    if (StartShutdown()) {
+      CompleteShutdown();
+    } else {
+      LOG_IF_WITH_PREFIX(DFATAL, !shutdown_done_.load(std::memory_order_acquire))
+          << "Destroying transaction participant that did not complete shutdown";
+    }
+  }
+
+  bool StartShutdown() {
+    bool expected = false;
+    if (!closing_.compare_exchange_strong(expected, true)) {
+      return false;
+    }
+
+    LOG_WITH_PREFIX(INFO) << "Shutdown";
+    return true;
+  }
+
+  void CompleteShutdown() {
+    LOG_IF_WITH_PREFIX(DFATAL, !closing_.load()) << __func__ << " w/o StartShutdown";
+
+    {
+      MinRunningNotifier min_running_notifier(nullptr /* applier */);
+      std::lock_guard<std::mutex> lock(mutex_);
+      transactions_.clear();
+      TransactionsModifiedUnlocked(&min_running_notifier);
+    }
 
     rpcs_.Shutdown();
     if (load_thread_.joinable()) {
@@ -132,6 +154,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     while (checking_status_.load(std::memory_order_acquire)) {
       std::this_thread::sleep_for(10ms);
     }
+    shutdown_done_.store(true, std::memory_order_release);
   }
 
   void Start() {
@@ -1031,12 +1054,16 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
         &check_status_handle_);
   }
 
-  void StatusReceived(const Status& status,
+  void StatusReceived(Status status,
                       const tserver::GetTransactionStatusResponsePB& response,
                       size_t request_size) {
     VLOG_WITH_PREFIX(2) << "Received statuses: " << status << ", " << response.ShortDebugString();
 
     rpcs_.Unregister(&check_status_handle_);
+
+    if (status.ok() && response.has_error()) {
+      status = StatusFromPB(response.error().status());
+    }
 
     if (!status.ok()) {
       LOG_WITH_PREFIX(WARNING) << "Failed to request transaction statuses: " << status;
@@ -1144,6 +1171,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   std::atomic<HybridTime> min_running_ht_{HybridTime::kMax};
   std::atomic<CoarseTimePoint> next_check_min_running_{CoarseTimePoint()};
   HybridTime waiting_for_min_running_ht_ = HybridTime::kMax;
+  std::atomic<bool> shutdown_done_{false};
 };
 
 TransactionParticipant::TransactionParticipant(
@@ -1256,6 +1284,14 @@ OneWayBitmap TransactionParticipant::TEST_TransactionReplicatedBatches(
 std::string TransactionParticipant::ReplicatedData::ToString() const {
   return Format("{ leader_term: $0 state: $1 op_id: $2 hybrid_time: $3 already_applied: $4 }",
                leader_term, state, op_id, hybrid_time, already_applied);
+}
+
+void TransactionParticipant::StartShutdown() {
+  impl_->StartShutdown();
+}
+
+void TransactionParticipant::CompleteShutdown() {
+  impl_->CompleteShutdown();
 }
 
 } // namespace tablet
