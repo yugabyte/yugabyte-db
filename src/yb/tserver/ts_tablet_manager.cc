@@ -674,10 +674,8 @@ Status TSTabletManager::CreateNewTablet(
   RaftGroupMetadataPtr meta;
   string data_root_dir;
   string wal_root_dir;
-  if (!colocated) {
-    GetAndRegisterDataAndWalDir(fs_manager_, table_id, tablet_id, table_type,
-                                &data_root_dir, &wal_root_dir);
-  }
+  GetAndRegisterDataAndWalDir(fs_manager_, table_id, tablet_id, table_type, &data_root_dir,
+                              &wal_root_dir);
   Status create_status = RaftGroupMetadata::CreateNew(fs_manager_,
                                                    table_id,
                                                    tablet_id,
@@ -694,7 +692,7 @@ Status TSTabletManager::CreateNewTablet(
                                                    data_root_dir,
                                                    wal_root_dir,
                                                    colocated);
-  if (!create_status.ok() && !colocated) {
+  if (!create_status.ok()) {
     UnregisterDataWalDir(table_id, tablet_id, table_type, data_root_dir, wal_root_dir);
   }
   RETURN_NOT_OK_PREPEND(create_status, "Couldn't create tablet metadata")
@@ -1021,15 +1019,13 @@ Status TSTabletManager::DeleteTablet(
     CHECK_EQ(1, tablet_map_.erase(tablet_id)) << tablet_id;
   }
 
-  if (!meta->colocated()) {
-    // We unregister TOMBSTONED tablets in addition to DELETED tablets because they do not have
-    // any more data on disk, so we shouldn't count these tablets when load balancing the disks.
-    UnregisterDataWalDir(meta->table_id(),
-                         tablet_id,
-                         meta->table_type(),
-                         meta->data_root_dir(),
-                         meta->wal_root_dir());
-  }
+  // We unregister TOMBSTONED tablets in addition to DELETED tablets because they do not have
+  // any more data on disk, so we shouldn't count these tablets when load balancing the disks.
+  UnregisterDataWalDir(meta->table_id(),
+                       tablet_id,
+                       meta->table_type(),
+                       meta->data_root_dir(),
+                       meta->wal_root_dir());
 
   return Status::OK();
 }

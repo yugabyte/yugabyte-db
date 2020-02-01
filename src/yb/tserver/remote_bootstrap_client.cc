@@ -309,7 +309,6 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     data_root_dir = meta_->data_root_dir();
     wal_root_dir = meta_->wal_root_dir();
     if (ts_manager != nullptr) {
-      // TODO: This will need to be fixed.
       ts_manager->RegisterDataAndWalDir(&fs_manager(),
                                         table_id,
                                         meta_->raft_group_id(),
@@ -323,10 +322,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     PartitionSchema partition_schema;
     RETURN_NOT_OK(PartitionSchema::FromPB(table.partition_schema(), schema, &partition_schema));
     // Create the superblock on disk.
-    if (ts_manager != nullptr && !colocated) {
-      // TODO: GetAndRegisterDataAndWalDir is in charge of load balancing the disk storage.
-      // Colocated tables are mostly for small clusters, single nodes. But we still need to make
-      // sure that if the node has more than one data disk, we are balancing the storage correctly.
+    if (ts_manager != nullptr) {
       ts_manager->GetAndRegisterDataAndWalDir(&fs_manager(),
                                               table_id,
                                               tablet_id_,
