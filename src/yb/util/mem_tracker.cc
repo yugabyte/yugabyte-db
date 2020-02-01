@@ -780,7 +780,10 @@ shared_ptr<MemTracker> MemTracker::GetRootTracker() {
 void MemTracker::SetMetricEntity(
     const MetricEntityPtr& metric_entity, const std::string& name_suffix) {
   if (metrics_) {
-    LOG(DFATAL) << "SetMetricEntity while " << ToString() << " already has metric entity";
+    LOG_IF(DFATAL, metric_entity->id() != metrics_->metric_entity_->id())
+        << "SetMetricEntity (" << metric_entity->id() << ") while "
+        << ToString() << " already has a different metric entity "
+        << metrics_->metric_entity_->id();
     return;
   }
   metrics_ = std::make_unique<TrackerMetrics>(metric_entity);
