@@ -1322,6 +1322,20 @@ lsm_rocksdb_stalls:
         "rocksdb_stall_micros": "Stalls"
       ticksuffix: "&nbsp;\u00B5s"
 
+lsm_rocksdb_write_rejections:
+  metric: "majority_sst_files_rejections"
+  function: "rate|sum without (table_id, table_name)|avg"
+  range: "1m"
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "Rejections"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "majority_sst_files_rejections": "Rejections"
+
 lsm_rocksdb_flush_size:
   metric: "rocksdb_flush_write_bytes"
   function: "rate|sum without (table_id, table_name)|avg"
