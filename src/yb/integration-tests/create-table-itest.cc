@@ -348,45 +348,51 @@ TEST_F(CreateTableITest, TestNoAllocBlacklist) {
 
 TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
   const int kNumReplicas = 3;
+  string parent_table_id;
+  string tablet_id;
   vector<string> ts_flags;
   vector<string> master_flags;
-  ts_flags.push_back("--follower_unavailable_considered_failed_sec=3");
 
+  ts_flags.push_back("--follower_unavailable_considered_failed_sec=3");
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas));
   ASSERT_OK(
       client_->CreateNamespace("colocation_test", boost::none, "", "", "", boost::none, true));
 
-  string ns_id;
-  auto namespaces = ASSERT_RESULT(client_->ListNamespaces(boost::none));
-  for (const auto& ns : namespaces) {
-    if (ns.name() == "colocation_test") {
-      ns_id = ns.id();
-      break;
+  {
+    string ns_id;
+    auto namespaces = ASSERT_RESULT(client_->ListNamespaces(boost::none));
+    for (const auto& ns : namespaces) {
+      if (ns.name() == "colocation_test") {
+        ns_id = ns.id();
+        break;
+      }
     }
+    ASSERT_FALSE(ns_id.empty());
+    parent_table_id = ns_id + master::kColocatedParentTableIdSuffix;
   }
-  ASSERT_FALSE(ns_id.empty());
 
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(WaitFor(
-      [&]() -> bool {
-        EXPECT_OK(client_->GetTabletsFromTableId(
-            ns_id + master::kColocatedParentTableIdSuffix, 0, &tablets));
-        return tablets.size() == 1;
-      },
-      MonoDelta::FromSeconds(30), "Wait until tablet is created."));
-  string tablet_id = tablets[0].tablet_id();
+  {
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    ASSERT_OK(WaitFor(
+        [&]() -> bool {
+          EXPECT_OK(client_->GetTabletsFromTableId(parent_table_id, 0, &tablets));
+          return tablets.size() == 1;
+        },
+        MonoDelta::FromSeconds(30), "Create colocated tablet"));
+    tablet_id = tablets[0].tablet_id();
+  }
 
-  auto rocksdb_dir = JoinPathSegments(
+  string rocksdb_dir = JoinPathSegments(
       cluster_->data_root(), "ts-0", "yb-data", "tserver", "data", "rocksdb",
+      "table-" + parent_table_id, "tablet-" + tablet_id);
+  string wal_dir = JoinPathSegments(
+      cluster_->data_root(), "ts-0", "yb-data", "tserver", "wals", "table-" + parent_table_id,
       "tablet-" + tablet_id);
-  auto wal_dir = JoinPathSegments(
-      cluster_->data_root(), "ts-0", "yb-data", "tserver", "wals", "tablet-" + tablet_id);
   std::function<Result<bool>()> dirs_exist = [&] {
     return Env::Default()->FileExists(rocksdb_dir) && Env::Default()->FileExists(wal_dir);
   };
 
-  ASSERT_OK(
-      WaitFor(dirs_exist, MonoDelta::FromSeconds(30), "Wait until data directory is created"));
+  ASSERT_OK(WaitFor(dirs_exist, MonoDelta::FromSeconds(30), "Create data and wal directories"));
 
   // Stop a tablet server and create a new tablet server. This will trigger a remote bootstrap on
   // the new tablet server.
@@ -397,11 +403,11 @@ TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
   // Remote bootstrap should create the correct tablet directory for the new tablet server.
   rocksdb_dir = JoinPathSegments(
       cluster_->data_root(), "ts-3", "yb-data", "tserver", "data", "rocksdb",
-      "tablet-" + tablet_id);
+      "table-" + parent_table_id, "tablet-" + tablet_id);
   wal_dir = JoinPathSegments(
-      cluster_->data_root(), "ts-3", "yb-data", "tserver", "wals", "tablet-" + tablet_id);
-  ASSERT_OK(
-      WaitFor(dirs_exist, MonoDelta::FromSeconds(30), "Wait until data directory is created"));
+      cluster_->data_root(), "ts-3", "yb-data", "tserver", "wals", "table-" + parent_table_id,
+      "tablet-" + tablet_id);
+  ASSERT_OK(WaitFor(dirs_exist, MonoDelta::FromSeconds(30), "Create data and wal directories"));
 }
 
 }  // namespace yb
