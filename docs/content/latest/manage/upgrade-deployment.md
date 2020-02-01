@@ -37,7 +37,7 @@ For Centos this would be something like:
 ```
 1. pkill yb-master  (i.e. stop the older version of the yb-master process)
 2. make sure we're on the dir of the new version (cd /home/yugabyte/softwareyb-$VER/) 
-3. start the yb-master process
+3. start  (the newer version of) the yb-master process
 4. verify in http://<any-yb-master>:7000/ that all masters are alive
 5. pause ~60 secs before upgrading next yb-master
 ```
@@ -47,7 +47,7 @@ For Centos this would be something like:
 ```
 1. pkill yb-tserver (i.e. stop the older version of the yb-tserver process)
 2. make sure we're on the dir of the new version (cd /home/yugabyte/softwareyb-$VER/) 
-3. start yb-tserver process
+3. start  (the newer version of) yb-tserver process
 4. verify in http://<any-yb-master>:7000/tablet-servers to see if the new YB-TServer is alive and heart beating
 5. pause ~60 secs before upgrading next YB-TServer
 ```
