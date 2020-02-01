@@ -262,19 +262,11 @@ Status RaftGroupMetadata::CreateNew(FsManager* fs_manager,
     wal_top_dir = wal_root_dirs[rand.Uniform(wal_root_dirs.size())];
   }
 
-  auto table_dir = Substitute("table-$0", table_id);
-  auto tablet_dir = Substitute("tablet-$0", raft_group_id);
-  string wal_dir;
-  string rocksdb_dir;
-
-  if (colocated) {
-    wal_dir = JoinPathSegments(wal_top_dir, tablet_dir);
-    rocksdb_dir = JoinPathSegments(data_top_dir, FsManager::kRocksDBDirName, tablet_dir);
-  } else {
-    auto wal_table_top_dir = JoinPathSegments(wal_top_dir, table_dir);
-    wal_dir = JoinPathSegments(wal_table_top_dir, tablet_dir);
-    rocksdb_dir = JoinPathSegments(data_top_dir, FsManager::kRocksDBDirName, table_dir, tablet_dir);
-  }
+  const string table_dir_name = Substitute("table-$0", table_id);
+  const string tablet_dir_name = Substitute("tablet-$0", raft_group_id);
+  const string wal_dir = JoinPathSegments(wal_top_dir, table_dir_name, tablet_dir_name);
+  const string rocksdb_dir = JoinPathSegments(
+      data_top_dir, FsManager::kRocksDBDirName, table_dir_name, tablet_dir_name);
 
   RaftGroupMetadataPtr ret(new RaftGroupMetadata(fs_manager,
                                                        table_id,
@@ -785,11 +777,12 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   RaftGroupMetadataPtr metadata(new RaftGroupMetadata(fs_manager_, raft_group_id_));
   RETURN_NOT_OK(metadata->LoadFromSuperBlock(superblock));
   metadata->raft_group_id_ = raft_group_id;
-  const auto tablet_dir = Substitute("tablet-$0", raft_group_id);
-  metadata->wal_dir_ = JoinPathSegments(DirName(wal_dir_), tablet_dir);
+  const string tablet_dir_name = Substitute("tablet-$0", raft_group_id);
+  metadata->wal_dir_ = JoinPathSegments(DirName(wal_dir_), tablet_dir_name);
   metadata->kv_store_.lower_bound_key = lower_bound_key;
   metadata->kv_store_.upper_bound_key = upper_bound_key;
-  metadata->kv_store_.rocksdb_dir = JoinPathSegments(DirName(kv_store_.rocksdb_dir), tablet_dir);
+  metadata->kv_store_.rocksdb_dir = JoinPathSegments(
+      DirName(kv_store_.rocksdb_dir), tablet_dir_name);
   metadata->partition_ = partition;
   RETURN_NOT_OK(metadata->Flush());
   return metadata;
