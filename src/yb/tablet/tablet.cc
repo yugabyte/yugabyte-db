@@ -614,8 +614,11 @@ Status Tablet::OpenKeyValueTablet() {
         MemTracker::FindOrCreateTracker(
             Format("$0-$1", kIntentsDB, tablet_id()), block_based_table_mem_tracker_,
             AddToParent::kTrue, CreateMetrics::kFalse);
-    rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(metric_entity_,
-      Format("$0_$1", "BlockBasedTable", kIntentsDB));
+    // We may not have a metrics_entity_ instantiated in tests.
+    if (metric_entity_) {
+      rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(metric_entity_,
+        Format("$0_$1", "BlockBasedTable", kIntentsDB));
+    }
 
     rocksdb::DB* intents_db = nullptr;
     RETURN_NOT_OK(rocksdb::DB::Open(rocksdb_options, db_dir + kIntentsDBSuffix, &intents_db));
