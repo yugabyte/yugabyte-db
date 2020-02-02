@@ -75,6 +75,34 @@ SELECT * FROM tab_range_colo;
  3
 (4 rows)
 
+BEGIN;
+INSERT INTO tab_range_colo VALUES (4);
+SELECT * FROM tab_range_colo;
+ a
+---
+ 0
+ 1
+ 2
+ 3
+ 4
+(5 rows)
+
+ROLLBACK;
+BEGIN;
+INSERT INTO tab_range_colo VALUES (5);
+COMMIT;
+SELECT * FROM tab_range_colo;
+ a
+---
+ 0
+ 1
+ 2
+ 3
+ 5
+(5 rows)
+
+INSERT INTO tab_range_colo VALUES (6), (6);
+ERROR:  duplicate key value violates unique constraint "tab_range_colo_pkey"
 -- CREATE INDEX
 -- table with index
 CREATE TABLE tab_range_nonkey2 (a INT, b INT, PRIMARY KEY (a ASC));

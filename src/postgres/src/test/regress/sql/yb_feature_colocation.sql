@@ -32,6 +32,17 @@ SELECT * FROM tab_nonkey_noco ORDER BY a ASC;
 SELECT * FROM tab_range_range;
 SELECT * FROM tab_range_colo;
 
+BEGIN;
+INSERT INTO tab_range_colo VALUES (4);
+SELECT * FROM tab_range_colo;
+ROLLBACK;
+BEGIN;
+INSERT INTO tab_range_colo VALUES (5);
+COMMIT;
+SELECT * FROM tab_range_colo;
+
+INSERT INTO tab_range_colo VALUES (6), (6);
+
 -- CREATE INDEX
 
 -- table with index
