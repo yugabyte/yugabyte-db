@@ -438,18 +438,19 @@ class ControlScript(object):
             should_callhome = False
 
             is_first_install = is_first_run and not self.is_yb_initialized()
-            # Delete corrupted data dirs left from interrupting yb-master and yb-tserver startup.
-            if is_first_install and os.listdir(self.configs.saved_data.get("data_dir")):
-                Output.print_and_log(
-                    "Found data from failed initialization in {}. Removing...".format(
-                        self.configs.saved_data.get("data_dir")))
-                rmcontents(self.configs.saved_data.get("data_dir"))
 
             # Create data directory.
             if not os.path.exists(self.configs.saved_data.get("data_dir")):
                 Output.log(
                     "Creating data directory {}.".format(self.configs.saved_data.get("data_dir")))
                 os.makedirs(self.configs.saved_data.get("data_dir"))
+
+            # Delete corrupted data dirs left from interrupting yb-master and yb-tserver startup.
+            if is_first_install and os.listdir(self.configs.saved_data.get("data_dir")):
+                Output.print_and_log(
+                    "Found data from failed initialization in {}. Removing...".format(
+                        self.configs.saved_data.get("data_dir")))
+                rmcontents(self.configs.saved_data.get("data_dir"))
 
             # Start or initialize yb-master and yb-tserver.
             if is_first_run:
