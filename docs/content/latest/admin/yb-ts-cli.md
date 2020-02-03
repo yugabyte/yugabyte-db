@@ -121,7 +121,7 @@ $ ./bin/yb-ts-cli [ --server_address=<host>:<port> ] set_flag [ --force ] <flag>
 ```
 
 - *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-- --force: Flag to to allow a change to a flag (option) that is not explicitly marked as runtime-settable. The change may be ignored on the server or may cause the server to crash. See [--force](#force).
+- --force: Flag to to allow a change to a flag (option) that is not explicitly marked as runtime-settable. Note that the change may be ignored on the server or may cause the server to crash, if unsafe values are provided. See [--force](#force).
 - *flag*: The `yb-tserver` configuration option (without the `--` prefix) to be set. See [`yb-tserver`](../../reference/configuration/yb-tserver/#configuration-options)
 - *value*: The value to be applied.
 
@@ -155,7 +155,7 @@ The following options (or flags) can be used, when specified, with the commands 
 
 ##### --force
 
-Use this flag with the [`set_flag`](#set-flag) command to allow a change to a flag (option) that is not explicitly marked as runtime-settable. The change may be ignored on the server or may cause the server to crash.
+Use this flag with the [`set_flag`](#set-flag) command to allow a change to a flag (option) that is not explicitly marked as runtime-settable. TNote that the change may be ignored on the server or may cause the server to crash, if unsafe values are provided.
 
 Default: `false`
 
