@@ -8,8 +8,30 @@
 CREATE TABLE ag_graph (
   name name NOT NULL,
   namespace regnamespace NOT NULL
-);
+) WITH (OIDS);
+
+CREATE UNIQUE INDEX ag_graph_oid_index ON ag_graph USING btree (oid);
+
 CREATE UNIQUE INDEX ag_graph_name_index ON ag_graph USING btree (name);
+
+-- 0 is an invalid label ID
+CREATE DOMAIN label_id AS int NOT NULL CHECK (VALUE > 0 AND VALUE <= 65535);
+
+CREATE DOMAIN label_kind AS "char" NOT NULL CHECK (VALUE = 'v' OR VALUE = 'e');
+
+CREATE TABLE ag_label (
+  name name NOT NULL,
+  graph oid NOT NULL,
+  id label_id,
+  kind label_kind,
+  relation regclass NOT NULL
+) WITH (OIDS);
+
+CREATE UNIQUE INDEX ag_label_oid_index ON ag_label USING btree (oid);
+
+CREATE UNIQUE INDEX ag_label_name_graph_index
+ON ag_label
+USING btree (name, graph);
 
 --
 -- utility functions
@@ -368,37 +390,6 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 --
--- functions for updating clauses
---
-
--- This function is defined as a VOLATILE function to prevent the optimizer
--- from pulling up Query's for CREATE clauses.
-CREATE FUNCTION _cypher_create_clause(internal)
-RETURNS void
-LANGUAGE c
-AS 'MODULE_PATHNAME';
-
---
--- query functions
---
-
-CREATE FUNCTION cypher(query_string cstring, params agtype = NULL)
-RETURNS SETOF record
-LANGUAGE c
-AS 'MODULE_PATHNAME';
-
-CREATE FUNCTION get_cypher_keywords(OUT word text, OUT catcode "char",
-                                    OUT catdesc text)
-RETURNS SETOF record
-LANGUAGE c
-STABLE
-RETURNS NULL ON NULL INPUT
-PARALLEL SAFE
-COST 10
-ROWS 60
-AS 'MODULE_PATHNAME';
-
---
 -- agtype string match function
 --
 
@@ -424,6 +415,38 @@ LANGUAGE C
 STABLE
 STRICT
 PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+--
+-- functions for updating clauses
+--
+
+-- This function is defined as a VOLATILE function to prevent the optimizer
+-- from pulling up Query's for CREATE clauses.
+CREATE FUNCTION _cypher_create_clause(internal)
+RETURNS void
+LANGUAGE c
+AS 'MODULE_PATHNAME';
+
+--
+-- query functions
+--
+
+CREATE FUNCTION cypher(graph_name name, query_string cstring,
+                       params agtype = NULL)
+RETURNS SETOF record
+LANGUAGE c
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION get_cypher_keywords(OUT word text, OUT catcode "char",
+                                    OUT catdesc text)
+RETURNS SETOF record
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+COST 10
+ROWS 60
 AS 'MODULE_PATHNAME';
 
 --

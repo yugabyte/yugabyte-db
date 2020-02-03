@@ -18,6 +18,8 @@
 #include "parser/parse_target.h"
 #include "parser/parsetree.h"
 
+#include "catalog/ag_label.h"
+#include "commands/label_commands.h"
 #include "nodes/ag_nodes.h"
 #include "nodes/cypher_nodes.h"
 #include "parser/cypher_clause.h"
@@ -45,6 +47,10 @@ static Query *transform_cypher_with(cypher_parsestate *cpstate,
 // updating clause
 static Query *transform_cypher_create(cypher_parsestate *cpstate,
                                       cypher_clause *clause);
+static List *transform_cypher_create_pattern(cypher_parsestate *cpstate,
+                                             List *pattern);
+static cypher_path *transform_cypher_create_path(cypher_parsestate *cpstate,
+                                                 cypher_path *cp);
 
 static RangeTblEntry *transform_prev_cypher_clause(cypher_parsestate *cpstate,
                                                    cypher_clause *prev_clause);
@@ -274,6 +280,7 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
     cypher_create *self = (cypher_create *)clause->self;
     Const *pattern_const;
     Const *null_const;
+    List *transformed_pattern;
     Expr *func_expr;
     Oid func_create_oid;
     Query *query;
@@ -295,8 +302,11 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
      * because we would not be able to control how our pointer to the
      * internal type is copied.
      */
+    transformed_pattern = transform_cypher_create_pattern(cpstate,
+                                                          self->pattern);
     pattern_const = makeConst(INTERNALOID, -1, InvalidOid, 1,
-                              PointerGetDatum(self->pattern), false, true);
+                              PointerGetDatum(transformed_pattern), false,
+                              true);
 
     /*
      * Create the FuncExpr Node.
@@ -317,6 +327,51 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
     query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
 
     return query;
+}
+
+static List *transform_cypher_create_pattern(cypher_parsestate *cpstate,
+                                             List *pattern)
+{
+    ListCell *lc;
+
+    Assert(list_length(pattern) == 1);
+
+    foreach (lc, pattern)
+    {
+        transform_cypher_create_path(cpstate, lfirst(lc));
+    }
+
+    return pattern;
+}
+
+static cypher_path *transform_cypher_create_path(cypher_parsestate *cpstate,
+                                                 cypher_path *path)
+{
+    ListCell *lc;
+
+    foreach (lc, path->path)
+    {
+        if (is_ag_node(lfirst(lc), cypher_node))
+        {
+            cypher_node *node = lfirst(lc);
+
+            if (node->label && !label_exists(node->label, cpstate->graph_oid))
+                create_vertex_label(cpstate->graph_name, node->label);
+        }
+        else if (is_ag_node(lfirst(lc), cypher_relationship))
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                     errmsg("edges are not supported in CREATE clause")));
+        }
+        else
+        {
+            ereport(ERROR,
+                    (errmsg_internal("unreconized node in create pattern")));
+        }
+    }
+
+    return path;
 }
 
 /*

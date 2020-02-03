@@ -16,6 +16,7 @@
 #include "parser/parsetree.h"
 #include "utils/builtins.h"
 
+#include "catalog/ag_graph.h"
 #include "nodes/ag_nodes.h"
 #include "parser/cypher_analyze.h"
 #include "parser/cypher_clause.h"
@@ -31,15 +32,17 @@ static bool convert_cypher_walker(Node *node, ParseState *pstate);
 static bool is_rte_cypher(RangeTblEntry *rte);
 static bool is_func_cypher(FuncExpr *funcexpr);
 static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate);
+static Name expr_get_const_name(Node *expr);
 static const char *expr_get_const_cstring(Node *expr, const char *source_str);
 static int get_query_location(const int location, const char *source_str);
 static Query *analyze_cypher(List *stmt, ParseState *parent_pstate,
                              const char *query_str, int query_loc,
-                             const char *graph_name, Param *params);
+                             char *graph_name, Oid graph_oid, Param *params);
 static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
                                         ParseState *parent_pstate,
                                         const char *query_str, int query_loc,
-                                        const char *graph_name, Param *params);
+                                        char *graph_name, Oid graph_oid,
+                                        Param *params);
 
 void post_parse_analyze_init(void)
 {
@@ -198,9 +201,11 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     RangeTblFunction *rtfunc = linitial(rte->functions);
     FuncExpr *funcexpr = (FuncExpr *)rtfunc->funcexpr;
     Node *arg;
+    Name graph_name;
+    Oid graph_oid;
     const char *query_str;
     int query_loc;
-    Node *params;
+    Param *params;
     errpos_ecb_state ecb_state;
     List *stmt;
     Query *query;
@@ -219,8 +224,27 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
                  parser_errposition(pstate, exprLocation((Node *)funcexpr))));
     }
 
-    // NOTE: Remove asserts once the prototype of cypher() function is fixed.
     arg = linitial(funcexpr->args);
+    Assert(exprType(arg) == NAMEOID);
+
+    graph_name = expr_get_const_name(arg);
+    if (!graph_name)
+    {
+        ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+                        errmsg("a name constant is expected"),
+                        parser_errposition(pstate, exprLocation(arg))));
+    }
+
+    graph_oid = get_graph_oid(NameStr(*graph_name));
+    if (!OidIsValid(graph_oid))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_SCHEMA),
+                 errmsg("graph \"%s\" does not exist", NameStr(*graph_name)),
+                 parser_errposition(pstate, exprLocation(arg))));
+    }
+
+    arg = lsecond(funcexpr->args);
     Assert(exprType(arg) == CSTRINGOID);
 
     /*
@@ -249,16 +273,18 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
      * Check to see if the cypher function had any parameters passed to it,
      * if so make sure Postgres parsed the second argument to a Param node.
      */
-    if (list_length(funcexpr->args) == 2)
+    if (list_length(funcexpr->args) == 3)
     {
-        params = lsecond(funcexpr->args);
-        if (!IsA(params, Param))
+        arg = lthird(funcexpr->args);
+        if (!IsA(arg, Param))
         {
             ereport(ERROR,
                     (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                     errmsg("second argument of cypher function must be a parameter"),
-                     parser_errposition(pstate, exprLocation(params))));
+                     errmsg("third argument of cypher function must be a parameter"),
+                     parser_errposition(pstate, exprLocation(arg))));
         }
+
+        params = (Param *)arg;
     }
     else
     {
@@ -299,13 +325,14 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
                      parser_errposition(pstate, exprLocation(rtfunc->funcexpr))));
         }
 
-        query = analyze_cypher(stmt, pstate, query_str, query_loc, NULL,
-                               (Param *)params);
+        query = analyze_cypher(stmt, pstate, query_str, query_loc,
+                               NameStr(*graph_name), graph_oid, params);
     }
     else
     {
         query = analyze_cypher_and_coerce(stmt, rtfunc, pstate, query_str,
-                                          query_loc, NULL, (Param *)params);
+                                          query_loc, NameStr(*graph_name),
+                                          graph_oid, params);
     }
 
     pstate->p_lateral_active = false;
@@ -317,6 +344,20 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     // rte->inFromCl is always true for RTE_FUNCTION.
     rte->rtekind = RTE_SUBQUERY;
     rte->subquery = query;
+}
+
+static Name expr_get_const_name(Node *expr)
+{
+    Const *con;
+
+    if (!IsA(expr, Const))
+        return NULL;
+
+    con = (Const *)expr;
+    if (con->constisnull)
+        return NULL;
+
+    return DatumGetName(con->constvalue);
 }
 
 static const char *expr_get_const_cstring(Node *expr, const char *source_str)
@@ -353,7 +394,7 @@ static int get_query_location(const int location, const char *source_str)
 
 static Query *analyze_cypher(List *stmt, ParseState *parent_pstate,
                              const char *query_str, int query_loc,
-                             const char *graph_name, Param *params)
+                             char *graph_name, Oid graph_oid, Param *params)
 {
     cypher_clause *clause;
     ListCell *lc;
@@ -397,6 +438,7 @@ static Query *analyze_cypher(List *stmt, ParseState *parent_pstate,
     pstate->p_sourcetext = query_str;
 
     cpstate->graph_name = graph_name;
+    cpstate->graph_oid = graph_oid;
     cpstate->params = params;
 
     /*
@@ -422,7 +464,8 @@ static Query *analyze_cypher(List *stmt, ParseState *parent_pstate,
 static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
                                         ParseState *parent_pstate,
                                         const char *query_str, int query_loc,
-                                        const char *graph_name, Param *params)
+                                        char *graph_name, Oid graph_oid,
+                                        Param *params)
 {
     ParseState *pstate;
     Query *query;
@@ -449,7 +492,7 @@ static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
     pstate->p_lateral_active = lateral;
 
     subquery = analyze_cypher(stmt, pstate, query_str, query_loc, graph_name,
-                              (Param *)params);
+                              graph_oid, (Param *)params);
 
     pstate->p_lateral_active = false;
     pstate->p_expr_kind = EXPR_KIND_NONE;

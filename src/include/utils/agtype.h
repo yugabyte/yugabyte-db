@@ -7,12 +7,13 @@
 #ifndef AG_AGTYPE_H
 #define AG_AGTYPE_H
 
+#include "fmgr.h"
 #include "lib/stringinfo.h"
 #include "utils/array.h"
 #include "utils/numeric.h"
 #include "utils/syscache.h"
 
-#include "catalog/ag_catalog.h"
+#include "catalog/ag_namespace.h"
 
 /* Tokens used when sequentially processing an agtype value */
 typedef enum

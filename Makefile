@@ -3,7 +3,10 @@ MODULE_big = agensgraph
 OBJS = src/backend/agensgraph.o \
        src/backend/catalog/ag_catalog.o \
        src/backend/catalog/ag_graph.o \
-       src/backend/commands/commands.o \
+       src/backend/catalog/ag_label.o \
+       src/backend/catalog/ag_namespace.o \
+       src/backend/commands/graph_commands.o \
+       src/backend/commands/label_commands.o \
        src/backend/executor/cypher_create.o \
        src/backend/nodes/ag_nodes.o \
        src/backend/nodes/outfuncs.o \
@@ -32,13 +35,13 @@ EXTENSION = agensgraph
 
 DATA = agensgraph--0.0.0.sql
 
-REGRESS = agtype \
+REGRESS = scan \
+          agtype \
           commands \
           cypher \
+          expr \
           cypher_create \
           cypher_with \
-          expr \
-          scan
 
 REGRESS_OPTS = --load-extension=agensgraph
 

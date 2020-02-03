@@ -3,6 +3,6 @@
 
 #include "postgres.h"
 
-Oid ag_catalog_namespace_id(void);
+Oid ag_relation_id(const char *name, const char *kind);
 
 #endif

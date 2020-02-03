@@ -98,7 +98,8 @@ static void drop_schema_for_graph(const Name graph_name, const bool cascade)
     ObjectAddress object;
     DropBehavior behavior;
 
-    nsp_id = get_graph_namespace(graph_name);
+    nsp_id = get_graph_namespace(NameStr(*graph_name));
+    Assert(OidIsValid(nsp_id));
 
     if (!pg_namespace_ownercheck(nsp_id, GetUserId()))
     {
