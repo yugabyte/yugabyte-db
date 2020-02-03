@@ -33,7 +33,7 @@ $ ./bin/yb-ctl --help
 
 ## Commands
 
-### create
+##### create
 
 Creates a local YugabyteDB cluster. With no optional arguments, creates a 1-node cluster.
 
