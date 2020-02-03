@@ -2,169 +2,61 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "access/htup.h"
 #include "access/htup_details.h"
-#include "access/xact.h"
+#include "access/skey.h"
+#include "access/stratnum.h"
+#include "access/sysattr.h"
 #include "catalog/indexing.h"
-#include "catalog/objectaddress.h"
-#include "commands/tablecmds.h"
-#include "nodes/makefuncs.h"
+#include "storage/lockdefs.h"
+#include "utils/builtins.h"
 #include "utils/fmgroids.h"
-#include "utils/lsyscache.h"
 #include "utils/rel.h"
+#include "utils/relcache.h"
 
+#include "catalog/ag_catalog.h"
 #include "catalog/ag_label.h"
-#include "utils/agtype.h"
 
-#define Anum_ag_graph_name 1
-#define Anum_ag_label_name 2
-#define Anum_ag_label_oid 3
-#define Anum_ag_label_type 4
+#define Anum_ag_label_name 1
+#define Anum_ag_label_graph 2
+#define Anum_ag_label_id 3
+#define Anum_ag_label_kind 4
+#define Anum_ag_label_relation 5
 
-#define Natts_ag_label 4
+#define Natts_ag_label 5
 
-static CreateStmt *makeCreateStmt(RangeVar *rv, List *tableElts);
-Oid create_vertex_label(const Name graph_name, const Name label_name);
-void add_label_to_catalog(const Name graph_name, const Name label_name,
-                          const cypher_label_kind label_type,
-                          const Oid label_oid);
-static Oid ag_label_relation_id(void);
-static Oid ag_labels_index_id(void);
-
-static Oid ag_label_relation_id(void)
-{
-    Oid id;
-
-    id = get_relname_relid("ag_label", ag_catalog_namespace_id());
-    if (!OidIsValid(id))
-    {
-        ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE),
-                        errmsg("table \"ag_label\" does not exist")));
-    }
-
-    return id;
-}
-
-static Oid ag_labels_index_id(void)
-{
-    Oid id;
-
-    id = get_relname_relid("ag_label_index", ag_catalog_namespace_id());
-    if (!OidIsValid(id))
-    {
-        ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE),
-                        errmsg("index \"ag_label_index\" does not exist")));
-    }
-
-    return id;
-}
-
-void create_label(const Name graph_name, const Name label_name,
-                  cypher_label_kind label_type)
-{
-    Oid label_oid;
-
-    switch (label_type)
-    {
-    case CYPHER_LABEL_VERTEX:
-        label_oid = create_vertex_label(graph_name, label_name);
-        break;
-    case CYPHER_LABEL_EDGE:
-        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                        errmsg("edges are not supported in CREATE clause")));
-        break;
-    default:
-        ereport(ERROR, (errmsg("unrecognized label type")));
-    }
-
-    add_label_to_catalog(graph_name, label_name, label_type, label_oid);
-
-    CommandCounterIncrement();
-}
-
-Oid create_vertex_label(const Name graph_name, const Name label_name)
-{
-    RangeVar *rv;
-    List *tableElmts = NIL;
-    ColumnDef *cd;
-    CreateStmt *stmt;
-    ObjectAddress reladdr;
-    Oid graph_type_oid;
-
-    rv = makeRangeVar(NameStr(*graph_name), NameStr(*label_name), -1);
-
-    graph_type_oid =
-        GetSysCacheOid2(TYPENAMENSP, CStringGetDatum("graphid"),
-                        ObjectIdGetDatum(ag_catalog_namespace_id()));
-
-    cd = makeColumnDef("vertex_id", graph_type_oid, 0, InvalidOid);
-    tableElmts = lappend(tableElmts, cd);
-
-    cd = makeColumnDef("props", AGTYPEOID, 0, InvalidOid);
-    tableElmts = lappend(tableElmts, cd);
-
-    stmt = makeCreateStmt(rv, tableElmts);
-    reladdr = DefineRelation(stmt, RELKIND_RELATION, InvalidOid, NULL, NULL);
-
-    return reladdr.objectId;
-}
-
-bool label_exists(const Name graph_name, const Name label_name,
-                  cypher_label_kind label_type)
-{
-    ScanKeyData scan_keys[2];
-    Relation ag_label;
-    SysScanDesc scan_desc;
-    HeapTuple tuple;
-
-    ScanKeyInit(&scan_keys[0], Anum_ag_graph_name, BTEqualStrategyNumber,
-                F_NAMEEQ, NameGetDatum(graph_name));
-
-    ScanKeyInit(&scan_keys[1], Anum_ag_label_name, BTEqualStrategyNumber,
-                F_NAMEEQ, NameGetDatum(label_name));
-
-    ag_label = heap_open(ag_label_relation_id(), AccessShareLock);
-
-    scan_desc = systable_beginscan(ag_label, ag_labels_index_id(), true, NULL,
-                                   2, scan_keys);
-
-    tuple = systable_getnext(scan_desc);
-
-    heap_close(ag_label, AccessShareLock);
-
-    systable_endscan(scan_desc);
-
-    if (!HeapTupleIsValid(tuple))
-    {
-        return false;
-    }
-
-    // Will need to check label_type here when edges are implemented.
-
-    return true;
-}
+#define ag_label_relation_id() ag_relation_id("ag_label", "table")
+#define ag_label_name_graph_index_id() \
+    ag_relation_id("ag_label_name_graph_index", "index")
 
 // INSERT INTO ag_catalog.ag_label
-// VALUES (graph_name, label_name, label_oid, label_type)
-void add_label_to_catalog(const Name graph_name, const Name label_name,
-                          const cypher_label_kind label_type,
-                          const Oid label_oid)
+// VALUES (label_name, label_graph, label_id, label_kind, label_relation)
+Oid insert_label(const char *label_name, Oid label_graph, int32 label_id,
+                 char label_kind, Oid label_relation)
 {
+    NameData label_name_data;
     Datum values[Natts_ag_label];
     bool nulls[Natts_ag_label];
     Relation ag_label;
     HeapTuple tuple;
+    Oid label_oid;
 
-    values[Anum_ag_graph_name - 1] = NameGetDatum(graph_name);
-    nulls[Anum_ag_graph_name - 1] = false;
-
-    values[Anum_ag_label_name - 1] = NameGetDatum(label_name);
+    AssertArg(label_name);
+    namestrcpy(&label_name_data, label_name);
+    values[Anum_ag_label_name - 1] = NameGetDatum(&label_name_data);
     nulls[Anum_ag_label_name - 1] = false;
 
-    values[Anum_ag_label_oid - 1] = Int32GetDatum(label_oid);
-    nulls[Anum_ag_label_oid - 1] = false;
+    values[Anum_ag_label_graph - 1] = ObjectIdGetDatum(label_graph);
+    nulls[Anum_ag_label_graph - 1] = false;
 
-    values[Anum_ag_label_type - 1] = Int8GetDatum(label_type);
-    nulls[Anum_ag_label_type - 1] = false;
+    values[Anum_ag_label_id - 1] = Int32GetDatum(label_id);
+    nulls[Anum_ag_label_id - 1] = false;
+
+    values[Anum_ag_label_kind - 1] = CharGetDatum(label_kind);
+    nulls[Anum_ag_label_kind - 1] = false;
+
+    values[Anum_ag_label_relation - 1] = ObjectIdGetDatum(label_relation);
+    nulls[Anum_ag_label_relation - 1] = false;
 
     ag_label = heap_open(ag_label_relation_id(), RowExclusiveLock);
 
@@ -172,28 +64,56 @@ void add_label_to_catalog(const Name graph_name, const Name label_name,
 
     /*
      * CatalogTupleInsert() is originally for PostgreSQL's catalog. However,
-     * it is used at here for convenience. We don't care about the returned OID
-     * because ag_label doesn't have OID column.
+     * it is used at here for convenience.
      */
-    CatalogTupleInsert(ag_label, tuple);
+    label_oid = CatalogTupleInsert(ag_label, tuple);
 
     heap_close(ag_label, RowExclusiveLock);
+
+    return label_oid;
 }
 
-static CreateStmt *makeCreateStmt(RangeVar *rv, List *tableElts)
+Oid get_label_oid(const char *label_name, Oid label_graph)
 {
-    CreateStmt *cs = makeNode(CreateStmt);
+    NameData label_name_key;
+    ScanKeyData scan_keys[2];
+    Relation ag_label;
+    SysScanDesc scan_desc;
+    HeapTuple tuple;
+    Oid label_oid;
 
-    cs->relation = rv;
-    cs->tableElts = tableElts;
-    cs->inhRelations = NIL;
-    cs->partbound = NULL;
-    cs->ofTypename = NULL;
-    cs->constraints = NIL;
-    cs->options = NIL;
-    cs->oncommit = ONCOMMIT_NOOP;
-    cs->tablespacename = NULL;
-    cs->if_not_exists = false;
+    AssertArg(label_name);
+    AssertArg(OidIsValid(label_graph));
 
-    return cs;
+    namestrcpy(&label_name_key, label_name);
+    ScanKeyInit(&scan_keys[0], Anum_ag_label_name, BTEqualStrategyNumber,
+                F_NAMEEQ, NameGetDatum(&label_name_key));
+    ScanKeyInit(&scan_keys[1], Anum_ag_label_graph, BTEqualStrategyNumber,
+                F_OIDEQ, ObjectIdGetDatum(label_graph));
+
+    ag_label = heap_open(ag_label_relation_id(), AccessShareLock);
+    scan_desc = systable_beginscan(ag_label, ag_label_name_graph_index_id(),
+                                   true, NULL, 2, scan_keys);
+
+    tuple = systable_getnext(scan_desc);
+    if (HeapTupleIsValid(tuple))
+    {
+        bool is_null;
+        Datum value;
+
+        value = heap_getsysattr(tuple, ObjectIdAttributeNumber,
+                                RelationGetDescr(ag_label), &is_null);
+        Assert(!is_null);
+
+        label_oid = DatumGetObjectId(value);
+    }
+    else
+    {
+        label_oid = InvalidOid;
+    }
+
+    systable_endscan(scan_desc);
+    heap_close(ag_label, AccessShareLock);
+
+    return label_oid;
 }

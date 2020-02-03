@@ -7,7 +7,8 @@
 typedef struct cypher_parsestate
 {
     ParseState pstate;
-    const char *graph_name;
+    char *graph_name;
+    Oid graph_oid;
     Param *params;
 } cypher_parsestate;
 

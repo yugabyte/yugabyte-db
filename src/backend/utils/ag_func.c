@@ -8,7 +8,7 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
-#include "catalog/ag_catalog.h"
+#include "catalog/ag_namespace.h"
 #include "utils/ag_func.h"
 
 // checks that func_oid is of func_name function in ag_catalog

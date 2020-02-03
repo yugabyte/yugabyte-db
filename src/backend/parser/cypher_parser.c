@@ -2,6 +2,7 @@
 
 #include "common/keywords.h"
 #include "nodes/pg_list.h"
+#include "parser/scansup.h"
 
 #include "parser/ag_scanner.h"
 #include "parser/cypher_gram.h"
@@ -47,18 +48,25 @@ int cypher_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ag_scanner_t scanner)
     case AG_TOKEN_IDENTIFIER:
     {
         const ScanKeyword *keyword;
+        char *ident;
 
         keyword = ScanKeywordLookup(token.value.s, cypher_keywords,
                                     num_cypher_keywords);
-        if (keyword == NULL)
+        if (keyword)
         {
-            lvalp->string = pstrdup(token.value.s);
-            break;
+            /*
+             * use token.value.s instead of keyword->name to preserve
+             * case sensitivity
+             */
+            lvalp->keyword = token.value.s;
+            *llocp = token.location;
+            return keyword->value;
         }
 
-        lvalp->keyword = token.value.s;
-        *llocp = token.location;
-        return keyword->value;
+        ident = pstrdup(token.value.s);
+        truncate_identifier(ident, strlen(ident), true);
+        lvalp->string = ident;
+        break;
     }
     case AG_TOKEN_PARAMETER:
         lvalp->string = pstrdup(token.value.s);

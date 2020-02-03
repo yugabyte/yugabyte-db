@@ -19,6 +19,7 @@
 #include "parser/parsetree.h"
 
 #include "catalog/ag_label.h"
+#include "commands/label_commands.h"
 #include "nodes/ag_nodes.h"
 #include "nodes/cypher_nodes.h"
 #include "parser/cypher_clause.h"
@@ -46,6 +47,8 @@ static Query *transform_cypher_with(cypher_parsestate *cpstate,
 // updating clause
 static Query *transform_cypher_create(cypher_parsestate *cpstate,
                                       cypher_clause *clause);
+static List *transform_cypher_create_pattern(cypher_parsestate *cpstate,
+                                             List *pattern);
 static cypher_path *transform_cypher_create_path(cypher_parsestate *cpstate,
                                                  cypher_path *cp);
 
@@ -345,20 +348,15 @@ static cypher_path *transform_cypher_create_path(cypher_parsestate *cpstate,
                                                  cypher_path *path)
 {
     ListCell *lc;
-    Name graph_name = makeName(cpstate->graph_name);
 
     foreach (lc, path->path)
     {
-        cypher_label_kind kind;
-        Name label_name;
-
         if (is_ag_node(lfirst(lc), cypher_node))
         {
             cypher_node *node = lfirst(lc);
 
-            label_name = makeName(node->label);
-
-            kind = CYPHER_LABEL_VERTEX;
+            if (node->label && !label_exists(node->label, cpstate->graph_oid))
+                create_vertex_label(cpstate->graph_name, node->label);
         }
         else if (is_ag_node(lfirst(lc), cypher_relationship))
         {
@@ -368,35 +366,12 @@ static cypher_path *transform_cypher_create_path(cypher_parsestate *cpstate,
         }
         else
         {
-            ereport(ERROR, (errmsg("unreconized node in create pattern")));
-        }
-
-        if (!label_exists(graph_name, label_name, kind))
-        {
-            create_label(graph_name, label_name, kind);
+            ereport(ERROR,
+                    (errmsg_internal("unreconized node in create pattern")));
         }
     }
 
     return path;
-}
-
-static Name makeName(const char *str)
-{
-    NameData *result;
-
-    if (str == NULL)
-        str = "";
-
-    if (strlen(str) > NAMEDATALEN)
-        ereport(ERROR,
-                (errcode(ERRCODE_DATATYPE_MISMATCH),
-                 errmsg("label name cannot be longer than %i characters",
-                        NAMEDATALEN)));
-
-    result = (NameData *)palloc0(NAMEDATALEN);
-    memcpy(result, str, strlen(str));
-
-    return result;
 }
 
 /*

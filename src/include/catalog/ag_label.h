@@ -2,15 +2,16 @@
 #define AG_AG_LABEL_H
 
 #include "postgres.h"
-typedef enum cypher_label_kind
-{
-    CYPHER_LABEL_VERTEX,
-    CYPHER_LABEL_EDGE
-} cypher_label_kind;
 
-bool label_exists(const Name graph_name, const Name label_name,
-                  cypher_label_kind label_type);
-void create_label(const Name graph_name, const Name label_name,
-                  cypher_label_kind label_type);
+#define LABEL_KIND_VERTEX 'v'
+#define LABEL_KIND_EDGE 'e'
+
+Oid insert_label(const char *label_name, Oid label_graph, int32 label_id,
+                 char label_kind, Oid label_relation);
+
+Oid get_label_oid(const char *label_name, Oid label_graph);
+
+#define label_exists(label_name, label_graph) \
+    OidIsValid(get_label_oid(label_name, label_graph))
 
 #endif
