@@ -615,8 +615,12 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
     return Status::OK();
   }
 
-  return CreateNamespace(namespace_name, database_type, creator_role_name, namespace_id,
-                         source_namespace_id, next_pg_oid, colocated);
+  Status s = CreateNamespace(namespace_name, database_type, creator_role_name, namespace_id,
+                             source_namespace_id, next_pg_oid, colocated);
+  if (s.IsAlreadyPresent() && database_type && *database_type == YQLDatabase::YQL_DATABASE_CQL) {
+    return Status::OK();
+  }
+  return s;
 }
 
 Status YBClient::DeleteNamespace(const std::string& namespace_name,
