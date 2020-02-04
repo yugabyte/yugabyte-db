@@ -33,13 +33,13 @@ menu:
 </ul>
 
 <div class="tab-content">
-  <div id="terraform" class="tab-pane fade" role="tabpanel" aria-labelledby="terraform-tab">
+  <div id="terraform" class="tab-pane fade show active" role="tabpanel" aria-labelledby="terraform-tab">
     {{% includeMarkdown "gcp/terraform.md" /%}}
   </div>
   <div id="deployment-manager" class="tab-pane fade" role="tabpanel" aria-labelledby="deployment-manager-tab">
     {{% includeMarkdown "gcp/gcp-deployment-manager.md" /%}}
   </div>
-    <div id="gke" class="tab-pane fade show active" role="tabpanel" aria-labelledby="gke-tab">
+    <div id="gke" class="tab-pane fade" role="tabpanel" aria-labelledby="gke-tab">
     {{% includeMarkdown "gcp/gke.md" /%}}
   </div>
 </div>
