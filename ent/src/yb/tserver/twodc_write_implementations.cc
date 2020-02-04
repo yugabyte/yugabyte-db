@@ -117,11 +117,9 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
       auto req = std::make_unique<WriteRequestPB>();
       req->set_tablet_id(tablet_id);
       req->set_external_hybrid_time(record.time());
-      write_request = req.get();
       queue.push_back(std::move(req));
-    } else {
-      write_request = queue.back().get();
     }
+    write_request = queue.back().get();
 
     for (const auto& kv_pair : record.changes()) {
       auto* write_pair = write_request->mutable_write_batch()->add_write_pairs();
