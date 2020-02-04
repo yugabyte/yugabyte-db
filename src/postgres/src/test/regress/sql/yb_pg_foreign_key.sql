@@ -1101,15 +1101,9 @@ drop table pktable2, fktable2;
 -- Foreign keys and partitioned tables
 --
 
--- TODO YugaByte does not support partitioned tables yet.
--- Leaving the first failing statement uncommented so that this test
--- will fail when the feature is implemented (the full test should
--- be uncommented then).
-
 -- partitioned table in the referenced side are not allowed
 CREATE TABLE fk_partitioned_pk (a int, b int, primary key (a, b))
   PARTITION BY RANGE (a, b);
-/*
 -- verify with create table first ...
 CREATE TABLE fk_notpartitioned_fk (a int, b int,
   FOREIGN KEY (a, b) REFERENCES fk_partitioned_pk);
@@ -1192,11 +1186,14 @@ CREATE TABLE fk_partitioned_fk_1 PARTITION OF fk_partitioned_fk FOR VALUES FROM 
 INSERT INTO fk_notpartitioned_pk VALUES (1);
 INSERT INTO fk_partitioned_fk VALUES (1);
 ALTER TABLE fk_notpartitioned_pk ALTER COLUMN a TYPE bigint;
+/*
 DELETE FROM fk_notpartitioned_pk WHERE a = 1;
+*/
 DROP TABLE fk_notpartitioned_pk, fk_partitioned_fk;
 
 -- Test some other exotic foreign key features: MATCH SIMPLE, ON UPDATE/DELETE
 -- actions
+/*
 CREATE TABLE fk_notpartitioned_pk (a int, b int, primary key (a, b));
 CREATE TABLE fk_partitioned_fk (a int default 2501, b int default 142857) PARTITION BY LIST (a);
 CREATE TABLE fk_partitioned_fk_1 PARTITION OF fk_partitioned_fk FOR VALUES IN (NULL,500,501,502);
@@ -1223,7 +1220,6 @@ INSERT INTO fk_partitioned_fk (a,b) VALUES (NULL, NULL);
 SELECT tableoid::regclass, a, b FROM fk_partitioned_fk WHERE b IS NULL ORDER BY a;
 UPDATE fk_notpartitioned_pk SET a = a + 1 WHERE a = 2502;
 SELECT tableoid::regclass, a, b FROM fk_partitioned_fk WHERE b IS NULL ORDER BY a;
-
 -- ON DELETE SET NULL
 INSERT INTO fk_partitioned_fk VALUES (2503, 2503);
 SELECT count(*) FROM fk_partitioned_fk WHERE a IS NULL;
@@ -1244,7 +1240,6 @@ UPDATE fk_notpartitioned_pk SET a = 1500 WHERE a = 2502;
 INSERT INTO fk_notpartitioned_pk VALUES (2501, 142857);
 UPDATE fk_notpartitioned_pk SET a = 1500 WHERE a = 2502;
 SELECT * FROM fk_partitioned_fk WHERE b = 142857;
-
 -- ON UPDATE/DELETE CASCADE
 ALTER TABLE fk_partitioned_fk DROP CONSTRAINT fk_partitioned_fk_a_fkey;
 ALTER TABLE fk_partitioned_fk ADD FOREIGN KEY (a, b)
@@ -1252,7 +1247,6 @@ ALTER TABLE fk_partitioned_fk ADD FOREIGN KEY (a, b)
   ON DELETE CASCADE ON UPDATE CASCADE;
 UPDATE fk_notpartitioned_pk SET a = 2502 WHERE a = 2501;
 SELECT * FROM fk_partitioned_fk WHERE b = 142857;
-
 -- Now you see it ...
 SELECT * FROM fk_partitioned_fk WHERE b = 142857;
 DELETE FROM fk_notpartitioned_pk WHERE b = 142857;

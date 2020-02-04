@@ -1517,27 +1517,19 @@ drop table pktable2, fktable2;
 --
 -- Foreign keys and partitioned tables
 --
--- TODO YugaByte does not support partitioned tables yet.
--- Leaving the first failing statement uncommented so that this test
--- will fail when the feature is implemented (the full test should
--- be uncommented then).
 -- partitioned table in the referenced side are not allowed
 CREATE TABLE fk_partitioned_pk (a int, b int, primary key (a, b))
   PARTITION BY RANGE (a, b);
-ERROR:  PARTITION BY not supported yet
-LINE 47:   PARTITION BY RANGE (a, b);
-           ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1126. Click '+' on the description to raise its priority
-/*
 -- verify with create table first ...
 CREATE TABLE fk_notpartitioned_fk (a int, b int,
   FOREIGN KEY (a, b) REFERENCES fk_partitioned_pk);
+ERROR:  cannot reference partitioned table "fk_partitioned_pk"
 -- and then with alter table.
 CREATE TABLE fk_notpartitioned_fk_2 (a int, b int);
 ALTER TABLE fk_notpartitioned_fk_2 ADD FOREIGN KEY (a, b)
   REFERENCES fk_partitioned_pk;
+ERROR:  cannot reference partitioned table "fk_partitioned_pk"
 DROP TABLE fk_partitioned_pk, fk_notpartitioned_fk_2;
-
 -- Creation of a partitioned hierarchy with irregular definitions
 CREATE TABLE fk_notpartitioned_pk (fdrop1 int, a int, fdrop2 int, b int,
   PRIMARY KEY (a, b));
@@ -1551,7 +1543,6 @@ ALTER TABLE fk_partitioned_fk ADD FOREIGN KEY (a, b) REFERENCES fk_notpartitione
 CREATE TABLE fk_partitioned_fk_2 (b int, fdrop1 int, fdrop2 int, a int);
 ALTER TABLE fk_partitioned_fk_2 DROP COLUMN fdrop1, DROP COLUMN fdrop2;
 ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_2 FOR VALUES FROM (1000,1000) TO (2000,2000);
-
 CREATE TABLE fk_partitioned_fk_3 (fdrop1 int, fdrop2 int, fdrop3 int, fdrop4 int, b int, a int)
   PARTITION BY HASH (a);
 ALTER TABLE fk_partitioned_fk_3 DROP COLUMN fdrop1, DROP COLUMN fdrop2,
@@ -1560,27 +1551,43 @@ CREATE TABLE fk_partitioned_fk_3_0 PARTITION OF fk_partitioned_fk_3 FOR VALUES W
 CREATE TABLE fk_partitioned_fk_3_1 PARTITION OF fk_partitioned_fk_3 FOR VALUES WITH (MODULUS 5, REMAINDER 1);
 ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_3
   FOR VALUES FROM (2000,2000) TO (3000,3000);
-
 -- Creating a foreign key with ONLY on a partitioned table referencing
 -- a non-partitioned table fails.
 ALTER TABLE ONLY fk_partitioned_fk ADD FOREIGN KEY (a, b)
   REFERENCES fk_notpartitioned_pk;
+ERROR:  cannot use ONLY for foreign key on partitioned table "fk_partitioned_fk" referencing relation "fk_notpartitioned_pk"
 -- Adding a NOT VALID foreign key on a partitioned table referencing
 -- a non-partitioned table fails.
 ALTER TABLE fk_partitioned_fk ADD FOREIGN KEY (a, b)
   REFERENCES fk_notpartitioned_pk NOT VALID;
-
+ERROR:  cannot add NOT VALID foreign key on partitioned table "fk_partitioned_fk" referencing relation "fk_notpartitioned_pk"
+DETAIL:  This feature is not yet supported on partitioned tables.
 -- these inserts, targetting both the partition directly as well as the
 -- partitioned table, should all fail
 INSERT INTO fk_partitioned_fk (a,b) VALUES (500, 501);
+ERROR:  insert or update on table "fk_partitioned_fk_1" violates foreign key constraint "fk_partitioned_fk_a_fkey"
+DETAIL:  Key (a, b)=(500, 501) is not present in table "fk_notpartitioned_pk".
 INSERT INTO fk_partitioned_fk_1 (a,b) VALUES (500, 501);
+ERROR:  insert or update on table "fk_partitioned_fk_1" violates foreign key constraint "fk_partitioned_fk_a_fkey"
+DETAIL:  Key (a, b)=(500, 501) is not present in table "fk_notpartitioned_pk".
 INSERT INTO fk_partitioned_fk (a,b) VALUES (1500, 1501);
+ERROR:  insert or update on table "fk_partitioned_fk_2" violates foreign key constraint "fk_partitioned_fk_a_fkey"
+DETAIL:  Key (a, b)=(1500, 1501) is not present in table "fk_notpartitioned_pk".
 INSERT INTO fk_partitioned_fk_2 (a,b) VALUES (1500, 1501);
+ERROR:  insert or update on table "fk_partitioned_fk_2" violates foreign key constraint "fk_partitioned_fk_a_fkey"
+DETAIL:  Key (a, b)=(1500, 1501) is not present in table "fk_notpartitioned_pk".
 INSERT INTO fk_partitioned_fk (a,b) VALUES (2500, 2502);
+ERROR:  insert or update on table "fk_partitioned_fk_3_1" violates foreign key constraint "fk_partitioned_fk_a_fkey"
+DETAIL:  Key (a, b)=(2500, 2502) is not present in table "fk_notpartitioned_pk".
 INSERT INTO fk_partitioned_fk_3 (a,b) VALUES (2500, 2502);
+ERROR:  insert or update on table "fk_partitioned_fk_3_1" violates foreign key constraint "fk_partitioned_fk_a_fkey"
+DETAIL:  Key (a, b)=(2500, 2502) is not present in table "fk_notpartitioned_pk".
 INSERT INTO fk_partitioned_fk (a,b) VALUES (2501, 2503);
+ERROR:  insert or update on table "fk_partitioned_fk_3_0" violates foreign key constraint "fk_partitioned_fk_a_fkey"
+DETAIL:  Key (a, b)=(2501, 2503) is not present in table "fk_notpartitioned_pk".
 INSERT INTO fk_partitioned_fk_3 (a,b) VALUES (2501, 2503);
-
+ERROR:  insert or update on table "fk_partitioned_fk_3_0" violates foreign key constraint "fk_partitioned_fk_a_fkey"
+DETAIL:  Key (a, b)=(2501, 2503) is not present in table "fk_notpartitioned_pk".
 -- but if we insert the values that make them valid, then they work
 INSERT INTO fk_notpartitioned_pk VALUES (500, 501), (1500, 1501),
   (2500, 2502), (2501, 2503);
@@ -1588,21 +1595,26 @@ INSERT INTO fk_partitioned_fk (a,b) VALUES (500, 501);
 INSERT INTO fk_partitioned_fk (a,b) VALUES (1500, 1501);
 INSERT INTO fk_partitioned_fk (a,b) VALUES (2500, 2502);
 INSERT INTO fk_partitioned_fk (a,b) VALUES (2501, 2503);
-
 -- this update fails because there is no referenced row
 UPDATE fk_partitioned_fk SET a = a + 1 WHERE a = 2501;
+ERROR:  insert or update on table "fk_partitioned_fk_3_0" violates foreign key constraint "fk_partitioned_fk_a_fkey"
+DETAIL:  Key (a, b)=(2502, 2503) is not present in table "fk_notpartitioned_pk".
 -- but we can fix it thusly:
 INSERT INTO fk_notpartitioned_pk (a,b) VALUES (2502, 2503);
 UPDATE fk_partitioned_fk SET a = a + 1 WHERE a = 2501;
-
 -- these updates would leave lingering rows in the referencing table; disallow
 UPDATE fk_notpartitioned_pk SET b = 502 WHERE a = 500;
+ERROR:  Update PRIMARY KEY columns are not yet supported
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/659. Click '+' on the description to raise its priority
 UPDATE fk_notpartitioned_pk SET b = 1502 WHERE a = 1500;
+ERROR:  Update PRIMARY KEY columns are not yet supported
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/659. Click '+' on the description to raise its priority
 UPDATE fk_notpartitioned_pk SET b = 2504 WHERE a = 2500;
+ERROR:  Update PRIMARY KEY columns are not yet supported
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/659. Click '+' on the description to raise its priority
 ALTER TABLE fk_partitioned_fk DROP CONSTRAINT fk_partitioned_fk_a_fkey;
 -- done.
 DROP TABLE fk_notpartitioned_pk, fk_partitioned_fk;
-
 -- Altering a type referenced by a foreign key needs to drop/recreate the FK.
 -- Ensure that works.
 CREATE TABLE fk_notpartitioned_pk (a INT, PRIMARY KEY(a), CHECK (a > 0));
@@ -1611,11 +1623,17 @@ CREATE TABLE fk_partitioned_fk_1 PARTITION OF fk_partitioned_fk FOR VALUES FROM 
 INSERT INTO fk_notpartitioned_pk VALUES (1);
 INSERT INTO fk_partitioned_fk VALUES (1);
 ALTER TABLE fk_notpartitioned_pk ALTER COLUMN a TYPE bigint;
+ERROR:  ALTER TABLE ALTER column not supported yet
+LINE 1: ALTER TABLE fk_notpartitioned_pk ALTER COLUMN a TYPE bigint;
+                                         ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+/*
 DELETE FROM fk_notpartitioned_pk WHERE a = 1;
+*/
 DROP TABLE fk_notpartitioned_pk, fk_partitioned_fk;
-
 -- Test some other exotic foreign key features: MATCH SIMPLE, ON UPDATE/DELETE
 -- actions
+/*
 CREATE TABLE fk_notpartitioned_pk (a int, b int, primary key (a, b));
 CREATE TABLE fk_partitioned_fk (a int default 2501, b int default 142857) PARTITION BY LIST (a);
 CREATE TABLE fk_partitioned_fk_1 PARTITION OF fk_partitioned_fk FOR VALUES IN (NULL,500,501,502);
@@ -1642,7 +1660,6 @@ INSERT INTO fk_partitioned_fk (a,b) VALUES (NULL, NULL);
 SELECT tableoid::regclass, a, b FROM fk_partitioned_fk WHERE b IS NULL ORDER BY a;
 UPDATE fk_notpartitioned_pk SET a = a + 1 WHERE a = 2502;
 SELECT tableoid::regclass, a, b FROM fk_partitioned_fk WHERE b IS NULL ORDER BY a;
-
 -- ON DELETE SET NULL
 INSERT INTO fk_partitioned_fk VALUES (2503, 2503);
 SELECT count(*) FROM fk_partitioned_fk WHERE a IS NULL;
@@ -1663,7 +1680,6 @@ UPDATE fk_notpartitioned_pk SET a = 1500 WHERE a = 2502;
 INSERT INTO fk_notpartitioned_pk VALUES (2501, 142857);
 UPDATE fk_notpartitioned_pk SET a = 1500 WHERE a = 2502;
 SELECT * FROM fk_partitioned_fk WHERE b = 142857;
-
 -- ON UPDATE/DELETE CASCADE
 ALTER TABLE fk_partitioned_fk DROP CONSTRAINT fk_partitioned_fk_a_fkey;
 ALTER TABLE fk_partitioned_fk ADD FOREIGN KEY (a, b)
@@ -1671,7 +1687,6 @@ ALTER TABLE fk_partitioned_fk ADD FOREIGN KEY (a, b)
   ON DELETE CASCADE ON UPDATE CASCADE;
 UPDATE fk_notpartitioned_pk SET a = 2502 WHERE a = 2501;
 SELECT * FROM fk_partitioned_fk WHERE b = 142857;
-
 -- Now you see it ...
 SELECT * FROM fk_partitioned_fk WHERE b = 142857;
 DELETE FROM fk_notpartitioned_pk WHERE b = 142857;

@@ -1877,10 +1877,6 @@ drop table my_table;
 -- Verify cases that are unsupported with partitioned tables
 --
 create table parted_trig (a int) partition by list (a);
-ERROR:  PARTITION BY not supported yet
-LINE 1: create table parted_trig (a int) partition by list (a);
-                                         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1126. Click '+' on the description to raise its priority
 -- TODO When/if (PG-style) partitioned tables are supported in YB enabled the tests below.
 /*
 create function trigger_nothing() returns trigger

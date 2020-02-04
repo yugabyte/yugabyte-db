@@ -5479,28 +5479,10 @@ DROP FUNCTION multi_test_trig();
 -- Check type parsing and record fetching from partitioned tables
 --
 CREATE TABLE partitioned_table (a int, b text) PARTITION BY LIST (a);
-ERROR:  PARTITION BY not supported yet
-LINE 1: CREATE TABLE partitioned_table (a int, b text) PARTITION BY ...
-                                                       ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1126. Click '+' on the description to raise its priority
 CREATE TABLE pt_part1 PARTITION OF partitioned_table FOR VALUES IN (1);
-ERROR:  LIST PARTITION not supported yet
-LINE 1: ...ATE TABLE pt_part1 PARTITION OF partitioned_table FOR VALUES...
-                                                             ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1126. Click '+' on the description to raise its priority
 CREATE TABLE pt_part2 PARTITION OF partitioned_table FOR VALUES IN (2);
-ERROR:  LIST PARTITION not supported yet
-LINE 1: ...ATE TABLE pt_part2 PARTITION OF partitioned_table FOR VALUES...
-                                                             ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1126. Click '+' on the description to raise its priority
 INSERT INTO partitioned_table VALUES (1, 'Row 1');
-ERROR:  relation "partitioned_table" does not exist
-LINE 1: INSERT INTO partitioned_table VALUES (1, 'Row 1');
-                    ^
 INSERT INTO partitioned_table VALUES (2, 'Row 2');
-ERROR:  relation "partitioned_table" does not exist
-LINE 1: INSERT INTO partitioned_table VALUES (2, 'Row 2');
-                    ^
 CREATE OR REPLACE FUNCTION get_from_partitioned_table(partitioned_table.a%type)
 RETURNS partitioned_table AS $$
 DECLARE
@@ -5511,12 +5493,13 @@ BEGIN
     SELECT * INTO result FROM partitioned_table WHERE a = a_val;
     RETURN result;
 END; $$ LANGUAGE plpgsql;
-ERROR:  relation "partitioned_table" does not exist
+NOTICE:  type reference partitioned_table.a%TYPE converted to integer
 SELECT * FROM get_from_partitioned_table(1) AS t;
-ERROR:  function get_from_partitioned_table(integer) does not exist
-LINE 1: SELECT * FROM get_from_partitioned_table(1) AS t;
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ a |   b
+---+-------
+ 1 | Row 1
+(1 row)
+
 CREATE OR REPLACE FUNCTION list_partitioned_table()
 RETURNS SETOF partitioned_table.a%TYPE AS $$
 DECLARE
@@ -5529,12 +5512,14 @@ BEGIN
     END LOOP;
     RETURN;
 END; $$ LANGUAGE plpgsql;
-ERROR:  relation "partitioned_table" does not exist
+NOTICE:  type reference partitioned_table.a%TYPE converted to integer
 SELECT * FROM list_partitioned_table() AS t;
-ERROR:  function list_partitioned_table() does not exist
-LINE 1: SELECT * FROM list_partitioned_table() AS t;
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ t
+---
+ 1
+ 2
+(2 rows)
+
 --
 -- Check argument name is used instead of $n in error message
 --

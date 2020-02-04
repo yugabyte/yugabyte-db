@@ -848,34 +848,14 @@ CREATE TABLE part_document (
     dauthor     name,
     dtitle      text
 ) PARTITION BY RANGE (cid);
-ERROR:  PARTITION BY not supported yet
-LINE 7: ) PARTITION BY RANGE (cid);
-          ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1126. Click '+' on the description to raise its priority
 GRANT ALL ON part_document TO public;
-ERROR:  relation "part_document" does not exist
 -- Create partitions for document categories
 CREATE TABLE part_document_fiction PARTITION OF part_document FOR VALUES FROM (11) to (12);
-ERROR:  RANGE PARTITION not supported yet
-LINE 1: ... part_document_fiction PARTITION OF part_document FOR VALUES...
-                                                             ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1126. Click '+' on the description to raise its priority
 CREATE TABLE part_document_satire PARTITION OF part_document FOR VALUES FROM (55) to (56);
-ERROR:  RANGE PARTITION not supported yet
-LINE 1: ...E part_document_satire PARTITION OF part_document FOR VALUES...
-                                                             ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1126. Click '+' on the description to raise its priority
 CREATE TABLE part_document_nonfiction PARTITION OF part_document FOR VALUES FROM (99) to (100);
-ERROR:  RANGE PARTITION not supported yet
-LINE 1: ...rt_document_nonfiction PARTITION OF part_document FOR VALUES...
-                                                             ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1126. Click '+' on the description to raise its priority
 GRANT ALL ON part_document_fiction TO public;
-ERROR:  relation "part_document_fiction" does not exist
 GRANT ALL ON part_document_satire TO public;
-ERROR:  relation "part_document_satire" does not exist
 GRANT ALL ON part_document_nonfiction TO public;
-ERROR:  relation "part_document_nonfiction" does not exist
 INSERT INTO part_document VALUES
     ( 1, 11, 1, 'regress_rls_bob', 'my first novel'),
     ( 2, 11, 2, 'regress_rls_bob', 'my second novel'),
@@ -887,205 +867,380 @@ INSERT INTO part_document VALUES
     ( 8, 55, 2, 'regress_rls_carol', 'great satire'),
     ( 9, 11, 1, 'regress_rls_dave', 'awesome science fiction'),
     (10, 99, 2, 'regress_rls_dave', 'awesome technology book');
-ERROR:  relation "part_document" does not exist
-LINE 1: INSERT INTO part_document VALUES
-                    ^
 ALTER TABLE part_document ENABLE ROW LEVEL SECURITY;
-ERROR:  relation "part_document" does not exist
 -- Create policy on parent
 -- user's security level must be higher than or equal to document's
 CREATE POLICY pp1 ON part_document AS PERMISSIVE
     USING (dlevel <= (SELECT seclv FROM uaccount WHERE pguser = current_user));
-ERROR:  relation "part_document" does not exist
 -- Dave is only allowed to see cid < 55
 CREATE POLICY pp1r ON part_document AS RESTRICTIVE TO regress_rls_dave
     USING (cid < 55);
-ERROR:  relation "part_document" does not exist
 \d+ part_document
+                          Table "regress_rls_schema.part_document"
+ Column  |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+---------+---------+-----------+----------+---------+----------+--------------+-------------
+ did     | integer |           |          |         | plain    |              |
+ cid     | integer |           |          |         | plain    |              |
+ dlevel  | integer |           | not null |         | plain    |              |
+ dauthor | name    |           |          |         | plain    |              |
+ dtitle  | text    |           |          |         | extended |              |
+Partition key: RANGE (cid)
+Policies:
+    POLICY "pp1"
+      USING ((dlevel <= ( SELECT uaccount.seclv
+   FROM uaccount
+  WHERE (uaccount.pguser = CURRENT_USER))))
+    POLICY "pp1r" AS RESTRICTIVE
+      TO regress_rls_dave
+      USING ((cid < 55))
+Partitions: part_document_fiction FOR VALUES FROM (11) TO (12),
+            part_document_nonfiction FOR VALUES FROM (99) TO (100),
+            part_document_satire FOR VALUES FROM (55) TO (56)
+
 SELECT * FROM pg_policies WHERE schemaname = 'regress_rls_schema' AND tablename like '%part_document%' ORDER BY policyname;
- schemaname | tablename | policyname | permissive | roles | cmd | qual | with_check
-------------+-----------+------------+------------+-------+-----+------+------------
-(0 rows)
+     schemaname     |   tablename   | policyname | permissive  |       roles        | cmd |                    qual                    | with_check
+--------------------+---------------+------------+-------------+--------------------+-----+--------------------------------------------+------------
+ regress_rls_schema | part_document | pp1        | PERMISSIVE  | {public}           | ALL | (dlevel <= ( SELECT uaccount.seclv        +|
+                    |               |            |             |                    |     |    FROM uaccount                          +|
+                    |               |            |             |                    |     |   WHERE (uaccount.pguser = CURRENT_USER))) |
+ regress_rls_schema | part_document | pp1r       | RESTRICTIVE | {regress_rls_dave} | ALL | (cid < 55)                                 |
+(2 rows)
 
 -- viewpoint from regress_rls_bob
 SET SESSION AUTHORIZATION regress_rls_bob;
 SET row_security TO ON;
-SELECT * FROM part_document WHERE f_leak(dtitle) ORDER BY did;
-ERROR:  relation "part_document" does not exist
-LINE 1: SELECT * FROM part_document WHERE f_leak(dtitle) ORDER BY di...
-                      ^
+SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did;
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 55
+ did | cid | dlevel |      dauthor      |         dtitle
+-----+-----+--------+-------------------+-------------------------
+   1 |  11 |      1 | regress_rls_bob   | my first novel
+   4 |  55 |      1 | regress_rls_bob   | my first satire
+   6 |  11 |      1 | regress_rls_carol | great science fiction
+   9 |  11 |      1 | regress_rls_dave  | awesome science fiction
+(4 rows)
+
+/*
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-ERROR:  relation "part_document" does not exist
-LINE 1: EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak...
-                                          ^
+*/
 -- viewpoint from regress_rls_carol
 SET SESSION AUTHORIZATION regress_rls_carol;
-SELECT * FROM part_document WHERE f_leak(dtitle) ORDER BY did;
-ERROR:  relation "part_document" does not exist
-LINE 1: SELECT * FROM part_document WHERE f_leak(dtitle) ORDER BY di...
-                      ^
+SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did;
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 55
+NOTICE:  f_leak => 55
+NOTICE:  f_leak => 99
+NOTICE:  f_leak => 99
+NOTICE:  f_leak => 99
+NOTICE:  f_leak => 99
+ did | cid | dlevel |      dauthor      |         dtitle
+-----+-----+--------+-------------------+-------------------------
+   1 |  11 |      1 | regress_rls_bob   | my first novel
+   2 |  11 |      2 | regress_rls_bob   | my second novel
+   3 |  99 |      2 | regress_rls_bob   | my science textbook
+   4 |  55 |      1 | regress_rls_bob   | my first satire
+   5 |  99 |      2 | regress_rls_bob   | my history book
+   6 |  11 |      1 | regress_rls_carol | great science fiction
+   7 |  99 |      2 | regress_rls_carol | great technology book
+   8 |  55 |      2 | regress_rls_carol | great satire
+   9 |  11 |      1 | regress_rls_dave  | awesome science fiction
+  10 |  99 |      2 | regress_rls_dave  | awesome technology book
+(10 rows)
+
+/*
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-ERROR:  relation "part_document" does not exist
-LINE 1: EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak...
-                                          ^
+*/
 -- viewpoint from regress_rls_dave
 SET SESSION AUTHORIZATION regress_rls_dave;
-SELECT * FROM part_document WHERE f_leak(dtitle) ORDER BY did;
-ERROR:  relation "part_document" does not exist
-LINE 1: SELECT * FROM part_document WHERE f_leak(dtitle) ORDER BY di...
-                      ^
+SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did;
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 11
+ did | cid | dlevel |      dauthor      |         dtitle
+-----+-----+--------+-------------------+-------------------------
+   1 |  11 |      1 | regress_rls_bob   | my first novel
+   2 |  11 |      2 | regress_rls_bob   | my second novel
+   6 |  11 |      1 | regress_rls_carol | great science fiction
+   9 |  11 |      1 | regress_rls_dave  | awesome science fiction
+(4 rows)
+
+/*
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-ERROR:  relation "part_document" does not exist
-LINE 1: EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak...
-                                          ^
+*/
 -- pp1 ERROR
 INSERT INTO part_document VALUES (100, 11, 5, 'regress_rls_dave', 'testing pp1'); -- fail
-ERROR:  relation "part_document" does not exist
-LINE 1: INSERT INTO part_document VALUES (100, 11, 5, 'regress_rls_d...
-                    ^
+ERROR:  new row violates row-level security policy for table "part_document"
 -- pp1r ERROR
 INSERT INTO part_document VALUES (100, 99, 1, 'regress_rls_dave', 'testing pp1r'); -- fail
-ERROR:  relation "part_document" does not exist
-LINE 1: INSERT INTO part_document VALUES (100, 99, 1, 'regress_rls_d...
-                    ^
+ERROR:  new row violates row-level security policy "pp1r" for table "part_document"
 -- Show that RLS policy does not apply for direct inserts to children
 -- This should fail with RLS POLICY pp1r violation.
 INSERT INTO part_document VALUES (100, 55, 1, 'regress_rls_dave', 'testing RLS with partitions'); -- fail
-ERROR:  relation "part_document" does not exist
-LINE 1: INSERT INTO part_document VALUES (100, 55, 1, 'regress_rls_d...
-                    ^
+ERROR:  new row violates row-level security policy "pp1r" for table "part_document"
 -- But this should succeed.
 INSERT INTO part_document_satire VALUES (100, 55, 1, 'regress_rls_dave', 'testing RLS with partitions'); -- success
-ERROR:  relation "part_document_satire" does not exist
-LINE 1: INSERT INTO part_document_satire VALUES (100, 55, 1, 'regres...
-                    ^
 -- We still cannot see the row using the parent
-SELECT * FROM part_document WHERE f_leak(dtitle) ORDER BY did;
-ERROR:  relation "part_document" does not exist
-LINE 1: SELECT * FROM part_document WHERE f_leak(dtitle) ORDER BY di...
-                      ^
+SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did;
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 11
+ did | cid | dlevel |      dauthor      |         dtitle
+-----+-----+--------+-------------------+-------------------------
+   1 |  11 |      1 | regress_rls_bob   | my first novel
+   2 |  11 |      2 | regress_rls_bob   | my second novel
+   6 |  11 |      1 | regress_rls_carol | great science fiction
+   9 |  11 |      1 | regress_rls_dave  | awesome science fiction
+(4 rows)
+
 -- But we can if we look directly
-SELECT * FROM part_document_satire WHERE f_leak(dtitle) ORDER BY did;
-ERROR:  relation "part_document_satire" does not exist
-LINE 1: SELECT * FROM part_document_satire WHERE f_leak(dtitle) ORDE...
-                      ^
+SELECT * FROM part_document_satire WHERE f_leak(text(cid)) ORDER BY did;
+NOTICE:  f_leak => 55
+NOTICE:  f_leak => 55
+NOTICE:  f_leak => 55
+ did | cid | dlevel |      dauthor      |           dtitle
+-----+-----+--------+-------------------+-----------------------------
+   4 |  55 |      1 | regress_rls_bob   | my first satire
+   8 |  55 |      2 | regress_rls_carol | great satire
+ 100 |  55 |      1 | regress_rls_dave  | testing RLS with partitions
+(3 rows)
+
 -- Turn on RLS and create policy on child to show RLS is checked before constraints
 SET SESSION AUTHORIZATION regress_rls_alice;
 ALTER TABLE part_document_satire ENABLE ROW LEVEL SECURITY;
-ERROR:  relation "part_document_satire" does not exist
 CREATE POLICY pp3 ON part_document_satire AS RESTRICTIVE
     USING (cid < 55);
-ERROR:  relation "part_document_satire" does not exist
 -- This should fail with RLS violation now.
 SET SESSION AUTHORIZATION regress_rls_dave;
 INSERT INTO part_document_satire VALUES (101, 55, 1, 'regress_rls_dave', 'testing RLS with partitions'); -- fail
-ERROR:  relation "part_document_satire" does not exist
-LINE 1: INSERT INTO part_document_satire VALUES (101, 55, 1, 'regres...
-                    ^
+ERROR:  new row violates row-level security policy for table "part_document_satire"
 -- And now we cannot see directly into the partition either, due to RLS
 SELECT * FROM part_document_satire WHERE f_leak(dtitle) ORDER BY did;
-ERROR:  relation "part_document_satire" does not exist
-LINE 1: SELECT * FROM part_document_satire WHERE f_leak(dtitle) ORDE...
-                      ^
+ did | cid | dlevel | dauthor | dtitle
+-----+-----+--------+---------+--------
+(0 rows)
+
 -- The parent looks same as before
 -- viewpoint from regress_rls_dave
-SELECT * FROM part_document WHERE f_leak(dtitle) ORDER BY did;
-ERROR:  relation "part_document" does not exist
-LINE 1: SELECT * FROM part_document WHERE f_leak(dtitle) ORDER BY di...
-                      ^
+SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did;
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 11
+ did | cid | dlevel |      dauthor      |         dtitle
+-----+-----+--------+-------------------+-------------------------
+   1 |  11 |      1 | regress_rls_bob   | my first novel
+   2 |  11 |      2 | regress_rls_bob   | my second novel
+   6 |  11 |      1 | regress_rls_carol | great science fiction
+   9 |  11 |      1 | regress_rls_dave  | awesome science fiction
+(4 rows)
+
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-ERROR:  relation "part_document" does not exist
-LINE 1: EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak...
-                                          ^
+                             QUERY PLAN
+--------------------------------------------------------------------
+ Append
+   InitPlan 1 (returns $0)
+     ->  Index Scan using uaccount_pkey on uaccount
+           Index Cond: (pguser = CURRENT_USER)
+   ->  Foreign Scan on part_document_fiction
+         Filter: ((cid < 55) AND (dlevel <= $0) AND f_leak(dtitle))
+(6 rows)
+
 -- viewpoint from regress_rls_carol
 SET SESSION AUTHORIZATION regress_rls_carol;
-SELECT * FROM part_document WHERE f_leak(dtitle) ORDER BY did;
-ERROR:  relation "part_document" does not exist
-LINE 1: SELECT * FROM part_document WHERE f_leak(dtitle) ORDER BY di...
-                      ^
+SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did;
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 55
+NOTICE:  f_leak => 55
+NOTICE:  f_leak => 55
+NOTICE:  f_leak => 99
+NOTICE:  f_leak => 99
+NOTICE:  f_leak => 99
+NOTICE:  f_leak => 99
+ did | cid | dlevel |      dauthor      |           dtitle
+-----+-----+--------+-------------------+-----------------------------
+   1 |  11 |      1 | regress_rls_bob   | my first novel
+   2 |  11 |      2 | regress_rls_bob   | my second novel
+   3 |  99 |      2 | regress_rls_bob   | my science textbook
+   4 |  55 |      1 | regress_rls_bob   | my first satire
+   5 |  99 |      2 | regress_rls_bob   | my history book
+   6 |  11 |      1 | regress_rls_carol | great science fiction
+   7 |  99 |      2 | regress_rls_carol | great technology book
+   8 |  55 |      2 | regress_rls_carol | great satire
+   9 |  11 |      1 | regress_rls_dave  | awesome science fiction
+  10 |  99 |      2 | regress_rls_dave  | awesome technology book
+ 100 |  55 |      1 | regress_rls_dave  | testing RLS with partitions
+(11 rows)
+
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-ERROR:  relation "part_document" does not exist
-LINE 1: EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak...
-                                          ^
+                     QUERY PLAN
+-----------------------------------------------------
+ Append
+   InitPlan 1 (returns $0)
+     ->  Index Scan using uaccount_pkey on uaccount
+           Index Cond: (pguser = CURRENT_USER)
+   ->  Foreign Scan on part_document_fiction
+         Filter: ((dlevel <= $0) AND f_leak(dtitle))
+   ->  Foreign Scan on part_document_satire
+         Filter: ((dlevel <= $0) AND f_leak(dtitle))
+   ->  Foreign Scan on part_document_nonfiction
+         Filter: ((dlevel <= $0) AND f_leak(dtitle))
+(10 rows)
+
 -- only owner can change policies
 ALTER POLICY pp1 ON part_document USING (true);    --fail
-ERROR:  relation "part_document" does not exist
+ERROR:  must be owner of table part_document
 DROP POLICY pp1 ON part_document;                  --fail
-ERROR:  relation "part_document" does not exist
+ERROR:  must be owner of relation part_document
 SET SESSION AUTHORIZATION regress_rls_alice;
 ALTER POLICY pp1 ON part_document USING (dauthor = current_user);
-ERROR:  relation "part_document" does not exist
 -- viewpoint from regress_rls_bob again
 SET SESSION AUTHORIZATION regress_rls_bob;
-SELECT * FROM part_document WHERE f_leak(dtitle) ORDER BY did;
-ERROR:  relation "part_document" does not exist
-LINE 1: SELECT * FROM part_document WHERE f_leak(dtitle) ORDER BY di...
-                      ^
+SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did;
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 55
+NOTICE:  f_leak => 99
+NOTICE:  f_leak => 99
+ did | cid | dlevel |     dauthor     |       dtitle
+-----+-----+--------+-----------------+---------------------
+   1 |  11 |      1 | regress_rls_bob | my first novel
+   2 |  11 |      2 | regress_rls_bob | my second novel
+   3 |  99 |      2 | regress_rls_bob | my science textbook
+   4 |  55 |      1 | regress_rls_bob | my first satire
+   5 |  99 |      2 | regress_rls_bob | my history book
+(5 rows)
+
 -- viewpoint from rls_regres_carol again
 SET SESSION AUTHORIZATION regress_rls_carol;
-SELECT * FROM part_document WHERE f_leak(dtitle) ORDER BY did;
-ERROR:  relation "part_document" does not exist
-LINE 1: SELECT * FROM part_document WHERE f_leak(dtitle) ORDER BY di...
-                      ^
+SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did;
+NOTICE:  f_leak => 11
+NOTICE:  f_leak => 55
+NOTICE:  f_leak => 99
+ did | cid | dlevel |      dauthor      |        dtitle
+-----+-----+--------+-------------------+-----------------------
+   6 |  11 |      1 | regress_rls_carol | great science fiction
+   7 |  99 |      2 | regress_rls_carol | great technology book
+   8 |  55 |      2 | regress_rls_carol | great satire
+(3 rows)
+
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-ERROR:  relation "part_document" does not exist
-LINE 1: EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak...
-                                          ^
+                          QUERY PLAN
+---------------------------------------------------------------
+ Append
+   ->  Foreign Scan on part_document_fiction
+         Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
+   ->  Foreign Scan on part_document_satire
+         Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
+   ->  Foreign Scan on part_document_nonfiction
+         Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
+(7 rows)
+
 -- database superuser does bypass RLS policy when enabled
 RESET SESSION AUTHORIZATION;
 SET row_security TO ON;
 SELECT * FROM part_document ORDER BY did;
-ERROR:  relation "part_document" does not exist
-LINE 1: SELECT * FROM part_document ORDER BY did;
-                      ^
+ did | cid | dlevel |      dauthor      |           dtitle
+-----+-----+--------+-------------------+-----------------------------
+   1 |  11 |      1 | regress_rls_bob   | my first novel
+   2 |  11 |      2 | regress_rls_bob   | my second novel
+   3 |  99 |      2 | regress_rls_bob   | my science textbook
+   4 |  55 |      1 | regress_rls_bob   | my first satire
+   5 |  99 |      2 | regress_rls_bob   | my history book
+   6 |  11 |      1 | regress_rls_carol | great science fiction
+   7 |  99 |      2 | regress_rls_carol | great technology book
+   8 |  55 |      2 | regress_rls_carol | great satire
+   9 |  11 |      1 | regress_rls_dave  | awesome science fiction
+  10 |  99 |      2 | regress_rls_dave  | awesome technology book
+ 100 |  55 |      1 | regress_rls_dave  | testing RLS with partitions
+(11 rows)
+
 SELECT * FROM part_document_satire ORDER by did;
-ERROR:  relation "part_document_satire" does not exist
-LINE 1: SELECT * FROM part_document_satire ORDER by did;
-                      ^
+ did | cid | dlevel |      dauthor      |           dtitle
+-----+-----+--------+-------------------+-----------------------------
+   4 |  55 |      1 | regress_rls_bob   | my first satire
+   8 |  55 |      2 | regress_rls_carol | great satire
+ 100 |  55 |      1 | regress_rls_dave  | testing RLS with partitions
+(3 rows)
+
 -- database non-superuser with bypass privilege can bypass RLS policy when disabled
 SET SESSION AUTHORIZATION regress_rls_exempt_user;
 SET row_security TO OFF;
 SELECT * FROM part_document ORDER BY did;
-ERROR:  relation "part_document" does not exist
-LINE 1: SELECT * FROM part_document ORDER BY did;
-                      ^
+ did | cid | dlevel |      dauthor      |           dtitle
+-----+-----+--------+-------------------+-----------------------------
+   1 |  11 |      1 | regress_rls_bob   | my first novel
+   2 |  11 |      2 | regress_rls_bob   | my second novel
+   3 |  99 |      2 | regress_rls_bob   | my science textbook
+   4 |  55 |      1 | regress_rls_bob   | my first satire
+   5 |  99 |      2 | regress_rls_bob   | my history book
+   6 |  11 |      1 | regress_rls_carol | great science fiction
+   7 |  99 |      2 | regress_rls_carol | great technology book
+   8 |  55 |      2 | regress_rls_carol | great satire
+   9 |  11 |      1 | regress_rls_dave  | awesome science fiction
+  10 |  99 |      2 | regress_rls_dave  | awesome technology book
+ 100 |  55 |      1 | regress_rls_dave  | testing RLS with partitions
+(11 rows)
+
 SELECT * FROM part_document_satire ORDER by did;
-ERROR:  relation "part_document_satire" does not exist
-LINE 1: SELECT * FROM part_document_satire ORDER by did;
-                      ^
+ did | cid | dlevel |      dauthor      |           dtitle
+-----+-----+--------+-------------------+-----------------------------
+   4 |  55 |      1 | regress_rls_bob   | my first satire
+   8 |  55 |      2 | regress_rls_carol | great satire
+ 100 |  55 |      1 | regress_rls_dave  | testing RLS with partitions
+(3 rows)
+
 -- RLS policy does not apply to table owner when RLS enabled.
 SET SESSION AUTHORIZATION regress_rls_alice;
 SET row_security TO ON;
 SELECT * FROM part_document ORDER by did;
-ERROR:  relation "part_document" does not exist
-LINE 1: SELECT * FROM part_document ORDER by did;
-                      ^
+ did | cid | dlevel |      dauthor      |           dtitle
+-----+-----+--------+-------------------+-----------------------------
+   1 |  11 |      1 | regress_rls_bob   | my first novel
+   2 |  11 |      2 | regress_rls_bob   | my second novel
+   3 |  99 |      2 | regress_rls_bob   | my science textbook
+   4 |  55 |      1 | regress_rls_bob   | my first satire
+   5 |  99 |      2 | regress_rls_bob   | my history book
+   6 |  11 |      1 | regress_rls_carol | great science fiction
+   7 |  99 |      2 | regress_rls_carol | great technology book
+   8 |  55 |      2 | regress_rls_carol | great satire
+   9 |  11 |      1 | regress_rls_dave  | awesome science fiction
+  10 |  99 |      2 | regress_rls_dave  | awesome technology book
+ 100 |  55 |      1 | regress_rls_dave  | testing RLS with partitions
+(11 rows)
+
 SELECT * FROM part_document_satire ORDER by did;
-ERROR:  relation "part_document_satire" does not exist
-LINE 1: SELECT * FROM part_document_satire ORDER by did;
-                      ^
+ did | cid | dlevel |      dauthor      |           dtitle
+-----+-----+--------+-------------------+-----------------------------
+   4 |  55 |      1 | regress_rls_bob   | my first satire
+   8 |  55 |      2 | regress_rls_carol | great satire
+ 100 |  55 |      1 | regress_rls_dave  | testing RLS with partitions
+(3 rows)
+
 -- When RLS disabled, other users get ERROR.
 SET SESSION AUTHORIZATION regress_rls_dave;
 SET row_security TO OFF;
 SELECT * FROM part_document ORDER by did;
-ERROR:  relation "part_document" does not exist
-LINE 1: SELECT * FROM part_document ORDER by did;
-                      ^
+ERROR:  query would be affected by row-level security policy for table "part_document"
 SELECT * FROM part_document_satire ORDER by did;
-ERROR:  relation "part_document_satire" does not exist
-LINE 1: SELECT * FROM part_document_satire ORDER by did;
-                      ^
+ERROR:  query would be affected by row-level security policy for table "part_document_satire"
 -- Check behavior with a policy that uses a SubPlan not an InitPlan.
 SET SESSION AUTHORIZATION regress_rls_alice;
 SET row_security TO ON;
 CREATE POLICY pp3 ON part_document AS RESTRICTIVE
     USING ((SELECT dlevel <= seclv FROM uaccount WHERE pguser = current_user));
-ERROR:  relation "part_document" does not exist
 SET SESSION AUTHORIZATION regress_rls_carol;
 INSERT INTO part_document VALUES (100, 11, 5, 'regress_rls_carol', 'testing pp3'); -- fail
-ERROR:  relation "part_document" does not exist
-LINE 1: INSERT INTO part_document VALUES (100, 11, 5, 'regress_rls_c...
-                    ^
+ERROR:  new row violates row-level security policy "pp3" for table "part_document"
 ----- Dependencies -----
 SET SESSION AUTHORIZATION regress_rls_alice;
 SET row_security TO ON;
@@ -3493,10 +3648,6 @@ CREATE ROLE regress_rls_dob_role1;
 CREATE ROLE regress_rls_dob_role2;
 CREATE TABLE dob_t1 (c1 int);
 CREATE TABLE dob_t2 (c1 int) PARTITION BY RANGE (c1);
-ERROR:  PARTITION BY not supported yet
-LINE 1: CREATE TABLE dob_t2 (c1 int) PARTITION BY RANGE (c1);
-                                     ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1126. Click '+' on the description to raise its priority
 CREATE POLICY p1 ON dob_t1 TO regress_rls_dob_role1 USING (true);
 DROP OWNED BY regress_rls_dob_role1;
 DROP POLICY p1 ON dob_t1; -- should fail, already gone
@@ -3505,10 +3656,8 @@ CREATE POLICY p1 ON dob_t1 TO regress_rls_dob_role1,regress_rls_dob_role2 USING 
 DROP OWNED BY regress_rls_dob_role1;
 DROP POLICY p1 ON dob_t1; -- should succeed
 CREATE POLICY p1 ON dob_t2 TO regress_rls_dob_role1,regress_rls_dob_role2 USING (true);
-ERROR:  relation "dob_t2" does not exist
 DROP OWNED BY regress_rls_dob_role1;
 DROP POLICY p1 ON dob_t2; -- should succeed
-ERROR:  relation "dob_t2" does not exist
 DROP USER regress_rls_dob_role1;
 DROP USER regress_rls_dob_role2;
 --
@@ -3517,7 +3666,7 @@ DROP USER regress_rls_dob_role2;
 RESET SESSION AUTHORIZATION;
 \set VERBOSITY terse \\ -- suppress cascade details
 DROP SCHEMA regress_rls_schema CASCADE;
-NOTICE:  drop cascades to 29 other objects
+NOTICE:  drop cascades to 31 other objects
 \set VERBOSITY default
 DROP USER regress_rls_alice;
 DROP USER regress_rls_bob;
