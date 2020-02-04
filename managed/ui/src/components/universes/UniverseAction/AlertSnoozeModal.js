@@ -28,7 +28,7 @@ export default class AlertSnoozeModal extends Component {
   }
 
   render() {
-    const { visible, onHide, alertsSnoozed, disableAlertsUntilSecs } = this.props;
+    const { visible, onHide, alertsSnoozed, disablePeriodSecs } = this.props;
     let confirmationForm;
     if (!alertsSnoozed) {
       confirmationForm = (
@@ -41,13 +41,13 @@ export default class AlertSnoozeModal extends Component {
           onFormSubmit={this.snoozeAlert}
           initialValues={{
             disabled: alertsSnoozed,
-            disablePeriodSecs: disableAlertsUntilSecs,
+            disablePeriodSecs: Math.max(disablePeriodSecs, 600),
             disableIndefinitely: true
           }}
           validationSchema={
             Yup.object().shape({
               disabled: Yup.bool(),
-              disablePeriodSecs: Yup.number('Disable period must be a number')
+              disablePeriodSecs: Yup.number().min(0, 'Disable period must be a positive number')
             })
           }
           render={props => {
