@@ -1,13 +1,14 @@
 ---
-title: Inspect logs
-linkTitle: Inspect logs
-description: Inspect YugabyteDB logs
+title: Inspecting db logs
+linkTitle: Inspecting db logs
+description: Inspecting db logs
 aliases:
-  - /troubleshoot/nodes/check-logs/
+  - /troubleshoot/logs/
 menu:
   latest:
-    parent: troubleshoot-nodes
-    weight: 844
+    identifier: troubleshoot-logs
+    parent: troubleshoot
+    weight: 706
 isTocNested: true
 showAsideToc: true
 ---
@@ -55,3 +56,16 @@ For YB-Master and YB-TServer, the log rotation size is controlled by the `--max_
 For YSQL, we also have the additional `postgres*log` files. These logs have daily and size-based log rotation, that is a new log file will be created each day or a log reaches 10 MB size.
 
 For available configuration options, see [YB-Master logging options](../../../reference/configuration/yb-master/#logging-options) and [YB-TServer logging options](../../../reference/configuration/yb-tserver/#logging-options).
+
+## OS-level user access
+All of the database logs require just access via the default user under which the `yb-master` or `yb-tserver` processes are running. For our platform deploys, that would be the `yugabyte` user.
+
+However, for certain system logs, you might find it useful to login as a root user (say, `centos` on a CentOS vm), to be able to inspect system messages, in say, `/var/log/messages`, for OOM logs.
+
+# WIP: fill these in
+
+## Log structure
+Format: level, date, thread id, file name and number, message.
+
+## Important log messages
+TBD
