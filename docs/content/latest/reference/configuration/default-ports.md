@@ -60,7 +60,7 @@ Internode (server-to-server or node-to-node) communication is managed using RPC 
 | Server    | Port | Configuration setting (default)                              |
 | ---------- | ---- | ------------------------------------------------------------ |
 | yb-master  | 7100 |  [`--rpc_bind_addresses 0.0.0.0:7100`](../yb-master/#rpc-bind-addresses) |
-| yb-tserver | 9100 |  [`--rpc_bind_addresses 0.0.0.0:9100`](../yb-master/#rpc-bind-addresses)<br/>[`--tserver_master_addrs 0.0.0.0:9100`](../yb-tserver/#tserver-master-addrs)<br/>[`--server_broadcast_addresses 0.0.0.0:9100`](../yb-tserver/#server-broadcast-addresses) |
+| yb-tserver | 9100 |  [`--rpc_bind_addresses 0.0.0.0:9100`](../yb-tserver/#rpc-bind-addresses)<br/>[`--tserver_master_addrs 0.0.0.0:7100`](../yb-tserver/#tserver-master-addrs)<br/>[`--server_broadcast_addresses 0.0.0.0:9100`](../yb-tserver/#server-broadcast-addresses) |
 
 ## Admin web server
 
