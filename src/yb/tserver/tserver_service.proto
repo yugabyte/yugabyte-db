@@ -57,7 +57,12 @@ service TabletServerService {
 
   rpc ImportData(ImportDataRequestPB) returns (ImportDataResponsePB);
   rpc UpdateTransaction(UpdateTransactionRequestPB) returns (UpdateTransactionResponsePB);
+  // Returns transaction status at coordinator, i.e. PENDING, ABORTED, COMMITTED etc.
   rpc GetTransactionStatus(GetTransactionStatusRequestPB) returns (GetTransactionStatusResponsePB);
+  // Returns transaction status at participant, i.e. number of replicated batches or whether it was
+  // aborted.
+  rpc GetTransactionStatusAtParticipant(GetTransactionStatusAtParticipantRequestPB)
+      returns (GetTransactionStatusAtParticipantResponsePB);
   rpc AbortTransaction(AbortTransactionRequestPB) returns (AbortTransactionResponsePB);
   rpc Truncate(TruncateRequestPB) returns (TruncateResponsePB);
   rpc GetTabletStatus(GetTabletStatusRequestPB) returns (GetTabletStatusResponsePB);
@@ -154,6 +159,24 @@ message GetTransactionStatusResponsePB {
   repeated fixed64 status_hybrid_time = 3;
 
   optional fixed64 propagated_hybrid_time = 4;
+
+  repeated int64 num_replicated_batches = 5;
+}
+
+message GetTransactionStatusAtParticipantRequestPB {
+  optional bytes tablet_id = 1;
+  optional bytes transaction_id = 2;
+  optional fixed64 propagated_hybrid_time = 3;
+  optional int64 required_num_replicated_batches = 4;
+}
+
+message GetTransactionStatusAtParticipantResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+  optional int64 num_replicated_batches = 3;
+  optional fixed64 status_hybrid_time = 4;
+  optional bool aborted = 5;
 }
 
 message AbortTransactionRequestPB {

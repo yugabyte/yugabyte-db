@@ -108,6 +108,10 @@ class TabletServiceImpl : public TabletServerServiceIf {
                             GetTransactionStatusResponsePB* resp,
                             rpc::RpcContext context) override;
 
+  void GetTransactionStatusAtParticipant(const GetTransactionStatusAtParticipantRequestPB* req,
+                                         GetTransactionStatusAtParticipantResponsePB* resp,
+                                         rpc::RpcContext context) override;
+
   void AbortTransaction(const AbortTransactionRequestPB* req,
                         AbortTransactionResponsePB* resp,
                         rpc::RpcContext context) override;
@@ -159,6 +163,9 @@ class TabletServiceImpl : public TabletServerServiceIf {
   template<class Resp>
   bool CheckWriteThrottlingOrRespond(
       double score, tablet::TabletPeer* tablet_peer, Resp* resp, rpc::RpcContext* context);
+
+  template <class Req, class Resp, class F>
+  void PerformAtLeader(const Req& req, Resp* resp, rpc::RpcContext* context, const F& f);
 
   // Read implementation. If restart is required returns restart time, in case of success
   // returns invalid ReadHybridTime. Otherwise returns error status.

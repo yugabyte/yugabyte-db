@@ -416,6 +416,7 @@ enum TransactionStatus {
   PENDING = 2;
 
   COMMITTED = 4;
+  SEALED = 5;
   APPLIED_IN_ALL_INVOLVED_TABLETS = 7;
 
   ABORTED = 8;

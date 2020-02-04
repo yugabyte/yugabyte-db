@@ -63,8 +63,13 @@ void RunningTransaction::SetLocalCommitTime(HybridTime time) {
   local_commit_time_ = time;
 }
 
+void RunningTransaction::Aborted() {
+  last_known_status_ = TransactionStatus::ABORTED;
+  last_known_status_hybrid_time_ = HybridTime::kMax;
+}
+
 void RunningTransaction::RequestStatusAt(const StatusRequest& request,
-                     std::unique_lock<std::mutex>* lock) {
+                                         std::unique_lock<std::mutex>* lock) {
   DCHECK_LT(request.global_limit_ht, HybridTime::kMax);
   DCHECK_LE(request.read_ht, request.global_limit_ht);
 

@@ -155,6 +155,10 @@ class OperationState {
     return tablet_;
   }
 
+  void SetTablet(Tablet* tablet) {
+    tablet_ = tablet;
+  }
+
   void set_completion_callback(std::unique_ptr<OperationCompletionCallback> completion_clbk) {
     completion_clbk_ = std::move(completion_clbk);
   }
@@ -170,9 +174,6 @@ class OperationState {
   T* AddArrayToAutoReleasePool(T* t) {
     return pool_.AddArray(t);
   }
-
-  // Return the arena associated with this transaction.  NOTE: this is not a thread-safe arena!
-  Arena* arena();
 
   // Each implementation should have its own ToString() method.
   virtual std::string ToString() const = 0;
@@ -222,7 +223,7 @@ class OperationState {
   explicit OperationState(Tablet* tablet);
 
   // The tablet peer that is coordinating this transaction.
-  Tablet* const tablet_;
+  Tablet* tablet_;
 
   // Optional callback to be called once the transaction completes.
   std::unique_ptr<OperationCompletionCallback> completion_clbk_;
@@ -234,8 +235,6 @@ class OperationState {
 
   // The clock error when hybrid_time_ was read.
   uint64_t hybrid_time_error_ = 0;
-
-  boost::optional<Arena> arena_;
 
   // This OpId stores the canonical "anchor" OpId for this transaction.
   consensus::OpId op_id_;

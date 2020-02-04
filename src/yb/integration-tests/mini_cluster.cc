@@ -406,6 +406,9 @@ MiniTabletServer* MiniCluster::mini_tablet_server(int idx) {
 
 MiniTabletServer* MiniCluster::find_tablet_server(const std::string& uuid) {
   for (const auto& server : mini_tablet_servers_) {
+    if (!server->server()) {
+      continue;
+    }
     if (server->server()->instance_pb().permanent_uuid() == uuid) {
       return server.get();
     }
@@ -763,13 +766,18 @@ Status WaitForInitDb(MiniCluster* cluster) {
   return STATUS_FORMAT(TimedOut, "Unable to init db in $0", kTimeout);
 }
 
-size_t CountIntents(MiniCluster* cluster) {
+size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter) {
   size_t result = 0;
   auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
   for (const auto &peer : peers) {
     auto participant = peer->tablet() ? peer->tablet()->transaction_participant() : nullptr;
-    auto intents_count = participant ? participant->TEST_CountIntents()
-                                     : std::pair<size_t, size_t>(0, 0);
+    if (!participant) {
+      continue;
+    }
+    if (filter && !filter(peer.get())) {
+      continue;
+    }
+    auto intents_count = participant->TEST_CountIntents();
     if (intents_count.first) {
       result += intents_count.first;
       LOG(INFO) << Format("T $0 P $1: Intents present: $2, transactions: $3", peer->tablet_id(),
@@ -777,6 +785,20 @@ size_t CountIntents(MiniCluster* cluster) {
     }
   }
   return result;
+}
+
+MiniTabletServer* FindTabletLeader(MiniCluster* cluster, const TabletId& tablet_id) {
+  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+    auto server = cluster->mini_tablet_server(i);
+    if (!server->server()) { // Server is shut down.
+      continue;
+    }
+    if (server->server()->LeaderAndReady(tablet_id)) {
+      return server;
+    }
+  }
+
+  return nullptr;
 }
 
 }  // namespace yb
