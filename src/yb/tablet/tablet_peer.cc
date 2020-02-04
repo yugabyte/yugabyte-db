@@ -598,6 +598,9 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
 
 void TabletPeer::SubmitUpdateTransaction(
     std::unique_ptr<UpdateTxnOperationState> state, int64_t term) {
+  if (!state->tablet()) {
+    state->SetTablet(tablet());
+  }
   auto operation = std::make_unique<tablet::UpdateTxnOperation>(std::move(state));
   Submit(std::move(operation), term);
 }

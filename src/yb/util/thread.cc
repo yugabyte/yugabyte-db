@@ -32,8 +32,6 @@
 
 #include "yb/util/thread.h"
 
-#include <cds/init.h>
-#include <cds/gc/dhp.h>
 #include <sys/resource.h>
 #include <sys/syscall.h>
 #include <sys/time.h>
@@ -50,6 +48,9 @@
 #include <memory>
 #include <set>
 #include <vector>
+
+#include <cds/init.h>
+#include <cds/gc/dhp.h>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/dynamic_annotations.h"
@@ -627,6 +628,10 @@ Status ThreadJoiner::Join() {
     }
     waited += wait_for;
   }
+
+#ifndef NDEBUG
+  LOG(WARNING) << "Failed to join:\n" << DumpThreadStack(thread_->tid_for_stack());
+#endif
 
   return STATUS_FORMAT(Aborted, "Timed out after $0 joining on $1", waited, thread_->name_);
 }
