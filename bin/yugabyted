@@ -110,6 +110,8 @@ YUGAWARE_CONF = os.path.join(YUGAWARE_DIR, "conf/application.default.conf")
 WEBSERVER_DB = "system_platform"
 DEMO_DB_PREFIX = "yb_demo_"
 
+BREW_CONF_FILE = "/usr/local/etc/yugabyted.conf"
+
 ALERT_WARNING = "Warning"
 ULIMIT_ERR_CODE = "LOW_ULIMITS"
 
@@ -818,17 +820,22 @@ class ControlScript(object):
     # Parse config file and input args. Validate them and save any new configs.
     def validate_and_set_configs(self, args):
         has_errors = False
-        conf_dir = os.path.dirname(args.config)
+
+        self.conf_file = args.config or Configs.get_brew_config() or DEFAULT_CONF
+
+        self.conf_file = os.path.abspath(os.path.realpath(self.conf_file))
+
+        conf_dir = os.path.dirname(self.conf_file)
         if not os.path.isdir(conf_dir):
             os.makedirs(conf_dir)
 
-        self.conf_file = args.config
+
         self.configs = Configs.parse_config_file(self.conf_file)
 
-        for path_args in ("data_dir", "config", "log_dir"):
+        for path_args in ("data_dir", "log_dir"):
             path = getattr(args, path_args, None)
             if path:
-                setattr(args, path_args, os.path.realpath(path))
+                setattr(args, path_args, os.path.abspath(os.path.realpath(path)))
 
         if args.parser == "start":
             if args.data_dir is not None:
@@ -838,7 +845,7 @@ class ControlScript(object):
                     has_errors = True
                     # TODO: Gradefully handle this case... User should be able to override config.
                     Output.print_out(
-                        "Data directory already exits at {}.".format(config_data_dir))
+                        "Data directory already exists at {}.".format(config_data_dir))
 
             if args.log_dir is not None:
                 config_log_dir = self.configs.saved_data.get("log_dir")
@@ -880,7 +887,8 @@ class ControlScript(object):
         # Parent subparser for common args
         common_parser = argparse.ArgumentParser(add_help=False)
         common_parser.add_argument(
-            "--config", default=DEFAULT_CONF, help="{} configuration file.".format(SCRIPT_NAME))
+            "--config", help="{} configuration file, default value is {}".format(
+                              SCRIPT_NAME, DEFAULT_CONF))
         # TODO: Refactor data_dir to be a list for multi-node. How should the config file and
         # data dir be set for local mulit-node setups? Note: daemon mode may be affected.
         common_parser.add_argument(
@@ -977,6 +985,9 @@ class ControlScript(object):
                 filename=os.path.join(log_dir, "{}.log".format(SCRIPT_NAME)),
                 format="[%(filename)s:%(lineno)d] %(asctime)s %(levelname)s: %(message)s")
 
+            Output.log("cmd = {} using config file: {} (args.config={})".format(
+                args.parser, self.conf_file, args.config))
+
         try:
             args.func()
         except Exception as e:
@@ -1038,6 +1049,16 @@ class Configs(object):
                     "Failed to read config file {}: {}".format(config_file, str(e)))
         return configs
 
+    @staticmethod
+    def get_brew_config():
+        # hack alert: we are using the cellar dir name to identify a brew install
+        if ("darwin" == sys.platform and
+            os.path.realpath(sys.argv[0]).lower().find('cellar') >= 0 and
+            os.path.exists(BREW_CONF_FILE)):
+            return BREW_CONF_FILE
+
+        return None
+
     # Returns information about demo databases.
     @staticmethod
     def get_demo_info():
@@ -1073,6 +1094,8 @@ class Configs(object):
                 "examples": ""
             }
         }
+
+
 
 
 class ProcessManager(object):
