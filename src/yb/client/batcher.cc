@@ -247,12 +247,19 @@ CoarseTimePoint Batcher::ComputeDeadlineUnlocked() const {
 }
 
 void Batcher::FlushAsync(StatusFunctor callback) {
+  size_t operations_count;
   {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
     CHECK_EQ(state_, BatcherState::kGatheringOps);
     state_ = BatcherState::kResolvingTablets;
     flush_callback_ = std::move(callback);
     deadline_ = ComputeDeadlineUnlocked();
+    operations_count = ops_.size();
+  }
+
+  auto transaction = this->transaction();
+  if (transaction) {
+    transaction->ExpectOperations(operations_count);
   }
 
   // In the case that we have nothing buffered, just call the callback

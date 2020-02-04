@@ -275,10 +275,6 @@ class TabletPeer : public consensus::ConsensusContext,
   // initialized.
   yb::OpId GetLatestLogEntryOpId() const;
 
-  server::Clock& clock() const override {
-    return *clock_;
-  }
-
   const server::ClockPtr& clock_ptr() const override {
     return clock_;
   }

@@ -90,6 +90,10 @@ class RpcContext {
 
   ~RpcContext();
 
+  explicit operator bool() const {
+    return call_ != nullptr;
+  }
+
   // Return the trace buffer for this call.
   Trace* trace();
 

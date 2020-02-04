@@ -51,6 +51,7 @@ DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(transaction_allow_rerequest_status_in_tests);
 DECLARE_uint64(transaction_delay_status_reply_usec_in_tests);
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(transaction_disable_proactive_cleanup_in_tests);
 DECLARE_uint64(aborted_intent_cleanup_ms);

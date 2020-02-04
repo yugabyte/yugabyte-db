@@ -25,27 +25,6 @@ namespace tserver {
 
 void SetupErrorAndRespond(TabletServerErrorPB* error,
                           const Status& s,
-                          TabletServerErrorPB::Code code,
-                          rpc::RpcContext* context) {
-  // Generic "service unavailable" errors will cause the client to retry later.
-  if (code == TabletServerErrorPB::UNKNOWN_ERROR && s.IsServiceUnavailable()) {
-    TabletServerDelay delay(s);
-    if (!delay.value().Initialized()) {
-      context->RespondRpcFailure(rpc::ErrorStatusPB::ERROR_SERVER_TOO_BUSY, s);
-      return;
-    }
-  }
-
-  StatusToPB(s, error->mutable_status());
-  error->set_code(code);
-  // TODO: rename RespondSuccess() to just "Respond" or
-  // "SendResponse" since we use it for application-level error
-  // responses, and this just looks confusing!
-  context->RespondSuccess();
-}
-
-void SetupErrorAndRespond(TabletServerErrorPB* error,
-                          const Status& s,
                           rpc::RpcContext* context) {
   SetupErrorAndRespond(error, s, TabletServerError(s).value(), context);
 }

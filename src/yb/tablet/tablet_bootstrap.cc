@@ -1097,14 +1097,15 @@ Status TabletBootstrap::PlayUpdateTransactionRequest(
     tablet_->mvcc_manager()->Replicated(hybrid_time);
   });
 
-  if (operation_state.request()->status() == TransactionStatus::APPLYING) {
-    auto transaction_participant = tablet_->transaction_participant();
+  auto transaction_participant = tablet_->transaction_participant();
+  if (transaction_participant) {
     TransactionParticipant::ReplicatedData replicated_data = {
-        yb::OpId::kUnknownTerm,
-        *operation_state.request(),
-        operation_state.op_id(),
-        operation_state.hybrid_time(),
-        already_applied
+        .leader_term = yb::OpId::kUnknownTerm,
+        .state = *operation_state.request(),
+        .op_id = operation_state.op_id(),
+        .hybrid_time = operation_state.hybrid_time(),
+        .sealed = operation_state.request()->sealed(),
+        .already_applied = already_applied
     };
     return transaction_participant->ProcessReplicated(replicated_data);
   } else {

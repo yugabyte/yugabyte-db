@@ -72,6 +72,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
                        std::unique_lock<std::mutex>* lock);
   bool WasAborted() const;
   CHECKED_STATUS CheckAborted() const;
+  void Aborted();
 
   void Abort(client::YBClient* client,
              TransactionStatusCallback callback,

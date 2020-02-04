@@ -817,31 +817,69 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   }
 }
 
+template <class Req, class Resp, class Action>
+void TabletServiceImpl::PerformAtLeader(
+    const Req& req, Resp* resp, rpc::RpcContext* context, const Action& action) {
+  UpdateClock(*req, server_->Clock());
+
+  auto tablet_peer = LookupLeaderTabletOrRespond(
+      server_->tablet_peer_lookup(), req->tablet_id(), resp, context);
+
+  if (!tablet_peer) {
+    return;
+  }
+
+  auto status = action(tablet_peer);
+
+  if (*context) {
+    resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
+    if (status.ok()) {
+      context->RespondSuccess();
+    } else {
+      SetupErrorAndRespond(
+          resp->mutable_error(), status, TabletServerErrorPB::UNKNOWN_ERROR, context);
+    }
+  }
+}
+
 void TabletServiceImpl::GetTransactionStatus(const GetTransactionStatusRequestPB* req,
                                              GetTransactionStatusResponsePB* resp,
                                              rpc::RpcContext context) {
   TRACE("GetTransactionStatus");
 
-  UpdateClock(*req, server_->Clock());
+  PerformAtLeader(req, resp, &context,
+      [req, resp, &context](const LeaderTabletPeer& tablet_peer) {
+    auto* transaction_coordinator = tablet_peer.peer->tablet()->transaction_coordinator();
+    if (!transaction_coordinator) {
+      return STATUS_FORMAT(
+          InvalidArgument, "No transaction coordinator at tablet $0",
+          tablet_peer.peer->tablet_id());
+    }
+    return transaction_coordinator->GetStatus(
+        req->transaction_id(), context.GetClientDeadline(), resp);
+  });
+}
 
-  auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
-      server_->tablet_peer_lookup(), req->tablet_id(), resp, &context));
+void TabletServiceImpl::GetTransactionStatusAtParticipant(
+    const GetTransactionStatusAtParticipantRequestPB* req,
+    GetTransactionStatusAtParticipantResponsePB* resp,
+    rpc::RpcContext context) {
+  TRACE("GetTransactionStatusAtParticipant");
 
-  auto status = CheckPeerIsLeaderAndReady(*tablet_peer);
-  if (!status.ok()) {
-    SetupErrorAndRespond(resp->mutable_error(), status, &context);
-    return;
-  }
+  PerformAtLeader(req, resp, &context,
+      [req, resp, &context](const LeaderTabletPeer& tablet_peer) -> Status {
+    auto* transaction_participant = tablet_peer.peer->tablet()->transaction_participant();
+    if (!transaction_participant) {
+      return STATUS_FORMAT(
+          InvalidArgument, "No transaction participant at tablet $0",
+          tablet_peer.peer->tablet_id());
+    }
 
-  status = tablet_peer->tablet()->transaction_coordinator()->GetStatus(
-      req->transaction_id(), resp);
-  resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
-  if (status.ok()) {
-    context.RespondSuccess();
-  } else {
-    SetupErrorAndRespond(
-        resp->mutable_error(), status, TabletServerErrorPB::UNKNOWN_ERROR, &context);
-  }
+    transaction_participant->GetStatus(
+        VERIFY_RESULT(FullyDecodeTransactionId(req->transaction_id())),
+        req->required_num_replicated_batches(), tablet_peer.leader_term, resp, &context);
+    return Status::OK();
+  });
 }
 
 void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,

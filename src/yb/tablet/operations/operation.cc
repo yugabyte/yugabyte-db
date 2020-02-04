@@ -85,13 +85,6 @@ OperationState::OperationState(Tablet* tablet)
     : tablet_(tablet) {
 }
 
-Arena* OperationState::arena() {
-  if (!arena_) {
-    arena_.emplace(32_KB, 4_MB);
-  }
-  return arena_.get_ptr();
-}
-
 void OperationState::set_consensus_round(
     const scoped_refptr<consensus::ConsensusRound>& consensus_round) {
   consensus_round_ = consensus_round;
