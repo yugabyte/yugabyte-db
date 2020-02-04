@@ -1,0 +1,37 @@
+---
+title: CLion project setup
+linkTitle: CLion project setup
+description: CLion project setup
+image: /images/section_icons/index/quick_start.png
+headcontent: CLion project setup.
+type: page
+menu:
+  latest:
+    identifier: clion-setup
+    parent: contribute-db-core
+    weight: 2912
+isTocNested: true
+showAsideToc: true
+---
+
+There are two options for build system to use with YugabyteDB, cmake & ninja.
+
+* `make` is well-supported by CLion, but slower for rebuild comparing to ninja.
+* `ninja` is faster, but CLion has limited support for ninja (for example it doesnt allow to [rebuild individual files](https://youtrack.jetbrains.com/issue/CPP-17622))
+
+
+#### Following steps are needed for configuring CLion project for YugabyteDB:
+
+1. Use “File / Open…” to open the project root directory.
+2. Put build/debug-clang-dynamic (or build/debug-clang-dynamic-ninja if you want to use ninja) as a “Generation path” in “Preferences/Build, Execution, Deployment/CMake”: 
+If you want to build with ninja, use build/debug-clang-dynamic-ninja as a generation path and add -G Ninja into “CMake options”:    
+<img title="CLion cmake options" class="expandable-image" src="/images/contribute/clion-cmake-options.png" />
+    
+3. Use “File / Reload CMake Project'' - it should start building third party dependencies for YugabyteDB. Building a third party can take tens of minutes and then CLion will start updating symbols which also can take a while.
+4. Run from the command line inside project root (omit YB_USE_NINJA=0 if you want to use ninja):
+<img title="CLion cmake options" class="expandable-image" src="/images/contribute/clion-cmake-options-ninja.png" />
+
+5. On your shell: ```YB_USE_NINJA=0 ./yb_build.sh```
+
+Subsequent builds can be launched also from CLion.
+
