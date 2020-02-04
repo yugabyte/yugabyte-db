@@ -88,20 +88,20 @@ class UniverseAction extends Component {
         );
         break;
       case "alert-config":
-        let disableAlertsUntilSecs = null;
+        let disablePeriodSecs = null;
         let alertsSnoozed = false;
         if (universeConfig) {
           // If the disableAlertsUntilSecs is null or it is 0, it means the alerts is not snoozed.
           if (!universeConfig.disableAlertsUntilSecs ||
               universeConfig.disableAlertsUntilSecs === "0") {
-            disableAlertsUntilSecs = 0;
+            disablePeriodSecs = 0;
           } else {
             // If it has a value, we need to check if the snooze until time has elasped
             // if so then the universe alerts aren't snoozed.
             const disabledUntil = moment.unix(universeConfig.disableAlertsUntilSecs);
             if (disabledUntil.isValid()) {
-              disableAlertsUntilSecs = moment().diff(disabledUntil, 'seconds');
-              alertsSnoozed = disableAlertsUntilSecs < 0;
+              disablePeriodSecs = universeConfig.disableAlertsUntilSecs - moment().unix();
+              alertsSnoozed = disablePeriodSecs > 0;
             } else {
               // If the disable alert until seconds is a invalid timestamp,
               // it means the alerts was snoozed indefinitely.
@@ -116,7 +116,7 @@ class UniverseAction extends Component {
             visible={this.state.showModal}
             onHide={this.closeModal}
             alertsSnoozed={alertsSnoozed}
-            disableAlertsUntilSecs={disableAlertsUntilSecs}
+            disablePeriodSecs={disablePeriodSecs}
             onFormSubmit={this.performAction}/>
         );
         break;
