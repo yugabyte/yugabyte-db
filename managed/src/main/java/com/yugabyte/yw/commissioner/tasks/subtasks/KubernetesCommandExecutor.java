@@ -480,6 +480,9 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     if (!tserverDiskSpecs.isEmpty()) {
       storageOverrides.put("tserver", tserverDiskSpecs);
     }
+    if (instanceType.getInstanceTypeCode().equals("cloud")) {
+      masterDiskSpecs.put("size", String.format("%dGi", 3));
+    }
     if (!masterDiskSpecs.isEmpty()) {
       storageOverrides.put("master", masterDiskSpecs);
     }
@@ -514,6 +517,14 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       masterLimit.put("cpu", 0.5);
       masterLimit.put("memory", "0.5Gi");
       resourceOverrides.put("master", ImmutableMap.of("requests", masterResource, "limits", masterLimit));
+    }
+    if (instanceType.getInstanceTypeCode().equals("cloud")) {
+      masterResource.put("cpu", 0.2);
+      masterResource.put("memory", "0.2Gi");
+      masterLimit.put("cpu", 0.2);
+      masterLimit.put("memory", "0.2Gi");
+      resourceOverrides.put("master", ImmutableMap.of("requests", masterResource,
+                                                      "limits", masterLimit));
     }
 
     overrides.put("resource", resourceOverrides);
