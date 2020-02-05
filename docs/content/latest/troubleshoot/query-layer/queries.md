@@ -3,17 +3,17 @@ title: Inspecting live calls
 linkTitle: Inspecting live calls
 description: Inspecting live calls
 aliases:
-  - /troubleshoot/live-calls/
+  - /troubleshoot/query-layer/debug/
 menu:
   latest:
-    identifier: troubleshoot-live-calls
-    parent: troubleshoot
-    weight: 704
+    identifier: troubleshoot-query-layer-debug
+    parent: troubleshoot-query-layer
+    weight: 826
 isTocNested: true
 showAsideToc: true
 ---
 
-WIP
+# WIP
 
 ## Queries in progress endpoint `/rpcz` (YCQL vs YSQL)
 
