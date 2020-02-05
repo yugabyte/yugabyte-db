@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: troubleshoot-logs
     parent: troubleshoot
-    weight: 706
+    weight: 750
 isTocNested: true
 showAsideToc: true
 ---
@@ -62,10 +62,11 @@ All of the database logs require just access via the default user under which th
 
 However, for certain system logs, you might find it useful to login as a root user (say, `centos` on a CentOS vm), to be able to inspect system messages, in say, `/var/log/messages`, for OOM logs.
 
-# WIP: fill these in
+<!-- WIP: fill these in
 
 ## Log structure
 Format: level, date, thread id, file name and number, message.
 
 ## Important log messages
 TBD
+-->

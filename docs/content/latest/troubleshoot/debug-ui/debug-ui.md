@@ -8,12 +8,14 @@ menu:
   latest:
     identifier: troubleshoot-debug-ui
     parent: troubleshoot
-    weight: 707
+    weight: 760
 isTocNested: true
 showAsideToc: true
 ---
 
-WIP
+This section is a WIP.
+
+<!-- WIP
 
 ## How to get to these from YW
 Proxy pages from per-universe `Nodes` tab.
@@ -70,3 +72,4 @@ Threads view
 Live RPCs -- TSERVER vs MASTER views
 
 Async tasks -- MASTER ONLY
+-->

@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: troubleshoot-query-layer
     parent: troubleshoot
-    weight: 820
+    weight: 730
 ---
 
 <div class="row">

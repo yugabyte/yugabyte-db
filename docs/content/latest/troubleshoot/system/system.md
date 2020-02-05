@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: troubleshoot-system
     parent: troubleshoot
-    weight: 705
+    weight: 740
 isTocNested: true
 showAsideToc: true
 ---
@@ -66,7 +66,7 @@ YugabyteDB provides web endpoints where the current state of each process is agg
 
 _Note that, when running `yb-ctl` locally with default settings, it will create three local ips `127.0.0.1`, `127.0.0.2`, and `127.0.0.3`, one for each YugabyteDB node._
 
-# WIP: add more details
+<!-- WIP: add more details
 
 ## User login
 `yugabyte`
@@ -92,3 +92,4 @@ _Note that, when running `yb-ctl` locally with default settings, it will create 
 ## Perf profiling
 `sudo perf record -ag`
 `sudo perf report`
+-->

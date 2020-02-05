@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: troubleshoot-issues
     parent: troubleshoot
-    weight: 730
+    weight: 770
 ---
 
 <div class="row">

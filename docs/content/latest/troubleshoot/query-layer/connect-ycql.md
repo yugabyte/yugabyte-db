@@ -8,7 +8,7 @@ aliases:
 menu:
   latest:
     parent: troubleshoot-query-layer
-    weight: 822
+    weight: 732
 isTocNested: true
 showAsideToc: true
 ---

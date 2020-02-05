@@ -8,12 +8,14 @@ menu:
   latest:
     identifier: troubleshoot-query-layer-debug
     parent: troubleshoot-query-layer
-    weight: 826
+    weight: 736
 isTocNested: true
 showAsideToc: true
 ---
 
-# WIP
+This section is a WIP.
+
+<!-- WIP
 
 ## Queries in progress endpoint `/rpcz` (YCQL vs YSQL)
 
@@ -22,3 +24,4 @@ showAsideToc: true
 ## Slow query debugging
 
 ## Tracing
+-->

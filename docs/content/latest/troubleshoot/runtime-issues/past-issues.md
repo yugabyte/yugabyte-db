@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: troubleshoot-issues-fixed
     parent: troubleshoot-issues
-    weight: 732
+    weight: 774
 isTocNested: true
 showAsideToc: true
 ---
@@ -33,6 +33,7 @@ Do note that it is possible this message shows up transiently. However, if it ha
 ### Mitigation
 Restart the master leader.
 
+<!-- WIP
 ## TBD Tablets stuck in FAILED state on a TS
 TBD
 
@@ -82,3 +83,4 @@ TBD
 ### Frequent causes
 ### Detection
 ### Mitigation
+-->

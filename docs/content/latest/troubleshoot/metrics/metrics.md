@@ -8,12 +8,14 @@ menu:
   latest:
     identifier: troubleshoot-metrics
     parent: troubleshoot
-    weight: 703
+    weight: 720
 isTocNested: true
 showAsideToc: true
 ---
 
-WIP
+This section is a WIP.
+
+<!-- WIP
 
 ## Metrics through YW
 
@@ -22,3 +24,4 @@ WIP
 ## How to use Prometheus
 
 ## Relevant metrics
+-->

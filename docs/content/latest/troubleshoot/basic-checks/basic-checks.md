@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: troubleshoot-basic-checks
     parent: troubleshoot
-    weight: 702
+    weight: 710
 isTocNested: true
 showAsideToc: true
 ---
@@ -73,3 +73,12 @@ sudo firewall-cmd --zone=public --add-port=9300/tcp;
 sudo firewall-cmd --zone=public --add-port=9042/tcp;
 sudo firewall-cmd --zone=public --add-port=6379/tcp;
 ```
+
+<!-- WIP
+## 3. Are all the servers connected in the cluster
+### Masters
+Screenshot from master leader UI home page.
+
+### Tservers
+Screenshot from master leader /tablet-servers UI.
+-->
