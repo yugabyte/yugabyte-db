@@ -50,10 +50,12 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.QueryExecutor;
+import com.yugabyte.yw.common.YsqlQueryExecutor;
+import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.RollingRestartParams;
+import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -126,7 +128,8 @@ public class UniverseControllerTest extends WithApplication {
   private ApiHelper mockApiHelper;
   private CallHome mockCallHome;
   private EncryptionAtRestManager mockEARManager;
-  private QueryExecutor mockQueryExecutor;
+  private YsqlQueryExecutor mockYsqlQueryExecutor;
+  private YcqlQueryExecutor mockYcqlQueryExecutor;
   private ShellProcessHandler mockShellProcessHandler;
 
   @Override
@@ -138,7 +141,8 @@ public class UniverseControllerTest extends WithApplication {
     mockApiHelper = mock(ApiHelper.class);
     mockCallHome = mock(CallHome.class);
     mockEARManager = mock(EncryptionAtRestManager.class);
-    mockQueryExecutor = mock(QueryExecutor.class);
+    mockYsqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    mockYcqlQueryExecutor = mock(YcqlQueryExecutor.class);
     mockShellProcessHandler = mock(ShellProcessHandler.class);
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
@@ -147,7 +151,8 @@ public class UniverseControllerTest extends WithApplication {
         .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
         .overrides(bind(CallHome.class).toInstance(mockCallHome))
         .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
-        .overrides(bind(QueryExecutor.class).toInstance(mockQueryExecutor))
+        .overrides(bind(YsqlQueryExecutor.class).toInstance(mockYsqlQueryExecutor))
+        .overrides(bind(YcqlQueryExecutor.class).toInstance(mockYcqlQueryExecutor))
         .overrides(bind(ShellProcessHandler.class).toInstance(mockShellProcessHandler))
         .build();
   }
@@ -1895,7 +1900,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
         "/run_query";
 
-    when(mockQueryExecutor.executeQuery(any(), any()))
+    when(mockYsqlQueryExecutor.executeQuery(any(), any()))
         .thenReturn(Json.newObject().put("foo", "bar"));
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
@@ -1903,7 +1908,6 @@ public class UniverseControllerTest extends WithApplication {
     assertEquals("bar", json.get("foo").asText());
     assertAuditEntry(1, customer.uuid);
   }
-
 
   @Test
   public void testRunInShellWithInvalidUniverse() {
@@ -2031,5 +2035,75 @@ public class UniverseControllerTest extends WithApplication {
       reset(mockShellProcessHandler);
     }
     assertAuditEntry(RunInShellFormData.ShellType.values().length * 2, customer.uuid);
+  }
+
+  @Test
+  public void testCreateUserInDB() {
+    Universe u = createUniverse(customer.getCustomerId());
+    customer.addUniverseUUID(u.universeUUID);
+    customer.save();
+    ObjectNode bodyJson = Json.newObject()
+        .put("ycqlAdminUsername", "foo")
+        .put("ysqlAdminUsername", "foo")
+        .put("ycqlAdminPassword", "bar")
+        .put("ysqlAdminPassword", "bar")
+        .put("dbName", "test")
+        .put("username", "baz")
+        .put("password", "baz");
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
+        "/create_db_credentials";
+    when(mockYsqlQueryExecutor.executeQuery(any(), any(), any(), any()))
+        .thenReturn(Json.newObject().put("foo", "bar"));
+    when(mockYcqlQueryExecutor.executeQuery(any(), any(), any(), any(), any()))
+        .thenReturn(Json.newObject().put("foo", "bar"));
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    ArgumentCaptor<Universe> universe = ArgumentCaptor.forClass(Universe.class);
+    ArgumentCaptor<RunQueryFormData> info = ArgumentCaptor.forClass(RunQueryFormData.class);
+    ArgumentCaptor<Boolean> auth = ArgumentCaptor.forClass(Boolean.class);
+    ArgumentCaptor<String> username = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> password = ArgumentCaptor.forClass(String.class);
+    Mockito.verify(mockYcqlQueryExecutor, times(1))
+        .executeQuery(universe.capture(), info.capture(), auth.capture(),
+                      username.capture(), password.capture());
+    Mockito.verify(mockYsqlQueryExecutor, times(1))
+        .executeQuery(universe.capture(), info.capture(),
+                      username.capture(), password.capture());
+    assertOk(result);
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testSetDatabaseCredentials() {
+    Universe u = createUniverse(customer.getCustomerId());
+    customer.addUniverseUUID(u.universeUUID);
+    customer.save();
+    ObjectNode bodyJson = Json.newObject()
+        .put("ycqlAdminUsername", "foo")
+        .put("ysqlAdminUsername", "foo")
+        .put("ycqlCurrAdminPassword", "foo")
+        .put("ysqlCurrAdminPassword", "foo")
+        .put("ycqlAdminPassword", "bar")
+        .put("ysqlAdminPassword", "bar")
+        .put("dbName", "test");
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
+        "/update_db_credentials";
+    when(mockYsqlQueryExecutor.executeQuery(any(), any(), any(), any()))
+        .thenReturn(Json.newObject().put("foo", "bar"));
+    when(mockYcqlQueryExecutor.executeQuery(any(), any(), any(), any(), any()))
+        .thenReturn(Json.newObject().put("foo", "bar"));
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    ArgumentCaptor<Universe> universe = ArgumentCaptor.forClass(Universe.class);
+    ArgumentCaptor<RunQueryFormData> info = ArgumentCaptor.forClass(RunQueryFormData.class);
+    ArgumentCaptor<Boolean> auth = ArgumentCaptor.forClass(Boolean.class);
+    ArgumentCaptor<String> username = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> password = ArgumentCaptor.forClass(String.class);
+    Mockito.verify(mockYcqlQueryExecutor, times(1))
+        .executeQuery(universe.capture(), info.capture(), auth.capture(),
+                      username.capture(), password.capture());
+    Mockito.verify(mockYsqlQueryExecutor, times(1))
+        .executeQuery(universe.capture(), info.capture(),
+                      username.capture(), password.capture());
+    assertOk(result);
+    assertAuditEntry(0, customer.uuid);
   }
 }
