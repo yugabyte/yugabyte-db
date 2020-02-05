@@ -661,16 +661,23 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
   #
   # Everything has already been built by this point, so there is no need to invoke compilation at
   # all as part of building the release package.
+  yb_release_cmd=(
+    "$YB_SRC_ROOT/yb_release"
+    --build "$build_type"
+    --build_root "$BUILD_ROOT"
+    --build_args="--skip-build"
+    --save_release_path_to_file "$package_path_file"
+    --commit "$current_git_commit"
+    --force
+  )
+
+  if [[ ${YB_BUILD_YW:-0} == "1" ]]; then
+    yb_release_cmd+=( --yw )
+  fi
+
   (
     set -x
-    time "$YB_SRC_ROOT/yb_release" \
-      --build "$build_type" \
-      --build_root "$BUILD_ROOT" \
-      --build_args="--skip-build" \
-      --save_release_path_to_file "$package_path_file" \
-      --commit "$current_git_commit" \
-      --yw \
-      --force
+    time "${yb_release_cmd[@]}"
   )
 
   YB_PACKAGE_PATH=$( cat "$package_path_file" )
