@@ -122,7 +122,7 @@ SELECT 'ALTER TABLE '||inhrelid::regclass||' NO INHERIT '||inhparent::regclass||
 
 DO NOT RUN THESE STATEMENTS YET. The following query will not work if the child tables are no longer part of the inheritance set.
 
-For any partition sets, even those not managed by pg_partman, the next step is that you need to figure out the boundary values of your existing child tables and feed those to the ATTACH PARTITION command used in native partitioning. Since pg_partman uses set naming patterns for all the partition types it manages, there is a built-in function (`show_partition_info()`) that can return the boundary values based on the child table's name. Also because the given child table no longer has a parent table after running the above statements, we have to feed that value to the function's `p_parent_table` parameter so it knows how to figure out the proper boundaries. 
+For any partition sets, even those not managed by pg_partman, the next step is that you need to figure out the boundary values of your existing child tables and feed those to the ATTACH PARTITION command used in native partitioning. Since pg_partman uses set naming patterns for all the partition types it manages, there is a built-in function (`show_partition_info()`) that can return the boundary values based on the child table's name.  
 
 For non-pg_partman partition sets you will have to use some other method to figure out these child boundaries.
 
