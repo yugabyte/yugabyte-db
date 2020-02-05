@@ -117,7 +117,7 @@ ELSIF v_partition_type = 'native' AND current_setting('server_version_num')::int
         v_source_tablename := v_default_tablename;
 
         v_default_exists := true;
-        EXECUTE format ('CREATE TEMP TABLE IF NOT EXISTS partman_temp_data_storage (LIKE %I.%I INCLUDING INDEXES)', v_source_schemaname, v_source_tablename);
+        EXECUTE format ('CREATE TEMP TABLE IF NOT EXISTS partman_temp_data_storage (LIKE %I.%I INCLUDING INDEXES) ON COMMIT DROP', v_source_schemaname, v_source_tablename);
     ELSE
         RAISE DEBUG 'No default table found when partition_data_id() was called';
         RETURN v_total_rows;

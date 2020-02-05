@@ -1,3 +1,26 @@
+4.3.0
+NEW FEATURES
+============
+
+-- New documentation for how to migrate a trigger-based partition set managed by pg_partman to a native set - doc/migrate_to_native.md (Github Issue #282)
+
+-- Added new table matrix to the pg_partman.md documentation for which properties are handled via the special pg_partman template table depending on your version of PG. Please review this matrix carefully when updating the major version of PG to see which template properties may need to be applied to the real parent for inheritance to keep working as expected.
+
+-- Tablespace inheritance for PG12+ is now handled via the real parent table of the partition set, no longer via the pg_partman template table. Note that tablespaces for primary/unique keys that are not part of the partition key must still be handled via the template where those indexes are defined. For PG11 and earlier, tablespace inheritance must still be handled via the template table. If you are upgrading from PG11 or earlier to PG12+, ensure the tablespace is properly set on the parent table for inheritance to work as expected. (Github Issue #274)
+
+-- Added new function dump_partitioned_table_definition() to provide a means of replaying partition setup statements in another database or during a dump/restore. Thanks to James Coleman (jcoleman) for providing this new feature! (Github Issue #260, PR #291)
+
+BUG FIXES
+=========
+
+-- Fixed maintenance runs with retention, or direct calls to drop_partition*() functions, failing if there were foreign keys pointing to the child table that was to be dropped. (Github Issue #294)
+
+-- Fixed partition_data*() functions failing if they are run in the same session multiple times. Temporary tables were not being cleaned up properly. (Github Issue #295)
+
+-- Changed child_end_time value of internal show_partition_info() function to show the non-inclusive end time boundary value. Previously it would subtract one second to try and show the actual values being stored in the partition, but this was causing issues trying to build boundary values when trying to migrate to native partitioning. This was previously an undocumented function, so its API was not guaranteed to be stable. It is now documented so any further changes will be fully documented.
+
+
+
 4.2.2
 -- Fix bug in template table index inheritance that prevented any additional indexes from being copied after finding an index definition that exists on both the template and parent tables. Github Pull Request #278.
 

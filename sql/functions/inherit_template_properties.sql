@@ -66,7 +66,7 @@ END IF;
 v_template_schemaname := split_part(v_template_table, '.', 1)::name;
 v_template_tablename :=  split_part(v_template_table, '.', 2)::name;
 
- SELECT c.oid, ts.spcname INTO v_template_oid, v_template_tablespace
+SELECT c.oid, ts.spcname INTO v_template_oid, v_template_tablespace
 FROM pg_catalog.pg_class c
 JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
 LEFT OUTER JOIN pg_catalog.pg_tablespace ts ON c.reltablespace = ts.oid
@@ -183,8 +183,8 @@ IF current_setting('server_version_num')::int >= 100000 AND current_setting('ser
 END IF;
 -- End foreign key creation
 
--- Tablespace inheritance
-IF v_template_tablespace IS NOT NULL THEN
+-- Tablespace inheritance on PG11 and earlier
+IF current_setting('server_version_num')::int < 120000 AND v_template_tablespace IS NOT NULL THEN
     v_sql := format('ALTER TABLE %I.%I SET TABLESPACE %I', v_child_schema, v_child_tablename, v_template_tablespace);
     RAISE DEBUG 'Alter tablespace: %', v_sql;
     EXECUTE v_sql;

@@ -705,7 +705,7 @@ IF p_type = 'native' AND current_setting('server_version_num')::int >= 110000 TH
     END IF;
     */
 
-    -- Same INCLUDING list is used in create_partition_*()
+    -- Same INCLUDING list is used in create_partition_*(). INDEXES is handled when partition is attached if it's supported.
     v_sql := v_sql || format(' TABLE %I.%I (LIKE %I.%I INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING STORAGE INCLUDING COMMENTS)'
         , v_parent_schema, v_default_partition, v_parent_schema, v_parent_tablename);
     EXECUTE v_sql;
@@ -713,12 +713,13 @@ IF p_type = 'native' AND current_setting('server_version_num')::int >= 110000 TH
         , v_parent_schema, v_parent_tablename, v_parent_schema, v_default_partition);
     EXECUTE v_sql;
 
-    -- Ensure any primary/unique keys on premade template tables are applied 
-    PERFORM @extschema@.inherit_template_properties(p_parent_table, v_parent_schema, v_default_partition);
-
-    IF v_parent_tablespace IS NOT NULL THEN
+    IF current_setting('server_version_num')::int >= 120000 AND v_parent_tablespace IS NOT NULL THEN
+        -- Tablespace managed via inherit_template_properties() call below if PG11 or earliser
         EXECUTE format('ALTER TABLE %I.%I SET TABLESPACE %I', v_parent_schema, v_default_partition, v_parent_tablespace);
     END IF;
+
+    -- Manage template inherited properies
+    PERFORM @extschema@.inherit_template_properties(p_parent_table, v_parent_schema, v_default_partition);
 
 END IF;
 

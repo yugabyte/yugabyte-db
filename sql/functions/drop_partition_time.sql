@@ -164,18 +164,22 @@ LOOP
                                                 , v_row.partition_tablename
                                                 , p_parent_table));
         END IF;
-        IF v_partition_type = 'native' THEN
-            EXECUTE format('ALTER TABLE %I.%I DETACH PARTITION %I.%I'
-                , v_parent_schema
-                , v_parent_tablename
-                , v_row.partition_schemaname
-                , v_row.partition_tablename);
-        ELSE
-            EXECUTE format('ALTER TABLE %I.%I NO INHERIT %I.%I'
-                    , v_row.partition_schemaname
-                    , v_row.partition_tablename
+        IF v_retention_keep_table = true THEN
+            -- No need to detach partition before dropping since it's going away anyway
+            -- Avoids issue of FKs not allowing detachment (Github Issue #294).
+            IF v_partition_type = 'native' THEN
+                EXECUTE format('ALTER TABLE %I.%I DETACH PARTITION %I.%I'
                     , v_parent_schema
-                    , v_parent_tablename);
+                    , v_parent_tablename
+                    , v_row.partition_schemaname
+                    , v_row.partition_tablename);
+            ELSE
+                EXECUTE format('ALTER TABLE %I.%I NO INHERIT %I.%I'
+                        , v_row.partition_schemaname
+                        , v_row.partition_tablename
+                        , v_parent_schema
+                        , v_parent_tablename);
+            END IF;
         END IF;
         IF v_partition_type = 'time-custom' THEN
             DELETE FROM @extschema@.custom_time_partitions WHERE parent_table = p_parent_table AND child_table = v_row.partition_schemaname||'.'||v_row.partition_tablename;
@@ -183,6 +187,7 @@ LOOP
         IF v_jobmon_schema IS NOT NULL THEN
             PERFORM update_step(v_step_id, 'OK', 'Done');
         END IF;
+
         IF v_retention_schema IS NULL THEN
             IF v_retention_keep_table = false THEN
                 IF v_jobmon_schema IS NOT NULL THEN
@@ -289,4 +294,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

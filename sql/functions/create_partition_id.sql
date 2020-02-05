@@ -151,8 +151,8 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
     FROM @extschema@.part_config_sub 
     WHERE sub_parent = p_parent_table;
     IF v_sub_partition_type = 'native' THEN
-        -- NOTE: Need to handle this differently when index inheritance is supported natively
-        -- Cannot include indexes since they cannot exist on native parents.
+        -- INCLUDING INDEXES isn't necessary for native partitioning. It isn't supported in v10 and 
+	    --   for v11+ index inheritance is automatically handled when the partition is attached
         v_sql := v_sql || format(') PARTITION BY RANGE (%I) ', v_sub_control);
     ELSE
         v_sql := v_sql || format(' INCLUDING INDEXES) ', v_sub_control);
@@ -176,7 +176,15 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
     END IF;
     EXECUTE v_sql;
 
-        IF v_partition_type = 'native' THEN
+    IF v_partition_type = 'native' THEN
+
+        IF current_setting('server_version_num')::int >= 120000 THEN
+            -- PG12 fixed tablespace marking on the parent of a native partition set
+            -- Versions older than 12 handle tablespace setting via inherit_template_properties() call below
+            IF v_parent_tablespace IS NOT NULL THEN
+                EXECUTE format('ALTER TABLE %I.%I SET TABLESPACE %I', v_parent_schema, v_partition_name, v_parent_tablespace);
+            END IF;
+        END IF;
 
         IF v_template_table IS NOT NULL THEN
             PERFORM @extschema@.inherit_template_properties(p_parent_table, v_parent_schema, v_partition_name);
@@ -190,8 +198,8 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
             , v_id
             , v_id + v_partition_interval);
 
-    ELSE
-        -- Handled in inherit_template_properties for native because CREATE TABLE ignores TABLESPACE flag for native partition parents
+    ELSE -- non-native
+
         IF v_parent_tablespace IS NOT NULL THEN
             EXECUTE format('ALTER TABLE %I.%I SET TABLESPACE %I', v_parent_schema, v_partition_name, v_parent_tablespace);
         END IF;
@@ -360,5 +368,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint; 
 END
 $$;
-
 

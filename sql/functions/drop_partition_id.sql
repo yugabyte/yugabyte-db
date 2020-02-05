@@ -163,22 +163,28 @@ LOOP
         IF v_jobmon_schema IS NOT NULL THEN
             v_step_id := add_step(v_job_id, format('Detach/Uninherit table %s.%s from %s', v_row.partition_schemaname, v_row.partition_tablename, p_parent_table));
         END IF;
-        IF v_partition_type = 'native' THEN
-            EXECUTE format('ALTER TABLE %I.%I DETACH PARTITION %I.%I'
-                , v_parent_schema
-                , v_parent_tablename
-                , v_row.partition_schemaname
-                , v_row.partition_tablename);
-        ELSE
-            EXECUTE format('ALTER TABLE %I.%I NO INHERIT %I.%I'
-                , v_row.partition_schemaname
-                , v_row.partition_tablename
-                , v_parent_schema
-                , v_parent_tablename);
-            IF v_jobmon_schema IS NOT NULL THEN
-                PERFORM update_step(v_step_id, 'OK', 'Done');
+
+        IF v_retention_keep_table = true THEN
+            -- No need to detach partition before dropping since it's going away anyway
+            -- Avoids issue of FKs not allowing detachment (Github Issue #294).
+            IF v_partition_type = 'native' THEN
+                EXECUTE format('ALTER TABLE %I.%I DETACH PARTITION %I.%I'
+                    , v_parent_schema
+                    , v_parent_tablename
+                    , v_row.partition_schemaname
+                    , v_row.partition_tablename);
+            ELSE
+                EXECUTE format('ALTER TABLE %I.%I NO INHERIT %I.%I'
+                    , v_row.partition_schemaname
+                    , v_row.partition_tablename
+                    , v_parent_schema
+                    , v_parent_tablename);
+                IF v_jobmon_schema IS NOT NULL THEN
+                    PERFORM update_step(v_step_id, 'OK', 'Done');
+                END IF;
             END IF;
         END IF;
+
         IF v_retention_schema IS NULL THEN
             IF v_retention_keep_table = false THEN
                 IF v_jobmon_schema IS NOT NULL THEN

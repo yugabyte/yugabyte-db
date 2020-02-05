@@ -101,7 +101,7 @@ IF v_control_type = 'time' OR (v_control_type = 'id' AND v_epoch <> 'none') THEN
             END CASE;
         END IF;
 
-        child_end_time := (child_start_time + v_partition_interval::interval) - '1 second'::interval;
+        child_end_time := (child_start_time + v_partition_interval::interval);
 
 ELSIF v_control_type = 'id' THEN
 
@@ -120,4 +120,5 @@ RETURN;
 
 END
 $$;
+
 

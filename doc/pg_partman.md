@@ -15,11 +15,24 @@ If you have an existing partition set and you'd like to migrate it to pg_partman
 
 ### Child Table Property Inheritance
 
-For this extension, most of the attributes of the child partitions are all obtained from the original parent. This includes defaults, indexes (primary keys, unique, clustering, etc), foreign keys, tablespaces, & constraints. Note that for PostgreSQL 10, indexes, foreign keys, unlogged status (see Notes below), & tablespaces for native partitioning are done through a template table instead. For PG11+, unlogged status and unique indexes that don't include the partition column require the template table; all other properties are managed by the parent again. The WITH OIDS property is no longer officially supported as of the release of PostgreSQL 12 since it was dropped there.
+For this extension, most of the attributes of the child partitions are all obtained from the parent table. For non-native, trigger-based partititioning, all properties are managed via the parent and always will be. However, with native partitioning, certain features are not able to be inherited from the parent depending on the version of PostgreSQL. So pg_partman uses a template table instead. The following table matrix shows how certain propery inheritances are managed with pg_partman for native partitioning. If a property is not listed here, then assume it is managed via the parent. Note that if you will be upgrading your major version, you will have to change how the properties are managed appropriately if something has moved from being managed by the template to being managed by the real parent (Ex. foreign keys going from 10 to 11+). The WITH OIDS property is no longer officially supported by pg_partman at all (native or non-native) as of the release of PostgreSQL 12 since it was dropped there.
+
+| Feature                                           | Parent Inheritance    | Template Inheritance  |
+| ----------                                        | --------------------- | --------------------- |
+| non-partition column primary key                  |                       |  All                  |
+| non-partition column unique index                 |                       |  All                  |
+| non-partition column unique index tablespace      |                       |  All                  |
+| unlogged table state*                             |                       |  All                  |
+| non-unique indexes                                | 11, 12                |  10                   |
+| foreign keys                                      | 11, 12                |  10                   |
+| tablespaces                                       | 12                    |  10, 11               |
+| privileges/ownership                              | All                   |                       |
+| constraints                                       | All                   |                       |
+| defaults                                          | All                   |                       |
 
 Privileges & ownership are inherited by default for non-native partitioning, but NOT for native partitioning. Also note that this inheritance is only at child table creation and isn't automatically retroactive when changed (see `reapply_privileges()`). Unless you need direct access to the child tables, this should not be needed. You can set the `inherit_privileges` option if this is needed (see config table information below). Note that inheriting privileges to the children requires running a superuser owned function that uses SECURITY DEFINER. 
 
-For PG10 and older, defaults, indexes, unlogged status, tablespace & constraints on the parent (or template table) are only applied to newly created partitions and are not retroactively set on ones that already existed. For P11, only indexes and unlogged status applied to the template table are automatically applied to new children. All other properties, except privileges, applied to the parent should automatically apply to all child tables immediately when set.  
+If a property is managed via the template table, it likely will not be retroactively applied to all existing child tables if that property is changed. It will apply to any newly created children, but will have to be manually applied to any existing children.
 
 The new IDENTITY feature introduced in PG10 is only supported in natively partitioned tables and the automatic generation of new sequence values using this feature is only supported when data is inserted through the parent table, not directly into the children.
 
@@ -286,6 +299,14 @@ As a note for people that were not aware, you can name arguments in function cal
  * `p_analyze` - See p_analyze option in run_maintenance.
 
 
+*`check_default(p_exact_count boolean DEFAULT true)`*
+
+ * Run this function to monitor that the parent tables (non-native) or default tables (native PG11+) of the partition sets that `pg_partman` manages do not get rows inserted to them.
+ * Returns a row for each parent/default table along with the number of rows it contains. Returns zero rows if none found.
+ * `partition_data_time()` & `partition_data_id()` can be used to move data from these parent/default tables into the proper children.
+ * p_exact_count will tell the function to give back an exact count of how many rows are in each parent if any is found. This is the default if the parameter is left out. If you don't care about an exact count, you can set this to false and it will return if it finds even just a single row in any parent. This can significantly speed up the check if a lot of data ends up in a parent or there are many partitions being managed.
+
+
 *`show_partitions (p_parent_table text, p_order text DEFAULT 'ASC', p_include_default boolean DEFAULT false) RETURNS TABLE (partition_schemaname text, partition_tablename text)`*
 
  * List all child tables of a given partition set managed by pg_partman. Each child table returned as a single row.
@@ -294,7 +315,7 @@ As a note for people that were not aware, you can name arguments in function cal
  * `p_order` - optional parameter to set the order the child tables are returned in. Defaults to ASCending. Set to 'DESC' to return in descending order. If the default is included, it is always listed first.
 
 
-*`show_partition_name(p_parent_table text, p_value text, OUT partition_table text, OUT suffix_timestamp timestamp, OUT suffix_id bigint, OUT table_exists boolean)`*
+*`show_partition_name (p_parent_table text, p_value text, OUT partition_table text, OUT suffix_timestamp timestamp, OUT suffix_id bigint, OUT table_exists boolean)`*
 
  * Given a parent table managed by pg_partman (p_parent_table) and an appropriate value (time or id but given in text form for p_value), return the name of the child partition that that value would exist in.
  * If using epoch time partitioning, give the timestamp value, NOT the integer epoch value (use to_timestamp() to convert an epoch value).
@@ -303,13 +324,30 @@ As a note for people that were not aware, you can name arguments in function cal
  * Also returns a boolean value (table_exists) to say whether that child table actually exists
 
 
-*`check_default(p_exact_count boolean DEFAULT true)`*
+*`@extschema@.show_partition_info (p_child_table text, p_partition_interval text DEFAULT NULL, p_parent_table text DEFAULT NULL, OUT child_start_time timestamptz, OUT child_end_time timestamptz, OUT child_start_id bigint, OUT child_end_id bigint, OUT suffix text) RETURNS record`*
 
- * Run this function to monitor that the parent tables (non-native) or default tables (native PG11+) of the partition sets that `pg_partman` manages do not get rows inserted to them.
- * Returns a row for each parent/default table along with the number of rows it contains. Returns zero rows if none found.
- * `partition_data_time()` & `partition_data_id()` can be used to move data from these parent/default tables into the proper children.
- * p_exact_count will tell the function to give back an exact count of how many rows are in each parent if any is found. This is the default if the parameter is left out. If you don't care about an exact count, you can set this to false and it will return if it finds even just a single row in any parent. This can significantly speed up the check if a lot of data ends up in a parent or there are many partitions being managed.
+  * Given a schema-qualified child table name (p_child_table), return the relevant boundary values of that child as well as the suffix appended to the child table name.
+  * `p_partition_interval` - If given, return boundary results based on this interval. If not given, function looks up the interval stored in the part_config table for this partition set.
+  * `p_parent_table` - Optional argument that can be given when parent_table is known and to avoid a catalog lookup for the parent table associated with p_child_table.
+  * `OUT child_start_times & child_end_time` - Function returns values for these output parameters if the partition set is time-based. Otherwise outputs NULL.
+  * `OUT child_start_id & child_end_id` - Function returns values for these output parameters if the partition set is integer-based. Otherwise outputs NULL.
+  * `OUT suffix` - Outputs the text portition appended to the child table that identifies its contents minus the "_p" (Ex "2020_01_30" OR "920000"). Useful for generating your own suffixes for partitioning similar to how pg_partman does it.
 
+
+*`@extschema@.dump_partitioned_table_definition(p_parent_table text, p_ignore_template_table boolean default false) RETURNS text`*
+
+  * Function to return the necessary commands to recreate a partition set in pg_partman for the given parent table (p_parent_table).
+  * Returns both the `create_parent()` call as well as an UPDATE statement to set additional parameters stored in part_config.
+  * NOTE: This currently only works with single level partition sets. Looking for contributions to add support for sub-partition sets
+  * `p_ignore_template` - For native partitioned tables the template table needs to be created before the SQL generated by this function will work properly. If you haven't modified the template table at all then it's safe to pass TRUE here to have the generated SQL tell partman to generate a new template table. But for safety it's preferred to use pg_dump to dump the template tables and restore them prior to using the generated SQL so that you can maintain any template overrides.
+
+
+*`partition_gap_fill(p_parent_table text) RETURNS integer`*
+
+  * Function to fill in any gaps that may exist in the series of child tables for a given parent table (p_parent_table).
+  * Starts from current minimum child table and fills in any gaps encountered based on the partition interval, up to the current maximum child table
+  * Returns how many child tables are created. Returns 0 if none are created.
+ 
 
 *`apply_constraints(p_parent_table text, p_child_table text DEFAULT NULL, p_job_id bigint DEFAULT NULL, p_debug BOOLEAN DEFAULT FALSE)`*
 
