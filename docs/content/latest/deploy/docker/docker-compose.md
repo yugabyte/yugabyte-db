@@ -50,13 +50,20 @@ $ docker pull yugabytedb/yugabyte
 ```sh
 version: '2'
 
+volumes:
+  yb-master-data:
+  yb-tserver-data:
+
 services:
   yb-master:
       image: yugabytedb/yugabyte:latest
       container_name: yb-master-n1
+      volumes:
+      - yb-master-data:/mnt/master
       command: [ "/home/yugabyte/bin/yb-master",
-                "--fs_data_dirs=/mnt/disk0,/mnt/disk1",
+                "--fs_data_dirs=/mnt/master",
                 "--master_addresses=yb-master-n1:7100",
+                "--rpc_bind_addresses=yb-master-n1:7100",
                 "--replication_factor=1"]
       ports:
       - "7000:7000"
@@ -66,9 +73,12 @@ services:
   yb-tserver:
       image: yugabytedb/yugabyte:latest
       container_name: yb-tserver-n1
+      volumes:
+      - yb-tserver-data:/mnt/tserver
       command: [ "/home/yugabyte/bin/yb-tserver",
-                "--fs_data_dirs=/mnt/disk0,/mnt/disk1",
+                "--fs_data_dirs=/mnt/tserver",
                 "--start_pgsql_proxy",
+                "--rpc_bind_addresses=yb-tserver-n1:9100",
                 "--tserver_master_addrs=yb-master-n1:7100"]
       ports:
       - "9042:9042"
@@ -87,7 +97,7 @@ services:
 ### Start the cluster
 
 ```sh
-$ docker-compose up -d
+$ docker-compose -f ./docker-compose.yaml up -d
 ```
 
 ## 2. Initialize the APIs
@@ -100,14 +110,26 @@ Optionally, you can enable YEDIS API by running the following command.
 $ docker exec -it yb-master-n1 /home/yugabyte/bin/yb-admin --master_addresses yb-master-n1:7100 setup_redis_table
 ```
 
-Clients can now connect to the YSQL API at localhost:5433, YCQL API at localhost:9042 and YEDIS API at localhost:6379. The yb-master admin service is available at http://localhost:7000.
 
 ## 3. Test the APIs
 
-Follow the instructions in the [Quick Start](../../../quick-start/) section with Docker.
+Clients can now connect to the YSQL API at localhost:5433, YCQL API at localhost:9042 and YEDIS API at localhost:6379. The yb-master admin service is available at http://localhost:7000.
+
+For example,
+```sh
+$ ysqlsh -h localhost -p 5433
+ysqlsh (11.2-YB-2.0.11.0-b0)
+Type "help" for help.
+
+yugabyte=# CREATE TABLE foo(bar INT PRIMARY KEY);
+CREATE TABLE
+yugabyte=#
+```
+
+You can also follow the instructions in the [Quick Start](../../../quick-start/explore-ysql/#docker) section with Docker.
 
 ## 4. Stop the cluster
 
 ```sh
-$ docker-compose down
+$ docker-compose -f ./docker-compose.yaml down
 ```
