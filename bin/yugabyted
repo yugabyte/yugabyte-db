@@ -405,7 +405,8 @@ class ControlScript(object):
             os.path.join(YUGAWARE_BIN_DIR, "yugaware"), "-Dconfig.file={}".format(YUGAWARE_CONF),
             "-Dplay.evolutions.db.default.autoApply=true",
             "-Dhttp.port={}".format(self.configs.saved_data.get("webserver_port")),
-            "-Dhttp.address={}".format(bind_ip)
+            "-Dhttp.address={}".format(bind_ip),
+            "-Dlog.override.path={}".format(self.configs.saved_data.get("log_dir"))
         ]
 
         self.processes = {
