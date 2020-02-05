@@ -60,8 +60,8 @@ public class InstanceType extends Model {
   public void setActive(Boolean active) { this.active = active; }
 
   @Constraints.Required
-  @Column(nullable = false)
-  public Integer numCores;
+  @Column(nullable = false, columnDefinition = "float")
+  public Double numCores;
 
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "float")
@@ -100,6 +100,14 @@ public class InstanceType extends Model {
   public static InstanceType upsert(String providerCode,
                                     String instanceTypeCode,
                                     Integer numCores,
+                                    Double memSize,
+                                    InstanceTypeDetails instanceTypeDetails) {
+    return upsert(providerCode, instanceTypeCode, (double) numCores, memSize, instanceTypeDetails);
+  }
+
+  public static InstanceType upsert(String providerCode,
+                                    String instanceTypeCode,
+                                    Double numCores,
                                     Double memSize,
                                     InstanceTypeDetails instanceTypeDetails) {
     InstanceType instanceType = InstanceType.get(providerCode, instanceTypeCode);
