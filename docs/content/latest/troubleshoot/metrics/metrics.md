@@ -1,7 +1,7 @@
 ---
-title: Runtime metrics
-linkTitle: Runtime metrics
-description: Runtime metrics
+title: Metrics
+linkTitle: Metrics
+description: Metrics
 aliases:
   - /troubleshoot/metrics/
 menu:

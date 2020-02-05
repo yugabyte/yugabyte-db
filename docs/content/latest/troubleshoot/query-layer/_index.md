@@ -1,7 +1,7 @@
 ---
-title: Query layer issues
-linkTitle: Query layer issues
-description: Query layer issues
+title: Query layer
+linkTitle: Query layer
+description: Query layer
 image: /images/section_icons/quick_start/create_cluster.png
 headcontent: Debug issues at the YugabyteDB query layer.
 aliases:

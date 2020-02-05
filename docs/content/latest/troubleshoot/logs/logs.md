@@ -1,7 +1,7 @@
 ---
-title: Inspecting db logs
-linkTitle: Inspecting db logs
-description: Inspecting db logs
+title: Logs
+linkTitle: Logs
+description: Logs
 aliases:
   - /troubleshoot/logs/
 menu:
