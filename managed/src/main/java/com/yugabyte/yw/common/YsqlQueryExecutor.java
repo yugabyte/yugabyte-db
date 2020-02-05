@@ -20,7 +20,7 @@ import java.util.Map;
 import static play.libs.Json.*;
 
 @Singleton
-public class QueryExecutor {
+public class YsqlQueryExecutor {
   private final String DEFAULT_DB_USER = "yugabyte";
   private final String DEFAULT_DB_PASSWORD = "yugabyte";
 
@@ -51,8 +51,12 @@ public class QueryExecutor {
     return rows;
   }
 
-
   public JsonNode executeQuery(Universe universe, RunQueryFormData queryParams) {
+    return executeQuery(universe, queryParams, DEFAULT_DB_USER, DEFAULT_DB_PASSWORD);
+  }
+
+  public JsonNode executeQuery(Universe universe, RunQueryFormData queryParams, String username,
+                               String password) {
     ObjectNode response = newObject();
 
     // TODO: implement execute query for CQL
@@ -60,7 +64,7 @@ public class QueryExecutor {
     String connectString =  String.format("jdbc:postgresql://%s/%s",
         ysqlEndpoints.split(",")[0], queryParams.db_name);
     try (Connection conn = DriverManager.getConnection(
-        connectString, DEFAULT_DB_USER, DEFAULT_DB_PASSWORD)) {
+        connectString, username, password)) {
       if (conn == null) {
         response.put("error", "Unable to connect to DB");
       } else {
