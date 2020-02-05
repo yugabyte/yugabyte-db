@@ -58,23 +58,25 @@ public class InstanceTypeTest extends FakeDBApplication {
     itDetails.setVolumeDetailsList(volumeCount, volumeSizeGB, volumeType);
     assertNotNull(itDetails.volumeDetailsList);
     for (int i = 0; i < volumeCount; i++) {
-    	InstanceType.VolumeDetails v = itDetails.volumeDetailsList.get(i);
-    	assertEquals(volumeSizeGB, v.volumeSizeGB.intValue());
-    	assertEquals(volumeType, v.volumeType);
-    	assertEquals(String.format("/mnt/d%d", i), v.mountPath);
+      InstanceType.VolumeDetails v = itDetails.volumeDetailsList.get(i);
+      assertEquals(volumeSizeGB, v.volumeSizeGB.intValue());
+      assertEquals(volumeType, v.volumeType);
+      assertEquals(String.format("/mnt/d%d", i), v.mountPath);
     }
   }
   
   @Test
   public void testGetDefaultInstanceTypeDetails() {
-  	InstanceType.InstanceTypeDetails itDetails = InstanceType.InstanceTypeDetails.createGCPDefault();
-  	assertNotNull(itDetails);
-  	assertNotNull(itDetails.volumeDetailsList);
+    InstanceType.InstanceTypeDetails itDetails =
+        InstanceType.InstanceTypeDetails.createGCPDefault();
+    assertNotNull(itDetails);
+    assertNotNull(itDetails.volumeDetailsList);
     for (int i = 0; i < InstanceType.InstanceTypeDetails.DEFAULT_VOLUME_COUNT; i++) {
-    	InstanceType.VolumeDetails v = itDetails.volumeDetailsList.get(i);
-    	assertEquals(InstanceType.InstanceTypeDetails.DEFAULT_GCP_VOLUME_SIZE_GB, v.volumeSizeGB.intValue());
-    	assertEquals(InstanceType.VolumeType.SSD, v.volumeType);
-    	assertEquals(String.format("/mnt/d%d", i), v.mountPath);
+      InstanceType.VolumeDetails v = itDetails.volumeDetailsList.get(i);
+      assertEquals(InstanceType.InstanceTypeDetails.DEFAULT_GCP_VOLUME_SIZE_GB,
+        v.volumeSizeGB.intValue());
+      assertEquals(InstanceType.VolumeType.SSD, v.volumeType);
+      assertEquals(String.format("/mnt/d%d", i), v.mountPath);
     }
   }
 
@@ -139,7 +141,7 @@ public class InstanceTypeTest extends FakeDBApplication {
     JsonNode itJson = Json.toJson(it);
     assertValue(itJson, "providerCode", "aws");
     assertValue(itJson, "instanceTypeCode", "it-1");
-    assertValue(itJson, "numCores", "4");
+    assertValue(itJson, "numCores", "4.0");
     assertValue(itJson, "memSizeGB", "300.0");
     JsonNode volumeDetailsList = itJson.get("instanceTypeDetails").get("volumeDetailsList");
     assertTrue(volumeDetailsList.isArray());

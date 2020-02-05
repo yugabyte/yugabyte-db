@@ -55,6 +55,9 @@ import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadat
 public class CloudProviderController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderController.class);
 
+
+  private static JsonNode KUBERNETES_CLOUD_INSTANCE_TYPE = Json.parse(
+      "{\"instanceTypeCode\": \"cloud\", \"numCores\": 0.3, \"memSizeGB\": 0.3}");
   private static JsonNode KUBERNETES_DEV_INSTANCE_TYPE = Json.parse(
       "{\"instanceTypeCode\": \"dev\", \"numCores\": 0.5, \"memSizeGB\": 0.5}");
   private static JsonNode KUBERNETES_INSTANCE_TYPES = Json.parse("[" +
@@ -178,7 +181,7 @@ public class CloudProviderController extends AuthenticatedController {
           case "kubernetes":
             updateKubeConfig(provider, config, false);
             try {
-              createKubernetesInstanceTypes(provider);
+              createKubernetesInstanceTypes(provider, customerUUID);
             } catch (javax.persistence.PersistenceException ex) {
               // TODO: make instance types more multi-tenant friendly...
             }
@@ -268,7 +271,7 @@ public class CloudProviderController extends AuthenticatedController {
         }
       }
       try {
-        createKubernetesInstanceTypes(provider);
+        createKubernetesInstanceTypes(provider, customerUUID);
       } catch (javax.persistence.PersistenceException ex) {
         provider.delete();
         return ApiResponse.error(INTERNAL_SERVER_ERROR, "Couldn't create instance types");
@@ -381,13 +384,14 @@ public class CloudProviderController extends AuthenticatedController {
     provider.save();
   }
 
-  private void createKubernetesInstanceTypes(Provider provider) {
+  private void createKubernetesInstanceTypes(Provider provider, UUID customerUUID) {
+    Customer customer = Customer.get(customerUUID);
     KUBERNETES_INSTANCE_TYPES.forEach((instanceType -> {
       InstanceType.InstanceTypeDetails idt = new InstanceType.InstanceTypeDetails();
       idt.setVolumeDetailsList(1, 100, InstanceType.VolumeType.SSD);
       InstanceType.upsert(provider.code,
           instanceType.get("instanceTypeCode").asText(),
-          instanceType.get("numCores").asInt(),
+          instanceType.get("numCores").asDouble(),
           instanceType.get("memSizeGB").asDouble(),
           idt
       );
@@ -397,8 +401,18 @@ public class CloudProviderController extends AuthenticatedController {
       idt.setVolumeDetailsList(1, 100, InstanceType.VolumeType.SSD);
       InstanceType.upsert(provider.code,
           KUBERNETES_DEV_INSTANCE_TYPE.get("instanceTypeCode").asText(),
-          KUBERNETES_DEV_INSTANCE_TYPE.get("numCores").asInt(),
+          KUBERNETES_DEV_INSTANCE_TYPE.get("numCores").asDouble(),
           KUBERNETES_DEV_INSTANCE_TYPE.get("memSizeGB").asDouble(),
+          idt
+      );
+    }
+    if (customer.code.equals("cloud")) {
+      InstanceType.InstanceTypeDetails idt = new InstanceType.InstanceTypeDetails();
+      idt.setVolumeDetailsList(1, 5, InstanceType.VolumeType.SSD);
+      InstanceType.upsert(provider.code,
+          KUBERNETES_CLOUD_INSTANCE_TYPE.get("instanceTypeCode").asText(),
+          KUBERNETES_CLOUD_INSTANCE_TYPE.get("numCores").asDouble(),
+          KUBERNETES_CLOUD_INSTANCE_TYPE.get("memSizeGB").asDouble(),
           idt
       );
     }

@@ -152,7 +152,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     for (int idx = 0; idx < json.size(); ++idx) {
       JsonNode instance = json.get(idx);
       assertValue(instance, "instanceTypeCode", instanceTypes[idx].getInstanceTypeCode());
-      assertThat(instance.get("numCores").asInt(), allOf(notNullValue(), equalTo(instanceTypes[idx].numCores)));
+      assertThat(instance.get("numCores").asDouble(),
+        allOf(notNullValue(), equalTo(instanceTypes[idx].numCores)));
       assertThat(instance.get("memSizeGB").asDouble(), allOf(notNullValue(), equalTo(instanceTypes[idx].memSizeGB)));
 
       InstanceType it = instanceTypes[idx];
@@ -217,7 +218,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     JsonNode json = doCreateInstanceTypeAndVerify(awsProvider.uuid, instanceTypeJson, OK);
     assertValue(json, "instanceTypeCode", "test-i1");
     assertValue(json, "memSizeGB", "10.9");
-    assertValue(json, "numCores", "3");
+    assertValue(json, "numCores", "3.0");
     assertValue(json, "active", "true");
     JsonNode machineDetailsNode = json.get("instanceTypeDetails").get("volumeDetailsList").get(0);
     assertThat(machineDetailsNode, notNullValue());
@@ -239,7 +240,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     JsonNode json = doGetInstanceTypeAndVerify(onPremProvider.uuid, it.getInstanceTypeCode(), OK);
     assertValue(json, "instanceTypeCode", "test-i1");
     assertValue(json, "memSizeGB", "5.0");
-    assertValue(json, "numCores", "3");
+    assertValue(json, "numCores", "3.0");
     assertValue(json, "active", "true");
     JsonNode machineDetailsNode = json.get("instanceTypeDetails").get("volumeDetailsList").get(0);
     assertThat(machineDetailsNode, notNullValue());
@@ -261,7 +262,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     JsonNode json = doGetInstanceTypeAndVerify(awsProvider.uuid, it.getInstanceTypeCode(), OK);
     assertValue(json, "instanceTypeCode", "test-i1");
     assertValue(json, "memSizeGB", "5.0");
-    assertValue(json, "numCores", "3");
+    assertValue(json, "numCores", "3.0");
     assertValue(json, "active", "true");
     JsonNode volumeDetailsListNode = json.get("instanceTypeDetails").get("volumeDetailsList");
     assertNotNull(volumeDetailsListNode);

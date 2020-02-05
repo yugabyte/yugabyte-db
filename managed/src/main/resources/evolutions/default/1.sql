@@ -121,7 +121,7 @@ create table instance_type (
   provider_code                 varchar(255) not null,
   instance_type_code            varchar(255) not null,
   active                        boolean default true not null,
-  num_cores                     integer not null,
+  num_cores                     float not null,
   mem_size_gb                   float not null,
   instance_type_details_json    TEXT,
   constraint pk_instance_type primary key (provider_code,instance_type_code)

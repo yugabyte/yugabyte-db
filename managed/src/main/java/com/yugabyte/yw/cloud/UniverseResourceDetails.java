@@ -36,7 +36,7 @@ public class UniverseResourceDetails {
 
   public double pricePerHour = 0;
   public double ebsPricePerHour = 0;
-  public int numCores = 0;
+  public double numCores = 0;
   public double memSizeGB = 0;
   public int volumeCount = 0;
   public int volumeSizeGB = 0;
@@ -67,7 +67,7 @@ public class UniverseResourceDetails {
     azList.add(azName);
   }
 
-  public void addNumCores(int cores) {
+  public void addNumCores(double cores) {
     numCores += cores;
   }
 
