@@ -496,6 +496,16 @@ within `rocksdb_universal_compaction_size_ratio` of the next file in considerati
 
 Default: `20`
 
+##### --timestamp_history_retention_interval_sec
+
+Only keep entries with `hybrid_time` equal to or later than the latest time the subdocument was fully overwritten or 
+deleted prior to or at the history cutoff time.
+
+On long running transactions that span 120+ seconds, you may get an `snapshot too old` error. This happens when the data 
+that the query tries to read has already been compacted. This can be avoided by increasing the value higher.
+
+Default: `120`
+
 ##### --remote_bootstrap_rate_limit_bytes_per_sec
 
 Rate control across all tablets being remote bootstrapped from or to this process.
