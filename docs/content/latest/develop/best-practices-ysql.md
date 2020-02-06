@@ -112,6 +112,17 @@ of a cluster of YugabyteDB.
 - The load balancer is only needed for tservers. Clients don't need to connect to Masters.
 {{< /note >}}
 
+## Partial indexes
+Creating indexes actually creates another hidden table where 1 row is inserted for each row from the base table.
+This includes a lot of overhead when we're only interested on querying a subset of the values. 
+
+A common scenario is to query the index only when the value of a column `is not NULL`. 
+This can be achieved with partial indexes using the `WITH` clause when creating an index.
+
+The partial index has lower storage overhead and better write performance because not all inserts will also write to the index table.
+
+Partial indexes can also be combined with [Covering indexes](../api/ysql/commands/ddl_create_index.md#include-columns).
+
 ## Connection pooling
 YugabyteDB uses the upper half of Postgresql to implement it's YSQL layer.
 Connection in Postgresql fork a new process, have at least 10MB of overhead in RAM, 
