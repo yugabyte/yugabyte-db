@@ -38,8 +38,13 @@ Run `yugabyted` to start a single-node YugabyteDB process. If no options are spe
 `yugabyted` will assume the following default directory tree:
 
 yugabyte
-+-- conf
-|   |   +-- yugabyted.conf
++-- var
+    |
+    +-- conf
+        |   +-- yugabyted.conf
+     +-- logs
+         |   +-- master & tserver & yugaware
+     +-- data
 +-- bin
 |   |   +-- yugabyted
 |   |   +-- yb-master
@@ -48,17 +53,15 @@ yugabyte
 +-- ui
 |   |   +-- bin...
 |   |   +-- ...
-+-- logs
-|   |   +-- master & tserver logfiles, unify these if possible
-+-- yugabyte-data
 """
 # Script constants.
 SCRIPT_NAME = os.path.basename(__file__)
 YUGABYTE_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-DEFAULT_CONF_DIR = os.path.join(YUGABYTE_DIR, "conf")
+YUGABYTE_VAR_DIR = os.path.join(YUGABYTE_DIR, "var")
+DEFAULT_CONF_DIR = os.path.join(YUGABYTE_VAR_DIR, "conf")
 BIN_DIR = os.path.join(YUGABYTE_DIR, "bin")
-DEFAULT_DATA_DIR = os.path.join(YUGABYTE_DIR, "yugabyte-data")
-DEFAULT_LOG_DIR = os.path.join(YUGABYTE_DIR, "yugabyte-logs")
+DEFAULT_DATA_DIR = os.path.join(YUGABYTE_VAR_DIR, "data")
+DEFAULT_LOG_DIR = os.path.join(YUGABYTE_VAR_DIR, "logs")
 DEFAULT_CONF = os.path.join(DEFAULT_CONF_DIR, "{}.conf".format(SCRIPT_NAME))
 DEFAULT_CALLHOME = True
 TRUE_CHOICES = ["true", "True", "t", "T", "yes", "Yes", "y", "Y", "1"]
@@ -438,8 +441,7 @@ class ControlScript(object):
         if self.configs.temp_data.get("ui"):
             self.processes["yugaware"] = ProcessManager(
                 "yugaware", yw_cmd, self.configs.saved_data.get("log_dir"),
-                self.configs.saved_data.get("data_dir"),
-                os.path.join(YUGABYTE_DIR, "ui", "logs"))
+                self.configs.saved_data.get("data_dir"))
 
         for p in self.processes.values():
             pid = p.get_pid()
