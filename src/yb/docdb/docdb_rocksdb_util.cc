@@ -21,9 +21,15 @@
 #include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/table.h"
+#include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/db/version_set.h"
+#include "yb/rocksdb/db/writebuffer.h"
+#include "yb/rocksdb/table/filtering_iterator.h"
 #include "yb/rocksdb/util/compression.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/rocksutil/yb_rocksdb.h"
@@ -35,6 +41,7 @@
 #include "yb/gutil/sysinfo.h"
 
 using namespace yb::size_literals;  // NOLINT.
+using namespace std::literals;
 
 DEFINE_int32(rocksdb_max_background_flushes, -1, "Number threads to do background flushes.");
 DEFINE_bool(rocksdb_disable_compactions, false, "Disable background compactions.");
@@ -307,6 +314,47 @@ void AutoInitRocksDBFlags(rocksdb::Options* options) {
   }
 }
 
+class HybridTimeFilteringIterator : public rocksdb::FilteringIterator {
+ public:
+  HybridTimeFilteringIterator(
+      rocksdb::InternalIterator* iterator, bool arena_mode, HybridTime hybrid_time_filter)
+      : rocksdb::FilteringIterator(iterator, arena_mode), hybrid_time_filter_(hybrid_time_filter) {}
+
+ private:
+  bool Satisfied(Slice key) override {
+    auto user_key = rocksdb::ExtractUserKey(key);
+    auto doc_ht = DocHybridTime::DecodeFromEnd(&user_key);
+    if (!doc_ht.ok()) {
+      LOG(DFATAL) << "Unable to decode doc ht " << rocksdb::ExtractUserKey(key) << ": "
+                  << doc_ht.status();
+      return true;
+    }
+    return doc_ht->hybrid_time() <= hybrid_time_filter_;
+  }
+
+  HybridTime hybrid_time_filter_;
+};
+
+template <class T, class... Args>
+T* CreateOnArena(rocksdb::Arena* arena, Args&&... args) {
+  if (!arena) {
+    return new T(std::forward<Args>(args)...);
+  }
+  auto mem = arena->AllocateAligned(sizeof(T));
+  return new (mem) T(std::forward<Args>(args)...);
+}
+
+rocksdb::InternalIterator* WrapIterator(
+    rocksdb::InternalIterator* iterator, rocksdb::Arena* arena, const Slice& filter) {
+  if (!filter.empty()) {
+    HybridTime hybrid_time_filter;
+    memcpy(&hybrid_time_filter, filter.data(), sizeof(hybrid_time_filter));
+    return CreateOnArena<HybridTimeFilteringIterator>(
+        arena, iterator, arena != nullptr, hybrid_time_filter);
+  }
+  return iterator;
+}
+
 } // namespace
 
 void InitRocksDBOptions(
@@ -419,6 +467,8 @@ void InitRocksDBOptions(
 
   options->memtable_factory = std::make_shared<rocksdb::SkipListFactory>(
       0 /* lookahead */, rocksdb::ConcurrentWrites::kFalse);
+
+  options->iterator_replacer = std::make_shared<rocksdb::IteratorReplacer>(&WrapIterator);
 }
 
 void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix) {
@@ -426,6 +476,98 @@ void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix) {
   options->info_log = std::make_shared<YBRocksDBLogger>(options->log_prefix);
 }
 
+class RocksDBPatcher::Impl {
+ public:
+  Impl(const std::string& dbpath, const rocksdb::Options& options)
+      : options_(SanitizeOptions(dbpath, &comparator_, options)),
+        imm_cf_options_(options_),
+        env_options_(options_),
+        cf_options_(options_),
+        version_set_(dbpath, &options_, env_options_, block_cache_.get(), &write_buffer_, nullptr) {
+    cf_options_.comparator = comparator_.user_comparator();
+  }
+
+  CHECKED_STATUS Load() {
+    std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
+    column_families.emplace_back("default", cf_options_);
+    return version_set_.Recover(column_families);
+  }
+
+  CHECKED_STATUS SetHybridTimeFilter(HybridTime value) {
+    rocksdb::VersionEdit delete_edit;
+    rocksdb::VersionEdit add_edit;
+    auto cfd = version_set_.GetColumnFamilySet()->GetDefault();
+    delete_edit.SetColumnFamily(cfd->GetID());
+    add_edit.SetColumnFamily(cfd->GetID());
+
+    for (int level = 0; level < cfd->NumberLevels(); level++) {
+      for (const auto* file : cfd->current()->storage_info()->LevelFiles(level)) {
+        rocksdb::FileMetaData fmd = *file;
+        auto& consensus_frontier = down_cast<ConsensusFrontier&>(*fmd.largest.user_frontier);
+        if (consensus_frontier.hybrid_time() > value) {
+          consensus_frontier.set_hybrid_time_filter(value);
+          delete_edit.DeleteFile(level, fmd.fd.GetNumber());
+          add_edit.AddCleanedFile(level, fmd);
+        }
+      }
+    }
+
+    if (add_edit.GetNewFiles().empty()) {
+      return Status::OK();
+    }
+
+    rocksdb::MutableCFOptions mutable_cf_options(options_, imm_cf_options_);
+    {
+      rocksdb::InstrumentedMutex mutex;
+      rocksdb::InstrumentedMutexLock lock(&mutex);
+      RETURN_NOT_OK(version_set_.LogAndApply(cfd, mutable_cf_options, &delete_edit, &mutex));
+      RETURN_NOT_OK(version_set_.LogAndApply(cfd, mutable_cf_options, &add_edit, &mutex));
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  const rocksdb::InternalKeyComparator comparator_{rocksdb::BytewiseComparator()};
+  rocksdb::WriteBuffer write_buffer_{1_KB};
+  std::shared_ptr<rocksdb::Cache> block_cache_{rocksdb::NewLRUCache(1_MB)};
+
+  rocksdb::Options options_;
+  rocksdb::ImmutableCFOptions imm_cf_options_;
+  rocksdb::EnvOptions env_options_;
+  rocksdb::ColumnFamilyOptions cf_options_;
+  rocksdb::VersionSet version_set_;
+};
+
+RocksDBPatcher::RocksDBPatcher(const std::string& dbpath, const rocksdb::Options& options)
+    : impl_(new Impl(dbpath, options)) {
+}
+
+RocksDBPatcher::~RocksDBPatcher() {
+}
+
+Status RocksDBPatcher::Load() {
+  return impl_->Load();
+}
+
+Status RocksDBPatcher::SetHybridTimeFilter(HybridTime value) {
+  return impl_->SetHybridTimeFilter(value);
+}
+
+void ForceRocksDBCompact(rocksdb::DB* db) {
+  db->CompactRange(rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr);
+  while (true) {
+    uint64_t compaction_pending = 0;
+    uint64_t running_compactions = 0;
+    db->GetIntProperty("rocksdb.compaction-pending", &compaction_pending);
+    db->GetIntProperty("rocksdb.num-running-compactions", &running_compactions);
+    if (!compaction_pending && !running_compactions) {
+      return;
+    }
+
+    std::this_thread::sleep_for(10ms);
+  }
+}
 
 }  // namespace docdb
 }  // namespace yb

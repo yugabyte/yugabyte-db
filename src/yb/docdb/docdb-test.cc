@@ -17,7 +17,9 @@
 #include <string>
 
 #include "yb/rocksdb/db.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db/version_set.h"
+#include "yb/rocksdb/db/writebuffer.h"
 #include "yb/rocksdb/util/statistics.h"
 
 #include "yb/common/hybrid_time.h"
@@ -3290,6 +3292,48 @@ TEST_F(DocDBTest, DISABLED_DumpDB) {
   }
 
   LOG(INFO) << "TXN meta: " << txn_meta << ", rev key: " << rev_key << ", intents: " << intent;
+}
+
+TEST_F(DocDBTest, SetHybridTimeFilter) {
+  auto dwb = MakeDocWriteBatch();
+  for (int i = 1; i <= 4; ++i) {
+    ASSERT_OK(WriteSimple(i));
+  }
+
+  ASSERT_OK(FlushRocksDbAndWait());
+
+  CloseRocksDB();
+
+  RocksDBPatcher patcher(rocksdb_dir_, rocksdb_options_);
+
+  ASSERT_OK(patcher.Load());
+  ASSERT_OK(patcher.SetHybridTimeFilter(HybridTime::FromMicros(2000)));
+
+  ASSERT_OK(OpenRocksDB());
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
+  )#");
+
+  ASSERT_OK(WriteSimple(5));
+
+  for (int j = 0; j < 3; ++j) {
+    SCOPED_TRACE(Format("Iteration $0", j));
+
+    ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
+      SubDocKey(DocKey([], ["row5", 55555]), [ColumnId(10); HT{ physical: 5000 }]) -> 5
+    )#");
+
+    if (j == 0) {
+      ASSERT_OK(FlushRocksDbAndWait());
+    } else if (j == 1) {
+      ForceRocksDBCompact(rocksdb());
+    }
+  }
+
 }
 
 }  // namespace docdb

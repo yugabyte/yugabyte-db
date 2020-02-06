@@ -66,6 +66,16 @@ LightweightBoundaries::LightweightBoundaries(Arena* arena,
   }
 }
 
+FdWithBoundaries::FdWithBoundaries(Arena* arena, const FileMetaData& source)
+    : fd(source.fd), smallest(arena, source.smallest), largest(arena, source.largest) {
+  if (source.largest.user_frontier) {
+    auto filter = source.largest.user_frontier->Filter();
+    if (!filter.empty()) {
+      user_filter_data = SliceDup(arena, filter);
+    }
+  }
+}
+
 uint64_t TotalFileSize(const std::vector<FileMetaData*>& files) {
   uint64_t sum = 0;
   for (size_t i = 0; i < files.size() && files[i]; i++) {

@@ -2429,32 +2429,13 @@ void Tablet::UnregisterReader(HybridTime timestamp) {
   }
 }
 
-namespace {
-
-void ForceRocksDBCompact(rocksdb::DB* db) {
-  db->CompactRange(rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr);
-  while (true) {
-    uint64_t compaction_pending = 0;
-    uint64_t running_compactions = 0;
-    db->GetIntProperty("rocksdb.compaction-pending", &compaction_pending);
-    db->GetIntProperty("rocksdb.num-running-compactions", &running_compactions);
-    if (!compaction_pending && !running_compactions) {
-      return;
-    }
-
-    SleepFor(MonoDelta::FromMilliseconds(10));
-  }
-}
-
-} // namespace
-
 void Tablet::ForceRocksDBCompactInTest() {
   if (regular_db_) {
-    ForceRocksDBCompact(regular_db_.get());
+    docdb::ForceRocksDBCompact(regular_db_.get());
   }
   if (intents_db_) {
     intents_db_->Flush(rocksdb::FlushOptions());
-    ForceRocksDBCompact(intents_db_.get());
+    docdb::ForceRocksDBCompact(intents_db_.get());
   }
 }
 

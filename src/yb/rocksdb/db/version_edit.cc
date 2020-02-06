@@ -106,6 +106,9 @@ void FileMetaData::UpdateBoundariesExceptKey(const FileBoundaryValuesBase& sourc
   }
 }
 
+Slice FileMetaData::UserFilter() const {
+  return largest.user_frontier ? largest.user_frontier->Filter() : Slice();
+}
 
 std::string FileMetaData::ToString() const {
   return yb::Format("{ number: $0 total_size: $1 base_size: $2 refs: $3 "
@@ -151,11 +154,11 @@ Status DecodeBoundaryValues(BoundaryValuesExtractor* extractor,
                             FileBoundaryValues<InternalKey>* out) {
   out->key = InternalKey::DecodeFrom(values.key());
   out->seqno = values.seqno();
-  if (values.has_user_frontier() && extractor) {
-    out->user_frontier = extractor->CreateFrontier();
-    out->user_frontier->FromPB(values.user_frontier());
-  }
   if (extractor != nullptr) {
+    if (values.has_user_frontier()) {
+      out->user_frontier = extractor->CreateFrontier();
+      out->user_frontier->FromPB(values.user_frontier());
+    }
     for (const auto &user_value : values.user_values()) {
       UserBoundaryValuePtr decoded;
       auto status = extractor->Decode(user_value.tag(), user_value.data(), &decoded);
@@ -166,8 +169,12 @@ Status DecodeBoundaryValues(BoundaryValuesExtractor* extractor,
         out->user_values.push_back(std::move(decoded));
       }
     }
+  } else if (values.has_user_frontier()) {
+    return STATUS_FORMAT(
+        IllegalState, "Boundary values contains user frontier but extractor is not specified: $0",
+        values);
   }
-  return Status();
+  return Status::OK();
 }
 
 bool VersionEdit::AppendEncodedTo(std::string* dst) const {

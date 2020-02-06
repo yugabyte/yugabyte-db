@@ -67,15 +67,18 @@ Status DocDBRocksDBUtil::OpenRocksDB() {
   return Status::OK();
 }
 
-Status DocDBRocksDBUtil::ReopenRocksDB() {
+void DocDBRocksDBUtil::CloseRocksDB() {
   intents_db_.reset();
   rocksdb_.reset();
+}
+
+Status DocDBRocksDBUtil::ReopenRocksDB() {
+  CloseRocksDB();
   return OpenRocksDB();
 }
 
 Status DocDBRocksDBUtil::DestroyRocksDB() {
-  intents_db_.reset();
-  rocksdb_.reset();
+  CloseRocksDB();
   LOG(INFO) << "Destroying RocksDB database at " << rocksdb_dir_;
   RETURN_NOT_OK(rocksdb::DestroyDB(rocksdb_dir_, rocksdb_options_));
   RETURN_NOT_OK(rocksdb::DestroyDB(IntentsDBDir(), rocksdb_options_));
@@ -203,6 +206,16 @@ Status DocDBRocksDBUtil::WriteToRocksDBAndClear(
   return Status::OK();
 }
 
+Status DocDBRocksDBUtil::WriteSimple(int index) {
+  auto encoded_doc_key = DocKey(PrimitiveValues(Format("row$0", index), 11111 * index)).Encode();
+  op_id_.term = index / 2;
+  op_id_.index = index;
+  auto& dwb = DefaultDocWriteBatch();
+  RETURN_NOT_OK(dwb.SetPrimitive(
+      DocPath(encoded_doc_key, PrimitiveValue(ColumnId(10))), PrimitiveValue(index)));
+  return WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000 * index));
+}
+
 void DocDBRocksDBUtil::SetHistoryCutoffHybridTime(HybridTime history_cutoff) {
   retention_policy_->SetHistoryCutoff(history_cutoff);
 }
@@ -319,6 +332,14 @@ DocWriteBatch DocDBRocksDBUtil::MakeDocWriteBatch() {
 DocWriteBatch DocDBRocksDBUtil::MakeDocWriteBatch(InitMarkerBehavior init_marker_behavior) {
   return DocWriteBatch(
       DocDB::FromRegularUnbounded(rocksdb_.get()), init_marker_behavior, &monotonic_counter_);
+}
+
+DocWriteBatch& DocDBRocksDBUtil::DefaultDocWriteBatch() {
+  if (!doc_write_batch_) {
+    doc_write_batch_ = MakeDocWriteBatch();
+  }
+
+  return *doc_write_batch_;
 }
 
 void DocDBRocksDBUtil::SetInitMarkerBehavior(InitMarkerBehavior init_marker_behavior) {

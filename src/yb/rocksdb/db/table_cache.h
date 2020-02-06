@@ -71,11 +71,12 @@ class TableCache {
   // the returned iterator.  The returned "*tableptr" object is owned by
   // the cache and should not be deleted, and is valid for as long as the
   // returned iterator is live.
+  // If ioptions_.iterator_replacer is specified - it will receive `filter` as an argument.
   // @param skip_filters Disables loading/accessing the filter block
   InternalIterator* NewIterator(
       const ReadOptions& options, const EnvOptions& toptions,
       const InternalKeyComparatorPtr& internal_comparator,
-      const FileDescriptor& file_fd, TableReader** table_reader_ptr = nullptr,
+      const FileDescriptor& file_fd, const Slice& filter, TableReader** table_reader_ptr = nullptr,
       HistogramImpl* file_read_hist = nullptr, bool for_compaction = false,
       Arena* arena = nullptr, bool skip_filters = false);
 
@@ -91,7 +92,7 @@ class TableCache {
   // Version of NewIterator which uses provided table reader instead of getting it by
   // itself.
   InternalIterator* NewIterator(
-      const ReadOptions& options, TableReaderWithHandle* trwh,
+      const ReadOptions& options, TableReaderWithHandle* trwh, const Slice& filter,
       bool for_compaction = false, Arena* arena = nullptr, bool skip_filters = false);
 
   // If a seek to internal key "k" in specified file finds an entry,
@@ -160,7 +161,7 @@ class TableCache {
       bool skip_filters = false);
 
   InternalIterator* DoNewIterator(
-      const ReadOptions& options, TableReaderWithHandle* trwh,
+      const ReadOptions& options, TableReaderWithHandle* trwh, const Slice& filter,
       bool for_compaction = false, Arena* arena = nullptr, bool skip_filters = false);
 
   const ImmutableCFOptions& ioptions_;

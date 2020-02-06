@@ -881,7 +881,7 @@ Status CompactionJob::FinishCompactionOutputFile(
     // Verify that the table is usable
     ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
     InternalIterator* iter = cfd->table_cache()->NewIterator(
-        ReadOptions(), env_options_, cfd->internal_comparator(), meta->fd,
+        ReadOptions(), env_options_, cfd->internal_comparator(), meta->fd, meta->UserFilter(),
         nullptr, cfd->internal_stats()->GetFileReadHist(
                      compact_->compaction->output_level()),
         false);
