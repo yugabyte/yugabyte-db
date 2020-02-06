@@ -15,13 +15,30 @@ isTocNested: true
 showAsideToc: true
 ---
 
-You would need to generate client configuration files to enable the client to connect to YugabyteDB. The steps are identical to [preparing the per-node configuration](../prepare-nodes/#generate-per-node-config).
+To use CLIs, tools, and APIs on a remote YugabyteDB cluster with encryption enabled, you need to generate client configuration files that enable the client to connect to YugabyteDB. Follow the steps in the [Generate node configurations](../prepare-nodes/#generate-per-node-config) to create the files needed
 
-You need the following files on the client node:
+You need the following three files to be accessible on the client computer:
 
-* `ca.crt` as described in the [prepare config](../prepare-nodes/#generate-root-config) section
-* `node.<name>.crt` as described in the [node config](../prepare-nodes/#generate-private-key-for-each-node) section
-* `node.<name>.key` as shown in the [node config](../prepare-nodes/#generate-private-key-for-each-node) section
+* `rootCA.crt` — see [Prepare root configuration file](../prepare-nodes/#generate-root-config)
+* `node.<node-ip-address>.crt` — see [Generate private key for each node](../prepare-nodes/#generate-private-key-for-each-node)
+* `node.<node-ip-address>.key` — see [Generate private key for each node](../prepare-nodes/#generate-private-key-for-each-node)
+
+All three of the files should be placed in the `~/.yugabytedb`, which is the default location for TLS certificates when running the YSQL shell (`ysqlsh`) locally.
+
+## ysqlsh
+
+To use the YSQL shell (`ysqlsh`) to connect with a remote YugabyteDB cluster that has client-server encryption enabled, you need to include the `--certs_dir_name` option, specifying the directory location where the root certificate is present. The `ysqlsh` tool, located in the  is present on the cluster node in the `~/master/bin/` directory. The `~/yugabyte-tls-config` directory on the cluster nodes contains all TLS certificates.
+
+```sh
+$ ./bin/ysqlsh -h 127.0.0.1 -p 5433 -U yugabyte 
+```
+
+```sh
+ysqlsh (11.2-YB-2.0.0.0-b0)
+Type "help" for help.
+
+yugabyte=#
+```
 
 ## yb-admin
 
@@ -31,7 +48,7 @@ For example, the command below will list the master information for the TLS enab
 
 ```sh
 export MASTERS=node1:7100,node2:7100,node3:7100
-./yb-admin --master_addresses $MASTERS -certs_dir_name ~/yugabyte-tls-config list_all_masters
+./bin/yb-admin --master_addresses $MASTERS -certs_dir_name ~/yugabyte-tls-config list_all_masters
 ```
 
 You should see the following output format:
@@ -68,6 +85,7 @@ $ ./bin/cqlsh --ssl
 ```
 
 You should see the following output:
+
 ```sql
 Connected to local cluster at X.X.X.X:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]

@@ -173,7 +173,7 @@ Copy the generated root certificate file `rootCA.crt` to all three node director
 $ cp rootCA.crt 127.0.0.1/; cp rootCA.crt 127.0.0.2/; cp rootCA.crt 127.0.0.3/
 ```
 
-## Generate per-node configuration
+## Generate node configurations
 
 Now you can generate the node key `node.key` and node certificate `node.crt` for each node.
 
