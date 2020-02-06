@@ -67,7 +67,7 @@ BOOL_CHOICES = TRUE_CHOICES + FALSE_CHOICES
 SLACK_LINK = "https://www.yugabyte.com/slack"
 COMMUNITY_REWARDS_LINK = "https://www.yugabyte.com/community-rewards/"
 HELP_LINK = "https://docs.yugabyte.com/latest/faq/"
-DEFAULT_DEMO_DATABASE = "retail"
+DEFAULT_DEMO_DATABASE = "northwind"
 SAMPLE_DATA_LINKS = {
     "retail": "https://docs.yugabyte.com/latest/quick-start/explore-ysql/",
     "chinook": "https://docs.yugabyte.com/latest/sample-data/chinook/",
@@ -230,11 +230,16 @@ class ControlScript(object):
         signal(SIGABRT, self.destroy_demo)
         signal(SIGTERM, self.destroy_demo)
         atexit.register(self.destroy_demo)
-        self.run_demo()
+        self.connect_demo()
         self.set_signals(SIG_DFL)
 
     # Create target demo database if it does not exist.
     def create_demo(self):
+        if self.get_failed_node_processes():
+            Output.log_error_and_exit(
+                "{0} is not running. Please run `{0} start` before starting a demo.".format(
+                    SCRIPT_NAME))
+
         demo_db = self.configs.temp_data.get("demo_db")
         db_name = DEMO_DB_PREFIX + demo_db
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
@@ -250,7 +255,7 @@ class ControlScript(object):
             # Populate demo database.
             Output.log("Populating {} with sample data...".format(db_name))
             files = []
-            for name in ("schema.sql", "products.sql", "users.sql", "reviews.sql", "orders.sql"):
+            for name in Configs.get_demo_info()[demo_db]["files"]:
                 files.append(os.path.join(YUGABYTE_DIR, "share", name))
             _, err = ysql_proxy.load_files(files, db=db_name)
             if err:
@@ -260,11 +265,18 @@ class ControlScript(object):
             Output.print_and_log(msg)
 
     # Run YSQL shell in target demo database.
-    def run_demo(self):
+    def connect_demo(self):
+        if self.get_failed_node_processes():
+            Output.log_error_and_exit(
+                "{0} is not running. Please run `{0} start` before starting a demo.".format(
+                    SCRIPT_NAME))
+
         demo_db = self.configs.temp_data.get("demo_db")
         db_name = DEMO_DB_PREFIX + demo_db
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
         if ysql_proxy.db_exists(db_name):
+            # Ignore kill SIGINT to match normal ysqlsh and psql behavior.
+            signal(SIGINT, SIG_IGN)
             website = Output.make_underline(SAMPLE_DATA_LINKS[demo_db])
             Output.print_out(Configs.get_demo_info()[demo_db]["examples"])
             Output.print_out(
@@ -273,10 +285,15 @@ class ControlScript(object):
             ysql_proxy.connect(db=db_name)
         else:
             Output.log_error_and_exit(
-                "{} demo was not loaded properly.".format(SCRIPT_NAME))
+                "Demo was not created, please run '{} demo create'.".format(SCRIPT_NAME))
 
     # Destroy target demo database if it exists.
     def destroy_demo(self, signum=None, frame=None):
+        if self.get_failed_node_processes():
+            Output.log_error_and_exit(
+                "{0} is not running. Please run `{0} start` before starting a demo.".format(
+                    SCRIPT_NAME))
+
         demo_db = self.configs.temp_data.get("demo_db")
         db_name = DEMO_DB_PREFIX + demo_db
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
@@ -923,6 +940,19 @@ class ControlScript(object):
             cur_parser.set_defaults(func=func)
             all_parsers[api] = cur_parser
 
+        # Add demo commands to create, connect, and destroy.
+        demo_parser = all_parsers["demo"]
+        demo_subparsers = demo_parser.add_subparsers()
+        for cmd, description in (
+                ("create", "Create the demo database."),
+                ("connect", "Connect to the demo database."),
+                ("destroy", "Destroy the demo database.")):
+            subparser = demo_subparsers.add_parser(cmd, help=description, parents=[common_parser])
+            parser_name = cmd + "_demo"
+            func = getattr(self, parser_name, None)
+            subparser.set_defaults(func=func)
+            all_parsers[parser_name] = subparser
+
         # Commands that can alter configuration file.
         for cmd in ("start",):
             cur_parser = all_parsers[cmd]
@@ -952,8 +982,7 @@ class ControlScript(object):
                 "--callhome", choices=BOOL_CHOICES, default="true", metavar="BOOL",
                 help="Enable or disable callhome feature that sends analytics data to Yugabyte. "
                      "Default true.")
-            group = cur_parser.add_mutually_exclusive_group()
-            group.add_argument(
+            cur_parser.add_argument(
                 "--ui", choices=BOOL_CHOICES, default="true", metavar="BOOL",
                 help="Toggle enabling or disabling webserver UI. Default true.")
 
@@ -965,6 +994,7 @@ class ControlScript(object):
             cur_parser.add_argument(
                 "--tserver_flags", help=argparse.SUPPRESS)
 
+
         if not sys.argv[1:]:
             parser.print_help()
             return
@@ -973,21 +1003,18 @@ class ControlScript(object):
         args = parser.parse_args()
         self.validate_and_set_configs(args)
 
-        if args.parser == "start":
-            # Should we log for non-start commands? If we do, we need to ensure logs are written
-            # cleanly and with clarity on the source when running concurrent yugabyted commands.
-            log_dir = self.configs.saved_data.get("log_dir")
-            if not os.path.exists(log_dir):
-                os.makedirs(log_dir)
+        log_dir = self.configs.saved_data.get("log_dir")
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
 
-            Output.log_dir = log_dir
-            logging.basicConfig(
-                level=logging.DEBUG, filemode="a",
-                filename=os.path.join(log_dir, "{}.log".format(SCRIPT_NAME)),
-                format="[%(filename)s:%(lineno)d] %(asctime)s %(levelname)s: %(message)s")
+        Output.log_dir = log_dir
+        logging.basicConfig(
+            level=logging.DEBUG, filemode="a",
+            filename=os.path.join(log_dir, "{}.log".format(SCRIPT_NAME)),
+            format="[%(filename)s " + args.parser + "] %(asctime)s %(levelname)s: %(message)s")
 
-            Output.log("cmd = {} using config file: {} (args.config={})".format(
-                args.parser, self.conf_file, args.config))
+        Output.log("cmd = {} using config file: {} (args.config={})".format(
+            args.parser, self.conf_file, args.config))
 
         try:
             args.func()
@@ -1080,7 +1107,11 @@ class Configs(object):
             "northwind": {
                 "files": ("northwind_ddl.sql", "northwind_data.sql"),
                 "output": "",
-                "examples": ""
+                "examples": "# JOINS (find customer details for orders):\n"
+                        "   %s c.customer_id, c.company_name, o.order_id, o.order_date\n"
+                        "       %s orders o %s customers c %s o.customer_id=c.customer_id\n"
+                        "       %s 10;\n\n" % tuple([Output.make_cyan(kw) for kw in (
+                            "SELECT", "FROM", "INNER JOIN", "ON", "LIMIT")])
             },
             "club": {
                 "files": ("clubdata_ddl.sql", "clubdata_data.sql"),
@@ -1095,8 +1126,6 @@ class Configs(object):
                 "examples": ""
             }
         }
-
-
 
 
 class ProcessManager(object):
