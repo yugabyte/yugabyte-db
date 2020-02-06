@@ -219,6 +219,9 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
 
   // Key for seeking a YSQL tuple. Used only when the table has a cotable id.
   boost::optional<KeyBytes> tuple_key_;
+
+  // Hybrid time of the table tombstone, if found.
+  mutable DocHybridTime table_tombstone_time_ = DocHybridTime::kInvalid;
 };
 
 }  // namespace docdb
