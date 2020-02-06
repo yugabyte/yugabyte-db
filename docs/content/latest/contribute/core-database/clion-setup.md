@@ -28,6 +28,7 @@ If you want to build with ninja, use build/debug-clang-dynamic-ninja as a genera
     
 ![CLion cmake options](/images/contribute/clion-cmake-options.png)
 
+If you want to build with ninja, use `build/debug-clang-dynamic-ninja` as a "Generation path" and add `-G Ninja` into "CMake options":
 
 ![Clion ninja options](/images/contribute/clion-cmake-options-ninja.png)
 
