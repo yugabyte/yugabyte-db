@@ -36,7 +36,7 @@ bin/yb-master                               \
     --use_node_to_node_encryption=true
 ```
 
-For information on starting YB-Master nodes for a deployment, see [manual deployment of a YugabyteDB cluster](../../../deploy/manual-deployment/start-masters/).
+For information on starting YB-Master nodes for a deployment, see [Start YB-Masters](../../../deploy/manual-deployment/start-masters/).
 
 ## Start the YB-TServers
 
@@ -50,7 +50,7 @@ bin/yb-tserver                                  \
     --use_node_to_node_encryption=true &
 ```
 
-For information on starting YB-TServers for a deployment, see [manual deployment of a YugabyteDB cluster](../../../deploy/manual-deployment/start-tservers/).
+For information on starting YB-TServers for a deployment, see [start YB-TServers](../../../deploy/manual-deployment/start-tservers/).
 
 ## Connect to the cluster
 

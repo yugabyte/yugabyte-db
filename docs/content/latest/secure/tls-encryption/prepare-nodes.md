@@ -59,7 +59,6 @@ default_ca = my_ca
 # Validity of the signed certificate in days.
 default_days = 3650
 
-
 # Text file with next hex serial number to use.
 serial = ./serial.txt
 
