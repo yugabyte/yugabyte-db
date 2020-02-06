@@ -793,6 +793,17 @@ bool Tablet::StartShutdown() {
   return true;
 }
 
+void Tablet::PreventCallbacksFromRocksDBs(bool disable_flush_on_shutdown) {
+  if (intents_db_) {
+    intents_db_->ListenFilesChanged(nullptr);
+    intents_db_->SetDisableFlushOnShutdown(disable_flush_on_shutdown);
+  }
+
+  if (regular_db_) {
+    regular_db_->SetDisableFlushOnShutdown(disable_flush_on_shutdown);
+  }
+}
+
 void Tablet::CompleteShutdown(IsDropTable is_drop_table) {
   StartShutdown();
 
@@ -813,12 +824,8 @@ void Tablet::CompleteShutdown(IsDropTable is_drop_table) {
   }
 
   std::lock_guard<rw_spinlock> lock(component_lock_);
-  if (intents_db_) {
-    intents_db_->SetDisableFlushOnShutdown(is_drop_table);
-  }
-  if (regular_db_) {
-    regular_db_->SetDisableFlushOnShutdown(is_drop_table);
-  }
+
+  PreventCallbacksFromRocksDBs(is_drop_table);
 
   // Shutdown the RocksDB instance for this table, if present.
   // Destroy intents and regular DBs in reverse order to their creation.
@@ -1556,6 +1563,12 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation>
   if (key_value_write_request->has_write_batch()) {
     Status status;
     if (!key_value_write_request->write_batch().read_pairs().empty()) {
+      ScopedPendingOperation scoped_operation(&pending_op_counter_);
+      if (!scoped_operation.ok()) {
+        operation->state()->CompleteWithStatus(MoveStatus(scoped_operation));
+        return;
+      }
+
       status = StartDocWriteOperation(operation.get());
     } else {
       DCHECK(key_value_write_request->has_external_hybrid_time());
@@ -2034,6 +2047,8 @@ Status Tablet::Truncate(TruncateOperationState *state) {
   if (IsShutdownRequested()) {
     return STATUS(IllegalState, "Tablet was shut down");
   }
+
+  PreventCallbacksFromRocksDBs(true);
 
   const rocksdb::SequenceNumber sequence_number = regular_db_->GetLatestSequenceNumber();
   const string db_dir = regular_db_->GetName();
@@ -2603,6 +2618,11 @@ Status Tablet::CreateReadIntents(
 }
 
 bool Tablet::ShouldApplyWrite() {
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  if (!scoped_read_operation.ok()) {
+    return false;
+  }
+
   return !regular_db_->NeedsDelay();
 }
 
