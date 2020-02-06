@@ -187,3 +187,15 @@ runs.
 
 Reach out on slack/forum for help with your data-schemas and how to better integrate best practices in your project.
 
+## Covering indexes
+When querying by a secondary index, the original table is consulted to get the columns that aren't specified in the 
+index. This can result in multiple random reads across the main table.
+
+Another way is to include the columns into the index in addition to storing them in the table. 
+When additional columns are included in the index, they can be used to respond to queries directly from the index without querying the table.
+
+This turns a (possible) random read from the main table to just a filter on the index.
+
+The `INCLUDE` clause is available in both [YSQL](../api/ysql/commands/ddl_create_index.md#include-clause) and 
+[YCQL](../api/ycql/ddl_create_index.md#included-columns)].
+
