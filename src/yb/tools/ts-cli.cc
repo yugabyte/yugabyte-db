@@ -98,8 +98,6 @@ DEFINE_bool(force, false, "If true, allows the set_flag command to set a flag "
             "which is not explicitly marked as runtime-settable. Such flag changes may be "
             "simply ignored on the server, or may cause the server to crash.");
 
-DEFINE_string(certs_dir_name, "",
-              "Directory with certificates to use for secure server connection.");
 
 DECLARE_string(certs_dir);
 DECLARE_bool(use_client_to_server_encryption);
@@ -139,9 +137,7 @@ class TsAdminClient {
  public:
   // Creates an admin client for host/port combination e.g.,
   // "localhost" or "127.0.0.1:7050".
-  TsAdminClient(std::string addr,
-                int64_t timeout_millis,
-                std::string certs_dir);
+  TsAdminClient(std::string addr, int64_t timeout_millis);
 
   ~TsAdminClient();
 
@@ -183,7 +179,6 @@ class TsAdminClient {
  private:
   std::string addr_;
   MonoDelta timeout_;
-  std::string certs_dir_;
   bool initted_;
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::unique_ptr<rpc::Messenger> messenger_;
@@ -194,12 +189,9 @@ class TsAdminClient {
   DISALLOW_COPY_AND_ASSIGN(TsAdminClient);
 };
 
-TsAdminClient::TsAdminClient(string addr,
-                             int64_t timeout_millis,
-                             string certs_dir)
+TsAdminClient::TsAdminClient(string addr, int64_t timeout_millis)
     : addr_(std::move(addr)),
       timeout_(MonoDelta::FromMilliseconds(timeout_millis)),
-      certs_dir_(std::move(certs_dir)),
       initted_(false) {}
 
 TsAdminClient::~TsAdminClient() {
@@ -211,22 +203,22 @@ TsAdminClient::~TsAdminClient() {
 Status TsAdminClient::Init() {
   CHECK(!initted_);
 
-  if(!certs_dir_.empty()) {
-    HostPort host_port;
-    RETURN_NOT_OK(host_port.ParseString(addr_, tserver::TabletServer::kDefaultPort));
-    MessengerBuilder messenger_builder("ts-cli");
-    FLAGS_use_client_to_server_encryption = true;
-    FLAGS_certs_dir = certs_dir_;
+  HostPort host_port;
+  RETURN_NOT_OK(host_port.ParseString(addr_, tserver::TabletServer::kDefaultPort));
+  MessengerBuilder messenger_builder("ts-cli");
+
+  if(FLAGS_use_client_to_server_encryption) {
     secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
         "", "", server::SecureContextType::kClientToServer, &messenger_builder));
-    messenger_ = VERIFY_RESULT(messenger_builder.Build());
-    
-    rpc::ProxyCache proxy_cache(messenger_.get());
-
-    generic_proxy_.reset(new server::GenericServiceProxy(&proxy_cache, host_port));
-    ts_proxy_.reset(new TabletServerServiceProxy(&proxy_cache, host_port));
-    ts_admin_proxy_.reset(new TabletServerAdminServiceProxy(&proxy_cache, host_port));
   }
+
+  messenger_ = VERIFY_RESULT(messenger_builder.Build());
+
+  rpc::ProxyCache proxy_cache(messenger_.get());
+
+  generic_proxy_.reset(new server::GenericServiceProxy(&proxy_cache, host_port));
+  ts_proxy_.reset(new TabletServerServiceProxy(&proxy_cache, host_port));
+  ts_admin_proxy_.reset(new TabletServerAdminServiceProxy(&proxy_cache, host_port));
 
   initted_ = true;
 
@@ -414,7 +406,7 @@ static int TsCliMain(int argc, char** argv) {
 
   string op = GetOp(argc, argv);
 
-  TsAdminClient client(addr, FLAGS_timeout_ms, FLAGS_certs_dir_name);
+  TsAdminClient client(addr, FLAGS_timeout_ms);
 
   RETURN_NOT_OK_PREPEND_FROM_MAIN(client.Init(),
                                   "Unable to establish connection to " + addr);

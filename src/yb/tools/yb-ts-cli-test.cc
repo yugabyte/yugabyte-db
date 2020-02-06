@@ -146,8 +146,8 @@ TEST_F(YBTsCliTest, TestTLSDeleteTablet) {
   argv.push_back(exe_path);
   argv.push_back("--server_address");
   argv.push_back(yb::ToString(cluster_->tablet_server(0)->bound_rpc_addr()));
-  argv.push_back("--certs_dir_name");
-  argv.push_back(certs_dir); // Set certs_dir_name.
+  argv.push_back("--certs_dir");
+  argv.push_back(certs_dir); // Set certs_dir
   argv.push_back("delete_tablet");
   argv.push_back(tablet_id);
   argv.push_back("Deleting for yb-ts-cli-test");
