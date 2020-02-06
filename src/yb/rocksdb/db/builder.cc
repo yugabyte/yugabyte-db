@@ -211,7 +211,7 @@ Status BuildTable(const std::string& dbname,
     if (s.ok() && !empty) {
       // Verify that the table is usable
       std::unique_ptr<InternalIterator> it(table_cache->NewIterator(
-          ReadOptions(), env_options, internal_comparator, meta->fd, nullptr,
+          ReadOptions(), env_options, internal_comparator, meta->fd, meta->UserFilter(), nullptr,
           (internal_stats == nullptr) ? nullptr
                                       : internal_stats->GetFileReadHist(0),
           false));

@@ -743,6 +743,10 @@ class TestUserFrontier : public UserFrontier {
     value_ = value.tag();
   }
 
+  Slice Filter() const override {
+    return Slice();
+  }
+
  private:
   uint64_t value_ = 0;
 };

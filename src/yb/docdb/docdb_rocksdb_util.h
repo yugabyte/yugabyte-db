@@ -102,6 +102,9 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
     const Slice* iterate_upper_bound = nullptr);
 
+// Request RocksDB compaction and wait until it completes.
+void ForceRocksDBCompact(rocksdb::DB* db);
+
 // Initialize the RocksDB 'options'.
 // The 'statistics' object provided by the caller will be used by RocksDB to maintain the stats for
 // the tablet.
@@ -112,6 +115,23 @@ void InitRocksDBOptions(
 
 // Sets logs prefix for RocksDB options. This will also reinitialize options->info_log.
 void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix);
+
+// Class to edit RocksDB manifest w/o fully loading DB into memory.
+class RocksDBPatcher {
+ public:
+  explicit RocksDBPatcher(const std::string& dbpath, const rocksdb::Options& options);
+  ~RocksDBPatcher();
+
+  // Loads DB into patcher.
+  CHECKED_STATUS Load();
+
+  // Set hybrid time filter for DB.
+  CHECKED_STATUS SetHybridTimeFilter(HybridTime value);
+
+ private:
+  class Impl;
+  std::unique_ptr<Impl> impl_;
+};
 
 }  // namespace docdb
 }  // namespace yb

@@ -53,6 +53,7 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
       override;
   void FromPB(const google::protobuf::Any& pb) override;
   void FromOpIdPBDeprecated(const OpIdPB& pb) override;
+  Slice Filter() const override;
 
   const OpId& op_id() const { return op_id_; }
   void set_op_id(const OpId& value) { op_id_ = value; }
@@ -68,6 +69,11 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
     history_cutoff_ = NormalizeHistoryCutoff(history_cutoff);
   }
 
+  HybridTime hybrid_time_filter() const { return hybrid_time_filter_; }
+  void set_hybrid_time_filter(HybridTime value) {
+    hybrid_time_filter_ = value;
+  }
+
  private:
   OpId op_id_;
   HybridTime ht_;
@@ -76,6 +82,8 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   // refuse to perform reads at a hybrid time at which we don't have a valid snapshot anymore. Only
   // the largest frontier of this parameter is being used.
   HybridTime history_cutoff_;
+
+  HybridTime hybrid_time_filter_;
 };
 
 typedef rocksdb::UserFrontiersBase<ConsensusFrontier> ConsensusFrontiers;

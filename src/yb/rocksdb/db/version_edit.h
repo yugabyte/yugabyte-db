@@ -130,6 +130,8 @@ struct FileMetaData {
 
   bool Unref(TableCache* table_cache);
 
+  Slice UserFilter() const; // Extracts user filter from largest boundary value if present.
+
   std::string ToString() const;
 };
 

@@ -116,6 +116,9 @@ class UserFrontier {
   // only decrease them. Fields that are not set in rhs are not checked.
   virtual bool IsUpdateValid(const UserFrontier& rhs, UpdateUserValueType type) const = 0;
 
+  // Should return value that will be passed to iterator replacer.
+  virtual Slice Filter() const = 0;
+
   // Returns true if this frontier dominates another frontier, i.e. if we update this frontier
   // with the values from the other one in the direction specified by update_type, nothing will
   // change. This is used to check invariants.
