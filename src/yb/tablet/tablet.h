@@ -208,7 +208,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Upon completion, the tablet enters the kBootstrapping state.
   CHECKED_STATUS Open();
 
-  CHECKED_STATUS EnableCompactions();
+  CHECKED_STATUS EnableCompactions(ScopedPendingOperationPause* operation_pause);
 
   CHECKED_STATUS BackfillIndexes(const std::vector<IndexInfo> &indexes,
                                  HybridTime read_time);
@@ -611,6 +611,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   ScopedPendingOperationPause PauseReadWriteOperations();
 
   CHECKED_STATUS ResetRocksDBs(bool destroy = false);
+
+  CHECKED_STATUS DoEnableCompactions();
 
   std::string LogPrefix() const;
 
