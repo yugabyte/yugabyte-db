@@ -614,6 +614,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS DoEnableCompactions();
 
+  void PreventCallbacksFromRocksDBs(bool disable_flush_on_shutdown);
+
   std::string LogPrefix() const;
 
   std::string LogPrefix(docdb::StorageDbType db_type) const;
