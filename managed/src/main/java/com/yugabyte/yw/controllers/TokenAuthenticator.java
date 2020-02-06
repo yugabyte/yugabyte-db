@@ -98,7 +98,18 @@ public class TokenAuthenticator extends Action.Simple {
     if (requestType.equals("GET")) {
       return true;
     }
-
+    // Users should be allowed to change their password.
+    // Even admin users should not be allowed to change another
+    // user's password.
+    if (endPoint != null) {
+      if (endPoint.endsWith("/change_password")) {
+        UUID userUUID = UUID.fromString(endPoint.split("/")[2]);
+        if (userUUID.equals(user.uuid)) {
+          return true;
+        }
+        return false;
+      }
+    }
     // Admin has access to all APIs.
     if (user.getRole() == Role.Admin) {
       return true;
