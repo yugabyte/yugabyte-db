@@ -52,10 +52,10 @@ menu:
     <a class="section-link icon-offset" href="tls-encryption/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/tls-encryption.png" aria-hidden="true" />
-        <div class="title">TLS encryption</div>
+        <div class="title">Encryption in transit</div>
       </div>
       <div class="body">
-          Enable TLS encryption over the wire in YugabyteDB to secure and protect network communication.
+          Enable encryption in transit using TLS to protect network communication.
       </div>
     </a>
   </div>
