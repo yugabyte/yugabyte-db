@@ -59,8 +59,9 @@ using DocKeyHash = uint16_t;
 //        representation of the respective type (see PrimitiveValue's key encoding).
 //     2. ValueType::kGroupEnd terminates the sequence.
 enum class DocKeyPart {
+  UP_TO_HASH,
+  UP_TO_ID,
   WHOLE_DOC_KEY,
-  HASHED_PART_ONLY
 };
 
 class DocKeyDecoder;
