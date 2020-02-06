@@ -355,7 +355,7 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   // Because we changed the tablet state, we need to re-report the tablet to the master.
   mark_dirty_clbk_.Run(context);
 
-  return tablet_->EnableCompactions();
+  return tablet_->EnableCompactions(/* operation_pause */ nullptr);
 }
 
 const consensus::RaftConfigPB TabletPeer::RaftConfig() const {

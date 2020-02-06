@@ -439,7 +439,8 @@ void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {
   scoped_refptr<OperationDriver> ref(this);
 
   {
-    CHECK_OK(operation_->Replicated(leader_term));
+    auto status = operation_->Replicated(leader_term);
+    LOG_IF_WITH_PREFIX(FATAL, !status.ok()) << "Apply failed: " << status;
     operation_tracker_->Release(this, applied_op_ids);
   }
 }
@@ -477,10 +478,10 @@ std::string OperationDriver::StateString(ReplicationState repl_state,
 }
 
 std::string OperationDriver::LogPrefix() const {
-
   ReplicationState repl_state_copy;
   PrepareState prep_state_copy;
-  string ts_string;
+  std::string ts_string;
+  OperationType operation_type;
 
   {
     std::lock_guard<simple_spinlock> lock(lock_);
@@ -488,17 +489,17 @@ std::string OperationDriver::LogPrefix() const {
     prep_state_copy = prepare_state_;
     ts_string = state() && state()->has_hybrid_time()
         ? state()->hybrid_time().ToString() : "No hybrid_time";
+    operation_type = this->operation_type();
   }
 
   string state_str = StateString(repl_state_copy, prep_state_copy);
   // We use the tablet and the peer (T, P) to identify ts and tablet and the hybrid_time (Ts) to
   // (help) identify the operation. The state string (S) describes the state of the operation.
-  return strings::Substitute("T $0 P $1 S $2 Ts $3: ",
-                             // consensus_ is NULL in some unit tests.
-                             PREDICT_TRUE(consensus_) ? consensus_->tablet_id() : "(unknown)",
-                             PREDICT_TRUE(consensus_) ? consensus_->peer_uuid() : "(unknown)",
-                             state_str,
-                             ts_string);
+  return Format("T $0 P $1 S $2 Ts $3 $4: ",
+                // consensus_ is NULL in some unit tests.
+                PREDICT_TRUE(consensus_) ? consensus_->tablet_id() : "(unknown)",
+                PREDICT_TRUE(consensus_) ? consensus_->peer_uuid() : "(unknown)",
+                state_str, ts_string, operation_type);
 }
 
 int64_t OperationDriver::SpaceUsed() {

@@ -542,19 +542,24 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return Status::OK();
   }
 
-  void SetDB(rocksdb::DB* db, const docdb::KeyBounds* key_bounds) {
+  void SetDB(
+      rocksdb::DB* db, const docdb::KeyBounds* key_bounds,
+      PendingOperationCounter* pending_op_counter) {
     bool had_db = db_ != nullptr;
     db_ = db;
     key_bounds_ = key_bounds;
 
     // In case of truncate we should not reload transactions.
     if (!had_db) {
-      std::unique_ptr <docdb::BoundedRocksDbIterator> iter(new docdb::BoundedRocksDbIterator(
-          docdb::CreateRocksDBIterator(
-              db_, &docdb::KeyBounds::kNoBounds,
-              docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-              boost::none, rocksdb::kDefaultQueryId)));
-      load_thread_ = std::thread(&Impl::LoadTransactions, this, iter.release());
+      auto scoped_pending_operation = std::make_unique<ScopedPendingOperation>(pending_op_counter);
+      if (scoped_pending_operation->ok()) {
+        auto iter = std::make_unique<docdb::BoundedRocksDbIterator>(docdb::CreateRocksDBIterator(
+            db_, &docdb::KeyBounds::kNoBounds,
+            docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
+            boost::none, rocksdb::kDefaultQueryId));
+        load_thread_ = std::thread(
+            &Impl::LoadTransactions, this, iter.release(), scoped_pending_operation.release());
+      }
     }
   }
 
@@ -822,9 +827,12 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return LockAndFindResult{};
   }
 
-  void LoadTransactions(docdb::BoundedRocksDbIterator* iterator) {
-    LOG_WITH_PREFIX(INFO) << "LoadTransactions";
+  void LoadTransactions(
+      docdb::BoundedRocksDbIterator* iterator, ScopedPendingOperation* scoped_pending_operation) {
+    LOG_WITH_PREFIX(INFO) << __func__ << " start";
 
+    std::unique_ptr<ScopedPendingOperation> scoped_pending_operation_holder(
+        scoped_pending_operation);
     std::unique_ptr<docdb::BoundedRocksDbIterator> iterator_holder(iterator);
     docdb::KeyBytes key_bytes;
     TransactionId id;
@@ -858,6 +866,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
     TryStartCheckLoadedTransactionsStatus(&started_, &all_loaded_);
     load_cond_.notify_all();
+    LOG_WITH_PREFIX(INFO) << __func__ << " done";
   }
 
   // iterator - rocks db iterator, that should be used for write id resolution.
@@ -1256,8 +1265,10 @@ void TransactionParticipant::FillPriorities(
   return impl_->FillPriorities(inout);
 }
 
-void TransactionParticipant::SetDB(rocksdb::DB* db, const docdb::KeyBounds* key_bounds) {
-  impl_->SetDB(db, key_bounds);
+void TransactionParticipant::SetDB(
+    rocksdb::DB* db, const docdb::KeyBounds* key_bounds,
+    PendingOperationCounter* pending_op_counter) {
+  impl_->SetDB(db, key_bounds, pending_op_counter);
 }
 
 TransactionParticipantContext* TransactionParticipant::context() const {
