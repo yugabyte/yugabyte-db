@@ -241,14 +241,42 @@ CREATE INDEX idx_range5 ON tab_range_nonkey5 (a);
 -- TRUNCATE TABLE
 -- truncate colocated table with default index
 TRUNCATE TABLE tab_range;
--- TODO(jason): fix output of select after issue #3359
 SELECT * FROM tab_range;
  a
 ---
- 0
+(0 rows)
+
+INSERT INTO tab_range VALUES (4);
+SELECT * FROM tab_range;
+ a
+---
+ 4
+(1 row)
+
+INSERT INTO tab_range VALUES (1);
+INSERT INTO tab_range VALUES (2), (5);
+SELECT * FROM tab_range;
+ a
+---
  1
  2
-(3 rows)
+ 4
+ 5
+(4 rows)
+
+DELETE FROM tab_range WHERE a = 2;
+TRUNCATE TABLE tab_range;
+SELECT * FROM tab_range;
+ a
+---
+(0 rows)
+
+INSERT INTO tab_range VALUES (2);
+SELECT * FROM tab_range;
+ a
+---
+ 2
+(1 row)
 
 -- truncate non-colocated table without index
 TRUNCATE TABLE tab_nonkey_noco;
@@ -259,15 +287,10 @@ SELECT * FROM tab_nonkey_noco;
 
 -- truncate colocated table with explicit index
 TRUNCATE TABLE tab_range_nonkey2;
--- TODO(jason): fix output of select after issue #3359
 SELECT * FROM tab_range_nonkey2;
  a | b
 ---+---
- 0 | 0
- 1 | 1
- 2 | 2
- 3 | 3
-(4 rows)
+(0 rows)
 
 -- truncate non-colocated table with explicit index
 TRUNCATE TABLE tab_range_nonkey_noco2;

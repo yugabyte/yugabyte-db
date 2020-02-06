@@ -202,7 +202,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
       skipped = false;
     }
   } else {
-    // This UPDATE is calling PGGATE directly without going thru PosgreSQL layer.
+    // This UPDATE is calling PGGATE directly without going thru PostgreSQL layer.
     // Keep it here as we might need it.
 
     // Very limited support for where expressions. Only used for updates to the sequences data

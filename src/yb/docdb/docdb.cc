@@ -484,7 +484,7 @@ Status EnumerateWeakIntents(
   // For any non-empty key we already know that the empty key intent is weak.
   functor(IntentStrength::kWeak, kEmptyIntentValue, encoded_key_buffer, LastKey::kFalse);
 
-  auto hashed_part_size = VERIFY_RESULT(DocKey::EncodedSize(key, DocKeyPart::HASHED_PART_ONLY));
+  auto hashed_part_size = VERIFY_RESULT(DocKey::EncodedSize(key, DocKeyPart::UP_TO_HASH));
 
   // Remove kGroupEnd that we just added to generate a weak intent.
   encoded_key_buffer->RemoveLastByte();
@@ -1117,16 +1117,53 @@ yb::Status GetSubDocument(
       VERIFY_RESULT(DocKey::EncodedSize(data.subdocument_key, DocKeyPart::WHOLE_DOC_KEY));
 
   Slice key_slice(data.subdocument_key.data(), dockey_size);
+
+  // Check ancestors for init markers, tombstones, and expiration, tracking the expiration and
+  // corresponding most recent write time in exp, and the general most recent overwrite time in
+  // max_overwrite_ht.
+  //
+  // First, check for an ancestor at the ID level: a table tombstone.  Currently, this is only
+  // supported for YSQL colocated tables.  Since iterators only ever pertain to one table, there is
+  // no need to create a prefix scope here.
+  if (data.table_tombstone_time && *data.table_tombstone_time == DocHybridTime::kInvalid) {
+    // Only check for table tombstones if the table is colocated, as signified by the prefix of
+    // kPgTableOid.
+    // TODO: adjust when fixing issue #3551
+    if (key_slice[0] == ValueTypeAsChar::kPgTableOid) {
+      // Seek to the ID level to look for a table tombstone.  Since this seek is expensive, cache
+      // the result in data.table_tombstone_time to avoid double seeking for the lifetime of the
+      // DocRowwiseIterator.
+      DocKey empty_key;
+      RETURN_NOT_OK(empty_key.DecodeFrom(key_slice, DocKeyPart::UP_TO_ID));
+      db_iter->Seek(empty_key);
+      Value doc_value = Value(PrimitiveValue(ValueType::kInvalid));
+      RETURN_NOT_OK(FindLastWriteTime(
+          db_iter,
+          empty_key.Encode(),
+          &max_overwrite_ht,
+          &data.exp,
+          &doc_value));
+      if (doc_value.value_type() == ValueType::kTombstone) {
+        SCHECK_NE(max_overwrite_ht, DocHybridTime::kInvalid, Corruption,
+                  "Invalid hybrid time for table tombstone");
+        *data.table_tombstone_time = max_overwrite_ht;
+      } else {
+        *data.table_tombstone_time = DocHybridTime::kMin;
+      }
+    } else {
+      *data.table_tombstone_time = DocHybridTime::kMin;
+    }
+  } else if (data.table_tombstone_time) {
+    // Use the cached result.  Don't worry about exp as YSQL does not support TTL, yet.
+    max_overwrite_ht = *data.table_tombstone_time;
+  }
+  // Second, check the descendants of the ID level.
   IntentAwareIteratorPrefixScope prefix_scope(key_slice, db_iter);
   if (seek_fwd_suffices) {
     db_iter->SeekForward(key_slice);
   } else {
     db_iter->Seek(key_slice);
   }
-  Value doc_value;
-  // Check ancestors for init markers, tombstones, and expiration, tracking
-  // the expiration and corresponding most recent write time in exp, and the
-  // the general most recent overwrite time in max_overwrite_ht
   {
     auto temp_key = data.subdocument_key;
     temp_key.remove_prefix(dockey_size);
@@ -1140,9 +1177,9 @@ yb::Status GetSubDocument(
     }
   }
 
-  // By this point key_bytes is the encoded representation of the DocKey and all the subkeys of
-  // subdocument_key. Check for init-marker / tombstones at the top level, update max_overwrite_ht.
-  doc_value = Value(PrimitiveValue(ValueType::kInvalid));
+  // By this point, key_slice is the DocKey and all the subkeys of subdocument_key. Check for
+  // init-marker / tombstones at the top level; update max_overwrite_ht.
+  Value doc_value = Value(PrimitiveValue(ValueType::kInvalid));
   RETURN_NOT_OK(FindLastWriteTime(db_iter, key_slice, &max_overwrite_ht, &data.exp, &doc_value));
 
   const ValueType value_type = doc_value.value_type();
