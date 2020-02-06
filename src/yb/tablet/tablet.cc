@@ -647,7 +647,7 @@ Status Tablet::OpenKeyValueTablet() {
 
   ql_storage_.reset(new docdb::QLRocksDBStorage(doc_db()));
   if (transaction_participant_) {
-    transaction_participant_->SetDB(intents_db_.get(), &key_bounds_);
+    transaction_participant_->SetDB(intents_db_.get(), &key_bounds_, &pending_op_counter_);
   }
 
   // Don't allow reads at timestamps lower than the highest history cutoff of a past compaction.
@@ -731,7 +731,17 @@ void Tablet::DoCleanupIntentFiles() {
   }
 }
 
-Status Tablet::EnableCompactions() {
+Status Tablet::EnableCompactions(ScopedPendingOperationPause* pause_operation) {
+  if (!pause_operation) {
+    ScopedPendingOperation operation(&pending_op_counter_);
+    RETURN_NOT_OK(operation);
+    return DoEnableCompactions();
+  }
+
+  return DoEnableCompactions();
+}
+
+Status Tablet::DoEnableCompactions() {
   Status regular_db_status;
   std::unordered_map<std::string, std::string> new_options = {
       { "level0_slowdown_writes_trigger"s,
@@ -2054,7 +2064,7 @@ Status Tablet::Truncate(TruncateOperationState *state) {
   LOG_WITH_PREFIX(INFO) << "Sequence numbers: old=" << sequence_number
                         << ", new=" << regular_db_->GetLatestSequenceNumber();
   DCHECK(op_pause.status().ok());  // Ensure that op_pause stays in scope throughout this function.
-  return EnableCompactions();
+  return DoEnableCompactions();
 }
 
 void Tablet::UpdateMonotonicCounter(int64_t value) {
