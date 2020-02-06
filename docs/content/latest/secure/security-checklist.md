@@ -43,11 +43,11 @@ Ensure that YugabyteDB runs in a trusted network environment.  Here are some ste
 
 ### RPC bind interfaces
 
-Limit the interfaces on which YugabyteDB instances listen for incoming connections. Specify just the required interfaces when starting `yb-master` and `yb-tserver` by using the `--rpc_bind_addresses` option. Do not bind to the loopback address. Read more in the [Admin Reference](../../reference/configuration/yb-tserver/) section on how to use these options when starting the yb-master and yb-tserver processes.
+Limit the interfaces on which YugabyteDB instances listen for incoming connections. Specify just the required interfaces when starting `yb-master` and `yb-tserver` by using the `--rpc_bind_addresses` option. Do not bind to the loopback address. Read more in the [Admin Reference](../../reference/configuration/yb-tserver/) section on how to use these options when starting `yb-master` and `yb-tserver` services.
 
 ### Tips for public clouds
 
-* Do not assign a public IP address to the nodes running YugabyteDB if possible. The applications can connect to YugabyteDB over private IP addresses.
+* Do not assign a public IP address to the nodes running YugabyteDB, if possible. Applications can connect to YugabyteDB over private IP addresses.
 
 * In Amazon Web Services (AWS), run the YugabyteDB cluster in a separate VPC ([Amazon Virtual Private Network](https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html)) and peer this only with VPCs from which database access is required, for example from those VPCs where the application will run.
 
