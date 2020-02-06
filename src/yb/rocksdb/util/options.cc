@@ -92,7 +92,8 @@ ImmutableCFOptions::ImmutableCFOptions(const Options& options)
       listeners(options.listeners),
       row_cache(options.row_cache),
       mem_tracker(options.mem_tracker),
-      block_based_table_mem_tracker(options.block_based_table_mem_tracker) {}
+      block_based_table_mem_tracker(options.block_based_table_mem_tracker),
+      iterator_replacer(options.iterator_replacer) {}
 
 ColumnFamilyOptions::ColumnFamilyOptions()
     : comparator(BytewiseComparator()),

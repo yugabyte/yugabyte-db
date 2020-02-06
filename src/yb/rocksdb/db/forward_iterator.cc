@@ -64,8 +64,8 @@ class LevelIterator : public InternalIterator {
     assert(file_index_ < files_.size());
     file_iter_.reset(cfd_->table_cache()->NewIterator(
         read_options_, *(cfd_->soptions()), cfd_->internal_comparator(),
-        files_[file_index_]->fd, nullptr /* table_reader_ptr */, nullptr,
-        false));
+        files_[file_index_]->fd, files_[file_index_]->UserFilter(), nullptr /* table_reader_ptr */,
+        nullptr, false));
   }
   void SeekToLast() override {
     status_ = STATUS(NotSupported, "LevelIterator::SeekToLast()");
@@ -518,7 +518,7 @@ void ForwardIterator::RebuildIterators(bool refresh_sv) {
       continue;
     }
     l0_iters_.push_back(cfd_->table_cache()->NewIterator(
-        read_options_, *cfd_->soptions(), cfd_->internal_comparator(), l0->fd));
+        read_options_, *cfd_->soptions(), cfd_->internal_comparator(), l0->fd, l0->UserFilter()));
   }
   BuildLevelIterators(vstorage);
   current_ = nullptr;
@@ -571,7 +571,7 @@ void ForwardIterator::RenewIterators() {
     }
     l0_iters_new.push_back(cfd_->table_cache()->NewIterator(
         read_options_, *cfd_->soptions(), cfd_->internal_comparator(),
-        l0_files_new[inew]->fd));
+        l0_files_new[inew]->fd, l0_files_new[inew]->UserFilter()));
   }
 
   for (auto* f : l0_iters_) {
@@ -621,7 +621,7 @@ void ForwardIterator::ResetIncompleteIterators() {
     delete l0_iters_[i];
     l0_iters_[i] = cfd_->table_cache()->NewIterator(
         read_options_, *cfd_->soptions(), cfd_->internal_comparator(),
-        l0_files[i]->fd);
+        l0_files[i]->fd, l0_files[i]->UserFilter());
   }
 
   for (auto* level_iter : level_iters_) {

@@ -241,7 +241,7 @@ class DocWriteBatch {
 
   DocDB doc_db_;
 
-  const InitMarkerBehavior init_marker_behavior_;
+  InitMarkerBehavior init_marker_behavior_;
   std::atomic<int64_t>* monotonic_counter_;
   std::vector<std::pair<std::string, std::string>> put_batch_;
 
