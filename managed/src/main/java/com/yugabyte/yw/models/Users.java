@@ -275,6 +275,13 @@ public class Users extends Model {
   }
 
   /**
+   * Set features for this User.
+   */
+  public void setFeatures(JsonNode input) {
+    this.features = input;
+  }
+
+  /**
    * Upserts features for this Users. If updating a feature, only specified features will
    * be updated.
    */
