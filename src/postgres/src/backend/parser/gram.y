@@ -8031,7 +8031,7 @@ index_elem:	ColId opt_collate opt_class opt_yb_index_sort_order opt_nulls_order
 		;
 
 /*
- * For YugaByte DB, index column can be grouped and hashed together. Unfortunately, we cannot
+ * For YugabyteDB, index column can be grouped and hashed together. Unfortunately, we cannot
  * use "columnList" below due to reduce/reduce conflict.
  */
 yb_index_elem: index_elem
@@ -8083,7 +8083,7 @@ opt_asc_desc: ASC							{ $$ = SORTBY_ASC; }
 		;
 
 /*
- * For YugaByte DB, index column can be hash-distributed also.
+ * For YugabyteDB, index column can be hash-distributed also.
  */
 opt_yb_index_sort_order: opt_asc_desc			{ $$ = $1; }
 			| HASH							{ $$ = SORTBY_HASH; }

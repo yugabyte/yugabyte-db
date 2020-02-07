@@ -2475,9 +2475,9 @@ setlocales(void)
 		lc_collate = pg_strdup(kYBDefaultLocaleForSortOrder);
 		fprintf(
 			stderr,
-			_("In YugaByte DB, setting LC_COLLATE to %s and all other locale settings to %s "
+			_("In YugabyteDB, setting LC_COLLATE to %s and all other locale settings to %s "
 			  "by default. Locale support will be enhanced as part of addressing "
-			  "https://github.com/YugaByte/yugabyte-db/issues/1557"),
+			  "https://github.com/yugabyte/yugabyte-db/issues/1557"),
 			lc_collate, locale);
 	}
 

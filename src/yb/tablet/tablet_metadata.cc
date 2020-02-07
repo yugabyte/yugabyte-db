@@ -791,8 +791,8 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
 
 namespace {
 // MigrateSuperblockForDXXXX functions are only needed for backward compatibility with
-// YugaByte DB versions which don't have changes from DXXXX revision.
-// Each MigrateSuperblockForDXXXX could be removed after all YugaByte DB installations are
+// YugabyteDB versions which don't have changes from DXXXX revision.
+// Each MigrateSuperblockForDXXXX could be removed after all YugabyteDB installations are
 // upgraded to have revision DXXXX.
 
 CHECKED_STATUS MigrateSuperblockForD5900(RaftGroupReplicaSuperBlockPB* superblock) {

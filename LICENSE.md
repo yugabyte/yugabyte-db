@@ -1,4 +1,4 @@
-## YugaByte DB Licensing
+## YugabyteDB Licensing
 
 Source code in this repository is variously licensed under the Apache License 2.0 and the Polyform Free Trial License 1.0.0. A copy of each license can be found in the [licenses](licenses) directory.
 
