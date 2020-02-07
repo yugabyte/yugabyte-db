@@ -163,7 +163,7 @@ static Bitmapset *GetTablePrimaryKey(Relation rel,
 /*
  * Get primary key columns as bitmap of a table for real YB columns.
  */
-static Bitmapset *GetYBTablePrimaryKey(Relation rel)
+Bitmapset *GetYBTablePrimaryKey(Relation rel)
 {
 	return GetTablePrimaryKey(rel, FirstLowInvalidHeapAttributeNumber + 1 /* minattr */,
 							  false /* includeYBSystemColumns */);
@@ -172,7 +172,7 @@ static Bitmapset *GetYBTablePrimaryKey(Relation rel)
 /*
  * Get primary key columns as bitmap of a table for real and system YB columns.
  */
-static Bitmapset *GetFullYBTablePrimaryKey(Relation rel)
+Bitmapset *GetFullYBTablePrimaryKey(Relation rel)
 {
 	return GetTablePrimaryKey(rel, YBSystemFirstLowInvalidAttributeNumber + 1 /* minattr */,
 							  true /* includeYBSystemColumns */);
@@ -426,8 +426,8 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 	}
 
 	/*
-	 * For system tables, mark tuple for invalidation from system caches 
-	 * at next command boundary. Do this now so if there is an error with insert 
+	 * For system tables, mark tuple for invalidation from system caches
+	 * at next command boundary. Do this now so if there is an error with insert
 	 * we will re-query to get the correct state from the master.
 	 */
 	if (IsCatalogRelation(rel))
@@ -632,6 +632,9 @@ bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate, Modify
 										  YBTupleIdAttributeNumber,
 										  ybctid_expr), delete_stmt);
 
+	/* Delete row from foreign key cache */
+	HandleYBStatus(YBCPgDeleteFromForeignKeyReferenceCache(relid, ybctid));
+
 	/* Execute the statement. */
 	int rows_affected_count = 0;
 	HandleYBStmtStatus(YBCExecWriteStmt(delete_stmt, rel, &rows_affected_count),
@@ -668,6 +671,10 @@ void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum yb
 	PrepareIndexWriteStmt(delete_stmt, index, values, isnull,
 	                      IndexRelationGetNumberOfKeyAttributes(index),
 	                      ybctid, false /* ybctid_as_value */);
+
+	/* Delete row from foreign key cache */
+	HandleYBStatus(YBCPgDeleteFromForeignKeyReferenceCache(relid, ybctid));
+
 	HandleYBStmtStatus(YBCExecWriteStmt(delete_stmt, index, NULL /* rows_affected_count */),
 					   delete_stmt);
 
@@ -797,6 +804,10 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 	/* Bind ybctid to identify the current row. */
 	YBCPgExpr ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, tuple->t_ybctid,
 										   false /* is_null */);
+
+	/* Delete row from foreign key cache */
+	HandleYBStatus(YBCPgDeleteFromForeignKeyReferenceCache(relid, tuple->t_ybctid));
+
 	HandleYBStmtStatus(YBCPgDmlBindColumn(delete_stmt,
 										  YBTupleIdAttributeNumber,
 										  ybctid_expr), delete_stmt);
