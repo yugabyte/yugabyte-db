@@ -917,6 +917,62 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion() {
   return pg_session_->GetSharedCatalogVersion();
 }
 
+// Transaction Control -----------------------------------------------------------------------------
+Status PgApiImpl::BeginTransaction() {
+  pg_session_->InvalidateForeignKeyReferenceCache();
+  return pg_txn_manager_->BeginTransaction();
+}
+
+Status PgApiImpl::RestartTransaction() {
+  pg_session_->InvalidateForeignKeyReferenceCache();
+  return pg_txn_manager_->RestartTransaction();
+}
+
+Status PgApiImpl::CommitTransaction() {
+  pg_session_->InvalidateForeignKeyReferenceCache();
+  return pg_txn_manager_->CommitTransaction();
+}
+
+Status PgApiImpl::AbortTransaction() {
+  pg_session_->InvalidateForeignKeyReferenceCache();
+  return pg_txn_manager_->AbortTransaction();
+}
+
+Status PgApiImpl::SetTransactionIsolationLevel(int isolation) {
+  return pg_txn_manager_->SetIsolationLevel(isolation);
+}
+
+Status PgApiImpl::SetTransactionReadOnly(bool read_only) {
+  return pg_txn_manager_->SetReadOnly(read_only);
+}
+
+Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {
+  return pg_txn_manager_->SetDeferrable(deferrable);
+}
+
+Status PgApiImpl::EnterSeparateDdlTxnMode() {
+  return pg_txn_manager_->EnterSeparateDdlTxnMode();
+}
+
+Status PgApiImpl::ExitSeparateDdlTxnMode(bool success) {
+  return pg_txn_manager_->ExitSeparateDdlTxnMode(success);
+}
+
+bool PgApiImpl::ForeignKeyReferenceExists(YBCPgOid table_id, std::string&& ybctid) {
+  return pg_session_->ForeignKeyReferenceExists(table_id, std::move(ybctid));
+}
+
+Status PgApiImpl::CacheForeignKeyReference(YBCPgOid table_id, std::string&& ybctid) {
+  return pg_session_->CacheForeignKeyReference(table_id, std::move(ybctid));
+}
+
+Status PgApiImpl::DeleteForeignKeyReference(YBCPgOid table_id, std::string&& ybctid) {
+  return pg_session_->DeleteForeignKeyReference(table_id, std::move(ybctid));
+}
+
+void PgApiImpl::ClearForeignKeyReferenceCache() {
+  pg_session_->InvalidateForeignKeyReferenceCache();
+}
 
 } // namespace pggate
 } // namespace yb

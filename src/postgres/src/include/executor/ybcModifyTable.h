@@ -126,4 +126,14 @@ extern Datum YBCGetYBTupleIdFromTuple(YBCPgStatement pg_stmt,
  */
 extern bool YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo);
 
+/*
+ * Get primary key columns as bitmap of a table for real and system YB columns.
+ */
+extern Bitmapset *GetFullYBTablePrimaryKey(Relation rel);
+
+/*
+ * Get primary key columns as bitmap of a table for real columns.
+ */
+extern Bitmapset *GetYBTablePrimaryKey(Relation rel);
+
 #endif							/* YBCMODIFYTABLE_H */

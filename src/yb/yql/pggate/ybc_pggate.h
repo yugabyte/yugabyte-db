@@ -376,6 +376,18 @@ YBCStatus YBCPgNewOperator(YBCPgStatement stmt, const char *opname,
                            YBCPgExpr *op_handle);
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg);
 
+// Referential Integrity Check Caching.
+// Check if foreign key reference exists in cache.
+bool YBCForeignKeyReferenceExists(YBCPgOid table_id, const char* ybctid, int64_t ybctid_size);
+
+// Add an entry to foreign key reference cache.
+YBCStatus YBCCacheForeignKeyReference(YBCPgOid table_id, const char* ybctid, int64_t ybctid_size);
+
+// Delete an entry from foreign key reference cache.
+YBCStatus YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_id, uint64_t ybctid);
+
+void ClearForeignKeyReferenceCache();
+
 bool YBCIsInitDbModeEnvVarSet();
 
 // This is called by initdb. Used to customize some behavior.

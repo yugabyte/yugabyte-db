@@ -176,8 +176,13 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op, uint64
   // We allow read ops while buffering writes because it can happen when building indexes for sys
   // catalog tables during initdb. Continuing read ops to scan the table can be issued while
   // writes to its index are being buffered.
-  DCHECK_EQ(pg_session_.ShouldHandleTransactionally(*op), transactional_)
+  auto transactional_op = pg_session_.ShouldHandleTransactionally(*op);
+  DCHECK_EQ(transactional_op, transactional_)
       << "All operations must be either transactional or non-transactional";
+  if (!transactional_op) {
+    pg_session_.InvalidateForeignKeyReferenceCache();
+  }
+
   if (pg_session_.buffer_write_ops_ > 0 &&
       op->type() == YBOperation::Type::PGSQL_WRITE) {
     buffered_ops_.push_back(std::move(op));
@@ -244,6 +249,7 @@ PgSession::~PgSession() {
 
 void PgSession::Reset() {
   errmsg_.clear();
+  fk_reference_cache_.clear();
   status_ = Status::OK();
 }
 
@@ -708,6 +714,23 @@ Result<uint64_t> PgSession::GetSharedCatalogVersion() {
   } else {
     return STATUS(NotSupported, "Tablet server shared memory has not been opened");
   }
+}
+
+bool PgSession::ForeignKeyReferenceExists(uint32_t table_id, std::string&& ybctid) {
+  PgForeignKeyReference reference = {table_id, std::move(ybctid)};
+  return fk_reference_cache_.find(reference) != fk_reference_cache_.end();
+}
+
+Status PgSession::CacheForeignKeyReference(uint32_t table_id, std::string&& ybctid) {
+  PgForeignKeyReference reference = {table_id, std::move(ybctid)};
+  fk_reference_cache_.emplace(reference);
+  return Status::OK();
+}
+
+Status PgSession::DeleteForeignKeyReference(uint32_t table_id, std::string&& ybctid) {
+  PgForeignKeyReference reference = {table_id, std::move(ybctid)};
+  fk_reference_cache_.erase(reference);
+  return Status::OK();
 }
 
 }  // namespace pggate
