@@ -56,6 +56,35 @@ class PgSessionAsyncRunResult {
   client::YBSessionPtr session_;
 };
 
+struct PgForeignKeyReference {
+  uint32_t table_id;
+  std::string ybctid;
+
+  PgForeignKeyReference(uint32_t i_table_id, std::string&& i_ybctid) {
+    table_id = i_table_id;
+    ybctid = std::move(i_ybctid);
+  }
+
+  bool operator==(const PgForeignKeyReference& other) const {
+    return table_id == other.table_id &&
+        ybctid == other.ybctid;
+  }
+
+  std::string ToString() const {
+    return Format("{ table_id: $0 ybctid: $1 }",
+                  table_id, ybctid);
+  }
+
+  struct Hash {
+    std::size_t operator()(const PgForeignKeyReference& p) const noexcept {
+      std::size_t hash = 0;
+      boost::hash_combine(hash, p.table_id);
+      boost::hash_combine(hash, p.ybctid);
+      return hash;
+    }
+  };
+};
+
 // This class is not thread-safe as it is mostly used by a single-threaded PostgreSQL backend
 // process.
 class PgSession : public RefCountedThreadSafe<PgSession> {
@@ -204,12 +233,26 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     table_cache_.clear();
   }
 
+  void InvalidateForeignKeyReferenceCache() {
+    fk_reference_cache_.clear();
+  }
+
   // Check if initdb has already been run before. Needed to make initdb idempotent.
   Result<bool> IsInitDbDone();
 
   // Returns the local tserver's catalog version stored in shared memory, or an error if
   // the shared memory has not been initialized (e.g. in initdb).
   Result<uint64_t> GetSharedCatalogVersion();
+
+  // Returns true if the row referenced by ybctid exists in FK reference cache (Used for caching
+  // foreign key checks).
+  bool ForeignKeyReferenceExists(uint32_t table_id, std::string&& ybctid);
+
+  // Adds the row referenced by ybctid to FK reference cache.
+  CHECKED_STATUS CacheForeignKeyReference(uint32_t table_id, std::string&& ybctid);
+
+  // Deletes the row referenced by ybctid from FK reference cache.
+  CHECKED_STATUS DeleteForeignKeyReference(uint32_t table_id, std::string&& ybctid);
 
  private:
   // Helper class to run multiple operations on single session.
@@ -276,6 +319,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   ObjectIdGenerator rowid_generator_;
 
   std::unordered_map<TableId, std::shared_ptr<client::YBTable>> table_cache_;
+  std::unordered_set<PgForeignKeyReference, PgForeignKeyReference::Hash> fk_reference_cache_;
 
   // Should write operations be buffered?
   uint buffer_write_ops_ = 0;

@@ -591,41 +591,62 @@ YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg) {
 //------------------------------------------------------------------------------------------------
 
 YBCStatus YBCPgBeginTransaction() {
-  return ToYBCStatus(pgapi->GetPgTxnManager()->BeginTransaction());
+  return ToYBCStatus(pgapi->BeginTransaction());
 }
 
 YBCStatus YBCPgRestartTransaction() {
-  return ToYBCStatus(pgapi->GetPgTxnManager()->RestartTransaction());
+  return ToYBCStatus(pgapi->RestartTransaction());
 }
 
 YBCStatus YBCPgCommitTransaction() {
-  return ToYBCStatus(pgapi->GetPgTxnManager()->CommitTransaction());
+  return ToYBCStatus(pgapi->CommitTransaction());
 }
 
 YBCStatus YBCPgAbortTransaction() {
-  return ToYBCStatus(pgapi->GetPgTxnManager()->AbortTransaction());
+  return ToYBCStatus(pgapi->AbortTransaction());
 }
 
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation) {
-  return ToYBCStatus(pgapi->GetPgTxnManager()->SetIsolationLevel(isolation));
+  return ToYBCStatus(pgapi->SetTransactionIsolationLevel(isolation));
 }
 
 YBCStatus YBCPgSetTransactionReadOnly(bool read_only) {
-  return ToYBCStatus(pgapi->GetPgTxnManager()->SetReadOnly(read_only));
+  return ToYBCStatus(pgapi->SetTransactionReadOnly(read_only));
 }
 
 YBCStatus YBCPgSetTransactionDeferrable(bool deferrable) {
-  return ToYBCStatus(pgapi->GetPgTxnManager()->SetDeferrable(deferrable));
+  return ToYBCStatus(pgapi->SetTransactionDeferrable(deferrable));
 }
 
 YBCStatus YBCPgEnterSeparateDdlTxnMode() {
-  return ToYBCStatus(pgapi->GetPgTxnManager()->EnterSeparateDdlTxnMode());
+  return ToYBCStatus(pgapi->EnterSeparateDdlTxnMode());
 }
 
 YBCStatus YBCPgExitSeparateDdlTxnMode(bool success) {
-  return ToYBCStatus(pgapi->GetPgTxnManager()->ExitSeparateDdlTxnMode(success));
+  return ToYBCStatus(pgapi->ExitSeparateDdlTxnMode(success));
 }
 
+// Referential Integrity Caching
+bool YBCForeignKeyReferenceExists(YBCPgOid table_id, const char* ybctid, int64_t ybctid_size) {
+  return pgapi->ForeignKeyReferenceExists(table_id, std::string(ybctid, ybctid_size));
+}
+
+YBCStatus YBCCacheForeignKeyReference(YBCPgOid table_id, const char* ybctid, int64_t ybctid_size) {
+  return ToYBCStatus(pgapi->CacheForeignKeyReference(table_id, std::string(ybctid, ybctid_size)));
+}
+
+YBCStatus YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_id, uint64_t ybctid) {
+  char *value;
+  int64_t bytes;
+
+  const YBCPgTypeEntity *type_entity = pgapi->FindTypeEntity(kPgByteArrayOid);
+  type_entity->datum_to_yb(ybctid, &value, &bytes);
+  return ToYBCStatus(pgapi->DeleteForeignKeyReference(table_id, std::string(value, bytes)));
+}
+
+void ClearForeignKeyReferenceCache() {
+  pgapi->ClearForeignKeyReferenceCache();
+}
 
 bool YBCIsInitDbModeEnvVarSet() {
   static bool cached_value = false;
