@@ -36,6 +36,7 @@
         "readReplica": "disabled",
         "manageEncryption": "disabled",
         "metricsInterval": 15000,
+        "editUniverse": "hidden",
         "deleteUniverse": "disabled"
       }
     },

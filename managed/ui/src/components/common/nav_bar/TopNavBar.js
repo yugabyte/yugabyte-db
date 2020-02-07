@@ -52,12 +52,13 @@ export default class TopNavBar extends Component {
     // TODO(bogdan): icon for logs...
     return (
       <Navbar fixedTop>
-        <Navbar.Header>
-          <Link to="/" className="left_col text-center">
-            <YBLogo />
-          </Link>
-        </Navbar.Header>
-
+        {getPromiseState(currentCustomer).isSuccess() && isNotHidden(currentCustomer.data.features, "menu.sidebar") &&
+          <Navbar.Header>
+            <Link to="/" className="left_col text-center">
+              <YBLogo />
+            </Link>
+          </Navbar.Header>
+        }
         <div className="flex-grow"></div>
         {getPromiseState(currentCustomer).isSuccess() && isNotHidden(currentCustomer.data.features, "main.dropdown") &&
         <Nav pullRight>

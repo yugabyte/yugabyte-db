@@ -49,10 +49,8 @@ public class SessionController extends Controller {
   @Inject
   ConfigHelper configHelper;
 
-
   @Inject
   Environment environment;
-
 
   public static final String AUTH_TOKEN = "authToken";
   public static final String API_TOKEN = "apiToken";
@@ -147,7 +145,7 @@ public class SessionController extends Controller {
       }
 
       try {
-        InputStream featureStream = environment.resourceAsStream("sampleFeatureConfig.json");
+        InputStream featureStream = environment.resourceAsStream("ossFeatureConfig.json");
         ObjectMapper mapper = new ObjectMapper();
         JsonNode features = mapper.readTree(featureStream);
         Customer.get(customerUUID).upsertFeatures(features);

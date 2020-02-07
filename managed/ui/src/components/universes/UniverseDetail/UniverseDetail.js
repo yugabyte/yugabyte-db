@@ -359,8 +359,8 @@ class UniverseDetail extends Component {
                 </YBLabelWithIcon>
                 { this.showUpgradeMarker() ? <span className="badge badge-pill badge-red pull-right">{updateAvailable}</span> : ""}
               </YBMenuItem>
-              {!isReadOnlyUniverse && isNotHidden(currentCustomer.data.features, "universes.details.metrics") &&
-                <YBMenuItem eventKey="2" to={`/universes/${uuid}/edit/primary`} availability={getFeatureState(currentCustomer.data.features, "universes.details.metrics")}>
+              {!isReadOnlyUniverse && isNotHidden(currentCustomer.data.features, "universes.details.overview.editUniverse") &&
+                <YBMenuItem eventKey="2" to={`/universes/${uuid}/edit/primary`} availability={getFeatureState(currentCustomer.data.features, "universes.details.overview.editUniverse")}>
                   <YBLabelWithIcon icon="fa fa-pencil">
                   Edit Universe
                   </YBLabelWithIcon>

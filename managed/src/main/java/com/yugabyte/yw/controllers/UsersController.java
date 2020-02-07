@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.controllers;
 
+import java.io.InputStream;
+import java.io.IOException;
+
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -12,7 +15,9 @@ import com.yugabyte.yw.common.ApiResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
@@ -24,6 +29,8 @@ import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
+import play.Environment;
+
 import static com.yugabyte.yw.models.Users.Role;
 
 public class UsersController extends AuthenticatedController {
@@ -32,6 +39,9 @@ public class UsersController extends AuthenticatedController {
 
   @Inject
   FormFactory formFactory;
+
+  @Inject
+  Environment environment;
 
   /**
    * GET endpoint for listing the provider User.
@@ -88,6 +98,9 @@ public class UsersController extends AuthenticatedController {
     try {
       user = Users.create(formData.get().email, formData.get().password,
                           formData.get().role, customerUUID);
+      if (formData.get().role == Role.ReadOnly) {
+        updateFeatures(user);
+      }
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Could not create user");
     }
@@ -156,6 +169,11 @@ public class UsersController extends AuthenticatedController {
         try {
           user.setRole(Role.valueOf(role));
           user.save();
+          if (user.getRole() == Role.ReadOnly) {
+            updateFeatures(user);
+          } else {
+            user.setFeatures(Json.newObject());
+          }
         } catch (Exception e) {
           return ApiResponse.error(BAD_REQUEST, "Incorrect Role Specified");
         }
@@ -197,5 +215,20 @@ public class UsersController extends AuthenticatedController {
       }
     }
     return ApiResponse.error(BAD_REQUEST, "Invalid User Credentials.");
+
+  private void updateFeatures(Users user) {
+    try {
+      Customer customer = Customer.get(user.customerUUID);
+      String configFile = "readOnlyFeatureConfig.json";
+      if (customer.code.equals("cloud")) {
+        configFile = "cloudFeatureConfig.json";
+      }
+      InputStream featureStream = environment.resourceAsStream(configFile);
+      ObjectMapper mapper = new ObjectMapper();
+      JsonNode features = mapper.readTree(featureStream);
+      user.upsertFeatures(features);
+    } catch (IOException e) {
+      LOG.error("Failed to parse sample feature config file for OSS mode.");
+    }
   }
 }

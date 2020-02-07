@@ -42,6 +42,16 @@
   }
 }
 
+.sidebar-hidden .container-body {
+  padding: 60px 0 45px 0;
+
+  & > *:first-child {
+    &:before {
+      left: 0;
+    }
+  }
+}
+
 .container-fluid {
   padding: 0 !important;
 }
