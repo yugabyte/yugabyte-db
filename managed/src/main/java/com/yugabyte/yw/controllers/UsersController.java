@@ -215,6 +215,7 @@ public class UsersController extends AuthenticatedController {
       }
     }
     return ApiResponse.error(BAD_REQUEST, "Invalid User Credentials.");
+  }
 
   private void updateFeatures(Users user) {
     try {
