@@ -16,7 +16,7 @@
   }
 
   & > *:first-child {
-    flex: 0 0 90px;
+    flex: 1 0 90px;
   }
 
   & > *:not(:first-child):not(:last-child) {

@@ -71,7 +71,12 @@ public class CustomerController extends AuthenticatedController {
     }
     responseJson.put("callhomeLevel", CustomerConfig.getOrCreateCallhomeLevel(customerUUID).toString());
 
-    responseJson.put("features", customer.getFeatures());
+    Users user = (Users) ctx().args.get("user");
+    if (customer.getFeatures().size() == 0) {
+      responseJson.put("features", user.getFeatures());
+    } else {
+      responseJson.put("features", customer.getFeatures());
+    }
 
     return ok(responseJson);
   }
