@@ -701,6 +701,25 @@ void IntentAwareIterator::SeekToSuitableIntent() {
   // Find latest suitable intent for the first SubDocKey having suitable intents.
   while (intent_iter_.Valid()) {
     auto intent_key = intent_iter_.key();
+    if (intent_key[0] == ValueTypeAsChar::kTransactionId) {
+      // If the intent iterator ever enters the transaction metadata and reverse index region, skip
+      // past it.
+      switch (direction) {
+        case Direction::kForward: {
+          static const std::array<char, 1> kAfterTransactionId{ValueTypeAsChar::kTransactionId + 1};
+          static const Slice kAfterTxnRegion(kAfterTransactionId);
+          intent_iter_.Seek(kAfterTxnRegion);
+          break;
+        }
+        case Direction::kBackward:
+          intent_upperbound_keybytes_.Clear();
+          intent_upperbound_keybytes_.AppendValueType(ValueType::kTransactionId);
+          intent_upperbound_ = intent_upperbound_keybytes_.AsSlice();
+          intent_iter_.SeekToLast();
+          break;
+      }
+      continue;
+    }
     VLOG(4) << "Intent found: " << DebugIntentKeyToString(intent_key)
             << ", resolved state: " << yb::ToString(resolved_intent_state_);
     if (resolved_intent_state_ != ResolvedIntentState::kNoIntent &&
@@ -971,8 +990,8 @@ Status IntentAwareIterator::SetIntentUpperbound() {
     intent_upperbound_keybytes_.AppendValueType(ValueType::kMaxByte);
     intent_upperbound_ = intent_upperbound_keybytes_.AsSlice();
   } else {
-    // In case the current position of the regular iterator is invalid, set the exclusive
-    // upperbound to the beginning of the transaction metadata and reverse index region.
+    // In case the current position of the regular iterator is invalid, set the exclusive intent
+    // upperbound high to be able to find all intents higher than the last regular record.
     ResetIntentUpperbound();
   }
   VLOG(4) << "SetIntentUpperbound = " << intent_upperbound_.ToDebugString();
@@ -981,7 +1000,7 @@ Status IntentAwareIterator::SetIntentUpperbound() {
 
 void IntentAwareIterator::ResetIntentUpperbound() {
   intent_upperbound_keybytes_.Clear();
-  intent_upperbound_keybytes_.AppendValueType(ValueType::kTransactionId);
+  intent_upperbound_keybytes_.AppendValueType(ValueType::kHighest);
   intent_upperbound_ = intent_upperbound_keybytes_.AsSlice();
   VLOG(4) << "ResetIntentUpperbound = " << intent_upperbound_.ToDebugString();
 }
