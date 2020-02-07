@@ -18,7 +18,7 @@ test: yb_pg_create_table
 
 test: yb_pg_create_function_2
 
-# Dependency for `yb_select`
+# Dependency for `yb_pg_select`
 test: yb_pg_copy
 
 test: yb_pg_create_operator
@@ -27,5 +27,5 @@ test: yb_pg_create_operator
 test: yb_pg_create_aggregate
 
 test: yb_pg_errors
-test: yb_select
+test: yb_pg_select
 test: yb_pg_aggregates
