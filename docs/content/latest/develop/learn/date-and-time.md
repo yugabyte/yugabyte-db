@@ -264,7 +264,7 @@ Lets start working with dates and timestamps. The following assumes that you hav
 
 ```
 yugabyte=# \c yb_demo
-You are now connected to database "yb_demo" as user "postgres".
+You are now connected to database "yb_demo" as user "yugabyte".
 
 yb_demo=# select to_char(max(orders.created_at), 'DD-MON-YYYY HH24:MI') AS "Last Order Date" from orders;
 

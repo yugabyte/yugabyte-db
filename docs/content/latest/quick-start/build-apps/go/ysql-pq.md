@@ -81,16 +81,16 @@ import (
 const (
   host     = "127.0.0.1"
   port     = 5433
-  user     = "postgres"
-  password = "postgres"
-  dbname   = "postgres"
+  user     = "yugabyte"
+  password = "yugabyte"
+  dbname   = "yugabyte"
 )
 
 func main() {
     psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
                             "password=%s dbname=%s sslmode=disable",
                             host, port, user, password, dbname)
-    db, err := sql.Open("postgres", psqlInfo)
+    db, err := sql.Open("yugabyte", psqlInfo)
     if err != nil {
         log.Fatal(err)
     }
