@@ -51,15 +51,15 @@ $ docker pull yugabytedb/yugabyte
 version: '2'
 
 volumes:
-  yb-master-data:
-  yb-tserver-data:
+  yb-master-data-1:
+  yb-tserver-data-1:
 
 services:
   yb-master:
       image: yugabytedb/yugabyte:latest
       container_name: yb-master-n1
       volumes:
-      - yb-master-data:/mnt/master
+      - yb-master-data-1:/mnt/master
       command: [ "/home/yugabyte/bin/yb-master",
                 "--fs_data_dirs=/mnt/master",
                 "--master_addresses=yb-master-n1:7100",
@@ -74,7 +74,7 @@ services:
       image: yugabytedb/yugabyte:latest
       container_name: yb-tserver-n1
       volumes:
-      - yb-tserver-data:/mnt/tserver
+      - yb-tserver-data-1:/mnt/tserver
       command: [ "/home/yugabyte/bin/yb-tserver",
                 "--fs_data_dirs=/mnt/tserver",
                 "--start_pgsql_proxy",
@@ -126,7 +126,74 @@ CREATE TABLE
 yugabyte=#
 ```
 
-You can also follow the instructions in the [Quick Start](../../../quick-start/explore-ysql/#docker) section with Docker.
+Here is an example of a client that is defined within the same docker-compose file.
+```sh
+version: '2'
+
+volumes:
+  yb-master-data-1:
+  yb-tserver-data-1:
+
+networks:
+  dbinternal:
+  dbnet:
+
+services:
+  yb-master:
+      image: yugabytedb/yugabyte:latest
+      container_name: yb-master-n1
+      networks:
+      - dbinternal
+      volumes:
+      - yb-master-data-1:/mnt/master
+      command: [ "/home/yugabyte/bin/yb-master",
+                "--fs_data_dirs=/mnt/master",
+                "--master_addresses=yb-master-n1:7100",
+                "--rpc_bind_addresses=yb-master-n1:7100",
+                "--replication_factor=1"]
+      ports:
+      - "7000:7000"
+      environment:
+        SERVICE_7000_NAME: yb-master
+
+  yb-tserver:
+      image: yugabytedb/yugabyte:latest
+      container_name: yb-tserver-n1
+      networks:
+      - dbinternal
+      - dbnet
+      volumes:
+      - yb-tserver-data-1:/mnt/tserver
+      command: [ "/home/yugabyte/bin/yb-tserver",
+                "--fs_data_dirs=/mnt/tserver",
+                "--start_pgsql_proxy",
+                "--rpc_bind_addresses=yb-tserver-n1:9100",
+                "--tserver_master_addrs=yb-master-n1:7100"
+                ]
+      ports:
+      - "9042:9042"
+      - "6379:6379"
+      - "5433:5433"
+      - "9000:9000"
+      environment:
+        SERVICE_5433_NAME: ysql
+        SERVICE_9042_NAME: ycql
+        SERVICE_6379_NAME: yedis
+        SERVICE_9000_NAME: yb-tserver
+      depends_on:
+      - yb-master
+
+  yb-client:
+      image: yugabytedb/yb-sample-apps:latest
+      container_name: yb-client-n1
+      networks:
+      - dbnet
+      command: [ "--workload", "SqlInserts", "--nodes", "yb-tserver-n1:5433" ]
+      depends_on:
+      - yb-tserver
+```
+
+For more examples, follow the instructions in the [Quick Start](../../../quick-start/explore-ysql/#docker) section with Docker.
 
 ## 4. Stop the cluster
 
