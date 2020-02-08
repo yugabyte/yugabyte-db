@@ -37,10 +37,10 @@ showAsideToc: true
 
 This SQLAlchemy ORM example, running on Python, implements a simple REST API server for an e-commerce application scenario. Database access in this application is managed through [SQL Alchemy ORM](https://docs.sqlalchemy.org/en/13/orm/). The e-commerce database (`ysql-sqlalchemy`) includes the following tables:
 
-- `users` table — the users of the e-commerce site
-- `products` table — the products being sold
-- `orders` table — the orders placed by the users
-- `orderline` table — each line item of an order
+- `users`: the users of the e-commerce site
+- `products`: the products being sold
+- `orders`: the orders placed by the users
+- `orderline`: each line item of an order
 
 The source for this application can be found in the [`python/sqlalchemy` directory](https://github.com/yugabyte/orm-examples/tree/master/python/sqlalchemy) of Yugabyte's [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples) GitHub repository.
 
@@ -86,7 +86,7 @@ import logging
 
 listen_port = 8080
 db_user = 'yugabyte'
-db_password = None
+db_password = 'yugabyte'
 database = 'ysql_sqlalchemy'
 schema = 'ysql_sqlalchemy'
 db_host = 'localhost'

@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: security-checklist
     parent: secure
-    weight: 705
+    weight: 710
 isTocNested: true
 showAsideToc: true
 ---
