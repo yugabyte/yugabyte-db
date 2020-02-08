@@ -1157,6 +1157,7 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	if (list_length(data->filter_tables) > 0)
 	{
 		ListCell	*lc;
+		bool		skip = false;
 
 		foreach(lc, data->filter_tables)
 		{
@@ -1169,9 +1170,17 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 					elog(DEBUG2, "\"%s\".\"%s\" was filtered out",
 								((t->allschemas) ? "*" : t->schemaname),
 								((t->alltables) ? "*" : t->tablename));
-					return;
+					skip = true;
 				}
 			}
+		}
+
+		/* table was found */
+		if (skip)
+		{
+			MemoryContextSwitchTo(old);
+			MemoryContextReset(data->context);
+			return;
 		}
 	}
 
@@ -1200,7 +1209,11 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 
 		/* table was not found */
 		if (skip)
+		{
+			MemoryContextSwitchTo(old);
+			MemoryContextReset(data->context);
 			return;
+		}
 	}
 
 	/* Sanity checks */
@@ -1790,6 +1803,7 @@ pg_decode_change_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	if (list_length(data->filter_tables) > 0)
 	{
 		ListCell	*lc;
+		bool		skip = false;
 
 		foreach(lc, data->filter_tables)
 		{
@@ -1802,9 +1816,17 @@ pg_decode_change_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 					elog(DEBUG2, "\"%s\".\"%s\" was filtered out",
 								((t->allschemas) ? "*" : t->schemaname),
 								((t->alltables) ? "*" : t->tablename));
-					return;
+					skip = true;
 				}
 			}
+		}
+
+		/* table was found */
+		if (skip)
+		{
+			MemoryContextSwitchTo(old);
+			MemoryContextReset(data->context);
+			return;
 		}
 	}
 
@@ -1833,7 +1855,11 @@ pg_decode_change_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 
 		/* table was not found */
 		if (skip)
+		{
+			MemoryContextSwitchTo(old);
+			MemoryContextReset(data->context);
 			return;
+		}
 	}
 
 	pg_decode_write_change(ctx, txn, relation, change);
