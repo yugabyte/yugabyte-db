@@ -246,26 +246,29 @@ class ControlScript(object):
         demo_db = self.configs.temp_data.get("demo_db")
         db_name = DEMO_DB_PREFIX + demo_db
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
-        if not ysql_proxy.db_exists(demo_db):
-            Output.print_out(
-                "Initializing {} demo database. This may take up to a minute...".format(demo_db))
-            # Create demo database.
-            Output.log("Creating database {}...".format(db_name))
-            _, err = ysql_proxy.create_db(db_name)
-            if err:
-                Output.log_error_and_exit("Failed to create {} database: {}".format(demo_db, err))
+        if ysql_proxy.db_exists(db_name):
+            Output.print_out("Demo database {} already exists.".format(demo_db))
+            return
 
-            # Populate demo database.
-            Output.log("Populating {} with sample data...".format(db_name))
-            files = []
-            for name in Configs.get_demo_info()[demo_db]["files"]:
-                files.append(os.path.join(YUGABYTE_DIR, "share", name))
-            _, err = ysql_proxy.load_files(files, db=db_name)
-            if err:
-                Output.log_error_and_exit("Failed to populate data to {}: {}".format(demo_db, err))
+        Output.print_out(
+            "Initializing {} demo database. This may take up to a minute...".format(demo_db))
+        # Create demo database.
+        Output.log("Creating database {}...".format(db_name))
+        _, err = ysql_proxy.create_db(db_name)
+        if err:
+            Output.log_error_and_exit("Failed to create {} database: {}".format(demo_db, err))
 
-            msg = "Successfully loaded sample database!"
-            Output.print_and_log(msg)
+        # Populate demo database.
+        Output.log("Populating {} with sample data...".format(db_name))
+        files = []
+        for name in Configs.get_demo_info()[demo_db]["files"]:
+            files.append(os.path.join(YUGABYTE_DIR, "share", name))
+        _, err = ysql_proxy.load_files(files, db=db_name)
+        if err:
+            Output.log_error_and_exit("Failed to populate data to {}: {}".format(demo_db, err))
+
+        msg = "Successfully loaded sample database!"
+        Output.print_and_log(msg)
 
     # Run YSQL shell in target demo database.
     def connect_demo(self):
@@ -277,18 +280,17 @@ class ControlScript(object):
         demo_db = self.configs.temp_data.get("demo_db")
         db_name = DEMO_DB_PREFIX + demo_db
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
-        if ysql_proxy.db_exists(db_name):
-            # Ignore kill SIGINT to match normal ysqlsh and psql behavior.
-            signal(SIGINT, SIG_IGN)
-            website = Output.make_underline(SAMPLE_DATA_LINKS[demo_db])
-            Output.print_out(Configs.get_demo_info()[demo_db]["examples"])
-            Output.print_out(
-                "For more, go to {}\n".format(website)
-            )
-            ysql_proxy.connect(db=db_name)
-        else:
-            Output.log_error_and_exit(
-                "Demo was not created, please run '{} demo create'.".format(SCRIPT_NAME))
+        if not ysql_proxy.db_exists(db_name):
+            self.create_demo()
+
+        # Ignore kill SIGINT to match normal ysqlsh and psql behavior.
+        signal(SIGINT, SIG_IGN)
+        website = Output.make_underline(SAMPLE_DATA_LINKS[demo_db])
+        Output.print_out(Configs.get_demo_info()[demo_db]["examples"])
+        Output.print_out(
+            "For more, go to {}\n".format(website)
+        )
+        ysql_proxy.connect(db=db_name)
 
     # Destroy target demo database if it exists.
     def destroy_demo(self, signum=None, frame=None):
@@ -775,7 +777,8 @@ class ControlScript(object):
         status_info = [
             (Output.make_yellow("Status"), status),
             (Output.make_yellow("Webserver UI"), yw_status),
-            (Output.make_yellow("JDBC"), "jdbc:postgresql://{}:{}/yugabyte".format(
+            (Output.make_yellow("JDBC"),
+               "jdbc:postgresql://{}:{}/yugabyte?user=yugabyte&password=yugabyte".format(
                 advertise_ip, ysql_port)),
             (Output.make_yellow("YSQL"), "bin/ysqlsh{}".format(ysql_flags)),
             (Output.make_yellow("YCQL"), "bin/cqlsh{}".format(ycql_flags)),
@@ -946,7 +949,6 @@ class ControlScript(object):
         demo_parser = all_parsers["demo"]
         demo_subparsers = demo_parser.add_subparsers()
         for cmd, description in (
-                ("create", "Create the demo database."),
                 ("connect", "Connect to the demo database."),
                 ("destroy", "Destroy the demo database.")):
             subparser = demo_subparsers.add_parser(cmd, help=description, parents=[common_parser])
