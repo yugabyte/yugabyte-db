@@ -1,3 +1,36 @@
+---
+title: Create roles
+linkTitle: Create roles
+description: Create roles
+headcontent: Creating roles
+image: /images/section_icons/secure/create-roles.png
+menu:
+  latest:
+    identifier: create-roles-ycql
+    parent: authorization
+    weight: 717
+isTocNested: true
+showAsideToc: true
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/secure/authorization/create-roles" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/secure/authorization/create-roles-ycql" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+
+</ul>
+
 
 ## 1. Create roles
 
