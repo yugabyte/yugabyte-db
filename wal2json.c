@@ -1121,17 +1121,17 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 
 	data = ctx->output_plugin_private;
 
-	if (!data->actions.insert)
+	if (change->action == REORDER_BUFFER_CHANGE_INSERT && !data->actions.insert)
 	{
 		elog(DEBUG3, "ignore INSERT");
 		return;
 	}
-	if (!data->actions.update)
+	if (change->action == REORDER_BUFFER_CHANGE_UPDATE && !data->actions.update)
 	{
 		elog(DEBUG3, "ignore UPDATE");
 		return;
 	}
-	if (!data->actions.delete)
+	if (change->action == REORDER_BUFFER_CHANGE_DELETE && !data->actions.delete)
 	{
 		elog(DEBUG3, "ignore DELETE");
 		return;
