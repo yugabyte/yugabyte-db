@@ -1,3 +1,55 @@
+---
+title: Observability with Prometheus
+linkTitle: Observability 
+description: Observability with Prometheus
+aliases:
+  - /latest/explore/cloud-native/observability/
+menu:
+  latest:
+    identifier: observability-linux
+    parent: explore
+    weight: 240
+---
+
+You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time-series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint.
+
+For details on the metrics targets for YugabyteDB, see [Monitoring with Prometheus](../../reference/configuration/default-ports/#monitoring-with-prometheus).
+
+If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../quick-start/install/) guide.
+
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/explore/observability" class="nav-link">
+      <i class="fab fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/explore/observability" class="nav-link active">
+      <i class="fab fa-linux" aria-hidden="true"></i>
+      Linux
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/explore/observability-docker" class="nav-link">
+      <i class="fab fa-dockers" aria-hidden="true"></i>
+      Docker
+    </a>
+  </li>
+<!--
+  <li >
+    <a href="/latest/explore/observability-kubernetes" class="nav-link">
+      <i class="fab fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+-->
+</ul>
+
 ## Prerequisite
 
 Prometheus is installed on your local machine. If you have not done so already, follow the links below.
@@ -47,7 +99,7 @@ global:
   evaluation_interval: 5s # Evaluate rules every 5 seconds. The default is every 1 minute.
   # scrape_timeout is set to the global default (10s).
 
-# YugabyteDB configuration to scrape Prometheus time-series metrics 
+# YugabyteDB configuration to scrape Prometheus time-series metrics
 scrape_configs:
   - job_name: 'yugabytedb'
     metrics_path: /prometheus-metrics
@@ -100,6 +152,7 @@ Paste the following expressions into the Expression box and click Execute follow
 ```sh
 sum(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_count[1m]))
 ```
+
 ![Prometheus Read IOPS](/images/ce/prom-read-iops.png)
 
 >  Write IOPS
@@ -107,29 +160,30 @@ sum(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_count[1m]))
 ```sh
 sum(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_count[1m]))
 ```
+
 ![Prometheus Read IOPS](/images/ce/prom-write-iops.png)
 
 ### Latency
-
 
 >  Read Latency (in microseconds)
 
 ```sh
 avg(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_sum[1m])) / avg(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_count[1m]))
 ```
-![Prometheus Read IOPS](/images/ce/prom-read-latency.png)
 
+![Prometheus Read IOPS](/images/ce/prom-read-latency.png)
 
 > Write Latency (in microseconds)
 
 ```sh
 avg(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_sum[1m])) / avg(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_count[1m]))
 ```
+
 ![Prometheus Read IOPS](/images/ce/prom-write-latency.png)
 
 ## 6. [Optional] Clean up
 
-Optionally, you can shutdown the local cluster created in Step 1.
+Optionally, you can shut down the local cluster created in Step 1.
 
 ```sh
 $ ./bin/yb-ctl destroy
