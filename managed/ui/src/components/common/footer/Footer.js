@@ -26,24 +26,24 @@ class Footer extends PureComponent {
         <div className="flex-grow footer-social-container">
           <span className="social-media-cta">Join us on
             <a href="https://www.yugabyte.com/slack" target="_blank" rel="noopener noreferrer">
-              <img alt="YugaByte DB Slack" src={slackLogo} width="65"/>
+              <img alt="YugabyteDB Slack" src={slackLogo} width="65"/>
             </a>
           </span>
           <span className="social-media-cta">
             Star us on
             <a href="https://github.com/YugaByte/yugabyte-db/" target="_blank" rel="noopener noreferrer">
-              <img alt="YugaByte DB GitHub" className="social-media-logo" src={githubLogo} width="18"/> <b>GitHub</b>
+              <img alt="YugabyteDB GitHub" className="social-media-logo" src={githubLogo} width="18"/> <b>GitHub</b>
             </a>
           </span>
           <span className="social-media-cta">
             Free t-shirt at
             <a href="https://www.yugabyte.com/community-rewards/" target="_blank" rel="noopener noreferrer">
-              <img alt="YugaByte DB Community Rewards" className="social-media-logo" src={ybLogoImage} width="100"/>
+              <img alt="YugabyteDB Community Rewards" className="social-media-logo" src={ybLogoImage} width="100"/>
             </a>
           </span>
         </div>
         <div className="flex-grow copyright">
-          &copy; {moment().get('year')} YugaByte, Inc.
+          &copy; {moment().get('year')} Yugabyte, Inc.
         </div>
       </footer>
     );

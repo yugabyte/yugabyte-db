@@ -118,7 +118,7 @@ def main():
     if not build_type:
         build_type = 'release'
 
-    logging.info("Building YugaByte DB {} build".format(build_type))
+    logging.info("Building YugabyteDB {} build".format(build_type))
 
     build_desc_path = os.path.join(tmp_dir, 'build_descriptor.yaml')
     build_cmd_list = [

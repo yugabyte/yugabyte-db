@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Post-processes results of running a single YugaByte DB unit test (e.g. a C++ or Java test) and
+Post-processes results of running a single YugabyteDB unit test (e.g. a C++ or Java test) and
 creates a structured output file with a summary of those results. This includes test running time
 and possible causes of test failure.
 """
