@@ -69,7 +69,7 @@ yugabyte=# select (current_date-1)::timestamp as yesterday,
 ```
 
 {{< note title="Note" >}}
-YugabyteDB cannot create the special values of `infinity`, `-infinity` and `allballs` that can be found in postgresql. If you are wondering, 'allballs' is a theoretical time of "00:00:00.00 UTC".
+YugabyteDB cannot create the special values of `infinity`, `-infinity`, and `allballs` that can be found in postgresql. If you are wondering, 'allballs' is a theoretical time of "00:00:00.00 UTC".
 {{< /note >}}
 
 ## Formatting

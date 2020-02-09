@@ -11,7 +11,7 @@ aliases:
   - /latest/explore/planet-scale/auto-rebalancing/
 menu:
   latest:
-    identifier: auto-sharding
+    identifier: auto-sharding-linux
     parent: explore
     weight: 225
 ---
@@ -30,33 +30,34 @@ If you haven't installed YugabyteDB yet, do so first by following the [Quick sta
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/auto-sharding" class="nav-link active">
+    <a href="/latest/explore/auto-sharding" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/auto-sharding" class="nav-link">
+    <a href="/latest/explore/auto-sharding" class="nav-link active">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
-
+<!--
   <li >
-    <a href="/latest/explore/auto-sharding-docker" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
+    <a href="/latest/explore/auto-sharding-docker" class="nav-link">
+      <i class="fab fa-dockers" aria-hidden="true"></i>
       Docker
     </a>
   </li>
-
+-->
+<!--
   <li >
     <a href="/latest/explore/auto-sharding-kubernetes" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
+      <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
-
+-->
 </ul>
 
 ## 1. Create a universe
@@ -67,7 +68,7 @@ If you have a currently running local universe, destroy it using the following.
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local universe with a replication factor of 1 (rf=1). We are passing the following options:
+Start a new local universe with a replication factor of 1 (RF=1). We are passing the following options:
 
 - `--rf 1` This creates a universe with a replication factor of 1.
 - `--num_shards_per_tserver 4`  This option controls the total number of tablets (or partitions) when creating a new table. By setting the value to `4`, 12 tablets will be created on a 3-node cluster.
