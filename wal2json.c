@@ -662,7 +662,7 @@ pg_decode_begin_txn_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 
 	if (data->include_lsn)
 	{
-		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, txn->end_lsn));
+		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, UInt64GetDatum(txn->end_lsn)));
 
 		appendStringInfo(ctx->out, "%s\"nextlsn\":%s\"%s\",%s", data->ht, data->sp, lsn_str, data->nl);
 
@@ -706,7 +706,7 @@ pg_decode_begin_txn_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 
 	if (data->include_lsn)
 	{
-		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, txn->final_lsn));
+		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, UInt64GetDatum(txn->final_lsn)));
 		appendStringInfo(ctx->out, ",\"lsn\":\"%s\"", lsn_str);
 		pfree(lsn_str);
 	}
@@ -780,7 +780,7 @@ pg_decode_commit_txn_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 
 	if (data->include_lsn)
 	{
-		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, commit_lsn));
+		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, UInt64GetDatum(commit_lsn)));
 		appendStringInfo(ctx->out, ",\"lsn\":\"%s\"", lsn_str);
 		pfree(lsn_str);
 	}
@@ -1681,7 +1681,7 @@ pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relat
 
 	if (data->include_lsn)
 	{
-		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, change->lsn));
+		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, UInt64GetDatum(change->lsn)));
 		appendStringInfo(ctx->out, ",\"lsn\":\"%s\"", lsn_str);
 		pfree(lsn_str);
 	}
@@ -2041,7 +2041,7 @@ pg_decode_message_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 
 	if (data->include_lsn)
 	{
-		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, lsn));
+		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, UInt64GetDatum(lsn)));
 		appendStringInfo(ctx->out, ",\"lsn\":\"%s\"", lsn_str);
 		pfree(lsn_str);
 	}
@@ -2135,7 +2135,7 @@ static void pg_decode_truncate_v1(LogicalDecodingContext *ctx,
 
 	if (data->include_lsn)
 	{
-		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, change->lsn));
+		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, UInt64GetDatum(change->lsn)));
 		appendStringInfo(ctx->out, "%s%s%s\"lsn\":%s\"%s\",%s", data->ht, data->ht, data->ht, data->sp, lsn_str, data->nl);
 		pfree(lsn_str);
 	}
@@ -2254,7 +2254,7 @@ static void pg_decode_truncate_v2(LogicalDecodingContext *ctx,
 
 		if (data->include_lsn)
 		{
-			char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, change->lsn));
+			char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, UInt64GetDatum(change->lsn)));
 			appendStringInfo(ctx->out, ",\"lsn\":\"%s\"", lsn_str);
 			pfree(lsn_str);
 		}
