@@ -1,4 +1,34 @@
 
+---
+title: 5. Aggregations
+linkTitle: 5. Aggregations
+description: Aggregations
+aliases:
+  - /develop/learn/aggregations/
+menu:
+  latest:
+    identifier: aggregations-ycql
+    parent: learn
+    weight: 567
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/develop/learn/aggregations" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/develop/learn/aggregations-ycql" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+
+</ul>
 
 YugabyteDB supports a number of standard aggregation functions. Let us go through some of these using an example. Consider a products table as shown below.
 

@@ -24,17 +24,22 @@ A transaction is a sequence of operations performed as a single logical unit of 
 
 - **Durability** The results of the transaction are permanently stored in the system. The modifications must persist even in the instance of power loss or system failures.
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li>
-    <a href="#cassandra" class="nav-link active" id="cassandra-tab" data-toggle="tab" role="tab" aria-controls="cassandra" aria-selected="true">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/develop/learn/acid-transactions" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/develop/learn/acid-transactions-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
+
 </ul>
 
-<div class="tab-content">
-  <div id="cassandra" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cassandra-tab">
-    {{% includeMarkdown "ycql/acid-transactions.md" /%}}
-  </div>
-</div>
+Coming soon.

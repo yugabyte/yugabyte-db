@@ -11,17 +11,18 @@ menu:
     weight: 567
 ---
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li>
-    <a href="#cassandra" class="nav-link active" id="cassandra-tab" data-toggle="tab" role="tab" aria-controls="cassandra" aria-selected="true">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/develop/learn/aggregations" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/develop/learn/aggregations-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
-</ul>
-
-<div class="tab-content">
-  <div id="cassandra" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cassandra-tab">
-    {{% includeMarkdown "ycql/aggregations.md" /%}}
-  </div>
-</div>

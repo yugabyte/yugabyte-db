@@ -5,17 +5,22 @@ aliases:
   - /develop/learn/reads-writes/
 ---
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li>
-    <a href="#cassandra" class="nav-link active" id="cassandra-tab" data-toggle="tab" role="tab" aria-controls="cassandra" aria-selected="true">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/develop/learn/string-and-text" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/develop/learn/strings-and-text-ycql" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
+
 </ul>
 
-<div class="tab-content">
-  <div id="cassandra" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cassandra-tab">
-    {{% includeMarkdown "ycql/reads-writes.md" /%}}
-  </div>
-</div>
+Coming soon.

@@ -1,3 +1,46 @@
+---
+title: YCSB
+linkTitle: YCSB
+description: YCSB
+image: /images/section_icons/architecture/concepts.png
+headcontent: Benchmark YugabyteDB using YCSB.
+menu:
+  latest:
+    identifier: ycsb-ycql
+    parent: benchmark
+    weight: 740
+aliases:
+  - /benchmark/ycsb/
+showAsideToc: true
+isTocNested: true
+---
+
+{{< note title="Note" >}}
+
+For more information about YCSB see: 
+
+* YCSB Wiki: https://github.com/brianfrankcooper/YCSB/wiki
+* Workload info: https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads
+
+{{< /note >}}
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/benchmark/ycsb" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/benchmark/ycsb-ycql" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+
+</ul>
 
 ## Step 1. Download the YCSB binaries
 
@@ -11,10 +54,12 @@ cd YCSB
 ```
 
 ## Step 2. Start your database
+
 Start the database using steps mentioned here: https://docs.yugabyte.com/latest/quick-start/explore-ysql/.
 
 ## Step 3. Configure your database
-Create the Database and table using the cqlsh tool.
+
+Create the database and table using the `cqlsh` tool.
 The cqlsh tool is distributed as part of the database package.
 
 ```sh
@@ -23,6 +68,7 @@ bin/cqlsh <ip> --keyspace ycsb --execute 'create table usertable (y_id varchar p
 ```
 
 ## Step 4. Configure YCSB connection properties
+
 Set the following connection configurations in db.properties:
 
 ```sh
@@ -35,6 +81,7 @@ The other configuration parameters like username, password, connection
 parameters, etc. are described in detail at [this page](https://github.com/yugabyte/YCSB/tree/master/yugabyteCQL)
 
 ## Step 5. Running the workload
+
 Before starting the workload, you will need to "load" the data first.
 
 ```sh

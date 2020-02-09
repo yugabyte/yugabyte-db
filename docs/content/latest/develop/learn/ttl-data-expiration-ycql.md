@@ -1,17 +1,36 @@
 ---
-title: 9. TTL for data expiry
-linkTitle: 9. TTL for data expiry
-description: TTL for data expiry
+title: 9. TTL for data expiration
+linkTitle: 9. TTL for data expiration
+description: TTL for data expiration
 aliases:
   - /develop/learn/ttl-data-expiry/
 menu:
   latest:
-    identifier: ttl-data-expiry
+    identifier: ttl-data-expiration-ycql
     parent: learn
     weight: 581
 showAsideToc: true
 isTocNested: true
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/develop/learn/ttl-data-expiration" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/develop/learn/ttl-data-expiration-ycql" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+
+</ul>
+
 In YCQL there are two types of TTL, the table level TTL and column level TTL. The column level TTLs are stored
 with the value of the column. The table level TTL is not stored in DocDB (it is stored
 in yb-master system catalog as part of the table’s schema). If no TTL is present at the column’s value,
@@ -22,7 +41,6 @@ this difference (and row level TTLs) using a "liveness column", a special system
 the user. It is added for inserts, but not updates: making sure the row is present even if all
 non-primary key columns are deleted only in the case of inserts.
 
- 
 ## Table level TTL
 
 YCQL allows the TTL property to be specified at the table level. 

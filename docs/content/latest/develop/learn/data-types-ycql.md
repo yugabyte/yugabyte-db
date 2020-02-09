@@ -1,4 +1,36 @@
-This page lists the various data types available in YugabyteDB’s [Cassandra compatible YCQL API](../../../api/ycql).
+---
+title: 3. Data types
+linkTitle: 3. Data types
+description: Data types
+aliases:
+  - /develop/learn/data-types/
+  - /latest/explore/transactional/json-documents/
+menu:
+  latest:
+    identifier: data-types-ycql
+    parent: learn
+    weight: 565
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/develop/learn/batch-operations" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/develop/learn/batch-operations-ycql" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+
+</ul>
+
+This topic lists the various data types available in YugabyteDB’s [Cassandra compatible YCQL API](../../../api/ycql).
 
 ## JSONB
 
