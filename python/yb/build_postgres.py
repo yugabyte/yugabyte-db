@@ -149,7 +149,7 @@ class PostgresBuilder:
 
     def parse_args(self):
         parser = argparse.ArgumentParser(
-            description='A tool for building the PostgreSQL code subtree in YugaByte DB codebase')
+            description='A tool for building the PostgreSQL code subtree in YugabyteDB codebase')
         parser.add_argument('--build_root',
                             default=os.environ.get('BUILD_ROOT'),
                             help='YugaByte build root directory. The PostgreSQL build/install '

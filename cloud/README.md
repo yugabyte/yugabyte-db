@@ -1,6 +1,6 @@
 # Cloud Native Deployments
 
-This folder consists of the various ways you can deploy YugaByte DB using various cloud-native technologies.
+This folder consists of the various ways you can deploy YugabyteDB using various cloud-native technologies.
 
 Here is a list of currently supported deployment integrations.
 

@@ -106,7 +106,7 @@ class AuthenticatedComponent extends Component {
               </tbody>
             </Table>
           </YBModal>
-          <YBModal title="Welcome to YugaByte DB!"
+          <YBModal title="Welcome to YugabyteDB!"
                  visible={showIntroModal}
                  onHide={this.closeIntroModal}
                  showCancelButton={true}
@@ -121,7 +121,7 @@ class AuthenticatedComponent extends Component {
               style={{ flexBasis: '45%' }}
             >
               <span>Join us on</span>
-              <img alt="YugaByte DB Slack" src={slackLogo} width="65"/>
+              <img alt="YugabyteDB Slack" src={slackLogo} width="65"/>
             </a>
             <a className="social-media-btn"
               href="https://github.com/yugabyte/yugabyte-db"
@@ -130,7 +130,7 @@ class AuthenticatedComponent extends Component {
               style={{ flexBasis: '45%' }}
             >
               <span>Star us on</span>
-              <img alt="YugaByte DB GitHub"
+              <img alt="YugabyteDB GitHub"
                 className="social-media-logo"
                 src={githubLogo} width="18"/> <b>GitHub</b>
             </a>
@@ -143,7 +143,7 @@ class AuthenticatedComponent extends Component {
               style={{ flexBasis: '45%' }}
             >
               <span>Free t-shirt at</span>
-              <img alt="YugaByte DB Community Rewards"
+              <img alt="YugabyteDB Community Rewards"
                 className="social-media-logo"
                 src={ybLogo} width="125"/>
             </a>
@@ -154,7 +154,7 @@ class AuthenticatedComponent extends Component {
               style={{ flexBasis: '45%' }}
             >
               <span>Read docs at</span>
-              <img alt="YugaByte DB Docs"
+              <img alt="YugabyteDB Docs"
                 className="social-media-logo"
                 src={ybLogo} width="125"/>
             </a>

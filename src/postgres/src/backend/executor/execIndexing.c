@@ -470,7 +470,7 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
  *		This routine takes care of deleting index tuples
  *		from all the relations indexing the result relation
  *		when a heap tuple is updated or deleted in the result relation.
- *      This is used only for relations and indexes backed by YugaByte DB.
+ *      This is used only for relations and indexes backed by YugabyteDB.
  * ----------------------------------------------------------------
  */
 void
