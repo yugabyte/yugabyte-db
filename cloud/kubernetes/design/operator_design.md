@@ -1,6 +1,6 @@
 # YugabyteDB Operator Design
 
-A cluster of YugaByte DB should be created using the `ybclusters.yugabyte.com` custom resource definition. Below are sample custom resource specs for creating 3-master, 3 t-servers cluster using the CRD. The [minimal spec](#Minimal-Spec-Sample) and the [full spec](#Full-Spec-Sample) are essentially same, with [minimal spec](#Minimal-Spec-Sample) stripping away all the default vaules. The samples are followed by an explanation of different configuration options available on the YugaByte DB CRD.
+A cluster of YugabyteDB should be created using the `ybclusters.yugabyte.com` custom resource definition. Below are sample custom resource specs for creating 3-master, 3 t-servers cluster using the CRD. The [minimal spec](#Minimal-Spec-Sample) and the [full spec](#Full-Spec-Sample) are essentially same, with [minimal spec](#Minimal-Spec-Sample) stripping away all the default vaules. The samples are followed by an explanation of different configuration options available on the YugabyteDB CRD.
 
 
 ## Minimal Spec Sample

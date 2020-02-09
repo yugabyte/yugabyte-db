@@ -63,7 +63,7 @@ class TestDescriptor:
     - A string like 'com.yugabyte.jedis.TestYBJedis#testPool[1]' describing a Java test. This is
       something that could be passed directly to the -Dtest=... Maven option.
     - A Java test class source path (including .java/.scala extension) relative to the "java"
-      directory in the YugaByte DB source tree.
+      directory in the YugabyteDB source tree.
     """
     def __init__(self, descriptor_str):
         self.descriptor_str = descriptor_str

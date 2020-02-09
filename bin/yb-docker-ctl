@@ -520,7 +520,7 @@ class YBDockerControl():
             self.fetch_containers()
             self.cluster_status()
             if not os.getenv("YB_DISABLE_CALLHOME"):
-                print ("Congratulations on installing YugaByte DB Community Edition. " +
+                print ("Congratulations on installing YugabyteDB. " +
                        "We'd like to welcome you to the community with a free t-shirt " +
                        "and pack of stickers! " +
                        "Please claim your reward here: https://www.yugabyte.com/community-rewards/")
