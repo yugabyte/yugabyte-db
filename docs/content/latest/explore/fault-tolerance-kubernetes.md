@@ -14,7 +14,7 @@ menu:
     weight: 215
 ---
 
-YugabyteDB can automatically handle failures and therefore provides [high availability](../../architecture/core-functions/high-availability/). You will create YSQL tables with a replication factor of `3` that allows a [fault tolerance](../../architecture/concepts/docdb/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
+YugabyteDB can automatically handle failures and therefore provides [high availability](../../architecture/core-functions/high-availability/). You will create YSQL tables with a replication factor (RF) of `3` that allows a [fault tolerance](../../architecture/concepts/docdb/replication/) of `1`. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails, bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
 
 If you haven't installed YugabyteDB yet, you can create a local YugabyteDB cluster within five minutes by following the [Quick Start](../../quick-start/install/) guide.
 
@@ -72,7 +72,7 @@ $ minikube dashboard
 
 ![Kubernetes Dashboard](/images/ce/kubernetes-dashboard.png)
 
-Connect to `cqlsh` on node 1.
+Connect to `cqlsh` on node `1`.
 
 ```sh
 $ kubectl exec -it yb-tserver-0 /home/yugabyte/bin/cqlsh
@@ -98,10 +98,9 @@ cqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
 	                               profile frozen<map<text, text>>);
 ```
 
+## 2. Insert data through node `1`
 
-## 2. Insert data through node 1
-
-Now insert some data by typing the following into cqlsh shell we joined above.
+Now insert some data by typing the following into `cqlsh` shell.
 
 ```sql
 cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
@@ -134,7 +133,7 @@ cqlsh> SELECT email, profile FROM users.profile;
 
 ## 3. Read data through another node
 
-Let us now query the data from node 3.
+Let us now query the data from node `3`.
 
 ```sh
 $ kubectl exec -it yb-tserver-2 /home/yugabyte/bin/cqlsh
@@ -158,7 +157,7 @@ cqlsh> exit;
 
 ## 4. Verify one node failure has no impact
 
-This cluster was created with replication factor 3 and hence needs only 2 replicas to make consensus. Therefore, it is resilient to 1 failure without any data loss. Let us simulate node 3 failure.
+This cluster was created with a replication factor of `3` and hence needs only two replicas to make consensus. Therefore, it is resilient to one failure without any data loss. Let us simulate node `3` failure.
 
 ```sh
 $ kubectl delete pod yb-tserver-2
@@ -180,7 +179,7 @@ yb-tserver-1   1/1       Running       1          33m
 yb-tserver-2   1/1       Terminating   0          33m
 ```
 
-Now connect to node 2.
+Now connect to node `2`.
 
 ```sh
 $ kubectl exec -it yb-tserver-1 /home/yugabyte/bin/cqlsh
@@ -212,7 +211,7 @@ cqlsh> SELECT email, profile FROM users.profile;
 
 ## 5. Verify that Kubernetes brought back the failed node
 
-We can now check the cluster status to verify that Kubernetes has indeed brought back the `yb-tserver-2` node that had failed before. This is because the replica count currently effective in Kubernetes for the `yb-tserver` StatefulSet is 3 and there were only 2 nodes remaining after 1 node failure. 
+We can now check the cluster status to verify that Kubernetes has indeed brought back the `yb-tserver-2` node that had failed before. This is because the replica count currently effective in Kubernetes for the `yb-tserver` StatefulSet is `3` and there were only two nodes remaining after one node failure.
 
 ```sh
 $ kubectl get pods

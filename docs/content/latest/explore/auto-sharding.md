@@ -16,13 +16,13 @@ menu:
     weight: 225
 ---
 
-YugabyteDB automatically splits user tables into multiple shards, called **tablets**. The primary key for each row in the table uniquely determines the tablet the row lives in. For data distribution purposes, a hash based partitioning scheme is used. Read more about [how sharding works](../../architecture/concepts/docdb/sharding/) in YugabyteDB.
+YugabyteDB automatically splits user tables into multiple shards, called *tablets*. The primary key for each row in the table uniquely determines the tablet the row lives in. For data distribution purposes, a hash based partitioning scheme is used. Read more about [how sharding works](../../architecture/concepts/docdb/sharding/) in YugabyteDB.
 
 By default, YugabyteDB creates eight tablets per node in the cluster for each table and automatically distributes the data across the various tablets, which in turn are distributed evenly across the nodes. In this tutorial, we will explore how automatic sharding is done internally for tables. The system Redis table works in an identical manner.
 
 We will explore automatic sharding inside YugabyteDB by creating these tables:
 
-- Use a replication factor of 1. This will make it easier to understand how automatic sharding is achieved independent of data replication.
+- Use a replication factor (RF) of `1`. This will make it easier to understand how automatic sharding is achieved independent of data replication.
 - Insert entries one by one, and examine which how the data gets distributed across the various nodes.
 
 If you haven't installed YugabyteDB yet, do so first by following the [Quick start](../../quick-start/install/) guide.
@@ -42,21 +42,22 @@ If you haven't installed YugabyteDB yet, do so first by following the [Quick sta
       Linux
     </a>
   </li>
-
+<!--
   <li >
     <a href="/latest/explore/auto-sharding-docker" class="nav-link">
       <i class="fab fa-dockers" aria-hidden="true"></i>
       Docker
     </a>
   </li>
-
+-->
+<!--
   <li >
     <a href="/latest/explore/auto-sharding-kubernetes" class="nav-link">
       <i class="fab fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
-
+-->
 </ul>
 
 ## 1. Create a universe

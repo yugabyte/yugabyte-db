@@ -9,7 +9,7 @@ aliases:
   - /latest/explore/postgresql/linear-scalability/
 menu:
   latest:
-    identifier: linear-scalability
+    identifier: linear-scalability-linux
     parent: explore
     weight: 210
 ---

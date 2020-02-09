@@ -58,13 +58,13 @@ If you have a previously running local universe, destroy it using the following.
 $ ./yb-docker-ctl destroy
 ```
 
-Start a new local universe with replication factor of 5.
+Start a new local universe with replication factor of `5`.
 
 ```sh
-$ ./yb-docker-ctl create --rf 5 
+$ ./yb-docker-ctl create --rf 5
 ```
 
-Connect to cqlsh on node 1.
+Connect to `cqlsh` on node `1`.
 
 ```sh
 $ docker exec -it yb-tserver-n1 /home/yugabyte/bin/cqlsh
@@ -90,10 +90,9 @@ cqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
 	                               profile frozen<map<text, text>>);
 ```
 
+## 2. Insert data through node `1`
 
-## 2. Insert data through node 1
-
-Now insert some data by typing the following into cqlsh shell we joined above.
+Now insert some data by typing the following into `cqlsh` shell.
 
 ```sql
 cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
@@ -125,10 +124,9 @@ cqlsh> SELECT email, profile FROM users.profile;
 (2 rows)
 ```
 
-
 ## 3. Read data through another node
 
-Let us now query the data from node 5.
+Let us now query the data from node `5`.
 
 ```sh
 $ docker exec -it yb-tserver-n5 /home/yugabyte/bin/cqlsh
@@ -149,19 +147,19 @@ cqlsh> SELECT email, profile FROM users.profile;
 
 ## 4. Verify that one node failure has no impact
 
-We have 5 nodes in this universe. You can verify this by running the following.
+We have five nodes in this universe. You can verify this by running the following.
 
 ```sh
 $ ./yb-docker-ctl status
 ```
 
-Let us simulate node 5 failure by doing the following.
+Let us simulate node `5` failure by doing the following.
 
 ```sh
 $ ./yb-docker-ctl remove_node 5
 ```
 
-Now running the status command should show only 4 nodes:
+Now running the status command should show only four nodes:
 
 ```sh
 $ ./yb-docker-ctl status
@@ -197,10 +195,9 @@ cqlsh> SELECT email, profile FROM users.profile;
 (3 rows)
 ```
 
-
 ## 5. Verify that second node failure has no impact
 
-This cluster was created with replication factor 5 and hence needs only 3 replicas to make consensus. Therefore, it is resilient to 2 failures without any data loss. Let us simulate another node failure.
+This cluster was created with a replication factor of `5` and hence needs only three replicas to make consensus. Therefore, it is resilient to 2 failures without any data loss. Let us simulate another node failure.
 
 ```sh
 $ ./yb-docker-ctl remove_node 1
@@ -212,7 +209,7 @@ We can check the status to verify:
 $ ./yb-docker-ctl status
 ```
 
-Now let us connect to node 2.
+Now let us connect to node `2`.
 
 ```sh
 $ docker exec -it yb-tserver-n2 /home/yugabyte/bin/cqlsh
@@ -242,7 +239,6 @@ cqlsh> SELECT email, profile FROM users.profile;
 
 (4 rows)
 ```
-
 
 ## Step 6. Clean up (optional)
 
