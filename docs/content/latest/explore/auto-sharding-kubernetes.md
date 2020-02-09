@@ -44,7 +44,7 @@ If you haven't installed YugabyteDB yet, do so first by following the [Quick sta
   </li>
 <!--
   <li >
-    <a href="/latest/explore/auto-sharding-docker" class="nav-link active">
+    <a href="/latest/explore/auto-sharding-docker" class="nav-link">
       <i class="fab fa-dockers" aria-hidden="true"></i>
       Docker
     </a>

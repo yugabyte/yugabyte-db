@@ -1,3 +1,36 @@
+---
+title: Two data center (2DC)
+linkTitle: Two data center (2DC)
+description: Two data center (2DC) deployment
+menu:
+  latest:
+    identifier: two-data-centers-linux
+    parent: explore
+    weight: 250
+---
+
+By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. But sometimes asynchronous replication will meet your need for disaster recovery, auditing and compliance, and other applications. For more information, see [Two data center (2DC) deployments](../../architecture/2dc-deployments/) in the Architecture section.
+
+This tutorial simulates a geo-distributed two data center (2DC) deployment using two local YugabyteDB clusters, one representing "Data Center - East" and the other representing "Data Center - West." You can explore unidirectional (master-follower) asynchronous replication and bidirectional (multi-master) asynchronous replication using the `yb-ctl` and `yb-admin` utilities.
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/explore/change-data-capture" class="nav-link">
+      <i class="fab fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/explore/change-data-capture-linux" class="nav-link active">
+      <i class="fab fa-linux" aria-hidden="true"></i>
+      Linux
+    </a>
+  </li>
+
+</ul>
+
 ## Prerequisites
 
 - YugabyteDB is installed and ready for use. If you are new to YugabyteDB, you can create a local YugabyteDB cluster in under five minutes by following the steps in the [Quick start](../../quick-start/install/).

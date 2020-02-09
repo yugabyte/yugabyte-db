@@ -45,14 +45,14 @@ If you haven't installed YugabyteDB yet, do so first by following the [Quick sta
 
   <li >
     <a href="/latest/explore/auto-sharding-docker" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
+      <i class="fab fa-dockers" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
     <a href="/latest/explore/auto-sharding-kubernetes" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
+      <i class="fab fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
