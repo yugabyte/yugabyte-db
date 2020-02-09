@@ -1,3 +1,42 @@
+---
+title: Global distribution
+linkTitle: Global distribution
+description: Global distribution
+aliases:
+  - /explore/global-distribution/
+  - /latest/explore/global-distribution/
+  - /latest/explore/planet-scale/global-distribution/
+menu:
+  latest:
+    identifier: global-distribution-linux
+    parent: explore
+    weight: 220
+---
+
+YugabyteDB can easily be deployed in a globally distributed manner to serve application queries from the region closest to the end users with low latencies as well as to survive any outages to ensure high availability.
+
+This tutorial will simulate AWS regions on a local machine. First, we will deploy YugabyteDB in the `us-west-2` region across multiple availability zones (`a`, `b`, `c`). We will start a key-value workload against this universe. Next, we will change this setup to run across multiple geographic regions in US East (`us-east-1`) and Tokyo (`ap-northeast-1`), with the workload running uninterrupted during the entire transition.
+
+If you haven't installed YugabyteDB yet, do so first by following the [Quick start](../../quick-start/install/) guide.
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/explore/global-distribution" class="nav-link">
+      <i class="fab fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/explore/global-distribution-linux" class="nav-link active">
+      <i class="fab fa-linux" aria-hidden="true"></i>
+      Linux
+    </a>
+  </li>
+
+</ul>
+
 ## 1. Create a multi-zone universe in US West
 
 If you have a previously running local universe, destroy it using the following.
@@ -44,6 +83,7 @@ You should now see some read and write load on the [tablet servers page](http://
 ## 3. Add nodes in US East and Tokyo regions
 
 ### Add new nodes
+
 Add a node in the zone `us-east-1a` of region `us-east-1`. 
 
 ```sh
@@ -76,6 +116,7 @@ You should see that the data as well as the IO gradually moves from the nodes in
 ## 4. Retire old nodes
 
 ### Start new masters
+
 Next we need to move the YB-Master from the old nodes to the new nodes. In order to do so, first start a new masters on the new nodes.
 
 ```sh
@@ -86,10 +127,10 @@ $ ./bin/yb-ctl add_node --master --placement_info "aws.us-east-1.us-east-1a"
 $ ./bin/yb-ctl add_node --master --placement_info "aws.ap-northeast-1.ap-northeast-1a"
 ```
 
-
 ![Add master](/images/ce/online-reconfig-add-masters.png)
 
 ### Remove old masters
+
 Remove the old masters from the masters Raft group. Assuming nodes with IPs 127.0.0.2 and 127.0.0.3 were the two old nodes, run the following commands.
 
 ```sh
@@ -99,7 +140,6 @@ $ ./bin/yb-admin --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100
 ```sh
 $ ./bin/yb-admin --master_addresses 127.0.0.1:7100,127.0.0.3:7100,127.0.0.4:7100,127.0.0.5:7100 change_master_config REMOVE_SERVER 127.0.0.3 7100
 ```
-
 
 ![Add master](/images/ce/online-reconfig-remove-masters.png)
 
