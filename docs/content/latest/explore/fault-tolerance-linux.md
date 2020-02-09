@@ -1,3 +1,55 @@
+---
+title: Fault tolerance
+linkTitle: Fault tolerance
+description: Fault tolerance
+aliases:
+  - /explore/fault-tolerance/
+  - /latest/explore/fault-tolerance/
+  - /latest/explore/cloud-native/fault-tolerance/
+  - /latest/explore/postgresql/fault-tolerance/
+menu:
+  latest:
+    identifier: fault-tolerance-linux
+    parent: explore
+    weight: 215
+---
+
+YugabyteDB can automatically handle failures and therefore provides [high availability](../../architecture/core-functions/high-availability/). You will create YSQL tables with a replication factor of `3` that allows a [fault tolerance](../../architecture/concepts/docdb/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
+
+If you haven't installed YugabyteDB yet, you can create a local YugabyteDB cluster within five minutes by following the [Quick Start](../../quick-start/install/) guide.
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/explore/fault-tolerance" class="nav-link">
+      <i class="fab fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/explore/fault-tolerance-linux" class="nav-link active">
+      <i class="fab fa-linux" aria-hidden="true"></i>
+      Linux
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/explore/fault-tolerance-docker" class="nav-link">
+      <i class="fab fa-dockers" aria-hidden="true"></i>
+      Docker
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/explore/fault-tolerance-kubernetes" class="nav-link">
+      <i class="fab fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+
+</ul>
+
 ## 1. Create a universe
 
 If you have a previously running local universe, destroy it using the following.
