@@ -16,7 +16,7 @@ If you haven't installed YugabyteDB yet, do so first by following the [Quick Sta
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/change-data-capture-macos" class="nav-link">
+    <a href="/latest/explore/change-data-capture" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>

@@ -21,7 +21,7 @@ If you haven't installed YugabyteDB yet, you can get up and running YugabyteDB w
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/linear-scalability-macos" class="nav-link">
+    <a href="/latest/explore/linear-scalability" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>

@@ -23,7 +23,7 @@ If you haven't installed YugabyteDB yet, do so first by following the [Quick Sta
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/follower-reads-macos" class="nav-link active">
+    <a href="/latest/explore/follower-reads" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>

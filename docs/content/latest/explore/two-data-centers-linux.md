@@ -16,7 +16,7 @@ This tutorial simulates a geo-distributed two data center (2DC) deployment using
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/two-data-centers-macos" class="nav-link">
+    <a href="/latest/explore/two-data-centers" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>

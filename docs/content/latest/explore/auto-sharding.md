@@ -30,7 +30,7 @@ If you haven't installed YugabyteDB yet, do so first by following the [Quick sta
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/auto-sharding-macos" class="nav-link active">
+    <a href="/latest/explore/auto-sharding" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
