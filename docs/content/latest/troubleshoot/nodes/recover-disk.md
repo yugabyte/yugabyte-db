@@ -19,7 +19,7 @@ This introduces the possibility of disk failure and recovery issues.
 The tserver automatically detects the disk failure and tries to spread the data on that disk to other healthy nodes in the cluster.
 In a single-zone setup with a replication factor (RF) of `3`: if you started with four nodes or more, 
 then there would be at least three nodes left after one failed. 
-In this case, re-replication is automatically started if a tserver/disk is down for 10 minutes.
+In this case, rereplication is automatically started if a YB-TServer or disk is down for 10 minutes.
 
 In a multi-zone setup with a replication factor (RF) of `3`: YugabyteDB will try to keep one copy of data per zone. 
 In this case, for automatic rereplication of data, a zone needs to have at least two YB-TServers so that if one fails, 
