@@ -21,7 +21,7 @@ In a single-zone setup with a replication factor (RF) of `3`: if you started wit
 then there would be at least three nodes left after one failed. 
 In this case, re-replication is automatically started if a tserver/disk is down for 10 minutes.
 
-In a multi-zone setup with replication-factor 3: YugabyteDB will try to keep one copy of data per zone. 
+In a multi-zone setup with a replication factor (RF) of `3`: YugabyteDB will try to keep one copy of data per zone. 
 In this case, for automatic rereplication of data, a zone needs to have at least two YB-TServers so that if one fails, 
 its data can be rereplicated to the other. Thus, this would mean at least a six-node cluster.
 
