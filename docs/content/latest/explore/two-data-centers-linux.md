@@ -9,14 +9,10 @@ menu:
     weight: 250
 ---
 
-By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. But sometimes asynchronous replication will meet your need for disaster recovery, auditing and compliance, and other applications. For more information, see [Two data center (2DC) deployments](../../architecture/2dc-deployments/) in the Architecture section.
-
-This tutorial simulates a geo-distributed two data center (2DC) deployment using two local YugabyteDB clusters, one representing "Data Center - East" and the other representing "Data Center - West." You can explore unidirectional (master-follower) asynchronous replication and bidirectional (multi-master) asynchronous replication using the `yb-ctl` and `yb-admin` utilities.
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/two-data-centers" class="nav-link">
+    <a href="/latest/explore/two-data-centers-macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
@@ -30,6 +26,10 @@ This tutorial simulates a geo-distributed two data center (2DC) deployment using
   </li>
 
 </ul>
+
+By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. But sometimes asynchronous replication will meet your need for disaster recovery, auditing and compliance, and other applications. For more information, see [Two data center (2DC) deployments](../../architecture/2dc-deployments/) in the Architecture section.
+
+This tutorial simulates a geo-distributed two data center (2DC) deployment using two local YugabyteDB clusters, one representing "Data Center - East" and the other representing "Data Center - West." You can explore unidirectional (master-follower) asynchronous replication and bidirectional (multi-master) asynchronous replication using the `yb-ctl` and `yb-admin` utilities.
 
 ## Prerequisites
 

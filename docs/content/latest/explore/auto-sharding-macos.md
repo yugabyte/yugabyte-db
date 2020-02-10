@@ -11,26 +11,15 @@ aliases:
   - /latest/explore/planet-scale/auto-rebalancing/
 menu:
   latest:
-    identifier: auto-sharding
+    identifier: auto-sharding-macos
     parent: explore
     weight: 225
 ---
 
-YugabyteDB automatically splits user tables into multiple shards, called *tablets*. The primary key for each row in the table uniquely determines the tablet the row lives in. For data distribution purposes, a hash based partitioning scheme is used. Read more about [how sharding works](../../architecture/concepts/docdb/sharding/) in YugabyteDB.
-
-By default, YugabyteDB creates eight tablets per node in the cluster for each table and automatically distributes the data across the various tablets, which in turn are distributed evenly across the nodes. In this tutorial, we will explore how automatic sharding is done internally for tables. The system Redis table works in an identical manner.
-
-We will explore automatic sharding inside YugabyteDB by creating these tables:
-
-- Use a replication factor (RF) of `1`. This will make it easier to understand how automatic sharding is achieved independent of data replication.
-- Insert entries one by one, and examine which how the data gets distributed across the various nodes.
-
-If you haven't installed YugabyteDB yet, do so first by following the [Quick start](../../quick-start/install/) guide.
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/auto-sharding" class="nav-link active">
+    <a href="/latest/explore/auto-sharding-macos" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
@@ -59,6 +48,17 @@ If you haven't installed YugabyteDB yet, do so first by following the [Quick sta
   </li>
 -->
 </ul>
+
+YugabyteDB automatically splits user tables into multiple shards, called *tablets*. The primary key for each row in the table uniquely determines the tablet the row lives in. For data distribution purposes, a hash based partitioning scheme is used. Read more about [how sharding works](../../architecture/concepts/docdb/sharding/) in YugabyteDB.
+
+By default, YugabyteDB creates eight tablets per node in the cluster for each table and automatically distributes the data across the various tablets, which in turn are distributed evenly across the nodes. In this tutorial, we will explore how automatic sharding is done internally for tables. The system Redis table works in an identical manner.
+
+We will explore automatic sharding inside YugabyteDB by creating these tables:
+
+- Use a replication factor (RF) of `1`. This will make it easier to understand how automatic sharding is achieved independent of data replication.
+- Insert entries one by one, and examine which how the data gets distributed across the various nodes.
+
+If you haven't installed YugabyteDB yet, do so first by following the [Quick start](../../quick-start/install/) guide.
 
 ## 1. Create a universe
 

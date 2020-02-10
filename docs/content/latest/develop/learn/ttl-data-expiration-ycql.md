@@ -17,7 +17,7 @@ isTocNested: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/develop/learn/ttl-data-expiration" class="nav-link">
+    <a href="/latest/develop/learn/ttl-data-expiration-ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>

@@ -2,11 +2,6 @@
 title: Linear scalability
 linkTitle: Linear scalability
 description: Linear scalability
-aliases:
-  - /explore/linear-scalability/
-  - /latest/explore/linear-scalability/
-  - /latest/explore/cloud-native/linear-scalability/
-  - /latest/explore/postgresql/linear-scalability/
 menu:
   latest:
     identifier: linear-scalability-kubernetes
@@ -14,14 +9,10 @@ menu:
     weight: 210
 ---
 
-With YugabyteDB, you can add nodes to scale your cluster up very efficiently and reliably in order to achieve more read and write IOPS (input/output operations per second). In this tutorial, you will look at how YugabyteDB can scale while a workload is running. You will run a read-write workload using the prepackaged [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) against a 3-node local cluster with a replication factor of 3, and add nodes to it while the workload is running. Next, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
-
-If you haven't installed YugabyteDB yet, you can get up and running YugabyteDB within five minutes by following the steps in the [Quick start](../../quick-start/install/).
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/linear-scalability" class="nav-link">
+    <a href="/latest/explore/linear-scalability-macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
@@ -49,6 +40,10 @@ If you haven't installed YugabyteDB yet, you can get up and running YugabyteDB w
   </li>
 
 </ul>
+
+With YugabyteDB, you can add nodes to scale your cluster up very efficiently and reliably in order to achieve more read and write IOPS (input/output operations per second). In this tutorial, you will look at how YugabyteDB can scale while a workload is running. You will run a read-write workload using the prepackaged [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) against a 3-node local cluster with a replication factor of 3, and add nodes to it while the workload is running. Next, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
+
+If you haven't installed YugabyteDB yet, you can get up and running YugabyteDB within five minutes by following the steps in the [Quick start](../../quick-start/install/).
 
 ## 1. Create universe
 

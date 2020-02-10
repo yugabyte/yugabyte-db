@@ -16,7 +16,7 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/develop/learn/date-and-time" class="nav-link active">
+    <a href="/latest/develop/learn/date-and-time-ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -31,4 +31,4 @@ showAsideToc: true
 
 </ul>
 
-Coming soon.
+YCQL content coming soon.

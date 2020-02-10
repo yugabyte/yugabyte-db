@@ -6,7 +6,7 @@ aliases:
   - /latest/explore/transactional/json-documents/
 menu:
   latest:
-    identifier: data-types
+    identifier: data-types-ysql
     parent: learn
     weight: 565
 ---
@@ -14,14 +14,14 @@ menu:
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/develop/learn/batch-operations" class="nav-link active">
+    <a href="/latest/develop/learn/data-types" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/develop/learn/batch-operations-ycql" class="nav-link">
+    <a href="/latest/develop/learn/data-types-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -29,4 +29,4 @@ menu:
 
 </ul>
 
-Coming soon.
+YSQL content coming soon.

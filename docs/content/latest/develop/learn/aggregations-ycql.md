@@ -1,10 +1,10 @@
-
 ---
 title: 5. Aggregations
 linkTitle: 5. Aggregations
 description: Aggregations
 aliases:
   - /develop/learn/aggregations/
+  - /latest/develop/learn/aggregations/
 menu:
   latest:
     identifier: aggregations-ycql
@@ -15,7 +15,7 @@ menu:
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/develop/learn/aggregations" class="nav-link">
+    <a href="/latest/develop/learn/aggregations-ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -60,7 +60,6 @@ INSERT INTO store.products (ProductID, ProductName, SupplierID, CategoryID, Unit
 INSERT INTO store.products (ProductID, ProductName, SupplierID, CategoryID, Unit, Price, Quantity) VALUES (4, 'Chef Anton''s Cajun Seasoning', 2, 2, '48 - 6 oz jars', 22, 9);
 INSERT INTO store.products (ProductID, ProductName, SupplierID, CategoryID, Unit, Price, Quantity) VALUES (5, 'Chef Anton''s Gumbo Mix', 2, 2, '36 boxes', 21.35, 40);
 ```
-
 
 ## Counts
 

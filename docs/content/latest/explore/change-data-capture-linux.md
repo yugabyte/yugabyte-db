@@ -9,14 +9,10 @@ menu:
     weight: 249
 ---
 
-[Change data capture (CDC)](../../architecture/cdc-architecture) can be used to asynchronously stream data changes from a YugabyteDB cluster to external systems like message queues and OLAP warehouses. The data changes in YugabyteDB are detected, captured, and then output to the specified target.  In the steps below, you will use a local YugabyteDB cluster to stream data changes to `stdout` using the CDC API.
-
-If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../quick-start/install/) guide.
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/change-data-capture" class="nav-link">
+    <a href="/latest/explore/change-data-capture-macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
@@ -30,6 +26,10 @@ If you haven't installed YugabyteDB yet, do so first by following the [Quick Sta
   </li>
 
 </ul>
+
+[Change data capture (CDC)](../../architecture/cdc-architecture) can be used to asynchronously stream data changes from a YugabyteDB cluster to external systems like message queues and OLAP warehouses. The data changes in YugabyteDB are detected, captured, and then output to the specified target.  In the steps below, you will use a local YugabyteDB cluster to stream data changes to `stdout` using the CDC API.
+
+If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../quick-start/install/) guide.
 
 ## Prerequisites
 

@@ -2,8 +2,6 @@
 title: Observability with Prometheus
 linkTitle: Observability 
 description: Observability with Prometheus
-aliases:
-  - /latest/explore/cloud-native/observability/
 menu:
   latest:
     identifier: observability-linux
@@ -11,17 +9,10 @@ menu:
     weight: 240
 ---
 
-You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time-series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint.
-
-For details on the metrics targets for YugabyteDB, see [Monitoring with Prometheus](../../reference/configuration/default-ports/#monitoring-with-prometheus).
-
-If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../quick-start/install/) guide.
-
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/observability" class="nav-link">
+    <a href="/latest/explore/observability-macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
@@ -49,6 +40,12 @@ If you haven't installed YugabyteDB yet, do so first by following the [Quick Sta
   </li>
 -->
 </ul>
+
+You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time-series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint.
+
+For details on the metrics targets for YugabyteDB, see [Monitoring with Prometheus](../../reference/configuration/default-ports/#monitoring-with-prometheus).
+
+If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../quick-start/install/) guide.
 
 ## Prerequisite
 

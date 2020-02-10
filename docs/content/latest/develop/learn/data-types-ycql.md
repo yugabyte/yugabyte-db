@@ -4,6 +4,7 @@ linkTitle: 3. Data types
 description: Data types
 aliases:
   - /develop/learn/data-types/
+  - /latest/develop/learn/data-types/
   - /latest/explore/transactional/json-documents/
 menu:
   latest:
@@ -15,14 +16,14 @@ menu:
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/develop/learn/batch-operations" class="nav-link">
+    <a href="/latest/develop/learn/data-types-ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/develop/learn/batch-operations-ycql" class="nav-link active">
+    <a href="/latest/develop/learn/data-types-ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

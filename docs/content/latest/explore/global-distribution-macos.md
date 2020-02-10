@@ -8,21 +8,15 @@ aliases:
   - /latest/explore/planet-scale/global-distribution/
 menu:
   latest:
-    identifier: global-distribution
+    identifier: global-distribution-macos
     parent: explore
     weight: 220
 ---
 
-YugabyteDB can easily be deployed in a globally distributed manner to serve application queries from the region closest to the end users with low latencies as well as to survive any outages to ensure high availability.
-
-This tutorial will simulate AWS regions on a local machine. First, we will deploy YugabyteDB in the `us-west-2` region across multiple availability zones (`a`, `b`, `c`). We will start a key-value workload against this universe. Next, we will change this setup to run across multiple geographic regions in US East (`us-east-1`) and Tokyo (`ap-northeast-1`), with the workload running uninterrupted during the entire transition.
-
-If you haven't installed YugabyteDB yet, do so first by following the [Quick start](../../quick-start/install/) guide.
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/global-distribution" class="nav-link active">
+    <a href="/latest/explore/global-distribution-macos" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
@@ -36,6 +30,12 @@ If you haven't installed YugabyteDB yet, do so first by following the [Quick sta
   </li>
 
 </ul>
+
+YugabyteDB can easily be deployed in a globally distributed manner to serve application queries from the region closest to the end users with low latencies as well as to survive any outages to ensure high availability.
+
+This tutorial will simulate AWS regions on a local machine. First, we will deploy YugabyteDB in the `us-west-2` region across multiple availability zones (`a`, `b`, `c`). We will start a key-value workload against this universe. Next, we will change this setup to run across multiple geographic regions in US East (`us-east-1`) and Tokyo (`ap-northeast-1`), with the workload running uninterrupted during the entire transition.
+
+If you haven't installed YugabyteDB yet, do so first by following the [Quick start](../../quick-start/install/) guide.
 
 ## 1. Create a multi-zone universe in US West
 
