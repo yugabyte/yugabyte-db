@@ -34,14 +34,13 @@ If you haven't installed YugabyteDB yet, do so first by following the [Quick Sta
       Linux
     </a>
   </li>
-<!--
+
   <li >
     <a href="/latest/explore/observability-docker" class="nav-link">
       <i class="fab fa-dockers" aria-hidden="true"></i>
       Docker
     </a>
   </li>
--->
 <!--
   <li >
     <a href="/latest/explore/observability-kubernetes" class="nav-link">

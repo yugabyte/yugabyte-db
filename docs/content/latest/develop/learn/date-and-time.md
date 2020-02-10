@@ -6,7 +6,7 @@ menu:
   latest:
     parent: learn
     name: 7. Date and time
-    identifier: learn-date-and-time
+    identifier: date-and-time
     weight: 569
 type: page
 isTocNested: true
