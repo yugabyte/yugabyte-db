@@ -22,9 +22,14 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
+import static org.yb.Common.TableType;
+
+import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.Master.ListTablesResponsePB.TableInfo;
@@ -48,6 +53,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     public long schedulingFrequency = 0L;
     public String cronExpression = null;
     public String keyspace = null;
+    public List<UUID> tableUUIDList = new ArrayList<UUID>();
     public boolean sse = false;
   }
 
@@ -75,25 +81,49 @@ public class MultiTableBackup extends UniverseTaskBase {
       String certificate = universe.getCertificate();
       YBClient client = null;
       List<BackupTableParams> tableBackupParams = new ArrayList<>();
+      Set<UUID> tableSet = new HashSet<UUID>(params().tableUUIDList);
       try {
         client = ybService.getClient(masterAddresses, certificate);
-        ListTablesResponse response = client.getTablesList(null, true, params().keyspace);
-        List<TableInfo> tableInfoList = response.getTableInfoList();
-        for (TableInfo table : tableInfoList) {
-          String tableKeySpace = table.getNamespace().getName().toString();
-          BackupTableParams backupParams = new BackupTableParams();
-          backupParams.keyspace = tableKeySpace;
-          backupParams.tableName = table.getName();
-          String tableUUID = table.getId().toStringUtf8();
-          backupParams.tableUUID = getUUIDRepresentation(tableUUID);
-          backupParams.actionType = BackupTableParams.ActionType.CREATE;
-          backupParams.storageConfigUUID = params().storageConfigUUID;
-          backupParams.universeUUID = params().universeUUID;
-          backupParams.sse = params().sse;
-          tableBackupParams.add(backupParams);
-          LOG.info("Queuing backup for table {}:{}", tableKeySpace, table.getName());
-
+        // If user specified the list of tables, only get info for those tables.
+        if (tableSet.size() != 0) {
+          for (UUID tableUUID : tableSet) {
+            GetTableSchemaResponse tableSchema = client.getTableSchemaByUUID(
+                tableUUID.toString().replace("-", ""));
+            // If table is not REDIS or YCQL, ignore.
+            if (tableSchema.getTableType() == TableType.PGSQL_TABLE_TYPE ||
+                tableSchema.getTableType() == TableType.TRANSACTION_STATUS_TABLE_TYPE) {
+              continue;
+            }
+            BackupTableParams backupParams = populateBackupParams(tableSchema.getNamespace(),
+                                                                  tableSchema.getTableName(),
+                                                                  tableUUID);
+            tableBackupParams.add(backupParams);
+            LOG.info("Queuing backup for table {}:{}", backupParams.keyspace,
+                     backupParams.tableName);
+          }
         }
+        // If user did not specify tables, that means we need to backup all tables.
+        else {
+          ListTablesResponse response = client.getTablesList(null, true, params().keyspace);
+          List<TableInfo> tableInfoList = response.getTableInfoList();
+          for (TableInfo table : tableInfoList) {
+            TableType tableType = table.getTableType();
+            String tableUUIDString = table.getId().toStringUtf8();
+            UUID tableUUID = getUUIDRepresentation(tableUUIDString);
+            // If table is not REDIS or YCQL, ignore.
+            if (tableType == TableType.PGSQL_TABLE_TYPE ||
+                tableType == TableType.TRANSACTION_STATUS_TABLE_TYPE) {
+              continue;
+            }
+            String tableKeySpace = table.getNamespace().getName().toString();
+            BackupTableParams backupParams = populateBackupParams(tableKeySpace,
+                                                                  table.getName(),
+                                                                  tableUUID);
+            tableBackupParams.add(backupParams);
+            LOG.info("Queuing backup for table {}:{}", backupParams.keyspace,
+                   backupParams.tableName);
+            }
+          }
         ybService.closeClient(client, masterAddresses);
       } catch (Exception e) {
         LOG.error("Failed to get list of tables in universe " + params().universeUUID, e);
@@ -130,5 +160,18 @@ public class MultiTableBackup extends UniverseTaskBase {
       updateBackupState(false);
     }
     LOG.info("Finished {} task.", getName());
+  }
+
+  private BackupTableParams populateBackupParams(String tableKeySpace, String tableName,
+                                                 UUID tableUUID) {
+    BackupTableParams backupParams = new BackupTableParams();
+    backupParams.keyspace = tableKeySpace;
+    backupParams.tableUUID = tableUUID;
+    backupParams.tableName = tableName;
+    backupParams.actionType = BackupTableParams.ActionType.CREATE;
+    backupParams.storageConfigUUID = params().storageConfigUUID;
+    backupParams.universeUUID = params().universeUUID;
+    backupParams.sse = params().sse;
+    return backupParams;
   }
 }
