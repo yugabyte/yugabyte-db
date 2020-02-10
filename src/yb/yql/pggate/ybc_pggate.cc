@@ -59,7 +59,7 @@ YBCStatus ExtractValueFromResult(const Result<T>& result, T* value) {
 //--------------------------------------------------------------------------------------------------
 extern "C" {
 
-void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count) {
+void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count, PgCallbacks pg_callbacks) {
   InitThreading();
 
   CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
@@ -67,7 +67,7 @@ void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count) {
   YBCInitFlags();
 
   pgapi_shutdown_done.exchange(false);
-  pgapi = new pggate::PgApiImpl(YBCDataTypeTable, count);
+  pgapi = new pggate::PgApiImpl(YBCDataTypeTable, count, pg_callbacks);
   VLOG(1) << "PgGate open";
 }
 
@@ -440,12 +440,12 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
   return ToYBCStatus(pgapi->DmlFetch(handle, natts, values, isnulls, syscols, has_data));
 }
 
-YBCStatus YBCPgStartBufferingWriteOperations() {
-  return ToYBCStatus(pgapi->StartBufferingWriteOperations());
+YBCStatus YBCPgStartOperationsBuffering() {
+  return ToYBCStatus(pgapi->StartOperationsBuffering());
 }
 
-YBCStatus YBCPgFlushBufferedWriteOperations() {
-  return ToYBCStatus(pgapi->FlushBufferedWriteOperations());
+YBCStatus YBCPgFlushBufferedOperations() {
+  return ToYBCStatus(pgapi->FlushBufferedOperations());
 }
 
 YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count) {

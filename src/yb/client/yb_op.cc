@@ -107,8 +107,6 @@ YBRedisOp::YBRedisOp(const shared_ptr<YBTable>& table)
     : YBOperation(table) {
 }
 
-YBRedisOp::~YBRedisOp() {}
-
 RedisResponsePB* YBRedisOp::mutable_response() {
   if (!redis_response_) {
     redis_response_.reset(new RedisResponsePB());
@@ -130,8 +128,6 @@ OpGroup YBRedisReadOp::group() {
 YBRedisWriteOp::YBRedisWriteOp(const shared_ptr<YBTable>& table)
     : YBRedisOp(table), redis_write_request_(new RedisWriteRequestPB()) {
 }
-
-YBRedisWriteOp::~YBRedisWriteOp() {}
 
 size_t YBRedisWriteOp::space_used_by_request() const {
   return redis_write_request_->ByteSizeLong();
@@ -160,8 +156,6 @@ Status YBRedisWriteOp::GetPartitionKey(std::string *partition_key) const {
 YBRedisReadOp::YBRedisReadOp(const shared_ptr<YBTable>& table)
     : YBRedisOp(table), redis_read_request_(new RedisReadRequestPB()) {
 }
-
-YBRedisReadOp::~YBRedisReadOp() {}
 
 size_t YBRedisReadOp::space_used_by_request() const {
   return redis_read_request_->SpaceUsedLong();
@@ -566,8 +560,6 @@ YBPgsqlReadOp::YBPgsqlReadOp(const shared_ptr<YBTable>& table)
       yb_consistency_level_(YBConsistencyLevel::STRONG) {
 }
 
-YBPgsqlReadOp::~YBPgsqlReadOp() {}
-
 YBPgsqlReadOp *YBPgsqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
   YBPgsqlReadOp *op = new YBPgsqlReadOp(table);
   PgsqlReadRequestPB *req = op->mutable_request();
@@ -697,9 +689,6 @@ Result<QLRowBlock> YBPgsqlReadOp::MakeRowBlock() const {
 
 YBNoOp::YBNoOp(YBTable* table)
   : table_(table) {
-}
-
-YBNoOp::~YBNoOp() {
 }
 
 Status YBNoOp::Execute(const YBPartialRow& key) {

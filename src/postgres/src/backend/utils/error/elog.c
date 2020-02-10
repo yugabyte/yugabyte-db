@@ -3232,7 +3232,7 @@ send_message_to_frontend(ErrorData *edata)
 			err_sendstring(&msgbuf, edata->hint);
 		}
 
-		if (edata->context)
+		if (edata->context && !(IsYugaByteEnabled() && edata->hide_ctx))
 		{
 			pq_sendbyte(&msgbuf, PG_DIAG_CONTEXT);
 			err_sendstring(&msgbuf, edata->context);
