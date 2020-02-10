@@ -26,7 +26,7 @@ In this case, for automatic rereplication of data, a zone needs to have at least
 its data can be re-replicated to the other. Thus, this would mean at least a 6 node cluster.
 
 ## Failed disk replacement
-The procedure to replace a failed disk is in order:
+The steps to replace a failed disk are:
 
 1. Stop the tserver
 2. Replace the disk(s) that have failed
