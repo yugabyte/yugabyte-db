@@ -27,14 +27,14 @@ menu:
 
   <li >
     <a href="/latest/explore/fault-tolerance-docker" class="nav-link">
-      <i class="fab fa-dockers" aria-hidden="true"></i>
+      <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
     <a href="/latest/explore/fault-tolerance-kubernetes" class="nav-link active">
-      <i class="fab fa-cubes" aria-hidden="true"></i>
+      <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
