@@ -54,6 +54,5 @@ cqlsh:example> DROP INDEX users_by_name;
 
 ## See also
 
-[`CREATE TABLE`](../ddl_create_table)
-[`CREATE INDEX`](../ddl_create_index)
-[Other CQL Statements](..)
+- [`CREATE TABLE`](../ddl_create_table)
+- [`CREATE INDEX`](../ddl_create_index)

@@ -63,8 +63,7 @@ yugabyte=# DROP ROLE John;
 
 ## See also
 
-[`ALTER ROLE`](../dcl_alter_role)
-[`CREATE ROLE`](../dcl_create_role)
-[`GRANT`](../dcl_grant)
-[`REVOKE`](../dcl_revoke)
-[Other YSQL Statements](..)
+- [`ALTER ROLE`](../dcl_alter_role)
+- [`CREATE ROLE`](../dcl_create_role)
+- [`GRANT`](../dcl_grant)
+- [`REVOKE`](../dcl_revoke)

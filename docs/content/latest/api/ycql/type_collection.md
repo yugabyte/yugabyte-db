@@ -250,4 +250,4 @@ cqlsh:example> SELECT * FROM users;
 
 ## See also
 
-[Data Types](..#data-types)
+- [Data types](..#data-types)
