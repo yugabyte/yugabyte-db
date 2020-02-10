@@ -1818,7 +1818,8 @@ Status Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexes,
     TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
   }
-  DVLOG(3) << __PRETTY_FUNCTION__;
+  LOG(INFO) << "Begin BackfillIndexes at " << read_time << " for "
+            << yb::ToString(indexes);
 
   // For the specific index that we are interested in, set up a scan job to scan all the
   // rows in this tablet and update the index accordingly.
@@ -1870,7 +1871,10 @@ Status Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexes,
     RETURN_NOT_OK(UpdateIndexInBatches(row, indexes, &index_requests));
   }
   VLOG(1) << "Processed " << num_rows << " rows";
-  return FlushIndexBatchIfRequired(&index_requests, /* forced */ true);
+  RETURN_NOT_OK(FlushIndexBatchIfRequired(&index_requests, /* forced */ true));
+  LOG(INFO) << "Done BackfillIndexes at " << read_time << " for "
+            << yb::ToString(indexes);
+  return Status::OK();
 }
 
 Status Tablet::UpdateIndexInBatches(
@@ -1940,7 +1944,9 @@ Status Tablet::FlushIndexBatchIfRequired(
     write_ops.push_back(index_op);
   }
 
-  VLOG(1) << "Flushing " << ops_by_primary_key.size() << " ops to the index";
+  VLOG(1) << Format("Flushing $0 ops to the index",
+                    (!ops_by_primary_key.empty() ? ops_by_primary_key.size()
+                                                 : write_ops.size()));
   RETURN_NOT_OK_PREPEND(session->Flush(), "Flush failed.");
   VLOG(3) << "Done flushing ops to the index";
   for (auto write_op : write_ops) {

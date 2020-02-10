@@ -135,6 +135,9 @@ Status RetryingTSRpcTask::Run() {
 
   const Status s = ResetTSProxy();
   if (!s.ok()) {
+    if (RescheduleWithBackoffDelay()) {
+      return Status::OK();
+    }
     if (PerformStateTransition(MonitoredTaskState::kWaiting, MonitoredTaskState::kFailed)) {
       UnregisterAsyncTask();  // May delete this.
       return s.CloneAndPrepend("Failed to reset TS proxy");
@@ -241,7 +244,9 @@ int RetryingTSRpcTask::max_delay_ms() {
 
 bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
   auto task_state = state();
-  if (task_state != MonitoredTaskState::kRunning) {
+  if (task_state != MonitoredTaskState::kRunning &&
+      // Allow kWaiting for task(s) that have never successfully ResetTSProxy().
+      task_state != MonitoredTaskState::kWaiting) {
     if (task_state != MonitoredTaskState::kComplete) {
       LOG_WITH_PREFIX(INFO) << "No reschedule for this task";
     }
@@ -259,7 +264,7 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
     LOG(WARNING) << "Reached maximum number of retries ("
                  << attempt_threshold << ") for request " << description()
                  << ", task=" << this << " state=" << state();
-    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kFailed);
+    TransitionToTerminalState(task_state, MonitoredTaskState::kFailed);
     return false;
   }
 
@@ -281,7 +286,7 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
 
   if (delay_millis <= 0) {
     LOG_WITH_PREFIX(WARNING) << "Request timed out";
-    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kFailed);
+    TransitionToTerminalState(task_state, MonitoredTaskState::kFailed);
   } else {
     MonoTime new_start_time = now;
     new_start_time.AddDelta(MonoDelta::FromMilliseconds(delay_millis));
@@ -289,7 +294,8 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
               << state() << " with a delay of " << delay_millis
               << "ms (attempt = " << attempt_ << ")...";
 
-    if (!PerformStateTransition(MonitoredTaskState::kRunning, MonitoredTaskState::kScheduling)) {
+    if (!PerformStateTransition(task_state,
+                                MonitoredTaskState::kScheduling)) {
       LOG_WITH_PREFIX(WARNING) << "Unable to mark this task as MonitoredTaskState::kScheduling";
       return false;
     }
@@ -536,7 +542,9 @@ AsyncAlterTable::AsyncAlterTable(Master *master,
     tablet_(tablet) {
 }
 
-string AsyncAlterTable::description() const { return tablet_->ToString() + type_name() + " RPC"; }
+string AsyncAlterTable::description() const {
+  return tablet_->ToString() + " " + type_name() + " RPC";
+}
 
 TabletId AsyncAlterTable::tablet_id() const {
   return tablet_->tablet_id();
