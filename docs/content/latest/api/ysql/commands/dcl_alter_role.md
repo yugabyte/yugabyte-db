@@ -70,7 +70,6 @@ Because MD5-encrypted passwords use the role name as cryptographic salt, renamin
 
 `ALTER ROLE SET | RESET config_param` is used to change role's session default for a configuration variable, either for all databases or, when the IN DATABASE clause is specified, only for sessions in the named database. If ALL is specified instead of a role name, this changes the setting for all roles.
 
-
 ## Examples
 
 - Change a role's password.
@@ -93,8 +92,7 @@ yugabyte=# ALTER ROLE Jane SET default_transaction_isolation='serializable';
 
 ## See also
 
-[`CREATE ROLE`](../dcl_create_role)
-[`DROP ROLE`](../dcl_drop_role)
-[`GRANT`](../dcl_grant)
-[`REVOKE`](../dcl_revoke)
-[Other YSQL Statements](..)
+- [`CREATE ROLE`](../dcl_create_role)
+- [`DROP ROLE`](../dcl_drop_role)
+- [`GRANT`](../dcl_grant)
+- [`REVOKE`](../dcl_revoke)

@@ -1,7 +1,7 @@
 ---
 title: BLOB
 summary: Binary strings of variable length
-description: BLOB Type
+description: BLOB type
 menu:
   latest:
     parent: api-cassandra
@@ -67,4 +67,4 @@ cqlsh:example> SELECT * FROM messages;
 
 ## See also
 
-[Data Types](..#data-types)
+- [Data types](..#data-types)

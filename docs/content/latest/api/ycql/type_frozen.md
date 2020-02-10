@@ -64,4 +64,4 @@ cqlsh:example> SELECT * FROM directory;
 
 ## See also
 
-[Data Types](..#data-types)
+- [Data Types](..#data-types)

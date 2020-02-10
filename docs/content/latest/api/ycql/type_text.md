@@ -1,7 +1,7 @@
 ---
 title: TEXT
 summary: String of Unicode characters
-description: TEXT Type
+description: TEXT type
 menu:
   latest:
     parent: api-cassandra
@@ -67,4 +67,4 @@ cqlsh:example> SELECT * FROM users;
 
 ## See also
 
-[Data Types](..#data-types)
+- [Data types](..#data-types)

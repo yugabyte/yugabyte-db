@@ -42,7 +42,7 @@ Users, roles, and groups allow administrators to verify whether a particular use
 
 Users and roles can be created with superuser, non-superuser, and login privileges, and the roles that users have are used to determine what access privileges are available. Administrators can create users and roles using the [`CREATE ROLE`](../../../api/ysql/commands/dcl_create_role/) statement (or its alias, [`CREATE USER`](../../../api/ysql/commands/dcl_create_user/)). After users and roles have been created, [`ALTER ROLE`](../../../api/ysql/commands/dcl_alter_role/) and [`DROP ROLE`](../../../api/ysql/commands/dcl_drop_role/) statements are used to change or remove users and roles.
 
-YSQL authorization is the process of access control created by granting or revoking privileges to YSQL users and roles, see [Authorization](../authorization). Privileges are managed using [`GRANT`](../../../api/ysql/commands/dcl_grant/), [`REVOKE`](../../../api/ysql/commands/dcl_revoke/), [`CREATE ROLE`](../../../api/ysql/commands/dcl_create_role/), [`ALTER ROLE`](../../../api/ysql/commands/dcl_alter_role/), and [`DROP ROLE`](../../../api/ysql/commands/dcl_drop_role/).
+YSQL authorization is the process of access control created by granting or revoking privileges to YSQL users and roles, see [Authorization](../../authorization). Privileges are managed using [`GRANT`](../../../api/ysql/commands/dcl_grant/), [`REVOKE`](../../../api/ysql/commands/dcl_revoke/), [`CREATE ROLE`](../../../api/ysql/commands/dcl_create_role/), [`ALTER ROLE`](../../../api/ysql/commands/dcl_alter_role/), and [`DROP ROLE`](../../../api/ysql/commands/dcl_drop_role/).
 
 ## Specify default user password
 

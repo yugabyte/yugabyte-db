@@ -45,7 +45,7 @@ Use the `EXPLAIN` statement to show the execution plan for an statement. If the 
 
 ## Semantics
 
-Where statement is the target statement (see more [here](../dml)).
+Where statement is the target statement (see more [here](../dml_select)).
 
 ### ANALYZE
 

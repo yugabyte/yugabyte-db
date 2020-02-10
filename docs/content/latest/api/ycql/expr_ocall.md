@@ -1,7 +1,7 @@
 ---
-title: Operator Call
+title: Operator call
 summary: Compounding expression using operators.
-description: Built-in Operator Call
+description: Built-in operator call
 menu:
   latest:
     parent: api-cassandra
@@ -53,4 +53,4 @@ An expression with operators is a compound expression that combines multiple exp
 
 ## See also
 
-[All Expressions](..#expressions)
+- [All Expressions](..#expressions)

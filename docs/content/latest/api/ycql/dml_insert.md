@@ -257,9 +257,9 @@ cqlsh:foo> SELECT * FROM employees;
 
 ## See also
 
-[`CREATE TABLE`](../ddl_create_table)
-[`DELETE`](../dml_delete)
-[`SELECT`](../dml_select)
-[`UPDATE`](../dml_update)
-[`Expression`](..#expressions)
-[Other CQL Statements](..)
+- [`CREATE TABLE`](../ddl_create_table)
+- [`DELETE`](../dml_delete)
+- [`SELECT`](../dml_select)
+- [`UPDATE`](../dml_update)
+- [`Expression`](..#expressions)
+

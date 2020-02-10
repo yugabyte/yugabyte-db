@@ -69,7 +69,6 @@ yugabyte=# REVOKE ALL ON DATABASE yugabyte FROM John;
 
 ## See also
 
-[`CREATE ROLE`](../dcl_create_role)
-[`GRANT`](../dcl_grant)
-[`REVOKE`](../dcl_revoke)
-[Other YSQL Statements](..)
+- [`CREATE ROLE`](../dcl_create_role)
+- [`GRANT`](../dcl_grant)
+- [`REVOKE`](../dcl_revoke)
