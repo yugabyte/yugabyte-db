@@ -1,5 +1,5 @@
 ---
-title: Disk Failure
+title: Disk failure
 linkTitle: Disk Failure
 description: Recover failing disk
 aliases:
@@ -33,4 +33,3 @@ The procedure to replace a failed disk is in order:
 3. Restart the tserver
 
 On restart, the tserver will see the new empty disk and start replicating tablets from other nodes.
-
