@@ -1,7 +1,7 @@
 ---
-title: Integer & Counter
+title: Integer and counter types
 summary: Signed integers of different ranges
-description: Integer & Counter Types
+description: Integer and counter types
 menu:
   latest:
     parent: api-cassandra
@@ -111,4 +111,4 @@ cqlsh:example> SELECT * FROM item_counters;
 
 ## See also
 
-[Data Types](..#data-types)
+- [Data types](..#data-types)

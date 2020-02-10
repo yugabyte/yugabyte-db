@@ -50,7 +50,6 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 | [UUID](../function_datetime/#uuid) | [`UUID`](../type_uuid) | () | Returns a version 4 UUID |
 | [WriteTime](#writetime-function) | [`BIGINT`](../type_int) | (\<AnyType>) | Returns the timestamp when the column was written |
 
-
 ## Aggregate Functions
 
 | Function | Description |
@@ -92,7 +91,8 @@ CAST function converts the value returned from a table column to the specified d
 
 The `WriteTime` function returns the timestamp in microseconds when a column was written.
 For example, suppose we have a table `page_views` with a column named `views`:
-```
+
+```sql
  SELECT writetime(views) FROM page_views;
 
  writetime(views)
@@ -103,9 +103,11 @@ For example, suppose we have a table `page_views` with a column named `views`:
 ```
 
 ## TTL function
+
 The TTL function returns the number of seconds until a column or row expires. 
 Assuming we have a table `page_views` and a column named `views`:
-```
+
+```sql
 SELECT TTL(views) FROM page_views;
 
  ttl(views)
@@ -114,7 +116,6 @@ SELECT TTL(views) FROM page_views;
 
 (1 rows)
 ```
-
 
 ## Examples
 
@@ -138,4 +139,4 @@ cqlsh:example> SELECT CAST(ts AS DATE) FROM test_cast;
 
 ## See also
 
-[All Expressions](..##expressions)
+- [All Expressions](..##expressions)

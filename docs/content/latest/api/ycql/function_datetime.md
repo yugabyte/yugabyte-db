@@ -336,7 +336,6 @@ cqlsh:example> SELECT uuid() FROM test_uuid;
 
 ## See also
 
-[`DATE`, `TIME` and `TIMESTAMP`](../type_datetime)
-[`TIMEUUID`](../type_uuid)
-[`UUID`](../type_uuid)
-[Other CQL Statements](..)
+- [`DATE`, `TIME` and `TIMESTAMP`](../type_datetime)
+- [`TIMEUUID`](../type_uuid)
+- [`UUID`](../type_uuid)
