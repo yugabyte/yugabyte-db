@@ -28,7 +28,7 @@ its data can be re-replicated to the other. Thus, this would mean at least a 6 n
 ## Failed disk replacement
 The steps to replace a failed disk are:
 
-1. Stop the tserver
+1. Stop the YB-TServer node.
 2. Replace the disk(s) that have failed
 3. Restart the tserver
 
