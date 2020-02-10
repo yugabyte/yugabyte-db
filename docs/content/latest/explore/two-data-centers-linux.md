@@ -16,14 +16,14 @@ This tutorial simulates a geo-distributed two data center (2DC) deployment using
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/change-data-capture" class="nav-link">
+    <a href="/latest/explore/two-data-centers" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/change-data-capture-linux" class="nav-link active">
+    <a href="/latest/explore/two-data-centers-linux" class="nav-link active">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
@@ -47,7 +47,7 @@ Create and start your first local cluster that will simulate "Data Center - East
 $ ./bin/yb-ctl create --data_dir /Users/yugabyte_user/yugabyte/yb-datacenter-east --ip_start 1
 ```
 
-This will start up a 1-node local cluster using the IP address of `127.0.0.1:7100` and create `yb-datacenter-east` as the data directory. Upon starting, you should see a screen like the following.
+This will start up a one-node local cluster using the IP address of `127.0.0.1:7100` and create `yb-datacenter-east` as the data directory. Upon starting, you should see a screen like the following.
 
 ```
 Creating cluster.
@@ -70,7 +70,7 @@ Create and start your second local cluster that will simulate "Data Center = Wes
 $ ./bin/yb-ctl create --data_dir /Users/yugabyte_user/yugabyte/yb-datacenter-west --ip_start 2
 ```
 
-This will start up a 1-node cluster using IP address of `127.0.0.2` and create `yb-datacenter-west` as the data directory. Upon starting, you should see a screen like the following.
+This will start up a one-node cluster using IP address of `127.0.0.2` and create `yb-datacenter-west` as the data directory. Upon starting, you should see a screen like the following.
 
 ```
 Creating cluster.

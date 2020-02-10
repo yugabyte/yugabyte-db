@@ -35,14 +35,14 @@ If you haven't installed YugabyteDB yet, you can get up and running YugabyteDB w
   </li>
 
   <li >
-    <a href="/latest/explore/auto-sharding-docker" class="nav-link active">
+    <a href="/latest/explore/linear-scalability-docker" class="nav-link active">
       <i class="fab fa-dockers" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/auto-sharding-kubernetes" class="nav-link">
+    <a href="/latest/explore/linear-scalability-kubernetes" class="nav-link">
       <i class="fab fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>

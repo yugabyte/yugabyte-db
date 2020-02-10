@@ -45,13 +45,13 @@ If you have a previously running local universe, destroy it using the following.
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local universe with replication factor 3, and each replica placed in different zones (`us-west-2a`, `us-west-2b`, `us-west-2c`) in the `us-west-2` (Oregon) region of AWS. This can be done by running the following: 
+Start a new local universe with a replication factor (RF) of `3`, and each replica placed in different zones (`us-west-2a`, `us-west-2b`, `us-west-2c`) in the `us-west-2` (Oregon) region of AWS. This can be done by running the following:
 
 ```sh
 $ ./bin/yb-ctl --rf 3 create --placement_info "aws.us-west-2.us-west-2a,aws.us-west-2.us-west-2b,aws.us-west-2.us-west-2c"
 ```
 
-In this deployment, the YB Masters are each placed in a separate zone to allow them to survive the loss of a zone. You can view the masters on the [dashboard](http://localhost:7000/).
+In this deployment, the YB-Masters are each placed in a separate zone to allow them to survive the loss of a zone. You can view the masters on the [dashboard](http://localhost:7000/).
 
 ![Multi-zone universe masters](/images/ce/online-reconfig-multi-zone-masters.png)
 
@@ -131,7 +131,7 @@ $ ./bin/yb-ctl add_node --master --placement_info "aws.ap-northeast-1.ap-northea
 
 ### Remove old masters
 
-Remove the old masters from the masters Raft group. Assuming nodes with IPs 127.0.0.2 and 127.0.0.3 were the two old nodes, run the following commands.
+Remove the old masters from the masters Raft group. Assuming nodes with IPs `127.0.0.2` and `127.0.0.3` were the two old nodes, run the following commands.
 
 ```sh
 $ ./bin/yb-admin --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100,127.0.0.4:7100,127.0.0.5:7100 change_master_config REMOVE_SERVER 127.0.0.2 7100
