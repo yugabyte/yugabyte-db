@@ -202,6 +202,7 @@ log "YB_DOWNLOAD_THIRDPARTY=$YB_DOWNLOAD_THIRDPARTY"
 # -------------------------------------------------------------------------------------------------
 
 set_build_root
+set_common_test_paths
 
 # As soon as we know build root, we need to do the necessary workspace cleanup.
 if is_jenkins; then
@@ -270,7 +271,6 @@ find_make_or_ninja_and_update_cmake_opts
 log "YB_USE_NINJA=$YB_USE_NINJA"
 log "YB_NINJA_PATH=${YB_NINJA_PATH:-undefined}"
 
-set_common_test_paths
 set_java_home
 
 export YB_DISABLE_LATEST_SYMLINK=1
