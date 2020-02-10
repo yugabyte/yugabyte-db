@@ -2,6 +2,9 @@
 title: 4. ACID transactions
 linkTitle: 4. ACID transactions
 description: ACID transactions
+aliases:
+  - /latest/explore/transactional/acid-transactions/
+  - /latest/develop/learn/acid-transactions/
 menu:
   latest:
     identifier: acid-transactions-ysql

@@ -4,6 +4,7 @@ linkTitle: 3. Data types
 description: Data types
 aliases:
   - /latest/explore/transactional/json-documents/
+  - /latest/develop/learn/data-types/
 menu:
   latest:
     identifier: data-types-ysql

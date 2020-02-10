@@ -2,9 +2,6 @@
 title: 9. TTL for data expiration
 linkTitle: 9. TTL for data expiration
 description: TTL for data expiration
-aliases:
-  - /develop/learn/ttl-data-expiry/
-  - /latest/develop/learn/ttl-data-expiration/
 menu:
   latest:
     identifier: ttl-data-expiration-ycql

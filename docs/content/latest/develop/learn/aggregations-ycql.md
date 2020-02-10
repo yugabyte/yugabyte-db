@@ -2,9 +2,6 @@
 title: 5. Aggregations
 linkTitle: 5. Aggregations
 description: Aggregations
-aliases:
-  - /develop/learn/aggregations/
-  - /latest/develop/learn/aggregations/
 menu:
   latest:
     identifier: aggregations-ycql

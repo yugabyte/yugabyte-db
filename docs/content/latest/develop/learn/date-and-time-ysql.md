@@ -2,6 +2,9 @@
 title: 7. Date and time
 linkTitle: 7. Date and time
 description: Date and time
+aliases:
+  - /latest/explore/date-and-time/
+  - /latest/develop/learn/date-and-time/
 menu:
   latest:
     parent: learn

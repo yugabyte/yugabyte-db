@@ -4,7 +4,7 @@ linkTitle: Observability
 description: Observability with Prometheus
 aliases:
   - /latest/explore/cloud-native/observability/
-  - /latest/explore/observability
+  - /latest/explore/observability/
 menu:
   latest:
     identifier: observability-macos

@@ -2,10 +2,6 @@
 title: 3. Data types
 linkTitle: 3. Data types
 description: Data types
-aliases:
-  - /develop/learn/data-types/
-  - /latest/develop/learn/data-types/
-  - /latest/explore/transactional/json-documents/
 menu:
   latest:
     identifier: data-types-ycql
