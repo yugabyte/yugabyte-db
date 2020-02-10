@@ -16,7 +16,7 @@ YugabyteDB can be configured to use multiple storage disks by setting the [`--fs
 This introduces the possibility of disk failure and recovery issues.
 
 ## Cluster replication recovery
-The tserver automatically detects the disk failure and tries to spread the data on that disk to other healthy nodes in the cluster.
+The `yb-tserver` service automatically detects disk failures and attempts to spread the data from the failed disk to other healthy nodes in the cluster.
 In a single-zone setup with a replication factor (RF) of `3`: if you started with four nodes or more, 
 then there would be at least three nodes left after one failed. 
 In this case, rereplication is automatically started if a YB-TServer or disk is down for 10 minutes.
