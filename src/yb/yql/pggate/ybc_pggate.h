@@ -27,7 +27,7 @@ extern "C" {
 
 // This must be called exactly once to initialize the YB/PostgreSQL gateway API before any other
 // functions in this API are called.
-void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count);
+void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count, YBCPgCallbacks pg_callbacks);
 void YBCDestroyPgGate();
 
 //--------------------------------------------------------------------------------------------------
@@ -290,8 +290,8 @@ YBCStatus YBCPgDmlBuildYBTupleId(YBCPgStatement handle, const YBCPgAttrValueDesc
 
 
 // Buffer write operations.
-YBCStatus YBCPgStartBufferingWriteOperations();
-YBCStatus YBCPgFlushBufferedWriteOperations();
+YBCStatus YBCPgStartOperationsBuffering();
+YBCStatus YBCPgFlushBufferedOperations();
 
 // INSERT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgOid database_oid,

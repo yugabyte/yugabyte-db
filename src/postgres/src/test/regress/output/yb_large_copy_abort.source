@@ -20,8 +20,7 @@ COPY airports FROM '@abs_builddir@/data/airport-codes.csv' CSV HEADER;
 DELETE FROM airports WHERE ident != '9LA6';
 -- should fail with duplicate key error
 COPY airports FROM '@abs_builddir@/data/airport-codes.csv' CSV HEADER;
-ERROR:  Already present: : : Duplicate key found in primary key or unique index
-CONTEXT:  COPY airports, line 10001: ""
+ERROR:  duplicate key value violates unique constraint "airports_pkey"
 -- table should just have one row
 SELECT COUNT(*) FROM airports;
  count

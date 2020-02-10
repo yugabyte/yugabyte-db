@@ -105,10 +105,6 @@ extern void YBCUpdateSysCatalogTuple(Relation rel,
 									 HeapTuple oldtuple,
 									 HeapTuple tuple);
 
-// Buffer write operations.
-extern void YBCStartBufferingWriteOperations();
-extern void YBCFlushBufferedWriteOperations();
-
 //------------------------------------------------------------------------------
 // Utility methods.
 

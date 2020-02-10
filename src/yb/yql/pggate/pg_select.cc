@@ -47,8 +47,9 @@ Status PgSelect::Prepare() {
   }
 
   // Allocate READ/SELECT operation.
-  auto doc_op = make_shared<PgDocReadOp>(pg_session_, table_desc_);
-  read_req_ = doc_op->GetTemplateOp().mutable_request();
+  auto read_op = table_desc_->NewPgsqlSelect();
+  auto doc_op = make_shared<PgDocReadOp>(pg_session_, table_desc_->num_hash_key_columns(), read_op);
+  read_req_ = read_op->mutable_request();
   if (index_id_.IsValid()) {
     index_req_ = read_req_->mutable_index_request();
     index_req_->set_table_id(index_id_.GetYBTableId());
@@ -234,7 +235,9 @@ Status PgSelect::Exec(const PgExecParameters *exec_params) {
   RETURN_NOT_OK(UpdateBindPBs());
 
   // Set execution control parameters.
-  doc_op_->SetExecParams(exec_params);
+  if (exec_params) {
+    doc_op_->SetExecParams(*exec_params);
+  }
 
   // Set column references in protobuf and whether query is aggregate.
   SetColumnRefIds(table_desc_, read_req_->mutable_column_refs());

@@ -270,15 +270,16 @@ Status PgDml::Fetch(int32_t natts,
     int64_t row_count = 0;
     // Keep reading untill we either reach the end or get some rows.
     while (row_count == 0) {
-      if (VERIFY_RESULT(doc_op_->EndOfResult())) {
+      // Read from cache.
+      auto result = VERIFY_RESULT(doc_op_->GetResult());
+      if (!result.empty()) {
+        row_batch_ = std::move(result);
+        RETURN_NOT_OK(PgDocData::LoadCache(row_batch_, &row_count, &cursor_));
+      } else {
         // To be compatible with Postgres code, memset output array with 0.
         *has_data = false;
         return Status::OK();
       }
-
-      // Read from cache.
-      RETURN_NOT_OK(doc_op_->GetResult(&row_batch_));
-      RETURN_NOT_OK(PgDocData::LoadCache(row_batch_, &row_count, &cursor_));
     }
 
     accumulated_row_count_ += row_count;

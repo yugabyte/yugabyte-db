@@ -59,7 +59,7 @@ class PggateOptions : public yb::server::ServerBaseOptions {
 // Implements support for CAPI.
 class PgApiImpl {
  public:
-  PgApiImpl(const YBCPgTypeEntity *YBCDataTypeTable, int count);
+  PgApiImpl(const YBCPgTypeEntity *YBCDataTypeTable, int count, YBCPgCallbacks pg_callbacks);
   virtual ~PgApiImpl();
 
   //------------------------------------------------------------------------------------------------
@@ -311,8 +311,8 @@ class PgApiImpl {
   //   - API for "group_by_expr"
 
   // Buffer write operations.
-  CHECKED_STATUS StartBufferingWriteOperations();
-  CHECKED_STATUS FlushBufferedWriteOperations();
+  CHECKED_STATUS StartOperationsBuffering();
+  CHECKED_STATUS FlushBufferedOperations();
 
   //------------------------------------------------------------------------------------------------
   // Insert.
@@ -446,6 +446,8 @@ class PgApiImpl {
   std::unordered_map<int, const YBCPgTypeEntity *> type_map_;
 
   scoped_refptr<PgSession> pg_session_;
+
+  YBCPgCallbacks pg_callbacks_;
 };
 
 }  // namespace pggate
