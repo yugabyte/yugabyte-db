@@ -2,8 +2,6 @@
 title: 6. Batch operations
 linkTitle: 6. Batch operations
 description: Batch operations
-aliases:
-  - /develop/learn/batch-operations/
 menu:
   latest:
     identifier: batch-operations

@@ -3,7 +3,6 @@ title: 4. ACID transactions
 linkTitle: 4. ACID transactions
 description: ACID transactions
 aliases:
-  - /develop/learn/acid-transactions/
   - /latest/explore/transactional/acid-transactions/
 menu:
   latest:
