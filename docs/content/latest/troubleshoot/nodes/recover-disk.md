@@ -17,7 +17,7 @@ This introduces the possibility of disk failure and recovery issues.
 
 ## Cluster replication recovery
 The tserver automatically detects the disk failure and tries to spread the data on that disk to other healthy nodes in the cluster.
-In a single-zone setup with replication factor 3: if you started with 4 nodes or more, 
+In a single-zone setup with a replication factor (RF) of `3`: if you started with four nodes or more, 
 then there would be at least three nodes left after one failed. 
 In this case, re-replication is automatically started if a tserver/disk is down for 10 minutes.
 
