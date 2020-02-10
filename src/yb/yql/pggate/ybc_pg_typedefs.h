@@ -224,6 +224,10 @@ typedef struct PgAttrValueDescriptor {
   const YBCPgTypeEntity *type_entity;
 } YBCPgAttrValueDescriptor;
 
+typedef struct PgCallbacks {
+  void (*FetchUniqueConstraintName)(YBCPgOid, char*, size_t);
+} YBCPgCallbacks;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

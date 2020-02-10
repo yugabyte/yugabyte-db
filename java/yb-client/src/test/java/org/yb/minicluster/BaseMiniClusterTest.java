@@ -15,6 +15,9 @@ package org.yb.minicluster;
 
 import com.google.common.base.Preconditions;
 import com.google.common.net.HostAndPort;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.slf4j.Logger;
@@ -22,10 +25,15 @@ import org.slf4j.LoggerFactory;
 import org.yb.BaseYBTest;
 import org.yb.client.TestUtils;
 
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
+import java.util.Set;
 import java.util.TreeMap;
 
 import static org.yb.AssertionWrappers.fail;
@@ -239,6 +247,103 @@ public class BaseMiniClusterTest extends BaseYBTest {
       miniCluster = null;
     }
   }
+
+  // Get metrics of all tservers.
+  protected Map<MiniYBDaemon, Metrics> getAllMetrics() throws Exception {
+    Map<MiniYBDaemon, Metrics> initialMetrics = new HashMap<>();
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      Metrics metrics = new Metrics(ts.getLocalhostIP(),
+          ts.getCqlWebPort(),
+          "server");
+      initialMetrics.put(ts, metrics);
+    }
+    return initialMetrics;
+  }
+
+  // Get IO metrics of all tservers.
+  protected Map<MiniYBDaemon, IOMetrics> getTSMetrics() throws Exception {
+    Map<MiniYBDaemon, IOMetrics> initialMetrics = new HashMap<>();
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
+          ts.getCqlWebPort(),
+          "server"));
+      initialMetrics.put(ts, metrics);
+    }
+    return initialMetrics;
+  }
+
+  // Get combined IO metrics of all tservers since a certain point.
+  protected IOMetrics getCombinedMetrics(Map<MiniYBDaemon, IOMetrics> initialMetrics)
+      throws Exception {
+    IOMetrics totalMetrics = new IOMetrics();
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
+          ts.getCqlWebPort(),
+          "server"))
+          .subtract(initialMetrics.get(ts));
+      LOG.info("Metrics of " + ts.toString() + ": " + metrics.toString());
+      totalMetrics.add(metrics);
+    }
+    LOG.info("Total metrics: " + totalMetrics.toString());
+    return totalMetrics;
+  }
+
+  private Set<String> getTabletIds(String tableUUID)  throws Exception {
+    return miniCluster.getClient().getTabletUUIDs(
+        miniCluster.getClient().openTableByUUID(tableUUID));
+  }
+
+  protected int getTableCounterMetricByTableUUID(String tableUUID,
+                                                 String metricName) throws Exception {
+    int value = 0;
+    Set<String> tabletIds = getTabletIds(tableUUID);
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      try {
+        URL url = new URL(String.format("http://%s:%d/metrics",
+            ts.getLocalhostIP(),
+            ts.getWebPort()));
+        Scanner scanner = new Scanner(url.openConnection().getInputStream());
+        JsonParser parser = new JsonParser();
+        JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
+        for (JsonElement elem : tree.getAsJsonArray()) {
+          JsonObject obj = elem.getAsJsonObject();
+          if (obj.get("type").getAsString().equals("tablet") &&
+              tabletIds.contains(obj.get("id").getAsString())) {
+            value += new Metrics(obj).getCounter(metricName).value;
+          }
+        }
+      } catch (MalformedURLException e) {
+        throw new InternalError(e.getMessage());
+      }
+    }
+    return value;
+  }
+
+  protected RocksDBMetrics getRocksDBMetricByTableUUID(String tableUUID) throws Exception {
+    Set<String> tabletIds = getTabletIds(tableUUID);
+    RocksDBMetrics metrics = new RocksDBMetrics();
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      try {
+        URL url = new URL(String.format("http://%s:%d/metrics",
+            ts.getLocalhostIP(),
+            ts.getWebPort()));
+        Scanner scanner = new Scanner(url.openConnection().getInputStream());
+        JsonParser parser = new JsonParser();
+        JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
+        for (JsonElement elem : tree.getAsJsonArray()) {
+          JsonObject obj = elem.getAsJsonObject();
+          if (obj.get("type").getAsString().equals("tablet") &&
+              tabletIds.contains(obj.get("id").getAsString())) {
+            metrics.add(new RocksDBMetrics(new Metrics(obj)));
+          }
+        }
+      } catch (MalformedURLException e) {
+        throw new InternalError(e.getMessage());
+      }
+    }
+    return metrics;
+  }
+
 
   @AfterClass
   public static void tearDownAfterClass() throws Exception {

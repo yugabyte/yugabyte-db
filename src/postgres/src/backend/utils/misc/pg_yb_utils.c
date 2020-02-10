@@ -211,16 +211,22 @@ YBShouldReportErrorStatus()
 	return cached_value;
 }
 
-char* DupYBStatusMessage(YBCStatus status) {
+char* DupYBStatusMessage(YBCStatus status, bool message_only) {
   const char* code_as_cstring = YBCStatusCodeAsCString(status);
   size_t code_strlen = strlen(code_as_cstring);
 	size_t status_len = YBCStatusMessageLen(status);
-	char* msg_buf = palloc(code_strlen + status_len + 3);
+	size_t sz = code_strlen + status_len + 3;
+	if (message_only) {
+		sz -= 2 + code_strlen;
+	}
+	char* msg_buf = palloc(sz);
 	char* pos = msg_buf;
-	memcpy(msg_buf, code_as_cstring, code_strlen);
-	pos += code_strlen;
-	*pos++ = ':';
-	*pos++ = ' ';
+	if (!message_only) {
+		memcpy(msg_buf, code_as_cstring, code_strlen);
+		pos += code_strlen;
+		*pos++ = ':';
+		*pos++ = ' ';
+	}
 	memcpy(pos, YBCStatusMessageBegin(status), status_len);
 	pos[status_len] = 0;
 	return msg_buf;
@@ -233,18 +239,19 @@ HandleYBStatus(YBCStatus status)
     return;
   }
 	/* Copy the message to the current memory context and free the YBCStatus. */
-	char* msg_buf = DupYBStatusMessage(status);
+	const uint32_t pg_err_code = YBCStatusPgsqlError(status);
+	char* msg_buf = DupYBStatusMessage(status, pg_err_code == ERRCODE_UNIQUE_VIOLATION);
 
 	if (YBShouldReportErrorStatus()) {
 		YBC_LOG_ERROR("HandleYBStatus: %s", msg_buf);
 	}
-	const uint32_t pg_err_code  = YBCStatusPgsqlError(status);
 	const uint16_t txn_err_code = YBCStatusTransactionError(status);
 	YBCFreeStatus(status);
 	ereport(ERROR,
 			(errmsg("%s", msg_buf),
 			 errcode(pg_err_code),
-			 yb_txn_errcode(txn_err_code)));
+			 yb_txn_errcode(txn_err_code),
+			 errhidecontext(true)));
 }
 
 void
@@ -292,6 +299,33 @@ HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table)
 	HandleYBStatus(status);
 }
 
+/*
+ * Fetches relation's unique constraint name to specified buffer.
+ * If relation is not an index and it has primary key the name of primary key index is returned.
+ * In other cases, relation name is used.
+ */
+static void
+FetchUniqueConstraintName(Oid relation_id, char* dest, size_t max_size)
+{
+	// strncat appends source to destination, so destination must be empty.
+	dest[0] = 0;
+	Relation rel = RelationIdGetRelation(relation_id);
+
+	if (!rel->rd_index && rel->rd_pkindex != InvalidOid)
+	{
+		Relation pkey = RelationIdGetRelation(rel->rd_pkindex);
+
+		strncat(dest, RelationGetRelationName(pkey), max_size);
+
+		RelationClose(pkey);
+	} else
+	{
+		strncat(dest, RelationGetRelationName(rel), max_size);
+	}
+
+	RelationClose(rel);
+}
+
 void
 YBInitPostgresBackend(
 	const char *program_name,
@@ -312,7 +346,9 @@ YBInitPostgresBackend(
 		const YBCPgTypeEntity *type_table;
 		int count;
 		YBCGetTypeTable(&type_table, &count);
-		YBCInitPgGate(type_table, count);
+		YBCPgCallbacks callbacks;
+		callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
+		YBCInitPgGate(type_table, count, callbacks);
 		YBCInstallTxnDdlHook();
 
 		/*
@@ -377,7 +413,7 @@ YBCHandleCommitError()
 {
 	YBCStatus status = ybc_commit_status;
 	if (status != NULL) {
-    char* msg = DupYBStatusMessage(status);
+		char* msg = DupYBStatusMessage(status, false /* message_only */);
 		YBCResetCommitStatus();
 		ereport(ERROR,
 				(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),

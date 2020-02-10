@@ -119,7 +119,7 @@ PggateOptions::PggateOptions() {
 
 //--------------------------------------------------------------------------------------------------
 
-PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count)
+PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count, YBCPgCallbacks callbacks)
     : metric_registry_(new MetricRegistry()),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(), "yb.pggate")),
       mem_tracker_(MemTracker::CreateTracker("PostgreSQL")),
@@ -137,7 +137,8 @@ PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count)
                          messenger_holder_.messenger.get()),
       clock_(new server::HybridClock()),
       tserver_shared_object_(InitTServerSharedObject()),
-      pg_txn_manager_(new PgTxnManager(&async_client_init_, clock_, tserver_shared_object_.get())) {
+      pg_txn_manager_(new PgTxnManager(&async_client_init_, clock_, tserver_shared_object_.get())),
+      pg_callbacks_(callbacks) {
   CHECK_OK(clock_->Init());
 
   // Setup type mapping.
@@ -178,8 +179,12 @@ Status PgApiImpl::DestroyEnv(PgEnv *pg_env) {
 Status PgApiImpl::InitSession(const PgEnv *pg_env,
                               const string& database_name) {
   CHECK(!pg_session_);
-  auto session = make_scoped_refptr<PgSession>(
-      client(), database_name, pg_txn_manager_, clock_, tserver_shared_object_.get());
+  auto session = make_scoped_refptr<PgSession>(client(),
+                                               database_name,
+                                               pg_txn_manager_,
+                                               clock_,
+                                               tserver_shared_object_.get(),
+                                               pg_callbacks_);
   if (!database_name.empty()) {
     RETURN_NOT_OK(session->ConnectDatabase(database_name));
   }
@@ -673,12 +678,12 @@ Status PgApiImpl::DmlBuildYBTupleId(PgStatement *handle, const PgAttrValueDescri
   return Status::OK();
 }
 
-Status PgApiImpl::StartBufferingWriteOperations() {
-  return pg_session_->StartBufferingWriteOperations();
+Status PgApiImpl::StartOperationsBuffering() {
+  return pg_session_->StartOperationsBuffering();
 }
 
-Status PgApiImpl::FlushBufferedWriteOperations() {
-  return pg_session_->FlushBufferedWriteOperations();
+Status PgApiImpl::FlushBufferedOperations() {
+  return pg_session_->FlushBufferedOperations();
 }
 
 Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count) {
@@ -688,11 +693,12 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_cou
     case StmtOp::STMT_DELETE:
     case StmtOp::STMT_TRUNCATE:
       {
-        Status status = down_cast<PgDmlWrite *>(handle)->Exec();
+        auto dml_write = down_cast<PgDmlWrite *>(handle);
+        RETURN_NOT_OK(dml_write->Exec(rows_affected_count != nullptr /* force_non_bufferable */));
         if (rows_affected_count) {
-          *rows_affected_count = down_cast<PgDmlWrite *>(handle)->GetRowsAffectedCount();
+          *rows_affected_count = dml_write->GetRowsAffectedCount();
         }
-        return status;
+        return Status::OK();
       }
     default:
       break;

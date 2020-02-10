@@ -25,10 +25,6 @@ set(PGGATE_SRCS
     pg_api_example.cc
     pg_dml.cc
     pg_dml_write.cc
-    pg_insert.cc
-    pg_update.cc
-    pg_delete.cc
-    pg_truncate_colocated.cc
     pg_select.cc
     pg_expr.cc
     pg_column.cc

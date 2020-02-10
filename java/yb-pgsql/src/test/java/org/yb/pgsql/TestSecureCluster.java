@@ -15,20 +15,19 @@ package org.yb.pgsql;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
+import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
-import java.sql.Statement;
-import java.util.*;
+import java.util.Map;
 
 // This test tests node to node encryption only.
 // Postgres connections to t-server and master are encrypted as well.
 // But postgres client connections are not encrypted.
 // Some extra work required to adopt BasePgSQLTest for using encrypted connection.
 // Encrypted client connections are tested in pg_wrapper-test test now.
-@RunWith(value=YBTestRunner.class)
+@RunWith(value= YBTestRunnerNonTsanOnly.class)
 public class TestSecureCluster extends BasePgSQLTest {
   private String certsDir = null;
 
@@ -43,9 +42,7 @@ public class TestSecureCluster extends BasePgSQLTest {
 
   @Test
   public void testConnection() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      createSimpleTable("test", "v");
-    }
+    createSimpleTable("test", "v");
   }
 
   @Override

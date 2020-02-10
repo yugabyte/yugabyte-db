@@ -1160,17 +1160,25 @@ public class YBClient implements AutoCloseable {
 
   /**
    * Get the list of tablet UUIDs of a table with the given name.
+   * @param table table info.
+   * @return the set of tablet UUIDs of the table.
+   */
+  public Set<String> getTabletUUIDs(final YBTable table) throws Exception {
+    Set<String> ids = new HashSet<>();
+    for (LocatedTablet tablet : table.getTabletsLocations(getDefaultAdminOperationTimeoutMs())) {
+      ids.add(new String(tablet.getTabletId()));
+    }
+    return ids;
+  }
+
+  /**
+   * Get the list of tablet UUIDs of a table with the given name.
    * @param keyspace the keyspace name to which the table belongs.
    * @param name the table name
    * @return the set of tablet UUIDs of the table.
    */
   public Set<String> getTabletUUIDs(final String keyspace, final String name) throws Exception {
-    Set<String> ids = new HashSet<>();
-    YBTable table = openTable(keyspace, name);
-    for (LocatedTablet tablet : table.getTabletsLocations(getDefaultAdminOperationTimeoutMs())) {
-      ids.add(new String(tablet.getTabletId()));
-    }
-    return ids;
+    return getTabletUUIDs(openTable(keyspace, name));
   }
 
   /**

@@ -104,7 +104,7 @@ Status PgDmlWrite::DeleteEmptyPrimaryBinds() {
   return Status::OK();
 }
 
-Status PgDmlWrite::Exec() {
+Status PgDmlWrite::Exec(bool force_non_bufferable) {
   // Delete allocated binds that are not associated with a value.
   // YBClient interface enforce us to allocate binds for primary key columns in their indexing
   // order, so we have to allocate these binds before associating them with values. When the values
@@ -126,18 +126,27 @@ Status PgDmlWrite::Exec() {
 
   // Execute the statement. If the request has been sent, get the result and handle any rows
   // returned.
-  if (VERIFY_RESULT(doc_op_->Execute()) == RequestSent::kTrue) {
-     RETURN_NOT_OK(doc_op_->GetResult(&row_batch_));
-     if (!row_batch_.empty()) {
+  if (VERIFY_RESULT(doc_op_->Execute(force_non_bufferable)) == RequestSent::kTrue) {
+     auto result = VERIFY_RESULT(doc_op_->GetResult());
+     if (!result.empty()) {
        int64_t row_count = 0;
+       row_batch_ = std::move(result);
        RETURN_NOT_OK(PgDocData::LoadCache(row_batch_, &row_count, &cursor_));
        accumulated_row_count_ += row_count;
      }
      // Save the number of rows affected by the op.
-     rows_affected_count_ = doc_op_->GetRowsAffectedCount();
+     rows_affected_count_ = VERIFY_RESULT(doc_op_->GetRowsAffectedCount());
   }
 
   return Status::OK();
+}
+
+void PgDmlWrite::AllocWriteRequest() {
+  client::YBPgsqlWriteOp* wop = AllocWriteOperation();
+  DCHECK(wop);
+  wop->set_is_single_row_txn(is_single_row_txn_);
+  write_req_ = wop->mutable_request();
+  doc_op_ = make_shared<PgDocWriteOp>(pg_session_, table_id_, wop);
 }
 
 PgsqlExpressionPB *PgDmlWrite::AllocColumnBindPB(PgColumn *col) {

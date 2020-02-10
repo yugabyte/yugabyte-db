@@ -25,6 +25,13 @@ DECLARE_string(test_leave_files);
 
 namespace yb {
 namespace pggate {
+namespace {
+
+extern "C" void FetchUniqueConstraintName(PgOid relation_id, char* dest, size_t max_size) {
+  CHECK(false) << "Not implemented";
+}
+
+} // namespace
 
 PggateTest::PggateTest() {
 }
@@ -86,7 +93,9 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   const YBCPgTypeEntity *type_table = nullptr;
   int count = 0;
   YBCTestGetTypeTable(&type_table, &count);
-  YBCInitPgGate(type_table, count);
+  YBCPgCallbacks callbacks;
+  callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
+  YBCInitPgGate(type_table, count, callbacks);
 
   // Don't try to connect to tserver shared memory in pggate tests.
   FLAGS_pggate_ignore_tserver_shm = true;
