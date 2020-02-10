@@ -7,8 +7,8 @@ aliases:
   - /latest/troubleshoot/cluster/connect-ycql/
 menu:
   latest:
-    parent: troubleshoot-cluster
-    weight: 822
+    parent: troubleshoot-query-layer
+    weight: 732
 isTocNested: true
 showAsideToc: true
 ---

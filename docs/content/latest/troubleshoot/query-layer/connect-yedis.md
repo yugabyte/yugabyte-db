@@ -7,8 +7,8 @@ aliases:
   - /latest/troubleshoot/cluster/connect-yedis/
 menu:
   latest:
-    parent: troubleshoot-cluster
-    weight: 824
+    parent: troubleshoot-query-layer
+    weight: 734
 isTocNested: true
 showAsideToc: true
 ---

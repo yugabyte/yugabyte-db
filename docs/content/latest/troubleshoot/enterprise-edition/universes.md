@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: troubleshoot-universes
     parent: troubleshoot-enterprise-edition
-    weight: 853
+    weight: 792
 isTocNested: true
 showAsideToc: true
 ---

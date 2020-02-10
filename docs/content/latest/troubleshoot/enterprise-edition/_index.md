@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: troubleshoot-enterprise-edition
     parent: troubleshoot
-    weight: 850
+    weight: 790
 ---
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">

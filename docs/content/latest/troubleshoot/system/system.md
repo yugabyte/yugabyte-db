@@ -1,13 +1,14 @@
 ---
-title: System statistics
-linkTitle: System statistics
-description: Check system statistics
+title: System stats
+linkTitle: System stats
+description: System stats
 aliases:
-  - /troubleshoot/nodes/check-stats/
+  - /troubleshoot/system/
 menu:
   latest:
-    parent: troubleshoot-nodes
-    weight: 846
+    identifier: troubleshoot-system
+    parent: troubleshoot
+    weight: 740
 isTocNested: true
 showAsideToc: true
 ---
@@ -64,3 +65,31 @@ YugabyteDB provides web endpoints where the current state of each process is agg
 | CQL Metrics | `<node-ip>:12000/metrics` |
 
 _Note that, when running `yb-ctl` locally with default settings, it will create three local ips `127.0.0.1`, `127.0.0.2`, and `127.0.0.3`, one for each YugabyteDB node._
+
+<!-- WIP: add more details
+
+## User login
+`yugabyte`
+`centos`
+
+## Relevant system logs
+`/var/log/messages`
+`/var/log/audit/`
+
+## Disk
+`iostat`
+`df -h`
+
+## Memory and cpu
+`top`
+`atop`
+
+## Network
+`nc`
+`netstat`
+`tcpdump`
+
+## Perf profiling
+`sudo perf record -ag`
+`sudo perf report`
+-->

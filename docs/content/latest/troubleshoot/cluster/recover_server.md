@@ -8,7 +8,7 @@ aliases:
 menu:
   latest:
     parent: troubleshoot-cluster
-    weight: 828
+    weight: 782
 isTocNested: true
 showAsideToc: true
 ---

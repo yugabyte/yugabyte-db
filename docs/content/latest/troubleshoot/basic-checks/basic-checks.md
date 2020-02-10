@@ -1,20 +1,21 @@
 ---
-title: Check processes
-linkTitle: Check processes
-description: Check YugabyteDB processes
+title: Basic checks
+linkTitle: Basic checks
+description: Basic checks
 aliases:
-  - /troubleshoot/nodes/check-processes/
+  - /troubleshoot/basic-checks/
 menu:
   latest:
-    parent: troubleshoot-nodes
-    weight: 842
+    identifier: troubleshoot-basic-checks
+    parent: troubleshoot
+    weight: 710
 isTocNested: true
 showAsideToc: true
 ---
 
 ## 1. Are the YugabyteDB processes running?
 
-Connect to the local node where YugabyteDB is running. 
+Connect to the local node where YugabyteDB is running.
 
 On the local setup, this is your local machine (or a Docker instance running on your local machine). On a multi-node cluster, you may need to `ssh` into the machines where the YugabyteDB nodes are running.
 
@@ -38,7 +39,7 @@ Once the processes are running, if they are not accessible from your client mach
 
 ## 2. Are the yb-master and yb-tserver endpoints accessible?
 
-Generally, the endpoints are: 
+Generally, the endpoints are:
 
 |      Description |                       URL |
 |------------------|---------------------------|
@@ -72,3 +73,12 @@ sudo firewall-cmd --zone=public --add-port=9300/tcp;
 sudo firewall-cmd --zone=public --add-port=9042/tcp;
 sudo firewall-cmd --zone=public --add-port=6379/tcp;
 ```
+
+<!-- WIP
+## 3. Are all the servers connected in the cluster
+### Masters
+Screenshot from master leader UI home page.
+
+### Tservers
+Screenshot from master leader /tablet-servers UI.
+-->
