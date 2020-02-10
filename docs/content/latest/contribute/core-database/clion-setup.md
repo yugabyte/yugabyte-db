@@ -22,7 +22,7 @@ There are two options for build systems that you can use with YugabyteDB, `cmake
 
 #### Configure a CLion project for YugabyteDB:
 
-1. Use “File / Open…” to open the project root directory.
+1. Click **File > Open…** to open the project root directory.
 2. Put build/debug-clang-dynamic (or build/debug-clang-dynamic-ninja if you want to use ninja) as a “Generation path” in “Preferences/Build, Execution, Deployment/CMake”: 
 If you want to build with ninja, use build/debug-clang-dynamic-ninja as a generation path and add -G Ninja into “CMake options”:    
     
