@@ -61,7 +61,7 @@ Use your [local cluster](../quick-start/) to explore all the core features of Yu
     <a class="section-link icon-offset" href="auto-sharding/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/auto_sharding.png" aria-hidden="true" />        
-        <div class="title">Auto-sharding and rebalancing</div>
+        <div class="title">Auto-sharding</div>
       </div>
       <div class="body">
         Purpose-built for large, ever-growing datasets.
