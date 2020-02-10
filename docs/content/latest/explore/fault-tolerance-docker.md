@@ -21,7 +21,7 @@ If you haven't installed YugabyteDB yet, you can create a local YugabyteDB clust
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/fault-tolerance" class="nav-link">
+    <a href="/latest/explore/fault-tolerance-macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>

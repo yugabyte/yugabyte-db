@@ -25,7 +25,7 @@ Use your [local cluster](../quick-start/) to explore all the core features of Yu
 
 <div class="row">
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="linear-scalability/">
+    <a class="section-link icon-offset" href="linear-scalability-macos/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
         <div class="title">Linear scalability</div>
@@ -36,7 +36,7 @@ Use your [local cluster](../quick-start/) to explore all the core features of Yu
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="fault-tolerance/">
+    <a class="section-link icon-offset" href="fault-tolerance-macos/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
         <div class="title">Fault tolerance</div>
@@ -47,7 +47,7 @@ Use your [local cluster](../quick-start/) to explore all the core features of Yu
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="global-distribution/">
+    <a class="section-link icon-offset" href="global-distribution-macos/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />        
         <div class="title">Global distribution</div>
@@ -58,7 +58,7 @@ Use your [local cluster](../quick-start/) to explore all the core features of Yu
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="auto-sharding/">
+    <a class="section-link icon-offset" href="auto-sharding-macos/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/auto_sharding.png" aria-hidden="true" />        
         <div class="title">Auto-sharding</div>
@@ -69,7 +69,7 @@ Use your [local cluster](../quick-start/) to explore all the core features of Yu
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="follower-reads/">
+    <a class="section-link icon-offset" href="follower-reads-macos/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />       
         <div class="title">Follower reads</div>
@@ -80,7 +80,7 @@ Use your [local cluster](../quick-start/) to explore all the core features of Yu
     </a>
   </div>
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="observability/">
+    <a class="section-link icon-offset" href="observability-macos/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
         <div class="title">Observabililty</div>
@@ -91,7 +91,7 @@ Use your [local cluster](../quick-start/) to explore all the core features of Yu
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="change-data-capture/">
+    <a class="section-link icon-offset" href="change-data-capture-macos/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
         <div class="title">Change data capture (CDC)</div>
@@ -103,7 +103,7 @@ Use your [local cluster](../quick-start/) to explore all the core features of Yu
   </div>
 
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="two-data-centers/">
+    <a class="section-link icon-offset" href="two-data-centers-macos/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
         <div class="title">Two data center (2DC)</div>

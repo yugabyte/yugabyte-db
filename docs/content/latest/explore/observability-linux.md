@@ -21,14 +21,14 @@ If you haven't installed YugabyteDB yet, do so first by following the [Quick Sta
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/observability" class="nav-link">
+    <a href="/latest/explore/observability-macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/observability" class="nav-link active">
+    <a href="/latest/explore/observability-linux" class="nav-link active">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>

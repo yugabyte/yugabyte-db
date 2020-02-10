@@ -2,6 +2,8 @@
 title: Two data center (2DC)
 linkTitle: Two data center (2DC)
 description: Two data center (2DC) deployment
+aliases:
+  - /latest/explore/two-data-centers/
 menu:
   latest:
     identifier: two-data-centers

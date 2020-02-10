@@ -22,7 +22,7 @@ If you haven't installed YugabyteDB yet, do so first by following the [Quick sta
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/global-distribution" class="nav-link">
+    <a href="/latest/explore/global-distribution-macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
