@@ -164,6 +164,19 @@ static void pg_decode_truncate_v2(LogicalDecodingContext *ctx,
 					ReorderBufferChange *change);
 #endif
 
+/*
+ * Backward compatibility.
+ *
+ * This macro is only available in 9.6+.
+ */
+#if PG_VERSION_NUM < 90600
+#ifdef USE_FLOAT8_BYVAL
+#define UInt64GetDatum(X) ((Datum) (X))
+#else
+#define UInt64GetDatum(X) Int64GetDatum((int64) (X))
+#endif
+#endif
+
 void
 _PG_init(void)
 {
