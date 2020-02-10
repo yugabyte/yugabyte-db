@@ -61,7 +61,6 @@ yugabyte=# DROP POLICY p1 ON table_foo;
 
 ## See also
 
-[`ALTER POLICY`](../dcl_alter_policy)
-[`CREATE POLICY`](../dcl_create_policy)
-[`ALTER TABLE`](../ddl_alter_table)
-[Other YSQL Statements](..)
+- [`ALTER POLICY`](../dcl_alter_policy)
+- [`CREATE POLICY`](../dcl_create_policy)
+- [`ALTER TABLE`](../ddl_alter_table)

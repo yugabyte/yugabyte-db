@@ -1,5 +1,5 @@
 ---
-title: Grammar Diagrams
+title: Grammar xiagrams
 summary: Diagrams of the grammar rules.
 ---
 
@@ -415,4 +415,3 @@ alter_keyspace ::= ALTER { KEYSPACE | SCHEMA } keyspae_name
                    keyspace_properties
 ```
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="510" height="65" viewbox="0 0 510 65"><path class="connector" d="M0 22h15m58 0h30m84 0h20m-119 0q5 0 5 5v20q0 5 5 5h5m72 0h17q5 0 5-5v-20q0-5 5-5m5 0h10m116 0h10m152 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="58" height="25" rx="7"/><text class="text" x="25" y="22">ALTER</text><rect class="literal" x="103" y="5" width="84" height="25" rx="7"/><text class="text" x="113" y="22">KEYSPACE</text><rect class="literal" x="103" y="35" width="72" height="25" rx="7"/><text class="text" x="113" y="52">SCHEMA</text><a xlink:href="../grammar_diagrams#keyspae-name"><rect class="rule" x="217" y="5" width="116" height="25"/><text class="text" x="227" y="22">keyspae_name</text></a><a xlink:href="../grammar_diagrams#keyspace-properties"><rect class="rule" x="343" y="5" width="152" height="25"/><text class="text" x="353" y="22">keyspace_properties</text></a><polygon points="506,29 510,29 510,15 506,15" style="fill:black;stroke-width:0"/></svg>
-

@@ -68,5 +68,4 @@ yugabyte=# SELECT @#@ 5;
 ## See also
 
 - [`DROP OPERATOR`](../ddl_drop_operator)
-
-[postgresql-docs-create-operator]: https://www.postgresql.org/docs/current/sql-createoperator.html
+- [postgresql-docs-create-operator](https://www.postgresql.org/docs/current/sql-createoperator.html)

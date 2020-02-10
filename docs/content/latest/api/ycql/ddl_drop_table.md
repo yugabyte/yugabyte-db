@@ -50,10 +50,9 @@ cqlsh:example> DROP TABLE users;
 
 ## See also
 
-[`ALTER TABLE`](../ddl_alter_table)
-[`CREATE TABLE`](../ddl_create_table)
-[`DELETE`](../dml_delete)
-[`INSERT`](../dml_insert)
-[`SELECT`](../dml_select)
-[`UPDATE`](../dml_update)
-[Other CQL Statements](..)
+- [`ALTER TABLE`](../ddl_alter_table)
+- [`CREATE TABLE`](../ddl_create_table)
+- [`DELETE`](../dml_delete)
+- [`INSERT`](../dml_insert)
+- [`SELECT`](../dml_select)
+- [`UPDATE`](../dml_update)

@@ -83,7 +83,6 @@ CREATE SCHEMA example;
 
 ## See also
 
-[`ALTER KEYSPACE`](../ddl_alter_keyspace)
-[`DROP KEYSPACE`](../ddl_drop_keyspace)
-[`USE`](../ddl_use)
-[Other CQL Statements](..)
+- [`ALTER KEYSPACE`](../ddl_alter_keyspace)
+- [`DROP KEYSPACE`](../ddl_drop_keyspace)
+- [`USE`](../ddl_use)

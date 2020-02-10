@@ -146,10 +146,9 @@ CREATE TABLE example.employees (
 
 ## See also
 
-[`CREATE TABLE`](../ddl_create_table)
-[`DELETE`](../dml_delete)
-[`DROP TABLE`](../ddl_drop_table)
-[`INSERT`](../dml_insert)
-[`SELECT`](../dml_select)
-[`UPDATE`](../dml_update)
-[Other CQL Statements](..)
+- [`CREATE TABLE`](../ddl_create_table)
+- [`DELETE`](../dml_delete)
+- [`DROP TABLE`](../ddl_drop_table)
+- [`INSERT`](../dml_insert)
+- [`SELECT`](../dml_select)
+- [`UPDATE`](../dml_update)
