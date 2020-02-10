@@ -326,12 +326,12 @@ TEST_F(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued) {
                                    << yb::ToString(index_info_pb);
 
       ASSERT_TRUE(index_info_pb.has_index_permissions());
-    } while (index_info_pb.index_permissions() !=
+    } while (index_info_pb.index_permissions() <
                  IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE &&
              CoarseMonoClock::Now() < deadline);
 
-    ASSERT_EQ(
-        index_info_pb.index_permissions(), IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+    EXPECT_EQ(index_info_pb.index_permissions(),
+              IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
 
     LOG(INFO) << "All good for iteration " << i;
     ASSERT_OK(client_->DeleteIndexTable(index_table_name, nullptr, /* wait */ true));
