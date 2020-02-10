@@ -126,7 +126,7 @@ CREATE TABLE
 yugabyte=#
 ```
 
-Here is an example of a client that is defined within the same docker-compose file.
+Here is an example of a client that is defined within the same Docker Compose file.
 ```sh
 version: '2'
 
