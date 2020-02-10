@@ -27,7 +27,7 @@ menu:
 <!--
   <li >
     <a href="/latest/explore/auto-sharding-docker" class="nav-link active">
-      <i class="fab fa-dockers" aria-hidden="true"></i>
+      <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
