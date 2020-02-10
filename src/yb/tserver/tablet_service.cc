@@ -535,10 +535,16 @@ void TabletServiceAdminImpl::GetSafeTime(
     if (!tablet.peer->tablet()->transaction_participant()) {
       min_hybrid_time = min_hybrid_time.AddMilliseconds(
           FLAGS_index_backfill_upperbound_for_user_enforced_txn_duration_ms);
+      VLOG(2) << "GetSafeTime called on a user enforced transaction tablet "
+              << tablet.peer->tablet_id() << " will wait until "
+              << min_hybrid_time << " is safe.";
     } else {
-      while (tablet.peer->tablet()
-                 ->transaction_participant()
-                 ->MinRunningHybridTime() < min_hybrid_time) {
+      auto txn_particpant = tablet.peer->tablet()->transaction_participant();
+      HybridTime min_running_ht;
+      while ((min_running_ht = txn_particpant->MinRunningHybridTime()) <
+             min_hybrid_time) {
+        VLOG(2) << "MinRunningHybridTime is " << min_running_ht
+                << " need to wait for " << min_hybrid_time;
         if (CoarseMonoClock::Now() > deadline) {
           // A long running pending transaction that started before the index
           // backfill can effectively block us from choosing a safe time to
@@ -570,8 +576,8 @@ void TabletServiceAdminImpl::GetSafeTime(
       tablet::RequireLease::kTrue, min_hybrid_time);
   resp->set_safe_time(safe_time.ToUint64());
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
-  DVLOG(3) << "Tablet " << tablet.peer->tablet_id()
-           << ". returning SafeTime for : " << yb::ToString(safe_time);
+  VLOG(1) << "Tablet " << tablet.peer->tablet_id()
+          << ". returning SafeTime for : " << yb::ToString(safe_time);
 
   context.RespondSuccess();
 }
