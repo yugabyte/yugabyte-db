@@ -1,6 +1,6 @@
 ---
 title: Disk failure
-linkTitle: Disk Failure
+linkTitle: Disk failure
 description: Recover failing disk
 aliases:
   - /troubleshoot/nodes/disk-failure/
