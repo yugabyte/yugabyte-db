@@ -20,7 +20,7 @@ There are two options for build systems that you can use with YugabyteDB, `cmake
 * `ninja` is faster, but CLion has limited support for `ninja` (for example, it doesn't allow you to [rebuild individual files](https://youtrack.jetbrains.com/issue/CPP-17622)).
 
 
-#### Following steps are needed for configuring CLion project for YugabyteDB:
+#### Configure a CLion project for YugabyteDB:
 
 1. Use “File / Open…” to open the project root directory.
 2. Put build/debug-clang-dynamic (or build/debug-clang-dynamic-ninja if you want to use ninja) as a “Generation path” in “Preferences/Build, Execution, Deployment/CMake”: 
