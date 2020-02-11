@@ -280,7 +280,8 @@ CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
   CDCRecordPB* record = nullptr;
   for (const auto& write_pair : batch.write_pairs()) {
     Slice key = write_pair.key();
-    const auto key_sizes = VERIFY_RESULT(docdb::DocKey::EncodedHashPartAndDocKeySizes(key));
+    const auto key_size = VERIFY_RESULT(
+        docdb::DocKey::EncodedSize(key, docdb::DocKeyPart::WHOLE_DOC_KEY));
 
     Slice value = write_pair.value();
     docdb::Value decoded_value;
@@ -288,8 +289,8 @@ CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
 
     // Compare key hash with previously seen key hash to determine whether the write pair
     // is part of the same row or not.
-    Slice key_hash(write_pair.key().data(), key_sizes.first);
-    if (prev_key != key_hash) {
+    Slice primary_key(key.data(), key_size);
+    if (prev_key != primary_key) {
       // Write pair contains record for different row. Create a new CDCRecord in this case.
       record = resp->add_records();
       Slice sub_doc_key = key;
@@ -322,7 +323,7 @@ CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
         record->set_time(msg->hybrid_time());
       }
     }
-    prev_key = key_hash;
+    prev_key = primary_key;
     DCHECK(record);
 
     if (metadata.record_format == CDCRecordFormat::WAL) {
@@ -331,7 +332,7 @@ CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
       kv_pair->mutable_value()->set_binary_value(write_pair.value());
     } else if (record->operation() == CDCRecordPB_OperationType_WRITE) {
       PrimitiveValue column_id;
-      Slice key_column = write_pair.key().data() + key_sizes.second;
+      Slice key_column = write_pair.key().data() + key_size;
       RETURN_NOT_OK(PrimitiveValue::DecodeKey(&key_column, &column_id));
       if (column_id.value_type() == docdb::ValueType::kColumnId) {
         const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_id.GetColumnId()));
