@@ -4,9 +4,11 @@ linkTitle: Linear scalability
 description: Linear scalability
 menu:
   latest:
-    identifier: linear-scalability-docker
+    identifier: linear-scalability-3-docker
     parent: explore
     weight: 210
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

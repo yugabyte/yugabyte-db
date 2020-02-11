@@ -11,6 +11,8 @@ menu:
     identifier: data-modeling-ysql
     parent: learn
     weight: 562
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

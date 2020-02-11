@@ -6,9 +6,11 @@ aliases:
   - /latest/explore/two-data-centers/
 menu:
   latest:
-    identifier: two-data-centers-macos
+    identifier: two-data-centers-1-macos
     parent: explore
     weight: 250
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

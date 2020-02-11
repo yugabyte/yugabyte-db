@@ -4,9 +4,11 @@ linkTitle: Linear scalability
 description: Linear scalability
 menu:
   latest:
-    identifier: linear-scalability-kubernetes
+    identifier: linear-scalability-4-kubernetes
     parent: explore
     weight: 210
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

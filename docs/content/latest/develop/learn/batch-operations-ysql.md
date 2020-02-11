@@ -9,6 +9,8 @@ menu:
     identifier: batch-operations-ysql
     parent: learn
     weight: 568
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

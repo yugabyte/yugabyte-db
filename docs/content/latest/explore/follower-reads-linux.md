@@ -4,9 +4,11 @@ linkTitle: Follower reads
 description: Follower reads
 menu:
   latest:
-    identifier: follower-reads-linux
+    identifier: follower-reads-2-linux
     parent: explore
     weight: 235
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

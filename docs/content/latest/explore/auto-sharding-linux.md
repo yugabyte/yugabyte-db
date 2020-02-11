@@ -4,9 +4,11 @@ linkTitle: Auto sharding
 description: Auto sharding
 menu:
   latest:
-    identifier: auto-sharding-linux
+    identifier: auto-sharding-2-linux
     parent: explore
     weight: 225
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

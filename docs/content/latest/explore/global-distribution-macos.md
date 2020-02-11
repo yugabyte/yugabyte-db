@@ -8,9 +8,11 @@ aliases:
   - /latest/explore/planet-scale/global-distribution/
 menu:
   latest:
-    identifier: global-distribution-macos
+    identifier: global-distribution-1-macos
     parent: explore
     weight: 220
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

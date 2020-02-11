@@ -7,6 +7,8 @@ menu:
     identifier: batch-operations-ycql
     parent: learn
     weight: 568
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
