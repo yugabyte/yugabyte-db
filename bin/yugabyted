@@ -670,7 +670,9 @@ class ControlScript(object):
     def init_yw(self):
         # Create Play evolutions table. Required for YugaWare to start up properly.
         create_play_table = [
-            os.path.join(YUGAWARE_BIN_DIR, "yugaware"), "-Dconfig.file=" + YUGAWARE_CONF
+            os.path.join(YUGAWARE_BIN_DIR, "yugaware"),
+            "-Dconfig.file=" + YUGAWARE_CONF,
+            "-Dlog.override.path={}".format(self.configs.saved_data.get("log_dir"))
         ]
         Output.log("Initializing play tables...")
         run_process(create_play_table)
