@@ -116,8 +116,10 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void CreateTable(int num_tablets, TableHandle* table);
-  void GetTablets(std::vector<TabletId>* tablet_ids);
-  void GetTablet(std::string* tablet_id);
+  void GetTablets(std::vector<TabletId>* tablet_ids,
+                  const client::YBTableName& table_name = kTableName);
+  void GetTablet(std::string* tablet_id,
+                 const client::YBTableName& table_name = kTableName);
 
   void GetChanges(const TabletId& tablet_id, const CDCStreamId& stream_id,
       int64_t term, int64_t index, bool* has_error = nullptr);
@@ -241,15 +243,17 @@ void VerifyStreamDeletedFromCdcState(client::YBClient* client,
   }, MonoDelta::FromSeconds(timeout_secs), "Stream rows in cdc_state have been deleted."));
 }
 
-void CDCServiceTest::GetTablets(std::vector<TabletId>* tablet_ids) {
+void CDCServiceTest::GetTablets(std::vector<TabletId>* tablet_ids,
+                                const client::YBTableName& table_name) {
   std::vector<std::string> ranges;
-  ASSERT_OK(client_->GetTablets(kTableName, 0 /* max_tablets */, tablet_ids, &ranges));
+  ASSERT_OK(client_->GetTablets(table_name, 0 /* max_tablets */, tablet_ids, &ranges));
   ASSERT_EQ(tablet_ids->size(), tablet_count());
 }
 
-void CDCServiceTest::GetTablet(std::string* tablet_id) {
+void CDCServiceTest::GetTablet(std::string* tablet_id,
+                               const client::YBTableName& table_name) {
   std::vector<TabletId> tablet_ids;
-  GetTablets(&tablet_ids);
+  GetTablets(&tablet_ids, table_name);
   *tablet_id = tablet_ids[0];
 }
 
@@ -293,6 +297,74 @@ void CDCServiceTest::WriteTestRow(int32_t key,
   ASSERT_OK(proxy->Write(write_req, &write_resp, &rpc));
   SCOPED_TRACE(write_resp.DebugString());
   ASSERT_FALSE(write_resp.has_error());
+}
+
+TEST_F(CDCServiceTest, TestCompoundKey) {
+  // Create a table with a compound primary key.
+  static const std::string kCDCTestTableCompoundKeyName = "cdc_test_table_compound_key";
+  static const client::YBTableName kTableNameCompoundKey(
+    YQL_DATABASE_CQL, kCDCTestKeyspace, kCDCTestTableCompoundKeyName);
+
+  client::YBSchemaBuilder builder;
+  builder.AddColumn("hash_key")->Type(STRING)->HashPrimaryKey()->NotNull();
+  builder.AddColumn("range_key")->Type(STRING)->PrimaryKey()->NotNull();
+  builder.AddColumn("val")->Type(INT32);
+
+  TableProperties table_properties;
+  table_properties.SetTransactional(true);
+  builder.SetTableProperties(table_properties);
+
+  TableHandle table;
+  ASSERT_OK(table.Create(kTableNameCompoundKey, tablet_count(), client_.get(), &builder));
+
+  // Create a stream on the table
+  CDCStreamId stream_id;
+  CreateCDCStream(cdc_proxy_, table.table()->id(), &stream_id);
+
+  std::string tablet_id;
+  GetTablet(&tablet_id, table.name());
+
+  // Now apply two ops with same hash key but different range key in a batch.
+  auto session = client_->NewSession();
+  for (int i = 0; i < 2; i++) {
+    const auto op = table.NewUpdateOp();
+    auto* const req = op->mutable_request();
+    QLAddStringHashValue(req, "hk");
+    QLAddStringRangeValue(req, Format("rk_$0", i));
+    table.AddInt32ColumnValue(req, "val", i);
+    ASSERT_OK(session->Apply(op));
+  }
+  ASSERT_OK(session->Flush());
+
+  // Get CDC changes.
+  GetChangesRequestPB change_req;
+  GetChangesResponsePB change_resp;
+
+  change_req.set_tablet_id(tablet_id);
+  change_req.set_stream_id(stream_id);
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
+
+  {
+    RpcController rpc;
+    SCOPED_TRACE(change_req.DebugString());
+    ASSERT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
+    ASSERT_FALSE(change_resp.has_error());
+    ASSERT_EQ(change_resp.records_size(), 2);
+  }
+
+  // Verify the results.
+  for (int i = 0; i < change_resp.records_size(); i++) {
+    ASSERT_EQ(change_resp.records(i).operation(), CDCRecordPB::WRITE);
+
+    ASSERT_EQ(change_resp.records(i).key_size(), 2);
+    // Check the key.
+    ASSERT_EQ(change_resp.records(i).key(0).value().string_value(), "hk");
+    ASSERT_EQ(change_resp.records(i).key(1).value().string_value(), Format("rk_$0", i));
+
+    ASSERT_EQ(change_resp.records(i).changes_size(), 1);
+    ASSERT_EQ(change_resp.records(i).changes(0).value().int32_value(), i);
+  }
 }
 
 TEST_F(CDCServiceTest, TestCreateCDCStream) {
