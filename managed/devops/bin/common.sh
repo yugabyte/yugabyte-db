@@ -236,10 +236,10 @@ activate_virtualenv() {
 
   set +u
   . "$virtualenv_dir"/bin/activate
+  set -u
+
   # We unset the pythonpath to make sure we aren't looking at the global pythonpath.
   unset PYTHONPATH
-  set -u
-  export PYTHONPATH=$virtualenv_dir/lib/python2.7/site-packages
 }
 
 # Somehow permissions got corrupted for some files in the virtualenv, possibly due to sudo
