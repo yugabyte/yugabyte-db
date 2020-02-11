@@ -4,9 +4,11 @@ linkTitle: Global distribution
 description: Global distribution
 menu:
   latest:
-    identifier: global-distribution-linux
+    identifier: global-distribution-2-linux
     parent: explore
     weight: 220
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

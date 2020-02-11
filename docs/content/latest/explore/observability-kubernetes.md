@@ -4,9 +4,11 @@ linkTitle: Observability
 description: Observability with Prometheus
 menu:
   latest:
-    identifier: observability-kubernetes
+    identifier: observability-4-kubernetes
     parent: explore
     weight: 240
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

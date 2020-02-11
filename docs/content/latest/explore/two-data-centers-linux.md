@@ -4,9 +4,11 @@ linkTitle: Two data center (2DC)
 description: Two data center (2DC) deployment
 menu:
   latest:
-    identifier: two-data-centers-linux
+    identifier: two-data-centers-2-linux
     parent: explore
     weight: 250
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
