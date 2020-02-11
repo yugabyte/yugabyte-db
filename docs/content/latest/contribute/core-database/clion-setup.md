@@ -33,8 +33,10 @@ If you want to build with ninja, use `build/debug-clang-dynamic-ninja` as a "Gen
 ![Clion ninja options](/images/contribute/clion-cmake-options-ninja.png)
 
 
-3. Use “File / Reload CMake Project'' - it should start building third party dependencies for YugabyteDB. 
+3. Use **“File / Reload CMake Project"** - it should start building third party dependencies for YugabyteDB. 
 Building a third party can take tens of minutes and then CLion will start updating symbols which also can take a while.
-4. Run from the command line inside project root (omit `YB_USE_NINJA=0` if you want to use ninja): ```YB_USE_NINJA=0 ./yb_build.sh```
+4. Run from the command line inside project root (omit `YB_USE_NINJA=0` if you want to use ninja): 
+
+```YB_USE_NINJA=0 ./yb_build.sh```
 
 Subsequent builds can be launched also from CLion.
