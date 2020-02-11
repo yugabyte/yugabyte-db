@@ -60,11 +60,11 @@ public class UpdateAndPersistGFlags extends AbstractTaskBase {
 
           // Update the gflags.
           UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
-          userIntent.masterGFlags.putAll(taskParams().masterGFlags);
-          userIntent.tserverGFlags.putAll(taskParams().tserverGFlags);
+          userIntent.masterGFlags = taskParams().masterGFlags;
+          userIntent.tserverGFlags = taskParams().tserverGFlags;
           for (Cluster cluster : universeDetails.getReadOnlyClusters()) {
-            cluster.userIntent.masterGFlags.putAll(taskParams().masterGFlags);
-            cluster.userIntent.tserverGFlags.putAll(taskParams().tserverGFlags);
+            cluster.userIntent.masterGFlags = taskParams().masterGFlags;
+            cluster.userIntent.tserverGFlags = taskParams().tserverGFlags;
           }
 
           universe.setUniverseDetails(universeDetails);
