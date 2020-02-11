@@ -1,4 +1,4 @@
-# Table Level Partitioning
+# Row Level Partitioning
 
 > **Note:** This is a new feature that is still in a design phase.
 
