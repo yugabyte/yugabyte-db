@@ -7,9 +7,11 @@ aliases:
   - /latest/explore/change-data-capture
 menu:
   latest:
-    identifier: change-data-capture-macos
+    identifier: change-data-capture-1-macos
     parent: explore
     weight: 249
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

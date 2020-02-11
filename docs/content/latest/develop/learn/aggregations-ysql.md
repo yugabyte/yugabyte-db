@@ -10,6 +10,8 @@ menu:
     identifier: aggregations-ysql
     parent: learn
     weight: 567
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

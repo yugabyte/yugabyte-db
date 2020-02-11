@@ -11,9 +11,11 @@ aliases:
   - /latest/explore/planet-scale/auto-rebalancing/
 menu:
   latest:
-    identifier: auto-sharding-macos
+    identifier: auto-sharding-1-macos
     parent: explore
     weight: 225
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

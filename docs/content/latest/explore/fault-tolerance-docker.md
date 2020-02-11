@@ -4,9 +4,11 @@ linkTitle: Fault tolerance
 description: Fault tolerance
 menu:
   latest:
-    identifier: fault-tolerance-docker
+    identifier: fault-tolerance-3-docker
     parent: explore
     weight: 215
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

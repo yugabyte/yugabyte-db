@@ -4,9 +4,11 @@ linkTitle: Change data capture (CDC)
 description: Change data capture (CDC) 
 menu:
   latest:
-    identifier: change-data-capture-linux
+    identifier: change-data-capture-2-linux
     parent: explore
     weight: 249
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
