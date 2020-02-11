@@ -7,9 +7,11 @@ aliases:
   - /latest/explore/observability/
 menu:
   latest:
-    identifier: observability-macos
+    identifier: observability-1-macos
     parent: explore
     weight: 240
+isTocNested: true
+showAsideToc: true
 ---
 
  <ul class="nav nav-tabs-alt nav-tabs-yb">

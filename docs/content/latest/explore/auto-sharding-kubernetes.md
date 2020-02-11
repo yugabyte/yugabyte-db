@@ -4,9 +4,11 @@ linkTitle: Auto sharding
 description: Auto sharding
 menu:
   latest:
-    identifier: auto-sharding-kubernetes
+    identifier: auto-sharding-4-kubernetes
     parent: explore
     weight: 225
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

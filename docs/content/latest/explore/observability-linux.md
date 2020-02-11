@@ -4,9 +4,11 @@ linkTitle: Observability
 description: Observability with Prometheus
 menu:
   latest:
-    identifier: observability-linux
+    identifier: observability-2-linux
     parent: explore
     weight: 240
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

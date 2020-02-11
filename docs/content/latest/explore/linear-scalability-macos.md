@@ -9,9 +9,11 @@ aliases:
   - /latest/explore/postgresql/linear-scalability/
 menu:
   latest:
-    identifier: linear-scalability-macos
+    identifier: linear-scalability-1-macos
     parent: explore
     weight: 210
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
