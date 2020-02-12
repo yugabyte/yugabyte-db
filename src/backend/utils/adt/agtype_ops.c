@@ -22,16 +22,84 @@
 
 #include <math.h>
 
+#include "fmgr.h"
 #include "utils/builtins.h"
 #include "utils/numeric.h"
 
 #include "utils/agtype.h"
 
+static void ereport_op_str(const char *op, agtype *lhs, agtype *rhs);
+static agtype *agtype_concat(agtype *agt1, agtype *agt2);
+static agtype_value *iterator_concat(agtype_iterator **it1,
+                                     agtype_iterator **it2,
+                                     agtype_parse_state **state);
+
+static void concat_to_agtype_string(agtype_value *result, char *lhs, int llen,
+                                    char *rhs, int rlen)
+{
+    int length = llen + rlen;
+    char *buffer = result->val.string.val;
+
+    Assert(llen >= 0 && rlen >= 0);
+    check_string_length(length);
+    buffer = palloc(length);
+
+    strncpy(buffer, lhs, llen);
+    strncpy(buffer + llen, rhs, rlen);
+
+    result->type = AGTV_STRING;
+    result->val.string.len = length;
+    result->val.string.val = buffer;
+}
+
+static char *get_string_from_agtype_value(agtype_value *agtv, int *length)
+{
+    Datum number;
+    char *string;
+
+    switch (agtv->type)
+    {
+    case AGTV_INTEGER:
+        number = DirectFunctionCall1(int8out,
+                                     Int8GetDatum(agtv->val.int_value));
+        string = DatumGetCString(number);
+        *length = strlen(string);
+        return string;
+    case AGTV_FLOAT:
+        number = DirectFunctionCall1(float8out,
+                                     Float8GetDatum(agtv->val.float_value));
+        string = DatumGetCString(number);
+        *length = strlen(string);
+
+        if (is_decimal_needed(string))
+        {
+            char *str = palloc(*length + 2);
+            strncpy(str, string, *length);
+            strncpy(str + *length, ".0", 2);
+            *length += 2;
+            string = str;
+        }
+        return string;
+    case AGTV_STRING:
+        *length = agtv->val.string.len;
+        return agtv->val.string.val;
+
+    case AGTV_NULL:
+    case AGTV_NUMERIC:
+    case AGTV_BOOL:
+    case AGTV_ARRAY:
+    case AGTV_OBJECT:
+    case AGTV_BINARY:
+    default:
+        *length = 0;
+        return NULL;
+    }
+    return NULL;
+}
+
 PG_FUNCTION_INFO_V1(agtype_add);
 
-/*
- * agtype addition function for + operator
- */
+/* agtype addition and concat function for + operator */
 Datum agtype_add(PG_FUNCTION_ARGS)
 {
     agtype *lhs = AG_GET_ARG_AGTYPE_P(0);
@@ -39,135 +107,58 @@ Datum agtype_add(PG_FUNCTION_ARGS)
     agtype_value *agtv_lhs;
     agtype_value *agtv_rhs;
     agtype_value agtv_result;
-    size_t len;
-    char *buffer;
-    Datum n;
-    char *nstr;
-    char *fstr;
-    size_t nlen;
-    size_t flen;
 
-    if (!(AGT_ROOT_IS_SCALAR(lhs)) || !(AGT_ROOT_IS_SCALAR(rhs)))
+    /* If both are not scalars */
+    if (!(AGT_ROOT_IS_SCALAR(lhs) && AGT_ROOT_IS_SCALAR(rhs)))
     {
-        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("must be scalar value, not array or object")));
+        Datum agt;
 
-        PG_RETURN_NULL();
+        /* It can't be a scalar and an object */
+        if ((AGT_ROOT_IS_SCALAR(lhs) && AGT_ROOT_IS_OBJECT(rhs)) ||
+            (AGT_ROOT_IS_OBJECT(lhs) && AGT_ROOT_IS_SCALAR(rhs)) ||
+            /* It can't be two objects */
+            (AGT_ROOT_IS_OBJECT(lhs) && AGT_ROOT_IS_OBJECT(rhs)))
+            ereport_op_str("+", lhs, rhs);
+
+        agt = AGTYPE_P_GET_DATUM(agtype_concat(lhs, rhs));
+
+        PG_RETURN_DATUM(agt);
     }
 
+    /* Both are scalar */
     agtv_lhs = get_ith_agtype_value_from_container(&lhs->root, 0);
     agtv_rhs = get_ith_agtype_value_from_container(&rhs->root, 0);
 
+    /* Both are strings - concatenate */
     if (agtv_lhs->type == AGTV_STRING && agtv_rhs->type == AGTV_STRING)
     {
-        len = agtv_lhs->val.string.len + agtv_rhs->val.string.len;
-        check_string_length(len);
-        buffer = palloc(len);
+        int llen = 0;
+        char *lhs = get_string_from_agtype_value(agtv_lhs, &llen);
+        int rlen = 0;
+        char *rhs = get_string_from_agtype_value(agtv_rhs, &rlen);
 
-        strncpy(buffer, agtv_lhs->val.string.val, agtv_lhs->val.string.len);
-        strncpy(buffer + agtv_lhs->val.string.len, agtv_rhs->val.string.val,
-                agtv_rhs->val.string.len);
-
-        agtv_result.type = AGTV_STRING;
-        agtv_result.val.string.len = len;
-        agtv_result.val.string.val = buffer;
+        concat_to_agtype_string(&agtv_result, lhs, llen, rhs, rlen);
 
         AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-    if (agtv_lhs->type == AGTV_STRING)
+    /*
+	 * The left is a string, the right is an integer or float OR
+	 * the right is a string, the left is an integer or float - concatenate.
+	 */
+    if (((agtv_lhs->type == AGTV_STRING) &&
+         (agtv_rhs->type == AGTV_INTEGER || agtv_rhs->type == AGTV_FLOAT)) ||
+        ((agtv_rhs->type == AGTV_STRING) &&
+         (agtv_lhs->type == AGTV_INTEGER || agtv_lhs->type == AGTV_FLOAT)))
     {
-        if (agtv_rhs->type == AGTV_INTEGER || agtv_rhs->type == AGTV_FLOAT)
-        {
-            if (agtv_rhs->type == AGTV_INTEGER)
-            {
-                n = DirectFunctionCall1(int8out,
-                                        Int8GetDatum(agtv_rhs->val.int_value));
-                nstr = DatumGetCString(n);
-                nlen = strlen(nstr);
-            }
-            else
-            {
-                n = DirectFunctionCall1(
-                    float8out, Float8GetDatum(agtv_rhs->val.float_value));
-                fstr = DatumGetCString(n);
+        int llen = 0;
+        char *lhs = get_string_from_agtype_value(agtv_lhs, &llen);
+        int rlen = 0;
+        char *rhs = get_string_from_agtype_value(agtv_rhs, &rlen);
 
-                if(is_decimal_needed(fstr))
-                {
-                    flen = strlen(fstr);
-                    nlen = flen + strlen(".0");
-                    nstr = palloc(nlen);
-                    strncpy(nstr, fstr, strlen(fstr));
-                    strncpy(nstr + flen, ".0", strlen(".0"));
-                }
-                else
-                {
-                    nstr = DatumGetCString(n);
-                    nlen = strlen(nstr);
-                }
-            }
-
-            len = agtv_lhs->val.string.len + nlen;
-            check_string_length(len);
-            buffer = palloc(len);
-
-            strncpy(buffer, agtv_lhs->val.string.val,
-                    agtv_lhs->val.string.len);
-            strncpy(buffer + agtv_lhs->val.string.len, nstr, nlen);
-
-            agtv_result.type = AGTV_STRING;
-            agtv_result.val.string.len = len;
-            agtv_result.val.string.val = buffer;
-
-            AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
-        }
+        concat_to_agtype_string(&agtv_result, lhs, llen, rhs, rlen);
+        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-    if (agtv_rhs->type == AGTV_STRING)
-    {
-        if (agtv_lhs->type == AGTV_INTEGER || agtv_lhs->type == AGTV_FLOAT)
-        {
-            if (agtv_lhs->type == AGTV_INTEGER)
-            {
-                n = DirectFunctionCall1(int8out,
-                                        Int8GetDatum(agtv_lhs->val.int_value));
-                nstr = DatumGetCString(n);
-                nlen = strlen(nstr);
-            }
-            else
-            {
-                n = DirectFunctionCall1(
-                    float8out, Float8GetDatum(agtv_lhs->val.float_value));
-                fstr = DatumGetCString(n);
-
-                if(is_decimal_needed(fstr))
-                {
-                    flen = strlen(fstr);
-                    nlen = flen + strlen(".0");
-                    nstr = palloc(nlen);
-                    strncpy(nstr, fstr, strlen(fstr));
-                    strncpy(nstr + flen, ".0", strlen(".0"));
-                }
-                else
-                {
-                    nstr = DatumGetCString(n);
-                    nlen = strlen(nstr);
-                }
-            }
-
-            len = agtv_rhs->val.string.len + nlen;
-            check_string_length(len);
-            buffer = palloc(len);
-
-            strncpy(buffer, nstr, nlen);
-            strncpy(buffer + nlen, agtv_rhs->val.string.val,
-                    agtv_rhs->val.string.len);
-
-            agtv_result.type = AGTV_STRING;
-            agtv_result.val.string.len = len;
-            agtv_result.val.string.val = buffer;
-
-            AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
-        }
-    }
+    /* Both are integers - regular addition */
     if (agtv_lhs->type == AGTV_INTEGER && agtv_rhs->type == AGTV_INTEGER)
     {
         agtv_result.type = AGTV_INTEGER;
@@ -175,6 +166,7 @@ Datum agtype_add(PG_FUNCTION_ARGS)
                                     agtv_rhs->val.int_value;
         AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
+    /* Both are floats - regular addition */
     if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_FLOAT)
     {
         agtv_result.type = AGTV_FLOAT;
@@ -182,6 +174,7 @@ Datum agtype_add(PG_FUNCTION_ARGS)
                                       agtv_rhs->val.float_value;
         AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
+    /* The left is a float, the right is an integer - regular addition */
     if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_INTEGER)
     {
         agtv_result.type = AGTV_FLOAT;
@@ -189,6 +182,7 @@ Datum agtype_add(PG_FUNCTION_ARGS)
                                       agtv_rhs->val.int_value;
         AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
+    /* The right is a float, the left is an integer - regular addition */
     if (agtv_lhs->type == AGTV_INTEGER && agtv_rhs->type == AGTV_FLOAT)
     {
         agtv_result.type = AGTV_FLOAT;
@@ -196,7 +190,7 @@ Datum agtype_add(PG_FUNCTION_ARGS)
                                       agtv_rhs->val.float_value;
         AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-
+    /* Not a covered case, error out */
     ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                     errmsg("Invalid input parameter types for agtype_add")));
 
@@ -666,4 +660,171 @@ Datum agtype_ge(PG_FUNCTION_ARGS)
     PG_FREE_IF_COPY(agtype_rhs, 1);
 
     PG_RETURN_BOOL(result);
+}
+
+static agtype *agtype_concat(agtype *agt1, agtype *agt2)
+{
+    agtype_parse_state *state = NULL;
+    agtype_value *res;
+    agtype_iterator *it1;
+    agtype_iterator *it2;
+
+    /*
+     * If one of the agtype is empty, just return the other if it's not scalar
+     * and both are of the same kind.  If it's a scalar or they are of
+     * different kinds we need to perform the concatenation even if one is
+     * empty.
+     */
+    if (AGT_ROOT_IS_OBJECT(agt1) == AGT_ROOT_IS_OBJECT(agt2))
+    {
+        if (AGT_ROOT_COUNT(agt1) == 0 && !AGT_ROOT_IS_SCALAR(agt2))
+            return agt2;
+        else if (AGT_ROOT_COUNT(agt2) == 0 && !AGT_ROOT_IS_SCALAR(agt1))
+            return agt1;
+    }
+
+    it1 = agtype_iterator_init(&agt1->root);
+    it2 = agtype_iterator_init(&agt2->root);
+
+    res = iterator_concat(&it1, &it2, &state);
+
+    Assert(res != NULL);
+
+    return (agtype_value_to_agtype(res));
+}
+
+/*
+ * Iterate over all agtype objects and merge them into one.
+ * The logic of this function copied from the same hstore function,
+ * except the case, when it1 & it2 represents jbvObject.
+ * In that case we just append the content of it2 to it1 without any
+ * verifications.
+ */
+static agtype_value *iterator_concat(agtype_iterator **it1,
+                                     agtype_iterator **it2,
+                                     agtype_parse_state **state)
+{
+    agtype_value v1, v2, *res = NULL;
+    agtype_iterator_token r1, r2, rk1, rk2;
+
+    r1 = rk1 = agtype_iterator_next(it1, &v1, false);
+    r2 = rk2 = agtype_iterator_next(it2, &v2, false);
+
+    /*
+     * Both elements are objects.
+     */
+    if (rk1 == WAGT_BEGIN_OBJECT && rk2 == WAGT_BEGIN_OBJECT)
+    {
+        /*
+         * Append the all tokens from v1 to res, except last WAGT_END_OBJECT
+         * (because res will not be finished yet).
+         */
+        push_agtype_value(state, r1, NULL);
+        while ((r1 = agtype_iterator_next(it1, &v1, true)) != WAGT_END_OBJECT)
+            push_agtype_value(state, r1, &v1);
+
+        /*
+         * Append the all tokens from v2 to res, include last WAGT_END_OBJECT
+         * (the concatenation will be completed).
+         */
+        while ((r2 = agtype_iterator_next(it2, &v2, true)) != 0)
+            res = push_agtype_value(state, r2,
+                                    r2 != WAGT_END_OBJECT ? &v2 : NULL);
+    }
+
+    /*
+     * Both elements are arrays (either can be scalar).
+     */
+    else if (rk1 == WAGT_BEGIN_ARRAY && rk2 == WAGT_BEGIN_ARRAY)
+    {
+        push_agtype_value(state, r1, NULL);
+
+        while ((r1 = agtype_iterator_next(it1, &v1, true)) != WAGT_END_ARRAY)
+        {
+            Assert(r1 == WAGT_ELEM);
+            push_agtype_value(state, r1, &v1);
+        }
+
+        while ((r2 = agtype_iterator_next(it2, &v2, true)) != WAGT_END_ARRAY)
+        {
+            Assert(r2 == WAGT_ELEM);
+            push_agtype_value(state, WAGT_ELEM, &v2);
+        }
+
+        res = push_agtype_value(state, WAGT_END_ARRAY,
+                                NULL /* signal to sort */);
+    }
+    /* have we got array || object or object || array? */
+    else if (((rk1 == WAGT_BEGIN_ARRAY && !(*it1)->is_scalar) &&
+              rk2 == WAGT_BEGIN_OBJECT) ||
+             (rk1 == WAGT_BEGIN_OBJECT &&
+              (rk2 == WAGT_BEGIN_ARRAY && !(*it2)->is_scalar)))
+    {
+        agtype_iterator **it_array = rk1 == WAGT_BEGIN_ARRAY ? it1 : it2;
+        agtype_iterator **it_object = rk1 == WAGT_BEGIN_OBJECT ? it1 : it2;
+
+        bool prepend = (rk1 == WAGT_BEGIN_OBJECT);
+
+        push_agtype_value(state, WAGT_BEGIN_ARRAY, NULL);
+
+        if (prepend)
+        {
+            push_agtype_value(state, WAGT_BEGIN_OBJECT, NULL);
+            while ((r1 = agtype_iterator_next(it_object, &v1, true)) != 0)
+                push_agtype_value(state, r1,
+                                  r1 != WAGT_END_OBJECT ? &v1 : NULL);
+
+            while ((r2 = agtype_iterator_next(it_array, &v2, true)) != 0)
+                res = push_agtype_value(state, r2,
+                                        r2 != WAGT_END_ARRAY ? &v2 : NULL);
+        }
+        else
+        {
+            while ((r1 = agtype_iterator_next(it_array, &v1, true)) !=
+                   WAGT_END_ARRAY)
+                push_agtype_value(state, r1, &v1);
+
+            push_agtype_value(state, WAGT_BEGIN_OBJECT, NULL);
+            while ((r2 = agtype_iterator_next(it_object, &v2, true)) != 0)
+                push_agtype_value(state, r2,
+                                  r2 != WAGT_END_OBJECT ? &v2 : NULL);
+
+            res = push_agtype_value(state, WAGT_END_ARRAY, NULL);
+        }
+    }
+    else
+    {
+        /*
+         * This must be scalar || object or object || scalar, as that's all
+         * that's left. Both of these make no sense, so error out.
+         */
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("invalid concatenation of agtype objects")));
+    }
+
+    return res;
+}
+
+static void ereport_op_str(const char *op, agtype *lhs, agtype *rhs)
+{
+    const char *msgfmt;
+    const char *lstr;
+    const char *rstr;
+
+    AssertArg(rhs != NULL);
+
+    if (lhs == NULL)
+    {
+        msgfmt = "invalid expression: %s%s%s";
+        lstr = "";
+    }
+    else
+    {
+        msgfmt = "invalid expression: %s %s %s";
+        lstr = agtype_to_cstring(NULL, &lhs->root, VARSIZE(lhs));
+    }
+    rstr = agtype_to_cstring(NULL, &rhs->root, VARSIZE(rhs));
+
+    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                    errmsg(msgfmt, lstr, op, rstr)));
 }

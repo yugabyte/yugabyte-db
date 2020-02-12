@@ -593,6 +593,20 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE FUNCTION agtype_access_slice(agtype, agtype, agtype)
+RETURNS agtype
+LANGUAGE C
+STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION agtype_in_operator(agtype, agtype)
+RETURNS agtype
+LANGUAGE C
+STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
 --
 -- agtype - string matching (`STARTS WITH`, `ENDS WITH`, `CONTAINS`)
 --

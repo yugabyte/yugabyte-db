@@ -168,23 +168,23 @@ typedef uint32 agtentry;
 #define AGTENTRY_IS_AGTYPE 0x70000000 /* our type designator */
 
 /* Access macros.  Note possible multiple evaluations */
-#define AGTE_OFFLENFLD(agte_) ((agte_) & AGTENTRY_OFFLENMASK)
-#define AGTE_HAS_OFF(agte_) (((agte_) & AGTENTRY_HAS_OFF) != 0)
+#define AGTE_OFFLENFLD(agte_) ((agte_)&AGTENTRY_OFFLENMASK)
+#define AGTE_HAS_OFF(agte_) (((agte_)&AGTENTRY_HAS_OFF) != 0)
 #define AGTE_IS_STRING(agte_) \
-    (((agte_) & AGTENTRY_TYPEMASK) == AGTENTRY_IS_STRING)
+    (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_STRING)
 #define AGTE_IS_NUMERIC(agte_) \
-    (((agte_) & AGTENTRY_TYPEMASK) == AGTENTRY_IS_NUMERIC)
+    (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_NUMERIC)
 #define AGTE_IS_CONTAINER(agte_) \
-    (((agte_) & AGTENTRY_TYPEMASK) == AGTENTRY_IS_CONTAINER)
-#define AGTE_IS_NULL(agte_) (((agte_) & AGTENTRY_TYPEMASK) == AGTENTRY_IS_NULL)
+    (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_CONTAINER)
+#define AGTE_IS_NULL(agte_) (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_NULL)
 #define AGTE_IS_BOOL_TRUE(agte_) \
-    (((agte_) & AGTENTRY_TYPEMASK) == AGTENTRY_IS_BOOL_TRUE)
+    (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_BOOL_TRUE)
 #define AGTE_IS_BOOL_FALSE(agte_) \
-    (((agte_) & AGTENTRY_TYPEMASK) == AGTENTRY_IS_BOOL_FALSE)
+    (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_BOOL_FALSE)
 #define AGTE_IS_BOOL(agte_) \
     (AGTE_IS_BOOL_TRUE(agte_) || AGTE_IS_BOOL_FALSE(agte_))
 #define AGTE_IS_AGTYPE(agte_) \
-    (((agte_) & AGTENTRY_TYPEMASK) == AGTENTRY_IS_AGTYPE)
+    (((agte_)&AGTENTRY_TYPEMASK) == AGTENTRY_IS_AGTYPE)
 
 /* Macro for advancing an offset variable to the next agtentry */
 #define AGTE_ADVANCE_OFFSET(offset, agte) \
@@ -425,6 +425,7 @@ Datum float_to_agtype(float8 f);
 Datum string_to_agtype(char *s);
 Datum boolean_to_agtype(bool b);
 bool is_decimal_needed(char *numstr);
+int compare_agtype_scalar_values(agtype_value *a, agtype_value *b);
 
 // OID of agtype and _agtype
 #define AGTYPEOID \

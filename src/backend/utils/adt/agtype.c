@@ -1486,8 +1486,8 @@ static agtype *execute_array_access_operator(agtype *array, agtype *element)
 {
     agtype_value *array_value;
     agtype_value *element_value;
-    int index;
-    int size;
+    int64 index;
+    uint32 size;
 
     element_value = get_ith_agtype_value_from_container(&element->root, 0);
     /* if AGTV_NULL return NULL */
@@ -1561,6 +1561,187 @@ Datum agtype_access_operator(PG_FUNCTION_ARGS)
     }
 
     return AGTYPE_P_GET_DATUM(object);
+}
+
+PG_FUNCTION_INFO_V1(agtype_access_slice);
+/*
+ * Execution function for list slices
+ */
+Datum agtype_access_slice(PG_FUNCTION_ARGS)
+{
+    agtype_value *lidx_value = NULL;
+    agtype_value *uidx_value = NULL;
+    agtype_in_state result;
+    agtype *array;
+    int64 upper_index;
+    int64 lower_index;
+    uint32 array_size;
+    int64 i;
+
+    /* return null if the array to slice is null */
+    if (PG_ARGISNULL(0))
+        PG_RETURN_NULL();
+    /* return an error if both indices are NULL */
+    if (PG_ARGISNULL(1) && PG_ARGISNULL(2))
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("slice start and/or end is required")));
+    /* get the array parameter and verify that it is a list */
+    array = AG_GET_ARG_AGTYPE_P(0);
+    if (!AGT_ROOT_IS_ARRAY(array) || AGT_ROOT_IS_SCALAR(array))
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("slice must access a list")));
+    array_size = AGT_ROOT_COUNT(array);
+    /* if we don't have a lower bound, make it 0 */
+    if (PG_ARGISNULL(1))
+        lower_index = 0;
+    else
+    {
+        lidx_value = get_ith_agtype_value_from_container(
+            &AG_GET_ARG_AGTYPE_P(1)->root, 0);
+        /* adjust for AGTV_NULL */
+        if (lidx_value->type == AGTV_NULL)
+        {
+            lower_index = 0;
+            lidx_value = NULL;
+        }
+    }
+    /* if we don't have an upper bound, make it the size of the array */
+    if (PG_ARGISNULL(2))
+        upper_index = array_size;
+    else
+    {
+        uidx_value = get_ith_agtype_value_from_container(
+            &AG_GET_ARG_AGTYPE_P(2)->root, 0);
+        /* adjust for AGTV_NULL */
+        if (uidx_value->type == AGTV_NULL)
+        {
+            upper_index = array_size;
+            uidx_value = NULL;
+        }
+    }
+    /* if both indices are NULL (AGTV_NULL) return an error */
+    if (lidx_value == NULL && uidx_value == NULL)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("slice start and/or end is required")));
+    /* key must be an integer or NULL */
+    if ((lidx_value != NULL && lidx_value->type != AGTV_INTEGER) ||
+        (uidx_value != NULL && uidx_value->type != AGTV_INTEGER))
+        ereport(ERROR,
+                (errmsg("array slices must resolve to an integer value")));
+    /* set indices if not already set */
+    if (lidx_value)
+        lower_index = lidx_value->val.int_value;
+    if (uidx_value)
+        upper_index = uidx_value->val.int_value;
+    /* adjust for negative and out of bounds index values */
+    if (lower_index < 0)
+        lower_index = array_size + lower_index;
+    if (lower_index < 0)
+        lower_index = 0;
+    if (lower_index > array_size)
+        lower_index = array_size;
+    if (upper_index < 0)
+        upper_index = array_size + upper_index;
+    if (upper_index < 0)
+        upper_index = 0;
+    if (upper_index > array_size)
+        upper_index = array_size;
+
+    memset(&result, 0, sizeof(agtype_in_state));
+
+    result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_ARRAY,
+                                   NULL);
+
+    /* get array elements */
+    for (i = lower_index; i < upper_index; i++)
+        result.res = push_agtype_value(
+            &result.parse_state, WAGT_ELEM,
+            get_ith_agtype_value_from_container(&array->root, i));
+
+    result.res = push_agtype_value(&result.parse_state, WAGT_END_ARRAY, NULL);
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
+}
+
+PG_FUNCTION_INFO_V1(agtype_in_operator);
+/*
+ * Execute function for IN operator
+ */
+Datum agtype_in_operator(PG_FUNCTION_ARGS)
+{
+    agtype *agt_array, *agt_item;
+    agtype_iterator *it_array, *it_item;
+    agtype_value agtv_item, agtv_elem;
+    uint32 array_size = 0;
+    bool result = false;
+    uint32 i = 0;
+
+    /* return null if the array is null */
+    if (PG_ARGISNULL(0))
+        PG_RETURN_NULL();
+
+    /* get the array parameter and verify that it is a list */
+    agt_array = AG_GET_ARG_AGTYPE_P(0);
+    if (!AGT_ROOT_IS_ARRAY(agt_array))
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("object of IN must be a list")));
+
+    /* init array iterator */
+    it_array = agtype_iterator_init(&agt_array->root);
+    /* open array container */
+    agtype_iterator_next(&it_array, &agtv_elem, false);
+    /* check for an array scalar value */
+    if (agtv_elem.type == AGTV_ARRAY && agtv_elem.val.array.raw_scalar)
+    {
+        agtype_iterator_next(&it_array, &agtv_elem, false);
+        /* check for AGTYPE NULL */
+        if (agtv_elem.type == AGTV_NULL)
+            PG_RETURN_NULL();
+        /* if it is a scalar, but not AGTV_NULL, error out */
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("object of IN must be a list")));
+    }
+
+    array_size = AGT_ROOT_COUNT(agt_array);
+
+    /* return null if the item to find is null */
+    if (PG_ARGISNULL(1))
+        PG_RETURN_NULL();
+    /* get the item to search for */
+    agt_item = AG_GET_ARG_AGTYPE_P(1);
+
+    /* init item iterator */
+    it_item = agtype_iterator_init(&agt_item->root);
+
+    /* get value of item */
+    agtype_iterator_next(&it_item, &agtv_item, false);
+    if (agtv_item.type == AGTV_ARRAY && agtv_item.val.array.raw_scalar)
+    {
+        agtype_iterator_next(&it_item, &agtv_item, false);
+        /* check for AGTYPE NULL */
+        if (agtv_item.type == AGTV_NULL)
+            PG_RETURN_NULL();
+    }
+
+    /* iterate through the array, but stop if we find it */
+    for (i = 0; i < array_size && !result; i++)
+    {
+        /* get next element */
+        agtype_iterator_next(&it_array, &agtv_elem, true);
+        /* if both are containers, compare containers */
+        if (!IS_A_AGTYPE_SCALAR(&agtv_item) && !IS_A_AGTYPE_SCALAR(&agtv_elem))
+        {
+            result = (compare_agtype_containers_orderability(
+                          &agt_item->root, agtv_elem.val.binary.data) == 0);
+        }
+        /* if both are scalars and of the same type, compare scalars */
+        else if (IS_A_AGTYPE_SCALAR(&agtv_item) &&
+                 IS_A_AGTYPE_SCALAR(&agtv_elem) &&
+                 agtv_item.type == agtv_elem.type)
+            result = (compare_agtype_scalar_values(&agtv_item, &agtv_elem) ==
+                      0);
+    }
+    return boolean_to_agtype(result);
 }
 
 PG_FUNCTION_INFO_V1(agtype_string_match_starts_with);

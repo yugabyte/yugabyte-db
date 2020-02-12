@@ -100,6 +100,71 @@ SELECT * FROM cypher('expr', $$
 RETURN $var
 $$) AS t(i agtype);
 
+--list concatenation
+SELECT * FROM cypher('expr',
+$$RETURN ['str', 1, 1.0] + [true, null]$$) AS r(c agtype);
+
+--list IN (contains), should all be true
+SELECT * FROM cypher('expr',
+$$RETURN 1 IN ['str', 1, 1.0, true, null]$$) AS r(c boolean);
+SELECT * FROM cypher('expr',
+$$RETURN 'str' IN ['str', 1, 1.0, true, null]$$) AS r(c boolean);
+SELECT * FROM cypher('expr',
+$$RETURN 1.0 IN ['str', 1, 1.0, true, null]$$) AS r(c boolean);
+SELECT * FROM cypher('expr',
+$$RETURN true IN ['str', 1, 1.0, true, null]$$) AS r(c boolean);
+SELECT * FROM cypher('expr',
+$$RETURN [1,3,5,[2,4,6]] IN ['str', 1, 1.0, true, null, [1,3,5,[2,4,6]]]$$) AS r(c boolean);
+SELECT * FROM cypher('expr',
+$$RETURN {bool: true, int: 1} IN ['str', 1, 1.0, true, null, {bool: true, int: 1}, [1,3,5,[2,4,6]]]$$) AS r(c boolean);
+-- should return SQL null, nothing
+SELECT * FROM cypher('expr',
+$$RETURN null IN ['str', 1, 1.0, true, null]$$) AS r(c boolean);
+SELECT * FROM cypher('expr',
+$$RETURN null IN ['str', 1, 1.0, true]$$) AS r(c boolean);
+SELECT * FROM cypher('expr',
+$$RETURN 'str' IN null $$) AS r(c boolean);
+-- should all return false
+SELECT * FROM cypher('expr',
+$$RETURN 0 IN ['str', 1, 1.0, true, null]$$) AS r(c boolean);
+SELECT * FROM cypher('expr',
+$$RETURN 1.1 IN ['str', 1, 1.0, true, null]$$) AS r(c boolean);
+SELECT * FROM cypher('expr',
+$$RETURN 'Str' IN ['str', 1, 1.0, true, null]$$) AS r(c boolean);
+SELECT * FROM cypher('expr',
+$$RETURN [1,3,5,[2,4,5]] IN ['str', 1, 1.0, true, null, [1,3,5,[2,4,6]]]$$) AS r(c boolean);
+SELECT * FROM cypher('expr',
+$$RETURN {bool: true, int: 2} IN ['str', 1, 1.0, true, null, {bool: true, int: 1}, [1,3,5,[2,4,6]]]$$) AS r(c boolean);
+-- should error - ERROR:  object of IN must be a list
+SELECT * FROM cypher('expr',
+$$RETURN null IN 'str' $$) AS r(c boolean);
+SELECT * FROM cypher('expr',
+$$RETURN 'str' IN 'str' $$) AS r(c boolean);
+
+-- list slice
+SELECT * FROM cypher('expr',
+$$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][0..]$$) AS r(c agtype);
+SELECT * FROM cypher('expr',
+$$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][..11]$$) AS r(c agtype);
+SELECT * FROM cypher('expr',
+$$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][0..0]$$) AS r(c agtype);
+SELECT * FROM cypher('expr',
+$$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][10..10]$$) AS r(c agtype);
+SELECT * FROM cypher('expr',
+$$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][0..1]$$) AS r(c agtype);
+SELECT * FROM cypher('expr',
+$$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][9..10]$$) AS r(c agtype);
+SELECT agtype_access_slice('[0]'::agtype, 'null'::agtype, '1'::agtype);
+SELECT agtype_access_slice('[0]'::agtype, '0'::agtype, 'null'::agtype);
+-- should error - ERROR:  slice must access a list
+SELECT * from cypher('expr',
+$$RETURN 0[0..1]$$) as r(a agtype);
+SELECT * from cypher('expr',
+$$RETURN 0[[0]..[1]]$$) as r(a agtype);
+-- should return nothing
+SELECT * from cypher('expr',
+$$RETURN [0][0..-2147483649]$$) as r(a agtype);
+
 --
 -- String operators
 --

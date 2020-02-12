@@ -50,7 +50,6 @@ static void fill_agtype_value(agtype_container *container, int index,
                               char *base_addr, uint32 offset,
                               agtype_value *result);
 static bool equals_agtype_scalar_value(agtype_value *a, agtype_value *b);
-static int compare_agtype_scalar_values(agtype_value *a, agtype_value *b);
 static agtype *convert_to_agtype(agtype_value *val);
 static void convert_agtype_value(StringInfo buffer, agtentry *header,
                                  agtype_value *val, int level);
@@ -1489,7 +1488,7 @@ static bool equals_agtype_scalar_value(agtype_value *a, agtype_value *b)
  * Strings are compared using the default collation.  Used by B-tree
  * operators, where a lexical sort order is generally expected.
  */
-static int compare_agtype_scalar_values(agtype_value *a, agtype_value *b)
+int compare_agtype_scalar_values(agtype_value *a, agtype_value *b)
 {
     if (a->type == b->type)
     {
