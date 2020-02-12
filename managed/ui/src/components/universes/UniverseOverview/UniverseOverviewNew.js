@@ -356,7 +356,7 @@ export default class UniverseOverviewNew extends Component {
         body={
           <FlexContainer direction={"column"} >
             <FlexGrow>
-              <div style={{marginBottom: '30px'}}>Load a retail data set and run queries against it.</div>
+              <div style={{marginBottom: '30px'}}>Load a data set and run queries against it.</div>
             </FlexGrow>
             <FlexShrink className={"centered"}>
               <Fragment>
