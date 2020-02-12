@@ -44,7 +44,7 @@
   &, &:focus {
     background: $YB_ORANGE;
     color: white;
-    font-weight: 600;
+    font-weight: 500;
     @include transition(0.35s);
   }
   i {
@@ -165,7 +165,7 @@
 
 .btn-copy {
   text-transform: uppercase;
-  font-family: "Open Sans", "Helvetica Neue", Arial, sans-serif;
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
   vertical-align: baseline;
   width: 40px;
   font-size: 11px;
@@ -174,7 +174,7 @@
   border: none;
   overflow: hidden;
   position: relative;
-  font-weight: 600;
+  font-weight: 500;
   top: -1px;
   margin-left: 5px;
   box-shadow: 0 1px 2px rgba($YB_DARK_GRAY_2, 0.15);
@@ -416,7 +416,7 @@ pre {
 }
 
 .yb-add-button {
-  font-family: "Open Sans";
+  font-family: "Inter";
   color: $YB_ORANGE;
   font-weight: 400;
   display: inline-block;

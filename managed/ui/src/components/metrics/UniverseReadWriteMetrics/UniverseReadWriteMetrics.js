@@ -40,7 +40,7 @@ export default class UniverseReadWriteMetrics extends Component {
           gridcolor: '#aaa7a3',
           showgrid: true,
           tickfont: {
-            family: 'Open Sans, sans-serif',
+            family: 'Inter, sans-serif',
             size: 9,
             color: '#777573'
           },
