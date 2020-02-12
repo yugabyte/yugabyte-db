@@ -61,6 +61,33 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 | MIN | Returns the minimum value of column values |
 | MAX | Returns the maximum value of column values |
 
+## Semantics
+
+<li>The argument data types must be convertible to the expected type for that argument that was specified by the function definition.</li>
+<li>Function execution will return a value of the specified type by the function definition.</li>
+<li>YugabyteDB allows function calls to be used any where that expression is allowed.</li>
+
+## Cast function
+
+```
+cast_call ::= CAST '(' column AS type ')'
+```
+
+CAST function converts the value returned from a table column to the specified data type.
+
+| Source Column Type | Target Data Type |
+|--------------------|------------------|
+| `BIGINT` | `SMALLINT`, `INT`, `TEXT` |
+| `BOOLEAN` | `TEXT` |
+| `DATE` | `TEXT`, `TIMESTAMP` |
+| `DOUBLE` | `BIGINT`, `INT`, `SMALLINT`, `TEXT` |
+| `FLOAT` | `BIGINT`, `INT`, `SMALLINT`, `TEXT` |
+| `INT` | `BIGINT`, `SMALLINT`, `TEXT` |
+| `SMALLINT` | `BIGINT`, `INT`, `TEXT` |
+| `TIME` | `TEXT` |
+| `TIMESTAMP` | `DATE`, `TEXT` |
+| `TIMEUUID` | `DATE`, `TIMESTAMP` |
+
 
 ## Partition_hash function
 `partition_hash` is a function that takes as arguments the partition key columns of the primary key of a row and 
@@ -90,33 +117,6 @@ The value `512` comes from dividing the full hash partition range by the number 
 
 To do a distributed scan, we can issue in this case 128 queries each using a different hash range. 
 
-
-## Semantics
-
-<li>The argument data types must be convertible to the expected type for that argument that was specified by the function definition.</li>
-<li>Function execution will return a value of the specified type by the function definition.</li>
-<li>YugabyteDB allows function calls to be used any where that expression is allowed.</li>
-
-## Cast function
-
-```
-cast_call ::= CAST '(' column AS type ')'
-```
-
-CAST function converts the value returned from a table column to the specified data type.
-
-| Source Column Type | Target Data Type |
-|--------------------|------------------|
-| `BIGINT` | `SMALLINT`, `INT`, `TEXT` |
-| `BOOLEAN` | `TEXT` |
-| `DATE` | `TEXT`, `TIMESTAMP` |
-| `DOUBLE` | `BIGINT`, `INT`, `SMALLINT`, `TEXT` |
-| `FLOAT` | `BIGINT`, `INT`, `SMALLINT`, `TEXT` |
-| `INT` | `BIGINT`, `SMALLINT`, `TEXT` |
-| `SMALLINT` | `BIGINT`, `INT`, `TEXT` |
-| `TIME` | `TEXT` |
-| `TIMESTAMP` | `DATE`, `TEXT` |
-| `TIMEUUID` | `DATE`, `TIMESTAMP` |
 
 ## WriteTime function
 
