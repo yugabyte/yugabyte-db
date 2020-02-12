@@ -63,12 +63,17 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 
 
 ## Partition_hash function
-`partition_hash` is a function that takes as arguments the values of partition keys of a row and returns an `uint16` hash value.
-The full hash partition value spans from `0 - 65535`. Each tablet keeps are range of values and the hash is used to decode on which tablet the row will reside.  
-We can also use `partition_hash` as a filter in the `WHERE` clause to query tablets directly based on their hash-range. 
-We can query a subset of the data, get approximate count of rows in table, or do a parallel full table scans.
+`partition_hash` is a function that takes as arguments the partition key columns of the primary key of a row and 
+returns a `uint16` hash value representing the hash value for the row used for partitioning the table.
+The hash values used for partitioning fall in the `0-65535` (uint16) range. 
+Tables are partitioned into tablets, with each tablet being responsible for a range of partition values. 
+The `partition_hash` of the row is used to decide which tablet the row will reside in.
+
+`partition_hash` can be handy for querying a subset of the data to get approximate row counts or to breakdown 
+full-table operations into smaller sub-tasks that can be parallelized.
 
 ### Querying a subset of the data
+One use of partition_hash can be used to query a subset of the data and get approximate count of rows in the table.
 Assuming we have a table:
 ```sql
 create table t (h1 int, h2 int, r1 int, r2 int, v int, 
@@ -80,7 +85,10 @@ select count(*) from t where partition_hash(h1, h2) >= 0 and
                                       partition_hash(h1, h2) < 512;
 ```
 The value `512` comes from dividing the full hash partition range by the number of subsets that we want to query (`65536/128=512`).
-To do a distributed scan, we can issue in this case 128 queries each using a different hash range.
+
+### Parallel full table scans
+
+To do a distributed scan, we can issue in this case 128 queries each using a different hash range. 
 
 
 ## Semantics
