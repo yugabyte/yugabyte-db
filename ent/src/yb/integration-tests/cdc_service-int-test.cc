@@ -153,7 +153,7 @@ void AssertChangeRecords(const google::protobuf::RepeatedPtrField<cdc::KeyValueP
   ASSERT_EQ(changes[1].value().string_value(), expected_str);
 }
 
-void VerifyCdcState(client::YBClient* client) {
+void VerifyCdcStateNotEmpty(client::YBClient* client) {
   client::TableHandle table;
   client::YBTableName cdc_state_table(
       YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
@@ -161,10 +161,80 @@ void VerifyCdcState(client::YBClient* client) {
   ASSERT_EQ(1, boost::size(client::TableRange(table)));
   const auto& row = client::TableRange(table).begin();
   string checkpoint = row->column(master::kCdcCheckpointIdx).string_value();
-  size_t split = checkpoint.find(".");
-  auto index = boost::lexical_cast<int>(checkpoint.substr(split + 1, string::npos));
+  auto result = OpId::FromString(checkpoint);
+  ASSERT_OK(result);
+  OpId op_id = *result;
   // Verify that op id index has been advanced and is not 0.
-  ASSERT_GT(index, 0);
+  ASSERT_GT(op_id.index, 0);
+}
+
+void VerifyCdcStateMatches(client::YBClient* client,
+                           const CDCStreamId& stream_id,
+                           const TabletId& tablet_id,
+                           uint64_t term,
+                           uint64_t index)  {
+  client::TableHandle table;
+  client::YBTableName cdc_state_table(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+  ASSERT_OK(table.Open(cdc_state_table, client));
+  const auto op = table.NewReadOp();
+  auto* const req = op->mutable_request();
+  QLAddStringHashValue(req, tablet_id);
+  auto cond = req->mutable_where_expr()->mutable_condition();
+  cond->set_op(QLOperator::QL_OP_AND);
+  QLAddStringCondition(cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL,
+      stream_id);
+  table.AddColumns({master::kCdcCheckpoint}, req);
+
+  auto session = client->NewSession();
+  ASSERT_OK(session->ApplyAndFlush(op));
+
+  LOG(INFO) << strings::Substitute("Verifying tablet: $0, stream: $1, op_id: $2",
+      tablet_id, stream_id, OpId(term, index).ToString());
+
+  auto row_block = ql::RowsResult(op.get()).GetRowBlock();
+  ASSERT_EQ(row_block->row_count(), 1);
+
+  string checkpoint = row_block->row(0).column(0).string_value();
+  auto result = OpId::FromString(checkpoint);
+  ASSERT_OK(result);
+  OpId op_id = *result;
+
+  ASSERT_EQ(op_id.term, term);
+  ASSERT_EQ(op_id.index, index);
+}
+
+void VerifyStreamDeletedFromCdcState(client::YBClient* client,
+                                     const CDCStreamId& stream_id,
+                                     const TabletId& tablet_id,
+                                     int timeout_secs) {
+  client::TableHandle table;
+  const client::YBTableName cdc_state_table(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+  ASSERT_OK(table.Open(cdc_state_table, client));
+
+  const auto op = table.NewReadOp();
+  auto* const req = op->mutable_request();
+  QLAddStringHashValue(req, tablet_id);
+
+  auto cond = req->mutable_where_expr()->mutable_condition();
+  cond->set_op(QLOperator::QL_OP_AND);
+  QLAddStringCondition(cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL,
+      stream_id);
+
+  table.AddColumns({master::kCdcCheckpoint}, req);
+  auto session = client->NewSession();
+
+  // The deletion of cdc_state rows for the specified stream happen in an asynchronous thread,
+  // so even if the request has returned, it doesn't mean that the rows have been deleted yet.
+  ASSERT_OK(WaitFor([&](){
+    EXPECT_OK(session->ApplyAndFlush(op));
+    auto row_block = ql::RowsResult(op.get()).GetRowBlock();
+    if (row_block->row_count() == 0) {
+      return true;
+    }
+    return false;
+  }, MonoDelta::FromSeconds(timeout_secs), "Stream rows in cdc_state have been deleted."));
 }
 
 void CDCServiceTest::GetTablets(std::vector<TabletId>* tablet_ids) {
@@ -247,6 +317,7 @@ TEST_F(CDCServiceTest, TestCreateCDCStreamWithDefaultRententionTime) {
 }
 
 TEST_F(CDCServiceTest, TestDeleteCDCStream) {
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   CDCStreamId stream_id;
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
 
@@ -255,6 +326,19 @@ TEST_F(CDCServiceTest, TestDeleteCDCStream) {
   ASSERT_OK(client_->GetCDCStream(stream_id, &table_id, &options));
   ASSERT_EQ(table_id, table_.table()->id());
 
+  std::vector<std::string> tablet_ids;
+  std::vector<std::string> ranges;
+  ASSERT_OK(client_->GetTablets(table_.table()->name(), 0 /* max_tablets */, &tablet_ids, &ranges));
+
+  bool get_changes_error = false;
+  // Send GetChanges requests so an entry for each tablet can be added to the cdc_state table.
+  // Term and index don't matter.
+  for (const auto& tablet_id : tablet_ids) {
+    GetChanges(tablet_id, stream_id, 1, 1, &get_changes_error);
+    ASSERT_FALSE(get_changes_error);
+    VerifyCdcStateMatches(client_.get(), stream_id, tablet_id, 1, 1);
+  }
+
   ASSERT_OK(client_->DeleteCDCStream(stream_id));
 
   // Check that the stream no longer exists.
@@ -262,6 +346,10 @@ TEST_F(CDCServiceTest, TestDeleteCDCStream) {
   options.clear();
   Status s = client_->GetCDCStream(stream_id, &table_id, &options);
   ASSERT_TRUE(s.IsNotFound());
+
+  for (const auto& tablet_id : tablet_ids) {
+    VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id, 20);
+  }
 }
 
 TEST_F(CDCServiceTest, TestGetChanges) {
@@ -800,7 +888,7 @@ TEST_F(CDCServiceTest, TestCheckpointUpdate) {
   }
 
   // Verify that cdc_state table has correct checkpoint.
-  ASSERT_NO_FATALS(VerifyCdcState(client_.get()));
+  ASSERT_NO_FATALS(VerifyCdcStateNotEmpty(client_.get()));
 
   // Call GetChanges again but without any from checkpoint.
   change_req.Clear();
@@ -819,7 +907,7 @@ TEST_F(CDCServiceTest, TestCheckpointUpdate) {
   }
 
   // Verify that cdc_state table's checkpoint is unaffected.
-  ASSERT_NO_FATALS(VerifyCdcState(client_.get()));
+  ASSERT_NO_FATALS(VerifyCdcStateNotEmpty(client_.get()));
 }
 
 namespace {
@@ -1258,6 +1346,7 @@ void CDCServiceTestThreeServers::GetFirstTabletIdAndLeaderPeer(TabletId* tablet_
         }
       }
     }
+    now = MonoTime::Now();
   }
 }
 

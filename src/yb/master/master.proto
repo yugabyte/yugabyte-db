@@ -407,8 +407,15 @@ message SysRedisConfigEntryPB {
 
 // The data part of a SysRowEntry in the sys.catalog table for a CDC stream.
 message SysCDCStreamEntryPB {
+  enum State {
+    ACTIVE = 0;
+    DELETING = 1;
+    // Currently DELETED is not being used because we delete streams entries from sys catalog.
+    DELETED = 2;
+  }
   optional string table_id = 1;
   repeated CDCStreamOptionsPB options = 2;
+  optional State state = 3 [default = ACTIVE];
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a universe replication record.
