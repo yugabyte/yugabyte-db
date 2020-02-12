@@ -6,7 +6,7 @@
 h1, .h1, h2, .h2, h3, .h3 {
   margin-top: 0px;
   margin-bottom: 10px;
-  font-family: 'Montserrat', 'Helvetica Neue', sans-serif;
+  font-family: 'Rubik', 'Helvetica Neue', sans-serif;
   font-weight: 500;
   letter-spacing: -.01em;
   color: $YB_TEXT_COLOR;
@@ -30,12 +30,13 @@ h3 {
 h4 {
   font-size: 18px;
   margin-top: 0;
-  font-family: 'Montserrat', 'Helvetica Neue', sans-serif;
-  letter-spacing: -.03em;
+  font-family: 'Rubik', 'Helvetica Neue', sans-serif;
+  font-weight: 500;
 }
 
 h5 {
   font-size: 16px;
   margin-top: 0;
-  font-family: 'Montserrat', 'Helvetica Neue', sans-serif;
+  font-family: 'Rubik', 'Helvetica Neue', sans-serif;
+  font-weight: 500;
 }

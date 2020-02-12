@@ -1,46 +1,49 @@
 /* Copyright (c) YugaByte, Inc. */
 
 @font-face {
-  font-family: 'Montserrat';
-  src: url('fonts/montserrat-extrabold-webfont.woff2') format('woff2'),
-       url('fonts/montserrat-extrabold-webfont.woff') format('woff'),
-       url('fonts/montserrat-extrabold-webfont.ttf') format('truetype');
-  font-weight: 800;
+  font-family: 'Rubik';
+  src: url('fonts/Rubik-Bold.woff2') format('woff2'),
+       url('fonts/Rubik-Bold.woff') format('woff');
+  font-weight: 700;
   font-style: normal;
 }
 
 @font-face {
-  font-family: 'Montserrat';
-  src: url('fonts/montserrat-light-webfont.woff2') format('woff2'),
-       url('fonts/montserrat-light-webfont.woff') format('woff'),
-       url('fonts/montserrat-light-webfont.ttf') format('truetype');
-  font-weight: 300;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'Montserrat';
-  src: url('fonts/montserrat-medium-webfont.woff2') format('woff2'),
-       url('fonts/montserrat-medium-webfont.woff') format('woff'),
-       url('fonts/montserrat-medium-webfont.ttf') format('truetype');
+  font-family: 'Rubik';
+  src: url('fonts/Rubik-Medium.woff2') format('woff2'),
+       url('fonts/Rubik-Medium.woff') format('woff');
   font-weight: 500;
   font-style: normal;
 }
 
 @font-face {
-  font-family: 'Open Sans';
-  src: url('fonts/opensans-light-webfont.woff2') format('woff2'),
-       url('fonts/opensans-light-webfont.woff') format('woff'),
-       url('fonts/opensans-light-webfont.ttf') format('truetype');
+  font-family: 'Inter';
+  src: url('fonts/Inter-Light.woff2') format('woff2'),
+       url('fonts/Inter-Light.woff') format('woff');
   font-weight: 300;
   font-style: normal;
 }
 
 @font-face {
-  font-family: 'Open Sans';
-  src: url('fonts/opensans-regular-webfont.woff2') format('woff2'),
-       url('fonts/opensans-regular-webfont.woff') format('woff'),
-       url('fonts/opensans-regular-webfont.ttf') format('truetype');
+  font-family: 'Inter';
+  src: url('fonts/Inter-Regular.woff2') format('woff2'),
+       url('fonts/Inter-Regular.woff') format('woff');
   font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('fonts/Inter-Medium.woff2') format('woff2'),
+       url('fonts/Inter-Medium.woff') format('woff');
+  font-weight: 500;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('fonts/Inter-Bold.woff2') format('woff2'),
+       url('fonts/Inter-Bold.woff') format('woff');
+  font-weight: 700;
   font-style: normal;
 }

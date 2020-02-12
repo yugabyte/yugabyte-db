@@ -22,7 +22,7 @@
 
 .universe-name-cell {
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 500;
   color: $YB_VIOLET_TEXT !important;
   padding: 17px 0 0 0;
   @include transition(0.35s);
@@ -80,7 +80,7 @@ a:hover .universe-name-cell {
 
 .cell-num-nodes {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 0;
 }
 .cell-num-regions {
@@ -107,7 +107,7 @@ a:hover .universe-name-cell {
 .cell-cost-value {
   padding-top: 6px;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .cell-position-detail {
@@ -177,7 +177,7 @@ a:hover .universe-name-cell {
     padding: 0;
     width: 50%;
     margin: 0 0 0 -2px;
-    font-weight: 600;
+    font-weight: 500;
     font-size: 18px;
     line-height: 26px;
   }
@@ -194,7 +194,7 @@ a:hover .universe-name-cell {
 .status-pending-display-container {
 
   .fa-spin {
-    font-weight: 600;
+    font-weight: 500;
     font-size: 18px;
   }
 }
@@ -240,7 +240,7 @@ a:hover .universe-name-cell {
   float: right;
   top: -2px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .legend-square {
@@ -259,7 +259,7 @@ a:hover .universe-name-cell {
 
 .metric-label-type {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .label-type-identifier {
@@ -278,7 +278,7 @@ a:hover .universe-name-cell {
   font-size: 12px;
   padding-top: 14px;
   div {
-    font-weight: 600;
+    font-weight: 500;
     font-size: 12px;
     opacity: .5;
     color: $YB_DARK_GRAY;    

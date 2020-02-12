@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-export const METRIC_FONT = 'Open Sans, sans-serif';
+export const METRIC_FONT = 'Inter, sans-serif';
 
 export const METRIC_COLORS = [
   '#fd7f28',
