@@ -49,6 +49,7 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 | [UnixTimestampOf](../function_datetime/#unixtimestampof) | [`BIGINT`](../type_int) | ([`TIMEUUID`](../type_uuid)) | Conversion |
 | [UUID](../function_datetime/#uuid) | [`UUID`](../type_uuid) | () | Returns a version 4 UUID |
 | [WriteTime](#writetime-function) | [`BIGINT`](../type_int) | (\<AnyType>) | Returns the timestamp when the column was written |
+| [partition_hash](#partition-hash-function) | [`BIGINT`](../type_int) | () | Returns an `uint16` hash of partition key's values |
 
 ## Aggregate Functions
 
@@ -86,6 +87,36 @@ CAST function converts the value returned from a table column to the specified d
 | `TIME` | `TEXT` |
 | `TIMESTAMP` | `DATE`, `TEXT` |
 | `TIMEUUID` | `DATE`, `TIMESTAMP` |
+
+
+## Partition_hash function
+`partition_hash` is a function that takes as arguments the partition key columns of the primary key of a row and 
+returns a `uint16` hash value representing the hash value for the row used for partitioning the table.
+The hash values used for partitioning fall in the `0-65535` (uint16) range. 
+Tables are partitioned into tablets, with each tablet being responsible for a range of partition values. 
+The `partition_hash` of the row is used to decide which tablet the row will reside in.
+
+`partition_hash` can be handy for querying a subset of the data to get approximate row counts or to breakdown 
+full-table operations into smaller sub-tasks that can be parallelized.
+
+### Querying a subset of the data
+One use of partition_hash can be used to query a subset of the data and get approximate count of rows in the table.
+Assuming we have a table:
+```sql
+create table t (h1 int, h2 int, r1 int, r2 int, v int, 
+                         primary key ((h1, h2), r1, r2));
+```
+We can use this function to query a subset of the data (in this case, 1/128 of the data):
+```sql
+select count(*) from t where partition_hash(h1, h2) >= 0 and
+                                      partition_hash(h1, h2) < 512;
+```
+The value `512` comes from dividing the full hash partition range by the number of subsets that we want to query (`65536/128=512`).
+
+### Parallel full table scans
+
+To do a distributed scan, we can issue in this case 128 queries each using a different hash range. 
+
 
 ## WriteTime function
 
