@@ -23,7 +23,7 @@ namespace master {
 // Keeps retrying until we get an "ok" response.
 class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
  public:
-  AsyncTabletSnapshotOp(Master *master,
+  AsyncTabletSnapshotOp(Master* master,
                         ThreadPool* callback_pool,
                         const scoped_refptr<TabletInfo>& tablet,
                         const std::string& snapshot_id,

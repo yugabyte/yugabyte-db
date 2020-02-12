@@ -135,6 +135,12 @@ class CatalogManager : public yb::master::CatalogManager {
                                         GetUniverseReplicationResponsePB* resp,
                                         rpc::RpcContext* rpc);
 
+  // Find all the CDC streams that have been marked as DELETED.
+  CHECKED_STATUS FindCDCStreamsMarkedAsDeleting(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
+
+  // Delete specified CDC streams.
+  CHECKED_STATUS CleanUpDeletedCDCStreams(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
+
  private:
   friend class SnapshotLoader;
   friend class ClusterLoadBalancer;
@@ -196,8 +202,8 @@ class CatalogManager : public yb::master::CatalogManager {
   // Return all CDC streams.
   void GetAllCDCStreams(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
 
-  // Delete specified CDC streams.
-  CHECKED_STATUS DeleteCDCStreams(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
+  // Mark specified CDC streams as DELETING so they can be removed later.
+  CHECKED_STATUS MarkCDCStreamsAsDeleting(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
 
   // Find CDC streams for a table.
   std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTable(const TableId& table_id);
@@ -257,6 +263,9 @@ class CatalogManager : public yb::master::CatalogManager {
   // Should catalog manager resend latest consumer registry to tserver.
   std::unordered_map<TabletServerId, bool> should_send_consumer_registry_
   GUARDED_BY(should_send_consumer_registry_mutex_);
+
+  // YBClient used to modify the cdc_state table from the master.
+  std::unique_ptr<client::YBClient> cdc_ybclient_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

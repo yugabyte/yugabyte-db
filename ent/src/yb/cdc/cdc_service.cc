@@ -205,6 +205,8 @@ void CDCServiceImpl::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
     return;
   }
 
+  LOG(INFO) << "Received DeleteCDCStream request " << req->ShortDebugString();
+
   RPC_CHECK_AND_RETURN_ERROR(req->stream_id_size() > 0,
                              STATUS(InvalidArgument, "Stream ID is required to delete CDC stream"),
                              resp->mutable_error(),
@@ -779,8 +781,8 @@ Result<OpId> CDCServiceImpl::GetLastCheckpoint(
 
   auto cond = req->mutable_where_expr()->mutable_condition();
   cond->set_op(QLOperator::QL_OP_AND);
-  QLAddStringCondition(cond, Schema::first_column_id() + master::kCdcStreamIdIdx,
-      QL_OP_EQUAL, producer_tablet.stream_id);
+  QLAddStringCondition(cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL,
+      producer_tablet.stream_id);
 
   table.AddColumns({master::kCdcCheckpoint}, req);
   RETURN_NOT_OK(session->ApplyAndFlush(op));
