@@ -62,5 +62,4 @@ yugabyte=# DROP CAST (integer AS date);
 ## See also
 
 - [`CREATE CAST`](../ddl_create_cast)
-
-[postgresql-docs-drop-cast]: https://www.postgresql.org/docs/current/sql-dropcast.html
+- [postgresql-docs-drop-cast](https://www.postgresql.org/docs/current/sql-dropcast.html)

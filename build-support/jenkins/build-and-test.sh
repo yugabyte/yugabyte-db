@@ -202,6 +202,7 @@ log "YB_DOWNLOAD_THIRDPARTY=$YB_DOWNLOAD_THIRDPARTY"
 # -------------------------------------------------------------------------------------------------
 
 set_build_root
+set_common_test_paths
 
 # As soon as we know build root, we need to do the necessary workspace cleanup.
 if is_jenkins; then
@@ -270,7 +271,6 @@ find_make_or_ninja_and_update_cmake_opts
 log "YB_USE_NINJA=$YB_USE_NINJA"
 log "YB_NINJA_PATH=${YB_NINJA_PATH:-undefined}"
 
-set_common_test_paths
 set_java_home
 
 export YB_DISABLE_LATEST_SYMLINK=1
@@ -661,16 +661,23 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
   #
   # Everything has already been built by this point, so there is no need to invoke compilation at
   # all as part of building the release package.
+  yb_release_cmd=(
+    "$YB_SRC_ROOT/yb_release"
+    --build "$build_type"
+    --build_root "$BUILD_ROOT"
+    --build_args="--skip-build"
+    --save_release_path_to_file "$package_path_file"
+    --commit "$current_git_commit"
+    --force
+  )
+
+  if [[ ${YB_BUILD_YW:-0} == "1" ]]; then
+    yb_release_cmd+=( --yw )
+  fi
+
   (
     set -x
-    time "$YB_SRC_ROOT/yb_release" \
-      --build "$build_type" \
-      --build_root "$BUILD_ROOT" \
-      --build_args="--skip-build" \
-      --save_release_path_to_file "$package_path_file" \
-      --commit "$current_git_commit" \
-      --yw \
-      --force
+    time "${yb_release_cmd[@]}"
   )
 
   YB_PACKAGE_PATH=$( cat "$package_path_file" )

@@ -88,7 +88,6 @@ yugabyte=# CREATE POLICY p2 ON document FOR INSERT WITH CHECK (dauthor = current
 
 ## See also
 
-[`ALTER POLICY`](../dcl_alter_policy)
-[`DROP POLICY`](../dcl_drop_policy)
-[`ALTER TABLE`](../ddl_alter_table)
-[Other YSQL Statements](..)
+- [`ALTER POLICY`](../dcl_alter_policy)
+- [`DROP POLICY`](../dcl_drop_policy)
+- [`ALTER TABLE`](../ddl_alter_table)

@@ -3,6 +3,8 @@
 import React, { Component } from 'react';
 import { withRouter } from 'react-router';
 import { isNonEmptyArray } from 'utils/ObjectUtils';
+import { getPromiseState } from 'utils/PromiseUtils';
+import { isHidden } from 'utils/LayoutUtils';
 const PropTypes = require('prop-types');
 
 class AuthenticatedComponent extends Component {
@@ -81,8 +83,10 @@ class AuthenticatedComponent extends Component {
   };
 
   render() {
+    const { currentCustomer } = this.props;
+    const sidebarHidden = getPromiseState(currentCustomer).isSuccess() && isHidden(currentCustomer.data.features, "menu.sidebar");
     return (
-      <div className="full-height-container">
+      <div className={sidebarHidden ? 'full-height-container sidebar-hidden' : 'full-height-container'}>
         {this.props.children}
       </div>
     );

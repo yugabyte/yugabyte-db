@@ -205,6 +205,8 @@ void CDCServiceImpl::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
     return;
   }
 
+  LOG(INFO) << "Received DeleteCDCStream request " << req->ShortDebugString();
+
   RPC_CHECK_AND_RETURN_ERROR(req->stream_id_size() > 0,
                              STATUS(InvalidArgument, "Stream ID is required to delete CDC stream"),
                              resp->mutable_error(),
@@ -358,7 +360,11 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
       s.IsNotFound() ? CDCErrorPB::CHECKPOINT_TOO_OLD : CDCErrorPB::UNKNOWN_ERROR,
       context);
 
-  s = UpdateCheckpoint(producer_tablet, OpId::FromPB(resp->checkpoint().op_id()), op_id, session);
+  uint64_t last_record_hybrid_time = resp->records_size() > 0 ?
+      resp->records(resp->records_size() - 1).time() : 0;
+
+  s = UpdateCheckpoint(producer_tablet, OpId::FromPB(resp->checkpoint().op_id()), op_id, session,
+                       last_record_hybrid_time);
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
   {
@@ -371,17 +377,6 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
         CDCErrorPB::INTERNAL_ERROR, context);
 
     shared_consensus->UpdateCDCConsumerOpId(GetMinSentCheckpointForTablet(req->tablet_id()));
-  }
-
-  // TODO(hector): Move the following code to a different thread. We might have to create a thread
-  // pool to handle this.
-  auto min_index = GetMinAppliedCheckpointForTablet(req->tablet_id(), session).index;
-  if (tablet_peer->log_available()) {
-  tablet_peer->log()->set_cdc_min_replicated_index(min_index);
-  } else {
-    LOG(WARNING) << "Unable to set cdc min index for tablet peer " << tablet_peer->permanent_uuid()
-                 << " and tablet " << tablet_peer->tablet_id()
-                 << " because its log object hasn't been initialized";
   }
 
   // Update relevant GetChanges metrics before handing off the Response.
@@ -435,7 +430,8 @@ void CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(const TabletId& tablet_id,
 void CDCServiceImpl::ReadCdcMinReplicatedIndexForAllTabletsAndUpdatePeers() {
   // Returns false if the CDC service has been stopped.
   auto sleep_while_not_stopped = [this]() {
-    auto time_to_sleep = MonoDelta::FromSeconds(FLAGS_update_min_cdc_indices_interval_secs);
+    auto time_to_sleep = MonoDelta::FromSeconds(
+        GetAtomicFlag(&FLAGS_update_min_cdc_indices_interval_secs));
     auto time_slept = MonoDelta::FromMilliseconds(0);
     auto sleep_period = MonoDelta::FromMilliseconds(100);
     while (time_slept < time_to_sleep) {
@@ -459,7 +455,9 @@ void CDCServiceImpl::ReadCdcMinReplicatedIndexForAllTabletsAndUpdatePeers() {
     if (!s.ok()) {
       // It is possible that this runs before the cdc_state table is created. This is
       // ok. It just means that this is the first time the cluster starts.
-      LOG(WARNING) << "Unable to open table " << kCdcStateTableName.table_name();
+      YB_LOG_EVERY_N_SECS(WARNING, 3600) << "Unable to open table "
+                                         << kCdcStateTableName.table_name()
+                                         << ". CDC min replicated indices won't be updated";
       continue;
     }
 
@@ -476,9 +474,11 @@ void CDCServiceImpl::ReadCdcMinReplicatedIndexForAllTabletsAndUpdatePeers() {
       auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
       auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
       auto checkpoint = row.column(master::kCdcCheckpointIdx).string_value();
+      auto last_replication_time = row.column(master::kCdcLastReplicationTimeIdx).timestamp_value();
 
-      LOG(INFO) << "stream_id: " << stream_id << ", tablet_id: " << tablet_id
-              << ", checkpoint: " << checkpoint;
+      VLOG(1) << "stream_id: " << stream_id << ", tablet_id: " << tablet_id
+              << ", checkpoint: " << checkpoint << ", last_replication_time: "
+              << last_replication_time.ToFormattedString();
 
 
       auto result = OpId::FromString(checkpoint);
@@ -522,13 +522,12 @@ void CDCServiceImpl::ReadCdcMinReplicatedIndexForAllTabletsAndUpdatePeers() {
       }
 
       auto min_index = elem.second;
-      if (tablet_peer->log_available()) {
-        tablet_peer->log()->set_cdc_min_replicated_index(min_index);
-      } else {
+      s = tablet_peer->set_cdc_min_replicated_index(min_index);
+      if (!s.ok()) {
         LOG(WARNING) << "Unable to set cdc min index for tablet peer "
                      << tablet_peer->permanent_uuid()
                      << " and tablet " << tablet_peer->tablet_id()
-                     << " because its log object hasn't been initialized";
+                     << ": " << s;
       }
       LOG(INFO) << "Updating followers for tablet " << tablet_id << " with index " << min_index;
       UpdatePeersCdcMinReplicatedIndex(tablet_id, min_index);
@@ -745,7 +744,8 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(const UpdateCdcReplicatedIndexRequ
                              CDCErrorPB::INTERNAL_ERROR,
                              context);
 
-  tablet_peer->log()->set_cdc_min_replicated_index(req->replicated_index());
+  RPC_STATUS_RETURN_ERROR(tablet_peer->set_cdc_min_replicated_index(req->replicated_index()),
+                          resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
   context.RespondSuccess();
 }
@@ -781,8 +781,8 @@ Result<OpId> CDCServiceImpl::GetLastCheckpoint(
 
   auto cond = req->mutable_where_expr()->mutable_condition();
   cond->set_op(QLOperator::QL_OP_AND);
-  QLAddStringCondition(cond, Schema::first_column_id() + master::kCdcStreamIdIdx,
-      QL_OP_EQUAL, producer_tablet.stream_id);
+  QLAddStringCondition(cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL,
+      producer_tablet.stream_id);
 
   table.AddColumns({master::kCdcCheckpoint}, req);
   RETURN_NOT_OK(session->ApplyAndFlush(op));
@@ -801,7 +801,8 @@ Result<OpId> CDCServiceImpl::GetLastCheckpoint(
 Status CDCServiceImpl::UpdateCheckpoint(const ProducerTabletInfo& producer_tablet,
                                         const OpId& sent_op_id,
                                         const OpId& commit_op_id,
-                                        const std::shared_ptr<client::YBSession>& session) {
+                                        const std::shared_ptr<client::YBSession>& session,
+                                        uint64_t last_record_hybrid_time) {
   bool update_cdc_state = true;
   auto now = CoarseMonoClock::Now();
   TabletCheckpoint sent_checkpoint({sent_op_id, now});
@@ -838,6 +839,13 @@ Status CDCServiceImpl::UpdateCheckpoint(const ProducerTabletInfo& producer_table
     QLAddStringHashValue(req, producer_tablet.tablet_id);
     QLAddStringRangeValue(req, producer_tablet.stream_id);
     table.AddStringColumnValue(req, master::kCdcCheckpoint, commit_op_id.ToString());
+    // If we have a last record hybrid time, use that for physical time. If not, it means we're
+    // caught up, so the current time.
+    uint64_t last_replication_time_micros = last_record_hybrid_time != 0 ?
+        HybridTime(last_record_hybrid_time).GetPhysicalValueMicros() : GetCurrentTimeMicros();
+    table.AddTimestampColumnValue(
+        req, master::kCdcLastReplicationTime,
+        last_replication_time_micros / MonoTime::kMicrosecondsPerMillisecond);
     RETURN_NOT_OK(session->ApplyAndFlush(op));
   }
 

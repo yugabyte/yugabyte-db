@@ -184,6 +184,7 @@ class LogTestBase : public YBTest {
                        0, // schema_version
                        metric_entity_.get(),
                        append_pool_.get(),
+                       std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
                        &log_));
   }
 

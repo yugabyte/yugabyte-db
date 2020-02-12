@@ -1,7 +1,7 @@
 ---
 title: BOOLEAN
 summary: Boolean values of false or true
-description: BOOLEAN Type
+description: BOOLEAN type
 menu:
   latest:
     parent: api-cassandra
@@ -63,4 +63,4 @@ id | finished
 
 ## See also
 
-[Data Types](..#data-types)
+- [Data types](..#data-types)

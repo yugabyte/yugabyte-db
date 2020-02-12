@@ -136,7 +136,7 @@ const mapDispatchToProps = (dispatch) => {
 const mapStateToProps = (state) => {
   return {
     cloud: state.cloud,
-    customer: state.customer,
+    currentCustomer: state.customer.currentCustomer,
     universe: state.universe,
     tasks: state.tasks,
     fetchMetadata: state.cloud.fetchMetadata,

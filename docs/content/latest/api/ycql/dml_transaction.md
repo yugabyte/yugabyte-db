@@ -138,7 +138,6 @@ cqlsh:example> SELECT account_name, account_type, balance, writetime(balance) FR
 
 ## See also
 
-[`INSERT`](../dml_insert)
-[`UPDATE`](../dml_update)
-[`DELETE`](../dml_delete)
-[Other CQL Statements](..)
+- [`INSERT`](../dml_insert)
+- [`UPDATE`](../dml_update)
+- [`DELETE`](../dml_delete)

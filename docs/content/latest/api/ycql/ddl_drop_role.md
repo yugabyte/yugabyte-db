@@ -57,10 +57,9 @@ cqlsh:example> DROP ROLE IF EXISTS role2;
 
 ## See also
 
-[`ALTER ROLE`](../ddl_alter_role)
-[`CREATE ROLE`](../ddl_drop_role)
-[`GRANT ROLE`](../ddl_grant_role)
-[`REVOKE ROLE`](../ddl_revoke_role)
-[`GRANT PERMISSION`](../ddl_grant_permission)
-[`REVOKE PERMISSION`](../ddl_revoke_permission)
-[Other CQL Statements](..)
+- [`ALTER ROLE`](../ddl_alter_role)
+- [`CREATE ROLE`](../ddl_drop_role)
+- [`GRANT ROLE`](../ddl_grant_role)
+- [`REVOKE ROLE`](../ddl_revoke_role)
+- [`GRANT PERMISSION`](../ddl_grant_permission)
+- [`REVOKE PERMISSION`](../ddl_revoke_permission)

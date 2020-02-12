@@ -145,6 +145,11 @@ void CatalogManagerBgTasks::Run() {
       if (!to_delete.empty() || catalog_manager_->AreTablesDeleting()) {
         catalog_manager_->CleanUpDeletedTables();
       }
+      std::vector<scoped_refptr<CDCStreamInfo>> streams;
+      auto s = catalog_manager_->FindCDCStreamsMarkedAsDeleting(&streams);
+      if (s.ok() && !streams.empty()) {
+        s = catalog_manager_->CleanUpDeletedCDCStreams(streams);
+      }
     }
     WARN_NOT_OK(catalog_manager_->encryption_manager_->
                 GetUniverseKeyRegistry(&catalog_manager_->master_->proxy_cache()),

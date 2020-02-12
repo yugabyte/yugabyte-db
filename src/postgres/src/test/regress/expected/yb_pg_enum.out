@@ -230,7 +230,7 @@ ERROR:  index "enumtest_lsm" does not exist
 -- Hash index / opclass with the = operator
 --
 CREATE INDEX enumtest_hash ON enumtest USING hash (col);
-NOTICE:  index method "hash" was replaced with "lsm" in YugaByte DB
+NOTICE:  index method "hash" was replaced with "lsm" in YugabyteDB
 ERROR:  INDEX on column of type 'user_defined_type' not yet supported
 SELECT * FROM enumtest WHERE col = 'orange';
   col   

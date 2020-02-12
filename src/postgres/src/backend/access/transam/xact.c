@@ -2786,6 +2786,9 @@ CleanupTransaction(void)
 void
 StartTransactionCommand(void)
 {
+	if (IsYugaByteEnabled())
+		HandleYBStatus(YBCPgStartOperationsBuffering());
+
 	TransactionState s = CurrentTransactionState;
 
 	switch (s->blockState)
@@ -2890,6 +2893,9 @@ YBCCommitTransactionAndUpdateBlockState() {
 void
 CommitTransactionCommand(void)
 {
+	if (IsYugaByteEnabled())
+		HandleYBStatus(YBCPgFlushBufferedOperations());
+
 	TransactionState s = CurrentTransactionState;
 
 	switch (s->blockState)

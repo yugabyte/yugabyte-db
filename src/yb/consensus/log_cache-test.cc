@@ -104,6 +104,7 @@ class LogCacheTest : public YBTest {
                             0, // schema_version
                             NULL,
                             append_pool_.get(),
+                            std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
                             &log_));
 
     CloseAndReopenCache(MinimumOpId());

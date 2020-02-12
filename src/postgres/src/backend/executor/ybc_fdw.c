@@ -1,7 +1,7 @@
 /*--------------------------------------------------------------------------------------------------
  *
  * ybc_fdw.c
- *		  Foreign-data wrapper for YugaByte DB.
+ *		  Foreign-data wrapper for YugabyteDB.
  *
  * Copyright (c) YugaByte, Inc.
  *

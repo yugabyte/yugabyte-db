@@ -312,6 +312,65 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReadRestart)) {
   ASSERT_GE(last_written.load(std::memory_order_acquire), 100);
 }
 
+// Concurrently insert records into tables with foreign key relationship while truncating both.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentInsertTruncateForeignKey)) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("DROP TABLE IF EXISTS t2"));
+  ASSERT_OK(conn.Execute("DROP TABLE IF EXISTS t1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (k int primary key, v int)"));
+  ASSERT_OK(conn.Execute(
+        "CREATE TABLE t2 (k int primary key, t1_k int, FOREIGN KEY (t1_k) REFERENCES t1 (k))"));
+
+  std::atomic<bool> stop(false);
+
+  const int kMaxKeys = 1 << 20;
+
+  constexpr auto kWriteThreads = 4;
+  std::vector<std::thread> write_threads;
+  while (write_threads.size() != kWriteThreads) {
+    write_threads.emplace_back([this, &stop] {
+      auto write_conn = ASSERT_RESULT(Connect());
+      while (!stop.load(std::memory_order_acquire)) {
+        int t1_k = RandomUniformInt(0, kMaxKeys - 1);
+        int t1_v = RandomUniformInt(0, kMaxKeys - 1);
+        WARN_NOT_OK(write_conn.ExecuteFormat(
+            "INSERT INTO t1 VALUES ($0, $1)", t1_k, t1_v), "Ignore");
+        int t2_k = RandomUniformInt(0, kMaxKeys - 1);
+        WARN_NOT_OK(write_conn.ExecuteFormat(
+            "INSERT INTO t2 VALUES ($0, $1)", t2_k, t1_k), "Ignore");
+      }
+    });
+  }
+
+  constexpr auto kTruncateThreads = 2;
+  std::vector<std::thread> truncate_threads;
+  while (truncate_threads.size() != kTruncateThreads) {
+    truncate_threads.emplace_back([this, &stop] {
+      auto truncate_conn = ASSERT_RESULT(Connect());
+      int idx = 0;
+      while (!stop.load(std::memory_order_acquire)) {
+        WARN_NOT_OK(truncate_conn.Execute(
+                "TRUNCATE TABLE t1, t2 CASCADE"), "Ignore");
+        ++idx;
+        std::this_thread::sleep_for(100ms);
+      }
+    });
+  }
+
+  auto se = ScopeExit([&stop, &write_threads, &truncate_threads] {
+    stop.store(true, std::memory_order_release);
+    for (auto& thread : write_threads) {
+      thread.join();
+    }
+    for (auto& thread : truncate_threads) {
+      thread.join();
+    }
+  });
+
+  std::this_thread::sleep_for(30s);
+}
+
 // Concurrently insert records to table with index.
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentIndexInsert)) {
   auto conn = ASSERT_RESULT(Connect());

@@ -334,6 +334,7 @@ Status Log::Open(const LogOptions &options,
                  uint32_t schema_version,
                  const scoped_refptr<MetricEntity>& metric_entity,
                  ThreadPool* append_thread_pool,
+                 int64_t cdc_min_replicated_index,
                  scoped_refptr<Log>* log) {
 
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, DirName(tablet_wal_path)),

@@ -30,8 +30,6 @@ import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.Statement;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SocketOptions;
-import com.datastax.driver.core.exceptions.InvalidQueryException;
-import com.datastax.driver.core.exceptions.OperationTimedOutException;
 import com.datastax.driver.core.exceptions.QueryValidationException;
 
 import org.slf4j.Logger;
@@ -39,27 +37,19 @@ import org.slf4j.LoggerFactory;
 
 import org.yb.client.YBClient;
 import org.yb.minicluster.BaseMiniClusterTest;
-import org.yb.minicluster.IOMetrics;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
-import org.yb.util.ServerInfo;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
-
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 
 public class BaseCQLTest extends BaseMiniClusterTest {
   protected static final Logger LOG = LoggerFactory.getLogger(BaseCQLTest.class);
@@ -654,105 +644,23 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     execute(deleteKeyspaceStmt);
   }
 
-  // Get metrics of all tservers.
-  public Map<MiniYBDaemon, Metrics> getAllMetrics() throws Exception {
-    Map<MiniYBDaemon, Metrics> initialMetrics = new HashMap<>();
-    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      Metrics metrics = new Metrics(ts.getLocalhostIP(),
-                                    ts.getCqlWebPort(),
-                                    "server");
-      initialMetrics.put(ts, metrics);
-    }
-    return initialMetrics;
-  }
-
-  // Get IO metrics of all tservers.
-  public Map<MiniYBDaemon, IOMetrics> getTSMetrics() throws Exception {
-    Map<MiniYBDaemon, IOMetrics> initialMetrics = new HashMap<>();
-    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
-                                                    ts.getCqlWebPort(),
-                                                    "server"));
-      initialMetrics.put(ts, metrics);
-    }
-    return initialMetrics;
-  }
-
-  // Get combined IO metrics of all tservers since a certain point.
-  public IOMetrics getCombinedMetrics(Map<MiniYBDaemon, IOMetrics> initialMetrics)
-      throws Exception {
-    IOMetrics totalMetrics = new IOMetrics();
-    int tsCount = miniCluster.getTabletServers().values().size();
-    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
-                                                    ts.getCqlWebPort(),
-                                                    "server"))
-                          .subtract(initialMetrics.get(ts));
-      LOG.info("Metrics of " + ts.toString() + ": " + metrics.toString());
-      totalMetrics.add(metrics);
-    }
-    LOG.info("Total metrics: " + totalMetrics.toString());
-    return totalMetrics;
-  }
-
-  private Set<String> getTableIds(String keyspaceName, String tableName)  throws Exception {
-    return miniCluster.getClient().getTabletUUIDs(keyspaceName, tableName);
+  private String getTableUUID(String keyspaceName, String tableName)  throws Exception {
+    return miniCluster.getClient().openTable(keyspaceName, tableName).getTableId();
   }
 
   public RocksDBMetrics getRocksDBMetric(String tableName) throws Exception {
-    Set<String> tabletIds = getTableIds(DEFAULT_TEST_KEYSPACE, tableName);
-    RocksDBMetrics metrics = new RocksDBMetrics();
-    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      try {
-        URL url = new URL(String.format("http://%s:%d/metrics",
-                                        ts.getLocalhostIP(),
-                                        ts.getWebPort()));
-        Scanner scanner = new Scanner(url.openConnection().getInputStream());
-        JsonParser parser = new JsonParser();
-        JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
-        for (JsonElement elem : tree.getAsJsonArray()) {
-          JsonObject obj = elem.getAsJsonObject();
-          if (obj.get("type").getAsString().equals("tablet") &&
-              tabletIds.contains(obj.get("id").getAsString())) {
-            metrics.add(new RocksDBMetrics(new Metrics(obj)));
-          }
-        }
-      } catch (MalformedURLException e) {
-        throw new InternalError(e.getMessage());
-      }
-    }
-    return metrics;
+    return getRocksDBMetricByTableUUID(getTableUUID(DEFAULT_TEST_KEYSPACE, tableName));
   }
 
   public int getTableCounterMetric(String keyspaceName,
                                    String tableName,
                                    String metricName) throws Exception {
-    int value = 0;
-    Set<String> tabletIds = getTableIds(keyspaceName, tableName);
-    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      try {
-        URL url = new URL(String.format("http://%s:%d/metrics",
-                                        ts.getLocalhostIP(),
-                                        ts.getWebPort()));
-        Scanner scanner = new Scanner(url.openConnection().getInputStream());
-        JsonParser parser = new JsonParser();
-        JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
-        for (JsonElement elem : tree.getAsJsonArray()) {
-          JsonObject obj = elem.getAsJsonObject();
-          if (obj.get("type").getAsString().equals("tablet") &&
-              tabletIds.contains(obj.get("id").getAsString())) {
-            value += new Metrics(obj).getCounter(metricName).value;
-          }
-        }
-      } catch (MalformedURLException e) {
-        throw new InternalError(e.getMessage());
-      }
-    }
-    return value;
+    return getTableCounterMetricByTableUUID(getTableUUID(keyspaceName, tableName), metricName);
   }
 
   public int getRestartsCount(String tableName) throws Exception {
-    return getTableCounterMetric(DEFAULT_TEST_KEYSPACE, tableName, "restart_read_requests");
+    return getTableCounterMetricByTableUUID(getTableUUID(DEFAULT_TEST_KEYSPACE, tableName),
+                                "restart_read_requests");
   }
 
   public int getRetriesCount() throws Exception {

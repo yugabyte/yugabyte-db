@@ -143,6 +143,9 @@
     }
   }
 }
+.sidebar-hidden .universe-detail-status-container {
+  left: 30px;
+}
 .universe-detail {
   .content-title {
     position: static;
@@ -260,6 +263,9 @@
   .request-status {
     margin-left: 15px;
   }
+}
+.sidebar-hidden .content-title {
+  left: 30px;
 }
 
 h2 {

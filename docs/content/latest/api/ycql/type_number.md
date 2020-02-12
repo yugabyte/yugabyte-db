@@ -1,7 +1,7 @@
 ---
-title: Non-Integer
+title: Non-integer
 summary: FLOAT, DOUBLE, and DECIMAL
-description: Non-Integer Numbers
+description: Non-integer numbers
 menu:
   latest:
     parent: api-cassandra
@@ -78,4 +78,4 @@ cqlsh:example> SELECT * FROM sensor_data;
 
 ## See also
 
-[Data Types](..#data-types)
+- [Data types](..#data-types)

@@ -163,7 +163,7 @@ static Bitmapset *GetTablePrimaryKey(Relation rel,
 /*
  * Get primary key columns as bitmap of a table for real YB columns.
  */
-static Bitmapset *GetYBTablePrimaryKey(Relation rel)
+Bitmapset *GetYBTablePrimaryKey(Relation rel)
 {
 	return GetTablePrimaryKey(rel, FirstLowInvalidHeapAttributeNumber + 1 /* minattr */,
 							  false /* includeYBSystemColumns */);
@@ -172,7 +172,7 @@ static Bitmapset *GetYBTablePrimaryKey(Relation rel)
 /*
  * Get primary key columns as bitmap of a table for real and system YB columns.
  */
-static Bitmapset *GetFullYBTablePrimaryKey(Relation rel)
+Bitmapset *GetFullYBTablePrimaryKey(Relation rel)
 {
 	return GetTablePrimaryKey(rel, YBSystemFirstLowInvalidAttributeNumber + 1 /* minattr */,
 							  true /* includeYBSystemColumns */);
@@ -273,7 +273,7 @@ static bool IsSystemCatalogChange(Relation rel)
  * Will handle the case if the write changes the system catalogs meaning
  * we need to increment the catalog versions accordingly.
  */
-static YBCStatus YBCExecWriteStmt(YBCPgStatement ybc_stmt, Relation rel, int *rows_affected_count)
+static void YBCExecWriteStmt(YBCPgStatement ybc_stmt, Relation rel, int *rows_affected_count)
 {
 	bool is_syscatalog_change = IsSystemCatalogChange(rel);
 	bool modifies_row = false;
@@ -300,7 +300,7 @@ static YBCStatus YBCExecWriteStmt(YBCPgStatement ybc_stmt, Relation rel, int *ro
 		               ybc_stmt);
 
 	/* Execute the insert. */
-	YBCStatus status = YBCPgDmlExecWriteOp(ybc_stmt, rows_affected_count);
+	HandleYBStmtStatus(YBCPgDmlExecWriteOp(ybc_stmt, rows_affected_count), ybc_stmt);
 
 	/*
 	 * Optimization to increment the catalog version for the local cache as
@@ -312,57 +312,10 @@ static YBCStatus YBCExecWriteStmt(YBCPgStatement ybc_stmt, Relation rel, int *ro
 	 * other backends).
 	 * If changes occurred, then a cache refresh will be needed as usual.
 	 */
-	if (!status && is_syscatalog_version_change)
+	if (is_syscatalog_version_change)
 	{
 		// TODO(shane) also update the shared memory catalog version here.
 		yb_catalog_cache_version += 1;
-	}
-
-	return status;
-}
-
-/*
- * Utility method to handle the status of an insert statement to return unique
- * constraint violation error message due to duplicate key in primary key or
- * unique index / constraint.
- */
-static void YBCHandleInsertStatus(YBCStatus status, Relation rel, YBCPgStatement stmt)
-{
-	if (!status)
-		return;
-
-	HandleYBStatus(YBCPgDeleteStatement(stmt));
-
-	if (YBCStatusIsDuplicateKey(status))
-	{
-		char *constraint;
-
-		/*
-		 * If this is the base table and there is a primary key, the primary key is
-		 * the constraint. Otherwise, the rel is the unique index constraint.
-		 */
-		if (!rel->rd_index && rel->rd_pkindex != InvalidOid)
-		{
-			Relation pkey = RelationIdGetRelation(rel->rd_pkindex);
-
-			constraint = pstrdup(RelationGetRelationName(pkey));
-
-			RelationClose(pkey);
-		}
-		else
-		{
-			constraint = pstrdup(RelationGetRelationName(rel));
-		}
-
-		YBCFreeStatus(status);
-		ereport(ERROR,
-				(errcode(ERRCODE_UNIQUE_VIOLATION),
-				 errmsg("duplicate key value violates unique constraint \"%s\"",
-						constraint)));
-	}
-	else
-	{
-		HandleYBStatus(status);
 	}
 }
 
@@ -426,8 +379,8 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 	}
 
 	/*
-	 * For system tables, mark tuple for invalidation from system caches 
-	 * at next command boundary. Do this now so if there is an error with insert 
+	 * For system tables, mark tuple for invalidation from system caches
+	 * at next command boundary. Do this now so if there is an error with insert
 	 * we will re-query to get the correct state from the master.
 	 */
 	if (IsCatalogRelation(rel))
@@ -437,8 +390,7 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 	}
 
 	/* Execute the insert */
-	YBCHandleInsertStatus(YBCExecWriteStmt(insert_stmt, rel, NULL /* rows_affected_count */),
-						  rel, insert_stmt);
+	YBCExecWriteStmt(insert_stmt, rel, NULL /* rows_affected_count */);
 
 	/* Clean up */
 	HandleYBStatus(YBCPgDeleteStatement(insert_stmt));
@@ -580,8 +532,7 @@ void YBCExecuteInsertIndex(Relation index, Datum *values, bool *isnull, Datum yb
 						  ybctid, true /* ybctid_as_value */);
 
 	/* Execute the insert and clean up. */
-	YBCHandleInsertStatus(YBCExecWriteStmt(insert_stmt, index, NULL /* rows_affected_count */),
-						  index, insert_stmt);
+	YBCExecWriteStmt(insert_stmt, index, NULL /* rows_affected_count */);
 	HandleYBStatus(YBCPgDeleteStatement(insert_stmt));
 }
 
@@ -632,23 +583,18 @@ bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate, Modify
 										  YBTupleIdAttributeNumber,
 										  ybctid_expr), delete_stmt);
 
+	/* Delete row from foreign key cache */
+	HandleYBStatus(YBCPgDeleteFromForeignKeyReferenceCache(relid, ybctid));
+
 	/* Execute the statement. */
 	int rows_affected_count = 0;
-	HandleYBStmtStatus(YBCExecWriteStmt(delete_stmt, rel, &rows_affected_count),
-					   delete_stmt);
-
-	if (rows_affected_count == 0 && !isSingleRow)
-	{
-		ereport(ERROR,
-		        (errcode(ERRCODE_NO_DATA), errmsg(
-				        "Row specified in DELETE request was not found in YugaByte database")));
-	}
+	YBCExecWriteStmt(delete_stmt, rel, isSingleRow ? &rows_affected_count : NULL);
 
 	/* Cleanup. */
 	HandleYBStatus(YBCPgDeleteStatement(delete_stmt));
 	delete_stmt = NULL;
 
-	return rows_affected_count > 0;
+	return !isSingleRow || rows_affected_count > 0;
 }
 
 void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum ybctid)
@@ -668,8 +614,11 @@ void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum yb
 	PrepareIndexWriteStmt(delete_stmt, index, values, isnull,
 	                      IndexRelationGetNumberOfKeyAttributes(index),
 	                      ybctid, false /* ybctid_as_value */);
-	HandleYBStmtStatus(YBCExecWriteStmt(delete_stmt, index, NULL /* rows_affected_count */),
-					   delete_stmt);
+
+	/* Delete row from foreign key cache */
+	HandleYBStatus(YBCPgDeleteFromForeignKeyReferenceCache(relid, ybctid));
+
+	YBCExecWriteStmt(delete_stmt, index, NULL /* rows_affected_count */);
 
 	HandleYBStatus(YBCPgDeleteStatement(delete_stmt));
 }
@@ -752,15 +701,7 @@ bool YBCExecuteUpdate(Relation rel,
 
 	/* Execute the statement. */
 	int rows_affected_count = 0;
-	HandleYBStmtStatus(YBCExecWriteStmt(update_stmt, rel, &rows_affected_count),
-					   update_stmt);
-
-	if (rows_affected_count == 0 && !isSingleRow)
-	{
-		ereport(ERROR,
-		        (errcode(ERRCODE_NO_DATA), errmsg(
-				        "Row specified in UPDATE request was not found in YugaByte database")));
-	}
+	YBCExecWriteStmt(update_stmt, rel, isSingleRow ? &rows_affected_count : NULL);
 
 	/* Cleanup. */
 	HandleYBStatus(YBCPgDeleteStatement(update_stmt));
@@ -774,7 +715,7 @@ bool YBCExecuteUpdate(Relation rel,
 		tuple->t_ybctid = ybctid;
 	}
 
-	return rows_affected_count > 0;
+	return !isSingleRow || rows_affected_count > 0;
 }
 
 void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
@@ -797,6 +738,10 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 	/* Bind ybctid to identify the current row. */
 	YBCPgExpr ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, tuple->t_ybctid,
 										   false /* is_null */);
+
+	/* Delete row from foreign key cache */
+	HandleYBStatus(YBCPgDeleteFromForeignKeyReferenceCache(relid, tuple->t_ybctid));
+
 	HandleYBStmtStatus(YBCPgDmlBindColumn(delete_stmt,
 										  YBTupleIdAttributeNumber,
 										  ybctid_expr), delete_stmt);
@@ -809,8 +754,7 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 	MarkCurrentCommandUsed();
 	CacheInvalidateHeapTuple(rel, tuple, NULL);
 
-	HandleYBStmtStatus(YBCExecWriteStmt(delete_stmt, rel, NULL /* rows_affected_count */),
-					   delete_stmt);
+	YBCExecWriteStmt(delete_stmt, rel, NULL /* rows_affected_count */);
 
 	/* Complete execution */
 	HandleYBStatus(YBCPgDeleteStatement(delete_stmt));
@@ -870,19 +814,9 @@ void YBCUpdateSysCatalogTuple(Relation rel, HeapTuple oldtuple, HeapTuple tuple)
 		CacheInvalidateHeapTuple(rel, tuple, NULL);
 
 	/* Execute the statement and clean up */
-	HandleYBStmtStatus(YBCExecWriteStmt(update_stmt, rel, NULL /* rows_affected_count */), update_stmt);
+	YBCExecWriteStmt(update_stmt, rel, NULL /* rows_affected_count */);
 	HandleYBStatus(YBCPgDeleteStatement(update_stmt));
 	update_stmt = NULL;
-}
-
-void YBCStartBufferingWriteOperations()
-{
-	HandleYBStatus(YBCPgStartBufferingWriteOperations());
-}
-
-void YBCFlushBufferedWriteOperations()
-{
-	HandleYBStatus(YBCPgFlushBufferedWriteOperations());
 }
 
 bool

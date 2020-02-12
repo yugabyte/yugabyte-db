@@ -122,7 +122,8 @@ To do a distributed scan, we can issue in this case 128 queries each using a dif
 
 The `WriteTime` function returns the timestamp in microseconds when a column was written.
 For example, suppose we have a table `page_views` with a column named `views`:
-```
+
+```sql
  SELECT writetime(views) FROM page_views;
 
  writetime(views)
@@ -133,9 +134,11 @@ For example, suppose we have a table `page_views` with a column named `views`:
 ```
 
 ## TTL function
+
 The TTL function returns the number of seconds until a column or row expires. 
 Assuming we have a table `page_views` and a column named `views`:
-```
+
+```sql
 SELECT TTL(views) FROM page_views;
 
  ttl(views)
@@ -144,7 +147,6 @@ SELECT TTL(views) FROM page_views;
 
 (1 rows)
 ```
-
 
 ## Examples
 
@@ -168,4 +170,4 @@ cqlsh:example> SELECT CAST(ts AS DATE) FROM test_cast;
 
 ## See also
 
-[All Expressions](..##expressions)
+- [All Expressions](..##expressions)

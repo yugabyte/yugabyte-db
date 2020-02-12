@@ -33,13 +33,16 @@
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
+#include "catalog/catalog.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
+#include "catalog/ybctype.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
 #include "executor/spi.h"
+#include "executor/ybcModifyTable.h"
 #include "lib/ilist.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_relation.h"
@@ -59,6 +62,7 @@
 #include "utils/tqual.h"
 
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 
 /* ----------
@@ -124,6 +128,7 @@ typedef struct RI_ConstraintInfo
 	Oid			pp_eq_oprs[RI_MAX_NUMKEYS]; /* equality operators (PK = PK) */
 	Oid			ff_eq_oprs[RI_MAX_NUMKEYS]; /* equality operators (FK = FK) */
 	dlist_node	valid_link;		/* Link in list of valid entries */
+	Oid			conindid;		/* index supporting this constraint */
 } RI_ConstraintInfo;
 
 
@@ -243,6 +248,9 @@ static void ri_ReportViolation(const RI_ConstraintInfo *riinfo,
 				   HeapTuple violator, TupleDesc tupdesc,
 				   int queryno) pg_attribute_noreturn();
 
+static void BuildYBTupleId(Relation pk_rel, Relation fk_rel, Relation idx,
+					const RI_ConstraintInfo *riinfo, HeapTuple tup, void **data, int64_t *bytes);
+
 
 /* ----------
  * RI_FKey_check -
@@ -261,6 +269,9 @@ RI_FKey_check(TriggerData *trigdata)
 	RI_QueryKey qkey;
 	SPIPlanPtr	qplan;
 	int			i;
+	Oid			ref_table_id = InvalidOid;		/* Referenced Relation (table / index) ID */
+	char*		tuple_id = NULL;
+	int64_t 	tuple_id_size = 0;
 
 	/*
 	 * Get arguments.
@@ -387,6 +398,37 @@ RI_FKey_check(TriggerData *trigdata)
 			break;
 	}
 
+	/*
+	 * Skip foreign key check if referenced row is present in YB cache.
+	 */
+	if (IsYBRelation(pk_rel))
+	{
+		/*
+		 * Get the referenced index table.
+		 * For primary key index, we need to use the base table relation.
+		 */
+		Relation idx_rel = RelationIdGetRelation(riinfo->conindid);
+		if (idx_rel->rd_index != NULL)
+		{
+			ref_table_id = idx_rel->rd_index->indisprimary ?
+					idx_rel->rd_index->indrelid : riinfo->conindid;
+		}
+
+		BuildYBTupleId(
+			pk_rel /* Primary table */,
+			fk_rel /* Reference table */,
+			ref_table_id == pk_rel->rd_id ? pk_rel : idx_rel /* Reference index */,
+			riinfo, new_row, (void **)&tuple_id, &tuple_id_size);
+		RelationClose(idx_rel);
+
+		if (tuple_id != NULL && YBCForeignKeyReferenceExists(ref_table_id, tuple_id, tuple_id_size))
+		{
+			elog(DEBUG1, "Skipping FK check for table %d, ybctid %s", ref_table_id, tuple_id);
+			heap_close(pk_rel, RowShareLock);
+			return PointerGetDatum(NULL);
+		}
+	}
+
 	if (SPI_connect() != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed");
 
@@ -449,7 +491,15 @@ RI_FKey_check(TriggerData *trigdata)
 					SPI_OK_SELECT);
 
 	if (SPI_finish() != SPI_OK_FINISH)
+	{
 		elog(ERROR, "SPI_finish failed");
+	}
+	else if (IsYBRelation(pk_rel) && tuple_id != NULL)
+	{
+		YBCCacheForeignKeyReference(ref_table_id, tuple_id, tuple_id_size);
+		elog(DEBUG1, "Cached foreign key reference: table ID %u, tuple ID %s",
+			 ref_table_id, tuple_id);
+	}
 
 	heap_close(pk_rel, RowShareLock);
 
@@ -2383,6 +2433,7 @@ ri_LoadConstraintInfo(Oid constraintOid)
 	riinfo->confupdtype = conForm->confupdtype;
 	riinfo->confdeltype = conForm->confdeltype;
 	riinfo->confmatchtype = conForm->confmatchtype;
+	riinfo->conindid = conForm->conindid;
 
 	DeconstructFkConstraintRow(tup,
 							   &riinfo->nkeys,
@@ -2637,6 +2688,74 @@ ri_PerformCheck(const RI_ConstraintInfo *riinfo,
 						   qkey->constr_queryno);
 
 	return SPI_processed != 0;
+}
+
+static void
+BuildYBTupleId(Relation pk_rel, Relation fk_rel, Relation idx_rel,
+				const RI_ConstraintInfo *riinfo, HeapTuple tup,
+				void **value, int64_t *bytes)
+{
+	YBCPgStatement ybc_stmt;
+	YBCPgPrepareParameters prepare_params;
+
+	prepare_params.index_oid = RelationGetRelid(idx_rel);
+	prepare_params.index_only_scan = true;
+	prepare_params.use_secondary_index = (RelationGetRelid(idx_rel) == RelationGetRelid(pk_rel)) ?
+			false : true;
+	prepare_params.querying_systable = IsSystemRelation(idx_rel) ? true : false;
+
+	HandleYBStatus(YBCPgNewSelect(
+		YBCGetDatabaseOid(idx_rel), RelationGetRelid(idx_rel), &prepare_params, &ybc_stmt));
+
+	TupleDesc	tupdesc = fk_rel->rd_att;
+	const int16 *attnums = riinfo->fk_attnums;
+	AttrNumber minattr = YBSystemFirstLowInvalidAttributeNumber + 1;
+
+	Bitmapset *pkey = GetFullYBTablePrimaryKey(idx_rel);
+	const int nattrs = bms_num_members(pkey);
+	YBCPgAttrValueDescriptor *attrs =
+			(YBCPgAttrValueDescriptor*)palloc(nattrs * sizeof(YBCPgAttrValueDescriptor));
+	YBCPgAttrValueDescriptor *next_attr = attrs;
+	uint64_t tuple_id;
+
+	int i;
+	int col = -1;
+
+	for (i = 0; i < riinfo->nkeys; i++)
+	{
+		col = bms_next_member(pkey, col);
+		next_attr->attr_num = col + minattr;
+
+		Oid	type_id = (attnums[i] > 0) ?
+			TupleDescAttr(fk_rel->rd_att, attnums[i] - 1)->atttypid : InvalidOid;
+
+		next_attr->type_entity = YBCDataTypeFromOidMod(attnums[i], type_id);
+		next_attr->datum = heap_getattr(tup, attnums[i], tupdesc, &next_attr->is_null);
+
+		++next_attr;
+	}
+
+	if (RelationGetRelid(idx_rel) != RelationGetRelid(pk_rel))
+	{
+		/* Reference key is based on unique index, fill in YBUniqueIdxKeySuffixAttributeNumber */
+		col = bms_next_member(pkey, col);
+		next_attr->attr_num = col + minattr;
+		next_attr->type_entity = YBCDataTypeFromOidMod(YBUniqueIdxKeySuffixAttributeNumber, BYTEAOID);
+
+		/*
+		 * Since foreign key checks are only done for non-null columns,
+		 * YBUniqueIdx will always be NULL.
+		 */
+		next_attr->is_null = true;
+	}
+
+	HandleYBStmtStatus(YBCPgDmlBuildYBTupleId(ybc_stmt, attrs, nattrs, &tuple_id), ybc_stmt);
+
+	const YBCPgTypeEntity *type_entity = YBCDataTypeFromOidMod(YBTupleIdAttributeNumber, BYTEAOID);
+	type_entity->datum_to_yb(tuple_id, value, bytes);
+
+	pfree(attrs);
+	HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
 }
 
 /*

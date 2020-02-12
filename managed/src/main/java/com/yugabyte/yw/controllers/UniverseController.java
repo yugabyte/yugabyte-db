@@ -16,7 +16,8 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.QueryExecutor;
+import com.yugabyte.yw.common.YcqlQueryExecutor;
+import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -25,6 +26,8 @@ import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.AlertConfigFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
+import com.yugabyte.yw.forms.DatabaseSecurityFormData;
+import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -95,7 +98,10 @@ public class UniverseController extends AuthenticatedController {
   EncryptionAtRestManager keyManager;
 
   @Inject
-  QueryExecutor queryExecutor;
+  YsqlQueryExecutor ysqlQueryExecutor;
+
+  @Inject
+  YcqlQueryExecutor ycqlQueryExecutor;
 
   @Inject
   ShellProcessHandler shellProcessHandler;
@@ -125,6 +131,120 @@ public class UniverseController extends AuthenticatedController {
     } else {
       return ApiResponse.success("Universe does not Exist");
     }
+  }
+
+  public Result setDatabaseCredentials(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+
+    // Check the universe belongs to the Customer.
+    if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+      return ApiResponse.error(BAD_REQUEST,
+          String.format("Universe UUID: %s doesn't belong " +
+              "to Customer UUID: %s", universeUUID, customerUUID));
+    }
+
+    Universe universe;
+    try {
+      universe = Universe.get(universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
+    }
+    Form<DatabaseSecurityFormData> formData =
+        formFactory.form(DatabaseSecurityFormData.class).bindFromRequest();
+    if (formData.hasErrors()) {
+      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+    }
+
+    DatabaseSecurityFormData data = formData.get();
+    if (data.ysqlAdminUsername != null) {
+      if (data.dbName == null) {
+        return ApiResponse.error(BAD_REQUEST, "DB needs to be specified for YSQL user change.");
+      }
+      // Update admin user password YSQL.
+      RunQueryFormData ysqlQuery = new RunQueryFormData();
+      ysqlQuery.query = String.format("ALTER USER %s WITH PASSWORD '%s'", data.ysqlAdminUsername,
+          data.ysqlAdminPassword);
+      ysqlQuery.db_name = data.dbName;
+      ysqlQueryExecutor.executeQuery(universe, ysqlQuery, data.ysqlAdminUsername,
+          data.ysqlCurrAdminPassword);
+    }
+
+    if (data.ycqlAdminUsername != null) {
+      // Update admin user password CQL.
+      RunQueryFormData ycqlQuery = new RunQueryFormData();
+      ycqlQuery.query = String.format("ALTER ROLE %s WITH PASSWORD='%s'",
+          data.ycqlAdminUsername, data.ycqlAdminPassword);
+      ycqlQueryExecutor.executeQuery(universe, ycqlQuery, true, data.ycqlAdminUsername,
+          data.ycqlCurrAdminPassword);
+    }
+
+    return ApiResponse.success("Updated security in DB.");
+  }
+
+  public Result createUserInDB(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+
+    // Check the universe belongs to the Customer.
+    if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+      return ApiResponse.error(BAD_REQUEST,
+          String.format("Universe UUID: %s doesn't belong " +
+              "to Customer UUID: %s", universeUUID, customerUUID));
+    }
+
+    Universe universe;
+    try {
+      universe = Universe.get(universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
+    }
+    Form<DatabaseUserFormData> formData =
+        formFactory.form(DatabaseUserFormData.class).bindFromRequest();
+    if (formData.hasErrors()) {
+      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+    }
+
+    DatabaseUserFormData data = formData.get();
+    if (data.username == null || data.password == null) {
+      return ApiResponse.error(BAD_REQUEST, "Need to provide username and password");
+    }
+    if (data.ysqlAdminUsername != null) {
+      if (data.dbName == null) {
+        return ApiResponse.error(BAD_REQUEST, "DB needs to be specified for YSQL user creation.");
+      }
+      RunQueryFormData ysqlQuery = new RunQueryFormData();
+      // Create user for customer YSQL.
+      ysqlQuery.query = String.format("CREATE USER %s SUPERUSER INHERIT CREATEROLE " +
+                                      "CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD '%s'",
+                                      data.username, data.password);
+      ysqlQuery.db_name = data.dbName;
+      JsonNode ysqlResponse = ysqlQueryExecutor.executeQuery(universe, ysqlQuery,
+                                                             data.ysqlAdminUsername,
+                                                             data.ysqlAdminPassword);
+      if (ysqlResponse.has("error")) {
+        return ApiResponse.error(BAD_REQUEST, ysqlResponse.asText("error"));
+      }
+    }
+
+    if (data.ycqlAdminUsername != null) {
+      // Create user for customer CQL.
+      RunQueryFormData ycqlQuery = new RunQueryFormData();
+      ycqlQuery.query = String.format("CREATE ROLE %s WITH SUPERUSER=true AND" +
+                                      "LOGIN=true AND PASSWORD='%s'",
+                                      data.username, data.password);
+      JsonNode ycqlResponse = ycqlQueryExecutor.executeQuery(universe, ycqlQuery, true,
+                                                             data.ycqlAdminUsername,
+                                                             data.ycqlAdminPassword);
+      if (ycqlResponse.has("error")) {
+        return ApiResponse.error(BAD_REQUEST, ycqlResponse.asText("error"));
+      }
+    }
+    return ApiResponse.success("Created user in DB.");
   }
 
   public Result runInShell(UUID customerUUID, UUID universeUUID) {
@@ -242,7 +362,7 @@ public class UniverseController extends AuthenticatedController {
     Audit.createAuditEntry(ctx(), request(),
         Json.toJson(formData.data()));
     return ApiResponse.success(
-        queryExecutor.executeQuery(universe, formData.get())
+        ysqlQueryExecutor.executeQuery(universe, formData.get())
     );
   }
 

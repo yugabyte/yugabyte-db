@@ -1,5 +1,5 @@
 ---
-title: UUID & TIMEUUID
+title: UUID and TIMEUUID
 summary: UUID types
 description: UUID and TIMEUUID
 menu:
@@ -75,5 +75,5 @@ id                                   | ordered_id
 
 ## See also
 
-[`Date and time Functions`](../function_datetime)
-[Data types](..#data-types)
+- [`Date and time Functions`](../function_datetime)
+- [Data types](..#data-types)
