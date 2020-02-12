@@ -459,7 +459,8 @@ RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager,
       fs_manager_(fs_manager),
       wal_dir_(wal_dir),
       tablet_data_state_(tablet_data_state),
-      colocated_(colocated) {
+      colocated_(colocated),
+      cdc_min_replicated_index_(std::numeric_limits<int64_t>::max()) {
   CHECK(schema.has_column_ids());
   CHECK_GT(schema.num_key_columns(), 0);
   kv_store_.tables.emplace(
@@ -534,6 +535,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     } else {
       tombstone_last_logged_opid_ = OpId();
     }
+    cdc_min_replicated_index_ = superblock.cdc_min_replicated_index();
   }
 
   return Status::OK();
@@ -616,6 +618,7 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
 
   pb.set_primary_table_id(primary_table_id_);
   pb.set_colocated(colocated_);
+  pb.set_cdc_min_replicated_index(cdc_min_replicated_index_);
 
   superblock->Swap(&pb);
 }
@@ -752,6 +755,19 @@ uint32_t RaftGroupMetadata::wal_retention_secs() const {
     return 0;
   }
   return it->second->wal_retention_secs;
+}
+
+Status RaftGroupMetadata::set_cdc_min_replicated_index(int64 cdc_min_replicated_index) {
+  {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    cdc_min_replicated_index_ = cdc_min_replicated_index;
+  }
+  return Flush();
+}
+
+int64_t RaftGroupMetadata::cdc_min_replicated_index() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return cdc_min_replicated_index_;
 }
 
 void RaftGroupMetadata::set_tablet_data_state(TabletDataState state) {
