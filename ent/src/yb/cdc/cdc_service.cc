@@ -377,17 +377,6 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
     shared_consensus->UpdateCDCConsumerOpId(GetMinSentCheckpointForTablet(req->tablet_id()));
   }
 
-  // TODO(hector): Move the following code to a different thread. We might have to create a thread
-  // pool to handle this.
-  auto min_index = GetMinAppliedCheckpointForTablet(req->tablet_id(), session).index;
-  if (tablet_peer->log_available()) {
-  tablet_peer->log()->set_cdc_min_replicated_index(min_index);
-  } else {
-    LOG(WARNING) << "Unable to set cdc min index for tablet peer " << tablet_peer->permanent_uuid()
-                 << " and tablet " << tablet_peer->tablet_id()
-                 << " because its log object hasn't been initialized";
-  }
-
   // Update relevant GetChanges metrics before handing off the Response.
   auto tablet_metric = GetCDCTabletMetrics(producer_tablet, tablet_peer);
   if (tablet_metric) {
@@ -439,7 +428,8 @@ void CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(const TabletId& tablet_id,
 void CDCServiceImpl::ReadCdcMinReplicatedIndexForAllTabletsAndUpdatePeers() {
   // Returns false if the CDC service has been stopped.
   auto sleep_while_not_stopped = [this]() {
-    auto time_to_sleep = MonoDelta::FromSeconds(FLAGS_update_min_cdc_indices_interval_secs);
+    auto time_to_sleep = MonoDelta::FromSeconds(
+        GetAtomicFlag(&FLAGS_update_min_cdc_indices_interval_secs));
     auto time_slept = MonoDelta::FromMilliseconds(0);
     auto sleep_period = MonoDelta::FromMilliseconds(100);
     while (time_slept < time_to_sleep) {
@@ -463,7 +453,9 @@ void CDCServiceImpl::ReadCdcMinReplicatedIndexForAllTabletsAndUpdatePeers() {
     if (!s.ok()) {
       // It is possible that this runs before the cdc_state table is created. This is
       // ok. It just means that this is the first time the cluster starts.
-      LOG(WARNING) << "Unable to open table " << kCdcStateTableName.table_name();
+      YB_LOG_EVERY_N_SECS(WARNING, 3600) << "Unable to open table "
+                                         << kCdcStateTableName.table_name()
+                                         << ". CDC min replicated indices won't be updated";
       continue;
     }
 
@@ -528,13 +520,12 @@ void CDCServiceImpl::ReadCdcMinReplicatedIndexForAllTabletsAndUpdatePeers() {
       }
 
       auto min_index = elem.second;
-      if (tablet_peer->log_available()) {
-        tablet_peer->log()->set_cdc_min_replicated_index(min_index);
-      } else {
+      s = tablet_peer->set_cdc_min_replicated_index(min_index);
+      if (!s.ok()) {
         LOG(WARNING) << "Unable to set cdc min index for tablet peer "
                      << tablet_peer->permanent_uuid()
                      << " and tablet " << tablet_peer->tablet_id()
-                     << " because its log object hasn't been initialized";
+                     << ": " << s;
       }
       LOG(INFO) << "Updating followers for tablet " << tablet_id << " with index " << min_index;
       UpdatePeersCdcMinReplicatedIndex(tablet_id, min_index);
@@ -751,7 +742,8 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(const UpdateCdcReplicatedIndexRequ
                              CDCErrorPB::INTERNAL_ERROR,
                              context);
 
-  tablet_peer->log()->set_cdc_min_replicated_index(req->replicated_index());
+  RPC_STATUS_RETURN_ERROR(tablet_peer->set_cdc_min_replicated_index(req->replicated_index()),
+                          resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
   context.RespondSuccess();
 }

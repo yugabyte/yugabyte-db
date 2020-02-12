@@ -574,6 +574,7 @@ Status TabletBootstrap::OpenNewLog() {
                           tablet_->metadata()->schema_version(),
                           tablet_->GetMetricEntity(),
                           append_pool_,
+                          tablet_->metadata()->cdc_min_replicated_index(),
                           &log_));
   // Disable sync temporarily in order to speed up appends during the bootstrap process.
   log_->DisableSync();

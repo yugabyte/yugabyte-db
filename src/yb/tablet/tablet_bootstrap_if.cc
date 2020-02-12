@@ -89,6 +89,7 @@ Status BootstrapTablet(
   RETURN_NOT_OK(bootstrap.Bootstrap(rebuilt_tablet, rebuilt_log, consensus_info));
   // Set WAL retention time from the metadata.
   (*rebuilt_log)->set_wal_retention_secs(data.meta->wal_retention_secs());
+  (*rebuilt_log)->set_cdc_min_replicated_index(data.meta->cdc_min_replicated_index());
   // This is necessary since OpenNewLog() initially disables sync.
   RETURN_NOT_OK((*rebuilt_log)->ReEnableSyncIfRequired());
   return Status::OK();
