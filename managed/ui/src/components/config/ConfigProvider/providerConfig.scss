@@ -26,7 +26,7 @@
       border: none;
 
       a {
-        font-weight: 600;
+        font-weight: 500;
       }
 
       form, .well {
@@ -186,7 +186,7 @@
       &.header-row {
         text-transform: uppercase;
         font-size: 0.8em;
-        font-weight: 600;
+        font-weight: 500;
       }
 
       & > div {
@@ -236,7 +236,7 @@
   font-size: 20px;
   padding: 0;
   margin: 0 10px 10px 4px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .provider-config-container .list-group {
@@ -281,13 +281,13 @@
 
 .provider-config-container {
   .save-btn, .delete-btn {
-    font-weight: 600;
+    font-weight: 500;
   }
 }
 
 .host-item-label {
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
   margin-bottom: 6px;
 }
 
@@ -337,7 +337,7 @@
       display: inline-block;
       padding-top: 10px;
       font-size: 16px;
-      font-weight: 600;
+      font-weight: 500;
       text-align: left;
       line-height: 1;
 
@@ -353,7 +353,7 @@
       display: inline-block;
       width: 180px;
       font-size: 15px;
-      font-weight: 600;
+      font-weight: 500;
       text-align: left;
       line-height: 1;
     }
