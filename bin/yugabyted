@@ -895,14 +895,12 @@ class ControlScript(object):
             sys.exit(1)
 
         # Override configs and defaults with user specified variables
-        update_config_file = not os.path.exists(self.conf_file)
         for k, v in get_kv(args.__dict__):
             if (v is not None and k in self.configs.saved_data
                     and v != self.configs.saved_data.get(k)):
                 self.configs.saved_data[k] = v
-                update_config_file = True
 
-        if update_config_file:
+        if args.parser == "start":
             self.configs.save_configs()
 
     def parse_bool(self, config):
@@ -1077,10 +1075,11 @@ class Configs(object):
         if os.path.isfile(config_file):
             try:
                 with open(config_file) as f:
-                    configs.saved_data.update(json.load(f))
+                   configs.saved_data.update(json.load(f))
             except ValueError as e:
                 Output.log_error_and_exit(
                     "Failed to read config file {}: {}".format(config_file, str(e)))
+
         return configs
 
     @staticmethod
