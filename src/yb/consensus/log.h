@@ -111,6 +111,7 @@ class Log : public RefCountedThreadSafe<Log> {
                              uint32_t schema_version,
                              const scoped_refptr<MetricEntity>& metric_entity,
                              ThreadPool *append_thread_pool,
+                             int64_t cdc_min_replicated_index,
                              scoped_refptr<Log> *log);
 
   ~Log();
