@@ -2,7 +2,7 @@
 title: Connect to clusters
 linkTitle: Connect to clusters
 description: Connect to clusters
-headcontent: Connect to YugabyteDB clusters
+headcontent: Connect to clusters
 image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
 aliases:
   - /secure/tls-encryption/connect-to-cluster
