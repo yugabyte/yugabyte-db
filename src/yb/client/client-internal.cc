@@ -1210,8 +1210,7 @@ void CreateCDCStreamRpc::SendRpc() {
 }
 
 string CreateCDCStreamRpc::ToString() const {
-  return Substitute("CreateCDCStream(table_id: $0, num_attempts: $1)",
-                    table_id_, num_attempts());
+  return Substitute("CreateCDCStream(table_id: $0, num_attempts: $1)", table_id_, num_attempts());
 }
 
 void CreateCDCStreamRpc::Finished(const Status& status) {
@@ -1313,6 +1312,104 @@ void DeleteCDCStreamRpc::Finished(const Status& status) {
   user_cb_.Run(new_status);
 }
 
+class GetCDCStreamRpc : public ClientMasterRpc {
+ public:
+  GetCDCStreamRpc(YBClient* client,
+                  StdStatusCallback user_cb,
+                  const CDCStreamId& stream_id,
+                  TableId* table_id,
+                  std::unordered_map<std::string, std::string>* options,
+                  CoarseTimePoint deadline,
+                  rpc::Messenger* messenger,
+                  rpc::ProxyCache* proxy_cache);
+
+  void SendRpc() override;
+
+  string ToString() const override;
+
+  virtual ~GetCDCStreamRpc();
+
+ private:
+  void Finished(const Status& status) override;
+
+  YBClient* const client_;
+  StdStatusCallback user_cb_;
+  std::string stream_id_;
+  TableId* table_id_;
+  std::unordered_map<std::string, std::string>* options_;
+  GetCDCStreamRequestPB req_;
+  GetCDCStreamResponsePB resp_;
+  rpc::Rpcs::Handle retained_self_;
+};
+
+GetCDCStreamRpc::GetCDCStreamRpc(YBClient* client,
+                                 StdStatusCallback user_cb,
+                                 const CDCStreamId& stream_id,
+                                 TableId* table_id,
+                                 std::unordered_map<std::string, std::string>* options,
+                                 CoarseTimePoint deadline,
+                                 rpc::Messenger* messenger,
+                                 rpc::ProxyCache* proxy_cache)
+    : ClientMasterRpc(client, deadline, messenger, proxy_cache),
+      client_(DCHECK_NOTNULL(client)),
+      user_cb_(std::move(user_cb)),
+      stream_id_(stream_id),
+      table_id_(DCHECK_NOTNULL(table_id)),
+      options_(DCHECK_NOTNULL(options)),
+      retained_self_(client->data_->rpcs_.InvalidHandle()) {
+}
+
+GetCDCStreamRpc::~GetCDCStreamRpc() {
+}
+
+void GetCDCStreamRpc::SendRpc() {
+  client_->data_->rpcs_.Register(shared_from_this(), &retained_self_);
+
+  auto now = CoarseMonoClock::Now();
+  if (retrier().deadline() < now) {
+    Finished(STATUS(TimedOut, "GetCDCStream timed out after deadline expired"));
+    return;
+  }
+
+  // See YBClient::Data::SyncLeaderMasterRpc().
+  auto rpc_deadline = now + client_->default_rpc_timeout();
+  mutable_retrier()->mutable_controller()->set_deadline(
+      std::min(rpc_deadline, retrier().deadline()));
+
+  req_.set_stream_id(stream_id_);
+  client_->data_->master_proxy()->GetCDCStreamAsync(
+      req_, &resp_, mutable_retrier()->mutable_controller(),
+      std::bind(&GetCDCStreamRpc::Finished, this, Status::OK()));
+}
+
+string GetCDCStreamRpc::ToString() const {
+  return Substitute("GetCDCStream(stream_id: $0, num_attempts: $1)",
+                    stream_id_, num_attempts());
+}
+
+void GetCDCStreamRpc::Finished(const Status& status) {
+  bool finished;
+  Status new_status = HandleFinished(status, resp_, &finished);
+  if (!finished) {
+    return;
+  }
+
+  auto retained_self = client_->data_->rpcs_.Unregister(&retained_self_);
+
+  if (!new_status.ok()) {
+    LOG(WARNING) << ToString() << " failed: " << new_status.ToString();
+  } else {
+    *table_id_ = resp_.stream().table_id();
+
+    options_->clear();
+    options_->reserve(resp_.stream().options_size());
+    for (const auto& option : resp_.stream().options()) {
+      options_->emplace(option.key(), option.value());
+    }
+  }
+  user_cb_(new_status);
+}
+
 } // namespace internal
 
 Status YBClient::Data::GetTableSchema(YBClient* client,
@@ -1386,6 +1483,24 @@ void YBClient::Data::DeleteCDCStream(YBClient* client,
       client,
       callback,
       stream_id,
+      deadline,
+      messenger_,
+      proxy_cache_.get());
+}
+
+void YBClient::Data::GetCDCStream(
+    YBClient* client,
+    const CDCStreamId& stream_id,
+    std::shared_ptr<TableId> table_id,
+    std::shared_ptr<std::unordered_map<std::string, std::string>> options,
+    CoarseTimePoint deadline,
+    StdStatusCallback callback) {
+  auto rpc = rpc::StartRpc<internal::GetCDCStreamRpc>(
+      client,
+      callback,
+      stream_id,
+      table_id.get(),
+      options.get(),
       deadline,
       messenger_,
       proxy_cache_.get());

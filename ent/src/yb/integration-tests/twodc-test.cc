@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <utility>
@@ -22,6 +23,8 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/cdc/cdc_service.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/schema.h"
@@ -515,6 +518,168 @@ TEST_P(TwoDCTest, SetupUniverseReplication) {
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
   Destroy();
+}
+
+TEST_P(TwoDCTest, SetupUniverseReplicationWithProducerBootstrapId) {
+  constexpr int kNTabletsPerTable = 1;
+  std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 3));
+  auto producer_master_proxy = std::make_shared<master::MasterServiceProxy>(
+      &producer_client()->proxy_cache(),
+      producer_cluster()->leader_mini_master()->bound_rpc_addr());
+
+  std::unique_ptr<client::YBClient> client;
+  std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy;
+  client = ASSERT_RESULT(consumer_cluster()->CreateClient());
+  producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
+      &client->proxy_cache(),
+      HostPort::FromBoundEndpoint(producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
+
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer tables from the list.
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  producer_tables.reserve(tables.size() / 2);
+  consumer_tables.reserve(tables.size() / 2);
+  for (int i = 0; i < tables.size(); i ++) {
+    if (i % 2 == 0) {
+      producer_tables.push_back(tables[i]);
+    } else {
+      consumer_tables.push_back(tables[i]);
+    }
+  }
+
+  // 1. Write some data so that we can verify that only new records get replicated
+  for (const auto& producer_table : producer_tables) {
+    LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
+    WriteWorkload(0, 100, producer_client(), producer_table->name());
+  }
+
+  SleepFor(MonoDelta::FromSeconds(10));
+  cdc::BootstrapProducerRequestPB req;
+  cdc::BootstrapProducerResponsePB resp;
+
+  for (const auto& producer_table : producer_tables) {
+    req.add_table_ids(producer_table->id());
+  }
+
+  rpc::RpcController rpc;
+  producer_cdc_proxy->BootstrapProducer(req, &resp, &rpc);
+  ASSERT_FALSE(resp.has_error());
+
+  ASSERT_EQ(resp.cdc_bootstrap_ids().size(), producer_tables.size());
+
+  int table_idx = 0;
+  for (const auto& bootstrap_id : resp.cdc_bootstrap_ids()) {
+    LOG(INFO) << "Got bootstrap id " << bootstrap_id
+              << " for table " << producer_tables[table_idx++]->name().table_name();
+  }
+
+  std::unordered_map<std::string, int> tablet_bootstraps;
+
+  // Verify that for each of the table's tablets, a new row in cdc_state table with the returned
+  // id was inserted.
+  client::TableHandle table;
+  client::YBTableName cdc_state_table(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+  ASSERT_OK(table.Open(cdc_state_table, producer_client()));
+
+  // 2 tables with 8 tablets each.
+  ASSERT_EQ(tables_vector.size() * kNTabletsPerTable, boost::size(client::TableRange(table)));
+  int nrows = 0;
+  for (const auto& row : client::TableRange(table)) {
+    nrows++;
+    string stream_id = row.column(0).string_value();
+    tablet_bootstraps[stream_id]++;
+
+    string checkpoint = row.column(2).string_value();
+    auto s = OpId::FromString(checkpoint);
+    ASSERT_OK(s);
+    OpId op_id = *s;
+    ASSERT_GT(op_id.index, 0);
+
+    LOG(INFO) << "Bootstrap id " << stream_id
+              << " for tablet " << row.column(1).string_value();
+  }
+
+  ASSERT_EQ(tablet_bootstraps.size(), producer_tables.size());
+  // Check that each bootstrap id has 8 tablets.
+  for (const auto& e : tablet_bootstraps) {
+    ASSERT_EQ(e.second, kNTabletsPerTable);
+  }
+
+  // Map table -> bootstrap_id. We will need when setting up replication.
+  std::unordered_map<TableId, std::string> table_bootstrap_ids;
+  for (int i = 0; i < resp.cdc_bootstrap_ids_size(); i++) {
+    table_bootstrap_ids[req.table_ids(i)] = resp.cdc_bootstrap_ids(i);
+  }
+
+  // 2. Setup replication.
+  master::SetupUniverseReplicationRequestPB setup_universe_req;
+  master::SetupUniverseReplicationResponsePB setup_universe_resp;
+  setup_universe_req.set_producer_id(kUniverseId);
+  string master_addr = producer_cluster()->GetMasterAddresses();
+  auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
+  HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
+
+  setup_universe_req.mutable_producer_table_ids()->Reserve(producer_tables.size());
+  for (const auto& producer_table : producer_tables) {
+    setup_universe_req.add_producer_table_ids(producer_table->id());
+    const auto& iter = table_bootstrap_ids.find(producer_table->id());
+    ASSERT_NE(iter, table_bootstrap_ids.end());
+    setup_universe_req.add_producer_bootstrap_ids(iter->second);
+  }
+
+  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+      &consumer_client()->proxy_cache(),
+      consumer_cluster()->leader_mini_master()->bound_rpc_addr());
+
+  rpc.Reset();
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  ASSERT_OK(master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
+  ASSERT_FALSE(setup_universe_resp.has_error());
+
+  // 3. Verify everything is setup correctly.
+  master::GetUniverseReplicationResponsePB get_universe_replication_resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
+      &get_universe_replication_resp));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(),
+                                       tables_vector.size() * kNTabletsPerTable));
+
+  // 4. Write more data.
+  for (const auto& producer_table : producer_tables) {
+    WriteWorkload(1000, 1005, producer_client(), producer_table->name());
+  }
+
+  // 5. Verify that only new writes get replicated to consumer since we bootstrapped the producer
+  // after we had already written some data, therefore the old data (whatever was there before we
+  // bootstrapped the producer) should not be replicated.
+  auto data_replicated_correctly = [&]() {
+    for (const auto& consumer_table : consumer_tables) {
+      LOG(INFO) << "Checking records for table " << consumer_table->name().ToString();
+      std::vector<std::string> expected_results;
+      for (int key = 1000; key < 1005; key++) {
+        expected_results.emplace_back("{ int32:" + std::to_string(key) + " }");
+      }
+      std::sort(expected_results.begin(), expected_results.end());
+
+      auto consumer_results = ScanToStrings(consumer_table->name(), consumer_client());
+      std::sort(consumer_results.begin(), consumer_results.end());
+
+      if (expected_results.size() != consumer_results.size()) {
+        return false;
+      }
+
+      for (int idx = 0; idx < expected_results.size(); idx++) {
+        if (expected_results[idx] != consumer_results[idx]) {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+  ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(); },
+                    MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
 }
 
 // Test for #2250 to verify that replication for tables with the same prefix gets set up correctly.

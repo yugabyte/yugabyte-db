@@ -232,9 +232,15 @@ class CatalogManager : public yb::master::CatalogManager {
 
   void GetTableSchemaCallback(
       const std::string& universe_id, const std::shared_ptr<client::YBTableInfo>& info,
-      const Status& s);
-  void CreateCDCStreamCallback(const std::string& universe_id, const TableId& table,
-                               const Result<CDCStreamId>& stream_id);
+      const std::unordered_map<TableId, std::string>& producer_bootstrap_ids, const Status& s);
+  void GetCDCStreamCallback(const CDCStreamId& bootstrap_id,
+                            std::shared_ptr<TableId> table_id,
+                            std::shared_ptr<std::unordered_map<std::string, std::string>> options,
+                            const std::string& universe_id,
+                            const TableId& table,
+                            const Status& s);
+  void AddCDCStreamToUniverseAndInitConsumer(const std::string& universe_id, const TableId& table,
+                                             const Result<CDCStreamId>& stream_id);
 
   void DeleteUniverseReplicationUnlocked(scoped_refptr<UniverseReplicationInfo> info);
   void MarkUniverseReplicationFailed(scoped_refptr<UniverseReplicationInfo> universe);
