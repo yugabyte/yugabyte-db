@@ -3010,7 +3010,8 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * Support for nested plpgsql functions. This is quite ugly but this is the
 	 * only point I could find where I can get the query string.
 	 */
-	if (plpgsql_recurse_level > 0)
+	if (plpgsql_recurse_level > 0 &&
+		error_context_stack && error_context_stack->arg)
 	{
 		MemoryContext oldcontext;
 
