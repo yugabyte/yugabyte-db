@@ -251,7 +251,8 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "setup_universe_replication",
-      " <producer_universe_uuid> <producer_master_addresses> <comma_separated_list_of_table_ids>",
+      " <producer_universe_uuid> <producer_master_addresses> <comma_separated_list_of_table_ids>"
+          " [comma_separated_list_of_producer_bootstrap_ids]"  ,
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 5) {
           return ClusterAdminCli::kInvalidArguments;
@@ -264,9 +265,15 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         vector<string> table_uuids;
         boost::split(table_uuids, args[4], boost::is_any_of(","));
 
+        vector<string> producer_bootstrap_ids;
+        if (args.size() == 6) {
+          boost::split(producer_bootstrap_ids, args[5], boost::is_any_of(","));
+        }
+
         RETURN_NOT_OK_PREPEND(client->SetupUniverseReplication(producer_uuid,
                                                                producer_addresses,
-                                                               table_uuids),
+                                                               table_uuids,
+                                                               producer_bootstrap_ids),
                               Substitute("Unable to setup replication from universe $0",
                                          producer_uuid));
         return Status::OK();
@@ -297,6 +304,22 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
             Substitute("Unable to $0 replication for universe $1",
                 is_enabled ? "enable" : "disable",
                 producer_id));
+        return Status::OK();
+      });
+
+
+  Register(
+      "bootstrap_cdc_producer", " <comma_separated_list_of_table_ids>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 3) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+
+        vector<string> table_ids;
+        boost::split(table_ids, args[2], boost::is_any_of(","));
+
+        RETURN_NOT_OK_PREPEND(client->BootstrapProducer(table_ids),
+                              "Unable to bootstrap CDC producer");
         return Status::OK();
       });
 }

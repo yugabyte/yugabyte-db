@@ -53,6 +53,20 @@ Status MasterTestEnt::CreateCDCStream(const TableId& table_id, CDCStreamId* stre
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
 
+  RETURN_NOT_OK(WaitFor([&](){
+    IsCreateTableDoneRequestPB is_create_req;
+    IsCreateTableDoneResponsePB is_create_resp;
+
+    is_create_req.mutable_table()->set_table_name(master::kCdcStateTableName);
+    is_create_req.mutable_table()->mutable_namespace_()->set_name(master::kSystemNamespaceName);
+
+    auto s = proxy_->IsCreateTableDone(is_create_req, &is_create_resp, ResetAndGetController());
+    if (!s.ok()) {
+      return false;
+    }
+    return true;
+  }, MonoDelta::FromSeconds(30), "Wait for cdc_state table creation to finish"));
+
   *stream_id = resp.stream_id();
   return Status::OK();
 }

@@ -16,19 +16,18 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/cdc/cdc_service.h"
+#include "yb/cdc/cdc_service.proxy.h"
+#include "yb/client/client.h"
 #include "yb/common/wire_protocol.h"
-
+#include "yb/master/master_defaults.h"
 #include "yb/rpc/messenger.h"
-
 #include "yb/util/cast.h"
 #include "yb/util/env.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/string_util.h"
 #include "yb/util/encryption_util.h"
-#include "yb/cdc/cdc_service.h"
-#include "yb/client/client.h"
-#include "yb/master/master_defaults.h"
 
 DECLARE_string(certs_dir);
 DECLARE_bool(use_client_to_server_encryption);
@@ -50,26 +49,29 @@ using google::protobuf::RepeatedPtrField;
 using client::YBTableName;
 using rpc::RpcController;
 
+using master::ChangeEncryptionInfoRequestPB;
+using master::ChangeEncryptionInfoResponsePB;
 using master::CreateSnapshotRequestPB;
 using master::CreateSnapshotResponsePB;
 using master::DeleteSnapshotRequestPB;
 using master::DeleteSnapshotResponsePB;
-using master::ListSnapshotsRequestPB;
-using master::ListSnapshotsResponsePB;
-using master::RestoreSnapshotRequestPB;
-using master::RestoreSnapshotResponsePB;
+using master::IdPairPB;
 using master::ImportSnapshotMetaRequestPB;
 using master::ImportSnapshotMetaResponsePB;
 using master::ImportSnapshotMetaResponsePB_TableMetaPB;
+using master::IsCreateTableDoneRequestPB;
+using master::IsCreateTableDoneResponsePB;
+using master::ListSnapshotsRequestPB;
+using master::ListSnapshotsResponsePB;
+using master::ListTabletServersRequestPB;
+using master::ListTabletServersResponsePB;
+using master::RestoreSnapshotRequestPB;
+using master::RestoreSnapshotResponsePB;
 using master::SnapshotInfoPB;
 using master::SysNamespaceEntryPB;
 using master::SysRowEntry;
 using master::SysTablesEntryPB;
-using master::IdPairPB;
-using master::IsCreateTableDoneRequestPB;
-using master::IsCreateTableDoneResponsePB;
-using master::ChangeEncryptionInfoRequestPB;
-using master::ChangeEncryptionInfoResponsePB;
+
 using yb::util::to_uchar_ptr;
 
 using namespace std::literals;
@@ -658,8 +660,9 @@ Status ClusterAdminClient::CreateCDCStream(const TableId& table_id) {
 }
 
 Status ClusterAdminClient::SetupUniverseReplication(
-    const std::string& producer_uuid, const std::vector<std::string>& producer_addresses,
-    const std::vector<TableId>& tables) {
+    const string& producer_uuid, const vector<string>& producer_addresses,
+    const vector<TableId>& tables,
+    const vector<string>& producer_bootstrap_ids) {
   master::SetupUniverseReplicationRequestPB req;
   master::SetupUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_uuid);
@@ -672,8 +675,13 @@ Status ClusterAdminClient::SetupUniverseReplication(
   }
 
   req.mutable_producer_table_ids()->Reserve(tables.size());
-  for (const auto& table :  tables) {
+  for (const auto& table : tables) {
     req.add_producer_table_ids(table);
+  }
+
+
+  for (const auto& producer_bootstrap_id : producer_bootstrap_ids) {
+    req.add_producer_bootstrap_ids(producer_bootstrap_id);
   }
 
   RpcController rpc;
@@ -729,6 +737,49 @@ CHECKED_STATUS ClusterAdminClient::SetUniverseReplicationEnabled(const std::stri
   return Status::OK();
 }
 
+Result<HostPort> ClusterAdminClient::GetFirstRpcAddressForTS() {
+  RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
+  RETURN_NOT_OK(ListTabletServers(&servers));
+  for (const ListTabletServersResponsePB::Entry& server : servers) {
+    if (server.has_registration() &&
+        !server.registration().common().private_rpc_addresses().empty()) {
+      return HostPortFromPB(server.registration().common().private_rpc_addresses(0));
+    }
+  }
+
+  return STATUS(NotFound, "Didn't find a server registered with the Master");
+}
+
+Status ClusterAdminClient::BootstrapProducer(const vector<TableId>& table_ids) {
+
+  HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS());
+  auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), ts_addr);
+
+  cdc::BootstrapProducerRequestPB bootstrap_req;
+  cdc::BootstrapProducerResponsePB bootstrap_resp;
+  for (const auto& table_id : table_ids) {
+    bootstrap_req.add_table_ids(table_id);
+  }
+  RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(std::max(timeout_.ToSeconds(), 120.0)));
+  cdc_proxy->BootstrapProducer(bootstrap_req, &bootstrap_resp, &rpc);
+
+  if (bootstrap_resp.has_error()) {
+    cout << "Error bootstrapping consumer: " << bootstrap_resp.error().status().message() << endl;
+    return StatusFromPB(bootstrap_resp.error().status());
+  }
+
+  if (bootstrap_resp.cdc_bootstrap_ids().size() != table_ids.size()) {
+    cout << "Received invalid number of bootstrap ids: " << bootstrap_resp.ShortDebugString();
+    return STATUS(InternalError, "Invalid number of bootstrap ids");
+  }
+
+  int i = 0;
+  for (const auto& bootstrap_id : bootstrap_resp.cdc_bootstrap_ids()) {
+    cout << "table id: " << table_ids[i++] << ", CDC bootstrap id: " << bootstrap_id << endl;
+  }
+  return Status::OK();
+}
 
 }  // namespace enterprise
 }  // namespace tools
