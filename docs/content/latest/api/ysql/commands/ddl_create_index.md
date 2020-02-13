@@ -55,6 +55,19 @@ Enforce that duplicate values in a table are not allowed.
 
 Specify a list of columns which will be included in the index as non-key columns.
 
+### WHERE clause
+
+A partial index is defined using a restriction so that only some of a table’s rows are indexed.
+Indexing a fraction of the table shortens significantly the response time for inserts, updates, and deletes and 
+results in a smaller index which is easier to be cached. 
+
+If a partial index is used, instead of a regular one, on a nullable column—where only a small fraction of the rows have not null values for this column—then 
+the response time for inserts, updates, and deletes can be shortened significantly. As a bonus, the response times for single row selects shorten a little bit too. 
+
+Check out 
+[The Benefit of Partial Indexes in Distributed SQL Databases](https://blog.yugabyte.com/the-benefit-of-partial-indexes-in-distributed-sql-databases/) blog post for more scenarios.
+
+
 #### *name*
 
  Specify the name of the index to be created.
@@ -129,4 +142,25 @@ yugabyte=# \d products_name_code;
  name   | text | yes  | name
  code   | text | no   | code
 lsm, for table "public.products"
+```
+
+
+### Partial indexes
+
+In YSQL/Postgresql, `NULL` values are always considered unique (`NULL` != `NULL`) To enforce uniqueness, we can also 
+create a partial index only when `code` isn't `NULL`.
+
+```postgresql
+yugabyte=# DROP INDEX IF EXISTS products_code_idx;
+yugabyte=# CREATE UNIQUE INDEX ON products(code) WHERE code IS NOT NULL;
+yugabyte=# \d products
+              Table "public.products"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ id     | integer |           | not null |
+ name   | text    |           |          |
+ code   | text    |           |          |
+Indexes:
+    "products_pkey" PRIMARY KEY, lsm (id HASH)
+    "products_code_idx" UNIQUE, lsm (code HASH) WHERE code IS NOT NULL
 ```
