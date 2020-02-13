@@ -223,7 +223,7 @@ QLScanRange::QLScanRange(const Schema& schema, const PgsqlConditionPB& condition
   bool has_range_column = false;
   for (const auto& operand : operands) {
     if (operand.expr_case() == PgsqlExpressionPB::ExprCase::kColumnId &&
-        schema.is_range_column(operand.column_id())) {
+        schema.is_range_column(ColumnId(operand.column_id()))) {
       has_range_column = true;
       break;
     }
