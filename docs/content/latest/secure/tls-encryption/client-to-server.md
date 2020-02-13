@@ -21,6 +21,8 @@ YugabyteDB can be configured to provide client-server encryption, using Transpor
 
 Before you can enable and use server-server encryption, you need to create and configure server certificates for each node of your YugabyteDB cluster. For information, see [Create server certificates](../server-certificates).
 
+To use client-server encryption, you alo need to use client certificates to communicate to YugabyteDB. For details, see [Create client certificates](../client-certificates).
+
 ## Configure YB-TServer nodes
 
 To enable client-server encryption (using TLS) for YSQL and YCQL, start your YB-TServer services with the required options described below. Your YB-Master services do not require additional configuration.

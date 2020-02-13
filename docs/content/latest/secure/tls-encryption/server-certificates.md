@@ -22,7 +22,7 @@ Before you can enable server-server and client-server encryptions using Transpor
 
 ### Create a secure data directory
 
-To generate and store the secure information, such as the root certificate, create a directory, `secure-data`, in your root directory. After completing the preparation, you will copy this data inti a secure location and then delete this directory.
+To generate and store the secure information, such as the root certificate, create a directory, `secure-data`, in the root directory of the laptop or machine you want to use to create certificates. After completing the preparation, you will have loaded the certificate files to your YugabyteDB cluster nodes. You copy this data into a secure location and then delete this directory.
 
 ```sh
 $ mkdir secure-data
@@ -212,7 +212,7 @@ Certificate:
          2a:e7:7f:97
 ```
 
-## Copy the root certificate to eacg node directory
+## Copy the root certificate to each node directory
 
 Copy the generated root certificate file (`root.crt`) to all three node directories.
 

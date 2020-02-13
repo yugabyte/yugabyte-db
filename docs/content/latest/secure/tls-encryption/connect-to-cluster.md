@@ -19,7 +19,9 @@ To connect CLIs, tools, and APIs to a remote YugabyteDB cluster when client-serv
 
 ## Prerequisites
 
-Before you can enable and use server-server encryption, you need to create and configure server certificates for each node of your YugabyteDB cluster. For information, see [Create client certificates](../client-certificates).
+Before you can enable and use server-server encryption, you need to create and configure server certificates for each node of your YugabyteDB cluster. For information, see [Create server certificates](../server-certificates).
+
+Before you can enable and use client-server encryption, you need to create and configure server certificates for each node of your YugabyteDB cluster. For information, see [Create client certificates](../client-certificates).
 
 For each client that will connect to a YugabyteDB cluster, you need the following three files to be accessible on the client computer.
 
