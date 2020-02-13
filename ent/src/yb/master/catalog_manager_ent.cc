@@ -1448,9 +1448,11 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
     TRACE("Acquired catalog manager lock");
     std::lock_guard<LockType> l(lock_);
 
-    // Construct the CDC stream.
-    CDCStreamId new_id = GenerateId(SysRowEntry::CDC_STREAM);
-    stream = make_scoped_refptr<CDCStreamInfo>(new_id);
+    // Construct the CDC stream if the producer wasn't bootstrapped.
+    CDCStreamId stream_id;
+    stream_id = GenerateId(SysRowEntry::CDC_STREAM);
+
+    stream = make_scoped_refptr<CDCStreamInfo>(stream_id);
     stream->mutable_metadata()->StartMutation();
     SysCDCStreamEntryPB *metadata = &stream->mutable_metadata()->mutable_dirty()->pb;
     metadata->set_table_id(table->id());
@@ -1785,7 +1787,7 @@ bool CatalogManager::CDCStreamExistsUnlocked(const CDCStreamId& stream_id) {
  * UniverseReplication is setup in 3 stages within the Catalog Manager
  * 1. SetupUniverseReplication: Creates the persistent entry and validates input
  * 2. GetTableSchemaCallback:   Validates compatibility between Producer & Consumer Tables
- * 3. CreateCDCStreamCallback:  Setup RPC connections for CDC Streaming
+ * 3. AddCDCStreamToUniverseAndInitConsumer:  Setup RPC connections for CDC Streaming
  * 4. InitCDCConsumer:          Initializes the Consumer architecture to begin tailing data
  */
 Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRequestPB* req,
@@ -1805,6 +1807,29 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
   if (req->producer_master_addresses_size() <= 0) {
     Status s = STATUS(InvalidArgument, "Producer master address must be provided",
                       req->DebugString());
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+  }
+
+  if (req->producer_bootstrap_ids().size() > 0 &&
+      req->producer_bootstrap_ids().size() != req->producer_table_ids().size()) {
+    Status s = STATUS(InvalidArgument, "Number of bootstrap ids must be equal to number of tables",
+        req->DebugString());
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+  }
+
+  std::unordered_map<TableId, std::string> table_id_to_bootstrap_id;
+
+  if (req->producer_bootstrap_ids_size() > 0) {
+    for (int i = 0; i < req->producer_table_ids().size(); i++) {
+      table_id_to_bootstrap_id[req->producer_table_ids(i)] = req->producer_bootstrap_ids(i);
+    }
+  }
+
+  // We assume that the list of table ids is unique.
+  if (req->producer_bootstrap_ids().size() > 0 &&
+      req->producer_table_ids().size() != table_id_to_bootstrap_id.size()) {
+    Status s = STATUS(InvalidArgument,
+        "When providing bootstrap ids, the list of tables must be unique", req->DebugString());
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
   }
 
@@ -1863,7 +1888,7 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
     s = cdc_rpc->client()->GetTableSchemaById(
         req->producer_table_ids(i), table_info,
         Bind(&enterprise::CatalogManager::GetTableSchemaCallback, Unretained(this),
-             ri->id(), table_info));
+             ri->id(), table_info, table_id_to_bootstrap_id));
     if (!s.ok()) {
       MarkUniverseReplicationFailed(ri);
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
@@ -1897,7 +1922,7 @@ void CatalogManager::MarkUniverseReplicationFailed(
 
 void CatalogManager::GetTableSchemaCallback(
     const std::string& universe_id, const std::shared_ptr<client::YBTableInfo>& info,
-    const Status& s) {
+    const std::unordered_map<TableId, std::string>& table_bootstrap_ids, const Status& s) {
   scoped_refptr<UniverseReplicationInfo> universe;
   {
     std::shared_lock<LockType> catalog_lock(lock_);
@@ -2014,10 +2039,24 @@ void CatalogManager::GetTableSchemaCallback(
 
     auto tables = l->data().pb.tables();
     for (const auto& table : tables) {
-      LOG(INFO) << "Creating CDC stream on table " << table;
-      cdc_rpc->client()->CreateCDCStream(
-        table, options, std::bind(&enterprise::CatalogManager::CreateCDCStreamCallback, this,
-                                  universe->id(), table, std::placeholders::_1));
+      string producer_bootstrap_id;
+      auto it = table_bootstrap_ids.find(table);
+      if (it != table_bootstrap_ids.end()) {
+        producer_bootstrap_id = it->second;
+      }
+      if (!producer_bootstrap_id.empty()) {
+        auto table_id = std::make_shared<TableId>();
+        auto stream_options = std::make_shared<std::unordered_map<std::string, std::string>>();
+        cdc_rpc->client()->GetCDCStream(producer_bootstrap_id, table_id, stream_options,
+            std::bind(&enterprise::CatalogManager::GetCDCStreamCallback, this,
+                producer_bootstrap_id, table_id, stream_options, universe->id(), table,
+                std::placeholders::_1));
+      } else {
+        cdc_rpc->client()->CreateCDCStream(
+            table, options,
+            std::bind(&enterprise::CatalogManager::AddCDCStreamToUniverseAndInitConsumer, this,
+                universe->id(), table, std::placeholders::_1));
+      }
     }
   }
 
@@ -2033,7 +2072,31 @@ void CatalogManager::GetTableSchemaCallback(
   l->Commit();
 }
 
-void CatalogManager::CreateCDCStreamCallback(
+void CatalogManager::GetCDCStreamCallback(
+    const CDCStreamId& bootstrap_id,
+    std::shared_ptr<TableId> table_id,
+    std::shared_ptr<std::unordered_map<std::string, std::string>> options,
+    const std::string& universe_id,
+    const TableId& table,
+    const Status& s) {
+  if (!s.ok()) {
+    LOG(ERROR) << "Unable to find bootstrap id " << bootstrap_id;
+    AddCDCStreamToUniverseAndInitConsumer(universe_id, table, s);
+  } else {
+    if (*table_id != table) {
+      std::string error_msg = Substitute(
+          "Invalid bootstrap id for table $0. Bootstrap id $1 belongs to table $2",
+          table, bootstrap_id, *table_id);
+      LOG(ERROR) << error_msg;
+      auto invalid_bootstrap_id_status = STATUS(InvalidArgument, error_msg);
+      AddCDCStreamToUniverseAndInitConsumer(universe_id, table, invalid_bootstrap_id_status);
+    }
+    // todo check options
+    AddCDCStreamToUniverseAndInitConsumer(universe_id, table, bootstrap_id);
+  }
+}
+
+void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
     const std::string& universe_id, const TableId& table_id, const Result<CDCStreamId>& stream_id) {
   scoped_refptr<UniverseReplicationInfo> universe;
   {

@@ -49,6 +49,8 @@ service CDCService {
   rpc GetCheckpoint (GetCheckpointRequestPB) returns (GetCheckpointResponsePB);
   rpc UpdateCdcReplicatedIndex (UpdateCdcReplicatedIndexRequestPB)
       returns (UpdateCdcReplicatedIndexResponsePB);
+  rpc BootstrapProducer (BootstrapProducerRequestPB) returns (BootstrapProducerResponsePB);
+  rpc GetLatestEntryOpId (GetLatestEntryOpIdRequestPB) returns (GetLatestEntryOpIdResponsePB);
 }
 
 message CDCErrorPB {
@@ -211,4 +213,22 @@ message UpdateCdcReplicatedIndexRequestPB {
 
 message UpdateCdcReplicatedIndexResponsePB {
   optional CDCErrorPB error = 1;
+}
+
+message BootstrapProducerRequestPB {
+  repeated string table_ids = 1;
+}
+
+message BootstrapProducerResponsePB {
+  optional CDCErrorPB error = 1;
+  repeated bytes cdc_bootstrap_ids = 2;
+}
+
+message GetLatestEntryOpIdRequestPB {
+  optional bytes tablet_id = 1;
+}
+
+message GetLatestEntryOpIdResponsePB {
+  optional CDCErrorPB error = 1;
+  optional OpIdPB op_id = 2;
 }

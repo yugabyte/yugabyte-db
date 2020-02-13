@@ -23,6 +23,9 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/master_defaults.h"
+#include "yb/master/master.pb.h"
+#include "yb/master/master.proxy.h"
+#include "yb/master/mini_master.h"
 #include "yb/rpc/messenger.h"
 #include "yb/tablet/tablet.h"
 
@@ -65,6 +68,7 @@ namespace cdc {
 
 using client::TableHandle;
 using client::YBSessionPtr;
+using master::MiniMaster;
 using rpc::RpcController;
 
 const std::string kCDCTestKeyspace = "my_keyspace";
@@ -299,6 +303,57 @@ TEST_F(CDCServiceTest, TestCreateCDCStream) {
   std::unordered_map<std::string, std::string> options;
   ASSERT_OK(client_->GetCDCStream(stream_id, &table_id, &options));
   ASSERT_EQ(table_id, table_.table()->id());
+}
+
+TEST_F(CDCServiceTest, TestBootstrapProducer) {
+  constexpr int kNRows = 100;
+  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+      &client_->proxy_cache(),
+      cluster_->leader_mini_master()->bound_rpc_addr());
+
+  std::string tablet_id;
+  GetTablet(&tablet_id);
+
+  const auto& proxy = cluster_->mini_tablet_server(0)->server()->proxy();
+  for (int i = 0; i < kNRows; i++) {
+    WriteTestRow(i, 10 + i, "key" + std::to_string(i), tablet_id, proxy);
+  }
+
+  BootstrapProducerRequestPB req;
+  BootstrapProducerResponsePB resp;
+  req.add_table_ids(table_.table()->id());
+  rpc::RpcController rpc;
+  cdc_proxy_->BootstrapProducer(req, &resp, &rpc);
+  ASSERT_FALSE(resp.has_error());
+
+  ASSERT_EQ(resp.cdc_bootstrap_ids().size(), 1);
+
+  string bootstrap_id = resp.cdc_bootstrap_ids(0);
+
+  // Verify that for each of the table's tablets, a new row in cdc_state table with the returned
+  // id was inserted.
+  client::TableHandle table;
+  client::YBTableName cdc_state_table(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+  ASSERT_OK(table.Open(cdc_state_table, client_.get()));
+  ASSERT_EQ(1, boost::size(client::TableRange(table)));
+  int nrows = 0;
+  for (const auto& row : client::TableRange(table)) {
+    nrows++;
+    string stream_id = row.column(master::kCdcStreamIdIdx).string_value();
+    ASSERT_EQ(stream_id, bootstrap_id);
+
+    string checkpoint = row.column(master::kCdcCheckpointIdx).string_value();
+    auto s = OpId::FromString(checkpoint);
+    ASSERT_OK(s);
+    OpId op_id = *s;
+    // When no writes are present, the checkpoint's index is 1. Plus one for the ALTER WAL RETENTION
+    // TIME that we issue when cdc is enabled on a table.
+    ASSERT_EQ(op_id.index, 2 + kNRows);
+  }
+
+  // This table only has one tablet.
+  ASSERT_EQ(nrows, 1);
 }
 
 TEST_F(CDCServiceTest, TestCreateCDCStreamWithDefaultRententionTime) {

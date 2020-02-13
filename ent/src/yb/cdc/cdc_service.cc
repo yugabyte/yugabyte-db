@@ -36,6 +36,7 @@
 #include "yb/client/session.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/client/yb_op.h"
+#include "yb/gutil/strings/join.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tablet_server.h"
@@ -43,6 +44,7 @@
 #include "yb/tserver/service_util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -291,6 +293,8 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
     return;
   }
 
+  YB_LOG_EVERY_N_SECS(INFO, 300) << "Received GetChanges request " << req->ShortDebugString();
+
   RPC_CHECK_AND_RETURN_ERROR(req->has_tablet_id(),
                              STATUS(InvalidArgument, "Tablet ID is required to get CDC changes"),
                              resp->mutable_error(),
@@ -469,17 +473,22 @@ void CDCServiceImpl::ReadCdcMinReplicatedIndexForAllTabletsAndUpdatePeers() {
       LOG(WARNING) << "Scan of table " << kCdcStateTableName.table_name() << " failed: " << status;
       failed = true;
     };
+    options.columns = std::vector<std::string>{master::kCdcTabletId, master::kCdcStreamId,
+        master::kCdcCheckpoint, master::kCdcLastReplicationTime};
     for (const auto& row : client::TableRange(table, options)) {
       count++;
       auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
       auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
       auto checkpoint = row.column(master::kCdcCheckpointIdx).string_value();
-      auto last_replication_time = row.column(master::kCdcLastReplicationTimeIdx).timestamp_value();
+      std::string last_replicated_time_str;
+      const auto& timestamp_ql_value = row.column(3);
+      if (!timestamp_ql_value.IsNull()) {
+        last_replicated_time_str = timestamp_ql_value.timestamp_value().ToFormattedString();
+      }
 
       VLOG(1) << "stream_id: " << stream_id << ", tablet_id: " << tablet_id
-              << ", checkpoint: " << checkpoint << ", last_replication_time: "
-              << last_replication_time.ToFormattedString();
-
+              << ", checkpoint: " << checkpoint << ", last replicated time: "
+              << last_replicated_time_str;
 
       auto result = OpId::FromString(checkpoint);
       if (!result.ok()) {
@@ -549,7 +558,7 @@ Result<client::internal::RemoteTabletPtr> CDCServiceImpl::GetRemoteTablet(
   async_client_init_->client()->LookupTabletById(
       tablet_id,
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
-      callback, client::UseCache::kTrue);
+      callback, client::UseCache::kFalse);
   future.wait();
 
   auto duration = CoarseMonoClock::Now() - start;
@@ -750,6 +759,185 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(const UpdateCdcReplicatedIndexRequ
   context.RespondSuccess();
 }
 
+  Result<OpId> CDCServiceImpl::TabletLeaderLatestEntryOpId(const TabletId& tablet_id) {
+    auto ts_leader = VERIFY_RESULT(GetLeaderTServer(tablet_id));
+
+    auto cdc_proxy = GetCDCServiceProxy(ts_leader);
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms));
+    GetLatestEntryOpIdRequestPB req;
+    GetLatestEntryOpIdResponsePB resp;
+    req.set_tablet_id(tablet_id);
+    cdc_proxy->GetLatestEntryOpId(req, &resp, &rpc);
+    if (!rpc.status().ok()) {
+      // If we failed to get the latest entry op id, we try other tservers. The leader is guaranteed
+      // to have the most up-to-date information, but for our purposes, it's ok to be slightly
+      // behind.
+      std::vector<client::internal::RemoteTabletServer *> servers;
+      auto s = GetTServers(tablet_id, &servers);
+      for (const auto& server : servers) {
+        // We don't want to try the leader again.
+        if (server->permanent_uuid() == ts_leader->permanent_uuid()) {
+          continue;
+        }
+        auto follower_cdc_proxy = GetCDCServiceProxy(server);
+        follower_cdc_proxy->GetLatestEntryOpId(req, &resp, &rpc);
+        if (rpc.status().ok()) {
+          return OpId::FromPB(resp.op_id());
+        }
+      }
+      DCHECK(!rpc.status().ok());
+      return rpc.status();
+    }
+    return OpId::FromPB(resp.op_id());
+  }
+
+void CDCServiceImpl::GetLatestEntryOpId(const GetLatestEntryOpIdRequestPB* req,
+                                        GetLatestEntryOpIdResponsePB* resp,
+                                        rpc::RpcContext context) {
+  std::shared_ptr<tablet::TabletPeer> tablet_peer;
+  Status s = tablet_manager_->GetTabletPeer(req->tablet_id(), &tablet_peer);
+  RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+
+  if (!tablet_peer->log_available()) {
+    const string err_message = strings::Substitute("Unable to get the latest entry op id from "
+        "peer $0 and tablet $1 because its log object hasn't been initialized",
+        tablet_peer->permanent_uuid(), tablet_peer->tablet_id());
+    LOG(WARNING) << err_message;
+    SetupErrorAndRespond(resp->mutable_error(),
+                         STATUS(ServiceUnavailable, err_message),
+                         CDCErrorPB::INTERNAL_ERROR,
+                         &context);
+    return;
+  }
+  OpId op_id = tablet_peer->log()->GetLatestEntryOpId();
+  op_id.ToPB(resp->mutable_op_id());
+  context.RespondSuccess();
+}
+
+void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
+                                       BootstrapProducerResponsePB* resp,
+                                       rpc::RpcContext context) {
+  LOG(INFO) << "Received BootstrapProducer request " << req->ShortDebugString();
+  RPC_CHECK_AND_RETURN_ERROR(req->table_ids().size() > 0,
+                             STATUS(InvalidArgument, "Table ID is required to create CDC stream"),
+                             resp->mutable_error(),
+                             CDCErrorPB::INVALID_REQUEST,
+                             context);
+
+  client::TableHandle cdc_state_table;
+
+  std::vector<client::YBOperationPtr> ops;
+  auto session = async_client_init_->client()->NewSession();
+
+  // Used to delete streams in case of failure.
+  std::vector<CDCStreamId> created_cdc_streams;
+  auto scope_exit = ScopeExit([this, &created_cdc_streams] {
+    if (!created_cdc_streams.empty()) {
+      Status s = async_client_init_->client()->DeleteCDCStream(created_cdc_streams);
+      if (!s.ok()) {
+        LOG(WARNING) << "Unable to delete streams " << JoinCSVLine(created_cdc_streams)
+                     << ": " << s;
+      }
+    }
+  });
+
+  std::vector<CDCStreamId> bootstrap_ids;
+
+  for (const auto& table_id : req->table_ids()) {
+    std::shared_ptr<client::YBTable> table;
+    Status s = async_client_init_->client()->OpenTable(table_id, &table);
+    RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::TABLE_NOT_FOUND, context);
+
+    // TODO: We will support YSQL tables once we can take backups for those tables.
+    RPC_CHECK_NE_AND_RETURN_ERROR(table->table_type(), client::YBTableType::PGSQL_TABLE_TYPE,
+        STATUS(InvalidArgument, "Bootstrapping and backup of YSQL tables is not supported yet"),
+        resp->mutable_error(),
+        CDCErrorPB::INVALID_REQUEST,
+        context);
+
+    // Generate a bootstrap id by calling CreateCDCStream, and also setup the stream in the master.
+    // If the consumer's master sends a CreateCDCStream with a bootstrap id, the producer's master
+    // will verify that the stream id exists and return success if it does since everything else
+    // has already been done by this call.
+    std::unordered_map<std::string, std::string> options;
+    options.reserve(2);
+    options.emplace(cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
+    options.emplace(cdc::kRecordFormat, CDCRecordFormat_Name(cdc::CDCRecordFormat::WAL));
+
+    auto result = async_client_init_->client()->CreateCDCStream(table_id, options);
+    RPC_CHECK_AND_RETURN_ERROR(result.ok(), result.status(), resp->mutable_error(),
+                               CDCErrorPB::INTERNAL_ERROR, context);
+    const std::string& bootstrap_id = *result;
+    created_cdc_streams.push_back(bootstrap_id);
+
+    if (!cdc_state_table.table()) {
+      Status s = cdc_state_table.Open(kCdcStateTableName, async_client_init_->client());
+      RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+    }
+
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    s = async_client_init_->client()->GetTabletsFromTableId(table_id, 0, &tablets);
+    RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::TABLE_NOT_FOUND, context);
+
+    // For each tablet, create a row in cdc_state table containing the generated bootstrap id, and
+    // the latest op id in the logs.
+    for (const auto &tablet : tablets) {
+      std::shared_ptr<tablet::TabletPeer> tablet_peer;
+      OpId op_id;
+
+      s = tablet_manager_->GetTabletPeer(tablet.tablet_id(), &tablet_peer);
+      if (!s.ok()) {
+        auto result = TabletLeaderLatestEntryOpId(tablet.tablet_id());
+        RPC_CHECK_AND_RETURN_ERROR(result.ok(), result.status(), resp->mutable_error(),
+            CDCErrorPB::INTERNAL_ERROR, context);
+        op_id = *result;
+      } else {
+        if (!tablet_peer->log_available()) {
+          const string err_message = strings::Substitute("Unable to get the latest entry op id "
+              "from peer $0 and tablet $1 because its log object hasn't been initialized",
+              tablet_peer->permanent_uuid(), tablet_peer->tablet_id());
+          LOG(WARNING) << err_message;
+          SetupErrorAndRespond(resp->mutable_error(),
+                               STATUS(ServiceUnavailable, err_message),
+                               CDCErrorPB::INTERNAL_ERROR,
+                               &context);
+          return;
+        }
+        op_id = tablet_peer->log()->GetLatestEntryOpId();
+      }
+
+      const auto op = cdc_state_table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+      auto *const write_req = op->mutable_request();
+
+      QLAddStringHashValue(write_req, tablet.tablet_id());
+      QLAddStringRangeValue(write_req, bootstrap_id);
+      cdc_state_table.AddStringColumnValue(write_req, master::kCdcCheckpoint, op_id.ToString());
+      ops.push_back(std::move(op));
+
+      {
+        ProducerTabletInfo producer_tablet{
+          "" /* Universe UUID */, bootstrap_id, tablet.tablet_id()};
+        auto now = CoarseMonoClock::Now();
+        TabletCheckpoint sent_checkpoint({op_id, now});
+        TabletCheckpoint commit_checkpoint({op_id, now});
+        std::lock_guard<decltype(mutex_)> l(mutex_);
+        tablet_checkpoints_.emplace(producer_tablet, commit_checkpoint, sent_checkpoint);
+      }
+    }
+    bootstrap_ids.push_back(std::move(bootstrap_id));
+  }
+  Status s = session->ApplyAndFlush(ops);
+  RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+
+  for (const auto& bootstrap_id : bootstrap_ids) {
+    resp->add_cdc_bootstrap_ids(bootstrap_id);
+  }
+  // Clear this vector so no streams are deleted by scope_exit since we succeeded.
+  created_cdc_streams.clear();
+  context.RespondSuccess();
+}
+
 void CDCServiceImpl::Shutdown() {
   async_client_init_->Shutdown();
   rpcs_.Shutdown();
@@ -781,12 +969,13 @@ Result<OpId> CDCServiceImpl::GetLastCheckpoint(
 
   auto cond = req->mutable_where_expr()->mutable_condition();
   cond->set_op(QLOperator::QL_OP_AND);
-  QLAddStringCondition(cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL,
-      producer_tablet.stream_id);
-
+  QLAddStringCondition(cond, Schema::first_column_id() + master::kCdcStreamIdIdx,
+      QL_OP_EQUAL, producer_tablet.stream_id);
+  req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcTabletIdIdx);
+  req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcStreamIdIdx);
   table.AddColumns({master::kCdcCheckpoint}, req);
-  RETURN_NOT_OK(session->ApplyAndFlush(op));
 
+  RETURN_NOT_OK(session->ReadSync(op));
   auto row_block = ql::RowsResult(op.get()).GetRowBlock();
   if (row_block->row_count() == 0) {
     return OpId(0, 0);
@@ -845,7 +1034,7 @@ Status CDCServiceImpl::UpdateCheckpoint(const ProducerTabletInfo& producer_table
         HybridTime(last_record_hybrid_time).GetPhysicalValueMicros() : GetCurrentTimeMicros();
     table.AddTimestampColumnValue(
         req, master::kCdcLastReplicationTime,
-        last_replication_time_micros / MonoTime::kMicrosecondsPerMillisecond);
+        last_replication_time_micros);
     RETURN_NOT_OK(session->ApplyAndFlush(op));
   }
 

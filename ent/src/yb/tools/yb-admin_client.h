@@ -69,16 +69,21 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   CHECKED_STATUS SetupUniverseReplication(const std::string& producer_uuid,
                                           const std::vector<std::string>& producer_addresses,
-                                          const std::vector<TableId>& tables);
+                                          const std::vector<TableId>& tables,
+                                          const std::vector<std::string>& producer_bootstrap_ids);
 
   CHECKED_STATUS DeleteUniverseReplication(const std::string& producer_id);
 
   CHECKED_STATUS SetUniverseReplicationEnabled(const std::string& producer_id,
                                                bool is_enabled);
 
+  CHECKED_STATUS BootstrapProducer(const std::vector<TableId>& table_id);
+
  private:
 
   CHECKED_STATUS SendEncryptionRequest(const std::string& key_path, bool enable_encryption);
+
+  Result<HostPort> GetFirstRpcAddressForTS();
 
   std::unique_ptr<master::MasterBackupServiceProxy> master_backup_proxy_;
 
