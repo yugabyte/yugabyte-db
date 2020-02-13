@@ -95,13 +95,13 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   //------------------------------------------------------------------------------------------------
   // CQL support
   // Create a new QL operation for this table.
-  YBqlWriteOp* NewQLWrite();
-  YBqlWriteOp* NewQLInsert();
-  YBqlWriteOp* NewQLUpdate();
-  YBqlWriteOp* NewQLDelete();
+  std::unique_ptr<YBqlWriteOp> NewQLWrite();
+  std::unique_ptr<YBqlWriteOp> NewQLInsert();
+  std::unique_ptr<YBqlWriteOp> NewQLUpdate();
+  std::unique_ptr<YBqlWriteOp> NewQLDelete();
 
-  YBqlReadOp* NewQLRead();
-  YBqlReadOp* NewQLSelect();
+  std::unique_ptr<YBqlReadOp> NewQLRead();
+  std::unique_ptr<YBqlReadOp> NewQLSelect();
 
   // Finds partition start for specified partition_key.
   // Partitions could be groupped by group_by bunches, in this case start of such bunch is returned.
@@ -111,14 +111,14 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   //------------------------------------------------------------------------------------------------
   // Postgres support
   // Create a new QL operation for this table.
-  YBPgsqlWriteOp* NewPgsqlWrite();
-  YBPgsqlWriteOp* NewPgsqlInsert();
-  YBPgsqlWriteOp* NewPgsqlUpdate();
-  YBPgsqlWriteOp* NewPgsqlDelete();
-  YBPgsqlWriteOp* NewPgsqlTruncateColocated();
+  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlWrite();
+  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlInsert();
+  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlUpdate();
+  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlDelete();
+  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlTruncateColocated();
 
-  YBPgsqlReadOp* NewPgsqlRead();
-  YBPgsqlReadOp* NewPgsqlSelect();
+  std::unique_ptr<YBPgsqlReadOp> NewPgsqlRead();
+  std::unique_ptr<YBPgsqlReadOp> NewPgsqlSelect();
 
  private:
   friend class YBClient;

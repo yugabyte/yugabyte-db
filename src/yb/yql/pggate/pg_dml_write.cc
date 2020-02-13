@@ -142,11 +142,11 @@ Status PgDmlWrite::Exec(bool force_non_bufferable) {
 }
 
 void PgDmlWrite::AllocWriteRequest() {
-  client::YBPgsqlWriteOp* wop = AllocWriteOperation();
+  auto wop = AllocWriteOperation();
   DCHECK(wop);
   wop->set_is_single_row_txn(is_single_row_txn_);
   write_req_ = wop->mutable_request();
-  doc_op_ = make_shared<PgDocWriteOp>(pg_session_, table_id_, wop);
+  doc_op_ = make_shared<PgDocWriteOp>(pg_session_, table_id_, std::move(wop));
 }
 
 PgsqlExpressionPB *PgDmlWrite::AllocColumnBindPB(PgColumn *col) {

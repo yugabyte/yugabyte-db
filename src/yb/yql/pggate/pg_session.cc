@@ -463,8 +463,7 @@ Status PgSession::InsertSequenceTuple(int64_t db_oid,
   }
   PgTableDesc::ScopedRefPtr t = VERIFY_RESULT(result);
 
-  std::shared_ptr<client::YBPgsqlWriteOp> psql_write;
-  psql_write.reset(t->NewPgsqlInsert());
+  auto psql_write(t->NewPgsqlInsert());
 
   auto write_request = psql_write->mutable_request();
   write_request->set_ysql_catalog_version(ysql_catalog_version);
@@ -480,7 +479,7 @@ Status PgSession::InsertSequenceTuple(int64_t db_oid,
   column_value->set_column_id(t->table()->schema().ColumnId(kPgSequenceIsCalledColIdx));
   column_value->mutable_expr()->mutable_value()->set_bool_value(is_called);
 
-  return session_->ApplyAndFlush(psql_write);
+  return session_->ApplyAndFlush(std::move(psql_write));
 }
 
 Status PgSession::UpdateSequenceTuple(int64_t db_oid,
@@ -494,8 +493,7 @@ Status PgSession::UpdateSequenceTuple(int64_t db_oid,
   pggate::PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
   PgTableDesc::ScopedRefPtr t = VERIFY_RESULT(LoadTable(oid));
 
-  std::shared_ptr<client::YBPgsqlWriteOp> psql_write;
-  psql_write.reset(t->NewPgsqlUpdate());
+  std::shared_ptr<client::YBPgsqlWriteOp> psql_write(t->NewPgsqlUpdate());
 
   auto write_request = psql_write->mutable_request();
   write_request->set_ysql_catalog_version(ysql_catalog_version);
@@ -596,13 +594,13 @@ Status PgSession::DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
   pggate::PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
   PgTableDesc::ScopedRefPtr t = VERIFY_RESULT(LoadTable(oid));
 
-  std::shared_ptr<client::YBPgsqlWriteOp> psql_delete(t->NewPgsqlDelete());
+  auto psql_delete(t->NewPgsqlDelete());
   auto delete_request = psql_delete->mutable_request();
 
   delete_request->add_partition_column_values()->mutable_value()->set_int64_value(db_oid);
   delete_request->add_partition_column_values()->mutable_value()->set_int64_value(seq_oid);
 
-  return session_->ApplyAndFlush(psql_delete);
+  return session_->ApplyAndFlush(std::move(psql_delete));
 }
 
 Status PgSession::DeleteDBSequences(int64_t db_oid) {
@@ -618,11 +616,11 @@ Status PgSession::DeleteDBSequences(int64_t db_oid) {
     return Status::OK();
   }
 
-  std::shared_ptr<client::YBPgsqlWriteOp> psql_delete(t->NewPgsqlDelete());
+  auto psql_delete(t->NewPgsqlDelete());
   auto delete_request = psql_delete->mutable_request();
 
   delete_request->add_partition_column_values()->mutable_value()->set_int64_value(db_oid);
-  return session_->ApplyAndFlush(psql_delete);
+  return session_->ApplyAndFlush(std::move(psql_delete));
 }
 
 //--------------------------------------------------------------------------------------------------
