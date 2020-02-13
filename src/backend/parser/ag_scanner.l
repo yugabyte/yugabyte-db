@@ -952,7 +952,7 @@ static void _numstr_to_decimal(const char *numstr, const int base, strbuf *sb)
         break;
     default:
         Assert(!"invalid base");
-        break;
+        return;
     }
 
     // skip leading zeros
