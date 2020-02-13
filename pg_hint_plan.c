@@ -3016,7 +3016,6 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 */
 	if (plpgsql_recurse_level > 0 &&
 		error_context_stack && error_context_stack->arg)
-	if (plpgsql_recurse_level > 0)
 	{
 		MemoryContext oldcontext;
 
