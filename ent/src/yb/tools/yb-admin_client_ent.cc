@@ -685,6 +685,45 @@ Status ClusterAdminClient::CreateCDCStream(const TableId& table_id) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::DeleteCDCStream(const std::string& stream_id) {
+  master::DeleteCDCStreamRequestPB req;
+  master::DeleteCDCStreamResponsePB resp;
+  req.add_stream_id(stream_id);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master_proxy_->DeleteCDCStream(req, &resp, &rpc);
+
+  if (resp.has_error()) {
+    cout << "Error deleting stream: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Successfully deleted CDC Stream ID: " << stream_id << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ListCDCStreams(const TableId& table_id) {
+  master::ListCDCStreamsRequestPB req;
+  master::ListCDCStreamsResponsePB resp;
+  if (!table_id.empty()) {
+    req.set_table_id(table_id);
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master_proxy_->ListCDCStreams(req, &resp, &rpc);
+
+  if (resp.has_error()) {
+    cout << "Error getting CDC stream list: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "CDC Streams: \r\n" << resp.DebugString();
+  return Status::OK();
+}
+
+
 Status ClusterAdminClient::SetupUniverseReplication(
     const string& producer_uuid, const vector<string>& producer_addresses,
     const vector<TableId>& tables,
