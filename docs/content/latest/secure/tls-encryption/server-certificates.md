@@ -152,6 +152,7 @@ You can verify the root certificate by running the following `openssl x509` comm
 ```sh
 $ openssl x509 -in secure-data/ca.crt -text -noout
 ```
+
 You should see output similar to this:
 
 ```
@@ -211,7 +212,7 @@ Certificate:
          2a:e7:7f:97
 ```
 
-## Copy the root certificate to the node directories
+## Copy the root certificate to eacg node directory
 
 Copy the generated root certificate file (`root.crt`) to all three node directories.
 
