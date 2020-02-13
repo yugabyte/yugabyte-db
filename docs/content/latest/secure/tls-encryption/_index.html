@@ -30,7 +30,7 @@ Follow the steps in this section to learn how to enable encryption using TLS for
     <a class="section-link icon-offset" href="prepare-nodes/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/tls-encryption/prepare-nodes.png" aria-hidden="true" />
-        <div class="title">1. Prepare nodes</div>
+        <div class="title">Create server certificates</div>
       </div>
       <div class="body">
           Prepare YugabyteDB nodes with the configuration data and TLS certificates.
@@ -39,10 +39,22 @@ Follow the steps in this section to learn how to enable encryption using TLS for
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="prepare-nodes/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/tls-encryption/prepare-nodes.png" aria-hidden="true" />
+        <div class="title">Create client certificates</div>
+      </div>
+      <div class="body">
+          Create self-signed certificates to connect clients to a YugabyteDB cluster.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="server-to-server/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/tls-encryption/server-to-server.png" aria-hidden="true" />
-        <div class="title">2. Server-server encryption</div>
+        <div class="title">Encrypt intra-node (server-server) communication</div>
       </div>
       <div class="body">
           Enable server-server encryption (using TLS) between YB-Master and YB-TServer nodes.
@@ -54,7 +66,7 @@ Follow the steps in this section to learn how to enable encryption using TLS for
     <a class="section-link icon-offset" href="client-to-server/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/tls-encryption/client-to-server.png" aria-hidden="true" />
-        <div class="title">3. Client-server encryption</div>
+        <div class="title">Encrypt client-to-server communication</div>
       </div>
       <div class="body">
           Enable client-server encryption (using TLS) for YSQL and YCQL.
@@ -66,10 +78,10 @@ Follow the steps in this section to learn how to enable encryption using TLS for
     <a class="section-link icon-offset" href="connect-to-cluster/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/tls-encryption/connect-to-cluster.png" aria-hidden="true" />
-        <div class="title">4. Connect to cluster</div>
+        <div class="title">Connect to clusters</div>
       </div>
       <div class="body">
-          Connect to a YugabyteDB cluster with encryption enabled.
+          Connect tools and APIs to a YugabyteDB cluster.
       </div>
     </a>
   </div>
