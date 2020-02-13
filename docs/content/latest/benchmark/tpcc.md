@@ -29,7 +29,7 @@ cd tpcc
 ```
 
 ## Step 2. Start your database
-Start the database using steps mentioned here: https://docs.yugabyte.com/latest/quick-start/explore-ysql/.
+Start the database using steps mentioned [here](https://docs.yugabyte.com/latest/quick-start/explore-ysql/).
 
 ## Step 3. Configure connection properties
 Set the following connection configurations in the workload config file `config/workload_1.xml`.
@@ -45,7 +45,7 @@ Set the following connection configurations in the workload config file `config/
 ```
 
 The details of the workloads have already been populated in the sample configs present in /config.
-The workload descriptor works the same way as it does in the upstream branch and details can be found in the [on-line documentation](https://github.com/oltpbenchmark/oltpbench/wiki).
+The workload descriptor works the same way as it does in the upstream branch and details can be found in the associated [documentation](https://github.com/oltpbenchmark/oltpbench/wiki).
 
 ## Step 4. Running the Benchmark
 A utility script (./tpccbenchmark) is provided for running the benchmark. The options are
