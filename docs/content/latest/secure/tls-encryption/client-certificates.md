@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: client-certificates
     parent: tls-encryption
-    weight: 10
+    weight: 20
 isTocNested: true
 showAsideToc: true
 ---
