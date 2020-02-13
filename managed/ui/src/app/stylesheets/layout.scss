@@ -15,7 +15,7 @@
 }
 
 .navbar-default {
-  background: #fff;    
+  background: #fff;
   border-color: transparent;
 }
 
@@ -244,7 +244,7 @@ dd {
 .dl-inline {
   margin: 0;
   padding: 0;
-  
+
   span {
     display: block;
 
@@ -300,4 +300,12 @@ dd {
   visibility: hidden;
   opacity: 0;
   transition: visibility 0s 2s, opacity 1s linear 1s;
+}
+
+.user-list-container .table-actions-cell {
+  overflow: inherit;
+
+  div {
+    overflow: inherit;
+  }
 }

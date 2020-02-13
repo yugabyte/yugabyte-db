@@ -96,6 +96,12 @@ export const GET_SCHEDULES_RESPONSE = 'GET_SCHEDULES_RESPONSE';
 export const DELETE_SCHEDULE = 'DELETE_SCHEDULE';
 export const DELETE_SCHEDULE_RESPONSE = 'DELETE_SCHEDULE_RESPONSE';
 
+export const CREATE_USER = 'CREATE_USER';
+export const CREATE_USER_RESPONSE = 'CREATE_USER_RESPONSE';
+
+export const DELETE_USER = 'DELETE_USER';
+export const DELETE_USER_RESPONSE  = 'DELETE_USER_RESPONSE';
+
 export function validateToken() {
   let cUUID = Cookies.get("customerId");
   if (cUUID) {
@@ -569,6 +575,38 @@ export function updateYugaByteRelease(version, payload) {
 export function updateYugaByteReleaseResponse(response) {
   return {
     type: UPDATE_RELEASE_RESPONSE,
+    payload: response
+  };
+}
+
+export function createUser(formValues) {
+  const cUUID = localStorage.getItem("customerId");
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/users`, formValues);
+  return {
+    type: CREATE_USER,
+    payload: request
+  };
+}
+
+export function createUserResponse(response) {
+  return {
+    type: CREATE_USER_RESPONSE,
+    payload: response
+  };
+}
+
+export function deleteUser(userUUID) {
+  const cUUID = localStorage.getItem("customerId");
+  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/users/${userUUID}`);
+  return {
+    type: DELETE_USER,
+    payload: request
+  };
+}
+
+export function deleteUserResponse(response) {
+  return {
+    type: DELETE_USER_RESPONSE,
     payload: response
   };
 }
