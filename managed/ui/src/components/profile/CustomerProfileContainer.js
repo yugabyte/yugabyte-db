@@ -5,7 +5,6 @@ import { CustomerProfile } from '../profile';
 import { updateProfile, updateProfileSuccess, updateProfileFailure,
   getApiToken, getApiTokenResponse, getApiTokenLoading,
   getCustomerUsers, getCustomerUsersSuccess, getCustomerUsersFailure } from '../../actions/customers';
-import { SubmissionError } from 'redux-form';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -14,8 +13,6 @@ const mapDispatchToProps = (dispatch) => {
         try {
           if (response.payload.status !== 200) {
             dispatch(getCustomerUsersFailure(response.payload));
-            const error = response.payload.response.data.error;
-            throw new SubmissionError(error);
           } else {
             dispatch(getCustomerUsersSuccess(response.payload));
           }
@@ -28,8 +25,6 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(updateProfile(values)).then((response) => {
         if (response.payload.status !== 200) {
           dispatch(updateProfileFailure(response.payload));
-          const error = response.payload.response.data.error;
-          throw new SubmissionError(error);
         } else {
           dispatch(updateProfileSuccess(response.payload));
         }

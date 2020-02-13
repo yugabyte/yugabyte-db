@@ -24,8 +24,8 @@ export function setLoadingState(state, object, data = null) {
     return setPromiseState(state, object, PromiseState.LOADING, data);
   } else {
     return Object.assign({}, state, {
-      [object]: Object.assign({}, state[object], { 
-        promiseState: PromiseState.LOADING 
+      [object]: Object.assign({}, state[object], {
+        promiseState: PromiseState.LOADING
       })
     });
   }

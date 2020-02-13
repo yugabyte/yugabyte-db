@@ -66,7 +66,7 @@ export default class YBFormSelect extends Component {
       singleValue: (provided, state) => {
         const opacity = state.isDisabled ? 0.5 : 1;
         const transition = 'opacity 300ms';
-    
+
         return { ...provided, opacity, transition };
       },
       multiValueRemove: (provided) => ({
@@ -78,7 +78,7 @@ export default class YBFormSelect extends Component {
         margin: "0"
       }),
     };
-    
+
     return (
       <YBLabel {...this.props} >
         <Select

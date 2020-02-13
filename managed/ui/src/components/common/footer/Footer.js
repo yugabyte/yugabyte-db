@@ -4,7 +4,7 @@ import React, { PureComponent } from 'react';
 import './stylesheets/Footer.scss';
 import slackLogo from './images/slack-logo-full.svg';
 import githubLogo from './images/github-light-small.png';
-import ybLogoImage from '../YBLogo/images/yb_ybsymbol_dark.png'
+import ybLogoImage from '../YBLogo/images/yb_ybsymbol_dark.png';
 import YBLogo from '../YBLogo/YBLogo';
 import * as moment from 'moment';
 import { getPromiseState } from 'utils/PromiseUtils';

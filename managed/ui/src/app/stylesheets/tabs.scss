@@ -17,11 +17,11 @@
       background-color: rgba($YB_GRAY_HOVER, .7);
       margin-right: 7px;
       @include transition(0.35s);
-      
+
       &:first-child {
         margin-left: -1px;
       }
-      
+
       @media (min-width: 768px) {
         min-width: 116px;
       }
@@ -78,4 +78,8 @@
 
 .panel-group:last-child {
   margin-bottom: 0;
+}
+
+.user-list-container {
+  padding: 0 20px;
 }
