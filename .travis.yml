@@ -1,0 +1,13 @@
+language: c
+os: linux
+dist: bionic
+arch: amd64
+compiler: gcc
+addons:
+  apt:
+    packages:
+    - postgresql-11
+    - postgresql-server-dev-11
+if: branch = master
+script: sudo make install && make installcheck
+after_failure: cat regress/regression.diffs
