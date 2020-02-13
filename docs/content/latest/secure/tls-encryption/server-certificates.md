@@ -258,7 +258,7 @@ distinguished_name = my_distinguished_name
 organizationName = Yugabyte
 # Required value for commonName, do not change.
 commonName = <node-ip-address>
-    ```
+```
 
 3. After pasting the content in step 2 and replacing `<node-ip-address>` with the node IP address, save and close the file by entering `Ctl+D`.
 
