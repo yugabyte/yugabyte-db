@@ -19,6 +19,7 @@
 #define YB_YQL_PGGATE_PG_TABLEDESC_H_
 
 #include "yb/client/client.h"
+#include "yb/client/yb_op.h"
 #include "yb/yql/pggate/pg_column.h"
 
 namespace yb {
@@ -52,11 +53,11 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   const size_t num_key_columns() const;
   const size_t num_columns() const;
 
-  client::YBPgsqlReadOp* NewPgsqlSelect();
-  client::YBPgsqlWriteOp* NewPgsqlInsert();
-  client::YBPgsqlWriteOp* NewPgsqlUpdate();
-  client::YBPgsqlWriteOp* NewPgsqlDelete();
-  client::YBPgsqlWriteOp* NewPgsqlTruncateColocated();
+  std::unique_ptr<client::YBPgsqlReadOp> NewPgsqlSelect();
+  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlInsert();
+  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlUpdate();
+  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlDelete();
+  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlTruncateColocated();
 
   // Find the column given the postgres attr number.
   Result<PgColumn *> FindColumn(int attr_num);

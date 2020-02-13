@@ -46,7 +46,7 @@ class PgTruncateColocated : public PgDmlWrite {
   StmtOp stmt_op() const override { return StmtOp::STMT_TRUNCATE; }
 
  private:
-  client::YBPgsqlWriteOp* AllocWriteOperation() const override {
+  std::unique_ptr<client::YBPgsqlWriteOp> AllocWriteOperation() const override {
     return table_desc_->NewPgsqlTruncateColocated();
   }
 };

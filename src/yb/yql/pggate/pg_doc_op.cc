@@ -119,10 +119,10 @@ Status PgDocOp::ProcessResponse(const Status& status) {
 
 PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
                          size_t num_hash_key_columns,
-                         client::YBPgsqlReadOp* read_op)
+                         std::unique_ptr<client::YBPgsqlReadOp> read_op)
     : PgDocOp(pg_session),
       num_hash_key_columns_(num_hash_key_columns),
-      template_op_(read_op) {
+      template_op_(std::move(read_op)) {
 }
 
 void PgDocReadOp::Init() {
@@ -284,8 +284,8 @@ Status PgDocReadOp::ProcessResponseImpl(const Status& exec_status) {
 
 PgDocWriteOp::PgDocWriteOp(const PgSession::ScopedRefPtr& pg_session,
                            const PgObjectId& relation_id,
-                           client::YBPgsqlWriteOp *write_op)
-    : PgDocOp(pg_session), write_op_(write_op), relation_id_(relation_id) {
+                           std::unique_ptr<client::YBPgsqlWriteOp> write_op)
+    : PgDocOp(pg_session), write_op_(std::move(write_op)), relation_id_(relation_id) {
 }
 
 Status PgDocWriteOp::SendRequestImpl(bool force_non_bufferable) {

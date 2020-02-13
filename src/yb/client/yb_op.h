@@ -316,9 +316,9 @@ class YBqlWriteOp : public YBqlOp {
 
  private:
   friend class YBTable;
-  static YBqlWriteOp *NewInsert(const std::shared_ptr<YBTable>& table);
-  static YBqlWriteOp *NewUpdate(const std::shared_ptr<YBTable>& table);
-  static YBqlWriteOp *NewDelete(const std::shared_ptr<YBTable>& table);
+  static std::unique_ptr<YBqlWriteOp> NewInsert(const std::shared_ptr<YBTable>& table);
+  static std::unique_ptr<YBqlWriteOp> NewUpdate(const std::shared_ptr<YBTable>& table);
+  static std::unique_ptr<YBqlWriteOp> NewDelete(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<QLWriteRequestPB> ql_write_request_;
 
   // Does this operation write to the static or primary row?
@@ -330,7 +330,7 @@ class YBqlReadOp : public YBqlOp {
  public:
   ~YBqlReadOp();
 
-  static YBqlReadOp *NewSelect(const std::shared_ptr<YBTable>& table);
+  static std::unique_ptr<YBqlReadOp> NewSelect(const std::shared_ptr<YBTable>& table);
 
   // Note: to avoid memory copy, this QLReadRequestPB is moved into tserver ReadRequestPB
   // when the request is sent to tserver. It is restored after response is received from tserver
@@ -444,10 +444,11 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
 
  private:
   friend class YBTable;
-  static YBPgsqlWriteOp *NewInsert(const std::shared_ptr<YBTable>& table);
-  static YBPgsqlWriteOp *NewUpdate(const std::shared_ptr<YBTable>& table);
-  static YBPgsqlWriteOp *NewDelete(const std::shared_ptr<YBTable>& table);
-  static YBPgsqlWriteOp *NewTruncateColocated(const std::shared_ptr<YBTable>& table);
+  static std::unique_ptr<YBPgsqlWriteOp> NewInsert(const std::shared_ptr<YBTable>& table);
+  static std::unique_ptr<YBPgsqlWriteOp> NewUpdate(const std::shared_ptr<YBTable>& table);
+  static std::unique_ptr<YBPgsqlWriteOp> NewDelete(const std::shared_ptr<YBTable>& table);
+  static std::unique_ptr<YBPgsqlWriteOp> NewTruncateColocated(
+      const std::shared_ptr<YBTable>& table);
   std::unique_ptr<PgsqlWriteRequestPB> write_request_;
   // Whether this operation should be run as a single row txn.
   // Else could be distributed transaction (or non-transactional) depending on target table type.
@@ -456,7 +457,7 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
 
 class YBPgsqlReadOp : public YBPgsqlOp {
  public:
-  static YBPgsqlReadOp *NewSelect(const std::shared_ptr<YBTable>& table);
+  static std::unique_ptr<YBPgsqlReadOp> NewSelect(const std::shared_ptr<YBTable>& table);
 
   // Create a deep copy of this operation, copying all fields and request PB content.
   // Does NOT, however, copy response and rows data.

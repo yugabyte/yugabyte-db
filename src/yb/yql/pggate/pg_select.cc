@@ -48,8 +48,9 @@ Status PgSelect::Prepare() {
 
   // Allocate READ/SELECT operation.
   auto read_op = table_desc_->NewPgsqlSelect();
-  auto doc_op = make_shared<PgDocReadOp>(pg_session_, table_desc_->num_hash_key_columns(), read_op);
   read_req_ = read_op->mutable_request();
+  auto doc_op = make_shared<PgDocReadOp>(pg_session_, table_desc_->num_hash_key_columns(),
+                                         std::move(read_op));
   if (index_id_.IsValid()) {
     index_req_ = read_req_->mutable_index_request();
     index_req_->set_table_id(index_id_.GetYBTableId());
