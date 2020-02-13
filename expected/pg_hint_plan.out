@@ -8201,6 +8201,12 @@ END;
 $$ VOLATILE LANGUAGE plpgsql;
 vacuum analyze t1;
 SET pg_hint_plan.enable_hint = false;
+SELECT pg_sleep(1);
+ pg_sleep 
+----------
+ 
+(1 row)
+
 SELECT reset_stats_and_wait();
  reset_stats_and_wait 
 ----------------------
@@ -8226,6 +8232,12 @@ SELECT relname, seq_scan > 0 as seq_scan, idx_scan > 0 as idx_scan FROM pg_stat_
 (1 row)
 
 SET pg_hint_plan.enable_hint = true;
+SELECT pg_sleep(1);
+ pg_sleep 
+----------
+ 
+(1 row)
+
 SELECT reset_stats_and_wait();
  reset_stats_and_wait 
 ----------------------
@@ -8274,6 +8286,12 @@ BEGIN
 END;
 $$ VOLATILE LANGUAGE plpgsql;
 SET pg_hint_plan.enable_hint = false;
+SELECT pg_sleep(1);
+ pg_sleep 
+----------
+ 
+(1 row)
+
 SELECT reset_stats_and_wait();
  reset_stats_and_wait 
 ----------------------
@@ -8301,6 +8319,12 @@ SELECT relname, seq_scan, idx_scan FROM pg_stat_user_tables WHERE schemaname = '
 (2 rows)
 
 SET pg_hint_plan.enable_hint = true;
+SELECT pg_sleep(1);
+ pg_sleep 
+----------
+ 
+(1 row)
+
 SELECT reset_stats_and_wait();
  reset_stats_and_wait 
 ----------------------

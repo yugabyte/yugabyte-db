@@ -971,11 +971,13 @@ END;
 $$ VOLATILE LANGUAGE plpgsql;
 vacuum analyze t1;
 SET pg_hint_plan.enable_hint = false;
+SELECT pg_sleep(1);
 SELECT reset_stats_and_wait();
 SELECT dynsql1(9000);
 SELECT pg_sleep(1);
 SELECT relname, seq_scan > 0 as seq_scan, idx_scan > 0 as idx_scan FROM pg_stat_user_tables WHERE schemaname = 'public' AND relname = 't1';
 SET pg_hint_plan.enable_hint = true;
+SELECT pg_sleep(1);
 SELECT reset_stats_and_wait();
 SELECT dynsql1(9000);
 SELECT pg_sleep(1);
@@ -996,12 +998,14 @@ BEGIN
 END;
 $$ VOLATILE LANGUAGE plpgsql;
 SET pg_hint_plan.enable_hint = false;
+SELECT pg_sleep(1);
 SELECT reset_stats_and_wait();
 SELECT dynsql2(9000);
 SELECT pg_sleep(1);
 -- one of the index scans happened while planning.
 SELECT relname, seq_scan, idx_scan FROM pg_stat_user_tables WHERE schemaname = 'public' AND (relname = 'p1_c1' OR relname = 'p1_c2');
 SET pg_hint_plan.enable_hint = true;
+SELECT pg_sleep(1);
 SELECT reset_stats_and_wait();
 SELECT dynsql2(9000);
 SELECT pg_sleep(1);
