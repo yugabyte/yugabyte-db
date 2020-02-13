@@ -40,7 +40,7 @@ class PgInsert : public PgDmlWrite {
   StmtOp stmt_op() const override { return StmtOp::STMT_INSERT; }
 
  private:
-  client::YBPgsqlWriteOp* AllocWriteOperation() const override {
+  std::unique_ptr<client::YBPgsqlWriteOp> AllocWriteOperation() const override {
     return table_desc_->NewPgsqlInsert();
   }
 };

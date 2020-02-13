@@ -79,7 +79,7 @@ class PgDmlWrite : public PgDml {
   int32_t rows_affected_count_ = 0;
 
  private:
-  virtual client::YBPgsqlWriteOp* AllocWriteOperation() const = 0;
+  virtual std::unique_ptr<client::YBPgsqlWriteOp> AllocWriteOperation() const = 0;
 };
 
 }  // namespace pggate

@@ -100,7 +100,7 @@ class PgDocReadOp : public PgDocOp {
   // Constructors & Destructors.
   PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
               size_t num_hash_key_columns,
-              client::YBPgsqlReadOp* read_op);
+              std::unique_ptr<client::YBPgsqlReadOp> read_op);
 
  private:
   // Process response from DocDB.
@@ -174,7 +174,7 @@ class PgDocWriteOp : public PgDocOp {
   // Constructors & Destructors.
   PgDocWriteOp(const PgSession::ScopedRefPtr& pg_session,
                const PgObjectId& relation_id,
-               client::YBPgsqlWriteOp* write_op);
+               std::unique_ptr<client::YBPgsqlWriteOp> write_op);
 
  private:
   CHECKED_STATUS SendRequestImpl(bool force_non_bufferable) override;

@@ -142,28 +142,28 @@ const std::vector<std::string>& YBTable::GetPartitions() const {
 
 //--------------------------------------------------------------------------------------------------
 
-YBqlWriteOp* YBTable::NewQLWrite() {
-  return new YBqlWriteOp(shared_from_this());
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLWrite() {
+  return std::unique_ptr<YBqlWriteOp>(new YBqlWriteOp(shared_from_this()));
 }
 
-YBqlWriteOp* YBTable::NewQLInsert() {
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLInsert() {
   return YBqlWriteOp::NewInsert(shared_from_this());
 }
 
-YBqlWriteOp* YBTable::NewQLUpdate() {
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLUpdate() {
   return YBqlWriteOp::NewUpdate(shared_from_this());
 }
 
-YBqlWriteOp* YBTable::NewQLDelete() {
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLDelete() {
   return YBqlWriteOp::NewDelete(shared_from_this());
 }
 
-YBqlReadOp* YBTable::NewQLSelect() {
+std::unique_ptr<YBqlReadOp> YBTable::NewQLSelect() {
   return YBqlReadOp::NewSelect(shared_from_this());
 }
 
-YBqlReadOp* YBTable::NewQLRead() {
-  return new YBqlReadOp(shared_from_this());
+std::unique_ptr<YBqlReadOp> YBTable::NewQLRead() {
+  return std::unique_ptr<YBqlReadOp>(new YBqlReadOp(shared_from_this()));
 }
 
 const std::string& YBTable::FindPartitionStart(
@@ -285,32 +285,32 @@ Status YBTable::Open() {
 
 //--------------------------------------------------------------------------------------------------
 
-YBPgsqlWriteOp* YBTable::NewPgsqlWrite() {
-  return new YBPgsqlWriteOp(shared_from_this());
+std::unique_ptr<YBPgsqlWriteOp> YBTable::NewPgsqlWrite() {
+  return std::unique_ptr<YBPgsqlWriteOp>(new YBPgsqlWriteOp(shared_from_this()));
 }
 
-YBPgsqlWriteOp* YBTable::NewPgsqlInsert() {
+std::unique_ptr<YBPgsqlWriteOp> YBTable::NewPgsqlInsert() {
   return YBPgsqlWriteOp::NewInsert(shared_from_this());
 }
 
-YBPgsqlWriteOp* YBTable::NewPgsqlUpdate() {
+std::unique_ptr<YBPgsqlWriteOp> YBTable::NewPgsqlUpdate() {
   return YBPgsqlWriteOp::NewUpdate(shared_from_this());
 }
 
-YBPgsqlWriteOp* YBTable::NewPgsqlDelete() {
+std::unique_ptr<YBPgsqlWriteOp> YBTable::NewPgsqlDelete() {
   return YBPgsqlWriteOp::NewDelete(shared_from_this());
 }
 
-YBPgsqlWriteOp* YBTable::NewPgsqlTruncateColocated() {
+std::unique_ptr<YBPgsqlWriteOp> YBTable::NewPgsqlTruncateColocated() {
   return YBPgsqlWriteOp::NewTruncateColocated(shared_from_this());
 }
 
-YBPgsqlReadOp* YBTable::NewPgsqlSelect() {
+std::unique_ptr<YBPgsqlReadOp> YBTable::NewPgsqlSelect() {
   return YBPgsqlReadOp::NewSelect(shared_from_this());
 }
 
-YBPgsqlReadOp* YBTable::NewPgsqlRead() {
-  return new YBPgsqlReadOp(shared_from_this());
+std::unique_ptr<YBPgsqlReadOp> YBTable::NewPgsqlRead() {
+  return std::unique_ptr<YBPgsqlReadOp>(new YBPgsqlReadOp(shared_from_this()));
 }
 
 } // namespace client
