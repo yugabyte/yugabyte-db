@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.com/bitnine-oss/agensgraph-ext.svg?branch=master)](https://travis-ci.com/bitnine-oss/agensgraph-ext)
+
 AgensGraph Extension
 ====================
 
