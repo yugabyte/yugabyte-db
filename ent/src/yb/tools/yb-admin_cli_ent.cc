@@ -261,6 +261,30 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "delete_cdc_stream", " <stream_id>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 3) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        const string stream_id = args[2];
+        RETURN_NOT_OK_PREPEND(client->DeleteCDCStream(stream_id),
+            Substitute("Unable to delete CDC stream id $0", stream_id));
+        return Status::OK();
+      });
+
+  Register(
+      "list_cdc_streams", " [table_id]",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 2 && args.size() != 3) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        const string table_id = (args.size() == 3 ? args[2] : "");
+        RETURN_NOT_OK_PREPEND(client->ListCDCStreams(table_id),
+            Substitute("Unable to list CDC streams for table $0", table_id));
+        return Status::OK();
+      });
+
+  Register(
       "setup_universe_replication",
       " <producer_universe_uuid> <producer_master_addresses> <comma_separated_list_of_table_ids>"
           " [comma_separated_list_of_producer_bootstrap_ids]"  ,
