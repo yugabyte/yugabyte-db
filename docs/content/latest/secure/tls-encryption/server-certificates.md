@@ -152,7 +152,6 @@ You can verify the root certificate by running the following `openssl x509` comm
 ```sh
 $ openssl x509 -in secure-data/ca.crt -text -noout
 ```
-
 You should see output similar to this:
 
 ```
