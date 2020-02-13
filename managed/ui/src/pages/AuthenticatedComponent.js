@@ -113,52 +113,52 @@ class AuthenticatedComponent extends Component {
                  cancelLabel={"Close"}
                  footerAccessory={introMessageStatus}
           >
-          <div className="intro-message-container">
-            <a className="social-media-btn"
-              href="https://www.yugabyte.com/slack"
-              target="_blank"
-              rel="noopener"
-              style={{ flexBasis: '45%' }}
-            >
-              <span>Join us on</span>
-              <img alt="YugabyteDB Slack" src={slackLogo} width="65"/>
-            </a>
-            <a className="social-media-btn"
-              href="https://github.com/yugabyte/yugabyte-db"
-              target="_blank"
-              rel="noopener"
-              style={{ flexBasis: '45%' }}
-            >
-              <span>Star us on</span>
-              <img alt="YugabyteDB GitHub"
-                className="social-media-logo"
-                src={githubLogo} width="18"/> <b>GitHub</b>
-            </a>
-          </div>
-          <div className="intro-message-container">
-            <a className="social-media-btn"
-              href="https://www.yugabyte.com/community-rewards"
-              target="_blank"
-              rel="noopener"
-              style={{ flexBasis: '45%' }}
-            >
-              <span>Free t-shirt at</span>
-              <img alt="YugabyteDB Community Rewards"
-                className="social-media-logo"
-                src={ybLogo} width="125"/>
-            </a>
-            <a className="social-media-btn"
-              href="https://docs.yugabyte.com"
-              target="_blank"
-              rel="noopener"
-              style={{ flexBasis: '45%' }}
-            >
-              <span>Read docs at</span>
-              <img alt="YugabyteDB Docs"
-                className="social-media-logo"
-                src={ybLogo} width="125"/>
-            </a>
-          </div>
+            <div className="intro-message-container">
+              <a className="social-media-btn"
+                href="https://www.yugabyte.com/slack"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ flexBasis: '45%' }}
+              >
+                <span>Join us on</span>
+                <img alt="YugaByte DB Slack" src={slackLogo} width="65"/>
+              </a>
+              <a className="social-media-btn"
+                href="https://github.com/yugabyte/yugabyte-db"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ flexBasis: '45%' }}
+              >
+                <span>Star us on</span>
+                <img alt="YugaByte DB GitHub"
+                  className="social-media-logo"
+                  src={githubLogo} width="18"/> <b>GitHub</b>
+              </a>
+            </div>
+            <div className="intro-message-container">
+              <a className="social-media-btn"
+                href="https://www.yugabyte.com/community-rewards"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ flexBasis: '45%' }}
+              >
+                <span>Free t-shirt at</span>
+                <img alt="YugaByte DB Community Rewards"
+                  className="social-media-logo"
+                  src={ybLogo} width="125"/>
+              </a>
+              <a className="social-media-btn"
+                href="https://docs.yugabyte.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ flexBasis: '45%' }}
+              >
+                <span>Read docs at</span>
+                <img alt="YugaByte DB Docs"
+                  className="social-media-logo"
+                  src={ybLogo} width="125"/>
+              </a>
+            </div>
           </YBModal>
         </div>
         <Footer />

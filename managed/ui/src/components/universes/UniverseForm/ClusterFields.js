@@ -316,19 +316,19 @@ export default class ClusterFields extends Component {
       }
       this.setState({maxNumNodes: numNodesAvailable});
     }
-}
-componentDidUpdate(prevProps, prevState) {
-  const {
-    universe: {
-      currentUniverse,
-      universeConfigTemplate
-      },
-      formValues,
-      clusterType,
-      setPlacementStatus,
-      toggleDisableSubmit,
-      type
-    } = this.props;
+  }
+  componentDidUpdate(prevProps, prevState) {
+    const {
+      universe: {
+        currentUniverse,
+        universeConfigTemplate
+        },
+        formValues,
+        clusterType,
+        setPlacementStatus,
+        toggleDisableSubmit,
+        type
+      } = this.props;
     let currentProviderUUID = this.state.providerSelected;
 
     if (isNonEmptyObject(formValues[clusterType]) && isNonEmptyString(formValues[clusterType].provider)) {
@@ -841,7 +841,7 @@ componentDidUpdate(prevProps, prevState) {
       cloud.ebsTypes && cloud.ebsTypes.sort().map(function (ebsType, idx) {
         return <option key={ebsType} value={ebsType}>{ebsType}</option>;
       });
-    const gcpTypesList = 
+    const gcpTypesList =
       cloud.gcpTypes.data && cloud.gcpTypes.data.sort().map(function (gcpType, idx) {
         return <option key={gcpType} value={gcpType}>{API_UI_STORAGE_TYPES[gcpType]}</option>;
       });
@@ -884,7 +884,7 @@ componentDidUpdate(prevProps, prevState) {
         const isInAws = currentProvider.code === 'aws';
         const isInGcp = currentProvider.code === 'gcp';
         // We don't want to keep the volume fixed in case of Kubernetes or persistent GCP storage.
-        const fixedVolumeInfo = self.state.volumeType === 'SSD' && 
+        const fixedVolumeInfo = self.state.volumeType === 'SSD' &&
           currentProvider.code !== 'kubernetes' && deviceInfo.storageType === "Scratch";
         const fixedNumVolumes = self.state.volumeType === 'SSD' &&
           currentProvider.code !== 'kubernetes' && currentProvider.code !== 'gcp';
@@ -1036,7 +1036,7 @@ componentDidUpdate(prevProps, prevState) {
         );
       }
     }
-    
+
     if (isDefinedNotNull(currentProvider) &&
         (currentProvider.code === "aws" || currentProvider.code === "gcp")) {
       // Assign public ip would be only enabled for primary and that same
