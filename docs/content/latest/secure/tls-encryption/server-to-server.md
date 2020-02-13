@@ -1,8 +1,8 @@
 ---
-title: 2. Server-server encryption
-linkTitle: 2. Server-server encryption
-description: 2. Server-server encryption
-headcontent: Enable server to server encryption between YB-Masters and YB-TServers.
+title: Enable server-server encryption
+linkTitle: Enable server-server encryption
+description: Enable server-server encryption
+headcontent: Enable server to server encryption (using TLS) for intra-node communication.
 image: /images/section_icons/secure/tls-encryption/server-to-server.png
 aliases:
   - /secure/tls-encryption/server-to-server
@@ -15,9 +15,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
+
+## Prerequisites
+
+Before you can enable and use server-server encryption, you need to create and configure server certificates for each node of your YugabyteDB cluster. For information, see [Create server certificates](../server-certificates).
+
+## Configure YB-Master and YB-TServer nodes
+
 To enable server-server encryption using TLS, start your YB-Master and YB-TServer nodes using the following configuration options.
 
-Configuration option (flag)    | Service                  | Description                  |
+Configuration option (flag)    | Node                  | Description                  |
 -------------------------------|--------------------------|------------------------------|
 `use_node_to_node_encryption`  | YB-Master, YB-TServer | Set to `true` to enable encryption between YugabyteDB nodes. Default value is `false`. |
 `allow_insecure_connections`   | YB-Master only           | Set to `false` to disallow any service with unencrypted communication from joining this cluster. Default value is `true`. Note that this option requires `--use_node_to_node_encryption` to be enabled. |
@@ -25,7 +32,7 @@ Configuration option (flag)    | Service                  | Description         
 
 ## Start the YB-Masters
 
-You can enable access control by starting the `yb-master` services with the `--use_node_to_node_encryption=true` flag as described above. Your command should look similar to this:
+You can enable access control by starting the `yb-master` services with the `--use_node_to_node_encryption=true` option as described above. Your command should look similar to this:
 
 ```
 bin/yb-master                               \
