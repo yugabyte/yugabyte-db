@@ -234,7 +234,7 @@ public class UniverseController extends AuthenticatedController {
     if (data.ycqlAdminUsername != null) {
       // Create user for customer CQL.
       RunQueryFormData ycqlQuery = new RunQueryFormData();
-      ycqlQuery.query = String.format("CREATE ROLE %s WITH SUPERUSER=true AND" +
+      ycqlQuery.query = String.format("CREATE ROLE %s WITH SUPERUSER=true AND " +
                                       "LOGIN=true AND PASSWORD='%s'",
                                       data.username, data.password);
       JsonNode ycqlResponse = ycqlQueryExecutor.executeQuery(universe, ycqlQuery, true,

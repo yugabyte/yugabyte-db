@@ -490,15 +490,13 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     // Override resource request and limit based on instance type.
     Map<String, Object> tserverResource = new HashMap<>();
     Map<String, Object> tserverLimit = new HashMap<>();
+    Map<String, Object> masterResource = new HashMap<>();
+    Map<String, Object> masterLimit = new HashMap<>();
+
     tserverResource.put("cpu", instanceType.numCores);
     tserverResource.put("memory", String.format("%.2fGi", instanceType.memSizeGB));
     tserverLimit.put("cpu", instanceType.numCores * burstVal);
     tserverLimit.put("memory", String.format("%.2fGi", instanceType.memSizeGB));
-    Map<String, Object> resourceOverrides = new HashMap();
-    resourceOverrides.put("tserver", ImmutableMap.of("requests", tserverResource, "limits", tserverLimit));
-
-    Map<String, Object> masterResource = new HashMap<>();
-    Map<String, Object> masterLimit = new HashMap<>();
 
     // If the instance type is not xsmall or dev, we would bump the master resource.
     if (!instanceType.getInstanceTypeCode().equals("xsmall") &&
@@ -507,25 +505,32 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       masterResource.put("memory", "4Gi");
       masterLimit.put("cpu", 2 * burstVal);
       masterLimit.put("memory", "4Gi");
-      resourceOverrides.put("master", ImmutableMap.of("requests", masterResource, "limits", masterLimit));
     }
-
     // For testing with multiple deployments locally.
     if (instanceType.getInstanceTypeCode().equals("dev")) {
       masterResource.put("cpu", 0.5);
       masterResource.put("memory", "0.5Gi");
       masterLimit.put("cpu", 0.5);
       masterLimit.put("memory", "0.5Gi");
-      resourceOverrides.put("master", ImmutableMap.of("requests", masterResource, "limits", masterLimit));
     }
+    // For cloud deployments, we want bigger bursts in CPU if available for better performance.
+    // Memory should not be burstable as memory consumption above requests can lead to pods being
+    // killed if the nodes is running out of resources.
     if (instanceType.getInstanceTypeCode().equals("cloud")) {
-      masterResource.put("cpu", 0.2);
-      masterResource.put("memory", "0.2Gi");
-      masterLimit.put("cpu", 0.2);
-      masterLimit.put("memory", "0.2Gi");
+      tserverLimit.put("cpu", instanceType.numCores * 2);
+      masterResource.put("cpu", 0.3);
+      masterResource.put("memory", "1Gi");
+      masterLimit.put("cpu", 0.6);
+      masterLimit.put("memory", "1Gi");
+    }
+
+    Map<String, Object> resourceOverrides = new HashMap();
+    if (!masterResource.isEmpty() && !masterLimit.isEmpty()) {
       resourceOverrides.put("master", ImmutableMap.of("requests", masterResource,
                                                       "limits", masterLimit));
     }
+    resourceOverrides.put("tserver", ImmutableMap.of("requests", tserverResource,
+                                                     "limits", tserverLimit));
 
     overrides.put("resource", resourceOverrides);
 
