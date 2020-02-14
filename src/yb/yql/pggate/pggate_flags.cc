@@ -69,6 +69,9 @@ DEFINE_int32(ysql_output_buffer_size, 262144,
              "While fetched data resides within this buffer and hasn't been flushed to client yet, "
              "we're free to transparently restart operation in case of restart read error.");
 
+DEFINE_bool(ysql_suppress_unsupported_error, false,
+            "Suppress ERROR on using of unsupported feature");
+
 // Top-level flag to enable all YSQL beta features.
 DEFINE_bool(ysql_beta_features, true,
             "Whether to enable all ysql beta features");
