@@ -13,13 +13,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Before you can connect to YugabyteDB clusters and use client-server encryption to protect your data, you need to create client certificates.
+Before you can connect to YugabyteDB cluster and use client-to-server encryption to protect your data, you need to create a client certificate. This topic guides you through creating and configuring a client certificate to enable client-to-server encryption when using clients, tools, and APIs to communicate with a YugabyteDB cluster.
 
 ## Create the client certificates
 
 ### Create a working directory
 
-To generate and store the secure information, such as the root certificate, create a temporary working directory, `client-certs-temp`, in your root directory. When you finish creating the required certificate files, you will copy them to the appropriate directories for use in client-server encryption.
+To generate and store the secure information, such as the root certificate, create a temporary working directory, `client-certs-temp`, in your root directory. When you finish creating the required certificate files, you will copy them to the appropriate directories for use in client-to-server encryption.
 
 ```sh
 $ mkdir client-certs-temp

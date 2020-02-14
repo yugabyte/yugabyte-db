@@ -2,7 +2,7 @@
 title: Create server certificates
 linkTitle: Create server certificates
 description: Create server certificates
-headcontent: Generate server certificates and prepare the nodes for server-server encryption.
+headcontent: Generate server certificates and prepare YugabyteDB nodes for server-to-server encryption.
 image: /images/section_icons/secure/prepare-nodes.png
 aliases:
   - /secure/tls-encryption/prepare-nodes
@@ -16,7 +16,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Before you can enable server-server and client-server encryptions using Transport Security Layer (TLS), you need to prepare each node in a YugabyteDB cluster.
+Before you can enable server-to-server and client-to-server encryptions using Transport Security Layer (TLS), you need to prepare each node in a YugabyteDB cluster.
 
 ## Create the server certificates
 
