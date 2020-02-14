@@ -2,7 +2,7 @@
 title: Create server certificates
 linkTitle: Create server certificates
 description: Create server certificates
-headcontent: Generate server certificates and prepare the nodes for server-server encryption.
+headcontent: Generate server certificates and prepare YugabyteDB nodes for server-to-server encryption.
 image: /images/section_icons/secure/prepare-nodes.png
 aliases:
   - /secure/tls-encryption/prepare-nodes
@@ -16,7 +16,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Before you can enable server-server and client-server encryptions using Transport Security Layer (TLS), you need to prepare each node in a YugabyteDB cluster.
+Before you can enable server-to-server and client-to-server encryptions using Transport Security Layer (TLS), you need to prepare each node in a YugabyteDB cluster.
 
 ## Create the server certificates
 
@@ -117,10 +117,10 @@ $ openssl genrsa -out secure-data/ca.key
 You should see output like this:
 
 ```
-Generating RSA private key, 2048 bit long modulus
-................+++
-............................................+++
-e is 65537 (0x10001)
+Generating RSA private key, 2048 bit long modulus (2 primes)
+......................+++++
+.................+++++
+e is 65537 (0x010001)
 ```
 
 Change the access permissions of the generated private key to allow read-only privileges by running the `chmod` command.
@@ -159,35 +159,36 @@ You should see output similar to this:
 Certificate:
     Data:
         Version: 3 (0x2)
-        Serial Number: 11693053643450365969 (0xa246125615723811)
-    Signature Algorithm: sha256WithRSAEncryption
-        Issuer: O=Yugabyte, CN=CA for YugabyteDB
+        Serial Number:
+            61:ca:24:00:c8:40:f3:4d:66:59:80:35:86:ca:b9:6f:98:b1:1c:5e
+        Signature Algorithm: sha256WithRSAEncryption
+        Issuer: O = Yugabyte, CN = CA for YugabyteDB
         Validity
-            Not Before: Feb 12 22:27:42 2020 GMT
-            Not After : Mar 13 22:27:42 2020 GMT
-        Subject: O=Yugabyte, CN=CA for YugabyteDB
+            Not Before: Feb 14 04:40:56 2020 GMT
+            Not After : Mar 15 04:40:56 2020 GMT
+        Subject: O = Yugabyte, CN = CA for YugabyteDB
         Subject Public Key Info:
             Public Key Algorithm: rsaEncryption
-                Public-Key: (2048 bit)
+                RSA Public-Key: (2048 bit)
                 Modulus:
-                    00:ba:8c:6e:d3:27:e9:03:9a:99:23:0b:e9:ef:9b:
-                    2e:cb:d0:6d:89:ef:15:a2:77:0f:0c:d8:e9:cb:a2:
-                    e4:33:cc:9a:3c:09:34:ef:1d:f4:7a:62:74:96:ef:
-                    5b:2b:63:1d:6d:7d:c9:f7:e9:16:06:f7:76:55:52:
-                    e0:4d:ba:5f:3e:af:46:c1:53:56:7a:6f:ee:33:ab:
-                    a5:46:31:13:c8:b3:28:0a:ef:bc:89:6e:10:12:37:
-                    dc:71:dd:b4:a3:25:47:38:7f:75:61:c3:7c:99:7d:
-                    21:e7:00:ae:5e:18:0e:39:76:60:9d:f7:1e:1b:3b:
-                    03:2b:56:b6:f9:30:7b:ba:8a:4b:d0:c4:33:6b:03:
-                    c4:58:79:21:19:ce:1b:d5:f0:11:6e:a7:2e:1c:2b:
-                    cd:5b:bd:a4:ce:33:69:d7:9a:4e:32:98:db:9d:35:
-                    4c:82:e1:2f:36:a9:e7:f0:ba:d4:e8:a3:0d:bb:08:
-                    7b:14:67:59:4b:7c:d2:4c:ad:6c:27:ac:aa:cd:67:
-                    66:1c:df:c7:ef:bd:9f:43:71:d0:4f:e0:11:69:5a:
-                    b3:2e:db:a1:d0:7c:b3:80:19:b2:f6:31:9d:bd:2a:
-                    39:cb:f7:65:8e:74:3b:29:e7:7f:c7:6b:e8:1c:25:
-                    56:e0:2d:2b:f2:9d:09:4a:5c:8a:86:7f:80:2a:e8:
-                    f7:cd
+                    00:c9:8c:20:7d:63:ed:8d:9f:2d:f2:2e:90:34:2c:
+                    79:0b:0b:77:2f:4c:88:78:63:28:db:91:6d:c4:21:
+                    bd:e2:dd:14:a3:ba:e5:db:4d:b9:34:e8:74:7b:1f:
+                    ff:70:a2:8c:0c:f5:df:d4:11:ae:5c:4c:1a:22:94:
+                    98:4e:a7:63:ee:44:5b:c6:b7:f0:34:ef:4e:57:1a:
+                    30:99:ee:f7:c9:d9:df:e9:af:ab:df:08:e3:69:d9:
+                    d4:5d:8e:0c:50:7a:bf:be:7f:f0:7f:e3:20:13:d8:
+                    c9:44:21:1f:05:6b:52:d3:77:b8:75:8e:78:c6:60:
+                    3c:7e:9a:8a:77:b2:65:da:6c:25:7a:4a:ee:eb:4a:
+                    a8:6b:43:79:ea:15:96:8b:3d:03:50:08:a4:2d:76:
+                    2f:09:e3:eb:b3:f6:77:17:2a:3e:dc:9b:f8:60:cf:
+                    93:f3:84:6a:19:b0:64:4a:0f:47:51:c9:47:0f:20:
+                    5d:cd:af:1e:5d:65:36:0f:b0:44:c3:eb:9a:63:44:
+                    dd:ac:25:f8:f4:60:6c:9b:72:46:6d:18:c3:94:7d:
+                    b5:d9:89:79:e1:39:dd:4f:01:26:b2:da:c1:ac:af:
+                    85:d9:cc:a7:02:65:2a:d6:06:47:cc:11:72:cc:d6:
+                    92:45:c0:64:43:4c:13:07:d1:6f:38:8e:fe:db:1e:
+                    5e:e5
                 Exponent: 65537 (0x10001)
         X509v3 extensions:
             X509v3 Key Usage: critical
@@ -195,24 +196,24 @@ Certificate:
             X509v3 Basic Constraints: critical
                 CA:TRUE, pathlen:1
     Signature Algorithm: sha256WithRSAEncryption
-         a1:68:82:78:3d:72:68:ca:ad:e2:f6:8d:60:0d:fe:08:c0:5c:
-         a0:73:2f:1c:1e:34:87:6f:31:2c:54:6a:2f:dd:1a:87:0e:01:
-         74:d3:95:49:e0:bf:ab:b8:47:54:72:4e:8e:77:40:e9:06:ce:
-         c3:95:f9:8d:e7:3a:82:73:63:b6:7f:05:36:31:63:66:18:8c:
-         49:0b:ae:e5:ca:8b:62:cb:62:ac:4e:d3:be:b5:f6:ee:7e:44:
-         5e:27:d2:c9:b5:10:cf:9e:09:ae:90:6d:1c:26:42:61:7c:f7:
-         ec:95:b6:df:a6:ee:3c:cc:49:d6:29:bd:28:85:02:4d:57:84:
-         e0:60:85:16:9c:b4:4f:94:8a:b0:76:96:d5:0a:91:a3:26:df:
-         5b:4b:99:f2:32:0c:f9:2c:9a:e6:7a:bb:c4:a1:92:58:93:3e:
-         b2:41:e8:dd:f8:68:04:a3:44:b7:02:68:4d:70:ee:c9:fb:e2:
-         0b:a9:be:3b:4a:22:0a:ca:57:37:42:bb:e8:94:7e:53:43:19:
-         15:65:db:84:65:3d:49:b3:04:aa:fe:f0:e9:3a:e5:9d:f6:07:
-         ee:03:7b:fc:03:44:b8:f3:97:cc:ad:c0:39:58:66:10:76:e0:
-         c4:0d:ef:e7:65:ab:bb:42:98:a0:b2:f5:a3:fe:d0:63:7c:46:
-         2a:e7:7f:97
-```
+         9e:d1:41:36:63:78:4b:e4:57:f2:bd:23:c4:4b:e1:64:e8:c0:
+         e3:e1:30:c5:2b:dd:b0:c2:99:ca:86:cb:85:70:6f:29:4c:b0:
+         3e:ba:76:af:87:22:a3:64:1f:3e:4f:69:74:8b:a3:b3:e0:71:
+         12:aa:0b:28:85:0a:45:40:7b:a5:d1:42:cd:51:bc:85:6a:53:
+         16:69:89:78:85:bd:46:9d:1a:ca:19:14:de:72:e4:5c:91:51:
+         58:99:b5:83:97:a5:63:dc:b9:7a:05:1e:a9:a7:5f:42:e1:12:
+         4e:2b:e1:98:e5:31:14:b5:64:5f:66:bc:13:b8:19:ca:9c:ad:
+         12:44:f8:21:3b:ef:0d:ca:9b:c4:04:d6:d7:93:d2:83:87:79:
+         2a:2d:dc:de:4c:ad:30:cf:10:de:05:24:52:91:31:fd:cc:d6:
+         cb:3b:ba:73:8f:ae:0d:97:f0:e4:aa:ca:76:c0:15:3c:80:7d:
+         3a:d8:28:3c:91:bc:19:c8:5c:cd:94:49:31:23:ae:08:e5:9a:
+         ce:62:6a:53:08:38:6d:0f:b4:fd:e9:66:8c:fb:cd:be:a0:01:
+         b4:9d:39:57:58:6c:b3:8e:25:e3:86:24:13:59:d6:a0:d2:f0:
+         15:1e:8c:24:44:5b:3a:db:1c:ef:60:70:24:58:df:56:99:aa:
+         22:78:12:d6
+         ```
 
-## Copy the root certificate to eacg node directory
+## Copy the root certificate to each node directory
 
 Copy the generated root certificate file (`root.crt`) to all three node directories.
 
@@ -315,7 +316,7 @@ Signature ok
 The Subject's Distinguished Name is as follows
 organizationName      :ASN.1 12:'Yugabyte'
 commonName            :ASN.1 12:'127.0.0.1'
-Certificate is to be certified until Feb  9 23:01:41 2030 GMT (3650 days)
+Certificate is to be certified until Feb 11 04:53:11 2030 GMT (3650 days)
 
 Write out database with 1 new entries
 Data Base Updated
@@ -344,8 +345,8 @@ X.X.X.X/node.X.X.X.X.crt: OK
 The files needed for each node are:
 
 - `ca.crt`
-- `node.<name>.crt`
-- `node.<name>.key`
+- `node.<commonName>.crt` (Example: `node.127.0.0.1.crt`)
+- `node.<commonName>.key` (Example: `node.127.0.0.1.key`)
 
 You can remove all other files in the node directories as they are unnecessary.
 
