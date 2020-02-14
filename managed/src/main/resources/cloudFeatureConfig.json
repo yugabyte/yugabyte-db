@@ -24,8 +24,11 @@
         "editUniverse": "hidden",
         "manageEncryption": "hidden",
         "deleteUniverse": "hidden"
-      }
+      },
+      "pageActions": "hidden",
+      "universeStatus": "hidden"
     },
+    "proxyIp": "hidden",
     "tableActions": "disabled"
   }
 }
