@@ -1,8 +1,8 @@
 ---
-title: Enable client-server encryption
-linkTitle: Enable client-server encryption
-description: Enable client-server encryption
-headcontent: Enable client-server encryption (using TLS) for YSQL and YCQL.
+title: Enable client-to-server encryption
+linkTitle: Enable client-to-server encryption
+description: Enable client-to-server encryption
+headcontent: Enable client-to-server encryption (using TLS) for YSQL and YCQL.
 image: /images/section_icons/secure/tls-encryption/client-to-server.png
 aliases:
   - /secure/tls-encryption/client-to-server
