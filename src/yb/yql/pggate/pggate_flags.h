@@ -31,6 +31,8 @@ DECLARE_bool(ysql_non_txn_copy);
 DECLARE_int32(ysql_max_read_restart_attempts);
 DECLARE_int32(ysql_output_buffer_size);
 
+DECLARE_bool(ysql_suppress_unsupported_error);
+
 DECLARE_bool(ysql_beta_features);
 DECLARE_bool(ysql_beta_feature_function);
 DECLARE_bool(ysql_beta_feature_trigger);
