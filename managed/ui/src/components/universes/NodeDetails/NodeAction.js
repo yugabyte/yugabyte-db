@@ -76,7 +76,7 @@ export default class NodeAction extends Component {
   }
 
   render() {
-    const { currentRow, providerUUID } = this.props;
+    const { currentRow, providerUUID, disableConnect } = this.props;
     const actionButtons = currentRow.allowedActions.map((actionType, idx) => {
       const btnId = _.uniqueId('node_action_btn_');
       return (
@@ -88,7 +88,7 @@ export default class NodeAction extends Component {
 
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
-        <NodeConnectModal currentRow={currentRow} providerUUID={providerUUID} label={this.getLabel("CONNECT")}/>
+        {!disableConnect && <NodeConnectModal currentRow={currentRow} providerUUID={providerUUID} label={this.getLabel("CONNECT")}/>}
         {
           isNonEmptyArray(currentRow.allowedActions)
             ? <Fragment>{actionButtons}

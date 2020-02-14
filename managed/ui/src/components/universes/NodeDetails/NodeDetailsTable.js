@@ -6,6 +6,7 @@ import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
+import { isNotHidden } from 'utils/LayoutUtils';
 import { YBPanelItem } from '../../panels';
 import { NodeAction } from '../../universes';
 import moment from 'moment';
@@ -33,7 +34,12 @@ export default class NodeDetailsTable extends Component {
       }
 
       if (row.nodeAlive) {
-        return <div>{successIcon}&nbsp;<a href={href} target="_blank" rel="noopener noreferrer">{isMaster ? "Master" : "TServer"}</a>{(isMaster && row.isMasterLeader) ? " (Leader)" : ""}</div>;
+      return <div>{successIcon}&nbsp;{isNotHidden(customer.currentCustomer.data.features, "universes.proxyIp") ? (
+        <a href={href} target="_blank" rel="noopener noreferrer">{isMaster ? "Master" : "TServer"}</a>
+      ) : (
+        <span>{isMaster ? "Master" : "TServer"}</span>
+      )
+      }{(isMaster && row.isMasterLeader) ? " (Leader)" : ""}</div>;
       } else {
         return <div>{row.isLoading ? loadingIcon : warningIcon}&nbsp;{isMaster ? "Master" : "TServer"}</div>;
       }
@@ -96,7 +102,14 @@ export default class NodeDetailsTable extends Component {
     };
 
     const getNodeAction = function(cell, row, type) {
-      return <NodeAction currentRow={row} providerUUID={providerUUID} />;
+      const hideIP = !isNotHidden(customer.currentCustomer.data.features, "universes.proxyIp");
+      if (hideIP) {
+        const index = row.allowedActions.indexOf('CONNECT')
+        if (index > -1) {
+          row.allowedActions.splice(index, 1);
+        }
+      }
+      return <NodeAction currentRow={row} providerUUID={providerUUID} disableConnect={hideIP}/>;
     };
 
     const formatFloatValue = function(cell, row) {
