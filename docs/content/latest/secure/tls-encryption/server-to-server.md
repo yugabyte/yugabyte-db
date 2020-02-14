@@ -1,8 +1,8 @@
 ---
-title: Enable server-server encryption
-linkTitle: Enable server-server encryption
-description: Enable server-server encryption
-headcontent: Enable server to server encryption (using TLS) for intra-node communication.
+title: Enable server-to-server encryption
+linkTitle: Enable server-to-server encryption
+description: Enable server-to-server encryption
+headcontent: Enable server-to-server encryption (using TLS) for intra-node communication.
 image: /images/section_icons/secure/tls-encryption/server-to-server.png
 aliases:
   - /secure/tls-encryption/server-to-server
@@ -18,11 +18,11 @@ showAsideToc: true
 
 ## Prerequisites
 
-Before you can enable and use server-server encryption, you need to create and configure server certificates for each node of your YugabyteDB cluster. For information, see [Create server certificates](../server-certificates).
+Before you can enable and use server-to-server encryption, you need to create and configure server certificates for each node of your YugabyteDB cluster. For information, see [Create server certificates](../server-certificates).
 
 ## Configure YB-Master and YB-TServer nodes
 
-To enable server-server encryption using TLS, start your YB-Master and YB-TServer nodes using the following configuration options.
+To enable server-to-server encryption using TLS, start your YB-Master and YB-TServer nodes using the following configuration options.
 
 Configuration option (flag)    | Node                  | Description                  |
 -------------------------------|--------------------------|------------------------------|
@@ -61,7 +61,7 @@ For information on starting YB-TServers for a deployment, see [start YB-TServers
 
 ## Connect to the cluster
 
-Because you have only enabled server-server encryption and not [client-server encryption](../client-to-server), you can now connect to this cluster using the YSQL shell (`ysqlsh`) or the YCQL shell (`cqlsh`) without enabling encryption as shown here.
+Because you have only enabled server-to-server encryption and not [client-to-server encryption](../client-to-server), you can now connect to this cluster using the YSQL shell (`ysqlsh`) or the YCQL shell (`cqlsh`) without enabling encryption as shown here.
 
 ### YSQL
 
