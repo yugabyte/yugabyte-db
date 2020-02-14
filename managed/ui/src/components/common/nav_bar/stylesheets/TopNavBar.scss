@@ -33,6 +33,15 @@
   border: none;
 }
 
+.sidebar-hidden {
+  .yb-nav-bar .navbar {
+    display: none;
+  }
+  .page-action-buttons {
+    top: 0;
+  }
+}
+
 .nav_title {
   width: 100% !important;
 }
