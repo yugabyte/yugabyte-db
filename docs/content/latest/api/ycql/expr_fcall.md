@@ -129,7 +129,7 @@ full-table operations into smaller sub-tasks that can be parallelized.
 
 ### Querying a subset of the data
 One use of `partition_hash` can be used to query a subset of the data and get approximate count of rows in the table.
-For example, suppose we have a table `t` with a partitioning columns `(h1,h2)`:
+For example, suppose we have a table `t` with partitioning columns `(h1,h2)`:
 
 ```sql
 create table t (h1 int, h2 int, r1 int, r2 int, v int, 
