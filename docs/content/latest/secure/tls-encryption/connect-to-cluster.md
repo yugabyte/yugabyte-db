@@ -15,11 +15,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-To connect CLIs, tools, and APIs to a remote YugabyteDB cluster when client-server encryption is enabled, you need to generate client certificate files that enable the client to connect to the YugabyteDB cluster.
+To connect CLIs, tools, and APIs to a remote YugabyteDB cluster when client-to-server encryption is enabled, you need to generate client certificate files that enable the client to connect to the YugabyteDB cluster.
 
 ## Prerequisites
 
-Before you can enable and use server-server encryption, you need to create and configure server certificates for each node of your YugabyteDB cluster. For information, see [Create client certificates](../client-certificates).
+Before you can enable and use server-to-server encryption, you need to create and configure server certificates for each node of your YugabyteDB cluster. For information, see [Create client certificates](../client-certificates).
 
 For each client that will connect to a YugabyteDB cluster, you need the following three files to be accessible on the client computer.
 
@@ -37,8 +37,8 @@ All three files should be available in the `~/.yugabytedb`, the default location
 For each of the clients below, the steps assume that you have:
 
 - Added the required client certificates to the `~/.yugabytedb` directory (or a directory specified using the `--certs_for_clients_dir` option). For details, see [Create client certificates](../client-certificates).
-- [Enabled client-server encryption](../client-to-server) on the YB-TServer nodes of your YugabyteDB cluster.
-- [Enabled server-server encryption](../server-to-server) on the YugabyteDB cluster.
+- [Enabled client-to-server encryption](../client-to-server) on the YB-TServer nodes of your YugabyteDB cluster.
+- [Enabled server-to-server encryption](../server-to-server) on the YugabyteDB cluster.
 
 ## ysqlsh
 
@@ -59,8 +59,10 @@ To open the local `ysqlsh` CLI and access your YugabyteDB cluster, run `ysqlsh` 
 $ ./bin/ysqlsh -h 127.0.0.1 -p 5433 -U yugabyte "sslmode=require"
 ```
 
-```sh
-ysqlsh (11.2-YB-2.0.0.0-b0)
+```
+$ ./bin/ysqlsh
+ysqlsh (11.2-YB-2.0.11.0-b0)
+SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 
 yugabyte=#
@@ -127,7 +129,7 @@ system_schema  system_auth  system
 
 To connect to a remote YugabyteDB cluster, you need to have a local copy of `cqlsh` available. You can usse the `cqlsh` CLI available on a locally installed YugabyteDB.
 
-To open the local `cqlsh` CLI and access the remote cluster, run `cqlsh` with configuration options set for the host and port of the remote cluster. You must also add the `--ssl` flag to enable the use of the client-server encryption using TLS (successor to SSL).
+To open the local `cqlsh` CLI and access the remote cluster, run `cqlsh` with configuration options set for the host and port of the remote cluster. You must also add the `--ssl` flag to enable the use of the client-to-server encryption using TLS (successor to SSL).
 
 ```sh
 $ ./bin/cqlsh -h <node-ip-address> -p <port> --ssl

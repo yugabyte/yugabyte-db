@@ -13,19 +13,19 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Before you can connect to YugabyteDB clusters and use client-server encryption to protect your data, you need to create client certificates.
+Before you can connect to YugabyteDB cluster and use client-to-server encryption to protect your data, you need to create a client certificate. This topic guides you through creating and configuring a client certificate to enable client-to-server encryption when using clients, tools, and APIs to communicate with a YugabyteDB cluster.
 
 ## Create the client certificates
 
 ### Create a working directory
 
-To generate and store the secure information, such as the root certificate, create a temporary working directory, `client-certs-temp`, in your root directory. When you finish creating the required certificate files, you will copy them to the appropriate directories for use in client-server encryption.
+To generate and store the secure information, such as the root certificate, create a temporary working directory, `client-certs-temp`, in your root directory. When you finish creating the required certificate files, you will copy them to the appropriate directories for use in client-to-server encryption.
 
 ```sh
 $ mkdir client-certs-temp
 ```
 
-### Generate private key 
+### Generate private key
 
 ```sh
 $ openssl genrsa -out client-certs-temp/yugabyte.key
@@ -35,9 +35,9 @@ You should see output like this:
 
 ```
 Generating RSA private key, 2048 bit long modulus
-..............................................................................+++
-......................+++
-e is 65537 (0x10001)
+.......................+++
+...........+++
+e is 65537 (0x10001) 65537 (0x010001)
 ```
 
 ### Create signing request
@@ -45,7 +45,7 @@ e is 65537 (0x10001)
 Now you will create a signing request (CSR) and sign it with the root certificate created in [Create server certificates](../server-certificates).
 
 ```sh
-$ cat > client-cert-temp/yugabyte.conf
+$ cat > client-certs-temp/yugabyte.conf
 ```
 
 Paste in the following node configuration file.
@@ -97,7 +97,7 @@ Signature ok
 The Subject's Distinguished Name is as follows
 organizationName      :ASN.1 12:'Yugabyte'
 commonName            :ASN.1 12:'yugabyte'
-Certificate is to be certified until Feb 10 18:24:17 2030 GMT (3650 days)
+Certificate is to be certified until Feb 11 07:36:29 2030 GMT (3650 days)
 
 Write out database with 1 new entries
 Data Base Updated
@@ -120,6 +120,16 @@ Next, generate the client private key (`yugabyte.key`) and client certificate (`
 ```sh
 $ openssl genrsa -out ~/.yugabytedb/yugabytedb.key
 ```
+You should see output similar to this:
+
+```
+Generating RSA private key, 2048 bit long modulus (2 primes)
+............................................................................................+++++
+............................................+++++
+e is 65537 (0x010001)
+```
+
+Now change the access permission to read-only.
 
 ```sh
 $ chmod 400 ~/.yugabytedb/yugabytedb.key
@@ -145,7 +155,7 @@ For the last command, you should see the following:
 
 ```
 Signature ok
-subject=/O=YugaByte/CN=yugabyte
+subject=O = Yugabyte, CN = yugabyte
 Getting CA Private Key
 ```
 
