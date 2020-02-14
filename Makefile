@@ -70,7 +70,3 @@ include $(PGXS)
 src/backend/parser/cypher_gram.c: BISONFLAGS += --defines=$(ag_include_dir)/parser/$(basename $(notdir $@))_def.h
 
 src/backend/parser/ag_scanner.c: FLEX_NO_BACKUP=yes
-
-.PHONY: doc-html
-doc-html:
-	make -C doc html
