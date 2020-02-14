@@ -18,17 +18,13 @@ EXPLAIN SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_d
          Filter: ((deptype <> 'p'::"char") AND (deptype <> 'e'::"char") AND (deptype <> 'i'::"char"))
 (3 rows)
 
+-- We cannot run the following SELECT on test because different platforms have different system
+-- catalog data.
 --
-SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_depend
-		WHERE deptype != 'p' AND deptype != 'e' AND deptype != 'i'
-		ORDER BY classid, objid, objsubid
-		LIMIT 2;
- classid | objid | objsubid | refclassid | refobjid | deptype
----------+-------+----------+------------+----------+---------
-    1247 | 12244 |        0 |       2615 |    12230 | n
-    1247 | 12247 |        0 |       2615 |    12230 | n
-(2 rows)
-
+-- SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_depend
+--		WHERE deptype != 'p' AND deptype != 'e' AND deptype != 'i'
+--		ORDER BY classid, objid, objsubid
+--		LIMIT 2;
 -- Test reverse scan.
 EXPLAIN SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_depend
 		WHERE deptype != 'p' AND deptype != 'e' AND deptype != 'i'
@@ -41,13 +37,10 @@ EXPLAIN SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_d
          Filter: ((deptype <> 'p'::"char") AND (deptype <> 'e'::"char") AND (deptype <> 'i'::"char"))
 (3 rows)
 
+-- We cannot run the following SELECT on test because different platforms have different system
+-- catalog data.
 --
-SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_depend
-		WHERE deptype != 'p' AND deptype != 'e' AND deptype != 'i'
-		ORDER BY classid DESC, objid DESC, objsubid DESC
-		LIMIT 2;
- classid | objid | objsubid | refclassid | refobjid | deptype
----------+-------+----------+------------+----------+---------
-    2618 | 12448 |        0 |       1259 |    12440 | n
-    2618 | 12448 |        0 |       1259 |    12440 | n
-(2 rows)
+-- SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_depend
+--		WHERE deptype != 'p' AND deptype != 'e' AND deptype != 'i'
+--		ORDER BY classid DESC, objid DESC, objsubid DESC
+--		LIMIT 2;
