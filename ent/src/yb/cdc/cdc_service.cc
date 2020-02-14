@@ -390,6 +390,7 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
     tablet_metric->last_read_opid_term->set_value(lid.term());
     tablet_metric->last_read_opid_index->set_value(lid.index());
     tablet_metric->last_readable_opid_index->set_value(last_readable_index);
+    tablet_metric->last_checkpoint_opid_index->set_value(op_id.index);
     if (resp->records_size() > 0) {
       auto& last_record = resp->records(resp->records_size()-1);
       tablet_metric->last_read_hybridtime->set_value(last_record.time());
