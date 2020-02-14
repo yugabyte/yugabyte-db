@@ -1816,7 +1816,7 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 	 * case of DESCRIBE message handling or EXECUTE command. We may still see a
 	 * candidate top-level query in pstate in the case.
 	 */
-	if (!p && pstate)
+	if (pstate && pstate->p_sourcetext)
 		p = pstate->p_sourcetext;
 
 	/* We don't see a query string, return NULL */
@@ -3085,6 +3085,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 */
 	recurse_level++;
 	prev_hint_str = current_hint_str;
+	current_hint_str = NULL;
 	
 	/*
 	 * Use PG_TRY mechanism to recover GUC parameters and current_hint_state to
