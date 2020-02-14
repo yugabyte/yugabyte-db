@@ -4650,7 +4650,7 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 		/*
 		 * When hint is specified on non-parent relations, discard existing
 		 * paths and regenerate based on the hint considered. Otherwise we
-		 * already have hinted childx paths then just adjust the number of
+		 * already have hinted child paths then just adjust the number of
 		 * planned number of workers.
 		 */
 		if (root->simple_rte_array[rel->relid]->inh)
