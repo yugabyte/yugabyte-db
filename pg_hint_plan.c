@@ -1820,7 +1820,7 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 	 * case of DESCRIBE message handling or EXECUTE command. We may still see a
 	 * candidate top-level query in pstate in the case.
 	 */
-	if (!p && pstate)
+	if (pstate && pstate->p_sourcetext)
 		p = pstate->p_sourcetext;
 
 	/* We don't see a query string, return NULL */
@@ -1887,13 +1887,24 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 			PreparedStatement  *entry;
 
 			entry = FetchPreparedStatement(stmt->name, true);
-			p = entry->plansource->query_string;
-			target_query = (Query *) linitial (entry->plansource->query_list);
+
+			if (entry->plansource->is_valid)
+			{
+				p = entry->plansource->query_string;
+				target_query = (Query *) linitial (entry->plansource->query_list);
+			}
+			else
+			{
+				/* igonre the hint for EXECUTE if invalidated */
+				p = NULL;
+				target_query = NULL;
+			}
 		}
 			
 		/* JumbleQuery accespts only a non-utility Query */
-		if (!IsA(target_query, Query) ||
-			target_query->utilityStmt != NULL)
+		if (target_query &&
+			(!IsA(target_query, Query) ||
+			 target_query->utilityStmt != NULL))
 			target_query = NULL;
 
 		if (jumblequery)
@@ -2920,6 +2931,14 @@ get_current_hint_string(ParseState *pstate, Query *query)
 		current_hint_str = get_hints_from_comment(query_str);
 		MemoryContextSwitchTo(oldcontext);
 	}
+	else
+	{
+		/*
+		 * Failed to get query. We would be in fetching invalidated
+		 * plancache. Try the next chance.
+		 */
+		current_hint_retrieved = false;
+	}
 
 	if (debug_level > 1)
 	{
@@ -2989,7 +3008,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	int				save_nestlevel;
 	PlannedStmt	   *result;
 	HintState	   *hstate;
-	const char 	   *prev_hint_str;
+	const char 	   *prev_hint_str = NULL;
 
 	/*
 	 * Use standard planner if pg_hint_plan is disabled or current nesting 
@@ -3089,6 +3108,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 */
 	recurse_level++;
 	prev_hint_str = current_hint_str;
+	current_hint_str = NULL;
 	
 	/*
 	 * Use PG_TRY mechanism to recover GUC parameters and current_hint_state to
