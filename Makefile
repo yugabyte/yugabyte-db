@@ -60,6 +60,9 @@ REGRESS = scan \
 ag_regress_dir = $(srcdir)/regress
 REGRESS_OPTS = --load-extension=agensgraph --inputdir=$(ag_regress_dir) --outputdir=$(ag_regress_dir) --temp-instance=$(ag_regress_dir)/instance --port=61958
 
+ag_regress_out = instance/ log/ results/ regression.*
+EXTRA_CLEAN = $(addprefix $(ag_regress_dir)/, $(ag_regress_out))
+
 ag_include_dir = $(srcdir)/src/include
 PG_CPPFLAGS = -I$(ag_include_dir)
 
