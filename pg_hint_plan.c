@@ -1180,7 +1180,8 @@ RowsHintDesc(RowsHint *hint, StringInfo buf, bool nolf)
 			quote_value(buf, hint->relnames[i]);
 		}
 	}
-	appendStringInfo(buf, " %s", hint->rows_str);
+	if (hint->rows_str != NULL)
+		appendStringInfo(buf, " %s", hint->rows_str);
 	appendStringInfoString(buf, ")");
 	if (!nolf)
 		appendStringInfoChar(buf, '\n');
@@ -2369,6 +2370,8 @@ RowsHintParse(RowsHint *hint, HintState *hstate, Query *parse,
 	List		   *name_list = NIL;
 	char		   *rows_str;
 	char		   *end_ptr;
+	ListCell   *l;
+	int			i = 0;
 
 	if ((str = parse_parentheses(str, &name_list, hint_keyword)) == NULL)
 		return NULL;
@@ -2376,23 +2379,28 @@ RowsHintParse(RowsHint *hint, HintState *hstate, Query *parse,
 	/* Last element must be rows specification */
 	hint->nrels = list_length(name_list) - 1;
 
-	if (hint->nrels > 0)
+	if (hint->nrels < 1)
 	{
-		ListCell   *l;
-		int			i = 0;
+		hint_ereport(str,
+					 ("%s hint needs at least one relation followed by one correction term.",
+					  hint->base.keyword));
+		hint->base.state = HINT_STATE_ERROR;
 
-		/*
-		 * Transform relation names from list to array to sort them with qsort
-		 * after.
-		 */
-		hint->relnames = palloc(sizeof(char *) * hint->nrels);
-		foreach (l, name_list)
-		{
-			if (hint->nrels <= i)
-				break;
-			hint->relnames[i] = lfirst(l);
-			i++;
-		}
+		return str;
+	}
+	
+
+	/*
+	 * Transform relation names from list to array to sort them with qsort
+	 * after.
+	 */
+	hint->relnames = palloc(sizeof(char *) * hint->nrels);
+	foreach (l, name_list)
+	{
+		if (hint->nrels <= i)
+			break;
+		hint->relnames[i] = lfirst(l);
+		i++;
 	}
 
 	/* Retieve rows estimation */
