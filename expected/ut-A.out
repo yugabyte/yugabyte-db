@@ -4338,6 +4338,9 @@ BEGIN
     RETURN new_cnt;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
+-- The function called at the bottom desn't use a hint, the immediate
+-- caller level should restore its own hint. So, the first LOG from
+-- pg_hint_plan should use the IndexScan(t_1) hint
 EXPLAIN (COSTS false) SELECT nested_planner(5) FROM s1.t1 t_1 ORDER BY t_1.c1;
 NOTICE:  nested_planner(5)
 NOTICE:  nested_planner(4)
@@ -4345,7 +4348,12 @@ NOTICE:  nested_planner(3)
 NOTICE:  nested_planner(2)
 NOTICE:  nested_planner(1)
 LOG:  pg_hint_plan:
-no hint
+used hint:
+IndexScan(t_1)
+not used hint:
+duplication hint:
+error hint:
+
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(t_1)
@@ -4372,7 +4380,9 @@ error hint:
  Index Only Scan using t1_i1 on t1 t_1
 (1 row)
 
-/*+SeqScan(t_2)*/
+-- The top level uses SeqScan(t_1), but the function should use only
+-- the hint in the function.
+/*+SeqScan(t_1) SeqScan(t_2)*/
 EXPLAIN (COSTS false) SELECT nested_planner(5) FROM s1.t1 t_1 ORDER BY t_1.c1;
 NOTICE:  nested_planner(5)
 NOTICE:  nested_planner(4)
@@ -4409,15 +4419,18 @@ error hint:
 
 LOG:  pg_hint_plan:
 used hint:
+SeqScan(t_1)
 not used hint:
 SeqScan(t_2)
 duplication hint:
 error hint:
 
-              QUERY PLAN               
----------------------------------------
- Index Only Scan using t1_i1 on t1 t_1
-(1 row)
+        QUERY PLAN        
+--------------------------
+ Sort
+   Sort Key: c1
+   ->  Seq Scan on t1 t_1
+(3 rows)
 
 ----
 ---- No. A-13-4 output of debugging log on hint status

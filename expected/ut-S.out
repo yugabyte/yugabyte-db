@@ -3761,9 +3761,8 @@ error hint:
  c4     | text    |           |          | 
 Indexes:
     "ti1_pkey" PRIMARY KEY, btree (c1)
-    "ti1_c2_key" UNIQUE CONSTRAINT, btree (c2)
-    "ti1_uniq" UNIQUE, btree (c1)
     "ti1_btree" btree (c1)
+    "ti1_c2_key" UNIQUE CONSTRAINT, btree (c2)
     "ti1_expr" btree ((c1 < 100))
     "ti1_gin" gin (c1)
     "ti1_gist" gist (c1)
@@ -3775,6 +3774,7 @@ Indexes:
     "ti1_multi" btree (c1, c2, c3, c4)
     "ti1_pred" btree (lower(c4))
     "ti1_ts" gin (to_tsvector('english'::regconfig, c4))
+    "ti1_uniq" UNIQUE, btree (c1)
 
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
                                                                QUERY PLAN                                                                
