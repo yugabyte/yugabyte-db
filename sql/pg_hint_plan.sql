@@ -52,6 +52,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 /*+Set(work_mem TO "1MB")*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
+/*+SeqScan() */ SELECT 1;
 /*+SeqScan(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 /*+SeqScan(t1)*/
@@ -72,6 +73,8 @@ EXPLAIN (COSTS false) SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1
 /*+NoTidScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)';
 
+/*+ NestLoop() */ SELECT 1;
+/*+ NestLoop(x) */ SELECT 1;
 /*+HashJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 /*+NestLoop(t1 t2)*/
@@ -1048,6 +1051,10 @@ SELECT val::int FROM p2 WHERE id < 1000;
 -- Explain result includes "Planning time" if COSTS is enabled, but
 -- this test needs it enabled for get rows count. So do tests via psql
 -- and grep -v the mutable line.
+
+-- Parse error check
+/*+ Rows() */ SELECT 1;
+/*+ Rows(x) */ SELECT 1;
 
 -- value types
 \o results/pg_hint_plan.tmpout

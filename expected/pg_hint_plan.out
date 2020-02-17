@@ -276,6 +276,21 @@ Set(work_mem TO 1MB)
    ->  Index Scan using t2_pkey on t2
 (4 rows)
 
+/*+SeqScan() */ SELECT 1;
+INFO:  pg_hint_plan: hint syntax error at or near " "
+DETAIL:  SeqScan hint requires a relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+SeqScan()
+
+ ?column? 
+----------
+        1
+(1 row)
+
 /*+SeqScan(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 INFO:  pg_hint_plan: hint syntax error at or near ""
@@ -444,6 +459,36 @@ error hint:
    ->  Index Scan using t2_pkey on t2
          Index Cond: (id = t1.id)
 (5 rows)
+
+/*+ NestLoop() */ SELECT 1;
+INFO:  pg_hint_plan: hint syntax error at or near " "
+DETAIL:  NestLoop hint requires at least two relations.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+NestLoop()
+
+ ?column? 
+----------
+        1
+(1 row)
+
+/*+ NestLoop(x) */ SELECT 1;
+INFO:  pg_hint_plan: hint syntax error at or near " "
+DETAIL:  NestLoop hint requires at least two relations.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+NestLoop(x)
+
+ ?column? 
+----------
+        1
+(1 row)
 
 /*+HashJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
@@ -8765,6 +8810,37 @@ error hint:
 -- Explain result includes "Planning time" if COSTS is enabled, but
 -- this test needs it enabled for get rows count. So do tests via psql
 -- and grep -v the mutable line.
+-- Parse error check
+/*+ Rows() */ SELECT 1;
+INFO:  pg_hint_plan: hint syntax error at or near " "
+DETAIL:  Rows hint needs at least one relation followed by one correction term.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+Rows()
+
+ ?column? 
+----------
+        1
+(1 row)
+
+/*+ Rows(x) */ SELECT 1;
+INFO:  pg_hint_plan: hint syntax error at or near " "
+DETAIL:  Rows hint needs at least one relation followed by one correction term.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+Rows()
+
+ ?column? 
+----------
+        1
+(1 row)
+
 -- value types
 \o results/pg_hint_plan.tmpout
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
