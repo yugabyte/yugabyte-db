@@ -1137,8 +1137,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
+-- The function called at the bottom desn't use a hint, the immediate
+-- caller level should restore its own hint. So, the first LOG from
+-- pg_hint_plan should use the IndexScan(t_1) hint
 EXPLAIN (COSTS false) SELECT nested_planner(5) FROM s1.t1 t_1 ORDER BY t_1.c1;
-/*+SeqScan(t_2)*/
+
+-- The top level uses SeqScan(t_1), but the function should use only
+-- the hint in the function.
+/*+SeqScan(t_1) SeqScan(t_2)*/
 EXPLAIN (COSTS false) SELECT nested_planner(5) FROM s1.t1 t_1 ORDER BY t_1.c1;
 
 ----
