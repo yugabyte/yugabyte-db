@@ -97,7 +97,7 @@ Tables are partitioned into tablets, with each tablet being responsible for a ra
 The `partition_hash` of the row is used to decide which tablet the row will reside in.
 
 `partition_hash` can be handy for querying a subset of the data to get approximate row counts or to breakdown 
-full-table operations into smaller sub-tasks that can be parallelized.
+full-table operations into smaller sub-tasks that can be run in parallel.
 
 ### Querying a subset of the data
 One use of `partition_hash` can be used to query a subset of the data and get approximate count of rows in the table.
