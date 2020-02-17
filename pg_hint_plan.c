@@ -38,6 +38,7 @@
 #include "partitioning/partbounds.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
+#include "utils/float.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
@@ -363,8 +364,8 @@ struct HintState
 	int				init_min_para_tablescan_size;
 	/* min_parallel_index_scan_size*/
 	int				init_min_para_indexscan_size;
-	int				init_paratup_cost;	/* parallel_tuple_cost */
-	int				init_parasetup_cost;/* parallel_setup_cost */
+	double			init_paratup_cost;	/* parallel_tuple_cost */
+	double			init_parasetup_cost;/* parallel_setup_cost */
 
 	PlannerInfo	   *current_root;		/* PlannerInfo for the followings */
 	Index			parent_relid;		/* inherit parent of table relid */
@@ -505,6 +506,8 @@ static int set_config_option_noerror(const char *name, const char *value,
 static void setup_scan_method_enforcement(ScanMethodHint *scanhint,
 										  HintState *state);
 static int set_config_int32_option(const char *name, int32 value,
+									GucContext context);
+static int set_config_double_option(const char *name, double value,
 									GucContext context);
 
 /* GUC variables */
@@ -2634,6 +2637,23 @@ set_config_int32_option(const char *name, int32 value, GucContext context)
 								  pg_hint_plan_parse_message_level);
 }
 
+/*
+ * Sets GUC parameter of double type without throwing exceptions. Returns false
+ * if something wrong.
+ */
+static int
+set_config_double_option(const char *name, double value, GucContext context)
+{
+	char *buf = float8out_internal(value);
+	int	  result;
+
+	result = set_config_option_noerror(name, buf, context,
+									   PGC_S_SESSION, GUC_ACTION_SAVE, true,
+									   pg_hint_plan_parse_message_level);
+	pfree(buf);
+	return result;
+}
+
 /* setup scan method enforcement according to given options */
 static void
 setup_guc_enforcement(SetHint **options, int noptions, GucContext context)
@@ -2681,8 +2701,8 @@ setup_parallel_plan_enforcement(ParallelHint *hint, HintState *state)
 	/* force means that enforce parallel as far as possible */
 	if (hint && hint->force_parallel && hint->nworkers > 0)
 	{
-		set_config_int32_option("parallel_tuple_cost", 0, state->context);
-		set_config_int32_option("parallel_setup_cost", 0, state->context);
+		set_config_double_option("parallel_tuple_cost", 0.0, state->context);
+		set_config_double_option("parallel_setup_cost", 0.0, state->context);
 		set_config_int32_option("min_parallel_table_scan_size", 0,
 								state->context);
 		set_config_int32_option("min_parallel_index_scan_size", 0,
@@ -2690,9 +2710,9 @@ setup_parallel_plan_enforcement(ParallelHint *hint, HintState *state)
 	}
 	else
 	{
-		set_config_int32_option("parallel_tuple_cost",
+		set_config_double_option("parallel_tuple_cost",
 								state->init_paratup_cost, state->context);
-		set_config_int32_option("parallel_setup_cost",
+		set_config_double_option("parallel_setup_cost",
 								state->init_parasetup_cost, state->context);
 		set_config_int32_option("min_parallel_table_scan_size",
 								state->init_min_para_tablescan_size,
