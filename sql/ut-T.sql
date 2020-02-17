@@ -41,5 +41,9 @@ EXPLAIN CREATE TABLE ct1 AS EXECUTE p1;
 
 DEALLOCATE p1;
 
+-- Check proper calling to generate_normalized_query
+\;\;SELECT 1,2;
+
 SET pg_hint_plan.enable_hint_table to off;
 DELETE FROM hint_plan.hints;
+

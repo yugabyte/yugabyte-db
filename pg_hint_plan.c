@@ -2868,9 +2868,7 @@ get_current_hint_string(ParseState *pstate, Query *query)
 			 */
 			query_len = strlen(query_str) + 1;
 			normalized_query =
-				generate_normalized_query(&jstate, query_str,
-										  query->stmt_location,
-										  &query_len,
+				generate_normalized_query(&jstate, query_str, 0, &query_len,
 										  GetDatabaseEncoding());
 
 			/*
