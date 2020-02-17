@@ -127,5 +127,12 @@ error hint:
 (2 rows)
 
 DEALLOCATE p1;
+-- Check proper calling to generate_normalized_query
+\;\;SELECT 1,2;
+ ?column? | ?column? 
+----------+----------
+        1 |        2
+(1 row)
+
 SET pg_hint_plan.enable_hint_table to off;
 DELETE FROM hint_plan.hints;
