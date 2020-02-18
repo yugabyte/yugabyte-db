@@ -86,3 +86,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [fastest963](https://github.com/fastest963)
 * [eliahburns](https://github.com/eliahburns)
 * [bhavin192](https://github.com/bhavin192)
+* [graffido](https://github.com/graffido)
