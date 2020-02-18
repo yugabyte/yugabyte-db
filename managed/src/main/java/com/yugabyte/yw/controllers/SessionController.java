@@ -182,14 +182,30 @@ public class SessionController extends Controller {
     if (!multiTenant && customerCount >= 1) {
       return ApiResponse.error(BAD_REQUEST, "Cannot register multiple accounts in Single tenancy.");
     }
-
     CustomerRegisterFormData data = formData.get();
+    if (customerCount == 0) {
+      return registerCustomer(data, true);
+    } else {
+      TokenAuthenticator tokenAuth = new TokenAuthenticator();
+      if (tokenAuth.superAdminAuthentication(ctx())) {
+        return registerCustomer(data, false);
+      } else {
+        return ApiResponse.error(BAD_REQUEST, "Only Super Admins can register tenant.");
+      }
+    }
+  }
+
+  private Result registerCustomer(CustomerRegisterFormData data, boolean isSuper) {
     try {
       Customer cust = Customer.create(data.code, data.name);
       if (cust == null) {
         return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to register the customer");
       }
-      Users user = Users.create(data.email, data.password, Role.Admin,
+      Role role = Role.Admin;
+      if (isSuper) {
+        role = Role.SuperAdmin;
+      }
+      Users user = Users.create(data.email, data.password, role,
           cust.uuid, /* Primary user*/ true);
       String authToken = user.createAuthToken();
       ObjectNode authTokenJson = Json.newObject();
