@@ -195,6 +195,10 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   client::TransactionPool* TransactionPool() override;
 
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
+
  protected:
   virtual CHECKED_STATUS RegisterServices();
 
@@ -219,7 +223,7 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   yb::AtomicUniquePtr<rpc::Publisher> publish_service_ptr_;
 
   // Thread responsible for heartbeating to the master.
-  gscoped_ptr<Heartbeater> heartbeater_;
+  std::unique_ptr<Heartbeater> heartbeater_;
 
   // Thread responsible for collecting metrics snapshots for native storage.
   gscoped_ptr<MetricsSnapshotter> metrics_snapshotter_;
@@ -263,6 +267,8 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   std::mutex transaction_pool_mutex_;
   std::unique_ptr<client::TransactionManager> transaction_manager_holder_;
   std::unique_ptr<client::TransactionPool> transaction_pool_holder_;
+
+  std::string log_prefix_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };
