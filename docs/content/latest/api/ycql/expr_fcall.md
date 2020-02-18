@@ -49,7 +49,7 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 | [UnixTimestampOf](../function_datetime/#unixtimestampof) | [`BIGINT`](../type_int) | ([`TIMEUUID`](../type_uuid)) | Conversion |
 | [UUID](../function_datetime/#uuid) | [`UUID`](../type_uuid) | () | Returns a version 4 UUID |
 | [WriteTime](#writetime-function) | [`BIGINT`](../type_int) | (\<AnyType>) | Returns the timestamp when the column was written |
-| [partition_hash](#partition-hash-function) | [`BIGINT`](../type_int) | () | Returns an `uint16` hash of partition key's values |
+| [partition_hash](#partition-hash-function) | [`BIGINT`](../type_int) | () | Computes the partition hash value (uint16) for the partition key columns of a row |
 
 ## Aggregate Functions
 
@@ -89,7 +89,7 @@ CAST function converts the value returned from a table column to the specified d
 | `TIMEUUID` | `DATE`, `TIMESTAMP` |
 
 
-## Partition_hash function
+## partition_hash function
 `partition_hash` is a function that takes as arguments the partition key columns of the primary key of a row and 
 returns a `uint16` hash value representing the hash value for the row used for partitioning the table.
 The hash values used for partitioning fall in the `0-65535` (uint16) range. 
@@ -97,11 +97,12 @@ Tables are partitioned into tablets, with each tablet being responsible for a ra
 The `partition_hash` of the row is used to decide which tablet the row will reside in.
 
 `partition_hash` can be handy for querying a subset of the data to get approximate row counts or to breakdown 
-full-table operations into smaller sub-tasks that can be parallelized.
+full-table operations into smaller sub-tasks that can be run in parallel.
 
 ### Querying a subset of the data
-One use of partition_hash can be used to query a subset of the data and get approximate count of rows in the table.
-Assuming we have a table:
+One use of `partition_hash` is to query a subset of the data and get approximate count of rows in the table.
+For example, suppose we have a table `t` with partitioning columns `(h1,h2)`:
+
 ```sql
 create table t (h1 int, h2 int, r1 int, r2 int, v int, 
                          primary key ((h1, h2), r1, r2));
@@ -115,7 +116,21 @@ The value `512` comes from dividing the full hash partition range by the number 
 
 ### Parallel full table scans
 
-To do a distributed scan, we can issue in this case 128 queries each using a different hash range. 
+To do a distributed scan, we can issue, in this case, 128 queries each using a different hash range:
+
+```sql
+.. where partition_hash(h1, h2) >= 0 and partition_hash(h1, h2) < 512;
+```
+
+```sql
+.. where partition_hash(h1, h2) >= 512 and partition_hash(h1, h2) <1024 ;
+```
+
+and so on, till the last segment/range of `512` in the partition space:
+
+```sql
+.. where partition_hash(h1, h2) >= 65024;
+```
 
 
 ## WriteTime function
