@@ -750,7 +750,11 @@ pg_decode_commit_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 {
 	JsonDecodingData *data = ctx->output_plugin_private;
 
+#if PG_VERSION_NUM >= 130000
+	if (rbtxn_has_catalog_changes(txn))
+#else
 	if (txn->has_catalog_changes)
+#endif
 		elog(DEBUG2, "txn has catalog changes: yes");
 	else
 		elog(DEBUG2, "txn has catalog changes: no");
