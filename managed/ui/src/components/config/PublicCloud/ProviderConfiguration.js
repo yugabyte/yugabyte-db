@@ -112,7 +112,8 @@ class ProviderConfiguration extends Component {
     const { configuredProviders, modal: { visibleModal }, configuredRegions, universeList,
             accessKeys, hideDeleteProviderModal, initializeProvider, showDeleteProviderModal,
             deleteProviderConfig, providerType, hostInfo } = this.props;
-    const currentProvider = configuredProviders.data.find((provider) => provider.code === providerType);
+    const currentProvider = configuredProviders.data
+                              .find((provider) => provider.code === providerType) || {};
     let keyPairName = "Not Configured";
     if (isDefinedNotNull(accessKeys) && isNonEmptyArray(accessKeys.data)) {
       const currentAccessKey = accessKeys.data.find((accessKey) => accessKey.idKey.providerUUID === currentProvider.uuid);
