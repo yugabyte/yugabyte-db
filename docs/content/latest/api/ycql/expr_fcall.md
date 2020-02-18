@@ -100,7 +100,7 @@ The `partition_hash` of the row is used to decide which tablet the row will resi
 full-table operations into smaller sub-tasks that can be run in parallel.
 
 ### Querying a subset of the data
-One use of `partition_hash` can be used to query a subset of the data and get approximate count of rows in the table.
+One use of `partition_hash` is to query a subset of the data and get approximate count of rows in the table.
 For example, suppose we have a table `t` with partitioning columns `(h1,h2)`:
 
 ```sql
