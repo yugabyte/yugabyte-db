@@ -930,6 +930,21 @@ TEST_F_EX(QLStressTest, LongRemoteBootstrap, QLStressTestLongRemoteBootstrap) {
   ASSERT_OK(WaitAllReplicasHaveIndex(cluster_.get(), key.load(std::memory_order_acquire), 40s));
   LOG(INFO) << "All replicas ready";
 
+  ASSERT_OK(WaitFor([this] {
+    bool result = true;
+    auto followers = ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders);
+    LOG(INFO) << "Num followers: " << followers.size();
+    for (const auto& peer : followers) {
+      auto log_cache_size = peer->raft_consensus()->LogCacheSize();
+      LOG(INFO) << "T " << peer->tablet_id() << " P " << peer->permanent_uuid()
+                << ", log cache size: " << log_cache_size;
+      if (log_cache_size != 0) {
+        result = false;
+      }
+    }
+    return result;
+  }, 5s, "All followers cleanup cache"));
+
   // Write some more values and check that replica still in touch.
   std::this_thread::sleep_for(5s);
   ASSERT_OK(WaitAllReplicasHaveIndex(cluster_.get(), key.load(std::memory_order_acquire), 1s));

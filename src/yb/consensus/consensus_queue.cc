@@ -324,6 +324,9 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
     fake_response.mutable_status()->set_last_committed_idx(queue_state_.committed_index.index());
 
     if (queue_state_.mode != Mode::LEADER) {
+      log_cache_.EvictThroughOp(id.index());
+
+      UpdateMetrics();
       return;
     }
   }
