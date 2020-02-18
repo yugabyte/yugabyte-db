@@ -173,7 +173,7 @@ alter_table_action ::=
     | 'DROP' [ 'COLUMN' ] column_name [ 'RESTRICT' | 'CASCADE' ]
     | 'ADD' alter_table_constraint
     | 'DROP' 'CONSTRAINT' constraint_name [ 'RESTRICT' | 'CASCADE' ]
-    | 'RENAME' [ 'COLUMN' ] column_name 'TO' column_name 
+    | 'RENAME' [ 'COLUMN' ] column_name 'TO' column_name
     | 'DISABLE' 'ROW' 'LEVEL' 'SECURITY'
     | 'ENABLE' 'ROW' 'LEVEL' 'SECURITY'
     | 'FORCE' 'ROW' 'LEVEL' 'SECURITY'
@@ -370,7 +370,8 @@ create_database_options ::=  [ 'WITH' ] [ 'OWNER' [ '=' ] user_name ]  \
                              [ 'TABLESPACE' [ '=' ] tablespace_name ]  \
                              [ 'ALLOW_CONNECTIONS' [ '=' ] allowconn ]  \
                              [ 'CONNECTION' 'LIMIT' [ '=' ] connlimit ]  \
-                             [ 'IS_TEMPLATE' [ '=' ] istemplate ] ;
+                             [ 'IS_TEMPLATE' [ '=' ] istemplate ] \
+                             [ 'COLOCATED' [ '=' ] ('true' | 'false') ] ;
 
 create_domain ::= 'CREATE' 'DOMAIN' name [ 'AS' ] data_type
     [ 'DEFAULT' expression ]
@@ -583,7 +584,8 @@ cache ::= '<Integer Literal>' ;
 (* 'CREATE' 'TABLE' *)
 create_table ::= 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] table_name
                  '(' [ table_elem { ',' table_elem } ] ')'
-                 [ 'WITH' '(' storage_parameters ')' | 'WITHOUT' 'OIDS' ]
+                 [ 'WITH' '(' ( 'COLOCATED' '=' ('true' | 'false') | storage_parameters ) ')'
+                      | 'WITHOUT' 'OIDS' ]
                  [ 'SPLIT' '(' 'INTO' integer 'TABLETS' ')' ] ;
 
 table_elem ::= ( column_name data_type [ column_constraint { column_constraint } ] ) | table_constraint ;
@@ -726,7 +728,7 @@ drop_domain ::= 'DROP' 'DOMAIN' [ 'IF' 'EXISTS' ] name { ',' name }  [ 'CASCADE'
 (* DROP FUNCTION *)
 drop_function = 'DROP' ( 'FUNCTION' | 'PROCEDURE' ) [ 'IF' 'EXISTS' ] \
                         ( name [ '(' [ argtype_decl { ',' argtype_decl } ] ')' ] )
-                  { ',' ( name [ '(' [ argtype_decl { ',' argtype_decl } ] ')' ] ) } 
+                  { ',' ( name [ '(' [ argtype_decl { ',' argtype_decl } ] ')' ] ) }
                   [ 'CASCADE' | 'RESTRICT' ] ;
 
 argtype_decl = [ argmode ] [ argname ] argtype;
@@ -752,7 +754,7 @@ drop_policy = 'DROP' 'POLICY' [ 'IF' 'EXISTS' ] name 'ON' table_name [ 'CASCADE'
 (* 'DROP' 'PROCEDURE' *)
 drop_procedure = 'DROP' 'PROCEDURE' [ 'IF' 'EXISTS' ] \
                         ( name [ '(' [ argtype_decl { ',' argtype_decl } ] ')' ] )
-                  { ',' ( name [ '(' [ argtype_decl { ',' argtype_decl } ] ')' ] ) } 
+                  { ',' ( name [ '(' [ argtype_decl { ',' argtype_decl } ] ')' ] ) }
                   [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'ROLE' *)

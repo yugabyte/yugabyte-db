@@ -49,7 +49,7 @@ Use your [local cluster](../quick-start/) to explore all the core features of Yu
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="global-distribution/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />        
+        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
         <div class="title">Global distribution</div>
       </div>
       <div class="body">
@@ -60,7 +60,7 @@ Use your [local cluster](../quick-start/) to explore all the core features of Yu
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="auto-sharding/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/auto_sharding.png" aria-hidden="true" />        
+        <img class="icon" src="/images/section_icons/explore/auto_sharding.png" aria-hidden="true" />
         <div class="title">Auto-sharding</div>
       </div>
       <div class="body">
@@ -71,7 +71,7 @@ Use your [local cluster](../quick-start/) to explore all the core features of Yu
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="follower-reads/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />       
+        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
         <div class="title">Follower reads</div>
       </div>
       <div class="body">
@@ -110,6 +110,18 @@ Use your [local cluster](../quick-start/) to explore all the core features of Yu
       </div>
       <div class="body">
         Replicate data changes between two geo-distributed data centers.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="colocated-tables/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
+        <div class="title">Colocated tables</div>
+      </div>
+      <div class="body">
+        Scale out to large number of relations and databases.
       </div>
     </a>
   </div>
