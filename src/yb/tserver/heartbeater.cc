@@ -42,11 +42,9 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_rpc.h"
 #include "yb/server/server_base.proxy.h"
-#include "yb/server/webserver.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server_options.h"
@@ -57,7 +55,6 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
-#include "yb/util/mem_tracker.h"
 
 using namespace std::literals;
 
@@ -103,7 +100,11 @@ namespace tserver {
 // This is basically the "PIMPL" pattern.
 class Heartbeater::Thread {
  public:
-  Thread(const TabletServerOptions& opts, TabletServer* server);
+  Thread(
+      const TabletServerOptions& opts, TabletServer* server,
+      std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers);
+  Thread(const Thread& other) = delete;
+  void operator=(const Thread& other) = delete;
 
   Status Start();
   Status Stop();
@@ -126,10 +127,9 @@ class Heartbeater::Thread {
   CHECKED_STATUS SetupRegistration(master::TSRegistrationPB* reg);
   void SetupCommonField(master::TSToMasterCommonPB* common);
   bool IsCurrentThread() const;
-  uint64_t CalculateUptime();
 
   const std::string& LogPrefix() const {
-    return log_prefix_;
+    return server_->LogPrefix();
   }
 
   server::MasterAddressesPtr get_master_addresses() {
@@ -147,10 +147,6 @@ class Heartbeater::Thread {
   // masters may change IP addresses, and we'd like to re-resolve on
   // every new attempt at connecting.
   server::MasterAddressesPtr master_addresses_;
-
-  // Index of the master we last succesfully obtained the master
-  // consensus configuration information from.
-  int last_locate_master_idx_ = 0;
 
   // The server for which we are heartbeating.
   TabletServer* const server_;
@@ -183,31 +179,21 @@ class Heartbeater::Thread {
   bool should_run_ = false;
   bool heartbeat_asap_ = false;
 
-  // The interval for sending tserver metrics in the heartbeat.
-  const MonoDelta tserver_metrics_interval_ = 5s;
-  // stores the granularity for updating file sizes and current read/write
-  MonoTime prev_tserver_metrics_submission_;
-
-  // Stores the total read and writes ops for computing iops
-  uint64_t prev_reads_ = 0;
-  uint64_t prev_writes_ = 0;
-
-  MonoTime start_time_;
-
   rpc::Rpcs rpcs_;
 
-  const std::string log_prefix_;
-
-  DISALLOW_COPY_AND_ASSIGN(Thread);
+  std::vector<std::unique_ptr<HeartbeatDataProvider>> data_providers_;
 };
 
 ////////////////////////////////////////////////////////////
 // Heartbeater
 ////////////////////////////////////////////////////////////
 
-Heartbeater::Heartbeater(const TabletServerOptions& opts, TabletServer* server)
-  : thread_(new Thread(opts, server)) {
+Heartbeater::Heartbeater(
+    const TabletServerOptions& opts, TabletServer* server,
+    std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers)
+  : thread_(new Thread(opts, server, std::move(data_providers))) {
 }
+
 Heartbeater::~Heartbeater() {
   WARN_NOT_OK(Stop(), "Unable to stop heartbeater thread");
 }
@@ -224,13 +210,13 @@ void Heartbeater::set_master_addresses(server::MasterAddressesPtr master_address
 // Heartbeater::Thread
 ////////////////////////////////////////////////////////////
 
-Heartbeater::Thread::Thread(const TabletServerOptions& opts, TabletServer* server)
+Heartbeater::Thread::Thread(
+    const TabletServerOptions& opts, TabletServer* server,
+    std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers)
   : master_addresses_(opts.GetMasterAddresses()),
     server_(server),
     cond_(&mutex_),
-    prev_tserver_metrics_submission_(MonoTime::Now()),
-    start_time_(MonoTime::Now()),
-    log_prefix_(Format("P $0: ", server_->permanent_uuid())) {
+    data_providers_(std::move(data_providers)) {
   CHECK_NOTNULL(master_addresses_.get());
   CHECK(!master_addresses_->empty());
   VLOG_WITH_PREFIX(1) << "Initializing heartbeater thread with master addresses: "
@@ -344,12 +330,6 @@ int Heartbeater::Thread::GetMillisUntilNextHeartbeat() const {
   return FLAGS_heartbeat_interval_ms;
 }
 
-// Calculate Uptime
-uint64_t Heartbeater::Thread::CalculateUptime() {
-  MonoDelta delta = MonoTime::Now().GetDeltaSince(start_time_);
-  uint64_t uptime_seconds = static_cast<uint64_t>(delta.ToSeconds());
-  return uptime_seconds;
-}
 
 Status Heartbeater::Thread::TryHeartbeat() {
   master::TSHeartbeatRequestPB req;
@@ -376,67 +356,8 @@ Status Heartbeater::Thread::TryHeartbeat() {
   req.set_num_live_tablets(server_->tablet_manager()->GetNumLiveTablets());
   req.set_leader_count(server_->tablet_manager()->GetLeaderCount());
 
-  if (prev_tserver_metrics_submission_ + tserver_metrics_interval_ < MonoTime::Now()) {
-
-    // Get the total memory used.
-    size_t mem_usage = MemTracker::GetRootTracker()->GetUpdatedConsumption(true /* force */);
-    req.mutable_metrics()->set_total_ram_usage(static_cast<int64_t>(mem_usage));
-    VLOG_WITH_PREFIX(4) << "Total Memory Usage: " << mem_usage;
-
-    // Get the Total SST file sizes and set it in the proto buf
-    std::vector<shared_ptr<yb::tablet::TabletPeer> > tablet_peers;
-    uint64_t total_file_sizes = 0;
-    uint64_t uncompressed_file_sizes = 0;
-    uint64_t num_files = 0;
-    server_->tablet_manager()->GetTabletPeers(&tablet_peers);
-    for (auto it = tablet_peers.begin(); it != tablet_peers.end(); it++) {
-      shared_ptr<yb::tablet::TabletPeer> tablet_peer = *it;
-      if (tablet_peer) {
-        auto tablet_class = tablet_peer->shared_tablet();
-        total_file_sizes += (tablet_class)
-            ? tablet_class->GetCurrentVersionSstFilesSize() : 0;
-        uncompressed_file_sizes += (tablet_class)
-            ? tablet_class->GetCurrentVersionSstFilesUncompressedSize() : 0;
-        num_files += (tablet_class) ? tablet_class->GetCurrentVersionNumSSTFiles() : 0;
-      }
-    }
-    req.mutable_metrics()->set_total_sst_file_size(total_file_sizes);
-    req.mutable_metrics()->set_uncompressed_sst_file_size(uncompressed_file_sizes);
-    req.mutable_metrics()->set_num_sst_files(num_files);
-
-    // Get the total number of read and write operations.
-    scoped_refptr<Histogram> reads_hist = server_->GetMetricsHistogram
-        (TabletServerServiceIf::RpcMetricIndexes::kMetricIndexRead);
-    uint64_t  num_reads = (reads_hist != nullptr) ? reads_hist->TotalCount() : 0;
-
-    scoped_refptr<Histogram> writes_hist = server_->GetMetricsHistogram
-        (TabletServerServiceIf::RpcMetricIndexes::kMetricIndexWrite);
-    uint64_t num_writes = (writes_hist != nullptr) ? writes_hist->TotalCount() : 0;
-
-    // Calculate the read and write ops per second.
-    MonoDelta diff = MonoTime::Now() - prev_tserver_metrics_submission_;
-    double_t div = diff.ToSeconds();
-
-    double rops_per_sec = (div > 0 && num_reads > 0) ?
-        (static_cast<double>(num_reads - prev_reads_) / div) : 0;
-
-    double wops_per_sec = (div > 0 && num_writes > 0) ?
-        (static_cast<double>(num_writes - prev_writes_) / div) : 0;
-
-    prev_reads_ = num_reads;
-    prev_writes_ = num_writes;
-    req.mutable_metrics()->set_read_ops_per_sec(rops_per_sec);
-    req.mutable_metrics()->set_write_ops_per_sec(wops_per_sec);
-    uint64_t uptime_seconds = CalculateUptime();
-
-    req.mutable_metrics()->set_uptime_seconds(uptime_seconds);
-
-    prev_tserver_metrics_submission_ = MonoTime::Now();
-
-    VLOG_WITH_PREFIX(4) << "Read Ops per second: " << rops_per_sec;
-    VLOG_WITH_PREFIX(4) << "Write Ops per second: " << wops_per_sec;
-    VLOG_WITH_PREFIX(4) << "Total SST File Sizes: "<< total_file_sizes;
-    VLOG_WITH_PREFIX(4) << "Uptime seconds: "<< uptime_seconds;
+  for (auto& data_provider : data_providers_) {
+    data_provider->AddData(&req);
   }
 
   RpcController rpc;
@@ -649,6 +570,18 @@ void Heartbeater::Thread::TriggerASAP() {
   MutexLock l(mutex_);
   heartbeat_asap_ = true;
   cond_.Signal();
+}
+
+
+const std::string& HeartbeatDataProvider::LogPrefix() const {
+  return server_.LogPrefix();
+}
+
+void PeriodicalHeartbeatDataProvider::AddData(master::TSHeartbeatRequestPB* req) {
+  if (prev_run_time_ + period_ < CoarseMonoClock::Now()) {
+    DoAddData(req);
+    prev_run_time_ = CoarseMonoClock::Now();
+  }
 }
 
 } // namespace tserver
