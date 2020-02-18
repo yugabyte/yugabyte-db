@@ -53,7 +53,7 @@ public class BackupTable extends AbstractTaskBase {
     try {
       Universe universe = Universe.get(taskParams().universeUUID);
       Map<String, String> config = universe.getConfig();
-      if (config.isEmpty() || config.get(Universe.TAKE_BACKUPS).equals("true")) {
+      if (config.isEmpty() || config.getOrDefault(Universe.TAKE_BACKUPS, "true").equals("true")) {
         ShellProcessHandler.ShellResponse response = tableManager.createBackup(taskParams());
         JsonNode jsonNode = Json.parse(response.message);
         if (response.code != 0 || jsonNode.has("error")) {
