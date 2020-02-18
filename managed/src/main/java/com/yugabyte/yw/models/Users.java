@@ -51,6 +51,9 @@ public class Users extends Model {
 
     @EnumValue("ReadOnly")
     ReadOnly,
+
+    @EnumValue("SuperAdmin")
+    SuperAdmin
   }
 
 

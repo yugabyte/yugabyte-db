@@ -260,9 +260,9 @@ create table users (
   auth_token_issue_date         timestamp,
   api_token                     varchar(255),
   features                      TEXT,
-  role                          varchar(8) not null,
+  role                          varchar(10) not null,
   is_primary                    boolean not null,
-  constraint ck_users_role check (role in ('ReadOnly','Admin')),
+  constraint ck_users_role check (role in ('ReadOnly','Admin','SuperAdmin')),
   constraint uq_users_email unique (email),
   constraint pk_users primary key (uuid)
 );

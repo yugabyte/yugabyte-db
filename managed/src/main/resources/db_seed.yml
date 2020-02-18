@@ -9,7 +9,7 @@
     passwordHash: $2a$10$EIEMY/qXEH197zYn3K.4HOYMIIkBRBtNQ4AktpztQRegzIoJxK65W
     customerUUID: f33e3c9b-75ab-4c30-80ad-cba85646ea39
     uuid: a9190fe6-1067-409f-95cf-dbd96893c9c9
-    role: Admin
+    role: SuperAdmin
     isPrimary: True
 
 - &user2 !!com.yugabyte.yw.models.Users
