@@ -90,7 +90,7 @@ class AuthenticatedComponent extends Component {
           {this.props.children}
           <YBModal title={"Keyboard Shortcut"}
                    visible={showKeyboardShortcuts}
-                   onHide={this._toggleShortcutsHelp}>
+                   onHide={() => this.setState({showKeyboardShortcuts: false})}>
             <Table responsive>
               <thead>
                 <tr><th>Shortcut</th><th>Description</th></tr>
