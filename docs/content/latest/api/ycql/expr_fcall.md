@@ -116,7 +116,21 @@ The value `512` comes from dividing the full hash partition range by the number 
 
 ### Parallel full table scans
 
-To do a distributed scan, we can issue in this case 128 queries each using a different hash range. 
+To do a distributed scan, we can issue, in this case, 128 queries each using a different hash range:
+
+```sql
+.. where partition_hash(h1, h2) >= 0 and partition_hash(h1, h2) < 512;
+```
+
+```sql
+.. where partition_hash(h1, h2) >= 512 and partition_hash(h1, h2) <1024 ;
+```
+
+and so on, till the last segment/range of `512` in the partition space:
+
+```sql
+.. where partition_hash(h1, h2) >= 65024;
+```
 
 
 ## WriteTime function
