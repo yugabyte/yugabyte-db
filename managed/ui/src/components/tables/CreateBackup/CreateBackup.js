@@ -15,13 +15,6 @@ import * as Yup from "yup";
 import '../common.scss';
 
 export default class CreateBackup extends Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      isMulti: true
-    };
-  }
-
   static propTypes = {
     tableInfo: PropTypes.object
   };
@@ -36,6 +29,7 @@ export default class CreateBackup extends Component {
     } = this.props;
 
     if (isDefinedNotNull(values.backupTableUUID) &&
+        values.backupTableUUID.length &&
         isDefinedNotNull(values.storageConfigUUID)) {
       const payload = {
         "storageConfigUUID": values.storageConfigUUID,
@@ -43,14 +37,18 @@ export default class CreateBackup extends Component {
         "schedulingFrequency": isEmptyString(values.schedulingFrequency) ? null : values.schedulingFrequency,
         "cronExpression": isNonEmptyString(values.cronExpression) ? values.cronExpression : null,
       };
-      if (values.backupTableUUID === "fulluniverse") {
+      if (values.backupTableUUID[0] === "fulluniverse") {
+        createUniverseBackup(universeUUID, payload);
+      } else if (values.backupTableUUID.length > 1) {
+        payload.tableUUIDList = values.backupTableUUID;
         createUniverseBackup(universeUUID, payload);
       } else {
-        const backupTable = universeTables.find((table) => table.tableUUID === values.backupTableUUID);
-        payload.actionType = "CREATE";
+        const backupTable = universeTables
+                              .find((table) => table.tableUUID === values.backupTableUUID[0]);
         payload.tableName = backupTable.tableName;
         payload.keyspace = backupTable.keySpace;
-        createTableBackup(universeUUID, backupTable.tableUUID, payload);
+        payload.actionType = "CREATE";
+        createTableBackup(universeUUID, values.backupTableUUID, payload);
       }
       onHide();
       browserHistory.push('/universes/' + universeUUID + "/backups");
@@ -59,19 +57,18 @@ export default class CreateBackup extends Component {
 
   backupItemChanged = (props, option) => {
     if (isNonEmptyObject(option) && option.value === "fulluniverse") {
-      this.setState({isMulti: false});
       props.form.setFieldValue(props.field.name, option);
     } else if (isNonEmptyArray(option)) {
       const index = option.findIndex((item, index) => item.value === "fulluniverse");
-      if (index + 1 > 0) {
-        this.setState({isMulti: false});
-        props.form.setFieldValue(props.field.name, option[index]);
+      if (index > -1) {
+        // Clear all other values except 'Full Universe Backup'
+        props.form.setFieldValue(props.field.name, [option[index]]);
+      } else {
+        props.form.setFieldValue(props.field.name, option);
       }
     } else {
-      this.setState({isMulti: true});
-      if (isNonEmptyObject(option)) {
-        props.form.setFieldValue(props.field.name, [option]);
-      }
+      // Clear form
+      props.form.setFieldValue(props.field.name, []);
     }
   }
 
@@ -94,14 +91,18 @@ export default class CreateBackup extends Component {
       tableOptions = universeTables.map((tableInfo) => {
         return {value: tableInfo.tableUUID, label: tableInfo.keySpace + "." + tableInfo.tableName};
       }).sort((a, b) => a.label.toLowerCase() < b.label.toLowerCase() ? -1 : 1);
-      tableOptions = [{
-        label: <b>Full Universe Backup</b>,
-        value: "fulluniverse",
-        icon: <span className={"fa fa-globe"} />
-      },{
-        label: "Tables",
-        options: tableOptions
-      }];
+      tableOptions = [
+        {
+          label: <b>Full Universe Backup</b>,
+          value: "fulluniverse",
+          icon: <span className={"fa fa-globe"} />
+        },
+        {
+          label: "Tables",
+          value: 'tables',
+          options: tableOptions
+        }
+      ];
     }
 
     initialValues.schedulingFrequency = "";
@@ -130,7 +131,7 @@ export default class CreateBackup extends Component {
           onFormSubmit={(values) => {
             const payload = {
               ...values,
-              backupTableUUID: values.backupTableUUID.value,
+              backupTableUUID: values.backupTableUUID.map(x => x.value),
               storageConfigUUID: values.storageConfigUUID.value,
             };
             this.createBackup(payload);
@@ -154,11 +155,7 @@ export default class CreateBackup extends Component {
           render={props => {
             const isSchedulingFrequencyReadOnly = props.values.cronExpression !== "";
             const isCronExpressionReadOnly = props.values.schedulingFrequency !== "";
-            // TODO: for multitablebackups just add
-            //
-            // isMulti={this.state.isMulti}
-            // onChange={this.backupItemChanged}
-            //
+
             // params for backupTableUUID <Field>
             // NOTE: No entire keyspace selection implemented
             return (<Fragment>
@@ -178,7 +175,8 @@ export default class CreateBackup extends Component {
                 }}
                 label={`Tables to backup`}
                 options={tableOptions}
-                isMulti={false}
+                isMulti={true}
+                onChange={this.backupItemChanged}
                 readOnly={isNonEmptyObject(tableInfo)}
               />
               <Field
