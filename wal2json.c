@@ -52,6 +52,7 @@ typedef struct
 	bool		include_types;		/* include data types */
 	bool		include_type_oids;	/* include data type oids */
 	bool		include_typmod;		/* include typmod in types */
+	bool		include_domain_data_type;	/* include underlying data type of the domain */
 	bool		include_not_null;	/* include not-null constraints */
 
 	bool		pretty_print;		/* pretty-print JSON? */
@@ -228,6 +229,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data->include_types = true;
 	data->include_type_oids = false;
 	data->include_typmod = true;
+	data->include_domain_data_type = false;
 	data->pretty_print = false;
 	data->write_in_chunks = false;
 	data->include_lsn = false;
@@ -375,6 +377,19 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 				data->include_typmod = true;
 			}
 			else if (!parse_bool(strVal(elem->arg), &data->include_typmod))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
+							 strVal(elem->arg), elem->defname)));
+		}
+		else if (strcmp(elem->defname, "include-domain-data-type") == 0)
+		{
+			if (elem->arg == NULL)
+			{
+				elog(DEBUG1, "include-types argument is null");
+				data->include_domain_data_type = true;
+			}
+			else if (!parse_bool(strVal(elem->arg), &data->include_domain_data_type))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
@@ -944,21 +959,46 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 
 		if (data->include_types)
 		{
-			if (data->include_typmod)
-			{
-				char	*type_str;
+			char	*type_str;
+			Form_pg_type type_form = (Form_pg_type) GETSTRUCT(type_tuple);
 
-				type_str = TextDatumGetCString(DirectFunctionCall2(format_type, attr->atttypid, attr->atttypmod));
-				appendStringInfo(&coltypes, "%s", comma);
-				escape_json(&coltypes, type_str);
-				pfree(type_str);
+			/*
+			 * It is a domain. Replace domain name with base data type if
+			 * include_domain_data_type is enabled.
+			 */
+			if (type_form->typtype == TYPTYPE_DOMAIN && data->include_domain_data_type)
+			{
+				typid = type_form->typbasetype;
+				if (data->include_typmod)
+				{
+					getTypeOutputInfo(typid, &typoutput, &typisvarlena);
+					type_str = format_type_with_typemod(type_form->typbasetype, type_form->typtypmod);
+				}
+				else
+				{
+					/*
+					 * Since we are not using a format function, grab base type
+					 * name from Form_pg_type.
+					 */
+					type_tuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typid));
+					if (!HeapTupleIsValid(type_tuple))
+						elog(ERROR, "cache lookup failed for type %u", typid);
+					type_form = (Form_pg_type) GETSTRUCT(type_tuple);
+					type_str = pstrdup(NameStr(type_form->typname));
+				}
 			}
 			else
 			{
-				Form_pg_type type_form = (Form_pg_type) GETSTRUCT(type_tuple);
-				appendStringInfo(&coltypes, "%s", comma);
-				escape_json(&coltypes, NameStr(type_form->typname));
+				if (data->include_typmod)
+					type_str = TextDatumGetCString(DirectFunctionCall2(format_type, attr->atttypid, attr->atttypmod));
+				else
+					type_str = pstrdup(NameStr(type_form->typname));
 			}
+
+			appendStringInfo(&coltypes, "%s", comma);
+			escape_json(&coltypes, type_str);
+
+			pfree(type_str);
 
 			/* oldkeys doesn't print not-null constraints */
 			if (!replident && data->include_not_null)
@@ -1587,10 +1627,26 @@ pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple 
 		/* type name (with typmod, if available) */
 		if (data->include_types)
 		{
-			type_str = format_type_with_typemod(attr->atttypid, attr->atttypmod);
+			HeapTuple		type_tuple;
+			Form_pg_type	type_form;
+
+			type_tuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(attr->atttypid));
+			type_form = (Form_pg_type) GETSTRUCT(type_tuple);
+
+			/*
+			 * It is a domain. Replace domain name with base data type if
+			 * include_domain_data_type is enabled.
+			 */
+			if (type_form->typtype == TYPTYPE_DOMAIN && data->include_domain_data_type)
+				type_str = format_type_with_typemod(type_form->typbasetype, type_form->typtypmod);
+			else
+				type_str = format_type_with_typemod(attr->atttypid, attr->atttypmod);
+
 			appendStringInfoString(ctx->out, ",\"type\":");
 			appendStringInfo(ctx->out, "\"%s\"", type_str);
 			pfree(type_str);
+
+			ReleaseSysCache(type_tuple);
 		}
 
 		appendStringInfoString(ctx->out, ",\"value\":");
