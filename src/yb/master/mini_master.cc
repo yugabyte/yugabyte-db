@@ -178,9 +178,10 @@ Status MiniMaster::Restart() {
 
   auto prev_rpc = bound_rpc_addr();
   Endpoint prev_http = bound_http_addr();
+  auto master_addresses = master_->opts().GetMasterAddresses();
   Shutdown();
 
-  MasterOptions opts(std::make_shared<server::MasterAddresses>());
+  MasterOptions opts(master_addresses);
   RETURN_NOT_OK(StartOnPorts(prev_rpc.port(), prev_http.port(), &opts));
   CHECK(running_);
   return WaitForCatalogManagerInit();
