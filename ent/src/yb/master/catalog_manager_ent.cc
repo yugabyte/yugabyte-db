@@ -59,6 +59,7 @@ DEFINE_uint64(cdc_state_table_num_tablets, 0,
 DEFINE_int32(cdc_wal_retention_time_secs, 4 * 3600,
              "WAL retention time in seconds to be used for tables for which a CDC stream was "
              "created.");
+DECLARE_int32(master_rpc_timeout_ms);
 
 namespace yb {
 
@@ -197,6 +198,19 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
 ////////////////////////////////////////////////////////////
 // CatalogManager
 ////////////////////////////////////////////////////////////
+
+CatalogManager::~CatalogManager() {
+  Shutdown();
+}
+
+void CatalogManager::Shutdown() {
+  if (cdc_ybclient_) {
+    cdc_ybclient_->Shutdown();
+  }
+  // Call shutdown on base class before exiting derived class destructor
+  // because BgTasks is part of base & uses this derived class on Shutdown.
+  super::Shutdown();
+}
 
 Status CatalogManager::RunLoaders(int64_t term) {
   RETURN_NOT_OK(super::RunLoaders(term));
@@ -1569,6 +1583,8 @@ Status CatalogManager::FindCDCStreamsMarkedAsDeleting(
 
 Status CatalogManager::CleanUpDeletedCDCStreams(
     const std::vector<scoped_refptr<CDCStreamInfo>>& streams) {
+  RETURN_NOT_OK(CheckOnline());
+
   if (!cdc_ybclient_) {
     // First. For each deleted stream, delete the cdc state rows.
     std::vector<std::string> addrs;
@@ -1584,6 +1600,7 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
     LOG(INFO) << "Using master addresses " << JoinCSVLine(addrs) << " to create cdc yb client";
     auto result = yb::client::YBClientBuilder()
         .master_server_addrs(addrs)
+        .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms))
         .Build();
 
     std::unique_ptr<client::YBClient> client;
