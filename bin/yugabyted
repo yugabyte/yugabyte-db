@@ -1754,9 +1754,16 @@ class Output(object):
             return
 
         try:
-            print(msg.encode('utf8'))
-        except UnicodeEncodeError:
-            print(msg.encode('ascii', 'ignore'))
+            try:
+                if PY_VERSION < 3:
+                    print(msg.encode('utf8'))
+                else:
+                    print(msg)
+            except UnicodeEncodeError:
+                print(msg.encode('ascii', 'ignore').decode())
+        except Exception as e:
+            # Ignore any print errors as they are not critical to the application.
+            Output.log("Failed to print with error: {}".format(traceback.format_exc()))
 
     # Writes one line that may be replaced with the update_animation method.
     # Note - ONLY one line can be replaced. E.g. only characters after a newline can be replaced.
@@ -1787,19 +1794,25 @@ class Output(object):
                 line_to_write = "{:<{}}".format(line, line_len)
                 if not running:
                     line_to_write += "\n"
-                line_to_write = line_to_write.encode('utf-8')
 
                 try:
-                    sys.stdout.write(line_to_write)
-                except UnicodeEncodeError:
-                    sys.stdout.write(line_to_write.encode('ascii', 'ignore'))
+                    try:
+                        if PY_VERSION < 3:
+                            sys.stdout.write(line_to_write.encode('utf-8'))
+                        else:
+                            sys.stdout.write(line_to_write)
+                    except UnicodeEncodeError:
+                        sys.stdout.write(line_to_write.encode('ascii', 'ignore').decode())
 
-                try:
-                    sys.stdout.flush()
-                except IOError as e:
-                    Output.log("Errored when flushing stdout: {}".format(e), logging.ERROR)
+                    try:
+                        sys.stdout.flush()
+                    except IOError as e:
+                        Output.log("Errored when flushing stdout: {}".format(e), logging.ERROR)
+                    i = (i + 1) % len(loading_symbols)
+                except Exception as e:
+                    # Ignore stdout write errors as they are not critical to application.
+                    Output.log("Failed stdout write with error: {}".format(traceback.format_exc()))
 
-                i = (i + 1) % len(loading_symbols)
                 time.sleep(.05)
 
         Output.animation_status = (Output.ANIMATION_RUNNING, msg)
@@ -1829,7 +1842,10 @@ class Output(object):
         if time_since_sec < 1000:
             # add time since start to make it easier to debug startup perf
             full_msg = " | {:.1f}s | {}".format(time_since_sec, msg)
-        logging.log(level, full_msg)
+        try:
+            logging.log(level, full_msg)
+        except:
+            pass
 
     @staticmethod
     def print_and_log(msg, level=logging.INFO):
