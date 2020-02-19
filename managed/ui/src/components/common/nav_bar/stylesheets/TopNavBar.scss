@@ -134,13 +134,16 @@
       &, &:hover, &:focus {
         cursor: not-allowed;
         background-color: $YB_BACKGROUND !important;
-
-        i {
-          color: $YB_GRAY_HOVER !important;
-        }
       }
     }
   }
+
+  > li.disabled {
+    i {
+        color: $YB_GRAY_HOVER !important;
+    }
+  }
+
   > .active {
     > a {
       background-color: inherit;

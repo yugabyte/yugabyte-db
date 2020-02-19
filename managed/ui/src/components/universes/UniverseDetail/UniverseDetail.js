@@ -450,7 +450,7 @@ class YBMenuItem extends Component {
       }
     }
     return (
-      <li>
+      <li className={availability}>
         <div className={className}>
           {this.props.children}
         </div>

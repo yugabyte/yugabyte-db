@@ -60,7 +60,7 @@ class UniverseAction extends Component {
   }
 
   render() {
-    const { btnClass, actionType, universe :{ universeConfig} } = this.props;
+    const { btnClass, disabled, actionType, universe: { universeConfig } } = this.props;
     let btnLabel = null;
     let btnIcon = null;
     let modalTitle = null;
@@ -126,7 +126,7 @@ class UniverseAction extends Component {
     return (
       <div>
         <YBButton btnText={btnLabel} btnIcon={btnIcon}
-                btnClass={`btn ${btnClass}`} onClick={this.openModal} />
+                btnClass={`btn ${btnClass}`} disabled={disabled} onClick={this.openModal} />
         {modalForm}
       </div>
     );
