@@ -266,9 +266,11 @@ void CDCServiceTest::GetChanges(const TabletId& tablet_id, const CDCStreamId& st
   change_req.set_stream_id(stream_id);
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(term);
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(index);
+  change_req.set_serve_as_proxy(true);
 
   {
     RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(10.0));
     SCOPED_TRACE(change_req.DebugString());
     auto s = cdc_proxy_->GetChanges(change_req, &change_resp, &rpc);
     if (!has_error) {
@@ -1163,26 +1165,8 @@ TEST_F_EX(CDCServiceTest, TestLogCDCMinReplicatedIndexIsDurable,
 
   WaitForCDCIndex(tablet_peer, 10, 4 * FLAGS_update_min_cdc_indices_interval_secs);
 
-  int32_t prev_update_min_cdc_indices_interval_secs = FLAGS_update_min_cdc_indices_interval_secs;
-
-  // Do not update the tablet peers when the index changes.
-  SetAtomicFlag(std::numeric_limits<int32_t>::max(), &FLAGS_update_min_cdc_indices_interval_secs);
-
-  // Wait until the background thread wakes up one more time, and then it goes to sleep forever.
-  SleepFor(MonoDelta::FromSeconds(2 * prev_update_min_cdc_indices_interval_secs));
-
-  // Send another GetChanges request to update the replicated index in cdc_state, and verify that
-  // this change didn't get propagated to the tablet peer.
-  GetChanges(tablet_id, stream_id, /* term */ 0, /* index */ 20);
-
-  // Sleep for a little bit and verify that index didn't get updated by the background thread.
-  SleepFor(MonoDelta::FromSeconds(4 * prev_update_min_cdc_indices_interval_secs));
-  ASSERT_EQ(tablet_peer->log()->cdc_min_replicated_index(), 10);
-  ASSERT_EQ(tablet_peer->tablet_metadata()->cdc_min_replicated_index(), 10);
-
-  // Restart the TServer and verify that the tablet metadata got loaded correctly.
-  cluster_->mini_tablet_server(0)->Shutdown();
-  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+  // Restart the entire cluster to verify that the CDC tablet metadata got loaded from disk.
+  ASSERT_OK(cluster_->RestartSync());
 
   ASSERT_OK(WaitFor([&](){
     if (cluster_->mini_tablet_server(0)->server()->tablet_manager()->
@@ -1196,8 +1180,7 @@ TEST_F_EX(CDCServiceTest, TestLogCDCMinReplicatedIndexIsDurable,
     return false;
   }, MonoDelta::FromSeconds(30), "Wait until tablet has a leader."));
 
-  // Verify that after a restart, the log and meta min replicated index was loaded correctly from
-  // disk.
+  // Verify the log and meta min replicated index was loaded correctly from disk.
   ASSERT_EQ(tablet_peer->log()->cdc_min_replicated_index(), 10);
   ASSERT_EQ(tablet_peer->tablet_metadata()->cdc_min_replicated_index(), 10);
 }
@@ -1525,6 +1508,13 @@ TEST_F_EX(CDCServiceTest, TestNewLeaderUpdatesLogCDCAppliedIndex, CDCServiceTest
   // Kill the tablet leader tserver so that another tserver becomes the leader.
   cluster_->mini_tablet_server(leader_idx)->Shutdown();
   LOG(INFO) << "tserver " << leader_idx << " was shutdown";
+
+  // CDC Proxy is pinned to the first TServer, so we need to update the proxy if we kill that one.
+  if (leader_idx == 0) {
+    cdc_proxy_ = std::make_unique<CDCServiceProxy>(
+        &client_->proxy_cache(),
+        HostPort::FromBoundEndpoint(cluster_->mini_tablet_server(1)->bound_rpc_addr()));
+  }
 
   // Wait until GetChanges doesn't return any errors. This means that we are able to write to
   // the cdc_state table.
