@@ -180,11 +180,22 @@ export default function(state = INITIAL_STATE, action) {
       return setPromiseResponse(state, "deleteConfig", action);
 
     case GET_LOGS:
-      return {...state, yugaware_logs: null};
+      return {
+        ...state,
+        yugaware_logs: null
+      };
     case GET_LOGS_SUCCESS:
-      return {...state, yugaware_logs: action.payload.data.lines.reverse()};
+      return {
+        ...state,
+        yugaware_logs: action.payload.data.lines.reverse(),
+        yugawareLogError: false
+      };
     case GET_LOGS_FAILURE:
-      return {...state, yugaware_logs: null };
+      return {
+        ...state,
+        yugaware_logs: null,
+        yugawareLogError: true
+      };
 
     case GET_CUSTOMER_USERS:
       return setLoadingState(state, "users", getInitialState([]));
