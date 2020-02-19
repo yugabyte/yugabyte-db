@@ -2114,9 +2114,12 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   CHECK_EQ(SysTablesEntryPB::PREPARING, table->metadata().dirty().pb.state());
   if (tablets_exist) {
     TRACE("Inserted new table and updating tablet info into CatalogManager maps");
+    VLOG(1) << "Inserted new table and updating tablet info into "
+               "CatalogManager maps";
     s = sys_catalog_->UpdateItems(tablets, leader_ready_term_);
   } else {
     TRACE("Inserted new table and tablet info into CatalogManager maps");
+    VLOG(1) << "Inserted new table and tablet info into CatalogManager maps";
     for (const TabletInfo *tablet : tablets) {
       CHECK_EQ(SysTabletsEntryPB::PREPARING, tablet->metadata().dirty().pb.state());
     }
@@ -2167,7 +2170,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     tablet->mutable_metadata()->CommitMutation();
   }
 
-  if (colocated) {
+  if (colocated && tablets_exist) {
     auto call =
         std::make_shared<AsyncAddTableToTablet>(master_, worker_pool_.get(), tablets[0], table);
     table->AddTask(call);

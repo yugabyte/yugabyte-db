@@ -946,6 +946,7 @@ void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "CreateTablet", req, resp, &context)) {
     return;
   }
+  DVLOG(3) << "Received CreateTablet RPC: " << yb::ToString(*req);
   TRACE_EVENT1("tserver", "CreateTablet",
                "tablet_id", req->tablet_id());
 
@@ -1125,6 +1126,7 @@ void TabletServiceAdminImpl::AddTableToTablet(
   if (!tablet) {
     return;
   }
+  DVLOG(3) << "Received AddTableToTablet RPC: " << yb::ToString(*req);
 
   tserver::ChangeMetadataRequestPB change_req;
   *change_req.mutable_add_table() = req->add_table();
