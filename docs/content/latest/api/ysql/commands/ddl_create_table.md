@@ -87,6 +87,14 @@ Using this qualifier will create a temporary table. Temporary tables are only vi
 
 The `SPLIT INTO` clause specifies the number of tablets that will be created for the table. This is useful for two data center (2DC) deployments. See example below: [Create CDC table specifying number of tablets](#create-cdc-table-specifying-number-of-tablets).
 
+### Colocated
+
+For colocated databases, specify `false` to opt this table out of colocation. This means that the table won't be stored on the same tablet as the
+rest of the tables for this database, but instead, will have its own set of tablets.
+Use this option for large tables that need to be scaled out.
+See [colocated tables architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) for more details on when colocation is useful.
+Note that `colocated = true` has no effect if the database is not colocated.
+
 ### Storage parameters
 
 Storage parameters [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS) are ignored and only present for compatibility with PostgreSQL.
@@ -218,6 +226,16 @@ This is useful for two data center (2DC) deployments that require identical numb
 ```postgresql
 yugabyte=# CREATE TABLE tracking (id int PRIMARY KEY) SPLIT (INTO 10 TABLETS);
 ```
+
+### Opt table out of colocation
+
+```postgresql
+yugabyte=# CREATE DATABASE company WITH colocated = true;
+
+yugabyte=# CREATE DATABASE employee(id INT PRIMARY KEY, name TEXT) WITH (colocated = false);
+```
+
+In this example, database `company` is colocated and all its tables other than `employee` table are stored on a single tablet.
 
 ## See also
 
