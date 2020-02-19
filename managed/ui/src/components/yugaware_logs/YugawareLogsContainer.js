@@ -2,7 +2,7 @@
 
 import { connect } from 'react-redux';
 import { YugawareLogs } from '../yugaware_logs';
-import { reduxForm, SubmissionError } from 'redux-form';
+import { reduxForm } from 'redux-form';
 import { getLogs, getLogsSuccess, getLogsFailure } from '../../actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
@@ -11,8 +11,9 @@ const mapDispatchToProps = (dispatch) => {
       return dispatch(getLogs()).then((response) => {
         if (response.payload.status !== 200) {
           dispatch(getLogsFailure(response.payload));
-          const error = response.payload.data.error;
-          throw new SubmissionError(error);
+          const payload = response.payload;
+          const error  = payload.data ? payload.data.error : payload;
+          console.error(error);
         } else {
           dispatch(getLogsSuccess(response.payload));
         }
@@ -23,7 +24,9 @@ const mapDispatchToProps = (dispatch) => {
 
 function mapStateToProps(state) {
   return {
-    customer: state.customer
+    currentCustomer: state.customer.currentCustomer,
+    yugawareLogs: state.customer.yugaware_logs,
+    logError: state.customer.yugawareLogError
   };
 }
 
