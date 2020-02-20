@@ -2,45 +2,44 @@
 title: YCSB
 linkTitle: YCSB
 description: YCSB
-image: /images/section_icons/architecture/concepts.png
 headcontent: Benchmark YugabyteDB using YCSB.
 menu:
   latest:
-    identifier: ycsb-ycql
+    identifier: ycsb-2-ycql
     parent: benchmark
-    weight: 740
+    weight: 5
 aliases:
   - /benchmark/ycsb/
 showAsideToc: true
 isTocNested: true
 ---
 
-{{< note title="Note" >}}
-
-For more information about YCSB see: 
-
-* YCSB Wiki: https://github.com/brianfrankcooper/YCSB/wiki
-* Workload info: https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads
-
-{{< /note >}}
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/benchmark/ycsb" class="nav-link">
+    <a href="/latest/benchmark/ycsb-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/benchmark/ycsb-ycql" class="nav-link active">
+    <a href="/latest/benchmark/ycsb-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
 
 </ul>
+
+{{< note title="Note" >}}
+
+For more information about YCSB, see: 
+
+* YCSB Wiki: https://github.com/brianfrankcooper/YCSB/wiki
+* Workload info: https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads
+
+{{< /note >}}
 
 ## Step 1. Download the YCSB binaries
 
@@ -59,7 +58,7 @@ Start the database using steps mentioned here: https://docs.yugabyte.com/latest/
 
 ## Step 3. Configure your database
 
-Create the database and table using the `cqlsh` tool.
+Create the catabase and table using the `cqlsh` tool.
 The cqlsh tool is distributed as part of the database package.
 
 ```sh
@@ -69,7 +68,7 @@ bin/cqlsh <ip> --keyspace ycsb --execute 'create table usertable (y_id varchar p
 
 ## Step 4. Configure YCSB connection properties
 
-Set the following connection configurations in db.properties:
+Set the following connection configurations in `db.properties`:
 
 ```sh
 hosts=<ip>
@@ -82,7 +81,7 @@ parameters, etc. are described in detail at [this page](https://github.com/yugab
 
 ## Step 5. Running the workload
 
-Before starting the workload, you will need to "load" the data first.
+Before starting the workload, you will need to load the data first.
 
 ```sh
 bin/ycsb load yugabyteCQL -P yugabyteCQL/db.properties -P workloads/workloada
@@ -94,7 +93,7 @@ Then, you can run the workload:
 bin/ycsb run yugabyteCQL -P yugabyteCQL/db.properties -P workloads/workloada
 ```
 
-To run the other workloads, say workloadb, all we need to do is change that argument in the above command.
+To run the other workloads (for example, `workloadb`), all we need to do is change that argument in the above command.
 
 ```sh
 bin/ycsb run yugabyteCQL -P yugabyteCQL/db.properties -P workloads/workloadb

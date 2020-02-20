@@ -1,63 +1,84 @@
 ---
-title: Performance
-linkTitle: Performance
-description: Performance
-image: /images/section_icons/architecture/concepts.png
-headcontent: Test the performance of YugabyteDB for various workloads.
+title: Key-value workload
+linkTitle: Key-value workload
+description: Key-value workload
+image: /images/section_icons/explore/high_performance.png
+headcontent: Test YugabyteDB performance with a key-value workload.
 menu:
   latest:
-    identifier: benchmark-performance
+    identifier: key-value-workload-1-ysql
     parent: benchmark
-    weight: 720
+    weight: 6
 aliases:
-  - /benchmark/performance/
-showAsideToc: True
-isTocNested: True
+  - /latest/benchmark/performance/
+showAsideToc: true
+isTocNested: true
 ---
 
-## Goal
+<ul class="nav nav-tabs-alt nav-tabs-yb">
 
-The goal of this benchmark is to get an idea of the performance of YugabyteDB using a key-value workload.
+  <li >
+    <a href="/latest/benchmark/key-value-workload-ysql" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/benchmark/key-value-workload-ycql" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+
+</ul>
+
+Use this benchmark to test the performance of YugabyteDB using a key-value workload.
 
 ## Recommended configuration
 
 ### Cluster configuration
 
-For this benchmark, we will setup a 3-node cluster with a replication factor of 3.
+For this benchmark, we will setup a three-node YugabyteDB cluster with a replication factor of `3`.
 
 ### Machine configuration
 
-* Amazon Web Services
+- Amazon Web Services (AWS)
 
-  * Instance type: i3.4xlarge
-  * Disks: 2 x 1.9 TB NVMe SSDs (comes pre-configured with the instance)
+  - Instance type: i3.4xlarge
+  - Storage: 2 x 1.9 TB NVMe SSD (comes preconfigured with the instance)
 
-* Google Cloud Platform
+- Google Cloud Platform (GCP)
 
-  * Instance type: n1-standard-16
-  * Disks: 2 x 375 GB SSDs
+  - Instance type: n1-standard-16
+  - Storage: 2 x 375 GB SSD
 
-* On-Premises Datacenter
+- On-premise data center
 
-  * Instance: 16 CPU cores
-  * Disk size: 1 x 200 GB SSD (minimum)
-  * RAM size: 30 GB (minimum)
+  - Instance: 16 CPU cores
+  - Storage: 1 x 200 GB SSD (minimum)
+  - RAM size: 30 GB (minimum)
 
 ### Benchmark tool
 
-We will use the `yb-sample-apps.jar` tool to perform this benchmark. You can get it from [this GitHub repository](https://github.com/yugabyte/yb-sample-apps) as shown below.
+We will use the [YugabyteDB Workload Generator](https://github.com/yugabyte/yb-sample-apps) to perform this benchmark. 
+
+To get the tool (``yb-sample-apps.jar`), run the following command.
 
 ```sh
 $ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
-You would need to install java in order to run this tool. Also export the environment variable  $ENDPOINTS containing the IP addresses (plus port) for the nodes of the cluster.
+To run the workload generator tool, you must have:
+
+- Java runtime or JDK installed.
+- Set the environment variable  $ENDPOINTS to the IP addresses (including hosts and ports) for the nodes of the cluster.
 
 ```
 ENDPOINTS="X.X.X.X:9042,X.X.X.X:9042,X.X.X.X:9042"
 ```
 
-## Write-heavy KV workload
+## Run the write-heavy key-value workload
 
 Run the key-value workload with higher number of write threads (representing write-heavy workload).  
 
@@ -82,11 +103,11 @@ Write Ops/sec | ~90k
 Read Latency | ~2.5-3.0 ms/op
 CPU (User + Sys) | 60%
 
-## Read-heavy KV workload
+## Run the read-heavy key-value workload
 
 Run the key-value workload with higher number of read threads (representing read-heavy workload).
 
-Load 1M keys of 256 bytes and access them with 256 reader threads
+Load 1M keys of 256 bytes and access them with 256 reader threads.
 
 ```sh
 $ java -jar ./yb-sample-apps.jar  \
@@ -111,7 +132,7 @@ CPU (User + Sys) | 60%
 
 Run the key-value workload in batch mode and higher number of write threads (representing batched, write-heavy workload).  
 
-Load 1B keys of 256 bytes each across 64 writer threads in batches of 25 each
+Load 1B keys of 256 bytes each across 64 writer threads in batches of 25 each.
 
 ```sh
 $ java -jar ./yb-sample-apps.jar      \

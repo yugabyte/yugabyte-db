@@ -1,25 +1,39 @@
 ---
-title: TPCC
-linkTitle: TPCC
-description: TPCC
-image: /images/section_icons/architecture/concepts.png
-headcontent: Benchmark YugabyteDB using TPCC.
+title: TPC-C
+linkTitle: TPC-C
+description: TPC-C
+headcontent: Benchmark YugabyteDB using TPC-C
 menu:
   latest:
-    identifier: benchmark-tpcc
+    identifier: tpcc-1-ysql
     parent: benchmark
-    weight: 740
+    weight: 4
 aliases:
   - /benchmark/tpcc/
-showAsideToc: True
-isTocNested: True
+showAsideToc: true
+isTocNested: true
 ---
 
-This page shows you how to run TPCC against YugabyteDB.
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/benchmark/tpcc-ysql/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+  <li >
+    <a href="/latest/benchmark/tpcc-ycql/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+</ul>
 
-## Step 1. Download the TPCC binaries.
+Follow the steps below to to run TPC-C benchmarks against YugabyteDB for YSQL. [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either either executed online or queued for deferred execution.
 
-You can do this by running the following commands.
+## Step 1. Download the TPC-C binaries
+
+To download the TPC-C binaries, run the following commands.
 
 ```sh
 cd $HOME
@@ -29,10 +43,12 @@ cd tpcc
 ```
 
 ## Step 2. Start your database
-Start the database using steps mentioned [here](https://docs.yugabyte.com/latest/quick-start/explore-ysql/).
+
+Start the database using steps mentioned here: https://docs.yugabyte.com/latest/quick-start/explore-ysql/.
 
 ## Step 3. Configure connection properties
-Set the following connection configurations in the workload config file `config/workload_1.xml`.
+
+Set the following connection configurations in the workload configuration file (`config/workload_1.xml`).
 
 ```sh
 <!-- Connection details -->
@@ -44,11 +60,12 @@ Set the following connection configurations in the workload config file `config/
 <isolation>TRANSACTION_REPEATABLE_READ</isolation>
 ```
 
-The details of the workloads have already been populated in the sample configs present in /config.
-The workload descriptor works the same way as it does in the upstream branch and details can be found in the associated [documentation](https://github.com/oltpbenchmark/oltpbench/wiki).
+The details of the workloads have already been populated in the sample configuration files located in the `/config` directory.
+The workload descriptor works the same way as it does in the upstream branch and details can be found in the [online documentation](https://github.com/oltpbenchmark/oltpbench/wiki).
 
-## Step 4. Running the Benchmark
-A utility script (./tpccbenchmark) is provided for running the benchmark. The options are
+## Step 4. Running the TPC-C benchmark
+
+Use the provide utility script (`./tpccbenchmark`) to run the TPC-C benchmark. Available options are:
 
 ```
 -c,--config &lt;arg&gt;            [required] Workload configuration file
@@ -65,13 +82,13 @@ A utility script (./tpccbenchmark) is provided for running the benchmark. The op
 -v,--verbose                       Display Messages
 ```
 
-Before starting the workload, you will need to "load" the data first.
+Before starting the workload, you will need to load the data first.
 
 ```sh
 ./tpccbenchmark -c config/workload_1.xml --create=true --load=true
 ```
 
-Then, you can run the workload:
+Then, you can run the workload.
 
 ```sh
 ./tpccbenchmark -c config/workload_1.xml --execute=true -s 5 -o outputfile
@@ -83,14 +100,15 @@ You can also load and run the benchmark in a single step:
 ./tpccbenchmark -c config/workload_1.xml --create=true --load=true --execute=true -s 5 -o outputfile
 ```
 
-The config directory has a few configurations for the various workloads. We can run any of those workloads by changing the configuration file.
+The `config` directory has different configurations for various workloads. You can run any of those workloads by changing the configuration file.
 
 ```sh
 ./tpccbenchmark -c config/workload_2.xml --create=true --load=true --execute=true -s 5 -o outputfile
 ```
 
 ## Output
-The raw output is a listing of start time (in java microseconds) and duration (micro seconds) for each transaction type.
+
+The raw output is a listing of start time (in java microseconds) and duration (microseconds) for each transaction type.
 
 ```
 transaction type (index in config file), start time (microseconds),latency (microseconds)
@@ -103,7 +121,7 @@ transaction type (index in config file), start time (microseconds),latency (micr
 4,1323686190.075342,1904
 ```
 
-To obtain transaction per second (TPs), you can aggregate the results into windows using the -s 1 option. The throughput and different latency measures in milliseconds are reported:
+To obtain transactions per second (TPs), you can aggregate the results into windows using the `-s 1` option. The throughput and different latency measures in milliseconds are reported.
 
 ```
 time (seconds),throughput (requests/s),average,min,25th,median,75th,90th,95th,99th,max

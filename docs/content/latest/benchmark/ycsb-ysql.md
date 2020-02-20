@@ -2,45 +2,45 @@
 title: YCSB
 linkTitle: YCSB
 description: YCSB
-image: /images/section_icons/architecture/concepts.png
 headcontent: Benchmark YugabyteDB using YCSB.
 menu:
   latest:
-    identifier: ycsb
+    identifier: ycsb-1-ysql
     parent: benchmark
-    weight: 740
+    weight: 5
 aliases:
   - /benchmark/ycsb/
-showAsideToc: True
-isTocNested: True
+showAsideToc: true
+isTocNested: true
 ---
-
-{{< note title="Note" >}}
-
-For more information about YCSB see: 
-
-* YCSB Wiki: https://github.com/brianfrankcooper/YCSB/wiki
-* Workload info: https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads
-
-{{< /note >}}
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/benchmark/ycsb" class="nav-link active">
+    <a href="/latest/benchmark/ycsb-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/benchmark/ycsb-ycql" class="nav-link">
+    <a href="/latest/benchmark/ycsb-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
 
 </ul>
+
+{{< note title="Note" >}}
+
+For more information about YCSB, see: 
+
+* YCSB Wiki: https://github.com/brianfrankcooper/YCSB/wiki
+* Workload info: https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads
+
+{{< /note >}}
+
 
 ## Step 1. Download the YCSB binaries
 
@@ -54,10 +54,12 @@ cd YCSB
 ```
 
 ## Step 2. Start your database
+
 Start the database using steps mentioned here: https://docs.yugabyte.com/latest/quick-start/explore-ysql/.
 
 ## Step 3. Configure your database
-Create the Database and table using the ysqlsh tool.
+
+Create the database and table using the `ysqlsh` tool.
 The ysqlsh tool is distributed as part of the database package.
 
 ```sh
@@ -67,7 +69,7 @@ bin/ysqlsh -h <ip> -d ycsb -c 'CREATE TABLE usertable (YCSB_KEY VARCHAR(255) PRI
 
 ## Step 4. Configure YCSB connection properties
 
-Set the following connection configurations in db.properties:
+Set the following connection configurations in `db.properties`:
 
 ```sh
 db.driver=org.postgresql.Driver
@@ -80,7 +82,7 @@ The other configuration parameters, are described in detail at [this page](https
 
 ## Step 5. Running the workload
 
-Before starting the workload, you will need to "load" the data first.
+Before starting the workload, you will need to load the data first.
 
 ```sh
 bin/ycsb load yugabyteSQL -P yugabyteSQL/db.properties -P workloads/workloada
@@ -92,7 +94,7 @@ Then, you can run the workload:
 bin/ycsb run yugabyteSQL -P yugabyteSQL/db.properties -P workloads/workloada
 ```
 
-To run the other workloads, say workloadb, all we need to do is change that argument in the above command.
+To run the other workloads (for example, `workloadb`), all you need to do is change that argument in the above command.
 
 ```sh
 bin/ycsb run yugabyteSQL -P yugabyteSQL/db.properties -P workloads/workloadb
