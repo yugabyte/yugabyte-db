@@ -1,7 +1,7 @@
 # SPEC file for pg_store_plans
 # Copyright(C) 2020 NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 
-%define _pgdir   /usr/pgsql-11
+%define _pgdir   /usr/pgsql-12
 %define _bindir  %{_pgdir}/bin
 %define _libdir  %{_pgdir}/lib
 %define _datadir %{_pgdir}/share
@@ -14,8 +14,8 @@
 %endif
 
 ## Set general information for pg_store_plans.
-Summary:    Optimizer hint on PostgreSQL 11
-Name:       pg_hint_plan11
+Summary:    Optimizer hint on PostgreSQL 12
+Name:       pg_hint_plan12
 Version:    1.3.4
 Release:    1%{?dist}
 License:    BSD
@@ -26,8 +26,8 @@ BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-%(%{__id_u} -n)
 Vendor:     NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 
 ## We use postgresql-devel package
-BuildRequires:  postgresql11-devel
-Requires:  postgresql11-server
+BuildRequires:  postgresql12-devel
+Requires:  postgresql12-server
 
 ## Description for "pg_hint_plan"
 %description
@@ -35,19 +35,19 @@ Requires:  postgresql11-server
 pg_hint_plan provides capability to tweak execution plans to be
 executed on PostgreSQL.
 
-Note that this package is available for only PostgreSQL 11.
+Note that this package is available for only PostgreSQL 12.
 
 %package llvmjit
-Requires: postgresql11-server, postgresql11-llvmjit
-Requires: pg_hint_plan11 = 1.3.4
-Summary:  Just-in-time compilation support for pg_hint_plan11
+Requires: postgresql12-server, postgresql12-llvmjit
+Requires: pg_hint_plan12 = 1.3.4
+Summary:  Just-in-time compilation support for pg_hint_plan12
 
 %description llvmjit
-Just-in-time compilation support for pg_hint_plan11
+Just-in-time compilation support for pg_hint_plan12
 
 ## pre work for build pg_hint_plan
 %prep
-PATH=/usr/pgsql-11/bin:$PATH
+PATH=/usr/pgsql-12/bin:$PATH
 if [ "${MAKE_ROOT}" != "" ]; then
   pushd ${MAKE_ROOT}
   make clean %{name}-%{version}.tar.gz
@@ -58,7 +58,7 @@ if [ ! -d %{_rpmdir} ]; then mkdir -p %{_rpmdir}; fi
 
 ## Set variables for build environment
 %build
-PATH=/usr/pgsql-11/bin:$PATH
+PATH=/usr/pgsql-12/bin:$PATH
 make USE_PGXS=1 %{?_smp_mflags}
 
 ## Set variables for install
