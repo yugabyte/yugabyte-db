@@ -9,8 +9,6 @@ menu:
     identifier: key-value-workload-1-ysql
     parent: benchmark
     weight: 6
-aliases:
-  - /latest/benchmark/performance/
 showAsideToc: true
 isTocNested: true
 ---

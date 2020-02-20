@@ -4,6 +4,9 @@ linkTitle: Key-value workload
 description: Key-value workload
 image: /images/section_icons/explore/high_performance.png
 headcontent: Test YugabyteDB performance with a key-value workload.
+aliases:
+  - /latest/benchmark/performance/
+  - /latest/benchmark/key-value-workload
 menu:
   latest:
     identifier: key-value-workload-2-ycql
