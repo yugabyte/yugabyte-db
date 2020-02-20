@@ -124,7 +124,7 @@ std::atomic<int32_t> remote_bootstrap_clients_started_{0};
 
 RemoteBootstrapClient::RemoteBootstrapClient(std::string tablet_id, FsManager* fs_manager)
     : tablet_id_(std::move(tablet_id)),
-      log_prefix_(Format("T $0 P$ 1: Remote bootstrap client: ", tablet_id_, fs_manager->uuid())),
+      log_prefix_(Format("T $0 P $1: Remote bootstrap client: ", tablet_id_, fs_manager->uuid())),
       downloader_(&log_prefix_, fs_manager) {
   AddComponent<RemoteBootstrapSnapshotsComponent>();
 }
