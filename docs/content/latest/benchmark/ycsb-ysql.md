@@ -52,14 +52,14 @@ $ tar -zxvf ycsb.tar.gz
 $ cd YCSB
 ```
 
-## Step 2. Start your database
+## Step 2. Start YugabyteDB
 
-Start the database using steps mentioned here: https://docs.yugabyte.com/latest/quick-start/explore-ysql/.
+Start your YugabyteDB cluster by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/explore-ysql/).
 
 ## Step 3. Configure your database
 
 Create the database and table using the `ysqlsh` tool.
-The ysqlsh tool is distributed as part of the database package.
+The `ysqlsh` tool is distributed as part of the database package.
 
 ```sh
 $ ./bin/ysqlsh -h <ip> -c 'create database ycsb;'
