@@ -52,7 +52,8 @@ The sections below cover the experimental setup and the details of the read and 
   - 60 GB RAM
   - 2 x 375 GB direct attached SSD
 - Replication factor (RF) = `3`
-- YugabyteDB version: 0.9.1.0. All configuration options are default on the YugabyteDB nodes.
+- YugabyteDB version: `0.9.1.0`. All configuration options are default on the YugabyteDB nodes.
+
 The workload was generated using a multi-threaded Cassandra key-value sample application that was run from `n1-highcpu-32` machines. The key and value sizes used were 40 and 16 bytes, respectively.
 
 ### Reads
@@ -77,7 +78,7 @@ The two graphs below show the corresponding CPU and memory (RAM) usage during th
 
 ### Writes
 
-YugabyteDB performs strongly consistent writes, with a replication factor of 3 in this case. Here is detailed information of the write IO path in our docs. Below is the summary of the performance metrics observed during a 100% write workload:
+YugabyteDB performs strongly consistent writes, with a replication factor (RF) of `3` in this case. Here is detailed information of the write IO path in our docs. Below is the summary of the performance metrics observed during a 100% write workload:
 
 - **1.2 million write operations per second**, sum across the YugabyteDB nodes.
 - 3.1 millisecond average latency per write operation on the server side.
@@ -93,10 +94,10 @@ The two graphs below are the corresponding CPU and RAM usage for those twelve ho
 
 #### 50-node cluster — CPU and memory during the write benchmark
 
-Note that these writes are the logical writes that the application issued. Each write is replicated three times internally by the database using the [Raft protocol](https://raft.github.io/) since the replication factor (RF) is `3`.
+Note that these writes are the logical writes that the application issued. Each write is replicated three times internally by the database using the [Raft consensus protocol](https://raft.github.io/) based on the replication factor (RF) of `3`.
 
 ![CPU usage](/images/benchmark/scalability/cpu-usage-writes-ycql.png)
 
 ## Next steps
 
-If you follow the same steps outlined above, you can visit our [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) GitHub repository to try out more experiments on your own local setups. After you set up a local cluster and test your favorite application, share your feedback and suggestions with the [YugabyteDB Slack community](yugabyte-db.slack.com).
+By following the same steps outlined above, you can visit our [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) GitHub repository to try out more experiments on your own local setups. After you set up a local cluster and test your favorite application, share your feedback and suggestions with the [YugabyteDB Slack community](yugabyte-db.slack.com).

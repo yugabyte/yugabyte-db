@@ -43,7 +43,7 @@ While YugabyteDB can be deployed across multiple availability zones or regions, 
 - **Region:** Oregon (`us-west-2`)
 - **Zone:** `us-west-2a`
 - **Number of nodes:** 100
-- **Instance type:** [c5.4xlarge](https://aws.amazon.com/ec2/instance-types/c5/) (16 vCPUs)
+- **Instance type:** [`c5.4xlarge`](https://aws.amazon.com/ec2/instance-types/c5/) (16 vCPUs)
 - **Disk on each node:** 1TB EBS SSD (`gp2`)
 - **Replication Factor (RF):** `3`
 - **Consistency level:** Strong consistency for both writes and reads
