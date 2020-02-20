@@ -5,7 +5,7 @@ description: TPC-C
 headcontent: Benchmark YugabyteDB using TPC-C
 menu:
   latest:
-    identifier: tpcc-1-ysql
+    identifier: tpcc-ysql
     parent: benchmark
     weight: 4
 aliases:
@@ -15,18 +15,14 @@ isTocNested: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
   <li >
     <a href="/latest/benchmark/tpcc-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
-  <li >
-    <a href="/latest/benchmark/tpcc-ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
+
 </ul>
 
 Follow the steps below to to run TPC-C benchmarks against YugabyteDB for YSQL. [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either either executed online or queued for deferred execution.

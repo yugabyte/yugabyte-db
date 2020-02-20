@@ -9,7 +9,7 @@ aliases:
   - /latest/benchmark/key-value-workload
 menu:
   latest:
-    identifier: key-value-workload-2-ycql
+    identifier: key-value-workload-1-ycql
     parent: benchmark
     weight: 6
 showAsideToc: true
