@@ -1,7 +1,7 @@
 ---
 title: YSQL
 linkTitle: YSQL
-description: YugabyteDB Structured Query Language (YSQL)
+description: Yugabyte Structured Query Language (YSQL)
 summary: Reference for the YSQL API
 image: /images/section_icons/api/ysql.png
 menu:

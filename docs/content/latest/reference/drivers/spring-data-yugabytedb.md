@@ -2,7 +2,7 @@
 title: Spring Data YugabyteDB
 linkTitle: Spring Data YugabyteDB
 description: Spring Data YugabyteDB
-beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
+beta: /faq/general/#what-is-the-definition-of-the-beta-feature-tag
 section: REFERENCE
 menu:
   latest:
