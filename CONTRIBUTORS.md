@@ -12,3 +12,4 @@ People who contributed to hypopg:
   * Joel Van Horn
   * Michael Lroll
   * Godwottery
+  * Jan Koßmann

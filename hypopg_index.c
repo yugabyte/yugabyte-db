@@ -1319,7 +1319,7 @@ hypopg_relation_size(PG_FUNCTION_ARGS)
 		}
 	}
 
-	PG_RETURN_INT64(pages * BLCKSZ);
+	PG_RETURN_INT64(pages * 1.0L * BLCKSZ);
 }
 
 /*
