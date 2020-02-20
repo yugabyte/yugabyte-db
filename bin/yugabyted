@@ -1027,8 +1027,7 @@ class ControlScript(object):
                 "{} crashed. For troubleshooting, contact us on {} or check our FAQ at {}".format(
                     SCRIPT_NAME, Output.make_underline(SLACK_LINK),
                     Output.make_underline(HELP_LINK)))
-            Output.log(traceback.format_exc(), logging.ERROR)
-            sys.exit(1)
+            Output.log_error_and_exit(traceback.format_exc())
 
     def advertise_ip(self):
         bind_ip = self.configs.saved_data.get("bind_ip")
