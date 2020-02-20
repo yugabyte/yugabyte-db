@@ -2,7 +2,7 @@
 title: YugabyteDB JDBC Driver
 linkTitle: YugabyteDB JDBC Driver
 description: YugabyteDB JDBC Driver
-beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
+beta: /faq/general/#what-is-the-definition-of-the-beta-feature-tag
 section: REFERENCE
 menu:
   latest:

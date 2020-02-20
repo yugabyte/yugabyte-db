@@ -2,7 +2,7 @@
 title: Change data capture (CDC)
 linkTitle: Change data capture (CDC)
 description: Change data capture (CDC)
-beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
+beta: /faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
     parent: architecture

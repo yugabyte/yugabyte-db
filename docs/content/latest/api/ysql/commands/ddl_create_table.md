@@ -89,11 +89,16 @@ The `SPLIT INTO` clause specifies the number of tablets that will be created for
 
 ### Colocated
 
-For colocated databases, specify `false` to opt this table out of colocation. This means that the table won't be stored on the same tablet as the
-rest of the tables for this database, but instead, will have its own set of tablets.
-Use this option for large tables that need to be scaled out.
-See [colocated tables architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) for more details on when colocation is useful.
-Note that `colocated = true` has no effect if the database is not colocated.
+{{< note title="Note" >}}
+
+This feature is currently in [Beta](../../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+
+{{< /note >}}
+
+For colocated databases, specify `false` to opt this table out of colocation. This means that the table won't be stored on the same tablet as the rest of the tables for this database, but instead, will have its own set of tablets.
+Use this option for large tables that need to be scaled out. See [colocated tables architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) for more details on when colocation is useful.
+
+Note that `colocated = true` has no effect if the database that this table is part of is not colocated since colocation today is supported only at the database level.
 
 ### Storage parameters
 

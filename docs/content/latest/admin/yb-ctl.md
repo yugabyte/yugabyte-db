@@ -183,10 +183,7 @@ Timeout, in seconds, for operations that wait on the cluster.
 ##### --verbose
 
 Flag to log internal debug messages to `stderr`.
-  
-##### --install-if-needed
 
-With this option, if YugabyteDB is not yet installed on the system, the latest version will be downloaded and installed automatically.
 
 ## Create a local cluster
 
