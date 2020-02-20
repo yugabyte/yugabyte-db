@@ -9,8 +9,6 @@ menu:
     
     parent: benchmark
     weight: 4
-aliases:
-  - /benchmark/tpcc/
 showAsideToc: true
 isTocNested: true
 ---

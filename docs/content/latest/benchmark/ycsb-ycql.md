@@ -8,8 +8,6 @@ menu:
     identifier: ycsb-2-ycql
     parent: benchmark
     weight: 5
-aliases:
-  - /benchmark/ycsb/
 showAsideToc: true
 isTocNested: true
 ---

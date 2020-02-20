@@ -9,8 +9,6 @@ menu:
     identifier: large-datasets-2-ysql
     parent: benchmark
     weight: 7
-aliases:
-  - /benchmark/large-datasets/
 showAsideToc: true
 isTocNested: true
 ---
