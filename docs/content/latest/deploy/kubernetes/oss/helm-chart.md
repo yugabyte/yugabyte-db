@@ -31,6 +31,12 @@ showAsideToc: true
       YugabyteDB operator
     </a>
   </li>
+  <li >
+    <a href="/latest/deploy/kubernetes/oss/operator-hub" class="nav-link active">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      Operator Hub
+    </a>
+  </li>
   <li>
     <a href="/latest/deploy/kubernetes/oss/rook-operator" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
