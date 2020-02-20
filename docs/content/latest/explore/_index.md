@@ -90,6 +90,19 @@ Use your [local cluster](../quick-start/) to explore all the core features of Yu
       </div>
     </a>
   </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="colocated-tables/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
+        <div class="title">Colocated tables</div>
+      </div>
+      <div class="body">
+        Model large number of relations and databases with fault tolerance.
+      </div>
+    </a>
+  </div>
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="change-data-capture/">
       <div class="head">
@@ -114,16 +127,4 @@ Use your [local cluster](../quick-start/) to explore all the core features of Yu
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="colocated-tables/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
-        <div class="title">Colocated tables</div>
-      </div>
-      <div class="body">
-        Scale out to large number of relations and databases.
-      </div>
-    </a>
-  </div>
-</div>
 </div>

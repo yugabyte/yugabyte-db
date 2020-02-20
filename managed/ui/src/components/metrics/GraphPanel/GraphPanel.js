@@ -201,7 +201,7 @@ class GraphPanel extends Component {
 
     if (insecureLoginToken && type !== 'proxies') {
       panelData = (<div className="oss-unavailable-warning">
-        Only available on YugaByte Platform.
+        Only available on Yugabyte Platform.
       </div>);
     } else {
       if (Object.keys(metrics).length > 0 && isNonEmptyObject(metrics[type])) {

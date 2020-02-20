@@ -40,6 +40,7 @@ The first thing that happens when a tablet starts up is to elect one of the tabl
 **leader** using the [Raft](https://raft.github.io/) protocol. This tablet leader now becomes
 responsible for processing user-facing write requests. It translates the user-issued writes into
 the document storage layer of DocDB and also replicates among the tablet-peers using Raft to achieve strong consistency.
+
 The set of DocDB updates depends on the user-issued write, and involves locking a set of keys to
 establish a strict update order, and optionally reading the older value to modify and update in case
 of a read-modify-write operation. The Raft log is used to ensure that the database state-machine of
@@ -47,9 +48,7 @@ a tablet is replicated amongst the tablet-peers with strict ordering and correct
 in the face of failures or membership changes. This is essential to achieving strong consistency.
 
 Once the Raft log is replicated to a majority of tablet-peers and successfully persisted on the
-majority, the write is applied into DocDB document storage layer and is subsequently available for reads.  Once the
-write is persisted on disk by the document storage layer, the write entries can be purged from the Raft log. This is
-performed as a controlled background operation without any impact to the foreground operations.
+majority, the write is applied into DocDB document storage layer and is subsequently available for reads.  Once the write is persisted on disk by the document storage layer, the write entries can be purged from the Raft log. This is performed as a controlled background operation without any impact to the foreground operations.
 
 ## Tunable read consistency
 
@@ -59,12 +58,11 @@ guarantees which is desired in some deployment models. All other tablet-peers ar
 and merely replicate data, and are available as hot standbys that can take over quickly in case the
 leader fails.
 
-## read replicas
+## Read replicas
 
 In addition to the core distributed consensus based replication, DocDB extends Raft to add
 read replicas (aks observer nodes) that do not participate in writes but get a timeline consistent
 copy of the data in an asynchronous manner. Nodes in remote data centers can thus be added in "read-only"
 mode. This is primarily for cases where latency of doing a distributed consensus-based write is not
-tolerable for some workloads. This read-only node (or timeline-consistent node) is still strictly better than
-eventual consistency, because with the latter the application's view of the data can move back and
+tolerable for some workloads. This read-only node (or timeline-consistent node) is still strictly better than eventual consistency, because with the latter the application's view of the data can move back and
 forth in time and is hard to program to.

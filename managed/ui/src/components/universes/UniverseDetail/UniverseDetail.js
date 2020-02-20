@@ -491,7 +491,7 @@ class UniverseTaskList extends Component {
     if (isNonEmptyArray(universeTaskHistoryArray)) {
       const errorPlatformMessage = (
         <div className="oss-unavailable-warning">
-          Only available on YugaByte Platform.
+          Only available on Yugabyte Platform.
         </div>
       );
       universeTaskHistory = (
