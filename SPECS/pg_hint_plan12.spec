@@ -16,7 +16,7 @@
 ## Set general information for pg_store_plans.
 Summary:    Optimizer hint on PostgreSQL 12
 Name:       pg_hint_plan12
-Version:    1.3.4
+Version:    1.3.5
 Release:    1%{?dist}
 License:    BSD
 Group:      Applications/Databases
@@ -39,7 +39,7 @@ Note that this package is available for only PostgreSQL 12.
 
 %package llvmjit
 Requires: postgresql12-server, postgresql12-llvmjit
-Requires: pg_hint_plan12 = 1.3.4
+Requires: pg_hint_plan12 = 1.3.5
 Summary:  Just-in-time compilation support for pg_hint_plan12
 
 %description llvmjit
@@ -73,11 +73,7 @@ rm -rf %{buildroot}
 %defattr(0755,root,root)
 %{_libdir}/pg_hint_plan.so
 %defattr(0644,root,root)
-%{_datadir}/extension/pg_hint_plan--1.3.0--1.3.1.sql
-%{_datadir}/extension/pg_hint_plan--1.3.1--1.3.2.sql
-%{_datadir}/extension/pg_hint_plan--1.3.2--1.3.3.sql
-%{_datadir}/extension/pg_hint_plan--1.3.3--1.3.4.sql
-%{_datadir}/extension/pg_hint_plan--1.3.4.sql
+%{_datadir}/extension/pg_hint_plan--1.3.5.sql
 %{_datadir}/extension/pg_hint_plan.control
 
 %files llvmjit
@@ -89,6 +85,8 @@ rm -rf %{buildroot}
 
 # History of pg_hint_plan.
 %changelog
+* Thu Feb 20 2020 Kyotaro Horiguchi
+- Support PostgreSQL 12. Fix some bugs. Version 1.3.5.
 * Thu Jan 17 2019 Kyotaro Horiguchi
 - Fix some bugs. Version 1.3.4.
 * Tue Nov 13 2018 Kyotaro Horiguchi
