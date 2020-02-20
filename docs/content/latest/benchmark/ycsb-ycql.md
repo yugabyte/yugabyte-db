@@ -58,7 +58,7 @@ Start the database using steps mentioned here: https://docs.yugabyte.com/latest/
 
 ## Step 3. Configure your database
 
-Create the catabase and table using the `cqlsh` tool.
+Create the database and table using the `cqlsh` tool.
 The cqlsh tool is distributed as part of the database package.
 
 ```sh
@@ -81,7 +81,7 @@ parameters, etc. are described in detail at [this page](https://github.com/yugab
 
 ## Step 5. Running the workload
 
-Before starting the workload, you will need to load the data first.
+Before starting the `yugabyteCQL` workload, you first need to load the data.
 
 ```sh
 bin/ycsb load yugabyteCQL -P yugabyteCQL/db.properties -P workloads/workloada

@@ -41,16 +41,15 @@ For more information about YCSB, see:
 
 {{< /note >}}
 
-
 ## Step 1. Download the YCSB binaries
 
 You can do this by running the following commands.
 
 ```sh
-cd $HOME
-wget https://github.com/yugabyte/YCSB/releases/download/1.0/ycsb.tar.gz
-tar -zxvf ycsb.tar.gz
-cd YCSB
+$ cd $HOME
+$ wget https://github.com/yugabyte/YCSB/releases/download/1.0/ycsb.tar.gz
+$ tar -zxvf ycsb.tar.gz
+$ cd YCSB
 ```
 
 ## Step 2. Start your database
@@ -63,8 +62,8 @@ Create the database and table using the `ysqlsh` tool.
 The ysqlsh tool is distributed as part of the database package.
 
 ```sh
-bin/ysqlsh -h <ip> -c 'create database ycsb;'
-bin/ysqlsh -h <ip> -d ycsb -c 'CREATE TABLE usertable (YCSB_KEY VARCHAR(255) PRIMARY KEY, FIELD0 TEXT, FIELD1 TEXT, FIELD2 TEXT, FIELD3 TEXT, FIELD4 TEXT, FIELD5 TEXT, FIELD6 TEXT, FIELD7 TEXT, FIELD8 TEXT, FIELD9 TEXT);'
+$ ./bin/ysqlsh -h <ip> -c 'create database ycsb;'
+$ ./bin/ysqlsh -h <ip> -d ycsb -c 'CREATE TABLE usertable (YCSB_KEY VARCHAR(255) PRIMARY KEY, FIELD0 TEXT, FIELD1 TEXT, FIELD2 TEXT, FIELD3 TEXT, FIELD4 TEXT, FIELD5 TEXT, FIELD6 TEXT, FIELD7 TEXT, FIELD8 TEXT, FIELD9 TEXT);'
 ```
 
 ## Step 4. Configure YCSB connection properties
@@ -82,20 +81,20 @@ The other configuration parameters, are described in detail at [this page](https
 
 ## Step 5. Running the workload
 
-Before starting the workload, you will need to load the data first.
+Before starting the `yugabyteSQL` workload, you will need to load the data first.
 
 ```sh
-bin/ycsb load yugabyteSQL -P yugabyteSQL/db.properties -P workloads/workloada
+$ ./bin/ycsb load yugabyteSQL -P yugabyteSQL/db.properties -P workloads/workloada
 ```
 
 Then, you can run the workload:
 
 ```sh
-bin/ycsb run yugabyteSQL -P yugabyteSQL/db.properties -P workloads/workloada
+$ ./bin/ycsb run yugabyteSQL -P yugabyteSQL/db.properties -P workloads/workloada
 ```
 
 To run the other workloads (for example, `workloadb`), all you need to do is change that argument in the above command.
 
 ```sh
-bin/ycsb run yugabyteSQL -P yugabyteSQL/db.properties -P workloads/workloadb
+$ ./bin/ycsb run yugabyteSQL -P yugabyteSQL/db.properties -P workloads/workloadb
 ```
