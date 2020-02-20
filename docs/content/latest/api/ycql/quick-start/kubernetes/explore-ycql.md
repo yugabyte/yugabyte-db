@@ -2,9 +2,8 @@
 * Run cqlsh to connect to the service.
 
 ```sh
-$ kubectl exec -it yb-tserver-0 /home/yugabyte/bin/cqlsh
+$ kubectl exec -it yb-tserver-0 /home/yugabyte/bin/cqlsh yb-tserver-0
 ```
-
 ```
 Connected to local cluster at 127.0.0.1:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
