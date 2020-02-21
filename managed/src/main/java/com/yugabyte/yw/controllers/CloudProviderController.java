@@ -636,6 +636,10 @@ public class CloudProviderController extends AuthenticatedController {
         if (contents != null) {
           config = Json.fromJson(contents, Map.class);
         }
+        contents = configNode.get("project_id");
+        if (contents != null && !contents.textValue().isEmpty()) {
+          config.put("project_id", contents.textValue());
+        }
       } else {
         config = Json.fromJson(configNode, Map.class);
       }
