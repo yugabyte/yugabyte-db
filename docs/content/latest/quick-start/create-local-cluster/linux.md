@@ -19,14 +19,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/macos" class="nav-link active">
+    <a href="/latest/quick-start/create-local-cluster/macos" class="nav-link ">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/linux" class="nav-link">
+    <a href="/latest/quick-start/create-local-cluster/linux" class="nav-link active">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
@@ -51,9 +51,9 @@ showAsideToc: true
 
 ## 1. Create a local cluster
 
-You can use the [`yb-ctl`](../../admin/yb-ctl/) utility, located in the `bin` directory of the YugabyteDB package, to create and administer a local cluster. The default data directory is `$HOME/yugabyte-data`. You can change the location of the data directory by using the [`--data_dir` configuration option](../../admin/yb-ctl/#data-dir).
+You can use the [`yb-ctl`](../../../admin/yb-ctl/) utility, located in the `bin` directory of the YugabyteDB package, to create and administer a local cluster. The default data directory is `$HOME/yugabyte-data`. You can change the location of the data directory by using the [`--data_dir`](../../../admin/yb-ctl/#data-dir) configuration option.
 
-To quickly create a 1-node or 3-node local cluster, follow the steps below. For details on using the `yb-ctl create` command and the cluster configuration, see [Create a local cluster](../../admin/yb-ctl/#create-cluster) in the utility reference.
+To quickly create a 1-node or 3-node local cluster, follow the steps below. For details on using the `yb-ctl create` command and the cluster configuration, see [Create a local cluster](../../../admin/yb-ctl/#create-cluster) in the utility reference.
 
 ### Create a 1-node cluster with RF of 1
 
@@ -83,7 +83,7 @@ To see the `yb-master` and `yb-tserver` processes running locally, run the `yb-c
 
 ### Example
 
-For a 1-node cluster, the `yb-ctl status` command will show that you have 1 `yb-master` process and 1 `yb-tserver` process running on the localhost. For details about the roles of these processes in a YugabyteDB cluster (aka Universe), see [Universe](../../architecture/concepts/universe/).
+For a 1-node cluster, the `yb-ctl status` command will show that you have 1 `yb-master` process and 1 `yb-tserver` process running on the localhost. For details about the roles of these processes in a YugabyteDB cluster (aka Universe), see [Universe](../../../architecture/concepts/universe/).
 
 ```sh
 $ ./bin/yb-ctl status
@@ -115,7 +115,7 @@ $ ./bin/yb-ctl status
 
 ## 3. Check cluster status with Admin UI
 
-Node 1's [YB-Master Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at `http://127.0.0.1:7000` and the [YB-TServer Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at `http://127.0.0.1:9000`. If you created a multi-node cluster, you can visit the other nodes' Admin UIs by using their corresponding IP addresses.
+Node 1's [YB-Master Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at `http://127.0.0.1:7000` and the [YB-TServer Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at `http://127.0.0.1:9000`. If you created a multi-node cluster, you can visit the other nodes' Admin UIs by using their corresponding IP addresses.
 
 ### Overview and YB-Master status
 

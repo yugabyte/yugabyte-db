@@ -79,7 +79,7 @@ showAsideToc: true
     - CentOS: `yum install curl`
     - Ubuntu: `apt install curl`
 
-## Download
+## Download YugabyteDB
 
 1. Download the YugabyteDB package using the following `wget` command.
 
@@ -93,7 +93,7 @@ showAsideToc: true
     $ tar xvfz yugabyte-2.0.11.0-linux.tar.gz && cd yugabyte-2.0.11.0/
     ```
 
-## Configure
+## Configure YugabyteDB
 
 To configure YugabyteDB, run the following shell script.
 
