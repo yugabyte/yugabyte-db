@@ -1,14 +1,14 @@
 ---
 title: Checklist
-linkTitle: Checklist
+linkTitle: Contribution checklist
 description: Checklist
 image: /images/section_icons/index/quick_start.png
 headcontent: Checklist for contributing to the core database.
 type: page
 menu:
   latest:
-    identifier: contribute-db-core-checklist
-    parent: contribute-db-core
+    identifier: contribute-checklist
+    parent: core-database
     weight: 2911
 isTocNested: true
 showAsideToc: true
