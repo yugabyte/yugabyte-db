@@ -30,8 +30,8 @@ class NodeConnectModal extends Component {
     this.state = { showConnectModal: false };
   }
 
-  toggleConnectModal = () => {
-    this.setState({showConnectModal: !this.state.showConnectModal});
+  toggleConnectModal = (value) => {
+    this.setState({showConnectModal: value});
   };
 
   render() {
@@ -54,12 +54,12 @@ class NodeConnectModal extends Component {
     const btnId = _.uniqueId('node_action_btn_');
     return (
       <Fragment>
-        <MenuItem eventKey={btnId} onClick={this.toggleConnectModal}>
+        <MenuItem eventKey={btnId} onClick={() => this.toggleConnectModal(true)}>
           {label}
         </MenuItem>
         <YBModal title={"Access your node"}
                  visible={this.state.showConnectModal}
-                 onHide={this.toggleConnectModal}
+                 onHide={() => this.toggleConnectModal(false)}
                  showCancelButton={true} cancelLabel={"OK"}>
           <pre className={"node-command"}>
             <code>{privateSSHCommand}</code>
