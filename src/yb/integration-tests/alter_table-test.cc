@@ -174,14 +174,14 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
     return peers[0];
   }
 
-  void ShutdownTS() {
+  void ShutdownTS(int idx = 0) {
     // Drop the tablet_peer_ reference since the tablet peer becomes invalid once
     // we shut down the server. Additionally, if we hold onto the reference,
     // we'll end up calling the destructor from the test code instead of the
     // normal location, which can cause crashes, etc.
     tablet_peer_.reset();
-    if (cluster_->mini_tablet_server(0)->server() != nullptr) {
-      cluster_->mini_tablet_server(0)->Shutdown();
+    if (cluster_->mini_tablet_server(idx)->server() != nullptr) {
+      cluster_->mini_tablet_server(idx)->Shutdown();
     }
   }
 
@@ -924,6 +924,32 @@ TEST_F(ReplicatedAlterTableTest, TestReplicatedAlter) {
 
   LOG(INFO) << "Verifying that the new default shows up";
   VerifyRows(0, kNumRows, C1_IS_DEADBEEF);
+}
+
+TEST_F(ReplicatedAlterTableTest, TestAlterOneTSDown) {
+  const int kNumRows = 100;
+  InsertRows(0, kNumRows);
+
+  LOG(INFO) << "Verifying initial pattern";
+  VerifyRows(0, kNumRows, C1_MATCHES_INDEX);
+
+  ShutdownTS(0);
+  // Now operating with 2 out of 3 servers.  Alter should still work because it's quorum-based.
+
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
+  ASSERT_OK(AddNewI32Column(kTableName, "c1"));
+  ASSERT_OK(AddNewI32Column(kTableName, "new_col"));
+
+  bool alter_in_progress;
+  string table_id;
+  ASSERT_OK(client_->IsAlterTableInProgress(kTableName, table_id, &alter_in_progress));
+  ASSERT_FALSE(alter_in_progress);
+
+  LOG(INFO) << "Verifying that the new default shows up";
+  VerifyRows(0, kNumRows, C1_IS_DEADBEEF);
+
+  RestartTabletServer(0);
 }
 
 }  // namespace yb

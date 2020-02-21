@@ -4162,7 +4162,10 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
   if (tablet_needs_alter) {
     SendAlterTabletRequest(tablet);
   } else if (report.has_schema_version()) {
-    RETURN_NOT_OK(HandleTabletSchemaVersionReport(tablet.get(), report.schema_version()));
+    auto leader = tablet->GetLeader();
+    if (leader.ok() && leader.get()->permanent_uuid() == ts_desc->permanent_uuid()) {
+      RETURN_NOT_OK(HandleTabletSchemaVersionReport(tablet.get(), report.schema_version()));
+    }
   }
 
   return Status::OK();
