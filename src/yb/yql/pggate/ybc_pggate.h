@@ -19,7 +19,6 @@
 
 #include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "yb/yql/pggate/pg_if_c_decl.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -18,11 +18,9 @@ add_subdirectory(util)
 set(PGGATE_SRCS
     ybc_pggate.cc
     pggate.cc
-    pggate_c_wrappers_impl.cc
     pg_session.cc
     pg_statement.cc
     pg_ddl.cc
-    pg_api_example.cc
     pg_dml.cc
     pg_dml_write.cc
     pg_select.cc

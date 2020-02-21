@@ -531,8 +531,7 @@ if [[ $BUILD_TYPE != "tsan" ]]; then
     let initdb_attempt_index+=1
   done
   if [[ $initdb_attempt_index -gt $MAX_INITDB_ATTEMPTS ]]; then
-    log "Failed to run create initial sys catalog snapshot after $MAX_INITDB_ATTEMPTS attempts."
-    log "We will still run the tests. They will take longer because they will have to run initdb."
+    fatal "Failed to run create initial sys catalog snapshot after $MAX_INITDB_ATTEMPTS attempts."
   fi
 fi
 
