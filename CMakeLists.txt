@@ -580,7 +580,7 @@ endif()
 # Build type (debug, release, fastdebug, etc.)
 # -------------------------------------------------------------------------------------------------
 
-# If no build build type is specified, default to debug builds
+# If no build type is specified, default to debug builds
 if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Debug)
 endif(NOT CMAKE_BUILD_TYPE)
@@ -765,7 +765,7 @@ endif()
 message("Configured for ${CMAKE_BUILD_TYPE} build "
         "(set with cmake -DCMAKE_BUILD_TYPE={release,debug,...})")
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_FLAGS_DEBUG}")
+  ADD_CXX_FLAGS("${CXX_FLAGS_DEBUG}")
   if(NOT APPLE AND EXISTS "/usr/bin/ld.gold")
     if ("$ENV{YB_NO_LD_GOLD}")
       message("YB_NO_LD_GOLD is defined, not using ld.gold")
@@ -780,15 +780,15 @@ if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
     endif()
   endif()
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "FASTDEBUG")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_FLAGS_FASTDEBUG}")
+  ADD_CXX_FLAGS("${CXX_FLAGS_FASTDEBUG}")
   # We specify RocksDB debug level that corresponds to the -O1 optimization level, the same as
   # the rest of YB code in the "fastdebug" mode (used for ASAN/TSAN).
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_FLAGS_RELEASE}")
+  ADD_CXX_FLAGS("${CXX_FLAGS_RELEASE}")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "PROFILE_GEN")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_FLAGS_PROFILE_GEN}")
+  ADD_CXX_FLAGS("${CXX_FLAGS_PROFILE_GEN}")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "PROFILE_BUILD")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_FLAGS_PROFILE_BUILD}")
+  ADD_CXX_FLAGS("${CXX_FLAGS_PROFILE_BUILD}")
 else()
   message(FATAL_ERROR "Unknown build type: ${CMAKE_BUILD_TYPE}")
 endif ()
@@ -917,11 +917,10 @@ if (${YB_USE_UBSAN})
   set(CXX_NO_SANITIZE_FLAG "alignment")
   if(NOT APPLE)
     set(CXX_NO_SANITIZE_FLAG "${CXX_NO_SANITIZE_FLAG},vptr")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined")
+    ADD_CXX_FLAGS("-fsanitize=undefined")
   endif()
-  set(CMAKE_CXX_FLAGS
-    "${CMAKE_CXX_FLAGS} -fno-sanitize-recover=all -fno-sanitize=${CXX_NO_SANITIZE_FLAG}")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize-recover=float-cast-overflow")
+  ADD_CXX_FLAGS("-fno-sanitize-recover=all -fno-sanitize=${CXX_NO_SANITIZE_FLAG}")
+  ADD_CXX_FLAGS("-fsanitize-recover=float-cast-overflow")
 endif ()
 
 if ("${YB_USE_UBSAN}" OR "${YB_USE_ASAN}" OR "${YB_USE_TSAN}")
@@ -949,7 +948,7 @@ if ("${YB_GENERATE_COVERAGE}")
     # This should be fixed in llvm 3.4 with http://llvm.org/viewvc/llvm-project?view=revision&revision=184666
     message(SEND_ERROR "Cannot currently generate coverage with clang")
   endif()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage -DCOVERAGE_BUILD")
+  ADD_CXX_FLAGS("--coverage -DCOVERAGE_BUILD")
 
   # For coverage to work properly, we need to use static linkage. Otherwise,
   # __gcov_flush() doesn't properly flush coverage from every module.
@@ -1726,7 +1725,7 @@ set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS}")
 if ("${COMPILER_FAMILY}" STREQUAL "gcc" AND
     ${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER 7.0)
   # Used with GCC 7.
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -faligned-new")
+  ADD_CXX_FLAGS("-faligned-new")
 endif()
 
 string (REPLACE "-Werror=non-virtual-dtor" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
