@@ -108,13 +108,18 @@ public class CloudRegionSetup extends CloudTaskBase {
           throw new RuntimeException(errMsg);
         }
         List<String> zones = Json.fromJson(zoneInfo.get(regionCode).get("zones"), List.class);
-        List<String> subnetworks = Json.fromJson(zoneInfo.get(regionCode).get("subnetworks"), List.class);
-        if (subnetworks.size() != 1) {
-          region.delete();
-          throw new RuntimeException(
-              "Region Bootstrap failed. Invalid number of subnets for region " + regionCode);
+        String subnetId = taskParams().metadata.subnetId;
+        if (subnetId == null || subnetId.isEmpty()) {
+          List<String> subnetworks = Json.fromJson(
+            zoneInfo.get(regionCode).get("subnetworks"), List.class);
+          if (subnetworks.size() != 1) {
+            region.delete();
+            throw new RuntimeException(
+                "Region Bootstrap failed. Invalid number of subnets for region " + regionCode);
+          }
+          subnetId = subnetworks.get(0);
         }
-        String subnet = subnetworks.get(0);
+        final String subnet = subnetId;
         region.zones = new HashSet<>();
         zones.forEach(zone -> {
           region.zones.add(AvailabilityZone.create(region, zone, zone, subnet));
