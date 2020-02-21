@@ -1,7 +1,7 @@
 ---
-title: Checklist
+title: Contribution checklist
 linkTitle: Contribution checklist
-description: Checklist
+description: Contribution checklist
 image: /images/section_icons/index/quick_start.png
 headcontent: Checklist for contributing to the core database.
 type: page
@@ -29,7 +29,9 @@ Having built the source, you can start a local cluster.
 You should now make you change, recompile the code and test out your change.
 
 {{< note title="Note" >}}
+
 You should read the [code style guide](https://goo.gl/Hkt5BU). This is mostly based on [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html).
+
 {{< /note >}}
 
 ## Step 4. Add unit tests
@@ -42,4 +44,4 @@ Re-run the unit tests with you changes and make sure all tests pass.
 
 ## Step 6. Submit a pull request
 
-Contrats on the change! You should now submit a pull request for a codereview and leave a message on the Slack channel. Once the codereview passes, your code will get merged in.
+Congratulations on the change! You should now submit a pull request for a code review and leave a message on the Slack channel. Once the code review passes, your code will get merged in.

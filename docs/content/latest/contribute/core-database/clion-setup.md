@@ -1,14 +1,14 @@
 ---
-title: CLion project setup
-linkTitle: CLion project setup
-description: CLion project setup
+title: Configure a CLion project
+linkTitle: Configure a CLion project
+description: Configure a CLion project
 image: /images/section_icons/index/quick_start.png
 headcontent: CLion project setup.
 type: page
 menu:
   latest:
-    identifier: clion-setup
-    parent: contribute-db-core
+    identifier: configure-clion
+    parent: core-database
     weight: 2912
 isTocNested: true
 showAsideToc: true
