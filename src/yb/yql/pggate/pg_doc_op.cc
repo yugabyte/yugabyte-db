@@ -21,9 +21,6 @@
 
 #include "yb/yql/pggate/pggate_flags.h"
 
-// TODO: include a header for PgTxnManager specifically.
-#include "yb/yql/pggate/pggate_if_cxx_decl.h"
-
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
 #include "yb/util/yb_pg_errcodes.h"

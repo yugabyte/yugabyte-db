@@ -37,7 +37,6 @@
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/type_mapping.h"
-#include "yb/yql/pggate/pggate_if_cxx_decl.h"
 
 #include "yb/server/hybrid_clock.h"
 
