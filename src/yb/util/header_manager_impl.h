@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_TSERVER_HEADER_MANAGER_IMPL_H
-#define ENT_SRC_YB_TSERVER_HEADER_MANAGER_IMPL_H
+#ifndef YB_UTIL_HEADER_MANAGER_IMPL_H
+#define YB_UTIL_HEADER_MANAGER_IMPL_H
 
 #include <memory>
 
@@ -20,11 +20,9 @@
 
 namespace yb {
 namespace enterprise {
+
 class HeaderManager;
 class UniverseKeyManager;
-}
-namespace tserver {
-namespace enterprise {
 
 // Implementation of used by FileFactory to construct header for encrypted files.
 // The header format looks like:
@@ -35,11 +33,9 @@ namespace enterprise {
 // universe key id
 // EncryptionParamsPB size (4 bytes)
 // EncryptionParamsPB
-std::unique_ptr<yb::enterprise::HeaderManager> DefaultHeaderManager(
-    yb::enterprise::UniverseKeyManager* universe_key_manager);
+std::unique_ptr<HeaderManager> DefaultHeaderManager(UniverseKeyManager* universe_key_manager);
 
 } // namespace enterprise
-} // namespace tserver
 } // namespace yb
 
-#endif // ENT_SRC_YB_TSERVER_HEADER_MANAGER_IMPL_H
+#endif // YB_UTIL_HEADER_MANAGER_IMPL_H

@@ -21,12 +21,16 @@
 #include "yb/rocksdb/ldb_tool.h"
 #include "yb/rocksdb/tools/ldb_cmd.h"
 
+#include "yb/util/flag_tags.h"
+
+DEFINE_test_flag(bool, TEST_exit_on_finish, true, "Exit the process on finishing.");
+
 namespace rocksdb {
 
 LDBOptions::LDBOptions() {}
 
 class LDBCommandRunner {
-public:
+ public:
 
   static void PrintHelp(const char* exec_name) {
     string ret;
@@ -120,7 +124,9 @@ public:
     fprintf(stderr, "%s\n", ret.ToString().c_str());
     delete cmdObj;
 
-    exit(ret.IsFailed());
+    if (FLAGS_TEST_exit_on_finish) {
+      exit(ret.IsFailed());
+    }
   }
 
 };
