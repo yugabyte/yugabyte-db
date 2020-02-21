@@ -25,6 +25,8 @@ namespace enterprise {
 // in creating new files and reading exising files.
 class UniverseKeyManager {
  public:
+  static Result<std::unique_ptr<UniverseKeyManager>> FromKey(
+      const std::string& key_id, const Slice& key_data);
   void SetUniverseKeyRegistry(const yb::UniverseKeyRegistryPB& universe_key_registry);
   // From an existing version id, generate encryption params. Used when creating readable files.
   Result<EncryptionParamsPtr> GetUniverseParamsWithVersion(

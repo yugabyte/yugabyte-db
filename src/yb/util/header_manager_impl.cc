@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/tserver/header_manager_impl.h"
+#include "yb/util/header_manager_impl.h"
 
 #include "yb/util/env.h"
 #include "yb/util/encryption_util.h"
@@ -26,16 +26,14 @@
 static const string kEncryptionMagic = "encrypt!";
 
 namespace yb {
-namespace tserver {
 namespace enterprise {
 
-class HeaderManagerImpl : public yb::enterprise::HeaderManager {
+class HeaderManagerImpl : public HeaderManager {
  public:
-  explicit HeaderManagerImpl(yb::enterprise::UniverseKeyManager* universe_key_manager)
+  explicit HeaderManagerImpl(UniverseKeyManager* universe_key_manager)
       : universe_key_manager_(universe_key_manager) {}
 
-  Result<string> SerializeEncryptionParams(
-      const yb::enterprise::EncryptionParams& encryption_info) override {
+  Result<string> SerializeEncryptionParams(const EncryptionParams& encryption_info) override {
     // 1. Generate the EncrytionParamsPB string to be encrypted.
     EncryptionParamsPB encryption_params_pb;
     encryption_info.ToEncryptionParamsPB(&encryption_params_pb);
@@ -44,10 +42,10 @@ class HeaderManagerImpl : public yb::enterprise::HeaderManager {
 
     // 2. Encrypt the encryption params with the latest universe key.
     auto universe_params = VERIFY_RESULT(universe_key_manager_->GetLatestUniverseParams());
-    auto stream = VERIFY_RESULT(yb::enterprise::BlockAccessCipherStream::FromEncryptionParams(
+    auto stream = VERIFY_RESULT(BlockAccessCipherStream::FromEncryptionParams(
         std::move(universe_params.params)));
     auto encrypted_data_key = static_cast<char*>(
-        yb::enterprise::EncryptionBuffer::Get()->GetBuffer(encryption_params_pb_str.size()));
+        EncryptionBuffer::Get()->GetBuffer(encryption_params_pb_str.size()));
     RETURN_NOT_OK(stream->Encrypt(0, encryption_params_pb_str, encrypted_data_key));
 
     // 3. Serialize the universe key id.
@@ -71,7 +69,7 @@ class HeaderManagerImpl : public yb::enterprise::HeaderManager {
     return kEncryptionMagic + string(header_size, sizeof(header_size)) + metadata_str;
   }
 
-  Result<yb::enterprise::EncryptionParamsPtr>
+  Result<EncryptionParamsPtr>
   DecodeEncryptionParamsFromEncryptionMetadata(const Slice& s) override {
     Slice s_mutable(s);
     // 1. Get the size of the universe key id.
@@ -87,7 +85,7 @@ class HeaderManagerImpl : public yb::enterprise::HeaderManager {
     // 3. Create an encryption stream from the universe key.
     auto universe_params = VERIFY_RESULT(
         universe_key_manager_->GetUniverseParamsWithVersion(universe_key_id));
-    auto stream = VERIFY_RESULT(yb::enterprise::BlockAccessCipherStream::FromEncryptionParams(
+    auto stream = VERIFY_RESULT(BlockAccessCipherStream::FromEncryptionParams(
         std::move(universe_params)));
 
     // 4. Get the size of the encryption params pb.
@@ -97,7 +95,7 @@ class HeaderManagerImpl : public yb::enterprise::HeaderManager {
 
     // 5. Decrypt the resulting data key.
     auto decrypted_data_key = static_cast<uint8_t*>(
-        yb::enterprise::EncryptionBuffer::Get()->GetBuffer(s_mutable.size()));
+        EncryptionBuffer::Get()->GetBuffer(s_mutable.size()));
     RETURN_NOT_OK(stream->Decrypt(0, s_mutable, decrypted_data_key));
 
     // 6. Convert the resulting decrypted data key into encryption params.
@@ -105,16 +103,16 @@ class HeaderManagerImpl : public yb::enterprise::HeaderManager {
         s_mutable, encryption_params_pb_size, "encryption params"));
     auto encryption_params_pb = VERIFY_RESULT(pb_util::ParseFromSlice<EncryptionParamsPB>(
         Slice(decrypted_data_key, encryption_params_pb_size)));
-    return yb::enterprise::EncryptionParams::FromEncryptionParamsPB(encryption_params_pb);
+    return EncryptionParams::FromEncryptionParamsPB(encryption_params_pb);
   }
 
   uint32_t GetEncryptionMetadataStartIndex() override {
     return kEncryptionMagic.size() + sizeof(uint32_t);
   }
 
-  Result<yb::enterprise::FileEncryptionStatus> GetFileEncryptionStatusFromPrefix(
+  Result<FileEncryptionStatus> GetFileEncryptionStatusFromPrefix(
       const Slice& s) override {
-    yb::enterprise::FileEncryptionStatus status;
+    FileEncryptionStatus status;
     status.is_encrypted = s.compare_prefix(Slice(kEncryptionMagic)) == 0;
     if (status.is_encrypted) {
       status.header_size = BigEndian::Load32(s.data() + kEncryptionMagic.size());
@@ -136,15 +134,13 @@ class HeaderManagerImpl : public yb::enterprise::HeaderManager {
     return Status::OK();
   }
 
-  yb::enterprise::UniverseKeyManager* universe_key_manager_;
+  UniverseKeyManager* universe_key_manager_;
 
 };
 
-std::unique_ptr<yb::enterprise::HeaderManager> DefaultHeaderManager(
-    yb::enterprise::UniverseKeyManager* universe_key_manager) {
+std::unique_ptr<HeaderManager> DefaultHeaderManager(UniverseKeyManager* universe_key_manager) {
   return std::make_unique<HeaderManagerImpl>(universe_key_manager);
 }
 
 } // namespace enterprise
-} // namespace tserver
 } // namespace yb

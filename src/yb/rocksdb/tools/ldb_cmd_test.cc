@@ -21,10 +21,51 @@
 
 #include "yb/rocksdb/tools/ldb_cmd.h"
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/db/db_test_util.h"
 
-class LdbCmdTest : public testing::Test {};
+DECLARE_bool(TEST_exit_on_finish);
 
-TEST_F(LdbCmdTest, HexToString) {
+const string kDbName = "/lbd_cmd_test";
+const string kKeyFileOption = "--key_file=" + rocksdb::DBTestBase::kKeyId + ":" +
+                              rocksdb::DBTestBase::kKeyFile;
+
+
+class LdbCmdTest : public rocksdb::DBTestBase, public testing::WithParamInterface<bool> {
+ public:
+  LdbCmdTest() : rocksdb::DBTestBase(kDbName, GetParam()) {}
+
+  yb::Status WriteRecordsAndFlush() {
+    RETURN_NOT_OK(Put("k1", "v1"));
+    RETURN_NOT_OK(Put("k2", "v2"));
+    return Flush();
+  }
+
+  std::vector<std::string> CreateArgs(std::string command_name) {
+    std::vector<std::string> args;
+    args.push_back("./ldb");
+    args.push_back("--db=" + dbname_);
+    args.push_back(command_name);
+    if (GetParam()) {
+      args.push_back(kKeyFileOption);
+    }
+    return args;
+  }
+
+  void RunLdb(const std::vector<std::string>& args) {
+    std::vector<char *> args_ptr;
+    args_ptr.resize(args.size());
+    std::transform(args.begin(), args.end(), args_ptr.begin(), [](const std::string& str) {
+      return const_cast<char*>(str.c_str());
+    });
+    rocksdb::LDBTool tool;
+    ASSERT_NO_FATALS(tool.Run(static_cast<int>(args_ptr.size()), args_ptr.data()));
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(EncryptionEnabled, LdbCmdTest, ::testing::Bool());
+
+TEST_P(LdbCmdTest, HexToString) {
   // map input to expected outputs.
   map<string, vector<int>> inputMap = {
       {"0x7", {7}},         {"0x5050", {80, 80}}, {"0xFF", {-1}},
@@ -40,7 +81,7 @@ TEST_F(LdbCmdTest, HexToString) {
   }
 }
 
-TEST_F(LdbCmdTest, HexToStringBadInputs) {
+TEST_P(LdbCmdTest, HexToStringBadInputs) {
   const vector<string> badInputs = {
       "0xZZ", "123", "0xx5", "0x11G", "Ox12", "0xT", "0x1Q1",
   };
@@ -52,6 +93,21 @@ TEST_F(LdbCmdTest, HexToStringBadInputs) {
     } catch (...) {
     }
   }
+}
+
+TEST_P(LdbCmdTest, Scan) {
+  FLAGS_TEST_exit_on_finish = false;
+  ASSERT_OK(WriteRecordsAndFlush());
+  auto args = CreateArgs("scan");
+  args.push_back("--only_verify_checksums");
+  ASSERT_NO_FATALS(RunLdb(args));
+}
+
+TEST_P(LdbCmdTest, CheckConsistency) {
+  FLAGS_TEST_exit_on_finish = false;
+  ASSERT_OK(WriteRecordsAndFlush());
+  auto args = CreateArgs("checkconsistency");
+  ASSERT_NO_FATALS(RunLdb(args));
 }
 
 int main(int argc, char** argv) {
