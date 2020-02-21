@@ -178,6 +178,10 @@ orafce_to_number(PG_FUNCTION_ARGS)
  * Convert a tilde (~) to ...
  *	1: a full width tilde. (same as JA16EUCTILDE in oracle)
  *	0: a full width overline. (same as JA16EUC in oracle)
+ *
+ * Note - there is a difference with Oracle - it returns \342\210\274
+ * what is a tilde char. Orafce returns fullwidth tilde. If it is a
+ * problem, fix it for sef in code.
  */
 #define JA_TO_FULL_WIDTH_TILDE	1
 
@@ -244,7 +248,7 @@ TO_MULTI_BYTE_UTF8[95] =
 	"\357\274\271",
 	"\357\274\272",
 	"\357\274\273",
-	"\357\277\245",
+	"\357\274\274",
 	"\357\274\275",
 	"\357\274\276",
 	"\357\274\277",

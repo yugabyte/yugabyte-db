@@ -8,7 +8,6 @@
 
 #include "postgres.h"
 #include "access/hash.h"
-#include "access/tuptoaster.h"
 #include "libpq/pqformat.h"
 #include "nodes/nodeFuncs.h"
 #include "utils/array.h"
