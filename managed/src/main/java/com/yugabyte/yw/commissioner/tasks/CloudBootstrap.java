@@ -46,10 +46,15 @@ public class CloudBootstrap extends CloudTaskBase {
       // Required: False.
       public String vpcCidr;
 
-      // Custom map from AZ name to Subnet ID.
+      // Custom map from AZ name to Subnet ID for AWS.
       // Default: created by YB.
       // Required: True for custom input, False for YW managed.
       public Map<String, String> azToSubnetIds;
+
+      // Region Subnet ID for GCP.
+      // Default: created by YB.
+      // Required: True for custom input, False for YW managed.
+      public String subnetId;
 
       // TODO(bogdan): does this not need a custom SSH user as well???
       // Custom AMI ID to use for YB nodes.
@@ -96,10 +101,8 @@ public class CloudBootstrap extends CloudTaskBase {
   public void run() {
     subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
     Provider p = Provider.get(taskParams().providerUUID);
-    if (p.code.equals(Common.CloudType.gcp.toString())) {
-      createCloudSetupTask()
-        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
-    } else if (p.code.equals(Common.CloudType.aws.toString())) {
+    if (p.code.equals(Common.CloudType.gcp.toString())
+        || p.code.equals(Common.CloudType.aws.toString())) {
       createCloudSetupTask()
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
     }

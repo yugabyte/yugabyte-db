@@ -34,6 +34,9 @@ class GCPProviderInitView extends Component {
     } else {
       gcpCreateConfig["use_host_vpc"] = false;
     }
+    if (isNonEmptyString(vals.gcpProjectName)) {
+      gcpCreateConfig["project_id"] = vals.gcpProjectName;
+    }
     const providerName = vals.accountName;
     const configText = vals.gcpConfig;
     if (vals.credential_input === "local_service_account") {
@@ -125,7 +128,7 @@ class GCPProviderInitView extends Component {
       );
     }
 
-    let destVpcField = <span />;
+    let destVpcField = <span />, gcpProjectField = <span />;
     if (this.state.networkSetupType !== "new_vpc") {
       destVpcField = (
         <Row className="config-provider-row">
@@ -137,6 +140,21 @@ class GCPProviderInitView extends Component {
           <Col lg={7}>
             <Field name="destVpcId" component={YBTextInputWithLabel}
                 placeHolder="my-vpc-network-name"
+                className={"gcp-provider-input-field"}
+                isReadOnly={this.state.networkSetupType === "host_vpc"}/>
+          </Col>
+        </Row>
+      );
+      gcpProjectField = (
+        <Row className="config-provider-row">
+          <Col lg={3}>
+            <div className="form-item-custom-label">
+              Host Project Name
+            </div>
+          </Col>
+          <Col lg={7}>
+            <Field name="gcpProjectName" component={YBTextInputWithLabel}
+                placeHolder="my-gcp-project-name"
                 className={"gcp-provider-input-field"}
                 isReadOnly={this.state.networkSetupType === "host_vpc"}/>
           </Col>
@@ -180,6 +198,7 @@ class GCPProviderInitView extends Component {
                       onInputChanged={this.networkSetupChanged} />
                   </Col>
                 </Row>
+                {gcpProjectField}
                 {destVpcField}
               </Col>
             </Row>
@@ -201,9 +220,13 @@ const validate = (values) => {
   if (!isNonEmptyObject(values.gcpConfig)) {
     errors.gcpConfig = 'Provider Config is Required';
   }
+  if (!isNonEmptyString(values.gcpProjectName) &&
+      values.network_setup === "existing_vpc") {
+    errors.gcpProjectName = 'Project Name is Required';
+  }
   if (!isNonEmptyString(values.destVpcId) &&
       values.network_setup === "existing_vpc") {
-    errors.destVpcId = 'VPC Network name is Required';
+    errors.destVpcId = 'VPC Network Name is Required';
   }
   return errors;
 };
