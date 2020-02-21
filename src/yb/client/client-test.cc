@@ -1249,8 +1249,13 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
   // Need a tablet peer for the next set of tests.
   string tablet_id = GetFirstTabletId(client_table_.get());
   std::shared_ptr<TabletPeer> tablet_peer;
-  ASSERT_TRUE(cluster_->mini_tablet_server(0)->server()->tablet_manager()->LookupTablet(
-      tablet_id, &tablet_peer));
+
+  for (auto& ts : cluster_->mini_tablet_servers()) {
+    ASSERT_TRUE(ts->server()->tablet_manager()->LookupTablet(tablet_id, &tablet_peer));
+    if (tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
+      break;
+    }
+  }
 
   {
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
@@ -1514,8 +1519,9 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
 // a new client afterwards.
 // TODO Remove the leader promotion part when we have automated
 // leader election.
-TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
-  const YBTableName kReplicatedTable(YQL_DATABASE_CQL, "replicated_failover_on_writes");
+TEST_F(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection) {
+  const YBTableName kReplicatedTable(YQL_DATABASE_CQL, kKeyspaceName,
+     "replicated_failover_on_writes");
   const int kNumRowsToWrite = 100;
 
   TableHandle table;
@@ -1599,6 +1605,18 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
   ASSERT_EQ(2 * kNumRowsToWrite, CountRowsFromClient(table,
                                                      YBConsistencyLevel::CONSISTENT_PREFIX,
                                                      kNoBound, kNoBound));
+
+  // Test altering the table metadata and ensure that meta operations are resilient as well.
+  {
+    std::shared_ptr<TabletPeer> tablet_peer;
+    ASSERT_TRUE(new_leader->server()->tablet_manager()->LookupTablet(remote_tablet->tablet_id(),
+        &tablet_peer));
+    auto old_version = tablet_peer->tablet()->metadata()->schema_version();
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kReplicatedTable));
+    table_alterer->AddColumn("new_col")->Type(INT32);
+    ASSERT_OK(table_alterer->Alter());
+    ASSERT_EQ(old_version + 1, tablet_peer->tablet()->metadata()->schema_version());
+  }
 }
 
 namespace {
