@@ -32,7 +32,7 @@ showAsideToc: true
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/kubernetes/oss/operator-hub" class="nav-link active">
+    <a href="/latest/deploy/kubernetes/oss/operator-hub" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Operator Hub
     </a>
@@ -177,7 +177,9 @@ If you are running in a resource-constrained environment or a local environment,
 **For Helm 2:**
 
 ```sh
-$ helm install yugabytedb/yugabyte --set resource.master.requests.cpu=0.1,resource.master.requests.memory=0.2Gi,resource.tserver.requests.cpu=0.1,resource.tserver.requests.memory=0.2Gi --namespace yb-demo --name yb-demo
+$ helm install yugabytedb/yugabyte \
+--set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
+resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi --namespace yb-demo --name yb-demo
 ```
 
 **For Helm 3:**
@@ -185,12 +187,17 @@ $ helm install yugabytedb/yugabyte --set resource.master.requests.cpu=0.1,resour
 For Helm 3, you have to first create a namespace.
 ```sh
 $ kubectl create namespace yb-demo
-$ helm install yb-demo yugabytedb/yugabyte --set resource.master.requests.cpu=0.1,resource.master.requests.memory=0.2Gi,resource.tserver.requests.cpu=0.1,resource.tserver.requests.memory=0.2Gi --namespace yb-demo
+$ helm install yb-demo yugabytedb/yugabyte \
+--set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
+resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi --namespace yb-demo
 ```
 
-Note that in minikube, the LoadBalancers for `yb-master-ui` and `yb-tserver-service` will remain in pending state since load balancers are not available in a minikube environment. If you would like to turn off these load balancers simply pass the `enableLoadBalancer=False` flag as shown below.
+Note that in minikube, the LoadBalancers for `yb-master-ui` and `yb-tserver-service` will remain in pending state since load balancers are not available in a minikube environment. If you would like to turn off these services simply pass the `enableLoadBalancer=False` flag as shown below.
 ```sh
-$ helm install yb-demo yugabytedb/yugabyte --set resource.master.requests.cpu=0.1,resource.master.requests.memory=0.2Gi,resource.tserver.requests.cpu=0.1,resource.tserver.requests.memory=0.2Gi,enableLoadBalancer=False --namespace yb-demo
+$ helm install yb-demo yugabytedb/yugabyte \
+--set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
+resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
+enableLoadBalancer=False --namespace yb-demo
 ```
 
 ## Check the cluster status
@@ -249,12 +256,12 @@ $ kubectl get pods --namespace yb-demo
 
 ```
 NAME           READY     STATUS    RESTARTS   AGE
-yb-master-0    1/1       Running   0          4m
-yb-master-1    1/1       Running   0          4m
-yb-master-2    1/1       Running   0          4m
-yb-tserver-0   1/1       Running   0          4m
-yb-tserver-1   1/1       Running   0          4m
-yb-tserver-2   1/1       Running   0          4m
+yb-master-0    2/2       Running   0          4m
+yb-master-1    2/2       Running   0          4m
+yb-master-2    2/2       Running   0          4m
+yb-tserver-0   2/2       Running   0          4m
+yb-tserver-1   2/2       Running   0          4m
+yb-tserver-2   2/2       Running   0          4m
 ```
 
 Check the services.

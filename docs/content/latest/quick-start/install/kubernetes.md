@@ -49,44 +49,84 @@ showAsideToc: true
 
 ## Prerequisites
 
-You need to have [Minikube](https://github.com/kubernetes/minikube) installed on your localhost machine.
+- [Minikube](https://github.com/kubernetes/minikube) is installed on your localhost machine.
 
-- The Kubernetes version used by Minikube should be v1.13.0 or later. The default Kubernetes version being used by Minikube displays when you run the `minikube start` command.
-- To install Minikube, see [Install Minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/) in the Kubernetes documentation.
+The Kubernetes version used by Minikube should be v1.13.0 or later. The default Kubernetes version being used by Minikube displays when you run the `minikube start` command. To install Minikube, see [Install Minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/) in the Kubernetes documentation.
+
+- [kubectl](https://kubernetes.io/docs/reference/kubectl/overview/) is installed.
+
+To install `kubectl`, see [Install kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/) in the Kubernetes documentation.
+
+- [Helm 3+](https://helm.sh/) is installed. If you have Helm 2 then make sure you have Tiller installed on the Kubernetes cluster and thereafter change the helm commands accordingly.
+
+To install `helm`, see [Install helm](https://helm.sh/docs/intro/install/) in the Helm documentation.
 
 ## Start Kubernetes
 
-Start Kubernetes using Minikube by running the following command.
+- Start Kubernetes using Minikube by running the following command. Note that minikube by default brings up a single-node Kubernetes environment with 2GB RAM, 2 CPUS, and a disk of 20GB. We recommend starting minkube with at least 8GB RAM, 4 CPUs and 40GB disk as shown below.
 
 ```sh
-$ minikube start
+$ minikube start --memory=8192 --cpus=4 --disk-size=40g --vm-driver=virtualbox
+```
+```
+...
+Configuring environment for Kubernetes v1.14.2 on Docker 18.09.6
+...
 ```
 
-Review Kubernetes dashboard by running the following command.
+- Review Kubernetes dashboard by running the following command.
 
 ```sh
 $ minikube dashboard
 ```
 
-Confirm that your `kubectl` is configured correctly by running the following command.
+- Confirm that your kubectl is configured correctly by running the following command.
 
 ```sh
 $ kubectl version
 ```
-
 ```
-Client Version: version.Info{Major:"1", Minor:"9", GitVersion:"v1.9.1", ...}
-Server Version: version.Info{Major:"1", Minor:"8", GitVersion:"v1.8.0", ...}
+Client Version: version.Info{Major:"1", Minor:"14+", GitVersion:"v1.14.10-dispatcher", ...}
+Server Version: version.Info{Major:"1", Minor:"14", GitVersion:"v1.14.2", ...}
 ```
 
-## Download
-
-Download `yugabyte-statefulset.yaml`. You will use this YAML file to create a YugabyteDB cluster running inside Kubernetes with a replication factor of 1.
+- Confirm that your Helm 3 is configured correctly by running the following command.
 
 ```sh
-$ mkdir ~/yugabyte && cd ~/yugabyte
+$ helm version
+```
+```
+version.BuildInfo{Version:"v3.0.3", GitCommit:"...", GitTreeState:"clean", GoVersion:"go1.13.6"}
 ```
 
+## Download YugabyteDB Helm Chart
+
+### Add charts repository
+
+To add the YugabyteDB charts repository, run the following command.
+
 ```sh
-$ wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset-rf-1.yaml
+$ helm repo add yugabytedb https://charts.yugabyte.com
 ```
+
+### Fetch updates from the repository
+
+Make sure that you have the latest updates to the repository by running the following command.
+
+```sh
+$ helm repo update
+```
+
+### Validate the chart version
+
+```sh
+$ helm search repo yugabytedb/yugabyte
+```
+```sh
+NAME                CHART VERSION APP VERSION   DESCRIPTION                                       
+yugabytedb/yugabyte 2.0.12        2.0.12.0-b10  YugabyteDB is the high-performance distr...
+```
+
+Now we are ready to create a local YugabyteDB cluster.
+
+

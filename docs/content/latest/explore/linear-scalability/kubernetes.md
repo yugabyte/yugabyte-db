@@ -54,13 +54,15 @@ If you haven't installed YugabyteDB yet, you can get up and running YugabyteDB w
 If you have a previously running local universe, destroy it using the following.
 
 ```sh
-$ kubectl delete -f yugabyte-statefulset.yaml
+$ helm uninstall yb-demo -n yb-demo
+$ kubectl delete pvc --namespace yb-demo --all
 ```
-
-Start a new local cluster — by default, this will create a 3-node cluster with a replication factor of 3.
+Create a new YugabyteDB cluster.
 
 ```sh
-$ kubectl apply -f yugabyte-statefulset.yaml
+$ helm install yb-demo yugabytedb/yugabyte \
+--set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
+resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi --namespace yb-demo
 ```
 
 Check the Kubernetes dashboard to see the 3 YB-Master and 3 YB-TServer pods representing the 3 nodes of the cluster.
@@ -73,17 +75,13 @@ $ minikube dashboard
 
 ## 2. Check cluster status with Admin UI
 
-In order to do this, we would need to access the UI on port 7000 exposed by any of the pods in the YB-Master (`yb-master`) service (one of `yb-master-0`, `yb-master-1` or `yb-master-2`). In order to do so, we find the URL for the yb-master-ui LoadBalancer service.
+To check the cluster status, you need to access the Admin UI on port `7000` exposed by the `yb-master-ui` service. In order to do so, you need to find the port forward the port.
 
 ```sh
-$ minikube service  yb-master-ui --url
+$ kubectl --namespace yb-demo port-forward svc/yb-master-ui 7000:7000
 ```
 
-```
-http://192.168.99.100:31283
-```
-
-Now, you can view the [yb-master-0 Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at the above URL.
+Now, you can view the [yb-master-0 Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at http://localhost:7000.
 
 ## 3. Add node and observe linear scale-out
 
@@ -140,12 +138,6 @@ yb-tserver-3   1/1       Terminating   0          5m
 Optionally, you can shut down the local cluster created in Step 1.
 
 ```sh
-$ kubectl delete -f yugabyte-statefulset.yaml
-```
-
-Further, to destroy the persistent volume claims (**you will lose all the data if you do this**), run:
-
-```sh
-kubectl delete pvc -l app=yb-master
-kubectl delete pvc -l app=yb-tserver
+$ helm uninstall yb-demo -n yb-demo
+$ kubectl delete pvc --namespace yb-demo --all
 ```
