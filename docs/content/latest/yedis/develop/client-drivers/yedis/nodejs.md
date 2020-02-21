@@ -8,7 +8,7 @@ $ npm install redis
 
 ## Working Example
 
-### Pre-requisites
+### Prerequisites
 
 This tutorial assumes that you have:
 

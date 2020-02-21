@@ -48,9 +48,9 @@ showAsideToc: true
 
 ## 1. Create a local cluster
 
-You can use the [`yb-docker-ctl`](../../admin/yb-docker-ctl/) utility, downloaded in the previous step, to create and administer a containerized local cluster.
+You can use the [`yb-docker-ctl`](../../../admin/yb-docker-ctl/) utility, downloaded in the previous step, to create and administer a containerized local cluster.
 
-To quickly create a 1-node or 3-node local cluster using Docker, follow the steps below. For details on using the `yb-docker-ctl create` command and the cluster configuration, see [Create a local cluster](../../admin/yb-docker-ctl/#create-cluster) in the utility reference.
+To quickly create a 1-node or 3-node local cluster using Docker, follow the steps below. For details on using the `yb-docker-ctl create` command and the cluster configuration, see [Create a local cluster](../../../admin/yb-docker-ctl/#create-cluster) in the utility reference.
 
 ### Create a 1-node cluster with RF=1
 
@@ -72,7 +72,7 @@ Clients can now connect to the YSQL and YCQL APIs at `localhost:5433` and `local
 
 ## 2. Check cluster status with yb-docker-ctl
 
-Run the command below to see that we now have 1 `yb-master` (yb-master-n1) and 1 `yb-tserver` (yb-tserver-n1) containers running on this localhost. Roles played by these containers in a YugabyteDB cluster are explained in detail [here](../../architecture/concepts/universe/).
+Run the command below to see that we now have 1 `yb-master` (yb-master-n1) and 1 `yb-tserver` (yb-tserver-n1) containers running on this localhost. Roles played by these containers in a YugabyteDB cluster are explained in detail [here](../../../architecture/concepts/universe/).
 
 ```sh
 $ ./yb-docker-ctl status
@@ -86,7 +86,7 @@ feea0823209a   5039       master     yb-master-n1         http://192.168.64.2:70
 
 ## 3. Check cluster status with Admin UI
 
-The [yb-master-n1 Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at `http://localhost:7000` and the [yb-tserver-n1 Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at `http://localhost:9000`. To avoid port conflicts, other YB-Master and YB-TServer services do not have their admin ports mapped to `localhost`.
+The [yb-master-n1 Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at `http://localhost:7000` and the [yb-tserver-n1 Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at `http://localhost:9000`. To avoid port conflicts, other YB-Master and YB-TServer services do not have their admin ports mapped to `localhost`.
 
 {{< note title="Note" >}}
 

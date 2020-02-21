@@ -24,13 +24,13 @@ showAsideToc: true
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/kubernetes/oss/yugabyte-operator" class="nav-link ">
+    <a href="/latest/deploy/kubernetes/oss/yugabyte-operator" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       YugabyteDB operator
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/kubernetes/oss/operator-hub" class="nav-link active">
+    <a href="/latest/deploy/kubernetes/oss/operator-hub" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Operator Hub
     </a>

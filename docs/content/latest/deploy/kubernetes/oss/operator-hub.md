@@ -24,7 +24,7 @@ showAsideToc: true
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/kubernetes/oss/yugabyte-operator" class="nav-link active">
+    <a href="/latest/deploy/kubernetes/oss/yugabyte-operator" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       YugabyteDB operator
     </a>
@@ -43,12 +43,12 @@ showAsideToc: true
   </li>
 </ul>
 
-This is an alternative to deploying YugabyteDB manually using [Yugabyte Operator](yugabyte-operator.md). The Yugabyte operator is available on [OperatorHub.io](https://operatorhub.io/operator/yugabyte-operator) and hence YugabyteDB can be also be deployed using [Operator Lifecycle Manager](https://github.com/operator-framework/operator-lifecycle-manager). As the name suggests, OLM is a tool to help deploy and manage Operators on your cluster.
+This is an alternative to deploying YugabyteDB manually using [Yugabyte Operator](yugabyte-operator.md). The Yugabyte operator is available on Red Hat's [OperatorHub.io](https://operatorhub.io/operator/yugabyte-operator) and hence YugabyteDB can be also be deployed using [Operator Lifecycle Manager](https://github.com/operator-framework/operator-lifecycle-manager). As the name suggests, OLM is a tool to help deploy and manage Operators on your cluster.
 
 Read on to find out how you can deploy YugabyteDB with OLM.
 
 
-## Pre-requisites
+## Prerequisites
 A Kubernetes cluster and `kubectl` configured to talk to the cluster.
 
 ## Deploy YugabyteDB using Operator Lifecycle Manager

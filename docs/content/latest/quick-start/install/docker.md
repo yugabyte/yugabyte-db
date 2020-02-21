@@ -69,7 +69,7 @@ a) You must have the Docker runtime installed on your localhost. Follow the link
 
 <i class="fab fa-windows" aria-hidden="true"></i> [Docker for Windows](https://store.docker.com/editions/community/docker-ce-desktop-windows)
 
-b) Verify that you have python2 installed. Support for Python 3 is in the works — to follow the status, see [Enhance yb-ctl and yb-docker-ctl to support Python3 #3025](https://github.com/yugabyte/yugabyte-db/issues/3025).
+b) Verify that you have python2 installed.Support for Python 3 is in the works, status can be tracked on [GitHub](https://github.com/yugabyte/yugabyte-db/issues/3025).
 
 ```sh
 $ python --version
@@ -79,9 +79,9 @@ $ python --version
 Python 2.7.10
 ```
 
-## Download
+## Download yb-docker-ctl
 
-Download the [yb-docker-ctl](../../admin/yb-docker-ctl/) utility. This utility has a set of pre-built commands to create and thereafter administer a containerized local cluster.
+Download the [yb-docker-ctl](../../../admin/yb-docker-ctl/) utility. This utility has a set of pre-built commands to create and thereafter administer a containerized local cluster.
 
 ```sh
 $ mkdir ~/yugabyte && cd ~/yugabyte
