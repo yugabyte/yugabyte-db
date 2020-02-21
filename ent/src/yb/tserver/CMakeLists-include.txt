@@ -20,7 +20,6 @@ string(REPLACE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/ent
 set(TSERVER_SRCS_EXTENSIONS
   ${YB_ENT_CURRENT_SOURCE_DIR}/backup_service.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/tablet_server_ent.cc
-  ${YB_ENT_CURRENT_SOURCE_DIR}/header_manager_impl.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_consumer.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/twodc_output_client.cc 
   ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_poller.cc
@@ -38,6 +37,5 @@ set(TSERVER_EXTENSIONS_TESTS
   backup_service-test
   remote_bootstrap_rocksdb_session-test_ent
   remote_bootstrap_rocksdb_client-test_ent
-  header_manager_impl-test
   PARENT_SCOPE)
 
