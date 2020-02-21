@@ -122,7 +122,7 @@ showAsideToc: true
 
     You might have to `unload` the service before loading it.
 
-## Download
+## Download YugabyteDB
 
 Download the YugabyteDB `tar.gz` file using the following `wget` command.
 
@@ -136,9 +136,9 @@ To unpack the archive file and change to the YugabyteDB home directory, run the 
 $ tar xvfz yugabyte-2.0.11.0-darwin.tar.gz && cd yugabyte-2.0.11.0/
 ```
 
-## Configure
+## Configure 
 
-Some of the examples in the [Explore core features](../../explore/) section require extra loopback addresses that allow you to simulate the use of multiple hosts or nodes.
+Some of the examples in the [Explore core features](../../../explore/) section require extra loopback addresses that allow you to simulate the use of multiple hosts or nodes.
 
 To add six loopback addresses, run the following commands, which require `sudo` access.
 
