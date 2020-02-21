@@ -630,6 +630,32 @@ Status ClusterAdminClient::DisableEncryptionInMemory() {
   return Status::OK();
 }
 
+Status ClusterAdminClient::WriteUniverseKeyToFile(
+    const std::string& key_id, const std::string& file_name) {
+  RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  master::GetUniverseKeyRegistryRequestPB req;
+  master::GetUniverseKeyRegistryResponsePB resp;
+  RETURN_NOT_OK_PREPEND(master_proxy_->GetUniverseKeyRegistry(req, &resp, &rpc),
+                        "MasterServiceImpl::ChangeEncryptionInfo call fails.");
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  auto universe_keys = resp.universe_keys();
+  const auto& it = universe_keys.map().find(key_id);
+  if (it == universe_keys.map().end()) {
+    return STATUS_FORMAT(NotFound, "Could not find key with id $0", key_id);
+  }
+
+  RETURN_NOT_OK(WriteStringToFile(Env::Default(), Slice(it->second), file_name));
+
+  std::cout << "Finished writing to file\n";
+  return Status::OK();
+}
+
 Status ClusterAdminClient::CreateCDCStream(const TableId& table_id) {
   master::CreateCDCStreamRequestPB req;
   master::CreateCDCStreamResponsePB resp;

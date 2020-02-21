@@ -238,6 +238,17 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "write_universe_key_to_file", " <key_id> <file_name>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 4) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        RETURN_NOT_OK_PREPEND(client->WriteUniverseKeyToFile(args[2], args[3]),
+                              "Unable to write key to file");
+        return Status::OK();
+      });
+
+  Register(
       "create_cdc_stream", " <table_id>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 3) {

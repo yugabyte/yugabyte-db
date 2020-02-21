@@ -20,7 +20,6 @@
 #include "yb/rpc/rpc.h"
 #include "yb/tserver/backup_service.h"
 #include "yb/tserver/cdc_consumer.h"
-#include "yb/tserver/header_manager_impl.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
@@ -29,6 +28,7 @@
 #include "yb/util/ntp_clock.h"
 #include "yb/util/encrypted_file_factory.h"
 #include "yb/util/universe_key_manager.h"
+#include "yb/util/header_manager_impl.h"
 
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 

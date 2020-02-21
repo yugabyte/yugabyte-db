@@ -76,6 +76,8 @@ const string LDBCommand::ARG_WRITE_BUFFER_SIZE = "write_buffer_size";
 const string LDBCommand::ARG_FILE_SIZE = "file_size";
 const string LDBCommand::ARG_CREATE_IF_MISSING = "create_if_missing";
 const string LDBCommand::ARG_NO_VALUE = "no_value";
+const string LDBCommand::ARG_UNIVERSE_KEY_FILE = "key_file";
+const string LDBCommand::ARG_ONLY_VERIFY_CHECKSUMS = "only_verify_checksums";
 
 const char* LDBCommand::DELIM = " ==> ";
 
@@ -126,12 +128,12 @@ LDBCommand* LDBCommand::InitFromCmdLineArgs(
 
   for (const auto& arg : args) {
     if (arg[0] == '-' && arg[1] == '-') {
-      vector<string> splits = StringSplit(arg, '=');
-      if (splits.size() == 2) {
-        string optionKey = splits[0].substr(OPTION_PREFIX.size());
-        option_map[optionKey] = splits[1];
+      auto pos = arg.find('=', 0);
+      if (pos != string::npos) {
+        string optionKey = arg.substr(OPTION_PREFIX.size(), pos - OPTION_PREFIX.size());
+        option_map[optionKey] = arg.substr(pos + 1);
       } else {
-        string optionKey = splits[0].substr(OPTION_PREFIX.size());
+        string optionKey = arg.substr(OPTION_PREFIX.size());
         flags.push_back(optionKey);
       }
     } else {
@@ -257,7 +259,6 @@ bool LDBCommand::ParseStringOption(const map<string, string>& options,
 }
 
 Options LDBCommand::PrepareOptionsForOpenDB() {
-
   Options opt = options_;
   opt.create_if_missing = false;
 
@@ -367,6 +368,9 @@ Options LDBCommand::PrepareOptionsForOpenDB() {
           LDBCommandExecuteResult::Failed(ARG_FIX_PREFIX_LEN + " must be > 0.");
     }
   }
+
+  opt.env = env_ ? env_.get() : Env::Default();
+  opt.checkpoint_env = Env::Default();
 
   return opt;
 }
@@ -1808,7 +1812,7 @@ ScanCommand::ScanCommand(const vector<string>& params,
                  BuildCmdLineOptions(
                      {ARG_TTL,      ARG_NO_VALUE,  ARG_HEX,    ARG_KEY_HEX,
                       ARG_TO,       ARG_VALUE_HEX, ARG_FROM,   ARG_TIMESTAMP,
-                      ARG_MAX_KEYS, ARG_TTL_START, ARG_TTL_END})),
+                      ARG_MAX_KEYS, ARG_TTL_START, ARG_TTL_END, ARG_ONLY_VERIFY_CHECKSUMS})),
       start_key_specified_(false),
       end_key_specified_(false),
       max_keys_scanned_(-1),
@@ -1835,6 +1839,12 @@ ScanCommand::ScanCommand(const vector<string>& params,
       std::find(flags.begin(), flags.end(), ARG_NO_VALUE);
   if (vitr != flags.end()) {
     no_value_ = true;
+  }
+
+  vitr =  std::find(flags.begin(), flags.end(), ARG_ONLY_VERIFY_CHECKSUMS);
+  if (vitr != flags.end()) {
+    LOG(INFO) << "Only verify checksums, don't print entries.";
+    only_verify_checksums_ = true;
   }
 
   itr = options.find(ARG_MAX_KEYS);
@@ -1865,6 +1875,7 @@ void ScanCommand::Help(string& ret) {
   ret.append(" [--" + ARG_TTL_START + "=<N>:- is inclusive]");
   ret.append(" [--" + ARG_TTL_END + "=<N>:- is exclusive]");
   ret.append(" [--" + ARG_NO_VALUE + "]");
+  ret.append(" [--" + ARG_ONLY_VERIFY_CHECKSUMS + "]");
   ret.append("\n");
 }
 
@@ -1908,7 +1919,7 @@ void ScanCommand::DoCommand() {
       if (rawtime < ttl_start || rawtime >= ttl_end) {
         continue;
       }
-      if (timestamp_) {
+      if (timestamp_ && !only_verify_checksums_) {
         fprintf(stdout, "%s ", ReadableTime(rawtime).c_str());
       }
     }
@@ -1924,7 +1935,7 @@ void ScanCommand::DoCommand() {
       key_slice = formatted_key;
     }
 
-    if (no_value_) {
+    if (no_value_ && !only_verify_checksums_) {
       fprintf(stdout, "%.*s\n", static_cast<int>(key_slice.size()),
               key_slice.data());
     } else {
@@ -1934,9 +1945,11 @@ void ScanCommand::DoCommand() {
         formatted_value = "0x" + val_slice.ToString(true /* hex */);
         val_slice = formatted_value;
       }
-      fprintf(stdout, "%.*s : %.*s\n", static_cast<int>(key_slice.size()),
-              key_slice.data(), static_cast<int>(val_slice.size()),
-              val_slice.data());
+      if (!only_verify_checksums_) {
+        fprintf(stdout, "%.*s : %.*s\n", static_cast<int>(key_slice.size()),
+                key_slice.data(), static_cast<int>(val_slice.size()),
+                val_slice.data());
+      }
     }
 
     num_keys_scanned++;

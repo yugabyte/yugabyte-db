@@ -177,6 +177,7 @@ set(UTIL_SRCS
   flag_tags.cc
   flags.cc
   hdr_histogram.cc
+  header_manager_impl.cc
   hexdump.cc
   init.cc
   jsonreader.cc
@@ -358,6 +359,7 @@ ADD_YB_TEST(flags-test)
 ADD_YB_TEST(format-test RUN_SERIAL true)
 ADD_YB_TEST(hash_util-test)
 ADD_YB_TEST(hdr_histogram-test)
+ADD_YB_TEST(header_manager_impl-test)
 ADD_YB_TEST(inline_slice-test)
 ADD_YB_TEST(jsonreader-test)
 ADD_YB_TEST(lockfree-test)
