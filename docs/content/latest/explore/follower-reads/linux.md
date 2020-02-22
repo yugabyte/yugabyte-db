@@ -33,9 +33,9 @@ showAsideToc: true
 
 With YugabyteDB, you can use follower reads to lower read latencies since the DB now has less work to do at read time including serving the read from the tablet followers. Follower reads is similar to reading from a cache, which can give more read IOPS with low latency but might have slightly stale yet timeline-consistent data (that is, no out of order is possible). In this tutorial, we will update a single key-value over and over, and read it from the tablet leader. While that workload is running, we will start another workload to read from a follower and verify that we are able to read from a tablet follower.
 
-YugabyteDB also allows you to specify the maximum staleness of data when reading from tablet followers. This means that if the follower hasn't heard from the leader for the specified amount of time, the read request will be forwarded to the leader. This is particularly useful when the tablet follower is located far away from the tablet leader. To enable this feature, you will need to create your cluster with the custom tserver flag `max_stale_read_bound_time_ms`. See [Creating a local cluster with custom flags](../../admin/yb-ctl/) for instructions on how to do this.
+YugabyteDB also allows you to specify the maximum staleness of data when reading from tablet followers. This means that if the follower hasn't heard from the leader for the specified amount of time, the read request will be forwarded to the leader. This is particularly useful when the tablet follower is located far away from the tablet leader. To enable this feature, you will need to create your cluster with the custom tserver flag `max_stale_read_bound_time_ms`. See [Creating a local cluster with custom flags](../../../admin/yb-ctl/) for instructions on how to do this.
 
-If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../quick-start/install/) guide.
+If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
 
 ## 1. Create universe
 
@@ -80,7 +80,7 @@ $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
 ```
 
 
-In the above command, we have set the value of `num_unique_keys` to 1, which means we are overwriting a single key `key:0`. We can verify this using cqlsh:
+In the above command, we have set the value of `num_unique_keys` to `1`, which means we are overwriting a single key `key:0`. We can verify this using cqlsh:
 
 ```sh
 $ ./bin/cqlsh 127.0.0.1

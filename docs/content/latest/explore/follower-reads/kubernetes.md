@@ -6,14 +6,13 @@ If you have a previously running local universe, destroy it using the following.
 $ ./yb-docker-ctl destroy
 ```
 
-Start a new local universe with replication factor 5. This will create 5 nodes.
+Start a new local universe with replication factor (RF) of `5`. This will create five nodes.
 
 ```sh
-$ ./yb-docker-ctl create --rf 5 
+$ ./yb-docker-ctl create --rf 5
 ```
 
-
-Add 2 more nodes.
+Add two more nodes.
 
 ```sh
 $ ./yb-docker-ctl add_node
@@ -25,7 +24,7 @@ $ ./yb-docker-ctl add_node
 
 ## 2. Write some data
 
-By default, the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) runs with strong read consistency where all data is read from the tablet leader. We are going to populate exactly one key with a 10KB value into the system. Since the replication factor is 5, this key will get replicated to 5 of the 7 nodes in the universe.
+By default, the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) runs with strong read consistency where all data is read from the tablet leader. We are going to populate exactly one key with a 10 KB value into the system. Since the replication factor is 5, this key will get replicated to five of the seven nodes in the universe.
 
 Run the `CassandraKeyValue` workload application to constantly update this key-value, as well as perform reads with strong consistency against the local universe.
 
@@ -43,7 +42,7 @@ $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                     --value_size 10240
 ```
 
-In the above command, we have set the value of `num_unique_keys` to 1, which means we are overwriting a single key `key:0`. We can verify this using cqlsh:
+In the above command, we have set the value of `num_unique_keys` to `1`, which means we are overwriting a single key `key:0`. We can verify this using `cqlsh`:
 
 ```sh
 $ docker exec -it yb-tserver-n1 /home/yugabyte/bin/cqlsh
@@ -69,7 +68,7 @@ cqlsh> SELECT k FROM ybdemo_keyspace.cassandrakeyvalue;
 
 ## 3. Strongly consistent reads from tablet leaders
 
-When performing strongly consistent reads as a part of the above command, all reads will be served by the tablet leader of the tablet that contains the key `key:0`. If we browse to the <a href='http://localhost:7000/tablet-servers' target="_blank">tablet-servers</a> page, we will see that all the requests are indeed being served by one tserver:
+When performing strongly consistent reads as a part of the above command, all reads will be served by the tablet leader of the tablet that contains the key `key:0`. If we browse to the <a href='http://localhost:7000/tablet-servers' target="_blank">tablet-servers</a> page, we will see that all the requests are indeed being served by one YB-TServer:
 
 ![Reads from the tablet leader](/images/ce/tunable-reads-leader-docker.png)
 
@@ -92,10 +91,9 @@ This can be easily seen by refreshing the <a href='http://localhost:7000/tablet-
 
 ![Reads from the tablet leader](/images/ce/tunable-reads-followers-docker.png)
 
-
 ## 5. Clean up (optional)
 
-Optionally, you can shutdown the local cluster created in Step 1.
+Optionally, you can shut down the local cluster created in Step 1.
 
 ```sh
 $ ./yb-docker-ctl destroy

@@ -32,13 +32,13 @@ showAsideToc: true
 
 </ul>
 
-By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. But sometimes asynchronous replication will meet your need for disaster recovery, auditing and compliance, and other applications. For more information, see [Two data center (2DC) deployments](../../architecture/2dc-deployments/) in the Architecture section.
+By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. But sometimes asynchronous replication will meet your need for disaster recovery, auditing and compliance, and other applications. For more information, see [Two data center (2DC) deployments](../../../architecture/2dc-deployments/) in the Architecture section.
 
 This tutorial simulates a geo-distributed two data center (2DC) deployment using two local YugabyteDB clusters, one representing "Data Center - East" and the other representing "Data Center - West." You can explore unidirectional (master-follower) asynchronous replication and bidirectional (multi-master) asynchronous replication using the `yb-ctl` and `yb-admin` utilities.
 
 ## Prerequisites
 
-- YugabyteDB is installed and ready for use. If you are new to YugabyteDB, you can create a local YugabyteDB cluster in under five minutes by following the steps in the [Quick start](../../quick-start/install/).
+- YugabyteDB is installed and ready for use. If you are new to YugabyteDB, you can create a local YugabyteDB cluster in under five minutes by following the steps in the [Quick start](../../../quick-start/install/).
 
 - Verify that you have the required extra loopback addresses by reviewing the Configure section.
 
@@ -163,7 +163,7 @@ Replication setup successfully
 
 ## 4. Verify unidirectional replication
 
-Now that you've configured unidirectional replication, you can now add data to the `users` table on the "Data Center - East" cluster and see the data appear in the `users` table on "Data Center - West" cluster. 
+Now that you've configured unidirectional replication, you can now add data to the `users` table on the "Data Center - East" cluster and see the data appear in the `users` table on "Data Center - West" cluster.
 
 To add data to the "Data Center - East" cluster, open `ysqlsh` by running the following command, making sure you are pointing to the new producer host.
 

@@ -39,7 +39,7 @@ With YugabyteDB, you can use follower reads to lower read latencies since the DB
 
 YugabyteDB also allows you to specify the maximum staleness of data when reading from tablet followers. This means that if the follower hasn't heard from the leader for the specified amount of time, the read request will be forwarded to the leader. This is particularly useful when the tablet follower is located far away from the tablet leader. To enable this feature, you will need to create your cluster with the custom tserver flag `max_stale_read_bound_time_ms`. See [Creating a local cluster with custom flags](../../admin/yb-ctl/) for instructions on how to do this.
 
-If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../quick-start/install/) guide.
+If you haven't installed YugabyteDB yet, do so first by following the [Quick start](../../../quick-start/install/) guide.
 
 ## 1. Create universe
 
@@ -55,7 +55,7 @@ Start a new local universe with three nodes and a replication factor (RF) of `3`
 $ ./bin/yb-ctl --rf 3 create
 ```
 
-Add 1 more node.
+Add one more node.
 
 ```sh
 $ ./bin/yb-ctl add_node
@@ -66,7 +66,7 @@ $ ./bin/yb-ctl add_node
 Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) JAR file (`yb-sample-apps.jar`) by running the following command.
 
 ```sh
-$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
+$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
 By default, the YugabyteDB workload generator runs with strong read consistency, where all data is read from the tablet leader. We are going to populate exactly one key with a `10KB` value into the system. Since the replication factor is `3`, this key will get replicated to only three of the four nodes in the universe.
@@ -83,8 +83,7 @@ $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                     --value_size 10240
 ```
 
-
-In the above command, we have set the value of `num_unique_keys` to 1, which means we are overwriting a single key `key:0`. We can verify this using cqlsh:
+In the above command, we have set the value of `num_unique_keys` to `1`, which means we are overwriting a single key `key:0`. We can verify this using cqlsh:
 
 ```sh
 $ ./bin/cqlsh 127.0.0.1

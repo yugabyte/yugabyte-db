@@ -47,9 +47,9 @@ showAsideToc: true
 
 With YugabyteDB, you can add nodes to scale your cluster up very efficiently and reliably in order to achieve more read and write IOPS (input/output operations per second). In this tutorial, you will look at how YugabyteDB can scale while a workload is running. You will run a read-write workload using the prepackaged [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) against a 3-node local cluster with a replication factor of 3, and add nodes to it while the workload is running. Next, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
 
-If you haven't installed YugabyteDB yet, you can get up and running YugabyteDB within five minutes by following the steps in the [Quick start](../../quick-start/install/).
+If you haven't installed YugabyteDB yet, you can get up and running YugabyteDB within five minutes by following the steps in the [Quick start](../../../quick-start/install/).
 
-**Note**: Verify that you have the required extra loopback addresses by reviewing the [Configure section](../../quick-start/install/#macOS).
+**Note**: Verify that you have the required extra loopback addresses by reviewing the [Configure section](../../../quick-start/install/#macOS).
 
 ## 1. Create universe
 
@@ -60,13 +60,13 @@ If you have a previously running local universe, destroy it using the `yb-ctl de
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new 3-node cluster with a replication factor of 3 and set the number of [shards](../../architecture/concepts/docdb/sharding/) (aka tablets) per table per YB-TServer to 4 so that you can better observe the load balancing during scale-up and scale-down.
+Start a new three-node cluster with a replication factor (RFå) of `3` and set the number of [shards](../../../architecture/concepts/docdb/sharding/) (aka tablets) per table per YB-TServer to `4` so that you can better observe the load balancing during scale-up and scale-down.
 
 ```sh
 $ ./bin/yb-ctl create --rf 3 --num_shards_per_tserver 4
 ```
 
-Each table now has 4 tablet-leaders in each YB-TServer and with a replication factor of 3, there are 2 tablet-followers for each tablet-leader distributed in the 2 other YB-TServers. So each YB-TServer has 12 tablets (that is, the sum of 4 tablet-leaders plus 8 tablet-followers) per table.
+Each table now has four tablet-leaders in each YB-TServer and with a replication factor (RF) of `3`, there are two tablet-followers for each tablet-leader distributed in the two other YB-TServers. So each YB-TServer has 12 tablets (that is, the sum of 4 tablet-leaders plus 8 tablet-followers) per table.
 
 ## 2. Run the YugabyteDB workload generator
 
@@ -76,7 +76,7 @@ Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`).
 $ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
-Run the `SqlInserts` workload app against the local universe by running the following command.
+Run the `SqlInserts` workload app against the local universe using the following command.
 
 ```sh
 $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
@@ -85,7 +85,7 @@ $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
                                     --num_threads_read 4
 ```
 
-The workload application prints some stats while running, an example is shown here. You can read more details about the output of the sample applications [here](https://github.com/yugabyte/yb-sample-apps).
+The workload application prints some statistics while running, an example is shown here. You can read more details about the output of the sample applications [here](https://github.com/yugabyte/yb-sample-apps).
 
 ```
 2018-05-10 09:10:19,538 [INFO|...] Read: 8988.22 ops/sec (0.44 ms/op), 818159 total ops  |  Write: 1095.77 ops/sec (0.91 ms/op), 97120 total ops  | ... 

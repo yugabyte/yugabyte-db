@@ -45,13 +45,13 @@ showAsideToc: true
 
 </ul>
 
-YugabyteDB can automatically handle failures and therefore provides [high availability](../../architecture/core-functions/high-availability/). You will create YSQL tables with a replication factor (RF) of `3` that allows a [fault tolerance](../../architecture/concepts/docdb/replication/) of `1`. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails, bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
+YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). You will create YSQL tables with a replication factor (RF) of `3` that allows a [fault tolerance](../../../architecture/concepts/docdb/replication/) of `1`. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails, bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
 
-If you haven't installed YugabyteDB yet, you can create a local YugabyteDB cluster within five minutes by following the [Quick Start](../../quick-start/install/) guide.
+If you haven't installed YugabyteDB yet, you can create a local YugabyteDB cluster within five minutes by following the [Quick Start](../../../quick-start/install/) guide.
 
 ## 1. Create universe
 
-If you have a previously running local universe, destroy it using the following.
+If you have a previously running local universe, destroy it using the following command.
 
 ```sh
 $ helm uninstall yb-demo -n yb-demo
@@ -65,7 +65,7 @@ $ helm install yb-demo yugabytedb/yugabyte \
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi --namespace yb-demo
 ```
 
-Check the Kubernetes dashboard to see the 3 YB-Master and 3 YB-TServer pods representing the 3 nodes of the cluster.
+Check the Kubernetes dashboard to see the three YB-Master and three YB-TServer pods representing the three nodes of the cluster.
 
 ```sh
 $ minikube dashboard
@@ -98,7 +98,7 @@ Use HELP for help.
 cqlsh>
 ```
 
-Create a Cassandra keyspace and a table.
+Create a keyspace and a table.
 
 ```sql
 cqlsh> CREATE KEYSPACE users;
