@@ -64,13 +64,13 @@ If you have a previously running local universe, destroy it using the `yb-ctl de
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new 3-node cluster with a replication factor of 3 and set the number of [shards](../../architecture/concepts/docdb/sharding/) (aka tablets) per table per YB-TServer to 4 so that you can better observe the load balancing during scale-up and scale-down.
+Start a new 3-node cluster with a replication factor (RF) of `3` and set the number of [shards](../../../architecture/concepts/docdb/sharding/) (aka tablets) per table per YB-TServer to `4` so that you can better observe the load balancing during scale-up and scale-down.
 
 ```sh
 $ ./bin/yb-ctl create --rf 3 --num_shards_per_tserver 4
 ```
 
-Each table now has 4 tablet-leaders in each YB-TServer and with a replication factor of 3, there are 2 tablet-followers for each tablet-leader distributed in the 2 other YB-TServers. So each YB-TServer has 12 tablets (that is, the sum of 4 tablet-leaders plus 8 tablet-followers) per table.
+Each table now has four tablet-leaders in each YB-TServer and with a replication factor (RF) of `3`, there are two tablet-followers for each tablet-leader distributed in the two other YB-TServers. So each YB-TServer has 12 tablets (that is, the sum of 4 tablet-leaders plus 8 tablet-followers) per table.
 
 ## 2. Run the YugabyteDB workload generator
 
