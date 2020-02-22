@@ -32,7 +32,7 @@
       "bin": "pycodestyle"
     },
     "googlecpplint": {
-      "type": "googlecpplint",
+      "type": "cpplint",
       "exclude": [
         "(^src/yb/yql/cql/ql/kwlist[.]h$)",
         "(^src/yb/yql/pggate/if_macros_undef[.]h$)",

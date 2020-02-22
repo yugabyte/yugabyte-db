@@ -611,6 +611,15 @@ void MasterPathHandlers::HandleHealthCheck(
     return;
   }
 
+  int replication_factor;
+  s = master_->catalog_manager()->GetReplicationFactor(&replication_factor);
+  if (!s.ok()) {
+    jw.StartObject();
+    jw.String("error");
+    jw.String(s.ToString());
+    return;
+  }
+
   vector<std::shared_ptr<TSDescriptor> > descs;
   const auto* ts_manager = master_->ts_manager();
   ts_manager->GetAllDescriptors(&descs);
@@ -646,13 +655,36 @@ void MasterPathHandlers::HandleHealthCheck(
     jw.String("most_recent_uptime");
     jw.Uint(most_recent_uptime);
 
+    // Get all the tablets and add the tablet id for each tablet that has
+    // replication locations lesser than 'replication_factor'.
+    jw.String("replicationfactor");
+    jw.Int(replication_factor);
+    jw.String("under_replicated_tablets");
+    jw.StartArray();
+
+    vector<scoped_refptr<TableInfo>> tables;
+    master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
+    for (const auto& table : tables) {
+      TabletInfos tablets;
+      table->GetAllTablets(&tablets);
+
+      for (const auto& tablet : tablets) {
+        TabletInfo::ReplicaMap replication_locations;
+        tablet->GetReplicaLocations(&replication_locations);
+        if (replication_locations.size() < replication_factor) {
+          jw.Int(replication_locations.size());
+          jw.String(tablet->tablet_id());
+        }
+      }
+    }
+    jw.EndArray();
+
     // TODO: Add these health checks in a subsequent diff
     //
-    // 3. is the load balancer busy moving tablets/leaders around
+    // 4. is the load balancer busy moving tablets/leaders around
     /* Use: CHECKED_STATUS IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
                                               IsLoadBalancerIdleResponsePB* resp);
      */
-    // 4. are any tablets currently underreplicated
     // 5. do any of the TS have tablets they were not able to start up
   }
   jw.EndObject();
