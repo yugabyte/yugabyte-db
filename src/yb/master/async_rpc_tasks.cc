@@ -600,11 +600,11 @@ void AsyncAlterTable::HandleResponse(int attempt) {
 }
 
 bool AsyncAlterTable::SendRequest(int attempt) {
-  VLOG(1) << "Send alter table request to " << permanent_uuid() << " for " << tablet_->tablet_id()
-          << "version " << schema_version_ << " waiting for a read lock.";
+  VLOG(1) << "Send alter table request to " << permanent_uuid() << " for "
+          << tablet_->tablet_id() << " waiting for a read lock.";
   auto l = table_->LockForRead();
-  VLOG(1) << "Send alter table request to " << permanent_uuid() << " for " << tablet_->tablet_id()
-          << "version " << schema_version_ << " obtained the read lock.";
+  VLOG(1) << "Send alter table request to " << permanent_uuid() << " for "
+          << tablet_->tablet_id() << " obtained the read lock.";
 
   tserver::ChangeMetadataRequestPB req;
   req.set_schema_version(l->data().pb.version());
