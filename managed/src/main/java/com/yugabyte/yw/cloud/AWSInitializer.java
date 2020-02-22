@@ -292,8 +292,12 @@ public class AWSInitializer extends AbstractInitializer {
           matches(productAttrs, "storage", FilterOp.Contains, "EBS"));
       // Make sure it is current generation.
       include &= matches(productAttrs, "currentGeneration", FilterOp.Equals, "Yes");
-      // Make sure tenancy is shared
+      // Make sure tenancy is shared.
       include &= matches(productAttrs, "tenancy", FilterOp.Equals, "Shared");
+      // Make sure it is the base instance type.
+      include &= matches(productAttrs, "preInstalledSw", FilterOp.Equals, "NA");
+      // Make sure instance type is supported.
+      include &= isInstanceTypeSupported(productAttrs);
 
       if (include) {
         JsonNode attributesJson = productDetailsJson.get("attributes");
@@ -411,8 +415,12 @@ public class AWSInitializer extends AbstractInitializer {
                   matches(productAttrs, "storage", FilterOp.Contains, "EBS"));
       // Make sure it is current generation.
       include &= matches(productAttrs, "currentGeneration", FilterOp.Equals, "Yes");
-      // Make sure tenancy is shared
+      // Make sure tenancy is shared.
       include &= matches(productAttrs, "tenancy", FilterOp.Equals, "Shared");
+      // Make sure it is the base instance type.
+      include &= matches(productAttrs, "preInstalledSw", FilterOp.Equals, "NA");
+      // Make sure instance type is supported.
+      include &= isInstanceTypeSupported(productAttrs);
 
       if (!include) {
         if (enableVerboseLogging) {
@@ -604,5 +612,10 @@ public class AWSInitializer extends AbstractInitializer {
       default:
         return false;
     }
+  }
+
+  private boolean isInstanceTypeSupported(Map<String, String> productAttributes) {
+    return InstanceType.AWS_INSTANCE_PREFIXES_SUPPORTED.stream().anyMatch(
+      productAttributes.getOrDefault("instanceType", "")::startsWith);
   }
 }
