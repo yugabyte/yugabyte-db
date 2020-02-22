@@ -399,13 +399,15 @@ class TransactionState {
         SubmitUpdateStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS);
       }
     } else if (now_physical >= resend_applying_time_) {
-      for (auto& tablet : involved_tablets_) {
-        if (!tablet.second.all_intents_applied) {
-          context_.NotifyApplying({
-              .tablet = tablet.first,
-              .transaction = id_,
-              .commit_time = commit_time_,
-              .sealed = status_ == TransactionStatus::SEALED });
+      if (leader) {
+        for (auto& tablet : involved_tablets_) {
+          if (!tablet.second.all_intents_applied) {
+            context_.NotifyApplying({
+                .tablet = tablet.first,
+                .transaction = id_,
+                .commit_time = commit_time_,
+                .sealed = status_ == TransactionStatus::SEALED });
+          }
         }
       }
       resend_applying_time_ = now_physical +
@@ -706,12 +708,14 @@ class TransactionState {
     resend_applying_time_ = MonoTime::Now() +
         std::chrono::microseconds(FLAGS_transaction_resend_applying_interval_usec);
     tablets_with_not_applied_intents_ = involved_tablets_.size();
-    for (const auto& tablet : involved_tablets_) {
-      context_.NotifyApplying({
-          .tablet = tablet.first,
-          .transaction = id_,
-          .commit_time = commit_time_,
-          .sealed = status_ == TransactionStatus::SEALED});
+    if (context_.leader()) {
+      for (const auto& tablet : involved_tablets_) {
+        context_.NotifyApplying({
+            .tablet = tablet.first,
+            .transaction = id_,
+            .commit_time = commit_time_,
+            .sealed = status_ == TransactionStatus::SEALED});
+      }
     }
     NotifyAbortWaiters(TransactionStatusResult(TransactionStatus::COMMITTED, commit_time_));
   }
