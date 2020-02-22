@@ -45,9 +45,9 @@ showAsideToc: true
 
 </ul>
 
-With YugabyteDB, you can add nodes to scale your cluster up very efficiently and reliably in order to achieve more read and write IOPS (input/output operations per second). In this tutorial, you will look at how YugabyteDB can scale while a workload is running. You will run a read-write workload using the prepackaged [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) against a 3-node local cluster with a replication factor of 3, and add nodes to it while the workload is running. Next, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
+With YugabyteDB, you can add nodes to scale your cluster up very efficiently and reliably in order to achieve more read and write IOPS (input/output operations per second). In this tutorial, you will look at how YugabyteDB can scale while a workload is running. You will run a read-write workload using the prepackaged [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) against a three-node local cluster with a replication factor of `3,` and add nodes to it while the workload is running. Next, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
 
-If you haven't installed YugabyteDB yet, you can get up and running YugabyteDB within five minutes by following the steps in the [Quick start](../../quick-start/install/).
+If you haven't installed YugabyteDB yet, you can get up and running YugabyteDB within five minutes by following the steps in the [Quick start](../../../quick-start/install/).
 
 ## 1. Create universe
 
@@ -57,7 +57,7 @@ If you have a previously running local universe, destroy it using the following.
 $ ./yb-docker-ctl destroy
 ```
 
-Start a new 3-node local cluster with replication factor of 3. Configure the number of [shards](../../architecture/concepts/docdb/sharding/) (aka tablets) per table per YB-TServer to 4 so that you can better observe the load balancing during scale-up and scale-down. Each table will now have 4 tablet-leaders in each tserver and with replication factor 3, there will be 2 tablet-followers for each tablet-leader distributed in the 2 other YB-TServers. So each tserver will have 12 tablets (that is, the sum of 4 tablet-leaders and 8 tablet-followers) per table.
+Start a new three-node local cluster with replication factor of `3`. Configure the number of [shards](../../../architecture/concepts/docdb/sharding/) (aka tablets) per table per YB-TServer to `4` so that you can better observe the load balancing during scale-up and scale-down. Each table will now have 4 tablet-leaders in each tserver and with replication factor of `3`, there will be two tablet-followers for each tablet-leader distributed in the two other YB-TServers. So each tserver will have 12 tablets (that is, the sum of 4 tablet-leaders and 8 tablet-followers) per table.
 
 ```sh
 $ ./yb-docker-ctl create --rf 3 --num_shards_per_tserver 4
@@ -65,7 +65,7 @@ $ ./yb-docker-ctl create --rf 3 --num_shards_per_tserver 4
 
 ## 2. Run YugabyteDB workload generator
 
-Pull the [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps) docker container. This container has built-in Java client programs for various workloads including SQL inserts and updates.
+Pull the [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps) docker container. This container has built-in Java client programs for various workloads, including SQL inserts and updates.
 
 ```sh
 $ docker pull yugabytedb/yb-sample-apps
@@ -102,7 +102,7 @@ Add a node to the universe.
 $ ./yb-docker-ctl add_node --num_shards_per_tserver 4
 ```
 
-Now we should have 4 nodes. Refresh the <a href='http://localhost:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the stats update. In a short time, you should see the new node performing a comparable number of reads and writes as the other nodes.
+Now we should have four nodes. Refresh the <a href='http://localhost:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the stats update. In a short time, you should see the new node performing a comparable number of reads and writes as the other nodes.
 
 ![Read and write IOPS with 4 nodes - Rebalancing in progress](/images/ce/linear-scalability-4-nodes-docker.png)
 

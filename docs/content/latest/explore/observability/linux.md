@@ -47,9 +47,9 @@ showAsideToc: true
 
 You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time-series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint.
 
-For details on the metrics targets for YugabyteDB, see [Monitoring with Prometheus](../../reference/configuration/default-ports/#monitoring-with-prometheus).
+For details on the metrics targets for YugabyteDB, see [Monitoring with Prometheus](../../../reference/configuration/default-ports/#monitoring-with-prometheus).
 
-If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../quick-start/install/) guide.
+If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
 
 ## Prerequisite
 
@@ -66,7 +66,7 @@ If you have a previously running local universe, destroy it using the following.
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local YugabyteDB cluster - by default, this will create a 3-node universe with a replication factor of 3. 
+Start a new local YugabyteDB cluster - by default, this will create a three-node universe with a replication factor of `3`.
 
 ```sh
 $ ./bin/yb-ctl create
@@ -77,7 +77,7 @@ $ ./bin/yb-ctl create
 Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) JAR file (`yb-sample-apps.jar`) by running the following command.
 
 ```sh
-$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
+$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
 Run the `CassandraKeyValue` workload in a separate shell.
@@ -143,8 +143,7 @@ Open the Prometheus UI at http://localhost:9090 and then navigate to the Targets
 
 On the Prometheus Graph UI, you can now plot the read IOPS and write IOPS for the `CassandraKeyValue` sample app. As we can see from the [source code](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraKeyValue.java) of the app, it uses only SELECT statements for reads and INSERT statements for writes (aside from the initial CREATE TABLE). This means we can measure throughput and latency by simply using the metrics corresponding to the SELECT and INSERT statements.
 
-
-Paste the following expressions into the Expression box and click Execute followed by Add Graph.
+Paste the following expressions into the **Expression** box and click **Execute** followed by **Add Graph**.
 
 ### Throughput
 
