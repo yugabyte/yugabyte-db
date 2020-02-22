@@ -49,9 +49,9 @@ showAsideToc: true
 
 </ul>
 
-YugabyteDB can automatically handle failures and therefore provides [high availability](../../architecture/core-functions/high-availability/). You will create YSQL tables with a replication factor (RF) of `3` that allows a [fault tolerance](../../architecture/concepts/docdb/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
+YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). You will create YSQL tables with a replication factor (RF) of `3` that allows a [fault tolerance](../../../architecture/concepts/docdb/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
 
-If you haven't installed YugabyteDB yet, you can create a local YugabyteDB cluster within five minutes by following the [Quick Start](../../quick-start/install/) guide.
+If you haven't installed YugabyteDB yet, you can create a local YugabyteDB cluster within five minutes by following the [Quick Start](../../../quick-start/install/) guide.
 
 ## 1. Create a universe
 
@@ -61,7 +61,7 @@ If you have a previously running local universe, destroy it using the following.
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local 3-node cluster with a replication factor of 3.
+Start a new local three-node cluster with a replication factor of `3`.
 
 ```sh
 $ ./bin/yb-ctl --rf 3 create
@@ -75,7 +75,7 @@ Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`).
 $ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
 ```
 
-Run the `SqlInserts` workload against the local universe by running the following command.
+Run the `SqlInserts` workload against the local universe using the following command.
 
 ```sh
 $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
