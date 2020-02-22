@@ -332,8 +332,34 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 	ListCell   *lc;
 	int			attn;
 
-	relid =
-		RangeVarGetRelid(node->relation, AccessShareLock, false);
+	/*
+	 * Support for hypothetical BRIN indexes is broken in some minor versions
+	 * of pg10, pg11 and pg12.  For simplicity, check PG_VERSION_NUM rather
+	 * than the real instance version, which should should be right most of the
+	 * time.  When it's not, the only effect is to have a less user-friendly
+	 * error message.
+	 */
+#if ((PG_VERSION_NUM >= 100000 && PG_VERSION_NUM < 100012) || \
+	(PG_VERSION_NUM >= 110000 && PG_VERSION_NUM < 110007) || \
+	(PG_VERSION_NUM >= 120000 && PG_VERSION_NUM < 120002))
+	if (get_am_oid(node->accessMethod, true) == BRIN_AM_OID)
+	{
+		elog(ERROR, "hypopg: BRIN hypothetical indexes are only supported"
+				" with PostgreSQL "
+#if PG_VERSION_NUM >= 120000
+				"12.2"
+#else
+#if PG_VERSION_NUM >= 110000
+				"11.7"
+#else
+				"10.12"
+#endif					/* pg 11 */
+#endif					/* pg 12 */
+				" and later.");
+	}
+#endif
+
+	relid = RangeVarGetRelid(node->relation, AccessShareLock, false);
 
 	/* Run parse analysis ... */
 	node = transformIndexStmt(relid, node, queryString);
