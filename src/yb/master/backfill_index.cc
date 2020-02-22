@@ -110,7 +110,7 @@
 
 #include "yb/tserver/remote_bootstrap_client.h"
 
-DEFINE_int32(index_backfill_rpc_timeout_ms, 1 * 60 * 60 * 1000, // 1 hour.
+DEFINE_int32(index_backfill_rpc_timeout_ms, 1 * 60 * 1000, // 1 min.
              "Timeout used by the master when attempting to backfilll a tablet "
              "during index creation.");
 TAG_FLAG(index_backfill_rpc_timeout_ms, advanced);
@@ -633,71 +633,52 @@ BackfillTablet::BackfillTablet(
     auto l = tablet_->LockForRead();
     Partition::FromPB(tablet_->metadata().state().pb.partition(), &partition_);
     if (tablet_->metadata().state().pb.has_backfilled_until()) {
-      chunk_start_ = tablet_->metadata().state().pb.backfilled_until();
-    } else {
-      chunk_start_ = partition_.partition_key_start();
+      next_row_to_backfill_ = tablet_->metadata().state().pb.backfilled_until();
     }
   }
-  if (chunk_start_ != partition_.partition_key_start()) {
+  if (!next_row_to_backfill_.empty()) {
     VLOG(1) << tablet_->ToString() << " resuming backfill from "
-            << (chunk_start_.empty()
-                    ? "<start>"
-                    : yb::ToString(PartitionSchema::DecodeMultiColumnHashValue(
-                          chunk_start_)))
-            << " (instead of begining from "
-            << (partition_.partition_key_start().empty()
-                    ? "<start>"
-                    : yb::ToString(PartitionSchema::DecodeMultiColumnHashValue(
-                          partition_.partition_key_start())));
+            << yb::ToString(next_row_to_backfill_);
   } else {
     VLOG(1) << tablet_->ToString() << " begining backfill from "
-            << (chunk_start_.empty()
-                    ? "<start>"
-                    : yb::ToString(PartitionSchema::DecodeMultiColumnHashValue(
-                          chunk_start_)));
+            << "<start-of-the-tablet>";
   }
-  chunk_end_ = GetChunkEnd(chunk_start_);
 }
 
 void BackfillTablet::LaunchNextChunk() {
   if (!backfill_table_->done()) {
-    auto chunk = std::make_shared<BackfillChunk>(shared_from_this(), chunk_start_, chunk_end_);
+    auto chunk = std::make_shared<BackfillChunk>(shared_from_this(),
+                                                 next_row_to_backfill_);
     chunk->Launch();
   }
 }
 
-void BackfillTablet::Done(const Status& status) {
+void BackfillTablet::Done(const Status& status, const string& next_row_key) {
   if (!status.ok()) {
     LOG(INFO) << "Failed to backfill the tablet " << yb::ToString(tablet_) << status;
     backfill_table_->Done(status);
     return;
   }
 
-  processed_until_ = chunk_end_;
+  // This is the last chunk.
+  if (next_row_key.empty()) {
+    LOG(INFO) << "Done backfilling the tablet " << yb::ToString(tablet_);
+    backfill_table_->Done(status);
+    return;
+  }
+
+  next_row_to_backfill_ = next_row_key;
   VLOG(2) << "Done backfilling the tablet " << yb::ToString(tablet_)
-          << " until "
-          << (processed_until_.empty()
-                  ? "<end>"
-                  : yb::ToString(PartitionSchema::DecodeMultiColumnHashValue(
-                        processed_until_)));
+          << " until " << yb::ToString(next_row_to_backfill_);
   {
     tablet_->mutable_metadata()->StartMutation();
-    tablet_->mutable_metadata()->mutable_dirty()->pb.set_backfilled_until(processed_until_);
+    tablet_->mutable_metadata()->mutable_dirty()->pb.set_backfilled_until(
+        next_row_to_backfill_);
     WARN_NOT_OK(
         backfill_table_->master()->catalog_manager()->sys_catalog()->UpdateItem(
             tablet_.get(), backfill_table_->leader_term()),
         "Could not persist that the tablet is done backfilling.");
     tablet_->mutable_metadata()->CommitMutation();
-  }
-
-  chunk_start_ = processed_until_;
-  chunk_end_ = GetChunkEnd(chunk_start_);
-
-  // This is the last chunk.
-  if (chunk_start_ == chunk_end_) {
-    LOG(INFO) << "Done backfilling the tablet " << yb::ToString(tablet_);
-    backfill_table_->Done(status);
-    return;
   }
 
   LaunchNextChunk();
@@ -807,8 +788,6 @@ void BackfillChunk::Launch() {
 
 MonoTime BackfillChunk::ComputeDeadline() {
   MonoTime timeout = MonoTime::Now();
-  // We expect this RPC to take a long time.
-  // Allow this RPC  about 1 hour before retrying it.
   timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_index_backfill_rpc_timeout_ms));
   return MonoTime::Earliest(timeout, deadline_);
 }
@@ -829,7 +808,6 @@ bool BackfillChunk::SendRequest(int attempt) {
   req.set_read_at_hybrid_time(backfill_tablet_->read_time_for_backfill().ToUint64());
   req.set_schema_version(backfill_tablet_->schema_version());
   req.set_start_key(start_key_);
-  req.set_end_key(end_key_);
   for (const IndexInfoPB& idx_info : backfill_tablet_->indices()) {
     req.add_indexes()->CopyFrom(idx_info);
   }
@@ -882,7 +860,7 @@ void BackfillChunk::UnregisterAsyncTaskCallback() {
     status = STATUS_SUBSTITUTE(InternalError, "$0 in state $1", description(),
                                ToString(state()));
   }
-  backfill_tablet_->Done(status);
+  backfill_tablet_->Done(status, resp_.backfilled_until());
 }
 
 }  // namespace master

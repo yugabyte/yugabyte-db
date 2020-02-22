@@ -84,6 +84,7 @@
 #include "yb/docdb/docdb_compaction_filter_intents.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent.h"
+#include "yb/docdb/key_bytes.h"
 #include "yb/docdb/lock_batch.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/primitive_value.h"
@@ -177,8 +178,19 @@ DEFINE_int32(backfill_index_rate_rows_per_sec, 0, "Rate of at which the "
 TAG_FLAG(backfill_index_rate_rows_per_sec, advanced);
 TAG_FLAG(backfill_index_rate_rows_per_sec, runtime);
 
+DEFINE_int32(backfill_index_timeout_grace_margin_ms, 50,
+             "The time we give the backfill process to wrap up the current set "
+             "of writes and return successfully the RPC with the information about "
+             "how far we have processed the rows.");
+TAG_FLAG(backfill_index_timeout_grace_margin_ms, advanced);
+TAG_FLAG(backfill_index_timeout_grace_margin_ms, runtime);
+
 DEFINE_test_flag(int32, TEST_slowdown_backfill_by_ms, 0,
                  "If set > 0, slows down the backfill process by this amount.");
+
+DEFINE_test_flag(
+    int32, TEST_backfill_paging_size, 0,
+    "If set > 0, returns early after processing this number of rows.");
 
 DEFINE_test_flag(
     bool, tablet_verify_flushed_frontier_after_modifying, false,
@@ -1820,8 +1832,10 @@ bool Tablet::ShouldRetainDeleteMarkersInMajorCompaction() const {
 
 // Should backfill the index with the information contained in this tablet.
 // Assume that we are already in the Backfilling mode.
-Status Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexes,
-                               HybridTime read_time) {
+Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexes,
+                                            const std::string& backfill_from,
+                                            const CoarseTimePoint deadline,
+                                            const HybridTime read_time) {
   if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
     TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
@@ -1864,25 +1878,41 @@ Status Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexes,
   auto iter =
       VERIFY_RESULT(NewRowIterator(projection, boost::none, ReadHybridTime::SingleTime(read_time)));
 
+  if (!backfill_from.empty()) {
+    VLOG(1) << "Resuming backfill from  " << b2a_hex(backfill_from);
+    RETURN_NOT_OK(iter->SeekTuple(Slice(backfill_from)));
+  }
+
   QLTableRow row;
   std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>> index_requests;
-  int num_rows = 0;
-  while (VERIFY_RESULT((*iter).HasNext())) {
-    RETURN_NOT_OK((*iter).NextRow(&row));
+  const yb::CoarseDuration kMargin = FLAGS_backfill_index_timeout_grace_margin_ms * 1ms;
+  constexpr auto kProgressInterval = 1000;
+  int num_rows_processed = 0;
+  string resume_from;
+  while (VERIFY_RESULT(iter->HasNext())) {
+    RETURN_NOT_OK(iter->NextRow(&row));
 
-    DVLOG(2) << "Building index for fetched row: " << row.ToString();
-    constexpr auto kProgressInterval = 1000;
-    if (++num_rows % kProgressInterval == 0) {
-      VLOG(1) << "Processed " << num_rows << " rows";
+    if (CoarseMonoClock::Now() + kMargin > deadline ||
+        (FLAGS_TEST_backfill_paging_size > 0 &&
+         num_rows_processed == FLAGS_TEST_backfill_paging_size)) {
+      resume_from = VERIFY_RESULT(iter->GetTupleId()).ToBuffer();
+      break;
     }
 
+    DVLOG(2) << "Building index for fetched row: " << row.ToString();
     RETURN_NOT_OK(UpdateIndexInBatches(row, indexes, &index_requests));
+    if (++num_rows_processed % kProgressInterval == 0) {
+      VLOG(1) << "Processed " << num_rows_processed << " rows";
+    }
   }
-  VLOG(1) << "Processed " << num_rows << " rows";
+
+  VLOG(1) << "Processed " << num_rows_processed << " rows";
   RETURN_NOT_OK(FlushIndexBatchIfRequired(&index_requests, /* forced */ true));
   LOG(INFO) << "Done BackfillIndexes at " << read_time << " for "
-            << yb::ToString(indexes);
-  return Status::OK();
+            << yb::ToString(indexes) << " until "
+            << (resume_from.empty() ? "<end of the tablet>"
+                                    : b2a_hex(resume_from));
+  return resume_from;
 }
 
 Status Tablet::UpdateIndexInBatches(
@@ -1955,17 +1985,8 @@ Status Tablet::FlushIndexBatchIfRequired(
   VLOG(1) << Format("Flushing $0 ops to the index",
                     (!ops_by_primary_key.empty() ? ops_by_primary_key.size()
                                                  : write_ops.size()));
-  RETURN_NOT_OK_PREPEND(session->Flush(), "Flush failed.");
-  VLOG(3) << "Done flushing ops to the index";
-  for (auto write_op : write_ops) {
-    if (write_op->response().status() != QLResponsePB::YQL_STATUS_OK) {
-      VLOG(2) << "Got response " << yb::ToString(write_op->response()) << " for "
-              << yb::ToString(write_op->request());
-      return STATUS_SUBSTITUTE(
-          IllegalState, "Backfilling op failed: request : $0 response : $1",
-          yb::ToString(write_op->request()), yb::ToString(write_op->response()));
-    }
-  }
+  constexpr int kMaxNumRetries = 10;
+  RETURN_NOT_OK(FlushWithRetries(session, write_ops, kMaxNumRetries));
 
   auto now = CoarseMonoClock::Now();
   if (FLAGS_backfill_index_rate_rows_per_sec > 0) {
@@ -1983,6 +2004,51 @@ Status Tablet::FlushIndexBatchIfRequired(
 
   index_requests->clear();
   return Status::OK();
+}
+
+Status Tablet::FlushWithRetries(
+    shared_ptr<YBSession> session,
+    const std::vector<shared_ptr<client::YBqlWriteOp>> &write_ops,
+    int num_retries) {
+  auto retries_left = num_retries;
+  std::vector<shared_ptr<client::YBqlWriteOp>> failed_ops;
+  std::vector<shared_ptr<client::YBqlWriteOp>> pending_ops = write_ops;
+  do {
+    RETURN_NOT_OK_PREPEND(session->Flush(), "Flush failed.");
+    VLOG(3) << "Done flushing ops to the index";
+    failed_ops.clear();
+    for (auto write_op : pending_ops) {
+      if (write_op->response().status() == QLResponsePB::YQL_STATUS_OK) {
+        continue;
+      }
+
+      VLOG(2) << "Got response " << yb::ToString(write_op->response())
+              << " for " << yb::ToString(write_op->request());
+      if (write_op->response().status() !=
+          QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR) {
+        return STATUS_SUBSTITUTE(
+            IllegalState, "Backfilling op failed: request : $0 response : $1",
+            yb::ToString(write_op->request()),
+            yb::ToString(write_op->response()));
+      }
+
+      failed_ops.push_back(write_op);
+      RETURN_NOT_OK_PREPEND(session->Apply(write_op), "Could not Apply.");
+    }
+
+    if (failed_ops.empty()) {
+      return Status::OK();
+    }
+    VLOG(1) << Format("Flushing $0 failed ops again to the index",
+                      failed_ops.size());
+    pending_ops = failed_ops;
+  } while (--retries_left > 0);
+
+  // TODO(Amit) Add failure details of form:
+  // yb::ToString(write_op->request()), yb::ToString(write_op->response()));
+  return STATUS_SUBSTITUTE(
+      IllegalState, "Backfilling op failed for $0 requests after $1 retries.",
+      failed_ops.size(), num_retries);
 }
 
 ScopedPendingOperationPause Tablet::PauseReadWriteOperations() {

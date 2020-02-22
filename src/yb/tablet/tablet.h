@@ -188,7 +188,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // within the provided registry. Otherwise, no metrics are collected.
   Tablet(
       const RaftGroupMetadataPtr& metadata,
-      const std::shared_future<client::YBClient*> &client_future,
+      const std::shared_future<client::YBClient*>& client_future,
       const scoped_refptr<server::Clock>& clock,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
       std::shared_ptr<MemTracker> block_based_table_mem_tracker,
@@ -210,8 +210,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS EnableCompactions(ScopedPendingOperationPause* operation_pause);
 
-  CHECKED_STATUS BackfillIndexes(const std::vector<IndexInfo> &indexes,
-                                 HybridTime read_time);
+  Result<std::string> BackfillIndexes(const std::vector<IndexInfo>& indexes,
+                                      const std::string& backfill_from,
+                                      const CoarseTimePoint deadline,
+                                      const HybridTime read_time);
 
   bool ShouldRetainDeleteMarkersInMajorCompaction() const;
 
@@ -222,6 +224,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS FlushIndexBatchIfRequired(
       std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
       bool force_flush = false);
+
+  CHECKED_STATUS
+  FlushWithRetries(
+      std::shared_ptr<client::YBSession> session,
+      const std::vector<std::shared_ptr<client::YBqlWriteOp>>& write_ops,
+      int num_retries);
 
   // Mark that the tablet has finished bootstrapping.
   // This transitions from kBootstrapping to kOpen state.
@@ -343,7 +351,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // state of this tablet.
   // The returned iterator is not initialized.
   Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> NewRowIterator(
-      const Schema &projection,
+      const Schema& projection,
       const boost::optional<TransactionId>& transaction_id,
       const ReadHybridTime read_hybrid_time = {},
       const TableId& table_id = "") const;
