@@ -47,9 +47,9 @@ showAsideToc: true
 
 You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time-series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint.
 
-For details on the metrics targets for YugabyteDB, see [Monitoring with Prometheus](../../reference/configuration/default-ports/#monitoring-with-prometheus).
+For details on the metrics targets for YugabyteDB, see [Monitoring with Prometheus](../../../reference/configuration/default-ports/#monitoring-with-prometheus).
 
-If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../quick-start/install/) guide.
+If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
 
 ## 1. Create universe
 
@@ -59,7 +59,7 @@ If you have a previously running local universe, destroy it using the following.
 $ ./yb-docker-ctl destroy
 ```
 
-Start a new local universe with replication factor 3.
+Start a new local universe with replication factor of `3`.
 
 ```sh
 $ ./yb-docker-ctl create  --rf 3
@@ -148,6 +148,7 @@ Paste the following expressions into the Expression box and click Execute follow
 ```sh
 sum(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_count[1m]))
 ```
+
 ![Prometheus Read IOPS](/images/ce/prom-read-iops.png)
 
 >  Write IOPS
@@ -155,6 +156,7 @@ sum(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_count[1m]))
 ```sh
 sum(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_count[1m]))
 ```
+
 ![Prometheus Read IOPS](/images/ce/prom-write-iops.png)
 
 ### Latency
@@ -164,6 +166,7 @@ sum(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_count[1m]))
 ```sh
 avg(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_sum[1m])) / avg(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_count[1m]))
 ```
+
 ![Prometheus Read IOPS](/images/ce/prom-read-latency.png)
 
 > Write Latency (in microseconds)
@@ -171,11 +174,12 @@ avg(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_sum[1m])) / avg(i
 ```sh
 avg(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_sum[1m])) / avg(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_count[1m]))
 ```
+
 ![Prometheus Read IOPS](/images/ce/prom-write-latency.png)
 
 ## 6. Clean up (optional)
 
-Optionally, you can shutdown the local cluster created in Step 1.
+Optionally, you can shut down the local cluster created in Step 1.
 
 ```sh
 $ ./yb-docker-ctl destroy

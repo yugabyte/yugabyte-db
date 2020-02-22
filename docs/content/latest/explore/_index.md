@@ -86,7 +86,7 @@ Use your [local cluster](../quick-start/) to explore all the core features of Yu
         <div class="title">Observabililty</div>
       </div>
       <div class="body">
-        Observable at every layer of the database using Prometheus.
+        Observe metrics at every layer of the database using Prometheus.
       </div>
     </a>
   </div>
