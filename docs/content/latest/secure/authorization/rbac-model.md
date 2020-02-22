@@ -1,7 +1,7 @@
 ---
 title: RBAC model
 linkTitle: RBAC model
-description: RBAC model
+description: Role-based access control (RBAC) model
 headcontent: How role-based access control works
 image: /images/section_icons/secure/rbac-model.png
 menu:
@@ -16,7 +16,7 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/secure/authorization/rbac-model.md" class="nav-link active">
+    <a href="/latest/secure/authorization/rbac-model" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -31,7 +31,7 @@ showAsideToc: true
 
 </ul>
 
-The role-based access control model in YSQL is a collection of privileges on resources given to roles. Thus, the entire RBAC model is built around roles, resources, and privileges. It is essential to understand these concepts in order to understand the RBAC model.
+The role-based access control (RBAC) model in YSQL is a collection of privileges on resources given to roles. Thus, the entire RBAC model is built around roles, resources, and privileges. It is essential to understand these concepts in order to understand the RBAC model.
 
 ## Roles
 
@@ -75,7 +75,7 @@ Privilege  | Objects                      | Operations                          
 
 {{< note title="Note" >}}
 
-The ALTER TABLE privilege on the base table is required in order to CREATE or DROP indexes on it.
+The `ALTER TABLE` privilege on the base table is required in order to CREATE or DROP indexes on it.
 
 {{< /note >}}
 

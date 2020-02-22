@@ -1,7 +1,7 @@
 ---
 title: RBAC model
 linkTitle: RBAC model
-description: RBAC model
+description: Role-based access control (RBAC) model
 headcontent: How role-based access control works
 image: /images/section_icons/secure/rbac-model.png
 menu:
@@ -31,7 +31,7 @@ showAsideToc: true
 
 </ul>
 
-The role-based access control model in YCQL is a collection of permissions on resources given to roles. Thus, the entire RBAC model is built around **roles**, **resources** and **permissions**. It is essential to understand these concepts in order to understand the RBAC model.
+The role-based access control (RBAC) model in YCQL is a collection of permissions on resources given to roles. Thus, the entire RBAC model is built around roles, resources, and permissions. It is essential to understand these concepts in order to understand the RBAC model.
 
 ## Roles
 
@@ -76,7 +76,7 @@ Permission  | Objects                      | Operations                         
 
 {{< note title="Note" >}}
 
-The ALTER permission on the base table is required in order to CREATE or DROP indexes on it.
+The `ALTER` permission on the base table is required in order to CREATE or DROP indexes on it.
 
 {{< /note >}}
 
