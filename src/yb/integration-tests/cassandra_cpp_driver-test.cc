@@ -609,6 +609,16 @@ class CppCassandraDriverTestIndex : public CppCassandraDriverTest {
                                      UserEnforced user_enforced);
 };
 
+class CppCassandraDriverTestIndexMultipleChunks
+    : public CppCassandraDriverTestIndex {
+ public:
+  std::vector<std::string> ExtraTServerFlags() override {
+    auto flags = CppCassandraDriverTestIndex::ExtraTServerFlags();
+    flags.push_back("--TEST_backfill_paging_size=2");
+    return flags;
+  }
+};
+
 class CppCassandraDriverTestUserEnforcedIndex : public CppCassandraDriverTestIndex {
  public:
   std::vector<std::string> ExtraTServerFlags() override {
@@ -1434,7 +1444,6 @@ void TestBackfillIndexTable(CppCassandraDriverTestIndex *test,
   // client_read_write_timeout_ms
   auto s = create_index_future.Wait();
   WARN_NOT_OK(s, "Create index failed.");
-  ASSERT_TRUE(s.ok() || (user_enforced && s.IsTimedOut()));
 
   IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
       test->client_.get(), table_name, index_table_name,
@@ -1469,6 +1478,12 @@ TEST_F_EX(CppCassandraDriverTest, TestTableCreateIndexCovered, CppCassandraDrive
 TEST_F_EX(CppCassandraDriverTest, TestTableCreateIndexUserEnforced,
           CppCassandraDriverTestUserEnforcedIndex) {
   TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IncludeAllColumns::kTrue, UserEnforced::kTrue);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestTableBackfillInChunks,
+          CppCassandraDriverTestIndexMultipleChunks) {
+  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IncludeAllColumns::kTrue,
+                         UserEnforced::kFalse);
 }
 
 TEST_F_EX(CppCassandraDriverTest, ConcurrentIndexUpdate, CppCassandraDriverTestIndex) {

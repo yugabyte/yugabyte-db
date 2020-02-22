@@ -680,11 +680,13 @@ void TabletServiceAdminImpl::BackfillIndex(
     index_ids.push_back(index_map.at(idx.table_id()).table_id());
   }
 
-  Status s =
-      tablet.peer->tablet()->BackfillIndexes(indices_to_backfill, read_at);
+  Result<string> resume_from = tablet.peer->tablet()->BackfillIndexes(
+      indices_to_backfill, req->start_key(), deadline, read_at);
   DVLOG(1) << "Tablet " << tablet.peer->tablet_id()
-           << ". Backfilled indices for : " << yb::ToString(index_ids) << " with status " << s;
-  if (!s.ok()) {
+           << ". Backfilled indices for : " << yb::ToString(index_ids)
+           << " got " << resume_from.ToString();
+  if (!resume_from) {
+    auto s = resume_from.status();
     SetupErrorAndRespond(
         resp->mutable_error(), s, (s.IsIllegalState() ? TabletServerErrorPB::OPERATION_NOT_SUPPORTED
                                                       : TabletServerErrorPB::UNKNOWN_ERROR),
@@ -692,6 +694,7 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
+  resp->set_backfilled_until(*resume_from);
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
   context.RespondSuccess();
 }

@@ -121,6 +121,11 @@ message BackfillIndexResponsePB {
   optional TabletServerErrorPB error = 1;
 
   optional fixed64 propagated_hybrid_time = 2;
+
+  // If non-empty, this is used to keep track of how far along
+  // the backfill has completed, so that it can be resumed.
+  // Encoded as the DocKey for the next row to be backfilled.
+  optional bytes backfilled_until = 3;
 }
 
 message CopartitionTableRequestPB {

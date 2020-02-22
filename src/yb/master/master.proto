@@ -293,7 +293,8 @@ message SysTabletsEntryPB {
   optional bool colocated = 9 [ default = false ];
 
   // If the tablet is in the backfilling state, this is used to keep track
-  // of how far along backfill has completed. Encoded like the partition key.
+  // of how far along backfill has completed. Encoded as the DocKey for
+  // the next row to be backfilled.
   optional bytes backfilled_until = 10;
 }
 
