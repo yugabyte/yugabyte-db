@@ -29,7 +29,8 @@ import play.libs.Json;
 public class InstanceType extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(InstanceType.class);
 
-  static List<String> AWS_INSTANCE_PREFIXES_SUPPORTED = ImmutableList.of("m3.", "c5.", "c4.", "c3.", "i3.");
+  public static List<String> AWS_INSTANCE_PREFIXES_SUPPORTED = ImmutableList.of(
+    "m3.", "c5.", "c4.", "c3.", "i3.");
 
   public enum VolumeType {
     @EnumValue("EBS")
