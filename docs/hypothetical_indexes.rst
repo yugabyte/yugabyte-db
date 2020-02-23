@@ -3,8 +3,8 @@
 Hypothetical Indexes
 ====================
 
-An hypothetical, or virtual, index is an index that doesn't really exists, and
-thus doesn't cost CPU, disk or any resource to create.  They're useful to know
-if specific indexes can increase performance for problematic queries, since
-you can know if PostgreSQL will use these indexes or not without having to
-spend resources to create them.
+A hypothetical, or virtual, index is an index that does not really exist, and
+therefore does not cost CPU, disk or any resource to create. They are useful to
+find out whether specific indexes can increase the performance for problematic
+queries, since you can discover if PostgreSQL will use these indexes or not
+without having to spend resources to create them.
