@@ -21,20 +21,20 @@ export default class DiskUsagePanel extends Component {
       const diskUsedObj = metric.data.find((item)=>item.name === "used");
       const diskFreeObj = metric.data.find((item)=>item.name === "free");
       const diskSizeObj = metric.data.find((item)=>item.name === "size");
-      const reducer = arr => arr.reduce((p, c) => parseFloat(p) + parseFloat(c), 0 ) / arr.length;
+      const getLastElement = arr => arr && arr.length && arr[arr.length - 1];
 
       // If at least two out of three objects are defined we can figure out the rest
       if (!!diskUsedObj && !!diskFreeObj) {
-        space.used = reducer(diskUsedObj.y);
-        space.free = reducer(diskFreeObj.y);
+        space.used = getLastElement(diskUsedObj.y);
+        space.free = getLastElement(diskFreeObj.y);
         space.size = space.used + space.free;
       } else if (!!diskUsedObj && !!diskSizeObj) {
-        space.used = reducer(diskUsedObj.y);
-        space.size = reducer(diskSizeObj.y);
+        space.used = getLastElement(diskUsedObj.y);
+        space.size = getLastElement(diskSizeObj.y);
         space.free = space.size - space.used;
       } else if (!!diskFreeObj && !!diskSizeObj) {
-        space.free = reducer(diskFreeObj.y);
-        space.size = reducer(diskSizeObj.y);
+        space.free = getLastElement(diskFreeObj.y);
+        space.size = getLastElement(diskSizeObj.y);
         space.used = space.size - space.free;
       } else {
         console.error(`Metric missing properties. Free: ${diskFreeObj}, Used: ${diskUsedObj}, Size: ${diskSizeObj}`);
