@@ -4,7 +4,7 @@ linkTitle: 5. Aggregations
 description: Aggregations
 menu:
   latest:
-    identifier: aggregations-ycql
+    identifier: aggregations-1-ycql
     parent: learn
     weight: 567
 isTocNested: true

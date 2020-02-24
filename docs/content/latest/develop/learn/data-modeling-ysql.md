@@ -2,13 +2,9 @@
 title: 2. Data modeling
 linkTitle: 2. Data modeling
 description: Data modeling
-aliases:
-  - /develop/learn/data-modeling/
-  - /latest/explore/transactional/secondary-indexes/
-  - /latest/develop/learn/data-modeling/
 menu:
   latest:
-    identifier: data-modeling-ysql
+    identifier: data-modeling-2-ysql
     parent: learn
     weight: 562
 isTocNested: true

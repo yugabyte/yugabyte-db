@@ -4,7 +4,7 @@ linkTitle: 3. Data types
 description: Data types
 menu:
   latest:
-    identifier: data-types-ycql
+    identifier: data-types-1-ycql
     parent: learn
     weight: 565
 isTocNested: true
@@ -29,7 +29,7 @@ showAsideToc: true
 
 </ul>
 
-This topic lists the various data types available in YugabyteDB’s [Cassandra compatible YCQL API](../../../api/ycql).
+This topic lists the various data types available in YugabyteDB’s [Cassandra-compatible YCQL API](../../../api/ycql).
 
 ## JSONB
 

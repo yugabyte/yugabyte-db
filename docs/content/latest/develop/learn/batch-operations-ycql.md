@@ -4,7 +4,7 @@ linkTitle: 6. Batch operations
 description: Batch operations
 menu:
   latest:
-    identifier: batch-operations-ycql
+    identifier: batch-operations-1-ycql
     parent: learn
     weight: 568
 isTocNested: true

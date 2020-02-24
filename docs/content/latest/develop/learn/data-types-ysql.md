@@ -7,7 +7,7 @@ aliases:
   - /latest/develop/learn/data-types/
 menu:
   latest:
-    identifier: data-types-ysql
+    identifier: data-types-2-ysql
     parent: learn
     weight: 565
 isTocNested: true
