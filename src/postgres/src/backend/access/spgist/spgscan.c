@@ -198,10 +198,10 @@ spgbeginscan(Relation rel, int keysz, int orderbysz)
 	else
 		so->keyData = NULL;
 	initSpGistState(&so->state, scan->indexRelation);
-	so->tempCxt = AllocSetContextCreate(CurrentMemoryContext,
+	so->tempCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 										"SP-GiST search temporary context",
 										ALLOCSET_DEFAULT_SIZES);
-	so->traversalCxt = AllocSetContextCreate(CurrentMemoryContext,
+	so->traversalCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 											 "SP-GiST traversal-value context",
 											 ALLOCSET_DEFAULT_SIZES);
 

@@ -17,6 +17,7 @@
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/pggate.h"
+#include "yb/yql/pggate/pggate_thread_local_vars.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pggate_flags.h"
 
@@ -689,6 +690,46 @@ int32_t YBCGetOutputBufferSize() {
 
 bool YBCPgIsYugaByteEnabled() {
   return pgapi;
+}
+
+//------------------------------------------------------------------------------------------------
+// Thread-local variables.
+//------------------------------------------------------------------------------------------------
+
+void* YBCPgGetThreadLocalCurrentMemoryContext() {
+  return PgGetThreadLocalCurrentMemoryContext();
+}
+
+void* YBCPgSetThreadLocalCurrentMemoryContext(void *memctx) {
+  return PgSetThreadLocalCurrentMemoryContext(memctx);
+}
+
+void YBCPgResetCurrentMemCtxThreadLocalVars() {
+  PgResetCurrentMemCtxThreadLocalVars();
+}
+
+void* YBCPgGetThreadLocalStrTokPtr() {
+  return PgGetThreadLocalStrTokPtr();
+}
+
+void YBCPgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr) {
+  PgSetThreadLocalStrTokPtr(new_pg_strtok_ptr);
+}
+
+void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer) {
+  return PgSetThreadLocalJumpBuffer(new_buffer);
+}
+
+void* YBCPgGetThreadLocalJumpBuffer() {
+  return PgGetThreadLocalJumpBuffer();
+}
+
+void YBCPgSetThreadLocalErrMsg(const void* new_msg) {
+  PgSetThreadLocalErrMsg(new_msg);
+}
+
+const void* YBCPgGetThreadLocalErrMsg() {
+  return PgGetThreadLocalErrMsg();
 }
 
 } // extern "C"

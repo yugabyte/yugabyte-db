@@ -378,7 +378,7 @@ advance_windowaggregate(WindowAggState *winstate,
 			if (DatumIsReadWriteExpandedObject(newVal,
 											   false,
 											   peraggstate->transtypeLen) &&
-				MemoryContextGetParent(DatumGetEOHP(newVal)->eoh_context) == CurrentMemoryContext)
+				MemoryContextGetParent(DatumGetEOHP(newVal)->eoh_context) == GetCurrentMemoryContext())
 				 /* do nothing */ ;
 			else
 				newVal = datumCopy(newVal,
@@ -547,7 +547,7 @@ advance_windowaggregate_base(WindowAggState *winstate,
 			if (DatumIsReadWriteExpandedObject(newVal,
 											   false,
 											   peraggstate->transtypeLen) &&
-				MemoryContextGetParent(DatumGetEOHP(newVal)->eoh_context) == CurrentMemoryContext)
+				MemoryContextGetParent(DatumGetEOHP(newVal)->eoh_context) == GetCurrentMemoryContext())
 				 /* do nothing */ ;
 			else
 				newVal = datumCopy(newVal,
@@ -639,7 +639,7 @@ finalize_windowaggregate(WindowAggState *winstate,
 	 * If result is pass-by-ref, make sure it is in the right context.
 	 */
 	if (!peraggstate->resulttypeByVal && !*isnull &&
-		!MemoryContextContains(CurrentMemoryContext,
+		!MemoryContextContains(GetCurrentMemoryContext(),
 							   DatumGetPointer(*result)))
 		*result = datumCopy(*result,
 							peraggstate->resulttypeByVal,
@@ -1061,7 +1061,7 @@ eval_windowfunction(WindowAggState *winstate, WindowStatePerFunc perfuncstate,
 	 * tuple, as is entirely possible.)
 	 */
 	if (!perfuncstate->resulttypeByVal && !fcinfo.isnull &&
-		!MemoryContextContains(CurrentMemoryContext,
+		!MemoryContextContains(GetCurrentMemoryContext(),
 							   DatumGetPointer(*result)))
 		*result = datumCopy(*result,
 							perfuncstate->resulttypeByVal,
@@ -2284,7 +2284,7 @@ ExecInitWindowAgg(WindowAgg *node, EState *estate, int eflags)
 
 	/* Create long-lived context for storage of partition-local memory etc */
 	winstate->partcontext =
-		AllocSetContextCreate(CurrentMemoryContext,
+		AllocSetContextCreate(GetCurrentMemoryContext(),
 							  "WindowAgg Partition",
 							  ALLOCSET_DEFAULT_SIZES);
 
@@ -2295,7 +2295,7 @@ ExecInitWindowAgg(WindowAgg *node, EState *estate, int eflags)
 	 * this one.
 	 */
 	winstate->aggcontext =
-		AllocSetContextCreate(CurrentMemoryContext,
+		AllocSetContextCreate(GetCurrentMemoryContext(),
 							  "WindowAgg Aggregates",
 							  ALLOCSET_DEFAULT_SIZES);
 
@@ -2853,7 +2853,7 @@ initialize_peragg(WindowAggState *winstate, WindowFunc *wfunc,
 	 */
 	if (OidIsValid(invtransfn_oid))
 		peraggstate->aggcontext =
-			AllocSetContextCreate(CurrentMemoryContext,
+			AllocSetContextCreate(GetCurrentMemoryContext(),
 								  "WindowAgg Per Aggregate",
 								  ALLOCSET_DEFAULT_SIZES);
 	else

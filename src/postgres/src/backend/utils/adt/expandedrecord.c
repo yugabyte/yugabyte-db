@@ -941,7 +941,7 @@ DatumGetExpandedRecord(Datum d)
 	}
 
 	/* Else expand the hard way */
-	d = make_expanded_record_from_datum(d, CurrentMemoryContext);
+	d = make_expanded_record_from_datum(d, GetCurrentMemoryContext());
 	return (ExpandedRecordHeader *) DatumGetEOHP(d);
 }
 

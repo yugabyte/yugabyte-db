@@ -217,7 +217,7 @@ pq_parse_errornotice(StringInfo msg, ErrorData *edata)
 	/* Initialize edata with reasonable defaults. */
 	MemSet(edata, 0, sizeof(ErrorData));
 	edata->elevel = ERROR;
-	edata->assoc_context = CurrentMemoryContext;
+	edata->assoc_context = GetCurrentMemoryContext();
 
 	/* Loop over fields and extract each one. */
 	for (;;)

@@ -18,19 +18,22 @@ add_subdirectory(util)
 set(PGGATE_SRCS
     ybc_pggate.cc
     pggate.cc
+    pggate_thread_local_vars.cc
     pg_session.cc
     pg_statement.cc
     pg_ddl.cc
     pg_dml.cc
     pg_dml_write.cc
     pg_dml_read.cc
+    pg_type.cc
     pg_select.cc
     pg_select_index.cc
     pg_expr.cc
     pg_column.cc
     pg_doc_op.cc
     pg_tabledesc.cc
-    pg_txn_manager.cc)
+    pg_txn_manager.cc
+    pg_value.cc)
 
 ADD_YB_LIBRARY(yb_pggate_flags
                SRCS pggate_flags.cc

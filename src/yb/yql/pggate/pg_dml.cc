@@ -105,7 +105,8 @@ Status PgDml::PrepareColumnForRead(int attr_num, PgsqlExpressionPB *target_pb,
   PgColumn *pg_col = VERIFY_RESULT(target_desc_->FindColumn(attr_num));
 
   // Prepare protobuf to send to DocDB.
-  target_pb->set_column_id(pg_col->id());
+  if (target_pb)
+    target_pb->set_column_id(pg_col->id());
 
   // Mark non-virtual column reference for DocDB.
   if (!pg_col->is_virtual_column()) {

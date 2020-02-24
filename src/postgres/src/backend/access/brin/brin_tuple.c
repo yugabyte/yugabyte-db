@@ -367,7 +367,7 @@ brin_new_memtuple(BrinDesc *brdesc)
 	dtup->bt_allnulls = palloc(sizeof(bool) * brdesc->bd_tupdesc->natts);
 	dtup->bt_hasnulls = palloc(sizeof(bool) * brdesc->bd_tupdesc->natts);
 
-	dtup->bt_context = AllocSetContextCreate(CurrentMemoryContext,
+	dtup->bt_context = AllocSetContextCreate(GetCurrentMemoryContext(),
 											 "brin dtuple",
 											 ALLOCSET_DEFAULT_SIZES);
 

@@ -49,7 +49,7 @@
  * any useful statistics.  If it does, the remainder of the struct holds
  * the information to be stored in a pg_statistic row for the column.  Be
  * careful to allocate any pointed-to data in anl_context, which will NOT
- * be CurrentMemoryContext when compute_stats is called.
+ * be GetCurrentMemoryContext() when compute_stats is called.
  *
  * Note: for the moment, all comparisons done for statistical purposes
  * should use the database's default collation (DEFAULT_COLLATION_OID).

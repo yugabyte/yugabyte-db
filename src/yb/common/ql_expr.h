@@ -239,7 +239,8 @@ class QLExprExecutor {
   // Evaluate the given QLExpressionPB.
   CHECKED_STATUS EvalExpr(const PgsqlExpressionPB& ql_expr,
                           const QLTableRow::SharedPtrConst& table_row,
-                          QLValue *result);
+                          QLValue *result,
+                          const Schema *schema = nullptr);
 
   // Read evaluated value from an expression. This is only useful for aggregate function.
   CHECKED_STATUS ReadExprValue(const PgsqlExpressionPB& ql_expr,
@@ -254,7 +255,8 @@ class QLExprExecutor {
   // Evaluate call to tablet-server builtin operator.
   virtual CHECKED_STATUS EvalTSCall(const PgsqlBCallPB& ql_expr,
                                     const QLTableRow::SharedPtrConst& table_row,
-                                    QLValue *result);
+                                    QLValue *result,
+                                    const Schema *schema = nullptr);
 
   virtual CHECKED_STATUS ReadTSCallValue(const PgsqlBCallPB& ql_expr,
                                          const QLTableRow::SharedPtrConst& table_row,

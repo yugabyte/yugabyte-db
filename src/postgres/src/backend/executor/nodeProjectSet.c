@@ -303,7 +303,7 @@ ExecInitProjectSet(ProjectSet *node, EState *estate, int eflags)
 	 * results into the query-lifespan context either.  We use one context for
 	 * the arguments of all tSRFs, as they have roughly equivalent lifetimes.
 	 */
-	state->argcontext = AllocSetContextCreate(CurrentMemoryContext,
+	state->argcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
 											  "tSRF function arguments",
 											  ALLOCSET_DEFAULT_SIZES);
 

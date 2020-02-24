@@ -134,7 +134,7 @@ MakeTupleTableSlot(TupleDesc tupleDesc)
 	slot->tts_tuple = NULL;
 	slot->tts_fixedTupleDescriptor = tupleDesc != NULL;
 	slot->tts_tupleDescriptor = tupleDesc;
-	slot->tts_mcxt = CurrentMemoryContext;
+	slot->tts_mcxt = GetCurrentMemoryContext();
 	slot->tts_buffer = InvalidBuffer;
 	slot->tts_nvalid = 0;
 	slot->tts_values = NULL;

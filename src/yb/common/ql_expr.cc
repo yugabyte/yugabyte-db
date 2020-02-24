@@ -361,7 +361,8 @@ bfpg::TSOpcode QLExprExecutor::GetTSWriteInstruction(const PgsqlExpressionPB& ql
 
 CHECKED_STATUS QLExprExecutor::EvalExpr(const PgsqlExpressionPB& ql_expr,
                                         const QLTableRow::SharedPtrConst& table_row,
-                                        QLValue *result) {
+                                        QLValue *result,
+                                        const Schema *schema) {
   switch (ql_expr.expr_case()) {
     case PgsqlExpressionPB::ExprCase::kValue:
       *result = ql_expr.value();
@@ -374,7 +375,7 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(const PgsqlExpressionPB& ql_expr,
       return EvalBFCall(ql_expr.bfcall(), table_row, result);
 
     case PgsqlExpressionPB::ExprCase::kTscall:
-      return EvalTSCall(ql_expr.tscall(), table_row, result);
+      return EvalTSCall(ql_expr.tscall(), table_row, result, schema);
 
     case PgsqlExpressionPB::ExprCase::kCondition:
       return EvalCondition(ql_expr.condition(), table_row, result);
@@ -440,7 +441,8 @@ CHECKED_STATUS QLExprExecutor::EvalBFCall(const PgsqlBCallPB& bfcall,
 
 CHECKED_STATUS QLExprExecutor::EvalTSCall(const PgsqlBCallPB& ql_expr,
                                           const QLTableRow::SharedPtrConst& table_row,
-                                          QLValue *result) {
+                                          QLValue *result,
+                                          const Schema *schema) {
   result->SetNull();
   return STATUS(RuntimeError, "Only tablet server can execute this operator");
 }

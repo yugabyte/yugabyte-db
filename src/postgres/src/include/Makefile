@@ -24,7 +24,7 @@ SUBDIRS = access bootstrap catalog commands common datatype \
 	statistics storage tcop snowball snowball/libstemmer tsearch \
 	tsearch/dicts utils port port/atomics port/win32 port/win32_msvc \
 	port/win32_msvc/sys port/win32/arpa port/win32/netinet \
-	port/win32/sys portability
+	port/win32/sys portability ybgate
 
 # Install all headers
 install: all installdirs
@@ -47,6 +47,7 @@ install: all installdirs
 	$(INSTALL_DATA) utils/errcodes.h '$(DESTDIR)$(includedir_server)/utils'
 	$(INSTALL_DATA) utils/fmgroids.h '$(DESTDIR)$(includedir_server)/utils'
 	$(INSTALL_DATA) utils/fmgrprotos.h '$(DESTDIR)$(includedir_server)/utils'
+
 # We don't use INSTALL_DATA for performance reasons --- there are a lot of files
 # (in fact, we have to take some pains to avoid overlength shell commands here)
 	cp $(srcdir)/*.h '$(DESTDIR)$(includedir_server)'/

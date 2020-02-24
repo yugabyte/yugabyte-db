@@ -1117,7 +1117,7 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 	{
 		root = makeNode(PlannerInfo);
 		root->parse = qry;
-		root->planner_cxt = CurrentMemoryContext;
+		root->planner_cxt = GetCurrentMemoryContext();
 		root->hasJoinRTEs = true;
 
 		groupClauses = (List *) flatten_join_alias_vars(root,

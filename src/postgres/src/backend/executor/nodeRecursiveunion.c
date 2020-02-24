@@ -200,11 +200,11 @@ ExecInitRecursiveUnion(RecursiveUnion *node, EState *estate, int eflags)
 	if (node->numCols > 0)
 	{
 		rustate->tempContext =
-			AllocSetContextCreate(CurrentMemoryContext,
+			AllocSetContextCreate(GetCurrentMemoryContext(),
 								  "RecursiveUnion",
 								  ALLOCSET_DEFAULT_SIZES);
 		rustate->tableContext =
-			AllocSetContextCreate(CurrentMemoryContext,
+			AllocSetContextCreate(GetCurrentMemoryContext(),
 								  "RecursiveUnion hash table",
 								  ALLOCSET_DEFAULT_SIZES);
 	}

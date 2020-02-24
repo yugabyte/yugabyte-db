@@ -406,6 +406,27 @@ int32_t YBCGetOutputBufferSize();
 
 bool YBCPgIsYugaByteEnabled();
 
+//--------------------------------------------------------------------------------------------------
+// Thread-Local variables.
+
+void* YBCPgGetThreadLocalCurrentMemoryContext();
+
+void* YBCPgSetThreadLocalCurrentMemoryContext(void *memctx);
+
+void YBCPgResetCurrentMemCtxThreadLocalVars();
+
+void* YBCPgGetThreadLocalStrTokPtr();
+
+void YBCPgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr);
+
+void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer);
+
+void* YBCPgGetThreadLocalJumpBuffer();
+
+void YBCPgSetThreadLocalErrMsg(const void* new_msg);
+
+const void* YBCPgGetThreadLocalErrMsg();
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
