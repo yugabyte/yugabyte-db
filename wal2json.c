@@ -15,6 +15,9 @@
 #include "catalog/pg_type.h"
 
 #include "replication/logical.h"
+#if	PG_VERSION_NUM >= 90500
+#include "replication/origin.h"
+#endif
 
 #include "utils/builtins.h"
 #include "utils/guc.h"
@@ -60,6 +63,7 @@ typedef struct
 
 	JsonAction	actions;			/* output only these actions */
 
+	List		*filter_origins;	/* filter out origins */
 	List		*filter_tables;		/* filter out tables */
 	List		*add_tables;		/* add only these tables */
 	List		*filter_msg_prefixes;	/* filter by message prefixes */
@@ -106,6 +110,9 @@ static void pg_decode_commit_txn(LogicalDecodingContext *ctx,
 static void pg_decode_change(LogicalDecodingContext *ctx,
 				 ReorderBufferTXN *txn, Relation rel,
 				 ReorderBufferChange *change);
+#if	PG_VERSION_NUM >= 90500
+static bool pg_filter_by_origin(LogicalDecodingContext *ctx, RepOriginId origin_id);
+#endif
 #if	PG_VERSION_NUM >= 90600
 static void pg_decode_message(LogicalDecodingContext *ctx,
 					ReorderBufferTXN *txn, XLogRecPtr lsn,
@@ -121,6 +128,7 @@ static void pg_decode_truncate(LogicalDecodingContext *ctx,
 static bool parse_table_identifier(List *qualified_tables, char separator, List **select_tables);
 static bool string_to_SelectTable(char *rawstring, char separator, List **select_tables);
 static bool split_string_to_list(char *rawstring, char separator, List **sl);
+static bool split_string_to_oid_list(char *rawstring, char separator, List **sl);
 
 /* version 1 */
 static void pg_decode_begin_txn_v1(LogicalDecodingContext *ctx,
@@ -194,6 +202,9 @@ _PG_output_plugin_init(OutputPluginCallbacks *cb)
 	cb->change_cb = pg_decode_change;
 	cb->commit_cb = pg_decode_commit_txn;
 	cb->shutdown_cb = pg_decode_shutdown;
+#if	PG_VERSION_NUM >= 90500
+	cb->filter_by_origin_cb = pg_filter_by_origin;
+#endif
 #if	PG_VERSION_NUM >= 90600
 	cb->message_cb = pg_decode_message;
 #endif
@@ -234,6 +245,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data->write_in_chunks = false;
 	data->include_lsn = false;
 	data->include_not_null = false;
+	data->filter_origins = NIL;
 	data->filter_tables = NIL;
 	data->filter_msg_prefixes = NIL;
 	data->add_msg_prefixes = NIL;
@@ -512,6 +524,29 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 				list_free(selected_actions);
 			}
 		}
+		else if (strcmp(elem->defname, "filter-origins") == 0)
+		{
+			char	*rawstr;
+
+			if (elem->arg == NULL)
+			{
+				elog(DEBUG1, "filter-origins argument is null");
+				data->filter_origins = NIL;
+			}
+			else
+			{
+				rawstr = pstrdup(strVal(elem->arg));
+				if (!split_string_to_oid_list(rawstr, ',', &data->filter_origins))
+				{
+					pfree(rawstr);
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_NAME),
+							 errmsg("could not parse value \"%s\" for parameter \"%s\"",
+								 strVal(elem->arg), elem->defname)));
+				}
+				pfree(rawstr);
+			}
+		}
 		else if (strcmp(elem->defname, "filter-tables") == 0)
 		{
 			char	*rawstr;
@@ -658,6 +693,33 @@ pg_decode_shutdown(LogicalDecodingContext *ctx)
 	/* cleanup our own resources via memory context reset */
 	MemoryContextDelete(data->context);
 }
+
+#if PG_VERSION_NUM >= 90500
+static bool
+pg_filter_by_origin(LogicalDecodingContext *ctx, RepOriginId origin_id)
+{
+	JsonDecodingData *data = ctx->output_plugin_private;
+
+	elog(DEBUG3, "origin: %u", origin_id);
+
+	/* changes produced locally are never filtered */
+	if (origin_id == InvalidRepOriginId)
+		return false;
+
+	/* Filter origins, if available */
+	if (list_length(data->filter_origins) > 0 && list_member_oid(data->filter_origins, origin_id))
+	{
+		elog(DEBUG2, "origin \"%u\" was filtered out", origin_id);
+		return true;
+	}
+
+	/*
+	 * There isn't a list of origins to filter or origin is not contained in
+	 * the filter list hence forward to all subscribers.
+	 */
+	return false;
+}
+#endif
 
 /* BEGIN callback */
 static void
@@ -2551,6 +2613,69 @@ split_string_to_list(char *rawstring, char separator, List **sl)
 		 */
 		pname = pstrdup(curname);
 		*sl = lappend(*sl, pname);
+
+		/* Loop back if we didn't reach end of string */
+	} while (!done);
+
+	return true;
+}
+
+/*
+ * Convert a string into a list of Oids
+ */
+static bool
+split_string_to_oid_list(char *rawstring, char separator, List **sl)
+{
+	char	   *nextp;
+	bool		done = false;
+
+	nextp = rawstring;
+
+	while (isspace(*nextp))
+		nextp++;				/* skip leading whitespace */
+
+	if (*nextp == '\0')
+		return true;			/* allow empty string */
+
+	/* At the top of the loop, we are at start of a new identifier. */
+	do
+	{
+		char	   *tok;
+		char	   *endp;
+		Oid			originid;
+
+		tok = nextp;
+		while (*nextp && *nextp != separator && !isspace(*nextp))
+		{
+			if (*nextp == '\\')
+				nextp++;	/* ignore next character because of escape */
+			nextp++;
+		}
+		endp = nextp;
+
+		while (isspace(*nextp))
+			nextp++;			/* skip trailing whitespace */
+
+		if (*nextp == separator)
+		{
+			nextp++;
+			while (isspace(*nextp))
+				nextp++;		/* skip leading whitespace for next */
+			/* we expect another name, so done remains false */
+		}
+		else if (*nextp == '\0')
+			done = true;
+		else
+			return false;		/* invalid syntax */
+
+		/* Now safe to overwrite separator with a null */
+		*endp = '\0';
+
+		/*
+		 * Finished isolating origin id --- add it to list
+		 */
+		originid = (Oid) atoi(tok);
+		*sl = lappend_oid(*sl, originid);
 
 		/* Loop back if we didn't reach end of string */
 	} while (!done);

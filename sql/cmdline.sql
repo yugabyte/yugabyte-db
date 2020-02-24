@@ -9,6 +9,8 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'for
 
 SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'format-version', '1', 'include-unchanged-toast', '1');
 
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'filter-origins', '16, 27, 123');
+
 -- don't include not-null constraint by default
 CREATE TABLE table_optional (
 a smallserial,
