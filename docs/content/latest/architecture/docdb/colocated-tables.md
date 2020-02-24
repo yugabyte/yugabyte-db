@@ -18,7 +18,7 @@ CPU/disk/network to the number of tablets one can host per node.
 Since each table by default requires at least one tablet per node, a YugabyteDB cluster with 5000
 relations (tables, indexes) will result in 5000 tablets per node.
 There are practical limitations to the number of tablets that YugabyteDB can handle per node since each tablet
-adds some CPU, disk and network overhead. If most or all of the tables in YugabyteDB cluster are small tables,
+adds some CPU, disk, and network overhead. If most or all of the tables in YugabyteDB cluster are small tables,
 then having separate tablets for each table unnecessarily adds pressure on CPU, network and disk.
 
 To help accomodate such relational tables and workloads, we've added support for colocating SQL tables.
