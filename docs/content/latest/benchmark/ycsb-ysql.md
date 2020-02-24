@@ -5,7 +5,7 @@ description: YCSB
 headcontent: Benchmark YugabyteDB using YCSB.
 menu:
   latest:
-    identifier: ycsb-1-ysql
+    identifier: ycsb-2-ysql
     parent: benchmark
     weight: 5
 aliases:
