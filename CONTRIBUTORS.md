@@ -87,3 +87,5 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [eliahburns](https://github.com/eliahburns)
 * [bhavin192](https://github.com/bhavin192)
 * [graffido](https://github.com/graffido)
+* [nvulane](https://github.com/nvulane)
+* [svanellewee](https://github.com/svanellewee)
