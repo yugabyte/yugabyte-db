@@ -38,7 +38,7 @@ There are practical limitations to the number of tablets that YugabyteDB can han
 adds some CPU, disk and network overhead. If most or all of the tables in YugabyteDB cluster are small tables,
 then having separate tablets for each table unnecessarily adds pressure on CPU, network and disk.
 
-To help accomodate such relational tables and workloads, we've added support for colocating SQL tables.
+To help accomodate such relational tables and workloads, you can colocate SQL tables.
 Colocating tables puts all of their data into a single tablet, called the colocation tablet.
 This can dramatically increase the number of relations (tables, indexes, etc) that can
 be supported per node while keeping the number of tablets per node low.
