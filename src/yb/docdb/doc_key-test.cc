@@ -71,12 +71,18 @@ class DocKeyTest : public YBTest {
       for (int num_hash_keys = 0; num_hash_keys <= kMaxNumHashKeys; ++num_hash_keys) {
         for (int num_range_keys = 0; num_range_keys <= kMaxNumRangeKeys; ++num_range_keys) {
           for (int num_sub_keys = 0; num_sub_keys <= kMaxNumSubKeys; ++num_sub_keys) {
-            for (int has_hybrid_time = 0; has_hybrid_time <= 1; ++has_hybrid_time) {
+            for (bool has_hybrid_time : {false, true}) {
               SubDocKey sub_doc_key;
 
               if (!table_id_pair.first.IsNil()) {
                 sub_doc_key.doc_key().set_cotable_id(cotable_id);
               } else if (table_id_pair.second > 0) {
+                if ((num_hash_keys == 0 && num_range_keys == 0) &&
+                    (num_sub_keys > 0 || !has_hybrid_time)) {
+                  // This key format currently cannot ever appear because colocated table tombstones
+                  // should both have no subkeys and have a hybrid time, so skip it.
+                  continue;
+                }
                 sub_doc_key.doc_key().set_pgtable_id(table_id_pair.second);
               }
 
@@ -460,41 +466,12 @@ class IntentCollector {
 
 TEST_F(DocKeyTest, TestDecodePrefixLengths) {
   for (const auto& sub_doc_key : GetVariedSubDocKeys()) {
-    std::vector<PrimitiveValue> subkeys;
     const auto encoded_input = sub_doc_key.Encode();
+    const DocKey& doc_key = sub_doc_key.doc_key();
+    const Slice subdockey_slice = encoded_input.AsSlice();
+
     const string test_description = GetTestDescriptionForSubDocKey(sub_doc_key);
     SCOPED_TRACE(test_description);
-    const Slice subdockey_slice = encoded_input.AsSlice();
-    const auto encoded_sizes = ASSERT_RESULT(DocKey::EncodedHashPartAndDocKeySizes(
-        subdockey_slice, AllowSpecial::kFalse));
-    const size_t encoded_hash_key_size = encoded_sizes.first;
-    const size_t encoded_doc_key_size = encoded_sizes.second;
-
-    size_t expected_hash_enc_size = 0;
-    const DocKey& doc_key = sub_doc_key.doc_key();
-    DocKey hash_only_key;
-    if (!doc_key.hashed_group().empty() || doc_key.has_cotable_id() || doc_key.has_pgtable_id()) {
-      if (doc_key.has_cotable_id()) {
-        if (doc_key.hashed_group().empty()) {
-          hash_only_key = DocKey(doc_key.cotable_id());
-        } else {
-          hash_only_key = DocKey(doc_key.cotable_id(), doc_key.hash(), doc_key.hashed_group());
-        }
-      } else if (doc_key.has_pgtable_id()) {
-        if (doc_key.hashed_group().empty()) {
-          hash_only_key = DocKey(doc_key.pgtable_id());
-        } else {
-          hash_only_key = DocKey(doc_key.pgtable_id(), doc_key.hash(), doc_key.hashed_group());
-        }
-      } else {
-        hash_only_key = DocKey(doc_key.hash(), doc_key.hashed_group());
-      }
-      // We subtract 1 because we don't want to include kGroupEnd in the expected hash key size.
-      expected_hash_enc_size = hash_only_key.Encode().size() - 1;
-    }
-    ASSERT_EQ(expected_hash_enc_size, encoded_hash_key_size)
-        << "Expected encoded hash key size based on: " << hash_only_key;
-    ASSERT_EQ(sub_doc_key.doc_key().Encode().size(), encoded_doc_key_size);
 
     SubDocKey cur_key;
     boost::container::small_vector<size_t, 8> prefix_lengths;
@@ -545,6 +522,69 @@ TEST_F(DocKeyTest, TestDecodePrefixLengths) {
 
     ASSERT_OK(SubDocKey::DecodePrefixLengths(subdockey_slice, &prefix_lengths));
     ASSERT_EQ(yb::ToString(expected_prefix_lengths), yb::ToString(prefix_lengths));
+  }
+}
+
+TEST_F(DocKeyTest, DecodeDocKeyAndSubKeyEnds) {
+  for (const SubDocKey& sub_doc_key : GetVariedSubDocKeys()) {
+    const DocKey& doc_key = sub_doc_key.doc_key();
+    const string test_description = GetTestDescriptionForSubDocKey(sub_doc_key);
+    boost::container::small_vector<size_t, 8> actual_ends;
+    boost::container::small_vector<size_t, 8> input_ends;
+    std::vector<size_t> expected_ends;
+    SubDocKey cur_key;
+
+    SCOPED_TRACE(test_description);
+
+    // Find ID end.
+    if (doc_key.has_cotable_id() || doc_key.has_pgtable_id()) {
+      if (doc_key.has_cotable_id()) {
+        cur_key.doc_key().set_cotable_id(doc_key.cotable_id());
+      } else if (doc_key.has_pgtable_id()) {
+        cur_key.doc_key().set_pgtable_id(doc_key.pgtable_id());
+      }
+      // Subtract one because kGroupEnd doesn't count.
+      expected_ends.push_back(cur_key.Encode().size() - 1);
+    } else {
+      expected_ends.push_back(0);
+    }
+
+    // Find whole DocKey end.
+    if (doc_key.has_hash()) {
+      cur_key.doc_key().set_hash(doc_key.hash());
+      for (const PrimitiveValue& hashed_group_elem : doc_key.hashed_group()) {
+        cur_key.doc_key().hashed_group().push_back(hashed_group_elem);
+      }
+    }
+    for (const PrimitiveValue& range_group_elem : doc_key.range_group()) {
+      cur_key.doc_key().range_group().push_back(range_group_elem);
+    }
+    if (doc_key.has_pgtable_id() &&
+        doc_key.hashed_group().empty() &&
+        doc_key.range_group().empty()) {
+      // ...but an empty key doesn't count (for colocated table tombstones).
+    } else {
+      expected_ends.push_back(cur_key.Encode().size());
+    }
+
+    // Find subkey ends.
+    for (const auto& subkey : sub_doc_key.subkeys()) {
+      cur_key.subkeys().push_back(subkey);
+      expected_ends.push_back(cur_key.Encode().size());
+    }
+
+    // Verify DecodeDocKeyAndSubKeyEnds, supplying all possible valid arguments for its out
+    // parameter.
+    // Verify with empty out.
+    ASSERT_OK(SubDocKey::DecodeDocKeyAndSubKeyEnds(sub_doc_key.Encode().AsSlice(), &actual_ends));
+    ASSERT_EQ(yb::ToString(expected_ends), yb::ToString(actual_ends));
+    for (const size_t input_end : expected_ends) {
+      input_ends.push_back(input_end);
+      actual_ends = input_ends;
+      // Verify with partially filled out.
+      ASSERT_OK(SubDocKey::DecodeDocKeyAndSubKeyEnds(sub_doc_key.Encode().AsSlice(), &actual_ends));
+      ASSERT_EQ(yb::ToString(expected_ends), yb::ToString(actual_ends));
+    }
   }
 }
 
