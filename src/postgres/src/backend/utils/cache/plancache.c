@@ -138,7 +138,7 @@ InitPlanCache(void)
  * still had a clean copy to present at plan cache creation time.
  *
  * All arguments presented to CreateCachedPlan are copied into a memory
- * context created as a child of the call-time CurrentMemoryContext, which
+ * context created as a child of the call-time GetCurrentMemoryContext(), which
  * should be a reasonably short-lived working context that will go away in
  * event of an error.  This ensures that the cached plan data structure will
  * likewise disappear if an error occurs before we have fully constructed it.
@@ -167,7 +167,7 @@ CreateCachedPlan(RawStmt *raw_parse_tree,
 	 * caller's context (which we assume to be transient), so that it will be
 	 * cleaned up on error.
 	 */
-	source_context = AllocSetContextCreate(CurrentMemoryContext,
+	source_context = AllocSetContextCreate(GetCurrentMemoryContext(),
 										   "CachedPlanSource",
 										   ALLOCSET_START_SMALL_SIZES);
 
@@ -258,7 +258,7 @@ CreateOneShotCachedPlan(RawStmt *raw_parse_tree,
 	plansource->cursor_options = 0;
 	plansource->fixed_result = false;
 	plansource->resultDesc = NULL;
-	plansource->context = CurrentMemoryContext;
+	plansource->context = GetCurrentMemoryContext();
 	plansource->query_list = NIL;
 	plansource->relationOids = NIL;
 	plansource->invalItems = NIL;
@@ -335,7 +335,7 @@ CompleteCachedPlan(CachedPlanSource *plansource,
 				   bool fixed_result)
 {
 	MemoryContext source_context = plansource->context;
-	MemoryContext oldcxt = CurrentMemoryContext;
+	MemoryContext oldcxt = GetCurrentMemoryContext();
 
 	/* Assert caller is doing things in a sane order */
 	Assert(plansource->magic == CACHEDPLANSOURCE_MAGIC);
@@ -350,7 +350,7 @@ CompleteCachedPlan(CachedPlanSource *plansource,
 	 */
 	if (plansource->is_oneshot)
 	{
-		querytree_context = CurrentMemoryContext;
+		querytree_context = GetCurrentMemoryContext();
 	}
 	else if (querytree_context != NULL)
 	{
@@ -738,7 +738,7 @@ RevalidateCachedQuery(CachedPlanSource *plansource,
 	 * Allocate new query_context and copy the completed querytree into it.
 	 * It's transient until we complete the copying and dependency extraction.
 	 */
-	querytree_context = AllocSetContextCreate(CurrentMemoryContext,
+	querytree_context = AllocSetContextCreate(GetCurrentMemoryContext(),
 											  "CachedPlanQuery",
 											  ALLOCSET_START_SMALL_SIZES);
 	oldcxt = MemoryContextSwitchTo(querytree_context);
@@ -891,7 +891,7 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 	bool		snapshot_set;
 	bool		is_transient;
 	MemoryContext plan_context;
-	MemoryContext oldcxt = CurrentMemoryContext;
+	MemoryContext oldcxt = GetCurrentMemoryContext();
 	ListCell   *lc;
 
 	/*
@@ -953,7 +953,7 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 	 */
 	if (!plansource->is_oneshot)
 	{
-		plan_context = AllocSetContextCreate(CurrentMemoryContext,
+		plan_context = AllocSetContextCreate(GetCurrentMemoryContext(),
 											 "CachedPlan",
 											 ALLOCSET_START_SMALL_SIZES);
 		MemoryContextCopyAndSetIdentifier(plan_context, plansource->query_string);
@@ -966,7 +966,7 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 		plist = copyObject(plist);
 	}
 	else
-		plan_context = CurrentMemoryContext;
+		plan_context = GetCurrentMemoryContext();
 
 	/*
 	 * Create and fill the CachedPlan struct within the new context.
@@ -1344,7 +1344,7 @@ CopyCachedPlan(CachedPlanSource *plansource)
 	if (plansource->is_oneshot)
 		elog(ERROR, "cannot copy a one-shot cached plan");
 
-	source_context = AllocSetContextCreate(CurrentMemoryContext,
+	source_context = AllocSetContextCreate(GetCurrentMemoryContext(),
 										   "CachedPlanSource",
 										   ALLOCSET_START_SMALL_SIZES);
 

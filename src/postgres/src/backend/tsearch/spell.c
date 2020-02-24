@@ -71,7 +71,7 @@
 /*
  * Initialization requires a lot of memory that's not needed
  * after the initialization is done.  During initialization,
- * CurrentMemoryContext is the long-lived memory context associated
+ * GetCurrentMemoryContext() is the long-lived memory context associated
  * with the dictionary cache entry.  We keep the short-lived stuff
  * in the Conf->buildCxt context.
  */

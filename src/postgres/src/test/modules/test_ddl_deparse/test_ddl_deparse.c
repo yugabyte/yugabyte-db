@@ -289,11 +289,11 @@ get_altertable_subcmdtypes(PG_FUNCTION_ARGS)
 
 		astate =
 			accumArrayResult(astate, CStringGetTextDatum(strtype),
-							 false, TEXTOID, CurrentMemoryContext);
+							 false, TEXTOID, GetCurrentMemoryContext());
 	}
 
 	if (astate == NULL)
 		elog(ERROR, "empty alter table subcommand list");
 
-	PG_RETURN_ARRAYTYPE_P(makeArrayResult(astate, CurrentMemoryContext));
+	PG_RETURN_ARRAYTYPE_P(makeArrayResult(astate, GetCurrentMemoryContext()));
 }

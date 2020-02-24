@@ -25,7 +25,7 @@
 /*
  * Copy a ParamListInfo structure.
  *
- * The result is allocated in CurrentMemoryContext.
+ * The result is allocated in GetCurrentMemoryContext().
  *
  * Note: the intent of this function is to make a static, self-contained
  * set of parameter values.  If dynamic parameter hooks are present, we
@@ -200,7 +200,7 @@ SerializeParamList(ParamListInfo paramLI, char **start_address)
 /*
  * Copy a ParamListInfo structure.
  *
- * The result is allocated in CurrentMemoryContext.
+ * The result is allocated in GetCurrentMemoryContext().
  *
  * Note: the intent of this function is to make a static, self-contained
  * set of parameter values.  If dynamic parameter hooks are present, we

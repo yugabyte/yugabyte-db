@@ -239,7 +239,7 @@ _bt_preprocess_array_keys(IndexScanDesc scan)
 	 * if we already have one from a previous rescan cycle.
 	 */
 	if (so->arrayContext == NULL)
-		so->arrayContext = AllocSetContextCreate(CurrentMemoryContext,
+		so->arrayContext = AllocSetContextCreate(GetCurrentMemoryContext(),
 												 "BTree array context",
 												 ALLOCSET_SMALL_SIZES);
 	else

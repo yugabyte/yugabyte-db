@@ -38,7 +38,8 @@ class DocExprExecutor : public QLExprExecutor {
 
   virtual CHECKED_STATUS EvalTSCall(const PgsqlBCallPB& ql_expr,
                                     const QLTableRow::SharedPtrConst& table_row,
-                                    QLValue *result) override;
+                                    QLValue *result,
+                                    const Schema *schema) override;
 
   // Evaluate aggregate functions for each row.
   CHECKED_STATUS EvalCount(QLValue *aggr_count);

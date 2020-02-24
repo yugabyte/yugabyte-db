@@ -46,6 +46,9 @@ enum class TSOpcode : int32_t {
   kListAppend,
   kListPrepend,
   kListRemove,
+
+  // Serialized YSQL/PG Expr Node.
+  kPgEvalExprCall,
 };
 
 bool IsAggregateOpcode(TSOpcode op);

@@ -4657,7 +4657,7 @@ PostgresMain(int argc, char *argv[],
 
 				query_string = pq_getmsgstring(&input_message);
 				pq_getmsgend(&input_message);
-				MemoryContext oldcontext = CurrentMemoryContext;
+				MemoryContext oldcontext = GetCurrentMemoryContext();
 
 				PG_TRY();
 				{
@@ -4711,7 +4711,7 @@ PostgresMain(int argc, char *argv[],
 					}
 					pq_getmsgend(&input_message);
 
-					MemoryContext oldcontext = CurrentMemoryContext;
+					MemoryContext oldcontext = GetCurrentMemoryContext();
 
 					PG_TRY();
 					{
@@ -4766,7 +4766,7 @@ PostgresMain(int argc, char *argv[],
 					max_rows = pq_getmsgint(&input_message, 4);
 					pq_getmsgend(&input_message);
 
-					MemoryContext oldcontext = CurrentMemoryContext;
+					MemoryContext oldcontext = GetCurrentMemoryContext();
 
 					PG_TRY();
 					{
@@ -4807,7 +4807,7 @@ PostgresMain(int argc, char *argv[],
 							/* Now ready to retry the execute step. */
                           yb_exec_execute_message_attempting_to_restart_read(portal_name,
                                                                              max_rows,
-                                                                             CurrentMemoryContext);
+                                                                             GetCurrentMemoryContext());
 						}
 						else
 						{

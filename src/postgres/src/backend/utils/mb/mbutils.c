@@ -923,7 +923,7 @@ SetMessageEncoding(int encoding)
 static bool
 raw_pg_bind_textdomain_codeset(const char *domainname, int encoding)
 {
-	bool		elog_ok = (CurrentMemoryContext != NULL);
+	bool		elog_ok = (GetCurrentMemoryContext() != NULL);
 	int			i;
 
 	for (i = 0; pg_enc2gettext_tbl[i].name != NULL; i++)
@@ -968,7 +968,7 @@ raw_pg_bind_textdomain_codeset(const char *domainname, int encoding)
 int
 pg_bind_textdomain_codeset(const char *domainname)
 {
-	bool		elog_ok = (CurrentMemoryContext != NULL);
+	bool		elog_ok = (GetCurrentMemoryContext() != NULL);
 	int			encoding = GetDatabaseEncoding();
 	int			new_msgenc;
 

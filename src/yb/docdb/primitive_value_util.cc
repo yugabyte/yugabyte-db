@@ -85,7 +85,7 @@ Status InitKeyColumnPrimitiveValues(
       // Use regular executor for now.
       QLExprExecutor executor;
       QLValue result;
-      RETURN_NOT_OK(executor.EvalExpr(column_value, nullptr, &result));
+      RETURN_NOT_OK(executor.EvalExpr(column_value, nullptr, &result, &schema));
 
       components->push_back(PrimitiveValue::FromQLValuePB(result.value(), sorting_type));
     }

@@ -117,7 +117,7 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 	MemoryContext oldcontext;
 	bool		first_time = true;
 
-	callerContext = CurrentMemoryContext;
+	callerContext = GetCurrentMemoryContext();
 
 	funcrettype = exprType((Node *) setexpr->expr);
 
@@ -167,7 +167,7 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 		 *
 		 * We can't do this in the per-tuple context: the argument values
 		 * would disappear when we reset that context in the inner loop.  And
-		 * the caller's CurrentMemoryContext is typically a query-lifespan
+		 * the caller's GetCurrentMemoryContext() is typically a query-lifespan
 		 * context, so we don't want to leak memory there.  We require the
 		 * caller to pass a separate memory context that can be used for this,
 		 * and can be reset each time through to avoid bloat.

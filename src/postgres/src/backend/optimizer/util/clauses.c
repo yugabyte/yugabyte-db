@@ -4599,7 +4599,7 @@ inline_function(Oid funcid, Oid result_type, Oid result_collid,
 	 * Make a temporary memory context, so that we don't leak all the stuff
 	 * that parsing might create.
 	 */
-	mycxt = AllocSetContextCreate(CurrentMemoryContext,
+	mycxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 								  "inline_function",
 								  ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(mycxt);
@@ -5129,7 +5129,7 @@ inline_set_returning_function(PlannerInfo *root, RangeTblEntry *rte)
 	 * Make a temporary memory context, so that we don't leak all the stuff
 	 * that parsing might create.
 	 */
-	mycxt = AllocSetContextCreate(CurrentMemoryContext,
+	mycxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 								  "inline_set_returning_function",
 								  ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(mycxt);

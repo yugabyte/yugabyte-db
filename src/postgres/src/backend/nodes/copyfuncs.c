@@ -222,6 +222,9 @@ _copyModifyTable(const ModifyTable *from)
 	COPY_NODE_FIELD(onConflictWhere);
 	COPY_SCALAR_FIELD(exclRelRTI);
 	COPY_NODE_FIELD(exclRelTlist);
+	COPY_NODE_FIELD(ybPushdownTlist);
+	COPY_SCALAR_FIELD(no_index_update);
+	COPY_SCALAR_FIELD(no_row_trigger);
 
 	return newnode;
 }

@@ -110,11 +110,17 @@ fmgr_lookupByName(const char *name)
 	return NULL;
 }
 
+bool
+is_builtin_func(Oid id)
+{
+	return fmgr_isbuiltin(id) != NULL;
+}
+
 /*
  * This routine fills a FmgrInfo struct, given the OID
  * of the function to be called.
  *
- * The caller's CurrentMemoryContext is used as the fn_mcxt of the info
+ * The caller's GetCurrentMemoryContext() is used as the fn_mcxt of the info
  * struct; this means that any subsidiary data attached to the info struct
  * (either by fmgr_info itself, or later on by a function call handler)
  * will be allocated in that context.  The caller must ensure that this
@@ -126,7 +132,7 @@ fmgr_lookupByName(const char *name)
 void
 fmgr_info(Oid functionId, FmgrInfo *finfo)
 {
-	fmgr_info_cxt_security(functionId, finfo, CurrentMemoryContext, false);
+	fmgr_info_cxt_security(functionId, finfo, GetCurrentMemoryContext(), false);
 }
 
 /*
@@ -452,7 +458,7 @@ fmgr_info_other_lang(Oid functionId, FmgrInfo *finfo, HeapTuple procedureTuple)
 	 * to get back a bare pointer to the actual C-language function.
 	 */
 	fmgr_info_cxt_security(languageStruct->lanplcallfoid, &plfinfo,
-						   CurrentMemoryContext, true);
+						   GetCurrentMemoryContext(), true);
 	finfo->fn_addr = plfinfo.fn_addr;
 
 	ReleaseSysCache(languageTuple);

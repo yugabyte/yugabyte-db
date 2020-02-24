@@ -371,7 +371,7 @@ FindTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
  * they actually need to get copied into the table.
  *
  * Also, the caller must select an appropriate memory context for running
- * the hash functions. (dynahash.c doesn't change CurrentMemoryContext.)
+ * the hash functions. (dynahash.c doesn't change GetCurrentMemoryContext().)
  */
 static uint32
 TupleHashTableHash(struct tuplehash_hash *tb, const MinimalTuple tuple)

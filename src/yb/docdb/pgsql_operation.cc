@@ -185,12 +185,14 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
       const ColumnSchema& column = VERIFY_RESULT(schema_.column_by_id(column_id));
 
       // Check column-write operator.
-      CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
-        << "Illegal write instruction";
+      SCHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert ||
+             GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kPgEvalExprCall,
+             InternalError,
+             "Unsupported DocDB Expression");
 
       // Evaluate column value.
       QLValue expr_result;
-      RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
+      RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result, &schema_));
 
       // Inserting into specified column.
       const SubDocument sub_doc =
