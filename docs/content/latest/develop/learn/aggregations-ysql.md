@@ -7,7 +7,7 @@ aliases:
   - /latest/develop/learn/aggregations/
 menu:
   latest:
-    identifier: aggregations-ysql
+    identifier: aggregations-2-ysql
     parent: learn
     weight: 567
 isTocNested: true
