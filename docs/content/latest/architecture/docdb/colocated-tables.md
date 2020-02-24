@@ -1,5 +1,5 @@
 ---
-title: Colocated Tables
+title: Colocated tables
 linkTitle: Colocated Tables
 description: Colocated Tables
 aliases:
