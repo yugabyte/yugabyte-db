@@ -3,9 +3,11 @@ title: YCSB
 linkTitle: YCSB
 description: YCSB
 headcontent: Benchmark YugabyteDB using YCSB.
+aliases:
+  - /latest/benchmark/ycsb
 menu:
   latest:
-    identifier: ycsb-2-ycql
+    identifier: ycsb-1-ycql
     parent: benchmark
     weight: 5
 showAsideToc: true
