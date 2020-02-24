@@ -1,6 +1,6 @@
 ---
 title: Colocated tables
-linkTitle: Colocated Tables
+linkTitle: Colocated tables
 description: Colocated Tables
 aliases:
   - /latest/architecture/docdb/colocated_tables/
