@@ -7,7 +7,7 @@ aliases:
   - /latest/develop/learn/acid-transactions/
 menu:
   latest:
-    identifier: acid-transactions-ysql
+    identifier: acid-transactions-1-ysql
     parent: learn
     weight: 566
 isTocNested: true

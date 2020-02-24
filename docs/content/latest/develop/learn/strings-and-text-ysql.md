@@ -7,7 +7,7 @@ aliases:
   - /latest/develop/learn/strings-and-text/
 menu:
   latest:
-    identifier: strings-and-text-ysql
+    identifier: strings-and-text-1-ysql
     parent: learn
     weight: 570
 isTocNested: true

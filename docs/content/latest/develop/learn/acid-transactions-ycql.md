@@ -4,7 +4,7 @@ linkTitle: 4. ACID transactions
 description: ACID transactions
 menu:
   latest:
-    identifier: acid-transactions-ycql
+    identifier: acid-transactions-2-ycql
     parent: learn
     weight: 566
 isTocNested: true
