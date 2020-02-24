@@ -13,7 +13,8 @@ all:
 
 REGRESS = orafce orafce2 dbms_output dbms_utility files varchar2 nvarchar2 aggregates nlssort dbms_random
 
-REGRESS_OPTS = --load-language=plpgsql --schedule=parallel_schedule --encoding=utf8
+#REGRESS_OPTS = --load-language=plpgsql --schedule=parallel_schedule --encoding=utf8
+REGRESS_OPTS = --schedule=parallel_schedule --encoding=utf8
 
 #override CFLAGS += -pedantic
 
