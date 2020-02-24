@@ -282,7 +282,7 @@ tsquery_rewrite_query(PG_FUNCTION_ARGS)
 	TSQuery		query = PG_GETARG_TSQUERY_COPY(0);
 	text	   *in = PG_GETARG_TEXT_PP(1);
 	TSQuery		rewrited = query;
-	MemoryContext outercontext = CurrentMemoryContext;
+	MemoryContext outercontext = GetCurrentMemoryContext();
 	MemoryContext oldcontext;
 	QTNode	   *tree;
 	char	   *buf;

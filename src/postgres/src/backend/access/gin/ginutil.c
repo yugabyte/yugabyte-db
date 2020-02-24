@@ -82,7 +82,7 @@ ginhandler(PG_FUNCTION_ARGS)
 /*
  * initGinState: fill in an empty GinState struct to describe the index
  *
- * Note: assorted subsidiary data is allocated in the CurrentMemoryContext.
+ * Note: assorted subsidiary data is allocated in the GetCurrentMemoryContext().
  */
 void
 initGinState(GinState *state, Relation index)
@@ -124,7 +124,7 @@ initGinState(GinState *state, Relation index)
 		{
 			fmgr_info_copy(&(state->compareFn[i]),
 						   index_getprocinfo(index, i + 1, GIN_COMPARE_PROC),
-						   CurrentMemoryContext);
+						   GetCurrentMemoryContext());
 		}
 		else
 		{
@@ -139,16 +139,16 @@ initGinState(GinState *state, Relation index)
 								format_type_be(attr->atttypid))));
 			fmgr_info_copy(&(state->compareFn[i]),
 						   &(typentry->cmp_proc_finfo),
-						   CurrentMemoryContext);
+						   GetCurrentMemoryContext());
 		}
 
 		/* Opclass must always provide extract procs */
 		fmgr_info_copy(&(state->extractValueFn[i]),
 					   index_getprocinfo(index, i + 1, GIN_EXTRACTVALUE_PROC),
-					   CurrentMemoryContext);
+					   GetCurrentMemoryContext());
 		fmgr_info_copy(&(state->extractQueryFn[i]),
 					   index_getprocinfo(index, i + 1, GIN_EXTRACTQUERY_PROC),
-					   CurrentMemoryContext);
+					   GetCurrentMemoryContext());
 
 		/*
 		 * Check opclass capability to do tri-state or binary logic consistent
@@ -158,14 +158,14 @@ initGinState(GinState *state, Relation index)
 		{
 			fmgr_info_copy(&(state->triConsistentFn[i]),
 						   index_getprocinfo(index, i + 1, GIN_TRICONSISTENT_PROC),
-						   CurrentMemoryContext);
+						   GetCurrentMemoryContext());
 		}
 
 		if (index_getprocid(index, i + 1, GIN_CONSISTENT_PROC) != InvalidOid)
 		{
 			fmgr_info_copy(&(state->consistentFn[i]),
 						   index_getprocinfo(index, i + 1, GIN_CONSISTENT_PROC),
-						   CurrentMemoryContext);
+						   GetCurrentMemoryContext());
 		}
 
 		if (state->consistentFn[i].fn_oid == InvalidOid &&
@@ -183,7 +183,7 @@ initGinState(GinState *state, Relation index)
 		{
 			fmgr_info_copy(&(state->comparePartialFn[i]),
 						   index_getprocinfo(index, i + 1, GIN_COMPARE_PARTIAL_PROC),
-						   CurrentMemoryContext);
+						   GetCurrentMemoryContext());
 			state->canPartialMatch[i] = true;
 		}
 		else

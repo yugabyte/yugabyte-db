@@ -97,7 +97,7 @@ extern void fmgr_info(Oid functionId, FmgrInfo *finfo);
 
 /*
  * Same, when the FmgrInfo struct is in a memory context longer-lived than
- * CurrentMemoryContext.  The specified context will be set as fn_mcxt
+ * GetCurrentMemoryContext().  The specified context will be set as fn_mcxt
  * and used to hold all subsidiary data of finfo.
  */
 extern void fmgr_info_cxt(Oid functionId, FmgrInfo *finfo,
@@ -663,6 +663,7 @@ extern bytea *OidSendFunctionCall(Oid functionId, Datum val);
 /*
  * Routines in fmgr.c
  */
+extern bool is_builtin_func(Oid id);
 extern const Pg_finfo_record *fetch_finfo_record(void *filehandle, const char *funcname);
 extern void clear_external_function_hash(void *filehandle);
 extern Oid	fmgr_internal_function(const char *proname);

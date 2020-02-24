@@ -14,6 +14,8 @@
 #include "yb/util/decimal.h"
 #include "yb/util/bfql/bfunc.h"
 
+#include "yb/docdb/docdb_pgapi.h"
+
 namespace yb {
 namespace docdb {
 
@@ -167,7 +169,8 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
 
 CHECKED_STATUS DocExprExecutor::EvalTSCall(const PgsqlBCallPB& tscall,
                                            const QLTableRow::SharedPtrConst& table_row,
-                                           QLValue *result) {
+                                           QLValue *result,
+                                           const Schema *schema) {
   bfpg::TSOpcode tsopcode = static_cast<bfpg::TSOpcode>(tscall.opcode());
   switch (tsopcode) {
     case bfpg::TSOpcode::kCount:
@@ -228,6 +231,21 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const PgsqlBCallPB& tscall,
       QLValue arg_result;
       RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
       return EvalMax(arg_result, result);
+    }
+
+    case bfpg::TSOpcode::kPgEvalExprCall: {
+      const std::string& expr_str = tscall.operands(0).value().string_value();
+      int32_t col_attrno = tscall.operands(1).value().int32_value();
+      int32_t ret_typeid = tscall.operands(2).value().int32_value();
+      int32_t ret_typemod = tscall.operands(3).value().int32_value();
+      RETURN_NOT_OK(DocPgEvalExpr(expr_str,
+                                  col_attrno,
+                                  ret_typeid,
+                                  ret_typemod,
+                                  table_row,
+                                  schema,
+                                  result));
+      return Status::OK();
     }
 
     default:

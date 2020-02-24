@@ -1014,7 +1014,7 @@ spg_redo(XLogReaderState *record)
 void
 spg_xlog_startup(void)
 {
-	opCtx = AllocSetContextCreate(CurrentMemoryContext,
+	opCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
 								  "SP-GiST temporary context",
 								  ALLOCSET_DEFAULT_SIZES);
 }

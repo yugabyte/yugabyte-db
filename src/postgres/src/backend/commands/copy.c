@@ -1032,7 +1032,7 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
  * This is exported so that external users of the COPY API can sanity-check
  * a list of options.  In that usage, cstate should be passed as NULL
  * (since external users don't know sizeof(CopyStateData)) and the collected
- * data is just leaked until CurrentMemoryContext is reset.
+ * data is just leaked until GetCurrentMemoryContext() is reset.
  *
  * Note that additional checking, such as whether column names listed in FORCE
  * QUOTE actually exist, has to be applied later.  This just checks for
@@ -1419,7 +1419,7 @@ BeginCopy(ParseState *pstate,
 	 * We allocate everything used by a cstate in a new memory context. This
 	 * avoids memory leaks during repeated use of COPY in a query.
 	 */
-	cstate->copycontext = AllocSetContextCreate(CurrentMemoryContext,
+	cstate->copycontext = AllocSetContextCreate(GetCurrentMemoryContext(),
 												"COPY",
 												ALLOCSET_DEFAULT_SIZES);
 
@@ -2011,7 +2011,7 @@ CopyTo(CopyState cstate)
 	 * datatype output routines, and should be faster than retail pfree's
 	 * anyway.  (We don't need a whole econtext as CopyFrom does.)
 	 */
-	cstate->rowcontext = AllocSetContextCreate(CurrentMemoryContext,
+	cstate->rowcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
 											   "COPY TO",
 											   ALLOCSET_DEFAULT_SIZES);
 
@@ -2335,7 +2335,7 @@ CopyFrom(CopyState cstate)
 	ModifyTableState *mtstate;
 	ExprContext *econtext;
 	TupleTableSlot *myslot;
-	MemoryContext oldcontext = CurrentMemoryContext;
+	MemoryContext oldcontext = GetCurrentMemoryContext();
 
 	ErrorContextCallback errcallback;
 	CommandId	mycid = GetCurrentCommandId(true);
@@ -3622,7 +3622,7 @@ NextCopyFrom(CopyState cstate, ExprContext *econtext,
 		 * per-tuple memory context in it.
 		 */
 		Assert(econtext != NULL);
-		Assert(CurrentMemoryContext == econtext->ecxt_per_tuple_memory);
+		Assert(GetCurrentMemoryContext() == econtext->ecxt_per_tuple_memory);
 
 		values[defmap[i]] = ExecEvalExpr(defexprs[i], econtext,
 										 &nulls[defmap[i]]);

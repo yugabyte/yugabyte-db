@@ -1040,7 +1040,7 @@ EventTriggerInvoke(List *fn_oid_list, EventTriggerData *trigdata)
 	 * Let's evaluate event triggers in their own memory context, so that any
 	 * leaks get cleaned up promptly.
 	 */
-	context = AllocSetContextCreate(CurrentMemoryContext,
+	context = AllocSetContextCreate(GetCurrentMemoryContext(),
 									"event trigger context",
 									ALLOCSET_DEFAULT_SIZES);
 	oldcontext = MemoryContextSwitchTo(context);

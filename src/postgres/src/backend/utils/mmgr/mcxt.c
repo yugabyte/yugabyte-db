@@ -25,6 +25,7 @@
 #include "miscadmin.h"
 #include "utils/memdebug.h"
 #include "utils/memutils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 
 /*****************************************************************************
@@ -36,6 +37,35 @@
  *		Default memory context for allocations.
  */
 MemoryContext CurrentMemoryContext = NULL;
+
+
+MemoryContext GetThreadLocalCurrentMemoryContext()
+{
+	return (MemoryContext) YBCPgGetThreadLocalCurrentMemoryContext();
+}
+
+MemoryContext SetThreadLocalCurrentMemoryContext(MemoryContext memctx)
+{
+	return (MemoryContext) YBCPgSetThreadLocalCurrentMemoryContext(memctx);
+}
+
+void PrepareThreadLocalCurrentMemoryContext()
+{
+	if (YBCPgGetThreadLocalCurrentMemoryContext() == NULL)
+	{
+		MemoryContext memctx = AllocSetContextCreate((MemoryContext) NULL,
+		                                             "DocDBExprMemoryContext",
+		                                             ALLOCSET_SMALL_SIZES);
+		YBCPgSetThreadLocalCurrentMemoryContext(memctx);
+	}
+}
+
+void ResetThreadLocalCurrentMemoryContext()
+{
+	MemoryContext memctx = (MemoryContext) YBCPgGetThreadLocalCurrentMemoryContext();
+	YBCPgResetCurrentMemCtxThreadLocalVars();
+	MemoryContextReset(memctx);
+}
 
 /*
  * Standard top-level contexts. For a description of the purpose of each
@@ -101,7 +131,7 @@ MemoryContextInit(void)
 											 ALLOCSET_DEFAULT_SIZES);
 
 	/*
-	 * Not having any other place to point CurrentMemoryContext, make it point
+	 * Not having any other place to point GetCurrentMemoryContext(), make it point
 	 * to TopMemoryContext.  Caller should change this soon!
 	 */
 	CurrentMemoryContext = TopMemoryContext;
@@ -213,8 +243,8 @@ MemoryContextDelete(MemoryContext context)
 	AssertArg(MemoryContextIsValid(context));
 	/* We had better not be deleting TopMemoryContext ... */
 	Assert(context != TopMemoryContext);
-	/* And not CurrentMemoryContext, either */
-	Assert(context != CurrentMemoryContext);
+	/* And not GetCurrentMemoryContext(), either */
+	Assert(context != GetCurrentMemoryContext());
 
 	/* save a function call in common case where there are no children */
 	if (context->firstchild != NULL)
@@ -925,7 +955,7 @@ palloc(Size size)
 {
 	/* duplicates MemoryContextAlloc to avoid increased overhead */
 	void	   *ret;
-	MemoryContext context = CurrentMemoryContext;
+	MemoryContext context = GetCurrentMemoryContext();
 
 	AssertArg(MemoryContextIsValid(context));
 	AssertNotInCriticalSection(context);
@@ -956,7 +986,7 @@ palloc0(Size size)
 {
 	/* duplicates MemoryContextAllocZero to avoid increased overhead */
 	void	   *ret;
-	MemoryContext context = CurrentMemoryContext;
+	MemoryContext context = GetCurrentMemoryContext();
 
 	AssertArg(MemoryContextIsValid(context));
 	AssertNotInCriticalSection(context);
@@ -989,7 +1019,7 @@ palloc_extended(Size size, int flags)
 {
 	/* duplicates MemoryContextAllocExtended to avoid increased overhead */
 	void	   *ret;
-	MemoryContext context = CurrentMemoryContext;
+	MemoryContext context = GetCurrentMemoryContext();
 
 	AssertArg(MemoryContextIsValid(context));
 	AssertNotInCriticalSection(context);
@@ -1160,7 +1190,7 @@ MemoryContextStrdup(MemoryContext context, const char *string)
 char *
 pstrdup(const char *in)
 {
-	return MemoryContextStrdup(CurrentMemoryContext, in);
+	return MemoryContextStrdup(GetCurrentMemoryContext(), in);
 }
 
 /*

@@ -232,7 +232,7 @@ ReorderBufferAllocate(void)
 	Assert(MyReplicationSlot != NULL);
 
 	/* allocate memory in own context, to have better accountability */
-	new_ctx = AllocSetContextCreate(CurrentMemoryContext,
+	new_ctx = AllocSetContextCreate(GetCurrentMemoryContext(),
 									"ReorderBuffer",
 									ALLOCSET_DEFAULT_SIZES);
 

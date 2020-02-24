@@ -1118,7 +1118,7 @@ ProcessCompletedNotifies(void)
 	 * We must preserve the caller's memory context (probably MessageContext)
 	 * across the transaction we do here.
 	 */
-	caller_context = CurrentMemoryContext;
+	caller_context = GetCurrentMemoryContext();
 
 	if (Trace_notify)
 		elog(DEBUG1, "ProcessCompletedNotifies");

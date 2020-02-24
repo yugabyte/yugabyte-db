@@ -60,7 +60,7 @@ ResetUnloggedRelations(int op)
 	 * Just to be sure we don't leak any memory, let's create a temporary
 	 * memory context for this operation.
 	 */
-	tmpctx = AllocSetContextCreate(CurrentMemoryContext,
+	tmpctx = AllocSetContextCreate(GetCurrentMemoryContext(),
 								   "ResetUnloggedRelations",
 								   ALLOCSET_DEFAULT_SIZES);
 	oldctx = MemoryContextSwitchTo(tmpctx);

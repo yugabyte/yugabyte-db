@@ -324,7 +324,7 @@ plpgsql_inline_handler(PG_FUNCTION_ARGS)
 	MemSet(&flinfo, 0, sizeof(flinfo));
 	fake_fcinfo.flinfo = &flinfo;
 	flinfo.fn_oid = InvalidOid;
-	flinfo.fn_mcxt = CurrentMemoryContext;
+	flinfo.fn_mcxt = GetCurrentMemoryContext();
 
 	/* Create a private EState for simple-expression execution */
 	simple_eval_estate = CreateExecutorState();
@@ -482,7 +482,7 @@ plpgsql_validator(PG_FUNCTION_ARGS)
 		MemSet(&flinfo, 0, sizeof(flinfo));
 		fake_fcinfo.flinfo = &flinfo;
 		flinfo.fn_oid = funcoid;
-		flinfo.fn_mcxt = CurrentMemoryContext;
+		flinfo.fn_mcxt = GetCurrentMemoryContext();
 		if (is_dml_trigger)
 		{
 			MemSet(&trigdata, 0, sizeof(trigdata));

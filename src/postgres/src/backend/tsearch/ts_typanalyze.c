@@ -184,7 +184,7 @@ compute_tsvector_stats(VacAttrStats *stats,
 	hash_ctl.entrysize = sizeof(TrackItem);
 	hash_ctl.hash = lexeme_hash;
 	hash_ctl.match = lexeme_match;
-	hash_ctl.hcxt = CurrentMemoryContext;
+	hash_ctl.hcxt = GetCurrentMemoryContext();
 	lexemes_tab = hash_create("Analyzed lexemes table",
 							  num_mcelem,
 							  &hash_ctl,

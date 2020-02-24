@@ -978,7 +978,7 @@ HandleParallelMessages(void)
 	HOLD_INTERRUPTS();
 
 	/*
-	 * Moreover, CurrentMemoryContext might be pointing almost anywhere.  We
+	 * Moreover, GetCurrentMemoryContext() might be pointing almost anywhere.  We
 	 * don't want to risk leaking data into long-lived contexts, so let's do
 	 * our work here in a private context that we can reset on each use.
 	 */

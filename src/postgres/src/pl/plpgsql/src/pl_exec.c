@@ -101,7 +101,7 @@ static SimpleEcontextStackEntry *simple_econtext_stack = NULL;
  *
  * 1. Function-call-lifespan data, such as variable values, is kept in the
  * "main" context, a/k/a the "SPI Proc" context established by SPI_connect().
- * This is usually the CurrentMemoryContext while running code in this module
+ * This is usually the GetCurrentMemoryContext() while running code in this module
  * (which is not good, because careless coding can easily cause
  * function-lifespan memory leaks, but we live with it for now).
  *
@@ -1630,7 +1630,7 @@ exec_stmt_block(PLpgSQL_execstate *estate, PLpgSQL_stmt_block *block)
 		/*
 		 * Execute the statements in the block's body inside a sub-transaction
 		 */
-		MemoryContext oldcontext = CurrentMemoryContext;
+		MemoryContext oldcontext = GetCurrentMemoryContext();
 		ResourceOwner oldowner = CurrentResourceOwner;
 		ExprContext *old_eval_econtext = estate->eval_econtext;
 		ErrorData  *save_cur_error = estate->cur_error;
@@ -3491,7 +3491,7 @@ exec_stmt_return_query(PLpgSQL_execstate *estate,
 
 		SPI_cursor_fetch(portal, true, 50);
 
-		/* SPI will have changed CurrentMemoryContext */
+		/* SPI will have changed GetCurrentMemoryContext() */
 		MemoryContextSwitchTo(get_eval_mcontext(estate));
 
 		if (SPI_processed == 0)
@@ -3877,7 +3877,7 @@ plpgsql_estate_setup(PLpgSQL_execstate *estate,
 	estate->ndatums = func->ndatums;
 	estate->datums = NULL;
 	/* the datums array will be filled by copy_plpgsql_datums() */
-	estate->datum_context = CurrentMemoryContext;
+	estate->datum_context = GetCurrentMemoryContext();
 
 	/* initialize our ParamListInfo with appropriate hook functions */
 	estate->paramLI = (ParamListInfo)
@@ -3898,12 +3898,12 @@ plpgsql_estate_setup(PLpgSQL_execstate *estate,
 		memset(&ctl, 0, sizeof(ctl));
 		ctl.keysize = sizeof(plpgsql_CastHashKey);
 		ctl.entrysize = sizeof(plpgsql_CastHashEntry);
-		ctl.hcxt = CurrentMemoryContext;
+		ctl.hcxt = GetCurrentMemoryContext();
 		estate->cast_hash = hash_create("PLpgSQL private cast cache",
 										16, /* start small and extend */
 										&ctl,
 										HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
-		estate->cast_hash_context = CurrentMemoryContext;
+		estate->cast_hash_context = GetCurrentMemoryContext();
 	}
 	else
 	{
@@ -3933,7 +3933,7 @@ plpgsql_estate_setup(PLpgSQL_execstate *estate,
 	 * context.  Additional stmt_mcontexts might be created as children of it.
 	 */
 	estate->stmt_mcontext = NULL;
-	estate->stmt_mcontext_parent = CurrentMemoryContext;
+	estate->stmt_mcontext_parent = GetCurrentMemoryContext();
 
 	estate->eval_tuptable = NULL;
 	estate->eval_processed = 0;

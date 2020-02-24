@@ -25,11 +25,34 @@
 #include "nodes/pg_list.h"
 #include "nodes/readfuncs.h"
 #include "nodes/value.h"
-
+#include "yb/yql/pggate/ybc_pggate.h"
 
 /* Static state for pg_strtok */
 static char *pg_strtok_ptr = NULL;
 
+static char *GetPgStrTokPtr()
+{
+	if (IsMultiThreadedMode())
+	{
+		return (char *) YBCPgGetThreadLocalStrTokPtr();
+	}
+	else
+	{
+		return pg_strtok_ptr;
+	}
+}
+
+static void SetPgStrTokPtr(char *new_pg_strtok_ptr)
+{
+	if (IsMultiThreadedMode())
+	{
+		YBCPgSetThreadLocalStrTokPtr(new_pg_strtok_ptr);
+	}
+	else
+	{
+		pg_strtok_ptr = new_pg_strtok_ptr;
+	}
+}
 
 /*
  * stringToNode -
@@ -47,13 +70,13 @@ stringToNode(char *str)
 	 * a lot of notational overhead by having to pass the next-character
 	 * pointer around through all the readfuncs.c code.
 	 */
-	save_strtok = pg_strtok_ptr;
+	save_strtok = GetPgStrTokPtr();
 
-	pg_strtok_ptr = str;		/* point pg_strtok at the string to read */
+	SetPgStrTokPtr(str);		/* point pg_strtok at the string to read */
 
 	retval = nodeRead(NULL, 0); /* do the reading */
 
-	pg_strtok_ptr = save_strtok;
+	SetPgStrTokPtr(save_strtok);
 
 	return retval;
 }
@@ -110,7 +133,7 @@ pg_strtok(int *length)
 	char	   *local_str;		/* working pointer to string */
 	char	   *ret_str;		/* start of token to return */
 
-	local_str = pg_strtok_ptr;
+	local_str = GetPgStrTokPtr();
 
 	while (*local_str == ' ' || *local_str == '\n' || *local_str == '\t')
 		local_str++;
@@ -118,7 +141,7 @@ pg_strtok(int *length)
 	if (*local_str == '\0')
 	{
 		*length = 0;
-		pg_strtok_ptr = local_str;
+		SetPgStrTokPtr(local_str);
 		return NULL;			/* no more tokens */
 	}
 
@@ -155,7 +178,7 @@ pg_strtok(int *length)
 	if (*length == 2 && ret_str[0] == '<' && ret_str[1] == '>')
 		*length = 0;
 
-	pg_strtok_ptr = local_str;
+	SetPgStrTokPtr(local_str);
 
 	return ret_str;
 }

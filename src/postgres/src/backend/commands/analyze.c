@@ -393,7 +393,7 @@ do_analyze_rel(Relation onerel, int options, VacuumParams *params,
 	 * Set up a working context so that we can easily free whatever junk gets
 	 * created.
 	 */
-	anl_context = AllocSetContextCreate(CurrentMemoryContext,
+	anl_context = AllocSetContextCreate(GetCurrentMemoryContext(),
 										"Analyze",
 										ALLOCSET_DEFAULT_SIZES);
 	caller_context = MemoryContextSwitchTo(anl_context);
@@ -2349,7 +2349,7 @@ compute_scalar_stats(VacAttrStatsP stats,
 	track = (ScalarMCVItem *) palloc(num_mcv * sizeof(ScalarMCVItem));
 
 	memset(&ssup, 0, sizeof(ssup));
-	ssup.ssup_cxt = CurrentMemoryContext;
+	ssup.ssup_cxt = GetCurrentMemoryContext();
 	/* We always use the default collation for statistics */
 	ssup.ssup_collation = DEFAULT_COLLATION_OID;
 	ssup.ssup_nulls_first = false;
