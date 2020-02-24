@@ -8,7 +8,7 @@ aliases:
   - /latest/develop/learn/data-modeling/
 menu:
   latest:
-    identifier: data-modeling-ycql
+    identifier: data-modeling-1-ycql
     parent: learn
     weight: 562
 isTocNested: true
@@ -37,7 +37,7 @@ Data modeling is a process that involves identifying the entities (items to be s
 
 This topic documents data modeling with [Yugabyte Cloud Query Language (YCQL)](../../../api/ycql), YugabyteDB's Cassandra-compatible API.
 
-## Keyspaces, Tables, Rows and Columns
+## Keyspaces, tables, rows, and columns
 
 ### Keyspaces
 
@@ -69,7 +69,6 @@ Note the following about the `users` table:
 - Other than the primary key, the `users` table has three other columns - `firstname`, `lastname`, `address` each of which is a string.
 - Some columns may have no data (for example, James Bond's address `address` is unknown). These have `null` values in the database.
 
-
 Now consider another example of the `books` table that keeps track of authors and the books they have written.
 
 | author               | book_title           | price  | year | genre
@@ -79,21 +78,19 @@ Now consider another example of the `books` table that keeps track of authors an
 | Charles Dickens      | Oliver Twist         | 9.25   | 1837 | serial novel
 | Charles Dickens      | A Tale of Two Cities | 11.40  | 1859 | historical novel
 
-
 Note the following about the `books` table:
 
 - The primary key for this table consists of two columns - `author` and `book_title`. Each row in the table must have values for these two attributes, and the combination of these values must be unique.
 - Other than the primary key, the table has other columns such as `price`, `year`, `genre`.
 - The columns `author`, `book_title` and `genre` are string, `price` is a float, `year` is an integer.
 
-
-## Primary Key
+## Primary key
 
 When creating a table, the primary key of the table must be specified in addition to the table name. The primary key uniquely identifies each row in the table, therefore no two rows can have the same key.
 
 There are two types of primary keys, and they are described below.
 
-### Partition Key Columns (Required)
+### Partition key columns (required)
 
 Such tables have *simple primary keys*. One or more columns of a table can be made the partition key columns. The values of the partition key columns are used to compute an internal hash value. This hash value determines the tablet (or partition) in which the row will be stored. This has two implications:
 
@@ -109,8 +106,7 @@ In the case of the `users` table, we can make `user_id` column the only primary 
 | tablet-4  | 1003     | Clark     | Kent     | 344 Clinton Street, Metropolis
 | tablet-17 | 1007     | James     | Bond     |
 
-
-### Clustering Key Columns (Optional)
+### Clustering key columns (optional)
 
 The clustering columns specify the order in which the column data is sorted and stored on disk for a given unique partition key value. More than one clustering column can be specified, and the columns are sorted in the order they are declared in the clustering column. It is also possible to control the sort order (ascending or descending sort) for these columns. Note that the sort order respects the data type.
 
@@ -125,7 +121,6 @@ In the case of the `books` table, `author` is a good partition key and `book_tit
 | tablet-21 | Charles Dickens      | A Tale of Two Cities | 11.40  | 1859 | historical novel
 | tablet-21 | Charles Dickens      | Oliver Twist         | 9.25   | 1837 | serial novel
 
-
 Note that if we had made both `author` and `book_title` partition key columns, we would not be able to list all the books for a given author efficiently.
 
 **Note**
@@ -134,16 +129,15 @@ Note that if we had made both `author` and `book_title` partition key columns, w
 
 - The clustering key columns are also referred to as its **range columns**. This is because rows with the same partition key are stored on disk in sorted order by the clustering key value.
 
-
-## Secondary Indexes
+## Secondary indexes
 
 A database index is a data structure that improves the speed of data retrieval operations on a database table. Typically, databases are very efficient at looking up data by the primary key. A secondary index can be created using one or more columns of a database table, and provides the basis for both rapid random lookups and efficient access of ordered records when querying by those columns. To achieve this, secondary indexes require additional writes and storage space to maintain the index data structure. YugabyteDB's secondary index support is documented in detail [here](../../../api/ycql/ddl_create_index/).
 
-### Benefits of Secondary Indexes
+### Benefits of secondary indexes
 
 Secondary indexes can be used to speed up queries and to enforce uniqueness of values in a column.
 
-#### Speed up Queries
+#### Speed up queries
 
 The predominant use of a secondary index is to make lookups by some column values efficient. Let us take an example of a users table, where user_id is the primary key. Suppose we want to lookup user_id by the email of the user efficiently. You can achieve this as follows.
 
@@ -183,7 +177,7 @@ cqlsh> SELECT * FROM example.users WHERE email='bond@yb.com';
 
 Read more about using secondary indexes to speed up queries in this quick guide to YugabyteDB secondary indexes.
 
-### Enforce Uniqueness of Column Values 
+### Enforce uniqueness of column values
 
 In some cases, you would need to ensure that duplicate values cannot be inserted in a column of a table. You can achieve this in YugabyteDB by creating a unique secondary index, where the application does not want duplicate values to be inserted into a column. 
 
@@ -218,6 +212,7 @@ But upon inserting a duplicate email, we get an error.
 cqlsh> INSERT INTO example.users (user_id, firstname, lastname, email) 
        VALUES (3, 'Fake', 'Bond', 'bond@yb.com');
 ```
+
 ```
 InvalidRequest: Error from server: code=2200 [Invalid query] message="SQL error: Execution Error. Duplicate value disallowed by unique index unique_emails
 ```
@@ -240,8 +235,7 @@ In addition, it has two core complex data types.
 
 Document data models are best fit for applications requiring a flexible schema and fast data access. E.g. nested documents enable applications to store related pieces of information in the same database record in a denormalized manner. As a result, applications can issue fewer queries and updates to complete common operations. 
 
-
-### Comparison with Apache Cassandra’s JSON Support
+### Comparison with Apache Cassandra’s JSON support
 
 [Apache Cassandra’s JSON](http://cassandra.apache.org/doc/latest/cql/json.html) support can be misleading for many developers. CQL allows SELECT and INSERT statements to include the JSON keyword. The SELECT output will now be available in the JSON format and the INSERT inputs can now be specified in the JSON format. However, this “JSON” support is simply an ease-of-use abstraction in the CQL layer that the underlying database engine is unaware of. Since there is no native JSON data type in CQL, the schema doesn’t have any knowledge of the JSON provided by the user. This means the schema definition doesn’t change nor does the schema enforcement. Cassandra developers needing native JSON support previously had no choice but to add a new document database such as MongoDB or Couchbase into their data tier. 
 
