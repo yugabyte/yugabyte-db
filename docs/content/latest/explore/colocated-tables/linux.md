@@ -40,7 +40,7 @@ then having separate tablets for each table unnecessarily adds pressure on CPU, 
 
 To help accomodate such relational tables and workloads, you can colocate SQL tables.
 Colocating tables puts all of their data into a single tablet, called the _colocation tablet_.
-This can dramatically increase the number of relations (tables, indexes, etc) that can
+This can dramatically increase the number of relations (tables, indexes, etc.) that can
 be supported per node while keeping the number of tablets per node low.
 Note that all the data in the colocation tablet is still replicated across 3 nodes (or whatever the replication factor is).
 
