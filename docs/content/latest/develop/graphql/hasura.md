@@ -31,7 +31,7 @@ If you're new to YugabyteDB, you can be up and running with YugabyteDB in under 
 
 To install the Hasura GraphQL engine, follow the steps in the Hasura [Quick start with Docker](https://docs.hasura.io/1.0/graphql/manual/getting-started/docker-simple.html).
 
-To use Hasura with YugabyteDB, the configuration should be similar to PostgreSQL, but the port should be `5433` and the transaction isolation level should be set to `SERIALIZABLE`. 
+To use Hasura with YugabyteDB, the configuration should be similar to PostgreSQL, except that the port should be `5433`.
 
 For a local Mac setup, the configuration should be:
 
@@ -44,7 +44,7 @@ docker run -d -p 8080:8080 \
 
 {{< note title="Note" >}}
 
-Make sure that the release version specified for `hasura/graphql-engine` matches the version you are using. The releases and their versions can be found at [Hasura graphql-engine releases](https://github.com/hasura/graphql-engine/releases).
+Make sure that the release version specified for `hasura/graphql-engine` matches the version you are using. The releases can be found at [Hasura graphql-engine releases](https://github.com/hasura/graphql-engine/releases).
 
 {{< /note >}}
 
