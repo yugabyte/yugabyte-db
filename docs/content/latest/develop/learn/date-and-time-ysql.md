@@ -9,7 +9,7 @@ menu:
   latest:
     parent: learn
     name: 7. Date and time
-    identifier: date-and-time-ysql
+    identifier: date-and-time-1-ysql
     weight: 569
 type: page
 isTocNested: true

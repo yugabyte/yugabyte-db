@@ -6,7 +6,7 @@ aliases:
   - /latest/develop/learn/batch-operations/
 menu:
   latest:
-    identifier: batch-operations-ysql
+    identifier: batch-operations-2-ysql
     parent: learn
     weight: 568
 isTocNested: true

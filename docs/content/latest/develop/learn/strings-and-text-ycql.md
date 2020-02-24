@@ -4,7 +4,7 @@ linkTitle: 8. Strings and text
 description: String and text data types
 menu:
   latest:
-    identifier: strings-and-text-ycql
+    identifier: strings-and-text-2-ycql
     parent: learn
     weight: 570
 isTocNested: true
