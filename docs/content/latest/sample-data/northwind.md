@@ -11,7 +11,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Download and install the PostgreSQL-compatible version of Northwind on the YugabyteDB distributed SQL database.
+Download and install the PostgreSQL-compatible version of the Northwind dataset on the YugabyteDB distributed SQL database.
 
 ## About the Northwind sample database
 
