@@ -498,7 +498,7 @@ Default: `20`
 
 ##### --timestamp_history_retention_interval_sec
 
-The time interval in seconds to retain DocDB history for. Point-in-time reads at a hybrid time further than this in 
+The time interval, in seconds, to retain DocDB history. Point-in-time reads at a hybrid time prior to this interval  
 the past might not be allowed after a compaction and return an `Snapshot too old` error. 
 Set this to be higher than the expected maximum duration of any single transaction in your application.
 
