@@ -67,12 +67,42 @@ class YQLVirtualTable : public common::YQLStorageIf {
   // PGSQL Support.
   //------------------------------------------------------------------------------------------------
 
+  CHECKED_STATUS CreateIterator(const Schema& projection,
+                                const Schema& schema,
+                                const TransactionOperationContextOpt& txn_op_context,
+                                CoarseTimePoint deadline,
+                                const ReadHybridTime& read_time,
+                                common::YQLRowwiseIteratorIf::UniPtr* iter) const override {
+    LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
+    return Status::OK();
+  }
+
+  CHECKED_STATUS InitIterator(common::YQLRowwiseIteratorIf* iter,
+                              const PgsqlReadRequestPB& request,
+                              const Schema& schema,
+                              const QLValuePB& ybctid) const override {
+    LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
+    return Status::OK();
+  }
+
   CHECKED_STATUS GetIterator(const PgsqlReadRequestPB& request,
                              const Schema& projection,
                              const Schema& schema,
                              const TransactionOperationContextOpt& txn_op_context,
                              CoarseTimePoint deadline,
                              const ReadHybridTime& read_time,
+                             common::YQLRowwiseIteratorIf::UniPtr* iter) const override {
+    LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
+    return Status::OK();
+  }
+
+  CHECKED_STATUS GetIterator(const PgsqlReadRequestPB& request,
+                             const Schema& projection,
+                             const Schema& schema,
+                             const TransactionOperationContextOpt& txn_op_context,
+                             CoarseTimePoint deadline,
+                             const ReadHybridTime& read_time,
+                             const QLValuePB& ybctid,
                              common::YQLRowwiseIteratorIf::UniPtr* iter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();

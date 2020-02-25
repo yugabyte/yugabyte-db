@@ -421,10 +421,6 @@ YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_at
   return ToYBCStatus(pgapi->DmlBindColumnCondIn(handle, attr_num, n_attr_values, attr_values));
 }
 
-YBCStatus YBCPgDmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
-  return ToYBCStatus(pgapi->DmlBindIndexColumn(handle, attr_num, attr_value));
-}
-
 YBCStatus YBCPgDmlBindTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->DmlBindTable(handle));
 }

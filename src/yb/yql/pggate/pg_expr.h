@@ -87,6 +87,9 @@ class PgExpr {
             opcode_ == Opcode::PG_EXPR_MAX ||
             opcode_ == Opcode::PG_EXPR_MIN);
   }
+  virtual bool is_ybbasetid() const {
+    return false;
+  }
 
   // Read the result from input buffer (yb_cursor) that was computed by and sent from DocDB.
   // Write the result to output buffer (pg_cursor) in Postgres format.
@@ -262,6 +265,9 @@ class PgColumnRef : public PgExpr {
     return attr_num_;
   }
 
+  virtual bool is_ybbasetid() const {
+    return attr_num_ == static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId);
+  }
  private:
   int attr_num_;
 };

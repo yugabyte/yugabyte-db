@@ -267,8 +267,8 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	 * IndexScan(SysTable, Index) --> HeapTuple.
 	 */
 	scan->xs_ctup.t_ybctid = 0;
-	if (ybscan->prepare_params.index_only_scan ||
-			(!ybscan->prepare_params.querying_systable && ybscan->prepare_params.use_secondary_index)) {
+	if (ybscan->prepare_params.index_only_scan)
+	{
 		IndexTuple tuple = ybc_getnext_indextuple(ybscan, is_forward_scan, &scan->xs_recheck);
 		if (tuple)
 		{

@@ -249,13 +249,19 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
 //   - This bind-column function is used to bind the primary column "key" with "key_expr" that can
 //     contain bind-variables (placeholders) and constants whose values can be updated for each
 //     execution of the same allocated statement.
+//
+// NOTE ON KEY BINDING
+// - For Sequential Scan, the target columns of the bind are those in the main table.
+// - For Primary Scan, the target columns of the bind are those in the main table.
+// - For Index Scan, the target columns of the bind are those in the index table.
+//   The index-scan will use the bind to find base-ybctid which is then use to read data from
+//   the main-table, and therefore the bind-arguments are not associated with columns in main table.
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 YBCStatus YBCPgDmlBindColumnCondEq(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
     YBCPgExpr attr_value_end);
 YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
     YBCPgExpr *attr_values);
-YBCStatus YBCPgDmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 
 // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
 YBCStatus YBCPgDmlBindTable(YBCPgStatement handle);
