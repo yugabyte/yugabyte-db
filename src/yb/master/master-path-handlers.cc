@@ -136,9 +136,8 @@ void MasterPathHandlers::TabletCounts::operator+=(const TabletCounts& other) {
 
 MasterPathHandlers::ZoneTabletCounts::ZoneTabletCounts(
   const TabletCounts& tablet_counts,
-  uint32_t active_tablets_count
-  ) : tablet_counts(tablet_counts),
-      active_tablets_count(active_tablets_count) {
+  uint32_t active_tablets_count) : tablet_counts(tablet_counts),
+                                   active_tablets_count(active_tablets_count) {
 }
 
 void MasterPathHandlers::ZoneTabletCounts::operator+=(const ZoneTabletCounts& other) {
@@ -610,6 +609,14 @@ void MasterPathHandlers::HandleHealthCheck(
     jw.String(s.ToString());
     return;
   }
+  int replication_factor;
+  s = master_->catalog_manager()->GetReplicationFactor(&replication_factor);
+  if (!s.ok()) {
+    jw.StartObject();
+    jw.String("error");
+    jw.String(s.ToString());
+    return;
+  }
 
   vector<std::shared_ptr<TSDescriptor> > descs;
   const auto* ts_manager = master_->ts_manager();
@@ -646,13 +653,75 @@ void MasterPathHandlers::HandleHealthCheck(
     jw.String("most_recent_uptime");
     jw.Uint(most_recent_uptime);
 
+    auto time_arg = req.parsed_args.find("tserver_death_interval_msecs");
+    int64 death_interval_msecs = 0;
+    if (time_arg != req.parsed_args.end()) {
+      death_interval_msecs = atoi(time_arg->second.c_str());
+    }
+
+    // Get all the tablets and add the tablet id for each tablet that has
+    // replication locations lesser than 'replication_factor'.
+    jw.String("under_replicated_tablets");
+    jw.StartArray();
+
+    vector<scoped_refptr<TableInfo>> tables;
+    master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
+    for (const auto& table : tables) {
+      // Ignore tables that are neither user tables nor user indexes.
+      // However there are a bunch of system tables that still need to be investigated:
+      // 1. Redis system table.
+      // 2. Transaction status table.
+      // 3. Metrics table.
+      if (!master_->catalog_manager()->IsUserTable(*table) &&
+          table->GetTableType() != REDIS_TABLE_TYPE &&
+          table->GetTableType() != TRANSACTION_STATUS_TABLE_TYPE &&
+          !(table->namespace_id() == kSystemNamespaceId &&
+            table->name() == kMetricsSnapshotsTableName)) {
+        continue;
+      }
+
+      TabletInfos tablets;
+      table->GetAllTablets(&tablets);
+
+      for (const auto& tablet : tablets) {
+        TabletInfo::ReplicaMap replication_locations;
+        tablet->GetReplicaLocations(&replication_locations);
+
+        if (replication_locations.size() < replication_factor) {
+          // These tablets don't have the required replication locations needed.
+          jw.String(tablet->tablet_id());
+          continue;
+        }
+
+        // Check if we have tablets that have replicas on the dead node.
+        if (dead_nodes.size() == 0) {
+          continue;
+        }
+        int recent_replica_count = 0;
+        for (const auto& iter : replication_locations) {
+          if (std::find_if(dead_nodes.begin(),
+                           dead_nodes.end(),
+                           [iter, death_interval_msecs] (const auto& ts) {
+                               return (ts->permanent_uuid() == iter.first &&
+                                       ts->TimeSinceHeartbeat().ToMilliseconds() >
+                                           death_interval_msecs); }) ==
+                  dead_nodes.end()) {
+            ++recent_replica_count;
+          }
+        }
+        if (recent_replica_count < replication_factor) {
+          jw.String(tablet->tablet_id());
+        }
+      }
+    }
+    jw.EndArray();
+
     // TODO: Add these health checks in a subsequent diff
     //
-    // 3. is the load balancer busy moving tablets/leaders around
+    // 4. is the load balancer busy moving tablets/leaders around
     /* Use: CHECKED_STATUS IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
                                               IsLoadBalancerIdleResponsePB* resp);
      */
-    // 4. are any tablets currently underreplicated
     // 5. do any of the TS have tablets they were not able to start up
   }
   jw.EndObject();
@@ -1387,7 +1456,7 @@ Status MasterPathHandlers::Register(Webserver* server) {
   server->RegisterPathHandler(
       "/api/v1/tablet-servers", "Tserver Statuses",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
-  cb = std::bind(&MasterPathHandlers::HandleHealthCheck, this, _1, _2 );
+  cb = std::bind(&MasterPathHandlers::HandleHealthCheck, this, _1, _2);
   server->RegisterPathHandler(
       "/api/v1/health-check", "Cluster Health Check",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
