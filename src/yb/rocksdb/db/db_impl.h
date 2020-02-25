@@ -624,6 +624,7 @@ class DBImpl : public DB {
       std::unique_ptr<Compaction> compaction = nullptr);
   Result<FileNumbersHolder> BackgroundFlush(
       bool* made_progress, JobContext* job_context, LogBuffer* log_buffer, ColumnFamilyData* cfd);
+  void BackgroundJobComplete(const Status& s, JobContext* job_context, LogBuffer* log_buffer);
 
   uint64_t GetCurrentVersionSstFilesSize() override;
 
