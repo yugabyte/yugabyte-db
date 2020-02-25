@@ -44,7 +44,7 @@ The `share` directory includes sample dataset files available for creating datab
 
 {{< /note >}}
 
-1. Open the YSQL shell by running the following `ysqlsh` command.
+Open the YSQL shell (`ysqlsh) by running the following command.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -88,7 +88,7 @@ The `share` directory includes sample dataset files available for creating datab
   </div>
 </div>
 
-2. Create a database (`yb-demo`) by using the following `CREATE DATABASE` command.
+1. Create a database (`yb-demo`) by using the following `CREATE DATABASE` command.
 
     ```postgresql
     yugabyte=# CREATE DATABASE yb-demo;
