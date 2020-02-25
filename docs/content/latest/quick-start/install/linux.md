@@ -13,6 +13,7 @@ menu:
 type: page
 isTocNested: true
 showAsideToc: true
+hidePagination: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -100,3 +101,9 @@ To configure YugabyteDB, run the following shell script.
 ```sh
 $ ./bin/post_install.sh
 ```
+
+{{<tip title="Next step" >}}
+
+[Create a local cluster](../../create-local-cluster/linux)
+
+{{< /tip >}}

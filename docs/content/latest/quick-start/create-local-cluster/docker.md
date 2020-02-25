@@ -11,6 +11,7 @@ menu:
 type: page
 isTocNested: true
 showAsideToc: true
+hidePagination: true
 ---
 
 
@@ -107,3 +108,9 @@ The Masters section highlights the 3 masters along with their corresponding clou
 Clicking on the `See all nodes` takes us to the Tablet Servers page where we can observe the 1 tservers along with the time since it last connected to this master via regular heartbeats. Additionally, we can see that the `Load (Num Tablets)` is balanced across all available tservers. These tablets are the shards of the user tables currently managed by the cluster (which in this case is the `system_redis.redis` table). As new tables get added, new tablets will get automatically created and distributed evenly across all the available tservers.
 
 ![master-home](/images/admin/master-tservers-list-docker-rf1.png)
+
+{{<tip title="Next step" >}}
+
+[Explore YSQL](../../explore-ysql/)
+
+{{< /tip >}}

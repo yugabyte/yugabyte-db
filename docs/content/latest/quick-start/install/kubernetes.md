@@ -13,6 +13,7 @@ menu:
 type: page
 isTocNested: true
 showAsideToc: true
+hidePagination: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -128,5 +129,12 @@ yugabytedb/yugabyte 2.0.12        2.0.12.0-b10  YugabyteDB is the high-performan
 ```
 
 Now we are ready to create a local YugabyteDB cluster.
+
+
+{{<tip title="Next step" >}}
+
+[Create a local cluster](../../create-local-cluster/kubernetes)
+
+{{< /tip >}}
 
 
