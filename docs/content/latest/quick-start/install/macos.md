@@ -14,6 +14,7 @@ menu:
 type: page
 isTocNested: true
 showAsideToc: true
+hidePagination: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -175,3 +176,9 @@ lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
 	inet 127.0.0.7 netmask 0xff000000
 	nd6 options=201<PERFORMNUD,DAD>
 ```
+
+{{<tip title="Next step" >}}
+
+[Create a local cluster](../../create-local-cluster/macos)
+
+{{< /tip >}}
