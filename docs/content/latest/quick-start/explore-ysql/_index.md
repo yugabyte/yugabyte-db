@@ -93,31 +93,31 @@ The four SQL script (`.sql`) files needed to create and load the sample data for
 
 2. Connect to the new database using the following YSQL shell `\c` meta command.
 
-    ```sql
+    ```postgresql
     yugabyte=# \c yb_demo;
     ```
 
 3. Create the database schema, which includes four tables, by running the following `\i` meta command.
 
-    ```sql
+    ```postgresql
     yb_demo=# \i share/schema.sql;
     ```
 
 4. Load the data into the tables by running the following four `\i` commands.
 
-    ```sql
+    ```postgresql
     yb_demo=# \i share/products.sql
     ```
 
-    ```sql
+    ```postgresql
     yb_demo=# \i share/users.sql
     ```
 
-    ```sql
+    ```postgresql
     yb_demo=# \i share/orders.sql
     ```
 
-    ```sql
+    ```postgresql
     yb_demo=# \i share/reviews.sql
     ```
 
@@ -127,7 +127,7 @@ The four SQL script (`.sql`) files needed to create and load the sample data for
 
 Lets us look at the schema of the `products` table. You can do this as follows:
 
-```sql
+```postgresql
 yb_demo=# \d products
 ```
 
@@ -302,7 +302,7 @@ yb_demo=# SELECT id, category, price, quantity FROM products WHERE id=2;
 ```
  id | category  |      price       | quantity 
 ----+-----------+------------------+----------
-  2 | Doohickey | 70.0798961307176 |     5000
+  2 | Doohickey | 70.0798961307176 |     4990
 (1 row)
 ```
 
