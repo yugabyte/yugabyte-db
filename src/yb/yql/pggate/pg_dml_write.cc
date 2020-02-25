@@ -48,7 +48,8 @@ PgDmlWrite::~PgDmlWrite() {
 }
 
 Status PgDmlWrite::Prepare() {
-  RETURN_NOT_OK(LoadTable());
+  // Setup descriptors for target and bind columns.
+  target_desc_ = bind_desc_ = VERIFY_RESULT(pg_session_->LoadTable(table_id_));
 
   // Allocate either INSERT, UPDATE, or DELETE request.
   AllocWriteRequest();
@@ -59,7 +60,7 @@ Status PgDmlWrite::Prepare() {
 void PgDmlWrite::PrepareColumns() {
   // Because DocDB API requires that primary columns must be listed in their created-order,
   // the slots for primary column bind expressions are allocated here in correct order.
-  for (PgColumn &col : table_desc_->columns()) {
+  for (PgColumn &col : target_desc_->columns()) {
     col.AllocPrimaryBindPB(write_req_);
   }
 }
@@ -105,6 +106,7 @@ Status PgDmlWrite::DeleteEmptyPrimaryBinds() {
 }
 
 Status PgDmlWrite::Exec(bool force_non_bufferable) {
+
   // Delete allocated binds that are not associated with a value.
   // YBClient interface enforce us to allocate binds for primary key columns in their indexing
   // order, so we have to allocate these binds before associating them with values. When the values
@@ -121,21 +123,19 @@ Status PgDmlWrite::Exec(bool force_non_bufferable) {
       << "YBCTID must be of BINARY datatype";
   }
 
+  // Initialize doc operator.
+  doc_op_->Initialize(nullptr);
+
   // Set column references in protobuf.
-  SetColumnRefIds(table_desc_, write_req_->mutable_column_refs());
+  ColumnRefsToPB(write_req_->mutable_column_refs());
 
   // Execute the statement. If the request has been sent, get the result and handle any rows
   // returned.
   if (VERIFY_RESULT(doc_op_->Execute(force_non_bufferable)) == RequestSent::kTrue) {
-     auto result = VERIFY_RESULT(doc_op_->GetResult());
-     if (!result.empty()) {
-       int64_t row_count = 0;
-       row_batch_ = std::move(result);
-       RETURN_NOT_OK(PgDocData::LoadCache(row_batch_, &row_count, &cursor_));
-       accumulated_row_count_ += row_count;
-     }
-     // Save the number of rows affected by the op.
-     rows_affected_count_ = VERIFY_RESULT(doc_op_->GetRowsAffectedCount());
+    RETURN_NOT_OK(doc_op_->GetResult(&rowsets_));
+
+    // Save the number of rows affected by the op.
+    rows_affected_count_ = VERIFY_RESULT(doc_op_->GetRowsAffectedCount());
   }
 
   return Status::OK();

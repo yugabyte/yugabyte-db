@@ -23,7 +23,9 @@ set(PGGATE_SRCS
     pg_ddl.cc
     pg_dml.cc
     pg_dml_write.cc
+    pg_dml_read.cc
     pg_select.cc
+    pg_select_index.cc
     pg_expr.cc
     pg_column.cc
     pg_doc_op.cc

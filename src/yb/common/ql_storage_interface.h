@@ -57,6 +57,29 @@ class YQLStorageIf {
 
   //------------------------------------------------------------------------------------------------
   // PGSQL Support.
+
+  // TODO(neil) Need to replace GetIterator(ybctid) with CreateIterator and InitIterator.
+  // I leave Create and Init code here, so I don't have to rewrite them in the near future.
+  //
+  // - Replacement is not done yet because reusing iterator is not yet allowed. When reusing it,
+  //   doc_key.get_next() asserts that an infinite loop is detected even though we're calling
+  //   get_next() for a different hash codes.
+  // - Create and init can be used to create iterator once and initialize with different ybctid for
+  //   different execution.
+  // - Doc_key needs to be changed to allow reusing iterator.
+  virtual CHECKED_STATUS CreateIterator(const Schema& projection,
+                                        const Schema& schema,
+                                        const TransactionOperationContextOpt& txn_op_context,
+                                        CoarseTimePoint deadline,
+                                        const ReadHybridTime& read_time,
+                                        common::YQLRowwiseIteratorIf::UniPtr* iter) const = 0;
+
+  virtual CHECKED_STATUS InitIterator(common::YQLRowwiseIteratorIf* doc_iter,
+                                      const PgsqlReadRequestPB& request,
+                                      const Schema& schema,
+                                      const QLValuePB& ybctid) const = 0;
+
+  // Create iterator for querying by partition and range key.
   virtual CHECKED_STATUS GetIterator(const PgsqlReadRequestPB& request,
                                      const Schema& projection,
                                      const Schema& schema,
@@ -64,6 +87,16 @@ class YQLStorageIf {
                                      CoarseTimePoint deadline,
                                      const ReadHybridTime& read_time,
                                      YQLRowwiseIteratorIf::UniPtr* iter) const = 0;
+
+  // Create iterator for querying by ybctid.
+  virtual CHECKED_STATUS GetIterator(const PgsqlReadRequestPB& request,
+                                     const Schema& projection,
+                                     const Schema& schema,
+                                     const TransactionOperationContextOpt& txn_op_context,
+                                     CoarseTimePoint deadline,
+                                     const ReadHybridTime& read_time,
+                                     const QLValuePB& ybctid,
+                                     common::YQLRowwiseIteratorIf::UniPtr* iter) const = 0;
 };
 
 }  // namespace common

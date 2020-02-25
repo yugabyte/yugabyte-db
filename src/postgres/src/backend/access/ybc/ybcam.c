@@ -165,14 +165,9 @@ static void ybcBindColumn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber att
 
 	YBCPgExpr ybc_expr = YBCNewConstant(ybScan->handle, atttypid, value, false /* isnull */);
 
-	if (ybScan->prepare_params.use_secondary_index && !ybScan->prepare_params.index_only_scan)
-		HandleYBStmtStatusWithOwner(YBCPgDmlBindIndexColumn(ybScan->handle, attnum, ybc_expr),
-									ybScan->handle,
-									ybScan->stmt_owner);
-	else
-		HandleYBStmtStatusWithOwner(YBCPgDmlBindColumn(ybScan->handle, attnum, ybc_expr),
-									ybScan->handle,
-									ybScan->stmt_owner);
+	HandleYBStmtStatusWithOwner(YBCPgDmlBindColumn(ybScan->handle, attnum, ybc_expr),
+															ybScan->handle,
+															ybScan->stmt_owner);
 }
 
 void ybcBindColumnCondEq(YbScanDesc ybScan, bool is_hash_key, TupleDesc bind_desc,
@@ -414,60 +409,66 @@ ybcSetupScanPlan(Relation relation, Relation index, bool xs_want_itup,
 	int i;
 	memset(scan_plan, 0, sizeof(*scan_plan));
 
-	/* Setup control-parameters for YugaByte preparing statements for different type of scan. */
+	/*
+	 * Setup control-parameters for YugaByte preparing statements for different types of scan.
+	 * - "querying_systable": Support for special cases for SystemTable in YugaByte.
+	 * - "index_oid, index_only_scan, use_secondary_index": Different index scans.
+	 * NOTE: Primary index is a special case as there isn't a primary index table in YugaByte.
+	 */
 	ybScan->index = index;
+	ybScan->prepare_params.querying_systable = IsSystemRelation(relation);
 	if (index)
 	{
 		ybScan->prepare_params.index_oid = RelationGetRelid(index);
 		ybScan->prepare_params.index_only_scan = xs_want_itup;
-
-		/* Support for special case PrimaryKey in YugaByte: There isn't a primary index table. */
 		ybScan->prepare_params.use_secondary_index = !index->rd_index->indisprimary;
-
-		/* Support for special case SystemTable in YugaByte. */
-		if (IsSystemRelation(relation))
-			ybScan->prepare_params.querying_systable = true;
-		else
-			ybScan->prepare_params.querying_systable = false;
 	}
 
 	/* Setup descriptors for target and bind. */
 	if (!index || index->rd_index->indisprimary)
 	{
-		/* SequentialScan or PrimaryIndexScan */
+		/*
+		 * SequentialScan or PrimaryIndexScan
+		 * - YugaByte does not have a separate table for PrimaryIndex.
+		 * - The target table descriptor, where data is read and returned, is the main table.
+		 * - The binding table descriptor, whose column is bound to values, is also the main table.
+		 */
 		ybcLoadTableInfo(relation, scan_plan);
-		scan_plan->bind_desc = RelationGetDescr(relation);
-
 		scan_plan->target_relation = relation;
 		ybScan->target_desc = RelationGetDescr(relation);
+		scan_plan->bind_desc = RelationGetDescr(relation);
 	}
 	else
 	{
 		/*
-		 * SELECT data FROM UserTable WHERE rowid IN (SELECT ybctid FROM indexTable)
-		 * - Bind by attribute number in IndexTable.
-		 * - Get result tuple from UserTable.
+		 * Index-Scan: SELECT data FROM UserTable WHERE rowid IN (SELECT ybctid FROM indexTable)
+		 *
 		 */
 		ybcLoadTableInfo(index, scan_plan);
 		scan_plan->bind_desc = RelationGetDescr(index);
 
 		if (ybScan->prepare_params.index_only_scan)
 		{
-			/* IndexOnlyScan */
+			/*
+			 * IndexOnlyScan
+			 * - This special case is optimized where data is read from index table.
+			 * - The target table descriptor, where data is read and returned, is the index table.
+			 * - The binding table descriptor, whose column is bound to values, is also the index table.
+			 */
 			scan_plan->target_relation = index;
 			ybScan->target_desc = RelationGetDescr(index);
-		}
-		else if (IsSystemRelation(relation))
-		{
-			/* IndexScan ( SysTable ) */
-			scan_plan->target_relation = relation;
-			ybScan->target_desc = RelationGetDescr(relation);
 		}
 		else
 		{
-			/* IndexScan ( UserTable ) */
-			scan_plan->target_relation = index;
-			ybScan->target_desc = RelationGetDescr(index);
+			/*
+			 * IndexScan ( SysTable / UserTable)
+			 * - YugaByte will use the binds to query base-ybctid in the index table, which is then used
+			 *   to query data from the main table. 
+			 * - The target table descriptor, where data is read and returned, is the main table.
+			 * - The binding table descriptor, whose column is bound to values, is the index table.
+			 */
+			scan_plan->target_relation = relation;
+			ybScan->target_desc = RelationGetDescr(relation);
 		}
 	}
 
@@ -506,29 +507,14 @@ ybcSetupScanPlan(Relation relation, Relation index, bool xs_want_itup,
 			scan_plan->bind_key_attnums[i] = ybScan->key[i].sk_attno;
 			ybScan->target_key_attnums[i] =	ybScan->key[i].sk_attno;
 		}
-		else if (ybScan->prepare_params.querying_systable)
+		else
 		{
 			/*
-			 * IndexScan(SysTable, Index) returns HeapTuple.
+			 * IndexScan(SysTable or UserTable, Index) returns HeapTuple.
 			 * Use SysTable attnum for targets. Use its index attnum for binds.
 			 */
 			scan_plan->bind_key_attnums[i] = ybScan->key[i].sk_attno;
 			ybScan->target_key_attnums[i] =	index->rd_index->indkey.values[ybScan->key[i].sk_attno - 1];
-		}
-		else
-		{
-			/*
-			 * IndexScan(UserTable, Index) Use IndexTable attnum for both targets and binds.
-			 * TODO(neil)
-			 * - IndexScan(UserTable, Index): PgGate has not implemented this scan yet, so it still
-			 *   returns an IndexTuple. Once PgGate implement IndexScan, use "relation" as target
-			 *   and use "IndexRelation" for binding. This scan then return HeapTuple.
-			 *
-			 *   ybScan->target_key_attnums[i] =
-			 *     index->rd_index->indkey.values[ybScan->key[i].sk_attno - 1];
-			 */
-			ybScan->target_key_attnums[i] =	ybScan->key[i].sk_attno;
-			scan_plan->bind_key_attnums[i] = ybScan->key[i].sk_attno;
 		}
 	}
 }
@@ -945,14 +931,32 @@ static void ybcSetupTargets(Relation relation,
 		for (AttrNumber attnum = 1; attnum <= ybScan->target_desc->natts; attnum++)
 			ybcAddTargetColumn(ybScan, attnum);
 
-	/*
-	 * If the target is the IndexTable, select ybbasectid (ROWID of UserTable, relation)
-	 * If the target is the UserTable, select ybctid (its own ROWID)
-	 */
 	if (scan_plan->target_relation->rd_index)
+		/*
+		 * IndexOnlyScan:
+		 *   SELECT [ data, ] ybbasectid (ROWID of UserTable, relation) FROM secondary-index-table
+		 * In this case, Postgres requests base_ctid and maybe also data from IndexTable and then uses
+		 * them for further processing.
+		 */
 		ybcAddTargetColumn(ybScan, YBIdxBaseTupleIdAttributeNumber);
 	else
+	{
+		/* Two cases:
+		 * - Primary Scan (Key or sequential)
+		 *     SELECT data, ybctid FROM table [ WHERE primary-key-condition ]
+		 * - Secondary IndexScan
+		 *     SELECT data, ybctid FROM table WHERE ybctid IN ( SELECT base_ybctid FROM IndexTable )
+		 */
 		ybcAddTargetColumn(ybScan, YBTupleIdAttributeNumber);
+		if (index && !index->rd_index->indisprimary)
+		{
+			/*
+			 * IndexScan: Postgres layer sends both actual-query and index-scan to PgGate, who will
+			 * select and immediately use base_ctid to query data before responding.
+			 */
+			ybcAddTargetColumn(ybScan, YBIdxBaseTupleIdAttributeNumber);
+		}
+	}
 }
 
 /*
