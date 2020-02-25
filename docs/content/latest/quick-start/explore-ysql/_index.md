@@ -20,43 +20,28 @@ isTocNested: false
 showAsideToc: true
 ---
 
-After [creating a local cluster](../create-local-cluster/), follow the steps here to explore YugabyteDB's PostgreSQL-compatible [YSQL](../../api/ysql/) API.
+After [creating a local cluster](../create-local-cluster/), you can now begin to explore YugabyteDB's PostgreSQL-compatible [YSQL](../../api/ysql/) API.
 
 ## 1. Load sample data
 
-Follow the steps to create a database and load sample data.
+Follow the steps below to create a database and load sample data.
 
-1. Download the sample schema using the following `wget` command.
+{{< note title="Note" >}}
 
-    ```sh
-    $ wget https://raw.githubusercontent.com/yugabyte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
-    ```
-
-2. Download the sample data archive by running the following `wget` command.
+The four SQL script (`.sql`) files needed to create and load the sample data for the steps below are in the `share` directory of your YugabyteDB installation. You can verify the files are available by entering the following `ls` command from the YugabyteDB home directory.
 
     ```sh
-    $ wget https://github.com/yugabyte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
+    $ ls share/
     ```
-
-3. Unpack the `sample-data.tgz` file running the following `tar` command.
-
-    ```sh
-    $ tar zxvf sample-data.tgz
-    ```
-
-    Four SQL script files are added to the `data` directory that is created. You can verify the files are available by entering the following `ls` command.
-
-    ```sh
-    $ ls data/
-    ```
-
-    You should see the following filenames displayed.
-
+    In the `share` directory are sample datasets available for creating databases for learning YugabyteDB. For the
+     The following four files will be 
+    
     ```
     orders.sql  products.sql  reviews.sql users.sql
     ```
+{{< /note >}}
 
-4. Open the YSQL command line by running the following `ysqlsh` command.
+1. Open the YSQL shell by running the following `ysqlsh` command.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -100,13 +85,13 @@ Follow the steps to create a database and load sample data.
   </div>
 </div>
 
-1. Create a database named `yb_demo` by using the following `CREATE DATABASE` command.
+2. Create a database (`yb_demo`) by using the following `CREATE DATABASE` command.
 
     ```postgresql
     yugabyte=# CREATE DATABASE yb_demo;
     ```
 
-2. Connect to the new database using the following YSQL `\c` meta command.
+2. Connect to the new database using the following YSQL shell `\c` meta command.
 
     ```sql
     yugabyte=# \c yb_demo;
@@ -115,25 +100,25 @@ Follow the steps to create a database and load sample data.
 3. Create the database schema, which includes four tables, by running the following `\i` meta command.
 
     ```sql
-    yb_demo=# \i 'schema.sql';
+    yb_demo=# \i share/schema.sql;
     ```
 
 4. Load the data into the tables by running the following four `\i` commands.
 
     ```sql
-    yb_demo=# \i 'data/products.sql'
+    yb_demo=# \i share/products.sql
     ```
 
     ```sql
-    yb_demo=# \i 'data/users.sql'
+    yb_demo=# \i share/users.sql
     ```
 
     ```sql
-    yb_demo=# \i 'data/orders.sql'
+    yb_demo=# \i share/orders.sql
     ```
 
     ```sql
-    yb_demo=# \i 'data/reviews.sql'
+    yb_demo=# \i share/reviews.sql
     ```
 
     You now have sample data and are ready to begin exploring YSQL in YugabyteDB.
