@@ -61,15 +61,15 @@ yugabyte=#
 You can do this as shown below.
 
 ```postgresql
-yugabyte=# CREATE DATABASE yb_demo;
+yugabyte=# CREATE DATABASE yb-demo;
 ```
 
 ```postgresql
-yugabyte=# GRANT ALL ON DATABASE yb_demo to yugabyte;
+yugabyte=# GRANT ALL ON DATABASE yb-demo to yugabyte;
 ```
 
 ```postgresql
-yugabyte=# \c yb_demo;
+yugabyte=# \c yb-demo;
 ```
 
 ### Load data
@@ -103,7 +103,7 @@ yugabyte=# \i 'data/reviews.sql'
 ### How are users signing up for my site?
 
 ```postgresql
-yb_demo=# SELECT DISTINCT(source) FROM users;
+yb-demo=# SELECT DISTINCT(source) FROM users;
 ```
 
 ```
@@ -120,7 +120,7 @@ source
 ### What is the most effective channel for user signups?
 
 ```postgresql
-yb_demo=# SELECT source, count(*) AS num_user_signups
+yb-demo=# SELECT source, count(*) AS num_user_signups
           FROM users
           GROUP BY source
           ORDER BY num_user_signups DESC;
@@ -140,7 +140,7 @@ source     | num_user_signups
 ### What are the most effective channels for product sales by revenue?
 
 ```postgresql
-yb_demo=# SELECT source, ROUND(SUM(orders.total)) AS total_sales
+yb-demo=# SELECT source, ROUND(SUM(orders.total)) AS total_sales
           FROM users, orders WHERE users.id=orders.user_id
           GROUP BY source
           ORDER BY total_sales DESC;
@@ -160,7 +160,7 @@ source     | total_sales
 ### What is the min, max and average price of products in the store?
 
 ```postgresql
-yb_demo=# SELECT MIN(price), MAX(price), AVG(price) FROM products;
+yb-demo=# SELECT MIN(price), MAX(price), AVG(price) FROM products;
 ```
 
 ```
@@ -175,7 +175,7 @@ min               |       max        |       avg
 You can do this as shown below.
 
 ```postgresql
-yb_demo=# CREATE VIEW channel AS
+yb-demo=# CREATE VIEW channel AS
             (SELECT source, ROUND(SUM(orders.total)) AS total_sales
              FROM users, orders
              WHERE users.id=orders.user_id
@@ -186,7 +186,7 @@ yb_demo=# CREATE VIEW channel AS
 Now that the view is created, we can see it in our list of relations.
 
 ```postgresql
-yb_demo=# \d
+yb-demo=# \d
 ```
 
 ```
@@ -202,7 +202,7 @@ List of relations
 ```
 
 ```postgresql
-yb_demo=# SELECT source, total_sales * 100.0 / (SELECT SUM(total_sales) FROM channel) AS percent_sales
+yb-demo=# SELECT source, total_sales * 100.0 / (SELECT SUM(total_sales) FROM channel) AS percent_sales
           FROM channel WHERE source='Facebook';
 ```
 

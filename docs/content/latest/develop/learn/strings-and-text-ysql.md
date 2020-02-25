@@ -127,15 +127,15 @@ In the last example above, the column 'hasindexes' is a `Boolean` data type and 
 
 There are a lot of functions that can be applied to text. Below the functions are classified into logical groupings - in many cases the capability of the functions overlap and personal choice will determine how you approach solving the problem.
 
-The focus here was to quickly show how each of the functions could be used, along with some examples. It is assumed that you have the [`yb_demo` database](/latest/quick-start/explore-ysql/#1-load-data) installed.
+The focus here was to quickly show how each of the functions could be used, along with some examples. It is assumed that you have the [`yb-demo` database](/latest/quick-start/explore-ysql/#1-load-data) installed.
 
 ### Altering the appearance of text
 
 ```sh
-yugabyte=# \c yb_demo  
-You are now connected to database "yb_demo" as user "yugabyte".
+yugabyte=# \c yb-demo  
+You are now connected to database "yb-demo" as user "yugabyte".
 
-yb_demo =# select lower('hELLO world') AS LOWER,
+yb-demo =# select lower('hELLO world') AS LOWER,
   upper('hELLO world') AS UPPER,
   initcap('hELLO world') AS INITCAP;
 
@@ -143,19 +143,19 @@ yb_demo =# select lower('hELLO world') AS LOWER,
 -------------+-------------+-------------
  hello world | HELLO WORLD | Hello World
 
-yb_demo =# select quote_ident('ok') AS EASY, quote_ident('I am OK') AS QUOTED, quote_ident('I''m not OK') AS DOUBLE_QUOTED, quote_ident('') AS EMPTY_STR, quote_ident(null) AS NULL_QUOTED;
+yb-demo =# select quote_ident('ok') AS EASY, quote_ident('I am OK') AS QUOTED, quote_ident('I''m not OK') AS DOUBLE_QUOTED, quote_ident('') AS EMPTY_STR, quote_ident(null) AS NULL_QUOTED;
 
  easy |  quoted   | double_quoted | empty_str | null_quoted
 ------+-----------+---------------+-----------+-------------
  ok   | "I am OK" | "I'm not OK"  | ""        |
 
-yb_demo =# select quote_literal('ok') AS EASY, quote_literal('I am OK') AS QUOTED, quote_literal('I''m not OK') AS DOUBLE_QUOTED, quote_literal('') AS EMPTY_STR, quote_literal(null) AS NULL_QUOTED;
+yb-demo =# select quote_literal('ok') AS EASY, quote_literal('I am OK') AS QUOTED, quote_literal('I''m not OK') AS DOUBLE_QUOTED, quote_literal('') AS EMPTY_STR, quote_literal(null) AS NULL_QUOTED;
 
  easy |  quoted   | double_quoted | empty_str | null_quoted
 ------+-----------+---------------+-----------+-------------
  'ok' | 'I am OK' | 'I''m not OK' | ''        |
 
-yb_demo =# select quote_nullable('ok') AS EASY, quote_nullable('I am OK') AS QUOTED, quote_nullable('I''m not OK') AS DOUBLE_QUOTED, quote_nullable('') AS EMPTY_STR, quote_nullable(null) AS NULL_QUOTED;
+yb-demo =# select quote_nullable('ok') AS EASY, quote_nullable('I am OK') AS QUOTED, quote_nullable('I''m not OK') AS DOUBLE_QUOTED, quote_nullable('') AS EMPTY_STR, quote_nullable(null) AS NULL_QUOTED;
 
 easy |  quoted   | double_quoted | empty_str | null_quoted
 ------+-----------+---------------+-----------+-------------
@@ -193,7 +193,7 @@ Some values need to be padded for formatting purposes, and `LPAD` and `RPAD` are
 The reverse of padding is trimming, which will remove spaces if found. Below are examples of using padding and trimming to achieve the results required.
 
 ```
-yb_demo=# select name, lpad(name, 10), rpad(name, 15) from users order by name limit 5;
+yb-demo=# select name, lpad(name, 10), rpad(name, 15) from users order by name limit 5;
 
        name        |    lpad    |      rpad
 -------------------+------------+-----------------
@@ -203,7 +203,7 @@ yb_demo=# select name, lpad(name, 10), rpad(name, 15) from users order by name l
  Abbie Ryan        | Abbie Ryan | Abbie Ryan
  Abby Larkin       | Abby Larki | Abby Larkin
 
-yb_demo=# select name, lpad(name, 20), rpad(name, 20) from users order by name limit 5;
+yb-demo=# select name, lpad(name, 20), rpad(name, 20) from users order by name limit 5;
 
        name        |         lpad         |         rpad
 -------------------+----------------------+----------------------
@@ -213,7 +213,7 @@ yb_demo=# select name, lpad(name, 20), rpad(name, 20) from users order by name l
  Abbie Ryan        |           Abbie Ryan | Abbie Ryan
  Abby Larkin       |          Abby Larkin | Abby Larkin
 
-yb_demo=# select name, lpad(name, 20, '. '), rpad(name, 20, '.') from users order by name limit 5;
+yb-demo=# select name, lpad(name, 20, '. '), rpad(name, 20, '.') from users order by name limit 5;
 
        name        |         lpad         |         rpad
 -------------------+----------------------+----------------------
@@ -223,7 +223,7 @@ yb_demo=# select name, lpad(name, 20, '. '), rpad(name, 20, '.') from users orde
  Abbie Ryan        | . . . . . Abbie Ryan | Abbie Ryan..........
  Abby Larkin       | . . . . .Abby Larkin | Abby Larkin.........
 
-yb_demo=# select repeat(' ', ((x.maxlen-length(u.name))/2)::int) || rpad(u.name, x.maxlen) AS "cname"
+yb-demo=# select repeat(' ', ((x.maxlen-length(u.name))/2)::int) || rpad(u.name, x.maxlen) AS "cname"
           from users u,
           (select max(length(a.name))::int AS maxlen from users a) AS x;
 
@@ -251,7 +251,7 @@ yb_demo=# select repeat(' ', ((x.maxlen-length(u.name))/2)::int) || rpad(u.name,
       Theresa Grant
  ...
 
-yb_demo=# select x.RawDay, length(x.RawDay) AS RawLen, x.TrimDay, length(x.TrimDay) AS TrimLen,
+yb-demo=# select x.RawDay, length(x.RawDay) AS RawLen, x.TrimDay, length(x.TrimDay) AS TrimLen,
           x.LTrimDay, length(x.LTrimDay) AS LTrimLen, x.RTrimDay, length(x.RTrimDay) AS RTrimLen
           from (select to_char(generate_series, 'Day') AS RawDay,
                 trim(to_char(generate_series, 'Day')) AS TrimDay,
@@ -300,51 +300,51 @@ YugabyteDB also has `DECODE` and `ENCODE` for decoding and encoding from, or to,
 You can concatenate strings of text in several different ways. For robustness, you should ensure that everything being passed is interpreted as text (by casting) so that unexpected results do not appear in edge cases. Here are some examples that show that YugabyteDB is leniant in passing in variables, but you should implement more robust casting for proper treatment of strings.
 
 ```sh
-yb_demo=# select 'one' || '-' || 2 || '-one' AS "121";
+yb-demo=# select 'one' || '-' || 2 || '-one' AS "121";
 
     121
 -----------
  one-2-one
 
-yb_demo=# select 2 || '-one-one' AS "211";
+yb-demo=# select 2 || '-one-one' AS "211";
 
     211
 -----------
  2-one-one
 
-yb_demo=# select 1 || '-one' || repeat('-two', 2) AS "1122";
+yb-demo=# select 1 || '-one' || repeat('-two', 2) AS "1122";
 
      1122
 ---------------
  1-one-two-two
 
-yb_demo=# select 1::text || 2::text || 3::text AS "123";
+yb-demo=# select 1::text || 2::text || 3::text AS "123";
 
  123
 -----
  123
 
-yb_demo=# select 1 || 2 || 3 AS "123";
+yb-demo=# select 1 || 2 || 3 AS "123";
 
 ERROR:  operator does not exist: integer || integer
 LINE 1: select 1 || 2 || 3 AS "123";
                  ^
 HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
 
-yb_demo=# select concat(1,2,3) AS "123";
+yb-demo=# select concat(1,2,3) AS "123";
 
  123
 -----
  123
 
-yb_demo=# select concat_ws(':', 1,2,3) AS "123 WS";
+yb-demo=# select concat_ws(':', 1,2,3) AS "123 WS";
 
  123 WS
 --------
  1:2:3
 (1 row)
 
-yb_demo =# select left(vendor,1) AS V, string_agg(distinct(category), ', ' ORDER BY category) AS CATEGORIES
+yb-demo =# select left(vendor,1) AS V, string_agg(distinct(category), ', ' ORDER BY category) AS CATEGORIES
   from products group by left(vendor,1) order by 1;
   
  v |            categories
@@ -380,7 +380,7 @@ In the example above, we explore the `LEFT` function, but the `string_agg` funct
 There is also the `REVERSE` function that reverses the contents of text in a simple manner as shown in the next example.
 
 ```sh
-yb_demo=# select reverse(to_char(current_date, 'DD-MON-YYYY'));
+yb-demo=# select reverse(to_char(current_date, 'DD-MON-YYYY'));
 
    reverse
 -------------
@@ -390,19 +390,19 @@ yb_demo=# select reverse(to_char(current_date, 'DD-MON-YYYY'));
 You can use the `FORMAT` function parse user input as parameters to a SQL statement in order to minimise the impact of unexpected data that is typical of a SQL injection attack. The most popular method is to use the `EXECUTE` command within a procedure as this is not available at the YSQL command prompt, only within the YSQL plpgsql environment. The `FORMAT` command is used to finalise the complete SQL statement and passed to `EXECUTE` to run. As we are not simulating YSQL plpgsql here, let's illustrate how to use the `FORMAT` function only.
 
 ```
-yb_demo=# select format('Hello %s, today''s date is %s', 'Jono', to_char(current_date, 'DD-MON-YYYY'), 'discarded');
+yb-demo=# select format('Hello %s, today''s date is %s', 'Jono', to_char(current_date, 'DD-MON-YYYY'), 'discarded');
 
                  format
 -----------------------------------------
  Hello Jono, today's date is 29-JUL-2019
 
-yb_demo=# select format('On this day, %2$s, %1$s was here', 'Jono', to_char(current_date, 'DD-MON-YYYY'));
+yb-demo=# select format('On this day, %2$s, %1$s was here', 'Jono', to_char(current_date, 'DD-MON-YYYY'));
 
                  format
 -----------------------------------------
  On this day, 29-JUL-2019, Jono was here
 
-yb_demo=# select format('SELECT %2$I, %3$I from %1$I where name = %4$L', 'users', 'birth_date', 'email', 'Brody O''Reilly');
+yb-demo=# select format('SELECT %2$I, %3$I from %1$I where name = %4$L', 'users', 'birth_date', 'email', 'Brody O''Reilly');
 
                                format
 --------------------------------------------------------------------
@@ -417,13 +417,13 @@ Substituting text with other text can be a complex task as you need to fully und
 The treatment of nulls in mathematical operations is often problematic, as is string joins as joining a null to a value results in a null. Coalescing the inputs will avoid these issues as shown in the examples below.
 
 ```
-yb_demo=# select trunc(avg(coalesce(discount,0))::numeric,3) AS "COALESCED", trunc(avg(discount)::numeric,3) AS "RAW" from orders;
+yb-demo=# select trunc(avg(coalesce(discount,0))::numeric,3) AS "COALESCED", trunc(avg(discount)::numeric,3) AS "RAW" from orders;
 
  COALESCED |  RAW  
 -----------+-------
      0.530 | 5.195
 
-yb_demo=# select 'Hello ' || null AS GREETING, 'Goodbye ' || coalesce(null, 'Valued Customer') AS GOODBYE;
+yb-demo=# select 'Hello ' || null AS GREETING, 'Goodbye ' || coalesce(null, 'Valued Customer') AS GOODBYE;
 
  greeting |         goodbye
 ----------+-------------------------
@@ -433,7 +433,7 @@ yb_demo=# select 'Hello ' || null AS GREETING, 'Goodbye ' || coalesce(null, 'Val
 The above shows how substituting when null can have a significant impact upon the results you achieve or even the behaviour of your application. Below concentrates on changing existing text with other text.
 
 ```
-yb_demo=# select overlay(password placing 'XXXXXXXXXXXXXXX' from 1 for length(password)) AS SCRAMBLED from users limit 5;
+yb-demo=# select overlay(password placing 'XXXXXXXXXXXXXXX' from 1 for length(password)) AS SCRAMBLED from users limit 5;
 
     scrambled
 -----------------
@@ -443,19 +443,19 @@ yb_demo=# select overlay(password placing 'XXXXXXXXXXXXXXX' from 1 for length(pa
  XXXXXXXXXXXXXXX
  XXXXXXXXXXXXXXX
 
-yb_demo=# select regexp_replace('Hi my number is +999 9996-1234','[[:alpha:]]','','g');
+yb-demo=# select regexp_replace('Hi my number is +999 9996-1234','[[:alpha:]]','','g');
 
    regexp_replace
 --------------------
      +999 9996-1234
 
-yb_demo=# select 'I think I can hear an ' || repeat('echo.. ', 3) AS CLICHE;
+yb-demo=# select 'I think I can hear an ' || repeat('echo.. ', 3) AS CLICHE;
 
                    cliche
 ---------------------------------------------
  I think I can hear an echo.. echo.. echo..
 
-yb_demo=# select replace('Gees I love Windows', 'Windows', 'Linux') AS OBVIOUS;
+yb-demo=# select replace('Gees I love Windows', 'Windows', 'Linux') AS OBVIOUS;
 
       obvious
 -------------------
@@ -469,43 +469,43 @@ The `REGEXP_REPLACE` function along with the other REGEX functions require an en
 There are several ways of extracting text from text, in some cases it might be part of 'cleaning' the text, note that removing leading or trailing spaces is covered by the trim functions shown above. The remaining functions here show how parts of text can be manipulated.
 
 ```
-yb_demo=# select left('123456', 3);
+yb-demo=# select left('123456', 3);
 
  left
 ------
  123
 
-yb_demo=# select right('123456', 3);
+yb-demo=# select right('123456', 3);
 
  right
 -------
  456
 
-yb_demo=# select substr('123456', 3);
+yb-demo=# select substr('123456', 3);
 
  substr
 --------
  3456
 
-yb_demo=# select substr('123456', 3, 2);
+yb-demo=# select substr('123456', 3, 2);
 
  substr
 --------
  34
 
-yb_demo=# select substr('123456', position('4' in '123456')+1, 2);
+yb-demo=# select substr('123456', position('4' in '123456')+1, 2);
 
  substr
 --------
  56
 
-yb_demo=# select substring('123456', position('4' in '123456')+1, 2);
+yb-demo=# select substring('123456', position('4' in '123456')+1, 2);
 
  substring
 -----------
  56
 
-yb_demo=# select replace(substr(email, position('@' in email)+1, (length(email)
+yb-demo=# select replace(substr(email, position('@' in email)+1, (length(email)
             -position('.' in substr(email, position('@' in email)+1)))), '.com', '') AS "Domain", count(*)
           from users
           group by 1;
@@ -525,7 +525,7 @@ The command ```SUBSTRING``` has overloaded equivalents that accept POSIX express
 As stated above for ```REGEXP_REPLACE```, the full explanation of regular expressions requires its own comprehensive documentation that is not covered here. Here is an example illustrating its use.
 
 ```
-yb_demo=# select name as Fullname, regexp_match(name, '(.*)(\s+)(.*)') AS "REGEXED Name",
+yb-demo=# select name as Fullname, regexp_match(name, '(.*)(\s+)(.*)') AS "REGEXED Name",
           (regexp_match(name, '(.*)(\s+)(.*)'))[1] AS "First Name",
           (regexp_match(name, '(.*)(\s+)(.*)'))[3] AS "Last Name"
           from users limit 5;
@@ -546,11 +546,11 @@ In the example abov, we are asking the 'name' column to be segmented by the exis
 Now, let's look at some manipulation and splitting of text so that you can process it in pieces. For this example, I will be using a sample extract from a bank file that is used for processing payments. This example could apply if the entire file was uploaded as a single text entry into a table and you select it and then process it.
 
 ```
-yb_demo=# create table bank_payments(bank_file text);
+yb-demo=# create table bank_payments(bank_file text);
 
 CREATE TABLE
 
-yb_demo=# insert into bank_payments values($$"CMGB","1.0","95012141352105","999999","30128193018492","20","","GBP","B","Beneficiary name18","Txt on senders acc","Txt for credit acc","","","","","","909170/1","AB"
+yb-demo=# insert into bank_payments values($$"CMGB","1.0","95012141352105","999999","30128193018492","20","","GBP","B","Beneficiary name18","Txt on senders acc","Txt for credit acc","","","","","","909170/1","AB"
 "CMGB","1.0","95012141352105","999999","95012113864863","10.00","","GBP","B","Beneficiary name18","Txt on senders acc","Txt for credit acc","","","","","Remitters name  18","Tech ref for automatic processing5","AT","/t.x",
 "CMGB","1.0","95012141352105","","30128193018492","21","","GBP","C","Beneficiary name18","Txt on senders acc","","Txt for credit acc","","","","","909175/0","AB"
 "CMGB","1.0","95012141352105","","30128193018492","22","","GBP","I","Beneficiary name18","Txt on senders acc","text","","","","","","909175/1","AB"
@@ -558,7 +558,7 @@ yb_demo=# insert into bank_payments values($$"CMGB","1.0","95012141352105","9999
 
 INSERT 0 1
 
-yb_demo=# select regexp_split_to_table(bank_file, chr(10)) from bank_payments;
+yb-demo=# select regexp_split_to_table(bank_file, chr(10)) from bank_payments;
 
                                                                                                      regexp_split_to_table
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -568,7 +568,7 @@ yb_demo=# select regexp_split_to_table(bank_file, chr(10)) from bank_payments;
  "CMGB","1.0","95012141352105","","30128193018492","22","","GBP","I","Beneficiary name18","Txt on senders acc","text","","","","","","909175/1","AB"
  "CMGB","1.0","95012141352105","","30128193018492","23","","GBP","F","Beneficiary name18","Txt on senders acc","Txt for credit acc","","","","","","909171/0","AB"
 
-yb_demo=# select split_part(f.line, ',' , 8) AS "currency",
+yb-demo=# select split_part(f.line, ',' , 8) AS "currency",
                  split_part(f.line, ',' , 5) AS "Account"
                  from (select regexp_split_to_table(bank_file, chr(10)) AS "line" from bank_payments) AS f;
 
@@ -584,7 +584,7 @@ yb_demo=# select split_part(f.line, ',' , 8) AS "currency",
 _Remember to drop the table 'bank_payments' if it is no longer required._
 
 ```
-yb_demo=# select reverse(translate(replace(lower(i.input), ' ', ''),
+yb-demo=# select reverse(translate(replace(lower(i.input), ' ', ''),
                          'abcdefghijklmnopqrstuvwxyz',
                          'A8Cd349h172!mN0pQr$TuVw*yZ')) AS "simplePWD"
           from (select 'type a word here' AS "input") AS i;
@@ -601,7 +601,7 @@ The `TRANSLATE` command above will replace multiple different characters in a si
 Rather than format or change the contents of text, you often might want to understand particular attributes of the text. Below are some examples of using commands to return information of the text.
 
 ```
-yb_demo=# select x.c AS CHAR, ascii(x.c) AS ASCII
+yb-demo=# select x.c AS CHAR, ascii(x.c) AS ASCII
           from (select regexp_split_to_table(i.input, '') AS "c"
                 from (select 'hello' AS input) AS i) AS x;
   
@@ -613,13 +613,13 @@ yb_demo=# select x.c AS CHAR, ascii(x.c) AS ASCII
  l    |   108
  o    |   111
 
-yb_demo=# select bit_length('hello'), char_length('hello'), octet_length('hello');
+yb-demo=# select bit_length('hello'), char_length('hello'), octet_length('hello');
 
  bit_length | char_length | octet_length
 ------------+-------------+--------------
          40 |           5 |            5
 
-yb_demo=# select array_agg(chr(ascii(x.c))) AS "CHAR"
+yb-demo=# select array_agg(chr(ascii(x.c))) AS "CHAR"
           from (select regexp_split_to_table(i.input, '') AS "c"
                 from (select 'hello' AS input) AS i) AS x;
   
@@ -627,13 +627,13 @@ yb_demo=# select array_agg(chr(ascii(x.c))) AS "CHAR"
 -------------
  {h,e,l,l,o}
 
-yb_demo=# select avg(length(name))::int AS AVG_LENGTH from users;
+yb-demo=# select avg(length(name))::int AS AVG_LENGTH from users;
 
  avg_length
 ------------
          14
 
-yb_demo=# select name from users
+yb-demo=# select name from users
           where position('T' in name) > 2
           and position('p' in name) = length(name)
           order by name;
@@ -657,7 +657,7 @@ yb_demo=# select name from users
  Porter Tromp
  Rebeka Tromp
 
-yb_demo=# select name, position('ar' in name) AS posn, strpos(name, 'ar') as strpos
+yb-demo=# select name, position('ar' in name) AS posn, strpos(name, 'ar') as strpos
           from users
           where strpos(name, 'ark') > 0
           order by name desc limit 10;
@@ -675,7 +675,7 @@ yb_demo=# select name, position('ar' in name) AS posn, strpos(name, 'ar') as str
  Markus Hirthe  |    2 |      2
  Mark Klein     |    2 |      2
 
-yb_demo=# select m.name
+yb-demo=# select m.name
           from (select to_char(generate_series, 'Month') AS name
                 from generate_series(current_date-364, current_date, '1 month')) AS m
           where starts_with(m.name, 'J');
