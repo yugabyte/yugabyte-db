@@ -11,6 +11,7 @@ menu:
 type: page
 isTocNested: true
 showAsideToc: true
+hidePagination: true
 ---
 
 
@@ -127,3 +128,9 @@ The **Masters** section highlights the YB-Master service along its corresponding
 Click **See all nodes** to go to the **Tablet Servers** page where we can observe the one YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats. As new tables get added, new tablets will get automatically created and distributed evenly across all the available YB-TServers.
 
 ![tserver-list](/images/admin/master-tservers-list-kubernetes-rf1.png)
+
+{{<tip title="Next step" >}}
+
+[Explore YSQL](../../explore-ysql/)
+
+{{< /tip >}}

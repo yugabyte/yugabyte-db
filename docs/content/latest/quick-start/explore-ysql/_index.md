@@ -461,3 +461,9 @@ Coming soon.
 
 Coming soon.
 -->
+
+{{<tip title="Next step" >}}
+
+[Build an application](../build-apps/)
+
+{{< /tip >}}

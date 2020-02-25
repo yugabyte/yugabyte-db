@@ -13,6 +13,7 @@ menu:
 type: page
 isTocNested: true
 showAsideToc: true
+hidePagination: true
 ---
 
 
@@ -108,3 +109,10 @@ Pull the YugabyteDB container.
 ```sh
 $ docker pull yugabytedb/yugabyte
 ```
+
+
+{{<tip title="Next step" >}}
+
+[Create a local cluster](../../create-local-cluster/docker)
+
+{{< /tip >}}
