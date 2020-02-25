@@ -272,19 +272,19 @@ A detailed explanation of how time is obtained can be found at the blog post des
 A simpler explanation is that the time is determined by the 'Shard Leader' of the table and this is the time used by all followers of the leader. Therefore there could be differences to the UTC timestamp of the underlying server to the current timestamp that is used for a transaction on a particular table.
 {{< /note >}}
 
-Lets start working with dates and timestamps. The following assumes that you have installed the yb_demo database and its demo data.
+Lets start working with dates and timestamps. The following assumes that you have installed the yb-demo database and its demo data.
 
 ```
-yugabyte=# \c yb_demo
-You are now connected to database "yb_demo" as user "yugabyte".
+yugabyte=# \c yb-demo
+You are now connected to database "yb-demo" as user "yugabyte".
 
-yb_demo=# select to_char(max(orders.created_at), 'DD-MON-YYYY HH24:MI') AS "Last Order Date" from orders;
+yb-demo=# select to_char(max(orders.created_at), 'DD-MON-YYYY HH24:MI') AS "Last Order Date" from orders;
 
   Last Order Date  
 -------------------
  19-APR-2020 14:07
 
-yb_demo=# select extract(MONTH from o.created_at) AS "Mth Num", to_char(o.created_at, 'MON') AS "Month",
+yb-demo=# select extract(MONTH from o.created_at) AS "Mth Num", to_char(o.created_at, 'MON') AS "Month",
           extract(YEAR from o.created_at) AS "Year", count(*) AS "Orders"
           from orders o
           where o.created_at > current_timestamp(0)
@@ -305,7 +305,7 @@ yb_demo=# select extract(MONTH from o.created_at) AS "Mth Num", to_char(o.create
        7 | JUL   | 2019 |    421
 (10 rows)
 
-yb_demo=# select to_char(o.created_at, 'HH AM') AS "Popular Hours", count(*) AS "Orders"
+yb-demo=# select to_char(o.created_at, 'HH AM') AS "Popular Hours", count(*) AS "Orders"
           from orders o
           group by 1
           order by 2 DESC
@@ -319,12 +319,12 @@ yb_demo=# select to_char(o.created_at, 'HH AM') AS "Popular Hours", count(*) AS 
  08 PM         |    812
 (4 rows)
 
-yb_demo=# update orders
+yb-demo=# update orders
           set created_at = created_at + ((floor(random() * (25-2+2) + 2))::int * interval '1 day 14 hours');
 
 UPDATE 18760
 
-yb_demo=# select to_char(o.created_at, 'Day') AS "Top Day",
+yb-demo=# select to_char(o.created_at, 'Day') AS "Top Day",
           count(o.*) AS "SALES"
           from orders o
           group by 1
@@ -341,14 +341,14 @@ Top Day  | SALES
  Thursday  |    2621
 (7 rows)
 
-yb_demo=# create table order_deliveries (
+yb-demo=# create table order_deliveries (
           order_id bigint,
           creation_date date DEFAULT current_date,
           delivery_date timestamptz);
 
 CREATE TABLE
 
-yb_demo=# insert into order_deliveries
+yb-demo=# insert into order_deliveries
           (order_id, delivery_date)
           select o.id, o.created_at + ((floor(random() * (25-2+2) + 2))::int * interval '1 day 3 hours')
           from orders o
@@ -356,7 +356,7 @@ yb_demo=# insert into order_deliveries
 
 INSERT 0 12268
 
-yb_demo=# select * from order_deliveries limit 5;
+yb-demo=# select * from order_deliveries limit 5;
 
  order_id | creation_date |       delivery_date
 ----------+---------------+----------------------------
@@ -367,7 +367,7 @@ yb_demo=# select * from order_deliveries limit 5;
     13954 | 2019-07-09    | 2019-02-08 04:07:01.457+00
 (5 rows)
 
-yb_demo=# select d.order_id, to_char(o.created_at, 'DD-MON-YYYY HH AM') AS "Ordered",
+yb-demo=# select d.order_id, to_char(o.created_at, 'DD-MON-YYYY HH AM') AS "Ordered",
           to_char(d.delivery_date, 'DD-MON-YYYY HH AM') AS "Delivered",
           d.delivery_date - o.created_at AS "Delivery Days"
           from orders o, order_deliveries d
@@ -395,10 +395,10 @@ yb_demo=# select d.order_id, to_char(o.created_at, 'DD-MON-YYYY HH AM') AS "Orde
 Your data will be slightly different as we used a `RANDOM()` function for setting the 'delivery_date' in the new 'order_deliveries' table.
 {{< /note >}}
 
-You can use views of the YugabyteDB Data Catalogs to create data that is already prepared and formatted for your application code so that your SQL is simpler. Below is an example that is defined in the yb_demo database (has no dependency on yb_demo). This demonstration shows how you can nominate a shortlist of timezones that are formatted and ready to use for display purposes.
+You can use views of the YugabyteDB Data Catalogs to create data that is already prepared and formatted for your application code so that your SQL is simpler. Below is an example that is defined in the yb-demo database (has no dependency on yb-demo). This demonstration shows how you can nominate a shortlist of timezones that are formatted and ready to use for display purposes.
 
 ```
-yb_demo=# CREATE OR REPLACE VIEW TZ AS
+yb-demo=# CREATE OR REPLACE VIEW TZ AS
           select '* Current time' AS "tzone", '' AS "offset", to_char(current_timestamp AT TIME ZONE 'Australia/Sydney', 'Dy dd-Mon-yy hh:mi PM') AS "Local Time"
           UNION
           select x.name AS "tzone",
@@ -410,7 +410,7 @@ yb_demo=# CREATE OR REPLACE VIEW TZ AS
 
 CREATE VIEW
 
-yb_demo=# select * from tz;
+yb-demo=# select * from tz;
 
          tzone         | offset |       Local Time
 -----------------------+--------+------------------------
@@ -533,16 +533,16 @@ The `EXTRACT` command is the preferred command to `DATE_PART`.
 
 ## Manipulating using truncation
 
-Another useful command is `DATE_TRUNC` which is used to 'floor' the timestamp to a particular unit. For the following YSQL, we assume that you are in the 'yb_demo' database with the demo data loaded.
+Another useful command is `DATE_TRUNC` which is used to 'floor' the timestamp to a particular unit. For the following YSQL, we assume that you are in the 'yb-demo' database with the demo data loaded.
 
 ```
-yb_demo=# select date_trunc('hour', current_timestamp);
+yb-demo=# select date_trunc('hour', current_timestamp);
        date_trunc
 ------------------------
  2019-07-09 06:00:00+00
 (1 row)
 
-yb_demo=# select to_char((date_trunc('month', generate_series)::date)-1, 'DD-MON-YYYY') AS "Last Day of Month"
+yb-demo=# select to_char((date_trunc('month', generate_series)::date)-1, 'DD-MON-YYYY') AS "Last Day of Month"
           from generate_series(current_date-(365-1), current_date, '1 month');
 
  Last Day of Month
@@ -561,7 +561,7 @@ yb_demo=# select to_char((date_trunc('month', generate_series)::date)-1, 'DD-MON
  31-MAY-2019
 (12 rows)
 
-yb_demo=# select date_trunc('days', age(created_at)) AS "Product Age" from products order by 1 desc limit 10;
+yb-demo=# select date_trunc('days', age(created_at)) AS "Product Age" from products order by 1 desc limit 10;
 
       Product Age
 ------------------------
