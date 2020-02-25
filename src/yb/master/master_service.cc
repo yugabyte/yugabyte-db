@@ -333,6 +333,12 @@ void MasterServiceImpl::CreateNamespace(const CreateNamespaceRequestPB* req,
   HandleIn(req, resp, &rpc, &CatalogManager::CreateNamespace);
 }
 
+void MasterServiceImpl::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestPB* req,
+                                              IsCreateNamespaceDoneResponsePB* resp,
+                                              rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::IsCreateNamespaceDone);
+}
+
 void MasterServiceImpl::DeleteNamespace(const DeleteNamespaceRequestPB* req,
                                         DeleteNamespaceResponsePB* resp,
                                         RpcContext rpc) {

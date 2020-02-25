@@ -65,6 +65,7 @@ Status SysCatalogWriter::DoMutateItem(
     std::string diff;
 
     if (pb_util::ArePBsEqual(prev_pb, new_pb, VLOG_IS_ON(2) ? &diff : nullptr)) {
+      VLOG(2) << "Skipping empty update for item " << item_id;
       // Short-circuit empty updates.
       return Status::OK();
     }

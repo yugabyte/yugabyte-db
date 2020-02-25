@@ -97,9 +97,13 @@ class MasterServiceImpl : public MasterServiceIf,
   void CreateNamespace(const CreateNamespaceRequestPB* req,
                        CreateNamespaceResponsePB* resp,
                        rpc::RpcContext rpc) override;
+  void IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestPB* req,
+                             IsCreateNamespaceDoneResponsePB* resp,
+                             rpc::RpcContext rpc) override;
   void DeleteNamespace(const DeleteNamespaceRequestPB* req,
                        DeleteNamespaceResponsePB* resp,
                        rpc::RpcContext rpc) override;
+  // TODO(NIC): Add IsDeleteNamespaceDone.
   void AlterNamespace(const AlterNamespaceRequestPB* req,
                       AlterNamespaceResponsePB* resp,
                       rpc::RpcContext rpc) override;

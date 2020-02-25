@@ -174,9 +174,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS CheckOnline() const;
 
   // Create Postgres sys catalog table.
-  CHECKED_STATUS CreatePgsqlSysTable(const CreateTableRequestPB* req,
-                                     CreateTableResponsePB* resp,
-                                     rpc::RpcContext* rpc);
+  CHECKED_STATUS CreatePgsqlSysTable(const CreateTableRequestPB* req, CreateTableResponsePB* resp);
 
   CHECKED_STATUS ReplicatePgMetadataChange(const tserver::ChangeMetadataRequestPB* req);
 
@@ -192,9 +190,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Copy Postgres sys catalog tables into a new namespace.
   CHECKED_STATUS CopyPgsqlSysTables(const NamespaceId& namespace_id,
-                                    const std::vector<scoped_refptr<TableInfo>>& tables,
-                                    CreateNamespaceResponsePB* resp,
-                                    rpc::RpcContext* rpc);
+                                    const std::vector<scoped_refptr<TableInfo>>& tables);
 
   // Create a new Table with the specified attributes.
   //
@@ -308,6 +304,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS CreateNamespace(const CreateNamespaceRequestPB* req,
                                  CreateNamespaceResponsePB* resp,
                                  rpc::RpcContext* rpc);
+  // Get the information about an in-progress create operation.
+  CHECKED_STATUS IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestPB* req,
+                                       IsCreateNamespaceDoneResponsePB* resp);
 
   // Delete the specified Namespace.
   //
@@ -316,6 +315,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS DeleteNamespace(const DeleteNamespaceRequestPB* req,
                                  DeleteNamespaceResponsePB* resp,
                                  rpc::RpcContext* rpc);
+  // TODO(NIC): Create IsDeleteNamespaceDone.
 
   // Alter the specified Namespace.
   CHECKED_STATUS AlterNamespace(const AlterNamespaceRequestPB* req,
@@ -414,13 +414,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name);
 
   // Return all the available TableInfo. The flag 'includeOnlyRunningTables' determines whether
-  // to retrieve all Tables irrespective of their state or just the tables with the state
-  // 'RUNNING'. Typically, if you want to retrieve all the live tables in the system, you should
-  // set this flag to true.
+  // to retrieve all Tables irrespective of their state or just 'RUNNING' tables.
+  // To retrieve all live tables in the system, you should set this flag to true.
   void GetAllTables(std::vector<scoped_refptr<TableInfo> > *tables,
                     bool includeOnlyRunningTables = false);
 
-  void GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo> >* namespaces);
+  // Return all the available NamespaceInfo. The flag 'includeOnlyRunningNamespaces' determines
+  // whether to retrieve all Namespaces irrespective of their state or just 'RUNNING' namespaces.
+  // To retrieve all live tables in the system, you should set this flag to true.
+  void GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo> >* namespaces,
+                        bool includeOnlyRunningNamespaces = false);
 
   // Return all the available (user-defined) types.
   void GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo> >* types);
@@ -734,6 +737,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                   const NamespaceId& id,
                                   int64_t term);
 
+  void ProcessPendingNamespace(NamespaceId id,
+                               std::vector<scoped_refptr<TableInfo>> template_tables);
+
   CHECKED_STATUS ConsensusStateToTabletLocations(const consensus::ConsensusStatePB& cstate,
                                                  TabletLocationsPB* locs_pb);
 
@@ -758,7 +764,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                           CreateTableResponsePB* resp,
                                           rpc::RpcContext* rpc,
                                           Schema schema,
-                                          NamespaceId namespace_id);
+                                          scoped_refptr<NamespaceInfo> ns);
 
   // Check that local host is present in master addresses for normal master process start.
   // On error, it could imply that master_addresses is incorrectly set for shell master startup
@@ -1114,6 +1120,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   friend class CatalogManagerBgTasks;
   gscoped_ptr<CatalogManagerBgTasks> background_tasks_;
 
+  // Background threadpool, newer features use this (instead of the Background thread)
+  // to execute time-lenient catalog manager tasks.
+  std::unique_ptr<yb::ThreadPool> background_tasks_thread_pool_;
+
   // Track all information related to the black list operations.
   BlacklistState blacklistState;
 
@@ -1132,7 +1142,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   mutable simple_spinlock state_lock_;
   State state_;
 
-  // Used to defer work from reactor threads onto a thread where
+  // Used to defer Master<->TabletServer work from reactor threads onto a thread where
   // blocking behavior is permissible.
   //
   // NOTE: Presently, this thread pool must contain only a single

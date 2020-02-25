@@ -596,9 +596,15 @@ bool NamespaceInfo::colocated() const {
   return l->data().pb.colocated();
 }
 
+::yb::master::SysNamespaceEntryPB_State NamespaceInfo::state() const {
+  auto l = LockForRead();
+  return l->data().pb.state();
+}
+
 string NamespaceInfo::ToString() const {
   return Substitute("$0 [id=$1]", name(), namespace_id_);
 }
+
 
 // ================================================================================================
 // UDTypeInfo

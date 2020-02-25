@@ -187,6 +187,8 @@ DEFINE_int32(catalog_manager_inject_latency_in_delete_table_ms, 0,
              "Number of milliseconds that the master will sleep in DeleteTable.");
 TAG_FLAG(catalog_manager_inject_latency_in_delete_table_ms, hidden);
 
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
+
 DEFINE_int32(replication_factor, 3,
              "Default number of replicas for tables that do not have the num_replicas set.");
 TAG_FLAG(replication_factor, advanced);
@@ -271,6 +273,9 @@ DEFINE_test_flag(int32, simulate_slow_system_tablet_bootstrap_secs, 0,
 
 DEFINE_test_flag(bool, return_error_if_namespace_not_found, false,
     "Return an error from ListTables if a namespace id is not found in the map");
+
+DEFINE_test_flag(bool, hang_on_namespace_creation, false,
+    "Used in tests to simulate a lapse between issuing a namespace op and final processing.");
 
 DEFINE_test_flag(bool, simulate_crash_after_table_marked_deleting, false,
     "Crash yb-master after table's state is set to DELETING. This skips tablets deletion.");
@@ -448,6 +453,20 @@ Status CheckIfTableDeletedOrNotRunning(TableInfo::lock_type* lock, RespClass* re
     }                                                                             \
   } while (false)
 
+MasterErrorPB_Code NamespaceMasterError(SysNamespaceEntryPB_State state) {
+  switch (state) {
+    case SysNamespaceEntryPB::PREPARING: FALLTHROUGH_INTENDED;
+    case SysNamespaceEntryPB::DELETING:
+      return MasterErrorPB::IN_TRANSITION_CAN_RETRY;
+    case SysNamespaceEntryPB::DELETED: FALLTHROUGH_INTENDED;
+    case SysNamespaceEntryPB::FAILED: FALLTHROUGH_INTENDED;
+    case SysNamespaceEntryPB::RUNNING:
+      return MasterErrorPB::INTERNAL_ERROR;
+    default:
+      FATAL_INVALID_ENUM_VALUE(SysNamespaceEntryPB_State, state);
+  }
+}
+
 size_t GetNameMapperIndex(YQLDatabase db_type) {
   switch (db_type) {
     case YQL_DATABASE_UNKNOWN: break;
@@ -497,6 +516,7 @@ CatalogManager::CatalogManager(Master* master)
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
            .Build(&worker_pool_));
+  CHECK_OK(ThreadPoolBuilder("CatalogManagerBGTasks").Build(&background_tasks_thread_pool_));
 
   if (master_) {
     sys_catalog_.reset(new SysCatalogTable(
@@ -1201,6 +1221,7 @@ Status CatalogManager::PrepareNamespace(
   SysNamespaceEntryPB ns_entry;
   ns_entry.set_name(name);
   ns_entry.set_database_type(db_type);
+  ns_entry.set_state(SysNamespaceEntryPB::RUNNING);
 
   // Create in memory object.
   scoped_refptr<NamespaceInfo> ns = new NamespaceInfo(id);
@@ -1327,11 +1348,15 @@ void CatalogManager::Shutdown() {
     state_ = kClosing;
   }
 
-  // Shutdown the Catalog Manager background thread.
+  // Shutdown the Catalog Manager background thread (load balancing).
   if (background_tasks_) {
     background_tasks_->Shutdown();
   }
-  // Shutdown the Catalog Manager worker pool.
+  // Shutdown the Catalog Manager background tasks (CM only) thread pool.
+  if (background_tasks_thread_pool_) {
+    background_tasks_thread_pool_->Shutdown();
+  }
+  // Shutdown the Catalog Manager worker (CM<->TS) pool.
   if (worker_pool_) {
     worker_pool_->Shutdown();
   }
@@ -1467,11 +1492,13 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
                                                 CreateTableResponsePB* resp,
                                                 rpc::RpcContext* rpc,
                                                 Schema schema,
-                                                NamespaceId namespace_id) {
+                                                scoped_refptr<NamespaceInfo> ns) {
   scoped_refptr<TableInfo> parent_table_info;
   Status s;
   PartitionSchema partition_schema;
   std::vector<Partition> partitions;
+
+  NamespaceId namespace_id = ns->id();
 
   std::lock_guard<LockType> l(lock_);
   TRACE("Acquired catalog manager lock");
@@ -1497,6 +1524,13 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
                  << ". Failed creating copartitioned table with error: "
                  << s.ToString() << " Request:\n" << req.DebugString();
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
+  }
+  // Don't add copartitioned tables to Namespaces that aren't running.
+  if (ns->state() != SysNamespaceEntryPB::RUNNING) {
+    Status s = STATUS_SUBSTITUTE(TryAgain,
+        "Namespace not running (State=$0).  Cannot create $1.$2",
+        ns->state(), ns->name(), req.name() );
+    return SetupError(resp->mutable_error(), NamespaceMasterError(ns->state()), s);
   }
 
   // TODO: pass index_info for copartitioned index.
@@ -1659,8 +1693,7 @@ CHECKED_STATUS ValidateCreateTableSchema(const Schema& schema, CreateTableRespon
 }  // namespace
 
 Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
-                                           CreateTableResponsePB* resp,
-                                           rpc::RpcContext* rpc) {
+                                           CreateTableResponsePB* resp) {
   LOG(INFO) << "CreatePgsqlSysTable: " << req->name();
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
@@ -1839,9 +1872,7 @@ Status CatalogManager::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB*
 }
 
 Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
-                                          const std::vector<scoped_refptr<TableInfo>>& tables,
-                                          CreateNamespaceResponsePB* resp,
-                                          rpc::RpcContext* rpc) {
+                                          const std::vector<scoped_refptr<TableInfo>>& tables) {
   const uint32_t database_oid = CHECK_RESULT(GetPgsqlDatabaseOid(namespace_id));
   vector<TableId> source_table_ids;
   vector<TableId> target_table_ids;
@@ -1885,9 +1916,10 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
       table_req.set_is_unique_index(PROTO_GET_IS_UNIQUE(l->data().pb));
     }
 
-    const Status s = CreatePgsqlSysTable(&table_req, &table_resp, rpc);
+    auto s = CreatePgsqlSysTable(&table_req, &table_resp);
     if (!s.ok()) {
-      return SetupError(resp->mutable_error(), table_resp.error().code(), s);
+      return s.CloneAndPrepend(Substitute(
+          "Failure when creating PGSQL System Tables: $0", table_resp.error().ShortDebugString()));
     }
 
     source_table_ids.push_back(table->id());
@@ -1932,7 +1964,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   if (is_pg_catalog_table) {
-    return CreatePgsqlSysTable(orig_req, resp, rpc);
+    return CreatePgsqlSysTable(orig_req, resp);
   }
 
   Status s;
@@ -1945,6 +1977,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   TRACE("Looking up namespace");
   scoped_refptr<NamespaceInfo> ns;
   RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req.namespace_(), &ns), resp);
+  auto ns_lock = ns->LockForRead();
   if (ns->database_type() != GetDatabaseTypeForTable(req.table_type())) {
     Status s = STATUS(NotFound, "Namespace not found");
     return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
@@ -2009,7 +2042,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // some time between this point and table creation below.
   Schema schema = client_schema.CopyWithColumnIds();
   if (schema.table_properties().HasCopartitionTableId()) {
-    return CreateCopartitionedTable(req, resp, rpc, schema, namespace_id);
+    return CreateCopartitionedTable(req, resp, rpc, schema, ns);
   }
 
   if (colocated) {
@@ -2156,6 +2189,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   {
     std::lock_guard<LockType> l(lock_);
+    auto ns_lock = ns->LockForRead();
     TRACE("Acquired catalog manager lock");
 
     tablets_exist =
@@ -2175,6 +2209,21 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       // table to be available to receive requests. And we need the table id for that.
       resp->set_table_id(table->id());
       return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
+    }
+
+    // Namespace state validity check:
+    // 1. Allow Namespaces that are RUNNING
+    // 2. Allow Namespaces that are PREPARING under 2 situations
+    //    2a. System Namespaces.
+    //    2b. The parent table from a Colocated Namespace.
+    const auto parent_table_name = ns->id() + kColocatedParentTableNameSuffix;
+    bool valid_ns_state = (ns->state() == SysNamespaceEntryPB::RUNNING) ||
+      (ns->state() == SysNamespaceEntryPB::PREPARING &&
+        (ns->name() == kSystemNamespaceName || req.name() == parent_table_name));
+    if (!valid_ns_state) {
+      Status s = STATUS_SUBSTITUTE(TryAgain, "Invalid Namespace State ($0).  Cannot create $1.$2",
+          ns->state(), ns->name(), req.name() );
+      return SetupError(resp->mutable_error(), NamespaceMasterError(ns->state()), s);
     }
 
     RETURN_NOT_OK(CreateTableInMemory(
@@ -3141,6 +3190,7 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
                                            vector<unique_ptr<TableInfo::lock_type>>* table_lcks,
                                            DeleteTableResponsePB* resp,
                                            rpc::RpcContext* rpc) {
+  // TODO(NIC): How to handle a DeleteTable request when the namespace is being deleted?
   const char* const object_type = is_index_table ? "index" : "table";
   const bool cascade_delete_index = is_index_table && !update_indexed_table;
 
@@ -3485,7 +3535,15 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     }
     RETURN_NAMESPACE_NOT_FOUND(FindNamespace(namespace_identifier, &ns), resp);
 
+    auto ns_lock = ns->LockForRead();
     new_namespace_id = ns->id();
+    // Don't use Namespaces that aren't running.
+    if (ns->state() != SysNamespaceEntryPB::RUNNING) {
+      Status s = STATUS_SUBSTITUTE(TryAgain,
+          "Namespace not running (State=$0).  Cannot create $1.$2",
+          ns->state(), ns->name(), table->name() );
+      return SetupError(resp->mutable_error(), NamespaceMasterError(ns->state()), s);
+    }
   }
 
   TRACE("Locking table");
@@ -3787,7 +3845,14 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     // Lookup the namespace and verify if it exists.
     RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
 
+    auto ns_lock = ns->LockForRead();
     namespace_id = ns->id();
+
+    // Don't list tables with a namespace that isn't running.
+    if (ns->state() != SysNamespaceEntryPB::RUNNING) {
+      LOG(INFO) << "ListTables request for a Namespace not running (State=" << ns->state() << ")";
+      return Status::OK();
+    }
   }
 
   bool has_rel_filter = req->relation_type_filter_size() > 0;
@@ -3879,7 +3944,9 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableNa
     YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name) {
   SharedLock<LockType> l(lock_);
   const auto ns = FindPtrOrNull(namespace_names_mapper_[db_type], namespace_name);
-  return ns ? FindPtrOrNull(table_names_map_, {ns->id(), table_name}) : nullptr;
+  return ns
+    ? FindPtrOrNull(table_names_map_, {ns->id(), table_name})
+    : nullptr;
 }
 
 scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& table_id) {
@@ -3898,10 +3965,14 @@ void CatalogManager::GetAllTables(std::vector<scoped_refptr<TableInfo>> *tables,
   }
 }
 
-void CatalogManager::GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo>>* namespaces) {
+void CatalogManager::GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo>>* namespaces,
+                                      bool includeOnlyRunningNamespaces) {
   namespaces->clear();
   SharedLock<LockType> l(lock_);
   for (const NamespaceInfoMap::value_type& e : namespace_ids_map_) {
+    if (includeOnlyRunningNamespaces && e.second->state() != SysNamespaceEntryPB::RUNNING) {
+      continue;
+    }
     namespaces->push_back(e.second);
   }
 }
@@ -4479,7 +4550,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                                        CreateNamespaceResponsePB* resp,
                                        rpc::RpcContext* rpc) {
   RETURN_NOT_OK(CheckOnline());
-  Status s;
+  Status return_status;
 
   // Copy the request, so we can fill in some defaults.
   LOG(INFO) << "CreateNamespace from " << RequestorString(rpc)
@@ -4494,14 +4565,16 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 
     // Validate the user request.
 
-    // Verify that the namespace does not exist
+    // Verify that the namespace does not exist (no matter what state).
     ns = FindPtrOrNull(namespace_names_mapper_[db_type], req->name());
     if (ns != nullptr) {
       resp->set_id(ns->id());
-      s = STATUS_SUBSTITUTE(AlreadyPresent, "Keyspace '$0' already exists", req->name());
+      return_status = STATUS_SUBSTITUTE(AlreadyPresent, "Keyspace '$0' already exists",
+                                        req->name());
       LOG(WARNING) << "Found keyspace: " << ns->id() << ". Failed creating keyspace with error: "
-                   << s.ToString() << " Request:\n" << req->DebugString();
-      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_ALREADY_PRESENT, s);
+                   << return_status.ToString() << " Request:\n" << req->DebugString();
+      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_ALREADY_PRESENT,
+                        return_status);
     }
 
     // Add the new namespace.
@@ -4515,6 +4588,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     metadata->set_name(req->name());
     metadata->set_database_type(db_type);
     metadata->set_colocated(req->colocated());
+    metadata->set_state(SysNamespaceEntryPB::PREPARING);
 
     // For namespace created for a Postgres database, save the list of tables and indexes for
     // for the database that need to be copied.
@@ -4558,15 +4632,18 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
   TRACE("Inserted new keyspace info into CatalogManager maps");
 
   // Update the on-disk system catalog.
-  s = sys_catalog_->AddItem(ns.get(), leader_ready_term_);
-  if (!s.ok()) {
-    s = s.CloneAndPrepend(Substitute(
-        "An error occurred while inserting keyspace to sys-catalog: $0", s.ToString()));
-    LOG(WARNING) << s.ToString();
-    return CheckIfNoLongerLeaderAndSetupError(s, resp);
+  return_status = sys_catalog_->AddItem(ns.get(), leader_ready_term_);
+  if (!return_status.ok()) {
+    LOG(WARNING) << "Keyspace creation failed:" << return_status.ToString();
+    {
+      std::lock_guard<LockType> l(lock_);
+      namespace_ids_map_.erase(ns->id());
+      namespace_names_mapper_[db_type].erase(req->name());
+    }
+    ns->mutable_metadata()->AbortMutation();
+    return CheckIfNoLongerLeaderAndSetupError(return_status, resp);
   }
   TRACE("Wrote keyspace to sys-catalog");
-
   // Commit the namespace in-memory state.
   ns->mutable_metadata()->CommitMutation();
 
@@ -4583,11 +4660,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
         resp));
   }
 
-  if (db_type == YQL_DATABASE_PGSQL && !pgsql_tables.empty()) {
-    RETURN_NOT_OK(CopyPgsqlSysTables(ns->id(), pgsql_tables, resp, rpc));
-  }
-
-  // Create a tablet if it is a colocated database.
+  // Colocated databases need to create a parent tablet to serve as the base storage location.
   if (req->colocated()) {
     CreateTableRequestPB req;
     CreateTableResponsePB resp;
@@ -4613,16 +4686,187 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     // We do not lock here so it is technically possible that the table was already created.
     // If so, there is nothing to do so we just ignore the "AlreadyPresent" error.
     if (!s.ok() && !s.IsAlreadyPresent()) {
+      LOG(WARNING) << "Keyspace creation failed:" << s.ToString();
+      // TODO: We should verify this behavior works end-to-end.
+      // Diverging in-memory state from disk so the user can issue a delete if no new leader.
+      auto l = ns->LockForWrite();
+      SysNamespaceEntryPB& metadata = ns->mutable_metadata()->mutable_dirty()->pb;
+      metadata.set_state(SysNamespaceEntryPB::FAILED);
+      l->Commit();
       return s;
     }
+  }
+
+  if ((db_type == YQL_DATABASE_PGSQL && !pgsql_tables.empty()) ||
+      PREDICT_FALSE(GetAtomicFlag(&FLAGS_hang_on_namespace_creation))) {
+    // Process the subsequent work in the background thread (normally PGSQL).
+    LOG(INFO) << "Keyspace create enqueued for later processing: " << ns->ToString();
+    RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
+        std::bind(&CatalogManager::ProcessPendingNamespace, this, ns->id(), pgsql_tables)));
+    return Status::OK();
+  } else {
+    // All work is done, it's now safe to online the namespace (normally YQL).
+    auto l = ns->LockForWrite();
+    SysNamespaceEntryPB& metadata = ns->mutable_metadata()->mutable_dirty()->pb;
+    if (metadata.state() == SysNamespaceEntryPB::PREPARING) {
+      metadata.set_state(SysNamespaceEntryPB::RUNNING);
+      return_status = sys_catalog_->UpdateItem(ns.get(), leader_ready_term_);
+      if (!return_status.ok()) {
+        // Diverging in-memory state from disk so the user can issue a delete if no new leader.
+        LOG(WARNING) << "Keyspace creation failed:" << return_status.ToString();
+        metadata.set_state(SysNamespaceEntryPB::FAILED);
+        return_status = CheckIfNoLongerLeaderAndSetupError(return_status, resp);
+      } else {
+        TRACE("Activated keyspace in sys-catalog");
+        LOG(INFO) << "Activated keyspace: " << ns->ToString();
+      }
+      // Commit the namespace in-memory state.
+      l->Commit();
+    } else {
+      LOG(WARNING) << "Keyspace has invalid state (" << metadata.state() << "), aborting create";
+    }
+  }
+  return return_status;
+}
+
+void CatalogManager::ProcessPendingNamespace(
+    NamespaceId id, std::vector<scoped_refptr<TableInfo>> template_tables) {
+  LOG(INFO) << "ProcessPendingNamespace started for " << id;
+
+  // Ensure that we are currently the Leader before handling DDL operations.
+  {
+    ScopedLeaderSharedLock l(this);
+    if (!l.catalog_status().ok() || !l.leader_status().ok()) {
+      LOG(WARNING) << "Catalog status failure: " << l.catalog_status().ToString();
+      // Don't try again, we have to reset in-memory state after losing leader election.
+      return;
+    }
+  }
+
+  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_hang_on_namespace_creation))) {
+    LOG(INFO) << "Artificially waiting (" << FLAGS_catalog_manager_bg_task_wait_ms
+              << "ms) on namespace creation for " << id;
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms));
+    WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
+        std::bind(&CatalogManager::ProcessPendingNamespace, this, id, template_tables)),
+        "Could not submit ProcessPendingNamespaces to thread pool");
+    return;
+  }
+
+  scoped_refptr<NamespaceInfo> ns;
+  {
+    std::lock_guard<LockType> l(lock_);
+    ns = FindPtrOrNull(namespace_ids_map_, id);;
+  }
+  if (ns == nullptr) {
+    LOG(WARNING) << "Pending Namespace not found to finish creation: " << id;
+    return;
+  }
+
+  // Copy the system tables necessary to create this namespace.  This can be time-intensive.
+  bool success = true;
+  if (!template_tables.empty()) {
+    auto s = CopyPgsqlSysTables(ns->id(), template_tables);
+    WARN_NOT_OK(s, "Error Copying PGSQL System Tables for Pending Namespace");
+    success = s.ok();
+  }
+
+  // All work is done, change the namespace state regardless of success or failure.
+  {
+    auto l = ns->LockForWrite();
+    SysNamespaceEntryPB& metadata = ns->mutable_metadata()->mutable_dirty()->pb;
+    if (metadata.state() == SysNamespaceEntryPB::PREPARING) {
+      metadata.set_state(success ? SysNamespaceEntryPB::RUNNING : SysNamespaceEntryPB::FAILED);
+      auto s = sys_catalog_->UpdateItem(ns.get(), leader_ready_term());
+      if (s.ok()) {
+        TRACE("Done processing keyspace");
+        LOG(INFO) << "Activated keyspace: " << ns->ToString();
+      } else {
+        metadata.set_state(SysNamespaceEntryPB::FAILED);
+        if (s.IsIllegalState() || s.IsAborted()) {
+          s = STATUS(ServiceUnavailable,
+              "operation requested can only be executed on a leader master, but this"
+              " master is no longer the leader", s.ToString());
+        } else {
+          s = s.CloneAndPrepend(Substitute(
+              "An error occurred while modifying keyspace to $0 in sys-catalog: $1",
+              metadata.state(), s.ToString()));
+        }
+        LOG(WARNING) << s.ToString();
+      }
+      // Commit the namespace in-memory state.
+      l->Commit();
+    } else {
+      LOG(WARNING) << "Bad keyspace state (" << metadata.state()
+                   << "), abandoning creation work for " << ns->ToString();
+    }
+  }
+}
+
+// Get the information about an in-progress create operation.
+Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestPB* req,
+                                             IsCreateNamespaceDoneResponsePB* resp) {
+  RETURN_NOT_OK(CheckOnline());
+
+  scoped_refptr<NamespaceInfo> ns;
+  auto nsPB = req->namespace_();
+
+  // 1. Lookup the namespace and verify it exists.
+  TRACE("Looking up keyspace");
+  RETURN_NAMESPACE_NOT_FOUND(FindNamespace(nsPB, &ns), resp);
+
+  TRACE("Locking keyspace");
+  auto l = ns->LockForRead();
+  auto metadata = l->data().pb;
+
+  switch (metadata.state()) {
+    // Success cases. Done and working.
+    case SysNamespaceEntryPB::RUNNING:
+      if (!ns->colocated()) {
+        resp->set_done(true);
+      } else {
+        // Verify system table created as well, if colocated.
+        IsCreateTableDoneRequestPB table_req;
+        IsCreateTableDoneResponsePB table_resp;
+        const auto parent_table_id = ns->id() + kColocatedParentTableIdSuffix;
+        table_req.mutable_table()->set_table_id(parent_table_id);
+        auto s = IsCreateTableDone(&table_req, &table_resp);
+        resp->set_done(table_resp.done());
+        if (!s.ok()) {
+          if (table_resp.has_error()) {
+            resp->mutable_error()->Swap(table_resp.mutable_error());
+          }
+          return s;
+        }
+      }
+      break;
+    // These states indicate that a create completed but a subsequent remove was requested.
+    case SysNamespaceEntryPB::DELETING:
+    case SysNamespaceEntryPB::DELETED:
+      resp->set_done(true);
+      break;
+    // Pending cases.  NOT DONE
+    case SysNamespaceEntryPB::PREPARING:
+      resp->set_done(false);
+      break;
+    // Failure cases.  Done, but we need to give the user an error message.
+    case SysNamespaceEntryPB::FAILED:
+    default:
+      Status s = STATUS_SUBSTITUTE(IllegalState,
+          "IsCreateNamespaceDone failure: state=$0", metadata.state());
+      LOG(INFO) << s.ToString();
+      resp->set_done(true);
+      return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
   }
 
   return Status::OK();
 }
 
+
 Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
                                        DeleteNamespaceResponsePB* resp,
                                        rpc::RpcContext* rpc) {
+  // TODO(NIC): Put Namespace in DELETING state when done.
   LOG(INFO) << "Servicing DeleteNamespace request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
 
@@ -4638,6 +4882,15 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
     // Could not find the right database to delete.
     Status s = STATUS(NotFound, "Keyspace not found", ns->name());
     return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+  }
+  {
+    // Don't allow deletion if the namespace is still being setup.
+    auto cur_state = ns->state();
+    if (cur_state != SysNamespaceEntryPB::RUNNING) {
+      Status s = STATUS_SUBSTITUTE(TryAgain,
+          "Namespace deletion not allowed when State = $0", cur_state);
+      return SetupError(resp->mutable_error(), MasterErrorPB::IN_TRANSITION_CAN_RETRY, s);
+    }
   }
 
   if (ns->database_type() == YQL_DATABASE_PGSQL) {
@@ -4728,6 +4981,9 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
   // Lock database before removing content.
   TRACE("Locking database");
   auto l = database->LockForWrite();
+
+  // TODO(NIC): 1. Put Database in DELETING state
+  //            2. Everything below this should be async, and use IsDeleteNamespaceDone paradigm.
 
   // Delete all tables in the database.
   TRACE("Delete all tables in YSQL database");
@@ -4867,6 +5123,13 @@ Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
 
   TRACE("Locking database");
   auto l = database->LockForWrite();
+
+  // Don't allow an alter if the namespace isn't running.
+  if (l->data().pb.state() != SysNamespaceEntryPB::RUNNING) {
+    Status s = STATUS_SUBSTITUTE(TryAgain,
+        "Namespace not running.  State = $0", l->data().pb.state());
+    return SetupError(resp->mutable_error(), NamespaceMasterError(l->data().pb.state()), s);
+  }
 
   const string old_name = l->data().pb.name();
 

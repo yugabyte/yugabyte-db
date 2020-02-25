@@ -1010,6 +1010,7 @@ public class AsyncYBClient implements AutoCloseable {
     }
   }
 
+// TODO(NIC): Do we need a similar pattern for IsCreateNamespaceDone?
   /**
    * This callback will be repeatedly used when opening a table until it is done being created.
    */

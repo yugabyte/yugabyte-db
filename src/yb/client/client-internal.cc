@@ -304,6 +304,8 @@ YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsTruncateTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsLoadBalanced);
+YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateNamespaceDone);
+// TODO(NIC): IsDeleteNamespaceDone
 
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),
@@ -746,6 +748,54 @@ Status YBClient::Data::AlterNamespace(YBClient* client,
     return StatusFromPB(resp.error().status());
   }
   return Status::OK();
+}
+
+Status YBClient::Data::IsCreateNamespaceInProgress(
+    YBClient* client,
+    const std::string& namespace_name,
+    const boost::optional<YQLDatabase>& database_type,
+    CoarseTimePoint deadline,
+    bool *create_in_progress) {
+  DCHECK_ONLY_NOTNULL(create_in_progress);
+  IsCreateNamespaceDoneRequestPB req;
+  IsCreateNamespaceDoneResponsePB resp;
+
+  req.mutable_namespace_()->set_name(namespace_name);
+  if (database_type) {
+    req.mutable_namespace_()->set_database_type(*database_type);
+  }
+
+  const Status s =
+      SyncLeaderMasterRpc<IsCreateNamespaceDoneRequestPB, IsCreateNamespaceDoneResponsePB>(
+          deadline,
+          req,
+          &resp,
+          nullptr /* num_attempts */,
+          "IsCreateNamespaceDone",
+          &MasterServiceProxy::IsCreateNamespaceDone);
+  // RETURN_NOT_OK macro can't take templated function call as param,
+  // and SyncLeaderMasterRpc must be explicitly instantiated, else the
+  // compiler complains.
+  RETURN_NOT_OK(s);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  *create_in_progress = !resp.done();
+  return Status::OK();
+}
+
+Status YBClient::Data::WaitForCreateNamespaceToFinish(
+    YBClient* client,
+    const std::string& namespace_name,
+    const boost::optional<YQLDatabase>& database_type,
+    CoarseTimePoint deadline) {
+  return RetryFunc(
+      deadline,
+      "Waiting on Create Namespace to be completed",
+      "Timed out waiting for Namespace Creation",
+      std::bind(&YBClient::Data::IsCreateNamespaceInProgress, this, client,
+          namespace_name, database_type, _1, _2));
 }
 
 Status YBClient::Data::AlterTable(YBClient* client,

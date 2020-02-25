@@ -175,6 +175,11 @@ class MasterTestBase : public YBTest {
   Status CreateNamespace(const NamespaceName& ns_name,
                          const boost::optional<YQLDatabase>& database_type,
                          CreateNamespaceResponsePB* resp);
+  Status CreateNamespaceAsync(const NamespaceName& ns_name,
+                              const boost::optional<YQLDatabase>& database_type,
+                              CreateNamespaceResponsePB* resp);
+  Status CreateNamespaceWait(const NamespaceName& ns_name,
+                             const boost::optional<YQLDatabase>& database_type);
 
   Status AlterNamespace(const NamespaceName& ns_name,
                         const NamespaceId& ns_id,
@@ -198,6 +203,18 @@ class MasterTestBase : public YBTest {
     }
 
     ASSERT_EQ(namespaces.namespaces_size(), namespace_info.size());
+  }
+
+  bool FindNamespace(const std::tuple<NamespaceName, NamespaceId>& namespace_info,
+                     const ListNamespacesResponsePB& namespaces) {
+    for (int i = 0; i < namespaces.namespaces_size(); i++) {
+      auto cur_ns = std::make_tuple(namespaces.namespaces(i).name(),
+                                    namespaces.namespaces(i).id());
+      if (cur_ns == namespace_info) {
+        return true; // found!
+      }
+    }
+    return false; // namespace not found.
   }
 
   void CheckTables(
