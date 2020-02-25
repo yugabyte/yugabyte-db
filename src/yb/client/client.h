@@ -348,6 +348,11 @@ class YBClient {
                                             boost::none,
                                             const bool colocated = false);
 
+  // Set 'create_in_progress' to true if a CreateNamespace operation is in-progress.
+  CHECKED_STATUS IsCreateNamespaceInProgress(const std::string& namespace_name,
+                                             const boost::optional<YQLDatabase>& database_type,
+                                             bool *create_in_progress);
+
   // Delete namespace with the given name.
   CHECKED_STATUS DeleteNamespace(const std::string& namespace_name,
                                  const boost::optional<YQLDatabase>& database_type = boost::none,

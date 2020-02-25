@@ -89,6 +89,17 @@ class YBClient::Data {
                                 const master::AlterNamespaceRequestPB& req,
                                 CoarseTimePoint deadline);
 
+  CHECKED_STATUS IsCreateNamespaceInProgress(YBClient* client,
+                                const std::string& namespace_name,
+                                const boost::optional<YQLDatabase>& database_type,
+                                CoarseTimePoint deadline,
+                                bool *create_in_progress);
+
+  CHECKED_STATUS WaitForCreateNamespaceToFinish(YBClient* client,
+                                const std::string& namespace_name,
+                                const boost::optional<YQLDatabase>& database_type,
+                                CoarseTimePoint deadline);
+
   CHECKED_STATUS CreateTable(YBClient* client,
                              const master::CreateTableRequestPB& req,
                              const YBSchema& schema,

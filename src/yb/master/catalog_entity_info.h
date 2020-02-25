@@ -509,6 +509,8 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
 
   bool colocated() const;
 
+  ::yb::master::SysNamespaceEntryPB_State state() const;
+
   std::string ToString() const override;
 
  private:

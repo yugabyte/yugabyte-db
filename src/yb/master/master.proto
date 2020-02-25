@@ -383,6 +383,14 @@ message SysTablesEntryPB {
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
 message SysNamespaceEntryPB {
+  enum State {
+    UNKNOWN = 0;    // Unset or bad data. Unexpected state.
+    PREPARING = 1;  // Creating. Transitive State. Possible Next States: [RUNNING, FAILED].
+    FAILED = 2;     // Creation Failed. Permanent State.
+    RUNNING = 3;    // Live. Permanent State. Possible Next States: [FAILED, DELETING].
+    DELETING = 4;   // Delete Requested. Transitive State. Possible Next States: [DELETED].
+    DELETED = 5;    // Delete Finished on TServers or Tombstone. Final State before erasure.
+  }
   // Note: The id of the namespace is not stored here as it is already part of
   // SysRowEntry's id component.
 
@@ -397,6 +405,8 @@ message SysNamespaceEntryPB {
 
   // True if the namespace is colocated.
   optional bool colocated = 4 [ default = false ];
+
+  optional State state = 5 [ default = UNKNOWN ];
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a User Defined Type.
@@ -1296,6 +1306,18 @@ message CreateNamespaceResponsePB {
   optional bytes id = 2;
 }
 
+message IsCreateNamespaceDoneRequestPB {
+  optional NamespaceIdentifierPB namespace = 1;
+}
+
+message IsCreateNamespaceDoneResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  // true if the create operation is completed, false otherwise
+  optional bool done = 2;
+}
+
 // Database type is added to metadata entries such that PGSQL clients cannot delete or connect to
 // CQL database_type and vice versa.
 message DeleteNamespaceRequestPB {
@@ -1310,6 +1332,7 @@ message DeleteNamespaceResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
 }
+// TODO(NIC): Add IsDeleteNamespaceDone.
 
 message AlterNamespaceRequestPB {
   optional NamespaceIdentifierPB namespace = 1;
@@ -1740,6 +1763,8 @@ service MasterService {
   rpc GetTableSchema(GetTableSchemaRequestPB) returns (GetTableSchemaResponsePB);
 
   rpc CreateNamespace(CreateNamespaceRequestPB) returns (CreateNamespaceResponsePB);
+  rpc IsCreateNamespaceDone(IsCreateNamespaceDoneRequestPB)
+      returns (IsCreateNamespaceDoneResponsePB);
   rpc DeleteNamespace(DeleteNamespaceRequestPB) returns (DeleteNamespaceResponsePB);
   rpc AlterNamespace(AlterNamespaceRequestPB) returns (AlterNamespaceResponsePB);
   rpc ListNamespaces(ListNamespacesRequestPB) returns (ListNamespacesResponsePB);
