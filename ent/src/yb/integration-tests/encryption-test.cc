@@ -33,17 +33,22 @@ DECLARE_int64(db_write_buffer_size);
 DECLARE_int32(memstore_size_mb);
 DECLARE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps);
 DECLARE_int32(heartbeat_interval_ms);
+DECLARE_int64(encryption_counter_min);
+DECLARE_int64(encryption_counter_max);
 
 using namespace std::chrono_literals;
 
 namespace yb {
 namespace integration_tests {
 
-constexpr uint32_t num_keys = 1024;
-constexpr uint32_t key_size = (1 << 15);
+constexpr uint32_t kNumKeys = 1024;
+constexpr uint32_t kNumFlushes = 8;
+constexpr uint32_t kNumCompactions = 2;
+constexpr uint32_t kKeySize = 100;
+constexpr uint32_t kCounterOverflowDefault = 0xFFFFFFE0;
 
 
-class EncryptionTest : public YBTableTestBase {
+class EncryptionTest : public YBTableTestBase, public testing::WithParamInterface<bool> {
  public:
 
   bool use_external_mini_cluster() override { return false; }
@@ -61,8 +66,6 @@ class EncryptionTest : public YBTableTestBase {
   }
 
   void SetUp() override {
-    FLAGS_memstore_size_mb = 1;
-    FLAGS_db_write_buffer_size = 1048576;
     FLAGS_load_balancer_max_concurrent_tablet_remote_bootstraps = 1;
 
     YBTableTestBase::SetUp();
@@ -76,9 +79,17 @@ class EncryptionTest : public YBTableTestBase {
   }
 
   void WriteWorkload(uint32_t start, uint32_t end) {
+    auto total_num_keys = end - start;
     for (uint32_t i = start; i < end; i++) {
-      string s(key_size, 'a' + (i % 26));
+      string s(kKeySize, 'a' + (i % 26));
       PutKeyValue(Format("k_$0", i), s);
+      auto num_keys_written = i - start + 1;
+      if (num_keys_written % (total_num_keys / kNumFlushes) == 0) {
+        ASSERT_OK(mini_cluster()->FlushTablets());
+      }
+      if (num_keys_written % (total_num_keys / kNumCompactions) == 0) {
+        ASSERT_OK(mini_cluster()->CompactTablets());
+      }
     }
   }
 
@@ -89,7 +100,7 @@ class EncryptionTest : public YBTableTestBase {
       auto split = StringSplit(result_kvs[i].first, '_');
       key = boost::lexical_cast<int32_t>(split.back());
       ASSERT_EQ(Format("k_$0", key), result_kvs[i].first);
-      ASSERT_TRUE(string(key_size, 'a' + (key % 26)) == result_kvs[i].second);
+      ASSERT_TRUE(string(kKeySize, 'a' + (key % 26)) == result_kvs[i].second);
     }
   }
 
@@ -185,16 +196,24 @@ class EncryptionTest : public YBTableTestBase {
   std::string current_key_id_ = "";
 };
 
-TEST_F(EncryptionTest, BasicWriteRead) {
-  // Writes 1000 values and verifies they can be read.
-  WriteWorkload(0, num_keys);
+INSTANTIATE_TEST_CASE_P(TestWithCounterOverflow, EncryptionTest, ::testing::Bool());
+
+TEST_P(EncryptionTest, BasicWriteRead) {
+  if (GetParam()) {
+    // If testing with counter overflow, make sure we set counter to a value that will overflow
+    // for sst files.
+    FLAGS_encryption_counter_min = kCounterOverflowDefault;
+    FLAGS_encryption_counter_max = kCounterOverflowDefault;
+  }
+
+  WriteWorkload(0, kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ClusterVerifier cv(mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
 TEST_F(EncryptionTest, MasterLeaderRestart) {
-  WriteWorkload(0, num_keys);
+  WriteWorkload(0, kNumKeys);
   // Restart the master leader.
   CHECK_OK(mini_cluster()->leader_mini_master()->Restart());
   ASSERT_NO_FATALS(WaitForAllMastersHaveLatestKeyInMemory());
@@ -204,28 +223,28 @@ TEST_F(EncryptionTest, MasterLeaderRestart) {
   }
 
   ASSERT_NO_FATALS(WaitForLoadBalanced());
-  WriteWorkload(num_keys, 2 * num_keys);
+  WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ClusterVerifier cv(mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
 TEST_F(EncryptionTest, AllMastersRestart) {
-  WriteWorkload(0, num_keys);
+  WriteWorkload(0, kNumKeys);
   // Restart all the master leaders and make sure the
   for (int i = 0; i < mini_cluster()->num_masters(); i++) {
     CHECK_OK(mini_cluster()->mini_master(i)->Restart());
   }
 
   ASSERT_NO_FATALS(WaitForLoadBalanced());
-  WriteWorkload(num_keys, 2 * num_keys);
+  WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ClusterVerifier cv(mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
 TEST_F(EncryptionTest, RollingMasterRestart) {
-  WriteWorkload(0, num_keys);
+  WriteWorkload(0, kNumKeys);
   // Restart all the master leaders and make sure the
 
   for (int i = 0; i < mini_cluster()->num_masters(); i++) {
@@ -237,7 +256,7 @@ TEST_F(EncryptionTest, RollingMasterRestart) {
   ASSERT_NO_FATALS(RotateKey());
 
   ASSERT_NO_FATALS(WaitForLoadBalanced());
-  WriteWorkload(num_keys, 2 * num_keys);
+  WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ClusterVerifier cv(mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
@@ -245,10 +264,10 @@ TEST_F(EncryptionTest, RollingMasterRestart) {
 
 TEST_F(EncryptionTest, AddServer) {
   // Write 1000 values, add a server, and write 1000 more.
-  WriteWorkload(0, num_keys);
+  WriteWorkload(0, kNumKeys);
   ASSERT_OK(mini_cluster()->AddTabletServer());
   ASSERT_NO_FATALS(WaitForLoadBalanced());
-  WriteWorkload(num_keys, 2 * num_keys);
+  WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ClusterVerifier cv(mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
@@ -256,11 +275,11 @@ TEST_F(EncryptionTest, AddServer) {
 
 TEST_F(EncryptionTest, RotateKey) {
   // Write 1000 values, rotate a new key, and write 1000 more.
-  WriteWorkload(0, num_keys);
+  WriteWorkload(0, kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ASSERT_NO_FATALS(AddUniverseKeys());
   ASSERT_NO_FATALS(RotateKey());
-  WriteWorkload(num_keys, 2 * num_keys);
+  WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ClusterVerifier cv(mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
@@ -268,10 +287,10 @@ TEST_F(EncryptionTest, RotateKey) {
 
 TEST_F(EncryptionTest, DisableEncryption) {
   // Write 1000 values, disable encryption, and write 1000 more.
-  WriteWorkload(0, num_keys);
+  WriteWorkload(0, kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ASSERT_NO_FATALS(DisableEncryption());
-  WriteWorkload(num_keys, 2 * num_keys);
+  WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ClusterVerifier cv(mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
@@ -288,11 +307,11 @@ TEST_F(EncryptionTest, EmptyTable) {
 TEST_F(EncryptionTest, EnableEncryption) {
   // Disable encryption, add 1000 values, enable, and write 1000 more.
   ASSERT_NO_FATALS(DisableEncryption());
-  WriteWorkload(0, num_keys);
+  WriteWorkload(0, kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ASSERT_NO_FATALS(AddUniverseKeys());
   ASSERT_NO_FATALS(RotateKey());
-  WriteWorkload(num_keys, 2 * num_keys);
+  WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ClusterVerifier cv(mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());

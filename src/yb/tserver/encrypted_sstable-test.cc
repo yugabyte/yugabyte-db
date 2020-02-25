@@ -48,6 +48,7 @@ using yb::tserver::GenerateTestUniverseKeyManager;
 
 DECLARE_int64(encryption_counter_min);
 DECLARE_int64(encryption_counter_max);
+DECLARE_bool(encryption_use_openssl_compatible_counter_overflow);
 
 namespace yb {
 namespace enterprise {
@@ -64,14 +65,20 @@ std::string GetValue(int i) {
 
 }  // anonymous namespace
 
-class EncryptedSSTableTest : public YBTest {
+class EncryptedSSTableTest : public YBTest, public testing::WithParamInterface<bool> {
  protected:
-  void CounterOverflow(int num_keys, int64_t initial_counter);
+  void CounterOverflow(
+      int num_keys, int64_t initial_counter);
 };
 
-void EncryptedSSTableTest::CounterOverflow(int num_keys, int64_t initial_counter) {
+INSTANTIATE_TEST_CASE_P(
+    UseOpensslCompatibleCounterOverflow, EncryptedSSTableTest, ::testing::Bool());
+
+void EncryptedSSTableTest::CounterOverflow(
+    int num_keys, int64_t initial_counter) {
   FLAGS_encryption_counter_min = initial_counter;
   FLAGS_encryption_counter_max = initial_counter;
+  FLAGS_encryption_use_openssl_compatible_counter_overflow = GetParam();
 
   string test_dir;
   ASSERT_OK(Env::Default()->GetTestDirectory(&test_dir));
@@ -182,13 +189,13 @@ void EncryptedSSTableTest::CounterOverflow(int num_keys, int64_t initial_counter
   ASSERT_GE(eraf_data->TEST_GetNumOverflowWorkarounds(), 0);
 }
 
-TEST_F(EncryptedSSTableTest, CounterOverflow10MKeys) {
+TEST_P(EncryptedSSTableTest, CounterOverflow10MKeys) {
   // Note that only three zeros are there in the end of the initial counter below. We are trying to
   // get a counter that is 65536 bytes (4096 encryption blocks) away from overflow.
   CounterOverflow(10 * 1000 * 1000, 0xfffff000);
 }
 
-TEST_F(EncryptedSSTableTest, CounterOverflow100000Keys) {
+TEST_P(EncryptedSSTableTest, CounterOverflow100000Keys) {
   // This test fails if meta block checksums are not being verified.
   // https://github.com/yugabyte/yugabyte-db/issues/3974
   CounterOverflow(100 * 1000, 0xffffff00);

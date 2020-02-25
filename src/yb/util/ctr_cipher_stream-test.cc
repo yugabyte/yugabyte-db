@@ -29,10 +29,52 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
+DECLARE_bool(encryption_use_openssl_compatible_counter_overflow);
+
 namespace yb {
 namespace enterprise {
 
-class TestCipherStream : public YBTest {};
+constexpr int kDataSize = 1024;
+constexpr int kNumRuns = 1000;
+
+class TestCipherStream : public YBTest {
+ public:
+  Status TestOverFlowWithKeyType(bool use_openssl_compatible_counter_overflow) {
+    // Create a cipher stream on an iv about to overflow.
+    FLAGS_encryption_use_openssl_compatible_counter_overflow =
+        use_openssl_compatible_counter_overflow;
+    auto params = EncryptionParams::NewEncryptionParams();
+    // Initialize the nonce to be about to overflow for each position.
+    uint8_t nonce[12];
+    for (int i = 0; i < sizeof(nonce); i++) {
+      nonce[i] = 0xFF;
+    }
+    params->counter = 0xFFFFFFF0;
+    memcpy(params->nonce, nonce, 12);
+    auto cipher_stream  = VERIFY_RESULT(BlockAccessCipherStream::FromEncryptionParams(
+        std::move(params)));
+
+    // Encrypt data such that part of the message is before the overflow and part is after.
+    auto plaintext_bytes = RandomBytes(kDataSize);
+    uint8_t encrypted_bytes[kDataSize];
+    RETURN_NOT_OK(cipher_stream->Encrypt(
+        0, Slice(plaintext_bytes.data(), kDataSize), encrypted_bytes));
+
+    uint8_t decrypted_bytes[kDataSize];
+    for (int i = 0; i < kNumRuns; i++) {
+      memset(decrypted_bytes, 0, kDataSize);
+      int start_idx = RandomUniformInt(0, kDataSize);
+      int size = RandomUniformInt(0, kDataSize - start_idx);
+      RETURN_NOT_OK(cipher_stream->Decrypt(
+          start_idx, Slice(encrypted_bytes + start_idx, size), decrypted_bytes));
+      if (Slice(decrypted_bytes, size) != Slice(plaintext_bytes.data() + start_idx, size)) {
+        return STATUS(Corruption, Format("Corrupted bytes starting at $0 with size $1",
+                                         start_idx, size));
+      }
+    }
+    return Status::OK();
+  }
+};
 
 TEST_F(TestCipherStream, ConcurrentEncryption) {
   InitOpenSSL();
@@ -84,6 +126,15 @@ TEST_F(TestCipherStream, ConcurrentEncryption) {
   for (int i = 0; i < threads.size(); i++) {
     threads[i].join();
   }
+}
+
+TEST_F(TestCipherStream, Overflow) {
+  // Create a cipher stream on a iv about to overflow.
+  ASSERT_OK(TestOverFlowWithKeyType(true /* use_openssl_compatible_counter_overflow */ ));
+  Status s = TestOverFlowWithKeyType(false /* use_openssl_compatible_counter_overflow */);
+  ASSERT_NOK(s);
+  ASSERT_EQ(s.CodeAsString(), "Corruption");
+  ASSERT_STR_CONTAINS(s.message().ToBuffer(), "Corrupted bytes starting");
 }
 
 } // namespace enterprise
