@@ -61,7 +61,7 @@ leader fails.
 ## Read replicas
 
 In addition to the core distributed consensus based replication, DocDB extends Raft to add
-read replicas (aks observer nodes) that do not participate in writes but get a timeline consistent
+read replicas (aka observer nodes) that do not participate in writes but get a timeline consistent
 copy of the data in an asynchronous manner. Nodes in remote data centers can thus be added in "read-only"
 mode. This is primarily for cases where latency of doing a distributed consensus-based write is not
 tolerable for some workloads. This read-only node (or timeline-consistent node) is still strictly better than eventual consistency, because with the latter the application's view of the data can move back and

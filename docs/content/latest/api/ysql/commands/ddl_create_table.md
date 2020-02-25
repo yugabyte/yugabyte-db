@@ -237,10 +237,10 @@ yugabyte=# CREATE TABLE tracking (id int PRIMARY KEY) SPLIT (INTO 10 TABLETS);
 ```postgresql
 yugabyte=# CREATE DATABASE company WITH colocated = true;
 
-yugabyte=# CREATE DATABASE employee(id INT PRIMARY KEY, name TEXT) WITH (colocated = false);
+yugabyte=# CREATE TABLE employee(id INT PRIMARY KEY, name TEXT) WITH (colocated = false);
 ```
 
-In this example, database `company` is colocated and all its tables other than `employee` table are stored on a single tablet.
+In this example, database `company` is colocated and all tables other than the `employee` table are stored on a single tablet.
 
 ## See also
 
