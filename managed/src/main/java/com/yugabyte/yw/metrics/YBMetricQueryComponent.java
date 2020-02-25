@@ -23,7 +23,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.common.SwamperHelper;
 
-import java.io.FileInputStream;
 import java.io.IOException;
 
 import java.net.InetSocketAddress;
