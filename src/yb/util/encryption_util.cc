@@ -49,6 +49,10 @@ DEFINE_int64(encryption_counter_max, 0x7fffffffLL,
 TAG_FLAG(encryption_counter_max, advanced);
 TAG_FLAG(encryption_counter_max, hidden);
 
+DEFINE_test_flag(bool, encryption_use_openssl_compatible_counter_overflow, true,
+                 "Overflow into the rest of the initialization vector when computing counter"
+                 "increment for newly created keys.")
+
 namespace yb {
 namespace enterprise {
 
@@ -64,6 +68,7 @@ void EncryptionParams::ToEncryptionParamsPB(yb::EncryptionParamsPB* encryption_h
   encryption_header->set_data_key(key, key_size);
   encryption_header->set_nonce(nonce, kBlockSize - 4);
   encryption_header->set_counter(counter);
+  encryption_header->set_openssl_compatible_counter_overflow(openssl_compatible_counter_overflow);
 }
 
 Result<EncryptionParamsPtr> EncryptionParams::FromEncryptionParamsPB(
@@ -76,6 +81,8 @@ Result<EncryptionParamsPtr> EncryptionParams::FromEncryptionParamsPB(
   auto size = encryption_header.data_key().size();
   RETURN_NOT_OK(IsValidKeySize(size));
   encryption_params->key_size = size;
+  encryption_params->openssl_compatible_counter_overflow =
+      encryption_header.openssl_compatible_counter_overflow();
   return encryption_params;
 }
 
@@ -108,6 +115,8 @@ EncryptionParamsPtr EncryptionParams::NewEncryptionParams() {
         << "falling back to using the full unsigned 32-bit integer range.";
   }
   encryption_params->key_size = kDefaultKeySize;
+  encryption_params->openssl_compatible_counter_overflow =
+      FLAGS_encryption_use_openssl_compatible_counter_overflow;
   return encryption_params;
 }
 
@@ -124,7 +133,8 @@ bool EncryptionParams::Equals(const EncryptionParams& other) {
   return memcmp(key, other.key, other.key_size) == 0 &&
          memcmp(nonce, other.nonce, sizeof(nonce)) == 0 &&
          counter == other.counter &&
-         key_size == other.key_size;
+         key_size == other.key_size &&
+         openssl_compatible_counter_overflow == other.openssl_compatible_counter_overflow;
 }
 
 void* EncryptionBuffer::GetBuffer(uint32_t size_needed) {
