@@ -122,6 +122,10 @@ Status BlockAccessCipherStream::Decrypt(
   return Encrypt(file_offset, input, output, counter_overflow_workaround);
 }
 
+bool BlockAccessCipherStream::UseOpensslCompatibleCounterOverflow() {
+  return encryption_params_->openssl_compatible_counter_overflow;
+}
+
 Status BlockAccessCipherStream::EncryptByBlock(
     uint64_t block_index, const Slice& input, void* output,
     EncryptionOverflowWorkaround counter_overflow_workaround) {
@@ -139,17 +143,9 @@ Status BlockAccessCipherStream::EncryptByBlock(
   // Set the last 4 bytes of the iv based on counter + block_index.
   uint8_t iv[EncryptionParams::kBlockSize];
   memcpy(iv, encryption_params_->nonce, EncryptionParams::kBlockSize - 4);
+
   const uint64_t start_index = encryption_params_->counter + block_index;
-  BigEndian::Store32(iv + EncryptionParams::kBlockSize - 4, start_index);
-  if (counter_overflow_workaround) {
-    int i;
-    for (i = EncryptionParams::kBlockSize - 5; i >= 0 && iv[i] == 0xff; --i) {
-      iv[i] = 0;
-    }
-    if (i >= 0) {
-      iv[i]++;
-    }
-  }
+  IncrementCounter(start_index, iv, counter_overflow_workaround);
 
   // Lock the encryption op since we modify encryption context.
   std::lock_guard<simple_spinlock> l(mutex_);
@@ -185,6 +181,25 @@ Status BlockAccessCipherStream::EncryptByBlock(
 
   return Status::OK();
 }
+
+void BlockAccessCipherStream::IncrementCounter(
+    const uint64_t start_idx, uint8_t* iv,
+    EncryptionOverflowWorkaround counter_overflow_workaround) {
+  BigEndian::Store32(iv + EncryptionParams::kBlockSize - 4, start_idx);
+  if (start_idx <= std::numeric_limits<uint32_t>::max() ||
+      (!UseOpensslCompatibleCounterOverflow() && !counter_overflow_workaround)) {
+    return;
+  }
+
+  uint64_t carry = start_idx >> 32;
+
+  for (int i = 11; i >= 0 && carry != 0; i--) {
+    carry += iv[i];
+    iv[i] = carry;
+    carry >>= 8;
+  }
+}
+
 
 } // namespace enterprise
 }  // namespace yb

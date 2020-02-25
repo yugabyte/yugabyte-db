@@ -66,7 +66,8 @@ Status EncryptedRandomAccessFile::Read(
 
 Status EncryptedRandomAccessFile::ReadAndValidate(
     uint64_t offset, size_t n, Slice* result, char* scratch, const ReadValidator& validator) {
-  if (!FLAGS_encryption_counter_overflow_read_path_workaround) {
+  if (!FLAGS_encryption_counter_overflow_read_path_workaround ||
+      stream_->UseOpensslCompatibleCounterOverflow()) {
     RETURN_NOT_OK(ReadInternal(offset, n, result, scratch, EncryptionOverflowWorkaround::kFalse));
     return validator.Validate(*result);
   }
