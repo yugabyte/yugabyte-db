@@ -569,7 +569,7 @@ Status PgSession::ReadSequenceTuple(int64_t db_oid,
 
   Slice cursor;
   int64_t row_count = 0;
-  RETURN_NOT_OK(PgDocData::LoadCache(psql_read->rows_data(), &row_count, &cursor));
+  PgDocData::LoadCache(psql_read->rows_data(), &row_count, &cursor);
   if (row_count == 0) {
     return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", seq_oid);
   }

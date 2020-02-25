@@ -387,6 +387,17 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
                                    HybridTime *restart_read_ht) {
   VLOG(4) << "Read, read time: " << read_time << ", txn: " << txn_op_context_;
 
+  // Fetching data.
+  if (request_.batch_arguments_size() > 0) {
+    RETURN_NOT_OK(ExecuteBatch(ql_storage, deadline, read_time, schema, resultset,
+                               restart_read_ht));
+    if (FLAGS_trace_docdb_calls) {
+      TRACE("Fetched $0 rows.", resultset->rsrow_count());
+    }
+    *restart_read_ht = table_iter_->RestartReadHt();
+    return Status::OK();
+  }
+
   size_t row_count_limit = std::numeric_limits<std::size_t>::max();
   if (request_.has_limit()) {
     if (request_.limit() == 0) {
@@ -489,6 +500,39 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   *restart_read_ht = iter->RestartReadHt();
 
   return SetPagingStateIfNecessary(iter, resultset, row_count_limit, scan_time_exceeded);
+}
+
+Status PgsqlReadOperation::ExecuteBatch(const common::YQLStorageIf& ql_storage,
+                                        CoarseTimePoint deadline,
+                                        const ReadHybridTime& read_time,
+                                        const Schema& schema,
+                                        PgsqlResultSet *resultset,
+                                        HybridTime *restart_read_ht) {
+  Schema projection;
+  RETURN_NOT_OK(CreateProjection(schema, request_.column_refs(), &projection));
+
+  QLTableRow::SharedPtr row = std::make_shared<QLTableRow>();
+  int row_count = 0;
+  for (const PgsqlBatchArgumentPB& batch_argument : request_.batch_arguments()) {
+    // Get the row.
+    RETURN_NOT_OK(ql_storage.GetIterator(request_, projection, schema, txn_op_context_,
+                                         deadline, read_time, batch_argument.ybctid().value(),
+                                         &table_iter_));
+    row->Clear();
+
+    SCHECK(VERIFY_RESULT(table_iter_->HasNext()), Corruption,
+           "Given ybctid is not associated with any row in table");
+    RETURN_NOT_OK(table_iter_->NextRow(projection, row.get()));
+
+    // Populate result set.
+    RETURN_NOT_OK(PopulateResultSet(row, resultset));
+    row_count++;
+  }
+
+  // Set status for this batch.
+  response_.set_batch_arg_count(row_count);
+
+  return Status::OK();
 }
 
 Status PgsqlReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,

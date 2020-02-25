@@ -636,25 +636,17 @@ Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_
 }
 
 Status PgApiImpl::DmlBindColumnCondEq(PgStatement *handle, int attr_num, PgExpr *attr_value) {
-  return down_cast<PgSelect*>(handle)->BindColumnCondEq(attr_num, attr_value);
+  return down_cast<PgDmlRead*>(handle)->BindColumnCondEq(attr_num, attr_value);
 }
 
 Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num, PgExpr *attr_value,
     PgExpr *attr_value_end) {
-  return down_cast<PgSelect*>(handle)->BindColumnCondBetween(attr_num, attr_value, attr_value_end);
+  return down_cast<PgDmlRead*>(handle)->BindColumnCondBetween(attr_num, attr_value, attr_value_end);
 }
 
 Status PgApiImpl::DmlBindColumnCondIn(PgStatement *handle, int attr_num, int n_attr_values,
     PgExpr **attr_values) {
-  return down_cast<PgSelect*>(handle)->BindColumnCondIn(attr_num, n_attr_values, attr_values);
-}
-
-Status PgApiImpl::DmlBindIndexColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
-  return down_cast<PgSelect*>(handle)->BindIndexColumn(attr_num, attr_value);
+  return down_cast<PgDmlRead*>(handle)->BindColumnCondIn(attr_num, n_attr_values, attr_values);
 }
 
 Status PgApiImpl::DmlBindTable(PgStatement *handle) {
@@ -792,11 +784,23 @@ Status PgApiImpl::NewSelect(const PgObjectId& table_id,
                             const PgObjectId& index_id,
                             const PgPrepareParameters *prepare_params,
                             PgStatement **handle) {
+  // Scenarios:
+  // - Sequential Scan: PgSelect to read from table_id.
+  // - Primary Scan: PgSelect from table_id. YugaByte does not have separate table for primary key.
+  // - Index-Only-Scan: PgSelectIndex directly from secondary index_id.
+  // - IndexScan: Use PgSelectIndex to read from index_id and then PgSelect to read from table_id.
+  //     Note that for SysTable, only one request is send for both table_id and index_id.
   *handle = nullptr;
-  if (prepare_params && prepare_params->index_only_scan && !index_id.IsValid()) {
-    return STATUS(InvalidArgument, "Cannot run query with invalid index ID");
+  PgDmlRead::ScopedRefPtr stmt;
+  if (prepare_params && prepare_params->index_only_scan && prepare_params->use_secondary_index) {
+    if (!index_id.IsValid()) {
+      return STATUS(InvalidArgument, "Cannot run query with invalid index ID");
+    }
+    stmt = make_scoped_refptr<PgSelectIndex>(pg_session_, table_id, index_id, prepare_params);
+  } else {
+    // For IndexScan PgSelect processing will create subquery PgSelectIndex.
+    stmt = make_scoped_refptr<PgSelect>(pg_session_, table_id, index_id, prepare_params);
   }
-  auto stmt = make_scoped_refptr<PgSelect>(pg_session_, table_id, index_id, prepare_params);
 
   RETURN_NOT_OK(stmt->Prepare());
   *handle = stmt.detach();
@@ -808,7 +812,7 @@ Status PgApiImpl::SetForwardScan(PgStatement *handle, bool is_forward_scan) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  down_cast<PgSelect*>(handle)->SetForwardScan(is_forward_scan);
+  down_cast<PgDmlRead*>(handle)->SetForwardScan(is_forward_scan);
   return Status::OK();
 }
 
@@ -817,7 +821,7 @@ Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_p
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  return down_cast<PgSelect*>(handle)->Exec(exec_params);
+  return down_cast<PgDmlRead*>(handle)->Exec(exec_params);
 }
 
 //--------------------------------------------------------------------------------------------------

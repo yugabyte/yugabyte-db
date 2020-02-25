@@ -41,7 +41,7 @@ class PgDelete : public PgDmlWrite {
 
  private:
   std::unique_ptr<client::YBPgsqlWriteOp> AllocWriteOperation() const override {
-    return table_desc_->NewPgsqlDelete();
+    return target_desc_->NewPgsqlDelete();
   }
 };
 
