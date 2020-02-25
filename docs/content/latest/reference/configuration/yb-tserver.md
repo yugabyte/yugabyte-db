@@ -500,7 +500,7 @@ Default: `20`
 
 The time interval, in seconds, to retain DocDB history. Point-in-time reads at a hybrid time prior to this interval  
 the past might not be allowed after a compaction and return an `Snapshot too old` error. 
-Set this to be higher than the expected maximum duration of any single transaction in your application.
+Set this to be greater than the expected maximum duration of any single transaction in your application.
 
 Default: `120`
 
