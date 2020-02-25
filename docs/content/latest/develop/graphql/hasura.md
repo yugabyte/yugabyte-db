@@ -39,7 +39,19 @@ For a local Mac setup, the configuration should be:
 docker run -d -p 8080:8080 \
        -e HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:@host.docker.internal:5433/postgres \
        -e HASURA_GRAPHQL_ENABLE_CONSOLE=true \
-       hasura/graphql-engine:v1.0.0
+       hasura/graphql-engine:v1.1.0
+```
+
+After downloading or editing the `docker-run.sh` file, you need to make the file executable. Run the following `chmod` command:
+
+```sh
+$ chmod +x docker-run.sh
+```
+When this script runs, the Hasura GraphQL Engine starts in the Docker container and returns the unique container ID.
+
+```
+➜  hasura-yb ./docker-run.sh
+8afee92b0e2535baf3fdb1308f78f008b3e3c950d4f560a58449b4ef7e23652a
 ```
 
 {{< note title="Note" >}}
@@ -56,7 +68,7 @@ To start Hasura, run the following script:
 
 {{< note title="Note" >}}
 
-This initialization step may take a minute or more.
+The initialization step may take a moment or more.
 
 To check the Docker logs, you can use the container ID returned by the command above:
 
@@ -120,11 +132,10 @@ Click **Add**, and then click **Save**.
 ./bin/ysqlsh
 ```
 
-1. Copy the commands below into the shell and press **Enter**.
+1. Copy the YSQL statements below into the shell and press **Enter**.
 
 ```postgresql
-SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE
-INSERT INTO author(name) VALUES ('John Doe'), ('Jane Doe')
+INSERT INTO author(name) VALUES ('John Doe'), ('Jane Doe'); 
 INSERT INTO article(title, content, rating, author_id) 
 VALUES ('Jane''s First Book', 'Lorem ipsum', 10, 2);
 INSERT INTO article(title, content, rating, author_id) 
@@ -134,14 +145,14 @@ VALUES ('Jane''s Second Book', 'consectetur adipiscing elit', 7, 2);
 INSERT INTO article(title, content, rating, author_id) 
 VALUES ('Jane''s Third Book', 'sed do eiusmod tempor', 8, 2);
 INSERT INTO article(title, content, rating, author_id) 
-VALUES ('John''s Second Book', 'incididunt ut labore', 9, 1)
+VALUES ('John''s Second Book', 'incididunt ut labore', 9, 1);
 SELECT * FROM author ORDER BY id;
 SELECT * FROM article ORDER BY id;
 ```
 
 ## Run some GraphQL queries
 
-Go back to the Hasura UI, click the **GRAPHQL** tab on top.
+Go back to the Hasura UI and click **GRAPHIQL**.
 
 ### Query using the object relationship
 
@@ -160,7 +171,7 @@ Fetch a list of articles and sort each article’s author in descending order an
 }
 ```
 
-![relationships form](/images/develop/graphql/hasura/query-relationship-object.png)
+![Relationships form](/images/develop/graphql/hasura/query-relationship-object.png)
 
 ### Query using the array relationship
 
