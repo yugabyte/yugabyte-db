@@ -37,8 +37,7 @@ Here are things we have to keep in mind when designing schemas:
 
 1. How new data is coming in the app to prevent write/read hotspots
 2. Do we need global range querying ?
-3. Will we have big partitions ?
-4. Queries that our application need to answer in the hot path
+3. Queries that our application need to answer in the hot path
 
 Range primary keys:
 
@@ -52,8 +51,8 @@ Hash primary keys:
 
 
 ## Co-location
-Co-location is a [new feature](https://github.com/yugabyte/yugabyte-db/issues/3033) in development where all the tables of a database is
-inside 1 tablet. This increases performance and lowers latency on write transactions, joined queries and aggregations
+Co-location is a [new feature in beta](../explore/colocated-tables/linux.md) in development where you can put tables of 
+a database inside 1 tablet. This increases performance and lowers latency on write transactions, joined queries and aggregations
 since they happen in 1 tablet/node.
 
 ## Co-partitioning
